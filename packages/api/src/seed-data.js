@@ -21,7 +21,6 @@ export const COLLECTIONS = {
   leads: [],
   nps: [],
   goals: [],
-  proposals: [],
   leaderboard_month: [],
   leaderboard_all: [],
 };

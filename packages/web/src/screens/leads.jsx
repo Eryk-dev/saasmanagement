@@ -39,6 +39,7 @@ function LeadsScreen({ persona }) {
 function LeadCard({ l, idx, top }) {
   const { SAAS } = window.SEED;
   const saas = SAAS.find(s => s.id === l.saas);
+  const saasTone = saas ? window.productTone(saas) : "var(--fg-4)";
   const priTone = l.priority === "P0" ? "var(--neg)" : l.priority === "P1" ? "var(--warn)" : "var(--fg-3)";
   return (
     <div style={{
@@ -65,14 +66,18 @@ function LeadCard({ l, idx, top }) {
         <div className="mono dim" style={{ fontSize: 9 }}>ICP {(l.icp*100).toFixed(0)}%</div>
       </div>
       <div className="mono dim tnum" style={{ fontSize: 11 }}>há {l.age}</div>
-      <div style={{ display: "flex", gap: 6 }}>
-        <button style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}>
-          <span style={{ fontSize: 11 }}>contatar</span>
-        </button>
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        {l.proposalUrl
+          ? <a href={l.proposalUrl} target="_blank" rel="noreferrer" style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)", textDecoration: "none" }}>
+              <span style={{ fontSize: 11 }}>proposta ↗</span>
+            </a>
+          : <button style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}>
+              <span style={{ fontSize: 11 }}>contatar</span>
+            </button>}
         <button style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>dispensar</span></button>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-          <span style={{ width: 6, height: 6, borderRadius: 1, background: window.productTone(saas) }} />
-          <span className="mono dim" style={{ fontSize: 10 }}>{saas?.name}</span>
+          <span style={{ width: 6, height: 6, borderRadius: 1, background: saasTone }} />
+          <span className="mono dim" style={{ fontSize: 10 }}>{saas?.name || l.saas}</span>
         </span>
       </div>
     </div>

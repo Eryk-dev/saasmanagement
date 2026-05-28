@@ -3,6 +3,7 @@
 
 import { repo, COLLECTION_NAMES } from "./db.js";
 import { PORTFOLIO_CONST } from "./seed-data.js";
+import { openapi, docsHtml } from "./openapi.js";
 
 // Collections external SaaS are allowed to write to via REST/MCP.
 const WRITABLE = new Set(COLLECTION_NAMES);
@@ -22,6 +23,7 @@ const CREATE_DEFAULTS = {
   },
   customers: { flags: [] },
   nps: { tags: [] },
+  leads: { priority: "P2", score: 0, icp: 0, value: "", reason: "", source: "Form", age: "agora", stage: "" },
 };
 
 function computePortfolio() {
@@ -72,6 +74,10 @@ function listFilter(collection, q) {
 export function registerRoutes(app) {
   app.get("/api/health", async () => ({ ok: true, service: "cockpit-api", collections: COLLECTION_NAMES }));
 
+  // API documentation (OpenAPI spec + Redoc page). The MCP server consumes this.
+  app.get("/api/openapi.json", async () => openapi);
+  app.get("/api/docs", async (_req, reply) => reply.type("text/html").send(docsHtml));
+
   // Everything the cockpit web app needs in one shot (mirrors window.SEED).
   app.get("/api/bootstrap", async () => ({
     SAAS: repo.list("products"),
@@ -85,7 +91,6 @@ export function registerRoutes(app) {
     LEADERBOARD_MONTH: repo.list("leaderboard_month"),
     LEADERBOARD_ALL: repo.list("leaderboard_all"),
     GOALS: repo.list("goals"),
-    PROPOSALS: repo.list("proposals"),
   }));
 
   app.get("/api/portfolio", async () => computePortfolio());

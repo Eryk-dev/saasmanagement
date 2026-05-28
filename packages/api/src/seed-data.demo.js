@@ -319,7 +319,6 @@ export const COLLECTIONS = {
   leads:             LEADS,
   nps:               NPS,
   goals:             GOALS,
-  proposals:         PROPOSALS,
   leaderboard_month: LEADERBOARD_MONTH,
   leaderboard_all:   LEADERBOARD_ALL,
 };

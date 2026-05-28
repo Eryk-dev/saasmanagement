@@ -7,7 +7,7 @@ const PERSONAS = [
   { id: "founder", name: "Fundador",          subtitle: "você",         home: "portfolio" },
   { id: "manager", name: "Gestor de SaaS",     subtitle: "Quill",       home: "saas",      saas: "quill" },
   { id: "sdr",     name: "SDR",              subtitle: "Sam Sato",    home: "leads"    },
-  { id: "closer",  name: "Closer",           subtitle: "Mika K.",     home: "proposals" },
+  { id: "closer",  name: "Closer",           subtitle: "Mika K.",     home: "pipeline" },
   { id: "cs",      name: "Customer Success", subtitle: "Amelia B.",   home: "customers" },
 ];
 
@@ -16,7 +16,6 @@ const NAV = [
   { id: "saas",       label: "SaaS",        icon: "◇",  group: "overview" },
   { id: "pipeline",   label: "Pipeline",    icon: "≡",  group: "sales" },
   { id: "leads",      label: "Leads",       icon: "→",  group: "sales" },
-  { id: "proposals",  label: "Propostas",   icon: "❐",  group: "sales" },
   { id: "customers",  label: "Clientes",   icon: "○",  group: "customer" },
   { id: "nps",        label: "NPS",         icon: "☷",  group: "customer" },
   { id: "goals",      label: "Metas",       icon: "◎",  group: "team" },

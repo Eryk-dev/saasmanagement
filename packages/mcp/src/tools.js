@@ -1,164 +1,155 @@
-// MCP tools — the integration surface for your other SaaS and any AI agent.
-// Every tool is a thin wrapper over the Cockpit REST API (the single source of
-// truth), so reads reflect live data and writes flow straight into the cockpit.
+// MCP = MANUAL DE CONEXÃO. As tools devolvem DOCUMENTAÇÃO (markdown / schema),
+// nunca dados de negócio. Quem cria/lê/atualiza dados é a API REST diretamente.
+// As tools que dependem do schema leem o /api/openapi.json (a doc), não os dados.
 
 import { z } from "zod";
-import { apiClient } from "./apiClient.js";
+import { apiDocs, API_BASE } from "./apiClient.js";
 
-const ok = (data) => ({
-  content: [{ type: "text", text: typeof data === "string" ? data : JSON.stringify(data, null, 2) }],
-});
-const fail = (e) => ({ content: [{ type: "text", text: `Error: ${e.message || e}` }], isError: true });
-const wrap = (fn) => async (args) => {
-  try { return ok(await fn(args || {})); } catch (e) { return fail(e); }
+const md = (text) => ({ content: [{ type: "text", text }] });
+const fail = (e) =>
+  md(`⚠️ Não consegui ler a documentação da API em ${API_BASE}.\n` +
+     `Confirme que a API está no ar (GET ${API_BASE}/api/health) e tente de novo.\n\n${e.message || e}`);
+
+function schemaTable(schema = {}) {
+  const props = schema.properties || {};
+  const required = schema.required || [];
+  let out = "| campo | tipo | obrigatório | descrição |\n|---|---|---|---|\n";
+  for (const [k, v] of Object.entries(props)) {
+    const type = v.enum ? v.enum.join(" \\| ") : (v.format || v.type || "object");
+    const req = required.includes(k) ? "**sim**" : "—";
+    out += `| \`${k}\` | ${type} | ${req} | ${(v.description || "").replace(/\n/g, " ")} |\n`;
+  }
+  return out;
+}
+
+const RESOURCE_TO_SCHEMA = {
+  lead: "LeadInput", leads: "LeadInput",
+  product: "Product", products: "Product",
+  customer: "Customer", customers: "Customer",
+  deal: "Deal", deals: "Deal",
+  nps: "NpsResponse",
+  goal: "Goal", goals: "Goal",
 };
 
 export function registerTools(server) {
-  // ── Overview ──────────────────────────────────────────────────────────────
-  server.registerTool("portfolio_summary", {
-    title: "Portfolio summary",
-    description: "Portfolio-wide KPIs (MRR, ARR, net-new MRR, NRR, customers) plus a per-product snapshot. The fastest answer to 'how is my portfolio today?'.",
-  }, wrap(async () => {
-    const [portfolio, products] = await Promise.all([apiClient.portfolio(), apiClient.list("products")]);
-    return {
-      portfolio,
-      products: products.map((p) => ({
-        id: p.id, name: p.name, mrr: p.mrr, mrrDelta: p.mrrDelta,
-        health: p.health, healthTrend: p.healthTrend, nrr: p.nrr, churnRate: p.churnRate,
-      })),
-    };
-  }));
+  // ── Visão geral ────────────────────────────────────────────────────────────
+  server.registerTool("api_overview", {
+    title: "Visão geral da API",
+    description: "Como o Cockpit funciona e como conectar nele. Base URL, autenticação e onde está a doc completa.",
+  }, async () => md(
+`# Cockpit · Portfolio OS — manual de conexão
 
-  server.registerTool("list_products", {
-    title: "List products (SaaS)",
-    description: "Every SaaS product in the portfolio with full metrics (MRR, ARR, NRR, GRR, funnel, churn, NPS, activation, NNM waterfall).",
-  }, wrap(() => apiClient.list("products")));
+Este servidor MCP é um **manual**: ele te diz *como* integrar. **Os dados trafegam pela API REST**, não por aqui.
 
-  server.registerTool("get_product", {
-    title: "Get one product",
-    description: "Full record for a single SaaS by id (leverads | quill | mesa | …).",
-    inputSchema: { id: z.string().describe("Product id, e.g. 'quill'") },
-  }, wrap(({ id }) => apiClient.get("products", id)));
+- **Base da API:** \`${API_BASE}\`
+- **Doc interativa (Redoc):** \`${API_BASE}/api/docs\`
+- **OpenAPI (máquina):** \`${API_BASE}/api/openapi.json\`
+- **Health:** \`${API_BASE}/api/health\`
 
-  server.registerTool("update_product_metrics", {
-    title: "Update product metrics (ingest)",
-    description: "Push/patch metrics for a product from an external SaaS (e.g. nightly job sends mrr, churnRate, activation). Merges fields onto the existing record.",
-    inputSchema: {
-      id: z.string().describe("Product id to update"),
-      patch: z.record(z.any()).describe("Partial metrics object to merge, e.g. { mrr: 190000, churnRate: 0.01 }"),
-    },
-  }, wrap(({ id, patch }) => apiClient.update("products", id, patch)));
+**Autenticação:** leituras são abertas. Escritas (POST/PATCH/DELETE) exigem o header \`x-api-key\`
+**se** o servidor tiver \`COCKPIT_API_KEY\` definido.
 
-  // ── Attention queue ───────────────────────────────────────────────────────
-  server.registerTool("list_attention", {
-    title: "List attention signals",
-    description: "Prioritized anomaly/opportunity queue (severity × age) — 'where do I need to act this week?'. Each item links to evidence.",
-    inputSchema: { severity: z.enum(["critical", "high", "medium", "low"]).optional() },
-  }, wrap(async ({ severity }) => {
-    const items = await apiClient.list("attention");
-    return severity ? items.filter((a) => a.severity === severity) : items;
-  }));
+**Fluxo típico**
+1. Seu formulário envia \`POST /api/leads\` → o lead entra no funil do SaaS (\`saas\`). Use a tool \`connect_a_form\`.
+2. Sua proposta é gerada externamente com os dados do form.
+3. Você grava o link no lead: \`PATCH /api/leads/{id}\` com \`{ "proposalUrl": "https://..." }\`.
 
-  // ── Pipeline / deals ──────────────────────────────────────────────────────
-  server.registerTool("list_deals", {
-    title: "List deals",
-    description: "Pipeline deals across products. Filter by saas, stage and/or owner.",
-    inputSchema: {
-      saas: z.string().optional().describe("Filter by product id"),
-      stage: z.string().optional().describe("Filter by funnel stage, e.g. 'Discovery'"),
-      owner: z.string().optional().describe("Filter by owner code, e.g. 'PR'"),
-    },
-  }, wrap((q) => apiClient.list("deals", q)));
+Tools deste manual: \`connect_a_form\`, \`lead_fields\`, \`resource_schema\`, \`list_endpoints\`, \`openapi_spec\`.`));
 
-  server.registerTool("move_deal", {
-    title: "Move deal to stage",
-    description: "Advance/move a deal to a different funnel stage. Reflects immediately in the cockpit pipeline.",
-    inputSchema: { id: z.string(), stage: z.string().describe("Target stage name") },
-  }, wrap(({ id, stage }) => apiClient.update("deals", id, { stage })));
+  // ── Conectar um formulário (a tool principal) ───────────────────────────────
+  server.registerTool("connect_a_form", {
+    title: "Como conectar um formulário",
+    description: "Passo a passo para os campos do seu formulário caírem nos campos certos do lead, e como anexar o link da proposta.",
+  }, async () => {
+    let table = "(rode novamente com a API no ar para ver a tabela de campos)";
+    try { table = schemaTable((await apiDocs.openapi()).components.schemas.LeadInput); } catch { /* sem doc */ }
+    return md(
+`# Conectar um formulário externo
 
-  server.registerTool("create_deal", {
-    title: "Create deal",
-    description: "Create a pipeline deal (e.g. from an external form/CRM). Id is generated if omitted.",
-    inputSchema: {
-      saas: z.string().describe("Product id"),
-      title: z.string(),
-      company: z.string().optional(),
-      amount: z.number().optional(),
-      stage: z.string().optional(),
-      owner: z.string().optional(),
-      score: z.enum(["hot", "warm", "cold"]).optional(),
-      source: z.string().optional(),
-    },
-  }, wrap((deal) => apiClient.create("deals", deal)));
+O submit do seu form (ou um middleware seu) faz **\`POST ${API_BASE}/api/leads\`** com JSON.
+Só \`name\` e \`saas\` são obrigatórios — o resto tem default.
 
-  // ── Customers ─────────────────────────────────────────────────────────────
-  server.registerTool("list_customers", {
-    title: "List customers",
-    description: "Customer accounts with health, ARR, usage, renewal and flags. Filter by health band (red/yellow/green) or saas — 'who needs me today?'.",
-    inputSchema: {
-      band: z.enum(["red", "yellow", "green"]).optional().describe("red <50, yellow 50-69, green >=70"),
-      saas: z.string().optional(),
-    },
-  }, wrap((q) => apiClient.list("customers", q)));
+## Exemplo
+\`\`\`bash
+curl -X POST ${API_BASE}/api/leads \\
+  -H 'content-type: application/json' \\
+  -H 'x-api-key: SUA_KEY' \\   # só se a API exigir
+  -d '{
+    "name": "Mara Olin",
+    "email": "mara@drift.com",
+    "company": "Drift Robotics",
+    "saas": "meusaas",
+    "source": "Form · LP /pricing",
+    "message": "Quero uma demo para 200 vagas",
+    "utm": { "source": "google", "campaign": "pricing-q2" }
+  }'
+\`\`\`
+A resposta traz o \`id\` do lead criado.
 
-  server.registerTool("get_customer", {
-    title: "Get one customer",
-    description: "Full record for a single customer account by id.",
-    inputSchema: { id: z.string() },
-  }, wrap(({ id }) => apiClient.get("customers", id)));
+## Anexar o link da proposta (gerada externamente)
+\`\`\`bash
+curl -X PATCH ${API_BASE}/api/leads/LEAD_ID \\
+  -H 'content-type: application/json' \\
+  -d '{ "proposalUrl": "https://propostas.seudominio.com/p/abc123" }'
+\`\`\`
+O link aparece como botão **"proposta ↗"** no card do lead.
 
-  // ── Leads ─────────────────────────────────────────────────────────────────
-  server.registerTool("list_leads", {
-    title: "List leads",
-    description: "SDR worklist — prioritized leads. Filter by priority (P0/P1/P2).",
-    inputSchema: { priority: z.enum(["P0", "P1", "P2"]).optional() },
-  }, wrap((q) => apiClient.list("leads", q)));
+## Campos do lead (\`LeadInput\`)
+${table}
 
-  server.registerTool("create_lead", {
-    title: "Create lead (ingest)",
-    description: "Create a lead from an external form/funnel and drop it into the worklist for the right SaaS.",
-    inputSchema: {
-      name: z.string(),
-      company: z.string(),
-      saas: z.string().describe("Product id the lead belongs to"),
-      priority: z.enum(["P0", "P1", "P2"]).optional(),
-      score: z.number().optional(),
-      reason: z.string().optional(),
-      source: z.string().optional(),
-      stage: z.string().optional(),
-      value: z.string().optional(),
-    },
-  }, wrap((lead) => apiClient.create("leads", lead)));
+> Dica: \`saas\` é o **id do produto** (o mesmo id de \`POST /api/products\`). O lead entra no funil daquele SaaS.`);
+  });
 
-  // ── NPS ───────────────────────────────────────────────────────────────────
-  server.registerTool("list_nps", {
-    title: "List NPS responses",
-    description: "Raw NPS responses with score, role, tags and verbatim text. Filter by saas.",
-    inputSchema: { saas: z.string().optional() },
-  }, wrap((q) => apiClient.list("nps", q)));
+  // ── Schema de um recurso ────────────────────────────────────────────────────
+  server.registerTool("lead_fields", {
+    title: "Campos do lead",
+    description: "Tabela dos campos aceitos ao criar/atualizar um lead (schema LeadInput).",
+  }, async () => {
+    try { return md(`# Campos do lead (LeadInput)\n\n${schemaTable((await apiDocs.openapi()).components.schemas.LeadInput)}`); }
+    catch (e) { return fail(e); }
+  });
 
-  server.registerTool("create_nps", {
-    title: "Create NPS response (ingest)",
-    description: "Record an NPS response from a survey tool. Score 0-10; <=6 is a detractor.",
-    inputSchema: {
-      saas: z.string(),
-      score: z.number().min(0).max(10),
-      role: z.string().optional(),
-      tags: z.array(z.string()).optional(),
-      text: z.string().optional(),
-    },
-  }, wrap((n) => apiClient.create("nps", n)));
+  server.registerTool("resource_schema", {
+    title: "Schema de um recurso",
+    description: "Campos de um recurso da API. resource: lead | product | customer | deal | nps | goal.",
+    inputSchema: { resource: z.string().describe("lead | product | customer | deal | nps | goal") },
+  }, async ({ resource }) => {
+    try {
+      const key = RESOURCE_TO_SCHEMA[String(resource || "").toLowerCase()];
+      if (!key) return md(`Recurso desconhecido: "${resource}". Use um de: ${Object.keys(RESOURCE_TO_SCHEMA).join(", ")}.`);
+      const spec = await apiDocs.openapi();
+      return md(`# Schema: ${key}\n\n${schemaTable(spec.components.schemas[key])}`);
+    } catch (e) { return fail(e); }
+  });
 
-  // ── Goals & leaderboard ───────────────────────────────────────────────────
-  server.registerTool("list_goals", {
-    title: "List goals",
-    description: "Pacing goals (target vs current vs projected) with green/yellow/red bands. Optional scope filter (Portfolio/LeverAds/Quill/Mesa).",
-    inputSchema: { scope: z.string().optional() },
-  }, wrap((q) => apiClient.list("goals", q)));
+  // ── Endpoints ───────────────────────────────────────────────────────────────
+  server.registerTool("list_endpoints", {
+    title: "Lista de endpoints",
+    description: "Todos os endpoints da API (método, rota, resumo e se exige x-api-key).",
+  }, async () => {
+    try {
+      const spec = await apiDocs.openapi();
+      let out = `# Endpoints — base \`${API_BASE}\`\n\n| método | rota | auth | resumo |\n|---|---|---|---|\n`;
+      for (const [path, ops] of Object.entries(spec.paths)) {
+        for (const [method, op] of Object.entries(ops)) {
+          if (method === "parameters") continue;
+          const auth = op.security ? "🔑" : "—";
+          out += `| \`${method.toUpperCase()}\` | \`${path}\` | ${auth} | ${op.summary || ""} |\n`;
+        }
+      }
+      out += `\nDoc completa: ${API_BASE}/api/docs`;
+      return md(out);
+    } catch (e) { return fail(e); }
+  });
 
-  server.registerTool("leaderboard", {
-    title: "Leaderboard",
-    description: "Sales/CS leaderboard. scope 'month' (resettable categories) or 'all' (career history).",
-    inputSchema: { scope: z.enum(["month", "all"]).default("month") },
-  }, wrap(({ scope }) => apiClient.leaderboard(scope || "month")));
+  // ── Spec bruto (para codegen / ferramentas) ─────────────────────────────────
+  server.registerTool("openapi_spec", {
+    title: "OpenAPI (JSON)",
+    description: "Devolve o documento OpenAPI completo (para gerar client, importar no Postman/Insomnia etc.).",
+  }, async () => {
+    try {
+      const spec = await apiDocs.openapi();
+      return md(`OpenAPI de ${API_BASE} (também em ${API_BASE}/api/openapi.json):\n\n\`\`\`json\n${JSON.stringify(spec, null, 2)}\n\`\`\``);
+    } catch (e) { return fail(e); }
+  });
 }

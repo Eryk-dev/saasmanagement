@@ -137,15 +137,14 @@ primeiro boot; em produção, é só apontar a camada de repositório pra um Pos
 
 ---
 
-## O app (10 telas · 5 personas)
+## O app (9 telas · 5 personas)
 
 | Tela | O que responde |
 |---|---|
 | **Portfolio** (home do Founder) | Herói de trajetória de MRR, fita de KPIs, **fila de atenção** priorizada, rails densos por produto, pacing de metas. |
 | **SaaS Dashboard** | MRR north-star, decomposição de health, 4 tiles vitais, heatmap de funil + alerta de gargalo. |
-| **Pipeline** | Kanban (drag-and-drop, persistido), visão **All pipelines** empilhada, Lista, Forecast. Clicar no card → drawer do deal. |
-| **Leads** (home do SDR) | Worklist priorizada round-robin. |
-| **Proposals** (home do Closer) | Propostas rastreadas + builder em blocos com dwell por seção. |
+| **Pipeline** (home do Closer) | Kanban (drag-and-drop, persistido), visão **All pipelines** empilhada, Lista, Forecast. Clicar no card → drawer do deal. |
+| **Leads** (home do SDR) | Worklist priorizada round-robin. A proposta é gerada **fora** do app (a partir do form) e o link entra no lead via API (`proposalUrl`), virando o botão "proposta ↗". |
 | **Customers** (home do CS) | Contas ordenadas por health, filtros por banda, painel de drill-down, CTAs ativas. |
 | **NPS** | Gauge, tendência, split promotor/detrator, clusters de tags, verbatims de detratores. |
 | **Goals** | Pacing vs projetado com bandas verde/amarelo/vermelho, cascata portfólio → SaaS. |
@@ -161,7 +160,8 @@ acento e persona.
 ## API REST
 
 Base: `http://localhost:8787`. Leitura aberta; escrita exige `x-api-key` **apenas se**
-`COCKPIT_API_KEY` estiver definido.
+`COCKPIT_API_KEY` estiver definido. **Doc interativa em `/api/docs`** (Redoc) e spec em
+`/api/openapi.json` — é onde você vê todos os campos pra mapear seus forms.
 
 | Método | Rota | Notas |
 |---|---|---|
@@ -174,48 +174,59 @@ Base: `http://localhost:8787`. Leitura aberta; escrita exige `x-api-key` **apena
 | `PATCH` | `/api/:collection/:id` | atualiza por merge |
 | `DELETE` | `/api/:collection/:id` | apaga |
 | `GET` | `/api/leaderboard?scope=month\|all` | conveniência |
+| `GET` | `/api/openapi.json` | spec OpenAPI (para máquina/codegen) |
+| `GET` | `/api/docs` | **doc interativa** (Redoc) |
 
 Coleções: `products`, `attention`, `deals`, `people`, `customers`, `leads`, `nps`,
-`goals`, `proposals`, `leaderboard_month`, `leaderboard_all`.
+`goals`, `leaderboard_month`, `leaderboard_all`.
 
 Filtros: `deals?saas=&stage=&owner=&score=` · `customers?band=red|yellow|green&saas=` ·
 `leads?priority=P0|P1|P2` · `nps?saas=` · `goals?scope=`.
 
-### Integrar seus SaaS rodando (exemplos)
+### Conectar formulários e SaaS (exemplos)
 
 ```bash
-# Empurrar um lead do seu funil/form pra worklist do produto certo
+# Seu FORMULÁRIO cria um lead (só name + saas são obrigatórios; o resto tem default).
+# `saas` é o id do produto; o lead entra no funil dele.
 curl -X POST http://localhost:8787/api/leads \
   -H 'content-type: application/json' \
-  -d '{"name":"Mara Olin","company":"Drift","saas":"leverads","priority":"P0","score":92}'
+  -d '{"name":"Mara Olin","email":"mara@drift.com","company":"Drift","saas":"meusaas",
+       "source":"Form · /pricing","utm":{"source":"google","campaign":"q2"}}'
 
-# Sync de métricas noturno vindo do seu sistema de billing
-curl -X PATCH http://localhost:8787/api/products/quill \
+# Depois de gerar a proposta (fora do app), grave o LINK no lead.
+# Vira o botão "proposta ↗" no card do lead.
+curl -X PATCH http://localhost:8787/api/leads/LEAD_ID \
+  -H 'content-type: application/json' \
+  -d '{"proposalUrl":"https://propostas.seudominio.com/p/abc123"}'
+
+# Sync de métricas do seu billing/produto
+curl -X PATCH http://localhost:8787/api/products/meusaas \
   -H 'content-type: application/json' \
   -d '{"mrr":96000,"churnRate":0.058,"activation":0.47}'
-
-# Avançar um deal quando seu CRM fecha
-curl -X PATCH http://localhost:8787/api/deals/d12 \
-  -H 'content-type: application/json' \
-  -d '{"stage":"Closed Won"}'
 ```
 
+Mapa completo dos campos do lead: abra `/api/docs` ou use a tool `connect_a_form` do MCP.
 Se `COCKPIT_API_KEY` estiver definido, acrescente `-H "x-api-key: <key>"` nas escritas.
 
 ---
 
-## Servidor MCP
+## Servidor MCP — manual de conexão
 
-Streamable HTTP em `http://localhost:8788/mcp` (health em `/health`). 16 tools:
+Streamable HTTP em `http://localhost:8788/mcp` (health em `/health`). **O MCP NÃO transmite
+dados de negócio** — ele é um *manual* que te diz como conectar na API. Os dados trafegam só
+pela API REST. As tools devolvem documentação (markdown / schema), lendo a própria
+`/api/openapi.json`:
 
-`portfolio_summary` · `list_products` · `get_product` · `update_product_metrics` ·
-`list_attention` · `list_deals` · `move_deal` · `create_deal` · `list_customers` ·
-`get_customer` · `list_leads` · `create_lead` · `list_nps` · `create_nps` ·
-`list_goals` · `leaderboard`.
+| tool | o que devolve |
+|---|---|
+| `api_overview` | visão geral: base, auth, fluxo, links da doc |
+| `connect_a_form` | **passo a passo** de mapear seu form → lead + anexar `proposalUrl` |
+| `lead_fields` | tabela dos campos do lead (`LeadInput`) |
+| `resource_schema` | schema de um recurso (`lead\|product\|customer\|deal\|nps\|goal`) |
+| `list_endpoints` | todos os endpoints (método, rota, se exige key) |
+| `openapi_spec` | o OpenAPI completo (pra codegen / Postman) |
 
-As tools `update_product_metrics`, `create_lead`, `create_nps`, `create_deal` e `move_deal`
-são o caminho de **ingestão** — aponte um agente pra elas pra alimentar o cockpit a partir dos
-seus sistemas. Tudo escrito via MCP aparece na UI na hora (mesmo banco).
+Use o MCP como manual num agente/IDE; pra mover dados, fale com a API REST direto.
 
 ### Conectar um cliente
 
@@ -239,10 +250,12 @@ claude mcp add --transport http cockpit http://localhost:8788/mcp
 
 ```
 packages/
-  api/   src/{index,routes,db,seed-data,seed-cli}.js   data/cockpit.db   (banco, fora do Git)
+  api/   src/{index,routes,db,seed-data,seed-data.demo,seed-cli,openapi}.js
+         data/cockpit.db   (banco, fora do Git)
   web/   index.html  vite.config.js  src/{main,app,atoms,charts,chrome,tweaks-panel}.jsx
          src/screens/*.jsx   src/lib/{api,format,ui}.js   src/tokens.css
-  mcp/   src/{index,tools,apiClient}.js
+  mcp/   src/{index,tools,apiClient}.js   (manual: documenta, não transmite dados)
+Dockerfile  packages/web/Dockerfile  packages/web/nginx.conf  docker-compose.yml
 .env.example
 ```
 
@@ -252,10 +265,11 @@ packages/
   reimplemente o `repo` em `packages/api/src/db.js` — nada mais muda.
 - **Auth**: defina `COCKPIT_API_KEY` pra exigir key nas escritas (leitura fica aberta pra UI).
   Antes de expor publicamente, reforce (keys por tenant, OAuth).
-- **Forms** foram retirados do design de propósito — leads/pipeline integram com seus
-  formulários **externos** via `POST /api/leads` (ou a tool `create_lead`).
-- **Propostas auto-geradas** (pela etapa do deal, com template pro closer) estão anotadas no
-  design como fluxo futuro e ainda não foram construídas.
+- **Forms** são **externos** (você cria os seus) — eles batem em `POST /api/leads` e caem nos
+  campos certos do lead. O mapa dos campos está em `/api/docs` e na tool `connect_a_form`.
+- **Proposta**: o módulo dentro do app foi **removido**. A proposta é gerada **fora** (a partir
+  do form) e o link entra no lead via `PATCH /api/leads/{id}` no campo `proposalUrl`.
+- **MCP = manual**, não transmite dados (a pedido). Quem move dados é a API REST.
 
 ---
 

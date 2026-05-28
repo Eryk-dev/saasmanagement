@@ -6,7 +6,6 @@ import { PortfolioScreen } from "./screens/portfolio.jsx";
 import { SaasDashboardScreen } from "./screens/saas_dashboard.jsx";
 import { PipelineScreen } from "./screens/pipeline.jsx";
 import { LeadsScreen } from "./screens/leads.jsx";
-import { ProposalsScreen } from "./screens/proposals.jsx";
 import { CustomersScreen } from "./screens/customers.jsx";
 import { NPSScreen } from "./screens/nps.jsx";
 import { GoalsScreen } from "./screens/goals.jsx";
@@ -77,7 +76,6 @@ function App() {
     saas:        ["Portfólio", window.SEED.SAAS.find(s => s.id === params.saas)?.name || "LeverAds"],
     pipeline:    ["Vendas", "Pipeline · " + (window.SEED.SAAS.find(s => s.id === params.saas)?.name || "LeverAds")],
     leads:       ["Vendas", "Leads"],
-    proposals:   ["Vendas", "Propostas"],
     customers:   ["Cliente", "Clientes"],
     nps:         ["Cliente", "NPS"],
     goals:       ["Time", "Metas"],
@@ -106,7 +104,6 @@ function App() {
         {screen === "saas"        && <SaasDashboardScreen saasId={params.saas} onNav={nav} onJump={jump} />}
         {screen === "pipeline"    && <PipelineScreen saasId={params.saas} onJump={jump} jumpFilter={params} onOpenDeal={openDeal} />}
         {screen === "leads"       && <LeadsScreen persona={persona} />}
-        {screen === "proposals"   && <ProposalsScreen />}
         {screen === "customers"   && <CustomersScreen csFilter={params.csFilter} />}
         {screen === "nps"         && <NPSScreen />}
         {screen === "goals"       && <GoalsScreen />}
@@ -157,7 +154,6 @@ function subtitleFor(screen, params) {
     saas:        "28 mai 2026",
     pipeline:    `${params.stage ? "estágio: " + params.stage + " · " : ""}arraste para mover`,
     leads:       "fila round-robin",
-    proposals:   "abertas + rastreadas",
     customers:   params.csFilter === "red" ? "filtrado: crítico" : "ordenado por saúde",
     nps:         "últimos 90 dias",
     goals:       "dia 12 / 31",
