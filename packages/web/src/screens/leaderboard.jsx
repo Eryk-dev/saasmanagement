@@ -1,5 +1,5 @@
 import React from "react";
-import { Avatar } from "../atoms.jsx";
+import { Avatar, EmptyState } from "../atoms.jsx";
 import { DeltaInline } from "../charts.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
 // Leaderboard — Monthly | All-Time toggle. Multiple categories so bottom doesn't get crushed.
@@ -10,6 +10,7 @@ function LeaderboardScreen() {
   const { LEADERBOARD_MONTH, LEADERBOARD_ALL, PEOPLE } = window.SEED;
   const [scope, setScope] = useStLB("month");
   const data = scope === "month" ? LEADERBOARD_MONTH : LEADERBOARD_ALL;
+  if (!LEADERBOARD_MONTH.length && !LEADERBOARD_ALL.length) return <EmptyState title="Ranking vazio" hint="O ranking é alimentado pela performance dos vendedores/CSMs. Conecte seus dados (people + deals) para ver as categorias e o histórico de carreira aqui." />;
 
   // Group by category
   const cats = {};

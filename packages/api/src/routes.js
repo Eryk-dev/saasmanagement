@@ -7,6 +7,23 @@ import { PORTFOLIO_CONST } from "./seed-data.js";
 // Collections external SaaS are allowed to write to via REST/MCP.
 const WRITABLE = new Set(COLLECTION_NAMES);
 
+// Defaults applied on create so a minimally-specified record still renders in the
+// UI (which iterates over array fields). User-provided fields always win.
+const CREATE_DEFAULTS = {
+  products: {
+    health: 0, healthDelta: 0, healthTrend: "stable",
+    mrr: 0, mrrDelta: 0, arr: 0, nrr: 1, nrrDelta: 0, grr: 1, logoRetention: 1, churnRate: 0,
+    nnm: { new: 0, expansion: 0, contraction: 0, churn: 0 },
+    tcv: 0, tcvDelta: 0, pipelineCoverage: null, acv: 0, acvDelta: 0,
+    winRate: 0, winRateDelta: 0, velocity: 100, velocityDelta: 0,
+    funnel: [], activation: 0, activationDelta: 0, nps: 0, npsDelta: 0,
+    mrrSeries: [], healthSeries: [], customers: 0, customersDelta: 0,
+    accent: 240, tag: "", plan: "", motion: "", ticketBand: "", cycleDays: 0,
+  },
+  customers: { flags: [] },
+  nps: { tags: [] },
+};
+
 function computePortfolio() {
   const saas = repo.list("products");
   const sum = (k) => saas.reduce((a, s) => a + (Number(s[k]) || 0), 0);
@@ -101,7 +118,7 @@ export function registerRoutes(app) {
     const { collection } = req.params;
     if (!WRITABLE.has(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
     if (!req.body || typeof req.body !== "object") return reply.code(400).send({ error: "JSON body required" });
-    const created = repo.create(collection, req.body);
+    const created = repo.create(collection, { ...(CREATE_DEFAULTS[collection] || {}), ...req.body });
     return reply.code(201).send(created);
   });
 

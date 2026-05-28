@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
-    "seed": "node src/seed-cli.js"
+    "seed": "node src/seed-cli.js",
+    "seed:demo": "node src/seed-cli.js --demo",
+    "seed:clear": "node src/seed-cli.js --clear"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",

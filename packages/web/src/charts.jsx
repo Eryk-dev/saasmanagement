@@ -33,7 +33,12 @@ function MRRTrajectory({ series, height = 220, days = 14, totalSeries, annotatio
   const plotW = Math.max(60, width - padL - padR);
   const plotH = height - padT - padB;
 
-  const allVals = series.flatMap(s => s.values).concat(totalSeries || []);
+  const allVals = series.flatMap(s => s.values || []).concat(totalSeries || []);
+  if (!allVals.length) return (
+    <div ref={boxRef} className="mono dim" style={{ width: "100%", height, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>
+      sem histórico de MRR ainda
+    </div>
+  );
   const min = Math.min(...allVals);
   const max = Math.max(...allVals);
   const range = max - min || 1;

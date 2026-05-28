@@ -1,5 +1,6 @@
 import React from "react";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
+import { EmptyState } from "../atoms.jsx";
 // SaaS Settings — funnels, custom fields, health weights, Aha definition, integrations
 
 const { useState: useStS } = React;
@@ -17,6 +18,8 @@ function SettingsScreen({ saasId }) {
     ["aha",         "Definição do Aha"],
     ["integrations","Integrações"],
   ];
+
+  if (!s) return <EmptyState title="Nenhum SaaS para configurar" hint="Crie um produto (POST /api/products) e ele aparece aqui para configurar funil, campos, pesos de saúde, Aha e integrações." />;
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>

@@ -1,5 +1,5 @@
 import React from "react";
-import { HealthArc, Sparkline, TrendBadge } from "../atoms.jsx";
+import { HealthArc, Sparkline, TrendBadge, EmptyState } from "../atoms.jsx";
 import { BigNumber, FunnelLadder, NNMWaterfall, DeltaInline } from "../charts.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
 // SaaS Dashboard — single-product cockpit.
@@ -8,6 +8,7 @@ import { chromeBtnStyleSmall } from "../lib/ui.js";
 function SaasDashboardScreen({ saasId = "leverads", onNav, onJump }) {
   const { SAAS } = window.SEED;
   const s = SAAS.find(x => x.id === saasId) || SAAS[0];
+  if (!s) return <EmptyState title="Nenhum produto" hint="Crie um SaaS (POST /api/products) para ver o dashboard do produto aqui." />;
   const tone = window.productTone(s);
 
   return (

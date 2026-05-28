@@ -1,0 +1,47 @@
+# Cockpit · Portfolio OS — stack para VPS.
+#   docker compose up -d --build
+# Sobe na porta 80:  web (UI)  +  /api (REST)  +  /mcp (MCP), tudo via nginx.
+# api e mcp ficam internos (rede do compose); o SQLite persiste no volume "cockpit-data".
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: node packages/api/src/index.js
+    environment:
+      API_PORT: "8787"
+      COCKPIT_API_KEY: "${COCKPIT_API_KEY:-}"
+    volumes:
+      - cockpit-data:/app/packages/api/data
+    restart: unless-stopped
+    # Para acessar a API direto (sem ser pelo nginx), descomente:
+    # ports: ["8787:8787"]
+
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: node packages/mcp/src/index.js
+    environment:
+      MCP_PORT: "8788"
+      COCKPIT_API_URL: "http://api:8787"
+      COCKPIT_API_KEY: "${COCKPIT_API_KEY:-}"
+    depends_on:
+      - api
+    restart: unless-stopped
+    # ports: ["8788:8788"]
+
+  web:
+    build:
+      context: .
+      dockerfile: packages/web/Dockerfile
+    ports:
+      - "${WEB_PORT:-80}:80"
+    depends_on:
+      - api
+      - mcp
+    restart: unless-stopped
+
+volumes:
+  cockpit-data:

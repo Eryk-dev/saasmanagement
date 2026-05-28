@@ -1,5 +1,5 @@
 import React from "react";
-import { Led, Sparkline, TrendBadge } from "../atoms.jsx";
+import { Led, Sparkline, TrendBadge, EmptyState } from "../atoms.jsx";
 import { MRRTrajectory, NNMWaterfall, FunnelLadder, DeltaInline } from "../charts.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
 // Portfolio (Founder home) — the cockpit's hero screen.
@@ -8,6 +8,12 @@ import { chromeBtnStyleSmall } from "../lib/ui.js";
 function PortfolioScreen({ onNav, onJump }) {
   const { SAAS, PORTFOLIO, ATTENTION, GOALS } = window.SEED;
 
+  if (!SAAS.length) return (
+    <EmptyState
+      title="Nenhum produto ainda"
+      hint="Conecte um SaaS para começar — POST /api/products na REST, ou a tool update_product_metrics / create_deal no MCP. Os dados aparecem aqui na hora." />
+  );
+
   // Build MRR trajectory series (per-product, in $k for chart units)
   const series = SAAS.map(s => ({
     id: s.id, name: s.name, label: s.name,
@@ -15,20 +21,6 @@ function PortfolioScreen({ onNav, onJump }) {
     tone: window.productTone(s),
   }));
   const totalSeries = PORTFOLIO.mrrSeries30d.slice(-14);
-  const nnmNet = SAAS.reduce((a, s) => a + s.nnm.new + s.nnm.expansion + s.nnm.contraction + s.nnm.churn, 0);
-
-  const tickerItems = [
-    { label: "MRR", value: window.fmt.money(PORTFOLIO.mrr), delta: PORTFOLIO.mrrDelta, unit: "$" },
-    { label: "ARR", value: window.fmt.money(PORTFOLIO.arr) },
-    { label: "Net New", value: window.fmt.money(nnmNet, { sign: true }) },
-    { label: "NRR", value: window.fmt.pct(PORTFOLIO.nrr), delta: 0.012, unit: "pp" },
-    { label: "LeverAds", value: window.fmt.money(SAAS[0].mrr), delta: SAAS[0].mrrDelta, unit: "$" },
-    { label: "Quill", value: window.fmt.money(SAAS[1].mrr), delta: SAAS[1].mrrDelta, unit: "$" },
-    { label: "Mesa", value: window.fmt.money(SAAS[2].mrr), delta: SAAS[2].mrrDelta, unit: "$" },
-    { label: "Churn risk", value: "R$214k ARR", delta: -0.139, unit: "pct", invert: true },
-    { label: "Detractors 7d", value: "9", delta: 5, invert: true },
-    { label: "Win rate", value: "33%", delta: -0.01, unit: "pp" },
-  ];
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto", background: "var(--bg-0)" }}>
@@ -125,12 +117,12 @@ function PortfolioScreen({ onNav, onJump }) {
         </div>
         <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
           <div className="bkt">hoje · últimas 24h</div>
-          <SignalRow label="Leads criados"        v="142" d={+18} />
-          <SignalRow label="Propostas enviadas"       v="9"   d={+1}  />
-          <SignalRow label="Propostas vistas"     v="23"  d={+4}  />
-          <SignalRow label="Deals avançados"       v="11"  d={-3}  invert />
-          <SignalRow label="Novos clientes"        v="34"  d={+6}  />
-          <SignalRow label="Detratores (NPS≤6)"   v="4"   d={+3}  invert />
+          <SignalRow label="Leads criados"      v="—" />
+          <SignalRow label="Propostas enviadas" v="—" />
+          <SignalRow label="Propostas vistas"   v="—" />
+          <SignalRow label="Deals avançados"    v="—" />
+          <SignalRow label="Novos clientes"     v="—" />
+          <SignalRow label="Detratores (NPS≤6)" v="—" />
         </div>
       </div>
     </div>
@@ -140,8 +132,11 @@ function PortfolioScreen({ onNav, onJump }) {
 // ─────────────────────────────────────────────── Tape (portfolio totals)
 function PortfolioTape() {
   const { PORTFOLIO, SAAS } = window.SEED;
-  const nnmNet = SAAS.reduce((a, s) => a + s.nnm.new + s.nnm.expansion + s.nnm.contraction + s.nnm.churn, 0);
-  const tcvTotal = SAAS.reduce((a, s) => a + s.tcv, 0);
+  const sum = (fn) => SAAS.reduce((a, s) => a + (fn(s) || 0), 0);
+  const nnmNet = sum(s => (s.nnm?.new || 0) + (s.nnm?.expansion || 0) + (s.nnm?.contraction || 0) + (s.nnm?.churn || 0));
+  const tcvTotal = sum(s => s.tcv);
+  const custDelta = sum(s => s.customersDelta);
+  const healthAvg = SAAS.length ? Math.round(sum(s => s.health) / SAAS.length) : 0;
   return (
     <div style={{
       display: "grid",
@@ -152,10 +147,10 @@ function PortfolioTape() {
       <TapeCell label="MRR"          value={window.fmt.money(PORTFOLIO.mrr)}           delta={PORTFOLIO.mrrDelta} dUnit="$" />
       <TapeCell label="ARR"          value={window.fmt.money(PORTFOLIO.arr)}           sub="anualizado" />
       <TapeCell label="Novo MRR líq." value={window.fmt.money(nnmNet, { sign: true })}  sub="este mês" tone={nnmNet >= 0 ? "var(--pos)" : "var(--neg)"} />
-      <TapeCell label="NRR (pond.)"    value={window.fmt.pct(PORTFOLIO.nrr)}             delta={+0.012} dUnit="pp" sub="retenção líq." />
-      <TapeCell label="TCV pipeline" value={window.fmt.money(tcvTotal)}                delta={+0.04}  dUnit="pct" sub="qualificado+" />
-      <TapeCell label="Clientes"     value={window.fmt.int(PORTFOLIO.customers)}       delta={-37}    dUnit="int" sub="ativos" />
-      <TapeCell label="Saúde (méd.)" value="67"                                        delta={-2}     dUnit="int" sub="ponderado" last />
+      <TapeCell label="NRR (pond.)"    value={window.fmt.pct(PORTFOLIO.nrr)}             sub="retenção líq." />
+      <TapeCell label="TCV pipeline" value={window.fmt.money(tcvTotal)}                sub="qualificado+" />
+      <TapeCell label="Clientes"     value={window.fmt.int(PORTFOLIO.customers)}       delta={custDelta} dUnit="int" sub="ativos" />
+      <TapeCell label="Saúde (méd.)" value={String(healthAvg)}                         sub="ponderado" last />
     </div>
   );
 }

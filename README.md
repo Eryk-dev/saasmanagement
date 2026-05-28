@@ -59,12 +59,43 @@ Rodar cada parte separada, se preferir:
 npm run dev:api    # Fastify na :8787
 npm run dev:web    # Vite na :5173 (faz proxy de /api -> :8787)
 npm run dev:mcp    # MCP na :8788  (faz proxy pra API)
-npm run seed -- --force   # apaga e repovoa os dados demo
+npm run seed:demo  # carrega os 3 SaaS de demonstração (pra explorar)
+npm run seed:clear # ZERA tudo (instância limpa)
 npm run build      # build de produção do web -> packages/web/dist
 ```
 
 Configuração fica no `.env` na raiz — copie o `.env.example` e edite. Portas, a API key
 opcional e a URL da API que o MCP consome ficam lá.
+
+---
+
+## Rodar em VPS (Docker)
+
+Sem instalar Node na VPS — só Docker + Compose:
+
+```bash
+git clone git@github.com:Eryk-dev/saasmanagement.git && cd saasmanagement
+cp .env.example .env        # (opcional) defina COCKPIT_API_KEY p/ proteger as escritas
+docker compose up -d --build
+```
+
+Sobe **uma porta só** (80): o nginx serve a UI e faz proxy de `/api` (REST) e `/mcp` (MCP).
+- UI:  `http://SEU_IP/`
+- API: `http://SEU_IP/api/...`
+- MCP: `http://SEU_IP/mcp`
+
+O SQLite persiste no volume `cockpit-data` (sobrevive a `down`/redeploys). Coloque um proxy
+com TLS (Caddy/Traefik/nginx) na frente para HTTPS + seu domínio.
+
+```bash
+docker compose logs -f                                              # logs
+docker compose exec api node packages/api/src/seed-cli.js --demo    # carrega demo
+docker compose exec api node packages/api/src/seed-cli.js --clear   # zera
+docker compose down                                                 # para (mantém os dados)
+```
+
+Mudar a porta pública: `WEB_PORT=8080 docker compose up -d`. Para expor a API/MCP direto (sem
+passar pelo nginx), descomente os `ports:` no `docker-compose.yml`.
 
 ---
 
@@ -75,10 +106,21 @@ de banco real (modo WAL, durável em disco) — a API (`packages/api/src/db.js`)
 coisa que fala com ele. Esse arquivo **não vai pro Git** (está no `.gitignore`): o repositório
 carrega o **código + a semente** (`packages/api/src/seed-data.js`), não o banco em si.
 
-**Como nasce.** No primeiro `npm run dev`, a API cria as tabelas e popula cada coleção a partir
-da semente — **só se a coleção estiver vazia**. Reinícios nunca sobrescrevem o que já existe,
-então dados que seus SaaS empurraram ficam preservados. Para zerar de propósito:
-`npm run seed -- --force`.
+**Como nasce.** Por padrão o app sobe **vazio** (instância limpa) — a semente padrão
+(`seed-data.js`) não tem dados. Você popula tudo conectando seus SaaS via REST/MCP. As telas
+mostram um estado vazio com a dica de como começar até chegarem os primeiros dados.
+Quer explorar com dados fictícios? `npm run seed:demo` carrega 3 SaaS de exemplo;
+`npm run seed:clear` zera de novo. Reinícios **nunca** sobrescrevem o que já existe — o que
+seus SaaS empurraram fica preservado.
+
+**Adicionar seu primeiro produto** (mínimo — a API completa o resto com defaults seguros):
+```bash
+curl -X POST http://localhost:8787/api/products \
+  -H 'content-type: application/json' \
+  -d '{"id":"meusaas","name":"Meu SaaS","mrr":15000,"arr":180000,"health":72}'
+```
+Quanto mais campos você enviar (`funnel`, `nnm`, `nrr`, `churnRate`, `activation`, `mrrSeries`…),
+mais partes da UI ganham vida. Veja o shape completo em `packages/api/src/seed-data.demo.js`.
 
 **Como é atualizado.** Há três caminhos, todos passando pela mesma API (uma fonte da verdade):
 

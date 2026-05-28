@@ -1,5 +1,5 @@
 import React from "react";
-import { HealthArc, Sparkline } from "../atoms.jsx";
+import { HealthArc, Sparkline, EmptyState } from "../atoms.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
 // NPS aggregate — gauge + trend + breakdown + tag clusters + recent detractor drilldown
 
@@ -8,6 +8,7 @@ const { useState: useStN } = React;
 function NPSScreen() {
   const { NPS, SAAS } = window.SEED;
   const [scope, setScope] = useStN("all"); // all | leverads | quill | mesa
+  if (!NPS.length) return <EmptyState title="Sem respostas de NPS" hint="As respostas entram por POST /api/nps (ou create_nps no MCP). Conecte sua ferramenta de NPS para ver gauge, tendência, tags e detratores aqui." />;
   const list = scope === "all" ? NPS : NPS.filter(n => n.saas === scope);
 
   const promoters  = list.filter(n => n.score >= 9).length;

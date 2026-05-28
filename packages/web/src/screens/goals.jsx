@@ -1,10 +1,12 @@
 import React from "react";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
+import { EmptyState } from "../atoms.jsx";
 // Goals — pacing gauges with cascading view (portfolio → SaaS → team).
 // Auto-alerts when <85% projected.
 
 function GoalsScreen() {
   const { GOALS, SAAS } = window.SEED;
+  if (!GOALS.length) return <EmptyState title="Nenhuma meta definida" hint="Crie metas por POST /api/goals (scope, target, current, projected) para acompanhar o pacing verde/amarelo/vermelho aqui." />;
   const grouped = {
     "Portfólio": GOALS.filter(g => g.scope === "Portfolio"),
     LeverAds:  GOALS.filter(g => g.scope === "LeverAds"),

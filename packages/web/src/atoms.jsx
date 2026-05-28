@@ -71,6 +71,7 @@ function HealthArc({ value = 0, size = 72, strokeWidth = 7, label, sublabel, del
 // ───────────────────────────────────────────────────── Sparkline
 function Sparkline({ data, width = 120, height = 28, stroke, fill, dot = true, baseline }) {
   const vals = data || [];
+  if (!vals.length) return <svg width={width} height={height} style={{ display: "block" }} />;
   const min = Math.min(...vals);
   const max = Math.max(...vals);
   const range = Math.max(1, max - min);
@@ -247,6 +248,18 @@ function Led({ tone = "var(--pos)", pulse, size = 7 }) {
   return <span className={"led" + (pulse ? " pulse" : "")} style={{ color: tone, width: size, height: size }} />;
 }
 
-Object.assign(window, { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, Ticker, Led });
+// ───────────────────────────────────────────────────── Estado vazio
+function EmptyState({ title, hint }) {
+  return (
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 40, minHeight: 0 }}>
+      <div style={{ textAlign: "center", maxWidth: 460 }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--fg-1)" }}>{title}</div>
+        {hint && <div className="mono dim" style={{ fontSize: 12, marginTop: 8, lineHeight: 1.6 }}>{hint}</div>}
+      </div>
+    </div>
+  );
+}
 
-export { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, Ticker, Led };
+Object.assign(window, { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, Ticker, Led, EmptyState });
+
+export { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, Ticker, Led, EmptyState };

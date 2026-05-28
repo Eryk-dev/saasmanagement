@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+packages/api/data
+.git
+.env
+.env.local
+*.log
+.DS_Store
+.playwright-mcp

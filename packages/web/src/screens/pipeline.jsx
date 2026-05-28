@@ -1,5 +1,5 @@
 import React from "react";
-import { Avatar, TrendBadge } from "../atoms.jsx";
+import { Avatar, TrendBadge, EmptyState } from "../atoms.jsx";
 import { DeltaInline } from "../charts.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
 import { api } from "../lib/api.js";
@@ -26,7 +26,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenDeal }) {
   const saasDeals = deals.filter(d => d.saas === activeSaas);
 
   // Group active-product deals by stage
-  const stages = s.funnel.map(f => f.stage);
+  const stages = s ? s.funnel.map(f => f.stage) : [];
   const byStage = useMP(() => {
     const m = {}; stages.forEach(st => m[st] = []);
     saasDeals.forEach(d => {
@@ -41,6 +41,8 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenDeal }) {
     // Persist the move to the API (optimistic — the UI already updated above).
     api.moveDeal(dealId, stage).catch(err => console.warn("deal move not persisted:", err.message));
   }
+
+  if (!s) return <EmptyState title="Nenhum pipeline" hint="Crie um SaaS (com funil) para gerenciar deals aqui — POST /api/products, depois POST /api/deals (ou create_deal no MCP)." />;
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>

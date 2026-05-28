@@ -32,10 +32,10 @@ function ProposalsScreen() {
       {tab === "open" && (
         <div style={{ flex: 1, overflow: "auto", padding: "16px 24px" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
-            <SmallStat k="Enviadas (mês)" v="14" d={+3} />
-            <SmallStat k="Taxa de abertura"      v="79%" d={+0.04} dU="pp" />
-            <SmallStat k="Tempo na seção (mediana)" v="3:21" sub="seção de Preços" />
-            <SmallStat k="Aceitação"     v="34%" d={+0.06} dU="pp" />
+            <SmallStat k="Enviadas (mês)" v={String(PROPOSALS.length)} />
+            <SmallStat k="Taxa de abertura" v={PROPOSALS.length ? window.fmt.pct(PROPOSALS.filter(p => p.opens > 0).length / PROPOSALS.length) : "—"} />
+            <SmallStat k="Tempo na seção (mediana)" v="—" />
+            <SmallStat k="Aceitação" v={PROPOSALS.length ? window.fmt.pct(PROPOSALS.filter(p => p.status === "negotiation" || p.status === "won").length / PROPOSALS.length) : "—"} />
           </div>
           <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
             <div className="mono" style={{ display: "grid", gridTemplateColumns: "1.6fr 80px 100px 90px 1fr 70px 90px",

@@ -39,22 +39,33 @@ function isEmpty(name) {
 
 // Seed a collection from the design data if (and only if) it is empty, so a
 // restart never clobbers data your SaaS has pushed in.
-export function seedCollection(name, { force = false } = {}) {
-  const rows = COLLECTIONS[name];
-  if (!rows) throw new Error(`Unknown collection: ${name}`);
+export function seedCollection(name, { force = false, rows } = {}) {
+  const items = rows ?? COLLECTIONS[name];
+  if (!items) throw new Error(`Unknown collection: ${name}`);
   if (force) db.prepare(`DELETE FROM "${name}"`).run();
   if (!force && !isEmpty(name)) return 0;
   const insert = db.prepare(`INSERT OR REPLACE INTO "${name}" (id, json) VALUES (?, ?)`);
-  const tx = db.transaction((items) => {
-    for (const item of items) insert.run(item.id, JSON.stringify(item));
+  const tx = db.transaction((list) => {
+    for (const item of list) insert.run(item.id, JSON.stringify(item));
   });
-  tx(rows);
-  return rows.length;
+  tx(items);
+  return items.length;
 }
 
 export function seedAll({ force = false } = {}) {
   const report = {};
   for (const name of COLLECTION_NAMES) report[name] = seedCollection(name, { force });
+  return report;
+}
+
+// Force-load an arbitrary collections object (e.g. the demo dataset). Tables
+// already exist (createTables uses the default COLLECTIONS keys, which match).
+export function seedExternal(collectionsObj, { force = true } = {}) {
+  const report = {};
+  for (const name of Object.keys(collectionsObj)) {
+    if (!COLLECTION_NAMES.includes(name)) continue;
+    report[name] = seedCollection(name, { force, rows: collectionsObj[name] });
+  }
   return report;
 }
 
