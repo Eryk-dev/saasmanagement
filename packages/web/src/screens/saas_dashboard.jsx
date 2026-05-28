@@ -1,6 +1,6 @@
 import React from "react";
 import { HealthArc, Sparkline, TrendBadge, EmptyState } from "../atoms.jsx";
-import { BigNumber, FunnelLadder, NNMWaterfall, DeltaInline } from "../charts.jsx";
+import { BigNumber, FunnelLadder, NNMWaterfall, DeltaInline, computeFunnel } from "../charts.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
 // SaaS Dashboard — single-product cockpit.
 // Drilldown from Portfolio. Big NSM, health decomposition, vital tiles, funnel heatmap.
@@ -10,6 +10,7 @@ function SaasDashboardScreen({ saasId = "leverads", onNav, onJump }) {
   const s = SAAS.find(x => x.id === saasId) || SAAS[0];
   if (!s) return <EmptyState title="Nenhum produto" hint="Crie um SaaS (POST /api/products) para ver o dashboard do produto aqui." />;
   const tone = window.productTone(s);
+  const funnel = computeFunnel(s);
 
   return (
     <div style={{ flex: 1, overflow: "auto", padding: "18px 24px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -67,13 +68,13 @@ function SaasDashboardScreen({ saasId = "leverads", onNav, onJump }) {
               <span style={{ fontSize: 11 }}>abrir kanban →</span>
             </button>
           </div>
-          <FunnelLadder stages={s.funnel} accent={tone} />
-          {s.funnel.some(f => f.flag === "bottleneck") && (
+          <FunnelLadder stages={funnel} accent={tone} />
+          {funnel.some(f => f.flag === "bottleneck") && (
             <div style={{ marginTop: 12, padding: "10px 12px", background: "var(--neg-soft)", border: "1px solid oklch(0.68 0.18 25 / 0.30)", borderRadius: "var(--r-2)" }}>
               <div className="mono" style={{ fontSize: 10, color: "var(--neg)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Gargalo detectado</div>
               <div style={{ fontSize: 12, marginTop: 4, color: "var(--fg-1)" }}>
-                Conversão em <span className="mono tnum">{window.fmt.pct(s.funnel.find(f => f.flag === "bottleneck").conv)}</span> está ≥10pp abaixo da base de 14d.
-                <button onClick={() => onJump && onJump({ type: "pipeline", id: s.id, stage: s.funnel.find(f => f.flag === "bottleneck").stage })} style={{ marginLeft: 6, color: "var(--accent)", fontFamily: "var(--mono)", fontSize: 11 }}>ver deals travados →</button>
+                Conversão em <span className="mono tnum">{window.fmt.pct(funnel.find(f => f.flag === "bottleneck").conv)}</span> neste estágio — o ponto mais apertado do funil.
+                <button onClick={() => onJump && onJump({ type: "pipeline", id: s.id, stage: funnel.find(f => f.flag === "bottleneck").stage })} style={{ marginLeft: 6, color: "var(--accent)", fontFamily: "var(--mono)", fontSize: 11 }}>ver deals →</button>
               </div>
             </div>
           )}
@@ -104,10 +105,15 @@ function DecompBar({ d }) {
   );
 }
 
+function funnelAvgConv(s) {
+  const fn = computeFunnel(s);
+  return fn.length ? Math.round(fn.reduce((a, f) => a + f.conv, 0) / fn.length * 100) : 0;
+}
+
 function decompFromVitals(s) {
   // Fallback if .decomp absent
   return [
-    { k: "Funil",    v: Math.round(s.funnel.reduce((a,f)=>a+f.conv,0)/s.funnel.length*100), w: 0.25 },
+    { k: "Funil",    v: funnelAvgConv(s), w: 0.25 },
     { k: "Vendas",   v: Math.round(s.winRate * 200),         w: 0.25 },
     { k: "Cliente",  v: Math.round(s.nrr * 70),              w: 0.25 },
     { k: "Uso",      v: Math.round(s.activation * 100),      w: 0.25 },
@@ -131,7 +137,7 @@ function VitalCard({ k, v, d, dUnit, sub, invert }) {
 window.SEED.SAAS.forEach(s => {
   if (!s.decomp) {
     s.decomp = [
-      { k: "Funil",    v: Math.round(s.funnel.reduce((a,f)=>a+f.conv,0)/s.funnel.length*100), w: 0.25 },
+      { k: "Funil",    v: funnelAvgConv(s), w: 0.25 },
       { k: "Vendas",   v: Math.round(Math.min(100, s.winRate * 200)),  w: 0.25 },
       { k: "Cliente",  v: Math.round(Math.min(100, s.nrr * 70)),       w: 0.25 },
       { k: "Uso",      v: Math.round(Math.min(100, s.activation * 100)),w: 0.25 },

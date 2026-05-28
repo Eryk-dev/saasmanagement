@@ -1,6 +1,6 @@
 import React from "react";
 import { Led, Sparkline, TrendBadge, EmptyState } from "../atoms.jsx";
-import { MRRTrajectory, NNMWaterfall, FunnelLadder, DeltaInline } from "../charts.jsx";
+import { MRRTrajectory, NNMWaterfall, FunnelLadder, DeltaInline, computeFunnel } from "../charts.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
 // Portfolio (Founder home) — the cockpit's hero screen.
 // Operator-grade metrics: MRR trajectory hero + dense product rails + lateral attention.
@@ -263,7 +263,7 @@ function ProductRail({ s, onNav }) {
         <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>
           Funil · {s.funnel.length} estágios
         </div>
-        <FunnelLadder stages={s.funnel} accent={tone} />
+        <FunnelLadder stages={computeFunnel(s)} accent={tone} />
       </div>
 
       {/* Col 5: vitals */}

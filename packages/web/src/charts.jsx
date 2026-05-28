@@ -138,10 +138,41 @@ function NNMWaterfall({ data, width = 220, height = 110, compact = false }) {
   );
 }
 
+// ─────────────────────────────────────────────── Funil dinâmico
+// Calcula o funil REAL de um SaaS a partir dos dados: para cada estágio configurado
+// (s.funnel = [{ stage, flag? }]), conta quantos itens (leads + deals daquele SaaS)
+// ALCANÇARAM aquele estágio — i.e. cujo estágio atual está naquele ponto OU adiante.
+// Isso dá um funil que só decresce e conversões em 0–100%. A conversão de cada
+// estágio é alcançou[i] / alcançou[i-1]. Gargalo é detectado dinamicamente (conv baixa
+// com volume suficiente); um flag fixo na config ainda é respeitado.
+function computeFunnel(s) {
+  const stages = (s.funnel || []).map((f) => f.stage);
+  if (!stages.length) return [];
+  const seed = window.SEED || {};
+  const items = [
+    ...(seed.LEADS || []).filter((l) => l.saas === s.id),
+    ...(seed.DEALS || []).filter((d) => d.saas === s.id),
+  ];
+  const idxOf = (st) => stages.indexOf(st);
+  const reached = stages.map((_, i) => items.filter((it) => idxOf(it.stage) >= i).length);
+  const rows = stages.map((stage, i) => {
+    const prev = i === 0 ? null : reached[i - 1];
+    const conv = i === 0 ? 1 : prev > 0 ? reached[i] / prev : 0;
+    return { stage, count: reached[i], conv, prev, i };
+  });
+  // Gargalo dinâmico: o estágio (não-primeiro, com entrada >= 3) de MENOR conversão,
+  // desde que abaixo de 60%. Sem volume suficiente, nenhum gargalo.
+  let worst = null;
+  for (const r of rows) {
+    if (r.i > 0 && r.prev >= 3 && r.conv < 0.6 && (!worst || r.conv < worst.conv)) worst = r;
+  }
+  return rows.map((r) => ({ stage: r.stage, count: r.count, conv: r.conv, flag: worst && r.i === worst.i ? "bottleneck" : undefined }));
+}
+
 // ─────────────────────────────────────────────── Funnel ladder
 // Stages as inverted bars with conversion rate annotation between them.
 function FunnelLadder({ stages, accent = "var(--accent)", showCount = true }) {
-  const maxCount = Math.max(...stages.map(s => s.count));
+  const maxCount = Math.max(1, ...stages.map(s => s.count));
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
       {stages.map((s, i) => {
@@ -235,6 +266,6 @@ function productTone(s) {
   return `oklch(${dark ? 0.74 : 0.56} 0.15 ${s.accent})`;
 }
 
-Object.assign(window, { MRRTrajectory, NNMWaterfall, FunnelLadder, MetricTile, BigNumber, MiniBars, productTone, DeltaInline });
+Object.assign(window, { MRRTrajectory, NNMWaterfall, FunnelLadder, MetricTile, BigNumber, MiniBars, productTone, DeltaInline, computeFunnel });
 
-export { MRRTrajectory, NNMWaterfall, FunnelLadder, MetricTile, BigNumber, MiniBars, productTone, DeltaInline };
+export { MRRTrajectory, NNMWaterfall, FunnelLadder, MetricTile, BigNumber, MiniBars, productTone, DeltaInline, computeFunnel };
