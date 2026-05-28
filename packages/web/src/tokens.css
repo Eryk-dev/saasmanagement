@@ -1,0 +1,188 @@
+/* Portfolio Cockpit — design tokens v4 "Linear"
+   Faithful to the Linear Design System (community .fig). Exact surfaces, borders,
+   text shades, indigo accent, Inter type, tight radii, subtle elevation.
+   Dark is the native theme; a light variant is provided for the toggle. */
+
+:root {
+  --accent-h: 277;   /* indigo ≈ #5E6AD2 */
+
+  /* ── DARK (native Linear) ─────────────────────────────────── */
+  --bg-0: #191a23;        /* app canvas + sidebar */
+  --bg-1: #1d1e2b;        /* panels / cards (slightly raised) */
+  --bg-2: #212234;        /* inset wells / table headers */
+  --bg-3: #292a35;        /* raised controls (secondary button) */
+  --bg-inset: #16171f;    /* deepest */
+  --hover: rgba(133,134,152,0.16);   /* signature gray-overlay hover/selected */
+  --hover-strong: rgba(133,134,152,0.22);
+
+  --line-1: #2c2d3c;      /* dividers */
+  --line-2: #393a4b;      /* control borders */
+  --line-strong: #444556;
+
+  --fg-1: #eeeffc;        /* primary */
+  --fg-2: #d2d3e0;        /* secondary */
+  --fg-3: #9595bd;        /* tertiary / labels */
+  --fg-4: #858699;        /* muted */
+  --fg-5: #686b86;        /* dim */
+
+  --accent: oklch(0.555 0.155 var(--accent-h));
+  --accent-hover: oklch(0.610 0.150 var(--accent-h));
+  --accent-soft: oklch(0.555 0.155 var(--accent-h) / 0.18);
+  --accent-line: oklch(0.555 0.155 var(--accent-h) / 0.45);
+  --accent-fg: #ffffff;
+
+  --pos: #4cb782;
+  --pos-soft: rgba(76,183,130,0.16);
+  --neg: #eb5757;
+  --neg-soft: rgba(235,87,87,0.15);
+  --warn: #f2c94c;
+  --warn-soft: rgba(242,201,76,0.15);
+  --info: #4ea7fc;
+  --info-soft: rgba(78,167,252,0.15);
+
+  /* Type — Inter only, the Linear way */
+  --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --display: var(--sans);
+  --mono: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Radii — tight */
+  --r-1: 4px;
+  --r-2: 6px;
+  --r-3: 8px;
+  --r-4: 12px;
+
+  /* Shadows */
+  --shadow-1: 0 1px 1px 0 rgba(0,0,0,0.15);
+  --shadow-card: 0 1px 2px 0 rgba(0,0,0,0.10);
+  --shadow-pop: 0 7px 32px 0 rgba(0,0,0,0.35), 0 1px 2px 0 rgba(0,0,0,0.2);
+}
+
+/* ── LIGHT (synthesized Linear light) ───────────────────────── */
+body[data-theme="light"] {
+  --bg-0: #ffffff;
+  --bg-1: #ffffff;
+  --bg-2: #f4f5f8;
+  --bg-3: #eceef3;
+  --bg-inset: #f7f8fa;
+  --hover: rgba(60,62,92,0.06);
+  --hover-strong: rgba(60,62,92,0.10);
+
+  --line-1: #e8eaf0;
+  --line-2: #dcdfe8;
+  --line-strong: #c3c7d4;
+
+  --fg-1: #1c1d28;
+  --fg-2: #41435a;
+  --fg-3: #6b6e86;
+  --fg-4: #858699;
+  --fg-5: #9fa1b3;
+
+  --accent: oklch(0.520 0.165 var(--accent-h));
+  --accent-hover: oklch(0.470 0.165 var(--accent-h));
+  --accent-soft: oklch(0.520 0.165 var(--accent-h) / 0.10);
+  --accent-line: oklch(0.520 0.165 var(--accent-h) / 0.35);
+  --accent-fg: #ffffff;
+
+  --pos: #2e9367;
+  --pos-soft: rgba(46,147,103,0.12);
+  --neg: #d23f3f;
+  --neg-soft: rgba(210,63,63,0.10);
+  --warn: #b7841f;
+  --warn-soft: rgba(183,132,31,0.12);
+  --info: #2f7fd6;
+  --info-soft: rgba(47,127,214,0.10);
+
+  --shadow-1: 0 1px 1px 0 rgba(20,21,30,0.05);
+  --shadow-card: 0 1px 2px 0 rgba(20,21,30,0.05), 0 4px 12px -4px rgba(20,21,30,0.06);
+  --shadow-pop: 0 12px 32px -10px rgba(20,21,30,0.18), 0 2px 8px -2px rgba(20,21,30,0.10);
+}
+
+body[data-type="mono"] {
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font-family: var(--sans);
+  font-feature-settings: "cv01", "cv03", "cv04", "ss03";
+  letter-spacing: -0.006em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#root { position: relative; z-index: 1; }
+
+button { font-family: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; letter-spacing: inherit; }
+
+body[data-density="compact"] { font-size: 13px; }
+body[data-density="regular"] { font-size: 13.5px; }
+
+/* ── Atom utilities ─────────────────────────────────────────── */
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.serif { font-family: var(--sans); font-weight: 600; letter-spacing: -0.018em; }
+.tnum { font-variant-numeric: tabular-nums; }
+.muted { color: var(--fg-3); }
+.dim { color: var(--fg-4); }
+.faint { color: var(--fg-5); }
+.glow-num { text-shadow: none; }
+
+/* Eyebrow label */
+.bkt {
+  display: inline-block;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 510;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--fg-4);
+}
+.bkt::before, .bkt::after { content: ""; }
+
+.kbd {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fg-4);
+  background: var(--bg-2);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-1);
+  padding: 1px 5px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  background: var(--bg-2);
+  border: 1px solid var(--line-1);
+  color: var(--fg-2);
+}
+.chip.pos { color: var(--pos); border-color: color-mix(in srgb, var(--pos) 35%, transparent); background: var(--pos-soft); }
+.chip.neg { color: var(--neg); border-color: color-mix(in srgb, var(--neg) 35%, transparent); background: var(--neg-soft); }
+.chip.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); background: var(--warn-soft); }
+.chip.info { color: var(--info); border-color: color-mix(in srgb, var(--info) 35%, transparent); background: var(--info-soft); }
+.chip.accent { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
+
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.led { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.led.pulse { animation: none; }
+
+.arr-up::before { content: "↑"; }
+.arr-dn::before { content: "↓"; }
+.arr-flat::before { content: "→"; }
+
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 999px; border: 3px solid var(--bg-0); }
+::-webkit-scrollbar-thumb:hover { background: var(--line-strong); }

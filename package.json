@@ -1,0 +1,28 @@
+{
+  "name": "cockpit-portfolio-os",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cockpit — Portfolio OS. SaaS portfolio operational cockpit: faithful Linear-style UI + REST API + MCP server.",
+  "type": "module",
+  "workspaces": [
+    "packages/api",
+    "packages/web",
+    "packages/mcp"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web,mcp -c blue,green,magenta \"npm:dev:api\" \"npm:dev:web\" \"npm:dev:mcp\"",
+    "dev:api": "npm run dev -w packages/api",
+    "dev:web": "npm run dev -w packages/web",
+    "dev:mcp": "npm run dev -w packages/mcp",
+    "start:api": "npm run start -w packages/api",
+    "start:mcp": "npm run start -w packages/mcp",
+    "build": "npm run build -w packages/web",
+    "seed": "npm run seed -w packages/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
