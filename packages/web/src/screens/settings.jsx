@@ -11,11 +11,11 @@ function SettingsScreen({ saasId }) {
   const s = SAAS.find(x => x.id === active);
 
   const TABS = [
-    ["funnel",      "Funnel & stages"],
-    ["fields",      "Custom fields"],
-    ["health",      "Health weights"],
-    ["aha",         "Aha definition"],
-    ["integrations","Integrations"],
+    ["funnel",      "Funil & estágios"],
+    ["fields",      "Campos custom"],
+    ["health",      "Pesos da saúde"],
+    ["aha",         "Definição do Aha"],
+    ["integrations","Integrações"],
   ];
 
   return (
@@ -33,7 +33,7 @@ function SettingsScreen({ saasId }) {
           ))}
         </div>
         <button style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}>
-          <span style={{ fontSize: 11 }}>+ new SaaS · wizard</span>
+          <span style={{ fontSize: 11 }}>+ novo SaaS · assistente</span>
         </button>
       </div>
 
@@ -64,10 +64,10 @@ function SettingsScreen({ saasId }) {
 function FunnelSettings({ s }) {
   return (
     <div>
-      <SettingHeader title="Funnel stages" sub="map to canonical types (prospecting/qualification/proposal/closing) for cross-SaaS comparison" />
+      <SettingHeader title="Estágios do funil" sub="mapeie pra tipos canônicos (prospecting/qualification/proposal/closing) pra comparar entre SaaS" />
       <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", overflow: "hidden", background: "var(--bg-1)" }}>
         <div className="mono" style={{ display: "grid", gridTemplateColumns: "30px 1fr 200px 100px 80px", padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
-          <span></span><span>Stage</span><span>Canonical type</span><span>Color</span><span>Auto-rules</span>
+          <span></span><span>Estágio</span><span>Tipo canônico</span><span>Cor</span><span>Auto-regras</span>
         </div>
         {s.funnel.map((f, i) => (
           <div key={f.stage} style={{ display: "grid", gridTemplateColumns: "30px 1fr 200px 100px 80px", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", fontSize: 13 }}>
@@ -75,11 +75,11 @@ function FunnelSettings({ s }) {
             <span>{f.stage}</span>
             <span className="mono dim" style={{ fontSize: 11 }}>{canonicalFor(i, s.funnel.length)}</span>
             <span><span style={{ display: "inline-block", width: 12, height: 12, borderRadius: 3, background: window.productTone(s), border: "1px solid var(--line-2)" }} /></span>
-            <span className="mono dim" style={{ fontSize: 10 }}>{i === 2 ? "stale → 14d" : "none"}</span>
+            <span className="mono dim" style={{ fontSize: 10 }}>{i === 2 ? "parado → 14d" : "nenhuma"}</span>
           </div>
         ))}
       </div>
-      <button style={{ marginTop: 12, ...chromeBtnStyleSmall }}><span style={{ fontSize: 11 }}>+ add stage</span></button>
+      <button style={{ marginTop: 12, ...chromeBtnStyleSmall }}><span style={{ fontSize: 11 }}>+ adicionar estágio</span></button>
     </div>
   );
 }
@@ -95,19 +95,19 @@ function canonicalFor(i, n) {
 function FieldsSettings({ s }) {
   return (
     <div>
-      <SettingHeader title="Custom fields" sub="per-deal, per-customer, per-contact. Map to standard fields where possible." />
+      <SettingHeader title="Campos custom" sub="por deal, por cliente, por contato. Mapeie pra campos padrão quando der." />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         {[
-          { obj: "Deal",     fields: ["ICP segment","Buying committee size","Champion email","Compete won/lost","ROI calc URL"] },
-          { obj: "Customer", fields: ["Renewal date","Champion","Tier","Slack channel","CSM"] },
-          { obj: "Contact",  fields: ["Role","LinkedIn","Function","Influence","Detractor"] },
+          { obj: "Deal",     fields: ["Segmento ICP","Tamanho do comitê","Email do champion","Concorrência ganhou/perdeu","URL da calc de ROI"] },
+          { obj: "Cliente",  fields: ["Data de renovação","Champion","Tier","Canal Slack","CSM"] },
+          { obj: "Contato",  fields: ["Cargo","LinkedIn","Função","Influência","Detrator"] },
         ].map(g => (
           <div key={g.obj} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 16px" }}>
             <div style={{ fontSize: 12, fontWeight: 500, color: "var(--fg-2)", marginBottom: 10 }}>{g.obj}</div>
             {g.fields.map(f => (
               <div key={f} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--line-1)", fontSize: 12 }}>
                 <span>{f}</span>
-                <span className="mono dim">text</span>
+                <span className="mono dim">texto</span>
               </div>
             ))}
           </div>
@@ -120,18 +120,18 @@ function FieldsSettings({ s }) {
 function HealthSettings({ s }) {
   return (
     <div>
-      <SettingHeader title="Health score composition" sub="weighted average · 0–100 · decomposition shows up on every hover throughout the app" />
+      <SettingHeader title="Composição da saúde" sub="média ponderada · 0–100 · a decomposição aparece em todo hover no app" />
       <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
         {s.decomp.map((d) => (
           <div key={d.k} style={{ display: "grid", gridTemplateColumns: "120px 1fr 60px 100px", gap: 14, padding: "14px 16px", borderBottom: "1px solid var(--line-1)", alignItems: "center" }}>
             <span style={{ fontSize: 13 }}>{d.k}</span>
             <input type="range" min="0" max="100" defaultValue={Math.round(d.w*100)} style={{ width: "100%" }} />
             <span className="mono tnum" style={{ textAlign: "right" }}>{(d.w*100).toFixed(0)}%</span>
-            <span className="mono dim" style={{ fontSize: 11 }}>signal: {d.k.toLowerCase()}</span>
+            <span className="mono dim" style={{ fontSize: 11 }}>sinal: {d.k.toLowerCase()}</span>
           </div>
         ))}
       </div>
-      <div className="mono dim" style={{ fontSize: 11, marginTop: 10 }}>weights must sum to 100% · last edit 4d ago by you</div>
+      <div className="mono dim" style={{ fontSize: 11, marginTop: 10 }}>os pesos devem somar 100% · última edição há 4d por você</div>
     </div>
   );
 }
@@ -139,27 +139,27 @@ function HealthSettings({ s }) {
 function AhaSettings({ s }) {
   return (
     <div>
-      <SettingHeader title="Aha-Moment definition" sub="the single event that predicts retention. Drives activation calculation, time-to-value, onboarding alerts." />
+      <SettingHeader title="Definição do Aha-Moment" sub="o evento único que prevê retenção. Alimenta ativação, time-to-value e alertas de onboarding." />
       <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "16px 18px" }}>
-        <div style={{ fontSize: 13, color: "var(--fg-2)", marginBottom: 10 }}>A user has hit Aha when they:</div>
+        <div style={{ fontSize: 13, color: "var(--fg-2)", marginBottom: 10 }}>Um usuário atinge o Aha quando:</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {s.id === "leverads" ? [
-            "Connect at least 1 ad source",
-            "Run a campaign for ≥ 7 days",
-            "View the attribution dashboard ≥ 3 times",
+            "Conecta ao menos 1 fonte de anúncios",
+            "Roda uma campanha por ≥ 7 dias",
+            "Vê o dashboard de atribuição ≥ 3 vezes",
           ].map(c => <Cond key={c} c={c} />) :
            s.id === "quill" ? [
-            "Create 3 documents",
-            "Generate ≥ 1,000 words via AI",
-            "Within 7 days of signup",
+            "Cria 3 documentos",
+            "Gera ≥ 1.000 palavras via IA",
+            "Em até 7 dias do signup",
           ].map(c => <Cond key={c} c={c} />) :
           [
-            "Scan ≥ 50 SKUs",
-            "Complete 1 cycle count",
-            "Add at least 1 teammate",
+            "Escaneia ≥ 50 SKUs",
+            "Faz 1 contagem de ciclo",
+            "Adiciona ao menos 1 colega",
           ].map(c => <Cond key={c} c={c} />)}
         </div>
-        <div className="mono dim" style={{ fontSize: 11, marginTop: 14 }}>current activation rate: <span style={{ color: "var(--fg-1)" }}>{window.fmt.pct(s.activation)}</span> · cohort median time-to-Aha: ~3.2d</div>
+        <div className="mono dim" style={{ fontSize: 11, marginTop: 14 }}>ativação atual: <span style={{ color: "var(--fg-1)" }}>{window.fmt.pct(s.activation)}</span> · mediana do coorte até o Aha: ~3.2d</div>
       </div>
     </div>
   );
@@ -176,17 +176,17 @@ function Cond({ c }) {
 
 function IntegrationsSettings() {
   const integrations = [
-    { k: "Stripe",   status: "connected", desc: "MRR, billing, churn events" },
-    { k: "Salesforce", status: "synced",   desc: "Bi-directional · contacts, deals" },
-    { k: "Segment",  status: "connected", desc: "Product events, Aha tracking" },
-    { k: "Slack",    status: "connected", desc: "Anomaly + close alerts" },
+    { k: "Stripe",   status: "connected", desc: "MRR, cobrança, eventos de churn" },
+    { k: "Salesforce", status: "synced",   desc: "Bidirecional · contatos, deals" },
+    { k: "Segment",  status: "connected", desc: "Eventos de produto, rastreio de Aha" },
+    { k: "Slack",    status: "connected", desc: "Alertas de anomalia + fechamento" },
     { k: "HubSpot",  status: "not connected" },
     { k: "Linear",   status: "not connected" },
     { k: "Webhook",  status: "configured", desc: "https://api.cockpit.so/hooks/…" },
   ];
   return (
     <div>
-      <SettingHeader title="Integrations" sub="bidirectional sync where supported · webhooks for everything else" />
+      <SettingHeader title="Integrações" sub="sync bidirecional onde dá · webhooks pro resto" />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
         {integrations.map(i => (
           <div key={i.k} style={{ padding: "14px 16px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -195,7 +195,7 @@ function IntegrationsSettings() {
               <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>{i.desc || "—"}</div>
             </div>
             <span className={"chip " + (i.status === "connected" || i.status === "synced" || i.status === "configured" ? "pos" : "")} style={{ height: 22 }}>
-              {(i.status === "not connected") ? "connect" : i.status}
+              {(i.status === "not connected") ? "conectar" : ({ connected: "conectado", synced: "sincronizado", configured: "configurado" })[i.status] || i.status}
             </span>
           </div>
         ))}

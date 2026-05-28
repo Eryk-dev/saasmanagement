@@ -73,16 +73,16 @@ function App() {
 
   // Breadcrumb per screen
   const crumbsFor = {
-    portfolio:   ["Portfolio"],
-    saas:        ["Portfolio", window.SEED.SAAS.find(s => s.id === params.saas)?.name || "LeverAds"],
-    pipeline:    ["Sales", "Pipeline · " + (window.SEED.SAAS.find(s => s.id === params.saas)?.name || "LeverAds")],
-    leads:       ["Sales", "Leads"],
-    proposals:   ["Sales", "Proposals"],
-    customers:   ["Customer", "Customers"],
-    nps:         ["Customer", "NPS"],
-    goals:       ["Team", "Goals"],
-    leaderboard: ["Team", "Leaderboard"],
-    settings:    ["System", "Settings · " + (window.SEED.SAAS.find(s => s.id === params.saas)?.name || "LeverAds")],
+    portfolio:   ["Portfólio"],
+    saas:        ["Portfólio", window.SEED.SAAS.find(s => s.id === params.saas)?.name || "LeverAds"],
+    pipeline:    ["Vendas", "Pipeline · " + (window.SEED.SAAS.find(s => s.id === params.saas)?.name || "LeverAds")],
+    leads:       ["Vendas", "Leads"],
+    proposals:   ["Vendas", "Propostas"],
+    customers:   ["Cliente", "Clientes"],
+    nps:         ["Cliente", "NPS"],
+    goals:       ["Time", "Metas"],
+    leaderboard: ["Time", "Ranking"],
+    settings:    ["Sistema", "Ajustes · " + (window.SEED.SAAS.find(s => s.id === params.saas)?.name || "LeverAds")],
   };
 
   return (
@@ -96,7 +96,7 @@ function App() {
           persona={persona}
           onPersona={(p) => setTweak("persona", p)}
           trailing={
-            <button onClick={() => setCollapsed(c => !c)} style={chromeBtnStyleSmall} title="Toggle sidebar">
+            <button onClick={() => setCollapsed(c => !c)} style={chromeBtnStyleSmall} title="Alternar barra lateral">
               <span className="mono" style={{ fontSize: 12 }}>{collapsed ? "▶" : "◀"}</span>
             </button>
           }
@@ -116,20 +116,20 @@ function App() {
 
       {dealSel && <DealDetail deal={dealSel} onClose={() => setDealSel(null)} />}
 
-      <TweaksPanel>
-        <TweakSection label="Role" />
+      <TweaksPanel title="Personalizar">
+        <TweakSection label="Papel" />
         <TweakSelect label="Persona" value={t.persona}
           options={PERSONAS.map(p => ({ value: p.id, label: `${p.name} · ${p.subtitle}` }))}
           onChange={(v) => setTweak("persona", v)} />
 
-        <TweakSection label="Surface" />
-        <TweakRadio label="Theme" value={t.theme} options={["light","dark"]}
+        <TweakSection label="Superfície" />
+        <TweakRadio label="Tema" value={t.theme} options={[{value:"light",label:"claro"},{value:"dark",label:"escuro"}]}
           onChange={(v) => setTweak("theme", v)} />
-        <TweakRadio label="Density" value={t.density} options={["compact","regular"]}
+        <TweakRadio label="Densidade" value={t.density} options={[{value:"compact",label:"compacto"},{value:"regular",label:"regular"}]}
           onChange={(v) => setTweak("density", v)} />
-        <TweakRadio label="Type" value={t.typeSystem} options={["balanced","mono"]}
+        <TweakRadio label="Tipografia" value={t.typeSystem} options={[{value:"balanced",label:"equilibrada"},{value:"mono",label:"mono"}]}
           onChange={(v) => setTweak("typeSystem", v)} />
-        <TweakColor label="Accent" value={`oklch(0.56 0.155 ${t.accentHue})`}
+        <TweakColor label="Acento" value={`oklch(0.56 0.155 ${t.accentHue})`}
           options={[
             "oklch(0.56 0.155 277)",  // indigo (Linear default)
             "oklch(0.56 0.150 300)",  // violet
@@ -141,11 +141,11 @@ function App() {
             if (m) setTweak("accentHue", parseInt(m[1], 10));
           }} />
 
-        <TweakSection label="More" />
-        <TweakToggle label="Chart annotations" value={t.showTrajectoryAnnotation}
+        <TweakSection label="Mais" />
+        <TweakToggle label="Anotações no gráfico" value={t.showTrajectoryAnnotation}
           onChange={(v) => setTweak("showTrajectoryAnnotation", v)} />
-        <TweakButton label="Jump to Quill (critical)" onClick={() => { setTweak("persona","manager"); }} />
-        <TweakButton label="Jump to a stuck deal" onClick={() => { setScreen("pipeline"); setParams({ saas: "leverads", stage: "Discovery" }); }} />
+        <TweakButton label="Ir pra Quill (crítico)" onClick={() => { setTweak("persona","manager"); }} />
+        <TweakButton label="Ir pra um deal travado" onClick={() => { setScreen("pipeline"); setParams({ saas: "leverads", stage: "Discovery" }); }} />
       </TweaksPanel>
     </div>
   );
@@ -153,16 +153,16 @@ function App() {
 
 function subtitleFor(screen, params) {
   const map = {
-    portfolio:   "28 May 2026",
-    saas:        "28 May 2026",
-    pipeline:    `${params.stage ? "stage: " + params.stage + " · " : ""}drag to move`,
-    leads:       "round-robin queue",
-    proposals:   "open + tracked",
-    customers:   params.csFilter === "red" ? "filtered: critical" : "sorted by health",
-    nps:         "last 90 days",
-    goals:       "day 12 / 31",
-    leaderboard: "multiple categories",
-    settings:    "per-SaaS configuration",
+    portfolio:   "28 mai 2026",
+    saas:        "28 mai 2026",
+    pipeline:    `${params.stage ? "estágio: " + params.stage + " · " : ""}arraste para mover`,
+    leads:       "fila round-robin",
+    proposals:   "abertas + rastreadas",
+    customers:   params.csFilter === "red" ? "filtrado: crítico" : "ordenado por saúde",
+    nps:         "últimos 90 dias",
+    goals:       "dia 12 / 31",
+    leaderboard: "múltiplas categorias",
+    settings:    "configuração por SaaS",
   };
   return map[screen] || "";
 }

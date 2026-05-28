@@ -13,7 +13,7 @@ function LeadsScreen({ persona }) {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
         <div style={{ display: "flex", gap: 6 }}>
-          {[["all","All"],["P0","P0 · today"],["P1","P1 · this week"],["P2","P2 · backlog"]].map(([k,l]) => (
+          {[["all","Todos"],["P0","P0 · hoje"],["P1","P1 · esta semana"],["P2","P2 · backlog"]].map(([k,l]) => (
             <button key={k} onClick={() => setPri(k)} style={{
               height: 26, padding: "0 10px", borderRadius: "var(--r-2)",
               border: "1px solid " + (pri === k ? "var(--line-strong)" : "var(--line-1)"),
@@ -24,8 +24,8 @@ function LeadsScreen({ persona }) {
           ))}
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <span className="mono dim" style={{ fontSize: 11 }}>round-robin queue · {filtered.length} leads</span>
-          <button style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>+ new lead</span></button>
+          <span className="mono dim" style={{ fontSize: 11 }}>fila round-robin · {filtered.length} leads</span>
+          <button style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>+ novo lead</span></button>
         </div>
       </div>
 
@@ -62,14 +62,14 @@ function LeadCard({ l, idx, top }) {
       <span className="mono" style={{ fontSize: 11, color: priTone, fontWeight: 500 }}>{l.priority}</span>
       <div>
         <div className="mono tnum" style={{ fontSize: 14 }}>{l.score}</div>
-        <div className="mono dim" style={{ fontSize: 9 }}>ICP fit {(l.icp*100).toFixed(0)}%</div>
+        <div className="mono dim" style={{ fontSize: 9 }}>ICP {(l.icp*100).toFixed(0)}%</div>
       </div>
-      <div className="mono dim tnum" style={{ fontSize: 11 }}>{l.age} old</div>
+      <div className="mono dim tnum" style={{ fontSize: 11 }}>há {l.age}</div>
       <div style={{ display: "flex", gap: 6 }}>
         <button style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}>
-          <span style={{ fontSize: 11 }}>contact</span>
+          <span style={{ fontSize: 11 }}>contatar</span>
         </button>
-        <button style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>dismiss</span></button>
+        <button style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>dispensar</span></button>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
           <span style={{ width: 6, height: 6, borderRadius: 1, background: window.productTone(saas) }} />
           <span className="mono dim" style={{ fontSize: 10 }}>{saas?.name}</span>

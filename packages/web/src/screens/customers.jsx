@@ -29,7 +29,7 @@ function CustomersScreen({ csFilter }) {
       <div style={{ display: "flex", flexDirection: "column", borderRight: sel ? "1px solid var(--line-1)" : "none", minHeight: 0 }}>
         <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <div style={{ display: "flex", gap: 6 }}>
-            {[["all","All"],["red","Critical"],["yellow","At risk"],["green","Healthy"]].map(([k,l]) => (
+            {[["all","Todos"],["red","Crítico"],["yellow","Em risco"],["green","Saudável"]].map(([k,l]) => (
               <button key={k} onClick={() => setFilter(k)} style={{
                 height: 26, padding: "0 10px",
                 borderRadius: "var(--r-2)",
@@ -41,8 +41,8 @@ function CustomersScreen({ csFilter }) {
             ))}
           </div>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <span className="mono dim" style={{ fontSize: 11 }}>sort:</span>
-            {[["health","Health ↑"],["arr","ARR ↓"],["renewal","Renewal soon"]].map(([k,l]) => (
+            <span className="mono dim" style={{ fontSize: 11 }}>ordenar:</span>
+            {[["health","Saúde ↑"],["arr","ARR ↓"],["renewal","Renovação"]].map(([k,l]) => (
               <button key={k} onClick={() => setSortBy(k)} style={{
                 height: 24, padding: "0 8px", borderRadius: 4,
                 border: "1px solid var(--line-1)",
@@ -64,14 +64,14 @@ function CustomersScreen({ csFilter }) {
             fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase",
             borderBottom: "1px solid var(--line-1)",
           }}>
-            <span>Account</span>
-            <span>Product</span>
-            <span style={{ textAlign: "right" }}>Health</span>
+            <span>Conta</span>
+            <span>Produto</span>
+            <span style={{ textAlign: "right" }}>Saúde</span>
             <span style={{ textAlign: "right" }}>ARR</span>
-            <span>Usage 7d</span>
-            <span>Last touch</span>
+            <span>Uso 7d</span>
+            <span>Último contato</span>
             <span>NPS</span>
-            <span>Renewal</span>
+            <span>Renovação</span>
             <span>CSM</span>
           </div>
           {filtered.map(c => <CustomerRow key={c.id} c={c} onOpen={() => setSel(c)} active={sel?.id === c.id} />)}
@@ -140,9 +140,9 @@ function CustomerDetail({ c, onClose }) {
             <span className="chip">{c.plan}</span>
           </div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 18, marginTop: 10 }}>
-            <BigNumber value={c.health} label="Health" delta={c.delta} dUnit="int" size={32} />
+            <BigNumber value={c.health} label="Saúde" delta={c.delta} dUnit="int" size={32} />
             <BigNumber value={window.fmt.money(c.arr)} label="ARR" size={28} />
-            <BigNumber value={c.nps} label="Last NPS" size={28} />
+            <BigNumber value={c.nps} label="Último NPS" size={28} />
           </div>
           <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 4 }}>
             {c.flags.map(f => <span key={f} className="chip warn">{f}</span>)}
@@ -158,7 +158,7 @@ function CustomerDetail({ c, onClose }) {
             background: tab === t ? "var(--bg-3)" : "transparent",
             color: tab === t ? "var(--fg-1)" : "var(--fg-3)",
             fontSize: 12,
-          }}>{t}</button>
+          }}>{({ Usage: "Uso", Engagement: "Engajamento", Support: "Suporte", Satisfaction: "Satisfação", Timeline: "Linha do tempo" })[t] || t}</button>
         ))}
       </div>
 
@@ -171,19 +171,19 @@ function CustomerDetail({ c, onClose }) {
       </div>
 
       <div style={{ padding: "12px 18px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
-        <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>Active CTAs · CSM {csm?.name}</div>
+        <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>CTAs ativas · CSM {csm?.name}</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {c.health < 50 && (
-            <CTARow tone="neg" label="Schedule save call · usage decay 3wk" cta="book" />
+            <CTARow tone="neg" label="Agendar call de retenção · uso caindo há 3sem" cta="agendar" />
           )}
           {c.renewal !== "—" && parseInt(c.renewal) < 90 && (
-            <CTARow tone="warn" label={`Renewal in ${c.renewal} · prepare proposal`} cta="draft" />
+            <CTARow tone="warn" label={`Renovação em ${c.renewal} · preparar proposta`} cta="rascunho" />
           )}
           {c.flags.includes("expansion") && (
-            <CTARow tone="pos" label="Expansion opportunity · usage above plan ceiling" cta="propose" />
+            <CTARow tone="pos" label="Oportunidade de expansão · uso acima do teto do plano" cta="propor" />
           )}
           {c.flags.includes("champion-left") && (
-            <CTARow tone="warn" label="Champion left · identify new sponsor" cta="map" />
+            <CTARow tone="warn" label="Champion saiu · achar novo sponsor" cta="mapear" />
           )}
         </div>
       </div>
@@ -206,13 +206,13 @@ function UsageTab({ c }) {
   const series = [80, 78, 72, 65, 55, 48, 42];
   return (
     <div>
-      <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>Usage · last 7 weeks (vs plan ceiling 100)</div>
+      <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>Uso · últimas 7 semanas (vs teto do plano 100)</div>
       <Sparkline data={series} width={420} height={56} stroke="var(--neg)" />
       <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <MicroStatBlock k="Active users" v="14 / 60" sub="seats utilized" tone={"var(--neg)"} />
-        <MicroStatBlock k="Core actions /day" v="142" sub="−54% wow" tone="var(--neg)" />
-        <MicroStatBlock k="Aha events" v="2" sub="last 7d · was 18" tone="var(--neg)" />
-        <MicroStatBlock k="Time-to-value" v="3.8d" sub="cohort median 1.2d" tone="var(--warn)" />
+        <MicroStatBlock k="Usuários ativos" v="14 / 60" sub="assentos usados" tone={"var(--neg)"} />
+        <MicroStatBlock k="Ações core /dia" v="142" sub="−54% s/s" tone="var(--neg)" />
+        <MicroStatBlock k="Eventos Aha" v="2" sub="últimos 7d · era 18" tone="var(--neg)" />
+        <MicroStatBlock k="Time-to-value" v="3.8d" sub="mediana do coorte 1.2d" tone="var(--warn)" />
       </div>
     </div>
   );
@@ -220,13 +220,13 @@ function UsageTab({ c }) {
 function EngagementTab({ c }) {
   return (
     <div className="mono" style={{ fontSize: 12, color: "var(--fg-2)", lineHeight: 1.6 }}>
-      <div>Last login: <span style={{ color: "var(--fg-1)" }}>{c.lastTouch} ago</span></div>
-      <div>Open Slack channel: <span style={{ color: "var(--accent)" }}>#cust-{c.name.toLowerCase().split(" ")[0]}</span></div>
-      <div>QBR cadence: <span style={{ color: "var(--fg-1)" }}>quarterly</span> · next in 42d</div>
+      <div>Último login: <span style={{ color: "var(--fg-1)" }}>há {c.lastTouch}</span></div>
+      <div>Canal no Slack: <span style={{ color: "var(--accent)" }}>#cust-{c.name.toLowerCase().split(" ")[0]}</span></div>
+      <div>Cadência de QBR: <span style={{ color: "var(--fg-1)" }}>trimestral</span> · próxima em 42d</div>
       <div style={{ marginTop: 8 }}>Champions:</div>
       <ul style={{ paddingLeft: 16, color: "var(--fg-3)" }}>
-        <li>Director of Ops <span className="dim">· primary</span></li>
-        <li>VP Engineering <span className="dim">· technical</span></li>
+        <li>Diretor de Ops <span className="dim">· primário</span></li>
+        <li>VP de Engenharia <span className="dim">· técnico</span></li>
       </ul>
     </div>
   );
@@ -235,17 +235,17 @@ function SupportTab({ c }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       {[
-        { age: "1h",  pri: "P1", t: "Bulk scanner crash on iOS 17" },
-        { age: "1d",  pri: "P2", t: "CSV import truncating long IDs" },
-        { age: "3d",  pri: "P3", t: "Webhook retry policy question" },
-        { age: "12d", pri: "P2", t: "User can't be removed from team" },
+        { age: "1h",  pri: "P1", t: "Scanner em massa quebra no iOS 17" },
+        { age: "1d",  pri: "P2", t: "Import CSV truncando IDs longos" },
+        { age: "3d",  pri: "P3", t: "Dúvida sobre política de retry de webhook" },
+        { age: "12d", pri: "P2", t: "Usuário não pode ser removido do time" },
       ].map((t,i) => (
         <div key={i} style={{ padding: "8px 10px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-2)", display: "flex", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span className="mono" style={{ fontSize: 10, color: t.pri === "P1" ? "var(--neg)" : t.pri === "P2" ? "var(--warn)" : "var(--fg-3)" }}>{t.pri}</span>
             <span style={{ fontSize: 12 }}>{t.t}</span>
           </div>
-          <span className="mono dim" style={{ fontSize: 10 }}>{t.age} ago</span>
+          <span className="mono dim" style={{ fontSize: 10 }}>há {t.age}</span>
         </div>
       ))}
     </div>
@@ -254,25 +254,25 @@ function SupportTab({ c }) {
 function SatisfactionTab({ c }) {
   return (
     <div className="mono" style={{ fontSize: 12, color: "var(--fg-2)", lineHeight: 1.7 }}>
-      <div>Last NPS: <span style={{ color: c.nps <= 6 ? "var(--neg)" : c.nps >= 9 ? "var(--pos)" : "var(--fg-1)" }}>{c.nps}/10</span> · 18d ago</div>
-      <div>Verbatim:</div>
+      <div>Último NPS: <span style={{ color: c.nps <= 6 ? "var(--neg)" : c.nps >= 9 ? "var(--pos)" : "var(--fg-1)" }}>{c.nps}/10</span> · há 18d</div>
+      <div>Comentário:</div>
       <div style={{ marginTop: 6, padding: "10px 12px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontFamily: "var(--sans)", fontSize: 12, lineHeight: 1.5 }}>
-        "{c.nps >= 9 ? "Best support I've used. Period." :
-           c.nps <= 6 ? "Mobile scanner crashes weekly. Web is great but field team is frustrated." :
-           "Works for us. Mobile experience could be better."}"
+        "{c.nps >= 9 ? "O melhor suporte que já usei. Ponto." :
+           c.nps <= 6 ? "O scanner do app trava toda semana. A web é ótima, mas o time de campo está frustrado." :
+           "Atende a gente. A experiência mobile podia ser melhor."}"
       </div>
-      <div style={{ marginTop: 10 }}>Tag history: <span style={{ color: "var(--accent)" }}>mobile · scanner</span> (×3)</div>
+      <div style={{ marginTop: 10 }}>Histórico de tags: <span style={{ color: "var(--accent)" }}>mobile · scanner</span> (×3)</div>
     </div>
   );
 }
 function TimelineTab({ c }) {
   const items = [
-    { d: "today",  t: "Health score dropped to "+c.health, kind: "alert" },
-    { d: "2d ago", t: "QBR scheduled with Director of Ops", kind: "meeting" },
-    { d: "5d ago", t: "Support ticket P1 opened — scanner crash", kind: "ticket" },
-    { d: "1w ago", t: "Active users dropped −18% wow", kind: "alert" },
-    { d: "3w ago", t: "Renewal call · proposal sent ($82k ARR)", kind: "deal" },
-    { d: "8w ago", t: "Champion (Carlos R.) left the company", kind: "alert" },
+    { d: "hoje",   t: "Saúde caiu para "+c.health, kind: "alert" },
+    { d: "há 2d",  t: "QBR agendada com o Diretor de Ops", kind: "meeting" },
+    { d: "há 5d",  t: "Ticket P1 aberto — scanner travou", kind: "ticket" },
+    { d: "há 1sem", t: "Usuários ativos caíram −18% s/s", kind: "alert" },
+    { d: "há 3sem", t: "Call de renovação · proposta enviada ($82k ARR)", kind: "deal" },
+    { d: "há 8sem", t: "Champion (Carlos R.) saiu da empresa", kind: "alert" },
   ];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>

@@ -116,9 +116,9 @@ function Delta({ value, suffix = "", asPct = false, asInt = false, mono = true, 
 // ───────────────────────────────────────────────────── Trend badge
 function TrendBadge({ trend }) {
   const map = {
-    improving: { label: "Improving", cls: "chip pos", glyph: "↑" },
-    stable:    { label: "Stable",    cls: "chip",     glyph: "→" },
-    worsening: { label: "Worsening", cls: "chip neg", glyph: "↓" },
+    improving: { label: "Melhorando", cls: "chip pos", glyph: "↑" },
+    stable:    { label: "Estável",    cls: "chip",     glyph: "→" },
+    worsening: { label: "Piorando", cls: "chip neg", glyph: "↓" },
   };
   const m = map[trend] || map.stable;
   return <span className={m.cls}><span className="mono">{m.glyph}</span>{m.label}</span>;

@@ -4,31 +4,31 @@ import React from "react";
 const { useState: useS, useEffect: useE, useRef: useR } = React;
 
 const PERSONAS = [
-  { id: "founder", name: "Founder",          subtitle: "you",         home: "portfolio" },
-  { id: "manager", name: "SaaS Manager",     subtitle: "Quill",       home: "saas",      saas: "quill" },
+  { id: "founder", name: "Fundador",          subtitle: "você",         home: "portfolio" },
+  { id: "manager", name: "Gestor de SaaS",     subtitle: "Quill",       home: "saas",      saas: "quill" },
   { id: "sdr",     name: "SDR",              subtitle: "Sam Sato",    home: "leads"    },
   { id: "closer",  name: "Closer",           subtitle: "Mika K.",     home: "proposals" },
   { id: "cs",      name: "Customer Success", subtitle: "Amelia B.",   home: "customers" },
 ];
 
 const NAV = [
-  { id: "portfolio",  label: "Portfolio",   icon: "▦",  group: "overview" },
+  { id: "portfolio",  label: "Portfólio",   icon: "▦",  group: "overview" },
   { id: "saas",       label: "SaaS",        icon: "◇",  group: "overview" },
   { id: "pipeline",   label: "Pipeline",    icon: "≡",  group: "sales" },
   { id: "leads",      label: "Leads",       icon: "→",  group: "sales" },
-  { id: "proposals",  label: "Proposals",   icon: "❐",  group: "sales" },
-  { id: "customers",  label: "Customers",   icon: "○",  group: "customer" },
+  { id: "proposals",  label: "Propostas",   icon: "❐",  group: "sales" },
+  { id: "customers",  label: "Clientes",   icon: "○",  group: "customer" },
   { id: "nps",        label: "NPS",         icon: "☷",  group: "customer" },
-  { id: "goals",      label: "Goals",       icon: "◎",  group: "team" },
-  { id: "leaderboard",label: "Leaderboard", icon: "♔",  group: "team" },
-  { id: "settings",   label: "Settings",    icon: "✦",  group: "system" },
+  { id: "goals",      label: "Metas",       icon: "◎",  group: "team" },
+  { id: "leaderboard",label: "Ranking", icon: "♔",  group: "team" },
+  { id: "settings",   label: "Ajustes",    icon: "✦",  group: "system" },
 ];
 
 const GROUP_LABELS = {
-  overview: "overview",
-  sales: "revenue",
-  customer: "retention",
-  team: "people",
+  overview: "visão geral",
+  sales: "receita",
+  customer: "retenção",
+  team: "pessoas",
   system: "config",
 };
 
@@ -103,7 +103,7 @@ function NavRail({ current, onNav, collapsed }) {
         {!collapsed && (
           <div style={{ fontSize: 11.5, color: "var(--fg-4)", lineHeight: 1.6 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span className="led" style={{ color: "var(--pos)", width: 7, height: 7 }} /> All feeds synced
+              <span className="led" style={{ color: "var(--pos)", width: 7, height: 7 }} /> Fontes sincronizadas
             </div>
           </div>
         )}
@@ -172,7 +172,7 @@ function CmdK() {
       whiteSpace: "nowrap",
       boxShadow: "var(--shadow-1)",
     }}>
-      <span>Search…</span>
+      <span>Buscar…</span>
       <span className="kbd">⌘K</span>
     </button>
   );
@@ -214,7 +214,7 @@ function PersonaSwitcher({ persona, onPersona }) {
           padding: 5,
           zIndex: 80,
         }}>
-          <div className="bkt" style={{ display: "block", padding: "8px 9px 6px" }}>Switch role</div>
+          <div className="bkt" style={{ display: "block", padding: "8px 9px 6px" }}>Trocar papel</div>
           {PERSONAS.map(p => (
             <button key={p.id}
               onClick={() => { onPersona(p.id); setOpen(false); }}
@@ -237,7 +237,7 @@ function PersonaSwitcher({ persona, onPersona }) {
           ))}
           <div style={{ borderTop: "1px solid var(--line-1)", marginTop: 4, padding: "8px 8px" }}>
             <div className="mono dim" style={{ fontSize: 10, lineHeight: 1.5 }}>
-              Switching role changes your home screen and default filters. The data underneath is identical.
+              Trocar de papel muda sua tela inicial e os filtros padrão. Os dados por baixo são os mesmos.
             </div>
           </div>
         </div>

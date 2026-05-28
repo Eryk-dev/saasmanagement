@@ -52,17 +52,17 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenDeal }) {
           <ViewToggle view={view} onChange={setView} />
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <Filter label="Owner: All" />
-          <Filter label="Score: Hot+Warm" />
-          <Filter label="Stuck only" active={!!highlight} onClick={() => setHighlight(highlight ? null : "Discovery")} />
-          <Filter label="Source: All" />
+          <Filter label="Dono: Todos" />
+          <Filter label="Score: Quente+Morno" />
+          <Filter label="Só travados" active={!!highlight} onClick={() => setHighlight(highlight ? null : "Discovery")} />
+          <Filter label="Origem: Todas" />
           {selected.size > 0 && (
             <span className="mono" style={{ fontSize: 11, color: "var(--accent)", marginLeft: 6 }}>
-              {selected.size} selected · <button style={{ color: "var(--accent)", textDecoration: "underline" }}>bulk move</button>
+              {selected.size} selecionados · <button style={{ color: "var(--accent)", textDecoration: "underline" }}>mover em massa</button>
             </span>
           )}
           <span className="kbd" style={{ marginLeft: 4 }}>N</span>
-          <span style={{ fontSize: 11, color: "var(--fg-3)", marginRight: 6 }}>new deal</span>
+          <span style={{ fontSize: 11, color: "var(--fg-3)", marginRight: 6 }}>novo deal</span>
         </div>
       </div>
 
@@ -111,7 +111,7 @@ function SaasTabs({ active, onSelect }) {
 }
 
 function ViewToggle({ view, onChange }) {
-  const views = [["kanban","Kanban"],["all","All pipelines"],["list","List"],["forecast","Forecast"]];
+  const views = [["kanban","Kanban"],["all","Todos os pipelines"],["list","Lista"],["forecast","Previsão"]];
   return (
     <div style={{ display: "flex", gap: 2 }}>
       {views.map(([k, label]) => (
@@ -151,12 +151,12 @@ function ForecastStrip({ s, deals }) {
   const won = deals.filter(d => d.stage === "Closed Won").reduce((a, d) => a + d.amount, 0);
   return (
     <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", display: "grid", gridTemplateColumns: "repeat(5, 1fr) auto", gap: 16, alignItems: "center" }}>
-      <ForecastCell label="Open TCV"            v={window.fmt.money(tcv)}           d={+0.08} dUnit="pct" />
-      <ForecastCell label="Weighted forecast"   v={window.fmt.money(weighted)}      d={+0.04} dUnit="pct" sub="probability × value" />
-      <ForecastCell label="Closed-Won MTD"      v={window.fmt.money(won)}           d={+1}    dUnit="int" sub="2 deals" />
-      <ForecastCell label="Coverage"            v={`${s.pipelineCoverage?.toFixed(1)}x`} d={+0.2} dUnit="x" sub={`vs 3.0x target`} />
-      <ForecastCell label="Avg cycle"           v={`${s.cycleDays}d`} d={s.cycleDelta || -4} dUnit="int" invert sub="median 30d" />
-      <button style={{ ...chromeBtnStyleSmall, height: 30, padding: "0 12px" }}><span className="mono" style={{ fontSize: 11 }}>Export ⇣</span></button>
+      <ForecastCell label="TCV aberto"            v={window.fmt.money(tcv)}           d={+0.08} dUnit="pct" />
+      <ForecastCell label="Previsão ponderada"   v={window.fmt.money(weighted)}      d={+0.04} dUnit="pct" sub="probabilidade × valor" />
+      <ForecastCell label="Fechado no mês"      v={window.fmt.money(won)}           d={+1}    dUnit="int" sub="2 deals" />
+      <ForecastCell label="Cobertura"            v={`${s.pipelineCoverage?.toFixed(1)}x`} d={+0.2} dUnit="x" sub={`vs meta 3.0x`} />
+      <ForecastCell label="Ciclo médio"           v={`${s.cycleDays}d`} d={s.cycleDelta || -4} dUnit="int" invert sub="mediana 30d" />
+      <button style={{ ...chromeBtnStyleSmall, height: 30, padding: "0 12px" }}><span className="mono" style={{ fontSize: 11 }}>Exportar ⇣</span></button>
     </div>
   );
 }
@@ -211,7 +211,7 @@ function PipelineBand({ s, deals, onMove, highlight, onOpenDeal }) {
         </div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 16 }}>
           <span className="mono dim" style={{ fontSize: 11 }}>{deals.length} deals</span>
-          <span className="mono tnum" style={{ fontSize: 13 }}>{window.fmt.money(tcv)} <span className="dim">open TCV</span></span>
+          <span className="mono tnum" style={{ fontSize: 13 }}>{window.fmt.money(tcv)} <span className="dim">TCV aberto</span></span>
         </div>
       </div>
       {/* Horizontal kanban */}
@@ -293,7 +293,7 @@ function KanbanColumn({ stage, cards, highlight, onDropCard, dragging, setDraggi
           onOpen={() => onOpenDeal && onOpenDeal(d)}
         />
       ))}
-      {cards.length === 0 && <div className="mono dim" style={{ fontSize: 11, textAlign: "center", padding: "20px 0" }}>empty</div>}
+      {cards.length === 0 && <div className="mono dim" style={{ fontSize: 11, textAlign: "center", padding: "20px 0" }}>vazio</div>}
     </div>
   );
 }
@@ -325,7 +325,7 @@ function DealCard({ d, onDragStart, selected, onSelect, onOpen }) {
         <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--fg-3)", minWidth: 0 }}>
           <Avatar id={d.owner} name={owner?.name || d.owner} size={16} />
           <span className="mono">{d.age}d</span>
-          {d.flag === "stuck" && <span className="mono" style={{ color: "var(--neg)" }}>· stuck</span>}
+          {d.flag === "stuck" && <span className="mono" style={{ color: "var(--neg)" }}>· travado</span>}
           {d.proposal && <span className="mono" style={{ color: "var(--accent)" }}>· prop</span>}
         </div>
         <span className="mono dim" style={{ fontSize: 10 }}>{d.source}</span>
@@ -346,8 +346,8 @@ function DealList({ deals }) {
           fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase",
           borderBottom: "1px solid var(--line-1)",
         }}>
-          <span>Deal</span><span>Stage</span><span style={{ textAlign: "right" }}>Amount</span>
-          <span>Owner</span><span>Age</span><span>Score</span><span>Source</span>
+          <span>Deal</span><span>Estágio</span><span style={{ textAlign: "right" }}>Valor</span>
+          <span>Dono</span><span>Idade</span><span>Score</span><span>Origem</span>
         </div>
         {deals.map(d => (
           <div key={d.id} style={{
@@ -357,7 +357,7 @@ function DealList({ deals }) {
             alignItems: "center",
             fontSize: 13,
           }}>
-            <span style={{ fontWeight: 500 }}>{d.title} {d.flag === "stuck" && <span style={{ color: "var(--neg)", fontSize: 10, marginLeft: 4 }}>stuck</span>}</span>
+            <span style={{ fontWeight: 500 }}>{d.title} {d.flag === "stuck" && <span style={{ color: "var(--neg)", fontSize: 10, marginLeft: 4 }}>travado</span>}</span>
             <span className="mono dim" style={{ fontSize: 12 }}>{d.stage}</span>
             <span className="mono tnum" style={{ textAlign: "right" }}>{window.fmt.money(d.amount)}</span>
             <span className="mono dim" style={{ fontSize: 12 }}>{d.owner}</span>
@@ -383,7 +383,7 @@ function ForecastView({ s, deals }) {
   return (
     <div style={{ flex: 1, overflow: "auto", padding: "14px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "14px 18px", background: "var(--bg-1)" }}>
-        <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>Forecast by stage · weighted by historical conversion</div>
+        <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>Previsão por estágio · ponderada pela conversão histórica</div>
         {buckets.map(b => (
           <div key={b.stage} style={{ display: "grid", gridTemplateColumns: "120px 1fr 90px 90px 60px", gap: 10, alignItems: "center", padding: "10px 0", borderTop: "1px solid var(--line-1)" }}>
             <span className="mono" style={{ fontSize: 12, color: "var(--fg-2)" }}>{b.stage}</span>

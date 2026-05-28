@@ -78,7 +78,7 @@ function MRRTrajectory({ series, height = 220, days = 14, totalSeries, annotatio
       {/* X-axis labels */}
       {xTicks.map((i) => (
         <text key={i} x={xAt(i, days)} y={height - 8} fontSize="10" fontFamily="var(--mono)" fill="var(--fg-4)" textAnchor="middle">
-          {i === days - 1 ? "today" : `−${days - 1 - i}d`}
+          {i === days - 1 ? "hoje" : `−${days - 1 - i}d`}
         </text>
       ))}
       {/* Annotations (e.g., "Quill churn spike") */}
@@ -101,9 +101,9 @@ function MRRTrajectory({ series, height = 220, days = 14, totalSeries, annotatio
 // data: { new, expansion, contraction, churn } in $
 function NNMWaterfall({ data, width = 220, height = 110, compact = false }) {
   const items = [
-    { k: "New",         v: data.new,         tone: "var(--pos)" },
-    { k: "Expansion",   v: data.expansion,   tone: "var(--info)" },
-    { k: "Contraction", v: data.contraction, tone: "var(--warn)" },
+    { k: "Novo",        v: data.new,         tone: "var(--pos)" },
+    { k: "Expansão",    v: data.expansion,   tone: "var(--info)" },
+    { k: "Contração",   v: data.contraction, tone: "var(--warn)" },
     { k: "Churn",       v: data.churn,       tone: "var(--neg)" },
   ];
   const net = items.reduce((a, x) => a + x.v, 0);
@@ -125,7 +125,7 @@ function NNMWaterfall({ data, width = 220, height = 110, compact = false }) {
         );
       })}
       <div style={{ display: "grid", gridTemplateColumns: "70px 1fr 40px", borderTop: "1px solid var(--line-1)", paddingTop: 6, marginTop: 4, height: rowH, alignItems: "center", gap: 6 }}>
-        <span style={{ color: "var(--fg-2)", fontWeight: 500 }}>Net</span>
+        <span style={{ color: "var(--fg-2)", fontWeight: 500 }}>Líquido</span>
         <span></span>
         <span className="tnum" style={{ color: net >= 0 ? "var(--pos)" : "var(--neg)", textAlign: "right", fontWeight: 500 }}>{window.fmt.money(net, { sign: true })}</span>
       </div>
@@ -152,7 +152,7 @@ function FunnelLadder({ stages, accent = "var(--accent)", showCount = true }) {
               <div style={{ height: 14, position: "relative", background: "var(--bg-3)", borderRadius: 2 }}>
                 <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${w}%`, background: tone, opacity: 0.85, borderRadius: 2 }} />
                 {flag && (
-                  <span style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", fontSize: 9, color: tone, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em" }}>{flag}</span>
+                  <span style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", fontSize: 9, color: tone, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em" }}>{({ bottleneck: "gargalo", regression: "regressão" })[flag] || flag}</span>
                 )}
               </div>
               <span className="tnum" style={{ color: "var(--fg-2)", textAlign: "right" }}>{showCount ? s.count.toLocaleString() : ""}</span>

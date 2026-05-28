@@ -19,13 +19,13 @@ function LeaderboardScreen() {
     <div style={{ flex: 1, overflow: "auto", padding: "16px 24px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 500 }}>Leaderboard</h1>
+          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 500 }}>Ranking</h1>
           <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>
-            multiple winning categories · resets monthly · all-time is immutable career history
+            múltiplas categorias de vitória · reseta todo mês · all-time é histórico de carreira imutável
           </div>
         </div>
         <div style={{ display: "flex", gap: 2, padding: 2, background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)" }}>
-          {[["month","This month"],["all","All-time"]].map(([k,l]) => (
+          {[["month","Este mês"],["all","All-time"]].map(([k,l]) => (
             <button key={k} onClick={() => setScope(k)} style={{
               padding: "5px 12px", borderRadius: 4,
               background: scope === k ? "var(--bg-0)" : "transparent",
@@ -41,7 +41,7 @@ function LeaderboardScreen() {
           <div key={cat} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
             <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between" }}>
               <span style={{ fontSize: 13, fontWeight: 500 }}>{cat}</span>
-              <span className="mono dim" style={{ fontSize: 10 }}>{scope === "month" ? "May" : "career"}</span>
+              <span className="mono dim" style={{ fontSize: 10 }}>{scope === "month" ? "mai" : "carreira"}</span>
             </div>
             {rows.map(r => {
               const p = PEOPLE[r.person];
@@ -60,7 +60,7 @@ function LeaderboardScreen() {
             })}
             {scope === "month" && (
               <div style={{ padding: "8px 14px", background: "var(--bg-inset)", color: "var(--fg-4)", fontSize: 10, fontFamily: "var(--mono)" }}>
-                bottom 3 hidden · coaching CTA queued
+                3 últimos ocultos · CTA de coaching na fila
               </div>
             )}
           </div>
@@ -68,10 +68,10 @@ function LeaderboardScreen() {
       </div>
 
       <div style={{ marginTop: 18, padding: "14px 16px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-inset)" }}>
-        <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" }}>Coaching queue · founder only</div>
+        <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" }}>Fila de coaching · só fundador</div>
         <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-          <CoachRow person="PR" reason="Cycle 2.3× ICP median — skipping Discovery on 4 deals" />
-          <CoachRow person="SS" reason="Conversion to Qualify holding 31% — under cohort baseline" />
+          <CoachRow person="PR" reason="Ciclo 2.3× a mediana do ICP — pulando Discovery em 4 deals" />
+          <CoachRow person="SS" reason="Conversão pra Qualify travada em 31% — abaixo da base do coorte" />
         </div>
       </div>
     </div>
@@ -93,7 +93,7 @@ function CoachRow({ person, reason }) {
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <span className="mono dim" style={{ fontSize: 11 }}>{reason}</span>
         <button style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}>
-          <span style={{ fontSize: 11 }}>book 1:1</span>
+          <span style={{ fontSize: 11 }}>marcar 1:1</span>
         </button>
       </div>
     </div>

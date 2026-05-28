@@ -6,7 +6,7 @@ import { chromeBtnStyleSmall } from "../lib/ui.js";
 function GoalsScreen() {
   const { GOALS, SAAS } = window.SEED;
   const grouped = {
-    Portfolio: GOALS.filter(g => g.scope === "Portfolio"),
+    "Portfólio": GOALS.filter(g => g.scope === "Portfolio"),
     LeverAds:  GOALS.filter(g => g.scope === "LeverAds"),
     Quill:     GOALS.filter(g => g.scope === "Quill"),
     Mesa:      GOALS.filter(g => g.scope === "Mesa"),
@@ -16,10 +16,10 @@ function GoalsScreen() {
     <div style={{ flex: 1, overflow: "auto", padding: "16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 500 }}>Goals · this month</h1>
-          <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>day 12 / 31 · auto-alert at projected &lt;85% · cascade portfolio → SaaS → team</div>
+          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 500 }}>Metas · este mês</h1>
+          <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>dia 12 / 31 · alerta automático com projeção &lt;85% · cascata portfólio → SaaS → time</div>
         </div>
-        <button style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>+ new goal</span></button>
+        <button style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>+ nova meta</span></button>
       </div>
 
       {Object.entries(grouped).map(([scope, items]) => items.length > 0 && (
@@ -27,10 +27,10 @@ function GoalsScreen() {
           <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
               <span style={{ fontSize: 13, fontWeight: 500 }}>{scope}</span>
-              <span className="mono dim" style={{ fontSize: 11 }}>{items.length} goal{items.length > 1 ? "s" : ""}</span>
+              <span className="mono dim" style={{ fontSize: 11 }}>{items.length} meta{items.length > 1 ? "s" : ""}</span>
             </div>
             {items.some(g => g.band === "red") && (
-              <span className="chip neg"><span className="dot" />red band — needs intervention</span>
+              <span className="chip neg"><span className="dot" />faixa vermelha — precisa de ação</span>
             )}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1, background: "var(--line-1)" }}>
@@ -60,7 +60,7 @@ function GoalDetail({ g }) {
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10, alignItems: "baseline", marginTop: 10 }}>
         <div>
-          <div className="mono dim" style={{ fontSize: 10 }}>now</div>
+          <div className="mono dim" style={{ fontSize: 10 }}>agora</div>
           <div className="mono tnum" style={{ fontSize: 22, fontWeight: 500, color: tone }}>{fmt(g.current)}</div>
         </div>
         <div>
@@ -69,14 +69,14 @@ function GoalDetail({ g }) {
             <div style={{ position: "absolute", top: 0, left: 0, height: "100%", width: `${Math.min(100, pct)}%`, background: tone, borderRadius: 4, opacity: 0.9 }} />
           </div>
           <div className="mono dim" style={{ fontSize: 10, marginTop: 4, display: "flex", justifyContent: "space-between" }}>
-            <span>projected {fmt(g.projected)} · {Math.round(proj)}%</span>
-            <span>target {fmt(g.target)}</span>
+            <span>projetado {fmt(g.projected)} · {Math.round(proj)}%</span>
+            <span>meta {fmt(g.target)}</span>
           </div>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div className="mono dim" style={{ fontSize: 10 }}>at risk?</div>
+          <div className="mono dim" style={{ fontSize: 10 }}>em risco?</div>
           <div className="mono" style={{ fontSize: 12, color: tone }}>
-            {g.band === "red" ? "yes" : g.band === "yellow" ? "watch" : "no"}
+            {g.band === "red" ? "sim" : g.band === "yellow" ? "atenção" : "não"}
           </div>
         </div>
       </div>

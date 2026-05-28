@@ -25,7 +25,7 @@ function NPSScreen() {
   return (
     <div style={{ flex: 1, overflow: "auto", padding: "16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", gap: 6 }}>
-        {[["all","Portfolio"],["leverads","LeverAds"],["quill","Quill"],["mesa","Mesa"]].map(([k,l]) => (
+        {[["all","Portfólio"],["leverads","LeverAds"],["quill","Quill"],["mesa","Mesa"]].map(([k,l]) => (
           <button key={k} onClick={() => setScope(k)} style={{
             height: 26, padding: "0 12px", borderRadius: "var(--r-2)",
             border: "1px solid " + (scope === k ? "var(--line-strong)" : "var(--line-1)"),
@@ -38,26 +38,26 @@ function NPSScreen() {
 
       <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 14 }}>
         <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "18px 20px" }}>
-          <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" }}>Current NPS</div>
+          <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" }}>NPS atual</div>
           <div style={{ display: "flex", justifyContent: "center", margin: "10px 0" }}>
             <HealthArc value={Math.max(0, score + 100) / 2} size={140} strokeWidth={12} />
           </div>
           <div style={{ textAlign: "center" }}>
             <span className="mono tnum" style={{ fontSize: 38, fontWeight: 500 }}>{score}</span>
-            <div className="mono dim" style={{ fontSize: 11, marginTop: 4 }}>last 90 days · {total} responses</div>
+            <div className="mono dim" style={{ fontSize: 11, marginTop: 4 }}>últimos 90 dias · {total} respostas</div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 1, marginTop: 16, background: "var(--line-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", overflow: "hidden" }}>
-            <NPSCell label="Promoters"  v={promoters}  pct={promoters/total}  tone="var(--pos)" />
-            <NPSCell label="Passives"   v={passives}   pct={passives/total}   tone="var(--warn)" />
-            <NPSCell label="Detractors" v={detractors} pct={detractors/total} tone="var(--neg)" />
+            <NPSCell label="Promotores"  v={promoters}  pct={promoters/total}  tone="var(--pos)" />
+            <NPSCell label="Passivos"   v={passives}   pct={passives/total}   tone="var(--warn)" />
+            <NPSCell label="Detratores" v={detractors} pct={detractors/total} tone="var(--neg)" />
           </div>
         </div>
 
         <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "18px 20px" }}>
-          <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Trend · 8 weeks</div>
+          <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Tendência · 8 semanas</div>
           <Sparkline data={trend} width={600} height={64} stroke={trend[trend.length-1] < trend[0] ? "var(--neg)" : "var(--pos)"} />
           <div className="mono dim" style={{ fontSize: 11, marginTop: 8 }}>
-            {trend[trend.length-1] - trend[0]} pts over 8w — {trend[trend.length-1] < trend[0] ? "declining" : "improving"} · concentration at <span style={{ color: "var(--fg-1)" }}>Quill</span>
+            {trend[trend.length-1] - trend[0]} pts em 8sem — {trend[trend.length-1] < trend[0] ? "caindo" : "melhorando"} · concentração em <span style={{ color: "var(--fg-1)" }}>Quill</span>
           </div>
 
           <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", margin: "20px 0 8px" }}>Top tags · {topTags.length}</div>
@@ -73,8 +73,8 @@ function NPSScreen() {
 
       <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "12px 16px", borderBottom: "1px solid var(--line-1)" }}>
-          <div style={{ fontSize: 13, fontWeight: 500 }}>Recent detractors · {list.filter(n => n.score <= 6).length}</div>
-          <span className="mono dim" style={{ fontSize: 11 }}>open text · clustered by tag</span>
+          <div style={{ fontSize: 13, fontWeight: 500 }}>Detratores recentes · {list.filter(n => n.score <= 6).length}</div>
+          <span className="mono dim" style={{ fontSize: 11 }}>texto aberto · agrupado por tag</span>
         </div>
         {list.filter(n => n.score <= 6).map(n => {
           const saas = SAAS.find(s => s.id === n.saas);
@@ -89,7 +89,7 @@ function NPSScreen() {
                 </div>
               </div>
               <span className="mono dim" style={{ fontSize: 10 }}>{n.age}</span>
-              <button style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>open ↗</span></button>
+              <button style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>abrir ↗</span></button>
             </div>
           );
         })}

@@ -21,11 +21,11 @@ function SaasDashboardScreen({ saasId = "leverads", onNav, onJump }) {
             <span className="mono dim" style={{ fontSize: 11 }}>{s.tag}</span>
           </div>
           <div className="mono dim" style={{ fontSize: 11, marginTop: 4 }}>
-            {s.motion} · {s.plan} · ~{s.cycleDays}d cycle · {s.customers.toLocaleString()} customers
+            {s.motion} · {s.plan} · ciclo ~{s.cycleDays}d · {s.customers.toLocaleString()} clientes
           </div>
 
           <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "auto 1fr", gap: 32, alignItems: "end" }}>
-            <BigNumber value={window.fmt.money(s.mrr)} label="North-Star · MRR" delta={s.mrrDelta} dUnit="$" sublabel={`ARR ${window.fmt.money(s.arr)}`} size={48} />
+            <BigNumber value={window.fmt.money(s.mrr)} label="Estrela-guia · MRR" delta={s.mrrDelta} dUnit="$" sublabel={`ARR ${window.fmt.money(s.arr)}`} size={48} />
             <Sparkline data={s.mrrSeries} width={420} height={64} stroke={tone} />
           </div>
         </div>
@@ -33,8 +33,8 @@ function SaasDashboardScreen({ saasId = "leverads", onNav, onJump }) {
         {/* Health decomposition card */}
         <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "16px 18px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" }}>Health score</div>
-            <span className="mono dim" style={{ fontSize: 10 }}>weighted decomposition</span>
+            <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" }}>Saúde</div>
+            <span className="mono dim" style={{ fontSize: 10 }}>decomposição ponderada</span>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 18, alignItems: "center", marginTop: 8 }}>
             <HealthArc value={s.health} size={86} strokeWidth={8} delta={s.healthDelta} />
@@ -48,12 +48,12 @@ function SaasDashboardScreen({ saasId = "leverads", onNav, onJump }) {
       {/* Vital tiles — 4 across */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1, background: "var(--line-1)", borderRadius: "var(--r-3)", overflow: "hidden", border: "1px solid var(--line-1)" }}>
         <VitalCard k="Pipeline · TCV"  v={window.fmt.money(s.tcv)} d={s.tcvDelta} dUnit="pct"
-          sub={`Coverage ${s.pipelineCoverage ? s.pipelineCoverage.toFixed(1) + "x" : "n/a"} · ACV ${window.fmt.money(s.acv)}`} />
-        <VitalCard k="Sales · Velocity" v={s.velocity} d={s.velocityDelta} dUnit="pct"
-          sub={`Win ${window.fmt.pct(s.winRate)} · Cycle ${s.cycleDays}d`} />
-        <VitalCard k="Customer · NRR"   v={window.fmt.pct(s.nrr)} d={s.nrrDelta} dUnit="pp"
+          sub={`Cobertura ${s.pipelineCoverage ? s.pipelineCoverage.toFixed(1) + "x" : "n/a"} · ACV ${window.fmt.money(s.acv)}`} />
+        <VitalCard k="Vendas · Velocidade" v={s.velocity} d={s.velocityDelta} dUnit="pct"
+          sub={`Win ${window.fmt.pct(s.winRate)} · Ciclo ${s.cycleDays}d`} />
+        <VitalCard k="Cliente · NRR"   v={window.fmt.pct(s.nrr)} d={s.nrrDelta} dUnit="pp"
           sub={`GRR ${window.fmt.pct(s.grr)} · Logo ${window.fmt.pct(s.logoRetention)}`} />
-        <VitalCard k="Usage · Activation" v={window.fmt.pct(s.activation)} d={s.activationDelta} dUnit="pp"
+        <VitalCard k="Uso · Ativação" v={window.fmt.pct(s.activation)} d={s.activationDelta} dUnit="pp"
           sub={`Churn ${window.fmt.pct(s.churnRate, 1)} · NPS ${s.nps}`} />
       </div>
 
@@ -61,26 +61,26 @@ function SaasDashboardScreen({ saasId = "leverads", onNav, onJump }) {
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 1fr)", gap: 14 }}>
         <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 18px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
-            <div style={{ fontSize: 13, fontWeight: 500 }}>Funnel · {s.funnel.length} stages</div>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>Funil · {s.funnel.length} estágios</div>
             <button style={chromeBtnStyleSmall} onClick={() => onNav && onNav("pipeline", { saas: s.id })}>
-              <span style={{ fontSize: 11 }}>open kanban →</span>
+              <span style={{ fontSize: 11 }}>abrir kanban →</span>
             </button>
           </div>
           <FunnelLadder stages={s.funnel} accent={tone} />
           {s.funnel.some(f => f.flag === "bottleneck") && (
             <div style={{ marginTop: 12, padding: "10px 12px", background: "var(--neg-soft)", border: "1px solid oklch(0.68 0.18 25 / 0.30)", borderRadius: "var(--r-2)" }}>
-              <div className="mono" style={{ fontSize: 10, color: "var(--neg)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Bottleneck detected</div>
+              <div className="mono" style={{ fontSize: 10, color: "var(--neg)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Gargalo detectado</div>
               <div style={{ fontSize: 12, marginTop: 4, color: "var(--fg-1)" }}>
-                Conversion at <span className="mono tnum">{window.fmt.pct(s.funnel.find(f => f.flag === "bottleneck").conv)}</span> is below the 14d baseline by ≥10pp.
-                <button onClick={() => onJump && onJump({ type: "pipeline", id: s.id, stage: s.funnel.find(f => f.flag === "bottleneck").stage })} style={{ marginLeft: 6, color: "var(--accent)", fontFamily: "var(--mono)", fontSize: 11 }}>see stuck deals →</button>
+                Conversão em <span className="mono tnum">{window.fmt.pct(s.funnel.find(f => f.flag === "bottleneck").conv)}</span> está ≥10pp abaixo da base de 14d.
+                <button onClick={() => onJump && onJump({ type: "pipeline", id: s.id, stage: s.funnel.find(f => f.flag === "bottleneck").stage })} style={{ marginLeft: 6, color: "var(--accent)", fontFamily: "var(--mono)", fontSize: 11 }}>ver deals travados →</button>
               </div>
             </div>
           )}
         </div>
         <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 18px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
-            <div style={{ fontSize: 13, fontWeight: 500 }}>Net New MRR · this month</div>
-            <span className="mono dim" style={{ fontSize: 10 }}>waterfall · $</span>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>Novo MRR líq. · este mês</div>
+            <span className="mono dim" style={{ fontSize: 10 }}>cascata · $</span>
           </div>
           <NNMWaterfall data={s.nnm} width={320} />
         </div>
@@ -106,10 +106,10 @@ function DecompBar({ d }) {
 function decompFromVitals(s) {
   // Fallback if .decomp absent
   return [
-    { k: "Funnel",   v: Math.round(s.funnel.reduce((a,f)=>a+f.conv,0)/s.funnel.length*100), w: 0.25 },
-    { k: "Sales",    v: Math.round(s.winRate * 200),         w: 0.25 },
-    { k: "Customer", v: Math.round(s.nrr * 70),              w: 0.25 },
-    { k: "Usage",    v: Math.round(s.activation * 100),      w: 0.25 },
+    { k: "Funil",    v: Math.round(s.funnel.reduce((a,f)=>a+f.conv,0)/s.funnel.length*100), w: 0.25 },
+    { k: "Vendas",   v: Math.round(s.winRate * 200),         w: 0.25 },
+    { k: "Cliente",  v: Math.round(s.nrr * 70),              w: 0.25 },
+    { k: "Uso",      v: Math.round(s.activation * 100),      w: 0.25 },
   ];
 }
 
@@ -130,10 +130,10 @@ function VitalCard({ k, v, d, dUnit, sub, invert }) {
 window.SEED.SAAS.forEach(s => {
   if (!s.decomp) {
     s.decomp = [
-      { k: "Funnel",   v: Math.round(s.funnel.reduce((a,f)=>a+f.conv,0)/s.funnel.length*100), w: 0.25 },
-      { k: "Sales",    v: Math.round(Math.min(100, s.winRate * 200)),  w: 0.25 },
-      { k: "Customer", v: Math.round(Math.min(100, s.nrr * 70)),       w: 0.25 },
-      { k: "Usage",    v: Math.round(Math.min(100, s.activation * 100)),w: 0.25 },
+      { k: "Funil",    v: Math.round(s.funnel.reduce((a,f)=>a+f.conv,0)/s.funnel.length*100), w: 0.25 },
+      { k: "Vendas",   v: Math.round(Math.min(100, s.winRate * 200)),  w: 0.25 },
+      { k: "Cliente",  v: Math.round(Math.min(100, s.nrr * 70)),       w: 0.25 },
+      { k: "Uso",      v: Math.round(Math.min(100, s.activation * 100)),w: 0.25 },
     ];
   }
 });

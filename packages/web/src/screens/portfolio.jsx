@@ -40,7 +40,7 @@ function PortfolioScreen({ onNav, onJump }) {
         <div style={{ padding: "18px 24px", borderRight: "1px solid var(--line-1)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
             <div>
-              <div className="bkt">portfolio mrr · 14d</div>
+              <div className="bkt">mrr do portfólio · 14d</div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 6 }}>
                 <span className="serif tnum" style={{ fontSize: 34, fontWeight: 600, color: "var(--fg-1)", lineHeight: 1 }}>{window.fmt.money(PORTFOLIO.mrr)}</span>
                 <span className="tnum" style={{ fontSize: 13, fontWeight: 510, color: "var(--pos)" }}>
@@ -57,7 +57,7 @@ function PortfolioScreen({ onNav, onJump }) {
                 </div>
               ))}
               <div style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 11 }}>
-                <span className="mono dim">Portfolio</span>
+                <span className="mono dim">Portfólio</span>
                 <span style={{ width: 14, height: 0, borderTop: "1.5px dashed var(--fg-4)", display: "inline-block" }} />
               </div>
             </div>
@@ -68,7 +68,7 @@ function PortfolioScreen({ onNav, onJump }) {
             width={660}
             height={224}
             days={14}
-            annotations={[{ dayIndex: 9, label: "Quill churn spike" }]}
+            annotations={[{ dayIndex: 9, label: "pico de churn Quill" }]}
           />
         </div>
 
@@ -77,12 +77,12 @@ function PortfolioScreen({ onNav, onJump }) {
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <Led tone="var(--neg)" pulse />
               <div>
-                <div className="bkt">attention</div>
-                <div className="mono dim" style={{ fontSize: 10, marginTop: 3 }}>{ATTENTION.length} signals · sev × age</div>
+                <div className="bkt">atenção</div>
+                <div className="mono dim" style={{ fontSize: 10, marginTop: 3 }}>{ATTENTION.length} sinais · sev × idade</div>
               </div>
             </div>
             <button onClick={() => onJump && onJump({ type: "attention" })} style={{ ...chromeBtnStyleSmall }}>
-              <span className="mono" style={{ fontSize: 11 }}>see all</span>
+              <span className="mono" style={{ fontSize: 11 }}>ver todos</span>
             </button>
           </div>
           <div style={{ flex: 1, overflowY: "auto" }}>
@@ -95,13 +95,13 @@ function PortfolioScreen({ onNav, onJump }) {
       <div style={{ padding: "16px 24px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 10 }}>
           <div>
-            <div className="bkt">products</div>
-            <div className="mono dim" style={{ fontSize: 10, marginTop: 4 }}>3 products · sorted by attention · click any cell to drill</div>
+            <div className="bkt">produtos</div>
+            <div className="mono dim" style={{ fontSize: 10, marginTop: 4 }}>3 produtos · ordenado por atenção · clique numa célula pra detalhar</div>
           </div>
           <div style={{ display: "flex", gap: 6 }}>
-            <ToolbarChip label="Sort: attention ↓" />
-            <ToolbarChip label="Range: 14d" />
-            <ToolbarChip label="Compare" icon="⇄" onClick={() => onNav && onNav("saas")} />
+            <ToolbarChip label="Ordem: atenção ↓" />
+            <ToolbarChip label="Período: 14d" />
+            <ToolbarChip label="Comparar" icon="⇄" onClick={() => onNav && onNav("saas")} />
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -114,23 +114,23 @@ function PortfolioScreen({ onNav, onJump }) {
         <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
           <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
-              <div className="bkt">goals · this month</div>
-              <div className="mono dim" style={{ fontSize: 10, marginTop: 4 }}>day 12 / 31 · pacing bands green/yellow/red</div>
+              <div className="bkt">metas · este mês</div>
+              <div className="mono dim" style={{ fontSize: 10, marginTop: 4 }}>dia 12 / 31 · faixas verde/amarelo/vermelho</div>
             </div>
-            <button onClick={() => onNav && onNav("goals")} style={chromeBtnStyleSmall}><span className="mono" style={{ fontSize: 11 }}>open goals →</span></button>
+            <button onClick={() => onNav && onNav("goals")} style={chromeBtnStyleSmall}><span className="mono" style={{ fontSize: 11 }}>abrir metas →</span></button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: "var(--line-1)" }}>
             {GOALS.slice(0, 6).map(g => <GoalCell key={g.id} g={g} />)}
           </div>
         </div>
         <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-          <div className="bkt">today · last 24h</div>
-          <SignalRow label="Leads created"        v="142" d={+18} />
-          <SignalRow label="Proposals sent"       v="9"   d={+1}  />
-          <SignalRow label="Proposals viewed"     v="23"  d={+4}  />
-          <SignalRow label="Deals advanced"       v="11"  d={-3}  invert />
-          <SignalRow label="New customers"        v="34"  d={+6}  />
-          <SignalRow label="Detractors (NPS≤6)"   v="4"   d={+3}  invert />
+          <div className="bkt">hoje · últimas 24h</div>
+          <SignalRow label="Leads criados"        v="142" d={+18} />
+          <SignalRow label="Propostas enviadas"       v="9"   d={+1}  />
+          <SignalRow label="Propostas vistas"     v="23"  d={+4}  />
+          <SignalRow label="Deals avançados"       v="11"  d={-3}  invert />
+          <SignalRow label="Novos clientes"        v="34"  d={+6}  />
+          <SignalRow label="Detratores (NPS≤6)"   v="4"   d={+3}  invert />
         </div>
       </div>
     </div>
@@ -150,12 +150,12 @@ function PortfolioTape() {
       background: "var(--bg-inset)",
     }}>
       <TapeCell label="MRR"          value={window.fmt.money(PORTFOLIO.mrr)}           delta={PORTFOLIO.mrrDelta} dUnit="$" />
-      <TapeCell label="ARR"          value={window.fmt.money(PORTFOLIO.arr)}           sub="run-rate" />
-      <TapeCell label="Net New MRR"  value={window.fmt.money(nnmNet, { sign: true })}  sub="this month" tone={nnmNet >= 0 ? "var(--pos)" : "var(--neg)"} />
-      <TapeCell label="NRR (wtd)"    value={window.fmt.pct(PORTFOLIO.nrr)}             delta={+0.012} dUnit="pp" sub="net retention" />
-      <TapeCell label="TCV pipeline" value={window.fmt.money(tcvTotal)}                delta={+0.04}  dUnit="pct" sub="qualified+" />
-      <TapeCell label="Customers"    value={window.fmt.int(PORTFOLIO.customers)}       delta={-37}    dUnit="int" sub="active" />
-      <TapeCell label="Health (avg)" value="67"                                        delta={-2}     dUnit="int" sub="weighted" last />
+      <TapeCell label="ARR"          value={window.fmt.money(PORTFOLIO.arr)}           sub="anualizado" />
+      <TapeCell label="Novo MRR líq." value={window.fmt.money(nnmNet, { sign: true })}  sub="este mês" tone={nnmNet >= 0 ? "var(--pos)" : "var(--neg)"} />
+      <TapeCell label="NRR (pond.)"    value={window.fmt.pct(PORTFOLIO.nrr)}             delta={+0.012} dUnit="pp" sub="retenção líq." />
+      <TapeCell label="TCV pipeline" value={window.fmt.money(tcvTotal)}                delta={+0.04}  dUnit="pct" sub="qualificado+" />
+      <TapeCell label="Clientes"     value={window.fmt.int(PORTFOLIO.customers)}       delta={-37}    dUnit="int" sub="ativos" />
+      <TapeCell label="Saúde (méd.)" value="67"                                        delta={-2}     dUnit="int" sub="ponderado" last />
     </div>
   );
 }
@@ -203,7 +203,7 @@ function AttentionItem({ a, idx, onJump }) {
       <div className="mono dim" style={{ fontSize: 10, marginTop: 4 }}>{a.detail}</div>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 6 }}>
         <span className="mono" style={{ fontSize: 10, color: "var(--fg-3)" }}>{a.metric} <span className="tnum" style={{ color: "var(--fg-1)" }}>{a.value}</span></span>
-        <span className="mono" style={{ fontSize: 10, color: "var(--accent)" }}>jump ↗</span>
+        <span className="mono" style={{ fontSize: 10, color: "var(--accent)" }}>ir ↗</span>
       </div>
     </button>
   );
@@ -250,7 +250,7 @@ function ProductRail({ s, onNav }) {
             <span className="mono tnum" style={{ fontSize: 22, fontWeight: 500 }}>{window.fmt.money(s.mrr)}</span>
             <DeltaInline value={s.mrrDelta} unit="$" />
           </div>
-          <div className="mono dim" style={{ fontSize: 10, marginTop: 2 }}>ARR run-rate {window.fmt.money(s.arr)}</div>
+          <div className="mono dim" style={{ fontSize: 10, marginTop: 2 }}>ARR anualizado {window.fmt.money(s.arr)}</div>
         </div>
         <div>
           <Sparkline data={s.mrrSeries} width={200} height={32} stroke={tone} />
@@ -259,14 +259,14 @@ function ProductRail({ s, onNav }) {
 
       {/* Col 3: NNM waterfall */}
       <div style={{ padding: "14px 16px", borderRight: "1px solid var(--line-1)" }}>
-        <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>Net New MRR · MoM</div>
+        <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>Novo MRR líq. · MoM</div>
         <NNMWaterfall data={s.nnm} width={196} compact />
       </div>
 
       {/* Col 4: funnel */}
       <div style={{ padding: "14px 16px", borderRight: "1px solid var(--line-1)" }}>
         <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>
-          Funnel · {s.funnel.length} stages
+          Funil · {s.funnel.length} estágios
         </div>
         <FunnelLadder stages={s.funnel} accent={tone} />
       </div>
@@ -280,8 +280,8 @@ function ProductRail({ s, onNav }) {
         <MicroStat k="Win rate"   v={window.fmt.pct(s.winRate)}       d={s.winRateDelta} dUnit="pp" />
         <MicroStat k="NPS"        v={s.nps}                           d={s.npsDelta} dUnit="int" />
         <div style={{ gridColumn: "span 2", display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 6, borderTop: "1px solid var(--line-1)", marginTop: 2 }}>
-          <span className="mono dim" style={{ fontSize: 10 }}>{s.customers.toLocaleString()} customers {window.fmt.int(s.customersDelta, { sign: true })}</span>
-          <span className="mono" style={{ fontSize: 11, color: "var(--accent)" }}>open →</span>
+          <span className="mono dim" style={{ fontSize: 10 }}>{s.customers.toLocaleString()} clientes {window.fmt.int(s.customersDelta, { sign: true })}</span>
+          <span className="mono" style={{ fontSize: 11, color: "var(--accent)" }}>abrir →</span>
         </div>
       </div>
     </div>
