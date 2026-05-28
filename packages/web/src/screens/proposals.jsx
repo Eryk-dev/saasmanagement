@@ -143,7 +143,7 @@ function ProposalBuilder() {
             <div style={{ marginTop: 22 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 100px 100px", gap: 1, background: "var(--line-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", overflow: "hidden" }}>
                 {["Módulo","Assentos","Unitário","Total"].map(h => <div key={h} style={{ padding: "10px 12px", background: "var(--bg-inset)", fontSize: 11, color: "var(--fg-3)", fontFamily: "var(--mono)", letterSpacing: "0.05em", textTransform: "uppercase" }}>{h}</div>)}
-                {[["LeverAds Core","50","$1,200","$60,000"],["Multi-touch attribution","50","$280","$14,000"],["Premium support","—","$1,000","$10,000"]].map((row,i)=>(
+                {[["LeverAds Core","50","R$1.200","R$60.000"],["Multi-touch attribution","50","R$280","R$14.000"],["Premium support","—","R$1.000","R$10.000"]].map((row,i)=>(
                   <React.Fragment key={i}>
                     {row.map((c,j) => <div key={j} style={{ padding: "10px 12px", background: "var(--bg-1)", fontSize: 13, fontFamily: j === 0 ? "var(--sans)" : "var(--mono)", color: j === 3 ? "var(--fg-1)" : "var(--fg-2)" }}>{c}</div>)}
                   </React.Fragment>
@@ -152,7 +152,7 @@ function ProposalBuilder() {
               <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16, fontFamily: "var(--mono)" }}>
                 <div style={{ textAlign: "right" }}>
                   <div className="mono dim" style={{ fontSize: 11 }}>anual</div>
-                  <div className="mono tnum" style={{ fontSize: 22, fontWeight: 500 }}>$84,000</div>
+                  <div className="mono tnum" style={{ fontSize: 22, fontWeight: 500 }}>R$84.000</div>
                 </div>
               </div>
               <p className="mono dim" style={{ fontSize: 11, marginTop: 24, lineHeight: 1.5 }}>

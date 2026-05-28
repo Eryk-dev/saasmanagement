@@ -25,7 +25,7 @@ function PortfolioScreen({ onNav, onJump }) {
     { label: "LeverAds", value: window.fmt.money(SAAS[0].mrr), delta: SAAS[0].mrrDelta, unit: "$" },
     { label: "Quill", value: window.fmt.money(SAAS[1].mrr), delta: SAAS[1].mrrDelta, unit: "$" },
     { label: "Mesa", value: window.fmt.money(SAAS[2].mrr), delta: SAAS[2].mrrDelta, unit: "$" },
-    { label: "Churn risk", value: "$214k ARR", delta: -0.139, unit: "pct", invert: true },
+    { label: "Churn risk", value: "R$214k ARR", delta: -0.139, unit: "pct", invert: true },
     { label: "Detractors 7d", value: "9", delta: 5, invert: true },
     { label: "Win rate", value: "33%", delta: -0.01, unit: "pp" },
   ];

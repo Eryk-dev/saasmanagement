@@ -141,9 +141,9 @@ export const PORTFOLIO_CONST = {
 export const ATTENTION = [
   {
     id: "a1", saas: "quill", severity: "critical",
-    title: "MRR contraiu −$8.2k MoM · churn dobrou",
+    title: "MRR contraiu −R$8,2k MoM · churn dobrou",
     detail: "62 cancelamentos em 30d · 12 citam 'IA alucinou citações'",
-    metric: "Churn $", value: "−$12,840", delta: -0.082, age: "2h",
+    metric: "Churn R$", value: "−R$12.840", delta: -0.082, age: "2h",
     link: { type: "saas", id: "quill" },
   },
   {
@@ -156,15 +156,15 @@ export const ATTENTION = [
   {
     id: "a3", saas: "leverads", severity: "high",
     title: "Conversão Discovery → Proposal em 42% (era 58%)",
-    detail: "Tempo mediano no estágio 14d vs base de 6d · 23 deals travados · $1.1M de TCV parado",
+    detail: "Tempo mediano no estágio 14d vs base de 6d · 23 deals travados · R$1,1M de TCV parado",
     metric: "Conv", value: "42%", delta: -0.16, age: "1d",
     link: { type: "pipeline", id: "leverads", stage: "Discovery" },
   },
   {
     id: "a4", saas: "mesa", severity: "high",
-    title: "3 contas enterprise entraram na zona vermelha — $214k de ARR em risco",
+    title: "3 contas enterprise entraram na zona vermelha — R$214k de ARR em risco",
     detail: "Northwind, Acme Logistics, Blueprint · todas com uso caindo há 3sem",
-    metric: "ARR em risco", value: "$214k", delta: -0.139, age: "1d",
+    metric: "ARR em risco", value: "R$214k", delta: -0.139, age: "1d",
     link: { type: "customers", id: "mesa", filter: "red" },
   },
   {
@@ -176,9 +176,9 @@ export const ATTENTION = [
   },
   {
     id: "a6", saas: "quill", severity: "medium",
-    title: "MRR de expansão caiu pra $2.1k (média 90d $7.4k)",
+    title: "MRR de expansão caiu pra R$2,1k (média 90d R$7,4k)",
     detail: "Upsells do tier power travados · provável ligação com o cluster de detratores",
-    metric: "Expansão", value: "$2.1k", delta: -0.72, age: "3d",
+    metric: "Expansão", value: "R$2,1k", delta: -0.72, age: "3d",
     link: { type: "saas", id: "quill" },
   },
 ];

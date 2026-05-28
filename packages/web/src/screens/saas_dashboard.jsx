@@ -80,7 +80,7 @@ function SaasDashboardScreen({ saasId = "leverads", onNav, onJump }) {
         <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 18px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
             <div style={{ fontSize: 13, fontWeight: 500 }}>Novo MRR líq. · este mês</div>
-            <span className="mono dim" style={{ fontSize: 10 }}>cascata · $</span>
+            <span className="mono dim" style={{ fontSize: 10 }}>cascata · R$</span>
           </div>
           <NNMWaterfall data={s.nnm} width={320} />
         </div>

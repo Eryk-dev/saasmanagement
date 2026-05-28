@@ -2,14 +2,14 @@
 // Installed on window at boot so the (faithful) components keep using window.fmt.
 
 export const fmt = {
-  // Money — compact ($1.2M, $84k)
+  // Money — compacto em R$(R$1,2M, R$84k)
   money(n, { sign = false } = {}) {
     if (n == null) return "—";
     const abs = Math.abs(n);
     const s = n < 0 ? "-" : sign && n > 0 ? "+" : "";
-    if (abs >= 1_000_000) return `${s}$${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 2)}M`;
-    if (abs >= 1_000) return `${s}$${(abs / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`;
-    return `${s}$${abs.toFixed(0)}`;
+    if (abs >= 1_000_000) return `${s}R$${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 2).replace(".", ",")}M`;
+    if (abs >= 1_000) return `${s}R$${(abs / 1_000).toFixed(abs >= 10_000 ? 0 : 1).replace(".", ",")}k`;
+    return `${s}R$${abs.toFixed(0)}`;
   },
   pct(n, digits = 0) {
     if (n == null) return "—";

@@ -57,7 +57,7 @@ function MRRTrajectory({ series, height = 220, days = 14, totalSeries, annotatio
         <g key={i}>
           <line x1={padL} x2={padL + plotW} y1={t.y} y2={t.y} stroke="var(--line-1)" strokeDasharray="2 3" />
           <text x={padL - 8} y={t.y + 3} fontSize="10" fontFamily="var(--mono)" fill="var(--fg-4)" textAnchor="end">
-            ${Math.round(t.v)}k
+            R${Math.round(t.v)}k
           </text>
         </g>
       ))}

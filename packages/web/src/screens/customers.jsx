@@ -271,7 +271,7 @@ function TimelineTab({ c }) {
     { d: "há 2d",  t: "QBR agendada com o Diretor de Ops", kind: "meeting" },
     { d: "há 5d",  t: "Ticket P1 aberto — scanner travou", kind: "ticket" },
     { d: "há 1sem", t: "Usuários ativos caíram −18% s/s", kind: "alert" },
-    { d: "há 3sem", t: "Call de renovação · proposta enviada ($82k ARR)", kind: "deal" },
+    { d: "há 3sem", t: "Call de renovação · proposta enviada (R$82k ARR)", kind: "deal" },
     { d: "há 8sem", t: "Champion (Carlos R.) saiu da empresa", kind: "alert" },
   ];
   return (
