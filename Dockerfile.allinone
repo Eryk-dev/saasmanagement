@@ -19,8 +19,7 @@ RUN npm run build -w packages/web
 # ── 2) runtime: node (api+mcp) + nginx ──────────────────────────────────────
 FROM node:20-bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends nginx \
-  && rm -rf /var/lib/apt/lists/* \
-  && rm -f /etc/nginx/sites-enabled/default
+  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json package-lock.json ./
@@ -32,7 +31,7 @@ COPY packages/api/src packages/api/src
 COPY packages/mcp/src packages/mcp/src
 RUN mkdir -p packages/api/data
 COPY --from=web /app/packages/web/dist /usr/share/nginx/html
-COPY deploy/nginx.allinone.conf /etc/nginx/conf.d/default.conf
+COPY deploy/nginx.allinone.conf /etc/nginx/nginx.conf
 COPY deploy/start.sh /start.sh
 RUN chmod +x /start.sh
 
