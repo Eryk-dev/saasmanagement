@@ -1,9 +1,11 @@
 import React from "react";
-import { Avatar } from "../atoms.jsx";
+import { Avatar, RowActions } from "../atoms.jsx";
 import { BigNumber } from "../charts.jsx";
+import { useData } from "../data.jsx";
 // Deal detail drawer — slides over the pipeline when a card is opened.
 
 function DealDetail({ deal, onClose }) {
+  const { openForm, openDelete } = useData();
   if (!deal) return null;
   const { PEOPLE, SAAS } = window.SEED;
   const owner = PEOPLE[deal.owner];
@@ -30,7 +32,13 @@ function DealDetail({ deal, onClose }) {
               {deal.flag === "stuck" && <span className="chip neg">travado {deal.age}d</span>}
             </div>
           </div>
-          <button onClick={onClose} className="mono dim" style={{ fontSize: 16 }}>✕</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <RowActions
+              onEdit={() => { onClose(); openForm("deals", deal); }}
+              onDelete={() => { onClose(); openDelete("deals", deal); }}
+            />
+            <button onClick={onClose} className="mono dim" style={{ fontSize: 16 }}>✕</button>
+          </div>
         </div>
 
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line-1)", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>

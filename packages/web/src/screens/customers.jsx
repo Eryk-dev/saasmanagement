@@ -1,6 +1,8 @@
 import React from "react";
-import { Avatar, Sparkline } from "../atoms.jsx";
+import { Avatar, Sparkline, RowActions } from "../atoms.jsx";
 import { BigNumber, DeltaInline } from "../charts.jsx";
+import { chromeBtnStyleSmall } from "../lib/ui.js";
+import { useData } from "../data.jsx";
 // Customers list + drill-down detail panel. The CS persona's home.
 // Sortable, filterable by health band, with active CTAs.
 
@@ -8,6 +10,7 @@ const { useState: useStC } = React;
 
 function CustomersScreen({ csFilter }) {
   const { CUSTOMERS, SAAS } = window.SEED;
+  const { openForm, openDelete } = useData();
   const [sel, setSel] = useStC(null);
   const [filter, setFilter] = useStC(csFilter || "all"); // all | red | yellow | green
   const [sortBy, setSortBy] = useStC("health"); // health | arr | renewal
@@ -51,6 +54,7 @@ function CustomersScreen({ csFilter }) {
                 fontSize: 11, fontFamily: "var(--mono)",
               }}>{l}</button>
             ))}
+            <button onClick={() => openForm("customers")} style={{ ...chromeBtnStyleSmall, marginLeft: 6, borderColor: "var(--accent-line)", color: "var(--accent)" }}><span style={{ fontSize: 11 }}>+ novo cliente</span></button>
           </div>
         </div>
 
@@ -78,7 +82,7 @@ function CustomersScreen({ csFilter }) {
         </div>
       </div>
 
-      {sel && <CustomerDetail c={sel} onClose={() => setSel(null)} />}
+      {sel && <CustomerDetail c={sel} onClose={() => setSel(null)} onEdit={() => openForm("customers", sel)} onDelete={() => openDelete("customers", sel)} />}
     </div>
   );
 }
@@ -123,7 +127,7 @@ function CustomerRow({ c, onOpen, active }) {
 }
 
 // ─────────────────────────────────────────────── Detail panel
-function CustomerDetail({ c, onClose }) {
+function CustomerDetail({ c, onClose, onEdit, onDelete }) {
   const { SAAS, PEOPLE } = window.SEED;
   const saas = SAAS.find(s => s.id === c.saas);
   const csm = PEOPLE[c.csm];
@@ -148,7 +152,10 @@ function CustomerDetail({ c, onClose }) {
             {c.flags.map(f => <span key={f} className="chip warn">{f}</span>)}
           </div>
         </div>
-        <button onClick={onClose} className="mono dim" style={{ fontSize: 14 }}>✕</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <RowActions onEdit={onEdit} onDelete={onDelete} />
+          <button onClick={onClose} className="mono dim" style={{ fontSize: 14 }}>✕</button>
+        </div>
       </div>
 
       <div style={{ display: "flex", gap: 2, padding: "8px 12px", borderBottom: "1px solid var(--line-1)" }}>

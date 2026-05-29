@@ -8,7 +8,7 @@ import "./tokens.css";
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { fmt } from "./lib/format.js";
-import { api } from "./lib/api.js";
+import { loadSeed } from "./data.jsx";
 
 const root = createRoot(document.getElementById("root"));
 
@@ -33,7 +33,7 @@ function Loading({ error }) {
   window.fmt = fmt;
   root.render(<Loading />);
   try {
-    window.SEED = await api.bootstrap();
+    await loadSeed();
     const { App } = await import("./app.jsx");
     root.render(<App />);
   } catch (err) {

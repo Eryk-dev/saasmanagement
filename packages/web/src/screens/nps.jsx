@@ -1,14 +1,22 @@
 import React from "react";
-import { HealthArc, Sparkline, EmptyState } from "../atoms.jsx";
+import { HealthArc, Sparkline, EmptyState, PrimaryButton, RowActions } from "../atoms.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
+import { useData } from "../data.jsx";
 // NPS aggregate — gauge + trend + breakdown + tag clusters + recent detractor drilldown
 
 const { useState: useStN } = React;
 
 function NPSScreen() {
   const { NPS, SAAS } = window.SEED;
+  const { openForm, openDelete } = useData();
   const [scope, setScope] = useStN("all"); // all | leverads | quill | mesa
-  if (!NPS.length) return <EmptyState title="Sem respostas de NPS" hint="As respostas entram por POST /api/nps (ou create_nps no MCP). Conecte sua ferramenta de NPS para ver gauge, tendência, tags e detratores aqui." />;
+  if (!NPS.length) return (
+    <EmptyState
+      title="Sem respostas de NPS"
+      hint="Registre respostas de NPS para ver gauge, tendência, tags e detratores aqui."
+      action={<PrimaryButton onClick={() => openForm("nps")}>+ Registrar resposta</PrimaryButton>}
+    />
+  );
   const list = scope === "all" ? NPS : NPS.filter(n => n.saas === scope);
 
   const promoters  = list.filter(n => n.score >= 9).length;
@@ -25,16 +33,19 @@ function NPSScreen() {
 
   return (
     <div style={{ flex: 1, overflow: "auto", padding: "16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", gap: 6 }}>
-        {[["all","Portfólio"],["leverads","LeverAds"],["quill","Quill"],["mesa","Mesa"]].map(([k,l]) => (
-          <button key={k} onClick={() => setScope(k)} style={{
-            height: 26, padding: "0 12px", borderRadius: "var(--r-2)",
-            border: "1px solid " + (scope === k ? "var(--line-strong)" : "var(--line-1)"),
-            background: scope === k ? "var(--bg-3)" : "var(--bg-2)",
-            color: scope === k ? "var(--fg-1)" : "var(--fg-3)",
-            fontSize: 12, fontFamily: "var(--mono)",
-          }}>{l}</button>
-        ))}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", gap: 6 }}>
+          {[["all","Portfólio"], ...SAAS.map(s => [s.id, s.name])].map(([k,l]) => (
+            <button key={k} onClick={() => setScope(k)} style={{
+              height: 26, padding: "0 12px", borderRadius: "var(--r-2)",
+              border: "1px solid " + (scope === k ? "var(--line-strong)" : "var(--line-1)"),
+              background: scope === k ? "var(--bg-3)" : "var(--bg-2)",
+              color: scope === k ? "var(--fg-1)" : "var(--fg-3)",
+              fontSize: 12, fontFamily: "var(--mono)",
+            }}>{l}</button>
+          ))}
+        </div>
+        <button onClick={() => openForm("nps")} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}><span style={{ fontSize: 11 }}>+ resposta</span></button>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 14 }}>
@@ -90,7 +101,7 @@ function NPSScreen() {
                 </div>
               </div>
               <span className="mono dim" style={{ fontSize: 10 }}>{n.age}</span>
-              <button style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>abrir ↗</span></button>
+              <RowActions onEdit={() => openForm("nps", n)} onDelete={() => openDelete("nps", n)} />
             </div>
           );
         })}

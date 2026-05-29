@@ -12,9 +12,12 @@ import { GoalsScreen } from "./screens/goals.jsx";
 import { LeaderboardScreen } from "./screens/leaderboard.jsx";
 import { SettingsScreen } from "./screens/settings.jsx";
 import { DealDetail } from "./screens/deal.jsx";
+import { DataContext, loadSeed } from "./data.jsx";
+import { EntityForm } from "./components/EntityForm.jsx";
+import { ConfirmDelete } from "./components/ConfirmDelete.jsx";
 // Main app — routing, persona switching, tweaks integration.
 
-const { useState: useStA, useEffect: useEA } = React;
+const { useState: useStA, useEffect: useEA, useCallback: useCbA } = React;
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "persona": "founder",
@@ -36,6 +39,16 @@ function App() {
   const [params, setParams] = useStA(personaObj.saas ? { saas: personaObj.saas } : {});
   const [dealSel, setDealSel] = useStA(null);
   const [collapsed, setCollapsed] = useStA(false);
+
+  // CRUD plumbing — modals live above the keyed screen so a post-write refresh
+  // never unmounts the form mid-callback. Screens trigger via the DataContext.
+  const [dataVersion, setDataVersion] = useStA(0);
+  const [editor, setEditor] = useStA(null);   // { entityKey, record }
+  const [confirm, setConfirm] = useStA(null);  // { entityKey, record }
+  const refresh = useCbA(async () => { await loadSeed(); setDataVersion(v => v + 1); }, []);
+  const openForm = useCbA((entityKey, record = null) => setEditor({ entityKey, record }), []);
+  const openDelete = useCbA((entityKey, record) => setConfirm({ entityKey, record }), []);
+  const dataCtx = React.useMemo(() => ({ version: dataVersion, refresh, openForm, openDelete }), [dataVersion, refresh, openForm, openDelete]);
 
   // When persona changes, route to that persona's home
   useEA(() => {
@@ -84,6 +97,7 @@ function App() {
   };
 
   return (
+    <DataContext.Provider value={dataCtx}>
     <div style={{ height: "100vh", display: "flex", overflow: "hidden", background: "var(--bg-0)" }}>
       <NavRail current={screen} onNav={(id) => nav(id)} collapsed={collapsed} />
 
@@ -100,18 +114,37 @@ function App() {
           }
         />
 
-        {screen === "portfolio"   && <PortfolioScreen onNav={nav} onJump={jump} />}
-        {screen === "saas"        && <SaasDashboardScreen saasId={params.saas} onNav={nav} onJump={jump} />}
-        {screen === "pipeline"    && <PipelineScreen saasId={params.saas} onJump={jump} jumpFilter={params} onOpenDeal={openDeal} />}
-        {screen === "leads"       && <LeadsScreen persona={persona} />}
-        {screen === "customers"   && <CustomersScreen csFilter={params.csFilter} />}
-        {screen === "nps"         && <NPSScreen />}
-        {screen === "goals"       && <GoalsScreen />}
-        {screen === "leaderboard" && <LeaderboardScreen />}
-        {screen === "settings"    && <SettingsScreen saasId={params.saas} />}
+        <div key={dataVersion} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+          {screen === "portfolio"   && <PortfolioScreen onNav={nav} onJump={jump} />}
+          {screen === "saas"        && <SaasDashboardScreen saasId={params.saas} onNav={nav} onJump={jump} />}
+          {screen === "pipeline"    && <PipelineScreen saasId={params.saas} onJump={jump} jumpFilter={params} onOpenDeal={openDeal} />}
+          {screen === "leads"       && <LeadsScreen persona={persona} />}
+          {screen === "customers"   && <CustomersScreen csFilter={params.csFilter} />}
+          {screen === "nps"         && <NPSScreen />}
+          {screen === "goals"       && <GoalsScreen />}
+          {screen === "leaderboard" && <LeaderboardScreen />}
+          {screen === "settings"    && <SettingsScreen saasId={params.saas} />}
+        </div>
       </main>
 
       {dealSel && <DealDetail deal={dealSel} onClose={() => setDealSel(null)} />}
+
+      {editor && (
+        <EntityForm
+          entityKey={editor.entityKey}
+          record={editor.record}
+          onClose={() => setEditor(null)}
+          onSaved={async () => { setEditor(null); await refresh(); }}
+        />
+      )}
+      {confirm && (
+        <ConfirmDelete
+          entityKey={confirm.entityKey}
+          record={confirm.record}
+          onClose={() => setConfirm(null)}
+          onDeleted={async () => { setConfirm(null); await refresh(); }}
+        />
+      )}
 
       <TweaksPanel title="Personalizar">
         <TweakSection label="Papel" />
@@ -145,6 +178,7 @@ function App() {
         <TweakButton label="Ir pra um deal travado" onClick={() => { setScreen("pipeline"); setParams({ saas: "leverads", stage: "Discovery" }); }} />
       </TweaksPanel>
     </div>
+    </DataContext.Provider>
   );
 }
 

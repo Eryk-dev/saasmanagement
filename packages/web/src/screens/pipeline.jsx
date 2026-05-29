@@ -1,8 +1,9 @@
 import React from "react";
-import { Avatar, TrendBadge, EmptyState } from "../atoms.jsx";
+import { Avatar, TrendBadge, EmptyState, PrimaryButton } from "../atoms.jsx";
 import { DeltaInline } from "../charts.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
 import { api } from "../lib/api.js";
+import { useData } from "../data.jsx";
 // Pipeline — Kanban + List + Forecast tabs. Drag-and-drop between columns.
 // Filters: SaaS, owner, score, stuck. Bulk actions on multi-select.
 
@@ -14,6 +15,7 @@ const { useState: useStP, useMemo: useMP } = React;
 
 function PipelineScreen({ saasId, onJump, jumpFilter, onOpenDeal }) {
   const { SAAS } = window.SEED;
+  const { openForm } = useData();
   const [activeSaas, setActiveSaas] = useStP(saasId || "leverads");
   const [view, setView] = useStP("kanban"); // kanban | all | list | forecast
   const [deals, setDeals] = useStP(() => window.SEED.DEALS.map(d => ({ ...d })));
@@ -42,7 +44,13 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenDeal }) {
     api.moveDeal(dealId, stage).catch(err => console.warn("deal move not persisted:", err.message));
   }
 
-  if (!s) return <EmptyState title="Nenhum pipeline" hint="Crie um SaaS (com funil) para gerenciar deals aqui — POST /api/products, depois POST /api/deals (ou create_deal no MCP)." />;
+  if (!s) return (
+    <EmptyState
+      title="Nenhum pipeline"
+      hint="Crie um SaaS (com funil) para gerenciar deals aqui."
+      action={<PrimaryButton onClick={() => openForm("products")}>+ Criar SaaS</PrimaryButton>}
+    />
+  );
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -63,8 +71,9 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenDeal }) {
               {selected.size} selecionados · <button style={{ color: "var(--accent)", textDecoration: "underline" }}>mover em massa</button>
             </span>
           )}
-          <span className="kbd" style={{ marginLeft: 4 }}>N</span>
-          <span style={{ fontSize: 11, color: "var(--fg-3)", marginRight: 6 }}>novo deal</span>
+          <button onClick={() => openForm("deals", { saas: activeSaas })} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)", marginLeft: 4 }}>
+            <span style={{ fontSize: 11 }}>+ novo deal</span>
+          </button>
         </div>
       </div>
 

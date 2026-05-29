@@ -1,15 +1,17 @@
 import React from "react";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
-import { EmptyState } from "../atoms.jsx";
+import { EmptyState, PrimaryButton, RowActions } from "../atoms.jsx";
+import { useData } from "../data.jsx";
 // SaaS Settings — funnels, custom fields, health weights, Aha definition, integrations
 
 const { useState: useStS } = React;
 
 function SettingsScreen({ saasId }) {
   const { SAAS } = window.SEED;
+  const { openForm, openDelete } = useData();
   const [active, setActive] = useStS(saasId || "leverads");
   const [tab, setTab] = useStS("funnel");
-  const s = SAAS.find(x => x.id === active);
+  const s = SAAS.find(x => x.id === active) || SAAS[0];
 
   const TABS = [
     ["funnel",      "Funil & estágios"],
@@ -19,7 +21,13 @@ function SettingsScreen({ saasId }) {
     ["integrations","Integrações"],
   ];
 
-  if (!s) return <EmptyState title="Nenhum SaaS para configurar" hint="Crie um produto (POST /api/products) e ele aparece aqui para configurar funil, campos, pesos de saúde, Aha e integrações." />;
+  if (!s) return (
+    <EmptyState
+      title="Nenhum SaaS para configurar"
+      hint="Crie um produto e ele aparece aqui para configurar funil, campos, pesos de saúde, Aha e integrações."
+      action={<PrimaryButton onClick={() => openForm("products")}>+ Criar SaaS</PrimaryButton>}
+    />
+  );
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -35,9 +43,12 @@ function SettingsScreen({ saasId }) {
             }}>{x.name}</button>
           ))}
         </div>
-        <button style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}>
-          <span style={{ fontSize: 11 }}>+ novo SaaS · assistente</span>
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <RowActions onEdit={() => openForm("products", s)} onDelete={() => openDelete("products", s)} />
+          <button onClick={() => openForm("products")} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}>
+            <span style={{ fontSize: 11 }}>+ novo SaaS</span>
+          </button>
+        </div>
       </div>
 
       <div style={{ flex: 1, display: "grid", gridTemplateColumns: "200px 1fr", minHeight: 0 }}>
@@ -65,6 +76,7 @@ function SettingsScreen({ saasId }) {
 }
 
 function FunnelSettings({ s }) {
+  const { openForm } = useData();
   return (
     <div>
       <SettingHeader title="Estágios do funil" sub="mapeie pra tipos canônicos (prospecting/qualification/proposal/closing) pra comparar entre SaaS" />
@@ -82,7 +94,7 @@ function FunnelSettings({ s }) {
           </div>
         ))}
       </div>
-      <button style={{ marginTop: 12, ...chromeBtnStyleSmall }}><span style={{ fontSize: 11 }}>+ adicionar estágio</span></button>
+      <button onClick={() => openForm("products", s)} style={{ marginTop: 12, ...chromeBtnStyleSmall }}><span style={{ fontSize: 11 }}>+ editar estágios</span></button>
     </div>
   );
 }

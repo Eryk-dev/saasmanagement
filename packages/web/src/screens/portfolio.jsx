@@ -1,17 +1,21 @@
 import React from "react";
-import { Led, Sparkline, TrendBadge, EmptyState } from "../atoms.jsx";
+import { Led, Sparkline, TrendBadge, EmptyState, PrimaryButton } from "../atoms.jsx";
 import { MRRTrajectory, NNMWaterfall, FunnelLadder, DeltaInline, computeFunnel } from "../charts.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
+import { useData } from "../data.jsx";
 // Portfolio (Founder home) — the cockpit's hero screen.
 // Operator-grade metrics: MRR trajectory hero + dense product rails + lateral attention.
 
 function PortfolioScreen({ onNav, onJump }) {
   const { SAAS, PORTFOLIO, ATTENTION, GOALS } = window.SEED;
+  const { openForm } = useData();
 
   if (!SAAS.length) return (
     <EmptyState
       title="Nenhum produto ainda"
-      hint="Conecte um SaaS para começar — POST /api/products na REST, ou a tool update_product_metrics / create_deal no MCP. Os dados aparecem aqui na hora." />
+      hint="Conecte um SaaS para começar. Os dados aparecem aqui na hora."
+      action={<PrimaryButton onClick={() => openForm("products")}>+ Criar SaaS</PrimaryButton>}
+    />
   );
 
   // Build MRR trajectory series (per-product, in $k for chart units)

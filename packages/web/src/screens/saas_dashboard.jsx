@@ -1,14 +1,22 @@
 import React from "react";
-import { HealthArc, Sparkline, TrendBadge, EmptyState } from "../atoms.jsx";
+import { HealthArc, Sparkline, TrendBadge, EmptyState, PrimaryButton } from "../atoms.jsx";
 import { BigNumber, FunnelLadder, NNMWaterfall, DeltaInline, computeFunnel } from "../charts.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
+import { useData } from "../data.jsx";
 // SaaS Dashboard — single-product cockpit.
 // Drilldown from Portfolio. Big NSM, health decomposition, vital tiles, funnel heatmap.
 
 function SaasDashboardScreen({ saasId = "leverads", onNav, onJump }) {
   const { SAAS } = window.SEED;
+  const { openForm } = useData();
   const s = SAAS.find(x => x.id === saasId) || SAAS[0];
-  if (!s) return <EmptyState title="Nenhum produto" hint="Crie um SaaS (POST /api/products) para ver o dashboard do produto aqui." />;
+  if (!s) return (
+    <EmptyState
+      title="Nenhum produto"
+      hint="Crie um SaaS para ver o dashboard do produto aqui."
+      action={<PrimaryButton onClick={() => openForm("products")}>+ Criar SaaS</PrimaryButton>}
+    />
+  );
   const tone = window.productTone(s);
   const funnel = computeFunnel(s);
 
@@ -133,16 +141,7 @@ function VitalCard({ k, v, d, dUnit, sub, invert }) {
   );
 }
 
-// Hydrate SAAS items with decomposition data for legacy use
-window.SEED.SAAS.forEach(s => {
-  if (!s.decomp) {
-    s.decomp = [
-      { k: "Funil",    v: funnelAvgConv(s), w: 0.25 },
-      { k: "Vendas",   v: Math.round(Math.min(100, s.winRate * 200)),  w: 0.25 },
-      { k: "Cliente",  v: Math.round(Math.min(100, s.nrr * 70)),       w: 0.25 },
-      { k: "Uso",      v: Math.round(Math.min(100, s.activation * 100)),w: 0.25 },
-    ];
-  }
-});
+// decomp is hydrated centrally in data.jsx (loadSeed → hydrateSeed) so it stays
+// fresh across refreshes; decompFromVitals above remains the in-render fallback.
 
 export { SaasDashboardScreen, VitalCard, DecompBar };

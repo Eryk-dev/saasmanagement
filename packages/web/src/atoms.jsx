@@ -249,17 +249,44 @@ function Led({ tone = "var(--pos)", pulse, size = 7 }) {
 }
 
 // ───────────────────────────────────────────────────── Estado vazio
-function EmptyState({ title, hint }) {
+function EmptyState({ title, hint, action }) {
   return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 40, minHeight: 0 }}>
       <div style={{ textAlign: "center", maxWidth: 460 }}>
         <div style={{ fontSize: 15, fontWeight: 600, color: "var(--fg-1)" }}>{title}</div>
         {hint && <div className="mono dim" style={{ fontSize: 12, marginTop: 8, lineHeight: 1.6 }}>{hint}</div>}
+        {action && <div style={{ marginTop: 16, display: "flex", justifyContent: "center" }}>{action}</div>}
       </div>
     </div>
   );
 }
 
-Object.assign(window, { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, Ticker, Led, EmptyState });
+// Inline edit/delete actions for list rows and cards. Stops click propagation so
+// it works inside clickable rows.
+function RowActions({ onEdit, onDelete }) {
+  const btn = { width: 24, height: 24, display: "inline-flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--line-1)", background: "var(--bg-2)", borderRadius: "var(--r-2)", fontSize: 12, color: "var(--fg-3)" };
+  const stop = (fn) => (e) => { e.stopPropagation(); fn && fn(); };
+  return (
+    <span style={{ display: "inline-flex", gap: 4 }}>
+      {onEdit && <button onClick={stop(onEdit)} title="Editar" style={btn}>✎</button>}
+      {onDelete && <button onClick={stop(onDelete)} title="Excluir" style={{ ...btn, color: "var(--neg)" }}>✕</button>}
+    </span>
+  );
+}
 
-export { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, Ticker, Led, EmptyState };
+// Primary CTA button — shared so empty states and toolbars create records the
+// same way. `onClick` opens the relevant EntityForm.
+function PrimaryButton({ onClick, children }) {
+  return (
+    <button onClick={onClick} style={{
+      display: "inline-flex", alignItems: "center", gap: 6,
+      height: 30, padding: "0 14px",
+      background: "var(--accent)", color: "var(--accent-fg)",
+      borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500,
+    }}>{children}</button>
+  );
+}
+
+Object.assign(window, { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, Ticker, Led, EmptyState, PrimaryButton, RowActions });
+
+export { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, Ticker, Led, EmptyState, PrimaryButton, RowActions };

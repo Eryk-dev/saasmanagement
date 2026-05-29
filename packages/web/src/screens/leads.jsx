@@ -1,11 +1,14 @@
 import React from "react";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
+import { RowActions } from "../atoms.jsx";
+import { useData } from "../data.jsx";
 // SDR worklist — prioritized leads queue. Persona home for the SDR.
 
 const { useState: useStL } = React;
 
 function LeadsScreen({ persona }) {
   const { LEADS } = window.SEED;
+  const { openForm, openDelete } = useData();
   const [pri, setPri] = useStL("all");
   const filtered = LEADS.filter(l => pri === "all" || l.priority === pri).sort((a,b) => b.score - a.score);
 
@@ -25,18 +28,18 @@ function LeadsScreen({ persona }) {
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
           <span className="mono dim" style={{ fontSize: 11 }}>fila round-robin · {filtered.length} leads</span>
-          <button style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>+ novo lead</span></button>
+          <button onClick={() => openForm("leads")} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}><span style={{ fontSize: 11 }}>+ novo lead</span></button>
         </div>
       </div>
 
       <div style={{ flex: 1, overflow: "auto" }}>
-        {filtered.map((l, i) => <LeadCard key={l.id} l={l} idx={i} top={i === 0} />)}
+        {filtered.map((l, i) => <LeadCard key={l.id} l={l} idx={i} top={i === 0} onEdit={() => openForm("leads", l)} onDelete={() => openDelete("leads", l)} />)}
       </div>
     </div>
   );
 }
 
-function LeadCard({ l, idx, top }) {
+function LeadCard({ l, idx, top, onEdit, onDelete }) {
   const { SAAS } = window.SEED;
   const saas = SAAS.find(s => s.id === l.saas);
   const saasTone = saas ? window.productTone(saas) : "var(--fg-4)";
@@ -74,7 +77,7 @@ function LeadCard({ l, idx, top }) {
           : <button style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}>
               <span style={{ fontSize: 11 }}>contatar</span>
             </button>}
-        <button style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>dispensar</span></button>
+        <RowActions onEdit={onEdit} onDelete={onDelete} />
         <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
           <span style={{ width: 6, height: 6, borderRadius: 1, background: saasTone }} />
           <span className="mono dim" style={{ fontSize: 10 }}>{saas?.name || l.saas}</span>
