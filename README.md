@@ -97,6 +97,22 @@ docker compose down                                                 # para (mant
 Mudar a porta pública: `WEB_PORT=8080 docker compose up -d`. Para expor a API/MCP direto (sem
 passar pelo nginx), descomente os `ports:` no `docker-compose.yml`.
 
+### Easypanel / Render / Railway (um container só)
+
+PaaS que mapeia o domínio para **um container + uma porta** não combinam com o compose de 3
+serviços. Use o **`Dockerfile.allinone`**: ele empacota UI + API + MCP num único container,
+servidos por nginx na **porta 80** (`/` = UI, `/api` = REST, `/mcp` = MCP).
+
+No **Easypanel** (App a partir do repo GitHub):
+1. **Build:** Dockerfile → caminho `Dockerfile.allinone`.
+2. **Port (proxy):** `80`.
+3. **Volume:** monte em `/app/packages/api/data` (persiste o SQLite).
+4. **Env (opcional):** `COCKPIT_API_KEY` para exigir key nas escritas.
+
+O domínio do Easypanel já entrega HTTPS e faz proxy pra porta 80 do container.
+Se aparecer **"Service is not reachable"**, quase sempre é a **porta** apontando pra lugar
+errado (tem que ser 80) ou o container não subiu — veja os logs do serviço no Easypanel.
+
 ---
 
 ## Como os dados são guardados e atualizados
