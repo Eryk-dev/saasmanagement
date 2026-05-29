@@ -11,7 +11,7 @@ import express from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerTools } from "./tools.js";
-import { apiDocs } from "./apiClient.js";
+import { apiClient } from "./apiClient.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: join(__dirname, "..", "..", "..", ".env") });
@@ -35,8 +35,8 @@ app.use(express.json({ limit: "2mb" }));
 // Plain (non-MCP) health endpoint for liveness checks.
 app.get("/health", async (_req, res) => {
   let api = "unreachable";
-  try { api = (await apiDocs.health()).ok ? "ok" : "error"; } catch { /* keep unreachable */ }
-  res.json({ ok: true, service: "cockpit-mcp", role: "manual de conexão (não transmite dados)", transport: "streamable-http", endpoint: "/mcp", sessions: Object.keys(transports).length, api });
+  try { api = (await apiClient.health()).ok ? "ok" : "error"; } catch { /* keep unreachable */ }
+  res.json({ ok: true, service: "cockpit-mcp", transport: "streamable-http", endpoint: "/mcp", sessions: Object.keys(transports).length, api });
 });
 
 app.post("/mcp", async (req, res) => {
@@ -80,6 +80,6 @@ app.get("/mcp", handleSessionRequest);
 app.delete("/mcp", handleSessionRequest);
 
 app.listen(PORT, () => {
-  console.log(`Cockpit MCP (manual de conexão) ready on http://localhost:${PORT}/mcp`);
-  console.log(`  -> documenta a API em ${apiDocs.base} (não transmite dados)`);
+  console.log(`Cockpit MCP ready on http://localhost:${PORT}/mcp`);
+  console.log(`  -> API em ${apiClient.base}`);
 });
