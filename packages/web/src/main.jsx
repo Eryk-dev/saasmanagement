@@ -1,43 +1,81 @@
 // Boot sequence: load tokens, install fmt on window, fetch the full dataset from
 // the API into window.SEED, THEN dynamically import the app. The dynamic import
 // guarantees every (faithful) component module evaluates after window.SEED/window.fmt
-// exist — so modules that read window.SEED at import time (e.g. saas_dashboard's
-// health decomposition hydration) keep working unchanged.
+// exist — so modules that read window.SEED at import time keep working unchanged.
+//
+// Auth: if the API answers 401, we show a small unlock screen. The entered key is
+// stored (localStorage) and every request carries it from then on.
 
 import "./tokens.css";
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { fmt } from "./lib/format.js";
 import { loadSeed } from "./data.jsx";
+import { setKey, getKey } from "./lib/api.js";
 
 const root = createRoot(document.getElementById("root"));
 
-function Loading({ error }) {
+function Shell({ children }) {
   return (
     <div style={{
       height: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-      flexDirection: "column", gap: 10, color: "var(--fg-3)", fontFamily: "var(--sans)",
+      flexDirection: "column", gap: 14, color: "var(--fg-3)", fontFamily: "var(--sans)", background: "var(--bg-0)",
     }}>
       <div style={{ fontSize: 14, color: "var(--fg-1)", fontWeight: 600 }}>Cockpit · Portfolio OS</div>
+      {children}
+    </div>
+  );
+}
+
+function Loading({ error }) {
+  return (
+    <Shell>
       {error
         ? <div style={{ fontSize: 12, color: "var(--neg)", maxWidth: 420, textAlign: "center" }}>
             Could not reach the API.<br />Is it running on the configured base? <br />
             <span className="mono" style={{ fontSize: 11 }}>{String(error.message || error)}</span>
           </div>
         : <div style={{ fontSize: 12 }}>loading portfolio…</div>}
-    </div>
+    </Shell>
   );
 }
 
-(async () => {
-  window.fmt = fmt;
-  root.render(<Loading />);
+function Unlock({ failed }) {
+  const [val, setVal] = React.useState("");
+  function submit(e) {
+    e.preventDefault();
+    if (!val.trim()) return;
+    setKey(val.trim());
+    boot();
+  }
+  return (
+    <Shell>
+      <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10, width: 280, alignItems: "stretch" }}>
+        <div className="mono dim" style={{ fontSize: 12, textAlign: "center" }}>Acesso restrito · informe a chave</div>
+        <input
+          type="password" value={val} autoFocus placeholder="chave de acesso"
+          onChange={(e) => setVal(e.target.value)}
+          style={{ height: 34, padding: "0 10px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, fontFamily: "var(--mono)" }}
+        />
+        {failed && <div className="mono" style={{ fontSize: 11, color: "var(--neg)", textAlign: "center" }}>chave inválida</div>}
+        <button type="submit" style={{ height: 34, background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500 }}>Entrar</button>
+      </form>
+    </Shell>
+  );
+}
+
+async function boot() {
   try {
     await loadSeed();
     const { App } = await import("./app.jsx");
     root.render(<App />);
   } catch (err) {
+    if (err && err.status === 401) { root.render(<Unlock failed={!!getKey()} />); return; }
     console.error(err);
     root.render(<Loading error={err} />);
   }
-})();
+}
+
+window.fmt = fmt;
+root.render(<Loading />);
+boot();

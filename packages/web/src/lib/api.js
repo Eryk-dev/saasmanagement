@@ -1,13 +1,25 @@
 // Thin API client for the cockpit web app. In dev, VITE_API_BASE is empty and
 // Vite proxies /api -> the Fastify server. For a remote build, set VITE_API_BASE.
+//
+// Auth: when the API requires a key, it's entered once in the unlock screen and
+// kept in localStorage; every request carries it as `x-api-key`. VITE_API_KEY is
+// a build-time fallback (mostly for local dev convenience).
 
 const BASE = import.meta.env.VITE_API_BASE || "";
-const KEY = import.meta.env.VITE_API_KEY || "";
+const STORAGE_KEY = "cockpit_key";
+
+export function getKey() {
+  try { return localStorage.getItem(STORAGE_KEY) || import.meta.env.VITE_API_KEY || ""; }
+  catch { return import.meta.env.VITE_API_KEY || ""; }
+}
+export function setKey(k) { try { localStorage.setItem(STORAGE_KEY, k); } catch { /* ignore */ } }
+export function clearKey() { try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ } }
 
 async function req(method, path, body) {
   const headers = {};
   if (body !== undefined) headers["content-type"] = "application/json";
-  if (KEY) headers["x-api-key"] = KEY;
+  const key = getKey();
+  if (key) headers["x-api-key"] = key;
   const res = await fetch(`${BASE}${path}`, {
     method,
     headers,
@@ -15,7 +27,9 @@ async function req(method, path, body) {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`API ${method} ${path} -> ${res.status} ${text}`);
+    const err = new Error(`API ${method} ${path} -> ${res.status} ${text}`);
+    err.status = res.status;
+    throw err;
   }
   return res.status === 204 ? null : res.json();
 }

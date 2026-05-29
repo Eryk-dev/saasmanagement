@@ -17,6 +17,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: join(__dirname, "..", "..", "..", ".env") });
 
 const PORT = Number(process.env.MCP_PORT || 8788);
+// Auth: when set, every /mcp request must carry the key. Falls back to the same
+// key the API uses, so one secret protects the whole stack.
+const MCP_KEY = process.env.MCP_AUTH_KEY || process.env.COCKPIT_API_KEY || "";
+
+function providedKey(req) {
+  const h = req.headers["x-api-key"];
+  if (h) return Array.isArray(h) ? h[0] : h;
+  const auth = req.headers["authorization"] || "";
+  return auth.startsWith("Bearer ") ? auth.slice(7) : "";
+}
 
 function buildServer() {
   const server = new McpServer({ name: "cockpit", version: "1.0.0" });
@@ -31,6 +41,19 @@ const isInitialize = (body) =>
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
+
+// Guard the MCP endpoint when a key is configured. /health stays open for probes.
+app.use("/mcp", (req, res, next) => {
+  if (!MCP_KEY) return next();
+  if (providedKey(req) !== MCP_KEY) {
+    return res.status(401).json({
+      jsonrpc: "2.0",
+      error: { code: -32001, message: "Unauthorized: missing or invalid key" },
+      id: null,
+    });
+  }
+  next();
+});
 
 // Plain (non-MCP) health endpoint for liveness checks.
 app.get("/health", async (_req, res) => {
@@ -80,6 +103,6 @@ app.get("/mcp", handleSessionRequest);
 app.delete("/mcp", handleSessionRequest);
 
 app.listen(PORT, () => {
-  console.log(`Cockpit MCP ready on http://localhost:${PORT}/mcp`);
+  console.log(`Cockpit MCP ready on http://localhost:${PORT}/mcp  (auth: ${MCP_KEY ? "ON" : "off"})`);
   console.log(`  -> API em ${apiClient.base}`);
 });
