@@ -1,13 +1,15 @@
-#!/usr/bin/env bash
-# Sobe API + MCP (em background) e nginx (foreground) no mesmo container.
-# Se qualquer um morrer, derruba o container para o Easypanel reiniciar.
-set -euo pipefail
-
+#!/bin/sh
+# Sobe API + MCP + nginx no mesmo container (POSIX sh — sem depender de bash).
+# Se qualquer um dos três cair, encerra o container para o Easypanel reiniciar.
 echo "[start] API :8787 + MCP :8788 + nginx :80"
-node packages/api/src/index.js &
-node packages/mcp/src/index.js &
-nginx -g 'daemon off;' &
 
-wait -n
+node packages/api/src/index.js & api=$!
+node packages/mcp/src/index.js & mcp=$!
+nginx -g 'daemon off;' & ng=$!
+
+while kill -0 "$api" "$mcp" "$ng" 2>/dev/null; do
+  sleep 5
+done
+
 echo "[start] um processo encerrou — derrubando o container para reinício"
 exit 1
