@@ -27,8 +27,18 @@ const CREATE_DEFAULTS = {
   leads: { priority: "P2", score: 0, icp: 0, value: "", reason: "", source: "Form", age: "agora", stage: "" },
 };
 
+// Receita e nº de clientes são DERIVADOS da coleção `customers`, não dos campos
+// crus do produto — assim um SaaS nunca exibe receita sem clientes registrados.
+// `customers` = qtd de clientes daquele saas; `arr` = soma do ARR deles; `mrr` = arr/12.
+function rollupProduct(p, customers) {
+  const mine = customers.filter((c) => c.saas === p.id);
+  const arr = mine.reduce((a, c) => a + (Number(c.arr) || 0), 0);
+  return { ...p, customers: mine.length, arr, mrr: Math.round(arr / 12) };
+}
+const rollupProducts = (products, customers) => products.map((p) => rollupProduct(p, customers));
+
 function computePortfolio() {
-  const saas = repo.list("products");
+  const saas = rollupProducts(repo.list("products"), repo.list("customers"));
   const sum = (k) => saas.reduce((a, s) => a + (Number(s[k]) || 0), 0);
   return {
     mrr: sum("mrr"),
@@ -81,7 +91,7 @@ export function registerRoutes(app) {
 
   // Everything the cockpit web app needs in one shot (mirrors window.SEED).
   app.get("/api/bootstrap", async () => ({
-    SAAS: repo.list("products"),
+    SAAS: rollupProducts(repo.list("products"), repo.list("customers")),
     PORTFOLIO: computePortfolio(),
     ATTENTION: repo.list("attention"),
     DEALS: repo.list("deals"),
@@ -112,6 +122,7 @@ export function registerRoutes(app) {
     let items = repo.list(collection);
     const f = listFilter(collection, req.query);
     if (f) items = items.filter(f);
+    if (collection === "products") items = rollupProducts(items, repo.list("customers"));
     return items;
   });
 
@@ -120,7 +131,7 @@ export function registerRoutes(app) {
     if (!COLLECTION_NAMES.includes(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
     const item = repo.get(collection, id);
     if (!item) return reply.code(404).send({ error: "Not found" });
-    return item;
+    return collection === "products" ? rollupProduct(item, repo.list("customers")) : item;
   });
 
   app.post("/api/:collection", async (req, reply) => {

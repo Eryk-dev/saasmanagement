@@ -39,10 +39,8 @@ export const ENTITIES = {
       { key: "accent", label: "Cor", type: "select", options: ACCENT_OPTS, default: 240 },
       { key: "plan", label: "Plano", type: "text", placeholder: "Enterprise" },
       { key: "motion", label: "Motion", type: "text", placeholder: "Liderado por vendas" },
-      { key: "mrr", label: "MRR", type: "money" },
-      { key: "mrrDelta", label: "Δ MRR (MoM)", type: "money" },
-      { key: "arr", label: "ARR", type: "money" },
-      { key: "customers", label: "Clientes", type: "number" },
+      // MRR/ARR/Clientes não são editáveis: derivam da coleção de clientes (cadastre
+      // clientes na aba Clientes e os números do card se atualizam sozinhos).
       { key: "nrr", label: "NRR", type: "pct", help: "118 = 118%" },
       { key: "grr", label: "GRR", type: "pct" },
       { key: "churnRate", label: "Churn mensal", type: "pct" },
