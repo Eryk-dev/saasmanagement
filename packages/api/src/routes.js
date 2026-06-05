@@ -4,6 +4,7 @@
 import { repo, COLLECTION_NAMES } from "./db.js";
 import { PORTFOLIO_CONST } from "./seed-data.js";
 import { openapi, docsHtml } from "./openapi.js";
+import { runProposal, integrationStatus } from "./levercopy.js";
 
 // Collections external SaaS are allowed to write to via REST/MCP.
 const WRITABLE = new Set(COLLECTION_NAMES);
@@ -91,6 +92,9 @@ export function registerRoutes(app) {
     LEADERBOARD_MONTH: repo.list("leaderboard_month"),
     LEADERBOARD_ALL: repo.list("leaderboard_all"),
     GOALS: repo.list("goals"),
+    // Estado de integrações que a UI precisa pra decidir o que renderizar
+    // (ex.: mostrar o botão "Gerar proposta" só nos leads do SaaS do Levercopy).
+    CONFIG: { levercopy: integrationStatus() },
   }));
 
   app.get("/api/portfolio", async () => computePortfolio());
@@ -142,5 +146,23 @@ export function registerRoutes(app) {
     const ok = repo.remove(collection, id);
     if (!ok) return reply.code(404).send({ error: "Not found" });
     return { ok: true, id };
+  });
+
+  // ── Cockpit → Levercopy: gera/re-gera a proposta de um lead ────────────────
+  // `?auto=1`  → gatilho automático (a UI chama após criar um lead): respeita a
+  //              idempotência (pula se já tem proposta) e a elegibilidade (saas/config).
+  // `?force=1` → re-gerar manual: sobrescreve as URLs salvas.
+  // Best-effort: só 404 (lead inexistente) é erro; skip/falha de geração voltam 200
+  // com { ok:false, ... } pra UI mostrar o estado sem quebrar nada (fail-open).
+  app.post("/api/leads/:id/proposal", async (req, reply) => {
+    const lead = repo.get("leads", req.params.id);
+    if (!lead) return reply.code(404).send({ error: "Not found" });
+    const auto = req.query.auto === "1" || req.query.auto === "true";
+    const force = req.query.force === "1" || req.query.force === "true";
+    const result = await runProposal(repo, lead, { auto, force });
+    if (!result.ok && result.error) {
+      req.log.warn({ leadId: lead.id, status: result.status, err: result.error }, "Levercopy proposal failed");
+    }
+    return result;
   });
 }

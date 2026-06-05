@@ -189,6 +189,7 @@ Base: `http://localhost:8787`. Leitura aberta; escrita exige `x-api-key` **apena
 | `POST` | `/api/:collection` | cria (id gerado se omitido) |
 | `PATCH` | `/api/:collection/:id` | atualiza por merge |
 | `DELETE` | `/api/:collection/:id` | apaga |
+| `POST` | `/api/leads/:id/proposal?auto=1\|force=1` | gera/re-gera a proposta no Levercopy (ver abaixo) |
 | `GET` | `/api/leaderboard?scope=month\|all` | conveniência |
 | `GET` | `/api/openapi.json` | spec OpenAPI (para máquina/codegen) |
 | `GET` | `/api/docs` | **doc interativa** (Redoc) |
@@ -223,6 +224,24 @@ curl -X PATCH http://localhost:8787/api/products/meusaas \
 
 Mapa completo dos campos do lead: abra `/api/docs` ou use a tool `connect_a_form` do MCP.
 Se `COCKPIT_API_KEY` estiver definido, acrescente `-H "x-api-key: <key>"` nas escritas.
+
+### Integração Levercopy (Cockpit → Levercopy)
+
+Mão dupla com o Levercopy: o **inbound** (form `/diagnostico` → `POST /api/leads`) já existia; o
+**outbound** é esta feature. Ao **criar um lead manual** do SaaS Levercopy (`saas = LEVERCOPY_SAAS_ID`,
+default `leverads`), a UI dispara `POST /api/leads/:id/proposal?auto=1`, que chama o Levercopy
+(`POST {LEVERCOPY_API_URL}/api/proposta/generate`, header `X-Cockpit-Key`) e grava
+`proposta_id` / `proposalUrl` / `proposal_edit_url` no lead. No card há **"gerar proposta"** (quando
+ainda não tem) e **"re-gerar"** (`?force=1`, sobrescreve). *Schemaless:* esses campos entram no
+próprio JSON do lead — **sem migração**.
+
+- **Env:** `LEVERCOPY_API_URL`, `LEVERCOPY_INGEST_KEY` (== `COCKPIT_INGEST_KEY` no Levercopy),
+  `LEVERCOPY_SAAS_ID`. Sem a key, a integração fica **desligada graciosamente** (fail-open, sem 500).
+- **Idempotência:** o gatilho automático **pula** se o lead já tem `proposta_id`; só "re-gerar" força.
+- **Gotcha do round-trip:** o `generate` do Levercopy espelha o lead de volta (`POST /api/leads`) e
+  poderia **duplicar**. Caminho adotado — **os dois**: mandamos `cockpit_lead_id` no body (o Levercopy
+  pula o espelho quando passar a suportá-lo) **e** deduplicamos aqui pelo `cockpit_lead_id` devolvido,
+  removendo o lead espelhado. ➜ *Ação no Levercopy:* aceitar `cockpit_lead_id` e pular o espelhamento.
 
 ---
 

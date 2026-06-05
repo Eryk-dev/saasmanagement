@@ -71,7 +71,11 @@ export const openapi = {
       },
       Lead: {
         allOf: [
-          { type: "object", properties: { id: { type: "string", description: "Gerado se omitido.", example: "le_k9f2a" } } },
+          { type: "object", properties: {
+            id: { type: "string", description: "Gerado se omitido.", example: "le_k9f2a" },
+            proposta_id: { type: "string", description: "id da proposta gerada no Levercopy (preenchido pela integração).", example: "pr_abc123" },
+            proposal_edit_url: { type: "string", format: "uri", description: "Link de edição da proposta no Levercopy (com token).", example: "https://leverads.com.br/proposta/pr_abc123/edit?k=tok" },
+          } },
           { $ref: "#/components/schemas/LeadInput" },
         ],
       },
@@ -226,6 +230,28 @@ export const openapi = {
         responses: { 200: { description: "Lead atualizado", content: { "application/json": { schema: { $ref: "#/components/schemas/Lead" } } } } },
       },
       delete: { tags: ["Leads"], summary: "Apaga um lead", security: [{ ApiKeyAuth: [] }], responses: { 200: { description: "OK" } } },
+    },
+    "/api/leads/{id}/proposal": {
+      parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+      post: {
+        tags: ["Leads"],
+        summary: "Gera/re-gera a proposta do lead no Levercopy",
+        description:
+          "Cockpit → Levercopy. Chama o Levercopy pra gerar a proposta dinâmica do lead e grava " +
+          "`proposta_id`/`proposalUrl`/`proposal_edit_url`. Vale só pro SaaS `LEVERCOPY_SAAS_ID` e " +
+          "requer `LEVERCOPY_API_URL`+`LEVERCOPY_INGEST_KEY` no servidor. **Fail-open:** só 404 (lead " +
+          "inexistente) é erro; skip de elegibilidade/idempotência e falha de geração voltam **200** com " +
+          "`{ ok:false, skipped|error }`, então nunca quebram a criação do lead.",
+        security: [{ ApiKeyAuth: [] }],
+        parameters: [
+          { name: "auto", in: "query", schema: { type: "string", enum: ["1"] }, description: "Gatilho automático: respeita idempotência (pula se o lead já tem `proposta_id`)." },
+          { name: "force", in: "query", schema: { type: "string", enum: ["1"] }, description: "Re-gerar manual: sobrescreve as URLs salvas." },
+        ],
+        responses: {
+          200: { description: "Resultado `{ ok, lead?, skipped?, deduped?, error?, status? }`", content: { "application/json": { schema: { $ref: "#/components/schemas/Lead" } } } },
+          404: { description: "Lead não encontrado", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
     },
     "/api/products": {
       get: { tags: ["Produtos"], summary: "Lista produtos", responses: { 200: { description: "OK", content: { "application/json": { schema: { type: "array", items: { $ref: "#/components/schemas/Product" } } } } } } },

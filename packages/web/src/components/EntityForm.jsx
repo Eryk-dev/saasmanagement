@@ -74,6 +74,7 @@ function EntityForm({ entityKey, record, onClose, onSaved }) {
   const isEdit = !!(record && record.id);
   const [values, setValues] = useState(() => toInputs(cfg, record));
   const [busy, setBusy] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState(null);
 
   const set = (key, val) => setValues((v) => ({ ...v, [key]: val }));
@@ -87,8 +88,18 @@ function EntityForm({ entityKey, record, onClose, onSaved }) {
     setBusy(true); setError(null);
     try {
       const payload = toPayload(cfg, values);
-      if (isEdit) await api.update(cfg.collection, record.id, payload);
-      else await api.create(cfg.collection, payload);
+      if (isEdit) {
+        await api.update(cfg.collection, record.id, payload);
+      } else {
+        const created = await api.create(cfg.collection, payload);
+        // Best-effort: ao criar um lead, dispara a geração da proposta no Levercopy.
+        // O servidor decide a elegibilidade (saas/config) e nunca quebra a criação —
+        // se falhar, o lead já existe e o botão "Gerar proposta" cobre a 2ª tentativa.
+        if (cfg.collection === "leads" && created?.id) {
+          setGenerating(true);
+          try { await api.generateProposal(created.id, { auto: true }); } catch { /* fail-open */ }
+        }
+      }
       await onSaved(); // App closes the modal + refreshes (this component unmounts)
     } catch (err) {
       setBusy(false);
@@ -126,7 +137,7 @@ function EntityForm({ entityKey, record, onClose, onSaved }) {
           {error && <div className="mono" style={{ fontSize: 11, color: "var(--neg)", marginBottom: 8 }}>{error}</div>}
           <div style={{ display: "flex", gap: 8 }}>
             <button type="submit" disabled={busy} style={{ flex: 1, padding: "9px 12px", background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
-              {busy ? "Salvando…" : isEdit ? "Salvar" : "Criar"}
+              {generating ? "Gerando proposta…" : busy ? "Salvando…" : isEdit ? "Salvar" : "Criar"}
             </button>
             <button type="button" onClick={onClose} style={{ padding: "9px 16px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>
           </div>

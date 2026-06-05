@@ -46,4 +46,10 @@ export const api = {
   remove: (collection, id) => req("DELETE", `/api/${collection}/${id}`),
   // Convenience used by the pipeline drag-and-drop to persist a stage move.
   moveDeal: (id, stage) => req("PATCH", `/api/deals/${id}`, { stage }),
+  // Cockpit → Levercopy: gera/re-gera a proposta de um lead. `auto` = gatilho
+  // automático (best-effort, respeita idempotência); `force` = re-gerar manual.
+  generateProposal: (id, { auto = false, force = false } = {}) => {
+    const q = [auto && "auto=1", force && "force=1"].filter(Boolean).join("&");
+    return req("POST", `/api/leads/${id}/proposal${q ? `?${q}` : ""}`);
+  },
 };
