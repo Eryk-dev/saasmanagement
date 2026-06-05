@@ -91,6 +91,7 @@ function CustomerRow({ c, onOpen, active }) {
   const { SAAS } = window.SEED;
   const saas = SAAS.find(s => s.id === c.saas);
   const tone = c.health < 50 ? "var(--neg)" : c.health < 70 ? "var(--warn)" : "var(--pos)";
+  const usage = c.usage || ""; // tolerate a customer created without "Uso 7d"
   return (
     <button onClick={onOpen} style={{
       display: "grid",
@@ -117,7 +118,7 @@ function CustomerRow({ c, onOpen, active }) {
         <DeltaInline value={c.delta} unit="int" />
       </div>
       <span className="mono tnum" style={{ textAlign: "right", fontSize: 12 }}>{window.fmt.money(c.arr)}</span>
-      <span className="mono dim" style={{ fontSize: 12, color: c.usage.startsWith("−") ? "var(--neg)" : c.usage.startsWith("+") ? "var(--pos)" : "var(--fg-3)" }}>{c.usage}</span>
+      <span className="mono dim" style={{ fontSize: 12, color: usage.startsWith("−") ? "var(--neg)" : usage.startsWith("+") ? "var(--pos)" : "var(--fg-3)" }}>{c.usage}</span>
       <span className="mono dim tnum" style={{ fontSize: 12 }}>{c.lastTouch}</span>
       <span className="mono tnum" style={{ fontSize: 12, color: c.nps <= 6 ? "var(--neg)" : c.nps >= 9 ? "var(--pos)" : "var(--fg-2)" }}>{c.nps}</span>
       <span className="mono dim tnum" style={{ fontSize: 12 }}>{c.renewal}</span>
