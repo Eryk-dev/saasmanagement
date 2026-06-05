@@ -45,7 +45,8 @@ export const api = {
   update: (collection, id, patch) => req("PATCH", `/api/${collection}/${id}`, patch),
   remove: (collection, id) => req("DELETE", `/api/${collection}/${id}`),
   // Convenience used by the pipeline drag-and-drop to persist a stage move.
-  moveDeal: (id, stage) => req("PATCH", `/api/deals/${id}`, { stage }),
+  // Leads ARE the pipeline cards now, so a move patches the lead's stage.
+  moveLead: (id, stage) => req("PATCH", `/api/leads/${id}`, { stage }),
   // Cockpit → Levercopy: gera/re-gera a proposta de um lead. `auto` = gatilho
   // automático (best-effort, respeita idempotência); `force` = re-gerar manual.
   generateProposal: (id, { auto = false, force = false } = {}) => {

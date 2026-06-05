@@ -13,7 +13,7 @@ const fail = (e) => ({ content: [{ type: "text", text: `Erro: ${e.message || e}`
 const ALIASES = {
   saas: "products", product: "products", produto: "products", produtos: "products", products: "products",
   lead: "leads", leads: "leads",
-  deal: "deals", deals: "deals", negocio: "deals",
+  deal: "leads", deals: "leads", negocio: "leads",
   customer: "customers", customers: "customers", cliente: "customers", clientes: "customers",
   nps: "nps",
   goal: "goals", goals: "goals", meta: "goals", metas: "goals",
@@ -21,10 +21,10 @@ const ALIASES = {
   person: "people", people: "people", pessoa: "people", pessoas: "people",
   leaderboard: "leaderboard_month", leaderboard_month: "leaderboard_month", leaderboard_all: "leaderboard_all",
 };
-const COLLECTIONS = "products, deals, customers, leads, nps, goals, attention, people, leaderboard_month, leaderboard_all";
+const COLLECTIONS = "products, customers, leads, nps, goals, attention, people, leaderboard_month, leaderboard_all";
 function resolve(r) {
   const c = ALIASES[String(r || "").toLowerCase()];
-  if (!c) throw new Error(`Recurso desconhecido: "${r}". Use um de: saas/products, deals, customers, leads, nps, goals, attention, people, leaderboard_month, leaderboard_all.`);
+  if (!c) throw new Error(`Recurso desconhecido: "${r}". Use um de: saas/products, customers, leads, nps, goals, attention, people, leaderboard_month, leaderboard_all.`);
   return c;
 }
 
@@ -39,7 +39,7 @@ function schemaTable(schema = {}) {
   return t;
 }
 const RESOURCE_TO_SCHEMA = {
-  products: "Product", deals: "Deal", customers: "Customer", leads: "LeadInput",
+  products: "Product", customers: "Customer", leads: "LeadInput",
   nps: "NpsResponse", goals: "Goal",
 };
 
@@ -61,14 +61,14 @@ export function registerTools(server) {
 
   server.registerTool("list_records", {
     title: "Listar registros",
-    description: `Lista registros de uma coleção. resource: saas/products, deals, customers, leads, nps, goals, attention, people, leaderboard_month, leaderboard_all. Filtros opcionais conforme o recurso.`,
+    description: `Lista registros de uma coleção. resource: saas/products, customers, leads, nps, goals, attention, people, leaderboard_month, leaderboard_all. Filtros opcionais conforme o recurso.`,
     inputSchema: {
       resource: z.string().describe(`Coleção: ${COLLECTIONS} (aceita 'saas' = products)`),
-      saas: z.string().optional().describe("filtra deals/customers por produto"),
-      stage: z.string().optional().describe("filtra deals por estágio"),
-      owner: z.string().optional().describe("filtra deals por responsável"),
+      saas: z.string().optional().describe("filtra customers por produto"),
+      stage: z.string().optional().describe("(reservado) filtro por estágio do funil"),
+      owner: z.string().optional().describe("(reservado) filtro por responsável"),
       band: z.enum(["red", "yellow", "green"]).optional().describe("filtra customers por banda de saúde"),
-      priority: z.enum(["P0", "P1", "P2"]).optional().describe("filtra leads por prioridade"),
+      priority: z.enum(["P0", "P1", "P2"]).optional().describe("filtra leads (pipeline) por prioridade"),
       scope: z.string().optional().describe("filtra goals por escopo"),
     },
   }, async ({ resource, ...q }) => {
@@ -85,7 +85,7 @@ export function registerTools(server) {
 
   server.registerTool("create_record", {
     title: "Criar registro (cria SaaS, lead, deal, cliente…)",
-    description: `Cria um registro. Para CRIAR UM SAAS use resource='saas' (ou 'products'). Também cria leads, deals, customers, nps, goals, attention, people. Veja os campos de cada um com a tool resource_schema. Campos faltantes ganham defaults seguros (ex.: produto sem funil/métricas ainda renderiza).`,
+    description: `Cria um registro. Para CRIAR UM SAAS use resource='saas' (ou 'products'). Também cria leads (cards do pipeline), customers, nps, goals, attention, people. Veja os campos de cada um com a tool resource_schema. Campos faltantes ganham defaults seguros (ex.: produto sem funil/métricas ainda renderiza).`,
     inputSchema: {
       resource: z.string().describe(`Coleção a criar: ${COLLECTIONS} (ou 'saas')`),
       data: z.record(z.any()).describe("Objeto com os campos do registro. Ex. SaaS: { id, name, mrr, arr, health }"),
@@ -96,7 +96,7 @@ export function registerTools(server) {
 
   server.registerTool("update_record", {
     title: "Atualizar registro (merge)",
-    description: "Atualiza campos de um registro (merge — só os campos enviados mudam). Ex.: editar funil/config de um SaaS, anexar proposalUrl num lead, mudar saúde de um cliente, mover um deal (campo stage).",
+    description: "Atualiza campos de um registro (merge — só os campos enviados mudam). Ex.: editar funil/config de um SaaS, anexar proposalUrl num lead, mudar saúde de um cliente, mover um card do pipeline (campo stage).",
     inputSchema: {
       resource: z.string(),
       id: z.string(),
@@ -115,11 +115,11 @@ export function registerTools(server) {
   });
 
   server.registerTool("move_deal", {
-    title: "Mover deal de estágio",
-    description: "Atalho: move um deal para outro estágio do funil (reflete no kanban na hora).",
+    title: "Mover card de estágio",
+    description: "Atalho: move um lead/card do pipeline para outro estágio do funil (reflete no kanban na hora).",
     inputSchema: { id: z.string(), stage: z.string().describe("estágio de destino") },
   }, async ({ id, stage }) => {
-    try { return out(await apiClient.update("deals", id, { stage })); } catch (e) { return fail(e); }
+    try { return out(await apiClient.update("leads", id, { stage })); } catch (e) { return fail(e); }
   });
 
   server.registerTool("leaderboard", {
@@ -141,8 +141,8 @@ export function registerTools(server) {
 - **API:** \`${API_BASE}\`  ·  **Doc:** \`${API_BASE}/api/docs\`  ·  **OpenAPI:** \`${API_BASE}/api/openapi.json\`
 - **Auth:** leituras abertas; escritas exigem header \`x-api-key\` se o servidor tiver \`COCKPIT_API_KEY\`.
 
-**Dá pra fazer tudo por aqui:** criar SaaS (create_record resource='saas'), leads, deals, clientes,
-mover deal (move_deal), editar configuração/funil (update_record), ler agregados (portfolio_summary).
+**Dá pra fazer tudo por aqui:** criar SaaS (create_record resource='saas'), leads (cards do pipeline), clientes,
+mover card (move_deal), editar configuração/funil (update_record), ler agregados (portfolio_summary).
 
 **Fluxo de form:** \`create_record(resource:'lead', …)\` → gere a proposta fora → grave o link com
 \`update_record(resource:'lead', id, { proposalUrl })\`.`));
@@ -179,7 +179,7 @@ ${table}`);
 
   server.registerTool("resource_schema", {
     title: "Schema de um recurso",
-    description: "Campos de um recurso (útil antes de create_record/update_record). resource: saas/product, lead, customer, deal, nps, goal.",
+    description: "Campos de um recurso (útil antes de create_record/update_record). resource: saas/product, lead, customer, nps, goal.",
     inputSchema: { resource: z.string() },
   }, async ({ resource }) => {
     try {

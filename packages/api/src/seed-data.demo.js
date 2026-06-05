@@ -183,45 +183,6 @@ export const ATTENTION = [
   },
 ];
 
-export const DEALS = [
-  { id: "d1",  title: "Helios Media",      company: "Helios Media",   amount: 84_000,  stage: "Prospect",    owner: "JC", age: 3,  score: "warm", contacts: 2, source: "Outbound", saas: "leverads" },
-  { id: "d2",  title: "Northwind Trading", company: "Northwind",      amount: 142_000, stage: "Prospect",    owner: "PR", age: 8,  score: "cold", contacts: 1, source: "Inbound",  saas: "leverads" },
-  { id: "d3",  title: "Civic Labs",        company: "Civic Labs",     amount: 28_000,  stage: "Prospect",    owner: "JC", age: 1,  score: "hot",  contacts: 4, source: "Indicação", saas: "leverads" },
-  { id: "d4",  title: "Acme Logistics",    company: "Acme Logistics", amount: 96_000,  stage: "Qualify",     owner: "PR", age: 6,  score: "warm", contacts: 3, source: "Outbound", saas: "leverads" },
-  { id: "d5",  title: "Blueprint",         company: "Blueprint",      amount: 22_000,  stage: "Qualify",     owner: "MK", age: 12, score: "cold", contacts: 2, source: "Evento",    saas: "leverads" },
-  { id: "d6",  title: "Vertex Cloud",      company: "Vertex Cloud",   amount: 124_000, stage: "Discovery",   owner: "PR", age: 18, score: "warm", contacts: 5, source: "Outbound", flag: "stuck", saas: "leverads" },
-  { id: "d7",  title: "Ferro Group",       company: "Ferro",          amount: 168_000, stage: "Discovery",   owner: "MK", age: 22, score: "hot",  contacts: 6, source: "Inbound",  flag: "stuck", saas: "leverads" },
-  { id: "d8",  title: "Polaris Bank",      company: "Polaris",        amount: 210_000, stage: "Discovery",   owner: "JC", age: 15, score: "warm", contacts: 4, source: "Outbound", flag: "stuck", saas: "leverads" },
-  { id: "d9",  title: "Tessera",           company: "Tessera",        amount: 38_000,  stage: "Discovery",   owner: "PR", age: 9,  score: "warm", contacts: 3, source: "Indicação", saas: "leverads" },
-  { id: "d10", title: "Hartwell Foods",    company: "Hartwell",       amount: 76_000,  stage: "Proposal",    owner: "MK", age: 5,  score: "hot",  contacts: 4, source: "Outbound", proposal: "visto 4x · 3:21 méd", saas: "leverads" },
-  { id: "d11", title: "Atlas Bio",         company: "Atlas Bio",      amount: 132_000, stage: "Proposal",    owner: "JC", age: 11, score: "warm", contacts: 5, source: "Inbound",  proposal: "parado 4d · 0 aberturas", saas: "leverads" },
-  { id: "d12", title: "Lumen Capital",     company: "Lumen",          amount: 88_000,  stage: "Negotiation", owner: "PR", age: 4,  score: "hot",  contacts: 6, source: "Indicação", saas: "leverads" },
-  { id: "d13", title: "Cedar Health",      company: "Cedar",          amount: 64_000,  stage: "Closed Won",  owner: "MK", age: 0,  score: "hot",  contacts: 5, source: "Outbound", saas: "leverads" },
-  { id: "d14", title: "Stride Apparel",    company: "Stride",         amount: 42_000,  stage: "Closed Won",  owner: "JC", age: 0,  score: "warm", contacts: 3, source: "Inbound",  saas: "leverads" },
-
-  // Synthetic deals for Quill & Mesa so the stacked "All pipelines" view has real content.
-  { id: "q1",  title: "Pivot Apps",    company: "Pivot Apps",    stage: "Aha",      amount: 1200, score: "hot",  owner: "PR", age: 1,  contacts: 1, source: "PLG",      saas: "quill" },
-  { id: "q2",  title: "Curio",         company: "Curio",         stage: "Trial",    amount: 900,  score: "warm", owner: "SS", age: 2,  contacts: 1, source: "PLG",      saas: "quill" },
-  { id: "q3",  title: "Drift Co.",     company: "Drift Co.",     stage: "Signup",   amount: 0,    score: "cold", owner: "AB", age: 0,  contacts: 1, source: "PLG",      saas: "quill" },
-  { id: "q4",  title: "Maple Studio",  company: "Maple Studio",  stage: "Signup",   amount: 0,    score: "warm", owner: "SS", age: 1,  contacts: 1, source: "PLG",      saas: "quill" },
-  { id: "q5",  title: "Inkwell",       company: "Inkwell",       stage: "Trial",    amount: 1500, score: "hot",  owner: "PR", age: 3,  contacts: 1, source: "PLG",      saas: "quill" },
-  { id: "q6",  title: "Roma Studios",  company: "Roma Studios",  stage: "Paid",     amount: 1200, score: "warm", owner: "AB", age: 5,  contacts: 1, source: "PLG",      saas: "quill" },
-  { id: "q7",  title: "Vega Type",     company: "Vega Type",     stage: "Aha",      amount: 600,  score: "warm", owner: "SS", age: 2,  contacts: 1, source: "PLG",      saas: "quill" },
-  { id: "q8",  title: "Foliage",       company: "Foliage",       stage: "Paid",     amount: 2400, score: "hot",  owner: "PR", age: 8,  contacts: 1, source: "PLG",      saas: "quill" },
-  { id: "q9",  title: "Quartz",        company: "Quartz",        stage: "Retained", amount: 1200, score: "warm", owner: "AB", age: 30, contacts: 1, source: "PLG",      saas: "quill" },
-  { id: "q10", title: "Lumio",         company: "Lumio",         stage: "Signup",   amount: 0,    score: "cold", owner: "SS", age: 0,  contacts: 1, source: "PLG",      saas: "quill" },
-
-  { id: "m1",  title: "Forge & Co.",     company: "Forge & Co.",     stage: "Prospect", amount: 28_000, score: "warm", owner: "MK", age: 4,  contacts: 2, source: "Outbound", saas: "mesa" },
-  { id: "m2",  title: "Beacon Health",   company: "Beacon Health",   stage: "Qualify",  amount: 32_000, score: "hot",  owner: "AB", age: 3,  contacts: 2, source: "Outbound", saas: "mesa" },
-  { id: "m3",  title: "Cargo Liné",      company: "Cargo Liné",      stage: "Prospect", amount: 18_000, score: "cold", owner: "SS", age: 9,  contacts: 2, source: "Outbound", saas: "mesa" },
-  { id: "m4",  title: "Atlas Depot",     company: "Atlas Depot",     stage: "Pilot",    amount: 44_000, score: "warm", owner: "MK", age: 12, contacts: 2, source: "Outbound", saas: "mesa" },
-  { id: "m5",  title: "Northwind",       company: "Northwind",       stage: "Pilot",    amount: 84_000, score: "warm", owner: "AB", age: 18, contacts: 2, source: "Outbound", flag: "stuck", saas: "mesa" },
-  { id: "m6",  title: "Stride Apparel",  company: "Stride Apparel",  stage: "Proposal", amount: 22_000, score: "hot",  owner: "SS", age: 5,  contacts: 2, source: "Outbound", saas: "mesa" },
-  { id: "m7",  title: "Tessera",         company: "Tessera",         stage: "Proposal", amount: 38_000, score: "warm", owner: "MK", age: 7,  contacts: 2, source: "Outbound", saas: "mesa" },
-  { id: "m8",  title: "Granary",         company: "Granary",         stage: "Qualify",  amount: 26_000, score: "warm", owner: "AB", age: 6,  contacts: 2, source: "Outbound", saas: "mesa" },
-  { id: "m9",  title: "Blueprint",       company: "Blueprint",       stage: "Closed",   amount: 58_000, score: "hot",  owner: "SS", age: 0,  contacts: 2, source: "Outbound", saas: "mesa" },
-];
-
 // People are keyed by id in the prototype (PEOPLE object). Stored as rows; the
 // bootstrap endpoint rebuilds the keyed object.
 export const PEOPLE = {
@@ -247,15 +208,58 @@ export const CUSTOMERS = [
   { id: "c10", name: "Vertex Cloud",      saas: "leverads", plan: "Enterprise", arr: 124_000, health: 82, delta: +3,  usage: "+8% s/s",  lastTouch: "1d",  csm: "SS", nps: 9, renewal: "245d", flags: ["expansion"] },
 ];
 
+// Funil unificado: os LEADS SÃO os cards do pipeline. As 8 primeiras entradas são
+// leads "puros" (worklist), enriquecidas com `amount`/`owner`; as demais (ids d*/q*/m*)
+// vieram da migração dos antigos `deals` — `name` = título, `score` numérico (quente=85,
+// morno=65, frio=40), `priority` derivada do calor. Espalhadas por todos os estágios.
 export const LEADS = [
-  { id: "l1", name: "Mara Olin",    company: "Drift Robotics", saas: "leverads", stage: "Prospect", priority: "P0", score: 92, source: "Form · LP /pricing", age: "12m", icp: 0.95, reason: "Enterprise · 200+ funcionários · bate com o ICP", value: "Ent" },
-  { id: "l2", name: "Theo Anand",   company: "Northwind",      saas: "leverads", stage: "Prospect", priority: "P0", score: 87, source: "Inbound · form de demo", age: "31m", icp: 0.91, reason: "Cargo de champion · visitante recorrente · 4 sessões", value: "Ent" },
-  { id: "l3", name: "Roma Vance",   company: "Pivot Apps",     saas: "quill",    stage: "Aha",      priority: "P1", score: 71, source: "Signup PLG",         age: "2h",  icp: 0.74, reason: "Atingiu o Aha em 7min · provável conversão", value: "SMB" },
-  { id: "l4", name: "Cleo Han",     company: "Helios Media",   saas: "leverads", stage: "Qualify",  priority: "P1", score: 68, source: "Indicação",           age: "4h",  icp: 0.82, reason: "Indicado pela Cedar Health", value: "Ent" },
-  { id: "l5", name: "Jin Park",     company: "Forge & Co.",    saas: "mesa",     stage: "Prospect", priority: "P2", score: 54, source: "Evento",              age: "1d",  icp: 0.62, reason: "Conversa no estande · follow-up pendente", value: "Mid" },
-  { id: "l6", name: "Niko Brent",   company: "Solis",          saas: "leverads", stage: "Prospect", priority: "P2", score: 48, source: "Cold",               age: "2d",  icp: 0.58, reason: "Bate com a persona · sem sinal de engajamento", value: "Ent" },
-  { id: "l7", name: "Asha Patel",   company: "Beacon Health",  saas: "mesa",     stage: "Prospect", priority: "P1", score: 76, source: "Webinar",            age: "3h",  icp: 0.84, reason: "Assistiu a sessão toda · baixou a calc de ROI", value: "Mid" },
-  { id: "l8", name: "Felix Yamada", company: "Curio",          saas: "quill",    stage: "Trial",    priority: "P2", score: 62, source: "Signup PLG",         age: "1d",  icp: 0.69, reason: "Padrão de power user · 14 docs criados no dia 2", value: "SMB" },
+  { id: "l1", name: "Mara Olin",    company: "Drift Robotics", saas: "leverads", stage: "Prospect", priority: "P0", score: 92, amount: 90_000,  owner: "JC", source: "Form · LP /pricing", age: "12m", icp: 0.95, reason: "Enterprise · 200+ funcionários · bate com o ICP", value: "Ent" },
+  { id: "l2", name: "Theo Anand",   company: "Northwind",      saas: "leverads", stage: "Prospect", priority: "P0", score: 87, amount: 120_000, owner: "PR", source: "Inbound · form de demo", age: "31m", icp: 0.91, reason: "Cargo de champion · visitante recorrente · 4 sessões", value: "Ent" },
+  { id: "l3", name: "Roma Vance",   company: "Pivot Apps",     saas: "quill",    stage: "Aha",      priority: "P1", score: 71, amount: 1_200,   owner: "SS", source: "Signup PLG",         age: "2h",  icp: 0.74, reason: "Atingiu o Aha em 7min · provável conversão", value: "SMB" },
+  { id: "l4", name: "Cleo Han",     company: "Helios Media",   saas: "leverads", stage: "Qualify",  priority: "P1", score: 68, amount: 64_000,  owner: "MK", source: "Indicação",           age: "4h",  icp: 0.82, reason: "Indicado pela Cedar Health", value: "Ent" },
+  { id: "l5", name: "Jin Park",     company: "Forge & Co.",    saas: "mesa",     stage: "Prospect", priority: "P2", score: 54, amount: 28_000,  owner: "MK", source: "Evento",              age: "1d",  icp: 0.62, reason: "Conversa no estande · follow-up pendente", value: "Mid" },
+  { id: "l6", name: "Niko Brent",   company: "Solis",          saas: "leverads", stage: "Prospect", priority: "P2", score: 48, amount: 40_000,  owner: "PR", source: "Cold",               age: "2d",  icp: 0.58, reason: "Bate com a persona · sem sinal de engajamento", value: "Ent" },
+  { id: "l7", name: "Asha Patel",   company: "Beacon Health",  saas: "mesa",     stage: "Prospect", priority: "P1", score: 76, amount: 32_000,  owner: "AB", source: "Webinar",            age: "3h",  icp: 0.84, reason: "Assistiu a sessão toda · baixou a calc de ROI", value: "Mid" },
+  { id: "l8", name: "Felix Yamada", company: "Curio",          saas: "quill",    stage: "Trial",    priority: "P2", score: 62, amount: 900,     owner: "AB", source: "Signup PLG",         age: "1d",  icp: 0.69, reason: "Padrão de power user · 14 docs criados no dia 2", value: "SMB" },
+
+  // ── migrados dos antigos deals (LeverAds) ──
+  { id: "d1",  name: "Helios Media",      company: "Helios Media",   saas: "leverads", stage: "Prospect",    amount: 84_000,  owner: "JC", age: 3,  score: 65, priority: "P1", icp: 0.70, value: "Ent", source: "Outbound" },
+  { id: "d2",  name: "Northwind Trading", company: "Northwind",      saas: "leverads", stage: "Prospect",    amount: 142_000, owner: "PR", age: 8,  score: 40, priority: "P2", icp: 0.50, value: "Ent", source: "Inbound" },
+  { id: "d3",  name: "Civic Labs",        company: "Civic Labs",     saas: "leverads", stage: "Prospect",    amount: 28_000,  owner: "JC", age: 1,  score: 85, priority: "P0", icp: 0.90, value: "Ent", source: "Indicação" },
+  { id: "d4",  name: "Acme Logistics",    company: "Acme Logistics", saas: "leverads", stage: "Qualify",     amount: 96_000,  owner: "PR", age: 6,  score: 65, priority: "P1", icp: 0.70, value: "Ent", source: "Outbound" },
+  { id: "d5",  name: "Blueprint",         company: "Blueprint",      saas: "leverads", stage: "Qualify",     amount: 22_000,  owner: "MK", age: 12, score: 40, priority: "P2", icp: 0.50, value: "Ent", source: "Evento" },
+  { id: "d6",  name: "Vertex Cloud",      company: "Vertex Cloud",   saas: "leverads", stage: "Discovery",   amount: 124_000, owner: "PR", age: 18, score: 65, priority: "P1", icp: 0.70, value: "Ent", source: "Outbound", flag: "stuck" },
+  { id: "d7",  name: "Ferro Group",       company: "Ferro",          saas: "leverads", stage: "Discovery",   amount: 168_000, owner: "MK", age: 22, score: 85, priority: "P0", icp: 0.90, value: "Ent", source: "Inbound", flag: "stuck" },
+  { id: "d8",  name: "Polaris Bank",      company: "Polaris",        saas: "leverads", stage: "Discovery",   amount: 210_000, owner: "JC", age: 15, score: 65, priority: "P1", icp: 0.70, value: "Ent", source: "Outbound", flag: "stuck" },
+  { id: "d9",  name: "Tessera",           company: "Tessera",        saas: "leverads", stage: "Discovery",   amount: 38_000,  owner: "PR", age: 9,  score: 65, priority: "P1", icp: 0.70, value: "Ent", source: "Indicação" },
+  { id: "d10", name: "Hartwell Foods",    company: "Hartwell",       saas: "leverads", stage: "Proposal",    amount: 76_000,  owner: "MK", age: 5,  score: 85, priority: "P0", icp: 0.90, value: "Ent", source: "Outbound", proposal: "visto 4x · 3:21 méd" },
+  { id: "d11", name: "Atlas Bio",         company: "Atlas Bio",      saas: "leverads", stage: "Proposal",    amount: 132_000, owner: "JC", age: 11, score: 65, priority: "P1", icp: 0.70, value: "Ent", source: "Inbound", proposal: "parado 4d · 0 aberturas" },
+  { id: "d12", name: "Lumen Capital",     company: "Lumen",          saas: "leverads", stage: "Negotiation", amount: 88_000,  owner: "PR", age: 4,  score: 85, priority: "P0", icp: 0.90, value: "Ent", source: "Indicação" },
+  { id: "d13", name: "Cedar Health",      company: "Cedar",          saas: "leverads", stage: "Closed Won",  amount: 64_000,  owner: "MK", age: 0,  score: 85, priority: "P0", icp: 0.90, value: "Ent", source: "Outbound" },
+  { id: "d14", name: "Stride Apparel",    company: "Stride",         saas: "leverads", stage: "Closed Won",  amount: 42_000,  owner: "JC", age: 0,  score: 65, priority: "P1", icp: 0.70, value: "Ent", source: "Inbound" },
+
+  // ── migrados dos antigos deals (Quill) ──
+  { id: "q1",  name: "Pivot Apps",   company: "Pivot Apps",   saas: "quill", stage: "Aha",      amount: 1_200, owner: "PR", age: 1,  score: 85, priority: "P0", icp: 0.90, value: "SMB", source: "PLG" },
+  { id: "q2",  name: "Curio",        company: "Curio",        saas: "quill", stage: "Trial",    amount: 900,   owner: "SS", age: 2,  score: 65, priority: "P1", icp: 0.70, value: "SMB", source: "PLG" },
+  { id: "q3",  name: "Drift Co.",    company: "Drift Co.",    saas: "quill", stage: "Signup",   amount: 0,     owner: "AB", age: 0,  score: 40, priority: "P2", icp: 0.50, value: "SMB", source: "PLG" },
+  { id: "q4",  name: "Maple Studio", company: "Maple Studio", saas: "quill", stage: "Signup",   amount: 0,     owner: "SS", age: 1,  score: 65, priority: "P1", icp: 0.70, value: "SMB", source: "PLG" },
+  { id: "q5",  name: "Inkwell",      company: "Inkwell",      saas: "quill", stage: "Trial",    amount: 1_500, owner: "PR", age: 3,  score: 85, priority: "P0", icp: 0.90, value: "SMB", source: "PLG" },
+  { id: "q6",  name: "Roma Studios", company: "Roma Studios", saas: "quill", stage: "Paid",     amount: 1_200, owner: "AB", age: 5,  score: 65, priority: "P1", icp: 0.70, value: "SMB", source: "PLG" },
+  { id: "q7",  name: "Vega Type",    company: "Vega Type",    saas: "quill", stage: "Aha",      amount: 600,   owner: "SS", age: 2,  score: 65, priority: "P1", icp: 0.70, value: "SMB", source: "PLG" },
+  { id: "q8",  name: "Foliage",      company: "Foliage",      saas: "quill", stage: "Paid",     amount: 2_400, owner: "PR", age: 8,  score: 85, priority: "P0", icp: 0.90, value: "SMB", source: "PLG" },
+  { id: "q9",  name: "Quartz",       company: "Quartz",       saas: "quill", stage: "Retained", amount: 1_200, owner: "AB", age: 30, score: 65, priority: "P1", icp: 0.70, value: "SMB", source: "PLG" },
+  { id: "q10", name: "Lumio",        company: "Lumio",        saas: "quill", stage: "Signup",   amount: 0,     owner: "SS", age: 0,  score: 40, priority: "P2", icp: 0.50, value: "SMB", source: "PLG" },
+
+  // ── migrados dos antigos deals (Mesa) ──
+  { id: "m1",  name: "Forge & Co.",    company: "Forge & Co.",    saas: "mesa", stage: "Prospect", amount: 28_000, owner: "MK", age: 4,  score: 65, priority: "P1", icp: 0.70, value: "Mid", source: "Outbound" },
+  { id: "m2",  name: "Beacon Health",  company: "Beacon Health",  saas: "mesa", stage: "Qualify",  amount: 32_000, owner: "AB", age: 3,  score: 85, priority: "P0", icp: 0.90, value: "Mid", source: "Outbound" },
+  { id: "m3",  name: "Cargo Liné",     company: "Cargo Liné",     saas: "mesa", stage: "Prospect", amount: 18_000, owner: "SS", age: 9,  score: 40, priority: "P2", icp: 0.50, value: "Mid", source: "Outbound" },
+  { id: "m4",  name: "Atlas Depot",    company: "Atlas Depot",    saas: "mesa", stage: "Pilot",    amount: 44_000, owner: "MK", age: 12, score: 65, priority: "P1", icp: 0.70, value: "Mid", source: "Outbound" },
+  { id: "m5",  name: "Northwind",      company: "Northwind",      saas: "mesa", stage: "Pilot",    amount: 84_000, owner: "AB", age: 18, score: 65, priority: "P1", icp: 0.70, value: "Mid", source: "Outbound", flag: "stuck" },
+  { id: "m6",  name: "Stride Apparel", company: "Stride Apparel", saas: "mesa", stage: "Proposal", amount: 22_000, owner: "SS", age: 5,  score: 85, priority: "P0", icp: 0.90, value: "Mid", source: "Outbound" },
+  { id: "m7",  name: "Tessera",        company: "Tessera",        saas: "mesa", stage: "Proposal", amount: 38_000, owner: "MK", age: 7,  score: 65, priority: "P1", icp: 0.70, value: "Mid", source: "Outbound" },
+  { id: "m8",  name: "Granary",        company: "Granary",        saas: "mesa", stage: "Qualify",  amount: 26_000, owner: "AB", age: 6,  score: 65, priority: "P1", icp: 0.70, value: "Mid", source: "Outbound" },
+  { id: "m9",  name: "Blueprint",      company: "Blueprint",      saas: "mesa", stage: "Closed",   amount: 58_000, owner: "SS", age: 0,  score: 85, priority: "P0", icp: 0.90, value: "Mid", source: "Outbound" },
 ];
 
 export const NPS = [
@@ -313,7 +317,6 @@ export const PROPOSALS = [
 export const COLLECTIONS = {
   products:          SAAS,
   attention:         ATTENTION,
-  deals:             DEALS,
   people:            Object.values(PEOPLE),
   customers:         CUSTOMERS,
   leads:             LEADS,

@@ -9,3 +9,21 @@ export const chromeBtnStyleSmall = {
   borderRadius: "var(--r-2)",
   color: "var(--fg-2)",
 };
+
+// Lead score helpers — score é numérico 0–100; cor e rótulo vêm por banda.
+// (Quente = forte/urgente em vermelho, mesmo padrão visual do protótipo.)
+export function leadScoreTone(score) {
+  const n = Number(score) || 0;
+  return n >= 75 ? "var(--neg)" : n >= 50 ? "var(--warn)" : "var(--fg-4)";
+}
+export function leadScoreLabel(score) {
+  const n = Number(score) || 0;
+  return n >= 75 ? "Quente" : n >= 50 ? "Morno" : "Frio";
+}
+// Idade do lead — string humana ("12m"/"2h") ou número (dias, vindo de deals
+// migrados). Normaliza sem inventar unidade pra strings.
+export function leadAge(lead) {
+  const a = lead?.age;
+  if (a == null || a === "") return "—";
+  return typeof a === "number" ? `${a}d` : String(a);
+}

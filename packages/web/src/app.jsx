@@ -5,13 +5,12 @@ import { chromeBtnStyleSmall } from "./lib/ui.js";
 import { PortfolioScreen } from "./screens/portfolio.jsx";
 import { SaasDashboardScreen } from "./screens/saas_dashboard.jsx";
 import { PipelineScreen } from "./screens/pipeline.jsx";
-import { LeadsScreen } from "./screens/leads.jsx";
 import { CustomersScreen } from "./screens/customers.jsx";
 import { NPSScreen } from "./screens/nps.jsx";
 import { GoalsScreen } from "./screens/goals.jsx";
 import { LeaderboardScreen } from "./screens/leaderboard.jsx";
 import { SettingsScreen } from "./screens/settings.jsx";
-import { DealDetail } from "./screens/deal.jsx";
+import { LeadDetail } from "./screens/deal.jsx";
 import { DataContext, loadSeed } from "./data.jsx";
 import { EntityForm } from "./components/EntityForm.jsx";
 import { ConfirmDelete } from "./components/ConfirmDelete.jsx";
@@ -37,7 +36,7 @@ function App() {
 
   const [screen, setScreen] = useStA(personaObj.home);
   const [params, setParams] = useStA(personaObj.saas ? { saas: personaObj.saas } : {});
-  const [dealSel, setDealSel] = useStA(null);
+  const [leadSel, setLeadSel] = useStA(null);
   const [collapsed, setCollapsed] = useStA(false);
 
   // CRUD plumbing — modals live above the keyed screen so a post-write refresh
@@ -81,14 +80,13 @@ function App() {
     else if (link.type === "attention") nav("portfolio");
   }
 
-  function openDeal(d) { setDealSel(d); }
+  function openLead(l) { setLeadSel(l); }
 
   // Breadcrumb per screen
   const crumbsFor = {
     portfolio:   ["Portfólio"],
     saas:        ["Portfólio", window.SEED.SAAS.find(s => s.id === params.saas)?.name || "LeverAds"],
     pipeline:    ["Vendas", "Pipeline · " + (window.SEED.SAAS.find(s => s.id === params.saas)?.name || "LeverAds")],
-    leads:       ["Vendas", "Leads"],
     customers:   ["Cliente", "Clientes"],
     nps:         ["Cliente", "NPS"],
     goals:       ["Time", "Metas"],
@@ -117,8 +115,7 @@ function App() {
         <div key={dataVersion} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
           {screen === "portfolio"   && <PortfolioScreen onNav={nav} onJump={jump} />}
           {screen === "saas"        && <SaasDashboardScreen saasId={params.saas} onNav={nav} onJump={jump} />}
-          {screen === "pipeline"    && <PipelineScreen saasId={params.saas} onJump={jump} jumpFilter={params} onOpenDeal={openDeal} />}
-          {screen === "leads"       && <LeadsScreen persona={persona} />}
+          {screen === "pipeline"    && <PipelineScreen saasId={params.saas} onJump={jump} jumpFilter={params} onOpenLead={openLead} />}
           {screen === "customers"   && <CustomersScreen csFilter={params.csFilter} />}
           {screen === "nps"         && <NPSScreen />}
           {screen === "goals"       && <GoalsScreen />}
@@ -127,7 +124,7 @@ function App() {
         </div>
       </main>
 
-      {dealSel && <DealDetail deal={dealSel} onClose={() => setDealSel(null)} />}
+      {leadSel && <LeadDetail lead={leadSel} onClose={() => setLeadSel(null)} />}
 
       {editor && (
         <EntityForm
@@ -187,7 +184,6 @@ function subtitleFor(screen, params) {
     portfolio:   "28 mai 2026",
     saas:        "28 mai 2026",
     pipeline:    `${params.stage ? "estágio: " + params.stage + " · " : ""}arraste para mover`,
-    leads:       "fila round-robin",
     customers:   params.csFilter === "red" ? "filtrado: crítico" : "ordenado por saúde",
     nps:         "últimos 90 dias",
     goals:       "dia 12 / 31",

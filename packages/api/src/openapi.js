@@ -25,7 +25,6 @@ export const openapi = {
     { name: "Leads", description: "Entrada de formulários e worklist de SDR" },
     { name: "Produtos", description: "Seus SaaS (métricas, funil, saúde)" },
     { name: "Clientes", description: "Contas, saúde, renovação" },
-    { name: "Pipeline", description: "Deals" },
     { name: "NPS", description: "Respostas de NPS" },
     { name: "Metas", description: "Goals / pacing" },
     { name: "Sistema", description: "Saúde, bootstrap, agregados" },
@@ -53,6 +52,7 @@ export const openapi = {
           icp: { type: "number", minimum: 0, maximum: 1, description: "Aderência ao ICP (0–1).", example: 0.95 },
           source: { type: "string", description: "Origem (ex.: 'Form · /pricing', 'Webinar', 'Inbound').", example: "Form · LP /pricing" },
           value: { type: "string", description: "Faixa de ticket (livre): Ent | Mid | SMB.", example: "Ent" },
+          amount: { type: "number", description: "Valor estimado do negócio (R$) — soma no forecast do pipeline.", example: 84000 },
           reason: { type: "string", description: "Por que é relevante (aparece no card).", example: "Enterprise · 200+ funcionários · bate com o ICP" },
           utm: {
             type: "object",
@@ -145,23 +145,6 @@ export const openapi = {
           nps: { type: "number", example: 2 },
           renewal: { type: "string", example: "21d" },
           flags: { type: "array", items: { type: "string" }, example: ["renewal-90d", "usage-decay"] },
-        },
-      },
-      Deal: {
-        type: "object",
-        required: ["title", "saas"],
-        properties: {
-          id: { type: "string" },
-          title: { type: "string", example: "Helios Media" },
-          company: { type: "string" },
-          saas: { type: "string", description: "id do produto.", example: "meusaas" },
-          amount: { type: "number", description: "Valor (R$).", example: 84000 },
-          stage: { type: "string", description: "Estágio do funil daquele SaaS.", example: "Prospect" },
-          owner: { type: "string", example: "JC" },
-          score: { type: "string", enum: ["hot", "warm", "cold"], example: "warm" },
-          age: { type: "number", description: "Dias no estágio.", example: 3 },
-          source: { type: "string", example: "Outbound" },
-          flag: { type: "string", enum: ["stuck"], description: "Marca deal travado." },
         },
       },
       NpsResponse: {
@@ -270,14 +253,6 @@ export const openapi = {
     "/api/customers/{id}": {
       parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
       patch: { tags: ["Clientes"], summary: "Atualiza um cliente (saúde, uso, renovação)", security: [{ ApiKeyAuth: [] }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/Customer" } } } }, responses: { 200: { description: "OK" } } },
-    },
-    "/api/deals": {
-      get: { tags: ["Pipeline"], summary: "Lista deals", parameters: [{ name: "saas", in: "query", schema: { type: "string" } }, { name: "stage", in: "query", schema: { type: "string" } }, { name: "owner", in: "query", schema: { type: "string" } }], responses: { 200: { description: "OK", content: { "application/json": { schema: { type: "array", items: { $ref: "#/components/schemas/Deal" } } } } } } },
-      post: { tags: ["Pipeline"], summary: "Cria um deal", security: [{ ApiKeyAuth: [] }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/Deal" } } } }, responses: { 201: { description: "Criado" } } },
-    },
-    "/api/deals/{id}": {
-      parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
-      patch: { tags: ["Pipeline"], summary: "Move/atualiza um deal (ex.: { stage })", security: [{ ApiKeyAuth: [] }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/Deal" } } } }, responses: { 200: { description: "OK" } } },
     },
     "/api/nps": {
       get: { tags: ["NPS"], summary: "Lista respostas de NPS", parameters: [{ name: "saas", in: "query", schema: { type: "string" } }], responses: { 200: { description: "OK", content: { "application/json": { schema: { type: "array", items: { $ref: "#/components/schemas/NpsResponse" } } } } } } },

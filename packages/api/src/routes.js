@@ -22,9 +22,13 @@ const CREATE_DEFAULTS = {
     mrrSeries: [], healthSeries: [], customers: 0, customersDelta: 0,
     accent: 240, tag: "", plan: "", motion: "", ticketBand: "", cycleDays: 0,
   },
-  customers: { flags: [] },
+  // Métricas de cliente não são mais editáveis no form (saúde/uso/NPS/renovação são
+  // alimentadas por automação); o create precisa de defaults pra UI não ler `undefined`.
+  customers: { flags: [], health: 0, delta: 0, nps: 0, usage: "", lastTouch: "—", renewal: "—" },
   nps: { tags: [] },
-  leads: { priority: "P2", score: 0, icp: 0, value: "", reason: "", source: "Form", age: "agora", stage: "" },
+  leads: { priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", reason: "", source: "Form", age: "agora", stage: "" },
+  // `current`/`projected` saem do form (leitura ao vivo da meta) — default 0 até serem alimentados.
+  goals: { current: 0, projected: 0 },
 };
 
 // Receita e nº de clientes são DERIVADOS da coleção `customers`, não dos campos
@@ -92,12 +96,11 @@ export function registerRoutes(app, repo = defaultRepo) {
 
   // Everything the cockpit web app needs in one shot (mirrors window.SEED).
   app.get("/api/bootstrap", async () => {
-    const [products, customers, attention, deals, leads, nps, lbMonth, lbAll, goals, portfolio, people] =
+    const [products, customers, attention, leads, nps, lbMonth, lbAll, goals, portfolio, people] =
       await Promise.all([
         repo.list("products"),
         repo.list("customers"),
         repo.list("attention"),
-        repo.list("deals"),
         repo.list("leads"),
         repo.list("nps"),
         repo.list("leaderboard_month"),
@@ -110,7 +113,6 @@ export function registerRoutes(app, repo = defaultRepo) {
       SAAS: rollupProducts(products, customers),
       PORTFOLIO: portfolio,
       ATTENTION: attention,
-      DEALS: deals,
       PEOPLE: people,
       CUSTOMERS: customers,
       LEADS: leads,
