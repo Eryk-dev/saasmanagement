@@ -24,7 +24,7 @@ function toInputs(cfg, record) {
     const cur = record ? record[f.key] : undefined;
     const val = cur !== undefined && cur !== null ? cur : f.default;
     if (f.type === "funnel") {
-      v[f.key] = Array.isArray(cur) ? cur.map((x) => x.stage) : [];
+      v[f.key] = Array.isArray(cur) ? cur.map((x) => ({ ...x })) : [];
     } else if (f.type === "tags") {
       v[f.key] = Array.isArray(cur) ? cur.join(", ") : "";
     } else if (f.type === "pct") {
@@ -45,8 +45,15 @@ function toPayload(cfg, values) {
   for (const f of cfg.fields) {
     const raw = values[f.key];
     if (f.type === "funnel") {
-      const rows = (raw || []).map((s) => s.trim()).filter(Boolean);
-      if (rows.length) out[f.key] = rows.map((stage) => ({ stage }));
+      // Mantém props derivadas (count/flag) via spread; só nome + conv são editados.
+      // conv guardado como fração; 1º estágio é a entrada (conv ignorado na previsão).
+      const rows = (raw || [])
+        .filter((s) => String(s.stage || "").trim())
+        .map((s, i) => {
+          const conv = i === 0 || s.conv === "" || s.conv == null || Number.isNaN(Number(s.conv)) ? 1 : Number(s.conv);
+          return { ...s, stage: s.stage.trim(), conv };
+        });
+      if (rows.length) out[f.key] = rows;
       continue;
     }
     if (f.type === "tags") {
@@ -195,20 +202,50 @@ function Field({ f, value, values, onChange }) {
 }
 
 function FunnelEditor({ stages, onChange }) {
+  const update = (i, patch) => { const next = [...stages]; next[i] = { ...next[i], ...patch }; onChange(next); };
+  const remove = (i) => onChange(stages.filter((_, j) => j !== i));
+  const move = (i, dir) => {
+    const j = i + dir;
+    if (j < 0 || j >= stages.length) return;
+    const next = [...stages];
+    [next[i], next[j]] = [next[j], next[i]];
+    onChange(next);
+  };
+  const arrowStyle = (disabled) => ({ fontSize: 12, padding: "0 3px", color: "var(--fg-3)", opacity: disabled ? 0.3 : 1, fontFamily: "var(--mono)", cursor: disabled ? "default" : "pointer" });
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      {stages.map((st, i) => (
-        <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span className="mono dim" style={{ fontSize: 11, width: 18 }}>{String(i + 1).padStart(2, "0")}</span>
-          <input
-            value={st} placeholder="Nome do estágio"
-            onChange={(e) => { const next = [...stages]; next[i] = e.target.value; onChange(next); }}
-            style={{ ...inputStyle, flex: 1 }}
-          />
-          <button type="button" onClick={() => onChange(stages.filter((_, j) => j !== i))} className="mono dim" style={{ fontSize: 13, padding: "0 6px" }}>✕</button>
-        </div>
-      ))}
-      <button type="button" onClick={() => onChange([...stages, ""])} style={{ alignSelf: "flex-start", padding: "5px 10px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--fg-2)" }}>+ adicionar estágio</button>
+      {stages.map((st, i) => {
+        const pct = st.conv === "" || st.conv == null ? "" : Math.round(Number(st.conv) * 100);
+        return (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span className="mono dim" style={{ fontSize: 11, width: 18 }}>{String(i + 1).padStart(2, "0")}</span>
+            <input
+              value={st.stage || ""} placeholder="Nome do estágio"
+              onChange={(e) => update(i, { stage: e.target.value })}
+              style={{ ...inputStyle, flex: 1 }}
+            />
+            {i === 0 ? (
+              <span className="mono dim" style={{ fontSize: 10, width: 64, textAlign: "center" }}>entrada</span>
+            ) : (
+              <div style={{ position: "relative", width: 64 }}>
+                <input
+                  type="number" step="any" value={pct} placeholder="conv"
+                  onChange={(e) => update(i, { conv: e.target.value === "" ? "" : Number(e.target.value) / 100 })}
+                  style={{ ...inputStyle, paddingRight: 18, textAlign: "right" }}
+                />
+                <span className="mono dim" style={{ position: "absolute", right: 6, top: 7, fontSize: 11 }}>%</span>
+              </div>
+            )}
+            <div style={{ display: "flex" }}>
+              <button type="button" onClick={() => move(i, -1)} disabled={i === 0} style={arrowStyle(i === 0)}>↑</button>
+              <button type="button" onClick={() => move(i, 1)} disabled={i === stages.length - 1} style={arrowStyle(i === stages.length - 1)}>↓</button>
+            </div>
+            <button type="button" onClick={() => remove(i)} className="mono dim" style={{ fontSize: 13, padding: "0 6px" }}>✕</button>
+          </div>
+        );
+      })}
+      <button type="button" onClick={() => onChange([...stages, { stage: "", conv: 1 }])} style={{ alignSelf: "flex-start", padding: "5px 10px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--fg-2)" }}>+ adicionar estágio</button>
     </div>
   );
 }

@@ -55,7 +55,7 @@ export const ENTITIES = {
       { key: "acv", label: "ACV", type: "money" },
       { key: "tcv", label: "TCV pipeline", type: "money" },
       { key: "cycleDays", label: "Ciclo (dias)", type: "number" },
-      { key: "funnel", label: "Funil · estágios", type: "funnel", full: true },
+      { key: "funnel", label: "Funil · estágios", type: "funnel", full: true, help: "Conversão (%) por estágio (a partir do 2º) alimenta a Previsão do pipeline" },
     ],
   },
 
