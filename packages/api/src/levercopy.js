@@ -36,7 +36,7 @@ export function integrationStatus() {
 // qualificação (thesis/accounts/volume/…) não existem no lead do Cockpit hoje, então
 // não são enviados (a proposta usa defaults). `cockpit_lead_id` dá rastreabilidade
 // e habilita o pulo do espelho no lado do Levercopy.
-export function buildBody(lead) {
+export function buildBody(lead, leadQuestions = []) {
   const body = {
     name: lead.name,
     cockpit_lead_id: lead.id,
@@ -45,12 +45,22 @@ export function buildBody(lead) {
   if (lead.company) body.company = lead.company;
   if (lead.email) body.email = lead.email;
   if (lead.phone) body.whatsapp = lead.phone; // `phone` no Cockpit == `whatsapp` no Levercopy
+  // Respostas de qualificação declaradas pelo pipeline (product.leadQuestions). As
+  // chaves já são os nomes que o Levercopy espera (accounts/staff/volume/niche/…) e
+  // arrays (marketplaces) passam direto. Campos ausentes/vazios não vão (o Levercopy
+  // aplica defaults). Só chaves declaradas viajam — extras do lead ficam de fora.
+  for (const q of leadQuestions) {
+    const v = lead[q.key];
+    if (v === undefined || v === null || v === "") continue;
+    if (Array.isArray(v) && v.length === 0) continue;
+    body[q.key] = v;
+  }
   return body;
 }
 
 // Chama o endpoint. Lança Error (com .status) em 401/422/503; deixa erro de rede
 // propagar. Timeout curto (8s) via AbortController.
-export async function generateProposal(lead, cfg = {}) {
+export async function generateProposal(lead, cfg = {}, leadQuestions = []) {
   const fetchImpl = cfg.fetch || globalThis.fetch;
   const timeoutMs = cfg.timeoutMs || 8000;
   const ctrl = new AbortController();
@@ -60,7 +70,7 @@ export async function generateProposal(lead, cfg = {}) {
     res = await fetchImpl(`${cfg.url}/api/proposta/generate`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-cockpit-key": cfg.key },
-      body: JSON.stringify(buildBody(lead)),
+      body: JSON.stringify(buildBody(lead, leadQuestions)),
       signal: ctrl.signal,
     });
   } finally {
@@ -96,9 +106,14 @@ export async function runProposal(repo, lead, opts = {}) {
   if (!isConfigured(cfg)) return { ok: false, skipped: "not_configured" };
   if (auto && !force && lead.proposta_id) return { ok: false, skipped: "already_generated", lead };
 
+  // As perguntas do pipeline (product.leadQuestions) dizem QUAIS respostas do lead
+  // encaminhar ao Levercopy. Busca só depois dos skips (evita I/O quando não vai gerar).
+  const product = await repo.get("products", lead.saas);
+  const leadQuestions = product?.leadQuestions || [];
+
   let data;
   try {
-    data = await generateProposal(lead, cfg);
+    data = await generateProposal(lead, cfg, leadQuestions);
   } catch (e) {
     return { ok: false, error: e.message, status: e.status || 0 };
   }

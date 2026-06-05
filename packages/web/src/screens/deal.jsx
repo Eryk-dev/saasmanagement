@@ -31,6 +31,19 @@ function LeadDetail({ lead, onClose }) {
     ["Motivo", lead.reason],
   ].filter(([, v]) => v != null && v !== "");
 
+  // Respostas das perguntas de qualificação do pipeline (mostra só as preenchidas,
+  // convertendo valor → rótulo amigável; arrays viram lista).
+  const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === lead.saas);
+  const answers = (saasCfg?.leadQuestions || [])
+    .map((q) => {
+      let v = lead[q.key];
+      if (v == null || v === "" || (Array.isArray(v) && v.length === 0)) return null;
+      const lut = Object.fromEntries((q.options || []).map((o) => [o.value, o.label]));
+      v = Array.isArray(v) ? v.map((x) => lut[x] || x).join(", ") : (lut[v] || v);
+      return [q.label, v];
+    })
+    .filter(Boolean);
+
   return (
     <div style={{
       position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)",
@@ -73,6 +86,18 @@ function LeadDetail({ lead, onClose }) {
           <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)" }}>
             <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Campos</div>
             {fields.map(([k, v]) => (
+              <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid var(--line-1)", fontSize: 12, gap: 16 }}>
+                <span className="mono dim" style={{ flexShrink: 0 }}>{k}</span>
+                <span style={{ textAlign: "right" }}>{v}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {answers.length > 0 && (
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)" }}>
+            <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Respostas de qualificação</div>
+            {answers.map(([k, v]) => (
               <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid var(--line-1)", fontSize: 12, gap: 16 }}>
                 <span className="mono dim" style={{ flexShrink: 0 }}>{k}</span>
                 <span style={{ textAlign: "right" }}>{v}</span>

@@ -4,6 +4,8 @@
 // This module is the API's source of truth on first run; after that the SQLite
 // store owns the data (so external SaaS can mutate it via REST/MCP).
 
+import { LEVERADS_LEAD_QUESTIONS } from "./lead-questions.leverads.js";
+
 export const SAAS = [
   {
     id: "leverads",
@@ -38,6 +40,7 @@ export const SAAS = [
       { stage: "Negotiation", count: 19,  conv: 0.61 },
       { stage: "Closed Won",  count: 13,  conv: 0.68 },
     ],
+    leadQuestions: LEVERADS_LEAD_QUESTIONS,
     activation: 0.71, activationDelta: +0.02,
     nps: 47, npsDelta: +3,
 

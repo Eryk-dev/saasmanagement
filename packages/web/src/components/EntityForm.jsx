@@ -1,10 +1,10 @@
 import React from "react";
-import { ENTITIES } from "../lib/entities.js";
+import { ENTITIES, leadQuestionFields } from "../lib/entities.js";
 import { api } from "../lib/api.js";
 // Reusable create/edit modal, driven by the per-entity config in entities.js.
 // Mirrors deal.jsx's right-drawer overlay. Create vs edit is decided by record.id.
 
-const { useState } = React;
+const { useState, useEffect } = React;
 
 const inputStyle = {
   width: "100%", height: 30, padding: "0 8px",
@@ -17,14 +17,30 @@ function resolveOptions(field, values) {
   return (typeof o === "function" ? o(values) : o) || [];
 }
 
-// record → input-string values
-function toInputs(cfg, record) {
+// `cfg.fields` é estático; o formulário de lead acrescenta as perguntas do pipeline
+// selecionado. Esta lista efetiva dirige render, validação e payload.
+function effectiveFields(cfg, values) {
+  if (cfg.collection !== "leads") return cfg.fields;
+  return [...cfg.fields, ...leadQuestionFields(values.saas)];
+}
+
+// Vazio para validação de obrigatório: array sem itens conta como vazio.
+function isBlank(val) {
+  return Array.isArray(val) ? val.length === 0 : String(val ?? "").trim() === "";
+}
+
+// record → input-string values (recebe a lista de fields efetiva)
+function toInputs(fields, record) {
   const v = {};
-  for (const f of cfg.fields) {
+  for (const f of fields) {
     const cur = record ? record[f.key] : undefined;
     const val = cur !== undefined && cur !== null ? cur : f.default;
     if (f.type === "funnel") {
       v[f.key] = Array.isArray(cur) ? cur.map((x) => ({ ...x })) : [];
+    } else if (f.type === "questions") {
+      v[f.key] = Array.isArray(cur) ? cur.map((q) => ({ ...q, options: (q.options || []).map((o) => ({ ...o })) })) : [];
+    } else if (f.type === "multiselect") {
+      v[f.key] = Array.isArray(cur) ? [...cur] : [];
     } else if (f.type === "tags") {
       v[f.key] = Array.isArray(cur) ? cur.join(", ") : "";
     } else if (f.type === "pct") {
@@ -40,9 +56,9 @@ function toInputs(cfg, record) {
 
 // input-string values → API payload. Blanks are omitted so create falls back to
 // the backend defaults and edit keeps untouched fields via merge.
-function toPayload(cfg, values) {
+function toPayload(fields, values) {
   const out = {};
-  for (const f of cfg.fields) {
+  for (const f of fields) {
     const raw = values[f.key];
     if (f.type === "funnel") {
       // Mantém props derivadas (count/flag) via spread; só nome + conv são editados.
@@ -54,6 +70,27 @@ function toPayload(cfg, values) {
           return { ...s, stage: s.stage.trim(), conv };
         });
       if (rows.length) out[f.key] = rows;
+      continue;
+    }
+    if (f.type === "questions") {
+      // Editor de perguntas do pipeline: normaliza chave/rótulo/tipo/obrigatório + opções.
+      const rows = (raw || [])
+        .filter((q) => String(q.key || "").trim() && String(q.label || "").trim())
+        .map((q) => {
+          const base = { key: q.key.trim(), label: q.label.trim(), type: q.type || "text", required: !!q.required };
+          if (q.type === "select" || q.type === "multiselect") {
+            base.options = (q.options || [])
+              .filter((o) => String(o.value || "").trim())
+              .map((o) => ({ value: o.value.trim(), label: String(o.label || o.value).trim() }));
+          }
+          return base;
+        });
+      out[f.key] = rows; // sempre grava (permite limpar para [])
+      continue;
+    }
+    if (f.type === "multiselect") {
+      const arr = Array.isArray(raw) ? raw : [];
+      if (arr.length) out[f.key] = arr; // array de respostas (ex.: marketplaces)
       continue;
     }
     if (f.type === "tags") {
@@ -79,22 +116,40 @@ function toPayload(cfg, values) {
 function EntityForm({ entityKey, record, onClose, onSaved }) {
   const cfg = ENTITIES[entityKey];
   const isEdit = !!(record && record.id);
-  const [values, setValues] = useState(() => toInputs(cfg, record));
+  const [values, setValues] = useState(() => toInputs(effectiveFields(cfg, record || {}), record));
   const [busy, setBusy] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState(null);
 
   const set = (key, val) => setValues((v) => ({ ...v, [key]: val }));
 
+  // Ao trocar de pipeline no form de lead, semeia em branco as perguntas que aparecem
+  // (sem apagar respostas já digitadas).
+  useEffect(() => {
+    if (cfg.collection !== "leads") return;
+    setValues((v) => {
+      let changed = false;
+      const next = { ...v };
+      for (const f of leadQuestionFields(v.saas)) {
+        if (next[f.key] === undefined) {
+          next[f.key] = f.type === "multiselect" ? [] : "";
+          changed = true;
+        }
+      }
+      return changed ? next : v;
+    });
+  }, [values.saas]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function submit(e) {
     e.preventDefault();
-    const missing = cfg.fields
-      .filter((f) => f.required && String(values[f.key] ?? "").trim() === "")
+    const eff = effectiveFields(cfg, values);
+    const missing = eff
+      .filter((f) => f.required && isBlank(values[f.key]))
       .map((f) => f.label);
     if (missing.length) { setError("Preencha: " + missing.join(", ")); return; }
     setBusy(true); setError(null);
     try {
-      const payload = toPayload(cfg, values);
+      const payload = toPayload(eff, values);
       if (isEdit) {
         await api.update(cfg.collection, record.id, payload);
       } else {
@@ -134,8 +189,8 @@ function EntityForm({ entityKey, record, onClose, onSaved }) {
 
         <div style={{ flex: 1, overflow: "auto", padding: "16px 20px" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            {cfg.fields.map((f) => (
-              <Field key={f.key} f={f} value={values[f.key]} values={values} onChange={(val) => set(f.key, val)} />
+            {effectiveFields(cfg, values).map((f) => (
+              <Field key={f.key} f={f} value={values[f.key]} values={values} recordId={record?.id} onChange={(val) => set(f.key, val)} />
             ))}
           </div>
         </div>
@@ -154,12 +209,29 @@ function EntityForm({ entityKey, record, onClose, onSaved }) {
   );
 }
 
-function Field({ f, value, values, onChange }) {
+function Field({ f, value, values, onChange, recordId }) {
   let input;
   if (f.type === "textarea") {
     input = <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={f.placeholder} rows={3} style={{ ...inputStyle, height: "auto", minHeight: 60, padding: "6px 8px", resize: "vertical" }} />;
   } else if (f.type === "funnel") {
     input = <FunnelEditor stages={value || []} onChange={onChange} />;
+  } else if (f.type === "questions") {
+    // No pipeline LeverAds as chaves/valores são contrato da proposta → travadas.
+    input = <QuestionsEditor questions={value || []} onChange={onChange} lockKeys={recordId === "leverads"} />;
+  } else if (f.type === "multiselect") {
+    const opts = resolveOptions(f, values);
+    const sel = Array.isArray(value) ? value : [];
+    const toggle = (val) => onChange(sel.includes(val) ? sel.filter((x) => x !== val) : [...sel, val]);
+    input = (
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, padding: "4px 0" }}>
+        {opts.map((o) => (
+          <label key={String(o.value)} style={{ display: "inline-flex", gap: 5, alignItems: "center", fontSize: 12, cursor: "pointer" }}>
+            <input type="checkbox" checked={sel.includes(o.value)} onChange={() => toggle(o.value)} />
+            {o.label}
+          </label>
+        ))}
+      </div>
+    );
   } else if (f.type === "bool") {
     input = (
       <select value={value} onChange={(e) => onChange(e.target.value)} style={inputStyle}>
@@ -246,6 +318,77 @@ function FunnelEditor({ stages, onChange }) {
         );
       })}
       <button type="button" onClick={() => onChange([...stages, { stage: "", conv: 1 }])} style={{ alignSelf: "flex-start", padding: "5px 10px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--fg-2)" }}>+ adicionar estágio</button>
+    </div>
+  );
+}
+
+// Editor de perguntas de qualificação por pipeline (espelha o FunnelEditor). Cada
+// pergunta tem chave/rótulo/tipo/obrigatório + opções (para escolha única/múltipla).
+// `lockKeys` trava chave + valores das opções (contrato da proposta do LeverAds);
+// rótulos seguem editáveis.
+function QuestionsEditor({ questions, onChange, lockKeys }) {
+  const update = (i, patch) => { const next = [...questions]; next[i] = { ...next[i], ...patch }; onChange(next); };
+  const remove = (i) => onChange(questions.filter((_, j) => j !== i));
+  const move = (i, dir) => {
+    const j = i + dir;
+    if (j < 0 || j >= questions.length) return;
+    const next = [...questions];
+    [next[i], next[j]] = [next[j], next[i]];
+    onChange(next);
+  };
+  const updateOpt = (qi, oi, patch) => {
+    const opts = [...(questions[qi].options || [])];
+    opts[oi] = { ...opts[oi], ...patch };
+    update(qi, { options: opts });
+  };
+  const addOpt = (qi) => update(qi, { options: [...(questions[qi].options || []), { value: "", label: "" }] });
+  const removeOpt = (qi, oi) => update(qi, { options: (questions[qi].options || []).filter((_, j) => j !== oi) });
+  const arrowStyle = (disabled) => ({ fontSize: 12, padding: "0 3px", color: "var(--fg-3)", opacity: disabled ? 0.3 : 1, fontFamily: "var(--mono)", cursor: disabled ? "default" : "pointer" });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {questions.map((q, i) => {
+        const hasOptions = q.type === "select" || q.type === "multiselect";
+        return (
+          <div key={i} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: 10, display: "flex", flexDirection: "column", gap: 6, background: "var(--bg-2)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span className="mono dim" style={{ fontSize: 11, width: 18 }}>{String(i + 1).padStart(2, "0")}</span>
+              <input value={q.key || ""} placeholder="chave" disabled={lockKeys} onChange={(e) => update(i, { key: e.target.value })} title={lockKeys ? "Chave travada neste pipeline (contrato da proposta)" : "Chave enviada ao gerador de proposta"} style={{ ...inputStyle, width: 110, opacity: lockKeys ? 0.6 : 1 }} />
+              <input value={q.label || ""} placeholder="Pergunta" onChange={(e) => update(i, { label: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
+              <div style={{ display: "flex" }}>
+                <button type="button" onClick={() => move(i, -1)} disabled={i === 0} style={arrowStyle(i === 0)}>↑</button>
+                <button type="button" onClick={() => move(i, 1)} disabled={i === questions.length - 1} style={arrowStyle(i === questions.length - 1)}>↓</button>
+              </div>
+              <button type="button" onClick={() => remove(i)} className="mono dim" style={{ fontSize: 13, padding: "0 6px" }}>✕</button>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, paddingLeft: 24 }}>
+              <select value={q.type || "text"} disabled={lockKeys} onChange={(e) => update(i, { type: e.target.value })} style={{ ...inputStyle, width: 150, opacity: lockKeys ? 0.6 : 1 }}>
+                <option value="text">Texto</option>
+                <option value="number">Número</option>
+                <option value="select">Escolha única</option>
+                <option value="multiselect">Múltipla escolha</option>
+              </select>
+              <label style={{ display: "inline-flex", gap: 5, alignItems: "center", fontSize: 12 }}>
+                <input type="checkbox" checked={!!q.required} onChange={(e) => update(i, { required: e.target.checked })} />
+                obrigatória
+              </label>
+            </div>
+            {hasOptions && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 24 }}>
+                {(q.options || []).map((o, oi) => (
+                  <div key={oi} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input value={o.value || ""} placeholder="valor" disabled={lockKeys} onChange={(e) => updateOpt(i, oi, { value: e.target.value })} style={{ ...inputStyle, width: 110, opacity: lockKeys ? 0.6 : 1 }} />
+                    <input value={o.label || ""} placeholder="Rótulo" onChange={(e) => updateOpt(i, oi, { label: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
+                    {!lockKeys && <button type="button" onClick={() => removeOpt(i, oi)} className="mono dim" style={{ fontSize: 13, padding: "0 6px" }}>✕</button>}
+                  </div>
+                ))}
+                {!lockKeys && <button type="button" onClick={() => addOpt(i)} style={{ alignSelf: "flex-start", padding: "4px 8px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--fg-2)" }}>+ opção</button>}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <button type="button" onClick={() => onChange([...questions, { key: "", label: "", type: "text", required: false, options: [] }])} style={{ alignSelf: "flex-start", padding: "5px 10px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--fg-2)" }}>+ adicionar pergunta</button>
     </div>
   );
 }

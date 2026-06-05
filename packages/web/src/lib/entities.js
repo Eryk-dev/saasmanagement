@@ -16,6 +16,22 @@ const stageOptions = (v) => {
   const s = (window.SEED?.SAAS || []).find((x) => x.id === v.saas);
   return (s?.funnel || []).map((f) => ({ value: f.stage, label: f.stage }));
 };
+
+// Perguntas de qualificação específicas do pipeline selecionado, viradas em campos
+// extras do formulário de lead. Mesmo padrão dinâmico de stageOptions (lê window.SEED
+// em tempo de render). Renderizadas/validadas/enviadas pela EntityForm como campos comuns.
+export function leadQuestionFields(saasId) {
+  const s = (window.SEED?.SAAS || []).find((x) => x.id === saasId);
+  return (s?.leadQuestions || []).map((q) => ({
+    key: q.key,
+    label: q.label,
+    required: !!q.required,
+    full: true,
+    type: q.type === "multiselect" ? "multiselect" : q.type === "select" ? "select" : (q.type || "text"),
+    options: q.options,
+    _dynamic: true,
+  }));
+}
 const scopeOptions = () => [
   { value: "Portfolio", label: "Portfólio" },
   ...(window.SEED?.SAAS || []).map((s) => ({ value: s.name, label: s.name })),
@@ -42,6 +58,7 @@ export const ENTITIES = {
       // cockpit funciona automaticamente — receita/clientes derivam da coleção de clientes e o
       // resto é empurrado pelos SaaS via API/MCP. Aqui o humano só define identidade + funil.
       { key: "funnel", label: "Funil · estágios", type: "funnel", full: true, help: "Conversão (%) por estágio (a partir do 2º) alimenta a Previsão do pipeline" },
+      { key: "leadQuestions", label: "Perguntas de qualificação do lead", type: "questions", full: true, help: "Renderizadas no formulário de novo lead deste pipeline; as obrigatórias travam o cadastro" },
     ],
   },
 
