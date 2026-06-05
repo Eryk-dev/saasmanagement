@@ -1,5 +1,5 @@
 # Imagem dos serviços Node (api e mcp) — mesma imagem, comandos diferentes no compose.
-# Debian slim (glibc) para o better-sqlite3 baixar o binário pré-compilado (sem toolchain).
+# Os dados moram no Supabase Postgres (COCKPIT_DB_URL); o container é stateless.
 FROM node:20-bookworm-slim
 
 WORKDIR /app
@@ -15,9 +15,6 @@ RUN npm ci --omit=dev
 # Código dos serviços Node.
 COPY packages/api/src packages/api/src
 COPY packages/mcp/src packages/mcp/src
-
-# Pasta do banco SQLite (montada como volume no compose para persistir).
-RUN mkdir -p packages/api/data
 
 EXPOSE 8787 8788
 

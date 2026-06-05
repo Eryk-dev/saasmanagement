@@ -1,7 +1,7 @@
 // REST routes. One generic CRUD surface over every collection, plus two
 // computed/aggregated endpoints the cockpit needs: /bootstrap and /portfolio.
 
-import { repo, COLLECTION_NAMES } from "./db.js";
+import { repo as defaultRepo, COLLECTION_NAMES } from "./db.js";
 import { PORTFOLIO_CONST } from "./seed-data.js";
 import { openapi, docsHtml } from "./openapi.js";
 import { runProposal, integrationStatus } from "./levercopy.js";
@@ -37,8 +37,9 @@ function rollupProduct(p, customers) {
 }
 const rollupProducts = (products, customers) => products.map((p) => rollupProduct(p, customers));
 
-function computePortfolio() {
-  const saas = rollupProducts(repo.list("products"), repo.list("customers"));
+async function computePortfolio(repo) {
+  const [products, customers] = await Promise.all([repo.list("products"), repo.list("customers")]);
+  const saas = rollupProducts(products, customers);
   const sum = (k) => saas.reduce((a, s) => a + (Number(s[k]) || 0), 0);
   return {
     mrr: sum("mrr"),
@@ -51,8 +52,8 @@ function computePortfolio() {
   };
 }
 
-function peopleObject() {
-  const list = repo.list("people");
+async function peopleObject(repo) {
+  const list = await repo.list("people");
   const obj = {};
   for (const p of list) obj[p.id] = p;
   return obj;
@@ -82,7 +83,7 @@ function listFilter(collection, q) {
   return null;
 }
 
-export function registerRoutes(app) {
+export function registerRoutes(app, repo = defaultRepo) {
   app.get("/api/health", async () => ({ ok: true, service: "cockpit-api", collections: COLLECTION_NAMES }));
 
   // API documentation (OpenAPI spec + Redoc page). The MCP server consumes this.
@@ -90,55 +91,71 @@ export function registerRoutes(app) {
   app.get("/api/docs", async (_req, reply) => reply.type("text/html").send(docsHtml));
 
   // Everything the cockpit web app needs in one shot (mirrors window.SEED).
-  app.get("/api/bootstrap", async () => ({
-    SAAS: rollupProducts(repo.list("products"), repo.list("customers")),
-    PORTFOLIO: computePortfolio(),
-    ATTENTION: repo.list("attention"),
-    DEALS: repo.list("deals"),
-    PEOPLE: peopleObject(),
-    CUSTOMERS: repo.list("customers"),
-    LEADS: repo.list("leads"),
-    NPS: repo.list("nps"),
-    LEADERBOARD_MONTH: repo.list("leaderboard_month"),
-    LEADERBOARD_ALL: repo.list("leaderboard_all"),
-    GOALS: repo.list("goals"),
-    // Estado de integrações que a UI precisa pra decidir o que renderizar
-    // (ex.: mostrar o botão "Gerar proposta" só nos leads do SaaS do Levercopy).
-    CONFIG: { levercopy: integrationStatus() },
-  }));
+  app.get("/api/bootstrap", async () => {
+    const [products, customers, attention, deals, leads, nps, lbMonth, lbAll, goals, portfolio, people] =
+      await Promise.all([
+        repo.list("products"),
+        repo.list("customers"),
+        repo.list("attention"),
+        repo.list("deals"),
+        repo.list("leads"),
+        repo.list("nps"),
+        repo.list("leaderboard_month"),
+        repo.list("leaderboard_all"),
+        repo.list("goals"),
+        computePortfolio(repo),
+        peopleObject(repo),
+      ]);
+    return {
+      SAAS: rollupProducts(products, customers),
+      PORTFOLIO: portfolio,
+      ATTENTION: attention,
+      DEALS: deals,
+      PEOPLE: people,
+      CUSTOMERS: customers,
+      LEADS: leads,
+      NPS: nps,
+      LEADERBOARD_MONTH: lbMonth,
+      LEADERBOARD_ALL: lbAll,
+      GOALS: goals,
+      // Estado de integrações que a UI precisa pra decidir o que renderizar
+      // (ex.: mostrar o botão "Gerar proposta" só nos leads do SaaS do Levercopy).
+      CONFIG: { levercopy: integrationStatus() },
+    };
+  });
 
-  app.get("/api/portfolio", async () => computePortfolio());
+  app.get("/api/portfolio", async () => await computePortfolio(repo));
 
   // Convenience: leaderboard by scope -> the right collection.
   app.get("/api/leaderboard", async (req) => {
     const scope = req.query.scope === "all" ? "leaderboard_all" : "leaderboard_month";
-    return repo.list(scope);
+    return await repo.list(scope);
   });
 
   // ── Generic CRUD over every collection ───────────────────────────────────
   app.get("/api/:collection", async (req, reply) => {
     const { collection } = req.params;
     if (!COLLECTION_NAMES.includes(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
-    let items = repo.list(collection);
+    let items = await repo.list(collection);
     const f = listFilter(collection, req.query);
     if (f) items = items.filter(f);
-    if (collection === "products") items = rollupProducts(items, repo.list("customers"));
+    if (collection === "products") items = rollupProducts(items, await repo.list("customers"));
     return items;
   });
 
   app.get("/api/:collection/:id", async (req, reply) => {
     const { collection, id } = req.params;
     if (!COLLECTION_NAMES.includes(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
-    const item = repo.get(collection, id);
+    const item = await repo.get(collection, id);
     if (!item) return reply.code(404).send({ error: "Not found" });
-    return collection === "products" ? rollupProduct(item, repo.list("customers")) : item;
+    return collection === "products" ? rollupProduct(item, await repo.list("customers")) : item;
   });
 
   app.post("/api/:collection", async (req, reply) => {
     const { collection } = req.params;
     if (!WRITABLE.has(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
     if (!req.body || typeof req.body !== "object") return reply.code(400).send({ error: "JSON body required" });
-    const created = repo.create(collection, { ...(CREATE_DEFAULTS[collection] || {}), ...req.body });
+    const created = await repo.create(collection, { ...(CREATE_DEFAULTS[collection] || {}), ...req.body });
     return reply.code(201).send(created);
   });
 
@@ -146,7 +163,7 @@ export function registerRoutes(app) {
     const { collection, id } = req.params;
     if (!WRITABLE.has(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
     if (!req.body || typeof req.body !== "object") return reply.code(400).send({ error: "JSON body required" });
-    const updated = repo.update(collection, id, req.body);
+    const updated = await repo.update(collection, id, req.body);
     if (!updated) return reply.code(404).send({ error: "Not found" });
     return updated;
   });
@@ -154,7 +171,7 @@ export function registerRoutes(app) {
   app.delete("/api/:collection/:id", async (req, reply) => {
     const { collection, id } = req.params;
     if (!WRITABLE.has(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
-    const ok = repo.remove(collection, id);
+    const ok = await repo.remove(collection, id);
     if (!ok) return reply.code(404).send({ error: "Not found" });
     return { ok: true, id };
   });
@@ -166,7 +183,7 @@ export function registerRoutes(app) {
   // Best-effort: só 404 (lead inexistente) é erro; skip/falha de geração voltam 200
   // com { ok:false, ... } pra UI mostrar o estado sem quebrar nada (fail-open).
   app.post("/api/leads/:id/proposal", async (req, reply) => {
-    const lead = repo.get("leads", req.params.id);
+    const lead = await repo.get("leads", req.params.id);
     if (!lead) return reply.code(404).send({ error: "Not found" });
     const auto = req.query.auto === "1" || req.query.auto === "true";
     const force = req.query.force === "1" || req.query.force === "true";

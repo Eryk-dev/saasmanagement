@@ -2,38 +2,26 @@
 // `customers` (contagem), `arr` (soma) e `mrr` (arr/12) nunca vêm do campo cru do
 // produto — sempre dos clientes registrados. Garante que um SaaS jamais exibe
 // receita sem clientes, e que UI/MCP/REST (bootstrap, portfolio, products) ficam
-// consistentes. Mesmo padrão de boot do routes.proposal.test.js (DB tmp + inject).
+// consistentes. Repo in-memory (sem Postgres), via Fastify inject.
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { rmSync } from "node:fs";
 import Fastify from "fastify";
+import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const DB = join(tmpdir(), `cockpit-rollup-test-${process.pid}.db`);
-process.env.COCKPIT_DB_PATH = DB;
-
-const { initDb, repo } = await import("../src/db.js");
 const { registerRoutes } = await import("../src/routes.js");
 
-initDb();
+const repo = makeMemRepo();
 
 function buildApp() {
   const app = Fastify();
-  registerRoutes(app);
+  registerRoutes(app, repo);
   return app;
 }
 
-test.after(() => {
-  for (const suffix of ["", "-wal", "-shm"]) {
-    try { rmSync(DB + suffix); } catch { /* ignore */ }
-  }
-});
-
 test("produto com números fantasma e sem clientes registrados → derivado a 0", async () => {
   // Campos crus mentem (receita sem cliente); o read deve sobrescrever para 0.
-  repo.create("products", { id: "leverads", name: "LeverAds", mrr: 350, arr: 4200, customers: 1 });
+  await repo.create("products", { id: "leverads", name: "LeverAds", mrr: 350, arr: 4200, customers: 1 });
   const app = buildApp();
 
   const list = (await app.inject({ method: "GET", url: "/api/products" })).json();
@@ -61,7 +49,7 @@ test("produto com números fantasma e sem clientes registrados → derivado a 0"
 });
 
 test("ao registrar 1 cliente (arr=4200) → customers:1, arr:4200, mrr:350 em todos os módulos", async () => {
-  repo.create("customers", { id: "cust_real", name: "Cliente Real", saas: "leverads", arr: 4200 });
+  await repo.create("customers", { id: "cust_real", name: "Cliente Real", saas: "leverads", arr: 4200 });
   const app = buildApp();
 
   const one = (await app.inject({ method: "GET", url: "/api/products/leverads" })).json();

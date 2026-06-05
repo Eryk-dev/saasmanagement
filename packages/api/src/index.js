@@ -26,7 +26,7 @@ function providedKey(req) {
   return auth.startsWith("Bearer ") ? auth.slice(7) : "";
 }
 
-initDb();
+await initDb();
 
 const app = Fastify({ logger: true });
 

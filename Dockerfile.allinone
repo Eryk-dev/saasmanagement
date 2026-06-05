@@ -3,7 +3,7 @@
 # aponta o domínio pra porta 80 e pronto.
 #
 # Easypanel: Build = Dockerfile, caminho `Dockerfile.allinone`, porta 80.
-# Persistência: monte um Volume em /app/packages/api/data (banco SQLite).
+# Persistência: defina COCKPIT_DB_URL (Supabase Postgres) — os dados moram lá, não no container.
 
 # ── 1) build do front (Vite) ────────────────────────────────────────────────
 FROM node:20-bookworm-slim AS web
@@ -29,7 +29,6 @@ COPY packages/web/package.json packages/web/package.json
 RUN npm ci --omit=dev
 COPY packages/api/src packages/api/src
 COPY packages/mcp/src packages/mcp/src
-RUN mkdir -p packages/api/data
 COPY --from=web /app/packages/web/dist /usr/share/nginx/html
 COPY deploy/nginx.allinone.conf /etc/nginx/nginx.conf
 COPY deploy/start.sh /start.sh

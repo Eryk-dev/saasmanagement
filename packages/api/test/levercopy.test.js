@@ -1,27 +1,14 @@
 // Tests for the Cockpit → Levercopy proposal integration.
 // node:test (built-in). The HTTP call to Levercopy is injected (opts.fetch), so
-// nothing hits the network. The repo runs against a throwaway SQLite file.
+// nothing hits the network. The repo is an in-memory double (no Postgres).
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { rmSync } from "node:fs";
+import { makeMemRepo } from "./helpers/mem-repo.js";
 
-// Point the document store at a temp DB *before* importing db.js.
-const DB = join(tmpdir(), `cockpit-levercopy-test-${process.pid}.db`);
-process.env.COCKPIT_DB_PATH = DB;
-
-const { initDb, repo } = await import("../src/db.js");
 const { buildBody, runProposal } = await import("../src/levercopy.js");
 
-initDb();
-
-test.after(() => {
-  for (const suffix of ["", "-wal", "-shm"]) {
-    try { rmSync(DB + suffix); } catch { /* ignore */ }
-  }
-});
+const repo = makeMemRepo();
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 const CFG = { url: "https://levercopy.test", key: "secret", saasId: "leverads" };
@@ -81,7 +68,7 @@ test("buildBody omits absent optional fields (Levercopy applies defaults)", () =
 
 // ── success path ───────────────────────────────────────────────────────────────
 test("runProposal success persists proposta_id, proposalUrl, proposal_edit_url", async () => {
-  const lead = newLead();
+  const lead = await newLead();
   const captured = {};
   const res = await runProposal(repo, lead, { ...CFG, fetch: stubFetch(201, okBody(), captured) });
 
@@ -91,7 +78,7 @@ test("runProposal success persists proposta_id, proposalUrl, proposal_edit_url",
   assert.equal(res.lead.proposal_edit_url, "https://levercopy.test/proposta/pr_abc/edit?k=tok");
 
   // persisted, not just returned
-  const fresh = repo.get("leads", lead.id);
+  const fresh = await repo.get("leads", lead.id);
   assert.equal(fresh.proposta_id, "pr_abc");
 
   // sent the shared key header + our lead id
@@ -102,7 +89,7 @@ test("runProposal success persists proposta_id, proposalUrl, proposal_edit_url",
 
 // ── idempotency / triggers ──────────────────────────────────────────────────────
 test("auto trigger skips when lead already has proposta_id (no Levercopy call)", async () => {
-  const lead = newLead({ proposta_id: "pr_existing" });
+  const lead = await newLead({ proposta_id: "pr_existing" });
   let called = false;
   const res = await runProposal(repo, lead, { ...CFG, auto: true, fetch: async () => { called = true; } });
   assert.equal(called, false);
@@ -111,7 +98,7 @@ test("auto trigger skips when lead already has proposta_id (no Levercopy call)",
 });
 
 test("manual force re-generates and overwrites even when proposta_id exists", async () => {
-  const lead = newLead({ proposta_id: "pr_old", proposalUrl: "old" });
+  const lead = await newLead({ proposta_id: "pr_old", proposalUrl: "old" });
   const res = await runProposal(repo, lead, {
     ...CFG, force: true,
     fetch: stubFetch(201, okBody({ id: "pr_new", proposalUrl: "https://x/new", edit_url: "https://x/new/edit" })),
@@ -123,7 +110,7 @@ test("manual force re-generates and overwrites even when proposta_id exists", as
 
 // ── graceful no-ops ──────────────────────────────────────────────────────────────
 test("not configured (no key) is a graceful skip, never an error", async () => {
-  const lead = newLead();
+  const lead = await newLead();
   let called = false;
   const res = await runProposal(repo, lead, { ...CFG, key: "", fetch: async () => { called = true; } });
   assert.equal(called, false);
@@ -132,7 +119,7 @@ test("not configured (no key) is a graceful skip, never an error", async () => {
 });
 
 test("non-leverads lead is skipped as not_levercopy", async () => {
-  const lead = newLead({ saas: "someothersaas" });
+  const lead = await newLead({ saas: "someothersaas" });
   let called = false;
   const res = await runProposal(repo, lead, { ...CFG, fetch: async () => { called = true; } });
   assert.equal(called, false);
@@ -141,38 +128,38 @@ test("non-leverads lead is skipped as not_levercopy", async () => {
 
 // ── round-trip dedupe ────────────────────────────────────────────────────────────
 test("dedupe removes the mirrored duplicate Levercopy created on the round-trip", async () => {
-  const lead = newLead();
-  const mirror = newLead({ name: "Mara (mirror)" }); // the lead Levercopy echoes back
+  const lead = await newLead();
+  const mirror = await newLead({ name: "Mara (mirror)" }); // the lead Levercopy echoes back
   const res = await runProposal(repo, lead, {
     ...CFG, fetch: stubFetch(201, okBody({ cockpit_lead_id: mirror.id })),
   });
   assert.equal(res.ok, true);
   assert.equal(res.deduped, mirror.id);
-  assert.equal(repo.get("leads", mirror.id), null);   // duplicate gone
-  assert.ok(repo.get("leads", lead.id));               // original kept
+  assert.equal(await repo.get("leads", mirror.id), null);   // duplicate gone
+  assert.ok(await repo.get("leads", lead.id));               // original kept
 });
 
 test("no dedupe when Levercopy returns our own lead id (preferred path, mirror skipped)", async () => {
-  const lead = newLead();
+  const lead = await newLead();
   const res = await runProposal(repo, lead, {
     ...CFG, fetch: stubFetch(201, okBody({ cockpit_lead_id: lead.id })),
   });
   assert.equal(res.ok, true);
   assert.equal(res.deduped, null);
-  assert.ok(repo.get("leads", lead.id)); // never deletes the original
+  assert.ok(await repo.get("leads", lead.id)); // never deletes the original
 });
 
 // ── best-effort failure ──────────────────────────────────────────────────────────
 test("network error returns ok:false without throwing or mutating the lead", async () => {
-  const lead = newLead();
+  const lead = await newLead();
   const res = await runProposal(repo, lead, { ...CFG, fetch: throwingFetch() });
   assert.equal(res.ok, false);
   assert.ok(res.error);
-  assert.equal(repo.get("leads", lead.id).proposta_id, undefined); // unchanged
+  assert.equal((await repo.get("leads", lead.id)).proposta_id, undefined); // unchanged
 });
 
 test("Levercopy 503 returns ok:false with the status", async () => {
-  const lead = newLead();
+  const lead = await newLead();
   const res = await runProposal(repo, lead, {
     ...CFG, fetch: stubFetch(503, { detail: "Geracao manual nao configurada" }),
   });
@@ -181,9 +168,9 @@ test("Levercopy 503 returns ok:false with the status", async () => {
 });
 
 test("HTTP 200 without id/proposalUrl is treated as failure, not silent success", async () => {
-  const lead = newLead();
+  const lead = await newLead();
   const res = await runProposal(repo, lead, { ...CFG, fetch: stubFetch(200, {}) });
   assert.equal(res.ok, false);
   assert.ok(res.error);
-  assert.equal(repo.get("leads", lead.id).proposta_id, undefined); // nothing persisted
+  assert.equal((await repo.get("leads", lead.id)).proposta_id, undefined); // nothing persisted
 });

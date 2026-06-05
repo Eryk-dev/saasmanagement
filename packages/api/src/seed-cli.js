@@ -8,15 +8,15 @@ const args = process.argv.slice(2);
 const demo = args.includes("--demo");
 const force = demo || args.includes("--force") || args.includes("--clear");
 
-initDb(); // cria as tabelas (e seed padrão vazio, se vazias)
+await initDb(); // cria as tabelas (e seed padrão vazio, se vazias)
 
 let report;
 if (demo) {
   const data = await import("./seed-data.demo.js");
-  report = seedExternal(data.COLLECTIONS, { force: true });
+  report = await seedExternal(data.COLLECTIONS, { force: true });
   console.log("Dados de DEMONSTRAÇÃO carregados:");
 } else {
-  report = seedAll({ force });
+  report = await seedAll({ force });
   console.log(force ? "Banco ZERADO (instância limpa):" : "Tabelas garantidas (seed vazio):");
 }
 for (const [name, n] of Object.entries(report)) console.log(`  ${name.padEnd(18)} ${n} linhas`);

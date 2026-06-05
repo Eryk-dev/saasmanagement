@@ -5,32 +5,21 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { rmSync } from "node:fs";
 import Fastify from "fastify";
+import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const DB = join(tmpdir(), `cockpit-route-test-${process.pid}.db`);
-process.env.COCKPIT_DB_PATH = DB;
 delete process.env.LEVERCOPY_INGEST_KEY; // force the "not configured" branch
 process.env.LEVERCOPY_API_URL = "";
 
-const { initDb, repo } = await import("../src/db.js");
 const { registerRoutes } = await import("../src/routes.js");
 
-initDb();
+const repo = makeMemRepo();
 
 function buildApp() {
   const app = Fastify();
-  registerRoutes(app);
+  registerRoutes(app, repo);
   return app;
 }
-
-test.after(() => {
-  for (const suffix of ["", "-wal", "-shm"]) {
-    try { rmSync(DB + suffix); } catch { /* ignore */ }
-  }
-});
 
 test("POST /api/leads/:id/proposal → 404 for a missing lead", async () => {
   const app = buildApp();
@@ -42,7 +31,7 @@ test("POST /api/leads/:id/proposal → 404 for a missing lead", async () => {
 
 test("POST /api/leads/:id/proposal is a graceful 200 skip when not configured (no 500)", async () => {
   const app = buildApp();
-  const lead = repo.create("leads", { id: "le_route_1", name: "Mara", saas: "leverads" });
+  const lead = await repo.create("leads", { id: "le_route_1", name: "Mara", saas: "leverads" });
   const res = await app.inject({ method: "POST", url: `/api/leads/${lead.id}/proposal?auto=1` });
   assert.equal(res.statusCode, 200);
   assert.equal(res.json().ok, false);

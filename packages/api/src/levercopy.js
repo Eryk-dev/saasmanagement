@@ -103,7 +103,7 @@ export async function runProposal(repo, lead, opts = {}) {
     return { ok: false, error: e.message, status: e.status || 0 };
   }
 
-  const updated = repo.update("leads", lead.id, {
+  const updated = await repo.update("leads", lead.id, {
     proposta_id: data.id,
     proposalUrl: data.proposalUrl,
     proposal_edit_url: data.edit_url,
@@ -115,7 +115,7 @@ export async function runProposal(repo, lead, opts = {}) {
   let deduped = null;
   const mirrorId = data.cockpit_lead_id;
   if (mirrorId && mirrorId !== lead.id) {
-    try { if (repo.remove("leads", mirrorId)) deduped = mirrorId; } catch { /* best-effort */ }
+    try { if (await repo.remove("leads", mirrorId)) deduped = mirrorId; } catch { /* best-effort */ }
   }
 
   return { ok: true, lead: updated, deduped };

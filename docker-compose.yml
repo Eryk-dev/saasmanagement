@@ -1,7 +1,8 @@
 # Cockpit · Portfolio OS — stack para VPS.
 #   docker compose up -d --build
 # Sobe na porta 80:  web (UI)  +  /api (REST)  +  /mcp (MCP), tudo via nginx.
-# api e mcp ficam internos (rede do compose); o SQLite persiste no volume "cockpit-data".
+# api e mcp ficam internos (rede do compose). Os dados moram no Supabase Postgres
+# (COCKPIT_DB_URL) — nada de estado no container, então redeploy/down/rebuild não perdem dados.
 
 services:
   api:
@@ -12,8 +13,7 @@ services:
     environment:
       API_PORT: "8787"
       COCKPIT_API_KEY: "${COCKPIT_API_KEY:-}"
-    volumes:
-      - cockpit-data:/app/packages/api/data
+      COCKPIT_DB_URL: "${COCKPIT_DB_URL:-}"
     restart: unless-stopped
     # Para acessar a API direto (sem ser pelo nginx), descomente:
     # ports: ["8787:8787"]
@@ -42,6 +42,3 @@ services:
       - api
       - mcp
     restart: unless-stopped
-
-volumes:
-  cockpit-data:
