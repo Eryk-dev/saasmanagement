@@ -1,0 +1,71 @@
+// Rotas de billing (fase 5) — mudança de plano com pró-rata, baixa de fatura e o
+// tick do motor. CRUD cru de plans/subscriptions/invoices fica no CRUD genérico
+// (routes.js), que já sincroniza o ARR nas mutações de assinatura.
+
+import { computeChange, runBilling, syncCustomerArr } from "./billing.js";
+
+export function registerBillingRoutes(app, repo) {
+  // Mudança de plano/preço/ciclo. Upgrade aplica já (+ fatura pró-rata do diff
+  // restante do ciclo); downgrade e troca de ciclo agendam pro fim do ciclo.
+  app.post("/api/subscriptions/:id/change", async (req, reply) => {
+    const sub = await repo.get("subscriptions", req.params.id);
+    if (!sub) return reply.code(404).send({ error: "Not found" });
+    const body = req.body || {};
+    const now = new Date();
+    const result = computeChange(sub, body, now);
+
+    if (result.changeType === "no_op") return { ok: false, ...result };
+
+    if (result.changeType === "upgrade_mid_cycle") {
+      const updated = await repo.update("subscriptions", sub.id, {
+        price: body.price != null && body.price !== "" ? Number(body.price) : sub.price,
+        plan: body.plan ?? sub.plan,
+        pendingChange: null,
+      });
+      if (result.prorata > 0) {
+        await repo.create("invoices", {
+          subscription: sub.id, customer: sub.customer, saas: sub.saas,
+          amount: result.prorata, kind: "prorata", status: "open",
+          dueDate: now.toISOString(), createdAt: now.toISOString(),
+        });
+      }
+      await syncCustomerArr(repo, sub.customer);
+      return { ok: true, ...result, subscription: updated };
+    }
+
+    // downgrade_mid_cycle | cycle_change → pendingChange aplicado pelo runBilling
+    const updated = await repo.update("subscriptions", sub.id, {
+      pendingChange: {
+        price: body.price != null && body.price !== "" ? Number(body.price) : sub.price,
+        cycle: body.cycle || sub.cycle,
+        plan: body.plan ?? sub.plan,
+        applyAt: result.applyAt,
+      },
+    });
+    return { ok: true, ...result, subscription: updated };
+  });
+
+  // Baixa de fatura (o pagamento em si acontece no MP/app — fase 4). Se a
+  // assinatura estava past_due e não sobrou fatura vencida, volta a active.
+  app.post("/api/invoices/:id/pay", async (req, reply) => {
+    const inv = await repo.get("invoices", req.params.id);
+    if (!inv) return reply.code(404).send({ error: "Not found" });
+    const paid = await repo.update("invoices", inv.id, { status: "paid", paidAt: new Date().toISOString() });
+    if (inv.subscription) {
+      const stillOverdue = (await repo.list("invoices"))
+        .some((i) => i.subscription === inv.subscription && i.id !== inv.id && i.status === "overdue");
+      const sub = await repo.get("subscriptions", inv.subscription);
+      if (sub && sub.status === "past_due" && !stillOverdue) {
+        await repo.update("subscriptions", sub.id, { status: "active" });
+        await syncCustomerArr(repo, sub.customer);
+      }
+    }
+    return paid;
+  });
+
+  // Tick do motor: mudanças agendadas + renovações + dunning + sync de ARR.
+  app.post("/api/billing/run", async (req) => {
+    const graceDays = req.body?.graceDays != null ? Number(req.body.graceDays) : undefined;
+    return await runBilling(repo, graceDays != null && !Number.isNaN(graceDays) ? { graceDays } : {});
+  });
+}

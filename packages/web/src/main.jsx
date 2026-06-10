@@ -11,7 +11,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { fmt } from "./lib/format.js";
 import { loadSeed } from "./data.jsx";
-import { setKey, getKey } from "./lib/api.js";
+import { api, setKey } from "./lib/api.js";
 
 const root = createRoot(document.getElementById("root"));
 
@@ -40,25 +40,48 @@ function Loading({ error }) {
   );
 }
 
-function Unlock({ failed }) {
-  const [val, setVal] = React.useState("");
-  function submit(e) {
+// Login do time (substitui a tela de chave). O token de sessão vai pro mesmo
+// localStorage/header da key, então o resto do app não muda.
+function Login() {
+  const [username, setUsername] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState(null);
+  const inputStyle = { height: 34, padding: "0 10px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 };
+
+  async function submit(e) {
     e.preventDefault();
-    if (!val.trim()) return;
-    setKey(val.trim());
-    boot();
+    if (!username.trim() || !password) return;
+    setBusy(true); setError(null);
+    try {
+      const { token, user } = await api.login(username.trim(), password);
+      setKey(token);
+      try { localStorage.setItem("cockpit_user", JSON.stringify(user)); } catch { /* ignore */ }
+      // Reload completo (não boot() in-place): re-render a partir de um handler
+      // deixava a árvore nova sem responder a cliques reais — recarregar relê o
+      // token do localStorage e sobe o app limpo.
+      location.reload();
+    } catch (err) {
+      setBusy(false);
+      setError(err.status === 401 ? "usuário ou senha inválidos" : (err.message || String(err)));
+    }
   }
   return (
     <Shell>
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10, width: 280, alignItems: "stretch" }}>
-        <div className="mono dim" style={{ fontSize: 12, textAlign: "center" }}>Acesso restrito · informe a chave</div>
+        <div className="mono dim" style={{ fontSize: 12, textAlign: "center" }}>Acesso restrito · entre com seu usuário</div>
         <input
-          type="password" value={val} autoFocus placeholder="chave de acesso"
-          onChange={(e) => setVal(e.target.value)}
-          style={{ height: 34, padding: "0 10px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, fontFamily: "var(--mono)" }}
+          value={username} autoFocus placeholder="usuário" autoComplete="username"
+          onChange={(e) => setUsername(e.target.value)} style={inputStyle}
         />
-        {failed && <div className="mono" style={{ fontSize: 11, color: "var(--neg)", textAlign: "center" }}>chave inválida</div>}
-        <button type="submit" style={{ height: 34, background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500 }}>Entrar</button>
+        <input
+          type="password" value={password} placeholder="senha" autoComplete="current-password"
+          onChange={(e) => setPassword(e.target.value)} style={inputStyle}
+        />
+        {error && <div className="mono" style={{ fontSize: 11, color: "var(--neg)", textAlign: "center" }}>{error}</div>}
+        <button type="submit" disabled={busy} style={{ height: 34, background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
+          {busy ? "Entrando…" : "Entrar"}
+        </button>
       </form>
     </Shell>
   );
@@ -70,7 +93,7 @@ async function boot() {
     const { App } = await import("./app.jsx");
     root.render(<App />);
   } catch (err) {
-    if (err && err.status === 401) { root.render(<Unlock failed={!!getKey()} />); return; }
+    if (err && err.status === 401) { root.render(<Login />); return; }
     console.error(err);
     root.render(<Loading error={err} />);
   }

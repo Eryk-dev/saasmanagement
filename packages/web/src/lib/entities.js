@@ -32,9 +32,37 @@ export function leadQuestionFields(saasId) {
     _dynamic: true,
   }));
 }
+// Campos custom por entidade definidos em Ajustes (product.customFields.{deals|
+// customers|leads}) — mesmo padrão dinâmico de leadQuestionFields: viram campos
+// comuns do EntityForm do registro daquele SaaS.
+export function customEntityFields(collection, saasId) {
+  const s = (window.SEED?.SAAS || []).find((x) => x.id === saasId);
+  const list = s?.customFields?.[collection] || [];
+  return list.filter((f) => f.key && f.label).map((f) => ({
+    key: f.key,
+    label: f.label,
+    type: ["textarea", "number", "money", "select"].includes(f.type) ? f.type : "text",
+    options: (f.options || []).map((o) => (typeof o === "string" ? { value: o, label: o } : o)),
+    _dynamic: true,
+  }));
+}
+
 const scopeOptions = () => [
   { value: "Portfolio", label: "Portfólio" },
   ...(window.SEED?.SAAS || []).map((s) => ({ value: s.name, label: s.name })),
+];
+
+// ── billing (fase 5): opções dinâmicas por SaaS do formulário ───────────────
+const customerOptions = (v) => (window.SEED?.CUSTOMERS || [])
+  .filter((c) => !v.saas || c.saas === v.saas)
+  .map((c) => ({ value: c.id, label: c.name }));
+const planOptions = (v) => (window.PLANS_CACHE || [])
+  .filter((p) => !v.saas || p.saas === v.saas)
+  .map((p) => ({ value: p.id, label: `${p.name} · ${window.fmt.money(p.price || 0)}/${{ monthly: "mês", quarterly: "tri", annual: "ano" }[p.cycle] || p.cycle}` }));
+const CYCLE_OPTS = [
+  { value: "monthly", label: "Mensal" },
+  { value: "quarterly", label: "Trimestral" },
+  { value: "annual", label: "Anual" },
 ];
 
 const SCORE_OPTS = [{ value: "hot", label: "Quente" }, { value: "warm", label: "Morno" }, { value: "cold", label: "Frio" }];
@@ -126,6 +154,60 @@ export const ENTITIES = {
       { key: "tags", label: "Tags", type: "tags", help: "separadas por vírgula" },
       { key: "text", label: "Verbatim", type: "textarea", full: true },
     ],
+  },
+
+  // Forms/propostas têm editor próprio (screens/forms.jsx, screens/proposals.jsx)
+  // — estas entradas existem só pro ConfirmDelete compartilhado; não passe essas
+  // chaves pro openForm/EntityForm.
+  forms: {
+    collection: "forms",
+    singular: "Form",
+    titleField: "name",
+    fields: [],
+  },
+  proposal_templates: {
+    collection: "proposal_templates",
+    singular: "Template de proposta",
+    titleField: "name",
+    fields: [],
+  },
+  proposals: {
+    collection: "proposals",
+    singular: "Proposta",
+    titleField: "name",
+    fields: [],
+  },
+
+  plans: {
+    collection: "plans",
+    singular: "Plano",
+    titleField: "name",
+    fields: [
+      { key: "saas", label: "Produto", type: "select", options: saasOptions, required: true },
+      { key: "name", label: "Nome", type: "text", required: true },
+      { key: "price", label: "Preço por ciclo", type: "money", required: true },
+      { key: "cycle", label: "Ciclo", type: "select", options: CYCLE_OPTS, default: "monthly" },
+    ],
+  },
+
+  subscriptions: {
+    collection: "subscriptions",
+    singular: "Assinatura",
+    titleField: "id",
+    fields: [
+      { key: "saas", label: "Produto", type: "select", options: saasOptions, required: true },
+      { key: "customer", label: "Cliente", type: "select", options: customerOptions, required: true },
+      { key: "plan", label: "Plano", type: "select", options: planOptions, blankLabel: "(sem plano — preço avulso)" },
+      { key: "price", label: "Preço por ciclo", type: "money", required: true, help: "valor cobrado a cada ciclo; o ARR do cliente é derivado disto" },
+      { key: "cycle", label: "Ciclo", type: "select", options: CYCLE_OPTS, default: "monthly" },
+    ],
+  },
+
+  invoices: {
+    collection: "invoices",
+    singular: "Fatura",
+    titleField: "id",
+    fields: [],
   },
 
   goals: {

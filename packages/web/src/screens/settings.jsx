@@ -2,15 +2,30 @@ import React from "react";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
 import { EmptyState, PrimaryButton, RowActions } from "../atoms.jsx";
 import { useData } from "../data.jsx";
-// SaaS Settings — funnels, custom fields, health weights, Aha definition, integrations
+import { api } from "../lib/api.js";
+// SaaS Settings (fase 3) — funil, campos custom, pesos da saúde e Aha EDITÁVEIS
+// por SaaS (gravam no produto). Integrações segue mock até a fase 4 (conexões).
 
 const { useState: useStS } = React;
+
+// O App remonta a tela a cada refresh pós-save (key=dataVersion); guardar a
+// última visão em módulo preserva aba/SaaS escolhidos entre os remounts.
+const lastView = { saas: null, tab: "funnel" };
+
+const inputStyle = {
+  width: "100%", height: 28, padding: "0 8px",
+  background: "var(--bg-2)", border: "1px solid var(--line-1)",
+  borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12, fontFamily: "var(--sans)",
+};
+const slug = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
 
 function SettingsScreen({ saasId }) {
   const { SAAS } = window.SEED;
   const { openForm, openDelete } = useData();
-  const [active, setActive] = useStS(saasId || "leverads");
-  const [tab, setTab] = useStS("funnel");
+  const [active, setActive] = useStS(lastView.saas || saasId || SAAS[0]?.id);
+  const [tab, setTab] = useStS(lastView.tab);
+  lastView.saas = active; lastView.tab = tab;
   const s = SAAS.find(x => x.id === active) || SAAS[0];
 
   const TABS = [
@@ -75,26 +90,105 @@ function SettingsScreen({ saasId }) {
   );
 }
 
+// Barra de salvar compartilhada das abas (estado ocupado + erro + dica).
+function SaveBar({ onSave, disabled, hint, busyLabel = "Salvando…", label = "Salvar" }) {
+  const [busy, setBusy] = useStS(false);
+  const [error, setError] = useStS(null);
+  async function go() {
+    setBusy(true); setError(null);
+    try { await onSave(); }
+    catch (e) { setBusy(false); setError(e.message || String(e)); }
+  }
+  return (
+    <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
+      <PrimaryButton onClick={go} disabled={busy || disabled}>{busy ? busyLabel : label}</PrimaryButton>
+      {hint && <span className="mono dim" style={{ fontSize: 11 }}>{hint}</span>}
+      {error && <span className="mono" style={{ fontSize: 11, color: "var(--neg)" }}>{error}</span>}
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────── Funil & estágios
+// Editor real: nome (rename migra leads/deals no servidor), cor, conversão e
+// regra "parado → Nd". `_orig` rastreia o nome original pra montar o mapa de
+// renames do PUT /api/products/:id/funnel.
 function FunnelSettings({ s }) {
-  const { openForm } = useData();
+  const { refresh } = useData();
+  const [rows, setRows] = useStS(() => (s.funnel || []).map(f => ({ ...f, _orig: f.stage })));
+  const [migrated, setMigrated] = useStS(null);
+
+  const update = (i, patch) => setRows(r => r.map((x, j) => j === i ? { ...x, ...patch } : x));
+  const remove = (i) => setRows(r => r.filter((_, j) => j !== i));
+  const move = (i, dir) => setRows(r => {
+    const j = i + dir;
+    if (j < 0 || j >= r.length) return r;
+    const next = [...r];
+    [next[i], next[j]] = [next[j], next[i]];
+    return next;
+  });
+  const arrowStyle = (disabled) => ({ fontSize: 12, padding: "0 3px", color: "var(--fg-3)", opacity: disabled ? 0.3 : 1, fontFamily: "var(--mono)", cursor: disabled ? "default" : "pointer" });
+
+  async function save() {
+    const clean = rows.filter(r => String(r.stage || "").trim());
+    const funnel = clean.map(({ _orig, ...f }, i) => ({
+      ...f,
+      stage: f.stage.trim(),
+      conv: i === 0 || f.conv === "" || f.conv == null || Number.isNaN(Number(f.conv)) ? 1 : Number(f.conv),
+      staleDays: f.staleDays === "" || f.staleDays == null ? null : Number(f.staleDays),
+    }));
+    const renames = {};
+    clean.forEach((r, i) => { if (r._orig && r._orig !== funnel[i].stage) renames[r._orig] = funnel[i].stage; });
+    const res = await api.saveFunnel(s.id, funnel, renames);
+    setMigrated(res.migrated);
+    await refresh();
+  }
+
   return (
     <div>
-      <SettingHeader title="Estágios do funil" sub="mapeie pra tipos canônicos (prospecting/qualification/proposal/closing) pra comparar entre SaaS" />
+      <SettingHeader title="Estágios do funil" sub="renomear aqui migra os cards do pipeline junto · conversão (%) alimenta a previsão · 'parado → Nd' marca cards velhos no kanban" />
       <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", overflow: "hidden", background: "var(--bg-1)" }}>
-        <div className="mono" style={{ display: "grid", gridTemplateColumns: "30px 1fr 200px 100px 80px", padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
-          <span></span><span>Estágio</span><span>Tipo canônico</span><span>Cor</span><span>Auto-regras</span>
+        <div className="mono" style={{ display: "grid", gridTemplateColumns: "52px 1fr 130px 70px 90px 110px 30px", gap: 8, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
+          <span></span><span>Estágio</span><span>Tipo canônico</span><span>Cor</span><span>Conv.</span><span>Auto-regra</span><span></span>
         </div>
-        {s.funnel.map((f, i) => (
-          <div key={f.stage} style={{ display: "grid", gridTemplateColumns: "30px 1fr 200px 100px 80px", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", fontSize: 13 }}>
-            <span className="mono dim">⋮⋮</span>
-            <span>{f.stage}</span>
-            <span className="mono dim" style={{ fontSize: 11 }}>{canonicalFor(i, s.funnel.length)}</span>
-            <span><span style={{ display: "inline-block", width: 12, height: 12, borderRadius: 3, background: window.productTone(s), border: "1px solid var(--line-2)" }} /></span>
-            <span className="mono dim" style={{ fontSize: 10 }}>{i === 2 ? "parado → 14d" : "nenhuma"}</span>
+        {rows.map((f, i) => (
+          <div key={i} style={{ display: "grid", gridTemplateColumns: "52px 1fr 130px 70px 90px 110px 30px", gap: 8, padding: "8px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center" }}>
+            <span style={{ display: "flex" }}>
+              <button type="button" onClick={() => move(i, -1)} disabled={i === 0} style={arrowStyle(i === 0)}>↑</button>
+              <button type="button" onClick={() => move(i, 1)} disabled={i === rows.length - 1} style={arrowStyle(i === rows.length - 1)}>↓</button>
+            </span>
+            <input value={f.stage || ""} placeholder="Nome do estágio" onChange={(e) => update(i, { stage: e.target.value })} style={inputStyle} />
+            <span className="mono dim" style={{ fontSize: 11 }}>{canonicalFor(i, rows.length)}</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <input type="color" value={f.color || "#6366f1"} onChange={(e) => update(i, { color: e.target.value })} style={{ width: 26, height: 22, padding: 0, border: "1px solid var(--line-2)", borderRadius: 4, background: "transparent", opacity: f.color ? 1 : 0.35 }} title={f.color || "cor do produto"} />
+              {f.color && <button type="button" className="mono dim" onClick={() => update(i, { color: "" })} title="usar a cor do produto" style={{ fontSize: 11 }}>✕</button>}
+            </span>
+            {i === 0 ? (
+              <span className="mono dim" style={{ fontSize: 10, textAlign: "center" }}>entrada</span>
+            ) : (
+              <div style={{ position: "relative" }}>
+                <input type="number" step="any" value={f.conv === "" || f.conv == null ? "" : Math.round(Number(f.conv) * 100)} placeholder="conv"
+                  onChange={(e) => update(i, { conv: e.target.value === "" ? "" : Number(e.target.value) / 100 })}
+                  style={{ ...inputStyle, paddingRight: 18, textAlign: "right" }} />
+                <span className="mono dim" style={{ position: "absolute", right: 6, top: 6, fontSize: 11 }}>%</span>
+              </div>
+            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <span className="mono dim" style={{ fontSize: 10 }}>parado →</span>
+              <input type="number" min="0" value={f.staleDays ?? ""} placeholder="—"
+                onChange={(e) => update(i, { staleDays: e.target.value === "" ? "" : Number(e.target.value) })}
+                style={{ ...inputStyle, width: 44, textAlign: "right" }} />
+              <span className="mono dim" style={{ fontSize: 10 }}>d</span>
+            </div>
+            <button type="button" onClick={() => remove(i)} className="mono dim" style={{ fontSize: 13 }}>✕</button>
           </div>
         ))}
       </div>
-      <button onClick={() => openForm("products", s)} style={{ marginTop: 12, ...chromeBtnStyleSmall }}><span style={{ fontSize: 11 }}>+ editar estágios</span></button>
+      <div style={{ marginTop: 10 }}>
+        <button type="button" onClick={() => setRows(r => [...r, { stage: "", conv: 1, _orig: null }])} style={{ ...chromeBtnStyleSmall }}>
+          <span style={{ fontSize: 11 }}>+ adicionar estágio</span>
+        </button>
+      </div>
+      <SaveBar onSave={save} hint={migrated != null ? `salvo · ${migrated} card(s) migrados de estágio` : "remover um estágio NÃO move os cards dele (caem no 1º estágio na visualização)"} />
     </div>
   );
 }
@@ -107,88 +201,150 @@ function canonicalFor(i, n) {
   return "closing";
 }
 
+// ───────────────────────────────────────────────────────── Campos custom
+// product.customFields.{deals|customers|leads} — cada campo vira input no
+// formulário daquela entidade (EntityForm) quando o registro é deste SaaS.
+const FIELD_GROUPS = [
+  ["deals", "Deal"],
+  ["customers", "Cliente"],
+  ["leads", "Lead / Contato"],
+];
+const FIELD_TYPES = [
+  ["text", "texto"], ["textarea", "texto longo"], ["number", "número"],
+  ["money", "R$"], ["select", "escolha única"],
+];
+
 function FieldsSettings({ s }) {
+  const { refresh } = useData();
+  const [cf, setCf] = useStS(() => {
+    const base = s.customFields || {};
+    return Object.fromEntries(FIELD_GROUPS.map(([k]) => [k, (base[k] || []).map(f => ({ ...f, options: (f.options || []).map(o => (typeof o === "string" ? o : o.value)).join(", ") }))]));
+  });
+
+  const update = (g, i, patch) => setCf(c => ({ ...c, [g]: c[g].map((f, j) => j === i ? { ...f, ...patch } : f) }));
+  const add = (g) => setCf(c => ({ ...c, [g]: [...c[g], { key: "", label: "", type: "text", options: "" }] }));
+  const remove = (g, i) => setCf(c => ({ ...c, [g]: c[g].filter((_, j) => j !== i) }));
+
+  async function save() {
+    const customFields = Object.fromEntries(FIELD_GROUPS.map(([g]) => [g,
+      cf[g].filter(f => String(f.label || "").trim()).map(f => {
+        const out = { key: f.key || slug(f.label), label: f.label.trim(), type: f.type || "text" };
+        if (f.type === "select") out.options = String(f.options || "").split(",").map(o => o.trim()).filter(Boolean);
+        return out;
+      }),
+    ]));
+    await api.update("products", s.id, { customFields });
+    await refresh();
+  }
+
   return (
     <div>
-      <SettingHeader title="Campos custom" sub="por deal, por cliente, por contato. Mapeie pra campos padrão quando der." />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        {[
-          { obj: "Deal",     fields: ["Segmento ICP","Tamanho do comitê","Email do champion","Concorrência ganhou/perdeu","URL da calc de ROI"] },
-          { obj: "Cliente",  fields: ["Data de renovação","Champion","Tier","Canal Slack","CSM"] },
-          { obj: "Contato",  fields: ["Cargo","LinkedIn","Função","Influência","Detrator"] },
-        ].map(g => (
-          <div key={g.obj} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 16px" }}>
-            <div style={{ fontSize: 12, fontWeight: 500, color: "var(--fg-2)", marginBottom: 10 }}>{g.obj}</div>
-            {g.fields.map(f => (
-              <div key={f} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--line-1)", fontSize: 12 }}>
-                <span>{f}</span>
-                <span className="mono dim">texto</span>
-              </div>
-            ))}
+      <SettingHeader title="Campos custom" sub="aparecem no formulário de criar/editar a entidade quando o registro é deste SaaS · a chave é gravada no registro" />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+        {FIELD_GROUPS.map(([g, label]) => (
+          <div key={g} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 16px" }}>
+            <div style={{ fontSize: 12, fontWeight: 500, color: "var(--fg-2)", marginBottom: 10 }}>{label}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {cf[g].map((f, i) => (
+                <div key={i} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-2)", padding: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input value={f.label || ""} placeholder="Rótulo" onChange={(e) => update(g, i, { label: e.target.value, key: f.key || slug(e.target.value) })} style={{ ...inputStyle, flex: 1 }} />
+                    <button type="button" onClick={() => remove(g, i)} className="mono dim" style={{ fontSize: 13 }}>✕</button>
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input value={f.key || ""} placeholder="chave" onChange={(e) => update(g, i, { key: slug(e.target.value) })} className="mono" style={{ ...inputStyle, width: 110, fontFamily: "var(--mono)", fontSize: 11 }} />
+                    <select value={f.type || "text"} onChange={(e) => update(g, i, { type: e.target.value })} style={{ ...inputStyle, flex: 1 }}>
+                      {FIELD_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    </select>
+                  </div>
+                  {f.type === "select" && (
+                    <input value={f.options || ""} placeholder="opções separadas por vírgula" onChange={(e) => update(g, i, { options: e.target.value })} style={inputStyle} />
+                  )}
+                </div>
+              ))}
+              <button type="button" onClick={() => add(g)} style={{ alignSelf: "flex-start", padding: "4px 8px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--fg-2)" }}>+ campo</button>
+            </div>
           </div>
         ))}
       </div>
+      <SaveBar onSave={save} />
     </div>
   );
 }
 
+// ───────────────────────────────────────────────────────── Pesos da saúde
+const HEALTH_KEYS = [["funil", "Funil"], ["vendas", "Vendas"], ["cliente", "Cliente"], ["uso", "Uso"]];
+
 function HealthSettings({ s }) {
+  const { refresh } = useData();
+  const [w, setW] = useStS(() => {
+    const hw = s.healthWeights || {};
+    return Object.fromEntries(HEALTH_KEYS.map(([k]) => [k, Number.isFinite(Number(hw[k])) ? Number(hw[k]) : 25]));
+  });
+  const total = HEALTH_KEYS.reduce((a, [k]) => a + (Number(w[k]) || 0), 0);
+  const ok = total === 100;
+
+  async function save() {
+    await api.update("products", s.id, { healthWeights: w });
+    await refresh();
+  }
+
   return (
     <div>
       <SettingHeader title="Composição da saúde" sub="média ponderada · 0–100 · a decomposição aparece em todo hover no app" />
       <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
-        {s.decomp.map((d) => (
-          <div key={d.k} style={{ display: "grid", gridTemplateColumns: "120px 1fr 60px 100px", gap: 14, padding: "14px 16px", borderBottom: "1px solid var(--line-1)", alignItems: "center" }}>
-            <span style={{ fontSize: 13 }}>{d.k}</span>
-            <input type="range" min="0" max="100" defaultValue={Math.round(d.w*100)} style={{ width: "100%" }} />
-            <span className="mono tnum" style={{ textAlign: "right" }}>{(d.w*100).toFixed(0)}%</span>
-            <span className="mono dim" style={{ fontSize: 11 }}>sinal: {d.k.toLowerCase()}</span>
+        {HEALTH_KEYS.map(([k, label]) => (
+          <div key={k} style={{ display: "grid", gridTemplateColumns: "120px 1fr 80px", gap: 14, padding: "14px 16px", borderBottom: "1px solid var(--line-1)", alignItems: "center" }}>
+            <span style={{ fontSize: 13 }}>{label}</span>
+            <input type="range" min="0" max="100" value={w[k]} onChange={(e) => setW(x => ({ ...x, [k]: Number(e.target.value) }))} style={{ width: "100%" }} />
+            <div style={{ position: "relative" }}>
+              <input type="number" min="0" max="100" value={w[k]} onChange={(e) => setW(x => ({ ...x, [k]: e.target.value === "" ? 0 : Number(e.target.value) }))} style={{ ...inputStyle, paddingRight: 20, textAlign: "right" }} />
+              <span className="mono dim" style={{ position: "absolute", right: 6, top: 6, fontSize: 11 }}>%</span>
+            </div>
           </div>
         ))}
       </div>
-      <div className="mono dim" style={{ fontSize: 11, marginTop: 10 }}>os pesos devem somar 100% · última edição há 4d por você</div>
+      <div className="mono" style={{ fontSize: 11, marginTop: 10, color: ok ? "var(--fg-4)" : "var(--neg)" }}>
+        soma: {total}% {ok ? "" : "· os pesos devem somar 100%"}
+      </div>
+      <SaveBar onSave={save} disabled={!ok} />
     </div>
   );
 }
 
+// ───────────────────────────────────────────────────────── Definição do Aha
 function AhaSettings({ s }) {
+  const { refresh } = useData();
+  const [conds, setConds] = useStS(() => [...(s.aha?.conditions || [])]);
+
+  async function save() {
+    await api.update("products", s.id, { aha: { ...(s.aha || {}), conditions: conds.map(c => c.trim()).filter(Boolean) } });
+    await refresh();
+  }
+
   return (
     <div>
       <SettingHeader title="Definição do Aha-Moment" sub="o evento único que prevê retenção. Alimenta ativação, time-to-value e alertas de onboarding." />
       <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "16px 18px" }}>
         <div style={{ fontSize: 13, color: "var(--fg-2)", marginBottom: 10 }}>Um usuário atinge o Aha quando:</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {s.id === "leverads" ? [
-            "Conecta ao menos 1 fonte de anúncios",
-            "Roda uma campanha por ≥ 7 dias",
-            "Vê o dashboard de atribuição ≥ 3 vezes",
-          ].map(c => <Cond key={c} c={c} />) :
-           s.id === "quill" ? [
-            "Cria 3 documentos",
-            "Gera ≥ 1.000 palavras via IA",
-            "Em até 7 dias do signup",
-          ].map(c => <Cond key={c} c={c} />) :
-          [
-            "Escaneia ≥ 50 SKUs",
-            "Faz 1 contagem de ciclo",
-            "Adiciona ao menos 1 colega",
-          ].map(c => <Cond key={c} c={c} />)}
+          {conds.map((c, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)" }}>
+              <span style={{ width: 14, height: 14, borderRadius: 3, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)", fontSize: 10, flexShrink: 0 }}>✓</span>
+              <input value={c} placeholder="Condição (ex.: conecta 1 fonte de anúncios)" onChange={(e) => setConds(x => x.map((y, j) => j === i ? e.target.value : y))} style={{ ...inputStyle, background: "transparent", border: "none", height: 22 }} />
+              <button type="button" onClick={() => setConds(x => x.filter((_, j) => j !== i))} className="mono dim" style={{ fontSize: 13 }}>✕</button>
+            </div>
+          ))}
+          <button type="button" onClick={() => setConds(x => [...x, ""])} style={{ alignSelf: "flex-start", padding: "4px 8px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--fg-2)" }}>+ condição</button>
         </div>
-        <div className="mono dim" style={{ fontSize: 11, marginTop: 14 }}>ativação atual: <span style={{ color: "var(--fg-1)" }}>{window.fmt.pct(s.activation)}</span> · mediana do coorte até o Aha: ~3.2d</div>
+        <div className="mono dim" style={{ fontSize: 11, marginTop: 14 }}>ativação atual: <span style={{ color: "var(--fg-1)" }}>{window.fmt.pct(s.activation)}</span></div>
       </div>
+      <SaveBar onSave={save} />
     </div>
   );
 }
 
-function Cond({ c }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)" }}>
-      <span style={{ width: 14, height: 14, borderRadius: 3, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)", fontSize: 10 }}>✓</span>
-      <span style={{ fontSize: 12 }}>{c}</span>
-    </div>
-  );
-}
-
+// ───────────────────────────────────────────────────────── Integrações (mock — fase 4 a cargo do app)
 function IntegrationsSettings() {
   const integrations = [
     { k: "Stripe",   status: "connected", desc: "MRR, cobrança, eventos de churn" },
@@ -201,7 +357,7 @@ function IntegrationsSettings() {
   ];
   return (
     <div>
-      <SettingHeader title="Integrações" sub="sync bidirecional onde dá · webhooks pro resto" />
+      <SettingHeader title="Integrações" sub="mock — conexões reais (e-mail, webhook, Mercado Pago) chegam na fase 4" />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
         {integrations.map(i => (
           <div key={i.k} style={{ padding: "14px 16px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>

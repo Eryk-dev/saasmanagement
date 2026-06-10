@@ -13,13 +13,16 @@ function funnelAvgConv(s) {
 }
 
 // Attach the weighted-health decomposition every product card/health tab expects.
+// Pesos vêm de product.healthWeights (em %, editados em Ajustes); fallback 25/25/25/25.
 export function hydrateSeed(seed) {
   (seed?.SAAS || []).forEach((s) => {
+    const hw = s.healthWeights || {};
+    const w = (k) => (Number.isFinite(Number(hw[k])) ? Number(hw[k]) : 25) / 100;
     s.decomp = [
-      { k: "Funil",   v: funnelAvgConv(s),                              w: 0.25 },
-      { k: "Vendas",  v: Math.round(Math.min(100, (s.winRate || 0) * 200)),    w: 0.25 },
-      { k: "Cliente", v: Math.round(Math.min(100, (s.nrr || 0) * 70)),         w: 0.25 },
-      { k: "Uso",     v: Math.round(Math.min(100, (s.activation || 0) * 100)), w: 0.25 },
+      { k: "Funil",   v: funnelAvgConv(s),                              w: w("funil") },
+      { k: "Vendas",  v: Math.round(Math.min(100, (s.winRate || 0) * 200)),    w: w("vendas") },
+      { k: "Cliente", v: Math.round(Math.min(100, (s.nrr || 0) * 70)),         w: w("cliente") },
+      { k: "Uso",     v: Math.round(Math.min(100, (s.activation || 0) * 100)), w: w("uso") },
     ];
   });
 }

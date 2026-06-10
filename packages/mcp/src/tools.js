@@ -20,11 +20,18 @@ const ALIASES = {
   attention: "attention", atencao: "attention",
   person: "people", people: "people", pessoa: "people", pessoas: "people",
   leaderboard: "leaderboard_month", leaderboard_month: "leaderboard_month", leaderboard_all: "leaderboard_all",
+  form: "forms", forms: "forms", formulario: "forms", formularios: "forms",
+  form_submission: "form_submissions", form_submissions: "form_submissions", submission: "form_submissions", submissions: "form_submissions", resposta: "form_submissions", respostas: "form_submissions",
+  proposal: "proposals", proposals: "proposals", proposta: "proposals", propostas: "proposals",
+  proposal_template: "proposal_templates", proposal_templates: "proposal_templates", template_proposta: "proposal_templates", templates_proposta: "proposal_templates",
+  plan: "plans", plans: "plans", plano: "plans", planos: "plans",
+  subscription: "subscriptions", subscriptions: "subscriptions", assinatura: "subscriptions", assinaturas: "subscriptions",
+  invoice: "invoices", invoices: "invoices", fatura: "invoices", faturas: "invoices",
 };
-const COLLECTIONS = "products, customers, leads, nps, goals, attention, people, leaderboard_month, leaderboard_all";
+const COLLECTIONS = "products, customers, leads, nps, goals, attention, people, leaderboard_month, leaderboard_all, forms, form_submissions, proposal_templates, proposals, plans, subscriptions, invoices";
 function resolve(r) {
   const c = ALIASES[String(r || "").toLowerCase()];
-  if (!c) throw new Error(`Recurso desconhecido: "${r}". Use um de: saas/products, customers, leads, nps, goals, attention, people, leaderboard_month, leaderboard_all.`);
+  if (!c) throw new Error(`Recurso desconhecido: "${r}". Use um de: saas/products, customers, leads, nps, goals, attention, people, leaderboard_month, leaderboard_all, forms, form_submissions.`);
   return c;
 }
 
@@ -85,7 +92,7 @@ export function registerTools(server) {
 
   server.registerTool("create_record", {
     title: "Criar registro (cria SaaS, lead, deal, cliente…)",
-    description: `Cria um registro. Para CRIAR UM SAAS use resource='saas' (ou 'products'). Também cria leads (cards do pipeline), customers, nps, goals, attention, people. Veja os campos de cada um com a tool resource_schema. Campos faltantes ganham defaults seguros (ex.: produto sem funil/métricas ainda renderiza).`,
+    description: `Cria um registro. Para CRIAR UM SAAS use resource='saas' (ou 'products'). Também cria leads (cards do pipeline), customers, nps, goals, attention, people e forms (form builder: { name, saas, status draft|published, theme, welcome, questions[{key,label,type,required,options,to}], thanks, mapping } — página pública em /f/:id). Veja os campos de cada um com a tool resource_schema. Campos faltantes ganham defaults seguros (ex.: produto sem funil/métricas ainda renderiza).`,
     inputSchema: {
       resource: z.string().describe(`Coleção a criar: ${COLLECTIONS} (ou 'saas')`),
       data: z.record(z.any()).describe("Objeto com os campos do registro. Ex. SaaS: { id, name, mrr, arr, health }"),
@@ -120,6 +127,17 @@ export function registerTools(server) {
     inputSchema: { id: z.string(), stage: z.string().describe("estágio de destino") },
   }, async ({ id, stage }) => {
     try { return out(await apiClient.update("leads", id, { stage })); } catch (e) { return fail(e); }
+  });
+
+  server.registerTool("generate_proposal", {
+    title: "Gerar proposta de um lead",
+    description: "Gera (ou re-gera com force=true) a proposta comercial de um lead. O servidor escolhe o provider: 'native' quando o SaaS do lead tem template de proposta publicado (proposal_templates), senão 'levercopy'. Retorna provider, proposalUrl e proposal_edit_url (link do closer). Idempotente sem force: lead que já tem proposta não re-gera.",
+    inputSchema: {
+      lead_id: z.string().describe("id do lead (collection leads)"),
+      force: z.boolean().optional().describe("true = re-gerar sobrescrevendo a proposta atual"),
+    },
+  }, async ({ lead_id, force }) => {
+    try { return out(await apiClient.generateProposal(lead_id, { force: !!force })); } catch (e) { return fail(e); }
   });
 
   server.registerTool("leaderboard", {

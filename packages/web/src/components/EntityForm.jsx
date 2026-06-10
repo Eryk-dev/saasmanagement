@@ -1,5 +1,5 @@
 import React from "react";
-import { ENTITIES, leadQuestionFields } from "../lib/entities.js";
+import { ENTITIES, leadQuestionFields, customEntityFields } from "../lib/entities.js";
 import { api } from "../lib/api.js";
 // Reusable create/edit modal, driven by the per-entity config in entities.js.
 // Mirrors deal.jsx's right-drawer overlay. Create vs edit is decided by record.id.
@@ -17,11 +17,15 @@ function resolveOptions(field, values) {
   return (typeof o === "function" ? o(values) : o) || [];
 }
 
-// `cfg.fields` é estático; o formulário de lead acrescenta as perguntas do pipeline
-// selecionado. Esta lista efetiva dirige render, validação e payload.
+// `cfg.fields` é estático; o formulário acrescenta os campos dinâmicos do SaaS
+// selecionado: perguntas de qualificação (leads) + campos custom de Ajustes
+// (deals/customers/leads). Esta lista efetiva dirige render, validação e payload.
 function effectiveFields(cfg, values) {
-  if (cfg.collection !== "leads") return cfg.fields;
-  return [...cfg.fields, ...leadQuestionFields(values.saas)];
+  const extra = ["leads", "deals", "customers"].includes(cfg.collection)
+    ? customEntityFields(cfg.collection, values.saas)
+    : [];
+  if (cfg.collection === "leads") return [...cfg.fields, ...leadQuestionFields(values.saas), ...extra];
+  return [...cfg.fields, ...extra];
 }
 
 // Vazio para validação de obrigatório: array sem itens conta como vazio.
@@ -123,15 +127,14 @@ function EntityForm({ entityKey, record, onClose, onSaved }) {
 
   const set = (key, val) => setValues((v) => ({ ...v, [key]: val }));
 
-  // Ao trocar de pipeline no form de lead, semeia em branco as perguntas que aparecem
-  // (sem apagar respostas já digitadas).
+  // Ao trocar de SaaS no form, semeia em branco os campos dinâmicos que aparecem
+  // (perguntas do pipeline + campos custom), sem apagar valores já digitados.
   useEffect(() => {
-    if (cfg.collection !== "leads") return;
     setValues((v) => {
       let changed = false;
       const next = { ...v };
-      for (const f of leadQuestionFields(v.saas)) {
-        if (next[f.key] === undefined) {
+      for (const f of effectiveFields(cfg, v)) {
+        if (f._dynamic && next[f.key] === undefined) {
           next[f.key] = f.type === "multiselect" ? [] : "";
           changed = true;
         }

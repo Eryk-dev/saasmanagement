@@ -46,4 +46,8 @@ export const apiClient = {
   create: (collection, obj) => req("POST", `/api/${collection}`, obj),
   update: (collection, id, patch) => req("PATCH", `/api/${collection}/${encodeURIComponent(id)}`, patch),
   remove: (collection, id) => req("DELETE", `/api/${collection}/${encodeURIComponent(id)}`),
+  // Dispara a geração de proposta de um lead (dispatcher native|levercopy).
+  // Sem force é idempotente (auto=1: pula se o lead já tem proposta).
+  generateProposal: (leadId, { force = false } = {}) =>
+    req("POST", `/api/leads/${encodeURIComponent(leadId)}/proposal${force ? "?force=1" : "?auto=1"}`),
 };

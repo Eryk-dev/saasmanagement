@@ -5,7 +5,10 @@ import { chromeBtnStyleSmall } from "./lib/ui.js";
 import { PortfolioScreen } from "./screens/portfolio.jsx";
 import { SaasDashboardScreen } from "./screens/saas_dashboard.jsx";
 import { PipelineScreen } from "./screens/pipeline.jsx";
+import { FormsScreen } from "./screens/forms.jsx";
+import { ProposalsScreen } from "./screens/proposals.jsx";
 import { CustomersScreen } from "./screens/customers.jsx";
+import { SubscriptionsScreen } from "./screens/subscriptions.jsx";
 import { NPSScreen } from "./screens/nps.jsx";
 import { GoalsScreen } from "./screens/goals.jsx";
 import { LeaderboardScreen } from "./screens/leaderboard.jsx";
@@ -87,7 +90,10 @@ function App() {
     portfolio:   ["Portfólio"],
     saas:        ["Portfólio", window.SEED.SAAS.find(s => s.id === params.saas)?.name || "LeverAds"],
     pipeline:    ["Vendas", "Pipeline · " + (window.SEED.SAAS.find(s => s.id === params.saas)?.name || "LeverAds")],
+    forms:       ["Vendas", "Forms"],
+    proposals:   ["Vendas", "Propostas"],
     customers:   ["Cliente", "Clientes"],
+    subscriptions: ["Cliente", "Assinaturas"],
     nps:         ["Cliente", "NPS"],
     goals:       ["Time", "Metas"],
     leaderboard: ["Time", "Ranking"],
@@ -116,7 +122,10 @@ function App() {
           {screen === "portfolio"   && <PortfolioScreen onNav={nav} onJump={jump} />}
           {screen === "saas"        && <SaasDashboardScreen saasId={params.saas} onNav={nav} onJump={jump} />}
           {screen === "pipeline"    && <PipelineScreen saasId={params.saas} onJump={jump} jumpFilter={params} onOpenLead={openLead} />}
+          {screen === "forms"       && <FormsScreen saasId={params.saas} />}
+          {screen === "proposals"   && <ProposalsScreen saasId={params.saas} />}
           {screen === "customers"   && <CustomersScreen csFilter={params.csFilter} />}
+          {screen === "subscriptions" && <SubscriptionsScreen saasId={params.saas} />}
           {screen === "nps"         && <NPSScreen />}
           {screen === "goals"       && <GoalsScreen />}
           {screen === "leaderboard" && <LeaderboardScreen />}
@@ -184,7 +193,10 @@ function subtitleFor(screen, params) {
     portfolio:   "28 mai 2026",
     saas:        "28 mai 2026",
     pipeline:    `${params.stage ? "estágio: " + params.stage + " · " : ""}arraste para mover`,
+    forms:       "formulários de captação por SaaS",
+    proposals:   "templates por marca · slides com trava magnética",
     customers:   params.csFilter === "red" ? "filtrado: crítico" : "ordenado por saúde",
+    subscriptions: "system-of-record · ARR do cliente deriva daqui",
     nps:         "últimos 90 dias",
     goals:       "dia 12 / 31",
     leaderboard: "múltiplas categorias",

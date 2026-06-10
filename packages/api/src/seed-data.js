@@ -23,4 +23,13 @@ export const COLLECTIONS = {
   goals: [],
   leaderboard_month: [],
   leaderboard_all: [],
+  forms: [],
+  form_submissions: [],
+  proposal_templates: [],
+  proposals: [],
+  plans: [],
+  subscriptions: [],
+  invoices: [],
+  users: [],
+  sessions: [],
 };

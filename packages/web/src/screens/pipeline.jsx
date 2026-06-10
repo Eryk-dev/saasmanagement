@@ -32,6 +32,8 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
 
   // Group active-product leads by stage
   const stages = s ? s.funnel.map(f => f.stage) : [];
+  // Config por estágio vinda de Ajustes (cor + regra "parado → Nd").
+  const stageMeta = s ? Object.fromEntries(s.funnel.map(f => [f.stage, f])) : {};
   const byStage = useMP(() => {
     const m = {}; stages.forEach(st => m[st] = []);
     saasLeads.forEach(l => {
@@ -85,6 +87,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
       {view === "kanban" && (
         <KanbanBoard
           stages={stages}
+          stageMeta={stageMeta}
           byStage={byStage}
           highlight={highlight}
           onMove={moveLeadTo}
@@ -221,6 +224,7 @@ function PipelineBand({ s, leads, onMove, highlight, onOpenLead }) {
   const [dragging, setDragging] = useStP(null);
   const [noop, setNoop] = useStP(new Set());
   const stages = s.funnel.map(f => f.stage);
+  const stageMeta = Object.fromEntries(s.funnel.map(f => [f.stage, f]));
   const byStage = {};
   stages.forEach(st => byStage[st] = []);
   leads.forEach(l => {
@@ -250,6 +254,7 @@ function PipelineBand({ s, leads, onMove, highlight, onOpenLead }) {
         {stages.map(st => (
           <KanbanColumn key={st}
             stage={st}
+            meta={stageMeta[st]}
             cards={byStage[st] || []}
             highlight={highlight === st}
             onDropCard={(id) => { onMove(id, st); setDragging(null); }}
@@ -267,13 +272,14 @@ function PipelineBand({ s, leads, onMove, highlight, onOpenLead }) {
 }
 
 // ─────────────────────────────────────────────── Kanban
-function KanbanBoard({ stages, byStage, highlight, onMove, selected, setSelected, onOpenLead }) {
+function KanbanBoard({ stages, stageMeta = {}, byStage, highlight, onMove, selected, setSelected, onOpenLead }) {
   const [dragging, setDragging] = useStP(null);
   return (
     <div style={{ flex: 1, overflowX: "auto", padding: 14, display: "grid", gridAutoFlow: "column", gridAutoColumns: "minmax(260px, 1fr)", gap: 10, alignItems: "start" }}>
       {stages.map(st => (
         <KanbanColumn key={st}
           stage={st}
+          meta={stageMeta[st]}
           cards={byStage[st] || []}
           highlight={highlight === st}
           onDropCard={(id) => { onMove(id, st); setDragging(null); }}
@@ -288,9 +294,12 @@ function KanbanBoard({ stages, byStage, highlight, onMove, selected, setSelected
   );
 }
 
-function KanbanColumn({ stage, cards, highlight, onDropCard, dragging, setDragging, selected, setSelected, compact, onOpenLead }) {
+function KanbanColumn({ stage, meta, cards, highlight, onDropCard, dragging, setDragging, selected, setSelected, compact, onOpenLead }) {
   const [over, setOver] = useStP(false);
   const total = cards.reduce((a, l) => a + (l.amount || 0), 0);
+  // Auto-regra de Ajustes: idade numérica (dias) ≥ staleDays → card "parado".
+  const staleDays = meta?.staleDays;
+  const isStale = (l) => staleDays != null && staleDays !== "" && typeof l.age === "number" && l.age >= Number(staleDays);
   return (
     <div
       onDragOver={(e) => { e.preventDefault(); setOver(true); }}
@@ -308,14 +317,17 @@ function KanbanColumn({ stage, cards, highlight, onDropCard, dragging, setDraggi
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "2px 4px 6px", borderBottom: "1px solid var(--line-1)" }}>
         <div style={{ fontSize: 12, fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
           {highlight && <span className="dot" style={{ color: "var(--neg)" }} />}
+          {meta?.color && <span style={{ width: 8, height: 8, borderRadius: 2, background: meta.color, flexShrink: 0 }} />}
           {stage}
           <span className="mono dim" style={{ fontSize: 10 }}>{cards.length}</span>
+          {staleDays != null && staleDays !== "" && <span className="mono dim" style={{ fontSize: 9 }}>parado→{staleDays}d</span>}
         </div>
         <span className="mono tnum dim" style={{ fontSize: 11 }}>{window.fmt.money(total)}</span>
       </div>
       {cards.map(l => (
         <LeadCard
           key={l.id} d={l}
+          stale={isStale(l)}
           onDragStart={() => setDragging(l.id)}
           selected={selected.has(l.id)}
           onSelect={() => {
@@ -329,7 +341,7 @@ function KanbanColumn({ stage, cards, highlight, onDropCard, dragging, setDraggi
   );
 }
 
-function LeadCard({ d, onDragStart, selected, onSelect, onOpen }) {
+function LeadCard({ d, stale, onDragStart, selected, onSelect, onOpen }) {
   const { PEOPLE } = window.SEED;
   const owner = PEOPLE[d.owner];
   const scoreTone = leadScoreTone(d.score);
@@ -357,6 +369,7 @@ function LeadCard({ d, onDragStart, selected, onSelect, onOpen }) {
         <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--fg-3)", minWidth: 0 }}>
           <Avatar id={d.owner} name={owner?.name || d.owner} size={16} />
           <span className="mono">{leadAge(d)}</span>
+          {stale && <span className="mono" style={{ color: "var(--neg)" }}>· parado</span>}
           {d.priority && <span className="mono" style={{ color: priTone }}>· {d.priority}</span>}
           {d.proposalUrl && <span className="mono" style={{ color: "var(--accent)" }}>· prop</span>}
         </div>

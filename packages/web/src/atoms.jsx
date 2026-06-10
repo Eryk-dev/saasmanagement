@@ -276,13 +276,14 @@ function RowActions({ onEdit, onDelete }) {
 
 // Primary CTA button — shared so empty states and toolbars create records the
 // same way. `onClick` opens the relevant EntityForm.
-function PrimaryButton({ onClick, children }) {
+function PrimaryButton({ onClick, children, disabled }) {
   return (
-    <button onClick={onClick} style={{
+    <button onClick={onClick} disabled={disabled} style={{
       display: "inline-flex", alignItems: "center", gap: 6,
       height: 30, padding: "0 14px",
       background: "var(--accent)", color: "var(--accent-fg)",
       borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500,
+      opacity: disabled ? 0.5 : 1,
     }}>{children}</button>
   );
 }

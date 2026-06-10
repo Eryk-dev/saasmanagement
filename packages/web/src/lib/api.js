@@ -36,6 +36,10 @@ async function req(method, path, body) {
 
 export const api = {
   bootstrap: () => req("GET", "/api/bootstrap"),
+  // Auth do time: o token de sessão entra no MESMO slot da key (localStorage +
+  // header x-api-key) — o resto do client não muda.
+  login: (username, password) => req("POST", "/api/auth/login", { username, password }),
+  logout: () => req("POST", "/api/auth/logout", {}),
   list: (collection, query = {}) => {
     const qs = new URLSearchParams(query).toString();
     return req("GET", `/api/${collection}${qs ? `?${qs}` : ""}`);
@@ -53,4 +57,14 @@ export const api = {
     const q = [auto && "auto=1", force && "force=1"].filter(Boolean).join("&");
     return req("POST", `/api/leads/${id}/proposal${q ? `?${q}` : ""}`);
   },
+  // Builders: preview server-side do rascunho (mesmo HTML da página pública).
+  formPreview: (draft) => req("POST", "/api/forms/preview", draft),
+  proposalPreview: (payload) => req("POST", "/api/proposals/preview", payload),
+  // Ajustes (fase 3): grava o funil migrando estágios renomeados (lead/deal.stage
+  // não têm FK — o servidor reaponta os cards junto).
+  saveFunnel: (productId, funnel, renames) => req("PUT", `/api/products/${productId}/funnel`, { funnel, renames }),
+  // Billing (fase 5).
+  changeSubscription: (id, body) => req("POST", `/api/subscriptions/${id}/change`, body),
+  payInvoice: (id) => req("POST", `/api/invoices/${id}/pay`),
+  runBilling: () => req("POST", "/api/billing/run", {}),
 };

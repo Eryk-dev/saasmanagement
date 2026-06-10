@@ -10,6 +10,11 @@ export default defineConfig({
     // Proxy API calls to the Fastify server so the browser stays same-origin in dev.
     proxy: {
       "/api": { target: API_TARGET, changeOrigin: true },
+      // Superfície pública de forms e propostas — testáveis pelo dev server.
+      "/f": { target: API_TARGET, changeOrigin: true },
+      "/p": { target: API_TARGET, changeOrigin: true },
+      "/public": { target: API_TARGET, changeOrigin: true },
+      "/embed.js": { target: API_TARGET, changeOrigin: true },
     },
   },
 });

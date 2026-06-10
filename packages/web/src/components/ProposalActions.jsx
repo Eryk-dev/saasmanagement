@@ -15,7 +15,9 @@ const linkBtnStyle = { ...accentBtnStyle, textDecoration: "none" };
 function ProposalActions({ l }) {
   const { refresh } = useData();
   const cfg = window.SEED.CONFIG?.levercopy;
-  const isLevercopy = !!cfg?.enabled && l.saas === cfg.saas;
+  // Provider disponível pro SaaS do lead: nativo (template publicado) ou Levercopy.
+  const hasNative = (window.SEED.CONFIG?.proposals?.nativeSaas || []).includes(l.saas);
+  const isLevercopy = (!!cfg?.enabled && l.saas === cfg.saas) || hasNative;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(false);
 

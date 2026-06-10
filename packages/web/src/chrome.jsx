@@ -1,4 +1,5 @@
 import React from "react";
+import { api, clearKey } from "./lib/api.js";
 // App chrome v3 "Operations Terminal" — grouped nav rail + topbar with live clock.
 
 const { useState: useS, useEffect: useE, useRef: useR } = React;
@@ -15,7 +16,10 @@ const NAV = [
   { id: "portfolio",  label: "Portfólio",   icon: "▦",  group: "overview" },
   { id: "saas",       label: "SaaS",        icon: "◇",  group: "overview" },
   { id: "pipeline",   label: "Pipeline",    icon: "≡",  group: "sales" },
+  { id: "forms",      label: "Forms",       icon: "▤",  group: "sales" },
+  { id: "proposals",  label: "Propostas",   icon: "▥",  group: "sales" },
   { id: "customers",  label: "Clientes",   icon: "○",  group: "customer" },
+  { id: "subscriptions", label: "Assinaturas", icon: "◈", group: "customer" },
   { id: "nps",        label: "NPS",         icon: "☷",  group: "customer" },
   { id: "goals",      label: "Metas",       icon: "◎",  group: "team" },
   { id: "leaderboard",label: "Ranking", icon: "♔",  group: "team" },
@@ -103,10 +107,31 @@ function NavRail({ current, onNav, collapsed }) {
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span className="led" style={{ color: "var(--pos)", width: 7, height: 7 }} /> Fontes sincronizadas
             </div>
+            <SessionFooter />
           </div>
         )}
       </div>
     </nav>
+  );
+}
+
+// Usuário logado (gravado pelo login) + sair. Quem entra por API key não tem
+// sessão — o footer só mostra o status de fontes.
+function SessionFooter() {
+  let user = null;
+  try { user = JSON.parse(localStorage.getItem("cockpit_user") || "null"); } catch { /* ignore */ }
+  if (!user) return null;
+  async function logout() {
+    try { await api.logout(); } catch { /* sessão já pode estar morta */ }
+    clearKey();
+    try { localStorage.removeItem("cockpit_user"); } catch { /* ignore */ }
+    location.reload();
+  }
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
+      <span style={{ color: "var(--fg-3)" }}>{user.name}</span>
+      <button onClick={logout} className="mono" style={{ fontSize: 10, color: "var(--fg-4)", textDecoration: "underline" }}>sair</button>
+    </div>
   );
 }
 
