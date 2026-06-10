@@ -4,14 +4,6 @@ import { api, clearKey } from "./lib/api.js";
 
 const { useState: useS, useEffect: useE, useRef: useR } = React;
 
-const PERSONAS = [
-  { id: "founder", name: "Fundador",          subtitle: "você",         home: "portfolio" },
-  { id: "manager", name: "Gestor de SaaS",     subtitle: "Quill",       home: "saas",      saas: "quill" },
-  { id: "sdr",     name: "SDR",              subtitle: "Sam Sato",    home: "pipeline" },
-  { id: "closer",  name: "Closer",           subtitle: "Mika K.",     home: "pipeline" },
-  { id: "cs",      name: "Customer Success", subtitle: "Amelia B.",   home: "customers" },
-];
-
 const NAV = [
   { id: "portfolio",  label: "Portfólio",   icon: "▦",  group: "overview" },
   { id: "saas",       label: "SaaS",        icon: "◇",  group: "overview" },
@@ -107,31 +99,10 @@ function NavRail({ current, onNav, collapsed }) {
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span className="led" style={{ color: "var(--pos)", width: 7, height: 7 }} /> Fontes sincronizadas
             </div>
-            <SessionFooter />
           </div>
         )}
       </div>
     </nav>
-  );
-}
-
-// Usuário logado (gravado pelo login) + sair. Quem entra por API key não tem
-// sessão — o footer só mostra o status de fontes.
-function SessionFooter() {
-  let user = null;
-  try { user = JSON.parse(localStorage.getItem("cockpit_user") || "null"); } catch { /* ignore */ }
-  if (!user) return null;
-  async function logout() {
-    try { await api.logout(); } catch { /* sessão já pode estar morta */ }
-    clearKey();
-    try { localStorage.removeItem("cockpit_user"); } catch { /* ignore */ }
-    location.reload();
-  }
-  return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
-      <span style={{ color: "var(--fg-3)" }}>{user.name}</span>
-      <button onClick={logout} className="mono" style={{ fontSize: 10, color: "var(--fg-4)", textDecoration: "underline" }}>sair</button>
-    </div>
   );
 }
 
@@ -145,7 +116,7 @@ function Logo() {
   );
 }
 
-function TopBar({ title, subtitle, persona, onPersona, trailing, breadcrumb }) {
+function TopBar({ title, subtitle, trailing, breadcrumb }) {
   return (
     <header style={{
       height: 48,
@@ -176,7 +147,7 @@ function TopBar({ title, subtitle, persona, onPersona, trailing, breadcrumb }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         {trailing}
         <CmdK />
-        <PersonaSwitcher persona={persona} onPersona={onPersona} />
+        <UserMenu />
       </div>
     </header>
   );
@@ -201,15 +172,28 @@ function CmdK() {
   );
 }
 
-function PersonaSwitcher({ persona, onPersona }) {
+// Menu da conta — usuário REAL logado (gravado no login). Trocar senha + sair.
+// Quem entra por API key não tem usuário: mostra "API key", só com sair.
+function UserMenu() {
   const [open, setOpen] = useS(false);
+  const [pwOpen, setPwOpen] = useS(false);
   const ref = useR(null);
   useE(() => {
     function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
-  const cur = PERSONAS.find(p => p.id === persona) || PERSONAS[0];
+  let user = null;
+  try { user = JSON.parse(localStorage.getItem("cockpit_user") || "null"); } catch { /* ignore */ }
+
+  async function logout() {
+    try { await api.logout(); } catch { /* sessão já pode estar morta */ }
+    clearKey();
+    try { localStorage.removeItem("cockpit_user"); } catch { /* ignore */ }
+    location.reload();
+  }
+
+  const name = user?.name || "API key";
   return (
     <div ref={ref} style={{ position: "relative" }}>
       <button
@@ -222,14 +206,14 @@ function PersonaSwitcher({ persona, onPersona }) {
           borderRadius: "var(--r-1)",
           boxShadow: "var(--shadow-1)",
         }}>
-        <PersonaDot persona={cur} />
-        <span style={{ fontSize: 13, color: "var(--fg-2)", fontWeight: 450 }}>{cur.name}</span>
+        <UserDot name={name} />
+        <span style={{ fontSize: 13, color: "var(--fg-2)", fontWeight: 450 }}>{name}</span>
         <span className="dim" style={{ fontSize: 10 }}>{open ? "▴" : "▾"}</span>
       </button>
       {open && (
         <div style={{
           position: "absolute", top: "calc(100% + 5px)", right: 0,
-          width: 252,
+          width: 220,
           border: "1px solid var(--line-2)",
           background: "var(--bg-1)",
           borderRadius: "var(--r-3)",
@@ -237,60 +221,89 @@ function PersonaSwitcher({ persona, onPersona }) {
           padding: 5,
           zIndex: 80,
         }}>
-          <div className="bkt" style={{ display: "block", padding: "8px 9px 6px" }}>Trocar papel</div>
-          {PERSONAS.map(p => (
-            <button key={p.id}
-              onClick={() => { onPersona(p.id); setOpen(false); }}
-              style={{
-                display: "flex", alignItems: "center", gap: 10,
-                width: "100%", padding: "8px 8px",
-                borderRadius: "var(--r-2)",
-                background: p.id === persona ? "var(--bg-3)" : "transparent",
-                color: "var(--fg-1)",
-                fontSize: 13,
-                textAlign: "left",
-              }}>
-              <PersonaDot persona={p} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13 }}>{p.name}</div>
-                <div className="mono dim" style={{ fontSize: 10 }}>{p.subtitle}</div>
-              </div>
-              {p.id === persona && <span className="led" style={{ color: "var(--accent)" }} />}
-            </button>
-          ))}
-          <div style={{ borderTop: "1px solid var(--line-1)", marginTop: 4, padding: "8px 8px" }}>
-            <div className="mono dim" style={{ fontSize: 10, lineHeight: 1.5 }}>
-              Trocar de papel muda sua tela inicial e os filtros padrão. Os dados por baixo são os mesmos.
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px" }}>
+            <UserDot name={name} />
+            <div>
+              <div style={{ fontSize: 13, color: "var(--fg-1)" }}>{name}</div>
+              <div className="mono dim" style={{ fontSize: 10 }}>{user ? (user.role || "admin") : "acesso por chave"}</div>
             </div>
+          </div>
+          <div style={{ borderTop: "1px solid var(--line-1)", marginTop: 2, paddingTop: 2 }}>
+            {user && (
+              <button onClick={() => { setOpen(false); setPwOpen(true); }} style={menuItemStyle}>Trocar senha…</button>
+            )}
+            <button onClick={logout} style={{ ...menuItemStyle, color: "var(--neg)" }}>Sair</button>
           </div>
         </div>
       )}
+      {pwOpen && <PasswordModal onClose={() => setPwOpen(false)} />}
     </div>
   );
 }
 
-function PersonaDot({ persona }) {
-  const tone = {
-    founder: "var(--accent)",
-    manager: "var(--info)",
-    sdr:     "var(--warn)",
-    closer:  "var(--pos)",
-    cs:      "oklch(0.74 0.12 300)",
-  }[persona.id] || "var(--fg-3)";
-  const ch = (persona.name || "?")[0];
+const menuItemStyle = {
+  display: "block", width: "100%", padding: "8px 8px",
+  borderRadius: "var(--r-2)", fontSize: 13, textAlign: "left", color: "var(--fg-1)",
+};
+
+function PasswordModal({ onClose }) {
+  const [current, setCurrent] = useS("");
+  const [next, setNext] = useS("");
+  const [busy, setBusy] = useS(false);
+  const [msg, setMsg] = useS(null); // { ok, text }
+  const inputStyle = { width: "100%", height: 30, padding: "0 8px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 };
+  const labelStyle = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "var(--mono)" };
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true); setMsg(null);
+    try {
+      await api.changePassword(current, next);
+      setMsg({ ok: true, text: "senha alterada" });
+      setTimeout(onClose, 900);
+    } catch (err) {
+      setBusy(false);
+      setMsg({ ok: false, text: err.status === 401 ? "senha atual incorreta" : (err.message || String(err)) });
+    }
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 90 }}>
+      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} style={{ width: 320, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ fontSize: 15, fontWeight: 500 }}>Trocar senha</div>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={labelStyle}>Senha atual</span>
+          <input type="password" value={current} autoFocus autoComplete="current-password" onChange={(e) => setCurrent(e.target.value)} style={inputStyle} />
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={labelStyle}>Nova senha (4+ caracteres)</span>
+          <input type="password" value={next} autoComplete="new-password" onChange={(e) => setNext(e.target.value)} style={inputStyle} />
+        </label>
+        {msg && <div className="mono" style={{ fontSize: 11, color: msg.ok ? "var(--pos)" : "var(--neg)" }}>{msg.text}</div>}
+        <div style={{ display: "flex", gap: 8 }}>
+          <button type="submit" disabled={busy || next.length < 4} style={{ flex: 1, padding: "8px 12px", background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy || next.length < 4 ? 0.6 : 1 }}>
+            {busy ? "Salvando…" : "Salvar"}
+          </button>
+          <button type="button" onClick={onClose} style={{ padding: "8px 14px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function UserDot({ name }) {
   return (
     <span style={{
       width: 24, height: 24, borderRadius: "var(--r-1)",
       display: "inline-flex", alignItems: "center", justifyContent: "center",
-      background: `oklch(from ${tone} l c h / 0.16)`,
-      border: `1px solid ${tone}`,
-      color: tone,
+      background: "oklch(from var(--accent) l c h / 0.16)",
+      border: "1px solid var(--accent)",
+      color: "var(--accent)",
       fontSize: 12,
       fontWeight: 600,
-    }}>{ch}</span>
+    }}>{(name || "?")[0].toUpperCase()}</span>
   );
 }
 
-Object.assign(window, { NavRail, TopBar, PersonaSwitcher, PERSONAS, NAV });
+Object.assign(window, { NavRail, TopBar, NAV });
 
-export { NavRail, TopBar, PersonaSwitcher, PERSONAS, NAV };
+export { NavRail, TopBar, NAV };

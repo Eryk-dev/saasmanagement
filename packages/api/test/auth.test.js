@@ -109,3 +109,22 @@ test("users/sessions ficam fora do CRUD genérico (hash/token não vazam)", asyn
 
   await app.close();
 });
+
+test("trocar senha: exige sessão + senha atual; nova senha passa a valer", async () => {
+  const repo = makeMemRepo();
+  await ensureDefaultAdmins(repo);
+  const app = buildApp(repo);
+
+  const { token } = (await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "eryk", password: "1234" } })).json();
+
+  // Key não troca senha (sem usuário); senha atual errada → 401.
+  assert.equal((await app.inject({ method: "POST", url: "/api/auth/password", headers: { "x-api-key": "test-key" }, payload: { current: "1234", password: "nova1" } })).statusCode, 401);
+  assert.equal((await app.inject({ method: "POST", url: "/api/auth/password", headers: { "x-api-key": token }, payload: { current: "errada", password: "nova1" } })).statusCode, 401);
+
+  const ok = await app.inject({ method: "POST", url: "/api/auth/password", headers: { "x-api-key": token }, payload: { current: "1234", password: "nova1" } });
+  assert.equal(ok.statusCode, 200);
+  assert.equal((await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "eryk", password: "1234" } })).statusCode, 401);
+  assert.equal((await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "eryk", password: "nova1" } })).statusCode, 200);
+
+  await app.close();
+});

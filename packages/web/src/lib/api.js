@@ -40,6 +40,7 @@ export const api = {
   // header x-api-key) — o resto do client não muda.
   login: (username, password) => req("POST", "/api/auth/login", { username, password }),
   logout: () => req("POST", "/api/auth/logout", {}),
+  changePassword: (current, password) => req("POST", "/api/auth/password", { current, password }),
   list: (collection, query = {}) => {
     const qs = new URLSearchParams(query).toString();
     return req("GET", `/api/${collection}${qs ? `?${qs}` : ""}`);

@@ -1,6 +1,6 @@
 import React from "react";
-import { useTweaks, TweaksPanel, TweakSection, TweakSelect, TweakRadio, TweakColor, TweakToggle, TweakButton } from "./tweaks-panel.jsx";
-import { NavRail, TopBar, PERSONAS } from "./chrome.jsx";
+import { useTweaks, TweaksPanel, TweakSection, TweakRadio, TweakColor, TweakToggle } from "./tweaks-panel.jsx";
+import { NavRail, TopBar } from "./chrome.jsx";
 import { chromeBtnStyleSmall } from "./lib/ui.js";
 import { PortfolioScreen } from "./screens/portfolio.jsx";
 import { SaasDashboardScreen } from "./screens/saas_dashboard.jsx";
@@ -22,7 +22,6 @@ import { ConfirmDelete } from "./components/ConfirmDelete.jsx";
 const { useState: useStA, useEffect: useEA, useCallback: useCbA } = React;
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
-  "persona": "founder",
   "theme": "dark",
   "typeSystem": "balanced",
   "accentHue": 277,
@@ -33,12 +32,8 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
 
-  // Sync persona <-> tweak (so the tweak panel switches the role too)
-  const persona = t.persona;
-  const personaObj = PERSONAS.find(p => p.id === persona) || PERSONAS[0];
-
-  const [screen, setScreen] = useStA(personaObj.home);
-  const [params, setParams] = useStA(personaObj.saas ? { saas: personaObj.saas } : {});
+  const [screen, setScreen] = useStA("portfolio");
+  const [params, setParams] = useStA({});
   const [leadSel, setLeadSel] = useStA(null);
   const [collapsed, setCollapsed] = useStA(false);
 
@@ -51,14 +46,6 @@ function App() {
   const openForm = useCbA((entityKey, record = null) => setEditor({ entityKey, record }), []);
   const openDelete = useCbA((entityKey, record) => setConfirm({ entityKey, record }), []);
   const dataCtx = React.useMemo(() => ({ version: dataVersion, refresh, openForm, openDelete }), [dataVersion, refresh, openForm, openDelete]);
-
-  // When persona changes, route to that persona's home
-  useEA(() => {
-    const p = PERSONAS.find(x => x.id === persona);
-    if (!p) return;
-    setScreen(p.home);
-    setParams(p.saas ? { saas: p.saas } : (p.id === "cs" ? { csFilter: "red" } : {}));
-  }, [persona]);
 
   // Apply theme/density/typeSystem to body
   useEA(() => {
@@ -109,8 +96,6 @@ function App() {
         <TopBar
           breadcrumb={crumbsFor[screen]}
           subtitle={subtitleFor(screen, params)}
-          persona={persona}
-          onPersona={(p) => setTweak("persona", p)}
           trailing={
             <button onClick={() => setCollapsed(c => !c)} style={chromeBtnStyleSmall} title="Alternar barra lateral">
               <span className="mono" style={{ fontSize: 12 }}>{collapsed ? "▶" : "◀"}</span>
@@ -153,11 +138,6 @@ function App() {
       )}
 
       <TweaksPanel title="Personalizar">
-        <TweakSection label="Papel" />
-        <TweakSelect label="Persona" value={t.persona}
-          options={PERSONAS.map(p => ({ value: p.id, label: `${p.name} · ${p.subtitle}` }))}
-          onChange={(v) => setTweak("persona", v)} />
-
         <TweakSection label="Superfície" />
         <TweakRadio label="Tema" value={t.theme} options={[{value:"light",label:"claro"},{value:"dark",label:"escuro"}]}
           onChange={(v) => setTweak("theme", v)} />
@@ -180,8 +160,6 @@ function App() {
         <TweakSection label="Mais" />
         <TweakToggle label="Anotações no gráfico" value={t.showTrajectoryAnnotation}
           onChange={(v) => setTweak("showTrajectoryAnnotation", v)} />
-        <TweakButton label="Ir pra Quill (crítico)" onClick={() => { setTweak("persona","manager"); }} />
-        <TweakButton label="Ir pra um deal travado" onClick={() => { setScreen("pipeline"); setParams({ saas: "leverads", stage: "Discovery" }); }} />
       </TweaksPanel>
     </div>
     </DataContext.Provider>

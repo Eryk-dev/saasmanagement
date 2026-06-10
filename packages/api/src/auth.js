@@ -108,6 +108,20 @@ export function registerAuthRoutes(app, repo) {
     return { ok: true };
   });
 
+  // Trocar a própria senha (exige sessão — key não tem usuário — e a senha atual).
+  app.post("/api/auth/password", async (req, reply) => {
+    const me = await sessionUser(repo, headerKey(req));
+    if (!me) return reply.code(401).send({ error: "sessão inválida" });
+    const { current, password } = req.body || {};
+    if (!password || String(password).length < 4) return reply.code(400).send({ error: "senha nova precisa de 4+ caracteres" });
+    const user = await repo.get("users", me.id);
+    if (!verifyPassword(current || "", user.passwordHash)) {
+      return reply.code(401).send({ error: "senha atual incorreta" });
+    }
+    await repo.update("users", user.id, { passwordHash: hashPassword(password) });
+    return { ok: true };
+  });
+
   // Gestão mínima do time (qualquer autenticado — todos admins na v1).
   app.get("/api/auth/users", async () => (await repo.list("users")).map(publicUser));
 
