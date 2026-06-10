@@ -406,9 +406,13 @@ nesta fase.
 - **Tela de bloqueio + interpolação na tela final** (pendências fase 1).
 
 ## 10. ⚠️ Deploy (bloqueador de produção)
-- Sessões MCP/produção apontam pro Easypanel com código ANTIGO (sem forms).
-- Pasta local não é git. **Perguntar ao dono como o deploy é feito** (build no
-  painel? upload? repo separado?) e subir API + MCP + web.
+- Sessões MCP/produção apontam pro Easypanel com código ANTIGO (pré-rework).
+- A pasta É repo git (descoberto 2026-06-10; doc anterior dizia que não):
+  `github.com:Eryk-dev/saasmanagement`, branch `main` — rework inteiro commitado
+  e pushado (`cd93591`). Tem `Dockerfile`/`Dockerfile.allinone`/`deploy/` no
+  repo. **Confirmar com o dono se o Easypanel builda desse repo** (se sim,
+  deploy = rebuild no painel) e subir API + MCP + web.
+- ⚠️ Antes de expor público: trocar a senha padrão `1234` dos admins (§2).
 - Após deploy: links públicos viram
   `https://<host>/f/fo_diagnostico_leverads` e o MCP da sessão cria forms.
 
