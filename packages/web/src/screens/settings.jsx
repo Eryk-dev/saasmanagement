@@ -344,30 +344,25 @@ function AhaSettings({ s }) {
   );
 }
 
-// ───────────────────────────────────────────────────────── Integrações (mock — fase 4 a cargo do app)
+// ───────────────────────────────────────────────────────── Integrações
+// Só o que está planejado de verdade (fase 4) — nada de status fake.
 function IntegrationsSettings() {
-  const integrations = [
-    { k: "Stripe",   status: "connected", desc: "MRR, cobrança, eventos de churn" },
-    { k: "Salesforce", status: "synced",   desc: "Bidirecional · contatos, deals" },
-    { k: "Segment",  status: "connected", desc: "Eventos de produto, rastreio de Aha" },
-    { k: "Slack",    status: "connected", desc: "Alertas de anomalia + fechamento" },
-    { k: "HubSpot",  status: "not connected" },
-    { k: "Linear",   status: "not connected" },
-    { k: "Webhook",  status: "configured", desc: "https://api.cockpit.so/hooks/…" },
+  const planned = [
+    { k: "E-mail", desc: "envio de proposta + notificações (Resend/SMTP)" },
+    { k: "Webhook", desc: "POST em eventos: lead novo, proposta vista/aceita" },
+    { k: "Mercado Pago", desc: "assinaturas + baixa automática de fatura" },
   ];
   return (
     <div>
-      <SettingHeader title="Integrações" sub="mock — conexões reais (e-mail, webhook, Mercado Pago) chegam na fase 4" />
+      <SettingHeader title="Integrações" sub="conexões reais chegam na fase 4 — por enquanto o pagamento é processado no app e a fatura recebe baixa manual em Assinaturas" />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
-        {integrations.map(i => (
-          <div key={i.k} style={{ padding: "14px 16px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        {planned.map(i => (
+          <div key={i.k} style={{ padding: "14px 16px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 500 }}>{i.k}</div>
-              <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>{i.desc || "—"}</div>
+              <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>{i.desc}</div>
             </div>
-            <span className={"chip " + (i.status === "connected" || i.status === "synced" || i.status === "configured" ? "pos" : "")} style={{ height: 22 }}>
-              {(i.status === "not connected") ? "conectar" : ({ connected: "conectado", synced: "sincronizado", configured: "configurado" })[i.status] || i.status}
-            </span>
+            <span className="chip" style={{ height: 22 }}>em breve</span>
           </div>
         ))}
       </div>
