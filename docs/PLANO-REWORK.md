@@ -413,6 +413,11 @@ nesta fase.
   repo. **Confirmar com o dono se o Easypanel builda desse repo** (se sim,
   deploy = rebuild no painel) e subir API + MCP + web.
 - ⚠️ Antes de expor público: trocar a senha padrão `1234` dos admins (§2).
+- ⚠️ O nginx do allinone precisa proxyar a superfície pública (`/f/`, `/p/`,
+  `/public/`, `/embed.js`) além de `/api/` — sem isso o try_files do SPA engole
+  e "abre o app" (corrigido 2026-06-10 em `deploy/nginx.allinone.conf`).
+- ⚠️ Setar `COCKPIT_PUBLIC_URL=https://<host>` no Easypanel — é a base das URLs
+  gravadas no lead (`proposalUrl`); sem ela saem como `http://localhost:8787`.
 - Após deploy: links públicos viram
   `https://<host>/f/fo_diagnostico_leverads` e o MCP da sessão cria forms.
 
