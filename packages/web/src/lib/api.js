@@ -68,4 +68,6 @@ export const api = {
   changeSubscription: (id, body) => req("POST", `/api/subscriptions/${id}/change`, body),
   payInvoice: (id) => req("POST", `/api/invoices/${id}/pay`),
   runBilling: () => req("POST", "/api/billing/run", {}),
+  // Mercado Pago: gera o link de autorização da assinatura (preapproval).
+  mpLink: (subId, payerEmail) => req("POST", `/api/subscriptions/${subId}/mp/link`, payerEmail ? { payerEmail } : {}),
 };

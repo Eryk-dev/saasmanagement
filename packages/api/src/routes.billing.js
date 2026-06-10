@@ -4,7 +4,7 @@
 
 import { computeChange, runBilling, syncCustomerArr } from "./billing.js";
 
-export function registerBillingRoutes(app, repo) {
+export function registerBillingRoutes(app, repo, { mp } = {}) {
   // Mudança de plano/preço/ciclo. Upgrade aplica já (+ fatura pró-rata do diff
   // restante do ciclo); downgrade e troca de ciclo agendam pro fim do ciclo.
   app.post("/api/subscriptions/:id/change", async (req, reply) => {
@@ -30,7 +30,17 @@ export function registerBillingRoutes(app, repo) {
         });
       }
       await syncCustomerArr(repo, sub.customer);
-      return { ok: true, ...result, subscription: updated };
+      // Assinatura cobrada via MP: PUT só do valor — próxima recorrência sai no
+      // preço novo na data original (best-effort; pró-rata já foi faturado aqui).
+      let mpSync;
+      if (mp?.configured() && sub.mpPreapprovalId) {
+        try { await mp.updatePreapprovalAmount(sub.mpPreapprovalId, updated.price); mpSync = "ok"; }
+        catch (err) {
+          req.log.warn({ sub: sub.id, err: err.message }, "MP: falha ao atualizar valor do preapproval");
+          mpSync = "failed";
+        }
+      }
+      return { ok: true, ...result, subscription: updated, ...(mpSync ? { mpSync } : {}) };
     }
 
     // downgrade_mid_cycle | cycle_change → pendingChange aplicado pelo runBilling

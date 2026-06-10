@@ -67,6 +67,22 @@ function SubscriptionsScreen({ saasId }) {
     flash("fatura baixada");
     await refresh();
   }
+  // Gera (ou copia) o link de autorização do MP. O cliente abre, autoriza, e o
+  // webhook ativa a assinatura + dá baixa nas faturas sozinho.
+  async function mpLink(sub) {
+    try {
+      const r = await api.mpLink(sub.id);
+      if (r.initPoint) {
+        try { await navigator.clipboard.writeText(r.initPoint); flash("link MP copiado — mande pro cliente autorizar"); }
+        catch { window.prompt("Link de autorização MP:", r.initPoint); }
+      }
+      await refresh();
+    } catch (err) {
+      flash(err.status === 400 ? "cliente sem e-mail — edite o cliente e preencha o e-mail" : `MP: ${err.message}`);
+    }
+  }
+  const mpConfigured = !!window.SEED?.CONFIG?.mp?.configured;
+  const MP_LABEL = { pending: "MP: aguardando", authorized: "MP: ativo", paused: "MP: pausado", cancelled: "MP: cancelado" };
 
   const customerName = (id) => CUSTOMERS.find((c) => c.id === id)?.name || id || "—";
   const planName = (id) => plans.find((p) => p.id === id)?.name || (id ? id : "avulso");
@@ -136,10 +152,16 @@ function SubscriptionsScreen({ saasId }) {
                     <span className="mono tnum" style={{ fontSize: 12 }}>{window.fmt.money(annualized(s))}</span>
                     <span>
                       <span className={"chip " + st.cls} style={{ height: 20 }}>{st.label}</span>
+                      {s.mpStatus && <span className="mono" style={{ fontSize: 9, display: "block", marginTop: 2, color: s.mpStatus === "authorized" ? "var(--pos)" : "var(--fg-4)" }}>{MP_LABEL[s.mpStatus] || `MP: ${s.mpStatus}`}</span>}
                       {s.pendingChange && <span className="mono dim" style={{ fontSize: 9, display: "block", marginTop: 2 }}>muda em {fmtDate(s.pendingChange.applyAt)}</span>}
                     </span>
                     <span className="mono dim tnum" style={{ fontSize: 12 }}>{fmtDate(s.periodEnd)}</span>
                     <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
+                      {mpConfigured && s.status !== "canceled" && (
+                        <button onClick={() => mpLink(s)} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }} title={s.mpInitPoint ? "re-gerar/copiar link de autorização" : "gerar link de autorização no Mercado Pago"}>
+                          <span style={{ fontSize: 11 }}>{s.mpPreapprovalId ? "link MP" : "cobrar via MP"}</span>
+                        </button>
+                      )}
                       {s.status !== "canceled" && (
                         <button onClick={() => setChanging(s)} style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>mudar plano</span></button>
                       )}

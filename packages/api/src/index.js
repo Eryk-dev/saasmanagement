@@ -21,7 +21,7 @@ const OPEN_PATHS = new Set(["/api/health", "/embed.js", "/favicon.ico", "/api/au
 // Superfície pública do form builder (página + envio anônimo) e do proposal
 // builder (página /p/:id, aceite, painel do closer via editKey). Endurecimento
 // (rate-limit, honeypot, token) vive em routes.forms.js / routes.proposals.js.
-const OPEN_PREFIXES = ["/f/", "/public/forms/", "/p/", "/public/proposals/"];
+const OPEN_PREFIXES = ["/f/", "/public/forms/", "/p/", "/public/proposals/", "/public/mp/"];
 
 // Read the key from either header style: `x-api-key: <key>` or `Authorization: Bearer <key>`.
 function providedKey(req) {

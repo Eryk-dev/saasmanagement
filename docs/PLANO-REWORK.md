@@ -387,15 +387,53 @@ fica no app/MP por enquanto — fatura recebe baixa via `POST /api/invoices/:id/
 - `openapi.js` não documenta os endpoints novos (mesma pendência da fase 1).
 - Rodar `POST /api/billing/run` periodicamente (cron) quando estiver no ar.
 
-## 8. 🔜 Fase 4 — Conexões (ADIADA — a cargo do app por decisão do dono, 2026-06-10)
+## 8. Fase 4 — Conexões (MP ✅ ENTREGUE 2026-06-10; e-mail/webhook adiados)
 
-E-mail (Resend/SMTP; proposta + notificações), webhook genérico (POST em eventos:
-lead novo, proposta vista/aceita), **Mercado Pago** (portar de
-`copylever/app/services/mp_api.py`: preapproval create/get/cancel/pause, pagamento
-avulso, `verify_webhook_signature`, refund — o webhook do MP deve dar baixa nas
-faturas via `POST /api/invoices/:id/pay` e alimentar o motor da fase 5).
-⚠️ Segredos hoje iriam pra JSONB plaintext — resolver storage de credenciais
-nesta fase.
+### ✅ Mercado Pago (core da fase 4)
+Port de `copylever/app/services/mp_api.py` ligado no motor da fase 5.
+**Credenciais via ENV** (resolve o ⚠️ de segredo em JSONB — single tenant):
+`MERCADOPAGO_ACCESS_TOKEN` + `MERCADOPAGO_WEBHOOK_SECRET` no Easypanel.
+
+- **`api/src/mp.js`** — client REST sem SDK (`makeMp` com fetch injetável pra
+  teste): preapproval create/get/cancel/pause/resume, `updatePreapprovalAmount`
+  (PUT só do valor — MP mantém cartão/ciclo), payment/authorized_payment get,
+  refund, `verifyWebhookSignature` (HMAC manifest `id;request-id;ts`),
+  `parseWebhookPayload` (normaliza v2 Webhooks e v1 IPN). Preço em REAIS
+  (transaction_amount), sem centavos.
+- **`api/src/routes.mp.js`**:
+  - `POST /api/subscriptions/:id/mp/link` → cria preapproval `pending`
+    (payer = `customer.email` ou `body.payerEmail`; `external_reference` =
+    id da assinatura; valor/ciclo da assinatura) e salva
+    `mpPreapprovalId`/`mpInitPoint`/`mpStatus`/`payerEmail` no sub. O closer
+    manda o `init_point` pro cliente autorizar.
+  - `POST /public/mp/webhook` (ABERTA — prefixo `/public/mp/` no index;
+    **configurar no painel MP**: `https://<host>/public/mp/webhook`):
+    verifica HMAC quando há secret + SEMPRE re-fetch do recurso (body é
+    forjável). `subscription_preapproval` → mapeia authorized→active,
+    cancelled→canceled, paused→paused + sync ARR. `authorized_payment`
+    processed e `payment` approved → **baixa automática** da fatura
+    aberta/vencida mais antiga (idempotente por `mpPaymentId`; cria fatura
+    paga se não houver aberta; recupera past_due→active).
+  - **Payer cross-check** (padrão copylever): payer do evento ≠ payer salvo
+    → evento DROPADO + log de erro.
+- **Espelho Cockpit → MP** (fail-open): PATCH de status da assinatura
+  (cancelar/pausar/reativar) replica no preapproval; upgrade via `/change`
+  faz PUT do valor novo (resposta ganha `mpSync: ok|failed`).
+- **UI:** Assinaturas ganhou botão "cobrar via MP"/"link MP" (copia o
+  init_point) + chip de status MP; aparece só com `CONFIG.mp.configured`
+  (bootstrap). Cliente ganhou campo `email` (payer). Integrações mostra o
+  status real do MP.
+- Testes: `routes.mp.test.js` (6, fetch mockado — assinatura HMAC, link,
+  webhook authorized/cancelled, baixa idempotente, mismatch, 503/400).
+- Limitações v1 (anotadas): troca de CICLO com MP ativo exige re-gerar o
+  link (MP não muda frequency in-place — cancel+recreate fica pra depois);
+  downgrade agendado não faz PUT de valor quando o motor aplica (re-gerar
+  link ou PUT manual); sem checkout transparente (card token) — fluxo é o
+  init_point.
+
+### 🔜 Adiados
+E-mail (Resend/SMTP; proposta + notificações) e webhook genérico (POST em
+eventos: lead novo, proposta vista/aceita).
 
 ## 9. Transversais
 - **Auth do time:** ✅ v1 entregue (login simples com sessão — ver §2). O plano

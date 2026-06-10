@@ -115,6 +115,7 @@ export const ENTITIES = {
     fields: [
       { key: "name", label: "Conta", type: "text", required: true },
       { key: "saas", label: "Produto", type: "select", options: saasOptions, required: true },
+      { key: "email", label: "E-mail", type: "text", help: "payer do Mercado Pago nas assinaturas" },
       { key: "plan", label: "Plano", type: "text" },
       { key: "arr", label: "ARR", type: "money" },
       { key: "csm", label: "CSM", type: "select", options: peopleOptions, blankLabel: "—" },

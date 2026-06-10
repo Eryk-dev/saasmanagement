@@ -11,6 +11,8 @@ import { runNativeProposal } from "./proposal.js";
 import { registerBillingRoutes } from "./routes.billing.js";
 import { initSubscription, syncCustomerArr } from "./billing.js";
 import { registerAuthRoutes } from "./auth.js";
+import { registerMpRoutes, mirrorSubscriptionToMp } from "./routes.mp.js";
+import { mp as defaultMpClient } from "./mp.js";
 
 // Auth interna fica FORA do CRUD genérico: passwordHash/token de sessão nunca
 // saem pela API. Gestão via rotas dedicadas (/api/auth/*).
@@ -126,7 +128,10 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Superfície pública do proposal builder (/p/:id, aceite, painel do closer).
   registerProposalRoutes(app, repo, opts.proposals || {});
   // Billing (fase 5): mudança de plano c/ pró-rata, baixa de fatura, tick do motor.
-  registerBillingRoutes(app, repo);
+  const mpClient = opts.mp || defaultMpClient;
+  registerBillingRoutes(app, repo, { mp: mpClient });
+  // Mercado Pago (fase 4): link de assinatura + webhook de baixa automática.
+  registerMpRoutes(app, repo, { mp: mpClient });
   // Usuários do time: login/logout/me + gestão mínima (rotas dedicadas).
   registerAuthRoutes(app, repo);
 
@@ -165,6 +170,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       CONFIG: {
         levercopy: integrationStatus(),
         proposals: { nativeSaas: (await repo.list("proposal_templates")).filter((t) => t.status === "published").map((t) => t.saas) },
+        mp: { configured: mpClient.configured() },
       },
     };
   });
@@ -217,6 +223,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     if (collection === "subscriptions") {
       await syncCustomerArr(repo, updated.customer);
       if (before && before.customer && before.customer !== updated.customer) await syncCustomerArr(repo, before.customer);
+      // Cancelar/pausar/reativar aqui não pode deixar o MP cobrando (fail-open).
+      await mirrorSubscriptionToMp(mpClient, before, updated, req.log);
     }
     return updated;
   });

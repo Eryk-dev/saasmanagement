@@ -345,24 +345,25 @@ function AhaSettings({ s }) {
 }
 
 // ───────────────────────────────────────────────────────── Integrações
-// Só o que está planejado de verdade (fase 4) — nada de status fake.
+// Status real — nada fake. MP lê CONFIG.mp.configured (env do servidor).
 function IntegrationsSettings() {
-  const planned = [
-    { k: "E-mail", desc: "envio de proposta + notificações (Resend/SMTP)" },
-    { k: "Webhook", desc: "POST em eventos: lead novo, proposta vista/aceita" },
-    { k: "Mercado Pago", desc: "assinaturas + baixa automática de fatura" },
+  const mpOn = !!window.SEED?.CONFIG?.mp?.configured;
+  const items = [
+    { k: "Mercado Pago", desc: "assinaturas (preapproval) + baixa automática de fatura via webhook", on: mpOn, off: "configurar MERCADOPAGO_ACCESS_TOKEN" },
+    { k: "E-mail", desc: "envio de proposta + notificações (Resend/SMTP)", on: false, off: "em breve" },
+    { k: "Webhook", desc: "POST em eventos: lead novo, proposta vista/aceita", on: false, off: "em breve" },
   ];
   return (
     <div>
-      <SettingHeader title="Integrações" sub="conexões reais chegam na fase 4 — por enquanto o pagamento é processado no app e a fatura recebe baixa manual em Assinaturas" />
+      <SettingHeader title="Integrações" sub="Mercado Pago conecta via env do servidor (access token + webhook secret) · e-mail e webhook genérico ficam pra próxima rodada" />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
-        {planned.map(i => (
-          <div key={i.k} style={{ padding: "14px 16px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        {items.map(i => (
+          <div key={i.k} style={{ padding: "14px 16px", border: i.on ? "1px solid var(--line-1)" : "1px dashed var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 500 }}>{i.k}</div>
               <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>{i.desc}</div>
             </div>
-            <span className="chip" style={{ height: 22 }}>em breve</span>
+            <span className={"chip " + (i.on ? "pos" : "")} style={{ height: 22 }}>{i.on ? "conectado" : i.off}</span>
           </div>
         ))}
       </div>
