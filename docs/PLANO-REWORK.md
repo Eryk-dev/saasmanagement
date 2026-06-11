@@ -246,9 +246,12 @@ painel do closer (4→8 contas → 449→649 ao vivo, congelar salva via token),
 aceite (lead foi pra Config + Kickoff + proposalAccepted).
 
 ### Correções pós-render (2026-06-10, mesmo dia)
-- Snap **proximity** (não mandatory/snap-stop): slide mais alto que a viewport
-  (investimento, 1300px+) ficava com o fundo INALCANÇÁVEL — inclusive o botão
-  de aceite. Proximity mantém o magnético e libera o scroll interno.
+- ~~Snap **proximity**~~ **SUPERSEDED (mesmo dia, pedido do dono):** slide agora
+  tem altura FIXA = viewport − nav (60px) no desktop; conteúdo maior é ESCALADO
+  pra caber (`fitSlides()`: transform scale no `.wrap`, re-roda em resize/fonts/
+  closer-panel/print). Com tudo cabendo, o snap voltou a **mandatory** +
+  snap-stop (motivo do proximity sumiu); footer ancora com `snap-align: end`.
+  Verificado em 1920×1080 (investimento escala ×0.80) e 1366×768 (×0.54).
 - Slide closer ANEXA à seção anterior (era seção própria de 100vh quase vazia).
 - Footer fora do full-height (era "slide vazio" de 900px).
 - GOTCHA CSS: conteúdo com `<em>/<span>` dentro de container `display:flex`

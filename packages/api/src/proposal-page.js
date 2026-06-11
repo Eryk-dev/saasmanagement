@@ -257,13 +257,19 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .foot-meta { font-family: var(--font-mono); font-size: 12px; color: var(--ink-4); letter-spacing: .06em; line-height: 1.8; }
 
   /* Trava magnética por slide (desktop; respeita prefers-reduced-motion).
-     proximity (não mandatory): prende no início de cada slide, mas deixa rolar
-     LIVRE dentro de slides mais altos que a viewport (ex.: investimento) — com
-     mandatory o fim do slide ficava inalcançável. Footer fica fora (altura
-     natural, sem virar "slide vazio"). */
+     Cada slide tem altura FIXA = viewport − nav (16:9 fecha exato na tela);
+     conteúdo maior que isso é ESCALADO pra caber (fitSlides() no script), então
+     mandatory volta a ser seguro — nunca existe fundo de slide inalcançável.
+     Footer ancora com snap-align end (não vira "slide vazio"). */
   @media (min-width: 900px) and (prefers-reduced-motion: no-preference) {
-    html { scroll-snap-type: y proximity; scroll-padding-top: 60px; }
-    main > section, main > header.hero { scroll-snap-align: start; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; }
+    html { --navh: 60px; scroll-snap-type: y mandatory; scroll-padding-top: var(--navh); }
+    .nav { height: var(--navh); }
+    .nav .nav-inner { height: 100%; padding: 0 24px; }
+    main > section, main > header.hero { scroll-snap-align: start; scroll-snap-stop: always;
+      height: calc(100vh - var(--navh)); padding: 24px 0; overflow: hidden;
+      display: flex; flex-direction: column; justify-content: center; }
+    main > section > .wrap, main > header.hero > .wrap { transform-origin: 50% 50%; }
+    .foot { scroll-snap-align: end; }
   }
 
   /* Painel do closer (modo edição via ?k=token) */
@@ -287,7 +293,8 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   @media print {
     .nav, .closer-panel, .cp-toggle, .edit-banner, .accept-row { display: none !important; }
     body { background: #fff; color: #000; padding-top: 0; }
-    main > section, main > header.hero { padding: 40px 0; break-inside: avoid; min-height: 0 !important; display: block !important; }
+    main > section, main > header.hero { padding: 40px 0; break-inside: avoid; min-height: 0 !important; height: auto !important; overflow: visible !important; display: block !important; }
+    main > section > .wrap, main > header.hero > .wrap { transform: none !important; }
     .atmos { display: none; }
     .card, .compare-col, .receipt { break-inside: avoid; }
     .body, .lead { color: #333 !important; }
@@ -395,6 +402,24 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     var D = { calc: calc, state: state };
     document.querySelectorAll('[data-fill]').forEach(function (el) {
       el.textContent = String(getPath(D, el.getAttribute('data-fill')));
+    });
+    fitSlides(); // números mudam altura do conteúdo — re-encaixa nos slides
+  }
+
+  // Trava cada slide na altura da tela (desktop): se o conteúdo natural passa da
+  // área útil do slide (viewport − nav − padding), escala pra caber. Nada de
+  // slide mais alto que o monitor; o snap mandatory volta a ser seguro.
+  function fitSlides() {
+    var on = window.innerWidth >= 900 &&
+      !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    document.querySelectorAll('main > section > .wrap, main > header.hero > .wrap').forEach(function (w) {
+      w.style.transform = '';
+      if (!on) return;
+      var sec = w.parentElement;
+      var cs = window.getComputedStyle(sec);
+      var avail = sec.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+      var h = w.scrollHeight;
+      if (h > avail && avail > 0) w.style.transform = 'scale(' + (avail / h).toFixed(4) + ')';
     });
   }
 
@@ -612,9 +637,19 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     var foot = el('footer', 'foot');
     foot.innerHTML = '<div class="wrap"><div class="foot-meta">' + fmt(P.footer || (P.name || '')) + '<br>Proposta válida até <b data-fill="state.validUntil"></b></div></div>';
     root.appendChild(foot);
-    fillDynamic();
+    fillDynamic(); // já chama fitSlides()
     bindReveal();
   }
+
+  // Re-encaixe quando a medida muda: resize, fontes carregadas (altura real só
+  // existe depois delas) e impressão (transform some no print e volta depois).
+  window.addEventListener('resize', fitSlides);
+  window.addEventListener('load', fitSlides);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitSlides);
+  window.addEventListener('beforeprint', function () {
+    document.querySelectorAll('main > section > .wrap, main > header.hero > .wrap').forEach(function (w) { w.style.transform = ''; });
+  });
+  window.addEventListener('afterprint', fitSlides);
 
   function bindReveal() {
     var items = document.querySelectorAll('[data-reveal]');
