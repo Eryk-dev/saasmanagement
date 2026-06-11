@@ -69,6 +69,10 @@ test("dispatcher: template publicado → provider native, lead recebe URLs, snap
   assert.equal(proposal.data.answers.name, undefined); // core não vaza pra answers
   assert.ok(proposal.editKey.length >= 16);
 
+  // potencial de ganho no pipeline = valor do ciclo padrão da proposta:
+  // quarterly 349 + 2 contas extras × 50 = 449/mês × 3 meses = 1347
+  assert.equal(lead.amount, 1347);
+
   // idempotência: 2ª chamada auto pula
   const again = (await app.inject({ method: "POST", url: "/api/leads/le_p1/proposal?auto=1" })).json();
   assert.equal(again.skipped, "already_generated");

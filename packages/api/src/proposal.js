@@ -28,6 +28,7 @@
 // ao vivo, igual à proposta do Levercopy que serviu de referência.
 
 import { randomBytes } from "node:crypto";
+import { CYCLE_MONTHS } from "./billing.js";
 
 export const SLIDE_TYPES = ["hero", "cards", "receipt", "steps", "compare", "bignum", "pricing", "closer", "custom"];
 
@@ -94,6 +95,16 @@ export function initialState(calc, answers) {
   };
 }
 
+// Valor do contrato no ciclo da proposta (preço/mês com assentos × meses do
+// ciclo) — vira o `lead.amount` (potencial de ganho no pipeline) na geração.
+export function contractValue(calc, state) {
+  const plan = calc?.plans?.[state?.cycle];
+  if (!plan) return 0;
+  const perMonth = Number(plan.base || 0) +
+    Math.max(0, (Number(state.seats) || 2) - Number(plan.included || 0)) * Number(plan.extra || 0);
+  return perMonth * (CYCLE_MONTHS[state.cycle] || 1);
+}
+
 // O que a página pública recebe (window.__PROPOSAL__). editKey NUNCA vai junto —
 // `editable` é decidido pela rota comparando ?k com o editKey guardado.
 export function publicProposal(p, { editable = false } = {}) {
@@ -146,10 +157,13 @@ export async function runNativeProposal(repo, lead, opts = {}) {
   }
 
   const proposalUrl = `${baseUrl}/p/${proposal.id}`;
-  const updated = await repo.update("leads", lead.id, {
+  const patch = {
     proposta_id: proposal.id,
     proposalUrl,
     proposal_edit_url: `${proposalUrl}?k=${proposal.editKey}`,
-  });
+  };
+  const amount = contractValue(calc, proposal.state);
+  if (amount > 0) patch.amount = amount;
+  const updated = await repo.update("leads", lead.id, patch);
   return { ok: true, lead: updated, proposal };
 }
