@@ -555,9 +555,18 @@ Collections `tasks` + `task_boards` (CRUD genérico — zero rota nova).
 - ⚠️ **PENDENTE/URGENTE: senha padrão `1234` dos admins AINDA ATIVA na prod**
   (testado 2026-06-11: login `eryk/1234` retorna 200). Trocar via SQL no
   Supabase ou recriar usuários.
-- ⚠️ Verificar `COCKPIT_PUBLIC_URL=https://<host>` no Easypanel — base das URLs
-  gravadas no lead (`proposalUrl`); sem ela saem como `http://localhost:8787`
-  (checar no próximo lead gerado em prod).
+- `COCKPIT_PUBLIC_URL` NÃO está setada no Easypanel (confirmado 2026-06-11:
+  prod gravava `http://localhost:8787` no lead → botão re-gerar "não
+  funcionava"). Mitigado em código: `publicBase(req)` em routes.js — env >
+  host da request (x-forwarded-host/host) > localhost; host público força
+  https (proxy reescreve x-forwarded-proto pra http, não dá pra confiar).
+  Setar a env no painel continua recomendado.
+- ⚠️ **Auto-deploy PAROU 2026-06-11 à tarde**: pushes até `722c47d` deployaram
+  em ~4,5 min; `d4730dc`/`f9d230b`/`2cce909` (≥3 builds em sequência) não
+  subiram em ~50 min. Suspeita: fila de build travada ou disco cheio no VPS
+  (cache de build do Docker — foram 6+ builds no dia). **Checar painel
+  Easypanel e rebuildar na mão.** Estado pendente de deploy: regra https do
+  `publicBase` (f9d230b) + revert do nginx (2cce909, no-op funcional).
 - `DISCORD_WEBHOOK_URL` no Easypanel (e no `.env` local se quiser avisos do
   dev) — liga os avisos do funil no canal Discord (ver Fase 4 · Discord).
 - Links públicos: `https://<host>/f/fo_diagnostico_leverads`,
