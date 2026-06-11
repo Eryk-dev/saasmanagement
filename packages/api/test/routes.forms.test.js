@@ -101,6 +101,28 @@ test("POST submission válida → 201, lead mapeado + submission vinculada", asy
   await app.close();
 });
 
+test("submission com template nativo publicado → proposta NATIVA no lead (dispatcher, não levercopy)", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("proposal_templates", {
+    id: "pt_lever", saas: "leverads", name: "Proposta LeverAds", status: "published",
+    slides: [{ key: "hero", type: "hero", title: "Oi {{lead.company}}" }],
+    calc: {},
+  });
+
+  const res = await app.inject({
+    method: "POST", url: "/public/forms/fo_test/submissions",
+    payload: { answers: ANSWERS_FULL },
+  });
+  assert.equal(res.statusCode, 201);
+
+  const [lead] = await repo.list("leads");
+  assert.ok(lead.proposta_id, "auto-trigger do form gerou proposta");
+  assert.match(lead.proposalUrl, /\/p\//); // URL nativa, não levercopy
+  const proposal = await repo.get("proposals", lead.proposta_id);
+  assert.equal(proposal.saas, "leverads"); // snapshot nativo persistido
+  await app.close();
+});
+
 test("validação: obrigatória faltando, chave desconhecida e opção inválida → 400", async () => {
   const { app, repo } = await buildApp();
 

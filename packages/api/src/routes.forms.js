@@ -8,8 +8,7 @@
 
 import { publicForm, validateAnswers, leadFromSubmission, makeRateLimiter } from "./forms.js";
 import { formPageHtml, EMBED_JS } from "./form-page.js";
-import { runProposal } from "./levercopy.js";
-import { CREATE_DEFAULTS } from "./routes.js";
+import { CREATE_DEFAULTS, dispatchProposal } from "./routes.js";
 
 const clientIp = (req) =>
   String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.ip || "?";
@@ -60,9 +59,10 @@ export function registerFormRoutes(app, repo, opts = {}) {
       createdAt: new Date().toISOString(),
       ua: String(req.headers["user-agent"] || "").slice(0, 300),
     });
-    // Mesmo gatilho best-effort do EntityForm: lead novo tenta gerar proposta;
+    // Mesmo gatilho best-effort do EntityForm: lead novo tenta gerar proposta
+    // pelo MESMO dispatcher da rota manual (native quando há template publicado);
     // elegibilidade/config é decisão do provider e nunca quebra o envio.
-    try { await runProposal(repo, lead, { auto: true }); } catch { /* fail-open */ }
+    try { await dispatchProposal(repo, lead, { auto: true }); } catch { /* fail-open */ }
 
     return reply.code(201).send({ ok: true, id: submission.id });
   });

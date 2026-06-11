@@ -283,9 +283,6 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // `?auto=1`  → gatilho automático (a UI chama após criar um lead): respeita a
   //              idempotência (pula se já tem proposta) e a elegibilidade (saas/config).
   // `?force=1` → re-gerar manual: sobrescreve as URLs salvas.
-  // Provider: `product.proposalProvider` explícito vence; sem ele, usa 'native'
-  // quando o SaaS tem template publicado, senão 'levercopy' (preserva o caminho
-  // de produção do LeverAds até existir template nativo).
   // Best-effort: só 404 (lead inexistente) é erro; skip/falha de geração voltam 200
   // com { ok:false, ... } pra UI mostrar o estado sem quebrar nada (fail-open).
   app.post("/api/leads/:id/proposal", async (req, reply) => {
@@ -294,21 +291,30 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     const auto = req.query.auto === "1" || req.query.auto === "true";
     const force = req.query.force === "1" || req.query.force === "true";
 
-    const product = await repo.get("products", lead.saas);
-    let provider = product?.proposalProvider;
-    if (provider !== "native" && provider !== "levercopy") {
-      const templates = await repo.list("proposal_templates");
-      provider = templates.some((t) => t.saas === lead.saas && t.status === "published") ? "native" : "levercopy";
-    }
-
-    const result = provider === "native"
-      ? await runNativeProposal(repo, lead, { auto, force, baseUrl: PUBLIC_BASE })
-      : await runProposal(repo, lead, { auto, force });
+    const result = await dispatchProposal(repo, lead, { auto, force });
     if (!result.ok && result.error) {
-      req.log.warn({ leadId: lead.id, provider, status: result.status, err: result.error }, "proposal generation failed");
+      req.log.warn({ leadId: lead.id, provider: result.provider, status: result.status, err: result.error }, "proposal generation failed");
     }
-    return { provider, ...result };
+    return result;
   });
+}
+
+// Dispatcher native | levercopy — TODO gatilho de proposta passa por aqui (rota
+// manual acima e o auto-trigger do form em routes.forms.js).
+// Provider: `product.proposalProvider` explícito vence; sem ele, usa 'native'
+// quando o SaaS tem template publicado, senão 'levercopy' (preserva o caminho
+// de produção do LeverAds até existir template nativo).
+export async function dispatchProposal(repo, lead, { auto = false, force = false } = {}) {
+  const product = await repo.get("products", lead.saas);
+  let provider = product?.proposalProvider;
+  if (provider !== "native" && provider !== "levercopy") {
+    const templates = await repo.list("proposal_templates");
+    provider = templates.some((t) => t.saas === lead.saas && t.status === "published") ? "native" : "levercopy";
+  }
+  const result = provider === "native"
+    ? await runNativeProposal(repo, lead, { auto, force, baseUrl: PUBLIC_BASE })
+    : await runProposal(repo, lead, { auto, force });
+  return { provider, ...result };
 }
 
 // Base das URLs públicas gravadas no lead (proposalUrl). Em dev cai no host da
