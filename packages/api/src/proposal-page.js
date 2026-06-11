@@ -253,6 +253,11 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .closer-cta { margin-left: auto; flex-shrink: 0; padding: 10px 16px; border-radius: var(--r-full); background: var(--accent); color: var(--accent-fg); font-weight: 600; font-size: 14px; white-space: nowrap; }
   .closer-cta:hover { filter: brightness(1.06); }
 
+  .slide-media { margin-top: 40px; }
+  .slide-media img, .slide-media video { width: 100%; max-height: 56vh; object-fit: contain;
+    border-radius: var(--radius); border: 1px solid var(--line); background: var(--raised); display: block; }
+  .slide-media figcaption { margin-top: 10px; font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); letter-spacing: .06em; text-align: center; }
+
   .foot { padding: 48px 0 120px; border-top: 1px solid var(--line); text-align: center; }
   .foot-meta { font-family: var(--font-mono); font-size: 12px; color: var(--ink-4); letter-spacing: .06em; line-height: 1.8; }
 
@@ -291,7 +296,7 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   body.editing { padding-top: 30px; }
 
   @media print {
-    .nav, .closer-panel, .cp-toggle, .edit-banner, .accept-row { display: none !important; }
+    .nav, .closer-panel, .cp-toggle, .edit-banner, .accept-row, .slide-media video { display: none !important; }
     body { background: #fff; color: #000; padding-top: 0; }
     main > section, main > header.hero { padding: 40px 0; break-inside: avoid; min-height: 0 !important; height: auto !important; overflow: visible !important; display: block !important; }
     main > section > .wrap, main > header.hero > .wrap { transform: none !important; }
@@ -428,6 +433,32 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     if (cls) n.className = cls;
     if (html != null) n.innerHTML = html;
     return n;
+  }
+
+  // Mídia opcional do slide (s.media = { url, caption }): vídeo por extensão,
+  // resto vira <img> (GIF incluso). load/loadedmetadata re-encaixam o slide.
+  var VIDEO_RE = /\\.(mp4|webm|mov|m4v|ogv)([?#]|$)/i;
+  function mediaNode(m) {
+    if (!m || !m.url) return null;
+    var fig = el('figure', 'slide-media');
+    fig.setAttribute('data-reveal', '');
+    var inner;
+    if (VIDEO_RE.test(String(m.url))) {
+      inner = document.createElement('video');
+      inner.src = m.url;
+      inner.controls = true;
+      inner.playsInline = true;
+      inner.preload = 'metadata';
+      inner.addEventListener('loadedmetadata', fitSlides);
+    } else {
+      inner = document.createElement('img');
+      inner.src = m.url;
+      inner.alt = m.caption || '';
+      inner.addEventListener('load', fitSlides);
+    }
+    fig.appendChild(inner);
+    if (m.caption) fig.appendChild(el('figcaption', null, fmt(m.caption)));
+    return fig;
   }
 
   // ── Slides ────────────────────────────────────────────────────────────────
@@ -633,6 +664,12 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       if (s.type !== 'hero' && s.type !== 'closer') n += 1;
       var node = build(s, n, numbered);
       if (node) root.appendChild(node); // closer pode ter anexado à seção anterior
+      var media = mediaNode(s.media);
+      if (media) {
+        var host = node || root.lastElementChild; // closer: mídia vai pra seção que o recebeu
+        var wrap = host && host.querySelector ? host.querySelector('.wrap') : null;
+        if (wrap) wrap.appendChild(media);
+      }
     });
     var foot = el('footer', 'foot');
     foot.innerHTML = '<div class="wrap"><div class="foot-meta">' + fmt(P.footer || (P.name || '')) + '<br>Proposta válida até <b data-fill="state.validUntil"></b></div></div>';

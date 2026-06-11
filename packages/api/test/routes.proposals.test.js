@@ -75,6 +75,31 @@ test("dispatcher: template publicado → provider native, lead recebe URLs, snap
   await app.close();
 });
 
+test("showIf: slide condicional entra no snapshot só quando a resposta do lead bate", async () => {
+  const { app, repo } = await buildApp();
+  const compat = { key: "compat_sku", type: "steps", title: "Compatibilidade SKU", showIf: { key: "niche", values: ["autopecas"] } };
+  await repo.update("proposal_templates", "pt_lever", { slides: [...TEMPLATE.slides, compat] });
+
+  await repo.create("leads", { ...LEAD, id: "le_auto", niche: "autopecas" });
+  await app.inject({ method: "POST", url: "/api/leads/le_auto/proposal" });
+  const pAuto = await repo.get("proposals", (await repo.get("leads", "le_auto")).proposta_id);
+  assert.equal(pAuto.slides.length, 3);
+  assert.ok(pAuto.slides.some((s) => s.key === "compat_sku"));
+
+  await repo.create("leads", { ...LEAD, id: "le_moda", niche: "moda" });
+  await app.inject({ method: "POST", url: "/api/leads/le_moda/proposal" });
+  const pModa = await repo.get("proposals", (await repo.get("leads", "le_moda")).proposta_id);
+  assert.equal(pModa.slides.length, 2);
+  assert.ok(!pModa.slides.some((s) => s.key === "compat_sku"));
+
+  // resposta multiselect (array) também bate
+  await repo.create("leads", { ...LEAD, id: "le_multi", niche: ["autopecas", "moda"] });
+  await app.inject({ method: "POST", url: "/api/leads/le_multi/proposal" });
+  const pMulti = await repo.get("proposals", (await repo.get("leads", "le_multi")).proposta_id);
+  assert.equal(pMulti.slides.length, 3);
+  await app.close();
+});
+
 test("dispatcher: provider explícito 'levercopy' no produto vence o template nativo", async () => {
   const { app, repo } = await buildApp();
   await repo.update("products", "leverads", { proposalProvider: "levercopy" });

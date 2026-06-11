@@ -4,7 +4,9 @@
 // Modelo (collections schemaless):
 //   proposal_templates: { id, saas, name, status: "draft"|"published",
 //     theme: { bg, surface, fg, accent, accentFg, font, radius, logoUrl },
-//     slides: [{ key, type, ...campos do tipo }],
+//     slides: [{ key, type, ...campos do tipo,
+//       showIf?: { key, values: [] },   // slide condicional por resposta do form
+//       media?: { url, caption? } }],   // imagem/GIF/vídeo do slide (render no cliente)
 //     calc: { salaryMonthly, workHours, minCopy, minCompatEdit, reworkPct,
 //             netMargin, revenueUpliftPct, volumeMid: {faixa: número},
 //             seatsKey, seatsMap: {resposta: número}, volumeKey,
@@ -53,6 +55,21 @@ export function splitLeadData(lead) {
     },
     answers,
   };
+}
+
+// Slide condicional: showIf = { key, values } → entra no snapshot só se a
+// resposta do lead (escalar ou multiselect/array) contiver um dos valores.
+// Sem showIf (ou malformado) = sempre visível. Comparação case-insensitive.
+export function slideVisible(slide, answers) {
+  const cond = slide?.showIf;
+  if (!cond || !String(cond.key || "").trim()) return true;
+  const want = (Array.isArray(cond.values) ? cond.values : [cond.values])
+    .filter((v) => v != null && String(v).trim() !== "")
+    .map((v) => String(v).trim().toLowerCase());
+  if (!want.length) return true;
+  const ans = answers?.[cond.key];
+  const got = (Array.isArray(ans) ? ans : [ans]).map((v) => String(v ?? "").trim().toLowerCase());
+  return got.some((g) => want.includes(g));
 }
 
 const CALC_DEFAULTS = {
@@ -114,7 +131,7 @@ export async function runNativeProposal(repo, lead, opts = {}) {
       lead: lead.id,
       name: template.name || "Proposta",
       theme: template.theme || {},
-      slides: template.slides || [],
+      slides: (template.slides || []).filter((s) => slideVisible(s, data.answers)),
       calc,
       acceptStage: template.acceptStage || "",
       data,

@@ -91,6 +91,27 @@ const setPath = (obj, path, val) => {
   return out;
 };
 
+// Campos comuns a TODO slide (fora do SLIDE_SPECS): mídia e condição de exibição.
+// Objeto some do slide quando esvaziado — snapshot/render não veem lixo vazio.
+const patchMedia = (slide, field, v) => {
+  const media = { ...(slide.media || {}), [field]: v };
+  if (!String(media.url || "").trim() && !String(media.caption || "").trim()) {
+    const { media: _drop, ...rest } = slide;
+    return rest;
+  }
+  return { ...slide, media };
+};
+const patchShowIf = (slide, field, v) => {
+  const showIf = { ...(slide.showIf || {}) };
+  if (field === "values") showIf.values = v.split(",").map((s) => s.trim()).filter(Boolean);
+  else showIf[field] = v;
+  if (!String(showIf.key || "").trim() && !(showIf.values || []).length) {
+    const { showIf: _drop, ...rest } = slide;
+    return rest;
+  }
+  return { ...slide, showIf };
+};
+
 const publicBase = () => import.meta.env.VITE_API_BASE || window.location.origin;
 
 function ProposalsScreen({ saasId }) {
@@ -403,6 +424,14 @@ function SlideCard({ slide, index, total, onChange, onRemove, onMove, arrowStyle
             if (kind === "objlist") return <ObjList key={path} label={label} cols={cols} items={val || []} onChange={(v) => onChange(setPath(slide, path, v))} />;
             return null;
           })}
+          <div style={{ display: "flex", gap: 10 }}>
+            <LabeledInput label="Mídia · URL (imagem, GIF ou vídeo .mp4)" value={slide.media?.url || ""} onChange={(v) => onChange(patchMedia(slide, "url", v))} />
+            <LabeledInput label="Mídia · legenda (opcional)" value={slide.media?.caption || ""} onChange={(v) => onChange(patchMedia(slide, "caption", v))} />
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <LabeledInput label="Mostrar só se · resposta do form (ex.: niche)" value={slide.showIf?.key || ""} onChange={(v) => onChange(patchShowIf(slide, "key", v))} />
+            <LabeledInput label="…tiver um destes valores (vírgula)" value={(slide.showIf?.values || []).join(", ")} onChange={(v) => onChange(patchShowIf(slide, "values", v))} />
+          </div>
         </div>
       )}
     </div>
