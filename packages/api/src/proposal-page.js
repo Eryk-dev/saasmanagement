@@ -30,6 +30,7 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   const accentFg = t.accentFg || "#ffffff";
   const font = t.font || "'Space Grotesk', system-ui, sans-serif";
   const radius = t.radius != null ? Number(t.radius) : 14;
+  const logoH = Math.min(48, Math.max(12, Number(t.logoHeight) || 24)); // cabe na nav fixa de 60px
   const logo = t.logoUrl ? `<img class="nav-logo" src="${escAttr(t.logoUrl)}" alt="">` : "";
 
   return `<!doctype html>
@@ -91,7 +92,7 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .nav { position: sticky; top: 0; z-index: 50; background: color-mix(in oklab, var(--bg) 80%, transparent);
     backdrop-filter: saturate(140%) blur(12px); -webkit-backdrop-filter: saturate(140%) blur(12px); border-bottom: 1px solid var(--line); }
   .nav-inner { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; max-width: 1200px; margin: 0 auto; gap: 16px; }
-  .nav-logo { height: 24px; flex-shrink: 0; }
+  .nav-logo { height: ${logoH}px; flex-shrink: 0; }
   .nav-brand { font-weight: 600; font-size: 15px; }
   .nav-meta { font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); letter-spacing: .08em; text-transform: uppercase; }
   .nav-meta b { color: var(--fg); font-weight: 500; }

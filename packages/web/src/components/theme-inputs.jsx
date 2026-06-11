@@ -14,7 +14,7 @@ export const sectionTitle = { fontSize: 10, letterSpacing: "0.08em", textTransfo
 export const cardStyle = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: 10, display: "flex", flexDirection: "column", gap: 8, background: "var(--bg-2)" };
 export const addBtnStyle = { alignSelf: "flex-start", padding: "5px 10px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--fg-2)" };
 
-export const THEME_DEFAULTS = { bg: "#0f1115", surface: "#181b22", fg: "#f2f3f5", accent: "#6c5ce7", accentFg: "#ffffff", font: "", radius: 10, logoUrl: "" };
+export const THEME_DEFAULTS = { bg: "#0f1115", surface: "#181b22", fg: "#f2f3f5", accent: "#6c5ce7", accentFg: "#ffffff", font: "", radius: 10, logoUrl: "", logoHeight: 24 };
 
 // Fontes curadas (Google Fonts) — as páginas públicas carregam a família
 // primária do tema automaticamente; qualquer fonte do catálogo via custom.
@@ -98,6 +98,7 @@ export function ThemeEditor({ theme, onChange }) {
       <LabeledInput label="Raio (px)" type="number" value={theme.radius} onChange={(v) => set("radius", v === "" ? "" : Number(v))} />
       <FontPicker value={theme.font} onChange={(v) => set("font", v)} />
       <LabeledInput label="Logo (URL)" value={theme.logoUrl} onChange={(v) => set("logoUrl", v)} placeholder="https://…/logo.svg" />
+      <LabeledInput label="Logo · altura (px)" type="number" value={theme.logoHeight} onChange={(v) => set("logoHeight", v === "" ? "" : Number(v))} placeholder="24" />
     </div>
   );
 }

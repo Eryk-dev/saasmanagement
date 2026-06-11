@@ -36,6 +36,7 @@ export function formPageHtml(form, { embed = false } = {}) {
   const accentFg = t.accentFg || "#ffffff";
   const font = t.font || "'Space Grotesk', system-ui, -apple-system, sans-serif";
   const radius = t.radius != null ? Number(t.radius) : 14;
+  const logoH = Math.min(48, Math.max(12, Number(t.logoHeight) || 24));
   const logo = t.logoUrl ? `<img class="logo" src="${escAttr(t.logoUrl)}" alt="">` : "";
 
   return `<!doctype html>
@@ -88,7 +89,7 @@ export function formPageHtml(form, { embed = false } = {}) {
     position: relative; z-index: 1;
   }
   .top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; min-height: 32px; }
-  .logo { height: 24px; width: auto; display: block; object-fit: contain; }
+  .logo { height: ${logoH}px; width: auto; display: block; object-fit: contain; }
   .brand-name { font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
   .pill { font-family: var(--font-mono); font-size: 11px; color: var(--ink-4); letter-spacing: .08em; }
   .backbtn { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; color: var(--ink-4); padding: 6px 4px; transition: color .12s; }

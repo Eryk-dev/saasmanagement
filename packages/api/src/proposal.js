@@ -3,7 +3,7 @@
 //
 // Modelo (collections schemaless):
 //   proposal_templates: { id, saas, name, status: "draft"|"published",
-//     theme: { bg, surface, fg, accent, accentFg, font, radius, logoUrl },
+//     theme: { bg, surface, fg, accent, accentFg, font, radius, logoUrl, logoHeight },
 //     slides: [{ key, type, ...campos do tipo,
 //       showIf?: { key, values: [] },   // slide condicional por resposta do form
 //       media?: { url, caption? } }],   // imagem/GIF/vídeo do slide (render no cliente)
