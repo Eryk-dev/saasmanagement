@@ -303,7 +303,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     const auto = req.query.auto === "1" || req.query.auto === "true";
     const force = req.query.force === "1" || req.query.force === "true";
 
-    const result = await dispatchProposal(repo, lead, { auto, force });
+    const result = await dispatchProposal(repo, lead, { auto, force, baseUrl: publicBase(req) });
     if (!result.ok && result.error) {
       req.log.warn({ leadId: lead.id, provider: result.provider, status: result.status, err: result.error }, "proposal generation failed");
     }
@@ -316,7 +316,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
 // Provider: `product.proposalProvider` explícito vence; sem ele, usa 'native'
 // quando o SaaS tem template publicado, senão 'levercopy' (preserva o caminho
 // de produção do LeverAds até existir template nativo).
-export async function dispatchProposal(repo, lead, { auto = false, force = false } = {}) {
+export async function dispatchProposal(repo, lead, { auto = false, force = false, baseUrl = "" } = {}) {
   const product = await repo.get("products", lead.saas);
   let provider = product?.proposalProvider;
   if (provider !== "native" && provider !== "levercopy") {
@@ -324,11 +324,21 @@ export async function dispatchProposal(repo, lead, { auto = false, force = false
     provider = templates.some((t) => t.saas === lead.saas && t.status === "published") ? "native" : "levercopy";
   }
   const result = provider === "native"
-    ? await runNativeProposal(repo, lead, { auto, force, baseUrl: PUBLIC_BASE })
+    ? await runNativeProposal(repo, lead, { auto, force, baseUrl: baseUrl || publicBase() })
     : await runProposal(repo, lead, { auto, force });
   return { provider, ...result };
 }
 
-// Base das URLs públicas gravadas no lead (proposalUrl). Em dev cai no host da
-// própria API; em produção configurar COCKPIT_PUBLIC_URL.
-const PUBLIC_BASE = (process.env.COCKPIT_PUBLIC_URL || `http://localhost:${process.env.API_PORT || 8787}`).replace(/\/+$/, "");
+// Base das URLs públicas gravadas no lead (proposalUrl). Prioridade:
+// COCKPIT_PUBLIC_URL > host da request (x-forwarded-* do proxy) > localhost.
+// O fallback pela request cobre produção sem a env setada; a env continua
+// recomendada (request pública com Host forjado não vaza pro link do lead).
+export function publicBase(req) {
+  if (process.env.COCKPIT_PUBLIC_URL) return process.env.COCKPIT_PUBLIC_URL.replace(/\/+$/, "");
+  const host = req?.headers?.["x-forwarded-host"] || req?.headers?.host;
+  if (host) {
+    const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "http").split(",")[0].trim();
+    return `${proto}://${String(host).split(",")[0].trim()}`;
+  }
+  return `http://localhost:${process.env.API_PORT || 8787}`;
+}

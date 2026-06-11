@@ -73,6 +73,16 @@ test("dispatcher: template publicado → provider native, lead recebe URLs, snap
   // quarterly 349 + 2 contas extras × 50 = 449/mês × 3 meses = 1347
   assert.equal(lead.amount, 1347);
 
+  // sem COCKPIT_PUBLIC_URL, a base do link vem da request (proxy headers)
+  const re = await app.inject({
+    method: "POST",
+    url: "/api/leads/le_p1/proposal?force=1",
+    headers: { "x-forwarded-host": "cockpit.example.com", "x-forwarded-proto": "https" },
+  });
+  assert.equal(re.json().ok, true);
+  const releads = await repo.get("leads", "le_p1");
+  assert.match(releads.proposalUrl, /^https:\/\/cockpit\.example\.com\/p\//);
+
   // idempotência: 2ª chamada auto pula
   const again = (await app.inject({ method: "POST", url: "/api/leads/le_p1/proposal?auto=1" })).json();
   assert.equal(again.skipped, "already_generated");

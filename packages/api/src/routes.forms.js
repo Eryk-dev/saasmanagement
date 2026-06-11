@@ -8,7 +8,7 @@
 
 import { publicForm, validateAnswers, leadFromSubmission, makeRateLimiter } from "./forms.js";
 import { formPageHtml, EMBED_JS } from "./form-page.js";
-import { CREATE_DEFAULTS, dispatchProposal } from "./routes.js";
+import { CREATE_DEFAULTS, dispatchProposal, publicBase } from "./routes.js";
 
 const clientIp = (req) =>
   String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.ip || "?";
@@ -63,7 +63,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // Mesmo gatilho best-effort do EntityForm: lead novo tenta gerar proposta
     // pelo MESMO dispatcher da rota manual (native quando há template publicado);
     // elegibilidade/config é decisão do provider e nunca quebra o envio.
-    try { await dispatchProposal(repo, lead, { auto: true }); } catch { /* fail-open */ }
+    try { await dispatchProposal(repo, lead, { auto: true, baseUrl: publicBase(req) }); } catch { /* fail-open */ }
 
     // Aviso no Discord: lead re-buscado pra incluir o link da proposta que o
     // dispatcher acabou de gravar (se gerou). Nunca quebra o envio.
