@@ -83,7 +83,7 @@ function SettingsScreen({ saasId }) {
           {tab === "fields"       && <FieldsSettings s={s} />}
           {tab === "health"       && <HealthSettings s={s} />}
           {tab === "aha"          && <AhaSettings s={s} />}
-          {tab === "integrations" && <IntegrationsSettings s={s} />}
+          {tab === "integrations" && <IntegrationsSettings key={s.id} s={s} />}
         </div>
       </div>
     </div>
@@ -345,9 +345,19 @@ function AhaSettings({ s }) {
 }
 
 // ───────────────────────────────────────────────────────── Integrações
-// Status real — nada fake. MP lê CONFIG.mp.configured (env do servidor).
-function IntegrationsSettings() {
+// Status real — nada fake. Tokens vivem no env do servidor; o que é POR SAAS
+// (conta de anúncio da Meta) é editado aqui e gravado no produto.
+function IntegrationsSettings({ s }) {
+  const { refresh } = useData();
   const mpOn = !!window.SEED?.CONFIG?.mp?.configured;
+  const metaOn = !!window.SEED?.CONFIG?.meta?.configured;
+  const [adAccount, setAdAccount] = useStS(s.metaAdAccount || "");
+
+  async function saveMeta() {
+    await api.update("products", s.id, { metaAdAccount: adAccount.trim() });
+    await refresh();
+  }
+
   const items = [
     { k: "Mercado Pago", desc: "assinaturas (preapproval) + baixa automática de fatura via webhook", on: mpOn, off: "configurar MERCADOPAGO_ACCESS_TOKEN" },
     { k: "E-mail", desc: "envio de proposta + notificações (Resend/SMTP)", on: false, off: "em breve" },
@@ -355,7 +365,26 @@ function IntegrationsSettings() {
   ];
   return (
     <div>
-      <SettingHeader title="Integrações" sub="Mercado Pago conecta via env do servidor (access token + webhook secret) · e-mail e webhook genérico ficam pra próxima rodada" />
+      <SettingHeader title="Integrações" sub="tokens vivem no env do servidor · a conta de anúncio da Meta é por SaaS (abaixo)" />
+
+      {/* Meta Ads: status global + ad account deste SaaS */}
+      <div style={{ padding: "14px 16px", border: metaOn ? "1px solid var(--line-1)" : "1px dashed var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", marginBottom: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>Meta Ads</div>
+            <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>insights de campanha → tela Marketing (CPL, custo por estágio)</div>
+          </div>
+          <span className={"chip " + (metaOn ? "pos" : "")} style={{ height: 22 }}>{metaOn ? "conectado" : "configurar META_ACCESS_TOKEN"}</span>
+        </div>
+        {metaOn && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12 }}>
+            <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>ad account de {s.name}</span>
+            <input value={adAccount} placeholder="act_1234567890" onChange={(e) => setAdAccount(e.target.value)} className="mono" style={{ ...inputStyle, width: 220, fontFamily: "var(--mono)" }} />
+            <button onClick={saveMeta} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}><span style={{ fontSize: 11 }}>salvar</span></button>
+          </div>
+        )}
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
         {items.map(i => (
           <div key={i.k} style={{ padding: "14px 16px", border: i.on ? "1px solid var(--line-1)" : "1px dashed var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>

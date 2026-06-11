@@ -9,6 +9,7 @@ import { FormsScreen } from "./screens/forms.jsx";
 import { ProposalsScreen } from "./screens/proposals.jsx";
 import { CustomersScreen } from "./screens/customers.jsx";
 import { SubscriptionsScreen } from "./screens/subscriptions.jsx";
+import { MarketingScreen } from "./screens/marketing.jsx";
 import { NPSScreen } from "./screens/nps.jsx";
 import { GoalsScreen } from "./screens/goals.jsx";
 import { LeaderboardScreen } from "./screens/leaderboard.jsx";
@@ -79,6 +80,7 @@ function App() {
     pipeline:    ["Vendas", "Pipeline · " + (window.SEED.SAAS.find(s => s.id === params.saas)?.name || "LeverAds")],
     forms:       ["Vendas", "Forms"],
     proposals:   ["Vendas", "Propostas"],
+    marketing:   ["Vendas", "Marketing"],
     customers:   ["Cliente", "Clientes"],
     subscriptions: ["Cliente", "Assinaturas"],
     nps:         ["Cliente", "NPS"],
@@ -109,6 +111,7 @@ function App() {
           {screen === "pipeline"    && <PipelineScreen saasId={params.saas} onJump={jump} jumpFilter={params} onOpenLead={openLead} />}
           {screen === "forms"       && <FormsScreen saasId={params.saas} />}
           {screen === "proposals"   && <ProposalsScreen saasId={params.saas} />}
+          {screen === "marketing"   && <MarketingScreen saasId={params.saas} />}
           {screen === "customers"   && <CustomersScreen csFilter={params.csFilter} />}
           {screen === "subscriptions" && <SubscriptionsScreen saasId={params.saas} />}
           {screen === "nps"         && <NPSScreen />}
@@ -173,6 +176,7 @@ function subtitleFor(screen, params) {
     pipeline:    `${params.stage ? "estágio: " + params.stage + " · " : ""}arraste para mover`,
     forms:       "formulários de captação por SaaS",
     proposals:   "templates por marca · slides com trava magnética",
+    marketing:   "Meta Ads × funil · CPL e custo por estágio",
     customers:   params.csFilter === "red" ? "filtrado: crítico" : "ordenado por saúde",
     subscriptions: "system-of-record · ARR do cliente deriva daqui",
     nps:         "últimos 90 dias",

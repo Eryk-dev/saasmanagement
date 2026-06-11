@@ -50,6 +50,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
     const lead = await repo.create("leads", {
       ...(CREATE_DEFAULTS.leads || {}),
       ...leadFromSubmission(form, answers),
+      createdAt: new Date().toISOString(), // métricas de marketing filtram por período
     });
     const submission = await repo.create("form_submissions", {
       form: form.id,

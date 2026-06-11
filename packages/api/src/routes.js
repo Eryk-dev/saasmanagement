@@ -13,6 +13,8 @@ import { initSubscription, syncCustomerArr } from "./billing.js";
 import { registerAuthRoutes } from "./auth.js";
 import { registerMpRoutes, mirrorSubscriptionToMp } from "./routes.mp.js";
 import { mp as defaultMpClient } from "./mp.js";
+import { registerMarketingRoutes } from "./routes.marketing.js";
+import { meta as defaultMetaClient } from "./meta.js";
 
 // Auth interna fica FORA do CRUD genérico: passwordHash/token de sessão nunca
 // saem pela API. Gestão via rotas dedicadas (/api/auth/*).
@@ -117,6 +119,7 @@ function listFilter(collection, q) {
   if (collection === "plans") return (p) => !q.saas || p.saas === q.saas;
   if (collection === "subscriptions") return (s) => (!q.saas || s.saas === q.saas) && (!q.customer || s.customer === q.customer) && (!q.status || s.status === q.status);
   if (collection === "invoices") return (i) => (!q.saas || i.saas === q.saas) && (!q.customer || i.customer === q.customer) && (!q.subscription || i.subscription === q.subscription) && (!q.status || i.status === q.status);
+  if (collection === "ad_insights") return (r) => (!q.saas || r.saas === q.saas) && (!q.campaign || r.campaignId === q.campaign);
   return null;
 }
 
@@ -132,6 +135,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerBillingRoutes(app, repo, { mp: mpClient });
   // Mercado Pago (fase 4): link de assinatura + webhook de baixa automática.
   registerMpRoutes(app, repo, { mp: mpClient });
+  // Marketing: sync de insights da Meta + métricas cruzadas com o funil.
+  const metaClient = opts.meta || defaultMetaClient;
+  registerMarketingRoutes(app, repo, { meta: metaClient });
   // Usuários do time: login/logout/me + gestão mínima (rotas dedicadas).
   registerAuthRoutes(app, repo);
 
@@ -171,6 +177,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         levercopy: integrationStatus(),
         proposals: { nativeSaas: (await repo.list("proposal_templates")).filter((t) => t.status === "published").map((t) => t.saas) },
         mp: { configured: mpClient.configured() },
+        meta: { configured: metaClient.configured() },
       },
     };
   });
@@ -206,7 +213,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     const { collection } = req.params;
     if (!WRITABLE.has(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
     if (!req.body || typeof req.body !== "object") return reply.code(400).send({ error: "JSON body required" });
-    let created = await repo.create(collection, { ...(CREATE_DEFAULTS[collection] || {}), ...req.body });
+    const stamp = collection === "leads" && !req.body.createdAt ? { createdAt: new Date().toISOString() } : {};
+    let created = await repo.create(collection, { ...(CREATE_DEFAULTS[collection] || {}), ...req.body, ...stamp });
     // Assinatura nova: janela do 1º ciclo + fatura inicial + customer.arr
     // (invariante: receita do produto deriva de customers).
     if (collection === "subscriptions") created = await initSubscription(repo, created);

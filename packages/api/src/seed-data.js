@@ -32,4 +32,5 @@ export const COLLECTIONS = {
   invoices: [],
   users: [],
   sessions: [],
+  ad_insights: [],
 };

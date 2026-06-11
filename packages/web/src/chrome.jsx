@@ -10,6 +10,7 @@ const NAV = [
   { id: "pipeline",   label: "Pipeline",    icon: "≡",  group: "sales" },
   { id: "forms",      label: "Forms",       icon: "▤",  group: "sales" },
   { id: "proposals",  label: "Propostas",   icon: "▥",  group: "sales" },
+  { id: "marketing",  label: "Marketing",   icon: "◬",  group: "sales" },
   { id: "customers",  label: "Clientes",   icon: "○",  group: "customer" },
   { id: "subscriptions", label: "Assinaturas", icon: "◈", group: "customer" },
   { id: "nps",        label: "NPS",         icon: "☷",  group: "customer" },

@@ -434,6 +434,25 @@ Port de `copylever/app/services/mp_api.py` ligado no motor da fase 5.
   link ou PUT manual); sem checkout transparente (card token) — fluxo é o
   init_point.
 
+### ✅ Meta Ads (marketing — 2026-06-11)
+Insights de campanha cruzados com o funil. Env: `META_ACCESS_TOKEN` (system
+user, ads_read); conta de anúncio é POR SAAS (`product.metaAdAccount`,
+editada em Ajustes → Integrações).
+- **`api/src/meta.js`** — `campaignInsights(adAccount, {since, until})`: Graph
+  v23.0 `/act_X/insights` level=campaign, time_increment=1, segue paginação;
+  leads = action_type `"lead"` (total canônico da Meta).
+- **`api/src/routes.marketing.js`** — `POST /api/marketing/sync` (upsert
+  idempotente em `ad_insights`: 1 linha por saas+campanha+dia) e
+  `GET /api/marketing/:saas?since&until`: spend/impressões/cliques/CPM/CPC/CTR,
+  **CPL real** (spend ÷ leads criados no Cockpit no período), **CPL Meta**,
+  **custo por estágio do funil** (lead com estágio atual ≥ i conta pro estágio
+  i — custo por call/por ganho saem daí sem config), campanhas, série diária.
+- Leads ganharam `createdAt` na criação (CRUD genérico + submissão de form) —
+  leads antigos sem createdAt ficam fora das métricas por período.
+- **UI:** tela **Marketing** (nav receita): períodos 7/30/90d, sync, KPIs,
+  custo por estágio, campanhas, sparkline de spend. Sync é manual (botão) —
+  cron de sync diário fica como pendência junto do `/api/billing/run`.
+
 ### 🔜 Adiados
 E-mail (Resend/SMTP; proposta + notificações) e webhook genérico (POST em
 eventos: lead novo, proposta vista/aceita).

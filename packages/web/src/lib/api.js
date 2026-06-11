@@ -70,4 +70,12 @@ export const api = {
   runBilling: () => req("POST", "/api/billing/run", {}),
   // Mercado Pago: gera o link de autorização da assinatura (preapproval).
   mpLink: (subId, payerEmail) => req("POST", `/api/subscriptions/${subId}/mp/link`, payerEmail ? { payerEmail } : {}),
+  // Marketing (Meta Ads): sync de insights + métricas cruzadas com o funil.
+  marketingSync: (body = {}) => req("POST", "/api/marketing/sync", body),
+  marketingMetrics: (saas, { since, until } = {}) => {
+    const q = new URLSearchParams();
+    if (since) q.set("since", since);
+    if (until) q.set("until", until);
+    return req("GET", `/api/marketing/${saas}${q.toString() ? `?${q}` : ""}`);
+  },
 };

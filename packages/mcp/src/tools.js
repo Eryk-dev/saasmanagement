@@ -27,6 +27,7 @@ const ALIASES = {
   plan: "plans", plans: "plans", plano: "plans", planos: "plans",
   subscription: "subscriptions", subscriptions: "subscriptions", assinatura: "subscriptions", assinaturas: "subscriptions",
   invoice: "invoices", invoices: "invoices", fatura: "invoices", faturas: "invoices",
+  ad_insight: "ad_insights", ad_insights: "ad_insights", insights: "ad_insights", campanha: "ad_insights", campanhas: "ad_insights",
 };
 const COLLECTIONS = "products, customers, leads, nps, goals, attention, people, leaderboard_month, leaderboard_all, forms, form_submissions, proposal_templates, proposals, plans, subscriptions, invoices";
 function resolve(r) {
