@@ -28,6 +28,8 @@ const priTone = (p) => p === "P0" ? "var(--neg)" : p === "P1" ? "var(--warn)" : 
 function currentUser() {
   try { return JSON.parse(localStorage.getItem("cockpit_user") || "null"); } catch { return null; }
 }
+// Compat: tarefas criadas antes do multi-responsável têm `assignee` string.
+const assigneesOf = (t) => t.assignees || (t.assignee ? [t.assignee] : []);
 const today = () => new Date().toISOString().slice(0, 10);
 function fmtDue(d) {
   const dt = new Date(d + "T00:00:00");
@@ -75,7 +77,7 @@ function TasksScreen() {
 
   const shown = tasks.filter((t) =>
     (fSaas === "all" || t.saas === fSaas) &&
-    (fAssignee === "all" || t.assignee === fAssignee) &&
+    (fAssignee === "all" || assigneesOf(t).includes(fAssignee)) &&
     (!q || `${t.title} ${t.description || ""}`.toLowerCase().includes(q.toLowerCase())));
 
   const byOrder = (a, b) => (Number(a.order) || 0) - (Number(b.order) || 0) || String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
@@ -299,7 +301,7 @@ function ColumnMenu({ col, idx, count, hasCards, onRename, onColor, onMove, onRe
 function TaskCard({ t, users, onDragStart, onDropBefore, onOpen }) {
   const { SAAS } = window.SEED;
   const s = SAAS.find((x) => x.id === t.saas);
-  const assignee = users.find((u) => u.id === t.assignee);
+  const assignees = assigneesOf(t).map((id) => users.find((u) => u.id === id)).filter(Boolean);
   const overdue = t.dueDate && t.dueDate < today();
   return (
     <div
@@ -323,7 +325,15 @@ function TaskCard({ t, users, onDragStart, onDropBefore, onOpen }) {
       )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6, gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--fg-3)", minWidth: 0 }}>
-          {assignee && <Avatar id={assignee.id} name={assignee.name} size={16} />}
+          {assignees.length > 0 && (
+            <span style={{ display: "inline-flex" }}>
+              {assignees.map((u, i) => (
+                <span key={u.id} style={{ marginLeft: i ? -5 : 0, display: "inline-flex" }}>
+                  <Avatar id={u.id} name={u.name} size={16} />
+                </span>
+              ))}
+            </span>
+          )}
           {t.dueDate && <span className="mono" style={{ color: overdue ? "var(--neg)" : "var(--fg-3)" }}>{fmtDue(t.dueDate)}</span>}
           {t.priority && <span className="mono" style={{ color: priTone(t.priority) }}>· {t.priority}</span>}
           {(t.comments || []).length > 0 && <span className="mono dim">❞ {t.comments.length}</span>}
@@ -353,8 +363,8 @@ function LabelChip({ label }) {
 // ─────────────────────────────────────────────── Modal (criar/editar + comentários)
 function TaskModal({ task, presetColumn, presetSaas, columns, users, onSave, onDelete, onComment, onClose }) {
   const { SAAS } = window.SEED;
-  const [d, setD] = useState(() => task ? { ...task } : {
-    title: "", description: "", saas: presetSaas, assignee: "",
+  const [d, setD] = useState(() => task ? { ...task, assignees: assigneesOf(task) } : {
+    title: "", description: "", saas: presetSaas, assignees: [],
     column: presetColumn, priority: "", dueDate: "", labels: [],
   });
   const [comments, setComments] = useState(task?.comments || []);
@@ -413,13 +423,29 @@ function TaskModal({ task, presetColumn, presetSaas, columns, users, onSave, onD
               {SAAS.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={labelStyle}>Responsável</span>
-            <select value={d.assignee} onChange={set("assignee")} style={selStyle}>
-              <option value="">—</option>
-              {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
-          </label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={labelStyle}>Responsáveis</span>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", minHeight: 30 }}>
+              {users.map((u) => {
+                const on = (d.assignees || []).includes(u.id);
+                return (
+                  <button type="button" key={u.id}
+                    onClick={() => setD((p) => ({ ...p, assignees: on ? p.assignees.filter((x) => x !== u.id) : [...(p.assignees || []), u.id] }))}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 6,
+                      height: 26, padding: "0 10px 0 5px", borderRadius: 999,
+                      border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-1)"),
+                      background: on ? "var(--accent-soft)" : "var(--bg-2)",
+                      color: on ? "var(--accent)" : "var(--fg-3)",
+                      fontSize: 12,
+                    }}>
+                    <Avatar id={u.id} name={u.name} size={18} />
+                    {u.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span style={labelStyle}>Coluna</span>
             <select value={d.column} onChange={set("column")} style={selStyle}>

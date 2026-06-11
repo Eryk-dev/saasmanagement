@@ -21,34 +21,37 @@ test("criar tarefa aplica defaults + createdAt", async () => {
 
   const res = await app.inject({
     method: "POST", url: "/api/tasks",
-    payload: { title: "Subir deploy", saas: "leverads", assignee: "eryk" },
+    payload: { title: "Subir deploy", saas: "leverads" },
   });
   assert.equal(res.statusCode, 201);
   const task = res.json();
   assert.equal(task.title, "Subir deploy");
   assert.deepEqual(task.comments, []);
   assert.deepEqual(task.labels, []);
+  assert.deepEqual(task.assignees, []);
   assert.equal(task.column, "");
   assert.ok(task.createdAt);
 
   await app.close();
 });
 
-test("filtros ?saas / ?assignee / ?column", async () => {
+test("filtros ?saas / ?assignee / ?column — multi-responsável + legado", async () => {
   const repo = makeMemRepo();
-  await repo.create("tasks", { id: "t1", title: "A", saas: "leverads", assignee: "eryk", column: "todo" });
-  await repo.create("tasks", { id: "t2", title: "B", saas: "leverads", assignee: "leonardo", column: "doing" });
-  await repo.create("tasks", { id: "t3", title: "C", saas: "outro", assignee: "eryk", column: "todo" });
+  await repo.create("tasks", { id: "t1", title: "A", saas: "leverads", assignees: ["eryk"], column: "todo" });
+  await repo.create("tasks", { id: "t2", title: "B", saas: "leverads", assignees: ["leonardo"], column: "doing" });
+  await repo.create("tasks", { id: "t3", title: "C", saas: "outro", assignees: ["eryk", "leonardo"], column: "todo" });
+  // Tarefa pré-multi-responsável (campo string legado) ainda entra no filtro.
+  await repo.create("tasks", { id: "t4", title: "D", saas: "outro", assignee: "eryk", column: "todo" });
   const app = buildApp(repo);
 
   const bySaas = await app.inject({ url: "/api/tasks?saas=leverads" });
   assert.deepEqual(bySaas.json().map((t) => t.id).sort(), ["t1", "t2"]);
 
   const byAssignee = await app.inject({ url: "/api/tasks?assignee=eryk" });
-  assert.deepEqual(byAssignee.json().map((t) => t.id).sort(), ["t1", "t3"]);
+  assert.deepEqual(byAssignee.json().map((t) => t.id).sort(), ["t1", "t3", "t4"]);
 
-  const combined = await app.inject({ url: "/api/tasks?assignee=eryk&column=todo&saas=leverads" });
-  assert.deepEqual(combined.json().map((t) => t.id), ["t1"]);
+  const combined = await app.inject({ url: "/api/tasks?assignee=leonardo&column=todo" });
+  assert.deepEqual(combined.json().map((t) => t.id), ["t3"]);
 
   await app.close();
 });

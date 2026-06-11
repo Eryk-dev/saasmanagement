@@ -462,8 +462,10 @@ eventos: lead novo, proposta vista/aceita).
 "Trello interno": nav Tarefas (grupo pessoas) → `web/src/screens/tasks.jsx`.
 Collections `tasks` + `task_boards` (CRUD genérico — zero rota nova).
 
-- **Card** (`tasks`): título, descrição, saas, `assignee` (id de usuário do
-  time, lista via `GET /api/auth/users` → `api.listUsers()`), `column` (KEY
+- **Card** (`tasks`): título, descrição, saas, `assignees[]` (ids de usuários
+  do time, lista via `GET /api/auth/users` → `api.listUsers()`; multi —
+  chips de toggle no modal, avatares sobrepostos no card; filtro `?assignee`
+  pega quem participa e ainda aceita o campo string legado), `column` (KEY
   estável da coluna — renomear coluna NÃO órfã o card), prioridade P0–P2,
   dueDate (vencida = vermelho), labels, `order` (float; drop em card = entra
   antes via ponto médio, drop na coluna = vai pro fim), createdAt (stamp no

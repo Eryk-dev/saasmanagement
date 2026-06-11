@@ -58,9 +58,9 @@ export const CREATE_DEFAULTS = {
   subscriptions: { status: "active", cycle: "monthly", price: 0, plan: "", pendingChange: null },
   invoices: { status: "open", amount: 0, kind: "manual" },
   // Kanban de tarefas do time. `column` = KEY estável da coluna do board (renomear
-  // coluna não órfã o card); `assignee` = id de usuário do time (collection users);
+  // coluna não órfã o card); `assignees` = ids de usuários do time (collection users);
   // comments = [{ id, author, text, at }] — o SPA faz PATCH do array inteiro.
-  tasks: { title: "", description: "", saas: "", assignee: "", column: "", priority: "", dueDate: "", labels: [], comments: [], order: 0 },
+  tasks: { title: "", description: "", saas: "", assignees: [], column: "", priority: "", dueDate: "", labels: [], comments: [], order: 0 },
   task_boards: { name: "Tarefas", columns: [] },
 };
 
@@ -125,7 +125,7 @@ function listFilter(collection, q) {
   if (collection === "subscriptions") return (s) => (!q.saas || s.saas === q.saas) && (!q.customer || s.customer === q.customer) && (!q.status || s.status === q.status);
   if (collection === "invoices") return (i) => (!q.saas || i.saas === q.saas) && (!q.customer || i.customer === q.customer) && (!q.subscription || i.subscription === q.subscription) && (!q.status || i.status === q.status);
   if (collection === "ad_insights") return (r) => (!q.saas || r.saas === q.saas) && (!q.campaign || r.campaignId === q.campaign);
-  if (collection === "tasks") return (t) => (!q.saas || t.saas === q.saas) && (!q.assignee || t.assignee === q.assignee) && (!q.column || t.column === q.column);
+  if (collection === "tasks") return (t) => (!q.saas || t.saas === q.saas) && (!q.assignee || (t.assignees || (t.assignee ? [t.assignee] : [])).includes(q.assignee)) && (!q.column || t.column === q.column);
   return null;
 }
 
