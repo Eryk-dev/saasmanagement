@@ -523,21 +523,23 @@ Collections `tasks` + `task_boards` (CRUD genérico — zero rota nova).
 - **Volume:** paginação, soft-delete, auditoria, rate-limit geral.
 - **Tela de bloqueio + interpolação na tela final** (pendências fase 1).
 
-## 10. ⚠️ Deploy (bloqueador de produção)
-- Sessões MCP/produção apontam pro Easypanel com código ANTIGO (pré-rework).
-- A pasta É repo git (descoberto 2026-06-10; doc anterior dizia que não):
-  `github.com:Eryk-dev/saasmanagement`, branch `main` — rework inteiro commitado
-  e pushado (`cd93591`). Tem `Dockerfile`/`Dockerfile.allinone`/`deploy/` no
-  repo. **Confirmar com o dono se o Easypanel builda desse repo** (se sim,
-  deploy = rebuild no painel) e subir API + MCP + web.
-- ⚠️ Antes de expor público: trocar a senha padrão `1234` dos admins (§2).
-- ⚠️ O nginx do allinone precisa proxyar a superfície pública (`/f/`, `/p/`,
-  `/public/`, `/embed.js`) além de `/api/` — sem isso o try_files do SPA engole
-  e "abre o app" (corrigido 2026-06-10 em `deploy/nginx.allinone.conf`).
-- ⚠️ Setar `COCKPIT_PUBLIC_URL=https://<host>` no Easypanel — é a base das URLs
-  gravadas no lead (`proposalUrl`); sem ela saem como `http://localhost:8787`.
-- Após deploy: links públicos viram
-  `https://<host>/f/fo_diagnostico_leverads` e o MCP da sessão cria forms.
+## 10. ✅ Deploy (NO AR desde 2026-06-11 — não é mais bloqueador)
+- **Easypanel auto-deploya no push pro `main`** (confirmado 2026-06-11: push
+  `46e3dd6` → prod atualizada sozinha em ~4,5 min). Deploy = `git push`.
+- Prod: `https://extrator-mp-saasmngmnt.gnnc3f.easypanel.host` rodando o rework
+  completo (`46e3dd6` — semestral + grade de planos + slide copia_automatica).
+- **Prod usa o MESMO Supabase do dev local** (`COCKPIT_DB_URL` igual) — mudança
+  de DADOS feita local via API aparece na prod NA HORA, antes do código. Cuidado:
+  dados novos + renderer velho = página degradada até o push (aconteceu
+  2026-06-11 com o ciclo semestral).
+- ⚠️ **PENDENTE/URGENTE: senha padrão `1234` dos admins AINDA ATIVA na prod**
+  (testado 2026-06-11: login `eryk/1234` retorna 200). Trocar via SQL no
+  Supabase ou recriar usuários.
+- ⚠️ Verificar `COCKPIT_PUBLIC_URL=https://<host>` no Easypanel — base das URLs
+  gravadas no lead (`proposalUrl`); sem ela saem como `http://localhost:8787`
+  (checar no próximo lead gerado em prod).
+- Links públicos: `https://<host>/f/fo_diagnostico_leverads`,
+  `https://<host>/p/t/pt_leverads` (preview do template).
 
 ## 11. Gotchas técnicos (aprendidos na prática)
 - `form-page.js` é UM template literal gigante → **nenhuma crase** dentro do
