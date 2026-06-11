@@ -481,9 +481,29 @@ editada em Ajustes → Integrações).
   custo por estágio, campanhas, sparkline de spend. Sync é manual (botão) —
   cron de sync diário fica como pendência junto do `/api/billing/run`.
 
+### ✅ Discord — avisos do funil (2026-06-11)
+Canal único via webhook: `DISCORD_WEBHOOK_URL` no env (sem ela = no-op total).
+`api/src/discord.js` — `makeDiscord` (fetch injetável, padrão mp.js), fail-open
+SEMPRE: timeout 3s, erro de rede nunca propaga, rotas checam `configured()`
+antes de montar payload. Injetado por routes.js (`opts.discord`) em
+forms/proposals/billing/MP. Eventos:
+- **Lead novo** — submissão de form (lead re-buscado pra incluir a proposalUrl
+  que o dispatcher gerou) e POST /api/leads manual/MCP.
+- **Proposta** — 1ª visualização (re-view e ?k do closer não avisam) e aceite
+  (só o 1º), incluindo estágio pra onde o lead moveu.
+- **MP** — transição do **mpStatus** (autorizou/cancelou/pausou; o status
+  Cockpit nasce "active" via CREATE_DEFAULTS, então o sinal certo é o mpStatus)
+  e baixa de fatura via webhook (duplicado não re-avisa — sem `result.invoice`).
+  Baixa manual (`POST /api/invoices/:id/pay`) também avisa.
+- **Dunning** — tick do `/api/billing/run` que marcou overdue/past_due NOVOS
+  alerta com a lista do estoque vencido (transição dispara, estoque informa).
+`CONFIG.discord.configured` no bootstrap (padrão mp/meta; UI não usa ainda).
+Testes: `routes.discord.test.js` (6; suite 73/73). Pendências: resumo diário
+(cron, junto do billing/run) e bot interativo (slash commands) = v2.
+
 ### 🔜 Adiados
-E-mail (Resend/SMTP; proposta + notificações) e webhook genérico (POST em
-eventos: lead novo, proposta vista/aceita).
+E-mail (Resend/SMTP; proposta + notificações) e webhook genérico configurável
+(POST em eventos — a parte "avisos de rotina" já é coberta pelo Discord acima).
 
 ## ✅ Tarefas — kanban do time (entregue 2026-06-11, só local)
 
@@ -538,6 +558,8 @@ Collections `tasks` + `task_boards` (CRUD genérico — zero rota nova).
 - ⚠️ Verificar `COCKPIT_PUBLIC_URL=https://<host>` no Easypanel — base das URLs
   gravadas no lead (`proposalUrl`); sem ela saem como `http://localhost:8787`
   (checar no próximo lead gerado em prod).
+- `DISCORD_WEBHOOK_URL` no Easypanel (e no `.env` local se quiser avisos do
+  dev) — liga os avisos do funil no canal Discord (ver Fase 4 · Discord).
 - Links públicos: `https://<host>/f/fo_diagnostico_leverads`,
   `https://<host>/p/t/pt_leverads` (preview do template).
 

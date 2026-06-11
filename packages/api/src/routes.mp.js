@@ -70,7 +70,18 @@ function payerMismatch(sub, eventPayer) {
   return !!(sub.payerEmail && eventPayer && String(eventPayer).toLowerCase() !== String(sub.payerEmail).toLowerCase());
 }
 
-export function registerMpRoutes(app, repo, { mp = defaultMp } = {}) {
+export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
+  // Fatura baixada pelo webhook avisa no Discord (fail-open; duplicado não tem
+  // result.invoice, então não re-avisa).
+  async function notifyPaid(sub, result) {
+    if (!result.invoice || !discord?.configured()) return;
+    const [invoice, customer] = await Promise.all([
+      repo.get("invoices", result.invoice),
+      repo.get("customers", sub.customer),
+    ]);
+    await discord.invoicePaid({ invoice, customerName: customer?.name, via: "Mercado Pago" });
+  }
+
   // Gera o link de pagamento recorrente (preapproval pending → init_point).
   app.post("/api/subscriptions/:id/mp/link", async (req, reply) => {
     if (!mp.configured()) return reply.code(503).send({ error: "Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN)" });
@@ -133,6 +144,7 @@ export function registerMpRoutes(app, repo, { mp = defaultMp } = {}) {
       }
 
       const mapped = { authorized: "active", cancelled: "canceled", paused: "paused" }[pre.status];
+      const mpStatusChanged = sub.mpStatus !== pre.status;
       const updated = await repo.update("subscriptions", sub.id, {
         mpPreapprovalId: dataId,
         mpStatus: pre.status,
@@ -140,6 +152,13 @@ export function registerMpRoutes(app, repo, { mp = defaultMp } = {}) {
         ...(mapped && sub.status !== mapped ? { status: mapped } : {}),
       });
       await syncCustomerArr(repo, updated.customer);
+      // Aviso no Discord pela transição do mpStatus (autorizou/cancelou/pausou) —
+      // status Cockpit pode já nascer "active" (CREATE_DEFAULTS), o evento que
+      // importa é o cliente ter mexido no MP. Redelivery não re-avisa.
+      if (mapped && mpStatusChanged && discord?.configured()) {
+        const customer = await repo.get("customers", updated.customer);
+        await discord.subscriptionStatus({ sub: updated, customerName: customer?.name, status: mapped });
+      }
       req.log.info({ sub: sub.id, mpStatus: pre.status, status: updated.status }, "MP webhook: preapproval atualizado");
       return { received: true, subscription: updated.id, status: updated.status };
     }
@@ -156,6 +175,7 @@ export function registerMpRoutes(app, repo, { mp = defaultMp } = {}) {
         mpPaymentId: String(ap.payment?.id || dataId),
         amount: ap.transaction_amount,
       });
+      await notifyPaid(sub, result);
       return { received: true, ...result };
     }
 
@@ -175,6 +195,7 @@ export function registerMpRoutes(app, repo, { mp = defaultMp } = {}) {
         mpPaymentId: String(pmt.id),
         amount: pmt.transaction_amount,
       });
+      await notifyPaid(sub, result);
       return { received: true, ...result };
     }
 

@@ -35,6 +35,7 @@ function previewFromTemplate(t, { data, state, answers } = {}) {
 }
 
 export function registerProposalRoutes(app, repo, opts = {}) {
+  const discord = opts.discord; // injetado por routes.js (fail-open, pode faltar em teste direto)
   const allow = makeRateLimiter({
     limit: opts.rateLimit ?? Number(process.env.PROPOSAL_RATE_LIMIT || 30),
     windowMs: opts.rateWindowMs ?? 60_000,
@@ -59,6 +60,7 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     }
     const editable = !!req.query.k && req.query.k === p.editKey;
     if (!editable) {
+      const firstView = !(Number(p.views) > 0);
       // best-effort: contagem de view nunca quebra a página
       try {
         await repo.update("proposals", p.id, {
@@ -66,6 +68,12 @@ export function registerProposalRoutes(app, repo, opts = {}) {
           lastViewedAt: new Date().toISOString(),
         });
       } catch { /* ignore */ }
+      // Aviso no Discord só na PRIMEIRA visualização (re-aberturas não spamam);
+      // closer abrindo com ?k não passa por aqui.
+      if (firstView && discord?.configured()) {
+        const lead = p.lead ? await repo.get("leads", p.lead) : null;
+        await discord.proposalViewed({ proposal: p, lead: lead || {} });
+      }
     }
     return reply.type("text/html").send(proposalPageHtml(publicProposal(p, { editable })));
   });
@@ -97,6 +105,7 @@ export function registerProposalRoutes(app, repo, opts = {}) {
       const acceptedAt = new Date().toISOString();
       await repo.update("proposals", p.id, { accepted: true, acceptedAt });
       const lead = p.lead ? await repo.get("leads", p.lead) : null;
+      let movedStage = "";
       if (lead) {
         const patch = { proposalAccepted: true, proposalAcceptedAt: acceptedAt };
         if (p.acceptStage) {
@@ -104,6 +113,11 @@ export function registerProposalRoutes(app, repo, opts = {}) {
           if ((product?.funnel || []).some((f) => f.stage === p.acceptStage)) patch.stage = p.acceptStage;
         }
         await repo.update("leads", lead.id, patch);
+        movedStage = patch.stage || "";
+      }
+      // Aviso no Discord (só no primeiro aceite — re-POST cai fora do if).
+      if (discord?.configured()) {
+        await discord.proposalAccepted({ proposal: p, lead: lead || {}, stage: movedStage });
       }
     }
     return { ok: true };

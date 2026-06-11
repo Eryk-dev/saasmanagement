@@ -15,6 +15,7 @@ import { registerMpRoutes, mirrorSubscriptionToMp } from "./routes.mp.js";
 import { mp as defaultMpClient } from "./mp.js";
 import { registerMarketingRoutes } from "./routes.marketing.js";
 import { meta as defaultMetaClient } from "./meta.js";
+import { discord as defaultDiscord } from "./discord.js";
 
 // Auth interna fica FORA do CRUD genérico: passwordHash/token de sessão nunca
 // saem pela API. Gestão via rotas dedicadas (/api/auth/*).
@@ -132,15 +133,19 @@ function listFilter(collection, q) {
 export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   app.get("/api/health", async () => ({ ok: true, service: "cockpit-api", collections: COLLECTION_NAMES }));
 
+  // Avisos do funil num canal Discord (webhook único, fail-open) — injetado nas
+  // superfícies que geram eventos: forms (lead), proposals (vista/aceite),
+  // billing (baixa manual/dunning) e MP (pagamento/assinatura).
+  const discordClient = opts.discord || defaultDiscord;
   // Superfície pública do form builder (/public/forms, /f/:id, /embed.js).
-  registerFormRoutes(app, repo, opts.forms || {});
+  registerFormRoutes(app, repo, { ...(opts.forms || {}), discord: discordClient });
   // Superfície pública do proposal builder (/p/:id, aceite, painel do closer).
-  registerProposalRoutes(app, repo, opts.proposals || {});
+  registerProposalRoutes(app, repo, { ...(opts.proposals || {}), discord: discordClient });
   // Billing (fase 5): mudança de plano c/ pró-rata, baixa de fatura, tick do motor.
   const mpClient = opts.mp || defaultMpClient;
-  registerBillingRoutes(app, repo, { mp: mpClient });
+  registerBillingRoutes(app, repo, { mp: mpClient, discord: discordClient });
   // Mercado Pago (fase 4): link de assinatura + webhook de baixa automática.
-  registerMpRoutes(app, repo, { mp: mpClient });
+  registerMpRoutes(app, repo, { mp: mpClient, discord: discordClient });
   // Marketing: sync de insights da Meta + métricas cruzadas com o funil.
   const metaClient = opts.meta || defaultMetaClient;
   registerMarketingRoutes(app, repo, { meta: metaClient });
@@ -184,6 +189,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         proposals: { nativeSaas: (await repo.list("proposal_templates")).filter((t) => t.status === "published").map((t) => t.saas) },
         mp: { configured: mpClient.configured() },
         meta: { configured: metaClient.configured() },
+        discord: { configured: discordClient.configured() },
       },
     };
   });
@@ -224,6 +230,12 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // Assinatura nova: janela do 1º ciclo + fatura inicial + customer.arr
     // (invariante: receita do produto deriva de customers).
     if (collection === "subscriptions") created = await initSubscription(repo, created);
+    // Lead criado manual/MCP avisa no Discord (submissão de form tem aviso
+    // próprio em routes.forms.js, com o link da proposta gerada).
+    if (collection === "leads" && discordClient.configured()) {
+      const product = created.saas ? await repo.get("products", created.saas) : null;
+      await discordClient.leadNew({ lead: created, productName: product?.name });
+    }
     return reply.code(201).send(created);
   });
 

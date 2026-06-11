@@ -14,6 +14,7 @@ const clientIp = (req) =>
   String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.ip || "?";
 
 export function registerFormRoutes(app, repo, opts = {}) {
+  const discord = opts.discord; // injetado por routes.js (fail-open, pode faltar em teste direto)
   const allow = makeRateLimiter({
     limit: opts.rateLimit ?? Number(process.env.FORM_RATE_LIMIT || 10),
     windowMs: opts.rateWindowMs ?? 60_000,
@@ -63,6 +64,14 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // pelo MESMO dispatcher da rota manual (native quando há template publicado);
     // elegibilidade/config é decisão do provider e nunca quebra o envio.
     try { await dispatchProposal(repo, lead, { auto: true }); } catch { /* fail-open */ }
+
+    // Aviso no Discord: lead re-buscado pra incluir o link da proposta que o
+    // dispatcher acabou de gravar (se gerou). Nunca quebra o envio.
+    if (discord?.configured()) {
+      const fresh = (await repo.get("leads", lead.id)) || lead;
+      const product = await repo.get("products", form.saas);
+      await discord.leadNew({ lead: fresh, productName: product?.name });
+    }
 
     return reply.code(201).send({ ok: true, id: submission.id });
   });

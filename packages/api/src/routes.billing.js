@@ -4,7 +4,7 @@
 
 import { computeChange, runBilling, syncCustomerArr } from "./billing.js";
 
-export function registerBillingRoutes(app, repo, { mp } = {}) {
+export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
   // Mudança de plano/preço/ciclo. Upgrade aplica já (+ fatura pró-rata do diff
   // restante do ciclo); downgrade e troca de ciclo agendam pro fim do ciclo.
   app.post("/api/subscriptions/:id/change", async (req, reply) => {
@@ -70,12 +70,29 @@ export function registerBillingRoutes(app, repo, { mp } = {}) {
         await syncCustomerArr(repo, sub.customer);
       }
     }
+    // Aviso no Discord (fail-open) — baixa manual também é dinheiro entrando.
+    if (discord?.configured()) {
+      const customer = paid.customer ? await repo.get("customers", paid.customer) : null;
+      await discord.invoicePaid({ invoice: paid, customerName: customer?.name, via: "baixa manual" });
+    }
     return paid;
   });
 
   // Tick do motor: mudanças agendadas + renovações + dunning + sync de ARR.
   app.post("/api/billing/run", async (req) => {
     const graceDays = req.body?.graceDays != null ? Number(req.body.graceDays) : undefined;
-    return await runBilling(repo, graceDays != null && !Number.isNaN(graceDays) ? { graceDays } : {});
+    const report = await runBilling(repo, graceDays != null && !Number.isNaN(graceDays) ? { graceDays } : {});
+    // Dunning avisa no Discord só quando ESTE tick marcou algo novo (overdue/
+    // pastDue do report são transições, não estoque); a lista mostra o estoque
+    // vencido inteiro pra ação.
+    if ((report.overdue > 0 || report.pastDue > 0) && discord?.configured()) {
+      const lines = [];
+      for (const inv of (await repo.list("invoices")).filter((i) => i.status === "overdue")) {
+        const c = inv.customer ? await repo.get("customers", inv.customer) : null;
+        lines.push(`• ${c?.name || inv.customer || "?"} — R$ ${Number(inv.amount) || 0} (${inv.saas || "?"})`);
+      }
+      await discord.billingAlert({ report, lines });
+    }
+    return report;
   });
 }
