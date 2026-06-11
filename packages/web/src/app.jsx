@@ -12,6 +12,7 @@ import { SubscriptionsScreen } from "./screens/subscriptions.jsx";
 import { MarketingScreen } from "./screens/marketing.jsx";
 import { NPSScreen } from "./screens/nps.jsx";
 import { GoalsScreen } from "./screens/goals.jsx";
+import { TasksScreen } from "./screens/tasks.jsx";
 import { LeaderboardScreen } from "./screens/leaderboard.jsx";
 import { SettingsScreen } from "./screens/settings.jsx";
 import { LeadDetail } from "./screens/deal.jsx";
@@ -84,6 +85,7 @@ function App() {
     customers:   ["Cliente", "Clientes"],
     subscriptions: ["Cliente", "Assinaturas"],
     nps:         ["Cliente", "NPS"],
+    tasks:       ["Time", "Tarefas"],
     goals:       ["Time", "Metas"],
     leaderboard: ["Time", "Ranking"],
     settings:    ["Sistema", "Ajustes · " + (window.SEED.SAAS.find(s => s.id === params.saas)?.name || "LeverAds")],
@@ -115,6 +117,7 @@ function App() {
           {screen === "customers"   && <CustomersScreen csFilter={params.csFilter} />}
           {screen === "subscriptions" && <SubscriptionsScreen saasId={params.saas} />}
           {screen === "nps"         && <NPSScreen />}
+          {screen === "tasks"       && <TasksScreen />}
           {screen === "goals"       && <GoalsScreen />}
           {screen === "leaderboard" && <LeaderboardScreen />}
           {screen === "settings"    && <SettingsScreen saasId={params.saas} />}
@@ -180,6 +183,7 @@ function subtitleFor(screen, params) {
     customers:   params.csFilter === "red" ? "filtrado: crítico" : "ordenado por saúde",
     subscriptions: "system-of-record · ARR do cliente deriva daqui",
     nps:         "últimos 90 dias",
+    tasks:       "kanban do time · arraste para mover",
     goals:       "dia 12 / 31",
     leaderboard: "múltiplas categorias",
     settings:    "configuração por SaaS",

@@ -457,6 +457,34 @@ editada em Ajustes → Integrações).
 E-mail (Resend/SMTP; proposta + notificações) e webhook genérico (POST em
 eventos: lead novo, proposta vista/aceita).
 
+## ✅ Tarefas — kanban do time (entregue 2026-06-11, só local)
+
+"Trello interno": nav Tarefas (grupo pessoas) → `web/src/screens/tasks.jsx`.
+Collections `tasks` + `task_boards` (CRUD genérico — zero rota nova).
+
+- **Card** (`tasks`): título, descrição, saas, `assignee` (id de usuário do
+  time, lista via `GET /api/auth/users` → `api.listUsers()`), `column` (KEY
+  estável da coluna — renomear coluna NÃO órfã o card), prioridade P0–P2,
+  dueDate (vencida = vermelho), labels, `order` (float; drop em card = entra
+  antes via ponto médio, drop na coluna = vai pro fim), createdAt (stamp no
+  POST genérico, igual leads), `comments: [{ id, author, text, at }]` —
+  autor = usuário logado (localStorage `cockpit_user`); o SPA faz PATCH do
+  array inteiro (time pequeno, sem race real).
+- **Board** (`task_boards`, 1 registro criado ao editar): `columns[{ key,
+  name, color }]`. Sem board salvo valem DEFAULT_COLUMNS (A fazer / Em
+  andamento / Concluído) — zero setup. Menu ⋯ por coluna: rename, cor,
+  mover ◀▶, excluir (cards caem na 1ª coluna, igual pipeline); "+ coluna".
+- **Filtros**: SaaS (chips), responsável (select), busca (título+descrição).
+  Filtros sobrevivem ao remount do refresh via variável de módulo
+  (`lastFilters`, padrão do settings.jsx).
+- Tocados: seed-data (2 collections), routes.js (defaults + filtros
+  `?saas/assignee/column` + stamp), MCP aliases (tarefa/task/quadro),
+  api.js (`listUsers`), chrome.jsx (nav), app.jsx (rota), entities.js
+  (entrada mínima p/ ConfirmDelete). Testes: `routes.tasks.test.js` (3;
+  suite 66/66). Verificado e2e no browser: criar, arrastar (todo→doing
+  persistiu), comentar (autor Leonardo), renomear/colorir coluna (key
+  estável), reload mantém tudo.
+
 ## 9. Transversais
 - **Auth do time:** ✅ v1 entregue (login simples com sessão — ver §2). O plano
   original era Supabase Auth/JWT; o dono pediu sistema simples com 2 admins

@@ -57,6 +57,11 @@ export const CREATE_DEFAULTS = {
   plans: { name: "", cycle: "monthly", price: 0 },
   subscriptions: { status: "active", cycle: "monthly", price: 0, plan: "", pendingChange: null },
   invoices: { status: "open", amount: 0, kind: "manual" },
+  // Kanban de tarefas do time. `column` = KEY estável da coluna do board (renomear
+  // coluna não órfã o card); `assignee` = id de usuário do time (collection users);
+  // comments = [{ id, author, text, at }] — o SPA faz PATCH do array inteiro.
+  tasks: { title: "", description: "", saas: "", assignee: "", column: "", priority: "", dueDate: "", labels: [], comments: [], order: 0 },
+  task_boards: { name: "Tarefas", columns: [] },
 };
 
 // Receita e nº de clientes são DERIVADOS da coleção `customers`, não dos campos
@@ -120,6 +125,7 @@ function listFilter(collection, q) {
   if (collection === "subscriptions") return (s) => (!q.saas || s.saas === q.saas) && (!q.customer || s.customer === q.customer) && (!q.status || s.status === q.status);
   if (collection === "invoices") return (i) => (!q.saas || i.saas === q.saas) && (!q.customer || i.customer === q.customer) && (!q.subscription || i.subscription === q.subscription) && (!q.status || i.status === q.status);
   if (collection === "ad_insights") return (r) => (!q.saas || r.saas === q.saas) && (!q.campaign || r.campaignId === q.campaign);
+  if (collection === "tasks") return (t) => (!q.saas || t.saas === q.saas) && (!q.assignee || t.assignee === q.assignee) && (!q.column || t.column === q.column);
   return null;
 }
 
@@ -213,7 +219,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     const { collection } = req.params;
     if (!WRITABLE.has(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
     if (!req.body || typeof req.body !== "object") return reply.code(400).send({ error: "JSON body required" });
-    const stamp = collection === "leads" && !req.body.createdAt ? { createdAt: new Date().toISOString() } : {};
+    const stamp = (collection === "leads" || collection === "tasks") && !req.body.createdAt ? { createdAt: new Date().toISOString() } : {};
     let created = await repo.create(collection, { ...(CREATE_DEFAULTS[collection] || {}), ...req.body, ...stamp });
     // Assinatura nova: janela do 1º ciclo + fatura inicial + customer.arr
     // (invariante: receita do produto deriva de customers).

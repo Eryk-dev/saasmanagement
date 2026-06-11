@@ -211,6 +211,14 @@ export const ENTITIES = {
     fields: [],
   },
 
+  // Tarefas têm editor próprio (screens/tasks.jsx) — entrada só pro ConfirmDelete.
+  tasks: {
+    collection: "tasks",
+    singular: "Tarefa",
+    titleField: "title",
+    fields: [],
+  },
+
   goals: {
     collection: "goals",
     singular: "Meta",

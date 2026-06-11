@@ -41,6 +41,8 @@ export const api = {
   login: (username, password) => req("POST", "/api/auth/login", { username, password }),
   logout: () => req("POST", "/api/auth/logout", {}),
   changePassword: (current, password) => req("POST", "/api/auth/password", { current, password }),
+  // Usuários do time (lista sanitizada) — responsáveis do kanban de tarefas.
+  listUsers: () => req("GET", "/api/auth/users"),
   list: (collection, query = {}) => {
     const qs = new URLSearchParams(query).toString();
     return req("GET", `/api/${collection}${qs ? `?${qs}` : ""}`);

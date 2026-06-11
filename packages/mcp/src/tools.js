@@ -28,8 +28,10 @@ const ALIASES = {
   subscription: "subscriptions", subscriptions: "subscriptions", assinatura: "subscriptions", assinaturas: "subscriptions",
   invoice: "invoices", invoices: "invoices", fatura: "invoices", faturas: "invoices",
   ad_insight: "ad_insights", ad_insights: "ad_insights", insights: "ad_insights", campanha: "ad_insights", campanhas: "ad_insights",
+  task: "tasks", tasks: "tasks", tarefa: "tasks", tarefas: "tasks",
+  task_board: "task_boards", task_boards: "task_boards", quadro: "task_boards", quadros: "task_boards",
 };
-const COLLECTIONS = "products, customers, leads, nps, goals, attention, people, leaderboard_month, leaderboard_all, forms, form_submissions, proposal_templates, proposals, plans, subscriptions, invoices";
+const COLLECTIONS = "products, customers, leads, nps, goals, attention, people, leaderboard_month, leaderboard_all, forms, form_submissions, proposal_templates, proposals, plans, subscriptions, invoices, tasks, task_boards";
 function resolve(r) {
   const c = ALIASES[String(r || "").toLowerCase()];
   if (!c) throw new Error(`Recurso desconhecido: "${r}". Use um de: saas/products, customers, leads, nps, goals, attention, people, leaderboard_month, leaderboard_all, forms, form_submissions.`);

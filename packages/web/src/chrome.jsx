@@ -14,6 +14,7 @@ const NAV = [
   { id: "customers",  label: "Clientes",   icon: "○",  group: "customer" },
   { id: "subscriptions", label: "Assinaturas", icon: "◈", group: "customer" },
   { id: "nps",        label: "NPS",         icon: "☷",  group: "customer" },
+  { id: "tasks",      label: "Tarefas",     icon: "▣",  group: "team" },
   { id: "goals",      label: "Metas",       icon: "◎",  group: "team" },
   { id: "leaderboard",label: "Ranking", icon: "♔",  group: "team" },
   { id: "settings",   label: "Ajustes",    icon: "✦",  group: "system" },
