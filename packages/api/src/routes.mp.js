@@ -12,7 +12,7 @@
 import { mp as defaultMp, parseWebhookPayload } from "./mp.js";
 import { CYCLE_MONTHS, syncCustomerArr } from "./billing.js";
 
-const CYCLE_LABEL = { monthly: "mensal", quarterly: "trimestral", annual: "anual" };
+const CYCLE_LABEL = { monthly: "mensal", quarterly: "trimestral", semiannual: "semestral", annual: "anual" };
 
 // Baixa automática de uma cobrança do MP: paga a fatura aberta/vencida mais
 // antiga da assinatura (ou registra uma paga, se não houver) e recupera o

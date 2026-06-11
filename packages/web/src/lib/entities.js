@@ -58,10 +58,11 @@ const customerOptions = (v) => (window.SEED?.CUSTOMERS || [])
   .map((c) => ({ value: c.id, label: c.name }));
 const planOptions = (v) => (window.PLANS_CACHE || [])
   .filter((p) => !v.saas || p.saas === v.saas)
-  .map((p) => ({ value: p.id, label: `${p.name} · ${window.fmt.money(p.price || 0)}/${{ monthly: "mês", quarterly: "tri", annual: "ano" }[p.cycle] || p.cycle}` }));
+  .map((p) => ({ value: p.id, label: `${p.name} · ${window.fmt.money(p.price || 0)}/${{ monthly: "mês", quarterly: "tri", semiannual: "sem", annual: "ano" }[p.cycle] || p.cycle}` }));
 const CYCLE_OPTS = [
   { value: "monthly", label: "Mensal" },
   { value: "quarterly", label: "Trimestral" },
+  { value: "semiannual", label: "Semestral" },
   { value: "annual", label: "Anual" },
 ];
 

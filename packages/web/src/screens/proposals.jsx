@@ -63,6 +63,8 @@ const SLIDE_SPECS = {
     ["planPill", "Pill do card", "text"], ["planTag", "Tag do plano", "text"],
     ["price", "Preço (vazio = {{calc.preco}})", "text"], ["per", "Sufixo (/ mês)", "text"],
     ["sub", "Subtexto do preço", "text"], ["cycles", "Linha de ciclos (vazio = {{calc.precoCiclos}})", "text"],
+    ["optionsFeatured", "Grade de ciclos · destaque (ex.: semiannual; vazio = sem grade)", "text"],
+    ["optionsBadge", "Grade de ciclos · selo do destaque", "text"],
     ["features", "Lista de features (✓)", "strlist"],
     ["guaranteeHead", "Garantia · cabeçalho", "text"], ["guaranteeTitle", "Garantia · título", "text"], ["guaranteeText", "Garantia · texto", "textarea"],
     ["paybackLabel", "Payback · rótulo", "text"], ["paybackNum", "Payback · número", "text"], ["paybackCaption", "Payback · legenda", "text"],
@@ -476,7 +478,7 @@ function ObjList({ label, cols, items, onChange }) {
 
 function CalcEditor({ calc, onChange }) {
   const set = (k, v) => onChange({ ...calc, [k]: v });
-  const cycles = [["monthly", "Mensal"], ["quarterly", "Trimestral"], ["annual", "Anual"]];
+  const cycles = [["monthly", "Mensal"], ["quarterly", "Trimestral"], ["semiannual", "Semestral"], ["annual", "Anual"]];
   const setPlan = (cycle, field, v) => {
     const plans = { ...(calc.plans || {}) };
     plans[cycle] = { ...(plans[cycle] || {}), [field]: v === "" ? "" : Number(v) };

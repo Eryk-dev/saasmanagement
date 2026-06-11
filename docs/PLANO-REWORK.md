@@ -258,6 +258,34 @@ aceite (lead foi pra Config + Kickoff + proposalAccepted).
   vira flex-items separados que NÃO quebram linha → overflow horizontal no
   mobile. Fix: embrulhar num único filho (`.ret-body`/`.point-body`).
 
+### Atualização 2026-06-11 — preços novos + grade de ciclos + slide de regras
+- Ciclo **semiannual** (Semestral) existe em todo o stack: renderer da proposta
+  (`CYCLE_NAME/CYCLE_MONTHS/CYCLE_ORDER`), whitelist do PATCH do closer
+  (`routes.proposals.js`), `billing.js` (CYCLE_MONTHS), `routes.mp.js` (label),
+  UI de assinaturas/entities, CalcEditor.
+- Slide **pricing** ganhou grade de ciclos opcional (`optionsFeatured` = ciclo
+  destacado c/ selo `optionsBadge`; vazio = sem grade): 1 card por plano de
+  `calc.plans` com R$/mês, total cobrado no ciclo e parcelado sem juros; clicar
+  troca `state.cycle` ao vivo (congelar segue no painel do closer). Render
+  dinâmico via `renderPlanOptions()` no `fillDynamic()`. Calc novo:
+  `{{calc.totalCiclo}}`, `{{calc.mesesCiclo}}`, `{{calc.parcelado}}`; `preco`
+  agora mostra centavos quando existem (moneyBR).
+- **Preços LeverAds atuais** (`pt_leverads`, base p/ 2 contas + R$/conta extra):
+  trimestral 350 + 79,90 · semestral 300 + 59,90 (defaultCycle, destacado) ·
+  anual 274,90 + 49,90. Sem plano mensal.
+- Slide novo `copia_automatica` (steps, "Etapa 04 · piloto automático"): regras
+  de cópia automática do copylever (cadastra regra origem→destinos; anúncio novo
+  na origem → ML notifica → replica sozinho; só ML, forward-only, anti-dup).
+  Eyebrows renumerados (impacto 05, retorno 06, investimento 07).
+- **Layout denso** (`section.compact-pricing`, só desktop ≥900px): com a grade
+  ativa o slide pricing usa versão compacta (número 76px em vez de 160px,
+  features em 2 colunas, garantia/payback menores, wrap centrado via flex) —
+  altura natural caiu de ~1430px pra ~640px, então o `fitSlides()` quase não
+  escala (1366×768 = escala 1.0; antes era ~0.46, texto ilegível).
+- Pedido do dono (2026-06-11): `pt_leverads` SEM closeLine, SEM botão "Aceitar
+  proposta" e SEM slide closer (fechamento é via WhatsApp fora da página).
+  Renderer mantém os 3 recursos pra quem quiser usar.
+
 ### Pendências da fase 2
 - Renderer não tem tela "proposta congelada" diferenciada (frozen só trava no
   closer panel conceitualmente — números continuam dinâmicos pro lead com o

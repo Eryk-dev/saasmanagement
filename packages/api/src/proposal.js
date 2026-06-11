@@ -10,7 +10,7 @@
 //     calc: { salaryMonthly, workHours, minCopy, minCompatEdit, reworkPct,
 //             netMargin, revenueUpliftPct, volumeMid: {faixa: número},
 //             seatsKey, seatsMap: {resposta: número}, volumeKey,
-//             plans: { monthly|quarterly|annual: { base, included, extra } },
+//             plans: { monthly|quarterly|semiannual|annual: { base, included, extra } },
 //             defaultCycle, maxSeats, validDays },
 //     acceptStage }   // estágio do funil ao aceitar (opcional)
 //

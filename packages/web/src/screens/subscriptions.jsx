@@ -10,8 +10,8 @@ import { EmptyState, PrimaryButton } from "../atoms.jsx";
 
 const { useState, useEffect, useCallback } = React;
 
-const CYCLE_LABEL = { monthly: "mensal", quarterly: "trimestral", annual: "anual" };
-const CYCLE_MONTHS = { monthly: 1, quarterly: 3, annual: 12 };
+const CYCLE_LABEL = { monthly: "mensal", quarterly: "trimestral", semiannual: "semestral", annual: "anual" };
+const CYCLE_MONTHS = { monthly: 1, quarterly: 3, semiannual: 6, annual: 12 };
 const annualized = (s) => (Number(s.price) || 0) * (12 / (CYCLE_MONTHS[s.cycle] || 1));
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString("pt-BR") : "—");
 
@@ -307,6 +307,7 @@ function ChangeModal({ sub, plans, customerName, onClose, onDone }) {
             <select value={cycle} onChange={(e) => setCycle(e.target.value)} style={input}>
               <option value="monthly">Mensal</option>
               <option value="quarterly">Trimestral</option>
+              <option value="semiannual">Semestral</option>
               <option value="annual">Anual</option>
             </select>
           </label>

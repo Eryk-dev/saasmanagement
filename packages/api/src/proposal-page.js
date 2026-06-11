@@ -210,6 +210,22 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .light .band-num { color: color-mix(in oklab, var(--bg) 50%, transparent); }
   .price-wrap { display: grid; grid-template-columns: 1fr; gap: 24px; align-items: start; }
   @media (min-width: 900px) { .price-wrap { grid-template-columns: 1.1fr .9fr; gap: 48px; } }
+  .plan-opts { display: grid; grid-template-columns: 1fr; gap: 14px; margin-bottom: 28px; }
+  @media (min-width: 900px) { .plan-opts { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; } }
+  .plan-opt { position: relative; text-align: left; background: var(--bg); color: var(--fg); border: 2px solid transparent;
+    border-radius: calc(var(--radius) + 6px); padding: 24px 22px; display: flex; flex-direction: column; gap: 4px;
+    transition: transform .12s var(--ease-out), box-shadow .12s var(--ease-out), border-color .12s var(--ease-out); }
+  .plan-opt:hover { transform: translateY(-2px); }
+  .plan-opt.featured { border-color: var(--accent); }
+  .plan-opt.selected { border-color: var(--accent); box-shadow: var(--glow); }
+  .plan-opt-badge { position: absolute; top: -11px; right: 14px; background: var(--accent); color: var(--accent-fg);
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; font-weight: 700;
+    padding: 4px 10px; border-radius: var(--r-full); }
+  .plan-opt-name { font-family: var(--font-mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+  .plan-opt-price { font-family: var(--font-display); font-size: 32px; font-weight: 500; letter-spacing: -.02em; line-height: 1; margin-top: 6px; }
+  .plan-opt-price small { font-size: 14px; color: var(--ink-3); font-weight: 400; letter-spacing: 0; margin-left: 4px; }
+  .plan-opt-total { font-size: 13px; color: var(--ink-2); margin-top: 10px; line-height: 1.4; }
+  .plan-opt-split { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-3); letter-spacing: .02em; }
   .price-card { background: var(--bg); color: var(--fg); border-radius: calc(var(--radius) + 10px); padding: 40px 32px; position: relative; overflow: hidden; }
   @media (min-width: 768px) { .price-card { padding: 56px 48px; } }
   .price-card .pill { position: absolute; top: 24px; right: 24px; }
@@ -253,6 +269,39 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .closer-name { font-size: 18px; font-weight: 600; margin-top: 2px; }
   .closer-cta { margin-left: auto; flex-shrink: 0; padding: 10px 16px; border-radius: var(--r-full); background: var(--accent); color: var(--accent-fg); font-weight: 600; font-size: 14px; white-space: nowrap; }
   .closer-cta:hover { filter: brightness(1.06); }
+
+  /* Slide pricing COM grade de ciclos: versão densa no desktop — altura natural
+     menor = menos downscale do fitSlides() = tudo maior na tela. Mobile (<900px)
+     não escala, então mantém os tamanhos confortáveis padrão. */
+  @media (min-width: 900px) {
+    main > section.compact-pricing { display: flex; flex-direction: column; justify-content: center; }
+    .compact-pricing .band { padding-bottom: 16px; margin-bottom: 22px; }
+    .compact-pricing .h-section { font-size: clamp(26px, 3.2vw, 40px); }
+    .compact-pricing .plan-opts { margin-bottom: 20px; gap: 14px; }
+    .compact-pricing .plan-opt { padding: 18px 20px; }
+    .compact-pricing .price-wrap { gap: 28px; }
+    .compact-pricing .price-card { padding: 28px 30px; }
+    .compact-pricing .price-card .pill { top: 16px; right: 16px; }
+    .compact-pricing .price-number { margin-top: 14px; }
+    .compact-pricing .price-number .amount { font-size: clamp(48px, 6vw, 76px); }
+    .compact-pricing .price-number .currency { font-size: 20px; }
+    .compact-pricing .price-number .per { font-size: 15px; }
+    .compact-pricing .price-sub { margin-top: 8px; font-size: 13px; }
+    .compact-pricing .price-divider { margin: 16px 0; }
+    .compact-pricing .price-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; font-size: 14px; }
+    .compact-pricing .guarantee { padding: 22px 24px; }
+    .compact-pricing .guarantee h3 { font-size: 24px; margin-top: 10px; }
+    .compact-pricing .guarantee p { font-size: 14px; margin-top: 10px; }
+    .compact-pricing .payback { margin-top: 12px; padding: 16px 18px; }
+    .compact-pricing .payback .pb-num { font-size: 22px; }
+    .compact-pricing .payback .pb-cap { font-size: 13px; margin-top: 4px; }
+    .compact-pricing .close-line { margin-top: 20px; font-size: clamp(16px, 1.6vw, 21px); }
+    .compact-pricing .accept-row { margin-top: 14px; }
+    .compact-pricing .accept-btn { padding: 12px 32px; font-size: 15px; }
+    .compact-pricing .closer-block { margin-top: 20px; padding: 14px 16px; }
+    .compact-pricing .closer-avatar { width: 44px; height: 44px; font-size: 19px; }
+    .compact-pricing .closer-name { font-size: 16px; }
+  }
 
   .slide-media { margin-top: 40px; }
   .slide-media img, .slide-media video { width: 100%; max-height: 56vh; object-fit: contain;
@@ -331,11 +380,25 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
   var DATA = P.data || { lead: {}, answers: {} };
   var CALC = P.calc || {};
   var state = P.state || {};
-  var CYCLE_NAME = { monthly: 'Mensal', quarterly: 'Trimestral', annual: 'Anual' };
+  var CYCLE_NAME = { monthly: 'Mensal', quarterly: 'Trimestral', semiannual: 'Semestral', annual: 'Anual' };
+  var CYCLE_MONTHS = { monthly: 1, quarterly: 3, semiannual: 6, annual: 12 };
+  var CYCLE_ORDER = ['monthly', 'quarterly', 'semiannual', 'annual'];
   var root = document.getElementById('root');
 
   function brl(n) { return 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function intBR(n) { return Math.round(Number(n) || 0).toLocaleString('pt-BR'); }
+  // Centavos só quando existem (350 → "350"; 274,9 → "274,90").
+  function moneyBR(n) {
+    n = Number(n) || 0;
+    if (n % 1 === 0) return intBR(n);
+    return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  // Preço/mês do ciclo k com os assentos atuais (base + extras além das incluídas).
+  function planPerMonth(k) {
+    var pk = (CALC.plans || {})[k];
+    if (!pk) return null;
+    return Number(pk.base || 0) + Math.max(0, (state.seats || 2) - Number(pk.included || 0)) * Number(pk.extra || 0);
+  }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function getPath(obj, path) {
     var cur = obj;
@@ -362,13 +425,14 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     function r(n, s) { return Math.round(n / s) * s; }
 
     var price = 0;
-    var pc = (c.plans || {})[state.cycle];
+    var perMonth = planPerMonth(state.cycle);
     if (state.customPriceCents > 0) price = state.customPriceCents / 100;
-    else if (pc) price = Number(pc.base || 0) + Math.max(0, (state.seats || 2) - Number(pc.included || 0)) * Number(pc.extra || 0);
+    else if (perMonth != null) price = perMonth;
+    var months = CYCLE_MONTHS[state.cycle] || 1;
     var cycles = [];
-    ['monthly', 'quarterly', 'annual'].forEach(function (k) {
-      var pk = (c.plans || {})[k];
-      if (pk) cycles.push(CYCLE_NAME[k] + ' R$ ' + intBR(Number(pk.base || 0) + Math.max(0, (state.seats || 2) - Number(pk.included || 0)) * Number(pk.extra || 0)) + '/mês');
+    CYCLE_ORDER.forEach(function (k) {
+      var pm = planPerMonth(k);
+      if (pm != null) cycles.push(CYCLE_NAME[k] + ' R$ ' + moneyBR(pm) + '/mês');
     });
 
     return {
@@ -384,8 +448,10 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       fatTotal: brl(r(hiddenMonth, 50)),
       custoMes: intBR(r(hiddenMonth, 50)), custoAno: intBR(r(hiddenYear, 100)),
       vendasEquiv: intBR(r(salesEquiv, 1000)),
-      preco: intBR(price), plano: (CYCLE_NAME[state.cycle] || '').toUpperCase(), ciclo: (CYCLE_NAME[state.cycle] || '').toLowerCase(),
+      preco: moneyBR(price), plano: (CYCLE_NAME[state.cycle] || '').toUpperCase(), ciclo: (CYCLE_NAME[state.cycle] || '').toLowerCase(),
       precoCiclos: cycles.join('  ·  '),
+      mesesCiclo: months, totalCiclo: moneyBR(price * months),
+      parcelado: months > 1 ? months + 'x de R$ ' + moneyBR(price) + ' sem juros' : 'cobrança mensal',
       roi: Math.max(1, Math.round(hiddenMonth / (price || 1))),
     };
   }
@@ -404,12 +470,47 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     return out;
   }
   function fillDynamic() {
+    renderPlanOptions();
     var calc = compute();
     var D = { calc: calc, state: state };
     document.querySelectorAll('[data-fill]').forEach(function (el) {
       el.textContent = String(getPath(D, el.getAttribute('data-fill')));
     });
     fitSlides(); // números mudam altura do conteúdo — re-encaixa nos slides
+  }
+
+  // Grade de ciclos do slide pricing: um card por plano em calc.plans, com o
+  // total cobrado no ciclo e o parcelamento sem juros. Clicar troca state.cycle
+  // (só visual — congelar continua sendo papel do painel do closer).
+  function renderPlanOptions() {
+    document.querySelectorAll('[data-plan-options]').forEach(function (box) {
+      var featured = box.getAttribute('data-plan-options') || CALC.defaultCycle || '';
+      var badge = box.getAttribute('data-badge') || 'recomendado';
+      var html = '';
+      CYCLE_ORDER.forEach(function (k) {
+        var pm = planPerMonth(k);
+        if (pm == null) return;
+        var months = CYCLE_MONTHS[k] || 1;
+        var cls = 'plan-opt' + (k === featured ? ' featured' : '') + (k === state.cycle ? ' selected' : '');
+        html += '<button type="button" class="' + cls + '" data-cycle="' + k + '">' +
+          (k === featured ? '<span class="plan-opt-badge">' + esc(badge) + '</span>' : '') +
+          '<span class="plan-opt-name">' + esc(CYCLE_NAME[k] || k) + '</span>' +
+          '<span class="plan-opt-price">R$ ' + moneyBR(pm) + '<small>/mês</small></span>' +
+          (months > 1
+            ? '<span class="plan-opt-total">R$ ' + moneyBR(pm * months) + ' cobrados a cada ' + (months === 12 ? '12 meses' : months + ' meses') + '</span>' +
+              '<span class="plan-opt-split">ou ' + months + 'x de R$ ' + moneyBR(pm) + ' sem juros</span>'
+            : '<span class="plan-opt-total">cobrança mensal</span>') +
+          '</button>';
+      });
+      box.innerHTML = html;
+      box.querySelectorAll('[data-cycle]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          if (state.cycle === btn.getAttribute('data-cycle')) return;
+          state.cycle = btn.getAttribute('data-cycle');
+          fillDynamic();
+        });
+      });
+    });
   }
 
   // Trava cada slide na altura da tela (desktop): se o conteúdo natural passa da
@@ -579,9 +680,17 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       return sec;
     },
     pricing: function (s, num, total) {
-      var sec = el('section', 'light');
+      var hasOpts = s.optionsFeatured != null && s.optionsFeatured !== '';
+      var sec = el('section', hasOpts ? 'light compact-pricing' : 'light');
       var w = el('div', 'wrap');
       w.appendChild(band(s, num, total));
+      if (hasOpts) {
+        var po = el('div', 'plan-opts');
+        po.setAttribute('data-reveal', '');
+        po.setAttribute('data-plan-options', String(s.optionsFeatured));
+        if (s.optionsBadge) po.setAttribute('data-badge', String(s.optionsBadge));
+        w.appendChild(po); // conteúdo entra via renderPlanOptions() (dinâmico)
+      }
       var pw = el('div', 'price-wrap');
       var feats = (s.features || []).map(function (f) { return '<li>' + fmt(f) + '</li>'; }).join('');
       pw.innerHTML =
@@ -712,7 +821,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     var seatOpts = '';
     for (var s2 = 2; s2 <= maxSeats; s2++) seatOpts += '<option value="' + s2 + '"' + (s2 === state.seats ? ' selected' : '') + '>' + s2 + ' contas</option>';
     var volOpts = Object.keys(CALC.volumeMid || {}).map(function (k) { return '<option value="' + esc(k) + '"' + (k === state.volume ? ' selected' : '') + '>' + esc(k) + '</option>'; }).join('');
-    var cycleOpts = ['monthly', 'quarterly', 'annual'].filter(function (k) { return (CALC.plans || {})[k]; })
+    var cycleOpts = CYCLE_ORDER.filter(function (k) { return (CALC.plans || {})[k]; })
       .map(function (k) { return '<option value="' + k + '"' + (k === state.cycle ? ' selected' : '') + '>' + CYCLE_NAME[k] + '</option>'; }).join('');
 
     var panel = el('div', 'closer-panel');

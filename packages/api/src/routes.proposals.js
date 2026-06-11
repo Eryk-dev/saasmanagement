@@ -79,7 +79,7 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     const state = { ...(p.state || {}) };
     if (Number.isFinite(Number(body.seats)) && Number(body.seats) >= 1) state.seats = Number(body.seats);
     if (typeof body.volume === "string") state.volume = body.volume;
-    if (["monthly", "quarterly", "annual"].includes(body.cycle)) state.cycle = body.cycle;
+    if (["monthly", "quarterly", "semiannual", "annual"].includes(body.cycle)) state.cycle = body.cycle;
     if (Number.isFinite(Number(body.customPriceCents)) && Number(body.customPriceCents) >= 0) state.customPriceCents = Number(body.customPriceCents);
     if (typeof body.validUntil === "string") state.validUntil = body.validUntil.slice(0, 20);
     if (typeof body.frozen === "boolean") state.frozen = body.frozen;

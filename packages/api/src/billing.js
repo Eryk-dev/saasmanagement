@@ -12,7 +12,7 @@
 //   downgrade          → agendado pro fim do ciclo (pendingChange).
 //   troca de ciclo     → agendada pro fim do ciclo (MP não muda frequency in-place).
 
-export const CYCLE_MONTHS = { monthly: 1, quarterly: 3, annual: 12 };
+export const CYCLE_MONTHS = { monthly: 1, quarterly: 3, semiannual: 6, annual: 12 };
 
 const DAY_MS = 86400000;
 
