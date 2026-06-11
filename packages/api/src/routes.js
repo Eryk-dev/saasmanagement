@@ -331,14 +331,16 @@ export async function dispatchProposal(repo, lead, { auto = false, force = false
 
 // Base das URLs públicas gravadas no lead (proposalUrl). Prioridade:
 // COCKPIT_PUBLIC_URL > host da request (x-forwarded-* do proxy) > localhost.
-// O fallback pela request cobre produção sem a env setada; a env continua
-// recomendada (request pública com Host forjado não vaza pro link do lead).
+// Proto: host público = sempre https (a cadeia de proxies reescreve
+// x-forwarded-proto pra http e não dá pra confiar nele); localhost = http.
+// Deployment público em http puro não existe — e se existir, é a env que manda.
 export function publicBase(req) {
   if (process.env.COCKPIT_PUBLIC_URL) return process.env.COCKPIT_PUBLIC_URL.replace(/\/+$/, "");
-  const host = req?.headers?.["x-forwarded-host"] || req?.headers?.host;
-  if (host) {
-    const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "http").split(",")[0].trim();
-    return `${proto}://${String(host).split(",")[0].trim()}`;
+  const raw = req?.headers?.["x-forwarded-host"] || req?.headers?.host;
+  if (raw) {
+    const host = String(raw).split(",")[0].trim();
+    const local = /^(localhost|127\.|0\.0\.0\.0|\[::1\])/.test(host);
+    return `${local ? "http" : "https"}://${host}`;
   }
   return `http://localhost:${process.env.API_PORT || 8787}`;
 }
