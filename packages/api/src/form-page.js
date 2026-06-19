@@ -39,6 +39,10 @@ src="https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1"></n
 <!-- End Meta Pixel -->`
   : "";
 
+// Marca padrão de todo formulário: o ícone Lever (círculo + seta), versão branca
+// pro fundo escuro. Usado quando o tema do form não define um logoUrl próprio.
+const BRAND_ICON = "https://copy.levermoney.com.br/lever/logo-icon-inverse.svg";
+
 // Link do Google Fonts pra família primária do tema + JetBrains Mono (pills,
 // labels). Família desconhecida só falha o link — fallback system-ui assume.
 const fontHref = (font) => {
@@ -56,8 +60,9 @@ export function formPageHtml(form, { embed = false } = {}) {
   const accentFg = t.accentFg || "#ffffff";
   const font = t.font || "'Space Grotesk', system-ui, -apple-system, sans-serif";
   const radius = t.radius != null ? Number(t.radius) : 14;
-  const logoH = Math.min(48, Math.max(12, Number(t.logoHeight) || 24));
-  const logo = t.logoUrl ? `<img class="logo" src="${escAttr(t.logoUrl)}" alt="">` : "";
+  const logoH = Math.min(48, Math.max(12, Number(t.logoHeight) || 40));
+  // Logo do form: a do tema, ou o ícone Lever por padrão (vale pra todo form).
+  const logo = `<img class="logo" src="${escAttr(t.logoUrl || BRAND_ICON)}" alt="">`;
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -109,7 +114,12 @@ ${metaPixelHead}
     margin: 0 auto; padding: ${embed ? "28px 24px 40px" : "48px 24px 72px"};
     position: relative; z-index: 1;
   }
-  .top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; min-height: 32px; }
+  /* 3 colunas: voltar (esq) | logo (centro) | progresso (dir). Mantém a logo
+     centralizada mesmo com os controles laterais. */
+  .top { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-bottom: 28px; min-height: 32px; }
+  .top-left { justify-self: start; display: flex; align-items: center; }
+  .top-right { justify-self: end; display: flex; align-items: center; }
+  .brand { justify-self: center; display: flex; align-items: center; }
   .logo { height: ${logoH}px; width: auto; display: block; object-fit: contain; }
   .brand-name { font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
   .pill { font-family: var(--font-mono); font-size: 11px; color: var(--ink-4); letter-spacing: .08em; }
@@ -299,18 +309,21 @@ ${metaPixelHead}
 
   function topBar(showBack, showPill) {
     var top = el('div', 'top');
-    var brand = el('div', null, window.__LOGO__ || '<span class="brand-name">' + esc(F.name) + '</span>');
-    brand.style.display = 'flex'; brand.style.alignItems = 'center';
-    top.appendChild(brand);
+    // Esquerda: botão voltar (quando há pra onde voltar).
+    var left = el('div', 'top-left');
     if (showBack && trail.length > 1) {
       var back = el('button', 'backbtn', '← voltar');
       back.onclick = goBack;
-      top.appendChild(back);
-    } else if (showPill) {
-      top.appendChild(el('span', 'pill', pad(realVisited()) + ' / ' + pad(realTotal)));
-    } else {
-      top.appendChild(el('span', 'pill', ''));
+      left.appendChild(back);
     }
+    // Centro: a logo (ícone da marca) — sempre centralizada.
+    var brand = el('div', 'brand', window.__LOGO__ || '<span class="brand-name">' + esc(F.name) + '</span>');
+    // Direita: progresso (NN / NN).
+    var right = el('div', 'top-right');
+    if (showPill) right.appendChild(el('span', 'pill', pad(realVisited()) + ' / ' + pad(realTotal)));
+    top.appendChild(left);
+    top.appendChild(brand);
+    top.appendChild(right);
     return top;
   }
 
