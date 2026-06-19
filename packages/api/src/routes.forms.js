@@ -15,6 +15,7 @@ const clientIp = (req) =>
 
 export function registerFormRoutes(app, repo, opts = {}) {
   const discord = opts.discord; // injetado por routes.js (fail-open, pode faltar em teste direto)
+  const metaCapi = opts.metaCapi; // CAPI "Lead" server-side (fail-open, pode faltar em teste direto)
   const allow = makeRateLimiter({
     limit: opts.rateLimit ?? Number(process.env.FORM_RATE_LIMIT || 10),
     windowMs: opts.rateWindowMs ?? 60_000,
@@ -60,6 +61,29 @@ export function registerFormRoutes(app, repo, opts = {}) {
       createdAt: new Date().toISOString(),
       ua: String(req.headers["user-agent"] || "").slice(0, 300),
     });
+    // Meta CAPI "Lead" server-side: deduplicado com o Pixel client-side via
+    // event_id que a página manda no body (eventId), junto de fbp/fbc dos cookies
+    // do Pixel. IP/UA vêm da request. PII (email/phone) é hasheada no módulo.
+    // Best-effort: nenhuma falha de CAPI pode quebrar o envio do form.
+    if (metaCapi?.configured()) {
+      try {
+        await metaCapi.sendLead({
+          eventId: body.eventId || submission.id,
+          eventSourceUrl: body.sourceUrl || `${publicBase(req)}/f/${form.id}`,
+          leadId: lead.id,
+          email: lead.email,
+          phone: lead.phone,
+          fbp: body.fbp || undefined,
+          fbc: body.fbc || undefined,
+          clientIp: clientIp(req),
+          userAgent: String(req.headers["user-agent"] || "") || undefined,
+          customData: { content_name: form.name },
+        });
+      } catch (err) {
+        req.log?.warn?.({ err }, "meta_capi.sendLead falhou (envio do form segue)");
+      }
+    }
+
     // Mesmo gatilho best-effort do EntityForm: lead novo tenta gerar proposta
     // pelo MESMO dispatcher da rota manual (native quando há template publicado);
     // elegibilidade/config é decisão do provider e nunca quebra o envio.

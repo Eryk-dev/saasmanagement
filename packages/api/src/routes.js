@@ -15,6 +15,7 @@ import { registerMpRoutes, mirrorSubscriptionToMp } from "./routes.mp.js";
 import { mp as defaultMpClient } from "./mp.js";
 import { registerMarketingRoutes } from "./routes.marketing.js";
 import { meta as defaultMetaClient } from "./meta.js";
+import { metaCapi as defaultMetaCapi } from "./meta-capi.js";
 import { discord as defaultDiscord } from "./discord.js";
 
 // Auth interna fica FORA do CRUD genérico: passwordHash/token de sessão nunca
@@ -137,8 +138,11 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // superfícies que geram eventos: forms (lead), proposals (vista/aceite),
   // billing (baixa manual/dunning) e MP (pagamento/assinatura).
   const discordClient = opts.discord || defaultDiscord;
+  // Meta CAPI: "Lead" server-side, deduplicado com o Pixel client-side da página
+  // pública do form (/f/:id) via event_id compartilhado.
+  const metaCapiClient = opts.metaCapi || defaultMetaCapi;
   // Superfície pública do form builder (/public/forms, /f/:id, /embed.js).
-  registerFormRoutes(app, repo, { ...(opts.forms || {}), discord: discordClient });
+  registerFormRoutes(app, repo, { ...(opts.forms || {}), discord: discordClient, metaCapi: metaCapiClient });
   // Superfície pública do proposal builder (/p/:id, aceite, painel do closer).
   registerProposalRoutes(app, repo, { ...(opts.proposals || {}), discord: discordClient });
   // Billing (fase 5): mudança de plano c/ pró-rata, baixa de fatura, tick do motor.

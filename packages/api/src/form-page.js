@@ -19,6 +19,26 @@
 const escJson = (obj) => JSON.stringify(obj).replace(/</g, "\\u003c");
 const escAttr = (s) => String(s).replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
+// Meta Pixel da página de conversão. Mesmo ID usado no funil do lever-ads;
+// override por ambiente via META_PIXEL_ID. Sem CAPI server-side aqui, então é
+// só client-side: PageView no load + evento Lead no submit (sem eventID/dedup).
+const META_PIXEL_ID = process.env.META_PIXEL_ID || "971201888623790";
+const metaPixelHead = META_PIXEL_ID
+  ? `<!-- Meta Pixel -->
+<script>
+!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+document,'script','https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '${META_PIXEL_ID}');
+fbq('track', 'PageView');
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1"></noscript>
+<!-- End Meta Pixel -->`
+  : "";
+
 // Link do Google Fonts pra família primária do tema + JetBrains Mono (pills,
 // labels). Família desconhecida só falha o link — fallback system-ui assume.
 const fontHref = (font) => {
@@ -48,6 +68,7 @@ export function formPageHtml(form, { embed = false } = {}) {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="${fontHref(font)}" rel="stylesheet">
+${metaPixelHead}
 <style>
   :root {
     --bg: ${bg}; --surface: ${surface}; --fg: ${fg};
@@ -478,10 +499,36 @@ export function formPageHtml(form, { embed = false } = {}) {
     render();
   }
 
+  function readCookie(name) {
+    var prefix = name + '=';
+    var parts = document.cookie.split(';');
+    for (var i = 0; i < parts.length; i++) {
+      var t = parts[i].trim();
+      if (t.indexOf(prefix) === 0) return decodeURIComponent(t.slice(prefix.length));
+    }
+    return null;
+  }
+
   function submit() {
     var btns = root.querySelectorAll('.cta');
     for (var i = 0; i < btns.length; i++) { btns[i].disabled = true; btns[i].textContent = 'Enviando…'; }
-    var payload = { answers: answers, _hp: document.getElementById('hp').value || '' };
+    // event_id compartilhado entre o Pixel (client) e o CAPI (server) pra a Meta
+    // deduplicar a conversão (event_name + event_id, janela de 48h).
+    var eventId = (window.crypto && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : 'lead-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+    // Pixel "Lead" dispara JÁ AQUI (antes do POST) com o eventID — assim o ping
+    // acontece mesmo se a aba fechar antes da rede responder. No-op sem pixel.
+    try { if (window.fbq) window.fbq('track', 'Lead', { content_name: F.name || '' }, { eventID: eventId }); } catch (e) {}
+    var payload = {
+      answers: answers,
+      _hp: document.getElementById('hp').value || '',
+      // Atribuição p/ o CAPI server-side casar com o Pixel e com o clique do anúncio.
+      eventId: eventId,
+      fbp: readCookie('_fbp'),
+      fbc: readCookie('_fbc'),
+      sourceUrl: location.href,
+    };
     fetch('/public/forms/' + encodeURIComponent(F.id) + '/submissions', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
