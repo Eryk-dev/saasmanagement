@@ -6,7 +6,7 @@
 // preenchido = bot → responde ok e descarta) + validação estrita contra a
 // definição do form. IDs são opacos; forms em rascunho não existem publicamente.
 
-import { publicForm, validateAnswers, leadFromSubmission, makeRateLimiter } from "./forms.js";
+import { publicForm, validateAnswers, leadFromSubmission, submissionTerminal, makeRateLimiter } from "./forms.js";
 import { formPageHtml, EMBED_JS } from "./form-page.js";
 import { CREATE_DEFAULTS, dispatchProposal, publicBase } from "./routes.js";
 
@@ -48,9 +48,15 @@ export function registerFormRoutes(app, repo, opts = {}) {
     const errors = validateAnswers(form, answers);
     if (errors.length) return reply.code(400).send({ error: "Respostas inválidas", details: errors });
 
+    // Terminal "_reject" = a pessoa caiu numa saída de NÃO-qualificado (decisão
+    // server-authoritative). Captura o contato marcado, mas sem proposta e sem
+    // contar como conversão (Lead Pixel/CAPI) — pra não otimizar anúncio nesse público.
+    const disqualified = submissionTerminal(form.questions || [], answers) === "_reject";
+
     const lead = await repo.create("leads", {
       ...(CREATE_DEFAULTS.leads || {}),
       ...leadFromSubmission(form, answers),
+      ...(disqualified ? { disqualified: true, stage: "disqualified" } : {}),
       createdAt: new Date().toISOString(), // métricas de marketing filtram por período
     });
     const submission = await repo.create("form_submissions", {
@@ -65,7 +71,8 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // event_id que a página manda no body (eventId), junto de fbp/fbc dos cookies
     // do Pixel. IP/UA vêm da request. PII (email/phone) é hasheada no módulo.
     // Best-effort: nenhuma falha de CAPI pode quebrar o envio do form.
-    if (metaCapi?.configured()) {
+    // Desqualificado NÃO conta como conversão (espelha o Pixel client-side).
+    if (!disqualified && metaCapi?.configured()) {
       try {
         await metaCapi.sendLead({
           eventId: body.eventId || submission.id,
@@ -87,7 +94,10 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // Mesmo gatilho best-effort do EntityForm: lead novo tenta gerar proposta
     // pelo MESMO dispatcher da rota manual (native quando há template publicado);
     // elegibilidade/config é decisão do provider e nunca quebra o envio.
-    try { await dispatchProposal(repo, lead, { auto: true, baseUrl: publicBase(req) }); } catch { /* fail-open */ }
+    // Desqualificado não recebe proposta.
+    if (!disqualified) {
+      try { await dispatchProposal(repo, lead, { auto: true, baseUrl: publicBase(req) }); } catch { /* fail-open */ }
+    }
 
     // Aviso no Discord: lead re-buscado pra incluir o link da proposta que o
     // dispatcher acabou de gravar (se gerou). Nunca quebra o envio.

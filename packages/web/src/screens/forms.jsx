@@ -150,6 +150,7 @@ function newForm(saasId) {
     welcome: null,
     questions: [{ key: "nome", label: "Qual é o seu nome?", type: "text", required: true, placeholder: "", help: "", options: [] }],
     thanks: { title: "Recebido! Obrigado.", subtitle: "", redirectUrl: "" },
+    reject: { title: "", subtitle: "" },
     mapping: { name: "nome" },
   };
 }
@@ -219,6 +220,8 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
           return base;
         }),
       thanks: draft.thanks,
+      // Tela de descarte: só persiste se o builder configurou algum texto.
+      reject: draft.reject && (String(draft.reject.title || "").trim() || String(draft.reject.subtitle || "").trim()) ? draft.reject : null,
       mapping: Object.fromEntries(Object.entries(draft.mapping || {}).filter(([, v]) => v)),
     };
     try {
@@ -279,11 +282,21 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
             onChange={(qs) => set({ questions: qs })}
           />
 
-          <div style={sectionTitle}>Tela final</div>
+          <div style={sectionTitle}>Tela final (qualificado)</div>
           <div style={cardStyle}>
             <LabeledInput label="Título" value={draft.thanks?.title || ""} onChange={(v) => set({ thanks: { ...draft.thanks, title: v } })} />
             <LabeledInput label="Subtítulo" value={draft.thanks?.subtitle || ""} onChange={(v) => set({ thanks: { ...draft.thanks, subtitle: v } })} />
             <LabeledInput label="Redirecionar para (URL, opcional)" value={draft.thanks?.redirectUrl || ""} onChange={(v) => set({ thanks: { ...draft.thanks, redirectUrl: v } })} placeholder="https://…" />
+          </div>
+
+          <div style={sectionTitle}>Tela final (não qualificado)</div>
+          <div className="mono dim" style={{ fontSize: 11, marginBottom: 8, lineHeight: 1.5 }}>
+            Mostrada quando uma opção rota para <b>→ fim (não qualificado)</b>. O contato ainda é
+            registrado (marcado como desqualificado), mas <b>sem proposta e sem contar como conversão</b> (Pixel/CAPI).
+          </div>
+          <div style={cardStyle}>
+            <LabeledInput label="Título" value={draft.reject?.title || ""} onChange={(v) => set({ reject: { ...draft.reject, title: v } })} placeholder="Obrigado pelo seu interesse!" />
+            <LabeledInput label="Subtítulo" value={draft.reject?.subtitle || ""} onChange={(v) => set({ reject: { ...draft.reject, subtitle: v } })} placeholder="No momento não é um fit, mas agradecemos o contato." />
           </div>
 
           <div style={sectionTitle}>Mapeamento → lead</div>
@@ -345,11 +358,13 @@ function QuestionsBuilder({ questions, onChange }) {
   };
   const arrowStyle = (disabled) => ({ fontSize: 12, padding: "0 3px", color: "var(--fg-3)", opacity: disabled ? 0.3 : 1, fontFamily: "var(--mono)", cursor: disabled ? "default" : "pointer" });
 
-  // Destinos de branching: outra pergunta ou o fim. Exclui a própria pergunta.
+  // Destinos de branching: outra pergunta ou um dos fins. Exclui a própria pergunta.
+  // "_reject" = fim de NÃO-qualificado (tela negativa, sem proposta/conversão).
   const jumpOptions = (selfKey) => [
     { value: "", label: "(próxima pergunta)" },
     ...questions.filter((q) => q.key && q.key !== selfKey).map((q) => ({ value: q.key, label: `→ ${q.label || q.key}` })),
     { value: "_end", label: "→ fim do form" },
+    { value: "_reject", label: "→ fim (não qualificado)" },
   ];
 
   return (

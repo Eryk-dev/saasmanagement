@@ -255,3 +255,71 @@ test("GET /embed.js → script com mount por data-cockpit-form", async () => {
   assert.match(res.body, /data-cockpit-form/);
   await app.close();
 });
+
+// Form com saída de NÃO-qualificado: opção "nao" rota pra "_reject".
+const FORM_REJECT = {
+  id: "fo_reject",
+  name: "Qualificação",
+  saas: "leverads",
+  status: "published",
+  questions: [
+    { key: "nome", label: "Seu nome?", type: "text", required: true },
+    { key: "email", label: "Seu e-mail?", type: "email", required: true },
+    {
+      key: "expand", label: "Pretende expandir?", type: "select", required: true,
+      options: [{ value: "sim", label: "Sim", to: "_end" }, { value: "nao", label: "Não", to: "_reject" }],
+    },
+  ],
+  mapping: { name: "nome", email: "email" },
+  thanks: { title: "Valeu!" },
+  reject: { title: "Obrigado pelo interesse" },
+};
+
+function fakeCapi() {
+  const calls = [];
+  return { calls, configured: () => true, sendLead: async (a) => { calls.push(a); } };
+}
+
+test("submission desqualificada (_reject) → lead marcado, sem proposta, CAPI NÃO dispara", async () => {
+  const repo = makeMemRepo();
+  await repo.create("forms", { ...FORM_REJECT });
+  const capi = fakeCapi();
+  const app = Fastify();
+  registerRoutes(app, repo, { metaCapi: capi });
+
+  const res = await app.inject({
+    method: "POST", url: "/public/forms/fo_reject/submissions",
+    payload: { answers: { nome: "Bob", email: "bob@ex.com", expand: "nao" }, eventId: "evt-x", fbp: "fb.1.2.3" },
+  });
+  assert.equal(res.statusCode, 201);
+
+  const leads = await repo.list("leads");
+  assert.equal(leads.length, 1);
+  assert.equal(leads[0].disqualified, true);
+  assert.equal(leads[0].stage, "disqualified");
+  // Não conta como conversão: CAPI não foi chamado.
+  assert.equal(capi.calls.length, 0);
+  await app.close();
+});
+
+test("submission qualificada (_end) → CAPI dispara e lead NÃO é desqualificado", async () => {
+  const repo = makeMemRepo();
+  await repo.create("forms", { ...FORM_REJECT });
+  const capi = fakeCapi();
+  const app = Fastify();
+  registerRoutes(app, repo, { metaCapi: capi });
+
+  const res = await app.inject({
+    method: "POST", url: "/public/forms/fo_reject/submissions",
+    payload: { answers: { nome: "Ana", email: "ana@ex.com", expand: "sim" }, eventId: "evt-y", fbp: "fb.1.2.3" },
+  });
+  assert.equal(res.statusCode, 201);
+
+  const leads = await repo.list("leads");
+  assert.equal(leads[0].disqualified, undefined);
+  // Conversão dispara com o event_id compartilhado e a PII do lead.
+  assert.equal(capi.calls.length, 1);
+  assert.equal(capi.calls[0].eventId, "evt-y");
+  assert.equal(capi.calls[0].email, "ana@ex.com");
+  await app.close();
+});

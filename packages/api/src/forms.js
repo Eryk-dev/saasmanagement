@@ -38,6 +38,9 @@ export function publicForm(form) {
       durationMs: Number(q.durationMs) > 0 ? Number(q.durationMs) : 2400,
     })),
     thanks: form.thanks || {},
+    // Tela final de NÃO-qualificado (branch `_reject`): mensagem de descarte.
+    // Sem proposta/redirect/conversão — só a copy. Null = builder ainda não configurou.
+    reject: form.reject || null,
   };
 }
 
@@ -55,16 +58,17 @@ export function buildSteps(questions) {
   return steps;
 }
 
-// Caminho efetivamente percorrido (perguntas) dado um conjunto de respostas,
-// replicando o branching do renderer — agora andando por telas. Guarda contra
-// loops (cada tela visita 1x no máximo).
-export function computePath(questions, answers) {
+// Percorre o branching do renderer (andando por telas) e devolve tanto o caminho
+// (perguntas visitadas) quanto o terminal alcançado: "_end" (qualificado, padrão)
+// ou "_reject" (não-qualificado). Guarda contra loops (cada tela visita 1x).
+function walkPath(questions, answers) {
   const steps = buildSteps(questions);
   const stepOfKey = new Map();
   steps.forEach((idxs, si) => idxs.forEach((qi) => stepOfKey.set(questions[qi].key, si)));
   const path = [];
   const seen = new Set();
   let s = 0;
+  let terminal = "_end"; // chegar ao fim naturalmente = qualificado
   while (s >= 0 && s < steps.length) {
     if (seen.has(s)) break;
     seen.add(s);
@@ -78,10 +82,21 @@ export function computePath(questions, answers) {
       }
       if (q.to) { to = q.to; break; }
     }
-    if (to === "_end") break;
+    if (to === "_end" || to === "_reject") { terminal = to; break; }
     s = to && stepOfKey.has(to) ? stepOfKey.get(to) : s + 1;
   }
-  return path;
+  return { path, terminal };
+}
+
+// Caminho efetivamente percorrido (perguntas) dado um conjunto de respostas.
+export function computePath(questions, answers) {
+  return walkPath(questions, answers).path;
+}
+
+// Terminal alcançado: "_reject" (não-qualificado) ou "_end" (qualificado). É a
+// decisão server-authoritative — o frontend não é confiável pra marcar descarte.
+export function submissionTerminal(questions, answers) {
+  return walkPath(questions, answers).terminal;
 }
 
 const isBlank = (v) => v == null || (Array.isArray(v) ? v.length === 0 : String(v).trim() === "");

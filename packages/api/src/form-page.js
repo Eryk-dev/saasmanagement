@@ -205,6 +205,9 @@ ${metaPixelHead}
   .success-icon::before { animation: ring 2.4s ease-out infinite; }
   .success-icon::after { animation: ring 2.4s ease-out 1.2s infinite; }
   @keyframes ring { 0% { transform: scale(1); opacity: .6; } 100% { transform: scale(1.6); opacity: 0; } }
+  /* Tela de NÃO-qualificado: ícone neutro, sem o verde/glow comemorativo nem o anel. */
+  .success-icon.neg { background: var(--surface); border-color: var(--line); color: var(--ink-3); }
+  .success-icon.neg::before, .success-icon.neg::after { display: none; }
   .hp { position: absolute; left: -9999px; opacity: 0; height: 0; width: 0; pointer-events: none; }
 </style>
 </head>
@@ -239,6 +242,7 @@ ${metaPixelHead}
   var cur = mode === 'step' ? 0 : -1;
   var root = document.getElementById('root');
   var insightTimer = null;
+  var rejected = false; // caiu numa saída de NÃO-qualificado (branch _reject)
 
   function isBlank(v) { return v == null || (Array.isArray(v) ? v.length === 0 : String(v).trim() === ''); }
   function realVisited() {
@@ -248,22 +252,27 @@ ${metaPixelHead}
   }
 
   // Destino da tela: primeiro 'to' definido entre as perguntas (opção do select
-  // respondido, senão o 'to' da pergunta). Sem destino, próxima tela.
-  function nextStep(si) {
-    var to = '';
+  // respondido, senão o 'to' da pergunta). '' = sem destino explícito.
+  function toOf(si) {
     var idxs = STEPS[si];
     for (var k = 0; k < idxs.length; k++) {
       var q = QS[idxs[k]];
       if (q.type === 'select') {
         var a = answers[q.key];
         for (var j = 0; j < (q.options || []).length; j++) {
-          if (q.options[j].value === a && q.options[j].to) { to = q.options[j].to; break; }
+          if (q.options[j].value === a && q.options[j].to) return q.options[j].to;
         }
-        if (to) break;
       }
-      if (q.to) { to = q.to; break; }
+      if (q.to) return q.to;
     }
-    if (to === '_end') return -1;
+    return '';
+  }
+
+  // Próxima tela a partir de si. -1 = fim do form (terminal _end/_reject ou
+  // acabaram as telas). Sem destino, vai pra próxima tela.
+  function nextStep(si) {
+    var to = toOf(si);
+    if (to === '_end' || to === '_reject') return -1;
     if (to && stepOfKey[to] != null) return stepOfKey[to];
     return si + 1 < STEPS.length ? si + 1 : -1;
   }
@@ -484,7 +493,7 @@ ${metaPixelHead}
 
   function jumpFrom(si) {
     var ni = nextStep(si);
-    if (ni === -1) return submit();
+    if (ni === -1) { rejected = (toOf(si) === '_reject'); return submit(); }
     cur = ni;
     trail.push(ni);
     render();
@@ -519,7 +528,10 @@ ${metaPixelHead}
       : 'lead-' + Date.now() + '-' + Math.random().toString(36).slice(2);
     // Pixel "Lead" dispara JÁ AQUI (antes do POST) com o eventID — assim o ping
     // acontece mesmo se a aba fechar antes da rede responder. No-op sem pixel.
-    try { if (window.fbq) window.fbq('track', 'Lead', { content_name: F.name || '' }, { eventID: eventId }); } catch (e) {}
+    // NÃO dispara pra desqualificado (espelha o skip do CAPI no servidor).
+    if (!rejected) {
+      try { if (window.fbq) window.fbq('track', 'Lead', { content_name: F.name || '' }, { eventID: eventId }); } catch (e) {}
+    }
     var payload = {
       answers: answers,
       _hp: document.getElementById('hp').value || '',
@@ -536,7 +548,8 @@ ${metaPixelHead}
     }).then(function (r) {
       if (!r.ok) return r.json().then(function (b) { throw new Error((b && b.error) || ('Erro ' + r.status)); });
       mode = 'done'; cur = -1; render();
-      var url = F.thanks && F.thanks.redirectUrl;
+      // Redirect só na tela positiva — desqualificado não vai pro destino de sucesso.
+      var url = !rejected && F.thanks && F.thanks.redirectUrl;
       if (url) setTimeout(function () { window.top.location.href = url; }, 1600);
     }).catch(function (e) {
       for (var i = 0; i < btns.length; i++) { btns[i].disabled = false; btns[i].textContent = 'Enviar →'; }
@@ -546,15 +559,21 @@ ${metaPixelHead}
   }
 
   function renderDone() {
-    var t = F.thanks || {};
+    // Desqualificado: usa a tela reject (copy de descarte, ícone neutro, sem
+    // redirect). Caso contrário, a tela thanks positiva de sempre.
+    var t = (rejected ? F.reject : F.thanks) || {};
     var s = el('div', 'fade');
     s.appendChild(topBar(false, false));
     var wrap = el('div', 'done-wrap');
-    wrap.appendChild(el('div', 'success-icon',
-      '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>'));
-    wrap.appendChild(el('h1', 'q', fmt(t.title || 'Recebido! Obrigado.')));
+    // Check verde no sucesso; traço neutro no descarte.
+    var icon = rejected
+      ? '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>'
+      : '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>';
+    wrap.appendChild(el('div', rejected ? 'success-icon neg' : 'success-icon', icon));
+    var defTitle = rejected ? 'Obrigado pelo seu interesse!' : 'Recebido! Obrigado.';
+    wrap.appendChild(el('h1', 'q', fmt(t.title || defTitle)));
     if (t.subtitle) wrap.appendChild(el('div', 'sub', fmt(t.subtitle)));
-    if (t.redirectUrl) wrap.appendChild(el('div', 'sub', 'Redirecionando…'));
+    if (!rejected && t.redirectUrl) wrap.appendChild(el('div', 'sub', 'Redirecionando…'));
     s.appendChild(wrap);
     root.appendChild(s);
   }
