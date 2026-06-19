@@ -60,7 +60,7 @@ export function formPageHtml(form, { embed = false } = {}) {
   const accentFg = t.accentFg || "#ffffff";
   const font = t.font || "'Space Grotesk', system-ui, -apple-system, sans-serif";
   const radius = t.radius != null ? Number(t.radius) : 14;
-  const logoH = Math.min(48, Math.max(12, Number(t.logoHeight) || 40));
+  const logoH = Math.min(240, Math.max(12, Number(t.logoHeight) || 40));
   // Logo do form: a do tema, ou o ícone Lever por padrão (vale pra todo form).
   const logo = `<img class="logo" src="${escAttr(t.logoUrl || BRAND_ICON)}" alt="">`;
 
