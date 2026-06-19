@@ -41,7 +41,10 @@ src="https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1"></n
 
 // Marca padrão de todo formulário: o ícone Lever (círculo + seta), versão branca
 // pro fundo escuro. Usado quando o tema do form não define um logoUrl próprio.
+// Tamanho fixo no código (não depende de theme.logoHeight) pra ser durável: o
+// builder não tem editor de logo, então nenhum save reverte a marca.
 const BRAND_ICON = "https://copy.levermoney.com.br/lever/logo-icon-inverse.svg";
+const BRAND_ICON_H = 160;
 
 // Link do Google Fonts pra família primária do tema + JetBrains Mono (pills,
 // labels). Família desconhecida só falha o link — fallback system-ui assume.
@@ -61,8 +64,12 @@ export function formPageHtml(form, { embed = false } = {}) {
   const font = t.font || "'Space Grotesk', system-ui, -apple-system, sans-serif";
   const radius = t.radius != null ? Number(t.radius) : 14;
   const logoH = Math.min(240, Math.max(12, Number(t.logoHeight) || 40));
-  // Logo do form: a do tema, ou o ícone Lever por padrão (vale pra todo form).
-  const logo = `<img class="logo" src="${escAttr(t.logoUrl || BRAND_ICON)}" alt="">`;
+  // Logo do form: se o tema define logoUrl próprio, usa-o no tamanho do tema.
+  // Caso contrário, o ícone Lever padrão num tamanho fixo (durável, vale pra
+  // todo form e imune a saves do builder).
+  const logo = t.logoUrl
+    ? `<img class="logo" src="${escAttr(t.logoUrl)}" alt="">`
+    : `<img class="logo" src="${BRAND_ICON}" alt="" style="height:${BRAND_ICON_H}px">`;
 
   return `<!doctype html>
 <html lang="pt-BR">
