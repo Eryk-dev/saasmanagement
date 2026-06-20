@@ -302,6 +302,35 @@ test("submission desqualificada (_reject) → lead marcado, sem proposta, CAPI N
   await app.close();
 });
 
+test("salvar form sincroniza leadQuestions do produto (upsert por chave, preserva curados)", async () => {
+  const repo = makeMemRepo();
+  await repo.create("forms", { ...FORM });
+  // Produto com um leadQuestion curado e SEM a pergunta `porte` do form.
+  await repo.create("products", {
+    id: "leverads",
+    leadQuestions: [{ key: "legado", label: "Curado", options: [{ value: "a", label: "A" }] }],
+  });
+  const app = Fastify();
+  registerRoutes(app, repo);
+
+  // Edita o form (qualquer PATCH) → dispara o sync.
+  const res = await app.inject({
+    method: "PATCH", url: "/api/forms/fo_test",
+    payload: { name: "Diagnóstico LeverAds v2" },
+  });
+  assert.equal(res.statusCode, 200);
+
+  const prod = await repo.get("products", "leverads");
+  const keys = (prod.leadQuestions || []).map((q) => q.key);
+  // Curado preservado + pergunta `porte` do form adicionada; contato/insight fora.
+  assert.deepEqual(keys, ["legado", "porte"]);
+  const porte = prod.leadQuestions.find((q) => q.key === "porte");
+  assert.equal(porte.label, "Porte da operação?");
+  assert.equal(porte.options.length, 2); // small + big
+  assert.equal(prod.leadQuestions[0].label, "Curado"); // label curado intacto
+  await app.close();
+});
+
 test("submission qualificada (_end) → CAPI dispara e lead NÃO é desqualificado", async () => {
   const repo = makeMemRepo();
   await repo.create("forms", { ...FORM_REJECT });

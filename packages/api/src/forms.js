@@ -99,6 +99,32 @@ export function submissionTerminal(questions, answers) {
   return walkPath(questions, answers).terminal;
 }
 
+// Deriva/atualiza a lista de perguntas de qualificação (leadQuestions) do produto
+// a partir das perguntas do form, pra o painel do lead (deal.jsx) nunca divergir
+// das chaves realmente capturadas. Upsert por chave:
+//   - pergunta nova do form        -> adiciona { key, label (do form), options }
+//   - pergunta já na config        -> atualiza só as options (preserva label curado)
+//   - entrada extra na config      -> preservada (não remove nada)
+// Ignora insights (sem resposta) e os campos de contato do mapping (vão em CAMPOS).
+export function mergeLeadQuestions(existing, form) {
+  const out = (existing || []).map((q) => ({ ...q }));
+  const idxByKey = new Map(out.map((q, i) => [q.key, i]));
+  const contact = new Set(Object.values((form && form.mapping) || {}));
+  for (const q of (form && form.questions) || []) {
+    if ((q.type || "text") === "insight") continue;
+    if (contact.has(q.key)) continue;
+    const options = (q.options || []).map((o) => ({ value: o.value, label: o.label || o.value }));
+    if (idxByKey.has(q.key)) {
+      const i = idxByKey.get(q.key);
+      out[i] = { ...out[i], options: options.length ? options : out[i].options };
+    } else {
+      out.push({ key: q.key, label: q.label || q.key, options });
+      idxByKey.set(q.key, out.length - 1);
+    }
+  }
+  return out;
+}
+
 const isBlank = (v) => v == null || (Array.isArray(v) ? v.length === 0 : String(v).trim() === "");
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_TEXT = 5000;

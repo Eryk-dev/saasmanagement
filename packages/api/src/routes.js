@@ -6,6 +6,7 @@ import { PORTFOLIO_CONST } from "./seed-data.js";
 import { openapi, docsHtml } from "./openapi.js";
 import { runProposal, integrationStatus } from "./levercopy.js";
 import { registerFormRoutes } from "./routes.forms.js";
+import { mergeLeadQuestions } from "./forms.js";
 import { registerProposalRoutes } from "./routes.proposals.js";
 import { runNativeProposal } from "./proposal.js";
 import { registerBillingRoutes } from "./routes.billing.js";
@@ -234,6 +235,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // Assinatura nova: janela do 1º ciclo + fatura inicial + customer.arr
     // (invariante: receita do produto deriva de customers).
     if (collection === "subscriptions") created = await initSubscription(repo, created);
+    // Form salvo → sincroniza leadQuestions do produto (painel do lead nunca
+    // diverge das chaves capturadas). Best-effort: nunca quebra o save do form.
+    if (collection === "forms") { try { await syncLeadQuestions(repo, created); } catch { /* fail-open */ } }
     // Lead criado manual/MCP avisa no Discord (submissão de form tem aviso
     // próprio em routes.forms.js, com o link da proposta gerada).
     if (collection === "leads" && discordClient.configured()) {
@@ -250,6 +254,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     const before = collection === "subscriptions" ? await repo.get(collection, id) : null;
     const updated = await repo.update(collection, id, req.body);
     if (!updated) return reply.code(404).send({ error: "Not found" });
+    // Form editado → ressincroniza leadQuestions do produto (best-effort).
+    if (collection === "forms") { try { await syncLeadQuestions(repo, updated); } catch { /* fail-open */ } }
     if (collection === "subscriptions") {
       await syncCustomerArr(repo, updated.customer);
       if (before && before.customer && before.customer !== updated.customer) await syncCustomerArr(repo, before.customer);
@@ -313,6 +319,20 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     }
     return result;
   });
+}
+
+// Mantém o leadQuestions do produto em dia com as perguntas do form (upsert por
+// chave em mergeLeadQuestions). Chamado quando um form é criado/editado. Só grava
+// se algo mudou. O painel do lead (deal.jsx) lê leadQuestions, então isso garante
+// que nenhuma resposta capturada fique de fora por divergência de chave.
+async function syncLeadQuestions(repo, form) {
+  if (!form || !form.saas) return;
+  const product = await repo.get("products", form.saas);
+  if (!product) return;
+  const next = mergeLeadQuestions(product.leadQuestions, form);
+  if (JSON.stringify(next) !== JSON.stringify(product.leadQuestions || [])) {
+    await repo.update("products", product.id, { leadQuestions: next });
+  }
 }
 
 // Dispatcher native | levercopy — TODO gatilho de proposta passa por aqui (rota
