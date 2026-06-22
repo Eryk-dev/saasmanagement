@@ -327,26 +327,24 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
     .foot { scroll-snap-align: end; }
   }
 
-  /* Painel do closer (modo edição via ?k=token) */
-  .closer-panel { position: fixed; right: 18px; bottom: 18px; z-index: 80; width: 300px; max-width: calc(100vw - 36px);
-    background: color-mix(in oklab, var(--bg) 92%, var(--fg)); border: 1px solid var(--accent-line); border-radius: var(--radius);
-    box-shadow: 0 16px 40px rgba(0,0,0,.45); padding: 18px; color: var(--fg); }
-  .closer-panel h4 { font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
-  .cp-min { cursor: pointer; color: var(--ink-3); font-size: 14px; }
-  .cp-field { margin-bottom: 12px; }
-  .cp-field label { display: block; font-family: var(--font-mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 5px; }
-  .cp-field input, .cp-field select { width: 100%; padding: 9px 11px; background: var(--bg); border: 1px solid var(--line); border-radius: calc(var(--radius) - 6px); color: var(--fg); font-size: 14px; font-family: var(--font-display); }
-  .cp-field input:focus, .cp-field select:focus { outline: none; border-color: var(--accent); box-shadow: var(--glow); }
-  .cp-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .cp-save { width: 100%; margin-top: 6px; padding: 11px; background: var(--accent); color: var(--accent-fg); border-radius: calc(var(--radius) - 6px); font-weight: 700; font-size: 14px; }
-  .cp-save:disabled { opacity: .5; cursor: default; }
-  .cp-status { margin-top: 8px; font-size: 12px; color: var(--accent); min-height: 16px; text-align: center; }
-  .cp-toggle { position: fixed; right: 18px; bottom: 18px; z-index: 79; background: var(--accent); color: var(--accent-fg); border-radius: var(--r-full); padding: 11px 16px; font-weight: 700; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.4); display: none; }
+  /* Edição inline (modo closer via ?k=token) + banner de preview reaproveitam estas duas regras */
   .edit-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 81; background: var(--accent-soft); border-bottom: 1px solid var(--accent-line); color: var(--accent); font-family: var(--font-mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; text-align: center; padding: 7px; }
   body.editing { padding-top: 30px; }
+  /* Valor editável: parece texto normal; afford discreta só no hover (modo closer) */
+  .pe { cursor: pointer; border-bottom: 1px dashed var(--accent-line); border-radius: 3px; transition: background .12s var(--ease-out); }
+  .pe:hover { background: var(--accent-soft); }
+  .pe::after { content: '✎'; font-size: .62em; opacity: .55; margin-left: 3px; vertical-align: super; }
+  .edit-pop { position: absolute; z-index: 90; background: color-mix(in oklab, var(--bg) 92%, var(--fg)); border: 1px solid var(--accent-line); border-radius: var(--radius); box-shadow: 0 14px 36px rgba(0,0,0,.45); padding: 10px; }
+  .edit-pop select, .edit-pop input { padding: 9px 11px; background: var(--bg); border: 1px solid var(--line); border-radius: calc(var(--radius) - 6px); color: var(--fg); font-family: var(--font-display); font-size: 15px; min-width: 140px; }
+  .edit-pop select:focus, .edit-pop input:focus { outline: none; border-color: var(--accent); box-shadow: var(--glow); }
+  .save-tag { position: fixed; right: 16px; bottom: 16px; z-index: 95; padding: 8px 14px; border-radius: var(--r-full); background: color-mix(in oklab, var(--bg) 88%, var(--fg)); border: 1px solid var(--accent-line); color: var(--accent); font-family: var(--font-mono); font-size: 12px; opacity: 0; transform: translateY(8px); transition: opacity .2s, transform .2s; pointer-events: none; }
+  .save-tag.show { opacity: 1; transform: translateY(0); }
+  .save-tag.err { color: var(--error); border-color: var(--error); }
 
   @media print {
-    .nav, .closer-panel, .cp-toggle, .edit-banner, .accept-row, .slide-media video { display: none !important; }
+    .nav, .edit-pop, .save-tag, .edit-banner, .accept-row, .slide-media video { display: none !important; }
+    .pe { border-bottom: 0 !important; }
+    .pe::after { content: none !important; }
     body { background: #fff; color: #000; padding-top: 0; }
     main > section, main > header.hero { padding: 40px 0; break-inside: avoid; min-height: 0 !important; height: auto !important; overflow: visible !important; display: block !important; }
     main > section > .wrap, main > header.hero > .wrap { transform: none !important; }
@@ -523,6 +521,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           if (state.cycle === btn.getAttribute('data-cycle')) return;
           state.cycle = btn.getAttribute('data-cycle');
           fillDynamic();
+          if (afterEdit) afterEdit();
         });
       });
     });
@@ -823,70 +822,85 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     setTimeout(function () { document.querySelectorAll('[data-reveal]:not(.in)').forEach(function (it) { it.classList.add('in'); }); }, 1500);
   }
 
-  // ── Painel do closer (modo edição) ────────────────────────────────────────
-  function mountEditor() {
-    document.body.classList.add('editing');
-    var banner = el('div', 'edit-banner', '✏️ Modo closer — ajuste os números e congele antes de enviar ao cliente');
-    document.body.appendChild(banner);
+  // ── Edição inline (modo closer via ?k) ────────────────────────────────────
+  // Sem painel: o closer clica direto no número (contas/volume/ciclo/preço/
+  // validade), escolhe no popover e a página recalcula + auto-salva (PATCH).
+  function mountInlineEdit() {
     var token = new URLSearchParams(location.search).get('k') || '';
-    var maxSeats = Number(CALC.maxSeats) || 20;
-    var seatOpts = '';
-    for (var s2 = 2; s2 <= maxSeats; s2++) seatOpts += '<option value="' + s2 + '"' + (s2 === state.seats ? ' selected' : '') + '>' + s2 + ' contas</option>';
-    var volOpts = Object.keys(CALC.volumeMid || {}).map(function (k) { return '<option value="' + esc(k) + '"' + (k === state.volume ? ' selected' : '') + '>' + esc(k) + '</option>'; }).join('');
-    var cycleOpts = CYCLE_ORDER.filter(function (k) { return (CALC.plans || {})[k]; })
-      .map(function (k) { return '<option value="' + k + '"' + (k === state.cycle ? ' selected' : '') + '>' + CYCLE_NAME[k] + '</option>'; }).join('');
+    document.body.classList.add('editing');
+    document.body.appendChild(el('div', 'edit-banner', '✏️ Modo closer · clique nos números p/ ajustar · salva sozinho'));
 
-    var panel = el('div', 'closer-panel');
-    panel.innerHTML =
-      '<h4><span>Painel do closer</span><span class="cp-min" title="Minimizar">▁</span></h4>' +
-      '<div class="cp-row">' +
-        '<div class="cp-field"><label>Contas</label><select id="cp-seats">' + seatOpts + '</select></div>' +
-        '<div class="cp-field"><label>Volume</label><select id="cp-volume">' + volOpts + '</select></div>' +
-      '</div>' +
-      '<div class="cp-row">' +
-        '<div class="cp-field"><label>Ciclo</label><select id="cp-cycle">' + cycleOpts + '</select></div>' +
-        '<div class="cp-field"><label>Validade</label><input id="cp-valid" type="date"></div>' +
-      '</div>' +
-      '<div class="cp-field"><label>Preço negociado (R$/mês · vazio = auto)</label><input id="cp-custom" type="number" min="0" step="1" placeholder="auto" value="' + (state.customPriceCents ? Math.round(state.customPriceCents / 100) : '') + '"></div>' +
-      '<button class="cp-save" id="cp-save">Congelar e salvar</button>' +
-      '<div class="cp-status" id="cp-status">' + (state.frozen ? '✓ congelada' : '') + '</div>';
-    document.body.appendChild(panel);
-    var toggle = el('button', 'cp-toggle', '✏️ Painel');
-    document.body.appendChild(toggle);
-
-    var validInput = panel.querySelector('#cp-valid');
-    if (state.validUntil && /^\\d{2}\\/\\d{2}\\/\\d{4}$/.test(state.validUntil)) {
-      var dp = state.validUntil.split('/');
-      validInput.value = dp[2] + '-' + dp[1] + '-' + dp[0];
-    }
-    function onChange() {
-      state.seats = parseInt(panel.querySelector('#cp-seats').value, 10);
-      state.volume = panel.querySelector('#cp-volume').value;
-      state.cycle = panel.querySelector('#cp-cycle').value;
-      var cv = panel.querySelector('#cp-custom').value;
-      state.customPriceCents = cv && parseInt(cv, 10) > 0 ? parseInt(cv, 10) * 100 : 0;
-      if (validInput.value) {
-        var vp = validInput.value.split('-');
-        state.validUntil = vp[2] + '/' + vp[1] + '/' + vp[0];
-      }
-      fillDynamic();
-    }
-    ['#cp-seats', '#cp-volume', '#cp-cycle', '#cp-custom', '#cp-valid'].forEach(function (sel) {
-      panel.querySelector(sel).addEventListener('input', onChange);
-      panel.querySelector(sel).addEventListener('change', onChange);
-    });
-    panel.querySelector('.cp-min').addEventListener('click', function () { panel.style.display = 'none'; toggle.style.display = 'block'; });
-    toggle.addEventListener('click', function () { panel.style.display = 'block'; toggle.style.display = 'none'; });
-    panel.querySelector('#cp-save').addEventListener('click', function () {
-      var btn = panel.querySelector('#cp-save');
-      var status = panel.querySelector('#cp-status');
-      btn.disabled = true; status.textContent = 'salvando…';
+    var tag = el('div', 'save-tag', '');
+    document.body.appendChild(tag);
+    var saveTimer = null;
+    function flash(text, cls) { tag.textContent = text; tag.className = 'save-tag show' + (cls ? ' ' + cls : ''); }
+    function doSave() {
+      flash('salvando…', '');
       fetch('/public/proposals/' + encodeURIComponent(P.id), {
         method: 'PATCH', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ k: token, seats: state.seats, volume: state.volume, cycle: state.cycle, customPriceCents: state.customPriceCents, validUntil: state.validUntil, frozen: true }),
+        body: JSON.stringify({ k: token, accounts: state.accounts, volume: state.volume, cycle: state.cycle, customPriceCents: state.customPriceCents, validUntil: state.validUntil, frozen: true })
       }).then(function (r) { if (!r.ok) throw new Error('falha'); return r.json(); })
-        .then(function () { status.textContent = '✓ congelada e salva'; btn.disabled = false; })
-        .catch(function () { status.textContent = '✕ erro ao salvar'; btn.disabled = false; });
+        .then(function () { flash('salvo ✓', 'ok'); setTimeout(function () { tag.className = 'save-tag'; }, 1600); })
+        .catch(function () { flash('✕ erro ao salvar', 'err'); });
+    }
+    function scheduleSave() {
+      state.frozen = true;
+      if (saveTimer) clearTimeout(saveTimer);
+      flash('salvando…', '');
+      saveTimer = setTimeout(doSave, 600);
+    }
+    afterEdit = scheduleSave; // grade de planos também salva
+
+    // Monta o controle do campo, ligado ao state; chama done() a cada alteração.
+    function control(field, done) {
+      var ctl, k, o, dp, vp;
+      if (field === 'accounts') {
+        ctl = document.createElement('select');
+        for (k in (CALC.seatsMap || {})) { o = document.createElement('option'); o.value = k; o.textContent = k + ' contas'; if (k === state.accounts) o.selected = true; ctl.appendChild(o); }
+        ctl.addEventListener('change', function () { state.accounts = ctl.value; state.seats = Number((CALC.seatsMap || {})[ctl.value]) || state.seats; done(); });
+      } else if (field === 'volume') {
+        ctl = document.createElement('select');
+        for (k in (CALC.volumeMid || {})) { o = document.createElement('option'); o.value = k; o.textContent = k; if (k === state.volume) o.selected = true; ctl.appendChild(o); }
+        ctl.addEventListener('change', function () { state.volume = ctl.value; done(); });
+      } else if (field === 'cycle') {
+        ctl = document.createElement('select');
+        CYCLE_ORDER.forEach(function (c) { if (!(CALC.plans || {})[c]) return; o = document.createElement('option'); o.value = c; o.textContent = CYCLE_NAME[c]; if (c === state.cycle) o.selected = true; ctl.appendChild(o); });
+        ctl.addEventListener('change', function () { state.cycle = ctl.value; done(); });
+      } else if (field === 'price') {
+        ctl = document.createElement('input'); ctl.type = 'number'; ctl.min = '0'; ctl.step = '1'; ctl.placeholder = 'auto';
+        ctl.value = state.customPriceCents ? Math.round(state.customPriceCents / 100) : '';
+        ctl.addEventListener('input', function () { var v = parseInt(ctl.value, 10); state.customPriceCents = v > 0 ? v * 100 : 0; done(); });
+      } else if (field === 'valid') {
+        ctl = document.createElement('input'); ctl.type = 'date';
+        if (state.validUntil && /^\\d{2}\\/\\d{2}\\/\\d{4}$/.test(state.validUntil)) { dp = state.validUntil.split('/'); ctl.value = dp[2] + '-' + dp[1] + '-' + dp[0]; }
+        ctl.addEventListener('change', function () { if (ctl.value) { vp = ctl.value.split('-'); state.validUntil = vp[2] + '/' + vp[1] + '/' + vp[0]; done(); } });
+      }
+      return ctl;
+    }
+
+    var pop = null;
+    function closePop() { if (pop) { pop.remove(); pop = null; } }
+    function openPop(span, field) {
+      closePop();
+      var ctl = control(field, function () { fillDynamic(); scheduleSave(); });
+      if (!ctl) return;
+      pop = el('div', 'edit-pop');
+      pop.appendChild(ctl);
+      document.body.appendChild(pop);
+      var r = span.getBoundingClientRect();
+      pop.style.top = (window.scrollY + r.bottom + 6) + 'px';
+      pop.style.left = (window.scrollX + Math.min(r.left, window.innerWidth - 200)) + 'px';
+      if (ctl.focus) ctl.focus();
+    }
+    document.addEventListener('click', function (e) {
+      if (pop && !pop.contains(e.target) && !(e.target.classList && e.target.classList.contains('pe'))) closePop();
+    });
+
+    document.querySelectorAll('[data-fill]').forEach(function (span) {
+      var field = EDIT_FIELD[span.getAttribute('data-fill')];
+      if (!field || span.classList.contains('pe')) return;
+      span.classList.add('pe');
+      span.addEventListener('click', function (e) { e.stopPropagation(); openPop(span, field); });
     });
   }
 
@@ -920,7 +934,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
 
   document.getElementById('nav-date').textContent = new Date().toLocaleDateString('pt-BR');
   render();
-  if (P.editable) mountEditor();
+  if (P.editable) mountInlineEdit();
 })();
 </script>
 </body>
