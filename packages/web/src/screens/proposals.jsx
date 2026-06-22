@@ -504,7 +504,7 @@ function CalcEditor({ calc, onChange }) {
             </select>
           </label>
         </div>
-        <MapEditor label="Resposta de contas → nº de contas (seatsMap)" map={calc.seatsMap || {}} onChange={(m) => set("seatsMap", m)} />
+        <MapEditor label="Faixa de contas → nº de contas na fórmula (topo da faixa)" map={calc.seatsMap || {}} onChange={(m) => set("seatsMap", m)} />
         <MapEditor label="Faixa de volume → anúncios/semana (volumeMid)" map={calc.volumeMid || {}} onChange={(m) => set("volumeMid", m)} />
       </div>
       <div style={{ ...cardStyle }}>
