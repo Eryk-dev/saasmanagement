@@ -23,7 +23,8 @@ function previewFromTemplate(t, { data, state, answers } = {}) {
       answers: answers || {},
     },
     state: state || {
-      seats: t.calc?.plans?.[t.calc?.defaultCycle]?.included || 2,
+      accounts: Object.keys(t.calc?.seatsMap || {})[0] || "",
+      seats: Number((t.calc?.seatsMap || {})[Object.keys(t.calc?.seatsMap || {})[0]]) || t.calc?.plans?.[t.calc?.defaultCycle]?.included || 2,
       volume: Object.keys(t.calc?.volumeMid || {})[0] || "",
       cycle: t.calc?.defaultCycle || "monthly",
       customPriceCents: 0,
