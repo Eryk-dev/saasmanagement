@@ -385,6 +385,17 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
   var CYCLE_ORDER = ['monthly', 'quarterly', 'semiannual', 'annual'];
   var root = document.getElementById('root');
 
+  // Hook que a grade de planos chama pra auto-salvar no modo closer (setado por
+  // mountInlineEdit; null fora do modo edição).
+  var afterEdit = null;
+  // Spans data-fill que viram clicáveis no modo closer → campo editável.
+  var EDIT_FIELD = {
+    'state.accounts': 'accounts', 'calc.assentos': 'accounts',
+    'state.volume': 'volume', 'calc.volume': 'volume',
+    'calc.preco': 'price', 'state.validUntil': 'valid',
+    'calc.plano': 'cycle', 'calc.ciclo': 'cycle'
+  };
+
   function brl(n) { return 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function intBR(n) { return Math.round(Number(n) || 0).toLocaleString('pt-BR'); }
   // Centavos só quando existem (350 → "350"; 274,9 → "274,90").
@@ -456,16 +467,20 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     };
   }
 
+  // Resolve um caminho de interpolação. calc./state. viram spans dinâmicos; uma
+  // resposta que mapeia o campo editável de contas/volume também vira span de
+  // estado (faixa) — assim "X contas" aparece e é clicável onde quer que esteja.
+  function interpPath(path) {
+    if (path.indexOf('calc.') === 0 || path.indexOf('state.') === 0) return '<span data-fill="' + path + '"></span>';
+    if (CALC.seatsKey && path === 'answers.' + CALC.seatsKey) return '<span data-fill="state.accounts"></span>';
+    if (CALC.volumeKey && path === 'answers.' + CALC.volumeKey) return '<span data-fill="state.volume"></span>';
+    return esc(String(getPath(DATA, path)));
+  }
   // Interpolação: {{calc.x}}/{{state.x}} viram spans dinâmicos (recalculados pelo
   // painel do closer); {{lead.x}}/{{answers.x}} resolvem na construção.
   function fmt(s) {
     var out = esc(s);
-    out = out.replace(/\\{\\{\\s*([a-zA-Z0-9_.]+)\\s*\\}\\}/g, function (_, path) {
-      if (path.indexOf('calc.') === 0 || path.indexOf('state.') === 0) {
-        return '<span data-fill="' + path + '"></span>';
-      }
-      return esc(String(getPath(DATA, path)));
-    });
+    out = out.replace(/\\{\\{\\s*([a-zA-Z0-9_.]+)\\s*\\}\\}/g, function (_, path) { return interpPath(path); });
     out = out.replace(/\\*([^*]+)\\*/g, '<em>$1</em>');
     return out;
   }
@@ -753,10 +768,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       // HTML autoral do dono (mesmo nível de confiança do template) — vai cru,
       // mas as interpolações {{...}} e *itálico* funcionam dentro dele.
       var raw = String(s.html || '');
-      raw = raw.replace(/\\{\\{\\s*([a-zA-Z0-9_.]+)\\s*\\}\\}/g, function (_, path) {
-        if (path.indexOf('calc.') === 0 || path.indexOf('state.') === 0) return '<span data-fill="' + path + '"></span>';
-        return esc(String(getPath(DATA, path)));
-      });
+      raw = raw.replace(/\\{\\{\\s*([a-zA-Z0-9_.]+)\\s*\\}\\}/g, function (_, path) { return interpPath(path); });
       holder.innerHTML = raw;
       w.appendChild(holder);
       sec.appendChild(w);
