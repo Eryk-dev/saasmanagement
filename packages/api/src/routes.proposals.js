@@ -91,6 +91,13 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     if (Number.isFinite(Number(body.customPriceCents)) && Number(body.customPriceCents) >= 0) state.customPriceCents = Number(body.customPriceCents);
     if (typeof body.validUntil === "string") state.validUntil = body.validUntil.slice(0, 20);
     if (typeof body.frozen === "boolean") state.frozen = body.frozen;
+    // A FAIXA de contas é autoritativa: deriva os assentos do topo da faixa via o
+    // seatsMap do snapshot (faixa → nº de contas usado na fórmula de preço/custo).
+    const seatsMap = (p.calc && p.calc.seatsMap) || {};
+    if (typeof body.accounts === "string" && seatsMap[body.accounts] != null) {
+      state.accounts = body.accounts;
+      state.seats = Number(seatsMap[body.accounts]);
+    }
     const updated = await repo.update("proposals", p.id, { state });
     return { ok: true, state: updated.state };
   });

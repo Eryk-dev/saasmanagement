@@ -172,6 +172,29 @@ test("PATCH /public/proposals/:id — k errado 401; k certo atualiza só o estad
   await app.close();
 });
 
+test("PATCH: faixa de contas é autoritativa — deriva seats do topo (seatsMap)", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("leads", { ...LEAD });
+  await app.inject({ method: "POST", url: "/api/leads/le_p1/proposal" });
+  const { proposta_id } = await repo.get("leads", "le_p1");
+  const { editKey } = await repo.get("proposals", proposta_id);
+
+  const ok = await app.inject({
+    method: "PATCH", url: `/public/proposals/${proposta_id}`,
+    payload: { k: editKey, accounts: "6-10" },
+  });
+  assert.equal(ok.statusCode, 200);
+  const p = await repo.get("proposals", proposta_id);
+  assert.equal(p.state.accounts, "6-10");
+  assert.equal(p.state.seats, 8); // seatsMap["6-10"] do fixture
+
+  // faixa fora do seatsMap é ignorada (não corrompe o estado)
+  await app.inject({ method: "PATCH", url: `/public/proposals/${proposta_id}`, payload: { k: editKey, accounts: "999" } });
+  const p2 = await repo.get("proposals", proposta_id);
+  assert.equal(p2.state.accounts, "6-10");
+  await app.close();
+});
+
 test("aceite: marca proposta + lead e move o estágio configurado", async () => {
   const { app, repo } = await buildApp();
   await repo.create("leads", { ...LEAD });
