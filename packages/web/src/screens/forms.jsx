@@ -380,7 +380,7 @@ function QuestionsBuilder({ questions, onChange }) {
                 value={q.label || ""} placeholder={isInsight ? "Título do insight (*palavra* destaca)" : "Pergunta"}
                 onChange={(e) => {
                   const patch = { label: e.target.value };
-                  if (!q._keyTouched) patch.key = slug(e.target.value);
+                  if (!q._keyTouched && (q._keyAuto || !String(q.key || "").trim())) patch.key = slug(e.target.value);
                   update(i, patch);
                 }}
                 style={{ ...inputStyle, flex: 1 }}
@@ -458,7 +458,7 @@ function QuestionsBuilder({ questions, onChange }) {
           </div>
         );
       })}
-      <button type="button" onClick={() => onChange([...questions, { key: "", label: "", type: "text", required: false, options: [] }])} style={addBtnStyle}>+ adicionar pergunta</button>
+      <button type="button" onClick={() => onChange([...questions, { key: "", label: "", type: "text", required: false, options: [], _keyAuto: true }])} style={addBtnStyle}>+ adicionar pergunta</button>
     </div>
   );
 }
