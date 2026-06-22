@@ -84,11 +84,14 @@ const CALC_DEFAULTS = {
 export function initialState(calc, answers) {
   const c = { ...CALC_DEFAULTS, ...(calc || {}) };
   const seatsAns = c.seatsKey ? answers[c.seatsKey] : null;
-  const seats = Number(c.seatsMap?.[seatsAns]) || c.plans?.[c.defaultCycle]?.included || 2;
+  // `accounts` = a FAIXA escolhida (ex. "3-5"); `seats` = nº de contas usado na
+  // fórmula, derivado do topo da faixa via seatsMap (fallback = incluídas do plano).
+  const accounts = seatsAns != null ? String(seatsAns) : "";
+  const seats = Number(c.seatsMap?.[accounts]) || c.plans?.[c.defaultCycle]?.included || 2;
   const volume = (c.volumeKey && answers[c.volumeKey]) || Object.keys(c.volumeMid || {})[0] || "";
   const valid = new Date(Date.now() + (Number(c.validDays) || 7) * 86400_000);
   return {
-    seats, volume, cycle: c.defaultCycle,
+    accounts, seats, volume, cycle: c.defaultCycle,
     customPriceCents: 0,
     validUntil: valid.toLocaleDateString("pt-BR"),
     frozen: false,

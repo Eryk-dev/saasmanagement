@@ -66,6 +66,7 @@ test("dispatcher: template publicado → provider native, lead recebe URLs, snap
   assert.equal(proposal.state.cycle, "quarterly");
   assert.equal(proposal.data.lead.firstName, "Ana");
   assert.equal(proposal.data.answers.accounts, "3-5"); // resposta de qualificação
+  assert.equal(proposal.state.accounts, "3-5");      // faixa escolhida fica no estado
   assert.equal(proposal.data.answers.name, undefined); // core não vaza pra answers
   assert.ok(proposal.editKey.length >= 16);
 
