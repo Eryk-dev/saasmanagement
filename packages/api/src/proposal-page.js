@@ -30,8 +30,17 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   const accentFg = t.accentFg || "#ffffff";
   const font = t.font || "'Space Grotesk', system-ui, sans-serif";
   const radius = t.radius != null ? Number(t.radius) : 14;
-  const logoH = Math.min(48, Math.max(12, Number(t.logoHeight) || 24)); // cabe na nav fixa de 60px
-  const logo = t.logoUrl ? `<img class="nav-logo" src="${escAttr(t.logoUrl)}" alt="">` : "";
+  // Teto alto (igual ao form) pra a logo poder crescer; a nav cresce junto (navH).
+  const logoH = Math.min(240, Math.max(12, Number(t.logoHeight) || 24));
+  const navH = Math.max(60, logoH + 28);
+  const brandName = t.brandName ? escAttr(t.brandName) : "";
+  const brandSize = Math.max(15, Math.round(logoH * 0.34));
+  const logoImg = t.logoUrl ? `<img class="nav-logo" src="${escAttr(t.logoUrl)}" alt="">` : "";
+  // Lockup da marca: ícone + nome ao lado (ex.: LeverAds). Só ícone se não houver
+  // nome; sem nenhum dos dois, cai no nome do documento.
+  const navBrand = (logoImg || brandName)
+    ? `<span class="nav-lockup">${logoImg}${brandName ? `<span class="nav-brand">${brandName}</span>` : ""}</span>`
+    : `<span class="nav-brand">${String(p.name || "Proposta").replace(/</g, "&lt;")}</span>`;
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -92,8 +101,9 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .nav { position: sticky; top: 0; z-index: 50; background: color-mix(in oklab, var(--bg) 80%, transparent);
     backdrop-filter: saturate(140%) blur(12px); -webkit-backdrop-filter: saturate(140%) blur(12px); border-bottom: 1px solid var(--line); }
   .nav-inner { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; max-width: 1200px; margin: 0 auto; gap: 16px; }
-  .nav-logo { height: ${logoH}px; flex-shrink: 0; }
-  .nav-brand { font-weight: 600; font-size: 15px; }
+  .nav-lockup { display: flex; align-items: center; gap: 14px; min-width: 0; }
+  .nav-logo { height: ${logoH}px; width: auto; flex-shrink: 0; object-fit: contain; }
+  .nav-brand { font-weight: 600; font-size: ${brandSize}px; letter-spacing: -.01em; }
   .nav-meta { font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); letter-spacing: .08em; text-transform: uppercase; }
   .nav-meta b { color: var(--fg); font-weight: 500; }
 
@@ -123,6 +133,10 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .diag-label { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); letter-spacing: .1em; text-transform: uppercase; }
   .diag-value { font-family: var(--font-display); font-size: 40px; color: var(--fg); margin-top: 8px; line-height: 1; letter-spacing: -.02em; font-weight: 500; overflow-wrap: anywhere; }
   @media (min-width: 768px) { .diag-value { font-size: 52px; margin-top: 12px; } }
+  /* Valor longo (ex.: "Necessidade interna"): fonte menor pra quebrar só no
+     espaço (palavra inteira por linha) em vez de partir no meio. */
+  .diag-value.sm { font-size: 28px; overflow-wrap: normal; }
+  @media (min-width: 768px) { .diag-value.sm { font-size: 32px; } }
   .diag-tag { margin-top: 8px; color: var(--ink-3); font-size: 14px; }
   .diag-highlight { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
   .diag-highlight h3 { font-size: 24px; margin-top: 6px; line-height: 1.1; }
@@ -163,6 +177,7 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   @media (min-width: 768px) { .compare-col { padding: 36px; } }
   .compare-col.before { background: var(--raised); border: 1px solid var(--line); }
   .compare-col.after { background: linear-gradient(180deg, var(--accent-soft) 0%, transparent 100%); border: 1px solid var(--accent-line); }
+  .compare-kicker { font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 10px; }
   .compare-lbl { font-family: var(--font-mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 12px; font-weight: 500; }
   .before .compare-lbl { color: var(--error); }
   .after .compare-lbl { color: var(--accent); }
@@ -317,7 +332,7 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
      mandatory volta a ser seguro — nunca existe fundo de slide inalcançável.
      Footer ancora com snap-align end (não vira "slide vazio"). */
   @media (min-width: 900px) and (prefers-reduced-motion: no-preference) {
-    html { --navh: 60px; scroll-snap-type: y mandatory; scroll-padding-top: var(--navh); }
+    html { --navh: ${navH}px; scroll-snap-type: y mandatory; scroll-padding-top: var(--navh); }
     .nav { height: var(--navh); }
     .nav .nav-inner { height: 100%; padding: 0 24px; }
     main > section, main > header.hero { scroll-snap-align: start; scroll-snap-stop: always;
@@ -364,7 +379,7 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
 ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados de exemplo, nada é salvo</div>' : ""}
 <nav class="nav">
   <div class="nav-inner">
-    ${logo || `<span class="nav-brand">${String(p.name || "Proposta").replace(/</g, "&lt;")}</span>`}
+    ${navBrand}
     <span class="nav-meta">Proposta · <b id="nav-date"></b></span>
   </div>
 </nav>
@@ -472,6 +487,14 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     if (path.indexOf('calc.') === 0 || path.indexOf('state.') === 0) return '<span data-fill="' + path + '"></span>';
     if (CALC.seatsKey && path === 'answers.' + CALC.seatsKey) return '<span data-fill="state.accounts"></span>';
     if (CALC.volumeKey && path === 'answers.' + CALC.volumeKey) return '<span data-fill="state.volume"></span>';
+    // answers.* podem ter rótulo humano em calc.answerLabels[key] (ex.: niche
+    // "autopecas" → "Autopeças"); cai no valor cru quando não há mapa.
+    if (path.indexOf('answers.') === 0) {
+      var akey = path.slice(8);
+      var raw = getPath(DATA, path);
+      var map = (CALC.answerLabels || {})[akey];
+      return esc(String(map && map[raw] != null ? map[raw] : raw));
+    }
     return esc(String(getPath(DATA, path)));
   }
   // Interpolação: {{calc.x}}/{{state.x}} viram spans dinâmicos (recalculados pelo
@@ -619,7 +642,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       var g = el('div', 'grid g-4');
       g.style.marginTop = '48px';
       (s.cards || []).forEach(function (c) {
-        g.innerHTML += '<div class="card" data-reveal><div class="diag-label">' + fmt(c.label) + '</div><div class="diag-value">' + fmt(c.value) + '</div>' + (c.tag ? '<div class="diag-tag">' + fmt(c.tag) + '</div>' : '') + '</div>';
+        g.innerHTML += '<div class="card" data-reveal><div class="diag-label">' + fmt(c.label) + '</div><div class="diag-value' + (c.small ? ' sm' : '') + '">' + fmt(c.value) + '</div>' + (c.tag ? '<div class="diag-tag">' + fmt(c.tag) + '</div>' : '') + '</div>';
       });
       if (s.highlight && s.highlight.title) {
         g.innerHTML += '<div class="card accent diag-highlight" data-reveal><div><div class="diag-label" style="color:var(--accent)">' + fmt(s.highlight.label || '') + '</div><h3>' + fmt(s.highlight.title) + '</h3></div>' + (s.highlight.pill ? '<span class="pill accent">' + fmt(s.highlight.pill) + '</span>' : '') + '</div>';
@@ -669,9 +692,16 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       sec.appendChild(el('div', 'atmos'));
       var w = el('div', 'wrap');
       w.appendChild(band(s, num, total));
-      function col(c, kind) {
-        var pts = (c.points || []).map(function (pt) { return '<div class="point ' + (kind === 'before' ? 'cross' : 'check') + '"><span class="point-body">' + fmt(pt) + '</span></div>'; }).join('');
-        return '<div class="compare-col ' + kind + '"><div class="compare-lbl">▍ ' + fmt(c.label || '') + '</div><div class="compare-num">' + fmt(c.num || '') + '<span class="unit"> ' + fmt(c.unit || '') + '</span></div><div class="compare-sub">' + fmt(c.sub || '') + '</div><div class="point-list">' + pts + '</div></div>';
+      // tone controla a COR da coluna (good = accent/check, bad = erro/cross),
+      // independente da posição. Default segue a posição (before = bad, after =
+      // good) — compatível com templates antigos. Permite duas colunas positivas
+      // lado a lado (ex.: economia | receita).
+      function col(c, pos) {
+        var tone = c.tone || (pos === 'before' ? 'bad' : 'good');
+        var vis = tone === 'good' ? 'after' : 'before';
+        var ptCls = tone === 'good' ? 'check' : 'cross';
+        var pts = (c.points || []).map(function (pt) { return '<div class="point ' + ptCls + '"><span class="point-body">' + fmt(pt) + '</span></div>'; }).join('');
+        return '<div class="compare-col ' + vis + '">' + (c.kicker ? '<div class="compare-kicker">' + fmt(c.kicker) + '</div>' : '') + '<div class="compare-lbl">▍ ' + fmt(c.label || '') + '</div><div class="compare-num">' + fmt(c.num || '') + '<span class="unit"> ' + fmt(c.unit || '') + '</span></div><div class="compare-sub">' + fmt(c.sub || '') + '</div><div class="point-list">' + pts + '</div></div>';
       }
       var cmp = el('div', 'compare');
       cmp.setAttribute('data-reveal', '');
