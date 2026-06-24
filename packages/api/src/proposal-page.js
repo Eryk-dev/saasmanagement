@@ -224,7 +224,7 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .light .band { border-bottom-color: color-mix(in oklab, var(--bg) 15%, transparent); }
   .light .band-num { color: color-mix(in oklab, var(--bg) 50%, transparent); }
   .price-wrap { display: grid; grid-template-columns: 1fr; gap: 24px; align-items: start; }
-  @media (min-width: 900px) { .price-wrap { grid-template-columns: 1.1fr .9fr; gap: 48px; } }
+  @media (min-width: 900px) { .price-wrap { grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; } }
   .plan-opts { display: grid; grid-template-columns: 1fr; gap: 14px; margin-bottom: 28px; }
   @media (min-width: 900px) { .plan-opts { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; } }
   .plan-opt { position: relative; text-align: left; background: var(--bg); color: var(--fg); border: 2px solid transparent;
