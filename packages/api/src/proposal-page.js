@@ -252,6 +252,11 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .price-number .per { font-size: 18px; color: var(--ink-3); margin-left: 6px; }
   .price-sub { margin-top: 14px; font-size: 14px; color: var(--ink-3); line-height: 1.5; }
   .price-cycles { margin-top: 10px; font-family: var(--font-mono); font-size: 12px; color: var(--accent); letter-spacing: .04em; }
+  /* Preço-âncora (de R$ X riscado) acima do valor e total riscado na linha de ciclos */
+  .price-from { font-family: var(--font-mono); font-size: 16px; color: var(--ink-4); text-decoration: line-through; margin-top: 24px; }
+  @media (min-width: 768px) { .price-from { font-size: 18px; } }
+  .price-from + .price-number { margin-top: 4px; }
+  .cycles-from { text-decoration: line-through; color: var(--ink-4); }
   .price-divider { height: 1px; background: var(--line); margin: 28px 0; }
   .price-list { list-style: none; display: flex; flex-direction: column; gap: 12px; font-size: 16px; color: var(--ink-2); }
   .price-list li { display: flex; gap: 12px; align-items: flex-start; }
@@ -740,9 +745,10 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       pw.innerHTML =
         '<div class="price-card" data-reveal>' + (s.planPill ? '<span class="pill accent">' + fmt(s.planPill) + '</span>' : '') +
           '<div class="price-tag">' + fmt(s.planTag || '') + '</div>' +
+          (s.priceFrom ? '<div class="price-from">de R$ ' + fmt(s.priceFrom) + '</div>' : '') +
           '<div class="price-number"><span class="currency">R$</span><span class="amount">' + fmt(s.price || '{{calc.preco}}') + '</span><span class="per">' + fmt(s.per || '/ mês') + '</span></div>' +
           (s.sub ? '<div class="price-sub">' + fmt(s.sub) + '</div>' : '') +
-          '<div class="price-cycles">' + fmt(s.cycles != null ? s.cycles : '{{calc.precoCiclos}}') + '</div>' +
+          '<div class="price-cycles">' + (s.cyclesLabel ? fmt(s.cyclesLabel) + ' ' : '') + (s.cyclesFrom ? '<span class="cycles-from">' + fmt(s.cyclesFrom) + '</span> ' : '') + fmt(s.cycles != null ? s.cycles : '{{calc.precoCiclos}}') + '</div>' +
           '<div class="price-divider"></div><ul class="price-list">' + feats + '</ul></div>' +
         '<div data-reveal><div class="guarantee"><div class="guarantee-head">' +
           '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L4 6v6c0 5.5 3.5 9.5 8 10 4.5-.5 8-4.5 8-10V6l-8-4z" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
