@@ -258,7 +258,7 @@ function PipelineBand({ s, leads, onMove, highlight, onOpenLead }) {
             cards={byStage[st] || []}
             highlight={highlight === st}
             isFirst={i === 0}
-            nextStage={stages[i + 1] || null}
+            stages={stages}
             onMove={onMove}
             onDropCard={(id) => { onMove(id, st); setDragging(null); }}
             dragging={dragging}
@@ -286,7 +286,7 @@ function KanbanBoard({ stages, stageMeta = {}, byStage, highlight, onMove, selec
           cards={byStage[st] || []}
           highlight={highlight === st}
           isFirst={i === 0}
-          nextStage={stages[i + 1] || null}
+          stages={stages}
           onMove={onMove}
           onDropCard={(id) => { onMove(id, st); setDragging(null); }}
           dragging={dragging}
@@ -300,7 +300,7 @@ function KanbanBoard({ stages, stageMeta = {}, byStage, highlight, onMove, selec
   );
 }
 
-function KanbanColumn({ stage, meta, cards, highlight, isFirst, nextStage, onMove, onDropCard, dragging, setDragging, selected, setSelected, compact, onOpenLead }) {
+function KanbanColumn({ stage, meta, cards, highlight, isFirst, stages, onMove, onDropCard, dragging, setDragging, selected, setSelected, compact, onOpenLead }) {
   const [over, setOver] = useStP(false);
   const total = cards.reduce((a, l) => a + (l.amount || 0), 0);
   // Auto-regra de Ajustes: idade numérica (dias) ≥ staleDays → card "parado".
@@ -335,8 +335,9 @@ function KanbanColumn({ stage, meta, cards, highlight, isFirst, nextStage, onMov
           key={l.id} d={l}
           stale={isStale(l)}
           inbox={isFirst}
-          nextStage={nextStage}
-          onAdvance={nextStage && onMove ? () => onMove(l.id, nextStage) : null}
+          stages={stages}
+          currentStage={stage}
+          onMove={onMove}
           onDragStart={() => setDragging(l.id)}
           selected={selected.has(l.id)}
           onSelect={() => {
@@ -350,7 +351,7 @@ function KanbanColumn({ stage, meta, cards, highlight, isFirst, nextStage, onMov
   );
 }
 
-function LeadCard({ d, stale, inbox, nextStage, onAdvance, onDragStart, selected, onSelect, onOpen }) {
+function LeadCard({ d, stale, inbox, stages, currentStage, onMove, onDragStart, selected, onSelect, onOpen }) {
   const { PEOPLE } = window.SEED;
   const owner = PEOPLE[d.owner];
   const scoreTone = leadScoreTone(d.score);
@@ -358,6 +359,9 @@ function LeadCard({ d, stale, inbox, nextStage, onAdvance, onDragStart, selected
   const commentCount = (d.comments || []).length;
   // Atalho de WhatsApp só nos cards do inbox (primeiro estágio) e quando há telefone.
   const wa = inbox ? waLink(d.phone) : null;
+  // Seletor de etapa: lista todos os estágios menos o atual; mover = onMove(id, alvo).
+  const moveTargets = (stages || []).filter((s) => s !== currentStage);
+  const canMove = !!onMove && moveTargets.length > 0;
 
   return (
     <div
@@ -388,7 +392,7 @@ function LeadCard({ d, stale, inbox, nextStage, onAdvance, onDragStart, selected
         </div>
         <span className="mono dim" style={{ fontSize: 10 }}>{d.source}</span>
       </div>
-      {(wa || onAdvance) && (
+      {(wa || canMove) && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
           {wa && (
             <a href={wa} target="_blank" rel="noopener noreferrer" title={`Abrir WhatsApp · ${d.phone}`}
@@ -397,12 +401,15 @@ function LeadCard({ d, stale, inbox, nextStage, onAdvance, onDragStart, selected
               WhatsApp ↗
             </a>
           )}
-          {onAdvance && (
-            <button title={`Mover para ${nextStage}`}
-              onClick={(e) => { e.stopPropagation(); onAdvance(); }}
-              style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5, height: 24, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 11, fontFamily: "var(--mono)", maxWidth: "100%", overflow: "hidden" }}>
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nextStage}</span> →
-            </button>
+          {canMove && (
+            <select value="" title="Mover para outra etapa"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => { const v = e.target.value; e.target.value = ""; if (v) onMove(d.id, v); }}
+              style={{ marginLeft: "auto", maxWidth: "60%", height: 24, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 11, fontFamily: "var(--mono)", cursor: "pointer" }}>
+              <option value="" disabled>Mover →</option>
+              {moveTargets.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
           )}
         </div>
       )}
