@@ -149,7 +149,7 @@ function newForm(saasId) {
     theme: { ...THEME_DEFAULTS },
     welcome: null,
     questions: [{ key: "nome", label: "Qual é o seu nome?", type: "text", required: true, placeholder: "", help: "", options: [] }],
-    thanks: { title: "Recebido! Obrigado.", subtitle: "", redirectUrl: "" },
+    thanks: { title: "Recebido! Obrigado.", subtitle: "", redirectUrl: "", whatsapp: "", whatsappMsg: "" },
     reject: { title: "", subtitle: "" },
     mapping: { name: "nome" },
   };
@@ -287,6 +287,8 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
             <LabeledInput label="Título" value={draft.thanks?.title || ""} onChange={(v) => set({ thanks: { ...draft.thanks, title: v } })} />
             <LabeledInput label="Subtítulo" value={draft.thanks?.subtitle || ""} onChange={(v) => set({ thanks: { ...draft.thanks, subtitle: v } })} />
             <LabeledInput label="Redirecionar para (URL, opcional)" value={draft.thanks?.redirectUrl || ""} onChange={(v) => set({ thanks: { ...draft.thanks, redirectUrl: v } })} placeholder="https://…" />
+            <LabeledInput label="WhatsApp do time (opcional)" value={draft.thanks?.whatsapp || ""} onChange={(v) => set({ thanks: { ...draft.thanks, whatsapp: v } })} placeholder="(11) 99999-9999" />
+            <LabeledInput label="Texto acima do botão WhatsApp" value={draft.thanks?.whatsappMsg || ""} onChange={(v) => set({ thanks: { ...draft.thanks, whatsappMsg: v } })} placeholder="Caso tenha ficado com alguma dúvida, você pode falar com nosso time agora." />
           </div>
 
           <div style={sectionTitle}>Tela final (não qualificado)</div>
