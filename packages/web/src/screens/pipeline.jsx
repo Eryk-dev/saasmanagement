@@ -49,6 +49,13 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     api.moveLead(leadId, stage).catch(err => console.warn("lead move not persisted:", err.message));
   }
 
+  // Edição inline de campos do card (ex.: data da call, valor/período da proposta).
+  // Otimista: atualiza a cópia local e persiste o patch (PATCH /api/leads/:id).
+  function patchLead(leadId, patch) {
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, ...patch } : l));
+    api.update("leads", leadId, patch).catch(err => console.warn("lead patch not persisted:", err.message));
+  }
+
   if (!s) return (
     <EmptyState
       title="Nenhum pipeline"
@@ -91,13 +98,14 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           byStage={byStage}
           highlight={highlight}
           onMove={moveLeadTo}
+          onPatch={patchLead}
           selected={selected}
           setSelected={setSelected}
           onOpenLead={onOpenLead}
         />
       )}
       {view === "all" && (
-        <AllPipelines leads={priLeads} onMove={moveLeadTo} highlight={highlight} onOpenLead={onOpenLead} />
+        <AllPipelines leads={priLeads} onMove={moveLeadTo} onPatch={patchLead} highlight={highlight} onOpenLead={onOpenLead} />
       )}
       {view === "list" && <LeadList leads={saasLeads} />}
       {view === "forecast" && <ForecastView s={s} leads={saasAll} />}
@@ -209,18 +217,18 @@ function ForecastCell({ label, v, d, dUnit, sub, invert }) {
 }
 
 // ─────────────────────────────────────────────── All pipelines (stacked)
-function AllPipelines({ leads, onMove, highlight, onOpenLead }) {
+function AllPipelines({ leads, onMove, onPatch, highlight, onOpenLead }) {
   const { SAAS } = window.SEED;
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "14px 0" }}>
       {SAAS.map(s => (
-        <PipelineBand key={s.id} s={s} leads={leads.filter(l => l.saas === s.id)} onMove={onMove} highlight={highlight} onOpenLead={onOpenLead} />
+        <PipelineBand key={s.id} s={s} leads={leads.filter(l => l.saas === s.id)} onMove={onMove} onPatch={onPatch} highlight={highlight} onOpenLead={onOpenLead} />
       ))}
     </div>
   );
 }
 
-function PipelineBand({ s, leads, onMove, highlight, onOpenLead }) {
+function PipelineBand({ s, leads, onMove, onPatch, highlight, onOpenLead }) {
   const [dragging, setDragging] = useStP(null);
   const [noop, setNoop] = useStP(new Set());
   const stages = s.funnel.map(f => f.stage);
@@ -259,6 +267,7 @@ function PipelineBand({ s, leads, onMove, highlight, onOpenLead }) {
             highlight={highlight === st}
             stages={stages}
             onMove={onMove}
+            onPatch={onPatch}
             onDropCard={(id) => { onMove(id, st); setDragging(null); }}
             dragging={dragging}
             setDragging={setDragging}
@@ -274,7 +283,7 @@ function PipelineBand({ s, leads, onMove, highlight, onOpenLead }) {
 }
 
 // ─────────────────────────────────────────────── Kanban
-function KanbanBoard({ stages, stageMeta = {}, byStage, highlight, onMove, selected, setSelected, onOpenLead }) {
+function KanbanBoard({ stages, stageMeta = {}, byStage, highlight, onMove, onPatch, selected, setSelected, onOpenLead }) {
   const [dragging, setDragging] = useStP(null);
   return (
     <div style={{ flex: 1, overflowX: "auto", padding: 14, display: "grid", gridAutoFlow: "column", gridAutoColumns: "minmax(260px, 1fr)", gap: 10, alignItems: "start" }}>
@@ -286,6 +295,7 @@ function KanbanBoard({ stages, stageMeta = {}, byStage, highlight, onMove, selec
           highlight={highlight === st}
           stages={stages}
           onMove={onMove}
+          onPatch={onPatch}
           onDropCard={(id) => { onMove(id, st); setDragging(null); }}
           dragging={dragging}
           setDragging={setDragging}
@@ -298,7 +308,7 @@ function KanbanBoard({ stages, stageMeta = {}, byStage, highlight, onMove, selec
   );
 }
 
-function KanbanColumn({ stage, meta, cards, highlight, stages, onMove, onDropCard, dragging, setDragging, selected, setSelected, compact, onOpenLead }) {
+function KanbanColumn({ stage, meta, cards, highlight, stages, onMove, onPatch, onDropCard, dragging, setDragging, selected, setSelected, compact, onOpenLead }) {
   const [over, setOver] = useStP(false);
   const total = cards.reduce((a, l) => a + (l.amount || 0), 0);
   // Auto-regra de Ajustes: idade numérica (dias) ≥ staleDays → card "parado".
@@ -335,6 +345,7 @@ function KanbanColumn({ stage, meta, cards, highlight, stages, onMove, onDropCar
           stages={stages}
           currentStage={stage}
           onMove={onMove}
+          onPatch={onPatch}
           onDragStart={() => setDragging(l.id)}
           selected={selected.has(l.id)}
           onSelect={() => {
@@ -348,9 +359,38 @@ function KanbanColumn({ stage, meta, cards, highlight, stages, onMove, onDropCar
   );
 }
 
-function LeadCard({ d, stale, stages, currentStage, onMove, onDragStart, selected, onSelect, onOpen }) {
+// Bloco de campo editável no card (label + um ou mais inputs empilhados).
+function CardEdit({ label, children }) {
+  return (
+    <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}
+      draggable={false} onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+      <span className="mono dim" style={{ fontSize: 10 }}>{label}</span>
+      {children}
+    </div>
+  );
+}
+
+// Input inline com estado local; persiste no blur (ou no change, p/ datetime).
+// Para o card não abrir o drawer / iniciar drag, os eventos param de propagar.
+function CardInput({ value, onCommit, type = "text", placeholder, commitOnChange }) {
+  const [v, setV] = useStP(value ?? "");
+  React.useEffect(() => { setV(value ?? ""); }, [value]);
+  const commit = () => { if ((v ?? "") !== (value ?? "")) onCommit(v); };
+  return (
+    <input
+      type={type} value={v} placeholder={placeholder} draggable={false}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => { setV(e.target.value); if (commitOnChange) onCommit(e.target.value); }}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); e.target.blur(); } }}
+      style={{ height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)", width: "100%", boxSizing: "border-box" }}
+    />
+  );
+}
+
+function LeadCard({ d, stale, stages, currentStage, onMove, onPatch, onDragStart, selected, onSelect, onOpen }) {
   const scoreTone = leadScoreTone(d.score);
-  const commentCount = (d.comments || []).length;
   // Atalho de WhatsApp em qualquer card que tenha telefone (todas as colunas).
   const wa = waLink(d.phone);
   // Seletor de etapa: lista todos os estágios menos o atual; mover = onMove(id, alvo).
@@ -400,11 +440,23 @@ function LeadCard({ d, stale, stages, currentStage, onMove, onDragStart, selecte
           ))}
         </div>
       )}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, fontSize: 10, color: "var(--fg-3)" }}>
-        <span className="mono">{leadAge(d)}</span>
-        {stale && <span className="mono" style={{ color: "var(--neg)" }}>· parado</span>}
-        {commentCount > 0 && <span className="mono" title={`${commentCount} comentário(s)`}>· ❞ {commentCount}</span>}
-      </div>
+      {stale && <div className="mono" style={{ marginTop: 6, fontSize: 10, color: "var(--neg)" }}>parado</div>}
+
+      {/* Campos editáveis por estágio: data da call (Call closer); valor/período da proposta (Negociação). */}
+      {currentStage === "Call closer" && onPatch && (
+        <CardEdit label="Dia e horário da call">
+          <CardInput type="datetime-local" commitOnChange value={d.callAt}
+            onCommit={(v) => onPatch(d.id, { callAt: v })} />
+        </CardEdit>
+      )}
+      {currentStage === "Negociação" && onPatch && (
+        <CardEdit label="Proposta">
+          <CardInput type="number" placeholder="Valor (R$)" value={d.proposalValue}
+            onCommit={(v) => onPatch(d.id, { proposalValue: v === "" ? "" : Number(v) })} />
+          <CardInput type="text" placeholder="Período (ex: 12 meses)" value={d.proposalPeriod}
+            onCommit={(v) => onPatch(d.id, { proposalPeriod: v })} />
+        </CardEdit>
+      )}
       {(wa || canMove) && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
           {wa && (
