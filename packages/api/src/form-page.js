@@ -225,6 +225,10 @@ ${metaPixelHead}
   /* Tela de NÃO-qualificado: ícone neutro, sem o verde/glow comemorativo nem o anel. */
   .success-icon.neg { background: var(--surface); border-color: var(--line); color: var(--ink-3); }
   .success-icon.neg::before, .success-icon.neg::after { display: none; }
+  /* CTA WhatsApp na tela final — "fale com o time". */
+  .wa-cta { display: inline-flex; align-items: center; justify-content: center; gap: 8px; margin-top: 20px; padding: 13px 22px; border-radius: 999px; background: #25D366; color: #06120c; font-weight: 600; font-size: 15px; text-decoration: none; box-shadow: 0 6px 22px -8px rgba(37,211,102,.6); transition: transform .15s ease, box-shadow .15s ease; }
+  .wa-cta:hover { transform: translateY(-1px); box-shadow: 0 10px 28px -8px rgba(37,211,102,.7); }
+  .wa-cta svg { width: 20px; height: 20px; }
   .hp { position: absolute; left: -9999px; opacity: 0; height: 0; width: 0; pointer-events: none; }
 </style>
 </head>
@@ -313,6 +317,8 @@ ${metaPixelHead}
   // *palavra* vira <em> (itálico na cor da marca) — depois do escape, seguro.
   function fmt(s) { return esc(s).replace(/\\*([^*]+)\\*/g, '<em>$1</em>'); }
   function pad(n) { return String(n).padStart(2, '0'); }
+  // Telefone livre -> dígitos do wa.me. Número local BR (<=11 díg, com DDD) ganha o DDI 55.
+  function waDigits(p) { if (!p) return ''; var d = String(p).replace(/\\D/g, ''); if (!d) return ''; if (d.length <= 11) d = '55' + d; return d; }
 
   function topBar(showBack, showPill) {
     var top = el('div', 'top');
@@ -593,6 +599,19 @@ ${metaPixelHead}
     var defTitle = rejected ? 'Obrigado pelo seu interesse!' : 'Recebido! Obrigado.';
     wrap.appendChild(el('h1', 'q', fmt(t.title || defTitle)));
     if (t.subtitle) wrap.appendChild(el('div', 'sub', fmt(t.subtitle)));
+    // CTA WhatsApp opcional: "fale com o time agora". Mostra quando o form tem número.
+    var waNum = waDigits(t.whatsapp);
+    if (waNum) {
+      var waMsg = t.whatsappMsg || 'Caso tenha ficado com alguma dúvida, você pode falar com nosso time agora.';
+      wrap.appendChild(el('div', 'sub', fmt(waMsg)));
+      var wa = el('a', 'wa-cta',
+        '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm0 18.05h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.18 8.18 0 0 1-1.26-4.36c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.82 2.42a8.19 8.19 0 0 1 2.41 5.82c0 4.54-3.69 8.23-8.21 8.23zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.12-.16.25-.64.81-.79.98-.14.16-.29.18-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.5.11-.11.25-.29.37-.43.13-.14.17-.25.25-.41.08-.16.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.4-.42-.56-.43-.14-.01-.31-.01-.47-.01-.16 0-.43.06-.65.31-.22.25-.86.84-.86 2.05 0 1.21.88 2.38 1 2.54.12.16 1.73 2.64 4.2 3.7.59.25 1.04.4 1.4.52.59.19 1.12.16 1.54.1.47-.07 1.47-.6 1.67-1.18.21-.58.21-1.07.15-1.18-.06-.11-.22-.17-.47-.29z"/></svg>'
+        + ' Falar no WhatsApp');
+      wa.href = 'https://wa.me/' + waNum;
+      wa.target = '_blank';
+      wa.rel = 'noopener noreferrer';
+      wrap.appendChild(wa);
+    }
     if (!rejected && t.redirectUrl) wrap.appendChild(el('div', 'sub', 'Redirecionando…'));
     s.appendChild(wrap);
     root.appendChild(s);
