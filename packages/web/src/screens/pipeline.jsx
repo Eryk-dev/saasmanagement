@@ -397,8 +397,8 @@ function LeadCard({ d, stale, inbox, stages, currentStage, onMove, onDragStart, 
           {wa && (
             <a href={wa} target="_blank" rel="noopener noreferrer" title={`Abrir WhatsApp · ${d.phone}`}
               draggable={false} onClick={(e) => e.stopPropagation()}
-              style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 24, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid #25D36655", background: "#25D3660f", color: "#25D366", fontSize: 11, fontFamily: "var(--mono)", textDecoration: "none" }}>
-              WhatsApp ↗
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 24, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid #25D36655", background: "#25D3660f", color: "#25D366", fontSize: 11, fontFamily: "var(--mono)", textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0 }}>
+              Wpp ↗
             </a>
           )}
           {canMove && (
