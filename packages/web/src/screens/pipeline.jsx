@@ -1,5 +1,5 @@
 import React from "react";
-import { Avatar, TrendBadge, EmptyState, PrimaryButton } from "../atoms.jsx";
+import { TrendBadge, EmptyState, PrimaryButton } from "../atoms.jsx";
 import { DeltaInline } from "../charts.jsx";
 import { chromeBtnStyleSmall, leadScoreTone, leadAge, waLink } from "../lib/ui.js";
 import { api } from "../lib/api.js";
@@ -349,16 +349,28 @@ function KanbanColumn({ stage, meta, cards, highlight, stages, onMove, onDropCar
 }
 
 function LeadCard({ d, stale, stages, currentStage, onMove, onDragStart, selected, onSelect, onOpen }) {
-  const { PEOPLE } = window.SEED;
-  const owner = PEOPLE[d.owner];
   const scoreTone = leadScoreTone(d.score);
-  const priTone = d.priority === "P0" ? "var(--neg)" : d.priority === "P1" ? "var(--warn)" : "var(--fg-4)";
   const commentCount = (d.comments || []).length;
   // Atalho de WhatsApp em qualquer card que tenha telefone (todas as colunas).
   const wa = waLink(d.phone);
   // Seletor de etapa: lista todos os estágios menos o atual; mover = onMove(id, alvo).
   const moveTargets = (stages || []).filter((s) => s !== currentStage);
   const canMove = !!onMove && moveTargets.length > 0;
+  // Resumo de qualificação no card: resolve o valor da resposta -> rótulo amigável
+  // a partir das leadQuestions do SaaS (contas / time / volume de anúncios).
+  const saasCfg = (window.SEED?.SAAS || []).find((x) => x.id === d.saas);
+  const qa = (key) => {
+    const q = (saasCfg?.leadQuestions || []).find((x) => x.key === key);
+    const raw = d[key];
+    if (q == null || raw == null || raw === "" || (Array.isArray(raw) && raw.length === 0)) return null;
+    const lut = Object.fromEntries((q.options || []).map((o) => [o.value, o.label]));
+    return Array.isArray(raw) ? raw.map((v) => lut[v] || v).join(", ") : (lut[raw] || raw);
+  };
+  const qaRows = [
+    ["Contas", qa("accounts")],
+    ["Funcionários", qa("staff")],
+    ["Anúncios/sem", qa("volume")],
+  ].filter(([, v]) => v != null && v !== "");
 
   return (
     <div
@@ -378,16 +390,20 @@ function LeadCard({ d, stale, stages, currentStage, onMove, onDragStart, selecte
         <span className="mono tnum dim" style={{ fontSize: 11, flexShrink: 0 }}>{window.fmt.money(d.amount || 0)}</span>
       </div>
       {d.company && <div className="mono dim" style={{ fontSize: 10, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.company}</div>}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6, gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--fg-3)", minWidth: 0 }}>
-          <Avatar id={d.owner} name={owner?.name || d.owner} size={16} />
-          <span className="mono">{leadAge(d)}</span>
-          {stale && <span className="mono" style={{ color: "var(--neg)" }}>· parado</span>}
-          {d.priority && <span className="mono" style={{ color: priTone }}>· {d.priority}</span>}
-          {d.proposalUrl && <span className="mono" style={{ color: "var(--accent)" }}>· prop</span>}
-          {commentCount > 0 && <span className="mono" title={`${commentCount} comentário(s)`}>· ❞ {commentCount}</span>}
+      {qaRows.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 6 }}>
+          {qaRows.map(([label, value]) => (
+            <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 10 }}>
+              <span className="mono dim" style={{ flexShrink: 0 }}>{label}</span>
+              <span className="mono" style={{ color: "var(--fg-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</span>
+            </div>
+          ))}
         </div>
-        <span className="mono dim" style={{ fontSize: 10 }}>{d.source}</span>
+      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, fontSize: 10, color: "var(--fg-3)" }}>
+        <span className="mono">{leadAge(d)}</span>
+        {stale && <span className="mono" style={{ color: "var(--neg)" }}>· parado</span>}
+        {commentCount > 0 && <span className="mono" title={`${commentCount} comentário(s)`}>· ❞ {commentCount}</span>}
       </div>
       {(wa || canMove) && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
