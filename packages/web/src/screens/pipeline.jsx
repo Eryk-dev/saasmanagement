@@ -251,13 +251,15 @@ function PipelineBand({ s, leads, onMove, highlight, onOpenLead }) {
       </div>
       {/* Horizontal kanban */}
       <div style={{ overflowX: "auto", padding: "0 24px 4px", display: "grid", gridAutoFlow: "column", gridAutoColumns: "minmax(220px, 1fr)", gap: 10, alignItems: "start" }}>
-        {stages.map(st => (
+        {stages.map((st, i) => (
           <KanbanColumn key={st}
             stage={st}
             meta={stageMeta[st]}
             cards={byStage[st] || []}
             highlight={highlight === st}
-            isFirst={st === stages[0]}
+            isFirst={i === 0}
+            nextStage={stages[i + 1] || null}
+            onMove={onMove}
             onDropCard={(id) => { onMove(id, st); setDragging(null); }}
             dragging={dragging}
             setDragging={setDragging}
@@ -277,13 +279,15 @@ function KanbanBoard({ stages, stageMeta = {}, byStage, highlight, onMove, selec
   const [dragging, setDragging] = useStP(null);
   return (
     <div style={{ flex: 1, overflowX: "auto", padding: 14, display: "grid", gridAutoFlow: "column", gridAutoColumns: "minmax(260px, 1fr)", gap: 10, alignItems: "start" }}>
-      {stages.map(st => (
+      {stages.map((st, i) => (
         <KanbanColumn key={st}
           stage={st}
           meta={stageMeta[st]}
           cards={byStage[st] || []}
           highlight={highlight === st}
-          isFirst={st === stages[0]}
+          isFirst={i === 0}
+          nextStage={stages[i + 1] || null}
+          onMove={onMove}
           onDropCard={(id) => { onMove(id, st); setDragging(null); }}
           dragging={dragging}
           setDragging={setDragging}
@@ -296,7 +300,7 @@ function KanbanBoard({ stages, stageMeta = {}, byStage, highlight, onMove, selec
   );
 }
 
-function KanbanColumn({ stage, meta, cards, highlight, isFirst, onDropCard, dragging, setDragging, selected, setSelected, compact, onOpenLead }) {
+function KanbanColumn({ stage, meta, cards, highlight, isFirst, nextStage, onMove, onDropCard, dragging, setDragging, selected, setSelected, compact, onOpenLead }) {
   const [over, setOver] = useStP(false);
   const total = cards.reduce((a, l) => a + (l.amount || 0), 0);
   // Auto-regra de Ajustes: idade numérica (dias) ≥ staleDays → card "parado".
@@ -331,6 +335,8 @@ function KanbanColumn({ stage, meta, cards, highlight, isFirst, onDropCard, drag
           key={l.id} d={l}
           stale={isStale(l)}
           inbox={isFirst}
+          nextStage={nextStage}
+          onAdvance={nextStage && onMove ? () => onMove(l.id, nextStage) : null}
           onDragStart={() => setDragging(l.id)}
           selected={selected.has(l.id)}
           onSelect={() => {
@@ -344,7 +350,7 @@ function KanbanColumn({ stage, meta, cards, highlight, isFirst, onDropCard, drag
   );
 }
 
-function LeadCard({ d, stale, inbox, onDragStart, selected, onSelect, onOpen }) {
+function LeadCard({ d, stale, inbox, nextStage, onAdvance, onDragStart, selected, onSelect, onOpen }) {
   const { PEOPLE } = window.SEED;
   const owner = PEOPLE[d.owner];
   const scoreTone = leadScoreTone(d.score);
@@ -382,12 +388,23 @@ function LeadCard({ d, stale, inbox, onDragStart, selected, onSelect, onOpen }) 
         </div>
         <span className="mono dim" style={{ fontSize: 10 }}>{d.source}</span>
       </div>
-      {wa && (
-        <a href={wa} target="_blank" rel="noopener noreferrer" title={`Abrir WhatsApp · ${d.phone}`}
-          draggable={false} onClick={(e) => e.stopPropagation()}
-          style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 8, height: 24, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid #25D36655", background: "#25D3660f", color: "#25D366", fontSize: 11, fontFamily: "var(--mono)", textDecoration: "none" }}>
-          WhatsApp ↗
-        </a>
+      {(wa || onAdvance) && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
+          {wa && (
+            <a href={wa} target="_blank" rel="noopener noreferrer" title={`Abrir WhatsApp · ${d.phone}`}
+              draggable={false} onClick={(e) => e.stopPropagation()}
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 24, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid #25D36655", background: "#25D3660f", color: "#25D366", fontSize: 11, fontFamily: "var(--mono)", textDecoration: "none" }}>
+              WhatsApp ↗
+            </a>
+          )}
+          {onAdvance && (
+            <button title={`Mover para ${nextStage}`}
+              onClick={(e) => { e.stopPropagation(); onAdvance(); }}
+              style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5, height: 24, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 11, fontFamily: "var(--mono)", maxWidth: "100%", overflow: "hidden" }}>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nextStage}</span> →
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
