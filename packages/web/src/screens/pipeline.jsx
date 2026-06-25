@@ -257,7 +257,6 @@ function PipelineBand({ s, leads, onMove, highlight, onOpenLead }) {
             meta={stageMeta[st]}
             cards={byStage[st] || []}
             highlight={highlight === st}
-            isFirst={i === 0}
             stages={stages}
             onMove={onMove}
             onDropCard={(id) => { onMove(id, st); setDragging(null); }}
@@ -285,7 +284,6 @@ function KanbanBoard({ stages, stageMeta = {}, byStage, highlight, onMove, selec
           meta={stageMeta[st]}
           cards={byStage[st] || []}
           highlight={highlight === st}
-          isFirst={i === 0}
           stages={stages}
           onMove={onMove}
           onDropCard={(id) => { onMove(id, st); setDragging(null); }}
@@ -300,7 +298,7 @@ function KanbanBoard({ stages, stageMeta = {}, byStage, highlight, onMove, selec
   );
 }
 
-function KanbanColumn({ stage, meta, cards, highlight, isFirst, stages, onMove, onDropCard, dragging, setDragging, selected, setSelected, compact, onOpenLead }) {
+function KanbanColumn({ stage, meta, cards, highlight, stages, onMove, onDropCard, dragging, setDragging, selected, setSelected, compact, onOpenLead }) {
   const [over, setOver] = useStP(false);
   const total = cards.reduce((a, l) => a + (l.amount || 0), 0);
   // Auto-regra de Ajustes: idade numérica (dias) ≥ staleDays → card "parado".
@@ -334,7 +332,6 @@ function KanbanColumn({ stage, meta, cards, highlight, isFirst, stages, onMove, 
         <LeadCard
           key={l.id} d={l}
           stale={isStale(l)}
-          inbox={isFirst}
           stages={stages}
           currentStage={stage}
           onMove={onMove}
@@ -351,14 +348,14 @@ function KanbanColumn({ stage, meta, cards, highlight, isFirst, stages, onMove, 
   );
 }
 
-function LeadCard({ d, stale, inbox, stages, currentStage, onMove, onDragStart, selected, onSelect, onOpen }) {
+function LeadCard({ d, stale, stages, currentStage, onMove, onDragStart, selected, onSelect, onOpen }) {
   const { PEOPLE } = window.SEED;
   const owner = PEOPLE[d.owner];
   const scoreTone = leadScoreTone(d.score);
   const priTone = d.priority === "P0" ? "var(--neg)" : d.priority === "P1" ? "var(--warn)" : "var(--fg-4)";
   const commentCount = (d.comments || []).length;
-  // Atalho de WhatsApp só nos cards do inbox (primeiro estágio) e quando há telefone.
-  const wa = inbox ? waLink(d.phone) : null;
+  // Atalho de WhatsApp em qualquer card que tenha telefone (todas as colunas).
+  const wa = waLink(d.phone);
   // Seletor de etapa: lista todos os estágios menos o atual; mover = onMove(id, alvo).
   const moveTargets = (stages || []).filter((s) => s !== currentStage);
   const canMove = !!onMove && moveTargets.length > 0;
