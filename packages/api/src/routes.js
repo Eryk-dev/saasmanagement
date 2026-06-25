@@ -51,7 +51,9 @@ export const CREATE_DEFAULTS = {
   customers: { flags: [], health: 0, delta: 0, nps: 0, usage: "", lastTouch: "—", renewal: "—" },
   nps: { tags: [] },
   // comments = [{ id, author, text, at }] — anotações do card; o SPA faz PATCH do array inteiro (mesmo padrão de tasks).
-  leads: { priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", reason: "", source: "Form", age: "agora", stage: "", comments: [] },
+  // callAt = dia/horário da call (editável no card em "Call closer"); proposalValue/proposalPeriod = valor e período da
+  // proposta (editáveis no card em "Negociação"). Todos opcionais, preenchidos por PATCH inline.
+  leads: { priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", reason: "", source: "Form", age: "agora", stage: "", comments: [], callAt: "", proposalValue: "", proposalPeriod: "" },
   // `current`/`projected` saem do form (leitura ao vivo da meta) — default 0 até serem alimentados.
   goals: { current: 0, projected: 0 },
   forms: { status: "draft", theme: {}, welcome: null, questions: [], thanks: {}, mapping: {} },
