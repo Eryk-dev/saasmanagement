@@ -1,15 +1,36 @@
 import React from "react";
-import { RowActions } from "../atoms.jsx";
+import { Avatar, RowActions } from "../atoms.jsx";
 import { BigNumber } from "../charts.jsx";
 import { ProposalActions } from "../components/ProposalActions.jsx";
-import { leadScoreLabel, leadAge } from "../lib/ui.js";
+import { leadScoreLabel, leadAge, chromeBtnStyleSmall, waLink } from "../lib/ui.js";
+import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 // Lead detail drawer — slides over the pipeline when a card is opened.
 // (Funil unificado: o card do pipeline é um lead, então o detalhe é do lead.)
 
+// Usuário logado do time (mesmo slot do kanban de tarefas) — vira o autor do comentário.
+function currentUser() {
+  try { return JSON.parse(localStorage.getItem("cockpit_user") || "null"); } catch { return null; }
+}
+
 function LeadDetail({ lead, onClose }) {
   const { openForm, openDelete } = useData();
+  const [comments, setComments] = React.useState(lead?.comments || []);
+  const [newComment, setNewComment] = React.useState("");
+  React.useEffect(() => { setComments(lead?.comments || []); setNewComment(""); }, [lead?.id]);
   if (!lead) return null;
+  const wa = waLink(lead.phone);
+
+  async function addComment() {
+    const text = newComment.trim();
+    if (!text) return;
+    const me = currentUser();
+    const next = [...comments, { id: `c_${Date.now().toString(36)}`, author: me?.name || "API key", text, at: new Date().toISOString() }];
+    setComments(next); setNewComment("");
+    // Persiste o array inteiro (mesmo padrão de tasks) — otimista; ressincroniza com a resposta.
+    try { const saved = await api.update("leads", lead.id, { comments: next }); setComments(saved.comments || next); }
+    catch (err) { console.warn("comment not persisted:", err.message); }
+  }
   const { PEOPLE } = window.SEED;
   const owner = PEOPLE[lead.owner];
   const score = lead.score;
@@ -68,6 +89,12 @@ function LeadDetail({ lead, onClose }) {
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {wa && (
+              <a href={wa} target="_blank" rel="noopener noreferrer" title={`WhatsApp · ${lead.phone}`}
+                style={{ ...chromeBtnStyleSmall, color: "#25D366", borderColor: "#25D36655", textDecoration: "none" }}>
+                <span style={{ fontSize: 11 }}>WhatsApp ↗</span>
+              </a>
+            )}
             <RowActions
               onEdit={() => { onClose(); openForm("leads", lead); }}
               onDelete={() => { onClose(); openDelete("leads", lead); }}
@@ -109,6 +136,34 @@ function LeadDetail({ lead, onClose }) {
         <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)" }}>
           <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>Proposta</div>
           <ProposalActions l={lead} />
+        </div>
+
+        {/* Anotações do card — thread append-only (autor + data), mesmo padrão do kanban de tarefas. */}
+        <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", flexDirection: "column", flex: "1 1 auto", minHeight: 100, overflowY: "auto" }}>
+          <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>Comentários</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {comments.map((c) => (
+              <div key={c.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                <Avatar id={c.author} name={c.author} size={20} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+                    <span style={{ fontSize: 12, fontWeight: 500 }}>{c.author}</span>
+                    <span className="mono dim" style={{ fontSize: 10 }}>{c.at ? new Date(c.at).toLocaleDateString("pt-BR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--fg-2)", whiteSpace: "pre-wrap" }}>{c.text}</div>
+                </div>
+              </div>
+            ))}
+            {comments.length === 0 && <span className="mono dim" style={{ fontSize: 11 }}>sem comentários</span>}
+            <div style={{ display: "flex", gap: 6 }}>
+              <input value={newComment} onChange={(e) => setNewComment(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addComment(); } }}
+                placeholder="escreva uma anotação…" style={{ flex: 1, height: 30, fontSize: 13, padding: "0 10px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)" }} />
+              <button type="button" onClick={addComment} disabled={!newComment.trim()} style={{ ...chromeBtnStyleSmall, height: 30, opacity: newComment.trim() ? 1 : 0.5 }}>
+                <span style={{ fontSize: 11 }}>comentar</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         <div style={{ marginTop: "auto", padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", gap: 8, background: "var(--bg-inset)" }}>
