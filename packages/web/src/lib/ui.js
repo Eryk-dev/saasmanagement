@@ -27,3 +27,14 @@ export function leadAge(lead) {
   if (a == null || a === "") return "—";
   return typeof a === "number" ? `${a}d` : String(a);
 }
+
+// Link de conversa no WhatsApp a partir de um telefone livre. Sanitiza pra só
+// dígitos; número local brasileiro (≤11 dígitos, com DDD) recebe o DDI 55.
+// Retorna null quando não há dígitos — a UI esconde o atalho nesse caso.
+export function waLink(phone) {
+  if (!phone) return null;
+  let d = String(phone).replace(/\D/g, "");
+  if (!d) return null;
+  if (d.length <= 11) d = "55" + d;
+  return `https://wa.me/${d}`;
+}

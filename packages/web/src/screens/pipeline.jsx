@@ -1,7 +1,7 @@
 import React from "react";
 import { Avatar, TrendBadge, EmptyState, PrimaryButton } from "../atoms.jsx";
 import { DeltaInline } from "../charts.jsx";
-import { chromeBtnStyleSmall, leadScoreTone, leadAge } from "../lib/ui.js";
+import { chromeBtnStyleSmall, leadScoreTone, leadAge, waLink } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 // Pipeline — Kanban + List + Forecast tabs. Drag-and-drop between columns.
@@ -257,6 +257,7 @@ function PipelineBand({ s, leads, onMove, highlight, onOpenLead }) {
             meta={stageMeta[st]}
             cards={byStage[st] || []}
             highlight={highlight === st}
+            isFirst={st === stages[0]}
             onDropCard={(id) => { onMove(id, st); setDragging(null); }}
             dragging={dragging}
             setDragging={setDragging}
@@ -282,6 +283,7 @@ function KanbanBoard({ stages, stageMeta = {}, byStage, highlight, onMove, selec
           meta={stageMeta[st]}
           cards={byStage[st] || []}
           highlight={highlight === st}
+          isFirst={st === stages[0]}
           onDropCard={(id) => { onMove(id, st); setDragging(null); }}
           dragging={dragging}
           setDragging={setDragging}
@@ -294,7 +296,7 @@ function KanbanBoard({ stages, stageMeta = {}, byStage, highlight, onMove, selec
   );
 }
 
-function KanbanColumn({ stage, meta, cards, highlight, onDropCard, dragging, setDragging, selected, setSelected, compact, onOpenLead }) {
+function KanbanColumn({ stage, meta, cards, highlight, isFirst, onDropCard, dragging, setDragging, selected, setSelected, compact, onOpenLead }) {
   const [over, setOver] = useStP(false);
   const total = cards.reduce((a, l) => a + (l.amount || 0), 0);
   // Auto-regra de Ajustes: idade numérica (dias) ≥ staleDays → card "parado".
@@ -328,6 +330,7 @@ function KanbanColumn({ stage, meta, cards, highlight, onDropCard, dragging, set
         <LeadCard
           key={l.id} d={l}
           stale={isStale(l)}
+          inbox={isFirst}
           onDragStart={() => setDragging(l.id)}
           selected={selected.has(l.id)}
           onSelect={() => {
@@ -341,11 +344,14 @@ function KanbanColumn({ stage, meta, cards, highlight, onDropCard, dragging, set
   );
 }
 
-function LeadCard({ d, stale, onDragStart, selected, onSelect, onOpen }) {
+function LeadCard({ d, stale, inbox, onDragStart, selected, onSelect, onOpen }) {
   const { PEOPLE } = window.SEED;
   const owner = PEOPLE[d.owner];
   const scoreTone = leadScoreTone(d.score);
   const priTone = d.priority === "P0" ? "var(--neg)" : d.priority === "P1" ? "var(--warn)" : "var(--fg-4)";
+  const commentCount = (d.comments || []).length;
+  // Atalho de WhatsApp só nos cards do inbox (primeiro estágio) e quando há telefone.
+  const wa = inbox ? waLink(d.phone) : null;
 
   return (
     <div
@@ -372,9 +378,17 @@ function LeadCard({ d, stale, onDragStart, selected, onSelect, onOpen }) {
           {stale && <span className="mono" style={{ color: "var(--neg)" }}>· parado</span>}
           {d.priority && <span className="mono" style={{ color: priTone }}>· {d.priority}</span>}
           {d.proposalUrl && <span className="mono" style={{ color: "var(--accent)" }}>· prop</span>}
+          {commentCount > 0 && <span className="mono" title={`${commentCount} comentário(s)`}>· ❞ {commentCount}</span>}
         </div>
         <span className="mono dim" style={{ fontSize: 10 }}>{d.source}</span>
       </div>
+      {wa && (
+        <a href={wa} target="_blank" rel="noopener noreferrer" title={`Abrir WhatsApp · ${d.phone}`}
+          draggable={false} onClick={(e) => e.stopPropagation()}
+          style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 8, height: 24, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid #25D36655", background: "#25D3660f", color: "#25D366", fontSize: 11, fontFamily: "var(--mono)", textDecoration: "none" }}>
+          WhatsApp ↗
+        </a>
+      )}
     </div>
   );
 }
