@@ -457,6 +457,12 @@ function LeadCard({ d, stale, stages, currentStage, onMove, onPatch, onDragStart
             onCommit={(v) => onPatch(d.id, { proposalPeriod: v })} />
         </CardEdit>
       )}
+      {currentStage === "Integração" && onPatch && (
+        <CardEdit label="Dia e horário da integração">
+          <CardInput type="datetime-local" commitOnChange value={d.integrationAt}
+            onCommit={(v) => onPatch(d.id, { integrationAt: v })} />
+        </CardEdit>
+      )}
       {(wa || canMove) && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
           {wa && (
