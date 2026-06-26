@@ -44,7 +44,9 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   }, [leads, activeSaas, pri, stages.join("|")]);
 
   function moveLeadTo(leadId, stage) {
-    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stage } : l));
+    // stageSince local = agora: o contador "dias na coluna" zera na hora (o backend
+    // recarimba igual ao detectar a troca de estágio no PATCH).
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stage, stageSince: new Date().toISOString() } : l));
     // Persist the move to the API (optimistic — the UI already updated above).
     api.moveLead(leadId, stage).catch(err => console.warn("lead move not persisted:", err.message));
   }
@@ -308,12 +310,27 @@ function KanbanBoard({ stages, stageMeta = {}, byStage, highlight, onMove, onPat
   );
 }
 
+// Dias que o card está parado no estágio atual. Base: stageSince (carimbado a cada
+// mudança de estágio); fallback createdAt pra cards antigos que ainda não moveram.
+// null quando não há timestamp — aí o badge não aparece.
+function daysInStage(card) {
+  const ts = card?.stageSince || card?.createdAt;
+  if (!ts) return null;
+  const ms = Date.now() - new Date(ts).getTime();
+  if (!Number.isFinite(ms)) return null;
+  return Math.max(0, Math.floor(ms / 86400000));
+}
+
 function KanbanColumn({ stage, meta, cards, highlight, stages, onMove, onPatch, onDropCard, dragging, setDragging, selected, setSelected, compact, onOpenLead }) {
   const [over, setOver] = useStP(false);
   const total = cards.reduce((a, l) => a + (l.amount || 0), 0);
-  // Auto-regra de Ajustes: idade numérica (dias) ≥ staleDays → card "parado".
+  // Auto-regra de Ajustes: dias na coluna ≥ staleDays → card "parado" (badge vermelho).
   const staleDays = meta?.staleDays;
-  const isStale = (l) => staleDays != null && staleDays !== "" && typeof l.age === "number" && l.age >= Number(staleDays);
+  const isStale = (l) => {
+    if (staleDays == null || staleDays === "") return false;
+    const dd = daysInStage(l);
+    return dd != null && dd >= Number(staleDays);
+  };
   return (
     <div
       onDragOver={(e) => { e.preventDefault(); setOver(true); }}
@@ -334,7 +351,6 @@ function KanbanColumn({ stage, meta, cards, highlight, stages, onMove, onPatch, 
           {meta?.color && <span style={{ width: 8, height: 8, borderRadius: 2, background: meta.color, flexShrink: 0 }} />}
           {stage}
           <span className="mono dim" style={{ fontSize: 10 }}>{cards.length}</span>
-          {staleDays != null && staleDays !== "" && <span className="mono dim" style={{ fontSize: 9 }}>parado→{staleDays}d</span>}
         </div>
         <span className="mono tnum dim" style={{ fontSize: 11 }}>{window.fmt.money(total)}</span>
       </div>
@@ -391,6 +407,7 @@ function CardInput({ value, onCommit, type = "text", placeholder, commitOnChange
 
 function LeadCard({ d, stale, stages, currentStage, onMove, onPatch, onDragStart, selected, onSelect, onOpen }) {
   const scoreTone = leadScoreTone(d.score);
+  const days = daysInStage(d);
   // Atalho de WhatsApp em qualquer card que tenha telefone (todas as colunas).
   const wa = waLink(d.phone);
   // Seletor de etapa: lista todos os estágios menos o atual; mover = onMove(id, alvo).
@@ -427,7 +444,10 @@ function LeadCard({ d, stale, stages, currentStage, onMove, onPatch, onDragStart
       }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
         <span style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{d.name}</span>
-        <span className="mono tnum dim" style={{ fontSize: 11, flexShrink: 0 }}>{window.fmt.money(d.amount || 0)}</span>
+        <span style={{ display: "flex", alignItems: "baseline", gap: 6, flexShrink: 0 }}>
+          {days != null && <span className="mono" style={{ fontSize: 10, color: stale ? "var(--neg)" : "var(--fg-3)" }}>{days}d</span>}
+          <span className="mono tnum dim" style={{ fontSize: 11 }}>{window.fmt.money(d.amount || 0)}</span>
+        </span>
       </div>
       {d.company && <div className="mono dim" style={{ fontSize: 10, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.company}</div>}
       {qaRows.length > 0 && (
@@ -440,7 +460,6 @@ function LeadCard({ d, stale, stages, currentStage, onMove, onPatch, onDragStart
           ))}
         </div>
       )}
-      {stale && <div className="mono" style={{ marginTop: 6, fontSize: 10, color: "var(--neg)" }}>parado</div>}
 
       {/* Campos editáveis por estágio: data da call (Call closer); valor/período da proposta (Negociação). */}
       {currentStage === "Call closer" && onPatch && (

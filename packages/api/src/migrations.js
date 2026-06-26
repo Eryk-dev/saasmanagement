@@ -14,7 +14,17 @@ export async function ensureIntegrationStage(repo) {
   if (!product || !Array.isArray(product.funnel) || product.funnel.length === 0) return false;
 
   const funnel = product.funnel;
-  if (funnel.some((f) => f && f.stage === "Integração")) return false; // já existe
+  const existing = funnel.find((f) => f && f.stage === "Integração");
+  if (existing) {
+    // Reparo idempotente: a 1ª versão inseriu staleDays=0, que marca TODO card como
+    // parado (dias na coluna ≥ 0). Normaliza pra "" (sem limiar). Só age se precisar.
+    if (existing.staleDays === 0) {
+      const next = funnel.map((f) => (f === existing ? { ...f, staleDays: "" } : f));
+      await repo.update("products", "leverads", { funnel: next });
+      return true;
+    }
+    return false; // já existe e está ok
+  }
 
   // Âncora: imediatamente ANTES de "Ganho"; fallback logo APÓS "Negociação".
   let idx = funnel.findIndex((f) => f && f.stage === "Ganho");
@@ -24,9 +34,9 @@ export async function ensureIntegrationStage(repo) {
     idx = neg + 1;
   }
 
-  // Mesmo shape que a tela Settings persiste pra um estágio. conv=1 porque é
-  // etapa administrativa pós-ganho (não é um gargalo de conversão de venda).
-  const stage = { stage: "Integração", conv: 1, color: "", staleDays: 0 };
+  // Mesmo shape que a tela Settings persiste. conv=1 porque é etapa administrativa
+  // pós-ganho (não é gargalo de conversão); staleDays "" = sem marcação de parado.
+  const stage = { stage: "Integração", conv: 1, color: "", staleDays: "" };
   const next = [...funnel.slice(0, idx), stage, ...funnel.slice(idx)];
   await repo.update("products", "leverads", { funnel: next });
   return true;
@@ -36,8 +46,8 @@ export async function ensureIntegrationStage(repo) {
 // uma falha não derrube o start da API.
 export async function runStartupMigrations(repo) {
   try {
-    const inserted = await ensureIntegrationStage(repo);
-    if (inserted) console.log('[migration] estágio "Integração" inserido no funil do leverads');
+    const changed = await ensureIntegrationStage(repo);
+    if (changed) console.log('[migration] estágio "Integração" garantido no funil do leverads');
   } catch (err) {
     console.error("[migration] ensureIntegrationStage falhou:", err?.message || err);
   }
