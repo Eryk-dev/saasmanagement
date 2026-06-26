@@ -25,6 +25,38 @@ test('insere "Integração" entre "Negociação" e "Ganho"', async () => {
   ]);
 });
 
+test('insere com staleDays vazio (não marca card como parado)', async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL });
+
+  await ensureIntegrationStage(repo);
+  const integ = (await repo.get("products", "leverads")).funnel.find((f) => f.stage === "Integração");
+  assert.equal(integ.staleDays, "");
+  assert.equal(integ.conv, 1);
+});
+
+test("reparo: Integração legada com staleDays=0 é normalizada pra vazio", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", {
+    id: "leverads", name: "LeverAds",
+    funnel: [
+      { stage: "Negociação", conv: 0.7 },
+      { stage: "Integração", conv: 1, color: "", staleDays: 0 },
+      { stage: "Ganho", conv: 0.8 },
+    ],
+  });
+
+  const changed = await ensureIntegrationStage(repo);
+  assert.equal(changed, true);
+  const integ = (await repo.get("products", "leverads")).funnel.find((f) => f.stage === "Integração");
+  assert.equal(integ.staleDays, "");
+  // não duplica
+  assert.equal((await repo.get("products", "leverads")).funnel.filter((f) => f.stage === "Integração").length, 1);
+
+  // segunda passada: nada a fazer
+  assert.equal(await ensureIntegrationStage(repo), false);
+});
+
 test("é idempotente — rodar de novo não duplica", async () => {
   const repo = makeMemRepo();
   await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL });

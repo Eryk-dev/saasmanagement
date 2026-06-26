@@ -54,7 +54,7 @@ export const CREATE_DEFAULTS = {
   // callAt = dia/horário da call (editável no card em "Call closer"); proposalValue/proposalPeriod = valor e período da
   // proposta (editáveis no card em "Negociação"); integrationAt = dia/horário da integração (editável no card em
   // "Integração", pós-venda). Todos opcionais, preenchidos por PATCH inline.
-  leads: { priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", reason: "", source: "Form", age: "agora", stage: "", comments: [], callAt: "", proposalValue: "", proposalPeriod: "", integrationAt: "" },
+  leads: { priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", reason: "", source: "Form", age: "agora", stage: "", stageSince: "", comments: [], callAt: "", proposalValue: "", proposalPeriod: "", integrationAt: "" },
   // `current`/`projected` saem do form (leitura ao vivo da meta) — default 0 até serem alimentados.
   goals: { current: 0, projected: 0 },
   forms: { status: "draft", theme: {}, welcome: null, questions: [], thanks: {}, mapping: {} },
@@ -234,7 +234,12 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     const { collection } = req.params;
     if (!WRITABLE.has(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
     if (!req.body || typeof req.body !== "object") return reply.code(400).send({ error: "JSON body required" });
-    const stamp = (collection === "leads" || collection === "tasks") && !req.body.createdAt ? { createdAt: new Date().toISOString() } : {};
+    const now = new Date().toISOString();
+    const stamp = {};
+    if ((collection === "leads" || collection === "tasks") && !req.body.createdAt) stamp.createdAt = now;
+    // stageSince = quando o card entrou no estágio atual (base do contador "dias na
+    // coluna"). No create, é agora; depois, recarimbado a cada mudança de estágio.
+    if ((collection === "leads" || collection === "deals") && !req.body.stageSince) stamp.stageSince = now;
     let created = await repo.create(collection, { ...(CREATE_DEFAULTS[collection] || {}), ...req.body, ...stamp });
     // Assinatura nova: janela do 1º ciclo + fatura inicial + customer.arr
     // (invariante: receita do produto deriva de customers).
@@ -256,7 +261,16 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     if (!WRITABLE.has(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
     if (!req.body || typeof req.body !== "object") return reply.code(400).send({ error: "JSON body required" });
     const before = collection === "subscriptions" ? await repo.get(collection, id) : null;
-    const updated = await repo.update(collection, id, req.body);
+    // Recarimba stageSince quando o card muda de estágio de fato (reset do contador de
+    // dias na coluna). Renome de estágio NÃO passa por aqui (vai via PUT /funnel →
+    // repo.update direto), então não zera o contador. Cliente pode mandar stageSince
+    // explícito (ex.: optimistic move) — nesse caso respeitamos.
+    let patch = req.body;
+    if ((collection === "leads" || collection === "deals") && typeof req.body.stage === "string" && req.body.stageSince == null) {
+      const cur = await repo.get(collection, id);
+      if (cur && cur.stage !== req.body.stage) patch = { ...req.body, stageSince: new Date().toISOString() };
+    }
+    const updated = await repo.update(collection, id, patch);
     if (!updated) return reply.code(404).send({ error: "Not found" });
     // Form editado → ressincroniza leadQuestions do produto (best-effort).
     if (collection === "forms") { try { await syncLeadQuestions(repo, updated); } catch { /* fail-open */ } }
