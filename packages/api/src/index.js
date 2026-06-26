@@ -10,6 +10,7 @@ import cors from "@fastify/cors";
 import { initDb, repo } from "./db.js";
 import { registerRoutes } from "./routes.js";
 import { ensureDefaultAdmins, makeAuthHook } from "./auth.js";
+import { runStartupMigrations } from "./migrations.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: join(__dirname, "..", "..", "..", ".env") });
@@ -34,6 +35,8 @@ function providedKey(req) {
 await initDb();
 // Admins padrão do time (só quando `users` está vazia — nunca reseta senha).
 await ensureDefaultAdmins(repo);
+// Migrações idempotentes de dados (ex.: garante o estágio "Integração" no funil).
+await runStartupMigrations(repo);
 
 const app = Fastify({ logger: true });
 
