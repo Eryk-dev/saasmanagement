@@ -751,7 +751,17 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         w.appendChild(po); // conteúdo entra via renderPlanOptions() (dinâmico)
       }
       var pw = el('div', 'price-wrap');
-      var feats = (s.features || []).map(function (f) { return '<li>' + fmt(f) + '</li>'; }).join('');
+      // Feature pode ser string (sempre visível) ou { text, showIf:{key,values} }
+      // (visível só quando a resposta do lead bate — ex.: compat veicular p/ autopeças).
+      var fAns = (DATA && DATA.answers) || {};
+      var feats = (s.features || []).filter(function (f) {
+        if (!f || typeof f !== 'object' || !f.showIf || !f.showIf.key) return true;
+        var want = (Array.isArray(f.showIf.values) ? f.showIf.values : [f.showIf.values])
+          .map(function (v) { return String(v == null ? '' : v).trim().toLowerCase(); });
+        var a = fAns[f.showIf.key];
+        var got = (Array.isArray(a) ? a : [a]).map(function (v) { return String(v == null ? '' : v).trim().toLowerCase(); });
+        return got.some(function (g) { return want.indexOf(g) >= 0; });
+      }).map(function (f) { return '<li>' + fmt(typeof f === 'object' ? (f.text || '') : f) + '</li>'; }).join('');
       // Esquerda: só o bloco de preço. Direita: benefícios/entregáveis (features).
       // Garantia e payback são opcionais (só entram se preenchidos no template).
       var hasGuarantee = (s.guaranteeTitle || s.guaranteeText || s.guaranteeHead);
@@ -845,7 +855,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       }
     });
     var foot = el('footer', 'foot');
-    foot.innerHTML = '<div class="wrap"><div class="foot-meta">' + fmt(P.footer || (P.name || '')) + '<br>Proposta válida até <b data-fill="state.validUntil"></b></div></div>';
+    foot.innerHTML = '<div class="wrap"><div class="foot-meta">' + fmt(P.footer || (P.name || '')) + '<br>Proposta válida apenas no dia da apresentação · <b>' + new Date().toLocaleDateString('pt-BR') + '</b></div></div>';
     root.appendChild(foot);
     fillDynamic(); // já chama fitSlides()
     bindReveal();
