@@ -90,6 +90,40 @@ test("dispatcher: template publicado → provider native, lead recebe URLs, snap
   await app.close();
 });
 
+test("POST /api/leads (espelho de SaaS externo) auto-gera a proposta nativa e sobrescreve o proposalUrl externo", async () => {
+  const { app, repo } = await buildApp();
+  // simula o espelho do leverads.com.br: lead criado pela rota genérica já com um
+  // proposalUrl externo (renderer do copylever). Com template publicado, o create
+  // deve disparar o builder nativo e trocar o link pelo /p/.
+  const res = await app.inject({
+    method: "POST",
+    url: "/api/leads",
+    payload: { name: "Externo", company: "Loja Ext", saas: "leverads", accounts: "3-5", volume: "50-200", stage: "Inbox", proposalUrl: "https://leverads.com.br/proposta/ext123" },
+  });
+  assert.equal(res.statusCode, 201);
+  const created = res.json();
+  assert.ok(created.proposta_id, "deveria ter gerado a proposta nativa no create");
+  assert.match(created.proposalUrl, /\/p\//);
+  assert.doesNotMatch(created.proposalUrl, /\/proposta\//);
+
+  const proposal = await repo.get("proposals", created.proposta_id);
+  assert.equal(proposal.saas, "leverads");
+  assert.equal(proposal.slides.length, 2); // snapshot do template publicado
+  await app.close();
+});
+
+test("POST /api/leads de SaaS SEM template publicado não dispara proposta no create", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("products", { id: "outro", name: "Outro", funnel: [{ stage: "Inbox" }] });
+  const res = await app.inject({
+    method: "POST", url: "/api/leads",
+    payload: { name: "Z", saas: "outro", stage: "Inbox" },
+  });
+  assert.equal(res.statusCode, 201);
+  assert.equal(res.json().proposta_id, undefined);
+  await app.close();
+});
+
 test("showIf: slide condicional entra no snapshot só quando a resposta do lead bate", async () => {
   const { app, repo } = await buildApp();
   const compat = { key: "compat_sku", type: "steps", title: "Compatibilidade SKU", showIf: { key: "niche", values: ["autopecas"] } };
