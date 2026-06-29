@@ -247,6 +247,22 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // Form salvo → sincroniza leadQuestions do produto (painel do lead nunca
     // diverge das chaves capturadas). Best-effort: nunca quebra o save do form.
     if (collection === "forms") { try { await syncLeadQuestions(repo, created); } catch { /* fail-open */ } }
+    // Lead criado via API genérica (espelho de SaaS externo como o leverads.com.br,
+    // ou MCP) → gera a proposta NATIVA se o SaaS tem template publicado. Espelha o
+    // auto-trigger do form nativo (routes.forms.js) p/ leads que entram por aqui,
+    // sobrescrevendo qualquer proposalUrl externo. Best-effort + idempotente
+    // (runNativeProposal pula com auto quando já há proposta_id). Native-only: não
+    // dispara levercopy automaticamente em todo create.
+    if (collection === "leads" && created.saas && !created.proposta_id) {
+      try {
+        const templates = await repo.list("proposal_templates");
+        const hasNative = templates.some((t) => t.saas === created.saas && t.status === "published");
+        if (hasNative) {
+          const r = await dispatchProposal(repo, created, { auto: true, baseUrl: publicBase(req) });
+          if (r && r.lead) created = r.lead;
+        }
+      } catch { /* fail-open — nunca quebra o create */ }
+    }
     // Lead criado manual/MCP avisa no Discord (submissão de form tem aviso
     // próprio em routes.forms.js, com o link da proposta gerada).
     if (collection === "leads" && discordClient.configured()) {
