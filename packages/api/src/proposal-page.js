@@ -86,13 +86,35 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
       radial-gradient(ellipse 60% 50% at 0% 100%, color-mix(in oklab, var(--accent) 5%, transparent) 0%, transparent 60%); }
   section > .wrap, header.hero > .wrap { position: relative; z-index: 1; }
 
+  /* Bloco escuro (ritmo claro/escuro da home). Redefinir --bg/--fg faz TODOS os
+     tokens derivados (--ink-*, --line, --raised) virarem light-on-dark sozinhos.
+     Mesmo tratamento do login/home: gradiente navy + glow teal + textura de grade. */
+  .sec-dark { --bg: #051C2C; --fg: #F3FBFF;
+    --ink-2: color-mix(in oklab, #F3FBFF 78%, transparent);
+    --ink-3: color-mix(in oklab, #F3FBFF 60%, transparent);
+    --ink-4: color-mix(in oklab, #F3FBFF 42%, transparent);
+    --line: color-mix(in oklab, #F3FBFF 12%, transparent);
+    --raised: color-mix(in oklab, #F3FBFF 6%, transparent);
+    color: var(--fg);
+    background:
+      radial-gradient(120% 80% at 88% -5%, color-mix(in oklab, var(--accent) 20%, transparent) 0%, transparent 52%),
+      radial-gradient(110% 90% at -10% 110%, color-mix(in oklab, var(--accent) 10%, transparent) 0%, transparent 55%),
+      linear-gradient(155deg, #073143 0%, #051C2C 52%, #03141D 100%); }
+  .sec-dark::before { content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 0;
+    background-image: linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+    background-size: 44px 44px;
+    -webkit-mask-image: radial-gradient(80% 70% at 50% 30%, #000 0%, transparent 82%);
+    mask-image: radial-gradient(80% 70% at 50% 30%, #000 0%, transparent 82%); }
+
   .eyebrow { display: inline-flex; align-items: center; gap: 12px; font-family: var(--font-mono); font-size: 13px;
     color: var(--accent); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 24px; font-weight: 500; }
   .eyebrow::before { content: ''; width: 8px; height: 8px; border-radius: var(--r-full); background: var(--accent); box-shadow: 0 0 0 5px var(--accent-soft); flex-shrink: 0; }
   h1, h2, h3 { font-family: var(--font-display); font-weight: 500; letter-spacing: -.025em; text-wrap: balance; line-height: 1.05; }
   .h-hero { font-size: clamp(40px, 9vw, 96px); line-height: .98; letter-spacing: -.03em; }
   .h-section { font-size: clamp(32px, 6vw, 64px); line-height: 1.02; }
-  em { font-style: italic; color: var(--accent); font-weight: 400; }
+  em { font-style: normal; font-weight: 600;
+    background: linear-gradient(135deg, var(--accent) 0%, color-mix(in oklab, var(--accent) 66%, #06302e) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
   .lead { font-size: clamp(18px, 2.3vw, 24px); line-height: 1.45; color: var(--ink-2); max-width: 680px; font-weight: 300; }
   .body { font-size: 17px; line-height: 1.6; color: var(--ink-2); }
   @media (min-width: 768px) { .body { font-size: 19px; } }
@@ -241,6 +263,12 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .plan-opt-price small { font-size: 14px; color: var(--ink-3); font-weight: 400; letter-spacing: 0; margin-left: 4px; }
   .plan-opt-total { font-size: 13px; color: var(--ink-2); margin-top: 10px; line-height: 1.4; }
   .plan-opt-split { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-3); letter-spacing: .02em; }
+  .price-card, .benefits-card { --bg: #051C2C; --fg: #F3FBFF;
+    --ink-2: color-mix(in oklab, #F3FBFF 78%, transparent);
+    --ink-3: color-mix(in oklab, #F3FBFF 60%, transparent);
+    --ink-4: color-mix(in oklab, #F3FBFF 42%, transparent);
+    --line: color-mix(in oklab, #F3FBFF 12%, transparent);
+    --raised: color-mix(in oklab, #F3FBFF 6%, transparent); }
   .price-card { background: var(--bg); color: var(--fg); border-radius: calc(var(--radius) + 10px); padding: 40px 32px; position: relative; overflow: hidden; }
   @media (min-width: 768px) { .price-card { padding: 56px 48px; } }
   .price-card .pill { position: absolute; top: 24px; right: 24px; }
@@ -262,7 +290,7 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .price-list li { display: flex; gap: 12px; align-items: flex-start; }
   .price-list li::before { content: '✓'; color: var(--accent); font-weight: 700; flex-shrink: 0; }
   /* Coluna de benefícios/entregáveis (lado direito do pricing). */
-  .benefits-card { background: var(--bg); color: var(--fg); border-radius: calc(var(--radius) + 10px); padding: 32px 28px; height: 100%; }
+  .benefits-card { --bg: #051C2C; --fg: #F3FBFF; background: var(--bg); color: var(--fg); border-radius: calc(var(--radius) + 10px); padding: 32px 28px; height: 100%; }
   @media (min-width: 768px) { .benefits-card { padding: 40px 36px; } }
   .benefits-title { font-family: var(--font-mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); margin-bottom: 22px; }
   .benefits-card .price-list { gap: 14px; color: var(--ink-2); }
@@ -280,9 +308,16 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .payback .pb-cap { font-size: 14px; opacity: .75; line-height: 1.5; margin-top: 8px; }
   .close-line { margin-top: 40px; text-align: center; font-size: clamp(20px, 3vw, 30px); font-family: var(--font-display); font-weight: 500; line-height: 1.2; letter-spacing: -.02em; }
   .accept-row { margin-top: 32px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
-  .accept-btn { padding: 16px 40px; border-radius: var(--radius); background: var(--accent); color: var(--accent-fg); font-weight: 700; font-size: 17px; transition: all .12s var(--ease-out); }
-  .accept-btn:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); box-shadow: var(--glow); }
-  .accept-btn:disabled { opacity: .6; cursor: default; }
+  .accept-btn { padding: 16px 40px; border-radius: var(--radius); background: #1F8A5B; color: #fff; font-weight: 700; font-size: 17px;
+    box-shadow: 0 4px 14px color-mix(in oklab, #1F8A5B 32%, transparent), inset 0 1px 0 rgba(255,255,255,.2); text-shadow: 0 1px 2px rgba(0,0,0,.22);
+    transition: transform .15s var(--ease-out), box-shadow .2s var(--ease-out); animation: cta-pulse 2.4s ease-in-out infinite; }
+  .accept-btn:hover:not(:disabled) { transform: translateY(-2px); }
+  .accept-btn:disabled { opacity: .6; cursor: default; animation: none; box-shadow: none; }
+  @keyframes cta-pulse {
+    0%, 100% { box-shadow: 0 4px 14px color-mix(in oklab, #1F8A5B 30%, transparent), 0 0 0 0 color-mix(in oklab, #1F8A5B 0%, transparent), inset 0 1px 0 rgba(255,255,255,.2); }
+    50% { box-shadow: 0 8px 30px color-mix(in oklab, #1F8A5B 55%, transparent), 0 0 0 6px color-mix(in oklab, #1F8A5B 16%, transparent), inset 0 1px 0 rgba(255,255,255,.25); }
+  }
+  @media (prefers-reduced-motion: reduce) { .accept-btn { animation: none; } }
   .accept-done { display: inline-flex; align-items: center; gap: 10px; padding: 14px 28px; border-radius: var(--r-full); background: var(--accent-soft); border: 1px solid var(--accent); color: inherit; font-weight: 600; }
 
   .closer-block { margin: 48px auto 0; max-width: 520px; padding: 24px; background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); display: flex; align-items: center; gap: 16px; text-align: left; }
@@ -740,7 +775,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     },
     pricing: function (s, num, total) {
       var hasOpts = s.optionsFeatured != null && s.optionsFeatured !== '';
-      var sec = el('section', hasOpts ? 'light compact-pricing' : 'light');
+      var sec = el('section', hasOpts ? 'compact-pricing' : '');
       var w = el('div', 'wrap');
       w.appendChild(band(s, num, total));
       if (hasOpts) {
@@ -846,6 +881,8 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       if (!build) return;
       if (s.type !== 'hero' && s.type !== 'closer') n += 1;
       var node = build(s, n, numbered);
+      // Ritmo claro/escuro como a home: slide com bg:'dark' vira bloco escuro.
+      if (node && node.classList && (s.bg === 'dark' || s.tone === 'dark')) node.classList.add('sec-dark');
       if (node) root.appendChild(node); // closer pode ter anexado à seção anterior
       var media = mediaNode(s.media);
       if (media) {
