@@ -248,7 +248,7 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .price-number { display: flex; align-items: baseline; gap: 6px; margin-top: 24px; flex-wrap: wrap; }
   .price-number .currency { font-size: 24px; color: var(--ink-3); }
   @media (min-width: 768px) { .price-number .currency { font-size: 32px; } }
-  .price-number .amount { font-family: var(--font-display); font-weight: 500; letter-spacing: -.04em; font-size: clamp(80px, 14vw, 160px); line-height: 1; }
+  .price-number .amount { font-family: var(--font-display); font-weight: 500; letter-spacing: -.04em; font-size: clamp(52px, 9vw, 96px); line-height: 1; }
   .price-number .per { font-size: 18px; color: var(--ink-3); margin-left: 6px; }
   .price-sub { margin-top: 14px; font-size: 14px; color: var(--ink-3); line-height: 1.5; }
   .price-cycles { margin-top: 10px; font-family: var(--font-mono); font-size: 12px; color: var(--accent); letter-spacing: .04em; }
@@ -261,6 +261,11 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .price-list { list-style: none; display: flex; flex-direction: column; gap: 12px; font-size: 16px; color: var(--ink-2); }
   .price-list li { display: flex; gap: 12px; align-items: flex-start; }
   .price-list li::before { content: '✓'; color: var(--accent); font-weight: 700; flex-shrink: 0; }
+  /* Coluna de benefícios/entregáveis (lado direito do pricing). */
+  .benefits-card { background: var(--bg); color: var(--fg); border-radius: calc(var(--radius) + 10px); padding: 32px 28px; height: 100%; }
+  @media (min-width: 768px) { .benefits-card { padding: 40px 36px; } }
+  .benefits-title { font-family: var(--font-mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); margin-bottom: 22px; }
+  .benefits-card .price-list { gap: 14px; color: var(--ink-2); }
   .guarantee { background: var(--accent-soft); border: 2px solid var(--accent); border-radius: calc(var(--radius) + 10px); padding: 32px 28px; }
   @media (min-width: 768px) { .guarantee { padding: 40px 36px; } }
   .light .guarantee { color: var(--bg); }
@@ -477,6 +482,11 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       fatTotal: brl(r(hiddenMonth, 50)),
       custoMes: intBR(r(hiddenMonth, 50)), custoAno: intBR(r(hiddenYear, 100)),
       vendasEquiv: intBR(r(salesEquiv, 1000)),
+      // Custo anual de 1 funcionário. employerMonths = nº de salários/ano que o
+      // empregador paga (default 13,33 = salário + 13º + 1/3 de férias; suba p/
+      // incluir encargos). custoFuncAnoK = forma curta "X mil" pro número grande.
+      custoFuncAno: intBR(r((Number(c.salaryMonthly) || 3000) * (Number(c.employerMonths) || 13.33), 100)),
+      custoFuncAnoK: Math.round((Number(c.salaryMonthly) || 3000) * (Number(c.employerMonths) || 13.33) / 1000) + ' mil',
       preco: moneyBR(price), plano: (CYCLE_NAME[state.cycle] || '').toUpperCase(), ciclo: (CYCLE_NAME[state.cycle] || '').toLowerCase(),
       precoCiclos: cycles.join('  ·  '),
       mesesCiclo: months, totalCiclo: moneyBR(price * months),
@@ -742,6 +752,9 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       }
       var pw = el('div', 'price-wrap');
       var feats = (s.features || []).map(function (f) { return '<li>' + fmt(f) + '</li>'; }).join('');
+      // Esquerda: só o bloco de preço. Direita: benefícios/entregáveis (features).
+      // Garantia e payback são opcionais (só entram se preenchidos no template).
+      var hasGuarantee = (s.guaranteeTitle || s.guaranteeText || s.guaranteeHead);
       pw.innerHTML =
         '<div class="price-card" data-reveal>' + (s.planPill ? '<span class="pill accent">' + fmt(s.planPill) + '</span>' : '') +
           '<div class="price-tag">' + fmt(s.planTag || '') + '</div>' +
@@ -749,10 +762,13 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           '<div class="price-number"><span class="currency">R$</span><span class="amount">' + fmt(s.price || '{{calc.preco}}') + '</span><span class="per">' + fmt(s.per || '/ mês') + '</span></div>' +
           (s.sub ? '<div class="price-sub">' + fmt(s.sub) + '</div>' : '') +
           '<div class="price-cycles">' + (s.cyclesLabel ? fmt(s.cyclesLabel) + ' ' : '') + (s.cyclesFrom ? '<span class="cycles-from">' + fmt(s.cyclesFrom) + '</span> ' : '') + fmt(s.cycles != null ? s.cycles : '{{calc.precoCiclos}}') + '</div>' +
-          '<div class="price-divider"></div><ul class="price-list">' + feats + '</ul></div>' +
-        '<div data-reveal><div class="guarantee"><div class="guarantee-head">' +
-          '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L4 6v6c0 5.5 3.5 9.5 8 10 4.5-.5 8-4.5 8-10V6l-8-4z" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
-          '<span>' + fmt(s.guaranteeHead || '') + '</span></div><h3>' + fmt(s.guaranteeTitle || '') + '</h3><p>' + fmt(s.guaranteeText || '') + '</p></div>' +
+        '</div>' +
+        '<div data-reveal>' +
+          '<div class="benefits-card">' + (s.featuresTitle ? '<div class="benefits-title">' + fmt(s.featuresTitle) + '</div>' : '') +
+            '<ul class="price-list">' + feats + '</ul></div>' +
+          (hasGuarantee ? '<div class="guarantee" style="margin-top:16px"><div class="guarantee-head">' +
+            '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L4 6v6c0 5.5 3.5 9.5 8 10 4.5-.5 8-4.5 8-10V6l-8-4z" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+            '<span>' + fmt(s.guaranteeHead || '') + '</span></div><h3>' + fmt(s.guaranteeTitle || '') + '</h3><p>' + fmt(s.guaranteeText || '') + '</p></div>' : '') +
           (s.paybackNum ? '<div class="payback"><div class="mono">' + fmt(s.paybackLabel || '') + '</div><div class="pb-num">' + fmt(s.paybackNum) + '</div><div class="pb-cap">' + fmt(s.paybackCaption || '') + '</div></div>' : '') + '</div>';
       w.appendChild(pw);
       if (s.closeLine) { var cl = el('div', 'close-line', fmt(s.closeLine)); cl.setAttribute('data-reveal', ''); w.appendChild(cl); }
