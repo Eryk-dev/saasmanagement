@@ -1,6 +1,6 @@
 import React from "react";
 import { TrendBadge, EmptyState, PrimaryButton } from "../atoms.jsx";
-import { DeltaInline, FunnelLadder } from "../charts.jsx";
+import { DeltaInline, FunnelView } from "../charts.jsx";
 import { chromeBtnStyleSmall, leadScoreTone, leadAge, waLink } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
@@ -552,86 +552,6 @@ function LeadList({ leads }) {
   );
 }
 
-// ─────────────────────────────────────────────── Forecast view
-// Funil de conversão. Conversão de cada etapa SOBRE O TOTAL DE CADASTROS (todos
-// os leads do produto). Etapas terminais (Perdido/Sem resposta/Desqualificado)
-// saem do funil linear e entram como "perdidos". reached[0] = total (todo
-// cadastro entrou); demais = leads no estágio ou adiante. O % exibido é
-// reached[i]/total; o gargalo é a maior queda entre etapas. Snapshot do pipeline.
-const FUNNEL_LOST_RE = /perdido|lost|sem\s*resposta|nutri|churn|descart|desqualif/i;
-const FUNNEL_WON_RE = /ganho|won|fechad|pago/i;
-
-function FunnelView({ s, leads, embedded }) {
-  const all = (s.funnel || []).map(f => f.stage);
-  const lostStages = all.filter(st => FUNNEL_LOST_RE.test(st));
-  const wonIdx = all.findIndex(st => FUNNEL_WON_RE.test(st));
-  // Funil linear = do início até o ganho (inclusive), sem terminais. Estágios
-  // POSITIVOS pós-ganho (ex.: Mentoria) não entram como etapa do funil.
-  const linear = all.filter((st, i) => !FUNNEL_LOST_RE.test(st) && (wonIdx < 0 || i <= wonIdx));
-  // Posição no funil de um lead: estágio positivo pós-ganho conta como "chegou
-  // ao ganho" (último degrau); terminal/desconhecido = fora (-1).
-  const linIdx = st => {
-    const i = linear.indexOf(st);
-    if (i >= 0) return i;
-    const fi = all.indexOf(st);
-    if (wonIdx >= 0 && fi > wonIdx && !FUNNEL_LOST_RE.test(st)) return linear.length - 1;
-    return -1;
-  };
-  const total = leads.length; // total de cadastros (denominador)
-  const reached = linear.map((_, i) => i === 0 ? total : leads.filter(l => linIdx(l.stage) >= i).length);
-  const rows = linear.map((stage, i) => {
-    const convTotal = total > 0 ? reached[i] / total : 0;       // % do total de cadastros
-    const step = i === 0 ? 1 : reached[i - 1] > 0 ? reached[i] / reached[i - 1] : 0; // queda entre etapas (gargalo)
-    return { stage, conv: convTotal, step, count: reached[i], prev: i === 0 ? null : reached[i - 1], i };
-  });
-  let worst = null;
-  for (const r of rows) if (r.i > 0 && r.prev >= 3 && r.step < 0.6 && (!worst || r.step < worst.step)) worst = r;
-  const data = rows.map(r => ({ stage: r.stage, count: r.count, conv: r.conv, flag: worst && r.i === worst.i ? "bottleneck" : undefined }));
-
-  // Ganhos = no estágio de ganho OU pós-ganho positivo (ex.: Mentoria/cliente).
-  const won = leads.filter(l => { const fi = all.indexOf(l.stage); return wonIdx >= 0 && fi >= wonIdx && !FUNNEL_LOST_RE.test(l.stage); }).length;
-  const lost = leads.filter(l => lostStages.includes(l.stage)).length;
-  const lostRows = lostStages.map(st => ({ stage: st, count: leads.filter(l => l.stage === st).length }));
-  const overall = total > 0 ? won / total : 0;
-  const tone = window.productTone ? window.productTone(s) : "var(--accent)";
-
-  const panel = (
-    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "16px 18px", background: "var(--bg-1)", maxWidth: 820 }}>
-      <div style={{ display: "flex", gap: 26, flexWrap: "wrap", marginBottom: 18 }}>
-        <FunnelStat label="Total de cadastros" value={total} />
-        <FunnelStat label="Ganhos" value={won} tone={tone} />
-        <FunnelStat label="Conversão geral" value={`${(overall * 100).toFixed(1)}%`} />
-        <FunnelStat label="Perdidos / desqualif." value={lost} dim />
-      </div>
-      {data.length > 0
-        ? <FunnelLadder stages={data} accent={tone} />
-        : <div className="mono dim" style={{ fontSize: 11 }}>Sem cadastros ainda.</div>}
-      {lostRows.length > 0 && (
-        <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--line-1)" }}>
-          <div className="mono" style={{ fontSize: 9, color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 6 }}>Saíram do funil</div>
-          {lostRows.map(r => (
-            <div key={r.stage} style={{ display: "grid", gridTemplateColumns: "92px 1fr 56px 56px", gap: 8, alignItems: "center", fontFamily: "var(--mono)", fontSize: 10.5, padding: "1.5px 0" }}>
-              <span style={{ color: "var(--fg-4)" }}>{r.stage}</span>
-              <span />
-              <span className="tnum" style={{ color: "var(--fg-3)", textAlign: "right" }}>{r.count}</span>
-              <span className="tnum" style={{ color: "var(--fg-4)", textAlign: "right" }}>{total > 0 ? `${(r.count / total * 100).toFixed(0)}%` : ""}</span>
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="mono dim" style={{ fontSize: 10, marginTop: 14, color: "var(--fg-4)" }}>
-        % = sobre o total de cadastros · <span style={{ color: "var(--neg)" }}>gargalo</span> = maior queda entre etapas
-      </div>
-    </div>
-  );
-  return embedded ? panel : (
-    <div style={{ flex: 1, overflow: "auto", padding: "14px 24px" }}>
-      <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12 }}>Funil de conversão</div>
-      {panel}
-    </div>
-  );
-}
-
 // Faixa do funil acima dos leads no Kanban — colapsável.
 function FunnelInline({ s, leads, open, onToggle }) {
   return (
@@ -642,15 +562,6 @@ function FunnelInline({ s, leads, open, onToggle }) {
         <span className="dim" style={{ marginLeft: 4 }}>· {leads.length} cadastros</span>
       </button>
       {open && <div style={{ padding: "0 24px 14px" }}><FunnelView s={s} leads={leads} embedded /></div>}
-    </div>
-  );
-}
-
-function FunnelStat({ label, value, tone, dim }) {
-  return (
-    <div>
-      <div className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</div>
-      <div className="tnum" style={{ fontSize: 22, fontWeight: 600, color: dim ? "var(--fg-3)" : (tone || "var(--fg-1)"), marginTop: 3 }}>{value}</div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import React from "react";
 import { Led, Sparkline, TrendBadge, EmptyState, PrimaryButton } from "../atoms.jsx";
-import { MRRTrajectory, NNMWaterfall, FunnelLadder, DeltaInline, computeFunnel } from "../charts.jsx";
+import { MRRTrajectory, NNMWaterfall, FunnelView, DeltaInline } from "../charts.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
 import { useData } from "../data.jsx";
 // Portfolio (Founder home) — the cockpit's hero screen.
@@ -220,7 +220,7 @@ function ProductRail({ s, onNav }) {
         background: "var(--bg-1)",
         borderRadius: "var(--r-3)",
         display: "grid",
-        gridTemplateColumns: "minmax(220px, 240px) minmax(220px, 1fr) 220px minmax(280px, 1.2fr) 220px",
+        gridTemplateColumns: "minmax(200px, 230px) minmax(200px, 0.9fr) 200px minmax(380px, 1.8fr) 210px",
         cursor: "pointer",
       }}>
       {/* Col 1: identity */}
@@ -262,12 +262,12 @@ function ProductRail({ s, onNav }) {
         <NNMWaterfall data={s.nnm} width={196} compact />
       </div>
 
-      {/* Col 4: funnel */}
-      <div style={{ padding: "14px 16px", borderRight: "1px solid var(--line-1)" }}>
-        <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>
-          Funil · {s.funnel.length} estágios
+      {/* Col 4: funil de conversão (mesmo do pipeline) */}
+      <div style={{ padding: "14px 16px", borderRight: "1px solid var(--line-1)" }} onClick={e => e.stopPropagation()}>
+        <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
+          Funil de conversão
         </div>
-        <FunnelLadder stages={computeFunnel(s)} accent={tone} />
+        <FunnelView s={s} leads={(window.SEED.LEADS || []).filter(l => l.saas === s.id)} bare />
       </div>
 
       {/* Col 5: vitals */}
