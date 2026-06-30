@@ -1,6 +1,6 @@
 import React from "react";
 import { TrendBadge, EmptyState, PrimaryButton } from "../atoms.jsx";
-import { DeltaInline } from "../charts.jsx";
+import { DeltaInline, FunnelLadder } from "../charts.jsx";
 import { chromeBtnStyleSmall, leadScoreTone, leadAge, waLink } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
@@ -110,6 +110,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
         <AllPipelines leads={priLeads} onMove={moveLeadTo} onPatch={patchLead} highlight={highlight} onOpenLead={onOpenLead} />
       )}
       {view === "list" && <LeadList leads={saasLeads} />}
+      {view === "funil" && <FunnelView s={s} leads={saasAll} />}
       {view === "forecast" && <ForecastView s={s} leads={saasAll} />}
     </div>
   );
@@ -136,7 +137,7 @@ function SaasTabs({ active, onSelect }) {
 }
 
 function ViewToggle({ view, onChange }) {
-  const views = [["kanban","Kanban"],["all","Todos os pipelines"],["list","Lista"],["forecast","Previsão"]];
+  const views = [["kanban","Kanban"],["funil","Funil"],["all","Todos os pipelines"],["list","Lista"],["forecast","Previsão"]];
   return (
     <div style={{ display: "flex", gap: 2 }}>
       {views.map(([k, label]) => (
@@ -549,6 +550,68 @@ function LeadList({ leads }) {
 }
 
 // ─────────────────────────────────────────────── Forecast view
+// Funil de conversão por etapa. Etapas terminais (Perdido / Sem resposta) saem
+// do funil linear e entram como "perdidos". `count` = leads no estágio ou adiante
+// (alcançaram a etapa) → forma de funil + conversão etapa a etapa. Snapshot do
+// pipeline atual (não é coorte histórica).
+const FUNNEL_LOST_RE = /perdido|lost|sem\s*resposta|nutri|churn|descart|desqualif/i;
+const FUNNEL_WON_RE = /ganho|won|fechad|pago/i;
+
+function FunnelView({ s, leads }) {
+  const all = (s.funnel || []).map(f => f.stage);
+  const linear = all.filter(st => !FUNNEL_LOST_RE.test(st));
+  const lostStages = all.filter(st => FUNNEL_LOST_RE.test(st));
+  const idxOf = st => linear.indexOf(st);
+  const inFunnel = leads.filter(l => idxOf(l.stage) >= 0);
+  const reached = linear.map((_, i) => inFunnel.filter(l => idxOf(l.stage) >= i).length);
+  const rows = linear.map((stage, i) => {
+    const prev = i === 0 ? null : reached[i - 1];
+    const conv = i === 0 ? 1 : prev > 0 ? reached[i] / prev : 0;
+    return { stage, count: reached[i], conv, prev, i };
+  });
+  let worst = null;
+  for (const r of rows) if (r.i > 0 && r.prev >= 3 && r.conv < 0.6 && (!worst || r.conv < worst.conv)) worst = r;
+  const data = rows.map(r => ({ stage: r.stage, count: r.count, conv: r.conv, flag: worst && r.i === worst.i ? "bottleneck" : undefined }));
+
+  const top = reached[0] || 0;
+  const wonStage = [...linear].reverse().find(st => FUNNEL_WON_RE.test(st));
+  const won = wonStage ? leads.filter(l => l.stage === wonStage).length : 0;
+  const lost = leads.filter(l => lostStages.includes(l.stage)).length;
+  const overall = top > 0 ? won / top : 0;
+  const tone = window.productTone ? window.productTone(s) : "var(--accent)";
+
+  return (
+    <div style={{ flex: 1, overflow: "auto", padding: "14px 24px" }}>
+      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "16px 18px", background: "var(--bg-1)", maxWidth: 780 }}>
+        <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 16 }}>
+          Funil de conversão · leads no estágio ou adiante (snapshot do pipeline)
+        </div>
+        <div style={{ display: "flex", gap: 26, flexWrap: "wrap", marginBottom: 20 }}>
+          <FunnelStat label="No funil" value={top} />
+          <FunnelStat label="Ganhos" value={won} tone={tone} />
+          <FunnelStat label="Conversão geral" value={`${(overall * 100).toFixed(0)}%`} />
+          <FunnelStat label="Perdidos / sem resposta" value={lost} dim />
+        </div>
+        {data.length > 0
+          ? <FunnelLadder stages={data} accent={tone} />
+          : <div className="mono dim" style={{ fontSize: 11 }}>Sem leads no funil ainda.</div>}
+        <div className="mono dim" style={{ fontSize: 10, marginTop: 14, color: "var(--fg-4)" }}>
+          % = conversão da etapa anterior · <span style={{ color: "var(--neg)" }}>gargalo</span> = menor conversão abaixo de 60%
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FunnelStat({ label, value, tone, dim }) {
+  return (
+    <div>
+      <div className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</div>
+      <div className="tnum" style={{ fontSize: 22, fontWeight: 600, color: dim ? "var(--fg-3)" : (tone || "var(--fg-1)"), marginTop: 3 }}>{value}</div>
+    </div>
+  );
+}
+
 function ForecastView({ s, leads }) {
   const buckets = s.funnel.map((f, i) => {
     const at = leads.filter(l => l.stage === f.stage);
