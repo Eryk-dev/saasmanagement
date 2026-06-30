@@ -461,9 +461,11 @@ function LeadCard({ d, stale, stages, currentStage, onMove, onPatch, onDragStart
         </div>
       )}
 
-      {/* Campos editáveis por estágio: data da call (Call closer); valor/período da proposta (Negociação). */}
-      {currentStage === "Call closer" && onPatch && (
-        <CardEdit label="Dia e horário da call">
+      {/* Próximo contato (callAt): data/hora do próximo follow-up — disponível em
+         qualquer estágio. Campos editáveis por estágio vêm abaixo: valor/período
+         da proposta (Negociação); dia/hora da integração (Integração). */}
+      {onPatch && (
+        <CardEdit label="Próximo contato">
           <CardInput type="datetime-local" commitOnChange value={d.callAt}
             onCommit={(v) => onPatch(d.id, { callAt: v })} />
         </CardEdit>
