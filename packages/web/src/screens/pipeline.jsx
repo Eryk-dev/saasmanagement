@@ -21,6 +21,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   const [highlight, setHighlight] = useStP(jumpFilter?.stage || null);
   const [selected, setSelected] = useStP(new Set());
   const [pri, setPri] = useStP("all");
+  const [funnelOpen, setFunnelOpen] = useStP(true);
 
   const s = SAAS.find(x => x.id === activeSaas) || SAAS[0];
 
@@ -92,6 +93,9 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
       {/* Forecast strip — single-product views only */}
       {view !== "all" && <ForecastStrip s={s} leads={saasAll} />}
 
+      {/* Funil de conversão — acima dos leads no Kanban */}
+      {view === "kanban" && <FunnelInline s={s} leads={saasAll} open={funnelOpen} onToggle={() => setFunnelOpen(o => !o)} />}
+
       {/* Body */}
       {view === "kanban" && (
         <KanbanBoard
@@ -110,7 +114,6 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
         <AllPipelines leads={priLeads} onMove={moveLeadTo} onPatch={patchLead} highlight={highlight} onOpenLead={onOpenLead} />
       )}
       {view === "list" && <LeadList leads={saasLeads} />}
-      {view === "funil" && <FunnelView s={s} leads={saasAll} />}
       {view === "forecast" && <ForecastView s={s} leads={saasAll} />}
     </div>
   );
@@ -137,7 +140,7 @@ function SaasTabs({ active, onSelect }) {
 }
 
 function ViewToggle({ view, onChange }) {
-  const views = [["kanban","Kanban"],["funil","Funil"],["all","Todos os pipelines"],["list","Lista"],["forecast","Previsão"]];
+  const views = [["kanban","Kanban"],["all","Todos os pipelines"],["list","Lista"],["forecast","Previsão"]];
   return (
     <div style={{ display: "flex", gap: 2 }}>
       {views.map(([k, label]) => (
@@ -550,55 +553,70 @@ function LeadList({ leads }) {
 }
 
 // ─────────────────────────────────────────────── Forecast view
-// Funil de conversão por etapa. Etapas terminais (Perdido / Sem resposta) saem
-// do funil linear e entram como "perdidos". `count` = leads no estágio ou adiante
-// (alcançaram a etapa) → forma de funil + conversão etapa a etapa. Snapshot do
-// pipeline atual (não é coorte histórica).
+// Funil de conversão. Conversão de cada etapa SOBRE O TOTAL DE CADASTROS (todos
+// os leads do produto). Etapas terminais (Perdido/Sem resposta/Desqualificado)
+// saem do funil linear e entram como "perdidos". reached[0] = total (todo
+// cadastro entrou); demais = leads no estágio ou adiante. O % exibido é
+// reached[i]/total; o gargalo é a maior queda entre etapas. Snapshot do pipeline.
 const FUNNEL_LOST_RE = /perdido|lost|sem\s*resposta|nutri|churn|descart|desqualif/i;
 const FUNNEL_WON_RE = /ganho|won|fechad|pago/i;
 
-function FunnelView({ s, leads }) {
+function FunnelView({ s, leads, embedded }) {
   const all = (s.funnel || []).map(f => f.stage);
   const linear = all.filter(st => !FUNNEL_LOST_RE.test(st));
   const lostStages = all.filter(st => FUNNEL_LOST_RE.test(st));
   const idxOf = st => linear.indexOf(st);
-  const inFunnel = leads.filter(l => idxOf(l.stage) >= 0);
-  const reached = linear.map((_, i) => inFunnel.filter(l => idxOf(l.stage) >= i).length);
+  const total = leads.length; // total de cadastros (denominador)
+  const reached = linear.map((_, i) => i === 0 ? total : leads.filter(l => idxOf(l.stage) >= i).length);
   const rows = linear.map((stage, i) => {
-    const prev = i === 0 ? null : reached[i - 1];
-    const conv = i === 0 ? 1 : prev > 0 ? reached[i] / prev : 0;
-    return { stage, count: reached[i], conv, prev, i };
+    const convTotal = total > 0 ? reached[i] / total : 0;       // % do total de cadastros
+    const step = i === 0 ? 1 : reached[i - 1] > 0 ? reached[i] / reached[i - 1] : 0; // queda entre etapas (gargalo)
+    return { stage, conv: convTotal, step, count: reached[i], prev: i === 0 ? null : reached[i - 1], i };
   });
   let worst = null;
-  for (const r of rows) if (r.i > 0 && r.prev >= 3 && r.conv < 0.6 && (!worst || r.conv < worst.conv)) worst = r;
+  for (const r of rows) if (r.i > 0 && r.prev >= 3 && r.step < 0.6 && (!worst || r.step < worst.step)) worst = r;
   const data = rows.map(r => ({ stage: r.stage, count: r.count, conv: r.conv, flag: worst && r.i === worst.i ? "bottleneck" : undefined }));
 
-  const top = reached[0] || 0;
   const wonStage = [...linear].reverse().find(st => FUNNEL_WON_RE.test(st));
   const won = wonStage ? leads.filter(l => l.stage === wonStage).length : 0;
   const lost = leads.filter(l => lostStages.includes(l.stage)).length;
-  const overall = top > 0 ? won / top : 0;
+  const overall = total > 0 ? won / total : 0;
   const tone = window.productTone ? window.productTone(s) : "var(--accent)";
 
-  return (
-    <div style={{ flex: 1, overflow: "auto", padding: "14px 24px" }}>
-      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "16px 18px", background: "var(--bg-1)", maxWidth: 780 }}>
-        <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 16 }}>
-          Funil de conversão · leads no estágio ou adiante (snapshot do pipeline)
-        </div>
-        <div style={{ display: "flex", gap: 26, flexWrap: "wrap", marginBottom: 20 }}>
-          <FunnelStat label="No funil" value={top} />
-          <FunnelStat label="Ganhos" value={won} tone={tone} />
-          <FunnelStat label="Conversão geral" value={`${(overall * 100).toFixed(0)}%`} />
-          <FunnelStat label="Perdidos / sem resposta" value={lost} dim />
-        </div>
-        {data.length > 0
-          ? <FunnelLadder stages={data} accent={tone} />
-          : <div className="mono dim" style={{ fontSize: 11 }}>Sem leads no funil ainda.</div>}
-        <div className="mono dim" style={{ fontSize: 10, marginTop: 14, color: "var(--fg-4)" }}>
-          % = conversão da etapa anterior · <span style={{ color: "var(--neg)" }}>gargalo</span> = menor conversão abaixo de 60%
-        </div>
+  const panel = (
+    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "16px 18px", background: "var(--bg-1)", maxWidth: 820 }}>
+      <div style={{ display: "flex", gap: 26, flexWrap: "wrap", marginBottom: 18 }}>
+        <FunnelStat label="Total de cadastros" value={total} />
+        <FunnelStat label="Ganhos" value={won} tone={tone} />
+        <FunnelStat label="Conversão geral" value={`${(overall * 100).toFixed(1)}%`} />
+        <FunnelStat label="Perdidos / desqualif." value={lost} dim />
       </div>
+      {data.length > 0
+        ? <FunnelLadder stages={data} accent={tone} />
+        : <div className="mono dim" style={{ fontSize: 11 }}>Sem cadastros ainda.</div>}
+      <div className="mono dim" style={{ fontSize: 10, marginTop: 14, color: "var(--fg-4)" }}>
+        % = sobre o total de cadastros · <span style={{ color: "var(--neg)" }}>gargalo</span> = maior queda entre etapas
+      </div>
+    </div>
+  );
+  return embedded ? panel : (
+    <div style={{ flex: 1, overflow: "auto", padding: "14px 24px" }}>
+      <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12 }}>Funil de conversão</div>
+      {panel}
+    </div>
+  );
+}
+
+// Faixa do funil acima dos leads no Kanban — colapsável.
+function FunnelInline({ s, leads, open, onToggle }) {
+  return (
+    <div style={{ borderBottom: "1px solid var(--line-1)", background: "var(--bg-0)" }}>
+      <button onClick={onToggle} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 24px", width: "100%", textAlign: "left", color: "var(--fg-3)", fontSize: 10.5, fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
+        <span style={{ color: "var(--fg-4)" }}>{open ? "▾" : "▸"}</span>
+        Funil de conversão
+        <span className="dim" style={{ marginLeft: 4 }}>· {leads.length} cadastros</span>
+      </button>
+      {open && <div style={{ padding: "0 24px 14px" }}><FunnelView s={s} leads={leads} embedded /></div>}
     </div>
   );
 }
