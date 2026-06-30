@@ -1,6 +1,6 @@
 import React from "react";
 import { TrendBadge, EmptyState, PrimaryButton } from "../atoms.jsx";
-import { DeltaInline, FunnelLadder } from "../charts.jsx";
+import { DeltaInline } from "../charts.jsx";
 import { chromeBtnStyleSmall, leadScoreTone, leadAge, waLink } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
@@ -582,19 +582,45 @@ function FunnelView({ s, leads, embedded }) {
   const lost = leads.filter(l => lostStages.includes(l.stage)).length;
   const overall = total > 0 ? won / total : 0;
   const tone = window.productTone ? window.productTone(s) : "var(--accent)";
+  const lostRows = lostStages.map(st => ({ stage: st, count: leads.filter(l => l.stage === st).length }));
+
+  // Uma barra centralizada do funil. Largura ∝ count/total → forma afunilada.
+  const bar = (st, count, color, flag) => {
+    const w = total > 0 ? Math.max((count / total) * 100, 3) : 0;
+    const pct = total > 0 ? `${(count / total * 100).toFixed(0)}%` : "";
+    return (
+      <div key={st} style={{ position: "relative", height: 28, marginBottom: 5, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: `${w}%`, height: "100%", background: color, opacity: 0.9, borderRadius: 3 }} />
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, fontFamily: "var(--mono)", fontSize: 11, color: "#fff", textShadow: "0 1px 2px rgba(0,0,0,.55)", whiteSpace: "nowrap" }}>
+          <span style={{ fontWeight: 500 }}>{st}</span>
+          <span className="tnum">{count}</span>
+          <span className="tnum" style={{ opacity: 0.85 }}>{pct}</span>
+          {flag && <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: ".06em" }}>GARGALO</span>}
+        </div>
+      </div>
+    );
+  };
 
   const panel = (
-    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "16px 18px", background: "var(--bg-1)", maxWidth: 820 }}>
-      <div style={{ display: "flex", gap: 26, flexWrap: "wrap", marginBottom: 18 }}>
+    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "18px 20px", background: "var(--bg-1)", maxWidth: 620, margin: "0 auto" }}>
+      <div style={{ display: "flex", gap: 28, flexWrap: "wrap", justifyContent: "center", marginBottom: 20 }}>
         <FunnelStat label="Total de cadastros" value={total} />
         <FunnelStat label="Ganhos" value={won} tone={tone} />
         <FunnelStat label="Conversão geral" value={`${(overall * 100).toFixed(1)}%`} />
         <FunnelStat label="Perdidos / desqualif." value={lost} dim />
       </div>
-      {data.length > 0
-        ? <FunnelLadder stages={data} accent={tone} />
-        : <div className="mono dim" style={{ fontSize: 11 }}>Sem cadastros ainda.</div>}
-      <div className="mono dim" style={{ fontSize: 10, marginTop: 14, color: "var(--fg-4)" }}>
+      {total > 0 ? (
+        <div>
+          {data.map(d => bar(d.stage, d.count, d.flag === "bottleneck" ? "var(--neg)" : tone, d.flag === "bottleneck"))}
+          {lostRows.length > 0 && (
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px dashed var(--line-2)" }}>
+              <div className="mono" style={{ fontSize: 9, color: "var(--fg-4)", textAlign: "center", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>Saíram do funil</div>
+              {lostRows.map(r => bar(r.stage, r.count, "var(--fg-4)", false))}
+            </div>
+          )}
+        </div>
+      ) : <div className="mono dim" style={{ fontSize: 11, textAlign: "center" }}>Sem cadastros ainda.</div>}
+      <div className="mono dim" style={{ fontSize: 10, marginTop: 14, color: "var(--fg-4)", textAlign: "center" }}>
         % = sobre o total de cadastros · <span style={{ color: "var(--neg)" }}>gargalo</span> = maior queda entre etapas
       </div>
     </div>
