@@ -836,13 +836,13 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       host.setAttribute('data-reveal', '');
       host.innerHTML =
         '<div class="calc-inputs">' +
-          field('ca-ads', s.adsLabel || 'Anúncios criados por mês', '', 'un.', ads0, s.adsNote || 'Anúncios novos que a operação publica todo mês.') +
-          field('ca-rev', s.revenueLabel || 'Faturamento mensal hoje', 'R$', '', rev0, s.revenueNote || '') +
-          field('ca-sal', s.salaryLabel || 'Custo de 1 funcionário / mês', 'R$', '', sal0, s.salaryNote || 'Salário + encargos. Ajuste pra sua realidade.') +
+          field('ca-ads', s.adsLabel || 'Anúncios novos por mês', '', 'un.', ads0, s.adsNote || 'Só os anúncios que a operação cria do zero. Pode ser a média do mês.') +
+          field('ca-rev', s.revenueLabel || 'Faturamento de hoje / mês', 'R$', '', rev0, s.revenueNote || 'Quanto a operação fatura num mês normal.') +
+          field('ca-sal', s.salaryLabel || 'Custo de 1 funcionário / mês', 'R$', '', sal0, s.salaryNote || 'Salário + encargos. A gente ajusta pro número da sua operação.') +
         '</div>' +
         '<div class="calc-res">' +
-          cell('ca-time', s.timeLabel || 'Tempo economizado / mês') +
-          cell('ca-save', s.saveLabel || 'Economia em mão de obra / ano') +
+          cell('ca-time', s.timeLabel || 'Tempo que volta pro time / mês') +
+          cell('ca-save', s.saveLabel || 'Economia com mão de obra / ano') +
           cell('ca-proj', (s.projLabel || 'Faturamento projetado em {n} meses').replace('{n}', upMonths)) +
           cell('ca-gain', s.gainLabel || 'A mais no caixa / mês') +
         '</div>';
@@ -864,13 +864,13 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         var proj = rev * (1 + uplift);
         var gain = rev * uplift;
         q('ca-time').textContent = intBR(Math.round(hMonth)) + ' h';
-        q('ca-time-sub').textContent = '= ' + intBR(Math.round(hYear)) + ' h/ano · ~' + intBR(Math.round(hYear / 8)) + ' dias de trabalho';
+        q('ca-time-sub').textContent = '= ' + intBR(Math.round(hYear)) + ' h/ano · ~' + intBR(Math.round(hYear / 8)) + ' dias úteis liberados';
         q('ca-save').textContent = money(saveMonth * 12);
-        q('ca-save-sub').textContent = money(saveMonth) + '/mês em horas que a plataforma devolve pro time';
+        q('ca-save-sub').textContent = money(saveMonth) + '/mês que deixam de virar trabalho manual';
         q('ca-proj').textContent = money(proj);
         q('ca-proj-sub').textContent = '+' + Math.round(uplift * 100) + '% sobre os ' + money(rev) + ' de hoje';
         q('ca-gain').textContent = '+' + money(gain);
-        q('ca-gain-sub').textContent = 'no ' + upMonths + 'º mês de operação';
+        q('ca-gain-sub').textContent = 'quando os +' + Math.round(uplift * 100) + '% viram realidade — no ' + upMonths + 'º mês';
         fitSlides();
       }
       [inAds, inRev, inSal].forEach(function (i) { i.addEventListener('input', recompute); });
