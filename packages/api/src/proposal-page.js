@@ -241,6 +241,28 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .ret-uplift { margin-top: 24px; padding: 16px 18px; border-radius: var(--radius); background: var(--accent-soft); border: 1px solid var(--accent-line); font-size: 14px; line-height: 1.5; color: var(--ink-2); }
   .ret-uplift b { color: var(--accent); }
 
+  /* Calculadora interativa (slide antes do preço): inputs do lead à esquerda,
+     resultados recalculados ao vivo à direita. Reaproveita tokens de card. */
+  .calc-grid { display: grid; grid-template-columns: 1fr; gap: 28px; align-items: start; }
+  @media (min-width: 900px) { .calc-grid { grid-template-columns: 400px 1fr; gap: 44px; align-items: center; } }
+  .calc-inputs { display: flex; flex-direction: column; gap: 18px; }
+  .calc-field label { display: block; font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 8px; }
+  .calc-inputbox { display: flex; align-items: baseline; gap: 8px; background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 16px; transition: border-color .12s var(--ease-out), box-shadow .12s var(--ease-out); }
+  .calc-inputbox:focus-within { border-color: var(--accent); box-shadow: var(--glow); }
+  .calc-inputbox .affix { font-family: var(--font-mono); font-size: 15px; color: var(--ink-3); flex-shrink: 0; }
+  .calc-inputbox input { flex: 1; min-width: 0; width: 100%; background: none; border: 0; color: var(--fg); font-family: var(--font-display); font-weight: 500; font-size: 26px; letter-spacing: -.02em; -moz-appearance: textfield; }
+  .calc-inputbox input::-webkit-outer-spin-button, .calc-inputbox input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .calc-inputbox input:focus { outline: none; }
+  .calc-note { margin-top: 6px; font-size: 12px; color: var(--ink-4); line-height: 1.4; }
+  .calc-res { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .calc-cell { background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px 24px; }
+  .calc-cell.hl { background: linear-gradient(180deg, var(--accent-soft) 0%, transparent 100%); border-color: var(--accent-line); }
+  .calc-cell-label { font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); line-height: 1.35; }
+  .calc-cell-num { font-family: var(--font-display); font-weight: 500; font-size: 36px; line-height: 1; letter-spacing: -.03em; margin-top: 12px; overflow-wrap: anywhere; }
+  @media (min-width: 768px) { .calc-cell-num { font-size: 42px; } }
+  .calc-cell.hl .calc-cell-num { color: var(--accent); }
+  .calc-cell-sub { margin-top: 8px; font-size: 13px; color: var(--ink-3); line-height: 1.4; }
+
   .light { background: var(--fg); color: var(--bg); }
   .light .lead, .light .body { color: color-mix(in oklab, var(--bg) 72%, transparent); }
   .light .band { border-bottom-color: color-mix(in oklab, var(--bg) 15%, transparent); }
@@ -771,6 +793,88 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         '<div class="roi-big" data-reveal><div class="roi-label">' + fmt(s.bigLabel || '') + '</div><div class="roi-num">' + fmt(s.bigValue || '') + '</div>' + (s.bigLabel2 ? '<div class="roi-label" style="margin-bottom:18px">' + fmt(s.bigLabel2) + '</div>' : '') + '<div class="roi-caption">' + fmt(s.bigCaption || '') + '</div></div>';
       w.appendChild(rw);
       sec.appendChild(w);
+      return sec;
+    },
+    // Calculadora interativa: o lead digita anúncios/mês, faturamento e custo de
+    // funcionário; a página recalcula tempo/dinheiro economizados e a projeção de
+    // faturamento (+X% em N meses) ao vivo. Parâmetros vêm do slide, com fallback
+    // no calc do template (minCopy=10min, salaryMonthly=3000, workHours=176,
+    // revenueUpliftPct=50). Anúncios/mês pré-preenchem da resposta de volume
+    // (anúncios/semana × 4,3), se houver. Tudo client-side; nada é salvo.
+    calculator: function (s, num, total) {
+      var sec = el('section');
+      sec.appendChild(el('div', 'atmos'));
+      var w = el('div', 'wrap');
+      w.appendChild(band(s, num, total));
+      if (s.lead) { var ld = el('p', 'lead', fmt(s.lead)); ld.setAttribute('data-reveal', ''); w.appendChild(ld); }
+
+      function nOr(v, d) { v = Number(v); return isFinite(v) ? v : d; }
+      var minPerAd = nOr(s.minutesPerAd, nOr(CALC.minCopy, 10));
+      var workHours = nOr(s.workHours, nOr(CALC.workHours, 176));
+      var uplift = nOr(s.revenueUpliftPct, nOr(CALC.revenueUpliftPct, 50)) / 100;
+      var upMonths = Math.round(nOr(s.upliftMonths, 6));
+
+      var vAns = (DATA.answers || {})[CALC.volumeKey || 'volume'];
+      var adsWeek = nOr((CALC.volumeMid || {})[vAns], 0);
+      var ads0 = adsWeek > 0 ? Math.round(adsWeek * 4.3) : Math.round(nOr(s.adsDefault, 100));
+      var rev0 = Math.round(nOr(s.revenueDefault, 50000));
+      var sal0 = Math.round(nOr(s.salaryMonthly, nOr(CALC.salaryMonthly, 3000)));
+
+      function field(id, label, prefix, suffix, val, note) {
+        return '<div class="calc-field"><label for="' + id + '">' + fmt(label) + '</label>' +
+          '<div class="calc-inputbox">' + (prefix ? '<span class="affix">' + esc(prefix) + '</span>' : '') +
+          '<input id="' + id + '" type="number" min="0" step="1" inputmode="numeric" value="' + esc(String(val)) + '">' +
+          (suffix ? '<span class="affix">' + esc(suffix) + '</span>' : '') + '</div>' +
+          (note ? '<div class="calc-note">' + fmt(note) + '</div>' : '') + '</div>';
+      }
+      function cell(id, label) {
+        return '<div class="calc-cell hl"><div class="calc-cell-label">' + fmt(label) + '</div>' +
+          '<div class="calc-cell-num" id="' + id + '">—</div><div class="calc-cell-sub" id="' + id + '-sub"></div></div>';
+      }
+
+      var host = el('div', 'calc-grid');
+      host.setAttribute('data-reveal', '');
+      host.innerHTML =
+        '<div class="calc-inputs">' +
+          field('ca-ads', s.adsLabel || 'Anúncios criados por mês', '', 'un.', ads0, s.adsNote || 'Anúncios novos que a operação publica todo mês.') +
+          field('ca-rev', s.revenueLabel || 'Faturamento mensal hoje', 'R$', '', rev0, s.revenueNote || '') +
+          field('ca-sal', s.salaryLabel || 'Custo de 1 funcionário / mês', 'R$', '', sal0, s.salaryNote || 'Salário + encargos. Ajuste pra sua realidade.') +
+        '</div>' +
+        '<div class="calc-res">' +
+          cell('ca-time', s.timeLabel || 'Tempo economizado / mês') +
+          cell('ca-save', s.saveLabel || 'Economia em mão de obra / ano') +
+          cell('ca-proj', (s.projLabel || 'Faturamento projetado em {n} meses').replace('{n}', upMonths)) +
+          cell('ca-gain', s.gainLabel || 'A mais no caixa / mês') +
+        '</div>';
+      w.appendChild(host);
+      sec.appendChild(w);
+
+      // Refs pela subárvore (a seção ainda não está no documento durante o build).
+      var q = function (id) { return host.querySelector('#' + id); };
+      var inAds = q('ca-ads'), inRev = q('ca-rev'), inSal = q('ca-sal');
+      var money = function (n) { return 'R$ ' + intBR(Math.round(n)); };
+      function recompute() {
+        var ads = Math.max(0, nOr(inAds.value, 0));
+        var rev = Math.max(0, nOr(inRev.value, 0));
+        var sal = Math.max(0, nOr(inSal.value, 0));
+        var hMonth = ads * minPerAd / 60;
+        var hYear = hMonth * 12;
+        var hourly = workHours > 0 ? sal / workHours : 0;
+        var saveMonth = hMonth * hourly;
+        var proj = rev * (1 + uplift);
+        var gain = rev * uplift;
+        q('ca-time').textContent = intBR(Math.round(hMonth)) + ' h';
+        q('ca-time-sub').textContent = '= ' + intBR(Math.round(hYear)) + ' h/ano · ~' + intBR(Math.round(hYear / 8)) + ' dias de trabalho';
+        q('ca-save').textContent = money(saveMonth * 12);
+        q('ca-save-sub').textContent = money(saveMonth) + '/mês em horas que a plataforma devolve pro time';
+        q('ca-proj').textContent = money(proj);
+        q('ca-proj-sub').textContent = '+' + Math.round(uplift * 100) + '% sobre os ' + money(rev) + ' de hoje';
+        q('ca-gain').textContent = '+' + money(gain);
+        q('ca-gain-sub').textContent = 'no ' + upMonths + 'º mês de operação';
+        fitSlides();
+      }
+      [inAds, inRev, inSal].forEach(function (i) { i.addEventListener('input', recompute); });
+      recompute();
       return sec;
     },
     pricing: function (s, num, total) {
