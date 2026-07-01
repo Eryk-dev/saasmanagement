@@ -1,6 +1,6 @@
 import React from "react";
 import { TrendBadge, EmptyState, PrimaryButton } from "../atoms.jsx";
-import { DeltaInline, FunnelView } from "../charts.jsx";
+import { DeltaInline } from "../charts.jsx";
 import { chromeBtnStyleSmall, leadScoreTone, leadAge, waLink } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
@@ -21,7 +21,6 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   const [highlight, setHighlight] = useStP(jumpFilter?.stage || null);
   const [selected, setSelected] = useStP(new Set());
   const [pri, setPri] = useStP("all");
-  const [funnelOpen, setFunnelOpen] = useStP(true);
 
   const s = SAAS.find(x => x.id === activeSaas) || SAAS[0];
 
@@ -92,9 +91,6 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
 
       {/* Forecast strip — single-product views only */}
       {view !== "all" && <ForecastStrip s={s} leads={saasAll} />}
-
-      {/* Funil de conversão — acima dos leads no Kanban */}
-      {view === "kanban" && <FunnelInline s={s} leads={saasAll} open={funnelOpen} onToggle={() => setFunnelOpen(o => !o)} />}
 
       {/* Body */}
       {view === "kanban" && (
@@ -548,20 +544,6 @@ function LeadList({ leads }) {
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-// Faixa do funil acima dos leads no Kanban — colapsável.
-function FunnelInline({ s, leads, open, onToggle }) {
-  return (
-    <div style={{ borderBottom: "1px solid var(--line-1)", background: "var(--bg-0)" }}>
-      <button onClick={onToggle} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 24px", width: "100%", textAlign: "left", color: "var(--fg-3)", fontSize: 10.5, fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
-        <span style={{ color: "var(--fg-4)" }}>{open ? "▾" : "▸"}</span>
-        Funil de conversão
-        <span className="dim" style={{ marginLeft: 4 }}>· {leads.length} cadastros</span>
-      </button>
-      {open && <div style={{ padding: "0 24px 14px" }}><FunnelView s={s} leads={leads} embedded /></div>}
     </div>
   );
 }
