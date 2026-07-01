@@ -870,7 +870,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         q('ca-proj').textContent = money(proj);
         q('ca-proj-sub').textContent = '+' + Math.round(uplift * 100) + '% sobre os ' + money(rev) + ' de hoje';
         q('ca-gain').textContent = '+' + money(gain);
-        q('ca-gain-sub').textContent = 'quando os +' + Math.round(uplift * 100) + '% viram realidade — no ' + upMonths + 'º mês';
+        q('ca-gain-sub').textContent = 'quando os +' + Math.round(uplift * 100) + '% viram realidade, no ' + upMonths + 'º mês';
         fitSlides();
       }
       [inAds, inRev, inSal].forEach(function (i) { i.addEventListener('input', recompute); });
