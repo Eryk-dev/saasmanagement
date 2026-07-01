@@ -243,9 +243,9 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
 
   /* Calculadora interativa (slide antes do preço): inputs do lead à esquerda,
      resultados recalculados ao vivo à direita. Reaproveita tokens de card. */
-  .calc-grid { display: grid; grid-template-columns: 1fr; gap: 28px; align-items: start; }
-  @media (min-width: 900px) { .calc-grid { grid-template-columns: 400px 1fr; gap: 44px; align-items: center; } }
-  .calc-inputs { display: flex; flex-direction: column; gap: 18px; }
+  .calc-grid { display: flex; flex-direction: column; gap: 24px; }
+  .calc-inputs { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  @media (min-width: 640px) { .calc-inputs { grid-template-columns: repeat(3, 1fr); gap: 18px; } }
   .calc-field label { display: block; font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 8px; }
   .calc-inputbox { display: flex; align-items: baseline; gap: 8px; background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 16px; transition: border-color .12s var(--ease-out), box-shadow .12s var(--ease-out); }
   .calc-inputbox:focus-within { border-color: var(--accent); box-shadow: var(--glow); }
@@ -254,14 +254,15 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .calc-inputbox input::-webkit-outer-spin-button, .calc-inputbox input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .calc-inputbox input:focus { outline: none; }
   .calc-note { margin-top: 6px; font-size: 12px; color: var(--ink-4); line-height: 1.4; }
-  .calc-res { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .calc-res { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  @media (min-width: 560px) { .calc-res { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 1040px) { .calc-res { grid-template-columns: repeat(4, 1fr); } }
   .calc-cell { background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px 24px; }
   .calc-cell.hl { background: linear-gradient(180deg, var(--accent-soft) 0%, transparent 100%); border-color: var(--accent-line); }
   .calc-cell-label { font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); line-height: 1.35; }
-  .calc-cell-num { font-family: var(--font-display); font-weight: 500; font-size: 36px; line-height: 1; letter-spacing: -.03em; margin-top: 12px; overflow-wrap: anywhere; }
-  @media (min-width: 768px) { .calc-cell-num { font-size: 42px; } }
-  .calc-cell.hl .calc-cell-num { color: var(--accent); }
+  .calc-cell-num { font-family: var(--font-display); font-weight: 500; font-size: clamp(28px, 3.2vw, 40px); line-height: 1; letter-spacing: -.03em; margin-top: 10px; overflow-wrap: anywhere; }
   .calc-cell-sub { margin-top: 8px; font-size: 13px; color: var(--ink-3); line-height: 1.4; }
+  .calc-cell.hl .calc-cell-num { color: var(--accent); }
 
   .light { background: var(--fg); color: var(--bg); }
   .light .lead, .light .body { color: color-mix(in oklab, var(--bg) 72%, transparent); }
@@ -829,7 +830,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       }
       function cell(id, label) {
         return '<div class="calc-cell hl"><div class="calc-cell-label">' + fmt(label) + '</div>' +
-          '<div class="calc-cell-num" id="' + id + '">—</div><div class="calc-cell-sub" id="' + id + '-sub"></div></div>';
+          '<div class="calc-cell-num" id="' + id + '">…</div><div class="calc-cell-sub" id="' + id + '-sub"></div></div>';
       }
 
       var host = el('div', 'calc-grid');
@@ -864,13 +865,13 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         var proj = rev * (1 + uplift);
         var gain = rev * uplift;
         q('ca-time').textContent = intBR(Math.round(hMonth)) + ' h';
-        q('ca-time-sub').textContent = '= ' + intBR(Math.round(hYear)) + ' h/ano · ~' + intBR(Math.round(hYear / 8)) + ' dias úteis liberados';
+        q('ca-time-sub').textContent = '≈ ' + intBR(Math.round(hYear / 8)) + ' dias úteis por ano';
         q('ca-save').textContent = money(saveMonth * 12);
-        q('ca-save-sub').textContent = money(saveMonth) + '/mês que deixam de virar trabalho manual';
+        q('ca-save-sub').textContent = money(saveMonth) + ' por mês';
         q('ca-proj').textContent = money(proj);
-        q('ca-proj-sub').textContent = '+' + Math.round(uplift * 100) + '% sobre os ' + money(rev) + ' de hoje';
+        q('ca-proj-sub').textContent = '+' + Math.round(uplift * 100) + '% sobre hoje';
         q('ca-gain').textContent = '+' + money(gain);
-        q('ca-gain-sub').textContent = 'quando os +' + Math.round(uplift * 100) + '% viram realidade, no ' + upMonths + 'º mês';
+        q('ca-gain-sub').textContent = 'a partir do ' + upMonths + 'º mês';
         fitSlides();
       }
       [inAds, inRev, inSal].forEach(function (i) { i.addEventListener('input', recompute); });
