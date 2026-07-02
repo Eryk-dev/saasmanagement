@@ -24,7 +24,8 @@ export const LEVERADS_LEAD_QUESTIONS = [
       { value: "0-100", label: "Até 100" },
       { value: "100-500", label: "100 a 500" },
       { value: "500-2000", label: "500 a 2 mil" },
-      { value: "2000+", label: "Mais de 2 mil" },
+      { value: "2000-10000", label: "2 a 10 mil" },
+      { value: "10000+", label: "Mais de 10 mil" },
     ],
   },
   {
