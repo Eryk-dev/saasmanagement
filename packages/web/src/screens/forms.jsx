@@ -73,6 +73,9 @@ function FormsScreen({ saasId }) {
   if (view.mode === "subs") return (
     <SubmissionsView form={view.form} onBack={() => setView({ mode: "list" })} />
   );
+  if (view.mode === "funnel") return (
+    <FunnelView form={view.form} onBack={() => setView({ mode: "list" })} />
+  );
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -100,13 +103,13 @@ function FormsScreen({ saasId }) {
           />
         ) : (
           <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", overflow: "hidden", background: "var(--bg-1)" }}>
-            <div className="mono" style={{ display: "grid", gridTemplateColumns: "1fr 110px 90px 90px 300px", padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
+            <div className="mono" style={{ display: "grid", gridTemplateColumns: "1fr 110px 90px 90px 360px", padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
               <span>Form</span><span>Status</span><span>Perguntas</span><span>Respostas</span><span style={{ textAlign: "right" }}>Ações</span>
             </div>
             {forms.map((f) => {
               const pub = f.status === "published";
               return (
-                <div key={f.id} style={{ display: "grid", gridTemplateColumns: "1fr 110px 90px 90px 300px", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", fontSize: 13 }}>
+                <div key={f.id} style={{ display: "grid", gridTemplateColumns: "1fr 110px 90px 90px 360px", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", fontSize: 13 }}>
                   <span style={{ fontWeight: 500 }}>{f.name || f.id}</span>
                   <span><span className={"chip " + (pub ? "pos" : "")} style={{ height: 20 }}>{pub ? "publicado" : "rascunho"}</span></span>
                   <span className="mono tnum dim">{(f.questions || []).length}</span>
@@ -122,6 +125,9 @@ function FormsScreen({ saasId }) {
                     </button>
                     <button onClick={() => copy(embedSnippet(f), "Snippet de embed copiado")} disabled={!pub} title="Copiar código de embed" style={{ ...chromeBtnStyleSmall, opacity: pub ? 1 : 0.45 }}>
                       <span style={{ fontSize: 11 }}>embed</span>
+                    </button>
+                    <button onClick={() => setView({ mode: "funnel", form: f })} title="Funil de drop-off por etapa" style={chromeBtnStyleSmall}>
+                      <span style={{ fontSize: 11 }}>funil</span>
                     </button>
                     <RowActions onEdit={() => setView({ mode: "edit", form: f })} onDelete={() => openDelete("forms", f)} />
                   </span>
@@ -526,6 +532,83 @@ function SubmissionsView({ form, onBack }) {
                 )}
               </div>
             ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Funil de drop-off ───────────────────────────────────────────────────────
+// Sessões únicas por tela (eventos da página pública), na ordem do renderer.
+// A barra é relativa ao topo do funil; o % vermelho é a perda vs. a tela anterior.
+
+const FUNNEL_PERIODS = [["7", "7 dias"], ["30", "30 dias"], ["90", "90 dias"], ["", "tudo"]];
+
+function FunnelView({ form, onBack }) {
+  const [data, setData] = useState(null);
+  const [days, setDays] = useState("30");
+
+  useEffect(() => {
+    setData(null);
+    const since = days ? new Date(Date.now() - Number(days) * 86400e3).toISOString() : "";
+    api.formFunnel(form.id, since).then(setData).catch(() => setData({ error: true }));
+  }, [form.id, days]);
+
+  const rows = data && !data.error ? [
+    { label: "Abriu a página", sessions: data.views, mono: true },
+    ...(form.welcome ? [{ label: "Clicou em começar", sessions: data.starts, mono: true }] : []),
+    ...(data.steps || []).map((s, i) => ({ label: s.label, sessions: s.sessions, insight: s.insight, n: i + 1 })),
+    { label: "Enviou o form", sessions: data.submits, mono: true },
+  ] : [];
+  const top = rows.length ? Math.max(rows[0].sessions, 1) : 1;
+
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 12 }}>
+        <button onClick={onBack} style={chromeBtnStyleSmall}><span style={{ fontSize: 12 }}>← forms</span></button>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 15, fontWeight: 500 }}>{form.name}</div>
+          <div className="mono dim" style={{ fontSize: 11 }}>funil de drop-off por etapa</div>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          {FUNNEL_PERIODS.map(([v, label]) => (
+            <button key={v} onClick={() => setDays(v)} className="mono" style={{
+              height: 24, padding: "0 10px", borderRadius: "var(--r-2)", fontSize: 11,
+              border: "1px solid " + (days === v ? "var(--line-strong)" : "var(--line-1)"),
+              background: days === v ? "var(--bg-3)" : "var(--bg-2)",
+              color: days === v ? "var(--fg-1)" : "var(--fg-3)",
+            }}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ flex: 1, overflow: "auto", padding: "20px 24px" }}>
+        {!data && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
+        {data?.error && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>Falha ao carregar o funil.</div>}
+        {data && !data.error && !rows[0].sessions && (
+          <EmptyState title="Nenhum evento no período" hint="Os eventos de funil são registrados pela página pública do form a cada visita. Compartilhe o link e volte aqui pra ver onde as pessoas param." />
+        )}
+        {data && !data.error && rows[0].sessions > 0 && (
+          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", overflow: "hidden", background: "var(--bg-1)", maxWidth: 760 }}>
+            {rows.map((r, i) => {
+              const prev = i > 0 ? rows[i - 1].sessions : null;
+              const drop = prev > 0 ? Math.round((1 - r.sessions / prev) * 100) : 0;
+              return (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "220px 1fr 60px 70px", gap: 12, alignItems: "center", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", opacity: r.insight ? 0.6 : 1 }}>
+                  <span className={r.mono ? "mono dim" : ""} style={{ fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.label}>
+                    {r.n ? `${String(r.n).padStart(2, "0")} · ` : ""}{r.label}{r.insight ? " (insight)" : ""}
+                  </span>
+                  <div style={{ height: 8, background: "var(--bg-inset)", borderRadius: 999, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${Math.round((r.sessions / top) * 100)}%`, background: "var(--accent)", borderRadius: 999 }} />
+                  </div>
+                  <span className="mono tnum" style={{ fontSize: 12, textAlign: "right" }}>{r.sessions}</span>
+                  <span className="mono tnum" style={{ fontSize: 11, textAlign: "right", color: drop > 0 ? "var(--neg)" : "var(--fg-4)" }}>
+                    {prev != null && prev > 0 ? `-${Math.max(drop, 0)}%` : ""}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
