@@ -6,7 +6,8 @@
 // preenchido = bot → responde ok e descarta) + validação estrita contra a
 // definição do form. IDs são opacos; forms em rascunho não existem publicamente.
 
-import { publicForm, validateAnswers, leadFromSubmission, submissionTerminal, makeRateLimiter } from "./forms.js";
+import { randomUUID } from "node:crypto";
+import { publicForm, validateAnswers, leadFromSubmission, submissionTerminal, makeRateLimiter, buildSteps } from "./forms.js";
 import { formPageHtml, EMBED_JS } from "./form-page.js";
 import { CREATE_DEFAULTS, dispatchProposal, publicBase } from "./routes.js";
 
@@ -18,6 +19,12 @@ export function registerFormRoutes(app, repo, opts = {}) {
   const metaCapi = opts.metaCapi; // CAPI "Lead" server-side (fail-open, pode faltar em teste direto)
   const allow = makeRateLimiter({
     limit: opts.rateLimit ?? Number(process.env.FORM_RATE_LIMIT || 10),
+    windowMs: opts.rateWindowMs ?? 60_000,
+  });
+  // Limiter próprio dos eventos de funil: uma sessão legítima emite ~1 evento por
+  // tela, então o teto por IP precisa ser bem maior que o de submissions.
+  const allowEvent = makeRateLimiter({
+    limit: opts.eventRateLimit ?? Number(process.env.FORM_EVENT_RATE_LIMIT || 60),
     windowMs: opts.rateWindowMs ?? 60_000,
   });
 
@@ -110,6 +117,65 @@ export function registerFormRoutes(app, repo, opts = {}) {
     return reply.code(201).send({ ok: true, id: submission.id });
   });
 
+  // Telemetria de funil (drop-off por etapa). A página pública manda eventos
+  // anônimos por sessão de visita: "view" (carregou), "start" (clicou começar),
+  // "step" (chegou na tela da pergunta `key`) e "submit" (envio aceito). Nada de
+  // PII aqui — o contato só existe no submission. Session id é gerado no client
+  // e vive só naquele page load (cada visita é uma entrada nova no funil).
+  const EVENT_TYPES = new Set(["view", "start", "step", "submit"]);
+  app.post("/public/forms/:id/events", async (req, reply) => {
+    if (!allowEvent(clientIp(req))) return reply.code(429).send({ error: "Muitos eventos." });
+    const form = await publishedForm(req.params.id);
+    if (!form) return reply.code(404).send({ error: "Not found" });
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const event = String(body.event || "");
+    const session = String(body.session || "").slice(0, 64);
+    const key = String(body.key || "").slice(0, 80);
+    if (!EVENT_TYPES.has(event) || !session) return reply.code(400).send({ error: "Evento inválido" });
+    if (event === "step" && !(form.questions || []).some((q) => q.key === key)) {
+      return reply.code(400).send({ error: "Etapa desconhecida" });
+    }
+    // Id explícito: o gerador do repo é por timestamp e eventos chegam em rajada —
+    // dois no mesmo milissegundo colidiriam na PK.
+    await repo.create("form_events", {
+      id: `fe_${randomUUID()}`,
+      form: form.id,
+      saas: form.saas,
+      session,
+      event,
+      key: event === "step" ? key : "",
+      createdAt: new Date().toISOString(),
+      ua: String(req.headers["user-agent"] || "").slice(0, 300),
+    });
+    return reply.code(201).send({ ok: true });
+  });
+
+  // Funil agregado do form (autenticado): sessões únicas por tela, na ordem do
+  // renderer (buildSteps), + totais de view/start/submit. `?since=` (ISO) filtra
+  // o período — comparação lexicográfica funciona em ISO 8601.
+  app.get("/api/forms/:id/funnel", async (req, reply) => {
+    const form = await repo.get("forms", req.params.id);
+    if (!form) return reply.code(404).send({ error: "Not found" });
+    const since = String(req.query.since || "");
+    const events = (await repo.list("form_events")).filter(
+      (e) => e.form === form.id && (!since || String(e.createdAt || "") >= since),
+    );
+    const uniq = (pred) => new Set(events.filter(pred).map((e) => e.session)).size;
+    const questions = form.questions || [];
+    const steps = buildSteps(questions).map((idxs) => questions[idxs[0]]);
+    return {
+      views: uniq((e) => e.event === "view"),
+      starts: uniq((e) => e.event === "start"),
+      submits: uniq((e) => e.event === "submit"),
+      steps: steps.map((q) => ({
+        key: q.key,
+        label: q.label || q.key,
+        insight: (q.type || "text") === "insight",
+        sessions: uniq((e) => e.event === "step" && e.key === q.key),
+      })),
+    };
+  });
+
   // Página hospedada. `?embed=1` = modo iframe (sem altura cheia, posta a altura).
   app.get("/f/:id", async (req, reply) => {
     const form = await publishedForm(req.params.id);
@@ -128,6 +194,6 @@ export function registerFormRoutes(app, repo, opts = {}) {
   app.post("/api/forms/preview", async (req, reply) => {
     const draft = req.body && typeof req.body === "object" ? req.body : null;
     if (!draft) return reply.code(400).send({ error: "JSON body required" });
-    return { html: formPageHtml(publicForm(draft), { embed: false }) };
+    return { html: formPageHtml(publicForm(draft), { embed: false, preview: true }) };
   });
 }

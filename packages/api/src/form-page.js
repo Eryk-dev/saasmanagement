@@ -54,7 +54,7 @@ const fontHref = (font) => {
   return `https://fonts.googleapis.com/css2?family=${enc}:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap`;
 };
 
-export function formPageHtml(form, { embed = false } = {}) {
+export function formPageHtml(form, { embed = false, preview = false } = {}) {
   const t = form.theme || {};
   const bg = t.bg || "#0f1115";
   const surface = t.surface || "color-mix(in oklab, #ffffff 5%, transparent)";
@@ -236,7 +236,7 @@ ${metaPixelHead}
 <div class="atmos"></div>
 <div class="shell"><div id="root"></div></div>
 <input class="hp" id="hp" name="website" tabindex="-1" autocomplete="off">
-<script>window.__FORM__ = ${escJson(form)}; window.__EMBED__ = ${embed ? "true" : "false"}; window.__LOGO__ = ${escJson(logo)};</script>
+<script>window.__FORM__ = ${escJson(form)}; window.__EMBED__ = ${embed ? "true" : "false"}; window.__PREVIEW__ = ${preview ? "true" : "false"}; window.__LOGO__ = ${escJson(logo)};</script>
 <script>
 (function () {
   var F = window.__FORM__;
@@ -256,6 +256,26 @@ ${metaPixelHead}
   STEPS.forEach(function (idxs, si) { idxs.forEach(function (qi) { stepOfKey[QS[qi].key] = si; }); });
   var isInsightStep = function (si) { return (QS[STEPS[si][0]].type || 'text') === 'insight'; };
   var realTotal = STEPS.filter(function (_, si) { return !isInsightStep(si); }).length;
+
+  // Telemetria de funil (drop-off por etapa): eventos anônimos por sessão de
+  // visita, deduplicados no client (voltar não recontam) e enviados via
+  // sendBeacon (sobrevive à aba fechando). Best-effort: nunca afeta o form.
+  var SID = (window.crypto && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : 's-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+  var trackSent = {};
+  function track(event, key) {
+    if (window.__PREVIEW__) return; // preview do builder não polui o funil
+    var mark = event + ':' + (key || '');
+    if (trackSent[mark]) return;
+    trackSent[mark] = true;
+    try {
+      var body = JSON.stringify({ session: SID, event: event, key: key || '' });
+      var url = '/public/forms/' + encodeURIComponent(F.id) + '/events';
+      if (navigator.sendBeacon) navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
+      else fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body, keepalive: true });
+    } catch (e) {}
+  }
 
   var answers = {};
   var mode = F.welcome ? 'welcome' : (STEPS.length ? 'step' : 'done');
@@ -352,6 +372,7 @@ ${metaPixelHead}
 
   function render() {
     if (insightTimer) { clearTimeout(insightTimer); insightTimer = null; }
+    if (mode === 'step') track('step', QS[STEPS[cur][0]].key);
     root.innerHTML = '';
     if (mode === 'welcome') renderWelcome();
     else if (mode === 'step') (isInsightStep(cur) ? renderInsight : renderStep)();
@@ -375,7 +396,7 @@ ${metaPixelHead}
     root.appendChild(s);
   }
 
-  function start() { mode = 'step'; cur = 0; trail = [0]; render(); }
+  function start() { track('start'); mode = 'step'; cur = 0; trail = [0]; render(); }
 
   // Tela de insight: copy persuasiva + stat + barra com duração, auto-avança.
   function renderInsight() {
@@ -573,6 +594,7 @@ ${metaPixelHead}
       body: JSON.stringify(payload),
     }).then(function (r) {
       if (!r.ok) return r.json().then(function (b) { throw new Error((b && b.error) || ('Erro ' + r.status)); });
+      track('submit');
       mode = 'done'; cur = -1; render();
       // Redirect só na tela positiva — desqualificado não vai pro destino de sucesso.
       var url = !rejected && F.thanks && F.thanks.redirectUrl;
@@ -643,6 +665,7 @@ ${metaPixelHead}
     window.addEventListener('load', postHeight);
   }
 
+  track('view');
   render();
 })();
 </script>

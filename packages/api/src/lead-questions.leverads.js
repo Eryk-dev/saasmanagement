@@ -18,6 +18,28 @@ export const LEVERADS_LEAD_QUESTIONS = [
     ],
   },
   {
+    // Volume total publicado na maior conta — mede o custo da replicação manual.
+    key: "listings", label: "Quantos anúncios publicados na maior conta?", type: "select", required: true,
+    options: [
+      { value: "0-100", label: "Até 100" },
+      { value: "100-500", label: "100 a 500" },
+      { value: "500-2000", label: "500 a 2 mil" },
+      { value: "2000+", label: "Mais de 2 mil" },
+    ],
+  },
+  {
+    // Faixa de faturamento mensal — "nao-informar" existe de propósito: responder
+    // é obrigatório, mas informar não é (reduz abandono na pergunta sensível).
+    key: "revenue", label: "Faixa de faturamento mensal", type: "select", required: true,
+    options: [
+      { value: "0-50k", label: "Até R$ 50 mil" },
+      { value: "50-200k", label: "R$ 50 a 200 mil" },
+      { value: "200k-1m", label: "R$ 200 mil a 1 milhão" },
+      { value: "1m+", label: "Mais de R$ 1 milhão" },
+      { value: "nao-informar", label: "Prefiro não informar" },
+    ],
+  },
+  {
     key: "staff", label: "Quantas pessoas no time de marketplace?", type: "select", required: true,
     options: [
       { value: "0", label: "Nenhuma (só eu)" },

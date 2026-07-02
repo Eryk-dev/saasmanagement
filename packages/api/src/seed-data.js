@@ -25,6 +25,7 @@ export const COLLECTIONS = {
   leaderboard_all: [],
   forms: [],
   form_submissions: [],
+  form_events: [],
   proposal_templates: [],
   proposals: [],
   plans: [],

@@ -62,6 +62,8 @@ export const api = {
   },
   // Builders: preview server-side do rascunho (mesmo HTML da página pública).
   formPreview: (draft) => req("POST", "/api/forms/preview", draft),
+  // Funil de drop-off do form: sessões únicas por etapa. `since` (ISO) filtra o período.
+  formFunnel: (id, since) => req("GET", `/api/forms/${id}/funnel${since ? `?since=${encodeURIComponent(since)}` : ""}`),
   proposalPreview: (payload) => req("POST", "/api/proposals/preview", payload),
   // Ajustes (fase 3): grava o funil migrando estágios renomeados (lead/deal.stage
   // não têm FK — o servidor reaponta os cards junto).
