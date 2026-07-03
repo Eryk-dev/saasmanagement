@@ -14,6 +14,19 @@ import { CREATE_DEFAULTS, dispatchProposal, publicBase } from "./routes.js";
 const clientIp = (req) =>
   String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.ip || "?";
 
+// UTM vinda da página pública: só chaves conhecidas, strings curtas. Vai no lead
+// (atribuição por campanha em /api/marketing) e na submission (auditoria).
+const UTM_KEYS = ["source", "medium", "campaign", "content", "term", "fbclid"];
+function sanitizeUtm(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const out = {};
+  for (const k of UTM_KEYS) {
+    const v = raw[k];
+    if (typeof v === "string" && v.trim()) out[k] = v.trim().slice(0, 200);
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 export function registerFormRoutes(app, repo, opts = {}) {
   const discord = opts.discord; // injetado por routes.js (fail-open, pode faltar em teste direto)
   const metaCapi = opts.metaCapi; // CAPI "Lead" server-side (fail-open, pode faltar em teste direto)
@@ -60,10 +73,12 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // contar como conversão (Lead Pixel/CAPI) — pra não otimizar anúncio nesse público.
     const disqualified = submissionTerminal(form.questions || [], answers) === "_reject";
 
+    const utm = sanitizeUtm(body.utm);
     const lead = await repo.create("leads", {
       ...(CREATE_DEFAULTS.leads || {}),
       ...leadFromSubmission(form, answers),
       ...(disqualified ? { disqualified: true, stage: "disqualified" } : {}),
+      ...(utm ? { utm } : {}),
       createdAt: new Date().toISOString(), // métricas de marketing filtram por período
     });
     const submission = await repo.create("form_submissions", {
@@ -71,6 +86,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
       saas: form.saas,
       lead: lead.id,
       answers,
+      ...(utm ? { utm } : {}),
       createdAt: new Date().toISOString(),
       ua: String(req.headers["user-agent"] || "").slice(0, 300),
     });

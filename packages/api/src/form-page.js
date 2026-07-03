@@ -263,6 +263,22 @@ ${metaPixelHead}
   var SID = (window.crypto && crypto.randomUUID)
     ? crypto.randomUUID()
     : 's-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+
+  // UTM/fbclid da URL de entrada: vai junto do submit pra atribuição por
+  // campanha no cockpit (CAC/CPL por campanha). Só chaves conhecidas.
+  var UTM = (function () {
+    try {
+      var p = new URLSearchParams(location.search);
+      var o = {};
+      ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'].forEach(function (k) {
+        var v = p.get(k);
+        if (v) o[k.slice(4)] = v.slice(0, 200);
+      });
+      var fb = p.get('fbclid');
+      if (fb) o.fbclid = fb.slice(0, 200);
+      return Object.keys(o).length ? o : null;
+    } catch (e) { return null; }
+  })();
   var trackSent = {};
   function track(event, key) {
     if (window.__PREVIEW__) return; // preview do builder não polui o funil
@@ -587,6 +603,7 @@ ${metaPixelHead}
       fbp: readCookie('_fbp'),
       fbc: readCookie('_fbc'),
       sourceUrl: location.href,
+      utm: UTM,
     };
     fetch('/public/forms/' + encodeURIComponent(F.id) + '/submissions', {
       method: 'POST',
