@@ -1,7 +1,7 @@
 import React from "react";
 import { TrendBadge, EmptyState, PrimaryButton } from "../atoms.jsx";
 import { PageHead, Pill } from "../components/viz.jsx";
-import { leadScoreTone, leadAge, waLink } from "../lib/ui.js";
+import { leadScoreTone, leadAge, waLink, leadTier } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 // Pipeline — Kanban + List + Forecast tabs. Drag-and-drop between columns.
@@ -75,6 +75,14 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <PageHead title="Pipeline" sub={`${openLeads.length} ${openLeads.length === 1 ? "lead aberto" : "leads abertos"} · ${newWeek} ${newWeek === 1 ? "novo" : "novos"} esta semana`}>
+        <span className="mono" title="Potencial do lead: soma de contas operadas + anúncios publicados"
+          style={{ display: "inline-flex", alignItems: "center", gap: 10, fontSize: 11, color: "var(--fg-3)", marginRight: 4 }}>
+          {[["alto", "var(--pos)"], ["médio", "var(--warn)"], ["baixo", "var(--fg-5)"]].map(([label, tone]) => (
+            <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: tone }} />{label}
+            </span>
+          ))}
+        </span>
         {view !== "all" && <SaasTabs active={activeSaas} onSelect={setActiveSaas} />}
         <ViewToggle view={view} onChange={setView} />
         <PriorityFilter pri={pri} onChange={setPri} />
@@ -372,7 +380,7 @@ function nextContactPill(d) {
 // pills de tempo na etapa + próximo contato + novo, e valor. TODA a edição
 // (mover etapa, próximo contato, campos por estágio) vive no drawer do lead.
 function LeadCard({ d, stale, currentStage, onDragStart, selected, onSelect, onOpen }) {
-  const scoreTone = leadScoreTone(d.score);
+  const tier = leadTier(d);
   const days = daysInStage(d);
   const wa = waLink(d.phone);
   const isNew = d.createdAt && Date.now() - new Date(d.createdAt).getTime() <= 2 * 86400000;
@@ -396,10 +404,11 @@ function LeadCard({ d, stale, currentStage, onDragStart, selected, onSelect, onO
       draggable
       onDragStart={onDragStart}
       onClick={(e) => { if (e.shiftKey) onSelect(); else onOpen && onOpen(); }}
+      title={`${tier.label} (contas + anúncios)`}
       style={{
         background: "var(--bg-1)",
         border: "1px solid " + (selected ? "var(--accent-line)" : "var(--line-1)"),
-        borderLeft: `2px solid ${scoreTone}`,
+        borderLeft: `3px solid ${tier.tone}`,
         borderRadius: "var(--r-2)",
         padding: "9px 11px",
         cursor: "grab",
