@@ -1,7 +1,7 @@
 import React from "react";
 import { TrendBadge, EmptyState, PrimaryButton } from "../atoms.jsx";
-import { DeltaInline } from "../charts.jsx";
-import { chromeBtnStyleSmall, leadScoreTone, leadAge, waLink } from "../lib/ui.js";
+import { PageHead, Pill } from "../components/viz.jsx";
+import { leadScoreTone, leadAge, waLink } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 // Pipeline — Kanban + List + Forecast tabs. Drag-and-drop between columns.
@@ -66,28 +66,23 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     />
   );
 
+  // Abertos = estágios antes de "Ganho" (pós-venda/descarte ficam fora da conta).
+  const wonIdx = stages.indexOf("Ganho");
+  const openStages = wonIdx >= 0 ? stages.slice(0, wonIdx) : stages;
+  const openLeads = saasAll.filter(l => openStages.includes(l.stage));
+  const newWeek = saasAll.filter(l => l.createdAt && Date.now() - new Date(l.createdAt).getTime() <= 7 * 86400000).length;
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      {/* Toolbar */}
-      <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, background: "var(--bg-0)" }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {view !== "all" && <SaasTabs active={activeSaas} onSelect={setActiveSaas} />}
-          {view !== "all" && <span style={{ color: "var(--line-2)" }}>·</span>}
-          <ViewToggle view={view} onChange={setView} />
-        </div>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <PriorityFilter pri={pri} onChange={setPri} />
-          <Filter label="Só travados" active={!!highlight} onClick={() => setHighlight(highlight ? null : "Discovery")} />
-          {selected.size > 0 && (
-            <span className="mono" style={{ fontSize: 11, color: "var(--accent)", marginLeft: 6 }}>
-              {selected.size} selecionados · <button style={{ color: "var(--accent)", textDecoration: "underline" }}>mover em massa</button>
-            </span>
-          )}
-          <button onClick={() => openForm("leads", { saas: activeSaas })} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)", marginLeft: 4 }}>
-            <span style={{ fontSize: 11 }}>+ novo lead</span>
-          </button>
-        </div>
-      </div>
+      <PageHead title="Pipeline" sub={`${openLeads.length} ${openLeads.length === 1 ? "lead aberto" : "leads abertos"} · ${newWeek} ${newWeek === 1 ? "novo" : "novos"} esta semana`}>
+        {view !== "all" && <SaasTabs active={activeSaas} onSelect={setActiveSaas} />}
+        <ViewToggle view={view} onChange={setView} />
+        <PriorityFilter pri={pri} onChange={setPri} />
+        {selected.size > 0 && (
+          <span className="mono" style={{ fontSize: 11, color: "var(--accent)" }}>{selected.size} selecionados</span>
+        )}
+        <PrimaryButton onClick={() => openForm("leads", { saas: activeSaas })}>+ novo lead</PrimaryButton>
+      </PageHead>
 
       {/* Forecast strip — single-product views only */}
       {view !== "all" && <ForecastStrip s={s} leads={saasAll} />}
@@ -171,50 +166,37 @@ function PriorityFilter({ pri, onChange }) {
   );
 }
 
-function Filter({ label, active, onClick }) {
-  return (
-    <button onClick={onClick} style={{
-      height: 24, padding: "0 8px",
-      borderRadius: 4,
-      border: "1px solid " + (active ? "var(--accent-line)" : "var(--line-1)"),
-      background: active ? "var(--accent-soft)" : "var(--bg-2)",
-      color: active ? "var(--accent)" : "var(--fg-3)",
-      fontSize: 11,
-      fontFamily: "var(--mono)",
-    }}>{label}</button>
-  );
-}
-
+// Só números reais aqui: TCV aberto (estágios antes de Ganho), previsão
+// ponderada pela conversão do funil e fechado no mês (Ganho + stageSince).
 function ForecastStrip({ s, leads }) {
-  const tcv = leads.reduce((a, l) => a + (l.amount || 0), 0);
-  const weighted = leads.reduce((a, l) => {
+  const stages = s.funnel.map(f => f.stage);
+  const wonIdx = stages.indexOf("Ganho");
+  const openStages = new Set(wonIdx >= 0 ? stages.slice(0, wonIdx) : stages);
+  const open = leads.filter(l => openStages.has(l.stage));
+  const tcv = open.reduce((a, l) => a + (l.amount || 0), 0);
+  const weighted = open.reduce((a, l) => {
     const stageIdx = s.funnel.findIndex(f => f.stage === l.stage);
     const probability = stageIdx >= 0 ? s.funnel.slice(stageIdx).reduce((p, f, i) => p * (i === 0 ? 1 : f.conv), 1) : 0;
     return a + (l.amount || 0) * probability;
   }, 0);
-  const wonLeads = leads.filter(l => l.stage === "Closed Won");
+  const month = new Date().toISOString().slice(0, 7);
+  const wonLeads = leads.filter(l => l.stage === "Ganho" && String(l.stageSince || "").slice(0, 7) === month);
   const won = wonLeads.reduce((a, l) => a + (l.amount || 0), 0);
   return (
-    <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", display: "grid", gridTemplateColumns: "repeat(5, 1fr) auto", gap: 16, alignItems: "center" }}>
-      <ForecastCell label="TCV aberto"            v={window.fmt.money(tcv)}           d={+0.08} dUnit="pct" />
-      <ForecastCell label="Previsão ponderada"   v={window.fmt.money(weighted)}      d={+0.04} dUnit="pct" sub="probabilidade × valor" />
-      <ForecastCell label="Fechado no mês"      v={window.fmt.money(won)}           d={+1}    dUnit="int" sub={`${wonLeads.length} fechados`} />
-      <ForecastCell label="Cobertura"            v={`${s.pipelineCoverage?.toFixed(1)}x`} d={+0.2} dUnit="x" sub={`vs meta 3.0x`} />
-      <ForecastCell label="Ciclo médio"           v={`${s.cycleDays}d`} d={s.cycleDelta || -4} dUnit="int" invert sub="mediana 30d" />
-      <button style={{ ...chromeBtnStyleSmall, height: 30, padding: "0 12px" }}><span className="mono" style={{ fontSize: 11 }}>Exportar ⇣</span></button>
+    <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, alignItems: "center" }}>
+      <ForecastCell label="Valor aberto" v={window.fmt.money(tcv)} sub={`${open.length} leads em jogo`} />
+      <ForecastCell label="Previsão ponderada" v={window.fmt.money(weighted)} sub="probabilidade × valor" />
+      <ForecastCell label="Ganho no mês" v={window.fmt.money(won)} sub={`${wonLeads.length} ${wonLeads.length === 1 ? "fechado" : "fechados"}`} />
     </div>
   );
 }
 
-function ForecastCell({ label, v, d, dUnit, sub, invert }) {
+function ForecastCell({ label, v, sub }) {
   return (
     <div>
-      <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 2 }}>
-        <span className="mono tnum" style={{ fontSize: 16, fontWeight: 500 }}>{v}</span>
-        <DeltaInline value={d} unit={dUnit} invert={invert} />
-      </div>
-      {sub && <div className="mono dim" style={{ fontSize: 10 }}>{sub}</div>}
+      <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</div>
+      <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700, marginTop: 2 }}>{v}</div>
+      {sub && <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)" }}>{sub}</div>}
     </div>
   );
 }
@@ -325,12 +307,11 @@ function daysInStage(card) {
 function KanbanColumn({ stage, meta, cards, highlight, stages, onMove, onPatch, onDropCard, dragging, setDragging, selected, setSelected, compact, onOpenLead }) {
   const [over, setOver] = useStP(false);
   const total = cards.reduce((a, l) => a + (l.amount || 0), 0);
-  // Auto-regra de Ajustes: dias na coluna ≥ staleDays → card "parado" (badge vermelho).
-  const staleDays = meta?.staleDays;
+  // Card "parado": dias na coluna ≥ staleDays de Ajustes; sem config, 5 dias.
+  const staleLimit = meta?.staleDays == null || meta?.staleDays === "" ? 5 : Number(meta.staleDays);
   const isStale = (l) => {
-    if (staleDays == null || staleDays === "") return false;
     const dd = daysInStage(l);
-    return dd != null && dd >= Number(staleDays);
+    return dd != null && dd >= staleLimit;
   };
   return (
     <div
@@ -338,22 +319,21 @@ function KanbanColumn({ stage, meta, cards, highlight, stages, onMove, onPatch, 
       onDragLeave={() => setOver(false)}
       onDrop={(e) => { e.preventDefault(); setOver(false); if (dragging) onDropCard(dragging); }}
       style={{
-        background: "var(--bg-1)",
-        border: "1px solid " + (highlight ? "var(--neg)" : over ? "var(--accent-line)" : "var(--line-1)"),
+        background: "var(--bg-inset)",
+        border: "1px solid " + (highlight ? "var(--accent-line)" : over ? "var(--accent-line)" : "var(--line-1)"),
         borderRadius: "var(--r-3)",
-        padding: 10,
+        padding: 8,
         minHeight: compact ? 120 : 240,
         display: "flex", flexDirection: "column", gap: 6,
-        boxShadow: highlight ? "0 0 0 1px oklch(0.68 0.18 25 / 0.2)" : "none",
+        boxShadow: highlight ? "0 0 0 1px var(--accent-line)" : "none",
       }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "2px 4px 6px", borderBottom: "1px solid var(--line-1)" }}>
-        <div style={{ fontSize: 12, fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
-          {highlight && <span className="dot" style={{ color: "var(--neg)" }} />}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "2px 4px 8px" }}>
+        <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "var(--display)", display: "flex", alignItems: "center", gap: 7 }}>
           {meta?.color && <span style={{ width: 8, height: 8, borderRadius: 2, background: meta.color, flexShrink: 0 }} />}
           {stage}
-          <span className="mono dim" style={{ fontSize: 10 }}>{cards.length}</span>
+          <span className="mono" style={{ fontSize: 11, fontWeight: 400, color: "var(--fg-3)" }}>{cards.length}</span>
         </div>
-        <span className="mono tnum dim" style={{ fontSize: 11 }}>{window.fmt.money(total)}</span>
+        <span className="mono tnum" style={{ fontSize: 11, color: "var(--fg-3)" }}>{window.fmt.money(total)}</span>
       </div>
       {cards.map(l => (
         <LeadCard
@@ -376,46 +356,27 @@ function KanbanColumn({ stage, meta, cards, highlight, stages, onMove, onPatch, 
   );
 }
 
-// Bloco de campo editável no card (label + um ou mais inputs empilhados).
-function CardEdit({ label, children }) {
-  return (
-    <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}
-      draggable={false} onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
-      <span className="mono dim" style={{ fontSize: 10 }}>{label}</span>
-      {children}
-    </div>
-  );
+// Pill do próximo contato (callAt): atrasado (neg), hoje com hora (pos),
+// futuro (mut). Sem callAt em estágio aberto, cobra o próximo passo (warn).
+function nextContactPill(d) {
+  if (!d.callAt) return { tone: "warn", text: "sem próximo passo" };
+  const t = new Date(d.callAt);
+  const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
+  const endToday = new Date(); endToday.setHours(23, 59, 59, 999);
+  if (t < startToday) return { tone: "neg", text: "atrasado" };
+  if (t <= endToday) return { tone: "pos", text: `hoje ${t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` };
+  return { tone: "mut", text: t.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "") };
 }
 
-// Input inline com estado local; persiste no blur (ou no change, p/ datetime).
-// Para o card não abrir o drawer / iniciar drag, os eventos param de propagar.
-function CardInput({ value, onCommit, type = "text", placeholder, commitOnChange }) {
-  const [v, setV] = useStP(value ?? "");
-  React.useEffect(() => { setV(value ?? ""); }, [value]);
-  const commit = () => { if ((v ?? "") !== (value ?? "")) onCommit(v); };
-  return (
-    <input
-      type={type} value={v} placeholder={placeholder} draggable={false}
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
-      onChange={(e) => { setV(e.target.value); if (commitOnChange) onCommit(e.target.value); }}
-      onBlur={commit}
-      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); e.target.blur(); } }}
-      style={{ height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)", width: "100%", boxSizing: "border-box" }}
-    />
-  );
-}
-
-function LeadCard({ d, stale, stages, currentStage, onMove, onPatch, onDragStart, selected, onSelect, onOpen }) {
+// Cartão compacto (padrão Pipedrive): nome, contexto de qualificação em 1 linha,
+// pills de tempo na etapa + próximo contato + novo, e valor. TODA a edição
+// (mover etapa, próximo contato, campos por estágio) vive no drawer do lead.
+function LeadCard({ d, stale, currentStage, onDragStart, selected, onSelect, onOpen }) {
   const scoreTone = leadScoreTone(d.score);
   const days = daysInStage(d);
-  // Atalho de WhatsApp em qualquer card que tenha telefone (todas as colunas).
   const wa = waLink(d.phone);
-  // Seletor de etapa: lista todos os estágios menos o atual; mover = onMove(id, alvo).
-  const moveTargets = (stages || []).filter((s) => s !== currentStage);
-  const canMove = !!onMove && moveTargets.length > 0;
-  // Resumo de qualificação no card: resolve o valor da resposta -> rótulo amigável
-  // a partir das leadQuestions do SaaS (contas / time / volume de anúncios).
+  const isNew = d.createdAt && Date.now() - new Date(d.createdAt).getTime() <= 2 * 86400000;
+  // Contexto: nicho + contas (rótulos amigáveis via leadQuestions); fallback empresa.
   const saasCfg = (window.SEED?.SAAS || []).find((x) => x.id === d.saas);
   const qa = (key) => {
     const q = (saasCfg?.leadQuestions || []).find((x) => x.key === key);
@@ -424,11 +385,11 @@ function LeadCard({ d, stale, stages, currentStage, onMove, onPatch, onDragStart
     const lut = Object.fromEntries((q.options || []).map((o) => [o.value, o.label]));
     return Array.isArray(raw) ? raw.map((v) => lut[v] || v).join(", ") : (lut[raw] || raw);
   };
-  const qaRows = [
-    ["Contas", qa("accounts")],
-    ["Funcionários", qa("staff")],
-    ["Anúncios/sem", qa("volume")],
-  ].filter(([, v]) => v != null && v !== "");
+  const context = [qa("niche"), qa("accounts")].filter(Boolean).join(" · ") || d.company || "";
+  const wonIdx = (saasCfg?.funnel || []).findIndex((f) => f.stage === "Ganho");
+  const stageIdx = (saasCfg?.funnel || []).findIndex((f) => f.stage === currentStage);
+  const isOpenStage = wonIdx < 0 || (stageIdx >= 0 && stageIdx < wonIdx);
+  const next = isOpenStage ? nextContactPill(d) : null;
 
   return (
     <div
@@ -436,76 +397,31 @@ function LeadCard({ d, stale, stages, currentStage, onMove, onPatch, onDragStart
       onDragStart={onDragStart}
       onClick={(e) => { if (e.shiftKey) onSelect(); else onOpen && onOpen(); }}
       style={{
-        background: "var(--bg-2)",
+        background: "var(--bg-1)",
         border: "1px solid " + (selected ? "var(--accent-line)" : "var(--line-1)"),
         borderLeft: `2px solid ${scoreTone}`,
         borderRadius: "var(--r-2)",
-        padding: "8px 10px",
+        padding: "9px 11px",
         cursor: "grab",
+        boxShadow: "var(--shadow-1)",
       }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-        <span style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{d.name}</span>
-        <span style={{ display: "flex", alignItems: "baseline", gap: 6, flexShrink: 0 }}>
-          {days != null && <span className="mono" style={{ fontSize: 10, color: stale ? "var(--neg)" : "var(--fg-3)" }}>{days}d</span>}
-          <span className="mono tnum dim" style={{ fontSize: 11 }}>{window.fmt.money(d.amount || 0)}</span>
-        </span>
+        <span style={{ fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{d.name}</span>
+        {wa && (
+          <a href={wa} target="_blank" rel="noopener noreferrer" title={`Abrir WhatsApp · ${d.phone}`}
+            draggable={false} onClick={(e) => e.stopPropagation()}
+            className="mono" style={{ fontSize: 10.5, color: "#128c4b", textDecoration: "none", flexShrink: 0 }}>
+            Wpp ↗
+          </a>
+        )}
       </div>
-      {d.company && <div className="mono dim" style={{ fontSize: 10, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.company}</div>}
-      {qaRows.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 6 }}>
-          {qaRows.map(([label, value]) => (
-            <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 10 }}>
-              <span className="mono dim" style={{ flexShrink: 0 }}>{label}</span>
-              <span className="mono" style={{ color: "var(--fg-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Próximo contato (callAt): data/hora do próximo follow-up — disponível em
-         qualquer estágio. Campos editáveis por estágio vêm abaixo: valor/período
-         da proposta (Negociação); dia/hora da integração (Integração). */}
-      {onPatch && (
-        <CardEdit label="Próximo contato">
-          <CardInput type="datetime-local" commitOnChange value={d.callAt}
-            onCommit={(v) => onPatch(d.id, { callAt: v })} />
-        </CardEdit>
-      )}
-      {currentStage === "Negociação" && onPatch && (
-        <CardEdit label="Proposta">
-          <CardInput type="number" placeholder="Valor (R$)" value={d.proposalValue}
-            onCommit={(v) => onPatch(d.id, { proposalValue: v === "" ? "" : Number(v) })} />
-          <CardInput type="text" placeholder="Período (ex: 12 meses)" value={d.proposalPeriod}
-            onCommit={(v) => onPatch(d.id, { proposalPeriod: v })} />
-        </CardEdit>
-      )}
-      {currentStage === "Integração" && onPatch && (
-        <CardEdit label="Dia e horário da integração">
-          <CardInput type="datetime-local" commitOnChange value={d.integrationAt}
-            onCommit={(v) => onPatch(d.id, { integrationAt: v })} />
-        </CardEdit>
-      )}
-      {(wa || canMove) && (
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
-          {wa && (
-            <a href={wa} target="_blank" rel="noopener noreferrer" title={`Abrir WhatsApp · ${d.phone}`}
-              draggable={false} onClick={(e) => e.stopPropagation()}
-              style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 24, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid #25D36655", background: "#25D3660f", color: "#25D366", fontSize: 11, fontFamily: "var(--mono)", textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0 }}>
-              Wpp ↗
-            </a>
-          )}
-          {canMove && (
-            <select value="" title="Mover para outra etapa"
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => { const v = e.target.value; e.target.value = ""; if (v) onMove(d.id, v); }}
-              style={{ marginLeft: "auto", maxWidth: "60%", height: 24, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 11, fontFamily: "var(--mono)", cursor: "pointer" }}>
-              <option value="" disabled>Mover →</option>
-              {moveTargets.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          )}
-        </div>
-      )}
+      {context && <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{context}</div>}
+      <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 8, flexWrap: "wrap" }}>
+        {isNew && <Pill tone="accent">novo</Pill>}
+        {days != null && <Pill tone={stale ? "warn" : "mut"} title="tempo nesta etapa">{days}d</Pill>}
+        {next && <Pill tone={next.tone}>{next.text}</Pill>}
+        <span className="mono tnum" style={{ fontSize: 11.5, fontWeight: 500, color: "var(--fg-2)", marginLeft: "auto" }}>{window.fmt.money(d.amount || 0)}</span>
+      </div>
     </div>
   );
 }
@@ -538,9 +454,9 @@ function LeadList({ leads }) {
             <span style={{ fontWeight: 500 }}>{l.name} {l.company && <span className="dim" style={{ fontSize: 11, marginLeft: 4 }}>{l.company}</span>}</span>
             <span className="mono dim" style={{ fontSize: 12 }}>{l.stage}</span>
             <span className="mono tnum" style={{ textAlign: "right" }}>{window.fmt.money(l.amount || 0)}</span>
-            <span className="mono dim" style={{ fontSize: 12 }}>{PEOPLE[l.owner]?.name || l.owner || "—"}</span>
+            <span className="mono dim" style={{ fontSize: 12 }}>{PEOPLE[l.owner]?.name || l.owner || ""}</span>
             <span className="mono dim tnum" style={{ fontSize: 12 }}>{leadAge(l)}</span>
-            <span className="mono tnum" style={{ fontSize: 12, color: leadScoreTone(l.score) }}>{l.score ?? "—"}</span>
+            <span className="mono tnum" style={{ fontSize: 12, color: leadScoreTone(l.score) }}>{l.score ?? ""}</span>
             <span className="mono dim" style={{ fontSize: 11 }}>{l.source}</span>
           </div>
         ))}
