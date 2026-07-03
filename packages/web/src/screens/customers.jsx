@@ -3,10 +3,11 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { PageHead, Card, Pill } from "../components/viz.jsx";
 import { EmptyState, PrimaryButton, RowActions } from "../atoms.jsx";
-// Clientes — a base ativa do produto (redesign fase 1, estilo Attio: tabela +
-// painel de detalhe sem trocar de página). A receita vem das assinaturas
-// (customer.arr é derivado). A linha do tempo de marcos por tempo de casa
-// chega na fase de pós-venda, neste mesmo painel.
+import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/milestones.js";
+// Clientes — a base ativa do produto (estilo Attio: tabela + painel de detalhe
+// sem trocar de página). A receita vem das assinaturas (customer.arr é
+// derivado). Pós-venda: linha do tempo de marcos por tempo de casa
+// (startedAt, carimbado na conversão automática do pipeline).
 
 const { useState, useEffect, useMemo } = React;
 
@@ -20,11 +21,19 @@ const SUB_STATUS = {
 
 function CustomersScreen() {
   const { SAAS, CUSTOMERS } = window.SEED;
-  const { version, openForm, openDelete } = useData();
+  const { version, openForm, openDelete, refresh } = useData();
   const product = SAAS[0];
   const [subs, setSubs] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [sel, setSel] = useState(null);
+  // Conclusão de marco: otimista no objeto do SEED (a tela lê dele) + PATCH.
+  const [, force] = useState(0);
+  function completeMilestone(customer, key) {
+    const done = { ...(customer.milestonesDone || {}), [key]: new Date().toISOString() };
+    customer.milestonesDone = done; // otimista: CUSTOMERS vem do SEED compartilhado
+    force((n) => n + 1);
+    api.update("customers", customer.id, { milestonesDone: done }).catch(() => refresh());
+  }
 
   useEffect(() => {
     api.list("subscriptions").then((rows) => setSubs(rows.filter((s) => s.saas === product?.id))).catch(() => {});
@@ -63,7 +72,7 @@ function CustomersScreen() {
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
-                    {["Cliente", "Plano", "MRR", "Assinatura", "CSM"].map((h, i) => (
+                    {["Cliente", "Plano", "MRR", "Tempo de casa", "Próximo marco", "Assinatura"].map((h, i) => (
                       <th key={h} className="mono" style={{ textAlign: i === 2 ? "right" : "left", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
                     ))}
                   </tr>
@@ -73,6 +82,7 @@ function CustomersScreen() {
                     const sub = mainSub(c);
                     const st = sub ? SUB_STATUS[sub.status] || { label: sub.status, tone: "mut" } : null;
                     const isSel = selected && selected.id === c.id;
+                    const nm = nextMilestone(c, product);
                     return (
                       <tr key={c.id} onClick={() => setSel(c.id)} style={{ cursor: "pointer", background: isSel ? "var(--accent-soft)" : "transparent" }}
                         onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = "var(--hover)"; }}
@@ -84,10 +94,17 @@ function CustomersScreen() {
                         <td className="tnum mono" style={{ padding: "11px 14px", fontSize: 13, textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>
                           {money((c.arr || 0) / 12)}
                         </td>
+                        <td style={{ padding: "11px 14px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-1)" }}>
+                          {tenureLabel(c) || <span style={{ color: "var(--fg-4)" }}>defina o início</span>}
+                        </td>
+                        <td style={{ padding: "11px 14px", borderBottom: "1px solid var(--line-1)" }}>
+                          {nm
+                            ? <Pill tone={nm.status === "late" ? "neg" : nm.status === "soon" ? "warn" : "mut"}>{nm.label} · {dueLabel(nm.dueAt)}</Pill>
+                            : c.startedAt ? <Pill tone="pos">régua completa</Pill> : <Pill tone="mut">sem início</Pill>}
+                        </td>
                         <td style={{ padding: "11px 14px", borderBottom: "1px solid var(--line-1)" }}>
                           {st ? <Pill tone={st.tone}>{st.label}</Pill> : <Pill tone="mut">sem assinatura</Pill>}
                         </td>
-                        <td style={{ padding: "11px 14px", fontSize: 13, color: "var(--fg-3)", borderBottom: "1px solid var(--line-1)" }}>{c.csm || ""}</td>
                       </tr>
                     );
                   })}
@@ -110,6 +127,50 @@ function CustomersScreen() {
                   {(selected.flags || []).length > 0 && (
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 9 }}>
                       {selected.flags.map((f) => <Pill key={f} tone="warn">{f}</Pill>)}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--line-1)" }}>
+                  <div className="mono" style={{ fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>Linha do tempo</div>
+                  {!selected.startedAt && (
+                    <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
+                      Defina "Cliente desde" (editar cliente) pra ativar a régua de marcos: onboarding, check-in de mês 1, revisão de mês 3 e upsell de mês 6.
+                    </div>
+                  )}
+                  {selected.startedAt && (
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      <div style={{ fontSize: 12, color: "var(--fg-3)", marginBottom: 10 }}>
+                        cliente desde {new Date(selected.startedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(".", "")} · {tenureLabel(selected)}
+                      </div>
+                      {milestonesFor(selected, product).map((m, i, arr) => (
+                        <div key={m.key} style={{ display: "flex", gap: 12, position: "relative", paddingBottom: i === arr.length - 1 ? 0 : 16 }}>
+                          {i < arr.length - 1 && <span style={{ position: "absolute", left: 7, top: 18, bottom: 0, width: 2, background: "var(--line-1)" }} />}
+                          <span style={{
+                            width: 16, height: 16, borderRadius: 999, flexShrink: 0, marginTop: 1, zIndex: 1,
+                            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9,
+                            background: m.status === "done" ? "var(--pos-soft)" : m.status === "late" ? "var(--neg-soft)" : m.status === "soon" ? "var(--warn-soft)" : "var(--bg-2)",
+                            color: m.status === "done" ? "var(--pos)" : m.status === "late" ? "var(--neg)" : m.status === "soon" ? "var(--warn)" : "var(--fg-4)",
+                            border: m.status === "next" ? "1px solid var(--line-2)" : "none",
+                          }}>
+                            {m.status === "done" ? "✓" : "○"}
+                          </span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600 }}>{m.label}</div>
+                            <div style={{ fontSize: 12, color: "var(--fg-3)" }}>
+                              {m.status === "done"
+                                ? `concluído ${new Date(m.doneAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "")}`
+                                : `${m.hint || ""}${m.hint ? " · " : ""}${m.status === "late" ? "venceu " : "vence "}${dueLabel(m.dueAt)}`}
+                            </div>
+                          </div>
+                          {m.status !== "done" && (
+                            <button onClick={() => completeMilestone(selected, m.key)}
+                              style={{ alignSelf: "flex-start", height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", flexShrink: 0 }}>
+                              concluir
+                            </button>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>

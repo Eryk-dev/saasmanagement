@@ -114,6 +114,7 @@ export const ENTITIES = {
       { key: "email", label: "E-mail", type: "text", help: "payer do Mercado Pago nas assinaturas" },
       { key: "plan", label: "Plano", type: "text" },
       { key: "arr", label: "ARR", type: "money" },
+      { key: "startedAt", label: "Cliente desde", type: "date", help: "base da linha do tempo de marcos" },
       { key: "csm", label: "CSM", type: "select", options: peopleOptions, blankLabel: "—" },
       { key: "flags", label: "Flags", type: "tags", help: "separadas por vírgula" },
     ],
