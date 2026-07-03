@@ -123,15 +123,14 @@ export function makeAiCosts({
 
   return {
     configured,
-    // Snapshot de todos os provedores pro período. Nunca lança: cada provedor
-    // carrega seu próprio ok/error.
+    // Snapshot dos provedores COM CHAVE configurada (sem chave = fora do card,
+    // não vira linha de aviso). Nunca lança: cada provedor carrega seu ok/error.
     async report(days = 30) {
-      const [or, oa, an] = await Promise.all([openrouter(days), openai(days), anthropic(days)]);
-      const providers = [
-        { provider: "openrouter", label: "OpenRouter", ...or },
-        { provider: "openai", label: "OpenAI", ...oa },
-        { provider: "anthropic", label: "Anthropic", ...an },
-      ];
+      const jobs = [];
+      if (openrouterKey) jobs.push(openrouter(days).then((r) => ({ provider: "openrouter", label: "OpenRouter", ...r })));
+      if (openaiKey) jobs.push(openai(days).then((r) => ({ provider: "openai", label: "OpenAI", ...r })));
+      if (anthropicKey) jobs.push(anthropic(days).then((r) => ({ provider: "anthropic", label: "Anthropic", ...r })));
+      const providers = await Promise.all(jobs);
       // Total do período soma só quem tem série; acumulado (OpenRouter sem
       // management key) entra em lifetimeSpend, não aqui.
       const totalPeriod = providers.reduce((a, p) => a + (p.ok && p.spend != null ? p.spend : 0), 0);
@@ -140,8 +139,10 @@ export function makeAiCosts({
   };
 }
 
+// Só as chaves dedicadas contam: a de uso (sk-proj/sk-ant-api) não tem acesso a
+// custo e só geraria linha de erro no card.
 export const aiCosts = makeAiCosts({
   openrouterKey: process.env.OPENROUTER_API_KEY || "",
-  openaiKey: process.env.OPENAI_ADMIN_KEY || process.env.OPENAI_API_KEY || "",
-  anthropicKey: process.env.ANTHROPIC_ADMIN_KEY || process.env.ANTHROPIC_API_KEY || "",
+  openaiKey: process.env.OPENAI_ADMIN_KEY || "",
+  anthropicKey: process.env.ANTHROPIC_ADMIN_KEY || "",
 });

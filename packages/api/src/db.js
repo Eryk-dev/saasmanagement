@@ -22,11 +22,13 @@ function getPool() {
     // pg treats sslmode=require as verify-full, which rejects Supabase's CA chain. We
     // encrypt without chain verification (same posture as the copylever app's asyncpg DSN).
     const url = new URL(process.env.COCKPIT_DB_URL);
+    const sslDisabled = url.searchParams.get("sslmode") === "disable";
     url.searchParams.delete("sslmode");
     url.searchParams.delete("ssl");
     _pool = new pg.Pool({
       connectionString: url.toString(),
-      ssl: { rejectUnauthorized: false },
+      // sslmode=disable permite Postgres local (dev) sem SSL.
+      ssl: sslDisabled ? false : { rejectUnauthorized: false },
     });
   }
   return _pool;
