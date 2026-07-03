@@ -135,5 +135,15 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken } = {}) {
   };
 }
 
-// Singleton de produção (env). Testes usam makeMeta com fetch mockado.
-export const meta = makeMeta({ accessToken: process.env.META_ACCESS_TOKEN || "" });
+// Singleton de produção (env), PREGUIÇOSO: imports ESM são içados e rodam antes
+// do dotenv.config() do index.js — ler o env no topo congelaria o token vazio no
+// dev local. Testes usam makeMeta com fetch mockado.
+let _meta = null;
+const inst = () => (_meta ??= makeMeta({ accessToken: process.env.META_ACCESS_TOKEN || "" }));
+export const meta = {
+  configured: () => inst().configured(),
+  campaignInsights: (a, r) => inst().campaignInsights(a, r),
+  listCampaigns: (a) => inst().listCampaigns(a),
+  setCampaignStatus: (id, s) => inst().setCampaignStatus(id, s),
+  setCampaignBudget: (id, v) => inst().setCampaignBudget(id, v),
+};
