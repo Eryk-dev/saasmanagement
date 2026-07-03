@@ -112,7 +112,7 @@ function LeadDetail({ lead: initial, onClose }) {
             <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
               {(() => { const t = leadTier(lead); return t.key !== "sem" && (
                 <span className="chip" title="soma de contas operadas + anúncios publicados"
-                  style={{ color: t.tone, borderColor: "color-mix(in srgb, " + t.tone + " 40%, transparent)", background: "color-mix(in srgb, " + t.tone + " 10%, transparent)" }}>
+                  style={{ color: t.ink, borderColor: "color-mix(in srgb, " + t.tone + " 55%, transparent)", background: "color-mix(in srgb, " + t.tone + " 14%, transparent)", fontWeight: 600 }}>
                   {t.label}
                 </span>
               ); })()}

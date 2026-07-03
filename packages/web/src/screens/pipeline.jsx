@@ -77,10 +77,10 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
       <PageHead title="Pipeline" sub={`${openLeads.length} ${openLeads.length === 1 ? "lead aberto" : "leads abertos"} · ${newWeek} ${newWeek === 1 ? "novo" : "novos"} esta semana`}>
         <span title="Classificação do lead: soma de contas operadas + anúncios publicados"
           style={{ display: "inline-flex", alignItems: "center", gap: 6, marginRight: 4 }}>
-          {[["A", "var(--pos)"], ["B", "var(--warn)"], ["C", "var(--fg-4)"]].map(([g, tone]) => (
+          {[["A", "#16a34a", "#fff"], ["B", "#eab308", "#463500"], ["C", "#9aa2ad", "#fff"]].map(([g, tone, fg]) => (
             <span key={g} className="tnum" style={{
               width: 18, height: 18, borderRadius: 5, display: "inline-flex", alignItems: "center", justifyContent: "center",
-              background: tone, color: "#fff", fontFamily: "var(--display)", fontSize: 11, fontWeight: 700,
+              background: tone, color: fg, fontFamily: "var(--display)", fontSize: 11, fontWeight: 700,
             }}>{g}</span>
           ))}
           <span style={{ fontSize: 11.5, color: "var(--fg-3)" }}>contas + anúncios</span>
@@ -414,7 +414,7 @@ function LeadCard({ d, stale, currentStage, onDragStart, selected, onSelect, onO
             <span className="tnum" style={{
               width: 19, height: 19, borderRadius: 5, flexShrink: 0,
               display: "inline-flex", alignItems: "center", justifyContent: "center",
-              background: tier.tone, color: "#fff",
+              background: tier.tone, color: tier.badgeFg,
               fontFamily: "var(--display)", fontSize: 11.5, fontWeight: 700,
             }}>{tier.grade}</span>
           )}
