@@ -22,6 +22,7 @@ test("report agrega os 3 provedores e isola falhas por provedor", async () => {
     if (u.includes("api.anthropic.com/v1/organizations/cost_report")) {
       return json({ data: [{ starting_at: today + "T00:00:00Z", results: [{ amount: "7.25", currency: "USD" }] }], has_more: false });
     }
+    if (u.includes("economia.awesomeapi.com.br")) return json({ USDBRL: { bid: "5.50" } });
     return json({}, 404);
   };
   const ai = makeAiCosts({ fetch: fetchMock, openrouterKey: "or", openaiKey: "oa", anthropicKey: "an" });
@@ -38,6 +39,7 @@ test("report agrega os 3 provedores e isola falhas por provedor", async () => {
   assert.equal(by.anthropic.spend, 7.25);
   assert.equal(r.totalPeriod, 19.75);                // só quem tem série entra no total
   assert.equal(r.currency, "USD");
+  assert.equal(r.usdBrl, 5.5);                       // câmbio pro front converter em R$
 });
 
 test("provedor sem chave fica fora do report; erro de permissão explica o motivo", async () => {

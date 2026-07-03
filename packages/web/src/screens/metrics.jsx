@@ -314,34 +314,45 @@ function MetricsScreen() {
           </Card>
         )}
 
-        {ai && (
-          <Card title="Gasto com IA" hint={`OpenRouter, OpenAI e Anthropic · em dólar · últimos ${days} dias`}>
-            <div style={{ display: "flex", gap: 24, alignItems: "flex-start", padding: "12px 16px 16px", flexWrap: "wrap" }}>
-              <div style={{ minWidth: 150 }}>
-                <div className="mono" style={{ fontSize: 11, fontWeight: 500, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>Total no período</div>
-                <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 28, fontWeight: 700, marginTop: 4 }}>
-                  US$ {ai.totalPeriod.toFixed(2).replace(".", ",")}
+        {ai && (() => {
+          // Mostra em REAIS quando há câmbio (dólar comercial, cache de 1h na
+          // API); sem cotação, cai pro dólar puro.
+          const fx = ai.usdBrl;
+          const cash = (usd) => (fx
+            ? `R$ ${(usd * fx).toFixed(2).replace(".", ",")}`
+            : `US$ ${usd.toFixed(2).replace(".", ",")}`);
+          return (
+            <Card title="Gasto com IA" hint={`OpenRouter e OpenAI · últimos ${days} dias${fx ? ` · dólar a R$ ${fx.toFixed(2).replace(".", ",")}` : " · em dólar (sem cotação agora)"}`}>
+              <div style={{ display: "flex", gap: 24, alignItems: "flex-start", padding: "12px 16px 16px", flexWrap: "wrap" }}>
+                <div style={{ minWidth: 160 }}>
+                  <div className="mono" style={{ fontSize: 11, fontWeight: 500, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>Total no período</div>
+                  <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 28, fontWeight: 700, marginTop: 4 }}>
+                    {cash(ai.totalPeriod)}
+                  </div>
+                  {fx && (
+                    <div className="mono" style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 2 }}>US$ {ai.totalPeriod.toFixed(2).replace(".", ",")}</div>
+                  )}
+                </div>
+                <div style={{ flex: 1, minWidth: 280, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {ai.providers.map((p) => (
+                    <div key={p.provider} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
+                      <span style={{ width: 90, fontWeight: 600 }}>{p.label}</span>
+                      {p.ok && p.spend != null && (
+                        <span className="tnum mono" style={{ fontWeight: 500 }}>{cash(p.spend)}</span>
+                      )}
+                      {p.ok && p.spend == null && p.lifetimeSpend != null && (
+                        <span className="tnum mono" style={{ color: "var(--fg-2)" }}>
+                          {cash(p.lifetimeSpend)} acumulado · saldo {cash(p.remaining)}
+                        </span>
+                      )}
+                      {!p.ok && <span style={{ fontSize: 12, color: "var(--warn)" }}>{p.error}</span>}
+                    </div>
+                  ))}
                 </div>
               </div>
-              <div style={{ flex: 1, minWidth: 280, display: "flex", flexDirection: "column", gap: 6 }}>
-                {ai.providers.map((p) => (
-                  <div key={p.provider} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
-                    <span style={{ width: 90, fontWeight: 600 }}>{p.label}</span>
-                    {p.ok && p.spend != null && (
-                      <span className="tnum mono" style={{ fontWeight: 500 }}>US$ {p.spend.toFixed(2).replace(".", ",")}</span>
-                    )}
-                    {p.ok && p.spend == null && p.lifetimeSpend != null && (
-                      <span className="tnum mono" style={{ color: "var(--fg-2)" }}>
-                        US$ {p.lifetimeSpend.toFixed(2).replace(".", ",")} acumulado · saldo US$ {p.remaining.toFixed(2).replace(".", ",")}
-                      </span>
-                    )}
-                    {!p.ok && <span style={{ fontSize: 12, color: "var(--warn)" }}>{p.error}</span>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Card>
-        )}
+            </Card>
+          );
+        })()}
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 14px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-2)", fontSize: 12.5, flexWrap: "wrap" }}>
           <span>Premissa do LTV enquanto não há histórico de churn: permanência média de</span>
