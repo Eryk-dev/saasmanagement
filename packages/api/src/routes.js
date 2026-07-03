@@ -67,7 +67,8 @@ export const CREATE_DEFAULTS = {
   invoices: { status: "open", amount: 0, kind: "manual" },
   // Custos operacionais manuais (mensais): month "YYYY-MM", categoria fixa da UI
   // (fixo/ferramenta/pessoal/outros — publicidade e IA entram automáticos).
-  expenses: { month: "", category: "fixo", name: "", amount: 0 },
+  // recurring=true vale de `month` em diante, todo mês, até `endMonth` (inclusivo).
+  expenses: { month: "", category: "fixo", name: "", amount: 0, recurring: false, endMonth: "" },
   // Kanban de tarefas do time. `column` = KEY estável da coluna do board (renomear
   // coluna não órfã o card); `assignees` = ids de usuários do time (collection users);
   // comments = [{ id, author, text, at }] — o SPA faz PATCH do array inteiro.
