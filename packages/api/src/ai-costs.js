@@ -121,6 +121,19 @@ export function makeAiCosts({
     }
   }
 
+  // Câmbio USD→BRL (dólar comercial, AwesomeAPI, sem chave) com cache de 1h.
+  // Fail-open: sem cotação, o front mostra em dólar.
+  let fx = { rate: null, at: 0 };
+  async function usdBrl() {
+    if (fx.rate && Date.now() - fx.at < 3600_000) return fx.rate;
+    try {
+      const body = await getJson("https://economia.awesomeapi.com.br/json/last/USD-BRL", {});
+      const rate = Number(body?.USDBRL?.bid);
+      if (Number.isFinite(rate) && rate > 0) fx = { rate, at: Date.now() };
+    } catch { /* mantém o cache anterior (ou null) */ }
+    return fx.rate;
+  }
+
   return {
     configured,
     // Snapshot dos provedores COM CHAVE configurada (sem chave = fora do card,
@@ -130,11 +143,11 @@ export function makeAiCosts({
       if (openrouterKey) jobs.push(openrouter(days).then((r) => ({ provider: "openrouter", label: "OpenRouter", ...r })));
       if (openaiKey) jobs.push(openai(days).then((r) => ({ provider: "openai", label: "OpenAI", ...r })));
       if (anthropicKey) jobs.push(anthropic(days).then((r) => ({ provider: "anthropic", label: "Anthropic", ...r })));
-      const providers = await Promise.all(jobs);
+      const [providers, rate] = await Promise.all([Promise.all(jobs), usdBrl()]);
       // Total do período soma só quem tem série; acumulado (OpenRouter sem
       // management key) entra em lifetimeSpend, não aqui.
       const totalPeriod = providers.reduce((a, p) => a + (p.ok && p.spend != null ? p.spend : 0), 0);
-      return { days, currency: "USD", totalPeriod: Math.round(totalPeriod * 100) / 100, providers };
+      return { days, currency: "USD", usdBrl: rate, totalPeriod: Math.round(totalPeriod * 100) / 100, providers };
     },
   };
 }
