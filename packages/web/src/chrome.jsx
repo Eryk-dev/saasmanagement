@@ -4,27 +4,24 @@ import { api, clearKey } from "./lib/api.js";
 
 const { useState: useS, useEffect: useE, useRef: useR } = React;
 
+// 4 áreas principais respondem o dia a dia; Ferramentas guarda os builders e o
+// operacional. Telas antigas de portfólio/demo saem do nav (aposentadas na fase 2).
 const NAV = [
-  { id: "portfolio",  label: "Portfólio",   icon: "▦",  group: "overview" },
-  { id: "saas",       label: "SaaS",        icon: "◇",  group: "overview" },
-  { id: "pipeline",   label: "Pipeline",    icon: "≡",  group: "sales" },
-  { id: "forms",      label: "Forms",       icon: "▤",  group: "sales" },
-  { id: "proposals",  label: "Propostas",   icon: "▥",  group: "sales" },
-  { id: "marketing",  label: "Marketing",   icon: "◬",  group: "sales" },
-  { id: "customers",  label: "Clientes",   icon: "○",  group: "customer" },
-  { id: "subscriptions", label: "Assinaturas", icon: "◈", group: "customer" },
-  { id: "nps",        label: "NPS",         icon: "☷",  group: "customer" },
-  { id: "tasks",      label: "Tarefas",     icon: "▣",  group: "team" },
-  { id: "goals",      label: "Metas",       icon: "◎",  group: "team" },
-  { id: "leaderboard",label: "Ranking", icon: "♔",  group: "team" },
-  { id: "settings",   label: "Ajustes",    icon: "✦",  group: "system" },
+  { id: "overview",   label: "Visão geral", icon: "◈",  group: "main" },
+  { id: "pipeline",   label: "Pipeline",    icon: "≡",  group: "main" },
+  { id: "customers",  label: "Clientes",    icon: "○",  group: "main" },
+  { id: "metrics",    label: "Métricas",    icon: "∿",  group: "main" },
+  { id: "forms",      label: "Formulários", icon: "▤",  group: "tools" },
+  { id: "proposals",  label: "Propostas",   icon: "▥",  group: "tools" },
+  { id: "subscriptions", label: "Assinaturas", icon: "↻", group: "tools" },
+  { id: "tasks",      label: "Tarefas",     icon: "▣",  group: "tools" },
+  { id: "settings",   label: "Ajustes",     icon: "✦",  group: "system" },
 ];
 
+// Grupo "main" não leva rótulo (é a espinha do app); os demais levam.
 const GROUP_LABELS = {
-  overview: "visão geral",
-  sales: "receita",
-  customer: "retenção",
-  team: "pessoas",
+  main: null,
+  tools: "ferramentas",
   system: "config",
 };
 
@@ -43,27 +40,27 @@ function NavRail({ current, onNav, collapsed }) {
       width: w,
       flexShrink: 0,
       borderRight: "1px solid var(--line-1)",
-      background: "var(--bg-1)",
+      background: "var(--bg-0)",
       display: "flex",
       flexDirection: "column",
       transition: "width 180ms ease",
       overflow: "hidden",
     }}>
-      <div style={{ padding: "0 14px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid var(--line-1)", height: 52 }}>
+      <div style={{ padding: "0 14px", display: "flex", alignItems: "center", gap: 10, height: 54 }}>
         <Logo />
         {!collapsed && (
           <div style={{ lineHeight: 1.1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg-1)", letterSpacing: "-0.01em" }}>Cockpit</div>
-            <div style={{ fontSize: 11, color: "var(--fg-4)", marginTop: 1 }}>Portfolio OS</div>
+            <div style={{ fontFamily: "var(--display)", fontSize: 14.5, fontWeight: 700, color: "var(--fg-1)", letterSpacing: "-0.01em" }}>Cockpit</div>
+            <div style={{ fontSize: 11, color: "var(--fg-4)", marginTop: 1 }}>levermoney.com.br</div>
           </div>
         )}
       </div>
 
-      <div style={{ flex: 1, padding: "10px 8px", overflowY: "auto", overflowX: "hidden" }}>
+      <div style={{ flex: 1, padding: "6px 8px", overflowY: "auto", overflowX: "hidden" }}>
         {groups.map(g => (
           <div key={g.key} style={{ marginBottom: 12 }}>
-            {!collapsed && (
-              <div style={{ fontSize: 11, fontWeight: 510, letterSpacing: "0.02em", textTransform: "uppercase", color: "var(--fg-5)", padding: "2px 10px 6px" }}>
+            {!collapsed && GROUP_LABELS[g.key] && (
+              <div className="mono" style={{ fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-4)", padding: "8px 10px 6px" }}>
                 {GROUP_LABELS[g.key]}
               </div>
             )}
@@ -77,16 +74,16 @@ function NavRail({ current, onNav, collapsed }) {
                   onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
                   style={{
                     display: "flex", alignItems: "center", gap: 9,
-                    width: "100%", padding: "6px 9px",
+                    width: "100%", padding: "7px 10px",
                     borderRadius: "var(--r-1)",
-                    background: active ? "var(--hover)" : "transparent",
-                    color: active ? "var(--fg-1)" : "var(--fg-3)",
-                    fontSize: 13,
-                    fontWeight: active ? 510 : 450,
+                    background: active ? "var(--accent-soft)" : "transparent",
+                    color: active ? "var(--fg-1)" : "var(--fg-2)",
+                    fontSize: 13.5,
+                    fontWeight: active ? 600 : 500,
                     marginBottom: 1,
                     textAlign: "left",
                   }}>
-                  <span style={{ fontSize: 13, width: 16, textAlign: "center", color: active ? "var(--fg-2)" : "var(--fg-4)" }}>{item.icon}</span>
+                  <span style={{ fontSize: 13, width: 16, textAlign: "center", color: active ? "var(--accent)" : "var(--fg-4)" }}>{item.icon}</span>
                   {!collapsed && <span>{item.label}</span>}
                 </button>
               );
@@ -95,16 +92,25 @@ function NavRail({ current, onNav, collapsed }) {
         ))}
       </div>
 
-      <div style={{ padding: "10px 14px", borderTop: "1px solid var(--line-1)" }}>
-        {!collapsed && (
-          <div style={{ fontSize: 11.5, color: "var(--fg-4)", lineHeight: 1.6 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span className="led" style={{ color: "var(--pos)", width: 7, height: 7 }} /> Fontes sincronizadas
-            </div>
-          </div>
-        )}
+      <div style={{ padding: "10px 12px", borderTop: "1px solid var(--line-1)" }}>
+        {!collapsed && <SaasFootChip />}
       </div>
     </nav>
+  );
+}
+
+// Chip do produto ativo no pé da sidebar. Com 1 SaaS é informativo; quando o
+// portfólio voltar a ter vários (2027), vira o alternador de produto.
+function SaasFootChip() {
+  const saas = (window.SEED?.SAAS || []);
+  const active = saas[0];
+  if (!active) return null;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)" }}>
+      <span className="dot" style={{ color: "var(--accent)", width: 7, height: 7 }} />
+      <span style={{ fontSize: 12.5, color: "var(--fg-2)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{active.name}</span>
+      <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", marginLeft: "auto", flexShrink: 0 }}>{saas.length} SaaS</span>
+    </div>
   );
 }
 
