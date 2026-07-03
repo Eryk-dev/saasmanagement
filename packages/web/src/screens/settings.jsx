@@ -47,8 +47,8 @@ function SettingsScreen({ saasId }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-        <div style={{ display: "flex", gap: 6 }}>
-          {SAAS.map(x => (
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {SAAS.length > 1 ? SAAS.map(x => (
             <button key={x.id} onClick={() => setActive(x.id)} style={{
               height: 26, padding: "0 10px", borderRadius: "var(--r-2)",
               border: "1px solid " + (active === x.id ? "var(--line-strong)" : "var(--line-1)"),
@@ -56,7 +56,9 @@ function SettingsScreen({ saasId }) {
               color: active === x.id ? "var(--fg-1)" : "var(--fg-3)",
               fontSize: 12, fontFamily: "var(--mono)",
             }}>{x.name}</button>
-          ))}
+          )) : (
+            <span style={{ fontSize: 13.5, fontWeight: 600 }}>{s?.name}</span>
+          )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <RowActions onEdit={() => openForm("products", s)} onDelete={() => openDelete("products", s)} />

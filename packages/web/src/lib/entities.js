@@ -47,11 +47,6 @@ export function customEntityFields(collection, saasId) {
   }));
 }
 
-const scopeOptions = () => [
-  { value: "Portfolio", label: "Portfólio" },
-  ...(window.SEED?.SAAS || []).map((s) => ({ value: s.name, label: s.name })),
-];
-
 // ── billing (fase 5): opções dinâmicas por SaaS do formulário ───────────────
 const customerOptions = (v) => (window.SEED?.CUSTOMERS || [])
   .filter((c) => !v.saas || c.saas === v.saas)
@@ -145,19 +140,6 @@ export const ENTITIES = {
     ],
   },
 
-  nps: {
-    collection: "nps",
-    singular: "Resposta NPS",
-    titleField: "text",
-    fields: [
-      { key: "saas", label: "Produto", type: "select", options: saasOptions, required: true },
-      { key: "score", label: "Nota (0–10)", type: "number", required: true },
-      { key: "role", label: "Cargo", type: "text", placeholder: "Admin" },
-      { key: "tags", label: "Tags", type: "tags", help: "separadas por vírgula" },
-      { key: "text", label: "Verbatim", type: "textarea", full: true },
-    ],
-  },
-
   // Forms/propostas têm editor próprio (screens/forms.jsx, screens/proposals.jsx)
   // — estas entradas existem só pro ConfirmDelete compartilhado; não passe essas
   // chaves pro openForm/EntityForm.
@@ -220,17 +202,4 @@ export const ENTITIES = {
     fields: [],
   },
 
-  goals: {
-    collection: "goals",
-    singular: "Meta",
-    titleField: "name",
-    fields: [
-      { key: "scope", label: "Escopo", type: "select", options: scopeOptions, required: true },
-      { key: "name", label: "Nome", type: "text", required: true },
-      { key: "target", label: "Meta", type: "number", required: true },
-      { key: "unit", label: "Unidade", type: "select", options: [{ value: "$", label: "R$" }, { value: "pct", label: "%" }, { value: "x", label: "x" }, { value: "", label: "número" }], default: "$" },
-      { key: "band", label: "Faixa", type: "select", options: [{ value: "green", label: "Verde" }, { value: "yellow", label: "Amarelo" }, { value: "red", label: "Vermelho" }], default: "yellow" },
-      { key: "invert", label: "Menor é melhor?", type: "bool", default: false },
-    ],
-  },
 };

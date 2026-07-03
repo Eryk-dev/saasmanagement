@@ -18,7 +18,6 @@
     "start:mcp": "npm run start -w packages/mcp",
     "build": "npm run build -w packages/web",
     "seed": "npm run seed -w packages/api",
-    "seed:demo": "npm run seed:demo -w packages/api",
     "seed:clear": "npm run seed:clear -w packages/api"
   },
   "devDependencies": {

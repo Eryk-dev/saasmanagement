@@ -9,7 +9,6 @@
     "start": "node src/index.js",
     "test": "node --test",
     "seed": "node src/seed-cli.js",
-    "seed:demo": "node src/seed-cli.js --demo",
     "seed:clear": "node src/seed-cli.js --clear",
     "seed:leverads-questions": "node src/seed-cli.js --leverads-questions"
   },
