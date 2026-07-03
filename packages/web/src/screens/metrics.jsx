@@ -32,6 +32,7 @@ function MetricsScreen() {
   const [note, setNote] = useState(null);
 
   const [camps, setCamps] = useState(null); // campanhas ao vivo (gerenciamento)
+  const [ai, setAi] = useState(null); // gasto com IA (USD)
 
   const load = () => {
     if (!product) return;
@@ -42,6 +43,7 @@ function MetricsScreen() {
     if (metaOn && product.metaAdAccount) {
       api.metaCampaigns(product.id).then((r) => setCamps(r.campaigns)).catch((e) => setCamps({ error: e.message }));
     }
+    api.aiCosts(Number(days)).then(setAi).catch(() => setAi(null));
   };
   useEffect(load, [product?.id, days, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -308,6 +310,35 @@ function MetricsScreen() {
                   </span>
                 </div>
               ))}
+            </div>
+          </Card>
+        )}
+
+        {ai && (
+          <Card title="Gasto com IA" hint={`OpenRouter, OpenAI e Anthropic · em dólar · últimos ${days} dias`}>
+            <div style={{ display: "flex", gap: 24, alignItems: "flex-start", padding: "12px 16px 16px", flexWrap: "wrap" }}>
+              <div style={{ minWidth: 150 }}>
+                <div className="mono" style={{ fontSize: 11, fontWeight: 500, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>Total no período</div>
+                <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 28, fontWeight: 700, marginTop: 4 }}>
+                  US$ {ai.totalPeriod.toFixed(2).replace(".", ",")}
+                </div>
+              </div>
+              <div style={{ flex: 1, minWidth: 280, display: "flex", flexDirection: "column", gap: 6 }}>
+                {ai.providers.map((p) => (
+                  <div key={p.provider} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
+                    <span style={{ width: 90, fontWeight: 600 }}>{p.label}</span>
+                    {p.ok && p.spend != null && (
+                      <span className="tnum mono" style={{ fontWeight: 500 }}>US$ {p.spend.toFixed(2).replace(".", ",")}</span>
+                    )}
+                    {p.ok && p.spend == null && p.lifetimeSpend != null && (
+                      <span className="tnum mono" style={{ color: "var(--fg-2)" }}>
+                        US$ {p.lifetimeSpend.toFixed(2).replace(".", ",")} acumulado · saldo US$ {p.remaining.toFixed(2).replace(".", ",")}
+                      </span>
+                    )}
+                    {!p.ok && <span style={{ fontSize: 12, color: "var(--warn)" }}>{p.error}</span>}
+                  </div>
+                ))}
+              </div>
             </div>
           </Card>
         )}
