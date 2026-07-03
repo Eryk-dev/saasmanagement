@@ -2,18 +2,14 @@ import React from "react";
 import { useTweaks, TweaksPanel, TweakSection, TweakRadio, TweakColor, TweakToggle } from "./tweaks-panel.jsx";
 import { NavRail, TopBar } from "./chrome.jsx";
 import { chromeBtnStyleSmall } from "./lib/ui.js";
-import { PortfolioScreen } from "./screens/portfolio.jsx";
-import { SaasDashboardScreen } from "./screens/saas_dashboard.jsx";
+import { OverviewScreen } from "./screens/overview.jsx";
+import { MetricsScreen } from "./screens/metrics.jsx";
 import { PipelineScreen } from "./screens/pipeline.jsx";
 import { FormsScreen } from "./screens/forms.jsx";
 import { ProposalsScreen } from "./screens/proposals.jsx";
 import { CustomersScreen } from "./screens/customers.jsx";
 import { SubscriptionsScreen } from "./screens/subscriptions.jsx";
-import { MarketingScreen } from "./screens/marketing.jsx";
-import { NPSScreen } from "./screens/nps.jsx";
-import { GoalsScreen } from "./screens/goals.jsx";
 import { TasksScreen } from "./screens/tasks.jsx";
-import { LeaderboardScreen } from "./screens/leaderboard.jsx";
 import { SettingsScreen } from "./screens/settings.jsx";
 import { LeadDetail } from "./screens/deal.jsx";
 import { DataContext, loadSeed } from "./data.jsx";
@@ -24,9 +20,9 @@ import { ConfirmDelete } from "./components/ConfirmDelete.jsx";
 const { useState: useStA, useEffect: useEA, useCallback: useCbA } = React;
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
-  "theme": "dark",
+  "theme": "light",
   "typeSystem": "balanced",
-  "accentHue": 277,
+  "accentHue": 183,
   "density": "regular",
   "showTrajectoryAnnotation": true
 }/*EDITMODE-END*/;
@@ -34,7 +30,7 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
 
-  const [screen, setScreen] = useStA("portfolio");
+  const [screen, setScreen] = useStA("overview");
   const [params, setParams] = useStA({});
   const [leadSel, setLeadSel] = useStA(null);
   const [collapsed, setCollapsed] = useStA(false);
@@ -64,31 +60,25 @@ function App() {
   }
   function jump(link) {
     if (!link) return;
-    if (link.type === "saas")      nav("saas", { saas: link.id });
+    if (link.type === "saas")      nav("overview");
     else if (link.type === "pipeline")  nav("pipeline", { saas: link.id, stage: link.stage });
     else if (link.type === "customers") nav("customers", { csFilter: link.filter });
-    else if (link.type === "nps")       nav("nps");
-    else if (link.type === "rep")       nav("leaderboard");
-    else if (link.type === "attention") nav("portfolio");
+    else if (link.type === "attention") nav("overview");
   }
 
   function openLead(l) { setLeadSel(l); }
 
   // Breadcrumb per screen
   const crumbsFor = {
-    portfolio:   ["Portfólio"],
-    saas:        ["Portfólio", window.SEED.SAAS.find(s => s.id === params.saas)?.name || "LeverAds"],
-    pipeline:    ["Vendas", "Pipeline · " + (window.SEED.SAAS.find(s => s.id === params.saas)?.name || "LeverAds")],
-    forms:       ["Vendas", "Forms"],
-    proposals:   ["Vendas", "Propostas"],
-    marketing:   ["Vendas", "Marketing"],
-    customers:   ["Cliente", "Clientes"],
-    subscriptions: ["Cliente", "Assinaturas"],
-    nps:         ["Cliente", "NPS"],
-    tasks:       ["Time", "Tarefas"],
-    goals:       ["Time", "Metas"],
-    leaderboard: ["Time", "Ranking"],
-    settings:    ["Sistema", "Ajustes · " + (window.SEED.SAAS.find(s => s.id === params.saas)?.name || "LeverAds")],
+    overview:    ["Visão geral"],
+    pipeline:    ["Pipeline"],
+    customers:   ["Clientes"],
+    metrics:     ["Métricas"],
+    forms:       ["Ferramentas", "Formulários"],
+    proposals:   ["Ferramentas", "Propostas"],
+    subscriptions: ["Ferramentas", "Assinaturas"],
+    tasks:       ["Ferramentas", "Tarefas"],
+    settings:    ["Ajustes"],
   };
 
   return (
@@ -108,18 +98,14 @@ function App() {
         />
 
         <div key={dataVersion} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-          {screen === "portfolio"   && <PortfolioScreen onNav={nav} onJump={jump} />}
-          {screen === "saas"        && <SaasDashboardScreen saasId={params.saas} onNav={nav} onJump={jump} />}
+          {screen === "overview"    && <OverviewScreen onNav={nav} onOpenLead={openLead} />}
           {screen === "pipeline"    && <PipelineScreen saasId={params.saas} onJump={jump} jumpFilter={params} onOpenLead={openLead} />}
+          {screen === "customers"   && <CustomersScreen />}
+          {screen === "metrics"     && <MetricsScreen />}
           {screen === "forms"       && <FormsScreen saasId={params.saas} />}
           {screen === "proposals"   && <ProposalsScreen saasId={params.saas} />}
-          {screen === "marketing"   && <MarketingScreen saasId={params.saas} />}
-          {screen === "customers"   && <CustomersScreen csFilter={params.csFilter} />}
           {screen === "subscriptions" && <SubscriptionsScreen saasId={params.saas} />}
-          {screen === "nps"         && <NPSScreen />}
           {screen === "tasks"       && <TasksScreen />}
-          {screen === "goals"       && <GoalsScreen />}
-          {screen === "leaderboard" && <LeaderboardScreen />}
           {screen === "settings"    && <SettingsScreen saasId={params.saas} />}
         </div>
       </main>
@@ -151,12 +137,12 @@ function App() {
           onChange={(v) => setTweak("density", v)} />
         <TweakRadio label="Tipografia" value={t.typeSystem} options={[{value:"balanced",label:"equilibrada"},{value:"mono",label:"mono"}]}
           onChange={(v) => setTweak("typeSystem", v)} />
-        <TweakColor label="Acento" value={`oklch(0.56 0.155 ${t.accentHue})`}
+        <TweakColor label="Acento" value={`oklch(0.56 0.105 ${t.accentHue})`}
           options={[
-            "oklch(0.56 0.155 277)",  // indigo (Linear default)
-            "oklch(0.56 0.150 300)",  // violet
-            "oklch(0.58 0.130 240)",  // blue
-            "oklch(0.62 0.130 165)",  // teal
+            "oklch(0.56 0.105 183)",  // teal Lever (padrão)
+            "oklch(0.56 0.155 277)",  // indigo
+            "oklch(0.58 0.130 240)",  // azul
+            "oklch(0.56 0.150 300)",  // violeta
           ]}
           onChange={(v) => {
             const m = /oklch\([^\s]+\s+[^\s]+\s+(\d+)/.exec(v);
@@ -174,19 +160,15 @@ function App() {
 
 function subtitleFor(screen, params) {
   const map = {
-    portfolio:   "28 mai 2026",
-    saas:        "28 mai 2026",
+    overview:    "",
     pipeline:    `${params.stage ? "estágio: " + params.stage + " · " : ""}arraste para mover`,
-    forms:       "formulários de captação por SaaS",
-    proposals:   "templates por marca · slides com trava magnética",
-    marketing:   "Meta Ads × funil · CPL e custo por estágio",
-    customers:   params.csFilter === "red" ? "filtrado: crítico" : "ordenado por saúde",
-    subscriptions: "system-of-record · ARR do cliente deriva daqui",
-    nps:         "últimos 90 dias",
+    customers:   "",
+    metrics:     "",
+    forms:       "formulários de captação",
+    proposals:   "templates por marca",
+    subscriptions: "a receita do cliente deriva daqui",
     tasks:       "kanban do time · arraste para mover",
-    goals:       "dia 12 / 31",
-    leaderboard: "múltiplas categorias",
-    settings:    "configuração por SaaS",
+    settings:    "funil, campos e integrações",
   };
   return map[screen] || "";
 }
