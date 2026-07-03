@@ -11,11 +11,19 @@
 // cancelamentos forem carimbados).
 
 import { annualized } from "./billing.js";
+import { aiCosts as defaultAiCosts } from "./ai-costs.js";
 
 const round2 = (n) => Math.round(n * 100) / 100;
 const monthOf = (iso) => String(iso || "").slice(0, 7);
 
-export function registerMetricsRoutes(app, repo) {
+export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts } = {}) {
+  // Gasto com IA (OpenRouter/OpenAI/Anthropic) — agregado em USD pro período.
+  app.get("/api/ai-costs", async (req, reply) => {
+    if (!ai.configured()) return reply.code(503).send({ error: "nenhuma chave de IA configurada (OPENROUTER_API_KEY / OPENAI_ADMIN_KEY / ANTHROPIC_ADMIN_KEY)" });
+    const days = Math.min(90, Math.max(7, Number(req.query.days) || 30));
+    return ai.report(days);
+  });
+
   app.get("/api/metrics/:saas", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "Not found" });
