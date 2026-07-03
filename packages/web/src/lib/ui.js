@@ -10,6 +10,23 @@ export const chromeBtnStyleSmall = {
   color: "var(--fg-2)",
 };
 
+// Potencial do lead em 3 níveis: soma de pontos de CONTAS (quanto mais contas,
+// mais dor de replicação) + ANÚNCIOS na maior conta (quanto mais anúncios, mais
+// volume a clonar). Leads antigos sem `listings` usam o campo `volume` legado.
+// alto = verde · médio = âmbar · baixo = cinza · sem respostas = neutro.
+const TIER_ACCOUNTS = { "1": 0, "2": 1, "3-5": 2, "6-10": 3, "10+": 4 };
+const TIER_LISTINGS = { "0-100": 0, "100-500": 1, "500-2000": 2, "2000-10000": 3, "10000+": 4 };
+const TIER_VOLUME = { "0-10": 0, "10-50": 1, "50-200": 2, "200+": 3 }; // legado (anúncios novos/semana)
+export function leadTier(l) {
+  const acc = TIER_ACCOUNTS[l?.accounts];
+  const ads = l?.listings != null && l.listings !== "" ? TIER_LISTINGS[l.listings] : TIER_VOLUME[l?.volume];
+  if (acc == null && ads == null) return { key: "sem", label: "sem qualificação", tone: "var(--line-strong)" };
+  const pts = (acc ?? 0) + (ads ?? 0);
+  if (pts >= 5) return { key: "alto", label: "potencial alto", tone: "var(--pos)" };
+  if (pts >= 2) return { key: "medio", label: "potencial médio", tone: "var(--warn)" };
+  return { key: "baixo", label: "potencial baixo", tone: "var(--fg-5)" };
+}
+
 // Lead score helpers — score é numérico 0–100; cor e rótulo vêm por banda.
 // (Quente = forte/urgente em vermelho, mesmo padrão visual do protótipo.)
 export function leadScoreTone(score) {

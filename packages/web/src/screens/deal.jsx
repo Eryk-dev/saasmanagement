@@ -2,7 +2,7 @@ import React from "react";
 import { Avatar, RowActions } from "../atoms.jsx";
 import { BigNumber } from "../charts.jsx";
 import { ProposalActions } from "../components/ProposalActions.jsx";
-import { leadScoreLabel, leadAge, chromeBtnStyleSmall, waLink } from "../lib/ui.js";
+import { leadScoreLabel, leadAge, chromeBtnStyleSmall, waLink, leadTier } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 // Lead detail drawer — slides over the pipeline when a card is opened.
@@ -110,6 +110,12 @@ function LeadDetail({ lead: initial, onClose }) {
             <div style={{ fontSize: 20, fontWeight: 500, marginTop: 4 }}>{lead.name}</div>
             {lead.company && <div className="mono dim" style={{ fontSize: 12, marginTop: 2 }}>{lead.company}</div>}
             <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {(() => { const t = leadTier(lead); return t.key !== "sem" && (
+                <span className="chip" title="soma de contas operadas + anúncios publicados"
+                  style={{ color: t.tone, borderColor: "color-mix(in srgb, " + t.tone + " 40%, transparent)", background: "color-mix(in srgb, " + t.tone + " 10%, transparent)" }}>
+                  {t.label}
+                </span>
+              ); })()}
               {lead.stage && <span className="chip">{lead.stage}</span>}
               {lead.source && <span className="chip">{lead.source}</span>}
               {hasScore && <span className={"chip " + (Number(score) >= 75 ? "neg" : Number(score) >= 50 ? "warn" : "")}>{leadScoreLabel(score)}</span>}
