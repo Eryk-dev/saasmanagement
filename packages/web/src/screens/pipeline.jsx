@@ -376,28 +376,20 @@ function nextContactPill(d) {
   return { tone: "mut", text: t.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "") };
 }
 
-// Cartão compacto (padrão Pipedrive): nome, contexto de qualificação em 1 linha,
-// pills de tempo na etapa + próximo contato + novo, e valor. TODA a edição
-// (mover etapa, próximo contato, campos por estágio) vive no drawer do lead.
+// Cartão compacto (padrão Pipedrive): nome, pills de tempo na etapa + próximo
+// contato + novo, e valor. O fundo inteiro é tingido pela cor do potencial
+// (contas + anúncios). TODA a edição vive no drawer do lead.
 function LeadCard({ d, stale, currentStage, onDragStart, selected, onSelect, onOpen }) {
   const tier = leadTier(d);
   const days = daysInStage(d);
   const wa = waLink(d.phone);
   const isNew = d.createdAt && Date.now() - new Date(d.createdAt).getTime() <= 2 * 86400000;
-  // Contexto: nicho + contas (rótulos amigáveis via leadQuestions); fallback empresa.
   const saasCfg = (window.SEED?.SAAS || []).find((x) => x.id === d.saas);
-  const qa = (key) => {
-    const q = (saasCfg?.leadQuestions || []).find((x) => x.key === key);
-    const raw = d[key];
-    if (q == null || raw == null || raw === "" || (Array.isArray(raw) && raw.length === 0)) return null;
-    const lut = Object.fromEntries((q.options || []).map((o) => [o.value, o.label]));
-    return Array.isArray(raw) ? raw.map((v) => lut[v] || v).join(", ") : (lut[raw] || raw);
-  };
-  const context = [qa("niche"), qa("accounts")].filter(Boolean).join(" · ") || d.company || "";
   const wonIdx = (saasCfg?.funnel || []).findIndex((f) => f.stage === "Ganho");
   const stageIdx = (saasCfg?.funnel || []).findIndex((f) => f.stage === currentStage);
   const isOpenStage = wonIdx < 0 || (stageIdx >= 0 && stageIdx < wonIdx);
   const next = isOpenStage ? nextContactPill(d) : null;
+  const tinted = tier.key !== "sem";
 
   return (
     <div
@@ -406,8 +398,8 @@ function LeadCard({ d, stale, currentStage, onDragStart, selected, onSelect, onO
       onClick={(e) => { if (e.shiftKey) onSelect(); else onOpen && onOpen(); }}
       title={`${tier.label} (contas + anúncios)`}
       style={{
-        background: "var(--bg-1)",
-        border: "1px solid " + (selected ? "var(--accent-line)" : "var(--line-1)"),
+        background: tinted ? `color-mix(in srgb, ${tier.tone} 9%, var(--bg-1))` : "var(--bg-1)",
+        border: "1px solid " + (selected ? "var(--accent-line)" : tinted ? `color-mix(in srgb, ${tier.tone} 28%, var(--line-1))` : "var(--line-1)"),
         borderLeft: `3px solid ${tier.tone}`,
         borderRadius: "var(--r-2)",
         padding: "9px 11px",
@@ -424,7 +416,6 @@ function LeadCard({ d, stale, currentStage, onDragStart, selected, onSelect, onO
           </a>
         )}
       </div>
-      {context && <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{context}</div>}
       <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 8, flexWrap: "wrap" }}>
         {isNew && <Pill tone="accent">novo</Pill>}
         {days != null && <Pill tone={stale ? "warn" : "mut"} title="tempo nesta etapa">{days}d</Pill>}
