@@ -34,6 +34,7 @@ export const COLLECTIONS = {
   users: [],
   sessions: [],
   ad_insights: [],
+  expenses: [],
   tasks: [],
   task_boards: [],
 };

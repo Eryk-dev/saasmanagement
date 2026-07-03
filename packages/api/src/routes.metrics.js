@@ -24,6 +24,49 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts } = {}) {
     return ai.report(days);
   });
 
+  // Custos operacionais do mês: publicidade (ad_insights) + IA (série dos
+  // provedores convertida em R$) automáticos, mais os lançamentos manuais da
+  // collection expenses. Base da tela Custos e do resultado na Visão geral.
+  app.get("/api/expenses/summary/:saas", async (req, reply) => {
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "Not found" });
+    const month = /^\d{4}-\d{2}$/.test(String(req.query.month || "")) ? String(req.query.month) : new Date().toISOString().slice(0, 7);
+
+    const [insights, expenses] = await Promise.all([repo.list("ad_insights"), repo.list("expenses")]);
+    const round2 = (n) => Math.round(n * 100) / 100;
+    const ads = round2(insights
+      .filter((r) => r.saas === product.id && String(r.date || "").startsWith(month))
+      .reduce((a, r) => a + (Number(r.spend) || 0), 0));
+
+    // IA do mês: soma as séries diárias dos provedores dentro do mês pedido.
+    // A janela das APIs cobre ~6 meses; mês mais antigo volta null (sem dado).
+    let aiUSD = null, aiBRL = null, usdBrl = null;
+    if (ai.configured()) {
+      try {
+        const monthStart = new Date(`${month}-01T00:00:00Z`).getTime();
+        const days = Math.min(180, Math.max(35, Math.ceil((Date.now() - monthStart) / 86400000) + 2));
+        if (days <= 180) {
+          const rep = await ai.report(days);
+          usdBrl = rep.usdBrl;
+          let sum = 0, has = false;
+          for (const p of rep.providers) {
+            for (const s of p.series || []) {
+              if (String(s.date).startsWith(month)) { sum += Number(s.spend) || 0; has = true; }
+            }
+          }
+          if (has) { aiUSD = round2(sum); aiBRL = usdBrl ? round2(sum * usdBrl) : null; }
+        }
+      } catch { /* fail-open: IA fica null */ }
+    }
+
+    const manual = expenses
+      .filter((e) => e.saas === product.id && e.month === month)
+      .sort((a, b) => String(a.category).localeCompare(String(b.category)));
+    const manualTotal = round2(manual.reduce((a, e) => a + (Number(e.amount) || 0), 0));
+    const total = round2(ads + (aiBRL || 0) + manualTotal);
+    return { month, ads, ai: aiBRL, aiUSD, usdBrl, manual, manualTotal, total };
+  });
+
   app.get("/api/metrics/:saas", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "Not found" });

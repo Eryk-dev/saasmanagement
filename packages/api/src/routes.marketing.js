@@ -110,10 +110,16 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const metaLeads = sum("metaLeads");
     const per = (n) => (n > 0 ? Math.round((spend / n) * 100) / 100 : null);
 
-    // Custo por etapa: leads cujo estágio ATUAL é o estágio i ou um posterior.
+    // Custo por etapa: leads cujo estágio ATUAL é o estágio i ou um posterior,
+    // NA RÉGUA DE PROGRESSO (até "Ganho"). Estágios pós-Ganho do funil
+    // (Sem resposta, Desqualificado, Perdido, Mentoria) não são progresso:
+    // um lead parado lá conta só como chegada no 1º estágio, senão o custo
+    // por ganho contaria todo descartado como ganho.
     const stages = (product.funnel || []).map((f) => f.stage);
-    const idx = (stage) => { const i = stages.indexOf(stage); return i < 0 ? 0 : i; };
-    const perStage = stages.map((stage, i) => {
+    const wonIdx = stages.indexOf("Ganho");
+    const ladder = wonIdx >= 0 ? stages.slice(0, wonIdx + 1) : stages;
+    const idx = (stage) => { const i = ladder.indexOf(stage); return i < 0 ? 0 : i; };
+    const perStage = ladder.map((stage, i) => {
       const count = leads.filter((l) => idx(l.stage) >= i).length;
       return { stage, count, costPer: per(count) };
     });

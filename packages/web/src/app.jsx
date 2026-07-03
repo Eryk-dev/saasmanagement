@@ -4,6 +4,7 @@ import { NavRail, TopBar } from "./chrome.jsx";
 import { chromeBtnStyleSmall } from "./lib/ui.js";
 import { OverviewScreen } from "./screens/overview.jsx";
 import { MetricsScreen } from "./screens/metrics.jsx";
+import { ExpensesScreen } from "./screens/expenses.jsx";
 import { PipelineScreen } from "./screens/pipeline.jsx";
 import { FormsScreen } from "./screens/forms.jsx";
 import { ProposalsScreen } from "./screens/proposals.jsx";
@@ -72,7 +73,8 @@ function App() {
     overview:    ["Visão geral"],
     pipeline:    ["Pipeline"],
     customers:   ["Clientes"],
-    metrics:     ["Métricas"],
+    metrics:     ["Publicidade"],
+    expenses:    ["Custos"],
     forms:       ["Ferramentas", "Formulários"],
     proposals:   ["Ferramentas", "Propostas"],
     subscriptions: ["Ferramentas", "Assinaturas"],
@@ -101,6 +103,7 @@ function App() {
           {screen === "pipeline"    && <PipelineScreen saasId={params.saas} onJump={jump} jumpFilter={params} onOpenLead={openLead} />}
           {screen === "customers"   && <CustomersScreen />}
           {screen === "metrics"     && <MetricsScreen />}
+          {screen === "expenses"    && <ExpensesScreen />}
           {screen === "forms"       && <FormsScreen saasId={params.saas} />}
           {screen === "proposals"   && <ProposalsScreen saasId={params.saas} />}
           {screen === "subscriptions" && <SubscriptionsScreen saasId={params.saas} />}
@@ -159,6 +162,7 @@ function subtitleFor(screen, params) {
     pipeline:    `${params.stage ? "estágio: " + params.stage + " · " : ""}arraste para mover`,
     customers:   "",
     metrics:     "",
+    expenses:    "",
     forms:       "formulários de captação",
     proposals:   "templates por marca",
     subscriptions: "a receita do cliente deriva daqui",
