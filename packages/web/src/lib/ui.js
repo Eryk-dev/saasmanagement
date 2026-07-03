@@ -20,11 +20,11 @@ const TIER_VOLUME = { "0-10": 0, "10-50": 1, "50-200": 2, "200+": 3 }; // legado
 export function leadTier(l) {
   const acc = TIER_ACCOUNTS[l?.accounts];
   const ads = l?.listings != null && l.listings !== "" ? TIER_LISTINGS[l.listings] : TIER_VOLUME[l?.volume];
-  if (acc == null && ads == null) return { key: "sem", label: "sem qualificação", tone: "var(--line-strong)" };
+  if (acc == null && ads == null) return { key: "sem", grade: null, label: "sem qualificação", tone: "var(--line-strong)" };
   const pts = (acc ?? 0) + (ads ?? 0);
-  if (pts >= 5) return { key: "alto", label: "potencial alto", tone: "var(--pos)" };
-  if (pts >= 2) return { key: "medio", label: "potencial médio", tone: "var(--warn)" };
-  return { key: "baixo", label: "potencial baixo", tone: "var(--fg-5)" };
+  if (pts >= 5) return { key: "alto", grade: "A", label: "cliente A", tone: "var(--pos)" };
+  if (pts >= 2) return { key: "medio", grade: "B", label: "cliente B", tone: "var(--warn)" };
+  return { key: "baixo", grade: "C", label: "cliente C", tone: "var(--fg-4)" };
 }
 
 // Lead score helpers — score é numérico 0–100; cor e rótulo vêm por banda.

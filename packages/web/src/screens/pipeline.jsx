@@ -75,13 +75,15 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <PageHead title="Pipeline" sub={`${openLeads.length} ${openLeads.length === 1 ? "lead aberto" : "leads abertos"} · ${newWeek} ${newWeek === 1 ? "novo" : "novos"} esta semana`}>
-        <span className="mono" title="Potencial do lead: soma de contas operadas + anúncios publicados"
-          style={{ display: "inline-flex", alignItems: "center", gap: 10, fontSize: 11, color: "var(--fg-3)", marginRight: 4 }}>
-          {[["alto", "var(--pos)"], ["médio", "var(--warn)"], ["baixo", "var(--fg-5)"]].map(([label, tone]) => (
-            <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-              <span style={{ width: 8, height: 8, borderRadius: 2, background: tone }} />{label}
-            </span>
+        <span title="Classificação do lead: soma de contas operadas + anúncios publicados"
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, marginRight: 4 }}>
+          {[["A", "var(--pos)"], ["B", "var(--warn)"], ["C", "var(--fg-4)"]].map(([g, tone]) => (
+            <span key={g} className="tnum" style={{
+              width: 18, height: 18, borderRadius: 5, display: "inline-flex", alignItems: "center", justifyContent: "center",
+              background: tone, color: "#fff", fontFamily: "var(--display)", fontSize: 11, fontWeight: 700,
+            }}>{g}</span>
           ))}
+          <span style={{ fontSize: 11.5, color: "var(--fg-3)" }}>contas + anúncios</span>
         </span>
         {view !== "all" && <SaasTabs active={activeSaas} onSelect={setActiveSaas} />}
         <ViewToggle view={view} onChange={setView} />
@@ -398,16 +400,26 @@ function LeadCard({ d, stale, currentStage, onDragStart, selected, onSelect, onO
       onClick={(e) => { if (e.shiftKey) onSelect(); else onOpen && onOpen(); }}
       title={`${tier.label} (contas + anúncios)`}
       style={{
-        background: tinted ? `color-mix(in srgb, ${tier.tone} 9%, var(--bg-1))` : "var(--bg-1)",
-        border: "1px solid " + (selected ? "var(--accent-line)" : tinted ? `color-mix(in srgb, ${tier.tone} 28%, var(--line-1))` : "var(--line-1)"),
-        borderLeft: `3px solid ${tier.tone}`,
+        background: tinted ? `color-mix(in srgb, ${tier.tone} 16%, var(--bg-1))` : "var(--bg-1)",
+        border: "1px solid " + (selected ? "var(--accent-line)" : tinted ? `color-mix(in srgb, ${tier.tone} 55%, var(--line-1))` : "var(--line-1)"),
+        borderLeft: `4px solid ${tier.tone}`,
         borderRadius: "var(--r-2)",
         padding: "9px 11px",
         cursor: "grab",
         boxShadow: "var(--shadow-1)",
       }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-        <span style={{ fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{d.name}</span>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+          {tier.grade && (
+            <span className="tnum" style={{
+              width: 19, height: 19, borderRadius: 5, flexShrink: 0,
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              background: tier.tone, color: "#fff",
+              fontFamily: "var(--display)", fontSize: 11.5, fontWeight: 700,
+            }}>{tier.grade}</span>
+          )}
+          <span style={{ fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{d.name}</span>
+        </span>
         {wa && (
           <a href={wa} target="_blank" rel="noopener noreferrer" title={`Abrir WhatsApp · ${d.phone}`}
             draggable={false} onClick={(e) => e.stopPropagation()}
