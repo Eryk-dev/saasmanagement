@@ -15,6 +15,7 @@ import { registerAuthRoutes } from "./auth.js";
 import { registerMpRoutes, mirrorSubscriptionToMp } from "./routes.mp.js";
 import { mp as defaultMpClient } from "./mp.js";
 import { registerMarketingRoutes } from "./routes.marketing.js";
+import { registerMetricsRoutes } from "./routes.metrics.js";
 import { meta as defaultMetaClient } from "./meta.js";
 import { metaCapi as defaultMetaCapi } from "./meta-capi.js";
 import { discord as defaultDiscord } from "./discord.js";
@@ -158,6 +159,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Marketing: sync de insights da Meta + métricas cruzadas com o funil.
   const metaClient = opts.meta || defaultMetaClient;
   registerMarketingRoutes(app, repo, { meta: metaClient });
+  registerMetricsRoutes(app, repo);
   // Usuários do time: login/logout/me + gestão mínima (rotas dedicadas).
   registerAuthRoutes(app, repo);
 
@@ -290,6 +292,11 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     if (!updated) return reply.code(404).send({ error: "Not found" });
     // Form editado → ressincroniza leadQuestions do produto (best-effort).
     if (collection === "forms") { try { await syncLeadQuestions(repo, updated); } catch { /* fail-open */ } }
+    // Lead que virou "Ganho" → cria o cliente (pós-venda) com startedAt e link
+    // pro lead de origem. Idempotente e best-effort: nunca quebra o PATCH.
+    if (collection === "leads" && typeof req.body.stage === "string") {
+      try { await convertWonLead(repo, updated); } catch { /* fail-open */ }
+    }
     if (collection === "subscriptions") {
       await syncCustomerArr(repo, updated.customer);
       if (before && before.customer && before.customer !== updated.customer) await syncCustomerArr(repo, before.customer);
@@ -353,6 +360,33 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     }
     return result;
   });
+}
+
+// Conversão lead → cliente: quando um lead chega no estágio de ganho, nasce o
+// customer com `startedAt` (base dos marcos de pós-venda e do CAC) e o link
+// bidirecional lead.customerId / customer.leadId. Idempotente: se o lead já
+// gerou cliente, não duplica. A receita continua vindo das assinaturas
+// (syncCustomerArr) — aqui só nasce o cadastro.
+const WON_STAGES = new Set(["Ganho", "Closed Won"]);
+export async function convertWonLead(repo, lead) {
+  if (!lead || !lead.saas || !WON_STAGES.has(lead.stage)) return null;
+  const customers = await repo.list("customers");
+  if (customers.some((c) => c.leadId === lead.id)) return null;
+  if (lead.customerId && customers.some((c) => c.id === lead.customerId)) return null;
+  const customer = await repo.create("customers", {
+    ...(CREATE_DEFAULTS.customers || {}),
+    name: lead.company || lead.name || "Cliente",
+    contact: lead.name || "",
+    saas: lead.saas,
+    email: lead.email || "",
+    phone: lead.phone || "",
+    plan: "",
+    arr: 0,
+    leadId: lead.id,
+    startedAt: new Date().toISOString(),
+  });
+  await repo.update("leads", lead.id, { customerId: customer.id });
+  return customer;
 }
 
 // Mantém o leadQuestions do produto em dia com as perguntas do form (upsert por

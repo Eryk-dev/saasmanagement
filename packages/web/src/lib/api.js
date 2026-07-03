@@ -64,6 +64,13 @@ export const api = {
   formPreview: (draft) => req("POST", "/api/forms/preview", draft),
   // Funil de drop-off do form: sessões únicas por etapa. `since` (ISO) filtra o período.
   formFunnel: (id, since) => req("GET", `/api/forms/${id}/funnel${since ? `?since=${encodeURIComponent(since)}` : ""}`),
+  // CAC/LTV + série mensal (fase 4). days = janela do CAC; months = série.
+  metrics: (saas, { days, months } = {}) => {
+    const q = new URLSearchParams();
+    if (days) q.set("days", days);
+    if (months) q.set("months", months);
+    return req("GET", `/api/metrics/${saas}${q.toString() ? `?${q}` : ""}`);
+  },
   proposalPreview: (payload) => req("POST", "/api/proposals/preview", payload),
   // Ajustes (fase 3): grava o funil migrando estágios renomeados (lead/deal.stage
   // não têm FK — o servidor reaponta os cards junto).
