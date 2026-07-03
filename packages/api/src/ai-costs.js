@@ -141,8 +141,17 @@ export function makeAiCosts({
 
 // Só as chaves dedicadas contam: a de uso (sk-proj/sk-ant-api) não tem acesso a
 // custo e só geraria linha de erro no card.
-export const aiCosts = makeAiCosts({
+//
+// Singleton PREGUIÇOSO: imports de ESM são içados, então este módulo é avaliado
+// antes do dotenv.config() do index.js — ler process.env aqui em cima congelaria
+// as chaves vazias no dev local. A primeira chamada real (pós-boot) resolve.
+let _inst = null;
+const inst = () => (_inst ??= makeAiCosts({
   openrouterKey: process.env.OPENROUTER_API_KEY || "",
   openaiKey: process.env.OPENAI_ADMIN_KEY || "",
   anthropicKey: process.env.ANTHROPIC_ADMIN_KEY || "",
-});
+}));
+export const aiCosts = {
+  configured: () => inst().configured(),
+  report: (days) => inst().report(days),
+};
