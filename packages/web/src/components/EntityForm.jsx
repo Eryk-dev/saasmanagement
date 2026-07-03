@@ -51,6 +51,8 @@ function toInputs(fields, record) {
       v[f.key] = val == null || val === "" ? "" : String(+(Number(val) * 100).toFixed(4));
     } else if (f.type === "bool") {
       v[f.key] = val === true || val === "true" ? "true" : "false";
+    } else if (f.type === "date") {
+      v[f.key] = val == null ? "" : String(val).slice(0, 10); // ISO completo → YYYY-MM-DD do input nativo
     } else {
       v[f.key] = val == null ? "" : String(val);
     }
@@ -256,7 +258,7 @@ function Field({ f, value, values, onChange, recordId }) {
       <div style={{ position: "relative" }}>
         {f.type === "money" && <span className="mono dim" style={{ position: "absolute", left: 8, top: 7, fontSize: 12 }}>R$</span>}
         <input
-          type={numeric ? "number" : "text"} step="any"
+          type={numeric ? "number" : f.type === "date" ? "date" : "text"} step="any"
           value={value} placeholder={f.placeholder}
           onChange={(e) => onChange(e.target.value)}
           style={{ ...inputStyle, paddingLeft: f.type === "money" ? 28 : 8, paddingRight: f.type === "pct" ? 22 : 8 }}

@@ -30,7 +30,7 @@ window.SEED = {
   }],
   PORTFOLIO: {}, ATTENTION: [], PEOPLE: {},
   CUSTOMERS: [
-    { id: "c1", saas: "leverads", name: "Cliente Teste", arr: 15480, plan: "Pro mensal", flags: [] },
+    { id: "c1", saas: "leverads", name: "Cliente Teste", arr: 15480, plan: "Pro mensal", flags: [], startedAt: new Date(Date.now() - 25 * 86400000).toISOString(), milestonesDone: { onboarding: nowIso } },
     { id: "c2", saas: "leverads", name: "Outra Loja", arr: 2920, flags: ["expansion"] },
   ],
   LEADS: [

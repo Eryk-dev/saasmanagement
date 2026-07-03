@@ -3,6 +3,7 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { PageHead, StatTile, Card, LineChart, Pill } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
+import { nextMilestone, dueLabel } from "../lib/milestones.js";
 // Visão geral — a home do dia a dia (substitui Portfólio + dashboard do SaaS).
 // Responde: como está a receita, quantos leads entraram, quanto custa o lead,
 // e o que preciso fazer HOJE. Focada no produto ativo (SAAS[0]).
@@ -81,7 +82,15 @@ function OverviewScreen({ onNav, onOpenLead }) {
     .slice(0, 3);
 
   const cpl = marketing?.totals?.spend > 0 && marketing?.totals?.cpl != null ? marketing.totals.cpl : null;
-  const activeCustomers = (CUSTOMERS || []).filter((c) => c.saas === product?.id).length;
+  const productCustomers = (CUSTOMERS || []).filter((c) => c.saas === product?.id);
+  const activeCustomers = productCustomers.length;
+
+  // Marcos de pós-venda vencidos ou vencendo (régua por tempo de casa).
+  const dueMilestones = productCustomers
+    .map((c) => ({ customer: c, m: nextMilestone(c, product) }))
+    .filter(({ m }) => m && (m.status === "late" || m.status === "soon"))
+    .sort((a, b) => String(a.m.dueAt).localeCompare(String(b.m.dueAt)))
+    .slice(0, 3);
 
   if (!product) {
     return <EmptyState title="Nenhum produto cadastrado" hint="Crie o produto em Ajustes pra começar a operar o cockpit." />;
@@ -155,9 +164,21 @@ function OverviewScreen({ onNav, onOpenLead }) {
               <div className="mono" style={{ fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
                 Precisa de atenção
               </div>
-              {stuck.length === 0 && dueInvoices.length === 0 && (
+              {stuck.length === 0 && dueInvoices.length === 0 && dueMilestones.length === 0 && (
                 <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Tudo em dia por aqui.</div>
               )}
+              {dueMilestones.map(({ customer, m }) => (
+                <button key={customer.id + m.key} onClick={() => onNav && onNav("customers")}
+                  style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "6px 0", textAlign: "left" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{m.label}</div>
+                    <div style={{ fontSize: 12, color: "var(--fg-3)" }}>
+                      {customer.name} · {m.status === "late" ? "venceu" : "vence"} {dueLabel(m.dueAt)}
+                    </div>
+                  </div>
+                  <Pill tone={m.status === "late" ? "neg" : "warn"}>ver</Pill>
+                </button>
+              ))}
               {stuck.length > 0 && (
                 <button onClick={() => onNav && onNav("pipeline", { saas: product.id, stage: firstStage })}
                   style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "6px 0", textAlign: "left" }}>
