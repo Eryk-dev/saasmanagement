@@ -20,11 +20,13 @@ const TIER_VOLUME = { "0-10": 0, "10-50": 1, "50-200": 2, "200+": 3 }; // legado
 export function leadTier(l) {
   const acc = TIER_ACCOUNTS[l?.accounts];
   const ads = l?.listings != null && l.listings !== "" ? TIER_LISTINGS[l.listings] : TIER_VOLUME[l?.volume];
-  if (acc == null && ads == null) return { key: "sem", grade: null, label: "sem qualificação", tone: "var(--line-strong)" };
+  if (acc == null && ads == null) return { key: "sem", grade: null, label: "sem qualificação", tone: "var(--line-strong)", ink: "var(--fg-3)", badgeFg: "#fff" };
   const pts = (acc ?? 0) + (ads ?? 0);
-  if (pts >= 5) return { key: "alto", grade: "A", label: "cliente A", tone: "var(--pos)" };
-  if (pts >= 2) return { key: "medio", grade: "B", label: "cliente B", tone: "var(--warn)" };
-  return { key: "baixo", grade: "C", label: "cliente C", tone: "var(--fg-4)" };
+  // Cores próprias (não os tokens semânticos) pra separação clara à distância:
+  // tone = preenchimentos (badge/tinta do card); ink = variante escura pra texto.
+  if (pts >= 5) return { key: "alto", grade: "A", label: "cliente A", tone: "#16a34a", ink: "#15803d", badgeFg: "#fff" };
+  if (pts >= 2) return { key: "medio", grade: "B", label: "cliente B", tone: "#eab308", ink: "#a16207", badgeFg: "#463500" };
+  return { key: "baixo", grade: "C", label: "cliente C", tone: "#9aa2ad", ink: "#5b6472", badgeFg: "#fff" };
 }
 
 // Lead score helpers — score é numérico 0–100; cor e rótulo vêm por banda.
