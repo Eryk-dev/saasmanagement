@@ -1,5 +1,5 @@
 import React from "react";
-import { useTweaks, TweaksPanel, TweakSection, TweakRadio, TweakColor, TweakToggle } from "./tweaks-panel.jsx";
+import { useTweaks, TweaksPanel, TweakSection, TweakRadio, TweakColor } from "./tweaks-panel.jsx";
 import { NavRail, TopBar } from "./chrome.jsx";
 import { chromeBtnStyleSmall } from "./lib/ui.js";
 import { OverviewScreen } from "./screens/overview.jsx";
@@ -23,8 +23,7 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "theme": "light",
   "typeSystem": "balanced",
   "accentHue": 183,
-  "density": "regular",
-  "showTrajectoryAnnotation": true
+  "density": "regular"
 }/*EDITMODE-END*/;
 
 function App() {
@@ -148,10 +147,6 @@ function App() {
             const m = /oklch\([^\s]+\s+[^\s]+\s+(\d+)/.exec(v);
             if (m) setTweak("accentHue", parseInt(m[1], 10));
           }} />
-
-        <TweakSection label="Mais" />
-        <TweakToggle label="Anotações no gráfico" value={t.showTrajectoryAnnotation}
-          onChange={(v) => setTweak("showTrajectoryAnnotation", v)} />
       </TweaksPanel>
     </div>
     </DataContext.Provider>

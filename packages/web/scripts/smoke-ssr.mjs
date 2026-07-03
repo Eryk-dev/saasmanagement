@@ -57,6 +57,10 @@ try {
     ["customers", "/src/screens/customers.jsx", "CustomersScreen", {}, "Cliente Teste"],
     ["pipeline", "/src/screens/pipeline.jsx", "PipelineScreen", { onOpenLead() {} }, "Lead Novo"],
     ["chrome", "/src/chrome.jsx", "NavRail", { current: "overview", onNav() {} }, "Visão geral"],
+    ["forms", "/src/screens/forms.jsx", "FormsScreen", { saasId: "leverads" }, ""],
+    ["proposals", "/src/screens/proposals.jsx", "ProposalsScreen", { saasId: "leverads" }, ""],
+    ["subscriptions", "/src/screens/subscriptions.jsx", "SubscriptionsScreen", { saasId: "leverads" }, ""],
+    ["settings", "/src/screens/settings.jsx", "SettingsScreen", { saasId: "leverads" }, ""],
   ];
   for (const [name, path, exportName, props, mustContain] of cases) {
     try {

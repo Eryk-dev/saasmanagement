@@ -163,7 +163,7 @@ function ProposalsScreen({ saasId }) {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
         <div style={{ display: "flex", gap: 6 }}>
-          {SAAS.map((x) => (
+          {SAAS.length > 1 && SAAS.map((x) => (
             <button key={x.id} onClick={() => setActive(x.id)} style={{
               height: 26, padding: "0 10px", borderRadius: "var(--r-2)",
               border: "1px solid " + (active === x.id ? "var(--line-strong)" : "var(--line-1)"),

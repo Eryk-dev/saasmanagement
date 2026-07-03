@@ -104,18 +104,20 @@ function SubscriptionsScreen({ saasId }) {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <div style={{ display: "flex", gap: 6 }}>
-            {SAAS.map((x) => (
-              <button key={x.id} onClick={() => setActive(x.id)} style={{
-                height: 26, padding: "0 10px", borderRadius: "var(--r-2)",
-                border: "1px solid " + (active === x.id ? "var(--line-strong)" : "var(--line-1)"),
-                background: active === x.id ? "var(--bg-3)" : "var(--bg-2)",
-                color: active === x.id ? "var(--fg-1)" : "var(--fg-3)",
-                fontSize: 12, fontFamily: "var(--mono)",
-              }}>{x.name}</button>
-            ))}
-          </div>
-          <span style={{ color: "var(--line-2)" }}>·</span>
+          {SAAS.length > 1 && (
+            <div style={{ display: "flex", gap: 6 }}>
+              {SAAS.map((x) => (
+                <button key={x.id} onClick={() => setActive(x.id)} style={{
+                  height: 26, padding: "0 10px", borderRadius: "var(--r-2)",
+                  border: "1px solid " + (active === x.id ? "var(--line-strong)" : "var(--line-1)"),
+                  background: active === x.id ? "var(--bg-3)" : "var(--bg-2)",
+                  color: active === x.id ? "var(--fg-1)" : "var(--fg-3)",
+                  fontSize: 12, fontFamily: "var(--mono)",
+                }}>{x.name}</button>
+              ))}
+            </div>
+          )}
+          {SAAS.length > 1 && <span style={{ color: "var(--line-2)" }}>·</span>}
           <TabBtn k="subs" label={`Assinaturas (${subs.length})`} />
           <TabBtn k="invoices" label={`Faturas (${invoices.length})`} />
           <TabBtn k="plans" label={`Planos (${plans.length})`} />

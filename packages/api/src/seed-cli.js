@@ -1,15 +1,13 @@
 // Gerencia os dados do banco.
 //   npm run seed                    -> garante as tabelas (seed padrão = vazio, se vazias)
 //   npm run seed:clear              -> ZERA tudo (instância limpa)         [= --force/--clear]
-//   npm run seed:demo               -> carrega os 3 SaaS de demonstração   [= --demo]
 //   npm run seed:leverads-questions -> grava as perguntas do pipeline LeverAds (idempotente)
-import { initDb, seedAll, seedExternal, repo } from "./db.js";
+import { initDb, seedAll, repo } from "./db.js";
 import { LEVERADS_LEAD_QUESTIONS } from "./lead-questions.leverads.js";
 
 const args = process.argv.slice(2);
-const demo = args.includes("--demo");
 const leveradsQuestions = args.includes("--leverads-questions");
-const force = demo || args.includes("--force") || args.includes("--clear");
+const force = args.includes("--force") || args.includes("--clear");
 
 await initDb(); // cria as tabelas (e seed padrão vazio, se vazias)
 
@@ -27,14 +25,7 @@ if (leveradsQuestions) {
   process.exit(0);
 }
 
-let report;
-if (demo) {
-  const data = await import("./seed-data.demo.js");
-  report = await seedExternal(data.COLLECTIONS, { force: true });
-  console.log("Dados de DEMONSTRAÇÃO carregados:");
-} else {
-  report = await seedAll({ force });
-  console.log(force ? "Banco ZERADO (instância limpa):" : "Tabelas garantidas (seed vazio):");
-}
+const report = await seedAll({ force });
+console.log(force ? "Banco ZERADO (instância limpa):" : "Tabelas garantidas (seed vazio):");
 for (const [name, n] of Object.entries(report)) console.log(`  ${name.padEnd(18)} ${n} linhas`);
 process.exit(0);

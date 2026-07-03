@@ -123,11 +123,15 @@ function TasksScreen() {
       {/* Toolbar — filtros + nova tarefa */}
       <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, background: "var(--bg-0)" }}>
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <FilterChip label="Todos" active={fSaas === "all"} onClick={() => setFSaas("all")} />
-          {SAAS.map((s) => (
-            <FilterChip key={s.id} label={s.name} dot={window.productTone(s)} active={fSaas === s.id} onClick={() => setFSaas(s.id)} />
-          ))}
-          <span style={{ color: "var(--line-2)" }}>·</span>
+          {SAAS.length > 1 && (
+            <>
+              <FilterChip label="Todos" active={fSaas === "all"} onClick={() => setFSaas("all")} />
+              {SAAS.map((s) => (
+                <FilterChip key={s.id} label={s.name} dot={window.productTone(s)} active={fSaas === s.id} onClick={() => setFSaas(s.id)} />
+              ))}
+              <span style={{ color: "var(--line-2)" }}>·</span>
+            </>
+          )}
           <select value={fAssignee} onChange={(e) => setFAssignee(e.target.value)} style={{ ...inputStyle, width: "auto", height: 26, fontSize: 12 }}>
             <option value="all">todos responsáveis</option>
             {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}

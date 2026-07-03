@@ -117,6 +117,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
 
 function SaasTabs({ active, onSelect }) {
   const { SAAS } = window.SEED;
+  if (SAAS.length <= 1) return null; // 1 produto: aba é ruído (volta sozinha com o 2º SaaS)
   return (
     <div style={{ display: "flex", gap: 2, padding: 2, background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)" }}>
       {SAAS.map(s => (
