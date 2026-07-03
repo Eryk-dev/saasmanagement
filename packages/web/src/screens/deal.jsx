@@ -72,6 +72,8 @@ function LeadDetail({ lead: initial, onClose }) {
     ["Score", hasScore ? `${score} · ${leadScoreLabel(score)}` : null],
     ["ICP", icpPct],
     ["Origem", lead.source],
+    ["Campanha (UTM)", lead.utm?.campaign],
+    ["Origem (UTM)", [lead.utm?.source, lead.utm?.medium].filter(Boolean).join(" / ") || null],
     ["Dono", owner?.name || lead.owner],
     ["E-mail", lead.email],
     ["Telefone", lead.phone],

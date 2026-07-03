@@ -47,6 +47,21 @@ function MetricsScreen() {
     try { await api.update("products", product.id, { ltvMonths: n }); load(); } catch { /* fail-open */ }
   }
 
+  // Entrada manual de gasto (alternativa/complemento ao sync da Meta): vira uma
+  // linha em ad_insights, então soma nas mesmas métricas e séries.
+  const [manual, setManual] = useState(null); // { date, name, spend }
+  async function saveManual() {
+    const spend = Number(manual?.spend);
+    if (!manual?.date || !Number.isFinite(spend) || spend <= 0) { setNote({ ok: false, text: "Preencha data e valor do gasto." }); return; }
+    const name = (manual.name || "").trim() || "Entrada manual";
+    const campaignId = "manual_" + name.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").slice(0, 40);
+    try {
+      await api.create("ad_insights", { saas: product.id, campaignId, campaignName: name, date: manual.date, spend, impressions: 0, clicks: 0, metaLeads: 0 });
+      setManual(null); setNote({ ok: true, text: "Gasto registrado." });
+      load();
+    } catch (e) { setNote({ ok: false, text: e.message || "Falha ao registrar gasto." }); }
+  }
+
   async function sync() {
     setSyncing(true); setNote(null);
     try {
@@ -72,6 +87,10 @@ function MetricsScreen() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Métricas" sub={`aquisição e funil · ${product.name}`}>
+        <button onClick={() => setManual(manual ? null : { date: new Date().toISOString().slice(0, 10), name: "", spend: "" })}
+          style={{ padding: "6px 12px", borderRadius: "var(--r-1)", fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)" }}>
+          + gasto manual
+        </button>
         {metaOn && (
           <button onClick={sync} disabled={syncing} style={{ padding: "6px 12px", borderRadius: "var(--r-1)", fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", opacity: syncing ? 0.6 : 1 }}>
             {syncing ? "Sincronizando…" : "↻ sincronizar Meta"}
@@ -83,6 +102,30 @@ function MetricsScreen() {
       <div style={{ padding: "20px 24px 40px", display: "flex", flexDirection: "column", gap: 12 }}>
         {note && (
           <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>
+        )}
+
+        {manual && (
+          <Card>
+            <div style={{ padding: "14px 16px", display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>Data</span>
+                <input type="date" value={manual.date} onChange={(e) => setManual({ ...manual, date: e.target.value })}
+                  style={{ height: 30, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)" }} />
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 180 }}>
+                <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>Campanha (opcional)</span>
+                <input type="text" placeholder="Entrada manual" value={manual.name} onChange={(e) => setManual({ ...manual, name: e.target.value })}
+                  style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 }} />
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>Gasto (R$)</span>
+                <input type="number" min="0" step="0.01" placeholder="0,00" value={manual.spend} onChange={(e) => setManual({ ...manual, spend: e.target.value })}
+                  style={{ width: 120, height: 30, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)", textAlign: "right" }} />
+              </label>
+              <button onClick={saveManual} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-1)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 13, fontWeight: 600 }}>Registrar</button>
+              <button onClick={() => setManual(null)} style={{ height: 30, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>cancelar</button>
+            </div>
+          </Card>
         )}
 
         {data && !data.error && !data.synced && (
@@ -146,12 +189,12 @@ function MetricsScreen() {
         )}
 
         {data && !data.error && data.campaigns?.length > 0 && (
-          <Card title="Por campanha" hint="CPL na visão da Meta · leads por UTM chegam na fase de marketing">
+          <Card title="Por campanha" hint="leads e CPL reais atribuídos por UTM (utm_campaign = nome ou id da campanha)">
             <div style={{ overflowX: "auto", marginTop: 10 }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
-                    {["Campanha", "Investimento", "Impressões", "Cliques", "Leads (Meta)", "CPL (Meta)"].map((h, i) => (
+                    {["Campanha", "Investimento", "Cliques", "Leads (UTM)", "CPL real", "Leads (Meta)", "CPL (Meta)"].map((h, i) => (
                       <th key={h} className="mono" style={{ textAlign: i === 0 ? "left" : "right", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", padding: "10px 16px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
                     ))}
                   </tr>
@@ -161,8 +204,9 @@ function MetricsScreen() {
                     <tr key={c.id}>
                       <td style={{ padding: "11px 16px", fontSize: 13, fontWeight: 600, borderBottom: "1px solid var(--line-1)" }}>{c.name || c.id}</td>
                       <td className="tnum" style={tdNum}>{money(c.spend)}</td>
-                      <td className="tnum" style={tdNum}>{window.fmt.int(c.impressions)}</td>
                       <td className="tnum" style={tdNum}>{window.fmt.int(c.clicks)}</td>
+                      <td className="tnum" style={tdNum}>{window.fmt.int(c.leads || 0)}</td>
+                      <td className="tnum" style={{ ...tdNum, fontWeight: 600 }}>{c.cpl != null ? money(c.cpl) : "sem UTM"}</td>
                       <td className="tnum" style={tdNum}>{window.fmt.int(c.metaLeads)}</td>
                       <td className="tnum" style={tdNum}>{c.cplMeta != null ? money(c.cplMeta) : "sem lead"}</td>
                     </tr>

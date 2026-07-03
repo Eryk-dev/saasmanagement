@@ -86,8 +86,24 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       c.metaLeads += Number(r.metaLeads) || 0;
       c.name = r.campaignName || c.name;
     }
+    // Atribuição real por campanha: leads cujo utm.campaign casa com o NOME ou o
+    // ID da campanha (configure utm_campaign={{campaign.name}} ou {{campaign.id}}
+    // no anúncio). CPL real por campanha sai daqui.
+    const leadsOf = (c) => leads.filter((l) => {
+      const uc = l.utm && typeof l.utm === "object" ? String(l.utm.campaign || "") : "";
+      return uc && (uc === String(c.name || "") || uc === String(c.id || ""));
+    }).length;
     const campaigns = Object.values(byCampaign)
-      .map((c) => ({ ...c, spend: Math.round(c.spend * 100) / 100, cplMeta: c.metaLeads > 0 ? Math.round((c.spend / c.metaLeads) * 100) / 100 : null }))
+      .map((c) => {
+        const n = leadsOf(c);
+        return {
+          ...c,
+          spend: Math.round(c.spend * 100) / 100,
+          cplMeta: c.metaLeads > 0 ? Math.round((c.spend / c.metaLeads) * 100) / 100 : null,
+          leads: n,
+          cpl: n > 0 ? Math.round((c.spend / n) * 100) / 100 : null,
+        };
+      })
       .sort((a, b) => b.spend - a.spend);
 
     // Série diária (spend Meta + leads Cockpit) pro gráfico.
