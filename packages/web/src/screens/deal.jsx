@@ -13,13 +13,39 @@ function currentUser() {
   try { return JSON.parse(localStorage.getItem("cockpit_user") || "null"); } catch { return null; }
 }
 
-function LeadDetail({ lead, onClose }) {
-  const { openForm, openDelete } = useData();
-  const [comments, setComments] = React.useState(lead?.comments || []);
+// datetime-local sem timezone (mesmo formato que o input nativo produz).
+function localDT(date) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}T${p(date.getHours())}:${p(date.getMinutes())}`;
+}
+
+function LeadDetail({ lead: initial, onClose }) {
+  const { openForm, openDelete, refresh } = useData();
+  // Cópia local: as ações rápidas (etapa, próximo contato) editam aqui e
+  // persistem otimisticamente; o pipeline ressincroniza no fechar (refresh).
+  const [lead, setLead] = React.useState(initial);
+  const dirty = React.useRef(false);
+  const [comments, setComments] = React.useState(initial?.comments || []);
   const [newComment, setNewComment] = React.useState("");
-  React.useEffect(() => { setComments(lead?.comments || []); setNewComment(""); }, [lead?.id]);
+  React.useEffect(() => { setLead(initial); setComments(initial?.comments || []); setNewComment(""); }, [initial?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!lead) return null;
   const wa = waLink(lead.phone);
+
+  function patch(p) {
+    dirty.current = true;
+    setLead((prev) => ({ ...prev, ...p }));
+    api.update("leads", lead.id, p).catch((err) => console.warn("lead patch not persisted:", err.message));
+  }
+  function moveStage(stage) {
+    if (!stage || stage === lead.stage) return;
+    dirty.current = true;
+    setLead((prev) => ({ ...prev, stage, stageSince: new Date().toISOString() }));
+    api.moveLead(lead.id, stage).catch((err) => console.warn("lead move not persisted:", err.message));
+  }
+  function close() {
+    if (dirty.current) refresh();
+    onClose();
+  }
 
   async function addComment() {
     const text = newComment.trim();
@@ -69,7 +95,7 @@ function LeadDetail({ lead, onClose }) {
     <div style={{
       position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)",
       display: "flex", justifyContent: "flex-end", zIndex: 60,
-    }} onClick={onClose}>
+    }} onClick={close}>
       <div onClick={e => e.stopPropagation()} style={{
         width: 520, height: "100%", background: "var(--bg-1)",
         borderLeft: "1px solid var(--line-2)",
@@ -96,17 +122,68 @@ function LeadDetail({ lead, onClose }) {
               </a>
             )}
             <RowActions
-              onEdit={() => { onClose(); openForm("leads", lead); }}
-              onDelete={() => { onClose(); openDelete("leads", lead); }}
+              onEdit={() => { close(); openForm("leads", lead); }}
+              onDelete={() => { close(); openDelete("leads", lead); }}
             />
-            <button onClick={onClose} className="mono dim" style={{ fontSize: 16 }}>✕</button>
+            <button onClick={close} className="mono dim" style={{ fontSize: 16 }}>✕</button>
           </div>
         </div>
 
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line-1)", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
           <BigNumber value={window.fmt.money(lead.amount || 0)} label="Valor" size={28} />
           <BigNumber value={leadAge(lead)} label="Idade" size={28} />
-          <BigNumber value={icpPct || (hasScore ? String(score) : "—")} label={icpPct ? "ICP" : "Score"} size={28} />
+          {(icpPct || hasScore)
+            ? <BigNumber value={icpPct || String(score)} label={icpPct ? "ICP" : "Score"} size={28} />
+            : <BigNumber value={`${Math.max(0, Math.floor((Date.now() - new Date(lead.stageSince || lead.createdAt || Date.now()).getTime()) / 86400000))}d`} label="Na etapa" size={28} />}
+        </div>
+
+        {/* Ação rápida: mover etapa + próximo contato sem sair do drawer. */}
+        <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" }}>Ação rápida</div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span className="mono dim" style={{ fontSize: 11, width: 110, flexShrink: 0 }}>Etapa</span>
+            <select value={lead.stage || ""} onChange={(e) => moveStage(e.target.value)}
+              style={{ flex: 1, height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }}>
+              {(saasCfg?.funnel || []).map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
+              {saasCfg?.funnel?.every((f) => f.stage !== lead.stage) && lead.stage && <option value={lead.stage}>{lead.stage}</option>}
+            </select>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span className="mono dim" style={{ fontSize: 11, width: 110, flexShrink: 0 }}>Próximo contato</span>
+            <div style={{ display: "flex", gap: 5, flex: 1, flexWrap: "wrap" }}>
+              {[["hoje", () => { const t = new Date(); t.setHours(t.getHours() + 1, 0, 0, 0); return t; }],
+                ["amanhã 9h", () => { const t = new Date(); t.setDate(t.getDate() + 1); t.setHours(9, 0, 0, 0); return t; }],
+                ["em 3 dias", () => { const t = new Date(); t.setDate(t.getDate() + 3); t.setHours(9, 0, 0, 0); return t; }]].map(([label, mk]) => (
+                <button key={label} onClick={() => patch({ callAt: localDT(mk()) })}
+                  style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 500 }}>
+                  {label}
+                </button>
+              ))}
+              <input type="datetime-local" value={lead.callAt || ""} onChange={(e) => patch({ callAt: e.target.value })}
+                style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
+              {lead.callAt && (
+                <button onClick={() => patch({ callAt: "" })} className="mono dim" style={{ fontSize: 11 }} title="Limpar próximo contato">limpar</button>
+              )}
+            </div>
+          </div>
+          {lead.stage === "Negociação" && (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span className="mono dim" style={{ fontSize: 11, width: 110, flexShrink: 0 }}>Proposta</span>
+              <input type="number" placeholder="Valor (R$)" defaultValue={lead.proposalValue ?? ""}
+                onBlur={(e) => patch({ proposalValue: e.target.value === "" ? "" : Number(e.target.value) })}
+                style={{ width: 110, height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, fontFamily: "var(--mono)" }} />
+              <input type="text" placeholder="Período (ex: 12 meses)" defaultValue={lead.proposalPeriod ?? ""}
+                onBlur={(e) => patch({ proposalPeriod: e.target.value })}
+                style={{ flex: 1, height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5 }} />
+            </div>
+          )}
+          {lead.stage === "Integração" && (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span className="mono dim" style={{ fontSize: 11, width: 110, flexShrink: 0 }}>Integração</span>
+              <input type="datetime-local" value={lead.integrationAt || ""} onChange={(e) => patch({ integrationAt: e.target.value })}
+                style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
+            </div>
+          )}
         </div>
 
         {fields.length > 0 && (
@@ -167,8 +244,7 @@ function LeadDetail({ lead, onClose }) {
         </div>
 
         <div style={{ marginTop: "auto", padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", gap: 8, background: "var(--bg-inset)" }}>
-          <button onClick={() => { onClose(); openForm("leads", lead); }} style={{ flex: 1, padding: "9px 12px", background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500 }}>Editar lead</button>
-          <button style={{ padding: "9px 12px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13 }}>⋯</button>
+          <button onClick={() => { close(); openForm("leads", lead); }} style={{ flex: 1, padding: "9px 12px", background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500 }}>Editar lead</button>
         </div>
       </div>
     </div>
