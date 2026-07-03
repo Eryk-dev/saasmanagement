@@ -1,7 +1,7 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { PageHead, Segmented, StatTile, Card, LineChart } from "../components/viz.jsx";
+import { PageHead, Segmented, StatTile, Card, LineChart, Pill } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 // Métricas — aquisição × funil do produto ativo (substitui a tela Marketing).
 // Hoje: investimento (Meta), leads, CPL real e custo por etapa, com séries no
@@ -31,14 +31,35 @@ function MetricsScreen() {
   const [syncing, setSyncing] = useState(false);
   const [note, setNote] = useState(null);
 
+  const [camps, setCamps] = useState(null); // campanhas ao vivo (gerenciamento)
+
   const load = () => {
     if (!product) return;
     const since = dayStr(Date.now() - (Number(days) - 1) * DAY);
     setData(null);
     api.marketingMetrics(product.id, { since }).then(setData).catch(() => setData({ error: true }));
     api.metrics(product.id, { days: Number(days), months: 12 }).then(setBiz).catch(() => setBiz(null));
+    if (metaOn && product.metaAdAccount) {
+      api.metaCampaigns(product.id).then((r) => setCamps(r.campaigns)).catch((e) => setCamps({ error: e.message }));
+    }
   };
   useEffect(load, [product?.id, days, version]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pausar/reativar com atualização otimista; orçamento salva no blur.
+  async function toggleCampaign(c) {
+    const target = c.status === "PAUSED" ? "ACTIVE" : "PAUSED";
+    const verb = target === "PAUSED" ? "Pausar" : "Reativar";
+    if (!window.confirm(`${verb} a campanha "${c.name}" na Meta?`)) return;
+    setCamps((prev) => prev.map((x) => (x.id === c.id ? { ...x, status: target, effectiveStatus: target } : x)));
+    try { await api.metaCampaignStatus(c.id, target); setNote({ ok: true, text: `Campanha ${target === "PAUSED" ? "pausada" : "reativada"}.` }); }
+    catch (e) { setNote({ ok: false, text: e.message || "Falha na Meta." }); load(); }
+  }
+  async function saveBudget(c, value) {
+    const v = Number(value);
+    if (!Number.isFinite(v) || v <= 0 || v === c.dailyBudget) return;
+    try { await api.metaCampaignBudget(c.id, v); setNote({ ok: true, text: "Orçamento atualizado." }); load(); }
+    catch (e) { setNote({ ok: false, text: e.message || "Falha ao atualizar orçamento." }); }
+  }
 
   // Premissa de permanência (meses) usada no LTV — editável aqui mesmo.
   async function saveLtvMonths(v) {
@@ -214,6 +235,63 @@ function MetricsScreen() {
                 </tbody>
               </table>
             </div>
+          </Card>
+        )}
+
+        {metaOn && product.metaAdAccount && (
+          <Card title="Gerenciar campanhas" hint="direto na Meta · pausar, reativar e ajustar orçamento diário">
+            {camps == null && <div style={{ padding: "12px 16px", fontSize: 12.5, color: "var(--fg-4)" }}>carregando campanhas…</div>}
+            {camps?.error && <div className="mono" style={{ padding: "12px 16px", fontSize: 12, color: "var(--neg)" }}>{camps.error}</div>}
+            {Array.isArray(camps) && camps.length === 0 && <div style={{ padding: "12px 16px", fontSize: 12.5, color: "var(--fg-4)" }}>Nenhuma campanha na conta.</div>}
+            {Array.isArray(camps) && camps.length > 0 && (
+              <div style={{ overflowX: "auto", marginTop: 10 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      {["Campanha", "Objetivo", "Orçamento/dia", "Situação", ""].map((h, i) => (
+                        <th key={h + i} className="mono" style={{ textAlign: i >= 2 && i <= 3 ? "right" : "left", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", padding: "10px 16px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {camps.map((c) => {
+                      const paused = c.status === "PAUSED";
+                      const eff = c.effectiveStatus || c.status;
+                      return (
+                        <tr key={c.id}>
+                          <td style={{ padding: "10px 16px", fontSize: 13, fontWeight: 600, borderBottom: "1px solid var(--line-1)" }}>{c.name}</td>
+                          <td style={{ padding: "10px 16px", fontSize: 12, color: "var(--fg-3)", borderBottom: "1px solid var(--line-1)" }}>
+                            {String(c.objective || "").replace("OUTCOME_", "").toLowerCase()}
+                          </td>
+                          <td style={{ padding: "10px 16px", textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>
+                            {c.dailyBudget != null ? (
+                              <input type="number" min="1" step="1" defaultValue={c.dailyBudget} key={c.id + c.dailyBudget}
+                                onBlur={(e) => saveBudget(c, e.target.value)}
+                                onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+                                title="Orçamento diário em R$ (salva ao sair do campo)"
+                                style={{ width: 90, height: 26, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)", textAlign: "right" }} />
+                            ) : (
+                              <span className="mono" style={{ fontSize: 11.5, color: "var(--fg-4)" }} title="Orçamento definido nos conjuntos (ABO)">no conjunto</span>
+                            )}
+                          </td>
+                          <td style={{ padding: "10px 16px", textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>
+                            <Pill tone={eff === "ACTIVE" ? "pos" : paused ? "mut" : "warn"}>
+                              {eff === "ACTIVE" ? "ativa" : paused ? "pausada" : String(eff).toLowerCase()}
+                            </Pill>
+                          </td>
+                          <td style={{ padding: "10px 16px", textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>
+                            <button onClick={() => toggleCampaign(c)}
+                              style={{ height: 26, padding: "0 12px", borderRadius: 999, fontSize: 11.5, fontWeight: 600, border: "1px solid var(--line-2)", background: paused ? "var(--accent-soft)" : "var(--bg-2)", color: paused ? "var(--accent)" : "var(--fg-2)" }}>
+                              {paused ? "reativar" : "pausar"}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </Card>
         )}
 

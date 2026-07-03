@@ -1,7 +1,8 @@
-// Meta Marketing API (insights de campanha) — spend/impressões/cliques/leads
-// por campanha e por dia, via Graph API. Mesmo padrão do mp.js: single tenant,
-// credencial via env (META_ACCESS_TOKEN — token longo de system user com
-// ads_read), factory com fetch injetável pra testar offline.
+// Meta Marketing API — insights de campanha (leitura) e gerenciamento
+// (pausar/reativar/orçamento), via Graph API. Mesmo padrão do mp.js: single
+// tenant, credencial via env (META_ACCESS_TOKEN — token longo de system user;
+// ads_read pra métricas, ads_management pra gerenciar), factory com fetch
+// injetável pra testar offline.
 //
 // A conta de anúncio é POR SAAS: `product.metaAdAccount` (ex.: act_1234567890),
 // configurada em Ajustes → Integrações.
@@ -13,6 +14,26 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken } = {}) {
 
   async function get(url) {
     const res = await f(url);
+    const text = await res.text();
+    let body;
+    try { body = JSON.parse(text); } catch { body = {}; }
+    if (res.status >= 400 || body.error) {
+      const msg = body.error?.message || text.slice(0, 300);
+      const err = new Error(`Meta API -> ${res.status}: ${msg}`);
+      err.status = res.status;
+      throw err;
+    }
+    return body;
+  }
+
+  // Escrita (status/orçamento): POST form-encoded no nó, como a Graph espera.
+  async function post(path, params) {
+    if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
+    const res = await f(`${GRAPH}/${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ ...params, access_token: accessToken }).toString(),
+    });
     const text = await res.text();
     let body;
     try { body = JSON.parse(text); } catch { body = {}; }
@@ -63,6 +84,53 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken } = {}) {
         url = body.paging?.next || null;
       }
       return rows;
+    },
+
+    // Campanhas da conta com status e orçamento — a base do gerenciamento no
+    // cockpit. `dailyBudget`/`lifetimeBudget` voltam em REAIS (a Graph usa centavos).
+    async listCampaigns(adAccountId) {
+      if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
+      const account = String(adAccountId).startsWith("act_") ? adAccountId : `act_${adAccountId}`;
+      const params = new URLSearchParams({
+        fields: "id,name,status,effective_status,objective,daily_budget,lifetime_budget",
+        limit: "200",
+        access_token: accessToken,
+      });
+      let url = `${GRAPH}/${account}/campaigns?${params}`;
+      const rows = [];
+      let guard = 0;
+      while (url && guard++ < 20) {
+        const body = await get(url);
+        for (const c of body.data || []) {
+          rows.push({
+            id: c.id,
+            name: c.name,
+            status: c.status,
+            effectiveStatus: c.effective_status,
+            objective: c.objective || "",
+            dailyBudget: c.daily_budget != null ? Number(c.daily_budget) / 100 : null,
+            lifetimeBudget: c.lifetime_budget != null ? Number(c.lifetime_budget) / 100 : null,
+          });
+        }
+        url = body.paging?.next || null;
+      }
+      return rows;
+    },
+
+    // Pausar/reativar campanha. Só os dois estados que fazem sentido operar daqui.
+    async setCampaignStatus(campaignId, status) {
+      if (status !== "ACTIVE" && status !== "PAUSED") throw new Error(`status inválido: ${status}`);
+      await post(String(campaignId), { status });
+      return { id: String(campaignId), status };
+    },
+
+    // Orçamento diário (CBO) em REAIS. Campanha com orçamento no conjunto
+    // (sem daily_budget) falha na Graph com erro claro — repassamos.
+    async setCampaignBudget(campaignId, dailyBudgetBRL) {
+      const cents = Math.round(Number(dailyBudgetBRL) * 100);
+      if (!Number.isFinite(cents) || cents <= 0) throw new Error(`orçamento inválido: ${dailyBudgetBRL}`);
+      await post(String(campaignId), { daily_budget: String(cents) });
+      return { id: String(campaignId), dailyBudget: cents / 100 };
     },
   };
 }

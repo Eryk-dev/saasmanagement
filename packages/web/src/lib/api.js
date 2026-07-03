@@ -64,6 +64,10 @@ export const api = {
   formPreview: (draft) => req("POST", "/api/forms/preview", draft),
   // Funil de drop-off do form: sessões únicas por etapa. `since` (ISO) filtra o período.
   formFunnel: (id, since) => req("GET", `/api/forms/${id}/funnel${since ? `?since=${encodeURIComponent(since)}` : ""}`),
+  // Gerenciamento de campanha Meta (status/orçamento direto do cockpit).
+  metaCampaigns: (saas) => req("GET", `/api/marketing/${saas}/campaigns`),
+  metaCampaignStatus: (id, status) => req("POST", `/api/marketing/campaigns/${id}/status`, { status }),
+  metaCampaignBudget: (id, dailyBudget) => req("POST", `/api/marketing/campaigns/${id}/budget`, { dailyBudget }),
   // CAC/LTV + série mensal (fase 4). days = janela do CAC; months = série.
   metrics: (saas, { days, months } = {}) => {
     const q = new URLSearchParams();
