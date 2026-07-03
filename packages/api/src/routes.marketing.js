@@ -51,6 +51,47 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     return { ok: true, since, until, report };
   });
 
+  // ── Gerenciamento de campanha (precisa de ads_management no token) ────────
+  // Lista ao vivo da conta do produto: status, orçamento, objetivo.
+  app.get("/api/marketing/:saas/campaigns", async (req, reply) => {
+    if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "Not found" });
+    if (!product.metaAdAccount) return reply.code(400).send({ error: "conta de anúncio não configurada (Ajustes → Integrações)" });
+    try {
+      return { campaigns: await meta.listCampaigns(product.metaAdAccount) };
+    } catch (err) {
+      req.log.warn({ err: err.message }, "Meta: listCampaigns falhou");
+      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+    }
+  });
+
+  // Pausar/reativar. O corpo diz o estado alvo; a resposta ecoa o aplicado.
+  app.post("/api/marketing/campaigns/:id/status", async (req, reply) => {
+    if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
+    const status = req.body?.status;
+    if (status !== "ACTIVE" && status !== "PAUSED") return reply.code(400).send({ error: "status deve ser ACTIVE ou PAUSED" });
+    try {
+      return { ok: true, ...(await meta.setCampaignStatus(req.params.id, status)) };
+    } catch (err) {
+      req.log.warn({ err: err.message, campaign: req.params.id }, "Meta: setCampaignStatus falhou");
+      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+    }
+  });
+
+  // Orçamento diário (R$) de campanha CBO.
+  app.post("/api/marketing/campaigns/:id/budget", async (req, reply) => {
+    if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
+    const dailyBudget = Number(req.body?.dailyBudget);
+    if (!Number.isFinite(dailyBudget) || dailyBudget <= 0) return reply.code(400).send({ error: "dailyBudget (R$) deve ser um número positivo" });
+    try {
+      return { ok: true, ...(await meta.setCampaignBudget(req.params.id, dailyBudget)) };
+    } catch (err) {
+      req.log.warn({ err: err.message, campaign: req.params.id }, "Meta: setCampaignBudget falhou");
+      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+    }
+  });
+
   // Métricas do período — spend da Meta cruzado com os leads/funil do Cockpit.
   app.get("/api/marketing/:saas", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
