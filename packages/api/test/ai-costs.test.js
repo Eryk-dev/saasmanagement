@@ -40,18 +40,17 @@ test("report agrega os 3 provedores e isola falhas por provedor", async () => {
   assert.equal(r.currency, "USD");
 });
 
-test("provedor sem chave ou com erro de permissão reporta o motivo", async () => {
+test("provedor sem chave fica fora do report; erro de permissão explica o motivo", async () => {
   const fetchMock = async (url) => {
     if (String(url).includes("openai")) return json({ error: "insufficient permissions. Missing scopes: api.usage.read" }, 401);
     return json({}, 404);
   };
   const ai = makeAiCosts({ fetch: fetchMock, openaiKey: "oa" });
   const r = await ai.report(30);
-  const by = Object.fromEntries(r.providers.map((p) => [p.provider, p]));
-  assert.equal(by.openrouter.ok, false);
-  assert.ok(by.openrouter.error.includes("OPENROUTER_API_KEY"));
-  assert.equal(by.openai.ok, false);
-  assert.ok(by.openai.error.includes("ADMIN key"));
+  // só a OpenAI tem chave: OpenRouter e Anthropic nem aparecem
+  assert.deepEqual(r.providers.map((p) => p.provider), ["openai"]);
+  assert.equal(r.providers[0].ok, false);
+  assert.ok(r.providers[0].error.includes("ADMIN key"));
   assert.equal(r.totalPeriod, 0);
 });
 
