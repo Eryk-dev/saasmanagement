@@ -45,6 +45,9 @@ test("GET /api/expenses/summary soma ads + IA (em R$) + manuais do mês", async 
   await repo.create("expenses", { id: "e1", saas: "leverads", month, category: "fixo", name: "Servidor", amount: 200 });
   await repo.create("expenses", { id: "e2", saas: "leverads", month, category: "ferramenta", name: "CRM", amount: 100 });
   await repo.create("expenses", { id: "e3", saas: "leverads", month: "2020-01", category: "fixo", name: "antigo", amount: 999 });
+  // recorrentes: contador entra todo mês desde 2020; o encerrado em 2020-06 não
+  await repo.create("expenses", { id: "e4", saas: "leverads", month: "2020-01", category: "fixo", name: "Contador", amount: 400, recurring: true });
+  await repo.create("expenses", { id: "e5", saas: "leverads", month: "2020-01", category: "fixo", name: "Sala", amount: 555, recurring: true, endMonth: "2020-06" });
 
   const ai = {
     configured: () => true,
@@ -61,8 +64,14 @@ test("GET /api/expenses/summary soma ads + IA (em R$) + manuais do mês", async 
   assert.equal(s.ads, 1000);
   assert.equal(s.aiUSD, 10);
   assert.equal(s.ai, 50);            // 10 USD × 5
-  assert.equal(s.manualTotal, 300);
-  assert.equal(s.total, 1350);
-  assert.equal(s.manual.length, 2);
+  assert.equal(s.manualTotal, 700);  // 200 + 100 + 400 do recorrente ativo
+  assert.equal(s.total, 1750);
+  assert.equal(s.manual.length, 3);
+  assert.equal(s.manual[0].name, "Contador"); // recorrente vem primeiro
+
+  // em 2020-03 valem os dois recorrentes (Sala só encerra em 2020-06) + o avulso de jan não
+  const past = (await app.inject({ method: "GET", url: "/api/expenses/summary/leverads?month=2020-03" })).json();
+  assert.deepEqual(past.manual.map((e) => e.name).sort(), ["Contador", "Sala"]);
+  assert.equal(past.manualTotal, 955);
   await app.close();
 });

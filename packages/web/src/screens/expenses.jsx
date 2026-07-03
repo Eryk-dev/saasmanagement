@@ -38,7 +38,7 @@ function ExpensesScreen() {
   const product = SAAS[0];
   const [month, setMonth] = useState(monthKey(new Date()));
   const [data, setData] = useState(null);
-  const [form, setForm] = useState({ category: "fixo", name: "", amount: "" });
+  const [form, setForm] = useState({ category: "fixo", name: "", amount: "", recurring: false });
   const [note, setNote] = useState(null);
 
   const load = () => {
@@ -55,17 +55,28 @@ function ExpensesScreen() {
       return;
     }
     try {
-      await api.create("expenses", { saas: product.id, month, category: form.category, name: form.name.trim(), amount });
-      setForm({ category: form.category, name: "", amount: "" });
-      setNote({ ok: true, text: "Custo registrado." });
+      await api.create("expenses", { saas: product.id, month, category: form.category, name: form.name.trim(), amount, recurring: !!form.recurring });
+      setForm({ category: form.category, name: "", amount: "", recurring: form.recurring });
+      setNote({ ok: true, text: form.recurring ? "Custo recorrente registrado (vale deste mês em diante)." : "Custo registrado." });
       load();
     } catch (e) { setNote({ ok: false, text: e.message || "Falha ao registrar." }); }
   }
 
   async function removeExpense(e) {
-    if (!window.confirm(`Remover "${e.name}" (${brl(e.amount)})?`)) return;
+    const msg = e.recurring
+      ? `Remover "${e.name}" (${brl(e.amount)}) de TODOS os meses? Pra parar só daqui em diante, use "encerrar".`
+      : `Remover "${e.name}" (${brl(e.amount)})?`;
+    if (!window.confirm(msg)) return;
     try { await api.remove("expenses", e.id); load(); }
     catch (err) { setNote({ ok: false, text: err.message || "Falha ao remover." }); }
+  }
+
+  // Encerra a recorrência NO MÊS EXIBIDO (inclusive): continua no histórico,
+  // some dos meses seguintes.
+  async function endRecurring(e) {
+    if (!window.confirm(`Encerrar "${e.name}" em ${monthLabel(month)}? Ele continua contando até este mês e some dos próximos.`)) return;
+    try { await api.update("expenses", e.id, { endMonth: month }); load(); }
+    catch (err) { setNote({ ok: false, text: err.message || "Falha ao encerrar." }); }
   }
 
   if (!product) return <EmptyState title="Nenhum produto cadastrado" hint="Crie o produto em Ajustes." />;
@@ -115,6 +126,11 @@ function ExpensesScreen() {
                 onKeyDown={(e) => { if (e.key === "Enter") addExpense(); }}
                 style={{ ...inputStyle, width: 120, fontFamily: "var(--mono)", textAlign: "right" }} />
             </label>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, fontSize: 12.5, color: "var(--fg-2)", whiteSpace: "nowrap" }}
+              title="Vale deste mês em diante, todo mês, até você encerrar">
+              <input type="checkbox" checked={!!form.recurring} onChange={(e) => setForm({ ...form, recurring: e.target.checked })} />
+              recorrente todo mês
+            </label>
             <button onClick={addExpense} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-1)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 13, fontWeight: 600 }}>
               + registrar
             </button>
@@ -131,7 +147,18 @@ function ExpensesScreen() {
                 <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 16px", borderBottom: "1px solid var(--line-1)" }}>
                   <Pill tone="mut">{CAT_LABEL[e.category] || e.category}</Pill>
                   <span style={{ flex: 1, fontSize: 13, fontWeight: 500, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
+                  {e.recurring && (
+                    <Pill tone="accent" title={`recorrente desde ${e.month}${e.endMonth ? `, encerrado em ${e.endMonth}` : ""}`}>
+                      {e.endMonth ? `recorrente até ${e.endMonth}` : `recorrente · desde ${e.month}`}
+                    </Pill>
+                  )}
                   <span className="tnum mono" style={{ fontSize: 13, fontWeight: 500 }}>{brl(e.amount)}</span>
+                  {e.recurring && !e.endMonth && (
+                    <button onClick={() => endRecurring(e)} className="mono" title="Parar de contar a partir do mês seguinte"
+                      style={{ fontSize: 11, color: "var(--fg-3)", border: "1px solid var(--line-2)", borderRadius: 999, padding: "2px 9px" }}>
+                      encerrar
+                    </button>
+                  )}
                   <button onClick={() => removeExpense(e)} className="mono dim" title="Remover lançamento" style={{ fontSize: 13, padding: "0 4px" }}>✕</button>
                 </div>
               ))}

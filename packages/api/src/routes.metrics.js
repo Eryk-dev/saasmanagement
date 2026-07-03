@@ -59,9 +59,14 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts } = {}) {
       } catch { /* fail-open: IA fica null */ }
     }
 
+    // Lançamento normal vale só no seu mês; recorrente vale de `month` em
+    // diante até `endMonth` (inclusivo), sem re-cadastro mês a mês.
+    const applies = (e) => e.recurring
+      ? String(e.month) <= month && (!e.endMonth || String(e.endMonth) >= month)
+      : e.month === month;
     const manual = expenses
-      .filter((e) => e.saas === product.id && e.month === month)
-      .sort((a, b) => String(a.category).localeCompare(String(b.category)));
+      .filter((e) => e.saas === product.id && applies(e))
+      .sort((a, b) => (b.recurring === true) - (a.recurring === true) || String(a.category).localeCompare(String(b.category)));
     const manualTotal = round2(manual.reduce((a, e) => a + (Number(e.amount) || 0), 0));
     const total = round2(ads + (aiBRL || 0) + manualTotal);
     return { month, ads, ai: aiBRL, aiUSD, usdBrl, manual, manualTotal, total };
