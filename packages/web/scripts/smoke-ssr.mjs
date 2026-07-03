@@ -53,7 +53,8 @@ try {
 
   const cases = [
     ["overview", "/src/screens/overview.jsx", "OverviewScreen", { onNav() {}, onOpenLead() {} }, "Visão geral"],
-    ["metrics", "/src/screens/metrics.jsx", "MetricsScreen", {}, "Métricas"],
+    ["metrics", "/src/screens/metrics.jsx", "MetricsScreen", {}, "Publicidade"],
+    ["expenses", "/src/screens/expenses.jsx", "ExpensesScreen", {}, "Custos operacionais"],
     ["customers", "/src/screens/customers.jsx", "CustomersScreen", {}, "Cliente Teste"],
     ["pipeline", "/src/screens/pipeline.jsx", "PipelineScreen", { onOpenLead() {} }, "Lead Novo"],
     ["chrome", "/src/chrome.jsx", "NavRail", { current: "overview", onNav() {} }, "Visão geral"],

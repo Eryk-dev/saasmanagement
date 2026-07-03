@@ -70,6 +70,8 @@ export const api = {
   metaCampaignBudget: (id, dailyBudget) => req("POST", `/api/marketing/campaigns/${id}/budget`, { dailyBudget }),
   // Gasto com IA (OpenRouter/OpenAI/Anthropic), agregado em USD.
   aiCosts: (days) => req("GET", `/api/ai-costs${days ? `?days=${days}` : ""}`),
+  // Custos operacionais do mês (ads + IA automáticos + lançamentos manuais).
+  expensesSummary: (saas, month) => req("GET", `/api/expenses/summary/${saas}${month ? `?month=${month}` : ""}`),
   // CAC/LTV + série mensal (fase 4). days = janela do CAC; months = série.
   metrics: (saas, { days, months } = {}) => {
     const q = new URLSearchParams();

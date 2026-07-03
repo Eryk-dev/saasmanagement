@@ -23,11 +23,13 @@ function OverviewScreen({ onNav, onOpenLead }) {
   const product = SAAS[0];
   const [marketing, setMarketing] = useState(null);
   const [invoices, setInvoices] = useState([]);
+  const [costs, setCosts] = useState(null); // custos do mês corrente (tela Custos)
 
   useEffect(() => {
     if (!product) return;
     api.marketingMetrics(product.id).then(setMarketing).catch(() => setMarketing(null));
     api.list("invoices").then((rows) => setInvoices(rows.filter((i) => i.saas === product.id))).catch(() => {});
+    api.expensesSummary(product.id).then(setCosts).catch(() => setCosts(null));
   }, [product?.id, version]);
 
   const leads = useMemo(() => (LEADS || []).filter((l) => l.saas === product?.id), [LEADS, product?.id]);
@@ -64,7 +66,12 @@ function OverviewScreen({ onNav, onOpenLead }) {
   const countByStage = (stage) => leads.filter((l) => l.stage === stage).length;
   const maxStage = Math.max(1, ...funnelStages.map(countByStage));
   const thisMonth = (iso) => iso && dayKey(iso).slice(0, 7) === new Date(now).toISOString().slice(0, 7);
-  const wonMonth = leads.filter((l) => l.stage === "Ganho" && thisMonth(l.stageSince)).length;
+  const wonLeadsMonth = leads.filter((l) => l.stage === "Ganho" && thisMonth(l.stageSince));
+  const wonMonth = wonLeadsMonth.length;
+  const wonValueMonth = wonLeadsMonth.reduce((a, l) => a + (l.amount || 0), 0);
+  // Resultado do mês = valor ganho no pipeline menos os custos operacionais
+  // (publicidade + IA + lançamentos manuais da tela Custos).
+  const result = costs ? wonValueMonth - (costs.total || 0) : null;
 
   // Hoje: próximos contatos (callAt vencido ou até o fim do dia), em estágio aberto.
   const endOfDay = new Date(); endOfDay.setHours(23, 59, 59, 999);
@@ -103,14 +110,17 @@ function OverviewScreen({ onNav, onOpenLead }) {
       <PageHead title="Visão geral" sub={today} />
 
       <div style={{ padding: "20px 24px 40px", display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0,1fr))", gap: 12 }}>
+          <StatTile label="Resultado do mês" value={result != null ? window.fmt.money(result) : "…"}
+            delta={costs ? `${window.fmt.money(wonValueMonth)} ganhos · ${window.fmt.money(costs.total || 0)} custos` : "ganhos menos custos"}
+            tone={result == null ? "flat" : result >= 0 ? "up" : "down"} />
           <StatTile label="MRR" value={window.fmt.money(product.mrr || 0)} delta={`${activeCustomers ? "base de " + window.fmt.money(product.arr || 0) + " ARR" : "sem receita ainda"}`} tone="flat" />
           <StatTile label="Clientes ativos" value={String(activeCustomers)} />
           <StatTile label="Leads · 30 dias" value={String(leads30)}
             delta={leadsDeltaPct == null ? null : `${leadsDeltaPct >= 0 ? "↑" : "↓"} ${Math.abs(leadsDeltaPct)}% vs. 30d anteriores`}
             tone={leadsDeltaPct == null ? "flat" : leadsDeltaPct >= 0 ? "up" : "down"} />
           <StatTile label="Custo por lead · 30d" value={cpl != null ? window.fmt.money(cpl) : "sem gasto"}
-            delta={cpl != null ? window.fmt.money(marketing.totals.spend) + " investidos" : "conecte o Meta em Métricas"} tone="flat" />
+            delta={cpl != null ? window.fmt.money(marketing.totals.spend) + " investidos" : "conecte o Meta em Publicidade"} tone="flat" />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 330px", gap: 12, alignItems: "start" }}>
