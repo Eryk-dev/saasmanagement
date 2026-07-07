@@ -116,6 +116,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
         <AllPipelines leads={priLeads} onMove={moveLeadTo} onPatch={patchLead} highlight={highlight} onOpenLead={onOpenLead} />
       )}
       {view === "list" && <LeadList leads={saasLeads} />}
+      {view === "agenda" && <AgendaView leads={saasAll} onOpenLead={onOpenLead} />}
       {view === "forecast" && <ForecastView s={s} leads={saasAll} />}
     </div>
   );
@@ -143,7 +144,7 @@ function SaasTabs({ active, onSelect }) {
 }
 
 function ViewToggle({ view, onChange }) {
-  const views = [["kanban","Kanban"],["all","Todos os pipelines"],["list","Lista"],["forecast","Previsão"]];
+  const views = [["kanban","Kanban"],["all","Todos os pipelines"],["list","Lista"],["agenda","Agenda"],["forecast","Previsão"]];
   return (
     <div style={{ display: "flex", gap: 2 }}>
       {views.map(([k, label]) => (
@@ -374,6 +375,36 @@ function KanbanColumn({ stage, meta, cards, highlight, stages, onMove, onPatch, 
   );
 }
 
+// Closers da operação: quem vai fazer a call. Marcado no card da coluna
+// "Call closer" (campo lead.closer) e usado como cor dos eventos na Agenda.
+const CLOSERS = [
+  { id: "leonardo", short: "Leo", name: "Leonardo", tone: "#0f766e" },
+  { id: "jonathan", short: "Jon", name: "Jonathan", tone: "#6d28d9" },
+];
+
+function CloserPicker({ d, onPatch }) {
+  return (
+    <span style={{ display: "inline-flex", gap: 3, marginLeft: "auto", flexShrink: 0 }}>
+      {CLOSERS.map(c => {
+        const on = d.closer === c.id;
+        return (
+          <button key={c.id} draggable={false}
+            onClick={(e) => { e.stopPropagation(); onPatch && onPatch(d.id, { closer: on ? "" : c.id }); }}
+            title={on ? `Closer da call: ${c.name} (clique pra desmarcar)` : `Marcar ${c.name} como closer da call`}
+            style={{
+              height: 18, padding: "0 7px", borderRadius: 9,
+              fontSize: 10, fontWeight: 700, fontFamily: "var(--mono)",
+              background: on ? c.tone : "var(--bg-1)",
+              color: on ? "#fff" : "var(--fg-3)",
+              border: "1px solid " + (on ? c.tone : "var(--line-2)"),
+              cursor: "pointer",
+            }}>{c.short}</button>
+        );
+      })}
+    </span>
+  );
+}
+
 // Slots de tentativa por etapa (cadência do time): Qualificação = 5 ligações
 // (máx. 1 por dia), Call closer = 3 remarcações da call, Negociação = 5 chamadas.
 // Cada slot preenchido = uma tentativa feita sem sucesso (lead.attempts guarda a
@@ -401,7 +432,7 @@ function AttemptSlots({ d, stage, onPatch }) {
     onPatch && onPatch(d.id, { attempts: [...attempts, new Date().toISOString()] });
   };
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 7 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
       {Array.from({ length: total }, (_, i) => {
         const at = attempts[i];
         return (
@@ -498,7 +529,143 @@ function LeadCard({ d, stale, currentStage, onDragStart, selected, onSelect, onO
         {next && <Pill tone={next.tone}>{next.text}</Pill>}
         <span className="mono tnum" style={{ fontSize: 11.5, fontWeight: 500, color: "var(--fg-2)", marginLeft: "auto" }}>{window.fmt.money(d.amount || 0)}</span>
       </div>
-      <AttemptSlots d={d} stage={currentStage} onPatch={onPatch} />
+      {(ATTEMPT_SLOTS[currentStage] || currentStage === "Call closer") && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7 }}>
+          <AttemptSlots d={d} stage={currentStage} onPatch={onPatch} />
+          {currentStage === "Call closer" && <CloserPicker d={d} onPatch={onPatch} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────── Agenda (semana)
+// Visão semanal das calls agendadas (lead.callAt), estilo Google Agenda: colunas
+// seg→dom, linhas por hora (7h→21h), navegação ‹ hoje ›. Cor do evento = closer
+// (CLOSERS); cinza quando a call ainda não tem closer marcado. Clique abre o lead.
+function AgendaView({ leads, onOpenLead }) {
+  const [week, setWeek] = useStP(0); // offset em semanas a partir da atual
+  const H0 = 7, H1 = 21, hourH = 44;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7) + week * 7);
+  const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
+  const end = new Date(monday); end.setDate(monday.getDate() + 7);
+  const events = leads
+    .filter(l => l.callAt)
+    .map(l => ({ l, t: new Date(l.callAt) }))
+    .filter(e => Number.isFinite(e.t.getTime()) && e.t >= monday && e.t < end);
+  const fmtDay = (d, opts) => d.toLocaleDateString("pt-BR", opts).replace(/\./g, "");
+  const label = `${fmtDay(days[0], { day: "2-digit", month: "short" })} · ${fmtDay(days[6], { day: "2-digit", month: "short", year: "numeric" })}`;
+  const navBtn = {
+    height: 26, padding: "0 10px", borderRadius: 5, fontSize: 12,
+    background: "var(--bg-2)", border: "1px solid var(--line-1)", color: "var(--fg-2)", cursor: "pointer",
+  };
+
+  // Lanes: calls no mesmo horário dividem a largura da coluna (evento dura 1h).
+  const layoutDay = (d) => {
+    const dayEv = events.filter(e => e.t.toDateString() === d.toDateString()).sort((a, b) => a.t - b.t);
+    const laneEnds = [];
+    const placed = dayEv.map(e => {
+      const start = e.t.getTime(), stop = start + 3600000;
+      let lane = laneEnds.findIndex(t => t <= start);
+      if (lane < 0) { lane = laneEnds.length; laneEnds.push(0); }
+      laneEnds[lane] = stop;
+      return { ...e, lane };
+    });
+    return { placed, lanes: Math.max(1, laneEnds.length) };
+  };
+
+  return (
+    <div style={{ flex: 1, overflow: "auto", padding: "14px 24px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+        <button style={navBtn} onClick={() => setWeek(w => w - 1)}>‹</button>
+        <button style={navBtn} onClick={() => setWeek(0)}>hoje</button>
+        <button style={navBtn} onClick={() => setWeek(w => w + 1)}>›</button>
+        <span style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--display)", marginLeft: 4 }}>{label}</span>
+        <span className="mono dim" style={{ fontSize: 11 }}>
+          {events.length === 0 ? "nenhuma call nesta semana" : `${events.length} ${events.length === 1 ? "call" : "calls"}`}
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
+          {CLOSERS.map(c => (
+            <span key={c.id} className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <span style={{ width: 9, height: 9, borderRadius: 3, background: c.tone }} />{c.name}
+            </span>
+          ))}
+          <span className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span style={{ width: 9, height: 9, borderRadius: 3, background: "var(--fg-4)" }} />sem closer
+          </span>
+        </span>
+      </div>
+
+      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", overflow: "hidden" }}>
+        {/* Cabeçalho dos dias */}
+        <div style={{ display: "grid", gridTemplateColumns: "52px repeat(7, 1fr)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+          <span />
+          {days.map((d, i) => {
+            const isToday = d.toDateString() === new Date().toDateString();
+            return (
+              <div key={i} style={{ padding: "8px 6px", textAlign: "center", borderLeft: "1px solid var(--line-1)" }}>
+                <div className="mono" style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em", color: isToday ? "var(--accent)" : "var(--fg-4)" }}>
+                  {fmtDay(d, { weekday: "short" })}
+                </div>
+                <div className="tnum" style={{
+                  fontSize: 14, fontWeight: 700, fontFamily: "var(--display)", marginTop: 2,
+                  color: isToday ? "var(--accent)" : "var(--fg-1)",
+                }}>{d.getDate()}</div>
+              </div>
+            );
+          })}
+        </div>
+        {/* Corpo: gutter de horas + 7 colunas com linhas por hora */}
+        <div style={{ display: "grid", gridTemplateColumns: "52px repeat(7, 1fr)" }}>
+          <div style={{ position: "relative", height: (H1 - H0) * hourH }}>
+            {Array.from({ length: H1 - H0 }, (_, i) => (
+              <span key={i} className="mono tnum" style={{ position: "absolute", top: i * hourH - 6, right: 6, fontSize: 10, color: "var(--fg-4)" }}>
+                {i === 0 ? "" : `${H0 + i}h`}
+              </span>
+            ))}
+          </div>
+          {days.map((d, i) => {
+            const { placed, lanes } = layoutDay(d);
+            const isToday = d.toDateString() === new Date().toDateString();
+            return (
+              <div key={i} style={{
+                position: "relative", height: (H1 - H0) * hourH,
+                borderLeft: "1px solid var(--line-1)",
+                backgroundImage: `repeating-linear-gradient(to bottom, var(--line-1) 0 1px, transparent 1px ${hourH}px)`,
+                backgroundColor: isToday ? "color-mix(in srgb, var(--accent) 5%, transparent)" : "transparent",
+              }}>
+                {placed.map(({ l, t, lane }) => {
+                  const c = CLOSERS.find(x => x.id === l.closer);
+                  const tone = c ? c.tone : "var(--fg-4)";
+                  const hour = Math.min(H1 - 1, Math.max(H0, t.getHours() + t.getMinutes() / 60));
+                  const w = 100 / lanes;
+                  return (
+                    <div key={l.id}
+                      onClick={() => onOpenLead && onOpenLead(l)}
+                      title={`${t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · ${l.name}${l.company ? " · " + l.company : ""}${c ? " · closer " + c.name : " · sem closer"}`}
+                      style={{
+                        position: "absolute", top: (hour - H0) * hourH + 1,
+                        left: `calc(${lane * w}% + 2px)`, width: `calc(${w}% - 4px)`,
+                        height: hourH - 3, overflow: "hidden", cursor: "pointer",
+                        background: `color-mix(in srgb, ${tone} 14%, var(--bg-1))`,
+                        border: `1px solid color-mix(in srgb, ${tone} 45%, var(--line-1))`,
+                        borderLeft: `3px solid ${tone}`, borderRadius: 5, padding: "3px 6px",
+                      }}>
+                      <div className="mono tnum" style={{ fontSize: 9.5, color: "var(--fg-3)" }}>
+                        {t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}{c ? ` · ${c.short}` : ""}
+                      </div>
+                      <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</div>
+                      {l.company && <div style={{ fontSize: 10, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.company}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
