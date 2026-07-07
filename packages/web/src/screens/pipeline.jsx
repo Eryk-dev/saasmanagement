@@ -45,10 +45,11 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
 
   function moveLeadTo(leadId, stage) {
     // stageSince local = agora: o contador "dias na coluna" zera na hora (o backend
-    // recarimba igual ao detectar a troca de estágio no PATCH).
-    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stage, stageSince: new Date().toISOString() } : l));
+    // recarimba igual ao detectar a troca de estágio no PATCH). Os slots de
+    // tentativa também zeram: a contagem é sempre da etapa atual.
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stage, stageSince: new Date().toISOString(), attempts: [] } : l));
     // Persist the move to the API (optimistic — the UI already updated above).
-    api.moveLead(leadId, stage).catch(err => console.warn("lead move not persisted:", err.message));
+    api.update("leads", leadId, { stage, attempts: [] }).catch(err => console.warn("lead move not persisted:", err.message));
   }
 
   // Edição inline de campos do card (ex.: data da call, valor/período da proposta).
@@ -373,6 +374,57 @@ function KanbanColumn({ stage, meta, cards, highlight, stages, onMove, onPatch, 
   );
 }
 
+// Slots de tentativa por etapa (cadência do time): Qualificação = 5 ligações
+// (máx. 1 por dia), Call closer = 3 remarcações da call, Negociação = 5 chamadas.
+// Cada slot preenchido = uma tentativa feita sem sucesso (lead.attempts guarda a
+// data de cada uma). Slots cheios = alerta "esgotado" (mover é decisão manual);
+// mudou de etapa = zera (ver moveLeadTo).
+const ATTEMPT_SLOTS = { "Qualificação": 5, "Call closer": 3, "Negociação": 5 };
+const ATTEMPT_HINT = {
+  "Qualificação": "tentativas de ligação (1 por dia)",
+  "Call closer": "remarcações da call",
+  "Negociação": "tentativas de chamada",
+};
+
+function AttemptSlots({ d, stage, onPatch }) {
+  const total = ATTEMPT_SLOTS[stage] || 0;
+  if (!total) return null;
+  const attempts = Array.isArray(d.attempts) ? d.attempts.slice(0, total) : [];
+  const exhausted = attempts.length >= total;
+  const today = new Date().toDateString();
+  // Qualificação: 1 tentativa por dia — o slot de hoje marcado trava novo clique.
+  const dailyLock = stage === "Qualificação" && attempts.some(a => new Date(a).toDateString() === today);
+  const locked = exhausted || dailyLock;
+  const mark = (e) => {
+    e.stopPropagation();
+    if (locked) return;
+    onPatch && onPatch(d.id, { attempts: [...attempts, new Date().toISOString()] });
+  };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 7 }}>
+      {Array.from({ length: total }, (_, i) => {
+        const at = attempts[i];
+        return (
+          <span key={i}
+            onClick={at ? (e) => e.stopPropagation() : mark}
+            draggable={false}
+            title={at
+              ? `tentativa ${i + 1}/${total} · ${new Date(at).toLocaleDateString("pt-BR")}`
+              : dailyLock ? "tentativa de hoje já registrada"
+              : `marcar tentativa ${i + 1}/${total} · ${ATTEMPT_HINT[stage]}`}
+            style={{
+              width: 11, height: 11, borderRadius: 3, flexShrink: 0,
+              background: at ? (exhausted ? "var(--neg)" : "var(--warn)") : "var(--bg-1)",
+              border: "1px solid " + (at ? "transparent" : locked ? "var(--line-1)" : "var(--line-2)"),
+              cursor: at ? "default" : locked ? "not-allowed" : "pointer",
+            }} />
+        );
+      })}
+      {exhausted && <Pill tone="neg">esgotado</Pill>}
+    </div>
+  );
+}
+
 // Pill do próximo contato (callAt): atrasado (neg), hoje com hora (pos),
 // futuro (mut). Sem callAt em estágio aberto, cobra o próximo passo (warn).
 function nextContactPill(d) {
@@ -388,7 +440,7 @@ function nextContactPill(d) {
 // Cartão compacto (padrão Pipedrive): nome, pills de tempo na etapa + próximo
 // contato + novo, e valor. O fundo inteiro é tingido pela cor do potencial
 // (contas + anúncios). TODA a edição vive no drawer do lead.
-function LeadCard({ d, stale, currentStage, onDragStart, selected, onSelect, onOpen }) {
+function LeadCard({ d, stale, currentStage, onDragStart, selected, onSelect, onOpen, onPatch }) {
   const tier = leadTier(d);
   const days = daysInStage(d);
   const wa = waLink(d.phone);
@@ -446,6 +498,7 @@ function LeadCard({ d, stale, currentStage, onDragStart, selected, onSelect, onO
         {next && <Pill tone={next.tone}>{next.text}</Pill>}
         <span className="mono tnum" style={{ fontSize: 11.5, fontWeight: 500, color: "var(--fg-2)", marginLeft: "auto" }}>{window.fmt.money(d.amount || 0)}</span>
       </div>
+      <AttemptSlots d={d} stage={currentStage} onPatch={onPatch} />
     </div>
   );
 }
