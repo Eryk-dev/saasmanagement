@@ -323,6 +323,13 @@ function KanbanColumn({ stage, meta, cards, highlight, stages, onMove, onPatch, 
     const dd = daysInStage(l);
     return dd != null && dd >= staleLimit;
   };
+  // Ordem temporal: mais novo primeiro. Usa o mesmo timestamp do badge "Nd"
+  // (stageSince, fallback createdAt) pra ordem visual bater com os dias exibidos.
+  const cardTs = (l) => {
+    const t = new Date(l.stageSince || l.createdAt || 0).getTime();
+    return Number.isFinite(t) ? t : 0;
+  };
+  const ordered = [...cards].sort((a, b) => cardTs(b) - cardTs(a));
   return (
     <div
       onDragOver={(e) => { e.preventDefault(); setOver(true); }}
@@ -345,7 +352,7 @@ function KanbanColumn({ stage, meta, cards, highlight, stages, onMove, onPatch, 
         </div>
         <span className="mono tnum" style={{ fontSize: 11, color: "var(--fg-3)" }}>{window.fmt.money(total)}</span>
       </div>
-      {cards.map(l => (
+      {ordered.map(l => (
         <LeadCard
           key={l.id} d={l}
           stale={isStale(l)}
@@ -418,7 +425,12 @@ function LeadCard({ d, stale, currentStage, onDragStart, selected, onSelect, onO
               fontFamily: "var(--display)", fontSize: 11.5, fontWeight: 700,
             }}>{tier.grade}</span>
           )}
-          <span style={{ fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{d.name}</span>
+          <span style={{ minWidth: 0 }}>
+            <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
+            {d.company && (
+              <span style={{ display: "block", fontSize: 11, color: "var(--fg-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.company}</span>
+            )}
+          </span>
         </span>
         {wa && (
           <a href={wa} target="_blank" rel="noopener noreferrer" title={`Abrir WhatsApp · ${d.phone}`}
