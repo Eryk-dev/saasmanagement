@@ -71,24 +71,26 @@ test("buildBody omits absent optional fields (Levercopy applies defaults)", () =
 test("buildBody forwards declared qualification answers, including arrays", () => {
   const lead = {
     id: "le_q1", name: "Lia", saas: "leverads",
-    accounts: "3-5", staff: "2-3", volume: "50-200",
-    marketplaces: ["ml", "shopee"], niche: "moda",
+    accounts: "3-5", listings: "500-2000", revenue: "200k-1m",
+    tags: ["ml", "shopee"], niche: "moda",
   };
-  const body = buildBody(lead, LEVERADS_LEAD_QUESTIONS);
+  const questions = [...LEVERADS_LEAD_QUESTIONS, { key: "tags", label: "Tags", type: "multiselect" }];
+  const body = buildBody(lead, questions);
   assert.equal(body.accounts, "3-5");
-  assert.equal(body.staff, "2-3");
-  assert.equal(body.volume, "50-200");
+  assert.equal(body.listings, "500-2000");
+  assert.equal(body.revenue, "200k-1m");
   assert.equal(body.niche, "moda");
-  assert.deepEqual(body.marketplaces, ["ml", "shopee"]); // array passa direto
+  assert.deepEqual(body.tags, ["ml", "shopee"]); // array passa direto
 });
 
 test("buildBody skips unanswered/empty qualification fields", () => {
-  const lead = { id: "le_q2", name: "Bo", saas: "leverads", accounts: "1", marketplaces: [], niche: "" };
-  const body = buildBody(lead, LEVERADS_LEAD_QUESTIONS);
+  const lead = { id: "le_q2", name: "Bo", saas: "leverads", accounts: "1", tags: [], niche: "" };
+  const questions = [...LEVERADS_LEAD_QUESTIONS, { key: "tags", label: "Tags", type: "multiselect" }];
+  const body = buildBody(lead, questions);
   assert.equal(body.accounts, "1");
-  assert.ok(!("marketplaces" in body)); // array vazio não vai
-  assert.ok(!("niche" in body));        // string vazia não vai
-  assert.ok(!("staff" in body));        // ausente não vai
+  assert.ok(!("tags" in body));    // array vazio não vai
+  assert.ok(!("niche" in body));   // string vazia não vai
+  assert.ok(!("revenue" in body)); // ausente não vai
 });
 
 test("buildBody ignores lead keys not declared in leadQuestions", () => {
@@ -121,14 +123,14 @@ test("runProposal success persists proposta_id, proposalUrl, proposal_edit_url",
 
 test("runProposal forwards the pipeline's qualification answers to Levercopy", async () => {
   await repo.create("products", { id: "leverads", name: "LeverAds", leadQuestions: LEVERADS_LEAD_QUESTIONS });
-  const lead = await newLead({ accounts: "3-5", staff: "2-3", volume: "50-200", marketplaces: ["ml", "shopee"], niche: "moda" });
+  const lead = await newLead({ accounts: "3-5", listings: "500-2000", revenue: "200k-1m", niche: "moda" });
   const captured = {};
   const res = await runProposal(repo, lead, { ...CFG, fetch: stubFetch(201, okBody(), captured) });
 
   assert.equal(res.ok, true);
   assert.equal(captured.body.accounts, "3-5");
   assert.equal(captured.body.niche, "moda");
-  assert.deepEqual(captured.body.marketplaces, ["ml", "shopee"]);
+  assert.equal(captured.body.listings, "500-2000");
 });
 
 // ── idempotency / triggers ──────────────────────────────────────────────────────
