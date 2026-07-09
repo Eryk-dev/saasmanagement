@@ -43,8 +43,16 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   const [highlight, setHighlight] = useStP(jumpFilter?.stage || null);
   const [selected, setSelected] = useStP(new Set());
   const [pri, setPri] = useStP("all");
-  // Fase do processo (fatia as colunas visíveis) + pessoa (dono/closer).
-  const [phase, setPhase] = useStP("all"); // all | sdr | closer
+  // Fase do processo (fatia as colunas visíveis — a "view" de cada papel) +
+  // pessoa (dono/closer). Fase persiste: o CS abre direto na view dele.
+  const PHASES_OPTS = ["all", "sdr", "closer", "cs"];
+  const [phase, setPhaseState] = useStP(() => {
+    try { const v = localStorage.getItem("cockpit_pipeline_phase"); return PHASES_OPTS.includes(v) ? v : "all"; } catch { return "all"; }
+  });
+  const setPhase = (p) => {
+    setPhaseState(p);
+    try { localStorage.setItem("cockpit_pipeline_phase", p); } catch { /* ignore */ }
+  };
   const [person, setPersonState] = useStP(() => {
     try { return localStorage.getItem("cockpit_pipeline_person") || ""; } catch { return ""; }
   });
@@ -76,16 +84,9 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   // Config por estágio vinda de Ajustes (cor + regra "parado → Nd" + cadência).
   const stageMeta = s ? Object.fromEntries(s.funnel.map(f => [f.stage, f])) : {};
   // Fatia por fase do processo: SDR vê a pré-venda (+ Desqualificado, o terminal
-  // dela); Closer vê da call em diante (sem Desqualificado).
-  const visibleStages = useMP(() => {
-    if (phase === "all") return stages;
-    return stages.filter(st => {
-      const k = stageKind(s, st);
-      const p = phaseOf(k);
-      if (phase === "sdr") return p === "sdr" || k === "desqualificado";
-      return (p === "closer" || p === "entrega" || p === "fim") && k !== "desqualificado";
-    });
-  }, [stages.join("|"), phase, activeSaas]);
+  // dela); Closer vê da call em diante (sem Desqualificado); CS vê o pós-venda
+  // (integração/acompanhamento + Ganho).
+  const visibleStages = useMP(() => stagesForPhase(s, stages, phase), [stages.join("|"), phase, activeSaas]);
   const byStage = useMP(() => {
     const m = {}; stages.forEach(st => m[st] = []);
     saasLeads.forEach(l => {
@@ -259,9 +260,25 @@ function ViewToggle({ view, onChange }) {
   );
 }
 
-// Fatia o board pela fase do processo (SDR = pré-venda; Closer = call em diante).
+// Recorte do board por fase do processo — a "view" de cada papel do time:
+//   sdr    = pré-venda + Desqualificado (o terminal dela)
+//   closer = call → follow-up + Ganho/Perdido (sem Desqualificado)
+//   cs     = pós-venda: integração/acompanhamento (fase entrega) + Ganho
+function stagesForPhase(s, stages, phase) {
+  if (phase === "all") return stages;
+  return stages.filter(st => {
+    const k = stageKind(s, st);
+    const p = phaseOf(k);
+    if (phase === "sdr") return p === "sdr" || k === "desqualificado";
+    if (phase === "cs") return p === "entrega" || k === "ganho";
+    return (p === "closer" || p === "entrega" || p === "fim") && k !== "desqualificado";
+  });
+}
+
+// Fatia o board pela fase do processo (SDR = pré-venda; Closer = call em
+// diante; CS = pós-venda).
 function PhaseFilter({ phase, onChange }) {
-  const opts = [["all", "Todas"], ["sdr", "SDR"], ["closer", "Closer"]];
+  const opts = [["all", "Todas"], ["sdr", "SDR"], ["closer", "Closer"], ["cs", "CS"]];
   return (
     <div style={{ display: "flex", gap: 2, padding: 2, background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)" }}>
       {opts.map(([k, label]) => (
@@ -368,12 +385,7 @@ function PipelineBand({ s, leads, onMove, onPatch, onLogTouch, highlight, onOpen
   const [dragging, setDragging] = useStP(null);
   const [noop, setNoop] = useStP(new Set());
   const allStages = s.funnel.map(f => f.stage);
-  const stages = phase === "all" ? allStages : allStages.filter(st => {
-    const k = stageKind(s, st);
-    const p = phaseOf(k);
-    if (phase === "sdr") return p === "sdr" || k === "desqualificado";
-    return (p === "closer" || p === "entrega" || p === "fim") && k !== "desqualificado";
-  });
+  const stages = stagesForPhase(s, allStages, phase);
   const stageMeta = Object.fromEntries(s.funnel.map(f => [f.stage, f]));
   const byStage = {};
   allStages.forEach(st => byStage[st] = []);
@@ -553,9 +565,9 @@ function pickerFor(s, stage) {
     const opts = usersByRole("closer");
     return opts.length ? { field: "closer", options: opts, hint: "closer responsável" } : null;
   }
-  if (k === "integracao") {
+  if (p === "entrega") { // integração + acompanhamento (CS)
     const opts = usersByRole("integrator");
-    return opts.length ? { field: "closer", options: opts, hint: "quem faz a integração" } : null;
+    return opts.length ? { field: "closer", options: opts, hint: k === "integracao" ? "quem faz a integração" : "responsável do CS" } : null;
   }
   return null;
 }

@@ -13,6 +13,7 @@ export const KINDS = [
   "proposta",       // proposta enviada
   "followup",       // pós-call/proposta, negociação com próximo toque agendado
   "integracao",     // pós-venda: setup/kickoff antes de marcar ganho
+  "posvenda",       // CS: acompanhamento pós-integração (aumento de consciência/sucesso)
   "ganho",          // fechado ganho (vira customer)
   "perdido",        // fechado perdido (exige motivo)
   "desqualificado", // fora do ICP (exige motivo)
@@ -36,6 +37,7 @@ export function guessKind(stageName, index = -1, length = 0) {
   if (/perdid|lost|sem resposta/.test(n)) return "perdido";
   if (/desqualific|disqualified/.test(n)) return "desqualificado";
   if (/integra/.test(n)) return "integracao";
+  if (/acompanhament|p[óo]s.?venda|sucesso|cs\b/.test(n)) return "posvenda";
   if (/follow/.test(n)) return "followup";
   if (/proposta|proposal|negocia/.test(n)) return "proposta";
   if (/call|reuni|demo/.test(n)) return "call";

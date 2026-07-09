@@ -13,6 +13,7 @@ export const KINDS = {
   proposta:       { label: "proposta",       phase: "closer",  glyph: "▤" },
   followup:       { label: "follow-up",      phase: "closer",  glyph: "↻" },
   integracao:     { label: "integração",     phase: "entrega", glyph: "⚙" },
+  posvenda:       { label: "pós-venda (CS)", phase: "entrega", glyph: "❤" },
   ganho:          { label: "ganho",          phase: "fim",     glyph: "✓" },
   perdido:        { label: "perdido",        phase: "fim",     glyph: "✕" },
   desqualificado: { label: "desqualificado", phase: "fim",     glyph: "⊘" },
@@ -34,6 +35,7 @@ export function guessKind(stageName, index = -1) {
   if (/perdid|lost|sem\s*resposta|nutri|churn|descart/.test(n)) return "perdido";
   if (/desqualif|disqualified/.test(n)) return "desqualificado";
   if (/integra/.test(n)) return "integracao";
+  if (/acompanhament|p[óo]s.?venda|sucesso|cs\b/.test(n)) return "posvenda";
   if (/follow/.test(n)) return "followup";
   if (/proposta|proposal|negocia/.test(n)) return "proposta";
   if (/call|reuni|demo/.test(n)) return "call";

@@ -17,6 +17,8 @@ test("guessKind reconhece os nomes históricos do funil LeverAds", () => {
   assert.equal(guessKind("Desqualificado"), "desqualificado");
   assert.equal(guessKind("disqualified"), "desqualificado");
   assert.equal(guessKind("Integração"), "integracao");
+  assert.equal(guessKind("Acompanhamento"), "posvenda");
+  assert.equal(guessKind("Pós-venda"), "posvenda");
   assert.equal(guessKind("Follow-up"), "followup");
   assert.equal(guessKind("Negociação"), "proposta");
   assert.equal(guessKind("Proposta enviada"), "proposta");
