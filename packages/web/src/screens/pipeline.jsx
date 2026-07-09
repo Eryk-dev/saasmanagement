@@ -375,22 +375,28 @@ function KanbanColumn({ stage, meta, cards, highlight, stages, onMove, onPatch, 
   );
 }
 
-// Closers da operação: quem vai fazer a call. Marcado no card da coluna
-// "Call closer" (campo lead.closer) e usado como cor dos eventos na Agenda.
+// Responsáveis por etapa: closers fazem a call (coluna "Call closer"), o Eryk
+// faz a integração (coluna "Integração"). Marcado no card (campo lead.closer)
+// e usado como cor dos eventos na Agenda.
 const CLOSERS = [
   { id: "leonardo", short: "Leo", name: "Leonardo", tone: "#0f766e" },
   { id: "jonathan", short: "Jon", name: "Jonathan", tone: "#6d28d9" },
 ];
+const INTEGRATORS = [
+  { id: "eryk", short: "Eryk", name: "Eryk", tone: "#c2410c" },
+];
+const TEAM = [...CLOSERS, ...INTEGRATORS];
+const STAGE_TEAM = { "Call closer": CLOSERS, "Integração": INTEGRATORS };
 
-function CloserPicker({ d, onPatch }) {
+function CloserPicker({ d, onPatch, options }) {
   return (
     <span style={{ display: "inline-flex", gap: 3, marginLeft: "auto", flexShrink: 0 }}>
-      {CLOSERS.map(c => {
+      {options.map(c => {
         const on = d.closer === c.id;
         return (
           <button key={c.id} draggable={false}
             onClick={(e) => { e.stopPropagation(); onPatch && onPatch(d.id, { closer: on ? "" : c.id }); }}
-            title={on ? `Closer da call: ${c.name} (clique pra desmarcar)` : `Marcar ${c.name} como closer da call`}
+            title={on ? `Responsável: ${c.name} (clique pra desmarcar)` : `Marcar ${c.name} como responsável`}
             style={{
               height: 18, padding: "0 7px", borderRadius: 9,
               fontSize: 10, fontWeight: 700, fontFamily: "var(--mono)",
@@ -529,10 +535,10 @@ function LeadCard({ d, stale, currentStage, onDragStart, selected, onSelect, onO
         {next && <Pill tone={next.tone}>{next.text}</Pill>}
         <span className="mono tnum" style={{ fontSize: 11.5, fontWeight: 500, color: "var(--fg-2)", marginLeft: "auto" }}>{window.fmt.money(d.amount || 0)}</span>
       </div>
-      {(ATTEMPT_SLOTS[currentStage] || currentStage === "Call closer") && (
+      {(ATTEMPT_SLOTS[currentStage] || STAGE_TEAM[currentStage]) && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7 }}>
           <AttemptSlots d={d} stage={currentStage} onPatch={onPatch} />
-          {currentStage === "Call closer" && <CloserPicker d={d} onPatch={onPatch} />}
+          {STAGE_TEAM[currentStage] && <CloserPicker d={d} onPatch={onPatch} options={STAGE_TEAM[currentStage]} />}
         </div>
       )}
     </div>
@@ -551,10 +557,14 @@ function AgendaView({ leads, onOpenLead }) {
   monday.setDate(today.getDate() - ((today.getDay() + 6) % 7) + week * 7);
   const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
   const end = new Date(monday); end.setDate(monday.getDate() + 7);
+  // Dois tipos de evento: call agendada (callAt) e integração marcada
+  // (integrationAt, feita pelo Eryk). O mesmo lead pode ter os dois.
   const events = leads
-    .filter(l => l.callAt)
-    .map(l => ({ l, t: new Date(l.callAt) }))
-    .filter(e => Number.isFinite(e.t.getTime()) && e.t >= monday && e.t < end);
+    .flatMap(l => [
+      l.callAt ? { l, t: new Date(l.callAt), kind: "call" } : null,
+      l.integrationAt ? { l, t: new Date(l.integrationAt), kind: "integração" } : null,
+    ])
+    .filter(e => e && Number.isFinite(e.t.getTime()) && e.t >= monday && e.t < end);
   const fmtDay = (d, opts) => d.toLocaleDateString("pt-BR", opts).replace(/\./g, "");
   const label = `${fmtDay(days[0], { day: "2-digit", month: "short" })} · ${fmtDay(days[6], { day: "2-digit", month: "short", year: "numeric" })}`;
   const navBtn = {
@@ -587,13 +597,13 @@ function AgendaView({ leads, onOpenLead }) {
           {events.length === 0 ? "nenhuma call nesta semana" : `${events.length} ${events.length === 1 ? "call" : "calls"}`}
         </span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
-          {CLOSERS.map(c => (
+          {TEAM.map(c => (
             <span key={c.id} className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5 }}>
               <span style={{ width: 9, height: 9, borderRadius: 3, background: c.tone }} />{c.name}
             </span>
           ))}
           <span className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5 }}>
-            <span style={{ width: 9, height: 9, borderRadius: 3, background: "var(--fg-4)" }} />sem closer
+            <span style={{ width: 9, height: 9, borderRadius: 3, background: "var(--fg-4)" }} />sem responsável
           </span>
         </span>
       </div>
@@ -636,15 +646,15 @@ function AgendaView({ leads, onOpenLead }) {
                 backgroundImage: `repeating-linear-gradient(to bottom, var(--line-1) 0 1px, transparent 1px ${hourH}px)`,
                 backgroundColor: isToday ? "color-mix(in srgb, var(--accent) 5%, transparent)" : "transparent",
               }}>
-                {placed.map(({ l, t, lane }) => {
-                  const c = CLOSERS.find(x => x.id === l.closer);
+                {placed.map(({ l, t, lane, kind }) => {
+                  const c = TEAM.find(x => x.id === l.closer);
                   const tone = c ? c.tone : "var(--fg-4)";
                   const hour = Math.min(H1 - 1, Math.max(H0, t.getHours() + t.getMinutes() / 60));
                   const w = 100 / lanes;
                   return (
-                    <div key={l.id}
+                    <div key={l.id + kind}
                       onClick={() => onOpenLead && onOpenLead(l)}
-                      title={`${t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · ${l.name}${l.company ? " · " + l.company : ""}${c ? " · closer " + c.name : " · sem closer"}`}
+                      title={`${t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · ${kind} · ${l.name}${l.company ? " · " + l.company : ""}${c ? " · responsável " + c.name : " · sem responsável"}`}
                       style={{
                         position: "absolute", top: (hour - H0) * hourH + 1,
                         left: `calc(${lane * w}% + 2px)`, width: `calc(${w}% - 4px)`,
@@ -654,7 +664,7 @@ function AgendaView({ leads, onOpenLead }) {
                         borderLeft: `3px solid ${tone}`, borderRadius: 5, padding: "3px 6px",
                       }}>
                       <div className="mono tnum" style={{ fontSize: 9.5, color: "var(--fg-3)" }}>
-                        {t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}{c ? ` · ${c.short}` : ""}
+                        {t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}{c ? ` · ${c.short}` : ""}{kind === "integração" ? " · int" : ""}
                       </div>
                       <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</div>
                       {l.company && <div style={{ fontSize: 10, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.company}</div>}
