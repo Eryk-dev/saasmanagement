@@ -12,6 +12,10 @@ const inputStyle = {
   borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, fontFamily: "var(--sans)",
 };
 
+// Valor sentinela do select "Outro (digitar)…" — nunca é gravado; ao escolher,
+// o campo vira texto livre e o que for digitado é salvo direto na chave.
+const CUSTOM_OPT = "__outro__";
+
 function resolveOptions(field, values) {
   const o = field.options;
   return (typeof o === "function" ? o(values) : o) || [];
@@ -89,6 +93,7 @@ function toPayload(fields, values) {
               .filter((o) => String(o.value || "").trim())
               .map((o) => ({ value: o.value.trim(), label: String(o.label || o.value).trim() }));
           }
+          if (q.type === "select") base.allowCustom = !!q.allowCustom;
           return base;
         });
       out[f.key] = rows; // sempre grava (permite limpar para [])
@@ -215,6 +220,7 @@ function EntityForm({ entityKey, record, onClose, onSaved }) {
 }
 
 function Field({ f, value, values, onChange, recordId }) {
+  const [customOpen, setCustomOpen] = useState(false); // "Outro (digitar)…" ativo neste select
   let input;
   if (f.type === "textarea") {
     input = <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={f.placeholder} rows={3} style={{ ...inputStyle, height: "auto", minHeight: 60, padding: "6px 8px", resize: "vertical" }} />;
@@ -246,11 +252,34 @@ function Field({ f, value, values, onChange, recordId }) {
     );
   } else if (f.type === "select") {
     const opts = resolveOptions(f, values);
+    // allowCustom: opção "Outro (digitar)…" abre um campo de texto e grava a
+    // resposta livre no mesmo campo. Valor salvo que não está nas opções (lead
+    // antigo com resposta livre) reabre no modo digitado.
+    const isCustomValue = f.allowCustom && !isBlank(value) && !opts.some((o) => String(o.value) === String(value));
+    const custom = f.allowCustom && (customOpen || isCustomValue);
     input = (
-      <select value={value} onChange={(e) => onChange(e.target.value)} style={inputStyle}>
-        <option value="">{f.blankLabel || "Selecione…"}</option>
-        {opts.map((o) => <option key={String(o.value)} value={o.value}>{o.label}</option>)}
-      </select>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <select
+          value={custom ? CUSTOM_OPT : value}
+          onChange={(e) => {
+            if (e.target.value === CUSTOM_OPT) { setCustomOpen(true); onChange(""); }
+            else { setCustomOpen(false); onChange(e.target.value); }
+          }}
+          style={inputStyle}
+        >
+          <option value="">{f.blankLabel || "Selecione…"}</option>
+          {opts.map((o) => <option key={String(o.value)} value={o.value}>{o.label}</option>)}
+          {f.allowCustom && <option value={CUSTOM_OPT}>Outro (digitar)…</option>}
+        </select>
+        {custom && (
+          <input
+            type="text" value={value} placeholder="Digite a resposta específica"
+            autoFocus={customOpen}
+            onChange={(e) => onChange(e.target.value)}
+            style={inputStyle}
+          />
+        )}
+      </div>
     );
   } else {
     const numeric = f.type === "number" || f.type === "money" || f.type === "pct";
@@ -377,6 +406,12 @@ function QuestionsEditor({ questions, onChange, lockKeys }) {
                 <input type="checkbox" checked={!!q.required} onChange={(e) => update(i, { required: e.target.checked })} />
                 obrigatória
               </label>
+              {q.type === "select" && (
+                <label style={{ display: "inline-flex", gap: 5, alignItems: "center", fontSize: 12 }} title='Acrescenta "Outro (digitar)…" no formulário de lead, que abre um campo de texto livre'>
+                  <input type="checkbox" checked={!!q.allowCustom} onChange={(e) => update(i, { allowCustom: e.target.checked })} />
+                  aceita resposta livre
+                </label>
+              )}
             </div>
             {hasOptions && (
               <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 24 }}>

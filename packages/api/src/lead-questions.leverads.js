@@ -42,7 +42,9 @@ export const LEVERADS_LEAD_QUESTIONS = [
     ],
   },
   {
-    key: "niche", label: "Qual seu principal nicho?", type: "select", required: true,
+    // allowCustom: no formulário de lead do cockpit, "Outro (digitar)…" abre um
+    // campo de texto e grava o nicho específico direto em lead.niche.
+    key: "niche", label: "Qual seu principal nicho?", type: "select", required: true, allowCustom: true,
     options: [
       { value: "autopecas", label: "Autopeças" },
       { value: "eletronicos", label: "Eletrônicos" },
