@@ -161,7 +161,7 @@ function ProposalsScreen({ saasId }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+      <div style={{ padding: "12px var(--pad-x)", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
         <div style={{ display: "flex", gap: 6 }}>
           {SAAS.length > 1 && SAAS.map((x) => (
             <button key={x.id} onClick={() => setActive(x.id)} style={{
@@ -186,7 +186,7 @@ function ProposalsScreen({ saasId }) {
         </div>
       </div>
 
-      <div style={{ flex: 1, overflow: "auto", padding: "20px 24px" }}>
+      <div style={{ flex: 1, overflow: "auto", padding: "20px var(--pad-x)" }}>
         {tab === "templates" && (!templates.length ? (
           <EmptyState
             title="Nenhum template neste SaaS"
@@ -194,7 +194,7 @@ function ProposalsScreen({ saasId }) {
             action={<PrimaryButton onClick={() => setEditing({ template: null })}>+ Criar template</PrimaryButton>}
           />
         ) : (
-          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", overflow: "hidden", background: "var(--bg-1)" }}>
+          <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
             <div className="mono" style={{ display: "grid", gridTemplateColumns: "1fr 110px 90px 290px", padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
               <span>Template</span><span>Status</span><span>Slides</span><span style={{ textAlign: "right" }}>Ações</span>
             </div>
@@ -219,7 +219,7 @@ function ProposalsScreen({ saasId }) {
         {tab === "geradas" && (!proposals.length ? (
           <EmptyState title="Nenhuma proposta gerada" hint="Propostas nascem do pipeline: lead novo (ou botão gerar proposta) cria uma instância do template publicado deste SaaS." />
         ) : (
-          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", overflow: "hidden", background: "var(--bg-1)" }}>
+          <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
             <div className="mono" style={{ display: "grid", gridTemplateColumns: "130px 1fr 70px 90px 230px", padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
               <span>Criada</span><span>Lead</span><span>Views</span><span>Status</span><span style={{ textAlign: "right" }}>Ações</span>
             </div>
@@ -305,7 +305,7 @@ function TemplateEditor({ template, saasId, onDone, onCancel }) {
   }
 
   return (
-    <div style={{ flex: 1, display: "grid", gridTemplateColumns: "minmax(460px, 1fr) minmax(380px, 44%)", minHeight: 0 }}>
+    <div className="editor-split" style={{ flex: 1, "--cols": "minmax(460px, 1fr) minmax(380px, 44%)", minHeight: 0 }}>
       <div style={{ display: "flex", flexDirection: "column", minHeight: 0, borderRight: "1px solid var(--line-1)" }}>
         <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>

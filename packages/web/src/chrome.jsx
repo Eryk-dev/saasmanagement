@@ -125,7 +125,7 @@ function Logo() {
   );
 }
 
-function TopBar({ title, subtitle, trailing, breadcrumb }) {
+function TopBar({ title, subtitle, leading, trailing, breadcrumb }) {
   return (
     <header style={{
       height: 48,
@@ -139,6 +139,7 @@ function TopBar({ title, subtitle, trailing, breadcrumb }) {
       gap: 12,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+        {leading}
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           {breadcrumb && breadcrumb.map((b, i) => {
             const last = i === breadcrumb.length - 1;
@@ -151,11 +152,11 @@ function TopBar({ title, subtitle, trailing, breadcrumb }) {
           })}
           {!breadcrumb && title && <h1 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{title}</h1>}
         </div>
-        {subtitle && <span style={{ fontSize: 12, color: "var(--fg-5)", whiteSpace: "nowrap" }}>{subtitle}</span>}
+        {subtitle && <span className="hide-mobile" style={{ fontSize: 12, color: "var(--fg-5)", whiteSpace: "nowrap" }}>{subtitle}</span>}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         {trailing}
-        <CmdK />
+        <span className="hide-mobile" style={{ display: "inline-flex" }}><CmdK /></span>
         <UserMenu />
       </div>
     </header>
@@ -216,7 +217,7 @@ function UserMenu() {
           boxShadow: "var(--shadow-1)",
         }}>
         <UserDot name={name} />
-        <span style={{ fontSize: 13, color: "var(--fg-2)", fontWeight: 450 }}>{name}</span>
+        <span className="hide-mobile" style={{ fontSize: 13, color: "var(--fg-2)", fontWeight: 450 }}>{name}</span>
         <span className="dim" style={{ fontSize: 10 }}>{open ? "▴" : "▾"}</span>
       </button>
       {open && (
@@ -277,7 +278,7 @@ function PasswordModal({ onClose }) {
   }
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 90 }}>
-      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} style={{ width: 320, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
+      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} style={{ width: "min(320px, calc(100vw - 24px))", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ fontSize: 15, fontWeight: 500 }}>Trocar senha</div>
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <span style={labelStyle}>Senha atual</span>

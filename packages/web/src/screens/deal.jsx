@@ -2,34 +2,73 @@ import React from "react";
 import { Avatar, RowActions } from "../atoms.jsx";
 import { BigNumber } from "../charts.jsx";
 import { ProposalActions } from "../components/ProposalActions.jsx";
+import { ActivityList, ActivityComposer } from "../components/timeline.jsx";
+import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 import { leadScoreLabel, leadAge, chromeBtnStyleSmall, waLink, leadTier } from "../lib/ui.js";
+import { stageKind, lossReasonLabel, nextTouchPill, openStages } from "../lib/funnel.js";
+import { displayName } from "../lib/users.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 // Lead detail drawer — slides over the pipeline when a card is opened.
 // (Funil unificado: o card do pipeline é um lead, então o detalhe é do lead.)
-
-// Usuário logado do time (mesmo slot do kanban de tarefas) — vira o autor do comentário.
-function currentUser() {
-  try { return JSON.parse(localStorage.getItem("cockpit_user") || "null"); } catch { return null; }
-}
+// Seções: header → números → GPS (etapa gateada + próximo toque + call) →
+// campos/atribuição/qualificação → proposta → TIMELINE (contatos + eventos).
 
 // datetime-local sem timezone (mesmo formato que o input nativo produz).
 function localDT(date) {
   const p = (n) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}T${p(date.getHours())}:${p(date.getMinutes())}`;
 }
+// nextActionAt é ISO UTC — converte pro formato do input datetime-local e volta.
+const isoToLocal = (iso) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return Number.isFinite(d.getTime()) ? localDT(d) : "";
+};
+const localToIso = (v) => {
+  if (!v) return "";
+  const d = new Date(v);
+  return Number.isFinite(d.getTime()) ? d.toISOString() : "";
+};
+
+// Catálogo de atribuição (id → nome de campanha/conjunto/anúncio) — cache por
+// SaaS no módulo: o drawer abre e fecha o tempo todo, a Meta não muda tanto.
+const attributionCache = {};
+function useAttribution(saas, hasUtm) {
+  const [cat, setCat] = React.useState(attributionCache[saas] || null);
+  React.useEffect(() => {
+    if (!saas || !hasUtm || attributionCache[saas]) return;
+    let alive = true;
+    api.marketingAttribution(saas)
+      .then((c) => { attributionCache[saas] = c; if (alive) setCat(c); })
+      .catch(() => { /* sem catálogo → mostra UTM cru */ });
+    return () => { alive = false; };
+  }, [saas, hasUtm]);
+  return cat;
+}
 
 function LeadDetail({ lead: initial, onClose }) {
-  const { openForm, openDelete, refresh } = useData();
+  const { openForm, openDelete, refresh, version } = useData();
   // Cópia local: as ações rápidas (etapa, próximo contato) editam aqui e
   // persistem otimisticamente; o pipeline ressincroniza no fechar (refresh).
   const [lead, setLead] = React.useState(initial);
   const dirty = React.useRef(false);
-  const [comments, setComments] = React.useState(initial?.comments || []);
-  const [newComment, setNewComment] = React.useState("");
-  React.useEffect(() => { setLead(initial); setComments(initial?.comments || []); setNewComment(""); }, [initial?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [pendingMove, setPendingMove] = React.useState(null); // { toStage, gate }
+  // Timeline: fetch por lead (fora do bootstrap) + refetch quando o tempo real
+  // avisa (version) — o drawer vive fora da árvore remontada do App.
+  const [activities, setActivities] = React.useState(null);
+  React.useEffect(() => { setLead(initial); setPendingMove(null); }, [initial?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => {
+    if (!initial?.id) return;
+    let alive = true;
+    api.listActivities(initial.id).then((a) => alive && setActivities(a)).catch(() => alive && setActivities([]));
+    return () => { alive = false; };
+  }, [initial?.id, version]);
   if (!lead) return null;
   const wa = waLink(lead.phone);
+  const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === lead.saas);
+  const kind = stageKind(saasCfg, lead.stage || (saasCfg?.funnel?.[0]?.stage ?? ""));
+  const isOpen = openStages(saasCfg).includes(lead.stage) || !lead.stage;
 
   function patch(p) {
     dirty.current = true;
@@ -38,31 +77,36 @@ function LeadDetail({ lead: initial, onClose }) {
   }
   function moveStage(stage) {
     if (!stage || stage === lead.stage) return;
+    const gate = moveGate(saasCfg, lead, stage);
+    if (gate) { setPendingMove({ toStage: stage, gate }); return; }
     dirty.current = true;
-    setLead((prev) => ({ ...prev, stage, stageSince: new Date().toISOString() }));
-    api.moveLead(lead.id, stage).catch((err) => console.warn("lead move not persisted:", err.message));
+    setLead((prev) => ({ ...prev, stage, stageSince: new Date().toISOString(), stageAttempts: 0 }));
+    api.update("leads", lead.id, { stage }).catch((err) => console.warn("lead move not persisted:", err.message));
   }
   function close() {
     if (dirty.current) refresh();
     onClose();
   }
-
-  async function addComment() {
-    const text = newComment.trim();
-    if (!text) return;
-    const me = currentUser();
-    const next = [...comments, { id: `c_${Date.now().toString(36)}`, author: me?.name || "API key", text, at: new Date().toISOString() }];
-    setComments(next); setNewComment("");
-    // Persiste o array inteiro (mesmo padrão de tasks) — otimista; ressincroniza com a resposta.
-    try { const saved = await api.update("leads", lead.id, { comments: next }); setComments(saved.comments || next); }
-    catch (err) { console.warn("comment not persisted:", err.message); }
+  function refetchTimeline() {
+    api.listActivities(lead.id).then(setActivities).catch(() => {});
+    // o toque pode ter re-agendado o GPS no servidor — ressincroniza o lead
+    api.get("leads", lead.id).then((fresh) => setLead((prev) => ({ ...prev, ...fresh }))).catch(() => {});
   }
-  const { PEOPLE } = window.SEED;
-  const owner = PEOPLE[lead.owner];
+
   const score = lead.score;
   const hasScore = score != null && score !== "";
   const hasIcp = lead.icp != null && lead.icp !== "";
   const icpPct = hasIcp ? `${Math.round(Number(lead.icp) * 100)}%` : null;
+
+  // Atribuição: resolve utm.campaign/term/content pra nomes via catálogo.
+  const cat = useAttribution(lead.saas, !!lead.utm);
+  const utm = lead.utm || {};
+  const attribution = [
+    ["Campanha", cat?.campaigns?.[utm.campaign]?.name || utm.campaign],
+    ["Conjunto", cat?.adsets?.[utm.term]?.name || utm.term],
+    ["Anúncio", cat?.ads?.[utm.content]?.name || utm.content],
+    ["Origem", [utm.source, utm.medium].filter(Boolean).join(" / ") || null],
+  ].filter(([, v]) => v != null && v !== "");
 
   // Campos REAIS do lead — mostra só os preenchidos (sem placeholder/mock).
   const fields = [
@@ -72,17 +116,16 @@ function LeadDetail({ lead: initial, onClose }) {
     ["Score", hasScore ? `${score} · ${leadScoreLabel(score)}` : null],
     ["ICP", icpPct],
     ["Origem", lead.source],
-    ["Campanha (UTM)", lead.utm?.campaign],
-    ["Origem (UTM)", [lead.utm?.source, lead.utm?.medium].filter(Boolean).join(" / ") || null],
-    ["Dono", owner?.name || lead.owner],
+    ["Dono (SDR)", lead.owner ? displayName(lead.owner) : null],
+    ["Closer", lead.closer ? displayName(lead.closer) : null],
     ["E-mail", lead.email],
     ["Telefone", lead.phone],
     ["Motivo", lead.reason],
+    ["Perda", lead.lostReason ? `${lossReasonLabel(saasCfg, lead.lostReason)}${lead.lostNote ? ` · ${lead.lostNote}` : ""}` : null],
   ].filter(([, v]) => v != null && v !== "");
 
   // Respostas das perguntas de qualificação do pipeline (mostra só as preenchidas,
   // convertendo valor → rótulo amigável; arrays viram lista).
-  const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === lead.saas);
   const answers = (saasCfg?.leadQuestions || [])
     .map((q) => {
       let v = lead[q.key];
@@ -93,23 +136,30 @@ function LeadDetail({ lead: initial, onClose }) {
     })
     .filter(Boolean);
 
+  const next = nextTouchPill(lead, { isOpen });
+  const sect = { padding: "14px 20px", borderBottom: "1px solid var(--line-1)" };
+  const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
+  const rowLabel = { fontSize: 11, width: 110, flexShrink: 0 };
+  const presetBtn = { height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 500 };
+
   return (
     <div style={{
       position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)",
       display: "flex", justifyContent: "flex-end", zIndex: 60,
     }} onClick={close}>
       <div onClick={e => e.stopPropagation()} style={{
-        width: 520, height: "100%", background: "var(--bg-1)",
+        width: "min(520px, 100vw)", height: "100%", background: "var(--bg-1)",
         borderLeft: "1px solid var(--line-2)",
         display: "flex", flexDirection: "column",
         boxShadow: "var(--shadow-pop)",
+        overflowY: "auto",
       }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "start" }}>
           <div>
             <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.08em" }}>LEAD · {String(lead.id).toUpperCase()}</div>
             <div style={{ fontSize: 20, fontWeight: 500, marginTop: 4 }}>{lead.name}</div>
             {lead.company && <div className="mono dim" style={{ fontSize: 12, marginTop: 2 }}>{lead.company}</div>}
-            <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
               {(() => { const t = leadTier(lead); return t.key !== "sem" && (
                 <span className="chip" title="soma de contas operadas + anúncios publicados"
                   style={{ color: t.ink, borderColor: "color-mix(in srgb, " + t.tone + " 55%, transparent)", background: "color-mix(in srgb, " + t.tone + " 14%, transparent)", fontWeight: 600 }}>
@@ -120,6 +170,12 @@ function LeadDetail({ lead: initial, onClose }) {
               {lead.source && <span className="chip">{lead.source}</span>}
               {hasScore && <span className={"chip " + (Number(score) >= 75 ? "neg" : Number(score) >= 50 ? "warn" : "")}>{leadScoreLabel(score)}</span>}
               {lead.priority && <span className="chip">{lead.priority}</span>}
+              {(lead.owner || lead.closer) && (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  {lead.owner && <span title={`SDR: ${displayName(lead.owner)}`}><Avatar id={lead.owner} name={displayName(lead.owner)} size={18} /></span>}
+                  {lead.closer && <span title={`Closer: ${displayName(lead.closer)}`}><Avatar id={lead.closer} name={displayName(lead.closer)} size={18} /></span>}
+                </span>
+              )}
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -145,38 +201,53 @@ function LeadDetail({ lead: initial, onClose }) {
             : <BigNumber value={`${Math.max(0, Math.floor((Date.now() - new Date(lead.stageSince || lead.createdAt || Date.now()).getTime()) / 86400000))}d`} label="Na etapa" size={28} />}
         </div>
 
-        {/* Ação rápida: mover etapa + próximo contato sem sair do drawer. */}
-        <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 10 }}>
-          <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" }}>Ação rápida</div>
+        {/* GPS: etapa (gateada) + próximo toque + call agendada, sem sair do drawer. */}
+        <div style={{ ...sect, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="mono" style={{ ...kicker, display: "flex", alignItems: "center", gap: 8 }}>
+            Próximo passo
+            {next && <span className="mono" style={{ fontSize: 10, color: next.key === "late" ? "var(--neg)" : next.key === "none" ? "var(--warn)" : "var(--fg-3)", textTransform: "none", letterSpacing: 0 }}>{next.text}</span>}
+          </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <span className="mono dim" style={{ fontSize: 11, width: 110, flexShrink: 0 }}>Etapa</span>
+            <span className="mono dim" style={rowLabel}>Etapa</span>
             <select value={lead.stage || ""} onChange={(e) => moveStage(e.target.value)}
               style={{ flex: 1, height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }}>
               {(saasCfg?.funnel || []).map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
               {saasCfg?.funnel?.every((f) => f.stage !== lead.stage) && lead.stage && <option value={lead.stage}>{lead.stage}</option>}
             </select>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <span className="mono dim" style={{ fontSize: 11, width: 110, flexShrink: 0 }}>Próximo contato</span>
-            <div style={{ display: "flex", gap: 5, flex: 1, flexWrap: "wrap" }}>
-              {[["hoje", () => { const t = new Date(); t.setHours(t.getHours() + 1, 0, 0, 0); return t; }],
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+            <span className="mono dim" style={{ ...rowLabel, paddingTop: 6 }}>Próximo toque</span>
+            <div style={{ display: "flex", gap: 5, flex: 1, flexWrap: "wrap", alignItems: "center" }}>
+              {[["hoje +1h", () => { const t = new Date(); t.setHours(t.getHours() + 1, 0, 0, 0); return t; }],
                 ["amanhã 9h", () => { const t = new Date(); t.setDate(t.getDate() + 1); t.setHours(9, 0, 0, 0); return t; }],
-                ["em 3 dias", () => { const t = new Date(); t.setDate(t.getDate() + 3); t.setHours(9, 0, 0, 0); return t; }]].map(([label, mk]) => (
-                <button key={label} onClick={() => patch({ callAt: localDT(mk()) })}
-                  style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 500 }}>
+                ["+2d", () => { const t = new Date(); t.setDate(t.getDate() + 2); t.setHours(9, 0, 0, 0); return t; }],
+                ["+1sem", () => { const t = new Date(); t.setDate(t.getDate() + 7); t.setHours(9, 0, 0, 0); return t; }]].map(([label, mk]) => (
+                <button key={label} onClick={() => patch({ nextActionAt: mk().toISOString() })} style={presetBtn}>
                   {label}
                 </button>
               ))}
-              <input type="datetime-local" value={lead.callAt || ""} onChange={(e) => patch({ callAt: e.target.value })}
+              <input type="datetime-local" value={isoToLocal(lead.nextActionAt)} onChange={(e) => patch({ nextActionAt: localToIso(e.target.value) })}
                 style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
-              {lead.callAt && (
-                <button onClick={() => patch({ callAt: "" })} className="mono dim" style={{ fontSize: 11 }} title="Limpar próximo contato">limpar</button>
+              {lead.nextActionAt && (
+                <button onClick={() => patch({ nextActionAt: "", nextActionNote: "" })} className="mono dim" style={{ fontSize: 11 }} title="Limpar próximo toque">limpar</button>
               )}
+              <input type="text" placeholder="o que fazer nesse toque? (ex.: cobrar proposta)" defaultValue={lead.nextActionNote ?? ""}
+                onBlur={(e) => e.target.value !== (lead.nextActionNote || "") && patch({ nextActionNote: e.target.value })}
+                style={{ flexBasis: "100%", height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5 }} />
             </div>
           </div>
-          {lead.stage === "Negociação" && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span className="mono dim" style={rowLabel}>Call agendada</span>
+            <input type="datetime-local" value={lead.callAt || ""} onChange={(e) => patch({ callAt: e.target.value })}
+              style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
+            {lead.callAt && (
+              <button onClick={() => patch({ callAt: "" })} className="mono dim" style={{ fontSize: 11 }} title="Limpar call">limpar</button>
+            )}
+            <span className="mono dim" style={{ fontSize: 10 }}>aparece na Agenda</span>
+          </div>
+          {(kind === "proposta" || kind === "followup") && (
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span className="mono dim" style={{ fontSize: 11, width: 110, flexShrink: 0 }}>Proposta</span>
+              <span className="mono dim" style={rowLabel}>Proposta</span>
               <input type="number" placeholder="Valor (R$)" defaultValue={lead.proposalValue ?? ""}
                 onBlur={(e) => patch({ proposalValue: e.target.value === "" ? "" : Number(e.target.value) })}
                 style={{ width: 110, height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, fontFamily: "var(--mono)" }} />
@@ -185,9 +256,9 @@ function LeadDetail({ lead: initial, onClose }) {
                 style={{ flex: 1, height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5 }} />
             </div>
           )}
-          {lead.stage === "Integração" && (
+          {kind === "integracao" && (
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span className="mono dim" style={{ fontSize: 11, width: 110, flexShrink: 0 }}>Integração</span>
+              <span className="mono dim" style={rowLabel}>Integração</span>
               <input type="datetime-local" value={lead.integrationAt || ""} onChange={(e) => patch({ integrationAt: e.target.value })}
                 style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
             </div>
@@ -195,8 +266,8 @@ function LeadDetail({ lead: initial, onClose }) {
         </div>
 
         {fields.length > 0 && (
-          <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)" }}>
-            <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Campos</div>
+          <div style={sect}>
+            <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Campos</div>
             {fields.map(([k, v]) => (
               <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid var(--line-1)", fontSize: 12, gap: 16 }}>
                 <span className="mono dim" style={{ flexShrink: 0 }}>{k}</span>
@@ -206,9 +277,21 @@ function LeadDetail({ lead: initial, onClose }) {
           </div>
         )}
 
+        {attribution.length > 0 && (
+          <div style={sect}>
+            <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Atribuição · de onde esse lead veio</div>
+            {attribution.map(([k, v]) => (
+              <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid var(--line-1)", fontSize: 12, gap: 16 }}>
+                <span className="mono dim" style={{ flexShrink: 0 }}>{k}</span>
+                <span style={{ textAlign: "right", overflowWrap: "anywhere" }}>{v}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {answers.length > 0 && (
-          <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)" }}>
-            <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Respostas de qualificação</div>
+          <div style={sect}>
+            <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Respostas de qualificação</div>
             {answers.map(([k, v]) => (
               <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid var(--line-1)", fontSize: 12, gap: 16 }}>
                 <span className="mono dim" style={{ flexShrink: 0 }}>{k}</span>
@@ -218,42 +301,44 @@ function LeadDetail({ lead: initial, onClose }) {
           </div>
         )}
 
-        <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)" }}>
-          <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>Proposta</div>
+        <div style={sect}>
+          <div className="mono" style={{ ...kicker, marginBottom: 10 }}>Proposta</div>
           <ProposalActions l={lead} />
         </div>
 
-        {/* Anotações do card — thread append-only (autor + data), mesmo padrão do kanban de tarefas. */}
-        <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", flexDirection: "column", flex: "1 1 auto", minHeight: 100, overflowY: "auto" }}>
-          <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>Comentários</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {comments.map((c) => (
-              <div key={c.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                <Avatar id={c.author} name={c.author} size={20} />
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
-                    <span style={{ fontSize: 12, fontWeight: 500 }}>{c.author}</span>
-                    <span className="mono dim" style={{ fontSize: 10 }}>{c.at ? new Date(c.at).toLocaleDateString("pt-BR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}</span>
-                  </div>
-                  <div style={{ fontSize: 13, color: "var(--fg-2)", whiteSpace: "pre-wrap" }}>{c.text}</div>
-                </div>
-              </div>
-            ))}
-            {comments.length === 0 && <span className="mono dim" style={{ fontSize: 11 }}>sem comentários</span>}
-            <div style={{ display: "flex", gap: 6 }}>
-              <input value={newComment} onChange={(e) => setNewComment(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addComment(); } }}
-                placeholder="escreva uma anotação…" style={{ flex: 1, height: 30, fontSize: 13, padding: "0 10px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)" }} />
-              <button type="button" onClick={addComment} disabled={!newComment.trim()} style={{ ...chromeBtnStyleSmall, height: 30, opacity: newComment.trim() ? 1 : 0.5 }}>
-                <span style={{ fontSize: 11 }}>comentar</span>
-              </button>
-            </div>
+        {/* Timeline: TODOS os pontos de contato + eventos automáticos (o histórico
+            do lead). comments[] antigos aparecem mesclados como notas. */}
+        <div style={{ ...sect, display: "flex", flexDirection: "column", flex: "1 1 auto", minHeight: 140 }}>
+          <div className="mono" style={{ ...kicker, marginBottom: 10 }}>
+            Timeline {activities ? `· ${activities.length + (lead.comments?.length || 0)}` : ""}
+          </div>
+          <ActivityComposer lead={lead} onLogged={refetchTimeline} />
+          <div style={{ marginTop: 8 }}>
+            {activities === null
+              ? <div className="mono dim" style={{ fontSize: 11.5, padding: "10px 0" }}>carregando…</div>
+              : <ActivityList activities={activities} comments={lead.comments} />}
           </div>
         </div>
 
-        <div style={{ marginTop: "auto", padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", gap: 8, background: "var(--bg-inset)" }}>
+        <div style={{ marginTop: "auto", padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", gap: 8, background: "var(--bg-inset)", position: "sticky", bottom: 0 }}>
           <button onClick={() => { close(); openForm("leads", lead); }} style={{ flex: 1, padding: "9px 12px", background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500 }}>Editar lead</button>
         </div>
+
+        {pendingMove && (
+          <MoveLeadModal
+            lead={lead}
+            toStage={pendingMove.toStage}
+            gate={pendingMove.gate}
+            saasCfg={saasCfg}
+            onCancel={() => setPendingMove(null)}
+            onConfirm={(p, extra) => {
+              dirty.current = true;
+              setLead((prev) => ({ ...prev, ...p, stageSince: new Date().toISOString(), stageAttempts: 0 }));
+              applyGatedMove(p, extra, lead.id).then(refetchTimeline).catch((err) => console.warn("movimento não persistido:", err.message));
+              setPendingMove(null);
+            }}
+          />
+        )}
       </div>
     </div>
   );

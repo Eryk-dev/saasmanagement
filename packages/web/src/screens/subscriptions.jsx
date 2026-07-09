@@ -102,7 +102,7 @@ function SubscriptionsScreen({ saasId }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      <div style={{ padding: "12px var(--pad-x)", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {SAAS.length > 1 && (
             <div style={{ display: "flex", gap: 6 }}>
@@ -132,9 +132,9 @@ function SubscriptionsScreen({ saasId }) {
         </div>
       </div>
 
-      {toast && <div className="mono" style={{ padding: "8px 24px", fontSize: 11, color: "var(--accent)", borderBottom: "1px solid var(--line-1)" }}>{toast}</div>}
+      {toast && <div className="mono" style={{ padding: "8px var(--pad-x)", fontSize: 11, color: "var(--accent)", borderBottom: "1px solid var(--line-1)" }}>{toast}</div>}
 
-      <div style={{ flex: 1, overflow: "auto", padding: "20px 24px" }}>
+      <div style={{ flex: 1, overflow: "auto", padding: "20px var(--pad-x)" }}>
         {tab === "subs" && (
           !subs.length ? (
             <EmptyState title="Nenhuma assinatura neste SaaS" hint="Crie uma assinatura ligando um cliente a um plano (ou preço avulso). O ARR do cliente passa a ser derivado daqui — e o MRR do produto via rollup." action={<PrimaryButton onClick={() => openForm("subscriptions", { saas: active })}>+ Criar assinatura</PrimaryButton>} />
@@ -284,7 +284,7 @@ function ChangeModal({ sub, plans, customerName, onClose, onDone }) {
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70 }}>
-      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} style={{ width: 420, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} style={{ width: "min(420px, calc(100vw - 24px))", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
         <div>
           <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" }}>Mudar plano</div>
           <div style={{ fontSize: 16, fontWeight: 500, marginTop: 2 }}>{customerName}</div>
@@ -328,7 +328,7 @@ function ChangeModal({ sub, plans, customerName, onClose, onDone }) {
 
 function Table({ cols, head, children }) {
   return (
-    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", overflow: "hidden", background: "var(--bg-1)" }}>
+    <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
       <div className="mono" style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
         {head.map((h, i) => <span key={i} style={i === head.length - 1 ? { textAlign: "right" } : undefined}>{h}</span>)}
       </div>

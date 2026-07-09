@@ -12,9 +12,24 @@
 // ── dynamic option helpers ──────────────────────────────────────────────────
 const saasOptions = () => (window.SEED?.SAAS || []).map((s) => ({ value: s.id, label: s.name }));
 const peopleOptions = () => Object.values(window.SEED?.PEOPLE || {}).map((p) => ({ value: p.id, label: p.name }));
+// Usuários do time (com roles) — donos/closers dos leads. Fallback PEOPLE pra
+// instância sem /auth/users carregado.
+const userOptions = () => {
+  const users = window.SEED?.USERS || [];
+  return users.length ? users.map((u) => ({ value: u.id, label: u.name || u.id })) : peopleOptions();
+};
+const usersWithRole = (role) => () => {
+  const users = (window.SEED?.USERS || []).filter((u) => (u.roles || []).includes(role));
+  return users.length ? users.map((u) => ({ value: u.id, label: u.name || u.id })) : userOptions();
+};
 const stageOptions = (v) => {
   const s = (window.SEED?.SAAS || []).find((x) => x.id === v.saas);
   return (s?.funnel || []).map((f) => ({ value: f.stage, label: f.stage }));
+};
+const lossReasonOptions = (v) => {
+  const s = (window.SEED?.SAAS || []).find((x) => x.id === v.saas);
+  const list = Array.isArray(s?.lossReasons) && s.lossReasons.length ? s.lossReasons : [];
+  return list.map((r) => ({ value: r.id, label: r.label }));
 };
 
 // Perguntas de qualificação específicas do pipeline selecionado, viradas em campos
@@ -133,10 +148,15 @@ export const ENTITIES = {
       { key: "phone", label: "Telefone", type: "text" },
       { key: "value", label: "Faixa", type: "text", placeholder: "Ent / Mid / SMB" },
       { key: "amount", label: "Valor", type: "money" },
-      { key: "owner", label: "Dono", type: "select", options: peopleOptions, blankLabel: "—" },
+      { key: "owner", label: "Dono (SDR)", type: "select", options: usersWithRole("sdr"), blankLabel: "—" },
+      { key: "closer", label: "Closer", type: "select", options: usersWithRole("closer"), blankLabel: "—" },
       { key: "priority", label: "Prioridade", type: "select", options: [{ value: "P0", label: "P0" }, { value: "P1", label: "P1" }, { value: "P2", label: "P2" }], default: "P2" },
       { key: "source", label: "Origem", type: "text", placeholder: "Form · /pricing" },
       { key: "stage", label: "Estágio", type: "select", options: stageOptions, blankLabel: "(primeiro estágio)" },
+      { key: "nextActionAt", label: "Próximo toque", type: "datetime", help: "o GPS re-agenda sozinho a cada toque registrado" },
+      { key: "nextActionNote", label: "O que fazer no toque", type: "text" },
+      { key: "lostReason", label: "Motivo de perda", type: "select", options: lossReasonOptions, blankLabel: "—", help: "obrigatório ao mover pra Perdido/Desqualificado" },
+      { key: "lostNote", label: "Detalhe da perda", type: "text" },
       { key: "reason", label: "Motivo", type: "textarea", full: true },
       { key: "proposalUrl", label: "URL da proposta", type: "text", full: true },
     ],

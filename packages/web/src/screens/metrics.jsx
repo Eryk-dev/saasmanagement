@@ -3,6 +3,7 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { PageHead, Segmented, StatTile, Card, LineChart, Pill } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
+import { stageByKind } from "../lib/funnel.js";
 // Métricas — aquisição × funil do produto ativo (substitui a tela Marketing).
 // Hoje: investimento (Meta), leads, CPL real e custo por etapa, com séries no
 // tempo e quebra por campanha. CAC e LTV entram na fase de métricas de receita,
@@ -99,7 +100,12 @@ function MetricsScreen() {
 
   const t = data && !data.error ? data.totals : null;
   const perStage = data && !data.error ? data.perStage : [];
-  const costOf = (stage) => perStage.find((s) => s.stage === stage)?.costPer ?? null;
+  // Custo por etapa pelo KIND do estágio (call/ganho) — funciona com qualquer
+  // nome de funil (o antigo procurava "Call closer"/"Ganho" literais).
+  const costOfKind = (kind) => {
+    const st = stageByKind(product, kind);
+    return st ? perStage.find((s) => s.stage === st)?.costPer ?? null : null;
+  };
   const money = window.fmt.money;
 
   const spendSeries = (data?.series || []).map((d) => ({ x: shortDay(d.date), v: d.spend }));
@@ -120,7 +126,7 @@ function MetricsScreen() {
         <Segmented value={days} options={PERIODS} onChange={setDays} />
       </PageHead>
 
-      <div style={{ padding: "20px 24px 40px", display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ padding: "20px var(--pad-x) 40px", display: "flex", flexDirection: "column", gap: 12 }}>
         {note && (
           <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>
         )}
@@ -169,7 +175,7 @@ function MetricsScreen() {
           </Card>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0,1fr))", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
           <StatTile label={`CAC · ${days}d`} value={biz?.window?.cac != null ? money(biz.window.cac) : "sem dado"}
             delta={biz?.window?.newCustomers != null ? `${biz.window.newCustomers} ${biz.window.newCustomers === 1 ? "cliente novo" : "clientes novos"}` : null} />
           <StatTile label="LTV estimado" value={biz?.ltv?.value != null ? money(biz.ltv.value) : "sem dado"}
@@ -182,14 +188,14 @@ function MetricsScreen() {
           <StatTile label="Custo por lead" value={t?.cpl != null ? money(t.cpl) : "sem gasto"} delta={t?.cplMeta != null ? `${money(t.cplMeta)} na visão da Meta` : null} />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
           <StatTile label="Investimento" value={t ? money(t.spend) : "…"} delta={t?.ctr != null ? `CTR ${String(t.ctr).replace(".", ",")}%` : null} />
           <StatTile label="Leads no período" value={t ? String(t.leads) : "…"} delta={t?.metaLeads ? `${t.metaLeads} reportados pela Meta` : null} />
-          <StatTile label="Custo por call" value={costOf("Call closer") != null ? money(costOf("Call closer")) : "sem dado"} delta="leads que chegaram à call" />
-          <StatTile label="Custo por ganho" value={costOf("Ganho") != null ? money(costOf("Ganho")) : "sem dado"} delta="leads que fecharam" />
+          <StatTile label="Custo por call" value={costOfKind("call") != null ? money(costOfKind("call")) : "sem dado"} delta="leads que chegaram à call" />
+          <StatTile label="Custo por ganho" value={costOfKind("ganho") != null ? money(costOfKind("ganho")) : "sem dado"} delta="leads que fecharam" />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: 12 }}>
           <Card title="Investimento por dia" hint="Meta Ads">
             <LineChart data={spendSeries} color="var(--chart-1)" fmtValue={(v) => money(v)} />
           </Card>
@@ -199,7 +205,7 @@ function MetricsScreen() {
         </div>
 
         {biz?.series?.length > 0 && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: 12 }}>
             <Card title="Clientes novos por mês" hint="conversões do pipeline · 12 meses">
               <LineChart data={biz.series.map((m) => ({ x: monthLabel(m.month), v: m.newCustomers }))} color="var(--chart-2)" fmtValue={(v) => String(Math.round(v))} />
             </Card>
@@ -210,31 +216,8 @@ function MetricsScreen() {
         )}
 
         {data && !data.error && data.campaigns?.length > 0 && (
-          <Card title="Por campanha" hint="leads e CPL reais atribuídos por UTM (utm_campaign = nome ou id da campanha)">
-            <div style={{ overflowX: "auto", marginTop: 10 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    {["Campanha", "Investimento", "Cliques", "Leads (UTM)", "CPL real", "Leads (Meta)", "CPL (Meta)"].map((h, i) => (
-                      <th key={h} className="mono" style={{ textAlign: i === 0 ? "left" : "right", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", padding: "10px 16px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.campaigns.map((c) => (
-                    <tr key={c.id}>
-                      <td style={{ padding: "11px 16px", fontSize: 13, fontWeight: 600, borderBottom: "1px solid var(--line-1)" }}>{c.name || c.id}</td>
-                      <td className="tnum" style={tdNum}>{money(c.spend)}</td>
-                      <td className="tnum" style={tdNum}>{window.fmt.int(c.clicks)}</td>
-                      <td className="tnum" style={tdNum}>{window.fmt.int(c.leads || 0)}</td>
-                      <td className="tnum" style={{ ...tdNum, fontWeight: 600 }}>{c.cpl != null ? money(c.cpl) : "sem UTM"}</td>
-                      <td className="tnum" style={tdNum}>{window.fmt.int(c.metaLeads)}</td>
-                      <td className="tnum" style={tdNum}>{c.cplMeta != null ? money(c.cplMeta) : "sem lead"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <Card title="Por campanha" hint="expanda pra ver conjuntos e anúncios · atribuição por UTM (campaign/term/content = id ou nome)">
+            <CampaignDrilldown data={data} money={money} />
           </Card>
         )}
 
@@ -244,7 +227,7 @@ function MetricsScreen() {
             {camps?.error && <div className="mono" style={{ padding: "12px 16px", fontSize: 12, color: "var(--neg)" }}>{camps.error}</div>}
             {Array.isArray(camps) && camps.length === 0 && <div style={{ padding: "12px 16px", fontSize: 12.5, color: "var(--fg-4)" }}>Nenhuma campanha na conta.</div>}
             {Array.isArray(camps) && camps.length > 0 && (
-              <div style={{ overflowX: "auto", marginTop: 10 }}>
+              <div className="tbl-x" style={{ marginTop: 10 }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr>
@@ -297,7 +280,7 @@ function MetricsScreen() {
 
         {perStage.length > 0 && t?.spend > 0 && (
           <Card title="Custo por etapa do funil" hint="investimento dividido pelos leads que chegaram em cada etapa">
-            <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(perStage.length, 6)}, minmax(0,1fr))`, gap: 8, padding: "12px 16px 16px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, padding: "12px 16px 16px" }}>
               {perStage.slice(0, 6).map((s) => (
                 <div key={s.stage} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "9px 11px", background: "var(--bg-inset)" }}>
                   <span className="tnum" style={{ display: "block", fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>
@@ -321,6 +304,85 @@ function MetricsScreen() {
           <span>meses. O CAC usa clientes convertidos do pipeline (lead em Ganho vira cliente automaticamente).</span>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Tabela campanha → conjunto → anúncio (linhas expansíveis). Conjuntos/anúncios
+// só existem depois do 1º sync nível-anúncio — sem eles, a campanha não expande.
+function CampaignDrilldown({ data, money }) {
+  const [open, setOpen] = React.useState(() => new Set());
+  const toggle = (id) => setOpen((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const adsetsOf = (cid) => (data.adsets || []).filter((s) => s.campaignId === cid);
+  const adsOf = (sid) => (data.ads || []).filter((a) => a.adsetId === sid);
+
+  const cells = (g, { bold } = {}) => (
+    <>
+      <td className="tnum" style={tdNum}>{money(g.spend)}</td>
+      <td className="tnum" style={tdNum}>{window.fmt.int(g.clicks)}</td>
+      <td className="tnum" style={tdNum}>{window.fmt.int(g.leads || 0)}</td>
+      <td className="tnum" style={{ ...tdNum, fontWeight: bold ? 600 : 400 }}>{g.cpl != null ? money(g.cpl) : "sem UTM"}</td>
+      <td className="tnum" style={tdNum}>{window.fmt.int(g.metaLeads)}</td>
+      <td className="tnum" style={tdNum}>{g.cplMeta != null ? money(g.cplMeta) : "sem lead"}</td>
+    </>
+  );
+  const nameTd = (label, depth, expandable, isOpen, onClick) => (
+    <td onClick={onClick} style={{
+      padding: "11px 16px", paddingLeft: 16 + depth * 22, fontSize: depth ? 12.5 : 13,
+      fontWeight: depth === 2 ? 400 : 600, color: depth === 2 ? "var(--fg-2)" : "var(--fg-1)",
+      borderBottom: "1px solid var(--line-1)", cursor: expandable ? "pointer" : "default",
+      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 340,
+    }}>
+      {expandable && <span className="mono" style={{ marginRight: 7, color: "var(--fg-4)", fontSize: 10 }}>{isOpen ? "▾" : "▸"}</span>}
+      {depth === 1 && <span className="mono" style={{ marginRight: 6, color: "var(--fg-4)", fontSize: 10 }}>conj</span>}
+      {depth === 2 && <span className="mono" style={{ marginRight: 6, color: "var(--fg-4)", fontSize: 10 }}>ad</span>}
+      {label}
+    </td>
+  );
+
+  return (
+    <div className="tbl-x" style={{ marginTop: 10 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            {["Campanha", "Investimento", "Cliques", "Leads (UTM)", "CPL real", "Leads (Meta)", "CPL (Meta)"].map((h, i) => (
+              <th key={h} className="mono" style={{ textAlign: i === 0 ? "left" : "right", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", padding: "10px 16px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {data.campaigns.map((c) => {
+            const sets = adsetsOf(c.id);
+            const cOpen = open.has(c.id);
+            return (
+              <React.Fragment key={c.id}>
+                <tr>
+                  {nameTd(c.name || c.id, 0, sets.length > 0, cOpen, sets.length ? () => toggle(c.id) : undefined)}
+                  {cells(c, { bold: true })}
+                </tr>
+                {cOpen && sets.map((s) => {
+                  const ads = adsOf(s.id);
+                  const sOpen = open.has(s.id);
+                  return (
+                    <React.Fragment key={s.id}>
+                      <tr style={{ background: "var(--bg-inset)" }}>
+                        {nameTd(s.name || s.id, 1, ads.length > 0, sOpen, ads.length ? () => toggle(s.id) : undefined)}
+                        {cells(s)}
+                      </tr>
+                      {sOpen && ads.map((a) => (
+                        <tr key={a.id} style={{ background: "var(--bg-inset)" }}>
+                          {nameTd(a.name || a.id, 2, false, false)}
+                          {cells(a)}
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  );
+                })}
+              </React.Fragment>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

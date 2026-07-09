@@ -86,6 +86,46 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken } = {}) {
       return rows;
     },
 
+    // Insights diários por ANÚNCIO (level=ad) — base da atribuição campanha →
+    // conjunto → anúncio. Mesmo contrato do campaignInsights, linhas ganham
+    // adsetId/adsetName/adId/adName.
+    async adInsights(adAccountId, { since, until }) {
+      if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
+      const account = String(adAccountId).startsWith("act_") ? adAccountId : `act_${adAccountId}`;
+      const params = new URLSearchParams({
+        level: "ad",
+        time_increment: "1",
+        time_range: JSON.stringify({ since, until }),
+        fields: "campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,spend,impressions,clicks,actions",
+        limit: "500",
+        access_token: accessToken,
+      });
+      let url = `${GRAPH}/${account}/insights?${params}`;
+      const rows = [];
+      let guard = 0; // paginação não pode virar loop infinito
+      while (url && guard++ < 50) {
+        const body = await get(url);
+        for (const r of body.data || []) {
+          const leadAction = (r.actions || []).find((a) => a.action_type === "lead");
+          rows.push({
+            campaignId: r.campaign_id,
+            campaignName: r.campaign_name,
+            adsetId: r.adset_id || "",
+            adsetName: r.adset_name || "",
+            adId: r.ad_id || "",
+            adName: r.ad_name || "",
+            date: r.date_start,
+            spend: Number(r.spend) || 0,
+            impressions: Number(r.impressions) || 0,
+            clicks: Number(r.clicks) || 0,
+            metaLeads: Number(leadAction?.value) || 0,
+          });
+        }
+        url = body.paging?.next || null;
+      }
+      return rows;
+    },
+
     // Campanhas da conta com status e orçamento — a base do gerenciamento no
     // cockpit. `dailyBudget`/`lifetimeBudget` voltam em REAIS (a Graph usa centavos).
     async listCampaigns(adAccountId) {
@@ -143,6 +183,7 @@ const inst = () => (_meta ??= makeMeta({ accessToken: process.env.META_ACCESS_TO
 export const meta = {
   configured: () => inst().configured(),
   campaignInsights: (a, r) => inst().campaignInsights(a, r),
+  adInsights: (a, r) => inst().adInsights(a, r),
   listCampaigns: (a) => inst().listCampaigns(a),
   setCampaignStatus: (id, s) => inst().setCampaignStatus(id, s),
   setCampaignBudget: (id, v) => inst().setCampaignBudget(id, v),

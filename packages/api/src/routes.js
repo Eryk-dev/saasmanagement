@@ -1,6 +1,7 @@
 // REST routes. One generic CRUD surface over every collection, plus two
 // computed/aggregated endpoints the cockpit needs: /bootstrap and /portfolio.
 
+import { randomUUID } from "node:crypto";
 import { repo as defaultRepo, COLLECTION_NAMES } from "./db.js";
 import { PORTFOLIO_CONST } from "./seed-data.js";
 import { openapi, docsHtml } from "./openapi.js";
@@ -20,6 +21,9 @@ import { meta as defaultMetaClient } from "./meta.js";
 import { metaCapi as defaultMetaCapi } from "./meta-capi.js";
 import { discord as defaultDiscord } from "./discord.js";
 import { currentRev, subscribe as subscribeChanges } from "./changes.js";
+import { isWon, firstStage } from "./stages.js";
+import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt } from "./lead-flow.js";
+import { registerFunnelMetricsRoutes } from "./routes.funnel-metrics.js";
 
 // Auth interna fica FORA do CRUD genérico: passwordHash/token de sessão nunca
 // saem pela API. Gestão via rotas dedicadas (/api/auth/*).
@@ -56,7 +60,12 @@ export const CREATE_DEFAULTS = {
   // callAt = dia/horário da call (editável no card em "Call closer"); proposalValue/proposalPeriod = valor e período da
   // proposta (editáveis no card em "Negociação"); integrationAt = dia/horário da integração (editável no card em
   // "Integração", pós-venda). Todos opcionais, preenchidos por PATCH inline.
-  leads: { priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", reason: "", source: "Form", age: "agora", stage: "", stageSince: "", comments: [], callAt: "", proposalValue: "", proposalPeriod: "", integrationAt: "" },
+  // nextActionAt/nextActionNote = próximo toque no lead (ISO UTC; o "GPS" — setado
+  // pela cadência do estágio no servidor ou pelo time); lostReason/lostNote = perda
+  // estruturada (id de product.lossReasons); owner = user id do SDR dono; closer =
+  // user id do closer; lastActivityAt/Type + stageAttempts = denormalizações da
+  // timeline (activities) pro board/fila não precisarem carregar o histórico.
+  leads: { priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", closer: "", reason: "", source: "Form", age: "agora", stage: "", stageSince: "", comments: [], callAt: "", proposalValue: "", proposalPeriod: "", integrationAt: "", nextActionAt: "", nextActionNote: "", lostReason: "", lostNote: "", lastActivityAt: "", lastActivityType: "", stageAttempts: 0 },
   // `current`/`projected` saem do form (leitura ao vivo da meta) — default 0 até serem alimentados.
   goals: { current: 0, projected: 0 },
   forms: { status: "draft", theme: {}, welcome: null, questions: [], thanks: {}, mapping: {} },
@@ -75,6 +84,11 @@ export const CREATE_DEFAULTS = {
   // comments = [{ id, author, text, at }] — o SPA faz PATCH do array inteiro.
   tasks: { title: "", description: "", saas: "", assignees: [], column: "", priority: "", dueDate: "", labels: [], comments: [], order: 0 },
   task_boards: { name: "Tarefas", columns: [] },
+  // Timeline do lead (pontos de contato + eventos automáticos). `type` toque =
+  // whatsapp/call/email/meeting; `stage` = mudança de estágio (meta {from,to});
+  // `system` = evento automático (lead_created, proposal_viewed...). `at` = quando
+  // aconteceu (backdate permitido); createdAt = quando entrou no sistema.
+  activities: { saas: "", lead: "", type: "note", text: "", meta: {}, author: "", at: "" },
 };
 
 // Receita e nº de clientes são DERIVADOS da coleção `customers`, não dos campos
@@ -139,6 +153,7 @@ function listFilter(collection, q) {
   if (collection === "invoices") return (i) => (!q.saas || i.saas === q.saas) && (!q.customer || i.customer === q.customer) && (!q.subscription || i.subscription === q.subscription) && (!q.status || i.status === q.status);
   if (collection === "ad_insights") return (r) => (!q.saas || r.saas === q.saas) && (!q.campaign || r.campaignId === q.campaign);
   if (collection === "tasks") return (t) => (!q.saas || t.saas === q.saas) && (!q.assignee || (t.assignees || (t.assignee ? [t.assignee] : [])).includes(q.assignee)) && (!q.column || t.column === q.column);
+  if (collection === "activities") return (a) => (!q.lead || a.lead === q.lead) && (!q.saas || a.saas === q.saas) && (!q.type || a.type === q.type) && (!q.since || String(a.at || "") >= q.since);
   return null;
 }
 
@@ -165,6 +180,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   const metaClient = opts.meta || defaultMetaClient;
   registerMarketingRoutes(app, repo, { meta: metaClient });
   registerMetricsRoutes(app, repo);
+  // Métricas reais de funil (conversão/tempo por estágio, motivos de perda, SLA)
+  // a partir do histórico de transições da timeline.
+  registerFunnelMetricsRoutes(app, repo);
   // Usuários do time: login/logout/me + gestão mínima (rotas dedicadas).
   registerAuthRoutes(app, repo);
 
@@ -271,7 +289,37 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // stageSince = quando o card entrou no estágio atual (base do contador "dias na
     // coluna"). No create, é agora; depois, recarimbado a cada mudança de estágio.
     if ((collection === "leads" || collection === "deals") && !req.body.stageSince) stamp.stageSince = now;
+    // Activity: id randômico (burst de timeline colide com o gerador por timestamp
+    // do repo — mesmo motivo do fe_ em form_events), at = quando aconteceu.
+    if (collection === "activities") {
+      if (!req.body.id) stamp.id = "ac_" + randomUUID();
+      if (!req.body.at) stamp.at = now;
+      if (!req.body.createdAt) stamp.createdAt = now;
+    }
+    // GPS: lead nasce com o próximo toque marcado pela cadência do estágio de
+    // entrada (SLA de 1º contato) — a fila da Visão geral já o mostra na hora.
+    if (collection === "leads" && !req.body.nextActionAt) {
+      try {
+        const product = req.body.saas ? await repo.get("products", req.body.saas) : null;
+        const at = initialNextActionAt(product, req.body.stage);
+        if (at) stamp.nextActionAt = at;
+      } catch { /* fail-open */ }
+    }
     let created = await repo.create(collection, { ...(CREATE_DEFAULTS[collection] || {}), ...req.body, ...stamp });
+    // Toque registrado → denormalizações do lead (últ. contato, tentativas) +
+    // re-agendamento do próximo passo. Best-effort: nunca quebra o POST.
+    if (collection === "activities") { try { await onActivityCreated(repo, created); } catch { /* fail-open */ } }
+    // Timeline: nascimento do lead (form tem log próprio em routes.forms.js).
+    if (collection === "leads") {
+      try {
+        const product = created.saas ? await repo.get("products", created.saas) : null;
+        await logActivity(repo, {
+          saas: created.saas || "", lead: created.id, type: "system",
+          meta: { event: "lead_created", via: "api", source: created.source || "", stage: created.stage || firstStage(product) },
+          author: req.authUser?.id || "api",
+        });
+      } catch { /* fail-open */ }
+    }
     // Assinatura nova: janela do 1º ciclo + fatura inicial + customer.arr
     // (invariante: receita do produto deriva de customers).
     if (collection === "subscriptions") created = await initSubscription(repo, created);
@@ -308,12 +356,19 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     if (!WRITABLE.has(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
     if (!req.body || typeof req.body !== "object") return reply.code(400).send({ error: "JSON body required" });
     const before = collection === "subscriptions" ? await repo.get(collection, id) : null;
-    // Recarimba stageSince quando o card muda de estágio de fato (reset do contador de
-    // dias na coluna). Renome de estágio NÃO passa por aqui (vai via PUT /funnel →
-    // repo.update direto), então não zera o contador. Cliente pode mandar stageSince
-    // explícito (ex.: optimistic move) — nesse caso respeitamos.
+    // Movimento de estágio de LEAD passa pelo applyStageMove (lead-flow.js):
+    // recarimba stageSince (respeitando o explícito do optimistic move), zera o
+    // contador de tentativas, preenche/limpa motivo de perda, re-agenda o próximo
+    // toque pela cadência e loga a activity `stage` (histórico do funil). Renome
+    // de estágio NÃO passa por aqui (vai via PUT /funnel → repo.update direto).
     let patch = req.body;
-    if ((collection === "leads" || collection === "deals") && typeof req.body.stage === "string" && req.body.stageSince == null) {
+    if (collection === "leads" && typeof req.body.stage === "string") {
+      const cur = await repo.get(collection, id);
+      if (cur && cur.stage !== req.body.stage) {
+        patch = { ...req.body, ...(await applyStageMove(repo, { lead: cur, toStage: req.body.stage, patch: req.body, author: req.authUser?.id || "api" })) };
+      }
+    }
+    if (collection === "deals" && typeof req.body.stage === "string" && req.body.stageSince == null) {
       const cur = await repo.get(collection, id);
       if (cur && cur.stage !== req.body.stage) patch = { ...req.body, stageSince: new Date().toISOString() };
     }
@@ -391,14 +446,16 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   });
 }
 
-// Conversão lead → cliente: quando um lead chega no estágio de ganho, nasce o
-// customer com `startedAt` (base dos marcos de pós-venda e do CAC) e o link
-// bidirecional lead.customerId / customer.leadId. Idempotente: se o lead já
-// gerou cliente, não duplica. A receita continua vindo das assinaturas
-// (syncCustomerArr) — aqui só nasce o cadastro.
-const WON_STAGES = new Set(["Ganho", "Closed Won"]);
+// Conversão lead → cliente: quando um lead chega no estágio de ganho (kind
+// `ganho` no funil do produto; fallback por nome "Ganho"/"Closed Won" pra SaaS
+// sem funil configurado), nasce o customer com `startedAt` (base dos marcos de
+// pós-venda e do CAC) e o link bidirecional lead.customerId / customer.leadId.
+// Idempotente: se o lead já gerou cliente, não duplica. A receita continua
+// vindo das assinaturas (syncCustomerArr) — aqui só nasce o cadastro.
 export async function convertWonLead(repo, lead) {
-  if (!lead || !lead.saas || !WON_STAGES.has(lead.stage)) return null;
+  if (!lead || !lead.saas) return null;
+  const product = await repo.get("products", lead.saas);
+  if (!isWon(product, lead.stage)) return null;
   const customers = await repo.list("customers");
   if (customers.some((c) => c.leadId === lead.id)) return null;
   if (lead.customerId && customers.some((c) => c.id === lead.customerId)) return null;
@@ -415,6 +472,12 @@ export async function convertWonLead(repo, lead) {
     startedAt: new Date().toISOString(),
   });
   await repo.update("leads", lead.id, { customerId: customer.id });
+  try {
+    await logActivity(repo, {
+      saas: lead.saas, lead: lead.id, type: "system",
+      meta: { event: "customer_created", customerId: customer.id },
+    });
+  } catch { /* timeline é best-effort */ }
   return customer;
 }
 

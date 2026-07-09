@@ -193,3 +193,36 @@ body[data-density="regular"] { font-size: 14px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 999px; border: 3px solid var(--bg-0); }
 ::-webkit-scrollbar-thumb:hover { background: var(--line-strong); }
+
+/* ── Responsivo ─────────────────────────────────────────────── */
+/* Padding horizontal padrão das telas — encolhe no mobile. As telas usam
+   var(--pad-x) nos paddings inline no lugar do 24px fixo. */
+:root { --pad-x: 24px; }
+
+/* Altura do shell: dvh evita o pulo da barra de endereço no mobile. */
+.app-shell { height: 100vh; height: 100dvh; }
+
+/* Grid de N colunas que empilha no mobile; as colunas vêm do inline style
+   via custom property (--cols). */
+.resp-cols { display: grid; grid-template-columns: var(--cols, 1fr); }
+
+/* Tabela/grade larga: rola na horizontal dentro do card no mobile. */
+.tbl-x { overflow-x: auto; }
+.tbl-x > * { min-width: 720px; }
+.tbl-x table { min-width: 680px; }
+
+/* Editor com preview lado a lado (forms/propostas): empilha no mobile,
+   preview embaixo com altura própria. */
+.editor-split { display: grid; grid-template-columns: var(--cols, 1fr); }
+
+@media (max-width: 900px) {
+  :root { --pad-x: 14px; }
+  .resp-cols { grid-template-columns: 1fr; }
+  .editor-split { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1.15fr) minmax(0, 1fr); }
+  .hide-mobile { display: none !important; }
+}
+
+@media (max-width: 768px) {
+  /* iOS dá zoom automático em campo com fonte < 16px */
+  input, select, textarea { font-size: 16px !important; }
+}

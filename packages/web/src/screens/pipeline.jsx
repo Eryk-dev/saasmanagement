@@ -4,24 +4,36 @@ import { PageHead, Pill } from "../components/viz.jsx";
 import { leadScoreTone, leadAge, waLink, leadTier } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-// Pipeline — Kanban + List + Forecast tabs. Drag-and-drop between columns.
+import {
+  stageKind, phaseOf, PHASES, openStages, isWonStage, cadenceOf,
+  nextTouchPill, lossReasonLabel,
+} from "../lib/funnel.js";
+import { usersByRole, userTone, displayName, currentUser } from "../lib/users.js";
+import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
+// Pipeline — Kanban + List + Agenda + Análise. Drag-and-drop between columns.
 // Funil unificado: os LEADS são os cards do pipeline (window.SEED.LEADS). Cada
 // lead já carrega seu `saas` + `stage`. Uma cópia local deixa o drag-and-drop
 // mutar otimisticamente antes de persistir (PATCH /api/leads/:id).
-// Filtros: SaaS, prioridade (P0/P1/P2).
+// Processo SDR → Closer: toda decisão de comportamento vem do `kind` do estágio
+// (lib/funnel.js), nunca do nome. Movimentos gateados: handoff SDR→Closer exige
+// closer; perda/desqualificação exige motivo (components/stage-move.jsx).
 
-const { useState: useStP, useMemo: useMP } = React;
+const { useState: useStP, useMemo: useMP, useEffect: useEfP } = React;
 
 function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   const { SAAS } = window.SEED;
   const { openForm } = useData();
   const [activeSaas, setActiveSaas] = useStP(saasId || "leverads");
   // Aba ativa persistida (localStorage): sobrevive ao refresh da página e à
-  // remontagem da tela quando o tempo real recarrega o SEED.
-  const VIEWS = ["kanban", "all", "list", "agenda", "forecast"];
+  // remontagem da tela quando o tempo real recarrega o SEED. "forecast" é o
+  // nome antigo da aba Análise — alias pra não perder a preferência salva.
+  const VIEWS = ["kanban", "all", "list", "agenda", "analise"];
   const [view, setViewState] = useStP(() => {
-    try { const v = localStorage.getItem("cockpit_pipeline_view"); return VIEWS.includes(v) ? v : "kanban"; }
-    catch { return "kanban"; }
+    try {
+      const v = localStorage.getItem("cockpit_pipeline_view");
+      if (v === "forecast") return "analise";
+      return VIEWS.includes(v) ? v : "kanban";
+    } catch { return "kanban"; }
   });
   const setView = (v) => {
     setViewState(v);
@@ -31,19 +43,49 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   const [highlight, setHighlight] = useStP(jumpFilter?.stage || null);
   const [selected, setSelected] = useStP(new Set());
   const [pri, setPri] = useStP("all");
+  // Fase do processo (fatia as colunas visíveis) + pessoa (dono/closer).
+  const [phase, setPhase] = useStP("all"); // all | sdr | closer
+  const [person, setPersonState] = useStP(() => {
+    try { return localStorage.getItem("cockpit_pipeline_person") || ""; } catch { return ""; }
+  });
+  const setPerson = (p) => {
+    setPersonState(p);
+    try { localStorage.setItem("cockpit_pipeline_person", p); } catch { /* ignore */ }
+  };
+  // Gate de movimento pendente (handoff / motivo de perda).
+  const [pendingMove, setPendingMove] = useStP(null); // { lead, toStage, gate, saasCfg }
 
   const s = SAAS.find(x => x.id === activeSaas) || SAAS[0];
+  const saasCfgOf = (l) => SAAS.find(x => x.id === l.saas);
 
-  // Priority filter is global (kanban + list + all). Forecast deliberately uses the
+  const me = currentUser()?.id || "";
+  const personMatch = (l) => {
+    if (!person) return true;
+    const who = person === "me" ? me : person;
+    return who ? l.owner === who || l.closer === who : true;
+  };
+
+  // Priority filter is global (kanban + list + all). Análise deliberately uses the
   // full product pipeline so the $ totals don't shrink when narrowing by priority.
-  const priLeads = pri === "all" ? leads : leads.filter(l => l.priority === pri);
+  const priLeads = (pri === "all" ? leads : leads.filter(l => l.priority === pri)).filter(personMatch);
   const saasLeads = priLeads.filter(l => l.saas === activeSaas);
   const saasAll = leads.filter(l => l.saas === activeSaas);
 
   // Group active-product leads by stage
   const stages = s ? s.funnel.map(f => f.stage) : [];
-  // Config por estágio vinda de Ajustes (cor + regra "parado → Nd").
+  // Config por estágio vinda de Ajustes (cor + regra "parado → Nd" + cadência).
   const stageMeta = s ? Object.fromEntries(s.funnel.map(f => [f.stage, f])) : {};
+  // Fatia por fase do processo: SDR vê a pré-venda (+ Desqualificado, o terminal
+  // dela); Closer vê da call em diante (sem Desqualificado).
+  const visibleStages = useMP(() => {
+    if (phase === "all") return stages;
+    return stages.filter(st => {
+      const k = stageKind(s, st);
+      const p = phaseOf(k);
+      if (phase === "sdr") return p === "sdr" || k === "desqualificado";
+      return (p === "closer" || p === "entrega" || p === "fim") && k !== "desqualificado";
+    });
+  }, [stages.join("|"), phase, activeSaas]);
   const byStage = useMP(() => {
     const m = {}; stages.forEach(st => m[st] = []);
     saasLeads.forEach(l => {
@@ -51,22 +93,51 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
       m[st].push(l);
     });
     return m;
-  }, [leads, activeSaas, pri, stages.join("|")]);
+  }, [leads, activeSaas, pri, person, stages.join("|")]);
 
-  function moveLeadTo(leadId, stage) {
-    // stageSince local = agora: o contador "dias na coluna" zera na hora (o backend
-    // recarimba igual ao detectar a troca de estágio no PATCH). Os slots de
-    // tentativa também zeram: a contagem é sempre da etapa atual.
-    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stage, stageSince: new Date().toISOString(), attempts: [] } : l));
-    // Persist the move to the API (optimistic — the UI already updated above).
-    api.update("leads", leadId, { stage, attempts: [] }).catch(err => console.warn("lead move not persisted:", err.message));
+  // Movimento otimista: o servidor recarimba stageSince, zera o contador de
+  // tentativas, preenche motivo/GPS (applyStageMove) — o local espelha o básico.
+  function commitMoveLocal(leadId, patch) {
+    setLeads(prev => prev.map(l => l.id === leadId
+      ? { ...l, ...patch, stageSince: new Date().toISOString(), stageAttempts: 0 }
+      : l));
   }
 
-  // Edição inline de campos do card (ex.: data da call, valor/período da proposta).
-  // Otimista: atualiza a cópia local e persiste o patch (PATCH /api/leads/:id).
+  // Todo movimento passa pelo gate: handoff SDR→Closer e perda pedem input.
+  function requestMove(leadId, stage) {
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead || lead.stage === stage) return;
+    const cfg = saasCfgOf(lead);
+    const gate = moveGate(cfg, lead, stage);
+    if (gate) { setPendingMove({ lead, toStage: stage, gate, saasCfg: cfg }); return; }
+    commitMoveLocal(leadId, { stage });
+    api.update("leads", leadId, { stage }).catch(err => console.warn("lead move not persisted:", err.message));
+  }
+
+  // Edição inline de campos do card (ex.: responsável). Otimista.
   function patchLead(leadId, patch) {
     setLeads(prev => prev.map(l => l.id === leadId ? { ...l, ...patch } : l));
     api.update("leads", leadId, patch).catch(err => console.warn("lead patch not persisted:", err.message));
+  }
+
+  // Toque registrado direto no card (dots de cadência): vira activity na
+  // timeline; o servidor conta a tentativa e re-agenda o próximo passo sozinho
+  // (onActivityCreated). O local espelha pra resposta visual imediata.
+  function logTouch(lead, stage) {
+    const cad = cadenceOf(saasCfgOf(lead), stage);
+    const now = Date.now();
+    setLeads(prev => prev.map(l => l.id === lead.id ? {
+      ...l,
+      stageAttempts: (Number(l.stageAttempts) || 0) + 1,
+      lastActivityAt: new Date(now).toISOString(),
+      lastActivityType: "call",
+      ...(cad.retryDays ? { nextActionAt: new Date(now + cad.retryDays * 86400000).toISOString() } : {}),
+    } : l));
+    api.logActivity({
+      saas: lead.saas, lead: lead.id, type: "call",
+      text: "tentativa de contato (card)",
+      author: me,
+    }).catch(err => console.warn("toque não registrado:", err.message));
   }
 
   if (!s) return (
@@ -77,17 +148,16 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     />
   );
 
-  // Abertos = estágios antes de "Ganho" (pós-venda/descarte ficam fora da conta).
-  const wonIdx = stages.indexOf("Ganho");
-  const openStages = wonIdx >= 0 ? stages.slice(0, wonIdx) : stages;
-  const openLeads = saasAll.filter(l => openStages.includes(l.stage));
+  // Abertos = régua antes do ganho (pós-venda/descarte ficam fora da conta).
+  const open = openStages(s);
+  const openLeads = saasAll.filter(l => open.includes(l.stage));
   const newWeek = saasAll.filter(l => l.createdAt && Date.now() - new Date(l.createdAt).getTime() <= 7 * 86400000).length;
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <PageHead title="Pipeline" sub={`${openLeads.length} ${openLeads.length === 1 ? "lead aberto" : "leads abertos"} · ${newWeek} ${newWeek === 1 ? "novo" : "novos"} esta semana`}>
         <span title="Classificação do lead: soma de contas operadas + anúncios publicados"
-          style={{ display: "inline-flex", alignItems: "center", gap: 6, marginRight: 4 }}>
+          className="hide-mobile" style={{ display: "inline-flex", alignItems: "center", gap: 6, marginRight: 4 }}>
           {[["A", "#16a34a", "#fff"], ["B", "#eab308", "#463500"], ["C", "#9aa2ad", "#fff"]].map(([g, tone, fg]) => (
             <span key={g} className="tnum" style={{
               width: 18, height: 18, borderRadius: 5, display: "inline-flex", alignItems: "center", justifyContent: "center",
@@ -98,7 +168,9 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
         </span>
         {view !== "all" && <SaasTabs active={activeSaas} onSelect={setActiveSaas} />}
         <ViewToggle view={view} onChange={setView} />
+        {(view === "kanban" || view === "all") && <PhaseFilter phase={phase} onChange={setPhase} />}
         <PriorityFilter pri={pri} onChange={setPri} />
+        <PersonFilter person={person} onChange={setPerson} me={me} />
         {selected.size > 0 && (
           <span className="mono" style={{ fontSize: 11, color: "var(--accent)" }}>{selected.size} selecionados</span>
         )}
@@ -111,23 +183,40 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
       {/* Body */}
       {view === "kanban" && (
         <KanbanBoard
-          stages={stages}
+          s={s}
+          stages={visibleStages}
           stageMeta={stageMeta}
           byStage={byStage}
           highlight={highlight}
-          onMove={moveLeadTo}
+          onMove={requestMove}
           onPatch={patchLead}
+          onLogTouch={logTouch}
           selected={selected}
           setSelected={setSelected}
           onOpenLead={onOpenLead}
         />
       )}
       {view === "all" && (
-        <AllPipelines leads={priLeads} onMove={moveLeadTo} onPatch={patchLead} highlight={highlight} onOpenLead={onOpenLead} />
+        <AllPipelines leads={priLeads} onMove={requestMove} onPatch={patchLead} onLogTouch={logTouch} highlight={highlight} onOpenLead={onOpenLead} phase={phase} />
       )}
       {view === "list" && <LeadList leads={saasLeads} />}
       {view === "agenda" && <AgendaView leads={saasAll} onOpenLead={onOpenLead} />}
-      {view === "forecast" && <ForecastView s={s} leads={saasAll} />}
+      {view === "analise" && <AnaliseView s={s} leads={saasAll} />}
+
+      {pendingMove && (
+        <MoveLeadModal
+          lead={pendingMove.lead}
+          toStage={pendingMove.toStage}
+          gate={pendingMove.gate}
+          saasCfg={pendingMove.saasCfg}
+          onCancel={() => setPendingMove(null)}
+          onConfirm={(patch, extra) => {
+            commitMoveLocal(pendingMove.lead.id, patch);
+            applyGatedMove(patch, extra, pendingMove.lead.id).catch(err => console.warn("movimento não persistido:", err.message));
+            setPendingMove(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -154,7 +243,7 @@ function SaasTabs({ active, onSelect }) {
 }
 
 function ViewToggle({ view, onChange }) {
-  const views = [["kanban","Kanban"],["all","Todos os pipelines"],["list","Lista"],["agenda","Agenda"],["forecast","Previsão"]];
+  const views = [["kanban","Kanban"],["all","Todos os pipelines"],["list","Lista"],["agenda","Agenda"],["analise","Análise"]];
   return (
     <div style={{ display: "flex", gap: 2 }}>
       {views.map(([k, label]) => (
@@ -164,6 +253,23 @@ function ViewToggle({ view, onChange }) {
           color: view === k ? "var(--fg-1)" : "var(--fg-3)",
           fontSize: 12,
           border: "1px solid " + (view === k ? "var(--line-2)" : "transparent"),
+        }}>{label}</button>
+      ))}
+    </div>
+  );
+}
+
+// Fatia o board pela fase do processo (SDR = pré-venda; Closer = call em diante).
+function PhaseFilter({ phase, onChange }) {
+  const opts = [["all", "Todas"], ["sdr", "SDR"], ["closer", "Closer"]];
+  return (
+    <div style={{ display: "flex", gap: 2, padding: 2, background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)" }}>
+      {opts.map(([k, label]) => (
+        <button key={k} onClick={() => onChange(k)} style={{
+          padding: "3px 9px", borderRadius: 4, fontSize: 11, fontFamily: "var(--mono)",
+          background: phase === k ? "var(--bg-0)" : "transparent",
+          color: phase === k ? "var(--fg-1)" : "var(--fg-3)",
+          border: "1px solid " + (phase === k ? "var(--line-2)" : "transparent"),
         }}>{label}</button>
       ))}
     </div>
@@ -188,13 +294,36 @@ function PriorityFilter({ pri, onChange }) {
   );
 }
 
-// Só números reais aqui: TCV aberto (estágios antes de Ganho), previsão
-// ponderada pela conversão do funil e fechado no mês (Ganho + stageSince).
+// Filtro por pessoa: "meus" (dono OU closer = usuário logado) ou alguém do time.
+function PersonFilter({ person, onChange, me }) {
+  const users = window.SEED?.USERS || [];
+  return (
+    <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+      <button onClick={() => onChange(person === "me" ? "" : "me")} disabled={!me}
+        title={me ? "só leads onde sou dono ou closer" : "faça login pra filtrar os seus"}
+        style={{
+          height: 24, padding: "0 9px", borderRadius: 4, fontSize: 11, fontFamily: "var(--mono)",
+          border: "1px solid " + (person === "me" ? "var(--accent-line)" : "var(--line-1)"),
+          background: person === "me" ? "var(--accent-soft)" : "var(--bg-2)",
+          color: person === "me" ? "var(--accent)" : "var(--fg-3)",
+          opacity: me ? 1 : 0.5,
+        }}>meus</button>
+      {users.length > 0 && (
+        <select value={person === "me" ? "" : person} onChange={(e) => onChange(e.target.value)}
+          style={{ height: 24, padding: "0 6px", borderRadius: 4, fontSize: 11, background: "var(--bg-2)", border: "1px solid var(--line-1)", color: person && person !== "me" ? "var(--fg-1)" : "var(--fg-3)" }}>
+          <option value="">time todo</option>
+          {users.map(u => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
+        </select>
+      )}
+    </div>
+  );
+}
+
+// Só números reais aqui: TCV aberto (régua antes do ganho), previsão
+// ponderada pela conversão do funil e fechado no mês (kind ganho + stageSince).
 function ForecastStrip({ s, leads }) {
-  const stages = s.funnel.map(f => f.stage);
-  const wonIdx = stages.indexOf("Ganho");
-  const openStages = new Set(wonIdx >= 0 ? stages.slice(0, wonIdx) : stages);
-  const open = leads.filter(l => openStages.has(l.stage));
+  const openSet = new Set(openStages(s));
+  const open = leads.filter(l => openSet.has(l.stage));
   const tcv = open.reduce((a, l) => a + (l.amount || 0), 0);
   const weighted = open.reduce((a, l) => {
     const stageIdx = s.funnel.findIndex(f => f.stage === l.stage);
@@ -202,10 +331,10 @@ function ForecastStrip({ s, leads }) {
     return a + (l.amount || 0) * probability;
   }, 0);
   const month = new Date().toISOString().slice(0, 7);
-  const wonLeads = leads.filter(l => l.stage === "Ganho" && String(l.stageSince || "").slice(0, 7) === month);
+  const wonLeads = leads.filter(l => isWonStage(s, l.stage) && String(l.stageSince || "").slice(0, 7) === month);
   const won = wonLeads.reduce((a, l) => a + (l.amount || 0), 0);
   return (
-    <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, alignItems: "center" }}>
+    <div style={{ padding: "12px var(--pad-x)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 16, alignItems: "center" }}>
       <ForecastCell label="Valor aberto" v={window.fmt.money(tcv)} sub={`${open.length} leads em jogo`} />
       <ForecastCell label="Previsão ponderada" v={window.fmt.money(weighted)} sub="probabilidade × valor" />
       <ForecastCell label="Ganho no mês" v={window.fmt.money(won)} sub={`${wonLeads.length} ${wonLeads.length === 1 ? "fechado" : "fechados"}`} />
@@ -224,26 +353,32 @@ function ForecastCell({ label, v, sub }) {
 }
 
 // ─────────────────────────────────────────────── All pipelines (stacked)
-function AllPipelines({ leads, onMove, onPatch, highlight, onOpenLead }) {
+function AllPipelines({ leads, onMove, onPatch, onLogTouch, highlight, onOpenLead, phase }) {
   const { SAAS } = window.SEED;
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "14px 0" }}>
       {SAAS.map(s => (
-        <PipelineBand key={s.id} s={s} leads={leads.filter(l => l.saas === s.id)} onMove={onMove} onPatch={onPatch} highlight={highlight} onOpenLead={onOpenLead} />
+        <PipelineBand key={s.id} s={s} leads={leads.filter(l => l.saas === s.id)} onMove={onMove} onPatch={onPatch} onLogTouch={onLogTouch} highlight={highlight} onOpenLead={onOpenLead} phase={phase} />
       ))}
     </div>
   );
 }
 
-function PipelineBand({ s, leads, onMove, onPatch, highlight, onOpenLead }) {
+function PipelineBand({ s, leads, onMove, onPatch, onLogTouch, highlight, onOpenLead, phase = "all" }) {
   const [dragging, setDragging] = useStP(null);
   const [noop, setNoop] = useStP(new Set());
-  const stages = s.funnel.map(f => f.stage);
+  const allStages = s.funnel.map(f => f.stage);
+  const stages = phase === "all" ? allStages : allStages.filter(st => {
+    const k = stageKind(s, st);
+    const p = phaseOf(k);
+    if (phase === "sdr") return p === "sdr" || k === "desqualificado";
+    return (p === "closer" || p === "entrega" || p === "fim") && k !== "desqualificado";
+  });
   const stageMeta = Object.fromEntries(s.funnel.map(f => [f.stage, f]));
   const byStage = {};
-  stages.forEach(st => byStage[st] = []);
+  allStages.forEach(st => byStage[st] = []);
   leads.forEach(l => {
-    const st = stages.includes(l.stage) ? l.stage : stages[0];
+    const st = allStages.includes(l.stage) ? l.stage : allStages[0];
     byStage[st].push(l);
   });
   const tcv = leads.reduce((a, l) => a + (l.amount || 0), 0);
@@ -252,7 +387,7 @@ function PipelineBand({ s, leads, onMove, onPatch, highlight, onOpenLead }) {
   return (
     <div style={{ marginBottom: 8, borderBottom: "1px solid var(--line-1)", paddingBottom: 8 }}>
       {/* Band header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 24px 10px", position: "sticky", left: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px var(--pad-x) 10px", position: "sticky", left: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ width: 8, height: 8, borderRadius: 2, background: tone }} />
           <span style={{ fontSize: 14, fontWeight: 500 }}>{s.name}</span>
@@ -265,16 +400,18 @@ function PipelineBand({ s, leads, onMove, onPatch, highlight, onOpenLead }) {
         </div>
       </div>
       {/* Horizontal kanban */}
-      <div style={{ overflowX: "auto", padding: "0 24px 4px", display: "grid", gridAutoFlow: "column", gridAutoColumns: "minmax(220px, 1fr)", gap: 10, alignItems: "start" }}>
+      <div style={{ overflowX: "auto", padding: "0 var(--pad-x) 4px", display: "grid", gridAutoFlow: "column", gridAutoColumns: "minmax(220px, 1fr)", gap: 10, alignItems: "start" }}>
         {stages.map((st, i) => (
           <KanbanColumn key={st}
+            s={s}
             stage={st}
             meta={stageMeta[st]}
             cards={byStage[st] || []}
             highlight={highlight === st}
-            stages={stages}
+            phaseStart={phaseKicker(s, stages, i)}
             onMove={onMove}
             onPatch={onPatch}
+            onLogTouch={onLogTouch}
             onDropCard={(id) => { onMove(id, st); setDragging(null); }}
             dragging={dragging}
             setDragging={setDragging}
@@ -290,19 +427,30 @@ function PipelineBand({ s, leads, onMove, onPatch, highlight, onOpenLead }) {
 }
 
 // ─────────────────────────────────────────────── Kanban
-function KanbanBoard({ stages, stageMeta = {}, byStage, highlight, onMove, onPatch, selected, setSelected, onOpenLead }) {
+// Kicker de fase (SDR / CLOSER / ENTREGA / FIM) mostrado na 1ª coluna de cada
+// grupo — a separação visual do processo.
+function phaseKicker(s, stages, i) {
+  const p = phaseOf(stageKind(s, stages[i]));
+  if (!p) return null;
+  const prev = i > 0 ? phaseOf(stageKind(s, stages[i - 1])) : null;
+  return p !== prev ? PHASES[p]?.label || null : null;
+}
+
+function KanbanBoard({ s, stages, stageMeta = {}, byStage, highlight, onMove, onPatch, onLogTouch, selected, setSelected, onOpenLead }) {
   const [dragging, setDragging] = useStP(null);
   return (
     <div style={{ flex: 1, overflowX: "auto", padding: 14, display: "grid", gridAutoFlow: "column", gridAutoColumns: "minmax(260px, 1fr)", gap: 10, alignItems: "start" }}>
       {stages.map((st, i) => (
         <KanbanColumn key={st}
+          s={s}
           stage={st}
           meta={stageMeta[st]}
           cards={byStage[st] || []}
           highlight={highlight === st}
-          stages={stages}
+          phaseStart={phaseKicker(s, stages, i)}
           onMove={onMove}
           onPatch={onPatch}
+          onLogTouch={onLogTouch}
           onDropCard={(id) => { onMove(id, st); setDragging(null); }}
           dragging={dragging}
           setDragging={setDragging}
@@ -326,7 +474,7 @@ function daysInStage(card) {
   return Math.max(0, Math.floor(ms / 86400000));
 }
 
-function KanbanColumn({ stage, meta, cards, highlight, stages, onMove, onPatch, onDropCard, dragging, setDragging, selected, setSelected, compact, onOpenLead }) {
+function KanbanColumn({ s, stage, meta, cards, highlight, phaseStart, onMove, onPatch, onLogTouch, onDropCard, dragging, setDragging, selected, setSelected, compact, onOpenLead }) {
   const [over, setOver] = useStP(false);
   const total = cards.reduce((a, l) => a + (l.amount || 0), 0);
   // Card "parado": dias na coluna ≥ staleDays de Ajustes; sem config, 5 dias.
@@ -350,12 +498,18 @@ function KanbanColumn({ stage, meta, cards, highlight, stages, onMove, onPatch, 
       style={{
         background: "var(--bg-inset)",
         border: "1px solid " + (highlight ? "var(--accent-line)" : over ? "var(--accent-line)" : "var(--line-1)"),
+        borderTop: phaseStart ? "3px solid var(--line-strong)" : undefined,
         borderRadius: "var(--r-3)",
         padding: 8,
         minHeight: compact ? 120 : 240,
         display: "flex", flexDirection: "column", gap: 6,
         boxShadow: highlight ? "0 0 0 1px var(--accent-line)" : "none",
       }}>
+      {phaseStart && (
+        <div className="mono" style={{ fontSize: 9, letterSpacing: "0.14em", color: "var(--fg-4)", padding: "0 4px", textTransform: "uppercase" }}>
+          {phaseStart}
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "2px 4px 8px" }}>
         <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "var(--display)", display: "flex", alignItems: "center", gap: 7 }}>
           {meta?.color && <span style={{ width: 8, height: 8, borderRadius: 2, background: meta.color, flexShrink: 0 }} />}
@@ -367,11 +521,12 @@ function KanbanColumn({ stage, meta, cards, highlight, stages, onMove, onPatch, 
       {ordered.map(l => (
         <LeadCard
           key={l.id} d={l}
+          s={s}
           stale={isStale(l)}
-          stages={stages}
           currentStage={stage}
           onMove={onMove}
           onPatch={onPatch}
+          onLogTouch={onLogTouch}
           onDragStart={() => setDragging(l.id)}
           selected={selected.has(l.id)}
           onSelect={() => {
@@ -385,85 +540,91 @@ function KanbanColumn({ stage, meta, cards, highlight, stages, onMove, onPatch, 
   );
 }
 
-// Responsáveis por etapa: closers fazem a call (coluna "Call closer"), o Eryk
-// faz a integração (coluna "Integração"). Marcado no card (campo lead.closer)
-// e usado como cor dos eventos na Agenda.
-const CLOSERS = [
-  { id: "leonardo", short: "Leo", name: "Leonardo", tone: "#0f766e" },
-  { id: "jonathan", short: "Jon", name: "Jonathan", tone: "#6d28d9" },
-];
-const INTEGRATORS = [
-  { id: "eryk", short: "Eryk", name: "Eryk", tone: "#c2410c" },
-];
-const TEAM = [...CLOSERS, ...INTEGRATORS];
-const STAGE_TEAM = { "Call closer": CLOSERS, "Integração": INTEGRATORS };
+// Picker de responsável por fase: SDR (dono) na pré-venda, closer da call em
+// diante, integrador na entrega. Lê o time real (users + roles, Ajustes → Equipe).
+function pickerFor(s, stage) {
+  const k = stageKind(s, stage);
+  const p = phaseOf(k);
+  if (p === "sdr") {
+    const opts = usersByRole("sdr");
+    return opts.length ? { field: "owner", options: opts, hint: "SDR dono do lead" } : null;
+  }
+  if (p === "closer") {
+    const opts = usersByRole("closer");
+    return opts.length ? { field: "closer", options: opts, hint: "closer responsável" } : null;
+  }
+  if (k === "integracao") {
+    const opts = usersByRole("integrator");
+    return opts.length ? { field: "closer", options: opts, hint: "quem faz a integração" } : null;
+  }
+  return null;
+}
 
-function CloserPicker({ d, onPatch, options }) {
+function TeamPicker({ d, field, options, hint, onPatch }) {
   return (
     <span style={{ display: "inline-flex", gap: 3, marginLeft: "auto", flexShrink: 0 }}>
-      {options.map(c => {
-        const on = d.closer === c.id;
+      {options.map(u => {
+        const on = d[field] === u.id;
+        const tone = `oklch(0.55 0.13 ${userTone(u.id)})`;
+        const short = (u.name || u.id).split(" ")[0].slice(0, 4);
         return (
-          <button key={c.id} draggable={false}
-            onClick={(e) => { e.stopPropagation(); onPatch && onPatch(d.id, { closer: on ? "" : c.id }); }}
-            title={on ? `Responsável: ${c.name} (clique pra desmarcar)` : `Marcar ${c.name} como responsável`}
+          <button key={u.id} draggable={false}
+            onClick={(e) => { e.stopPropagation(); onPatch && onPatch(d.id, { [field]: on ? "" : u.id }); }}
+            title={on ? `${hint}: ${u.name || u.id} (clique pra desmarcar)` : `Marcar ${u.name || u.id} · ${hint}`}
             style={{
               height: 18, padding: "0 7px", borderRadius: 9,
               fontSize: 10, fontWeight: 700, fontFamily: "var(--mono)",
-              background: on ? c.tone : "var(--bg-1)",
+              background: on ? tone : "var(--bg-1)",
               color: on ? "#fff" : "var(--fg-3)",
-              border: "1px solid " + (on ? c.tone : "var(--line-2)"),
+              border: "1px solid " + (on ? tone : "var(--line-2)"),
               cursor: "pointer",
-            }}>{c.short}</button>
+            }}>{short}</button>
         );
       })}
     </span>
   );
 }
 
-// Slots de tentativa por etapa (cadência do time): Qualificação = 5 ligações
-// (máx. 1 por dia), Call closer = 3 remarcações da call, Negociação = 5 chamadas.
-// Cada slot preenchido = uma tentativa feita sem sucesso (lead.attempts guarda a
-// data de cada uma). Slots cheios = alerta "esgotado" (mover é decisão manual);
-// mudou de etapa = zera (ver moveLeadTo).
-const ATTEMPT_SLOTS = { "Qualificação": 5, "Call closer": 3, "Negociação": 5 };
-const ATTEMPT_HINT = {
-  "Qualificação": "tentativas de ligação (1 por dia)",
-  "Call closer": "remarcações da call",
-  "Negociação": "tentativas de chamada",
-};
-
-function AttemptSlots({ d, stage, onPatch }) {
-  const total = ATTEMPT_SLOTS[stage] || 0;
+// Dots de cadência do estágio (funnel[].cadence de Ajustes): cada dot = um toque
+// feito nesta etapa (lead.stageAttempts, mantido pelo servidor a partir da
+// timeline). Clicar registra o toque (activity) — e o GPS re-agenda sozinho.
+function AttemptSlots({ d, s, stage, onLogTouch }) {
+  const cad = cadenceOf(s, stage);
+  const total = Number(cad.maxAttempts) || 0;
   if (!total) return null;
-  const attempts = Array.isArray(d.attempts) ? d.attempts.slice(0, total) : [];
-  const exhausted = attempts.length >= total;
+  const legacy = Array.isArray(d.attempts) ? d.attempts.length : 0;
+  const count = Math.min(total, Math.max(Number(d.stageAttempts) || 0, legacy));
+  const exhausted = count >= total;
+  // Trava de cadência: com retryDays, 1 toque por janela — o último toque de
+  // hoje trava novo clique (o de amanhã o GPS cobra via nextActionAt).
   const today = new Date().toDateString();
-  // Qualificação: 1 tentativa por dia — o slot de hoje marcado trava novo clique.
-  const dailyLock = stage === "Qualificação" && attempts.some(a => new Date(a).toDateString() === today);
+  const touchedToday = ["whatsapp", "call", "email", "meeting"].includes(d.lastActivityType) &&
+    d.lastActivityAt && new Date(d.lastActivityAt).toDateString() === today;
+  const legacyToday = Array.isArray(d.attempts) && d.attempts.some(a => new Date(a).toDateString() === today);
+  const dailyLock = (Number(cad.retryDays) || 0) >= 1 && (touchedToday || legacyToday);
   const locked = exhausted || dailyLock;
   const mark = (e) => {
     e.stopPropagation();
     if (locked) return;
-    onPatch && onPatch(d.id, { attempts: [...attempts, new Date().toISOString()] });
+    onLogTouch && onLogTouch(d, stage);
   };
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
       {Array.from({ length: total }, (_, i) => {
-        const at = attempts[i];
+        const filled = i < count;
         return (
           <span key={i}
-            onClick={at ? (e) => e.stopPropagation() : mark}
+            onClick={filled ? (e) => e.stopPropagation() : mark}
             draggable={false}
-            title={at
-              ? `tentativa ${i + 1}/${total} · ${new Date(at).toLocaleDateString("pt-BR")}`
-              : dailyLock ? "tentativa de hoje já registrada"
-              : `marcar tentativa ${i + 1}/${total} · ${ATTEMPT_HINT[stage]}`}
+            title={filled
+              ? `toque ${i + 1}/${total} registrado`
+              : dailyLock ? "toque de hoje já registrado — próximo no prazo da cadência"
+              : `registrar toque ${i + 1}/${total} (vira contato na timeline)`}
             style={{
               width: 11, height: 11, borderRadius: 3, flexShrink: 0,
-              background: at ? (exhausted ? "var(--neg)" : "var(--warn)") : "var(--bg-1)",
-              border: "1px solid " + (at ? "transparent" : locked ? "var(--line-1)" : "var(--line-2)"),
-              cursor: at ? "default" : locked ? "not-allowed" : "pointer",
+              background: filled ? (exhausted ? "var(--neg)" : "var(--warn)") : "var(--bg-1)",
+              border: "1px solid " + (filled ? "transparent" : locked ? "var(--line-1)" : "var(--line-2)"),
+              cursor: filled ? "default" : locked ? "not-allowed" : "pointer",
             }} />
         );
       })}
@@ -472,32 +633,21 @@ function AttemptSlots({ d, stage, onPatch }) {
   );
 }
 
-// Pill do próximo contato (callAt): atrasado (neg), hoje com hora (pos),
-// futuro (mut). Sem callAt em estágio aberto, cobra o próximo passo (warn).
-function nextContactPill(d) {
-  if (!d.callAt) return { tone: "warn", text: "sem próximo passo" };
-  const t = new Date(d.callAt);
-  const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
-  const endToday = new Date(); endToday.setHours(23, 59, 59, 999);
-  if (t < startToday) return { tone: "neg", text: "atrasado" };
-  if (t <= endToday) return { tone: "pos", text: `hoje ${t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` };
-  return { tone: "mut", text: t.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "") };
-}
-
 // Cartão compacto (padrão Pipedrive): nome, pills de tempo na etapa + próximo
 // contato + novo, e valor. O fundo inteiro é tingido pela cor do potencial
 // (contas + anúncios). TODA a edição vive no drawer do lead.
-function LeadCard({ d, stale, currentStage, onDragStart, selected, onSelect, onOpen, onPatch }) {
+function LeadCard({ d, s, stale, currentStage, onDragStart, selected, onSelect, onOpen, onPatch, onLogTouch }) {
   const tier = leadTier(d);
   const days = daysInStage(d);
   const wa = waLink(d.phone);
   const isNew = d.createdAt && Date.now() - new Date(d.createdAt).getTime() <= 2 * 86400000;
-  const saasCfg = (window.SEED?.SAAS || []).find((x) => x.id === d.saas);
-  const wonIdx = (saasCfg?.funnel || []).findIndex((f) => f.stage === "Ganho");
-  const stageIdx = (saasCfg?.funnel || []).findIndex((f) => f.stage === currentStage);
-  const isOpenStage = wonIdx < 0 || (stageIdx >= 0 && stageIdx < wonIdx);
-  const next = isOpenStage ? nextContactPill(d) : null;
+  const saasCfg = s || (window.SEED?.SAAS || []).find((x) => x.id === d.saas);
+  const isOpenStage = openStages(saasCfg).includes(currentStage);
+  const next = nextTouchPill(d, { isOpen: isOpenStage });
+  const kind = stageKind(saasCfg, currentStage);
+  const lost = (kind === "perdido" || kind === "desqualificado") && d.lostReason;
   const tinted = tier.key !== "sem";
+  const picker = pickerFor(saasCfg, currentStage);
 
   return (
     <div
@@ -542,13 +692,14 @@ function LeadCard({ d, stale, currentStage, onDragStart, selected, onSelect, onO
       <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 8, flexWrap: "wrap" }}>
         {isNew && <Pill tone="accent">novo</Pill>}
         {days != null && <Pill tone={stale ? "warn" : "mut"} title="tempo nesta etapa">{days}d</Pill>}
-        {next && <Pill tone={next.tone}>{next.text}</Pill>}
+        {next && <Pill tone={next.key === "late" ? "neg" : next.key === "today" ? "pos" : next.key === "none" ? "warn" : "mut"}>{next.text}</Pill>}
+        {lost && <Pill tone="mut" title={d.lostNote || ""}>{lossReasonLabel(saasCfg, d.lostReason)}</Pill>}
         <span className="mono tnum" style={{ fontSize: 11.5, fontWeight: 500, color: "var(--fg-2)", marginLeft: "auto" }}>{window.fmt.money(d.amount || 0)}</span>
       </div>
-      {(ATTEMPT_SLOTS[currentStage] || STAGE_TEAM[currentStage]) && (
+      {(Number(cadenceOf(saasCfg, currentStage).maxAttempts) > 0 || picker) && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7 }}>
-          <AttemptSlots d={d} stage={currentStage} onPatch={onPatch} />
-          {STAGE_TEAM[currentStage] && <CloserPicker d={d} onPatch={onPatch} options={STAGE_TEAM[currentStage]} />}
+          <AttemptSlots d={d} s={saasCfg} stage={currentStage} onLogTouch={onLogTouch} />
+          {picker && <TeamPicker d={d} field={picker.field} options={picker.options} hint={picker.hint} onPatch={onPatch} />}
         </div>
       )}
     </div>
@@ -556,23 +707,32 @@ function LeadCard({ d, stale, currentStage, onDragStart, selected, onSelect, onO
 }
 
 // ─────────────────────────────────────────────── Agenda (semana)
-// Visão semanal das calls agendadas (lead.callAt), estilo Google Agenda: colunas
-// seg→dom, linhas por hora (7h→21h), navegação ‹ hoje ›. Cor do evento = closer
-// (CLOSERS); cinza quando a call ainda não tem closer marcado. Clique abre o lead.
+// Visão semanal das calls agendadas (lead.callAt) + integrações (integrationAt),
+// estilo Google Agenda. Cor do evento = responsável (lead.closer, matiz do
+// avatar); cinza quando não tem. Toggle "toques" sobrepõe os próximos contatos
+// do GPS (nextActionAt) em estilo leve. Clique abre o lead.
 function AgendaView({ leads, onOpenLead }) {
   const [week, setWeek] = useStP(0); // offset em semanas a partir da atual
+  const [showTouches, setShowTouchesState] = useStP(() => {
+    try { return localStorage.getItem("cockpit_agenda_touches") === "1"; } catch { return false; }
+  });
+  const setShowTouches = (v) => {
+    setShowTouchesState(v);
+    try { localStorage.setItem("cockpit_agenda_touches", v ? "1" : "0"); } catch { /* ignore */ }
+  };
   const H0 = 7, H1 = 21, hourH = 44;
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const monday = new Date(today);
   monday.setDate(today.getDate() - ((today.getDay() + 6) % 7) + week * 7);
   const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
   const end = new Date(monday); end.setDate(monday.getDate() + 7);
-  // Dois tipos de evento: call agendada (callAt) e integração marcada
-  // (integrationAt, feita pelo Eryk). O mesmo lead pode ter os dois.
+  // Eventos: call agendada (callAt), integração (integrationAt) e — opcional —
+  // toque do GPS (nextActionAt). O mesmo lead pode ter os três.
   const events = leads
     .flatMap(l => [
       l.callAt ? { l, t: new Date(l.callAt), kind: "call" } : null,
       l.integrationAt ? { l, t: new Date(l.integrationAt), kind: "integração" } : null,
+      showTouches && l.nextActionAt ? { l, t: new Date(l.nextActionAt), kind: "toque" } : null,
     ])
     .filter(e => e && Number.isFinite(e.t.getTime()) && e.t >= monday && e.t < end);
   const fmtDay = (d, opts) => d.toLocaleDateString("pt-BR", opts).replace(/\./g, "");
@@ -581,6 +741,11 @@ function AgendaView({ leads, onOpenLead }) {
     height: 26, padding: "0 10px", borderRadius: 5, fontSize: 12,
     background: "var(--bg-2)", border: "1px solid var(--line-1)", color: "var(--fg-2)", cursor: "pointer",
   };
+
+  // Time da legenda: quem tem papel de closer/integrador (Ajustes → Equipe).
+  const team = [...usersByRole("closer"), ...usersByRole("integrator")]
+    .filter((u, i, arr) => arr.findIndex(x => x.id === u.id) === i);
+  const toneOf = (id) => id ? `oklch(0.55 0.13 ${userTone(id)})` : "var(--fg-4)";
 
   // Lanes: calls no mesmo horário dividem a largura da coluna (evento dura 1h).
   const layoutDay = (d) => {
@@ -596,20 +761,26 @@ function AgendaView({ leads, onOpenLead }) {
     return { placed, lanes: Math.max(1, laneEnds.length) };
   };
 
+  const calls = events.filter(e => e.kind !== "toque").length;
+
   return (
-    <div style={{ flex: 1, overflow: "auto", padding: "14px 24px" }}>
+    <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
         <button style={navBtn} onClick={() => setWeek(w => w - 1)}>‹</button>
         <button style={navBtn} onClick={() => setWeek(0)}>hoje</button>
         <button style={navBtn} onClick={() => setWeek(w => w + 1)}>›</button>
         <span style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--display)", marginLeft: 4 }}>{label}</span>
         <span className="mono dim" style={{ fontSize: 11 }}>
-          {events.length === 0 ? "nenhuma call nesta semana" : `${events.length} ${events.length === 1 ? "call" : "calls"}`}
+          {calls === 0 ? "nenhuma call nesta semana" : `${calls} ${calls === 1 ? "call" : "calls"}`}
         </span>
+        <label className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer" }}>
+          <input type="checkbox" checked={showTouches} onChange={(e) => setShowTouches(e.target.checked)} style={{ accentColor: "var(--accent)" }} />
+          mostrar toques
+        </label>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
-          {TEAM.map(c => (
-            <span key={c.id} className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5 }}>
-              <span style={{ width: 9, height: 9, borderRadius: 3, background: c.tone }} />{c.name}
+          {team.map(u => (
+            <span key={u.id} className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <span style={{ width: 9, height: 9, borderRadius: 3, background: toneOf(u.id) }} />{u.name || u.id}
             </span>
           ))}
           <span className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5 }}>
@@ -618,7 +789,7 @@ function AgendaView({ leads, onOpenLead }) {
         </span>
       </div>
 
-      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", overflow: "hidden" }}>
+      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
         {/* Cabeçalho dos dias */}
         <div style={{ display: "grid", gridTemplateColumns: "52px repeat(7, 1fr)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
           <span />
@@ -657,27 +828,30 @@ function AgendaView({ leads, onOpenLead }) {
                 backgroundColor: isToday ? "color-mix(in srgb, var(--accent) 5%, transparent)" : "transparent",
               }}>
                 {placed.map(({ l, t, lane, kind }) => {
-                  const c = TEAM.find(x => x.id === l.closer);
-                  const tone = c ? c.tone : "var(--fg-4)";
+                  const who = kind === "toque" ? (l.owner || l.closer) : l.closer;
+                  const tone = toneOf(who);
+                  const isTouch = kind === "toque";
                   const hour = Math.min(H1 - 1, Math.max(H0, t.getHours() + t.getMinutes() / 60));
                   const w = 100 / lanes;
                   return (
                     <div key={l.id + kind}
                       onClick={() => onOpenLead && onOpenLead(l)}
-                      title={`${t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · ${kind} · ${l.name}${l.company ? " · " + l.company : ""}${c ? " · responsável " + c.name : " · sem responsável"}`}
+                      title={`${t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · ${kind} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}`}
                       style={{
                         position: "absolute", top: (hour - H0) * hourH + 1,
                         left: `calc(${lane * w}% + 2px)`, width: `calc(${w}% - 4px)`,
-                        height: hourH - 3, overflow: "hidden", cursor: "pointer",
-                        background: `color-mix(in srgb, ${tone} 14%, var(--bg-1))`,
-                        border: `1px solid color-mix(in srgb, ${tone} 45%, var(--line-1))`,
-                        borderLeft: `3px solid ${tone}`, borderRadius: 5, padding: "3px 6px",
+                        height: isTouch ? 22 : hourH - 3, overflow: "hidden", cursor: "pointer",
+                        background: isTouch ? "transparent" : `color-mix(in srgb, ${tone} 14%, var(--bg-1))`,
+                        border: isTouch ? `1px dashed color-mix(in srgb, ${tone} 55%, var(--line-2))` : `1px solid color-mix(in srgb, ${tone} 45%, var(--line-1))`,
+                        borderLeft: isTouch ? `2px dashed ${tone}` : `3px solid ${tone}`,
+                        borderRadius: 5, padding: isTouch ? "1px 6px" : "3px 6px",
+                        opacity: isTouch ? 0.85 : 1,
                       }}>
-                      <div className="mono tnum" style={{ fontSize: 9.5, color: "var(--fg-3)" }}>
-                        {t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}{c ? ` · ${c.short}` : ""}{kind === "integração" ? " · int" : ""}
+                      <div className="mono tnum" style={{ fontSize: 9.5, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {isTouch ? `○ ${l.name}` : `${t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}${who ? ` · ${displayName(who).split(" ")[0]}` : ""}${kind === "integração" ? " · int" : ""}`}
                       </div>
-                      <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</div>
-                      {l.company && <div style={{ fontSize: 10, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.company}</div>}
+                      {!isTouch && <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</div>}
+                      {!isTouch && l.company && <div style={{ fontSize: 10, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.company}</div>}
                     </div>
                   );
                 })}
@@ -692,11 +866,10 @@ function AgendaView({ leads, onOpenLead }) {
 
 // ─────────────────────────────────────────────── List view
 function LeadList({ leads }) {
-  const { PEOPLE } = window.SEED;
   const rows = [...leads].sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
   return (
-    <div style={{ flex: 1, overflow: "auto", padding: "14px 24px" }}>
-      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", overflow: "hidden", background: "var(--bg-1)" }}>
+    <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)" }}>
+      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
         <div className="mono" style={{
           display: "grid", gridTemplateColumns: "1.6fr 1fr 0.6fr 0.6fr 0.6fr 0.6fr 0.8fr",
           padding: "8px 12px",
@@ -718,7 +891,7 @@ function LeadList({ leads }) {
             <span style={{ fontWeight: 500 }}>{l.name} {l.company && <span className="dim" style={{ fontSize: 11, marginLeft: 4 }}>{l.company}</span>}</span>
             <span className="mono dim" style={{ fontSize: 12 }}>{l.stage}</span>
             <span className="mono tnum" style={{ textAlign: "right" }}>{window.fmt.money(l.amount || 0)}</span>
-            <span className="mono dim" style={{ fontSize: 12 }}>{PEOPLE[l.owner]?.name || l.owner || ""}</span>
+            <span className="mono dim" style={{ fontSize: 12 }}>{displayName(l.owner)}</span>
             <span className="mono dim tnum" style={{ fontSize: 12 }}>{leadAge(l)}</span>
             <span className="mono tnum" style={{ fontSize: 12, color: leadScoreTone(l.score) }}>{l.score ?? ""}</span>
             <span className="mono dim" style={{ fontSize: 11 }}>{l.source}</span>
@@ -729,6 +902,7 @@ function LeadList({ leads }) {
   );
 }
 
+// ─────────────────────────────────────────────── Análise (forecast + funil real)
 function ForecastView({ s, leads }) {
   const buckets = s.funnel.map((f, i) => {
     const at = leads.filter(l => l.stage === f.stage);
@@ -738,22 +912,121 @@ function ForecastView({ s, leads }) {
   });
   const max = Math.max(1, ...buckets.map(b => b.tcv));
   return (
-    <div style={{ flex: 1, overflow: "auto", padding: "14px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "14px 18px", background: "var(--bg-1)" }}>
-        <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>Previsão por estágio · ponderada pela conversão histórica</div>
-        {buckets.map(b => (
-          <div key={b.stage} style={{ display: "grid", gridTemplateColumns: "120px 1fr 90px 90px 60px", gap: 10, alignItems: "center", padding: "10px 0", borderTop: "1px solid var(--line-1)" }}>
-            <span className="mono" style={{ fontSize: 12, color: "var(--fg-2)" }}>{b.stage}</span>
-            <div style={{ height: 14, background: "var(--bg-3)", borderRadius: 3, position: "relative" }}>
-              <div style={{ position: "absolute", inset: 0, width: `${(b.tcv/max)*100}%`, background: "var(--accent)", opacity: 0.25, borderRadius: 3 }} />
-              <div style={{ position: "absolute", inset: 0, width: `${(b.weighted/max)*100}%`, background: "var(--accent)", borderRadius: 3 }} />
+    <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "14px 18px", background: "var(--bg-1)" }}>
+      <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>Previsão por estágio · ponderada pela conversão histórica</div>
+      {buckets.map(b => (
+        <div key={b.stage} style={{ display: "grid", gridTemplateColumns: "120px 1fr 90px 90px 60px", gap: 10, alignItems: "center", padding: "10px 0", borderTop: "1px solid var(--line-1)" }}>
+          <span className="mono" style={{ fontSize: 12, color: "var(--fg-2)" }}>{b.stage}</span>
+          <div style={{ height: 14, background: "var(--bg-3)", borderRadius: 3, position: "relative" }}>
+            <div style={{ position: "absolute", inset: 0, width: `${(b.tcv/max)*100}%`, background: "var(--accent)", opacity: 0.25, borderRadius: 3 }} />
+            <div style={{ position: "absolute", inset: 0, width: `${(b.weighted/max)*100}%`, background: "var(--accent)", borderRadius: 3 }} />
+          </div>
+          <span className="mono tnum" style={{ fontSize: 12, textAlign: "right" }}>{window.fmt.money(b.tcv)}</span>
+          <span className="mono tnum" style={{ fontSize: 12, textAlign: "right", color: "var(--accent)" }}>{window.fmt.money(b.weighted)}</span>
+          <span className="mono dim tnum" style={{ fontSize: 11, textAlign: "right" }}>{(b.prob*100).toFixed(0)}%</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Saúde do PROCESSO: conversão real estágio→estágio (histórico da timeline),
+// tempo mediano por etapa, motivos de perda e SLA de 1º toque — GET /api/funnel.
+function FunnelAnalytics({ s }) {
+  const [days, setDays] = useStP(30);
+  const [data, setData] = useStP(null);
+  const [err, setErr] = useStP(null);
+  useEfP(() => {
+    let alive = true;
+    setData(null); setErr(null);
+    const since = new Date(Date.now() - (days - 1) * 86400000).toISOString().slice(0, 10);
+    api.funnelAnalytics(s.id, { since }).then(d => alive && setData(d)).catch(e => alive && setErr(e));
+    return () => { alive = false; };
+  }, [s.id, days]);
+
+  const card = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "14px 18px", background: "var(--bg-1)" };
+  const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 };
+
+  if (err) return <div style={card}><div className="mono dim" style={{ fontSize: 12 }}>análise indisponível ({err.status || "erro"})</div></div>;
+  if (!data) return <div style={card}><div className="mono dim" style={{ fontSize: 12 }}>carregando análise…</div></div>;
+
+  const pct = (v) => v == null ? "—" : `${Math.round(v * 100)}%`;
+  const maxEntered = Math.max(1, ...data.stages.map(st => st.entered));
+  const maxReason = Math.max(1, ...data.lossReasons.map(r => r.count));
+  const ft = data.firstTouch || {};
+  const stat = (label, v, sub) => (
+    <div>
+      <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</div>
+      <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 20, fontWeight: 700, marginTop: 2 }}>{v}</div>
+      {sub && <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)" }}>{sub}</div>}
+    </div>
+  );
+
+  return (
+    <>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Saúde do processo</span>
+        <span style={{ flex: 1 }} />
+        {[30, 90].map(d => (
+          <button key={d} onClick={() => setDays(d)} style={{
+            height: 22, padding: "0 9px", borderRadius: 4, fontSize: 10.5, fontFamily: "var(--mono)",
+            background: days === d ? "var(--accent-soft)" : "var(--bg-2)",
+            border: "1px solid " + (days === d ? "var(--accent-line)" : "var(--line-1)"),
+            color: days === d ? "var(--accent)" : "var(--fg-3)",
+          }}>{d}d</button>
+        ))}
+      </div>
+
+      <div style={{ ...card, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 16 }}>
+        {stat("Win rate", pct(data.winRate), `${data.wonCount} ganhos · ${data.lostCount} perdidos`)}
+        {stat("1º toque (mediana)", ft.medianHours == null ? "—" : `${ft.medianHours}h`, ft.untouched ? `${ft.untouched} sem nenhum toque` : "todos tocados")}
+        {stat("Toque em até 4h", ft.touched ? `${Math.round((ft.buckets.h4 / ft.touched) * 100)}%` : "—", `${ft.buckets?.h4 ?? 0} de ${ft.touched ?? 0} leads tocados`)}
+        {stat("Cobertura do histórico", data.coverage.leads ? `${Math.round((data.coverage.withHistory / data.coverage.leads) * 100)}%` : "—", `${data.coverage.withHistory}/${data.coverage.leads} leads com timeline`)}
+      </div>
+
+      <div style={card}>
+        <div className="mono" style={kicker}>Conversão real estágio → estágio · leads que passaram + mediana de dias na etapa</div>
+        {data.stages.map((st) => (
+          <div key={st.stage} style={{ display: "grid", gridTemplateColumns: "130px 1fr 56px 84px 84px", gap: 10, alignItems: "center", padding: "8px 0", borderTop: "1px solid var(--line-1)" }}>
+            <span className="mono" style={{ fontSize: 12, color: "var(--fg-2)" }}>{st.stage}</span>
+            <div style={{ height: 12, background: "var(--bg-3)", borderRadius: 3, position: "relative" }}>
+              <div style={{ position: "absolute", inset: 0, width: `${(st.entered / maxEntered) * 100}%`, background: "var(--accent)", opacity: 0.55, borderRadius: 3 }} />
             </div>
-            <span className="mono tnum" style={{ fontSize: 12, textAlign: "right" }}>{window.fmt.money(b.tcv)}</span>
-            <span className="mono tnum" style={{ fontSize: 12, textAlign: "right", color: "var(--accent)" }}>{window.fmt.money(b.weighted)}</span>
-            <span className="mono dim tnum" style={{ fontSize: 11, textAlign: "right" }}>{(b.prob*100).toFixed(0)}%</span>
+            <span className="mono tnum" style={{ fontSize: 12, textAlign: "right" }}>{st.entered}</span>
+            <span className="mono tnum" style={{ fontSize: 11.5, textAlign: "right", color: st.convToNext != null && st.convToNext < 0.3 ? "var(--neg)" : "var(--fg-3)" }}>
+              {st.convToNext == null ? "" : `${pct(st.convToNext)} →`}
+            </span>
+            <span className="mono dim tnum" style={{ fontSize: 11, textAlign: "right" }}>
+              {st.medianDaysInStage == null ? "" : `~${st.medianDaysInStage}d na etapa`}
+            </span>
           </div>
         ))}
       </div>
+
+      <div style={card}>
+        <div className="mono" style={kicker}>Motivos de perda · perdidos + desqualificados do período</div>
+        {data.lossReasons.length === 0 && <div className="mono dim" style={{ fontSize: 12 }}>nenhuma perda no período 🎉</div>}
+        {data.lossReasons.map((r) => (
+          <div key={r.reason} style={{ display: "grid", gridTemplateColumns: "130px 1fr 40px", gap: 10, alignItems: "center", padding: "6px 0" }}>
+            <span className="mono" style={{ fontSize: 12, color: r.reason === "nao_informado" ? "var(--fg-4)" : "var(--fg-2)" }}>
+              {lossReasonLabel(s, r.reason)}
+            </span>
+            <div style={{ height: 10, background: "var(--bg-3)", borderRadius: 3, position: "relative" }}>
+              <div style={{ position: "absolute", inset: 0, width: `${(r.count / maxReason) * 100}%`, background: "var(--neg)", opacity: 0.6, borderRadius: 3 }} />
+            </div>
+            <span className="mono tnum" style={{ fontSize: 12, textAlign: "right" }}>{r.count}</span>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function AnaliseView({ s, leads }) {
+  return (
+    <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)", display: "flex", flexDirection: "column", gap: 14 }}>
+      <ForecastView s={s} leads={leads} />
+      <FunnelAnalytics s={s} />
     </div>
   );
 }

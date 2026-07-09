@@ -57,6 +57,8 @@ function toInputs(fields, record) {
       v[f.key] = val === true || val === "true" ? "true" : "false";
     } else if (f.type === "date") {
       v[f.key] = val == null ? "" : String(val).slice(0, 10); // ISO completo → YYYY-MM-DD do input nativo
+    } else if (f.type === "datetime") {
+      v[f.key] = val == null ? "" : String(val).slice(0, 16); // ISO → YYYY-MM-DDTHH:mm do datetime-local
     } else {
       v[f.key] = val == null ? "" : String(val);
     }
@@ -117,6 +119,10 @@ function toPayload(fields, values) {
     } else if (f.type === "pct") {
       const n = Number(raw);
       if (!Number.isNaN(n)) out[f.key] = n / 100;
+    } else if (f.type === "datetime") {
+      // datetime-local (naive) → ISO UTC, formato dos campos de agenda do GPS.
+      const d = new Date(raw);
+      if (Number.isFinite(d.getTime())) out[f.key] = d.toISOString();
     } else {
       out[f.key] = raw;
     }
@@ -187,7 +193,7 @@ function EntityForm({ entityKey, record, onClose, onSaved }) {
       <form
         onClick={(e) => e.stopPropagation()}
         onSubmit={submit}
-        style={{ width: 560, height: "100%", background: "var(--bg-1)", borderLeft: "1px solid var(--line-2)", display: "flex", flexDirection: "column", boxShadow: "var(--shadow-pop)" }}
+        style={{ width: "min(560px, 100vw)", height: "100%", background: "var(--bg-1)", borderLeft: "1px solid var(--line-2)", display: "flex", flexDirection: "column", boxShadow: "var(--shadow-pop)" }}
       >
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
@@ -198,7 +204,7 @@ function EntityForm({ entityKey, record, onClose, onSaved }) {
         </div>
 
         <div style={{ flex: 1, overflow: "auto", padding: "16px 20px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
             {effectiveFields(cfg, values).map((f) => (
               <Field key={f.key} f={f} value={values[f.key]} values={values} recordId={record?.id} onChange={(val) => set(f.key, val)} />
             ))}
@@ -287,7 +293,7 @@ function Field({ f, value, values, onChange, recordId }) {
       <div style={{ position: "relative" }}>
         {f.type === "money" && <span className="mono dim" style={{ position: "absolute", left: 8, top: 7, fontSize: 12 }}>R$</span>}
         <input
-          type={numeric ? "number" : f.type === "date" ? "date" : "text"} step="any"
+          type={numeric ? "number" : f.type === "date" ? "date" : f.type === "datetime" ? "datetime-local" : "text"} step="any"
           value={value} placeholder={f.placeholder}
           onChange={(e) => onChange(e.target.value)}
           style={{ ...inputStyle, paddingLeft: f.type === "money" ? 28 : 8, paddingRight: f.type === "pct" ? 22 : 8 }}

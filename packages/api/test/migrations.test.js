@@ -1,7 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { ensureIntegrationStage } from "../src/migrations.js";
+import {
+  ensureIntegrationStage, migrateLeverAdsCrmFunnel, ensureFunnelKinds,
+  ensureLossReasons, ensureUserRoles, DEFAULT_LOSS_REASONS,
+} from "../src/migrations.js";
 
 const FUNNEL = [
   { stage: "Inbox", conv: 1 },
@@ -99,4 +102,112 @@ test("produto sem funil ou inexistente — não quebra", async () => {
   assert.equal(await ensureIntegrationStage(repo), false); // produto inexistente
   await repo.create("products", { id: "leverads", name: "LeverAds" }); // sem funnel
   assert.equal(await ensureIntegrationStage(repo), false);
+});
+
+// ── Funil CRM SDR+Closer ────────────────────────────────────────────────────
+
+const OLD_CRM_FUNNEL = [
+  { stage: "Qualificação", conv: 0.5, color: "#111", staleDays: 5 },
+  { stage: "Call closer", conv: 0.6 },
+  { stage: "Negociação", conv: 0.7 },
+  { stage: "Integração", conv: 1, staleDays: "" },
+  { stage: "Ganho", conv: 0.8 },
+  { stage: "Sem resposta", conv: 0 },
+  { stage: "Desqualificado", conv: 0 },
+  { stage: "Perdido", conv: 0 },
+  { stage: "Mentoria", conv: 1 },
+];
+
+test("migra o funil antigo do leverads pro processo SDR+Closer", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: OLD_CRM_FUNNEL });
+  await repo.create("leads", { id: "l1", saas: "leverads", stage: "Qualificação", stageSince: "2026-01-01T00:00:00Z" });
+  await repo.create("leads", { id: "l2", saas: "leverads", stage: "Call closer" });
+  await repo.create("leads", { id: "l3", saas: "leverads", stage: "Negociação" });
+  await repo.create("leads", { id: "l4", saas: "leverads", stage: "Sem resposta" });
+  await repo.create("leads", { id: "l5", saas: "leverads", stage: "disqualified" });
+  await repo.create("leads", { id: "l6", saas: "leverads", stage: "Ganho" });
+  await repo.create("leads", { id: "l7", saas: "outro", stage: "Qualificação" }); // outro saas: intocado
+
+  const r = await migrateLeverAdsCrmFunnel(repo);
+  assert.ok(r && r.migrated === 5, `esperava 5 cards migrados, veio ${JSON.stringify(r)}`);
+
+  const funnel = (await repo.get("products", "leverads")).funnel;
+  assert.deepEqual(funnel.map((f) => f.stage), [
+    "Novo lead", "Em contato", "Qualificando", "Call agendada", "Proposta enviada",
+    "Follow-up", "Integração", "Ganho", "Perdido", "Desqualificado", "Mentoria",
+  ]);
+  // kind em toda linha; custom preservado como "outro"
+  assert.ok(funnel.every((f) => f.kind));
+  assert.equal(funnel.find((f) => f.stage === "Mentoria").kind, "outro");
+  // herança do estágio equivalente
+  assert.equal(funnel.find((f) => f.stage === "Qualificando").conv, 0.5);
+  assert.equal(funnel.find((f) => f.stage === "Qualificando").color, "#111");
+  assert.equal(funnel.find((f) => f.stage === "Follow-up").conv, 0.7);
+  // cadência default
+  assert.deepEqual(funnel.find((f) => f.stage === "Novo lead").cadence, { firstTouchHours: 2 });
+  assert.deepEqual(funnel.find((f) => f.stage === "Follow-up").cadence, { maxAttempts: 8, retryDays: 3 });
+
+  // cards renomeados SEM recarimbar stageSince
+  assert.equal((await repo.get("leads", "l1")).stage, "Qualificando");
+  assert.equal((await repo.get("leads", "l1")).stageSince, "2026-01-01T00:00:00Z");
+  assert.equal((await repo.get("leads", "l2")).stage, "Call agendada");
+  assert.equal((await repo.get("leads", "l3")).stage, "Follow-up");
+  // Sem resposta vira perda estruturada
+  assert.equal((await repo.get("leads", "l4")).stage, "Perdido");
+  assert.equal((await repo.get("leads", "l4")).lostReason, "sem_resposta");
+  assert.equal((await repo.get("leads", "l5")).stage, "Desqualificado");
+  assert.equal((await repo.get("leads", "l6")).stage, "Ganho");
+  assert.equal((await repo.get("leads", "l7")).stage, "Qualificação");
+
+  // idempotente: 2ª rodada não casa a guarda (nomes novos presentes)
+  assert.equal(await migrateLeverAdsCrmFunnel(repo), false);
+});
+
+test("guarda estrita: funil editado pelo dono não é sobrescrito", async () => {
+  const repo = makeMemRepo();
+  const edited = [{ stage: "Qualificação", conv: 1 }, { stage: "Fechamento", conv: 0.5 }, { stage: "Ganho", conv: 1 }];
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: edited });
+  assert.equal(await migrateLeverAdsCrmFunnel(repo), false); // sem "Call closer"/"Negociação"
+  assert.deepEqual((await repo.get("products", "leverads")).funnel, edited);
+});
+
+test("ensureFunnelKinds adiciona kind em todos os produtos, idempotente", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "a", funnel: [{ stage: "Inbox", conv: 1 }, { stage: "Ganho", conv: 1 }] });
+  await repo.create("products", { id: "b", funnel: [{ stage: "X", kind: "call", conv: 1 }] });
+  await repo.create("products", { id: "c" }); // sem funil — não quebra
+
+  assert.equal(await ensureFunnelKinds(repo), 1); // só "a" muda
+  const a = (await repo.get("products", "a")).funnel;
+  assert.equal(a[0].kind, "novo");
+  assert.equal(a[1].kind, "ganho");
+  assert.equal(await ensureFunnelKinds(repo), 0); // 2ª rodada: nada
+});
+
+test("ensureLossReasons semeia a lista padrão sem sobrescrever custom", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "a" });
+  await repo.create("products", { id: "b", lossReasons: [{ id: "x", label: "X" }] });
+
+  assert.equal(await ensureLossReasons(repo), 1);
+  assert.deepEqual((await repo.get("products", "a")).lossReasons, DEFAULT_LOSS_REASONS);
+  assert.deepEqual((await repo.get("products", "b")).lossReasons, [{ id: "x", label: "X" }]);
+  assert.equal(await ensureLossReasons(repo), 0);
+});
+
+test("ensureUserRoles espelha o time antigo e não inventa usuário", async () => {
+  const repo = makeMemRepo();
+  await repo.create("users", { id: "eryk", name: "Eryk" });
+  await repo.create("users", { id: "leonardo", name: "Leonardo" });
+  await repo.create("users", { id: "maria", name: "Maria" });
+  await repo.create("users", { id: "ja", name: "Já tem", roles: ["sdr"] });
+
+  assert.equal(await ensureUserRoles(repo), 3);
+  assert.deepEqual((await repo.get("users", "eryk")).roles, ["integrator"]);
+  assert.deepEqual((await repo.get("users", "leonardo")).roles, ["closer", "sdr"]);
+  assert.deepEqual((await repo.get("users", "maria")).roles, []);
+  assert.deepEqual((await repo.get("users", "ja")).roles, ["sdr"]);
+  assert.equal((await repo.list("users")).length, 4); // jonathan NÃO foi criado
+  assert.equal(await ensureUserRoles(repo), 0);
 });

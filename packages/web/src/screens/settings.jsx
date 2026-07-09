@@ -1,10 +1,12 @@
 import React from "react";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
-import { EmptyState, PrimaryButton, RowActions } from "../atoms.jsx";
+import { EmptyState, PrimaryButton, RowActions, Avatar } from "../atoms.jsx";
 import { useData } from "../data.jsx";
 import { api } from "../lib/api.js";
+import { useIsMobile } from "../lib/responsive.js";
+import { KINDS, KIND_IDS, guessKind, lossReasonsOf } from "../lib/funnel.js";
 // SaaS Settings (fase 3) — funil, campos custom, pesos da saúde e Aha EDITÁVEIS
-// por SaaS (gravam no produto). Integrações segue mock até a fase 4 (conexões).
+// por SaaS (gravam no produto). Equipe (roles sdr/closer/integrator) é global.
 
 const { useState: useStS } = React;
 
@@ -25,11 +27,13 @@ function SettingsScreen({ saasId }) {
   const { openForm, openDelete } = useData();
   const [active, setActive] = useStS(lastView.saas || saasId || SAAS[0]?.id);
   const [tab, setTab] = useStS(lastView.tab);
+  const isMobile = useIsMobile();
   lastView.saas = active; lastView.tab = tab;
   const s = SAAS.find(x => x.id === active) || SAAS[0];
 
   const TABS = [
     ["funnel",      "Funil & estágios"],
+    ["team",        "Equipe"],
     ["fields",      "Campos custom"],
     ["health",      "Pesos da saúde"],
     ["aha",         "Definição do Aha"],
@@ -46,7 +50,7 @@ function SettingsScreen({ saasId }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+      <div style={{ padding: "12px var(--pad-x)", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
           {SAAS.length > 1 ? SAAS.map(x => (
             <button key={x.id} onClick={() => setActive(x.id)} style={{
@@ -68,20 +72,24 @@ function SettingsScreen({ saasId }) {
         </div>
       </div>
 
-      <div style={{ flex: 1, display: "grid", gridTemplateColumns: "200px 1fr", minHeight: 0 }}>
-        <nav style={{ borderRight: "1px solid var(--line-1)", padding: 12, background: "var(--bg-1)" }}>
+      <div style={{ flex: 1, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "200px 1fr", gridTemplateRows: isMobile ? "auto minmax(0, 1fr)" : undefined, minHeight: 0 }}>
+        <nav style={isMobile
+          ? { display: "flex", gap: 4, overflowX: "auto", borderBottom: "1px solid var(--line-1)", padding: "8px 12px", background: "var(--bg-1)" }
+          : { borderRight: "1px solid var(--line-1)", padding: 12, background: "var(--bg-1)" }}>
           {TABS.map(([k,l]) => (
             <button key={k} onClick={() => setTab(k)} style={{
-              display: "block", width: "100%", padding: "8px 10px",
-              borderRadius: "var(--r-2)", marginBottom: 2,
+              display: "block", width: isMobile ? "auto" : "100%", padding: "8px 10px",
+              borderRadius: "var(--r-2)", marginBottom: isMobile ? 0 : 2,
+              whiteSpace: "nowrap", flexShrink: 0,
               background: tab === k ? "var(--bg-3)" : "transparent",
               color: tab === k ? "var(--fg-1)" : "var(--fg-3)",
               fontSize: 12, textAlign: "left",
             }}>{l}</button>
           ))}
         </nav>
-        <div style={{ overflow: "auto", padding: "20px 24px" }}>
+        <div style={{ overflow: "auto", padding: "20px var(--pad-x)" }}>
           {tab === "funnel"       && <FunnelSettings s={s} />}
+          {tab === "team"         && <TeamSettings />}
           {tab === "fields"       && <FieldsSettings s={s} />}
           {tab === "health"       && <HealthSettings s={s} />}
           {tab === "aha"          && <AhaSettings s={s} />}
@@ -130,14 +138,30 @@ function FunnelSettings({ s }) {
   });
   const arrowStyle = (disabled) => ({ fontSize: 12, padding: "0 3px", color: "var(--fg-3)", opacity: disabled ? 0.3 : 1, fontFamily: "var(--mono)", cursor: disabled ? "default" : "pointer" });
 
+  // Cadência: 3 números opcionais por estágio (toques máx., re-toque em N dias,
+  // SLA do 1º contato em horas) — alimentam os dots do kanban e o GPS.
+  const cad = (f, k) => (f.cadence && f.cadence[k] != null ? f.cadence[k] : "");
+  const setCad = (i, k, v) => update(i, {
+    cadence: { ...(rows[i].cadence || {}), [k]: v === "" ? undefined : Number(v) },
+  });
+
   async function save() {
     const clean = rows.filter(r => String(r.stage || "").trim());
-    const funnel = clean.map(({ _orig, ...f }, i) => ({
-      ...f,
-      stage: f.stage.trim(),
-      conv: i === 0 || f.conv === "" || f.conv == null || Number.isNaN(Number(f.conv)) ? 1 : Number(f.conv),
-      staleDays: f.staleDays === "" || f.staleDays == null ? null : Number(f.staleDays),
-    }));
+    const funnel = clean.map(({ _orig, ...f }, i) => {
+      const cadence = {};
+      for (const k of ["maxAttempts", "retryDays", "firstTouchHours"]) {
+        const v = Number(f.cadence?.[k]);
+        if (Number.isFinite(v) && v > 0) cadence[k] = v;
+      }
+      return {
+        ...f,
+        stage: f.stage.trim(),
+        kind: KIND_IDS.includes(f.kind) ? f.kind : guessKind(f.stage.trim(), i),
+        conv: i === 0 || f.conv === "" || f.conv == null || Number.isNaN(Number(f.conv)) ? 1 : Number(f.conv),
+        staleDays: f.staleDays === "" || f.staleDays == null ? null : Number(f.staleDays),
+        ...(Object.keys(cadence).length ? { cadence } : { cadence: undefined }),
+      };
+    });
     const renames = {};
     clean.forEach((r, i) => { if (r._orig && r._orig !== funnel[i].stage) renames[r._orig] = funnel[i].stage; });
     const res = await api.saveFunnel(s.id, funnel, renames);
@@ -145,21 +169,33 @@ function FunnelSettings({ s }) {
     await refresh();
   }
 
+  const wonCount = rows.filter(r => r.kind === "ganho").length;
+  const cadInput = (i, f, k, ph, title) => (
+    <input type="number" min="0" value={cad(f, k)} placeholder={ph} title={title}
+      onChange={(e) => setCad(i, k, e.target.value)}
+      style={{ ...inputStyle, width: 42, padding: "0 4px", textAlign: "right" }} />
+  );
+
   return (
     <div>
-      <SettingHeader title="Estágios do funil" sub="renomear aqui migra os cards do pipeline junto · conversão (%) alimenta a previsão · 'parado → Nd' marca cards velhos no kanban" />
-      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", overflow: "hidden", background: "var(--bg-1)" }}>
-        <div className="mono" style={{ display: "grid", gridTemplateColumns: "52px 1fr 130px 70px 90px 110px 30px", gap: 8, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
-          <span></span><span>Estágio</span><span>Tipo canônico</span><span>Cor</span><span>Conv.</span><span>Auto-regra</span><span></span>
+      <SettingHeader title="Estágios do funil" sub="renomear migra os cards junto · TIPO define o comportamento (fase SDR/Closer, ganho/perda, gates) · cadência alimenta os dots e o GPS" />
+      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
+        <div className="mono" style={{ display: "grid", gridTemplateColumns: "52px 1fr 128px 62px 76px 100px 176px 30px", gap: 8, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
+          <span></span><span>Estágio</span><span>Tipo</span><span>Cor</span><span>Conv.</span><span>Auto-regra</span><span title="toques máx. · re-toque (dias) · SLA 1º toque (horas)">Cadência (n · d · h)</span><span></span>
         </div>
         {rows.map((f, i) => (
-          <div key={i} style={{ display: "grid", gridTemplateColumns: "52px 1fr 130px 70px 90px 110px 30px", gap: 8, padding: "8px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center" }}>
+          <div key={i} style={{ display: "grid", gridTemplateColumns: "52px 1fr 128px 62px 76px 100px 176px 30px", gap: 8, padding: "8px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center" }}>
             <span style={{ display: "flex" }}>
               <button type="button" onClick={() => move(i, -1)} disabled={i === 0} style={arrowStyle(i === 0)}>↑</button>
               <button type="button" onClick={() => move(i, 1)} disabled={i === rows.length - 1} style={arrowStyle(i === rows.length - 1)}>↓</button>
             </span>
             <input value={f.stage || ""} placeholder="Nome do estágio" onChange={(e) => update(i, { stage: e.target.value })} style={inputStyle} />
-            <span className="mono dim" style={{ fontSize: 11 }}>{canonicalFor(i, rows.length)}</span>
+            <select value={KIND_IDS.includes(f.kind) ? f.kind : guessKind(f.stage, i)}
+              onChange={(e) => update(i, { kind: e.target.value })}
+              title="Semântica do estágio — o app decide comportamento por aqui, não pelo nome"
+              style={{ ...inputStyle, padding: "0 4px" }}>
+              {KIND_IDS.map((k) => <option key={k} value={k}>{KINDS[k].label}</option>)}
+            </select>
             <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <input type="color" value={f.color || "#6366f1"} onChange={(e) => update(i, { color: e.target.value })} style={{ width: 26, height: 22, padding: 0, border: "1px solid var(--line-2)", borderRadius: 4, background: "transparent", opacity: f.color ? 1 : 0.35 }} title={f.color || "cor do produto"} />
               {f.color && <button type="button" className="mono dim" onClick={() => update(i, { color: "" })} title="usar a cor do produto" style={{ fontSize: 11 }}>✕</button>}
@@ -181,27 +217,147 @@ function FunnelSettings({ s }) {
                 style={{ ...inputStyle, width: 44, textAlign: "right" }} />
               <span className="mono dim" style={{ fontSize: 10 }}>d</span>
             </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              {cadInput(i, f, "maxAttempts", "n", "toques máximos nesta etapa (dots do card)")}
+              {cadInput(i, f, "retryDays", "d", "toque registrado → próximo em N dias (GPS)")}
+              {cadInput(i, f, "firstTouchHours", "h", "SLA do 1º contato em horas (estágio de entrada)")}
+            </div>
             <button type="button" onClick={() => remove(i)} className="mono dim" style={{ fontSize: 13 }}>✕</button>
           </div>
         ))}
       </div>
-      <div style={{ marginTop: 10 }}>
-        <button type="button" onClick={() => setRows(r => [...r, { stage: "", conv: 1, _orig: null }])} style={{ ...chromeBtnStyleSmall }}>
+      <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10 }}>
+        <button type="button" onClick={() => setRows(r => [...r, { stage: "", kind: "outro", conv: 1, _orig: null }])} style={{ ...chromeBtnStyleSmall }}>
           <span style={{ fontSize: 11 }}>+ adicionar estágio</span>
         </button>
+        {wonCount !== 1 && (
+          <span className="mono" style={{ fontSize: 11, color: "var(--warn)" }}>
+            {wonCount === 0 ? "nenhum estágio com tipo “ganho” — leads nunca viram cliente" : "mais de um estágio “ganho” — o 1º vale como fechamento"}
+          </span>
+        )}
       </div>
       <SaveBar onSave={save} hint={migrated != null ? `salvo · ${migrated} card(s) migrados de estágio` : "remover um estágio NÃO move os cards dele (caem no 1º estágio na visualização)"} />
+
+      <LossReasonsSettings s={s} />
     </div>
   );
 }
 
-function canonicalFor(i, n) {
-  if (i === 0) return "prospecting";
-  if (i === n-1) return "closed";
-  if (i < n/2) return "qualification";
-  if (i < n-1) return "proposal";
-  return "closing";
+// ───────────────────────────────────────────────────────── Motivos de perda
+// product.lossReasons — as opções do modal de perda/desqualificação. O id é
+// estável (histórico dos leads guarda o id); renomear o rótulo não quebra nada.
+function LossReasonsSettings({ s }) {
+  const { refresh } = useData();
+  const [rows, setRows] = useStS(() => lossReasonsOf(s).map((r) => ({ ...r })));
+
+  async function save() {
+    const lossReasons = rows
+      .filter((r) => String(r.label || "").trim())
+      .map((r) => ({ id: r.id || slug(r.label), label: r.label.trim() }));
+    await api.update("products", s.id, { lossReasons });
+    await refresh();
+  }
+
+  return (
+    <div style={{ marginTop: 26 }}>
+      <SettingHeader title="Motivos de perda" sub="opções do modal ao mover pra Perdido/Desqualificado · alimentam o relatório de perdas na Análise do pipeline" />
+      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "6px 14px" }}>
+        {rows.map((r, i) => (
+          <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 0", borderBottom: i < rows.length - 1 ? "1px solid var(--line-1)" : "none" }}>
+            <span className="mono dim" style={{ fontSize: 10, width: 120, overflow: "hidden", textOverflow: "ellipsis" }}>{r.id || "novo"}</span>
+            <input value={r.label || ""} placeholder="Rótulo do motivo" onChange={(e) => setRows((rs) => rs.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} style={inputStyle} />
+            <button type="button" onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))} className="mono dim" style={{ fontSize: 13 }}>✕</button>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <button type="button" onClick={() => setRows((rs) => [...rs, { id: "", label: "" }])} style={{ ...chromeBtnStyleSmall }}>
+          <span style={{ fontSize: 11 }}>+ adicionar motivo</span>
+        </button>
+      </div>
+      <SaveBar onSave={save} hint="“não informado” é automático quando alguém move sem escolher motivo (API/MCP)" />
+    </div>
+  );
 }
+
+// ───────────────────────────────────────────────────────── Equipe (global)
+// Etiquetas de papel do funil (sdr/closer/integrator) — alimentam os pickers do
+// board, o modal de handoff e a agenda. NÃO é permissão (todos seguem admin).
+const ROLE_OPTS = [
+  ["sdr", "SDR", "qualifica leads (fase pré-call)"],
+  ["closer", "Closer", "conduz call/proposta/follow-up"],
+  ["integrator", "Integração", "faz o setup pós-venda"],
+];
+
+function TeamSettings() {
+  const [users, setUsers] = useStS(null);
+  const [saving, setSaving] = useStS("");
+  const [invite, setInvite] = useStS(null); // { name, password }
+
+  const load = () => api.listUsers().then(setUsers).catch(() => setUsers([]));
+  React.useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function toggleRole(u, role) {
+    const roles = (u.roles || []).includes(role)
+      ? (u.roles || []).filter((r) => r !== role)
+      : [...(u.roles || []), role];
+    setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, roles } : x)));
+    setSaving(u.id);
+    try { await api.updateUser(u.id, { roles }); } catch (e) { console.warn("roles não salvas:", e.message); load(); }
+    setSaving("");
+  }
+
+  async function createUser() {
+    if (!invite?.name || !invite?.password) return;
+    try {
+      const res = await api.createUser(invite);
+      setUsers((us) => [...(us || []), res]);
+      setInvite(null);
+    } catch (e) { alert("não criou: " + e.message); }
+  }
+
+  return (
+    <div>
+      <SettingHeader title="Equipe & papéis" sub="quem aparece nos pickers de SDR/closer/integração do pipeline · papel ≠ permissão (todos são admin na v1)" />
+      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
+        <div className="mono" style={{ display: "grid", gridTemplateColumns: "1fr repeat(3, 110px)", gap: 8, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
+          <span>Usuário</span>
+          {ROLE_OPTS.map(([k, l, hint]) => <span key={k} title={hint} style={{ textAlign: "center" }}>{l}</span>)}
+        </div>
+        {users === null && <div className="mono dim" style={{ padding: "12px 14px", fontSize: 12 }}>carregando…</div>}
+        {Array.isArray(users) && users.map((u) => (
+          <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1fr repeat(3, 110px)", gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 500 }}>
+              <Avatar id={u.id} name={u.name} size={22} /> {u.name || u.id}
+              <span className="mono dim" style={{ fontSize: 10 }}>{u.id}</span>
+            </span>
+            {ROLE_OPTS.map(([k]) => (
+              <span key={k} style={{ textAlign: "center" }}>
+                <input type="checkbox" checked={(u.roles || []).includes(k)} onChange={() => toggleRole(u, k)} style={{ accentColor: "var(--accent)", width: 15, height: 15, cursor: "pointer" }} />
+              </span>
+            ))}
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        {invite ? (
+          <>
+            <input value={invite.name} placeholder="Nome" onChange={(e) => setInvite({ ...invite, name: e.target.value })} style={{ ...inputStyle, width: 160 }} />
+            <input value={invite.password} type="password" placeholder="Senha (4+)" onChange={(e) => setInvite({ ...invite, password: e.target.value })} style={{ ...inputStyle, width: 140 }} />
+            <PrimaryButton onClick={createUser} disabled={!invite.name || String(invite.password).length < 4}>criar usuário</PrimaryButton>
+            <button onClick={() => setInvite(null)} className="mono dim" style={{ fontSize: 11 }}>cancelar</button>
+          </>
+        ) : (
+          <button type="button" onClick={() => setInvite({ name: "", password: "" })} style={{ ...chromeBtnStyleSmall }}>
+            <span style={{ fontSize: 11 }}>+ usuário do time</span>
+          </button>
+        )}
+        <span className="mono dim" style={{ fontSize: 11 }}>papéis salvam ao clicar · senha troca em Ajustes do usuário (ou peça pro admin resetar)</span>
+      </div>
+    </div>
+  );
+}
+
 
 // ───────────────────────────────────────────────────────── Campos custom
 // product.customFields.{deals|customers|leads} — cada campo vira input no
@@ -242,7 +398,7 @@ function FieldsSettings({ s }) {
   return (
     <div>
       <SettingHeader title="Campos custom" sub="aparecem no formulário de criar/editar a entidade quando o registro é deste SaaS · a chave é gravada no registro" />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 14 }}>
         {FIELD_GROUPS.map(([g, label]) => (
           <div key={g} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 16px" }}>
             <div style={{ fontSize: 12, fontWeight: 500, color: "var(--fg-2)", marginBottom: 10 }}>{label}</div>

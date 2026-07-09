@@ -121,7 +121,7 @@ function TasksScreen() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       {/* Toolbar — filtros + nova tarefa */}
-      <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, background: "var(--bg-0)" }}>
+      <div style={{ padding: "12px var(--pad-x)", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, background: "var(--bg-0)" }}>
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           {SAAS.length > 1 && (
             <>
@@ -419,7 +419,7 @@ function TaskModal({ task, presetColumn, presetSaas, columns, users, onSave, onD
           <textarea value={d.description} onChange={set("description")} rows={3} style={{ ...inputStyle, height: "auto", padding: 8, fontSize: 13, resize: "vertical" }} />
         </label>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span style={labelStyle}>SaaS</span>
             <select value={d.saas} onChange={set("saas")} style={selStyle}>

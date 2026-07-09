@@ -8,6 +8,8 @@
 import { publicProposal } from "./proposal.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { makeRateLimiter } from "./forms.js";
+import { convertWonLead } from "./routes.js";
+import { logActivity, applyStageMove } from "./lead-flow.js";
 
 // Proposta "fake" a partir de um template + dados de exemplo — usada pelo
 // preview do builder (iframe) e pela página /p/t/:id (preview em aba).
@@ -69,11 +71,19 @@ export function registerProposalRoutes(app, repo, opts = {}) {
           lastViewedAt: new Date().toISOString(),
         });
       } catch { /* ignore */ }
-      // Aviso no Discord só na PRIMEIRA visualização (re-aberturas não spamam);
-      // closer abrindo com ?k não passa por aqui.
-      if (firstView && discord?.configured()) {
-        const lead = p.lead ? await repo.get("leads", p.lead) : null;
-        await discord.proposalViewed({ proposal: p, lead: lead || {} });
+      // Timeline + aviso no Discord só na PRIMEIRA visualização (re-aberturas
+      // não spamam); closer abrindo com ?k não passa por aqui.
+      if (firstView) {
+        try {
+          await logActivity(repo, {
+            saas: p.saas || "", lead: p.lead || "", type: "system",
+            meta: { event: "proposal_viewed", proposal: p.id }, author: "lead",
+          });
+        } catch { /* timeline é best-effort */ }
+        if (discord?.configured()) {
+          const lead = p.lead ? await repo.get("leads", p.lead) : null;
+          await discord.proposalViewed({ proposal: p, lead: lead || {} });
+        }
       }
     }
     return reply.type("text/html").send(proposalPageHtml(publicProposal(p, { editable })));
@@ -115,14 +125,30 @@ export function registerProposalRoutes(app, repo, opts = {}) {
       const lead = p.lead ? await repo.get("leads", p.lead) : null;
       let movedStage = "";
       if (lead) {
-        const patch = { proposalAccepted: true, proposalAcceptedAt: acceptedAt };
-        if (p.acceptStage) {
+        let patch = { proposalAccepted: true, proposalAcceptedAt: acceptedAt };
+        if (p.acceptStage && p.acceptStage !== lead.stage) {
           const product = await repo.get("products", lead.saas);
-          if ((product?.funnel || []).some((f) => f.stage === p.acceptStage)) patch.stage = p.acceptStage;
+          if ((product?.funnel || []).some((f) => f.stage === p.acceptStage)) {
+            patch.stage = p.acceptStage;
+            // Movimento canônico: recarimba stageSince, re-agenda GPS e loga a
+            // activity `stage` — igual ao PATCH genérico (antes o aceite movia
+            // por update cru e o contador "dias na etapa" não zerava).
+            patch = { ...patch, ...(await applyStageMove(repo, { lead, toStage: p.acceptStage, patch, author: "lead" })) };
+          }
         }
-        await repo.update("leads", lead.id, patch);
+        const updated = await repo.update("leads", lead.id, patch);
         movedStage = patch.stage || "";
+        // Se o acceptStage é o estágio de ganho, o cliente nasce aqui também
+        // (antes só o PATCH genérico convertia). Idempotente e best-effort.
+        if (patch.stage) { try { await convertWonLead(repo, updated); } catch { /* fail-open */ } }
       }
+      try {
+        await logActivity(repo, {
+          saas: p.saas || "", lead: p.lead || "", type: "system",
+          meta: { event: "proposal_accepted", proposal: p.id, ...(movedStage ? { stage: movedStage } : {}) },
+          author: "lead", at: acceptedAt,
+        });
+      } catch { /* timeline é best-effort */ }
       // Aviso no Discord (só no primeiro aceite — re-POST cai fora do if).
       if (discord?.configured()) {
         await discord.proposalAccepted({ proposal: p, lead: lead || {}, stage: movedStage });

@@ -10,6 +10,8 @@ import { randomUUID } from "node:crypto";
 import { publicForm, validateAnswers, leadFromSubmission, submissionTerminal, makeRateLimiter, buildSteps } from "./forms.js";
 import { formPageHtml, EMBED_JS } from "./form-page.js";
 import { CREATE_DEFAULTS, dispatchProposal, publicBase } from "./routes.js";
+import { stageByKind, firstStage } from "./stages.js";
+import { logActivity, initialNextActionAt } from "./lead-flow.js";
 
 const clientIp = (req) =>
   String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.ip || "?";
@@ -74,13 +76,33 @@ export function registerFormRoutes(app, repo, opts = {}) {
     const disqualified = submissionTerminal(form.questions || [], answers) === "_reject";
 
     const utm = sanitizeUtm(body.utm);
+    // Desqualificado vai pro estágio de kind `desqualificado` do funil (perda
+    // estruturada, com motivo); fallback legado "disqualified" quando o produto/
+    // funil não existe. Lead qualificado nasce com o próximo toque do GPS marcado
+    // pela cadência do estágio de entrada (SLA de 1º contato).
+    const product = form.saas ? await repo.get("products", form.saas) : null;
+    const dqStage = stageByKind(product, "desqualificado")?.stage || "disqualified";
+    const nextAt = disqualified ? "" : initialNextActionAt(product, "");
     const lead = await repo.create("leads", {
       ...(CREATE_DEFAULTS.leads || {}),
       ...leadFromSubmission(form, answers),
-      ...(disqualified ? { disqualified: true, stage: "disqualified" } : {}),
+      ...(disqualified ? { disqualified: true, stage: dqStage, lostReason: "sem_fit", lostNote: "Reprovado no funil do form" } : {}),
       ...(utm ? { utm } : {}),
+      ...(nextAt ? { nextActionAt: nextAt } : {}),
       createdAt: new Date().toISOString(), // métricas de marketing filtram por período
     });
+    // Timeline: nascimento do lead via form (o POST genérico tem log próprio).
+    try {
+      await logActivity(repo, {
+        saas: form.saas || "", lead: lead.id, type: "system",
+        meta: {
+          event: "lead_created", via: "form", form: form.id,
+          stage: lead.stage || firstStage(product),
+          ...(utm ? { utm } : {}),
+        },
+        author: "lead",
+      });
+    } catch { /* fail-open */ }
     const submission = await repo.create("form_submissions", {
       form: form.id,
       saas: form.saas,

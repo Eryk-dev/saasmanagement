@@ -92,11 +92,11 @@ function ExpensesScreen() {
         </select>
       </PageHead>
 
-      <div style={{ padding: "20px 24px 40px", display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ padding: "20px var(--pad-x) 40px", display: "flex", flexDirection: "column", gap: 12 }}>
         {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
         {data?.error && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>Falha ao carregar os custos.</div>}
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
           <StatTile label="Total do mês" value={data ? brl(data.total) : "…"} delta="publicidade + IA + manuais" />
           <StatTile label="Publicidade" value={data ? brl(data.ads) : "…"} delta="automático · Meta e entradas manuais de anúncio" />
           <StatTile label="IA" value={data ? (data.ai != null ? brl(data.ai) : "sem dado no mês") : "…"}

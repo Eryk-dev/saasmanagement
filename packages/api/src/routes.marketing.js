@@ -1,14 +1,18 @@
-// Marketing (Meta Ads × funil) — sincroniza insights de campanha pra collection
-// `ad_insights` (upsert idempotente por saas+campanha+dia) e expõe as métricas
-// cruzadas com os leads do Cockpit:
+// Marketing (Meta Ads × funil) — sincroniza insights NÍVEL ANÚNCIO pra
+// collection `ad_insights` (upsert idempotente por saas+anúncio+dia) e expõe as
+// métricas cruzadas com os leads do Cockpit:
 //   CPL real        = spend / leads criados no período (collection leads)
-//   custo por etapa = spend / leads que CHEGARAM em cada estágio do funil
-//     (aproximação: estágio ATUAL do lead >= índice do estágio — não há
-//      histórico de transições; "custo por call", "custo por ganho" etc. saem
-//      daqui pra qualquer funil, sem config extra)
-//   por campanha    = spend/leads da própria Meta (CPL Meta)
+//   custo por etapa = spend / leads que PASSARAM por cada estágio (histórico da
+//     timeline quando existe; aproximação pelo estágio atual pra leads antigos —
+//     helper compartilhado stagePassCounts em routes.funnel-metrics.js)
+//   por campanha/conjunto/anúncio = spend Meta + leads atribuídos por UTM.
+// Convenção de UTM nos anúncios (parâmetros dinâmicos da Meta):
+//   utm_source=meta&utm_medium=paid&utm_campaign={{campaign.id}}
+//   &utm_term={{adset.id}}&utm_content={{ad.id}}
+// O match aceita id OU nome, então utm_campaign={{campaign.name}} também vale.
 
 import { meta as defaultMeta } from "./meta.js";
+import { stagePassCounts } from "./routes.funnel-metrics.js";
 
 const DAY_MS = 86400000;
 const dayStr = (d) => new Date(d).toISOString().slice(0, 10);
@@ -19,9 +23,10 @@ function rangeFromQuery(q, now = new Date()) {
   return { since, until };
 }
 
-// Upsert por id determinístico (1 linha por saas+campanha+dia).
+// Upsert por id determinístico (1 linha por saas+anúncio+dia; fallback por
+// campanha quando a linha não tem ad — compat com dados/mocks antigos).
 async function upsertInsight(repo, row) {
-  const id = `ai_${row.saas}_${row.campaignId}_${row.date}`;
+  const id = `ai_${row.saas}_${row.adId || row.campaignId}_${row.date}`;
   const existing = await repo.get("ad_insights", id);
   if (existing) return repo.update("ad_insights", id, row);
   return repo.create("ad_insights", { id, ...row });
@@ -40,7 +45,16 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const report = {};
     for (const p of products) {
       try {
-        const rows = await meta.campaignInsights(p.metaAdAccount, { since, until });
+        const rows = await meta.adInsights(p.metaAdAccount, { since, until });
+        // Linhas legadas nível-campanha (sem adId) NA JANELA sincronizada viram
+        // dupla contagem com as linhas nível-anúncio — remove antes do upsert.
+        // Fora da janela ficam (histórico antigo continua certo em consultas de
+        // períodos antigos, que só têm linhas de um nível). Gasto MANUAL
+        // (campaignId "manual_*", tela Publicidade) nunca é tocado.
+        const legacy = (await repo.list("ad_insights")).filter(
+          (r) => r.saas === p.id && !r.adId && !String(r.campaignId || "").startsWith("manual_") && r.date >= since && r.date <= until,
+        );
+        for (const r of legacy) await repo.remove("ad_insights", r.id);
         for (const r of rows) await upsertInsight(repo, { saas: p.id, ...r });
         report[p.id] = { ok: true, rows: rows.length };
       } catch (err) {
@@ -110,19 +124,19 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const metaLeads = sum("metaLeads");
     const per = (n) => (n > 0 ? Math.round((spend / n) * 100) / 100 : null);
 
-    // Custo por etapa: leads cujo estágio ATUAL é o estágio i ou um posterior,
-    // NA RÉGUA DE PROGRESSO (até "Ganho"). Estágios pós-Ganho do funil
-    // (Sem resposta, Desqualificado, Perdido, Mentoria) não são progresso:
-    // um lead parado lá conta só como chegada no 1º estágio, senão o custo
-    // por ganho contaria todo descartado como ganho.
-    const stages = (product.funnel || []).map((f) => f.stage);
-    const wonIdx = stages.indexOf("Ganho");
-    const ladder = wonIdx >= 0 ? stages.slice(0, wonIdx + 1) : stages;
-    const idx = (stage) => { const i = ladder.indexOf(stage); return i < 0 ? 0 : i; };
-    const perStage = ladder.map((stage, i) => {
-      const count = leads.filter((l) => idx(l.stage) >= i).length;
-      return { stage, count, costPer: per(count) };
-    });
+    // Custo por etapa: leads que PASSARAM por cada estágio da régua de progresso
+    // (até o kind `ganho`). Lead com histórico na timeline conta cada estágio
+    // tocado (mesmo que depois caiu pra Perdido — a call aconteceu); lead antigo
+    // sem histórico cai na aproximação pelo estágio atual (comportamento
+    // pré-CRM). Terminais de perda não são progresso.
+    const stageActsByLead = new Map();
+    for (const a of await repo.list("activities")) {
+      if (a.saas !== product.id || a.type !== "stage" || !a.lead) continue;
+      if (!stageActsByLead.has(a.lead)) stageActsByLead.set(a.lead, []);
+      stageActsByLead.get(a.lead).push(a);
+    }
+    const { ladder, counts } = stagePassCounts(product, leads, stageActsByLead);
+    const perStage = ladder.map((stage, i) => ({ stage, count: counts[i], costPer: per(counts[i]) }));
 
     const byCampaign = {};
     for (const r of rows) {
@@ -133,25 +147,49 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       c.metaLeads += Number(r.metaLeads) || 0;
       c.name = r.campaignName || c.name;
     }
-    // Atribuição real por campanha: leads cujo utm.campaign casa com o NOME ou o
-    // ID da campanha (configure utm_campaign={{campaign.name}} ou {{campaign.id}}
-    // no anúncio). CPL real por campanha sai daqui.
-    const leadsOf = (c) => leads.filter((l) => {
-      const uc = l.utm && typeof l.utm === "object" ? String(l.utm.campaign || "") : "";
-      return uc && (uc === String(c.name || "") || uc === String(c.id || ""));
+    // Atribuição real por campanha/conjunto/anúncio: o lead casa pelo UTM
+    // (utm.campaign ↔ campanha, utm.term ↔ conjunto, utm.content ↔ anúncio),
+    // por ID ou por NOME. CPL real por nível sai daqui.
+    const leadUtm = (l, key) => (l.utm && typeof l.utm === "object" ? String(l.utm[key] || "") : "");
+    const leadsMatching = (key, g) => leads.filter((l) => {
+      const v = leadUtm(l, key);
+      return v && (v === String(g.id || "") || v === String(g.name || ""));
     }).length;
-    const campaigns = Object.values(byCampaign)
-      .map((c) => {
-        const n = leadsOf(c);
-        return {
-          ...c,
-          spend: Math.round(c.spend * 100) / 100,
-          cplMeta: c.metaLeads > 0 ? Math.round((c.spend / c.metaLeads) * 100) / 100 : null,
-          leads: n,
-          cpl: n > 0 ? Math.round((c.spend / n) * 100) / 100 : null,
-        };
-      })
-      .sort((a, b) => b.spend - a.spend);
+    const finishGroup = (key) => (g) => {
+      const n = leadsMatching(key, g);
+      return {
+        ...g,
+        spend: Math.round(g.spend * 100) / 100,
+        cplMeta: g.metaLeads > 0 ? Math.round((g.spend / g.metaLeads) * 100) / 100 : null,
+        leads: n,
+        cpl: n > 0 ? Math.round((g.spend / n) * 100) / 100 : null,
+      };
+    };
+    const campaigns = Object.values(byCampaign).map(finishGroup("campaign")).sort((a, b) => b.spend - a.spend);
+
+    // Conjuntos e anúncios (linhas nível-ad do sync; some quando só há legado).
+    const byAdset = {};
+    const byAd = {};
+    for (const r of rows) {
+      if (r.adsetId) {
+        const g = byAdset[r.adsetId] || (byAdset[r.adsetId] = { id: r.adsetId, name: r.adsetName, campaignId: r.campaignId, spend: 0, impressions: 0, clicks: 0, metaLeads: 0 });
+        g.spend += Number(r.spend) || 0;
+        g.impressions += Number(r.impressions) || 0;
+        g.clicks += Number(r.clicks) || 0;
+        g.metaLeads += Number(r.metaLeads) || 0;
+        g.name = r.adsetName || g.name;
+      }
+      if (r.adId) {
+        const g = byAd[r.adId] || (byAd[r.adId] = { id: r.adId, name: r.adName, adsetId: r.adsetId, campaignId: r.campaignId, spend: 0, impressions: 0, clicks: 0, metaLeads: 0 });
+        g.spend += Number(r.spend) || 0;
+        g.impressions += Number(r.impressions) || 0;
+        g.clicks += Number(r.clicks) || 0;
+        g.metaLeads += Number(r.metaLeads) || 0;
+        g.name = r.adName || g.name;
+      }
+    }
+    const adsets = Object.values(byAdset).map(finishGroup("term")).sort((a, b) => b.spend - a.spend);
+    const ads = Object.values(byAd).map(finishGroup("content")).sort((a, b) => b.spend - a.spend);
 
     // Série diária (spend Meta + leads Cockpit) pro gráfico.
     const byDay = {};
@@ -175,8 +213,26 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         cpm: impressions > 0 ? Math.round((spend / impressions) * 1000 * 100) / 100 : null,
         ctr: impressions > 0 ? Math.round((clicks / impressions) * 10000) / 100 : null, // %
       },
-      perStage, campaigns, series,
+      perStage, campaigns, adsets, ads, series,
       synced: rows.length > 0,
     };
+  });
+
+  // Catálogo id → nome (campanha/conjunto/anúncio) a partir do ad_insights já
+  // sincronizado — o drawer do lead resolve o UTM cru pra nomes legíveis sem
+  // nenhuma chamada à Meta.
+  app.get("/api/marketing/:saas/attribution", async (req, reply) => {
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "Not found" });
+    const campaigns = {};
+    const adsets = {};
+    const ads = {};
+    for (const r of await repo.list("ad_insights")) {
+      if (r.saas !== product.id) continue;
+      if (r.campaignId) campaigns[r.campaignId] = { name: r.campaignName || "" };
+      if (r.adsetId) adsets[r.adsetId] = { name: r.adsetName || "", campaignId: r.campaignId || "" };
+      if (r.adId) ads[r.adId] = { name: r.adName || "", adsetId: r.adsetId || "", campaignId: r.campaignId || "" };
+    }
+    return { campaigns, adsets, ads };
   });
 }

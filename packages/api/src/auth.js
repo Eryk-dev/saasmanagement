@@ -43,7 +43,12 @@ export async function ensureDefaultAdmins(repo) {
   return DEFAULT_ADMINS.length;
 }
 
-const publicUser = (u) => ({ id: u.id, name: u.name, role: u.role || "admin" });
+// `role` = auth (todos "admin" na v1). `roles` = etiquetas de capacidade do
+// funil (quem aparece nos pickers de SDR/closer/integrador) — NÃO é ACL.
+export const ROLE_TAGS = ["sdr", "closer", "integrator"];
+const sanitizeRoles = (x) => (Array.isArray(x) ? x.filter((r) => ROLE_TAGS.includes(r)) : []);
+
+const publicUser = (u) => ({ id: u.id, name: u.name, role: u.role || "admin", roles: Array.isArray(u.roles) ? u.roles : [] });
 
 // Token de sessão → usuário (null se inexistente/expirado).
 export async function sessionUser(repo, token) {
@@ -70,7 +75,13 @@ export function makeAuthHook({ apiKey, repo, openPaths, openPrefixes, providedKe
     if (openPrefixes.some((p) => path.startsWith(p))) return;
     const key = providedKey(req);
     if (key === apiKey) return;
-    if (await sessionUser(repo, key)) return;
+    const user = await sessionUser(repo, key);
+    if (user) {
+      // Autoria real das escritas (quem moveu o card / logou o toque). Key de
+      // integração não tem usuário — rotas caem no author "api".
+      req.authUser = user;
+      return;
+    }
     return reply.code(401).send({ error: "Unauthorized" });
   };
 }
@@ -126,15 +137,35 @@ export function registerAuthRoutes(app, repo) {
   app.get("/api/auth/users", async () => (await repo.list("users")).map(publicUser));
 
   app.post("/api/auth/users", async (req, reply) => {
-    const { name, password, id } = req.body || {};
+    const { name, password, id, roles } = req.body || {};
     if (!name || !password) return reply.code(400).send({ error: "name e password obrigatórios" });
     const created = await repo.create("users", {
       ...(id ? { id: String(id).toLowerCase() } : {}),
       name, role: "admin",
+      roles: sanitizeRoles(roles),
       passwordHash: hashPassword(password),
       createdAt: new Date().toISOString(),
     });
     return reply.code(201).send(publicUser(created));
+  });
+
+  // Editar usuário (nome, etiquetas de papel, reset de senha). Qualquer
+  // autenticado pode — postura atual do time (todos admins); revisitar quando
+  // roles virarem ACL. Reset de senha aqui NÃO pede a atual (o /password, que é
+  // "trocar a própria", pede) — é o caminho de gestão pro dono destravar acesso.
+  app.patch("/api/auth/users/:id", async (req, reply) => {
+    const user = await repo.get("users", req.params.id);
+    if (!user) return reply.code(404).send({ error: "Not found" });
+    const { name, roles, password } = req.body || {};
+    const patch = {};
+    if (typeof name === "string" && name.trim()) patch.name = name.trim();
+    if (roles !== undefined) patch.roles = sanitizeRoles(roles);
+    if (password !== undefined) {
+      if (!password || String(password).length < 4) return reply.code(400).send({ error: "senha nova precisa de 4+ caracteres" });
+      patch.passwordHash = hashPassword(password);
+    }
+    const updated = await repo.update("users", user.id, patch);
+    return publicUser(updated);
   });
 }
 

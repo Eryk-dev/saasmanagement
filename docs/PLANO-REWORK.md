@@ -535,6 +535,113 @@ Collections `tasks` + `task_boards` (CRUD genérico — zero rota nova).
   persistiu), comentar (autor Leonardo), renomear/colorir coluna (key
   estável), reload mantém tudo.
 
+## ✅ Fase CRM — Processo SDR+Closer + timeline + GPS + atribuição (2026-07-09, só local)
+
+Rework completo do processo comercial (pedido do dono: "CRM realmente profissional
+pra venda de software com call; anotar todos os pontos de contato; o app dizer
+quando contatar cada cliente"). Lead scoring segue CORTADO (decisão §3.6 mantida).
+
+### Conceitos novos (API)
+- **`funnel[].kind`** — semântica do estágio (`novo contato qualificacao call
+  proposta followup integracao ganho perdido desqualificado outro`). TODO código
+  decide por kind, nunca por nome (matou WON_STAGES, ATTEMPT_SLOTS, STAGE_TEAM,
+  overview:18, regexes do charts). Fallback por heurística de nome
+  (`src/stages.js` + espelho `web/src/lib/funnel.js`) mantém funil antigo/multi-
+  SaaS funcionando sem migração. `funnel[].cadence = { maxAttempts, retryDays,
+  firstTouchHours }` substitui a cadência hardcoded.
+- **`activities`** (collection nova, auto-CRUD, fora do bootstrap, fetch por
+  lead) — timeline: toques manuais (whatsapp/call/email/meeting/note) + eventos
+  automáticos (`lead_created`, `stage` {from,to,lostReason} = HISTÓRICO real de
+  transições, `proposal_viewed/accepted`, `customer_created`). IDs `ac_<uuid>`.
+- **`src/lead-flow.js`** — núcleo: `applyStageMove` (todo movimento de estágio:
+  stageSince, motivo de perda autofill `nao_informado`/limpeza em revival,
+  `nextActionAt` pela cadência, `stageAttempts` zerado, activity logada; usado
+  pelo PATCH genérico E pelo aceite de proposta — consertou bug: aceite não
+  recarimbava stageSince nem convertia won→customer); `onActivityCreated` (toque
+  → lastActivityAt/Type + stageAttempts++ + re-agenda `nextActionAt` = o GPS);
+  `initialNextActionAt` (lead nasce com 1º toque marcado pelo SLA).
+- **Lead** ganhou: `nextActionAt/nextActionNote` (GPS, ISO UTC), `lostReason/
+  lostNote` (id de `product.lossReasons`, seed padrão em migrations), `closer`
+  formalizado, `lastActivityAt/lastActivityType/stageAttempts` (denorm da
+  timeline pro board/fila). `attempts[]` legado ficou inerte.
+- **Roles** — `user.roles: [sdr|closer|integrator]` (etiqueta, NÃO ACL; `role:
+  "admin"` intocado). `PATCH /api/auth/users/:id` novo (nome/roles/reset senha).
+  `req.authUser` no hook → autoria real nas activities.
+- **Atribuição nível anúncio** — `meta.adInsights` (level=ad); `ad_insights`
+  ganhou adset/ad (id `ai_{saas}_{adId||campaignId}_{date}` — ids legados
+  preservados); sync REMOVE linhas legadas campaign-level NA JANELA (anti dupla
+  contagem; gasto manual `manual_*` intocado). GET /api/marketing devolve
+  `adsets[]`/`ads[]` (match `utm.term`/`utm.content`, id OU nome) + novo
+  `GET /api/marketing/:saas/attribution` (catálogo id→nome pro drawer).
+  Convenção: `utm_campaign={{campaign.id}}&utm_term={{adset.id}}&utm_content={{ad.id}}`.
+- **`GET /api/funnel/:saas`** (`src/routes.funnel-metrics.js`) — métricas REAIS:
+  conversão estágio→estágio + mediana de dias (histórico de activities; lead
+  antigo degrada pra aproximação por estágio atual — `coverage` expõe), win
+  rate, motivos de perda, SLA de 1º toque. `stagePassCounts` compartilhado com
+  o custo-por-estágio do marketing.
+- **Migrações de boot** (idempotentes, guarda estrita): funil LeverAds novo —
+  SDR: Novo lead → Em contato → Qualificando · Closer: Call agendada → Proposta
+  enviada → Follow-up → Integração → Ganho · terminais Perdido/Desqualificado
+  (+Mentoria preservada como `outro`). Cards: Qualificação→Qualificando,
+  Call closer→Call agendada, Negociação→Follow-up, disqualified→Desqualificado,
+  **Sem resposta→Perdido + lostReason "sem_resposta"** (coluna morreu; se o time
+  usava como fila de re-engajamento, reverter é 1 linha no CARD_MAP). Também:
+  ensureFunnelKinds (todos os produtos), ensureLossReasons, ensureUserRoles
+  (eryk→integrator, leonardo→closer+sdr; não cria usuário).
+- MCP: alias `activities`; `move_deal` ganhou `lost_reason`/`lost_note`.
+
+### Telas (web)
+- **Pipeline**: colunas com kicker de fase (SDR/CLOSER/ENTREGA/FIM) + filtro de
+  Fase (Todas|SDR|Closer) + filtro "meus"/pessoa (localStorage
+  `cockpit_pipeline_person`); dots de cadência agora REGISTRAM activity (server
+  re-agenda o GPS sozinho) e leem `stageAttempts`; pickers de dono/closer/
+  integrador vêm de users-by-role (Ajustes → Equipe); pill de próximo toque
+  unificado (nextActionAt ● / callAt ◆); **gates**: drag pra fase closer sem
+  closer → modal de handoff (closer + call + nota→timeline); drag pra perda →
+  modal de motivo (components/stage-move.jsx; EntityForm cru segue escape
+  hatch). Agenda: legenda por usuário real + toggle "mostrar toques" (eventos
+  tracejados). Aba forecast virou **Análise** (alias no localStorage): forecast
+  + conversão real/mediana por etapa + motivos de perda + tiles SLA/win-rate.
+- **Drawer do lead**: seção GPS (etapa gateada, próximo toque com presets,
+  call agendada separada; condicionais por kind), bloco Atribuição (nomes de
+  campanha/conjunto/anúncio via catálogo, cache por SaaS), **Timeline**
+  substitui Comentários (composer wpp/call/reunião/e-mail/nota + atalho
+  "registrar + próximo"; comments[] legados mesclados read-only; fetch por lead
+  + refetch no `version` — activities NÃO recarregam o SEED, ver app.jsx).
+- **Visão geral**: "Hoje" virou **Fila de trabalho** (coluna larga): Atrasados →
+  Hoje (◆ calls com hora) → Sem próximo passo (violação de SLA primeiro), linha
+  com últ. toque + responsável + ações hover "✓ toque"/"+1d", mini-saúde
+  (N sem próximo passo, N fora do SLA), filtro "meus" compartilhado; gráfico +
+  contagens de funil foram pra coluna direita.
+- **Publicidade**: custo por call/ganho por KIND; tabela de campanha expansível
+  campanha → conjunto → anúncio (spend/leads/CPL por nível).
+- **Ajustes**: editor de funil ganhou select de TIPO (kind) + 3 campos de
+  cadência (aviso se nº de estágios "ganho" ≠ 1); card Motivos de perda; aba
+  **Equipe** (checkboxes de papéis por usuário, salva na hora; criar usuário).
+- **Clientes**: seção "Histórico do funil" (timeline do lead de origem, read-only).
+- EntityForm ganhou tipo `datetime` (ISO UTC); entities.js: owner/closer de
+  USERS por role, nextActionAt/Note, lostReason (options dinâmicas do produto).
+
+### Testes/verificação
+Suite 134/134 (novos: stages, routes.activities, lead-flow, routes.funnel-
+metrics; estendidos: migrations, auth, marketing ad-level, utm term/content).
+`routes.stage-since` intocado (spec do refactor). Build web + smoke-ssr verdes
+(smoke ganhou stub de matchMedia e a expectativa "Próximo passo").
+
+### Pendências/observações da fase
+- **E2E no browser não rodou**: este clone não tem `.env` (sem COCKPIT_DB_URL).
+  ⚠️ Dev usa o MESMO Supabase da prod: subir `npm run dev` roda as migrações
+  (renomeia estágios/cards NA PROD com o renderer velho no ar) — subir dev e
+  `git push` (auto-deploy) no MESMO momento, conferindo o checklist: form →
+  lead com activity + 1º toque marcado → fila da Visão geral → dot registra
+  toque → handoff exige closer → perda exige motivo → Análise com conversões.
+- Pós-deploy: rodar `POST /api/marketing/sync` uma vez cobrindo o período
+  consultado (higieniza linhas campaign-level → ad-level, sem dupla contagem).
+- Criar o usuário `jonathan` em Ajustes → Equipe se ele segue no time (a
+  migração de roles não cria usuário).
+- Ajustar os anúncios da Meta pra convenção de UTM (utm_term/utm_content) —
+  sem isso a atribuição fica só por campanha, como antes.
+
 ## 9. Transversais
 - **Auth do time:** ✅ v1 entregue (login simples com sessão — ver §2). O plano
   original era Supabase Auth/JWT; o dono pediu sistema simples com 2 admins

@@ -4,6 +4,7 @@ import { useData } from "../data.jsx";
 import { PageHead, Card, Pill } from "../components/viz.jsx";
 import { EmptyState, PrimaryButton, RowActions } from "../atoms.jsx";
 import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/milestones.js";
+import { ActivityList } from "../components/timeline.jsx";
 // Clientes — a base ativa do produto (estilo Attio: tabela + painel de detalhe
 // sem trocar de página). A receita vem das assinaturas (customer.arr é
 // derivado). Pós-venda: linha do tempo de marcos por tempo de casa
@@ -59,7 +60,7 @@ function CustomersScreen() {
         <PrimaryButton onClick={() => openForm("customers")}>+ novo cliente</PrimaryButton>
       </PageHead>
 
-      <div style={{ padding: "20px 24px 40px" }}>
+      <div style={{ padding: "20px var(--pad-x) 40px" }}>
         {customers.length === 0 ? (
           <EmptyState
             title="Nenhum cliente ainda"
@@ -67,8 +68,9 @@ function CustomersScreen() {
             action={<PrimaryButton onClick={() => openForm("customers")}>+ Cadastrar cliente</PrimaryButton>}
           />
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 340px", gap: 12, alignItems: "start" }}>
+          <div className="resp-cols" style={{ "--cols": "minmax(0,1fr) 340px", gap: 12, alignItems: "start" }}>
             <Card style={{ overflow: "hidden" }}>
+              <div className="tbl-x">
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
@@ -110,6 +112,7 @@ function CustomersScreen() {
                   })}
                 </tbody>
               </table>
+              </div>
             </Card>
 
             {selected && (
@@ -194,7 +197,7 @@ function CustomersScreen() {
                   })}
                 </div>
 
-                <div style={{ padding: "12px 16px" }}>
+                <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--line-1)" }}>
                   <div className="mono" style={{ fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>Últimas faturas</div>
                   {invoices.filter((i) => i.customer === selected.id).slice(0, 4).map((i) => (
                     <div key={i.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", fontSize: 13 }}>
@@ -213,11 +216,43 @@ function CustomersScreen() {
                     <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Nenhuma fatura ainda.</div>
                   )}
                 </div>
+
+                <CustomerHistory customer={selected} />
               </Card>
             )}
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Histórico do cliente = a timeline do lead de origem (customer.leadId) —
+// a jornada comercial inteira continua legível depois do fechamento. Read-only.
+function CustomerHistory({ customer }) {
+  const [acts, setActs] = React.useState(null);
+  const [expanded, setExpanded] = React.useState(false);
+  React.useEffect(() => {
+    if (!customer?.leadId) { setActs([]); return; }
+    let alive = true;
+    api.listActivities(customer.leadId).then((a) => alive && setActs(a)).catch(() => alive && setActs([]));
+    return () => { alive = false; };
+  }, [customer?.leadId]);
+  if (!customer?.leadId || (acts !== null && acts.length === 0)) return null;
+  const shown = expanded ? acts : (acts || []).slice(0, 10);
+  return (
+    <div style={{ padding: "12px 16px" }}>
+      <div className="mono" style={{ fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
+        Histórico do funil
+      </div>
+      {acts === null
+        ? <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>carregando…</div>
+        : <ActivityList activities={shown} compact />}
+      {acts && acts.length > 10 && !expanded && (
+        <button onClick={() => setExpanded(true)} className="mono" style={{ fontSize: 11, color: "var(--accent)", padding: "6px 0" }}>
+          ver tudo ({acts.length})
+        </button>
+      )}
     </div>
   );
 }

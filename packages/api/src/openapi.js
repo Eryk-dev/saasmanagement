@@ -54,15 +54,23 @@ export const openapi = {
           value: { type: "string", description: "Faixa de ticket (livre): Ent | Mid | SMB.", example: "Ent" },
           amount: { type: "number", description: "Valor estimado do negócio (R$) — soma no forecast do pipeline.", example: 84000 },
           reason: { type: "string", description: "Por que é relevante (aparece no card).", example: "Enterprise · 200+ funcionários · bate com o ICP" },
+          closer: { type: "string", description: "id do usuário closer responsável (GET /api/auth/users).", example: "leonardo" },
+          nextActionAt: { type: "string", description: "Próximo toque no lead (ISO). O servidor preenche/reagenda pela cadência do estágio; envie explícito pra sobrescrever.", example: "2026-07-10T14:00:00Z" },
+          nextActionNote: { type: "string", description: "O que fazer no próximo toque.", example: "Cobrar resposta da proposta" },
+          lostReason: { type: "string", description: "Motivo de perda (id de product.lossReasons). Mover pra estágio de perda sem enviar → servidor grava 'nao_informado'.", example: "preco" },
+          lostNote: { type: "string", description: "Detalhe livre da perda.", example: "Fechou com concorrente X" },
           utm: {
             type: "object",
-            description: "Parâmetros de campanha capturados no form.",
+            description:
+              "Parâmetros de campanha capturados no form. Convenção Meta Ads (parâmetros dinâmicos): " +
+              "`utm_source=meta&utm_medium=paid&utm_campaign={{campaign.id}}&utm_term={{adset.id}}&utm_content={{ad.id}}` " +
+              "— a atribuição em /api/marketing casa por id OU nome (campaign ↔ campanha, term ↔ conjunto, content ↔ anúncio).",
             properties: {
-              source: { type: "string", example: "google" },
-              medium: { type: "string", example: "cpc" },
-              campaign: { type: "string", example: "pricing-q2" },
-              term: { type: "string" },
-              content: { type: "string" },
+              source: { type: "string", example: "meta" },
+              medium: { type: "string", example: "paid" },
+              campaign: { type: "string", description: "id ou nome da campanha.", example: "120210000000000" },
+              term: { type: "string", description: "id ou nome do conjunto (adset).", example: "120210000000001" },
+              content: { type: "string", description: "id ou nome do anúncio.", example: "120210000000002" },
             },
           },
           proposalUrl: { type: "string", format: "uri", description: "Link da proposta gerada externamente (grave via PATCH depois de gerar).", example: "https://propostas.seudominio.com/p/abc123" },
@@ -106,16 +114,32 @@ export const openapi = {
           cycleDays: { type: "number", example: 78 },
           funnel: {
             type: "array",
-            description: "Estágios do funil (você define por SaaS).",
+            description: "Estágios do funil (você define por SaaS). O código decide comportamento pelo `kind`, nunca pelo nome.",
             items: {
               type: "object",
               properties: {
-                stage: { type: "string", example: "Discovery" },
+                stage: { type: "string", example: "Call agendada" },
+                kind: { type: "string", enum: ["novo", "contato", "qualificacao", "call", "proposta", "followup", "integracao", "ganho", "perdido", "desqualificado", "outro"], description: "Semântica do estágio (fase SDR/Closer, terminais). Ausente = heurística por nome." },
                 count: { type: "number", example: 73 },
                 conv: { type: "number", description: "Conversão do estágio anterior (0–1).", example: 0.38 },
+                cadence: {
+                  type: "object",
+                  description: "Cadência do GPS: quantos toques, de quanto em quanto tempo, SLA de 1º contato.",
+                  properties: {
+                    maxAttempts: { type: "number", example: 5 },
+                    retryDays: { type: "number", description: "Toque registrado/entrada no estágio → nextActionAt = +N dias.", example: 2 },
+                    firstTouchHours: { type: "number", description: "SLA de 1º contato (estágio de entrada).", example: 2 },
+                  },
+                },
+                staleDays: { type: "number", description: "Dias parado no estágio até o card ser marcado.", example: 5 },
                 flag: { type: "string", enum: ["bottleneck", "regression"], description: "Marca gargalo/regressão (opcional)." },
               },
             },
+          },
+          lossReasons: {
+            type: "array",
+            description: "Motivos de perda do produto (lead.lostReason guarda o id).",
+            items: { type: "object", properties: { id: { type: "string", example: "preco" }, label: { type: "string", example: "Preço" } } },
           },
           nnm: {
             type: "object",
@@ -172,6 +196,25 @@ export const openapi = {
           unit: { type: "string", enum: ["$", "pct", "x", ""], description: "Como formatar (R$, %, multiplicador).", example: "$" },
           band: { type: "string", enum: ["green", "yellow", "red"], example: "yellow" },
           invert: { type: "boolean", description: "true quando menor é melhor (ex.: churn)." },
+        },
+      },
+      Activity: {
+        type: "object",
+        required: ["lead"],
+        description:
+          "Ponto de contato / evento da timeline do lead. Toques (whatsapp/call/email/meeting) atualizam o " +
+          "últ. contato do lead, contam tentativa no estágio e re-agendam `nextActionAt` pela cadência " +
+          "(envie `meta.reschedule: false` pra registrar sem mexer na agenda). `stage` e `system` são " +
+          "gravados automaticamente pelo servidor (movimento de estágio, lead criado, proposta vista/aceita).",
+        properties: {
+          id: { type: "string", readOnly: true, example: "ac_7f3e…" },
+          saas: { type: "string", example: "leverads" },
+          lead: { type: "string", description: "id do lead.", example: "le_k9f2a" },
+          type: { type: "string", enum: ["note", "whatsapp", "call", "email", "meeting", "stage", "system"], example: "whatsapp" },
+          text: { type: "string", description: "Anotação do toque.", example: "Mandei o resumo da proposta" },
+          meta: { type: "object", description: "stage: {from, to, lostReason?} · system: {event, …refs}." },
+          author: { type: "string", description: "id do usuário (sessão) ou 'api'/'system'/'lead'.", example: "leonardo" },
+          at: { type: "string", description: "Quando aconteceu (ISO; backdate permitido).", example: "2026-07-09T15:00:00Z" },
         },
       },
       Error: { type: "object", properties: { error: { type: "string" } } },
@@ -264,6 +307,45 @@ export const openapi = {
     },
     "/api/leaderboard": {
       get: { tags: ["Sistema"], summary: "Ranking (scope=month|all)", parameters: [{ name: "scope", in: "query", schema: { type: "string", enum: ["month", "all"] } }], responses: { 200: { description: "OK" } } },
+    },
+    "/api/activities": {
+      get: {
+        tags: ["Leads"], summary: "Timeline (pontos de contato + eventos) — filtre por lead",
+        parameters: [
+          { name: "lead", in: "query", schema: { type: "string" } },
+          { name: "saas", in: "query", schema: { type: "string" } },
+          { name: "type", in: "query", schema: { type: "string" } },
+          { name: "since", in: "query", schema: { type: "string" }, description: "ISO — só activities com `at` >= since." },
+        ],
+        responses: { 200: { description: "OK", content: { "application/json": { schema: { type: "array", items: { $ref: "#/components/schemas/Activity" } } } } } },
+      },
+      post: {
+        tags: ["Leads"], summary: "Registra um ponto de contato (toque/nota) na timeline do lead",
+        security: [{ ApiKeyAuth: [] }],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/Activity" } } } },
+        responses: { 201: { description: "Criado", content: { "application/json": { schema: { $ref: "#/components/schemas/Activity" } } } } },
+      },
+    },
+    "/api/funnel/{saas}": {
+      parameters: [{ name: "saas", in: "path", required: true, schema: { type: "string" } }],
+      get: {
+        tags: ["Leads"], summary: "Métricas reais do funil (conversão, tempo por etapa, perdas, SLA de 1º toque)",
+        description:
+          "Derivadas do histórico de transições (activities `stage`) do cohort de leads criados no período. " +
+          "Lead sem histórico degrada pra aproximação pelo estágio atual — `coverage` mostra a proporção.",
+        parameters: [
+          { name: "since", in: "query", schema: { type: "string", example: "2026-06-01" } },
+          { name: "until", in: "query", schema: { type: "string", example: "2026-06-30" } },
+        ],
+        responses: { 200: { description: "{ coverage, stages[], winRate, lossReasons[], firstTouch }" }, 404: { description: "SaaS não encontrado" } },
+      },
+    },
+    "/api/marketing/{saas}/attribution": {
+      parameters: [{ name: "saas", in: "path", required: true, schema: { type: "string" } }],
+      get: {
+        tags: ["Sistema"], summary: "Catálogo id → nome (campanha/conjunto/anúncio) pro UTM do lead",
+        responses: { 200: { description: "{ campaigns, adsets, ads }" }, 404: { description: "SaaS não encontrado" } },
+      },
     },
   },
 };

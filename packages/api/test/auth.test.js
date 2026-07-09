@@ -128,3 +128,42 @@ test("trocar senha: exige sessão + senha atual; nova senha passa a valer", asyn
 
   await app.close();
 });
+
+// ── Roles (etiquetas de capacidade do funil) ────────────────────────────────
+
+test("roles: create sanitiza, list expõe, PATCH edita e reseta senha", async (t) => {
+  const repo = makeMemRepo();
+  const app = Fastify();
+  registerRoutes(app, repo); // registra /api/auth/* junto
+  t.after(() => app.close());
+
+  const created = (await app.inject({
+    method: "POST", url: "/api/auth/users",
+    payload: { name: "Jonathan", password: "abcd", roles: ["closer", "hacker", 42] },
+  })).json();
+  assert.deepEqual(created.roles, ["closer"]); // desconhecidas caem
+
+  const listed = (await app.inject({ url: "/api/auth/users" })).json();
+  assert.deepEqual(listed.find((u) => u.id === created.id).roles, ["closer"]);
+
+  // PATCH roles + nome
+  const patched = (await app.inject({
+    method: "PATCH", url: `/api/auth/users/${created.id}`,
+    payload: { roles: ["sdr", "closer"], name: "Jon" },
+  })).json();
+  assert.deepEqual(patched.roles, ["sdr", "closer"]);
+  assert.equal(patched.name, "Jon");
+  assert.equal(patched.passwordHash, undefined, "hash nunca vaza");
+
+  // reset de senha: a nova loga, a antiga não
+  const reset = await app.inject({ method: "PATCH", url: `/api/auth/users/${created.id}`, payload: { password: "nova1" } });
+  assert.equal(reset.statusCode, 200);
+  const ok = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "Jon", password: "nova1" } });
+  assert.equal(ok.statusCode, 200);
+  const bad = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "Jon", password: "abcd" } });
+  assert.equal(bad.statusCode, 401);
+
+  // senha curta é rejeitada; usuário inexistente 404
+  assert.equal((await app.inject({ method: "PATCH", url: `/api/auth/users/${created.id}`, payload: { password: "ab" } })).statusCode, 400);
+  assert.equal((await app.inject({ method: "PATCH", url: "/api/auth/users/nao-existe", payload: { roles: [] } })).statusCode, 404);
+});

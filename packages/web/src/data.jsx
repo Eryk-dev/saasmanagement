@@ -28,9 +28,15 @@ export function hydrateSeed(seed) {
 }
 
 // Fetch the whole dataset into window.SEED and hydrate it. Used at boot and on
-// every refresh after a mutation.
+// every refresh after a mutation. USERS (time + roles) vem junto — alimenta os
+// pickers de dono/closer do pipeline e a fila (padrão do PLANS_CACHE). Falha de
+// /auth/users nunca bloqueia o boot (lista vazia → fallbacks legados).
 export async function loadSeed() {
-  const seed = await api.bootstrap();
+  const [seed, users] = await Promise.all([
+    api.bootstrap(),
+    api.listUsers().catch(() => []),
+  ]);
+  seed.USERS = Array.isArray(users) ? users : [];
   window.SEED = seed;
   hydrateSeed(seed);
   return seed;

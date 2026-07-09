@@ -17,6 +17,7 @@ import { LeadDetail } from "./screens/deal.jsx";
 import { DataContext, loadSeed } from "./data.jsx";
 import { EntityForm } from "./components/EntityForm.jsx";
 import { ConfirmDelete } from "./components/ConfirmDelete.jsx";
+import { useIsMobile } from "./lib/responsive.js";
 // Main app — routing, persona switching, tweaks integration.
 
 const { useState: useStA, useEffect: useEA, useCallback: useCbA } = React;
@@ -37,6 +38,8 @@ function App() {
   const [params, setParams] = useStA({});
   const [leadSel, setLeadSel] = useStA(null);
   const [collapsed, setCollapsed] = useStA(false);
+  const isMobile = useIsMobile();
+  const [menuOpen, setMenuOpen] = useStA(false); // drawer da nav no mobile
 
   // CRUD plumbing — modals live above the keyed screen so a post-write refresh
   // never unmounts the form mid-callback. Screens trigger via the DataContext.
@@ -64,8 +67,16 @@ function App() {
     let last = null, t = null;
     const es = new EventSource(eventsUrl());
     es.onmessage = (m) => {
-      let rev; try { rev = JSON.parse(m.data).rev; } catch { return; }
-      if (last != null && rev !== last) { clearTimeout(t); t = setTimeout(refresh, 350); }
+      let rev, collection;
+      try { ({ rev, collection } = JSON.parse(m.data)); } catch { return; }
+      // Timeline (activities) fica FORA do bootstrap — o drawer refetch sozinho.
+      // Recarregar o SEED inteiro a cada toque registrado seria desperdício; se o
+      // toque também mexeu no lead (denorm), o update do lead emite outro evento
+      // e aí sim recarregamos.
+      if (last != null && rev !== last && collection !== "activities") {
+        clearTimeout(t);
+        t = setTimeout(refresh, 350);
+      }
       last = rev;
     };
     return () => { clearTimeout(t); es.close(); };
@@ -109,18 +120,31 @@ function App() {
 
   return (
     <DataContext.Provider value={dataCtx}>
-    <div style={{ height: "100vh", display: "flex", overflow: "hidden", background: "var(--bg-0)" }}>
-      <NavRail current={screen} onNav={(id) => nav(id)} collapsed={collapsed} />
+    <div className="app-shell" style={{ display: "flex", overflow: "hidden", background: "var(--bg-0)" }}>
+      {!isMobile && <NavRail current={screen} onNav={(id) => nav(id)} collapsed={collapsed} />}
+      {isMobile && menuOpen && (
+        <div onClick={() => setMenuOpen(false)}
+          style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", zIndex: 100, display: "flex" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ height: "100%", display: "flex", boxShadow: "var(--shadow-pop)" }}>
+            <NavRail current={screen} onNav={(id) => { nav(id); setMenuOpen(false); }} collapsed={false} />
+          </div>
+        </div>
+      )}
 
       <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <TopBar
           breadcrumb={crumbsFor[screen]}
           subtitle={subtitleFor(screen, params)}
-          trailing={
+          leading={isMobile && (
+            <button onClick={() => setMenuOpen(true)} style={chromeBtnStyleSmall} title="Abrir menu">
+              <span className="mono" style={{ fontSize: 14 }}>☰</span>
+            </button>
+          )}
+          trailing={!isMobile && (
             <button onClick={() => setCollapsed(c => !c)} style={chromeBtnStyleSmall} title="Alternar barra lateral">
               <span className="mono" style={{ fontSize: 12 }}>{collapsed ? "▶" : "◀"}</span>
             </button>
-          }
+          )}
         />
 
         <div key={dataVersion} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>

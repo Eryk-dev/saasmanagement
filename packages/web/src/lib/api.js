@@ -103,4 +103,19 @@ export const api = {
     if (until) q.set("until", until);
     return req("GET", `/api/marketing/${saas}${q.toString() ? `?${q}` : ""}`);
   },
+  // CRM: timeline do lead (pontos de contato + eventos automáticos).
+  listActivities: (leadId) => req("GET", `/api/activities?lead=${encodeURIComponent(leadId)}`),
+  logActivity: (a) => req("POST", "/api/activities", a),
+  // Métricas reais de funil (conversão/tempo por etapa, perdas, SLA de 1º toque).
+  funnelAnalytics: (saas, { since, until } = {}) => {
+    const q = new URLSearchParams();
+    if (since) q.set("since", since);
+    if (until) q.set("until", until);
+    return req("GET", `/api/funnel/${saas}${q.toString() ? `?${q}` : ""}`);
+  },
+  // Catálogo id → nome (campanha/conjunto/anúncio) pro bloco de atribuição.
+  marketingAttribution: (saas) => req("GET", `/api/marketing/${saas}/attribution`),
+  // Equipe: etiquetas de papel (sdr/closer/integrator), criação e reset de senha.
+  updateUser: (id, patch) => req("PATCH", `/api/auth/users/${id}`, patch),
+  createUser: ({ name, password, roles }) => req("POST", "/api/auth/users", { name, password, ...(roles ? { roles } : {}) }),
 };

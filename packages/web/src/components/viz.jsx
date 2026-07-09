@@ -21,7 +21,7 @@ export function useWidth(initial = 600) {
 
 export function PageHead({ title, sub, children }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 24px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-1)" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, rowGap: 8, flexWrap: "wrap", padding: "14px var(--pad-x)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-1)" }}>
       <div style={{ minWidth: 0 }}>
         <h1 style={{ margin: 0, fontFamily: "var(--display)", fontSize: 18, fontWeight: 700, letterSpacing: "-0.015em" }}>{title}</h1>
         {sub && <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 1 }}>{sub}</div>}

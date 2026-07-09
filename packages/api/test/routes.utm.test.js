@@ -74,3 +74,18 @@ test("GET /api/marketing/:saas atribui leads e CPL real por utm_campaign (nome o
   assert.equal(byName["Remarketing"].cpl, 100);
   await app.close();
 });
+
+test("utm term/content (conjunto/anúncio) persistem sanitizados no lead", async () => {
+  const { app, repo } = await buildApp();
+  const res = await app.inject({
+    method: "POST", url: "/public/forms/fo_utm/submissions",
+    payload: {
+      answers: { nome: "Cadu" },
+      utm: { source: "meta", medium: "paid", campaign: "c_9", term: "s_9", content: "a_9" },
+    },
+  });
+  assert.equal(res.statusCode, 201);
+  const lead = (await repo.list("leads")).find((l) => l.name === "Cadu");
+  assert.deepEqual(lead.utm, { source: "meta", medium: "paid", campaign: "c_9", term: "s_9", content: "a_9" });
+  await app.close();
+});

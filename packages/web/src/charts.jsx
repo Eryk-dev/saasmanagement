@@ -1,4 +1,5 @@
 import React from "react";
+import { stageKind, isLossKind } from "./lib/funnel.js";
 // Chart primitives — purpose-built for the SaaS operator cockpit.
 // Exports: MRRTrajectory, NNMWaterfall, FunnelLadder, MetricTile, BigNumber, MiniBars
 
@@ -210,23 +211,25 @@ function FunnelLadder({ stages, accent = "var(--accent)", showCount = true }) {
 // linear e viram "perdidos". Estágios POSITIVOS pós-ganho (ex.: Mentoria) não
 // entram como etapa — leads ali contam como ganhos. `bare` remove a moldura
 // externa (p/ encaixar dentro de outro card). Reusado por Pipeline e Portfólio.
-const FUNNEL_LOST_RE = /perdido|lost|sem\s*resposta|nutri|churn|descart|desqualif/i;
-const FUNNEL_WON_RE = /ganho|won|fechad|pago/i;
+// Perda/ganho decididos pelo KIND do estágio (lib/funnel.js), com heurística
+// por nome pra funil legado sem kind — mesmas regras dos antigos regexes.
+const isLostStage = (s, st) => isLossKind(stageKind(s, st));
+const isWonName = (s, st) => stageKind(s, st) === "ganho";
 
 function FunnelView({ s, leads, embedded, bare }) {
   const all = (s.funnel || []).map(f => f.stage);
-  const lostStages = all.filter(st => FUNNEL_LOST_RE.test(st));
-  const wonIdx = all.findIndex(st => FUNNEL_WON_RE.test(st));
+  const lostStages = all.filter(st => isLostStage(s, st));
+  const wonIdx = all.findIndex(st => isWonName(s, st));
   // Funil linear = do início até o ganho (inclusive), sem terminais. Estágios
   // POSITIVOS pós-ganho (ex.: Mentoria) não entram como etapa do funil.
-  const linear = all.filter((st, i) => !FUNNEL_LOST_RE.test(st) && (wonIdx < 0 || i <= wonIdx));
+  const linear = all.filter((st, i) => !isLostStage(s, st) && (wonIdx < 0 || i <= wonIdx));
   // Posição no funil de um lead: estágio positivo pós-ganho conta como "chegou
   // ao ganho" (último degrau); terminal/desconhecido = fora (-1).
   const linIdx = st => {
     const i = linear.indexOf(st);
     if (i >= 0) return i;
     const fi = all.indexOf(st);
-    if (wonIdx >= 0 && fi > wonIdx && !FUNNEL_LOST_RE.test(st)) return linear.length - 1;
+    if (wonIdx >= 0 && fi > wonIdx && !isLostStage(s, st)) return linear.length - 1;
     return -1;
   };
   const total = leads.length; // total de cadastros (denominador)
@@ -241,7 +244,7 @@ function FunnelView({ s, leads, embedded, bare }) {
   const data = rows.map(r => ({ stage: r.stage, count: r.count, conv: r.conv, flag: worst && r.i === worst.i ? "bottleneck" : undefined }));
 
   // Ganhos = no estágio de ganho OU pós-ganho positivo (ex.: Mentoria/cliente).
-  const won = leads.filter(l => { const fi = all.indexOf(l.stage); return wonIdx >= 0 && fi >= wonIdx && !FUNNEL_LOST_RE.test(l.stage); }).length;
+  const won = leads.filter(l => { const fi = all.indexOf(l.stage); return wonIdx >= 0 && fi >= wonIdx && !isLostStage(s, l.stage); }).length;
   const lost = leads.filter(l => lostStages.includes(l.stage)).length;
   const lostRows = lostStages.map(st => ({ stage: st, count: leads.filter(l => l.stage === st).length }));
   const overall = total > 0 ? won / total : 0;

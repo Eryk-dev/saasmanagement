@@ -37,4 +37,5 @@ export const COLLECTIONS = {
   expenses: [],
   tasks: [],
   task_boards: [],
+  activities: [],
 };

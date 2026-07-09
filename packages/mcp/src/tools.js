@@ -30,8 +30,9 @@ const ALIASES = {
   ad_insight: "ad_insights", ad_insights: "ad_insights", insights: "ad_insights", campanha: "ad_insights", campanhas: "ad_insights",
   task: "tasks", tasks: "tasks", tarefa: "tasks", tarefas: "tasks",
   task_board: "task_boards", task_boards: "task_boards", quadro: "task_boards", quadros: "task_boards",
+  activity: "activities", activities: "activities", atividade: "activities", atividades: "activities", toque: "activities", timeline: "activities",
 };
-const COLLECTIONS = "products, customers, leads, nps, goals, attention, people, leaderboard_month, leaderboard_all, forms, form_submissions, proposal_templates, proposals, plans, subscriptions, invoices, tasks, task_boards";
+const COLLECTIONS = "products, customers, leads, nps, goals, attention, people, leaderboard_month, leaderboard_all, forms, form_submissions, proposal_templates, proposals, plans, subscriptions, invoices, tasks, task_boards, activities";
 function resolve(r) {
   const c = ALIASES[String(r || "").toLowerCase()];
   if (!c) throw new Error(`Recurso desconhecido: "${r}". Use um de: saas/products, customers, leads, nps, goals, attention, people, leaderboard_month, leaderboard_all, forms, form_submissions.`);
@@ -126,10 +127,21 @@ export function registerTools(server) {
 
   server.registerTool("move_deal", {
     title: "Mover card de estágio",
-    description: "Atalho: move um lead/card do pipeline para outro estágio do funil (reflete no kanban na hora).",
-    inputSchema: { id: z.string(), stage: z.string().describe("estágio de destino") },
-  }, async ({ id, stage }) => {
-    try { return out(await apiClient.update("leads", id, { stage })); } catch (e) { return fail(e); }
+    description: "Atalho: move um lead/card do pipeline para outro estágio do funil (reflete no kanban na hora). Movendo pra estágio de perda/desqualificação, envie lost_reason (id de product.lossReasons — ex.: preco, sem_resposta, sem_fit, timing, concorrente, outro); sem ele o servidor grava 'nao_informado'.",
+    inputSchema: {
+      id: z.string(),
+      stage: z.string().describe("estágio de destino"),
+      lost_reason: z.string().optional().describe("motivo de perda quando o destino é Perdido/Desqualificado"),
+      lost_note: z.string().optional().describe("detalhe livre da perda"),
+    },
+  }, async ({ id, stage, lost_reason, lost_note }) => {
+    try {
+      return out(await apiClient.update("leads", id, {
+        stage,
+        ...(lost_reason ? { lostReason: lost_reason } : {}),
+        ...(lost_note ? { lostNote: lost_note } : {}),
+      }));
+    } catch (e) { return fail(e); }
   });
 
   server.registerTool("generate_proposal", {

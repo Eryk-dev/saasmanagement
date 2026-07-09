@@ -79,7 +79,7 @@ function FormsScreen({ saasId }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+      <div style={{ padding: "12px var(--pad-x)", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
         <div style={{ display: "flex", gap: 6 }}>
           {SAAS.length > 1 && SAAS.map((x) => (
             <button key={x.id} onClick={() => setActive(x.id)} style={{
@@ -94,7 +94,7 @@ function FormsScreen({ saasId }) {
         <PrimaryButton onClick={() => setView({ mode: "edit", form: null })}>+ novo form</PrimaryButton>
       </div>
 
-      <div style={{ flex: 1, overflow: "auto", padding: "20px 24px" }}>
+      <div style={{ flex: 1, overflow: "auto", padding: "20px var(--pad-x)" }}>
         {!forms.length ? (
           <EmptyState
             title="Nenhum form neste SaaS"
@@ -102,7 +102,7 @@ function FormsScreen({ saasId }) {
             action={<PrimaryButton onClick={() => setView({ mode: "edit", form: null })}>+ Criar form</PrimaryButton>}
           />
         ) : (
-          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", overflow: "hidden", background: "var(--bg-1)" }}>
+          <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
             <div className="mono" style={{ display: "grid", gridTemplateColumns: "1fr 110px 90px 90px 360px", padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
               <span>Form</span><span>Status</span><span>Perguntas</span><span>Respostas</span><span style={{ textAlign: "right" }}>Ações</span>
             </div>
@@ -242,7 +242,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
   const qKeys = (draft.questions || []).filter((q) => q.key && q.type !== "insight").map((q) => ({ value: q.key, label: q.label || q.key }));
 
   return (
-    <div style={{ flex: 1, display: "grid", gridTemplateColumns: "minmax(440px, 1fr) minmax(380px, 46%)", minHeight: 0 }}>
+    <div className="editor-split" style={{ flex: 1, "--cols": "minmax(440px, 1fr) minmax(380px, 46%)", minHeight: 0 }}>
       {/* coluna do editor */}
       <div style={{ display: "flex", flexDirection: "column", minHeight: 0, borderRight: "1px solid var(--line-1)" }}>
         <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -495,7 +495,7 @@ function SubmissionsView({ form, onBack }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ padding: "12px var(--pad-x)", borderBottom: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onBack} style={chromeBtnStyleSmall}><span style={{ fontSize: 12 }}>← forms</span></button>
         <div>
           <div style={{ fontSize: 15, fontWeight: 500 }}>{form.name}</div>
@@ -503,7 +503,7 @@ function SubmissionsView({ form, onBack }) {
         </div>
       </div>
 
-      <div style={{ flex: 1, overflow: "auto", padding: "20px 24px" }}>
+      <div style={{ flex: 1, overflow: "auto", padding: "20px var(--pad-x)" }}>
         {subs && !subs.length && (
           <EmptyState title="Nenhuma resposta ainda" hint="Publique o form e compartilhe o link — cada envio aparece aqui e vira um lead no pipeline." />
         )}
@@ -565,7 +565,7 @@ function FunnelView({ form, onBack }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ padding: "12px var(--pad-x)", borderBottom: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onBack} style={chromeBtnStyleSmall}><span style={{ fontSize: 12 }}>← forms</span></button>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 15, fontWeight: 500 }}>{form.name}</div>
@@ -583,14 +583,14 @@ function FunnelView({ form, onBack }) {
         </div>
       </div>
 
-      <div style={{ flex: 1, overflow: "auto", padding: "20px 24px" }}>
+      <div style={{ flex: 1, overflow: "auto", padding: "20px var(--pad-x)" }}>
         {!data && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
         {data?.error && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>Falha ao carregar o funil.</div>}
         {data && !data.error && !rows[0].sessions && (
           <EmptyState title="Nenhum evento no período" hint="Os eventos de funil são registrados pela página pública do form a cada visita. Compartilhe o link e volte aqui pra ver onde as pessoas param." />
         )}
         {data && !data.error && rows[0].sessions > 0 && (
-          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", overflow: "hidden", background: "var(--bg-1)", maxWidth: 760 }}>
+          <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", maxWidth: 760 }}>
             {rows.map((r, i) => {
               const prev = i > 0 ? rows[i - 1].sessions : null;
               const drop = prev > 0 ? Math.round((1 - r.sessions / prev) * 100) : 0;
