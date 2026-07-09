@@ -5,7 +5,7 @@ import { ProposalActions } from "../components/ProposalActions.jsx";
 import { ActivityList, ActivityComposer } from "../components/timeline.jsx";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 import { leadScoreLabel, leadAge, chromeBtnStyleSmall, waLink, leadTier } from "../lib/ui.js";
-import { stageKind, lossReasonLabel, nextTouchPill, openStages } from "../lib/funnel.js";
+import { stageKind, lossReasonLabel, nextTouchPill, workableStages } from "../lib/funnel.js";
 import { displayName } from "../lib/users.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
@@ -68,7 +68,7 @@ function LeadDetail({ lead: initial, onClose }) {
   const wa = waLink(lead.phone);
   const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === lead.saas);
   const kind = stageKind(saasCfg, lead.stage || (saasCfg?.funnel?.[0]?.stage ?? ""));
-  const isOpen = openStages(saasCfg).includes(lead.stage) || !lead.stage;
+  const isOpen = workableStages(saasCfg).includes(lead.stage) || !lead.stage;
 
   function patch(p) {
     dirty.current = true;

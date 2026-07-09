@@ -4,7 +4,7 @@ import { useData } from "../data.jsx";
 import { PageHead, StatTile, Card, LineChart, Pill } from "../components/viz.jsx";
 import { EmptyState, Avatar } from "../atoms.jsx";
 import { nextMilestone, dueLabel } from "../lib/milestones.js";
-import { openStages, isWonStage, stageKind, cadenceOf, nextTouch, nextTouchPill, firstStage as firstStageOf } from "../lib/funnel.js";
+import { openStages, workableStages, isWonStage, stageKind, cadenceOf, nextTouch, nextTouchPill, firstStage as firstStageOf } from "../lib/funnel.js";
 import { displayName, currentUser } from "../lib/users.js";
 // Visão geral — a home do dia a dia. Responde: como está a receita, quantos
 // leads entraram, quanto custa o lead, e — principal — QUEM CONTATAR AGORA
@@ -76,7 +76,9 @@ function OverviewScreen({ onNav, onOpenLead }) {
   const result = costs ? wonValueMonth - (costs.total || 0) : null;
 
   // ── Fila de trabalho (GPS) ────────────────────────────────────────────────
-  const openSet = useMemo(() => new Set(funnelStages), [funnelStages]);
+  // Trabalhável ≠ aberto: filas fora da régua (Nutrição) entram na fila do GPS,
+  // mas não nas contagens/forecast de pipeline.
+  const openSet = useMemo(() => new Set(workableStages(product)), [product]);
   const isOpenLead = (l) => openSet.has(l.stage) || !l.stage;
   const openLeads = leads.filter(isOpenLead);
 

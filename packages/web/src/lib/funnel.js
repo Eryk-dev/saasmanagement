@@ -93,10 +93,21 @@ export function ladderOf(saasCfg) {
 }
 
 // Estágios "abertos" = régua antes do ganho (Integração conta; terminais não) —
-// substitui o `stages.slice(0, wonIdx)` por nome do pipeline/overview.
+// substitui o `stages.slice(0, wonIdx)` por nome do pipeline/overview. Usado
+// por forecast/TCV/contagens: só o que é PROGRESSO de venda.
 export function openStages(saasCfg) {
   const lad = ladderOf(saasCfg);
   return lad.length && stageKind(saasCfg, lad[lad.length - 1]) === "ganho" ? lad.slice(0, -1) : lad;
+}
+
+// Estágios "trabalháveis" = qualquer kind não-terminal, INCLUSIVE filas fora da
+// régua (ex.: Nutrição/Mentoria posicionadas depois do Ganho). É o conjunto da
+// fila do GPS e do pill de próximo toque — um lead em nutrição tem próximo
+// passo, mas não conta como pipeline aberto no forecast.
+export function workableStages(saasCfg) {
+  return funnelOf(saasCfg)
+    .filter((f) => !isTerminalKind(stageKind(saasCfg, f.stage)))
+    .map((f) => f.stage);
 }
 
 // Cadência do estágio. Fallback legado: o mapa que era hardcoded no pipeline

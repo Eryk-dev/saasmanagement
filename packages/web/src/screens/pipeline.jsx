@@ -5,7 +5,7 @@ import { leadScoreTone, leadAge, waLink, leadTier } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import {
-  stageKind, phaseOf, PHASES, openStages, isWonStage, cadenceOf,
+  stageKind, phaseOf, PHASES, openStages, workableStages, isWonStage, cadenceOf,
   nextTouchPill, lossReasonLabel,
 } from "../lib/funnel.js";
 import { usersByRole, userTone, displayName, currentUser } from "../lib/users.js";
@@ -642,7 +642,8 @@ function LeadCard({ d, s, stale, currentStage, onDragStart, selected, onSelect, 
   const wa = waLink(d.phone);
   const isNew = d.createdAt && Date.now() - new Date(d.createdAt).getTime() <= 2 * 86400000;
   const saasCfg = s || (window.SEED?.SAAS || []).find((x) => x.id === d.saas);
-  const isOpenStage = openStages(saasCfg).includes(currentStage);
+  // Pill de próximo toque em todo estágio trabalhável (inclui Nutrição pós-régua).
+  const isOpenStage = workableStages(saasCfg).includes(currentStage);
   const next = nextTouchPill(d, { isOpen: isOpenStage });
   const kind = stageKind(saasCfg, currentStage);
   const lost = (kind === "perdido" || kind === "desqualificado") && d.lostReason;
