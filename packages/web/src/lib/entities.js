@@ -29,6 +29,7 @@ export function leadQuestionFields(saasId) {
     full: true,
     type: q.type === "multiselect" ? "multiselect" : q.type === "select" ? "select" : (q.type || "text"),
     options: q.options,
+    allowCustom: !!q.allowCustom, // select com "Outro (digitar)…" → resposta livre
     _dynamic: true,
   }));
 }
