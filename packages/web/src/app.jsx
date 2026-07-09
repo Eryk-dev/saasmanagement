@@ -1,6 +1,7 @@
 import React from "react";
 import { useTweaks, TweaksPanel, TweakSection, TweakRadio, TweakColor } from "./tweaks-panel.jsx";
-import { NavRail, TopBar } from "./chrome.jsx";
+import { NavRail, TopBar, NAV } from "./chrome.jsx";
+import { eventsUrl } from "./lib/api.js";
 import { chromeBtnStyleSmall } from "./lib/ui.js";
 import { OverviewScreen } from "./screens/overview.jsx";
 import { MetricsScreen } from "./screens/metrics.jsx";
@@ -30,7 +31,9 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
 
-  const [screen, setScreen] = useStA("overview");
+  // Tela ativa vive no hash da URL (#pipeline): sobrevive ao refresh e ao
+  // back/forward do navegador. Hash inválido/vazio cai na visão geral.
+  const [screen, setScreen] = useStA(() => screenFromHash());
   const [params, setParams] = useStA({});
   const [leadSel, setLeadSel] = useStA(null);
   const [collapsed, setCollapsed] = useStA(false);
@@ -54,9 +57,31 @@ function App() {
     document.documentElement.style.setProperty("--accent-h", String(t.accentHue));
   }, [t.theme, t.density, t.typeSystem, t.accentHue]);
 
+  // Tempo real: qualquer escrita na API (deste ou de outro usuário) emite um
+  // tick no /api/events; recarregamos o SEED com debounce. O primeiro evento é
+  // só a baseline do rev. EventSource reconecta sozinho se a conexão cair.
+  useEA(() => {
+    let last = null, t = null;
+    const es = new EventSource(eventsUrl());
+    es.onmessage = (m) => {
+      let rev; try { rev = JSON.parse(m.data).rev; } catch { return; }
+      if (last != null && rev !== last) { clearTimeout(t); t = setTimeout(refresh, 350); }
+      last = rev;
+    };
+    return () => { clearTimeout(t); es.close(); };
+  }, [refresh]);
+
+  // Back/forward do navegador troca a tela junto com o hash.
+  useEA(() => {
+    const onHash = () => setScreen(screenFromHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
   function nav(id, p = {}) {
     setScreen(id);
     setParams(prev => ({ ...prev, ...p }));
+    try { history.replaceState(null, "", "#" + id); } catch { /* ignore */ }
   }
   function jump(link) {
     if (!link) return;
@@ -154,6 +179,11 @@ function App() {
     </div>
     </DataContext.Provider>
   );
+}
+
+function screenFromHash() {
+  const h = (typeof location !== "undefined" ? location.hash : "").replace(/^#\/?/, "");
+  return NAV.some(n => n.id === h) ? h : "overview";
 }
 
 function subtitleFor(screen, params) {

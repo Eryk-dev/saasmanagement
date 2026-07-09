@@ -25,11 +25,15 @@ const OPEN_PATHS = new Set(["/api/health", "/embed.js", "/favicon.ico", "/api/au
 const OPEN_PREFIXES = ["/f/", "/public/forms/", "/p/", "/public/proposals/", "/public/mp/"];
 
 // Read the key from either header style: `x-api-key: <key>` or `Authorization: Bearer <key>`.
+// Exceção: /api/events (SSE) — EventSource não manda headers, então a key/token
+// de sessão vem em `?key=` SÓ nessa rota (evita segredo em log de URL no resto).
 function providedKey(req) {
   const h = req.headers["x-api-key"];
   if (h) return Array.isArray(h) ? h[0] : h;
   const auth = req.headers["authorization"] || "";
-  return auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (auth.startsWith("Bearer ")) return auth.slice(7);
+  if (req.url.split("?")[0] === "/api/events") return String(req.query?.key || "");
+  return "";
 }
 
 await initDb();
