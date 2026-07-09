@@ -19,6 +19,7 @@ import { registerMetricsRoutes } from "./routes.metrics.js";
 import { meta as defaultMetaClient } from "./meta.js";
 import { metaCapi as defaultMetaCapi } from "./meta-capi.js";
 import { discord as defaultDiscord } from "./discord.js";
+import { currentRev, subscribe as subscribeChanges } from "./changes.js";
 
 // Auth interna fica FORA do CRUD genérico: passwordHash/token de sessão nunca
 // saem pela API. Gestão via rotas dedicadas (/api/auth/*).
@@ -166,6 +167,30 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerMetricsRoutes(app, repo);
   // Usuários do time: login/logout/me + gestão mínima (rotas dedicadas).
   registerAuthRoutes(app, repo);
+
+  // ── Tempo real ─────────────────────────────────────────────────────────
+  // Toda escrita no repo (db.js) incrementa um contador global (changes.js).
+  // O SPA escuta /api/events (SSE) e recarrega o SEED quando o rev muda — é o
+  // que faz a alteração de um usuário aparecer na tela dos outros sem refresh.
+  app.get("/api/rev", async () => ({ rev: currentRev() }));
+  app.get("/api/events", (req, reply) => {
+    // EventSource não manda headers — a key/token vem em ?key= (ver providedKey
+    // no index.js). reply.hijack(): a resposta vira um stream cru de vida longa.
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+      "connection": "keep-alive",
+      "x-accel-buffering": "no", // proxies (nginx/traefik) não bufferizam o stream
+    });
+    reply.raw.write(`data: {"rev":${currentRev()}}\n\n`);
+    const unsub = subscribeChanges((rev, collection) => {
+      reply.raw.write(`data: {"rev":${rev},"collection":${JSON.stringify(collection)}}\n\n`);
+    });
+    // Heartbeat: proxies matam conexão ociosa; comentário SSE a cada 25s segura.
+    const hb = setInterval(() => reply.raw.write(":hb\n\n"), 25000);
+    req.raw.on("close", () => { clearInterval(hb); unsub(); });
+  });
 
   // API documentation (OpenAPI spec + Redoc page). The MCP server consumes this.
   app.get("/api/openapi.json", async () => openapi);

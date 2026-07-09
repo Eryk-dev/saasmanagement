@@ -16,7 +16,17 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   const { SAAS } = window.SEED;
   const { openForm } = useData();
   const [activeSaas, setActiveSaas] = useStP(saasId || "leverads");
-  const [view, setView] = useStP("kanban"); // kanban | all | list | forecast
+  // Aba ativa persistida (localStorage): sobrevive ao refresh da página e à
+  // remontagem da tela quando o tempo real recarrega o SEED.
+  const VIEWS = ["kanban", "all", "list", "agenda", "forecast"];
+  const [view, setViewState] = useStP(() => {
+    try { const v = localStorage.getItem("cockpit_pipeline_view"); return VIEWS.includes(v) ? v : "kanban"; }
+    catch { return "kanban"; }
+  });
+  const setView = (v) => {
+    setViewState(v);
+    try { localStorage.setItem("cockpit_pipeline_view", v); } catch { /* ignore */ }
+  };
   const [leads, setLeads] = useStP(() => window.SEED.LEADS.map(l => ({ ...l })));
   const [highlight, setHighlight] = useStP(jumpFilter?.stage || null);
   const [selected, setSelected] = useStP(new Set());

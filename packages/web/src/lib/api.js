@@ -34,6 +34,12 @@ async function req(method, path, body) {
   return res.status === 204 ? null : res.json();
 }
 
+// URL do stream de mudanças (SSE). EventSource não manda headers — a key/token
+// vai em ?key= (o servidor só aceita query key nessa rota).
+export function eventsUrl() {
+  return `${BASE}/api/events?key=${encodeURIComponent(getKey())}`;
+}
+
 export const api = {
   bootstrap: () => req("GET", "/api/bootstrap"),
   // Auth do time: o token de sessão entra no MESMO slot da key (localStorage +

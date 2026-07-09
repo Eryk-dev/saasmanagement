@@ -6,6 +6,7 @@
 
 import pg from "pg";
 import { COLLECTIONS } from "./seed-data.js";
+import { bump } from "./changes.js";
 
 const SCHEMA = "cockpit";
 
@@ -119,6 +120,7 @@ export const repo = {
     const id = obj.id != null ? String(obj.id) : `${name.slice(0, 2)}_${Date.now().toString(36)}${Math.floor(performance.now() % 1000)}`;
     const record = { ...obj, id };
     await getPool().query(`INSERT INTO ${tbl(name)} (id, json) VALUES ($1, $2::jsonb)`, [id, JSON.stringify(record)]);
+    bump(name);
     return record;
   },
   async update(name, id, patch) {
@@ -126,10 +128,12 @@ export const repo = {
     if (!current) return null;
     const record = { ...current, ...patch, id: current.id };
     await getPool().query(`UPDATE ${tbl(name)} SET json = $1::jsonb, updated_at = now() WHERE id = $2`, [JSON.stringify(record), String(id)]);
+    bump(name);
     return record;
   },
   async remove(name, id) {
     const { rowCount } = await getPool().query(`DELETE FROM ${tbl(name)} WHERE id = $1`, [String(id)]);
+    if (rowCount > 0) bump(name);
     return rowCount > 0;
   },
 };
