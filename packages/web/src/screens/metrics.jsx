@@ -268,19 +268,26 @@ function MetricsScreen() {
           </Card>
         )}
 
-        {data && !data.error && data.campaigns?.length > 0 && (
+        {/* Sem Meta conectada, a visão por campanha vem só do ad_insights (gasto manual/histórico). */}
+        {data && !data.error && data.campaigns?.length > 0 && !(metaOn && product.metaAdAccount) && (
           <Card title="Por campanha" hint="expanda pra ver conjuntos e anúncios · atribuição por UTM (campaign/term/content = id ou nome)">
             <CampaignDrilldown data={data} money={money} />
           </Card>
         )}
 
         {metaOn && product.metaAdAccount && (
-          <Card title="Gerenciar anúncios" hint="campanha → conjunto → anúncio · expanda e pause, reative ou ajuste orçamento em qualquer nível">
+          <Card title="Anúncios" hint="métricas do período filtrado + gerenciamento · expanda campanha → conjunto → anúncio">
             {camps == null && <div style={{ padding: "12px 16px", fontSize: 12.5, color: "var(--fg-4)" }}>carregando campanhas…</div>}
             {camps?.error && <div className="mono" style={{ padding: "12px 16px", fontSize: 12, color: "var(--neg)" }}>{camps.error}</div>}
             {Array.isArray(camps) && camps.length === 0 && <div style={{ padding: "12px 16px", fontSize: 12.5, color: "var(--fg-4)" }}>Nenhuma campanha na conta.</div>}
             {Array.isArray(camps) && camps.length > 0 && (
-              <ManageTree camps={camps} onToggleCampaign={toggleCampaign} onBudgetCampaign={saveBudget} onNote={setNote} />
+              <ManageTree camps={camps} money={money}
+                metrics={data && !data.error ? {
+                  campaigns: Object.fromEntries((data.campaigns || []).map((g) => [String(g.id), g])),
+                  adsets: Object.fromEntries((data.adsets || []).map((g) => [String(g.id), g])),
+                  ads: Object.fromEntries((data.ads || []).map((g) => [String(g.id), g])),
+                } : null}
+                onToggleCampaign={toggleCampaign} onBudgetCampaign={saveBudget} onNote={setNote} />
             )}
           </Card>
         )}
@@ -315,11 +322,13 @@ function MetricsScreen() {
   );
 }
 
-// Gerenciamento em árvore no mesmo bloco: campanha → conjunto → anúncio.
+// Árvore unificada: campanha → conjunto → anúncio com MÉTRICAS do período
+// (lookup por id no que veio do ad_insights) + gerenciamento no mesmo bloco.
 // Conjuntos e anúncios carregam AO VIVO da Meta ao expandir; pausar/reativar
 // vale em qualquer nível (POST genérico pelo id do nó) e orçamento diário
-// edita campanha CBO ou conjunto ABO.
-function ManageTree({ camps, onToggleCampaign, onBudgetCampaign, onNote }) {
+// edita campanha CBO ou conjunto ABO. Nó sem dado sincronizado no período
+// mostra as métricas vazias (sincronize pra preencher).
+function ManageTree({ camps, metrics, money, onToggleCampaign, onBudgetCampaign, onNote }) {
   const [open, setOpen] = useState(() => new Set());
   const [adsetsBy, setAdsetsBy] = useState({}); // campId  -> rows | "loading" | { error }
   const [adsBy, setAdsBy] = useState({});       // adsetId -> rows | "loading" | { error }
@@ -410,17 +419,31 @@ function ManageTree({ camps, onToggleCampaign, onBudgetCampaign, onNote }) {
   );
   const infoRow = (key, depth, text, isErr) => (
     <tr key={key} style={{ background: "var(--bg-inset)" }}>
-      <td colSpan={5} className="mono" style={{ ...td, paddingLeft: 16 + depth * 22, fontSize: 11.5, color: isErr ? "var(--neg)" : "var(--fg-4)" }}>{text}</td>
+      <td colSpan={10} className="mono" style={{ ...td, paddingLeft: 16 + depth * 22, fontSize: 11.5, color: isErr ? "var(--neg)" : "var(--fg-4)" }}>{text}</td>
     </tr>
   );
+  // Métricas do período pro nó (campanha/conjunto/anúncio). Sem dado sincronizado
+  // no período, as células ficam vazias — não é zero, é "ainda não sincronizado".
+  const tdM = { ...td, textAlign: "right", fontFamily: "var(--mono)", fontSize: 12.5 };
+  const mCells = (m, { bold } = {}) => (
+    <>
+      <td className="tnum" style={tdM}>{m ? money(m.spend) : ""}</td>
+      <td className="tnum" style={tdM}>{m ? window.fmt.int(m.leads || 0) : ""}</td>
+      <td className="tnum" style={tdM}>{m ? (m.cpl != null ? money(m.cpl) : "sem lead") : ""}</td>
+      <td className="tnum" style={tdM}>{m?.ctr != null ? String(m.ctr).replace(".", ",") + "%" : ""}</td>
+      <td className="tnum" style={tdM}>{m ? window.fmt.int(m.won || 0) : ""}</td>
+      <td className="tnum" style={{ ...tdM, fontWeight: bold ? 600 : 400 }}>{m ? (m.costPerWin != null ? money(m.costPerWin) : "sem ganho") : ""}</td>
+    </>
+  );
+  const mOf = (kind, id) => metrics?.[kind]?.[String(id)] || null;
 
   return (
     <div className="tbl-x" style={{ marginTop: 10 }}>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr>
-            {["Campanha / conjunto / anúncio", "Objetivo", "Orçamento/dia", "Situação", ""].map((h, i) => (
-              <th key={h + i} className="mono" style={{ textAlign: i >= 2 ? "right" : "left", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", padding: "10px 16px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
+            {["Campanha / conjunto / anúncio", "Investimento", "Leads", "CPL", "CTR", "Ganhos", "R$ / ganho", "Orçamento/dia", "Situação", ""].map((h, i) => (
+              <th key={h + i} className="mono" style={{ textAlign: i === 0 ? "left" : "right", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", padding: "10px 16px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", whiteSpace: "nowrap" }}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -432,7 +455,7 @@ function ManageTree({ camps, onToggleCampaign, onBudgetCampaign, onNote }) {
               <React.Fragment key={c.id}>
                 <tr>
                   {nameTd(c.name, 0, true, cOpen, () => openCampaign(c))}
-                  <td style={{ ...td, fontSize: 12, color: "var(--fg-3)" }}>{String(c.objective || "").replace("OUTCOME_", "").toLowerCase()}</td>
+                  {mCells(mOf("campaigns", c.id), { bold: true })}
                   <td style={{ ...td, textAlign: "right" }}>
                     {c.dailyBudget != null
                       ? budgetInput(c, (v) => onBudgetCampaign(c, v), "Orçamento diário da campanha em R$ (salva ao sair do campo)")
@@ -452,7 +475,7 @@ function ManageTree({ camps, onToggleCampaign, onBudgetCampaign, onNote }) {
                     <React.Fragment key={s.id}>
                       <tr style={{ background: "var(--bg-inset)" }}>
                         {nameTd(s.name, 1, true, sOpen, () => openAdset(s), "conj")}
-                        <td style={td} />
+                        {mCells(mOf("adsets", s.id))}
                         <td style={{ ...td, textAlign: "right" }}>
                           {s.dailyBudget != null
                             ? budgetInput(s, (v) => saveAdsetBudget(c.id, s, v), "Orçamento diário do conjunto em R$ (salva ao sair do campo)")
@@ -469,7 +492,7 @@ function ManageTree({ camps, onToggleCampaign, onBudgetCampaign, onNote }) {
                         return (
                           <tr key={a.id} style={{ background: "var(--bg-inset)" }}>
                             {nameTd(a.name, 2, false, false, undefined, "ad")}
-                            <td style={td} />
+                            {mCells(mOf("ads", a.id))}
                             <td style={td} />
                             <td style={{ ...td, textAlign: "right" }}>{statusPill(a)}</td>
                             <td style={{ ...td, textAlign: "right" }}>{toggleBtn(a, () => toggleStatus("anúncio", a, (patch) => patchAd(a.id, patch)))}</td>
