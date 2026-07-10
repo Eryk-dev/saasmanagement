@@ -3,7 +3,7 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { PageHead, Segmented, StatTile, Card, LineChart, Pill } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
-import { stageByKind } from "../lib/funnel.js";
+import { stageKind } from "../lib/funnel.js";
 // Métricas — aquisição × funil do produto ativo (substitui a tela Marketing).
 // Hoje: investimento (Meta), leads, CPL real e custo por etapa, com séries no
 // tempo e quebra por campanha. CAC e LTV entram na fase de métricas de receita,
@@ -162,12 +162,11 @@ function MetricsScreen() {
 
   const t = data && !data.error ? data.totals : null;
   const perStage = data && !data.error ? data.perStage : [];
-  // Custo por etapa pelo KIND do estágio (call/ganho) — funciona com qualquer
-  // nome de funil (o antigo procurava "Call closer"/"Ganho" literais).
-  const costOfKind = (kind) => {
-    const st = stageByKind(product, kind);
-    return st ? perStage.find((s) => s.stage === st)?.costPer ?? null : null;
-  };
+  // Custo por etapa só nos MARCOS do funil (call → proposta → integração →
+  // ganho) — as etapas de cadência (contato/qualificação/follow-up) repetem os
+  // vizinhos e não orientam decisão de verba.
+  const MILESTONE_KINDS = new Set(["call", "proposta", "integracao", "ganho"]);
+  const milestones = perStage.filter((s) => MILESTONE_KINDS.has(stageKind(product, s.stage)));
   const money = window.fmt.money;
 
   const spendSeries = (data?.series || []).map((d) => ({ x: shortDay(d.date), v: d.spend }));
@@ -259,7 +258,14 @@ function MetricsScreen() {
           </Card>
         )}
 
+        {/* Uma fileira só, sem repetir o que o card de custo por etapa já mostra
+            (custo por call/ganho) nem contar leads duas vezes. */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
+          <StatTile label="Investimento" value={t ? money(t.spend) : "…"} delta={t?.ctr != null ? `CTR ${String(t.ctr).replace(".", ",")}%` : null} />
+          <StatTile label="Leads no período" value={t ? String(t.leads) : "…"} delta={t?.metaLeads ? `${t.metaLeads} reportados pela Meta` : null} />
+          <StatTile label="Custo por lead" value={t?.cpl != null ? money(t.cpl) : "sem gasto"} delta={t?.cplMeta != null ? `${money(t.cplMeta)} na visão da Meta` : null} />
+          <StatTile label="Lead → cliente" value={biz?.window?.convRate != null ? `${String(biz.window.convRate).replace(".", ",")}%` : "sem dado"}
+            delta="conversão no período" />
           <StatTile label={`CAC · ${rangeDays}d`} value={biz?.window?.cac != null ? money(biz.window.cac) : "sem dado"}
             delta={biz?.window?.newCustomers != null ? `${biz.window.newCustomers} ${biz.window.newCustomers === 1 ? "cliente novo" : "clientes novos"}` : null} />
           <StatTile label="LTV estimado" value={biz?.ltv?.value != null ? money(biz.ltv.value) : "sem dado"}
@@ -267,16 +273,6 @@ function MetricsScreen() {
           <StatTile label="LTV / CAC" value={biz?.ltv?.ltvCac != null ? window.fmt.ratio(biz.ltv.ltvCac) : "sem dado"}
             delta={biz?.ltv?.ltvCac != null ? (biz.ltv.ltvCac >= 3 ? "saudável acima de 3x" : "abaixo do saudável (3x)") : null}
             tone={biz?.ltv?.ltvCac != null ? (biz.ltv.ltvCac >= 3 ? "up" : "down") : "flat"} />
-          <StatTile label="Lead → cliente" value={biz?.window?.convRate != null ? `${String(biz.window.convRate).replace(".", ",")}%` : "sem dado"}
-            delta={biz?.window?.leads != null ? `de ${biz.window.leads} leads no período` : null} />
-          <StatTile label="Custo por lead" value={t?.cpl != null ? money(t.cpl) : "sem gasto"} delta={t?.cplMeta != null ? `${money(t.cplMeta)} na visão da Meta` : null} />
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
-          <StatTile label="Investimento" value={t ? money(t.spend) : "…"} delta={t?.ctr != null ? `CTR ${String(t.ctr).replace(".", ",")}%` : null} />
-          <StatTile label="Leads no período" value={t ? String(t.leads) : "…"} delta={t?.metaLeads ? `${t.metaLeads} reportados pela Meta` : null} />
-          <StatTile label="Custo por call" value={costOfKind("call") != null ? money(costOfKind("call")) : "sem dado"} delta="leads que chegaram à call" />
-          <StatTile label="Custo por ganho" value={costOfKind("ganho") != null ? money(costOfKind("ganho")) : "sem dado"} delta="leads que fecharam" />
         </div>
 
         <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: 12 }}>
@@ -288,10 +284,10 @@ function MetricsScreen() {
           </Card>
         </div>
 
-        {perStage.length > 0 && t?.spend > 0 && (
-          <Card title="Custo por etapa do funil" hint="investimento dividido pelos leads que chegaram em cada etapa">
+        {milestones.length > 0 && t?.spend > 0 && (
+          <Card title="Custo por etapa do funil" hint="investimento dividido pelos leads que chegaram em cada marco (call → proposta → integração → ganho)">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, padding: "12px 16px 16px" }}>
-              {perStage.slice(0, 6).map((s) => (
+              {milestones.map((s) => (
                 <div key={s.stage} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "9px 11px", background: "var(--bg-inset)" }}>
                   <span className="tnum" style={{ display: "block", fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>
                     {s.costPer != null ? money(s.costPer) : "sem lead"}
