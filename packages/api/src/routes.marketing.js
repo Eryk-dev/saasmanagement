@@ -249,6 +249,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const spend = sum("spend");
     const impressions = sum("impressions");
     const clicks = sum("clicks");
+    const linkClicks = sum("linkClicks");
     const metaLeads = sum("metaLeads");
     const per = (n) => (n > 0 ? Math.round((spend / n) * 100) / 100 : null);
 
@@ -297,7 +298,9 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         cpl: n > 0 ? Math.round((g.spend / n) * 100) / 100 : null,
         won,
         costPerWin: won > 0 ? Math.round((g.spend / won) * 100) / 100 : null,
-        ctr: g.impressions > 0 ? Math.round((g.clicks / g.impressions) * 10000) / 100 : null, // %
+        // CTR de CLIQUE NO LINK (inline_link_clicks / impressões) — o CTR "all"
+        // infla com qualquer interação (perfil, expandir legenda, etc.).
+        ctr: g.impressions > 0 ? Math.round((g.linkClicks / g.impressions) * 10000) / 100 : null, // %
         cpm: g.impressions > 0 ? Math.round((g.spend / g.impressions) * 1000 * 100) / 100 : null,
         costPerLinkClick: g.linkClicks > 0 ? Math.round((g.spend / g.linkClicks) * 100) / 100 : null,
       };
@@ -368,7 +371,8 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         cplMeta: per(metaLeads),         // custo por lead reportado pela Meta
         cpc: per(clicks),
         cpm: impressions > 0 ? Math.round((spend / impressions) * 1000 * 100) / 100 : null,
-        ctr: impressions > 0 ? Math.round((clicks / impressions) * 10000) / 100 : null, // %
+        // link CTR (cliques no link / impressões), igual às linhas da tabela
+        ctr: impressions > 0 ? Math.round((linkClicks / impressions) * 10000) / 100 : null, // %
       },
       perStage, campaigns, adsets, ads, pains, series,
       synced: rows.length > 0,

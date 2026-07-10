@@ -51,8 +51,7 @@ function NavRail({ current, onNav, collapsed }) {
         <Logo />
         {!collapsed && (
           <div style={{ lineHeight: 1.1, minWidth: 0 }}>
-            <div style={{ fontFamily: "var(--display)", fontSize: 14.5, fontWeight: 700, color: "var(--fg-1)", letterSpacing: "-0.01em" }}>Cockpit</div>
-            <div style={{ fontSize: 11, color: "var(--fg-4)", marginTop: 1 }}>levermoney.com.br</div>
+            <div style={{ fontFamily: "var(--display)", fontSize: 14.5, fontWeight: 700, color: "var(--fg-1)", letterSpacing: "-0.01em" }}>LeverAds</div>
           </div>
         )}
       </div>
@@ -115,12 +114,12 @@ function SaasFootChip() {
   );
 }
 
+// Ícone oficial da LeverAds (mesmo asset do copylever: lever/logo-icon-color.svg).
 function Logo() {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
-      <rect x="0.5" y="0.5" width="23" height="23" rx="6" fill="var(--accent)" />
-      <circle cx="12" cy="12" r="5.5" fill="none" stroke="var(--accent-fg)" strokeWidth="1.3" opacity="0.5" />
-      <circle cx="12" cy="12" r="2.1" fill="var(--accent-fg)" />
+    <svg width="30" height="30" viewBox="0 0 1453.13 1493.95" style={{ flexShrink: 0 }} aria-label="LeverAds">
+      <path fill="#051C2C" d="M519.22,843.75l-45.1,15.11c53.94,77.43,143.68,128.2,245.06,128.2,4.38,0,8.76-.08,13.07-.3l-14.13-45.02c-80.76-.3-152.75-38.68-198.9-97.98ZM719.19,390.03c-164.61,0-298.55,133.94-298.55,298.55,0,29.46,4.31,58.02,12.31,84.91l39.13-29.31c-4-17.9-6.12-36.49-6.12-55.6,0-139.6,113.62-253.22,253.22-253.22s253.15,113.62,253.15,253.22c0,99.49-57.71,185.84-141.42,227.16v49.63c109.39-44.27,186.74-151.69,186.74-276.79,0-164.61-133.86-298.55-298.47-298.55Z" />
+      <polygon fill="#23D8D3" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53" />
     </svg>
   );
 }

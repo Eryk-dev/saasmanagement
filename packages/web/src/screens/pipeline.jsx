@@ -6,7 +6,7 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import {
   stageKind, phaseOf, PHASES, openStages, workableStages, isWonStage, cadenceOf,
-  nextTouchPill, lossReasonLabel,
+  nextTouch, nextTouchPill, lossReasonLabel,
 } from "../lib/funnel.js";
 import { usersByRole, userTone, displayName, currentUser } from "../lib/users.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
@@ -884,12 +884,39 @@ function AgendaView({ leads, onOpenLead }) {
 
 // ─────────────────────────────────────────────── List view
 function LeadList({ leads }) {
-  const rows = [...leads].sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
+  // Agrupada pelo próximo passo do GPS: Hoje → Amanhã → Próximos dias → Sem
+  // próximo passo → Atrasados (recuperação vai pro fim, não é agenda) →
+  // Finalizados (terminais/fora da régua). Dentro do dia, ordena pelo horário.
+  const saasCfg = (window.SEED?.SAAS || []).find((x) => x.id === leads[0]?.saas);
+  const workable = new Set(workableStages(saasCfg));
+  const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
+  const endToday = new Date(); endToday.setHours(23, 59, 59, 999);
+  const endTomorrow = new Date(endToday); endTomorrow.setDate(endTomorrow.getDate() + 1);
+  const g = { today: [], tomorrow: [], upcoming: [], none: [], late: [], closed: [] };
+  for (const l of leads) {
+    if (l.stage && !workable.has(l.stage)) { g.closed.push({ l, at: 0 }); continue; }
+    const t = nextTouch(l);
+    if (!t) { g.none.push({ l, at: 0 }); continue; }
+    if (t.at < startToday.getTime()) g.late.push({ l, at: t.at });
+    else if (t.at <= endToday.getTime()) g.today.push({ l, at: t.at });
+    else if (t.at <= endTomorrow.getTime()) g.tomorrow.push({ l, at: t.at });
+    else g.upcoming.push({ l, at: t.at });
+  }
+  for (const k of ["today", "tomorrow", "upcoming", "late"]) g[k].sort((a, b) => a.at - b.at);
+  const byScore = (a, b) => (Number(b.l.score) || 0) - (Number(a.l.score) || 0);
+  g.none.sort(byScore);
+  g.closed.sort(byScore);
+  const sections = [
+    ["Hoje", g.today], ["Amanhã", g.tomorrow], ["Próximos dias", g.upcoming],
+    ["Sem próximo passo", g.none], ["Atrasados", g.late], ["Finalizados", g.closed],
+  ].filter(([, rows]) => rows.length > 0);
+  const cols = "1.6fr 1fr 0.6fr 0.6fr 0.6fr 0.6fr 0.8fr";
+
   return (
     <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)" }}>
       <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
         <div className="mono" style={{
-          display: "grid", gridTemplateColumns: "1.6fr 1fr 0.6fr 0.6fr 0.6fr 0.6fr 0.8fr",
+          display: "grid", gridTemplateColumns: cols,
           padding: "8px 12px",
           background: "var(--bg-inset)",
           fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase",
@@ -898,22 +925,43 @@ function LeadList({ leads }) {
           <span>Lead</span><span>Estágio</span><span style={{ textAlign: "right" }}>Valor</span>
           <span>Dono</span><span>Idade</span><span>Score</span><span>Origem</span>
         </div>
-        {rows.map(l => (
-          <div key={l.id} style={{
-            display: "grid", gridTemplateColumns: "1.6fr 1fr 0.6fr 0.6fr 0.6fr 0.6fr 0.8fr",
-            padding: "8px 12px",
-            borderBottom: "1px solid var(--line-1)",
-            alignItems: "center",
-            fontSize: 13,
-          }}>
-            <span style={{ fontWeight: 500 }}>{l.name} {l.company && <span className="dim" style={{ fontSize: 11, marginLeft: 4 }}>{l.company}</span>}</span>
-            <span className="mono dim" style={{ fontSize: 12 }}>{l.stage}</span>
-            <span className="mono tnum" style={{ textAlign: "right" }}>{window.fmt.money(l.amount || 0)}</span>
-            <span className="mono dim" style={{ fontSize: 12 }}>{displayName(l.owner)}</span>
-            <span className="mono dim tnum" style={{ fontSize: 12 }}>{leadAge(l)}</span>
-            <span className="mono tnum" style={{ fontSize: 12, color: leadScoreTone(l.score) }}>{l.score ?? ""}</span>
-            <span className="mono dim" style={{ fontSize: 11 }}>{l.source}</span>
-          </div>
+        {sections.map(([label, rows]) => (
+          <React.Fragment key={label}>
+            <div className="mono" style={{
+              padding: "7px 12px", fontSize: 10.5, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase",
+              color: label === "Atrasados" ? "var(--neg)" : label === "Hoje" ? "var(--accent)" : "var(--fg-3)",
+              background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)",
+            }}>
+              {label} · {rows.length}
+            </div>
+            {rows.map(({ l, at }) => (
+              <div key={l.id} style={{
+                display: "grid", gridTemplateColumns: cols,
+                padding: "8px 12px",
+                borderBottom: "1px solid var(--line-1)",
+                alignItems: "center",
+                fontSize: 13,
+                opacity: label === "Finalizados" ? 0.65 : 1,
+              }}>
+                <span style={{ fontWeight: 500 }}>
+                  {l.name} {l.company && <span className="dim" style={{ fontSize: 11, marginLeft: 4 }}>{l.company}</span>}
+                  {at > 0 && (
+                    <span className="mono dim" style={{ fontSize: 10.5, marginLeft: 6 }}>
+                      {new Date(at).toLocaleString("pt-BR", label === "Hoje" || label === "Amanhã"
+                        ? { hour: "2-digit", minute: "2-digit" }
+                        : { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  )}
+                </span>
+                <span className="mono dim" style={{ fontSize: 12 }}>{l.stage}</span>
+                <span className="mono tnum" style={{ textAlign: "right" }}>{window.fmt.money(l.amount || 0)}</span>
+                <span className="mono dim" style={{ fontSize: 12 }}>{displayName(l.owner)}</span>
+                <span className="mono dim tnum" style={{ fontSize: 12 }}>{leadAge(l)}</span>
+                <span className="mono tnum" style={{ fontSize: 12, color: leadScoreTone(l.score) }}>{l.score ?? ""}</span>
+                <span className="mono dim" style={{ fontSize: 11 }}>{l.source}</span>
+              </div>
+            ))}
+          </React.Fragment>
         ))}
       </div>
     </div>
