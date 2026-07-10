@@ -208,8 +208,9 @@ test("métricas: adsets/ads agregados com CPL real por utm.term/utm.content (id 
 const { painCode, CREATIVE_URL_TAGS } = await import("../src/routes.marketing.js");
 const multipart = (await import("@fastify/multipart")).default;
 
-test("painCode: extrai o código [X] do nome do anúncio", () => {
+test("painCode: extrai o código [X] de qualquer posição do nome do anúncio", () => {
   assert.equal(painCode("[A] v1 depoimento"), "A");
+  assert.equal(painCode("1303 [B]"), "B");            // código no fim (padrão do Leo)
   assert.equal(painCode("[ab] carrossel"), "AB");     // normaliza maiúscula
   assert.equal(painCode("Vídeo sem código"), null);
   assert.equal(painCode("[CODIGOLONGODEMAIS] x"), null); // > 12 chars não é código
@@ -374,5 +375,60 @@ test("métricas por dor: agrupa [X] do nome do anúncio, rotula pelo painMap e c
   const sem = m.pains.find((p) => p.code === null);
   assert.equal(sem.label, "Sem código");
   assert.equal(sem.spend, 10);
+  await app.close();
+});
+
+// ── Gerenciamento por nível (campanha/conjunto/anúncio) ─────────────────────
+
+function makeManageFetch() {
+  const captured = { posts: [] };
+  const f = async (url, init = {}) => {
+    const u = String(url);
+    const ok = (body) => ({ status: 200, text: async () => JSON.stringify(body) });
+    if (init.method === "POST") {
+      captured.posts.push({ url: u, params: Object.fromEntries(new URLSearchParams(String(init.body))) });
+      return ok({ success: true });
+    }
+    if (u.includes("/adsets")) {
+      return ok({ data: [
+        { id: "s1", name: "LAL 1%", status: "ACTIVE", effective_status: "ACTIVE", daily_budget: "10500" },
+        { id: "s2", name: "Interesse", status: "PAUSED", effective_status: "PAUSED" },
+      ] });
+    }
+    if (u.includes("/ads?")) {
+      return ok({ data: [{ id: "a1", name: "[A] v1", status: "ACTIVE", effective_status: "ACTIVE" }] });
+    }
+    return ok({ data: [] });
+  };
+  f.captured = captured;
+  return f;
+}
+
+test("gerenciamento: adsets com orçamento em reais, ads do conjunto e status/orçamento genéricos por nó", async () => {
+  const repo = makeMemRepo();
+  const graph = makeManageFetch();
+  const app = Fastify();
+  registerRoutes(app, repo, { meta: makeMeta({ fetch: graph, accessToken: "t" }) });
+
+  const sets = (await app.inject({ url: "/api/marketing/campaigns/c1/adsets" })).json().adsets;
+  assert.equal(sets[0].dailyBudget, 105);       // centavos → reais
+  assert.equal(sets[1].dailyBudget, null);      // CBO: orçamento na campanha
+
+  const ads = (await app.inject({ url: "/api/marketing/adsets/s1/ads" })).json().ads;
+  assert.deepEqual(ads[0], { id: "a1", name: "[A] v1", status: "ACTIVE", effectiveStatus: "ACTIVE" });
+
+  // status genérico: mesmo POST serve conjunto e anúncio; campanha segue na rota antiga
+  const r1 = (await app.inject({ method: "POST", url: "/api/marketing/objects/a1/status", payload: { status: "PAUSED" } })).json();
+  assert.deepEqual(r1, { ok: true, id: "a1", status: "PAUSED" });
+  const r2 = (await app.inject({ method: "POST", url: "/api/marketing/campaigns/c1/status", payload: { status: "ACTIVE" } })).json();
+  assert.equal(r2.ok, true);
+  assert.equal((await app.inject({ method: "POST", url: "/api/marketing/objects/a1/status", payload: { status: "ARCHIVED" } })).statusCode, 400);
+
+  // orçamento genérico (conjunto ABO) em reais → centavos
+  const r3 = (await app.inject({ method: "POST", url: "/api/marketing/objects/s1/budget", payload: { dailyBudget: 150 } })).json();
+  assert.deepEqual(r3, { ok: true, id: "s1", dailyBudget: 150 });
+  const budgetPost = graph.captured.posts.find((p) => p.url.endsWith("/s1"));
+  assert.equal(budgetPost.params.daily_budget, "15000");
+
   await app.close();
 });

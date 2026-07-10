@@ -29,17 +29,17 @@ test("meta client: listCampaigns converte centavos e pagina; escrita valida entr
   assert.equal(rows[1].lifetimeBudget, 900);
   assert.ok(String(calls[0].url).includes("act_123/campaigns"));
 
-  const st = await meta.setCampaignStatus("c1", "PAUSED");
+  const st = await meta.setObjectStatus("c1", "PAUSED");
   assert.deepEqual(st, { id: "c1", status: "PAUSED" });
   const body = String(calls.at(-1).opts.body);
   assert.ok(body.includes("status=PAUSED"));
 
-  const bud = await meta.setCampaignBudget("c1", 199.9);
+  const bud = await meta.setObjectBudget("c1", 199.9);
   assert.equal(bud.dailyBudget, 199.9);
   assert.ok(String(calls.at(-1).opts.body).includes("daily_budget=19990"));
 
-  await assert.rejects(() => meta.setCampaignStatus("c1", "DELETED"), /status inválido/);
-  await assert.rejects(() => meta.setCampaignBudget("c1", 0), /orçamento inválido/);
+  await assert.rejects(() => meta.setObjectStatus("c1", "DELETED"), /status inválido/);
+  await assert.rejects(() => meta.setObjectBudget("c1", 0), /orçamento inválido/);
   await app_noop();
   async function app_noop() {} // simetria com os outros testes
 });
@@ -57,8 +57,8 @@ test("rotas de gerenciamento: lista, valida e repassa erros da Meta", async () =
   const fake = {
     configured: () => true,
     listCampaigns: async () => [{ id: "c1", name: "Lookalike", status: "ACTIVE" }],
-    setCampaignStatus: async (id, status) => ({ id, status }),
-    setCampaignBudget: async (id, v) => ({ id, dailyBudget: v }),
+    setObjectStatus: async (id, status) => ({ id, status }),
+    setObjectBudget: async (id, v) => ({ id, dailyBudget: v }),
   };
   const app = await buildApp(fake);
 
@@ -90,7 +90,7 @@ test("rotas de gerenciamento: 503 sem token e 502 quando a Meta falha", async ()
   const broken = await buildApp({
     configured: () => true,
     listCampaigns: async () => { throw new Error("Meta API -> 400: (#100) permissao"); },
-    setCampaignStatus: async () => { throw new Error("Meta API -> 400: sem ads_management"); },
+    setObjectStatus: async () => { throw new Error("Meta API -> 400: sem ads_management"); },
   });
   assert.equal((await broken.inject({ method: "GET", url: "/api/marketing/leverads/campaigns" })).statusCode, 502);
   const res = await broken.inject({ method: "POST", url: "/api/marketing/campaigns/c1/status", payload: { status: "PAUSED" } });

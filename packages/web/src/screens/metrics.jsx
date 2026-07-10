@@ -16,9 +16,27 @@ const dayStr = (t) => new Date(t).toISOString().slice(0, 10);
 const shortDay = (iso) => new Date(iso + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "");
 
 const PERIODS = [
+  { value: "3", label: "3 dias" },
+  { value: "7", label: "7 dias" },
   { value: "30", label: "30 dias" },
-  { value: "90", label: "90 dias" },
+  { value: "life", label: "lifetime" },
 ];
+// A Meta só devolve insights de até ~37 meses; o sync respeita esse teto.
+const META_LOOKBACK_DAYS = 1125;
+
+// Range efetivo do filtro: preset relativo, lifetime ou intervalo custom
+// (de/até no mesmo dia = filtro de um dia específico).
+function rangeOf(r) {
+  const today = dayStr(Date.now());
+  if (r.preset === "custom") {
+    const since = r.since || today;
+    const until = r.until || today;
+    return since <= until ? { since, until } : { since: until, until: since };
+  }
+  if (r.preset === "life") return { since: "2020-01-01", until: today };
+  const n = Number(r.preset) || 30;
+  return { since: dayStr(Date.now() - (n - 1) * DAY), until: today };
+}
 
 function MetricsScreen() {
   const { SAAS, CONFIG } = window.SEED;
@@ -26,7 +44,9 @@ function MetricsScreen() {
   const product = SAAS[0];
   const metaOn = !!CONFIG?.meta?.configured;
 
-  const [days, setDays] = useState("30");
+  const [range, setRange] = useState({ preset: "30" });
+  const { since, until } = rangeOf(range);
+  const rangeDays = Math.max(1, Math.round((new Date(until) - new Date(since)) / DAY) + 1);
   const [data, setData] = useState(null);
   const [biz, setBiz] = useState(null); // CAC/LTV + série mensal
   const [syncing, setSyncing] = useState(false);
@@ -37,15 +57,14 @@ function MetricsScreen() {
 
   const load = () => {
     if (!product) return;
-    const since = dayStr(Date.now() - (Number(days) - 1) * DAY);
     setData(null);
-    api.marketingMetrics(product.id, { since }).then(setData).catch(() => setData({ error: true }));
-    api.metrics(product.id, { days: Number(days), months: 12 }).then(setBiz).catch(() => setBiz(null));
+    api.marketingMetrics(product.id, { since, until }).then(setData).catch(() => setData({ error: true }));
+    api.metrics(product.id, { days: rangeDays, months: 12 }).then(setBiz).catch(() => setBiz(null));
     if (metaOn && product.metaAdAccount) {
       api.metaCampaigns(product.id).then((r) => setCamps(r.campaigns)).catch((e) => setCamps({ error: e.message }));
     }
   };
-  useEffect(load, [product?.id, days, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [product?.id, since, until, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pausar/reativar com atualização otimista; orçamento salva no blur.
   async function toggleCampaign(c) {
@@ -85,11 +104,16 @@ function MetricsScreen() {
     } catch (e) { setNote({ ok: false, text: e.message || "Falha ao registrar gasto." }); }
   }
 
+  // Sincroniza o PERÍODO filtrado (mínimo 90 dias, teto de ~37 meses da Meta) —
+  // filtrar um range antigo e sincronizar puxa aquele histórico sob demanda.
   async function sync() {
     setSyncing(true); setNote(null);
+    const floor = dayStr(Date.now() - META_LOOKBACK_DAYS * DAY);
+    const def = dayStr(Date.now() - 89 * DAY);
+    const syncSince = [since < def ? since : def, floor].sort()[1]; // max(min(since, 90d), teto)
     try {
-      await api.marketingSync({ saas: product.id, since: dayStr(Date.now() - 89 * DAY) });
-      setNote({ ok: true, text: "Gasto sincronizado da Meta." });
+      await api.marketingSync({ saas: product.id, since: syncSince, until });
+      setNote({ ok: true, text: `Gasto sincronizado da Meta (${syncSince} a ${until}).` });
       load();
     } catch (e) {
       setNote({ ok: false, text: e.message || "Falha ao sincronizar." });
@@ -130,7 +154,16 @@ function MetricsScreen() {
             {syncing ? "Sincronizando…" : "↻ sincronizar Meta"}
           </button>
         )}
-        <Segmented value={days} options={PERIODS} onChange={setDays} />
+        <Segmented value={range.preset} options={PERIODS} onChange={(v) => setRange({ preset: v })} />
+        <div style={{ display: "flex", gap: 4, alignItems: "center" }} title="Intervalo específico (de/até no mesmo dia filtra um dia só)">
+          <input type="date" value={since} max={until}
+            onChange={(e) => e.target.value && setRange({ preset: "custom", since: e.target.value, until })}
+            style={{ height: 28, padding: "0 6px", borderRadius: "var(--r-1)", border: range.preset === "custom" ? "1px solid var(--accent)" : "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, fontFamily: "var(--mono)" }} />
+          <span className="mono dim" style={{ fontSize: 10 }}>até</span>
+          <input type="date" value={until} max={dayStr(Date.now())}
+            onChange={(e) => e.target.value && setRange({ preset: "custom", since, until: e.target.value })}
+            style={{ height: 28, padding: "0 6px", borderRadius: "var(--r-1)", border: range.preset === "custom" ? "1px solid var(--accent)" : "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, fontFamily: "var(--mono)" }} />
+        </div>
       </PageHead>
 
       <div style={{ padding: "20px var(--pad-x) 40px", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -190,7 +223,7 @@ function MetricsScreen() {
         )}
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
-          <StatTile label={`CAC · ${days}d`} value={biz?.window?.cac != null ? money(biz.window.cac) : "sem dado"}
+          <StatTile label={`CAC · ${rangeDays}d`} value={biz?.window?.cac != null ? money(biz.window.cac) : "sem dado"}
             delta={biz?.window?.newCustomers != null ? `${biz.window.newCustomers} ${biz.window.newCustomers === 1 ? "cliente novo" : "clientes novos"}` : null} />
           <StatTile label="LTV estimado" value={biz?.ltv?.value != null ? money(biz.ltv.value) : "sem dado"}
             delta={biz?.ltv?.ticket != null ? `ticket ${money(biz.ltv.ticket)} × ${biz.ltv.months}m` : "precisa de assinaturas ativas"} />
@@ -242,58 +275,12 @@ function MetricsScreen() {
         )}
 
         {metaOn && product.metaAdAccount && (
-          <Card title="Gerenciar campanhas" hint="direto na Meta · pausar, reativar e ajustar orçamento diário">
+          <Card title="Gerenciar anúncios" hint="campanha → conjunto → anúncio · expanda e pause, reative ou ajuste orçamento em qualquer nível">
             {camps == null && <div style={{ padding: "12px 16px", fontSize: 12.5, color: "var(--fg-4)" }}>carregando campanhas…</div>}
             {camps?.error && <div className="mono" style={{ padding: "12px 16px", fontSize: 12, color: "var(--neg)" }}>{camps.error}</div>}
             {Array.isArray(camps) && camps.length === 0 && <div style={{ padding: "12px 16px", fontSize: 12.5, color: "var(--fg-4)" }}>Nenhuma campanha na conta.</div>}
             {Array.isArray(camps) && camps.length > 0 && (
-              <div className="tbl-x" style={{ marginTop: 10 }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr>
-                      {["Campanha", "Objetivo", "Orçamento/dia", "Situação", ""].map((h, i) => (
-                        <th key={h + i} className="mono" style={{ textAlign: i >= 2 && i <= 3 ? "right" : "left", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", padding: "10px 16px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {camps.map((c) => {
-                      const paused = c.status === "PAUSED";
-                      const eff = c.effectiveStatus || c.status;
-                      return (
-                        <tr key={c.id}>
-                          <td style={{ padding: "10px 16px", fontSize: 13, fontWeight: 600, borderBottom: "1px solid var(--line-1)" }}>{c.name}</td>
-                          <td style={{ padding: "10px 16px", fontSize: 12, color: "var(--fg-3)", borderBottom: "1px solid var(--line-1)" }}>
-                            {String(c.objective || "").replace("OUTCOME_", "").toLowerCase()}
-                          </td>
-                          <td style={{ padding: "10px 16px", textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>
-                            {c.dailyBudget != null ? (
-                              <input type="number" min="1" step="1" defaultValue={c.dailyBudget} key={c.id + c.dailyBudget}
-                                onBlur={(e) => saveBudget(c, e.target.value)}
-                                onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
-                                title="Orçamento diário em R$ (salva ao sair do campo)"
-                                style={{ width: 90, height: 26, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)", textAlign: "right" }} />
-                            ) : (
-                              <span className="mono" style={{ fontSize: 11.5, color: "var(--fg-4)" }} title="Orçamento definido nos conjuntos (ABO)">no conjunto</span>
-                            )}
-                          </td>
-                          <td style={{ padding: "10px 16px", textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>
-                            <Pill tone={eff === "ACTIVE" ? "pos" : paused ? "mut" : "warn"}>
-                              {eff === "ACTIVE" ? "ativa" : paused ? "pausada" : String(eff).toLowerCase()}
-                            </Pill>
-                          </td>
-                          <td style={{ padding: "10px 16px", textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>
-                            <button onClick={() => toggleCampaign(c)}
-                              style={{ height: 26, padding: "0 12px", borderRadius: 999, fontSize: 11.5, fontWeight: 600, border: "1px solid var(--line-2)", background: paused ? "var(--accent-soft)" : "var(--bg-2)", color: paused ? "var(--accent)" : "var(--fg-2)" }}>
-                              {paused ? "reativar" : "pausar"}
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <ManageTree camps={camps} onToggleCampaign={toggleCampaign} onBudgetCampaign={saveBudget} onNote={setNote} />
             )}
           </Card>
         )}
@@ -324,6 +311,179 @@ function MetricsScreen() {
           <span>meses. O CAC usa clientes convertidos do pipeline (lead em Ganho vira cliente automaticamente).</span>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Gerenciamento em árvore no mesmo bloco: campanha → conjunto → anúncio.
+// Conjuntos e anúncios carregam AO VIVO da Meta ao expandir; pausar/reativar
+// vale em qualquer nível (POST genérico pelo id do nó) e orçamento diário
+// edita campanha CBO ou conjunto ABO.
+function ManageTree({ camps, onToggleCampaign, onBudgetCampaign, onNote }) {
+  const [open, setOpen] = useState(() => new Set());
+  const [adsetsBy, setAdsetsBy] = useState({}); // campId  -> rows | "loading" | { error }
+  const [adsBy, setAdsBy] = useState({});       // adsetId -> rows | "loading" | { error }
+
+  const flip = (id) => setOpen((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const openCampaign = (c) => {
+    flip(c.id);
+    if (!adsetsBy[c.id]) {
+      setAdsetsBy((p) => ({ ...p, [c.id]: "loading" }));
+      api.metaAdsets(c.id)
+        .then((r) => setAdsetsBy((p) => ({ ...p, [c.id]: r.adsets })))
+        .catch((e) => setAdsetsBy((p) => ({ ...p, [c.id]: { error: e.message || "falha ao listar conjuntos" } })));
+    }
+  };
+  const openAdset = (s) => {
+    flip(s.id);
+    if (!adsBy[s.id]) {
+      setAdsBy((p) => ({ ...p, [s.id]: "loading" }));
+      api.metaAds(s.id)
+        .then((r) => setAdsBy((p) => ({ ...p, [s.id]: r.ads })))
+        .catch((e) => setAdsBy((p) => ({ ...p, [s.id]: { error: e.message || "falha ao listar anúncios" } })));
+    }
+  };
+
+  const patchRow = (setter, groupId) => (id, patch) =>
+    setter((p) => (Array.isArray(p[groupId]) ? { ...p, [groupId]: p[groupId].map((x) => (x.id === id ? { ...x, ...patch } : x)) } : p));
+
+  async function toggleStatus(level, obj, applyLocal) {
+    const target = obj.status === "PAUSED" ? "ACTIVE" : "PAUSED";
+    const verb = target === "PAUSED" ? "Pausar" : "Reativar";
+    if (!window.confirm(`${verb} ${level} "${obj.name}" na Meta?`)) return;
+    applyLocal({ status: target, effectiveStatus: target });
+    try {
+      await api.metaObjectStatus(obj.id, target);
+      onNote({ ok: true, text: `${level} ${target === "PAUSED" ? "pausado(a)" : "reativado(a)"}: ${obj.name}` });
+    } catch (e) {
+      applyLocal({ status: obj.status, effectiveStatus: obj.effectiveStatus });
+      onNote({ ok: false, text: e.message || "Falha na Meta." });
+    }
+  }
+  async function saveAdsetBudget(campId, s, value) {
+    const v = Number(value);
+    if (!Number.isFinite(v) || v <= 0 || v === s.dailyBudget) return;
+    try {
+      await api.metaObjectBudget(s.id, v);
+      patchRow(setAdsetsBy, campId)(s.id, { dailyBudget: v });
+      onNote({ ok: true, text: `Orçamento do conjunto "${s.name}" atualizado.` });
+    } catch (e) { onNote({ ok: false, text: e.message || "Falha ao atualizar orçamento." }); }
+  }
+
+  const td = { padding: "10px 16px", borderBottom: "1px solid var(--line-1)" };
+  const budgetInput = (obj, onBlur, title) => (
+    <input type="number" min="1" step="1" defaultValue={obj.dailyBudget} key={obj.id + obj.dailyBudget}
+      onBlur={(e) => onBlur(e.target.value)}
+      onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+      title={title}
+      style={{ width: 90, height: 26, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)", textAlign: "right" }} />
+  );
+  const statusPill = (obj) => {
+    const eff = obj.effectiveStatus || obj.status;
+    const paused = obj.status === "PAUSED";
+    return (
+      <Pill tone={eff === "ACTIVE" ? "pos" : paused ? "mut" : "warn"}>
+        {eff === "ACTIVE" ? "ativo" : paused ? "pausado" : String(eff).toLowerCase().replaceAll("_", " ")}
+      </Pill>
+    );
+  };
+  const toggleBtn = (obj, onClick) => {
+    const paused = obj.status === "PAUSED";
+    return (
+      <button onClick={onClick}
+        style={{ height: 26, padding: "0 12px", borderRadius: 999, fontSize: 11.5, fontWeight: 600, border: "1px solid var(--line-2)", background: paused ? "var(--accent-soft)" : "var(--bg-2)", color: paused ? "var(--accent)" : "var(--fg-2)" }}>
+        {paused ? "reativar" : "pausar"}
+      </button>
+    );
+  };
+  const nameTd = (label, depth, expandable, isOpen, onClick, tag) => (
+    <td onClick={onClick} style={{
+      ...td, paddingLeft: 16 + depth * 22, fontSize: depth ? 12.5 : 13,
+      fontWeight: depth === 2 ? 400 : 600, color: depth === 2 ? "var(--fg-2)" : "var(--fg-1)",
+      cursor: expandable ? "pointer" : "default",
+      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 340,
+    }}>
+      {expandable && <span className="mono" style={{ marginRight: 7, color: "var(--fg-4)", fontSize: 10 }}>{isOpen ? "▾" : "▸"}</span>}
+      {tag && <span className="mono" style={{ marginRight: 6, color: "var(--fg-4)", fontSize: 10 }}>{tag}</span>}
+      {label}
+    </td>
+  );
+  const infoRow = (key, depth, text, isErr) => (
+    <tr key={key} style={{ background: "var(--bg-inset)" }}>
+      <td colSpan={5} className="mono" style={{ ...td, paddingLeft: 16 + depth * 22, fontSize: 11.5, color: isErr ? "var(--neg)" : "var(--fg-4)" }}>{text}</td>
+    </tr>
+  );
+
+  return (
+    <div className="tbl-x" style={{ marginTop: 10 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            {["Campanha / conjunto / anúncio", "Objetivo", "Orçamento/dia", "Situação", ""].map((h, i) => (
+              <th key={h + i} className="mono" style={{ textAlign: i >= 2 ? "right" : "left", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", padding: "10px 16px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {camps.map((c) => {
+            const cOpen = open.has(c.id);
+            const sets = adsetsBy[c.id];
+            return (
+              <React.Fragment key={c.id}>
+                <tr>
+                  {nameTd(c.name, 0, true, cOpen, () => openCampaign(c))}
+                  <td style={{ ...td, fontSize: 12, color: "var(--fg-3)" }}>{String(c.objective || "").replace("OUTCOME_", "").toLowerCase()}</td>
+                  <td style={{ ...td, textAlign: "right" }}>
+                    {c.dailyBudget != null
+                      ? budgetInput(c, (v) => onBudgetCampaign(c, v), "Orçamento diário da campanha em R$ (salva ao sair do campo)")
+                      : <span className="mono" style={{ fontSize: 11.5, color: "var(--fg-4)" }} title="Orçamento definido nos conjuntos (ABO)">no conjunto</span>}
+                  </td>
+                  <td style={{ ...td, textAlign: "right" }}>{statusPill(c)}</td>
+                  <td style={{ ...td, textAlign: "right" }}>{toggleBtn(c, () => onToggleCampaign(c))}</td>
+                </tr>
+                {cOpen && sets === "loading" && infoRow(c.id + "_l", 1, "carregando conjuntos…")}
+                {cOpen && sets?.error && infoRow(c.id + "_e", 1, sets.error, true)}
+                {cOpen && Array.isArray(sets) && sets.length === 0 && infoRow(c.id + "_0", 1, "campanha sem conjuntos")}
+                {cOpen && Array.isArray(sets) && sets.map((s) => {
+                  const sOpen = open.has(s.id);
+                  const ads = adsBy[s.id];
+                  const patchSet = patchRow(setAdsetsBy, c.id);
+                  return (
+                    <React.Fragment key={s.id}>
+                      <tr style={{ background: "var(--bg-inset)" }}>
+                        {nameTd(s.name, 1, true, sOpen, () => openAdset(s), "conj")}
+                        <td style={td} />
+                        <td style={{ ...td, textAlign: "right" }}>
+                          {s.dailyBudget != null
+                            ? budgetInput(s, (v) => saveAdsetBudget(c.id, s, v), "Orçamento diário do conjunto em R$ (salva ao sair do campo)")
+                            : <span className="mono" style={{ fontSize: 11.5, color: "var(--fg-4)" }} title="Orçamento definido na campanha (CBO)">na campanha</span>}
+                        </td>
+                        <td style={{ ...td, textAlign: "right" }}>{statusPill(s)}</td>
+                        <td style={{ ...td, textAlign: "right" }}>{toggleBtn(s, () => toggleStatus("conjunto", s, (patch) => patchSet(s.id, patch)))}</td>
+                      </tr>
+                      {sOpen && ads === "loading" && infoRow(s.id + "_l", 2, "carregando anúncios…")}
+                      {sOpen && ads?.error && infoRow(s.id + "_e", 2, ads.error, true)}
+                      {sOpen && Array.isArray(ads) && ads.length === 0 && infoRow(s.id + "_0", 2, "conjunto sem anúncios")}
+                      {sOpen && Array.isArray(ads) && ads.map((a) => {
+                        const patchAd = patchRow(setAdsBy, s.id);
+                        return (
+                          <tr key={a.id} style={{ background: "var(--bg-inset)" }}>
+                            {nameTd(a.name, 2, false, false, undefined, "ad")}
+                            <td style={td} />
+                            <td style={td} />
+                            <td style={{ ...td, textAlign: "right" }}>{statusPill(a)}</td>
+                            <td style={{ ...td, textAlign: "right" }}>{toggleBtn(a, () => toggleStatus("anúncio", a, (patch) => patchAd(a.id, patch)))}</td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  );
+                })}
+              </React.Fragment>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

@@ -158,11 +158,12 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       return rows;
     },
 
-    // Conjuntos de uma campanha — destino dos anúncios novos criados pelo cockpit.
+    // Conjuntos de uma campanha — destino dos anúncios novos e gerenciamento
+    // nível conjunto (orçamento em REAIS quando ABO).
     async listAdsets(campaignId) {
       if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
       const params = new URLSearchParams({
-        fields: "id,name,status,effective_status",
+        fields: "id,name,status,effective_status,daily_budget",
         limit: "100",
         access_token: accessToken,
       });
@@ -172,7 +173,31 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       while (url && guard++ < 10) {
         const body = await get(url);
         for (const s of body.data || []) {
-          rows.push({ id: s.id, name: s.name, status: s.status, effectiveStatus: s.effective_status });
+          rows.push({
+            id: s.id, name: s.name, status: s.status, effectiveStatus: s.effective_status,
+            dailyBudget: s.daily_budget != null ? Number(s.daily_budget) / 100 : null,
+          });
+        }
+        url = body.paging?.next || null;
+      }
+      return rows;
+    },
+
+    // Anúncios de um conjunto — gerenciamento nível anúncio.
+    async listAds(adsetId) {
+      if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
+      const params = new URLSearchParams({
+        fields: "id,name,status,effective_status",
+        limit: "200",
+        access_token: accessToken,
+      });
+      let url = `${GRAPH}/${adsetId}/ads?${params}`;
+      const rows = [];
+      let guard = 0;
+      while (url && guard++ < 10) {
+        const body = await get(url);
+        for (const a of body.data || []) {
+          rows.push({ id: a.id, name: a.name, status: a.status, effectiveStatus: a.effective_status });
         }
         url = body.paging?.next || null;
       }
@@ -267,20 +292,21 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       return { id: String(body.id), name, status };
     },
 
-    // Pausar/reativar campanha. Só os dois estados que fazem sentido operar daqui.
-    async setCampaignStatus(campaignId, status) {
+    // Pausar/reativar QUALQUER nível (campanha, conjunto ou anúncio) — o nó da
+    // Graph aceita o mesmo POST {status}. Só os dois estados que operamos daqui.
+    async setObjectStatus(objectId, status) {
       if (status !== "ACTIVE" && status !== "PAUSED") throw new Error(`status inválido: ${status}`);
-      await post(String(campaignId), { status });
-      return { id: String(campaignId), status };
+      await post(String(objectId), { status });
+      return { id: String(objectId), status };
     },
 
-    // Orçamento diário (CBO) em REAIS. Campanha com orçamento no conjunto
-    // (sem daily_budget) falha na Graph com erro claro — repassamos.
-    async setCampaignBudget(campaignId, dailyBudgetBRL) {
+    // Orçamento diário em REAIS — campanha (CBO) ou conjunto (ABO). Nó sem
+    // daily_budget falha na Graph com erro claro — repassamos.
+    async setObjectBudget(objectId, dailyBudgetBRL) {
       const cents = Math.round(Number(dailyBudgetBRL) * 100);
       if (!Number.isFinite(cents) || cents <= 0) throw new Error(`orçamento inválido: ${dailyBudgetBRL}`);
-      await post(String(campaignId), { daily_budget: String(cents) });
-      return { id: String(campaignId), dailyBudget: cents / 100 };
+      await post(String(objectId), { daily_budget: String(cents) });
+      return { id: String(objectId), dailyBudget: cents / 100 };
     },
   };
 }
@@ -296,11 +322,12 @@ export const meta = {
   adInsights: (a, r) => inst().adInsights(a, r),
   listCampaigns: (a) => inst().listCampaigns(a),
   listAdsets: (id) => inst().listAdsets(id),
+  listAds: (id) => inst().listAds(id),
   discoverCreativeDefaults: (a) => inst().discoverCreativeDefaults(a),
   uploadVideo: (a, o) => inst().uploadVideo(a, o),
   videoThumbnail: (id, o) => inst().videoThumbnail(id, o),
   createAdCreative: (a, o) => inst().createAdCreative(a, o),
   createAd: (a, o) => inst().createAd(a, o),
-  setCampaignStatus: (id, s) => inst().setCampaignStatus(id, s),
-  setCampaignBudget: (id, v) => inst().setCampaignBudget(id, v),
+  setObjectStatus: (id, s) => inst().setObjectStatus(id, s),
+  setObjectBudget: (id, v) => inst().setObjectBudget(id, v),
 };

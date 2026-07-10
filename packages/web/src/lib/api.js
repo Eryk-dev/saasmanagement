@@ -75,6 +75,9 @@ export const api = {
   metaCampaignStatus: (id, status) => req("POST", `/api/marketing/campaigns/${id}/status`, { status }),
   metaCampaignBudget: (id, dailyBudget) => req("POST", `/api/marketing/campaigns/${id}/budget`, { dailyBudget }),
   metaAdsets: (campaignId) => req("GET", `/api/marketing/campaigns/${campaignId}/adsets`),
+  metaAds: (adsetId) => req("GET", `/api/marketing/adsets/${adsetId}/ads`),
+  metaObjectStatus: (id, status) => req("POST", `/api/marketing/objects/${id}/status`, { status }),
+  metaObjectBudget: (id, dailyBudget) => req("POST", `/api/marketing/objects/${id}/budget`, { dailyBudget }),
   creativeDefaults: (saas) => req("GET", `/api/marketing/${saas}/creative-defaults`),
   // Upload multipart (vídeo) — fetch cru: o browser define o boundary do form.
   uploadCreative: async (saas, formData) => {
