@@ -117,6 +117,16 @@ function OverviewScreen({ onNav, onOpenLead }) {
   }, [openLeads, mine, me, product, firstStage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const queueTotal = queue.late.length + queue.today.length + queue.tomorrow.length + queue.upcoming.length + queue.noNext.length;
+  // Seções renderizadas (com os cortes por seção) — o "+N na fila" usa o que
+  // REALMENTE apareceu, não um corte fixo.
+  const queueSections = [
+    ["Hoje", queue.today.slice(0, 12).map((x) => x.l)],
+    ["Amanhã", queue.tomorrow.slice(0, 8).map((x) => x.l)],
+    ["Próximos dias", queue.upcoming.slice(0, 8).map((x) => x.l)],
+    ["Sem próximo passo", queue.noNext.slice(0, 8)],
+    ["Atrasados", queue.late.slice(0, 12).map((x) => x.l)],
+  ];
+  const queueShown = queueSections.reduce((a, [, rows]) => a + rows.length, 0);
   const slaBreaches = queue.noNext.filter(queue.breach).length;
 
   // Toque dado direto da fila: vira activity (o servidor conta a tentativa e
@@ -200,13 +210,7 @@ function OverviewScreen({ onNav, onOpenLead }) {
                   Nada vencido — todos os leads abertos têm próximo passo. 🎯
                 </div>
               )}
-              {[
-                ["Hoje", queue.today.slice(0, 12).map((x) => x.l)],
-                ["Amanhã", queue.tomorrow.slice(0, 8).map((x) => x.l)],
-                ["Próximos dias", queue.upcoming.slice(0, 8).map((x) => x.l)],
-                ["Sem próximo passo", queue.noNext.slice(0, 8)],
-                ["Atrasados", queue.late.slice(0, 12).map((x) => x.l)],
-              ].map(([label, rows]) => rows.length > 0 && (
+              {queueSections.map(([label, rows]) => rows.length > 0 && (
                 <div key={label}>
                   <div className="mono" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: label === "Atrasados" ? "var(--neg)" : "var(--fg-4)", padding: "8px 8px 3px" }}>
                     {label}
@@ -217,9 +221,9 @@ function OverviewScreen({ onNav, onOpenLead }) {
                   ))}
                 </div>
               ))}
-              {queueTotal > 30 && (
+              {queueTotal > queueShown && (
                 <button onClick={() => onNav && onNav("pipeline", { saas: product.id })} className="mono" style={{ width: "100%", padding: "8px 0", fontSize: 11, color: "var(--accent)" }}>
-                  +{queueTotal - 30} na fila · ver pipeline →
+                  +{queueTotal - queueShown} na fila · ver pipeline →
                 </button>
               )}
             </div>

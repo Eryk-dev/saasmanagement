@@ -10,6 +10,7 @@ import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import { initDb, repo } from "./db.js";
 import { registerRoutes } from "./routes.js";
+import { startMarketingAutoSync } from "./routes.marketing.js";
 import { ensureDefaultAdmins, makeAuthHook } from "./auth.js";
 import { runStartupMigrations } from "./migrations.js";
 
@@ -62,6 +63,9 @@ registerRoutes(app);
 try {
   await app.listen({ port: PORT, host: "0.0.0.0" });
   app.log.info(`Cockpit API ready on http://localhost:${PORT}  (auth: ${API_KEY ? "ON (all routes)" : "off"})`);
+  // Sync automático da Meta no servidor (uma execução pro time inteiro; no-op
+  // sem META_ACCESS_TOKEN). O SPA só lê — não faz mais polling por aba.
+  startMarketingAutoSync(repo, { log: app.log });
 } catch (err) {
   app.log.error(err);
   process.exit(1);

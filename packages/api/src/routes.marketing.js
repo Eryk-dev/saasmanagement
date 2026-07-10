@@ -24,10 +24,11 @@ export const CREATIVE_URL_TAGS =
   "utm_source=meta&utm_medium=paid&utm_campaign={{campaign.id}}&utm_term={{adset.id}}&utm_content={{ad.id}}";
 
 // Código da dor na nomenclatura do anúncio: "[X]" em QUALQUER posição do nome
-// ("[A] v3 depoimento" ou "1303 [B]"). É o que liga anúncio → dor no relatório.
+// ("[A] v3 depoimento" ou "1303 [B]"). Código = 1-3 alfanuméricos — colchete
+// com outra coisa ("[TESTE]") não vira dor fantasma no relatório.
 export function painCode(adName) {
-  const m = String(adName || "").match(/\[([^\]]{1,12})\]/);
-  return m ? m[1].trim().toUpperCase() : null;
+  const m = String(adName || "").match(/\[([A-Za-z0-9]{1,3})\]/);
+  return m ? m[1].toUpperCase() : null;
 }
 
 function rangeFromQuery(q, now = new Date()) {
@@ -38,11 +39,61 @@ function rangeFromQuery(q, now = new Date()) {
 
 // Upsert por id determinístico (1 linha por saas+anúncio+dia; fallback por
 // campanha quando a linha não tem ad — compat com dados/mocks antigos).
+// Linha idêntica NÃO regrava: cada escrita no repo acorda o SSE de todos os
+// clientes, e o auto-sync roda o dia inteiro — só o que mudou vira evento.
 async function upsertInsight(repo, row) {
   const id = `ai_${row.saas}_${row.adId || row.campaignId}_${row.date}`;
   const existing = await repo.get("ad_insights", id);
-  if (existing) return repo.update("ad_insights", id, row);
+  if (existing) {
+    const changed = Object.keys(row).some((k) => JSON.stringify(existing[k]) !== JSON.stringify(row[k]));
+    if (!changed) return existing;
+    return repo.update("ad_insights", id, row);
+  }
   return repo.create("ad_insights", { id, ...row });
+}
+
+// Sync de UM produto (rota manual e auto-sync do servidor passam por aqui):
+// puxa insights nível anúncio, limpa legado nível-campanha da janela e faz o
+// upsert idempotente. Carimba o horário pro "ao vivo" da tela.
+const lastSyncAt = new Map(); // saas -> ISO do último sync (memória do processo)
+async function syncProductInsights(repo, meta, product, { since, until }) {
+  const rows = await meta.adInsights(product.metaAdAccount, { since, until });
+  const legacy = (await repo.list("ad_insights")).filter(
+    (r) => r.saas === product.id && !r.adId && !String(r.campaignId || "").startsWith("manual_") && r.date >= since && r.date <= until,
+  );
+  for (const r of legacy) await repo.remove("ad_insights", r.id);
+  for (const r of rows) await upsertInsight(repo, { saas: product.id, ...r });
+  lastSyncAt.set(product.id, new Date().toISOString());
+  return rows.length;
+}
+
+// Sync automático NO SERVIDOR — chamado só pelo index.js (testes montam o app
+// sem ele). Uma execução por vez pro time inteiro: substitui o polling por aba
+// do SPA, que multiplicava chamadas à Meta por usuário logado. Janela curta
+// (ontem+hoje); histórico maior continua vindo do botão/rota manual.
+export function startMarketingAutoSync(repo, { meta = defaultMeta, intervalMs = 180_000, log = console, immediate = true } = {}) {
+  let running = false;
+  async function tick() {
+    if (running || !meta.configured()) return;
+    running = true;
+    try {
+      const products = (await repo.list("products")).filter((p) => p.metaAdAccount);
+      const range = { since: dayStr(Date.now() - DAY_MS), until: dayStr(Date.now()) };
+      for (const p of products) {
+        try {
+          await syncProductInsights(repo, meta, p, range);
+        } catch (err) {
+          log.warn?.(`Meta auto-sync falhou (${p.id}): ${String(err.message || err).slice(0, 200)}`);
+        }
+      }
+    } finally {
+      running = false;
+    }
+  }
+  const id = setInterval(tick, intervalMs);
+  id.unref?.(); // não segura o processo vivo no shutdown
+  if (immediate) tick(); // primeira leva já na subida (testes desligam pra controlar o tick)
+  return { tick, stop: () => clearInterval(id) };
 }
 
 export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) {
@@ -58,18 +109,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const report = {};
     for (const p of products) {
       try {
-        const rows = await meta.adInsights(p.metaAdAccount, { since, until });
-        // Linhas legadas nível-campanha (sem adId) NA JANELA sincronizada viram
-        // dupla contagem com as linhas nível-anúncio — remove antes do upsert.
-        // Fora da janela ficam (histórico antigo continua certo em consultas de
-        // períodos antigos, que só têm linhas de um nível). Gasto MANUAL
-        // (campaignId "manual_*", tela Publicidade) nunca é tocado.
-        const legacy = (await repo.list("ad_insights")).filter(
-          (r) => r.saas === p.id && !r.adId && !String(r.campaignId || "").startsWith("manual_") && r.date >= since && r.date <= until,
-        );
-        for (const r of legacy) await repo.remove("ad_insights", r.id);
-        for (const r of rows) await upsertInsight(repo, { saas: p.id, ...r });
-        report[p.id] = { ok: true, rows: rows.length };
+        report[p.id] = { ok: true, rows: await syncProductInsights(repo, meta, p, { since, until }) };
       } catch (err) {
         req.log.warn({ saas: p.id, err: err.message }, "Meta: sync falhou");
         report[p.id] = { ok: false, error: String(err.message || err).slice(0, 200) };
@@ -376,12 +416,16 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       },
       perStage, campaigns, adsets, ads, pains, series,
       synced: rows.length > 0,
+      syncedAt: lastSyncAt.get(product.id) || null, // "ao vivo" da tela lê daqui
     };
   });
 
   // Catálogo id → nome (campanha/conjunto/anúncio) a partir do ad_insights já
   // sincronizado — o drawer do lead resolve o UTM cru pra nomes legíveis sem
-  // nenhuma chamada à Meta.
+  // nenhuma chamada à Meta. Complemento: a listagem VIVA de anúncios da conta
+  // preenche ids que ainda não têm insight (anúncio recém-criado resolve nome
+  // e dor antes do 1º sync), com cache curto pra não bater na Graph à toa.
+  const liveAdsCache = new Map(); // saas -> { at, rows }
   app.get("/api/marketing/:saas/attribution", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "Not found" });
@@ -393,6 +437,20 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       if (r.campaignId) campaigns[r.campaignId] = { name: r.campaignName || "" };
       if (r.adsetId) adsets[r.adsetId] = { name: r.adsetName || "", campaignId: r.campaignId || "" };
       if (r.adId) ads[r.adId] = { name: r.adName || "", adsetId: r.adsetId || "", campaignId: r.campaignId || "" };
+    }
+    if (meta.configured() && product.metaAdAccount) {
+      try {
+        let cached = liveAdsCache.get(product.id);
+        if (!cached || Date.now() - cached.at >= 300_000) {
+          cached = { at: Date.now(), rows: await meta.listAccountAds(product.metaAdAccount) };
+          liveAdsCache.set(product.id, cached);
+        }
+        for (const a of cached.rows) {
+          if (a.id && a.name && !ads[a.id]) ads[a.id] = { name: a.name, adsetId: a.adsetId || "", campaignId: a.campaignId || "" };
+        }
+      } catch (err) {
+        req.log.warn({ err: err.message }, "Meta: listAccountAds falhou (catálogo segue só do insights)");
+      }
     }
     return { campaigns, adsets, ads };
   });

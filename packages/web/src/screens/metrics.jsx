@@ -92,42 +92,38 @@ function MetricsScreen() {
   const [camps, setCamps] = useState(null); // campanhas ao vivo (gerenciamento)
   const [creative, setCreative] = useState(false); // painel de novo criativo
 
+  // reset=true (troca de range/produto): zera a tela e recarrega TUDO, inclusive
+  // a lista viva de campanhas. Silencioso (SSE/tick): só métricas + CAC — nada
+  // de bater na Graph a cada lead movido por alguém do time.
   const load = (reset = true) => {
     if (!product) return;
     if (reset) setData(null);
     api.marketingMetrics(product.id, { since, until }).then(setData).catch(() => setData({ error: true }));
     api.metrics(product.id, { days: rangeDays, months: 12 }).then(setBiz).catch(() => setBiz(null));
-    if (metaOn && product.metaAdAccount) {
+    if (reset && metaOn && product.metaAdAccount) {
       api.metaCampaigns(product.id).then((r) => setCamps(r.campaigns)).catch((e) => setCamps({ error: e.message }));
     }
   };
   useEffect(() => load(true), [product?.id, since, until]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Mudança vinda do tempo real (SSE: lead criado/movido/etc.) recarrega SEM
-  // piscar — os números do painel acompanham o pipeline na hora.
+  // Mudança vinda do tempo real (SSE: lead criado/movido, sync do servidor)
+  // recarrega SEM piscar — os números acompanham o pipeline na hora.
   const firstVersion = React.useRef(version);
   useEffect(() => {
     if (version !== firstVersion.current) load(false);
   }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Tempo real do lado da Meta: a cada 60s (com a aba visível) sincroniza os
-  // últimos 2 dias de insights e recarrega as métricas silenciosamente. O gasto
-  // é pull mesmo — a Insights API da Meta tem alguns minutos de atraso deles.
-  const [liveAt, setLiveAt] = useState(null);
+  // O sync da Meta roda no SERVIDOR (1 execução pro time, a cada ~3 min); aqui
+  // só um refresh leve por minuto pra manter o relógio do "ao vivo" em dia
+  // mesmo quando nada mudou (mudança de verdade já chega via SSE).
   useEffect(() => {
     if (!metaOn || !product?.metaAdAccount) return;
-    let stop = false;
-    const tick = async () => {
-      if (stop || document.visibilityState !== "visible") return;
-      try {
-        await api.marketingSync({ saas: product.id, since: dayStr(Date.now() - DAY) });
-        if (stop) return;
-        const fresh = await api.marketingMetrics(product.id, { since, until });
-        if (!stop) { setData(fresh); setLiveAt(new Date()); }
-      } catch { /* silencioso — tenta de novo no próximo tick */ }
-    };
-    const id = setInterval(tick, 60_000);
-    return () => { stop = true; clearInterval(id); };
+    const id = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      api.marketingMetrics(product.id, { since, until }).then(setData).catch(() => { /* próximo tick */ });
+    }, 60_000);
+    return () => clearInterval(id);
   }, [product?.id, since, until, metaOn]); // eslint-disable-line react-hooks/exhaustive-deps
+  const liveAt = data?.syncedAt ? new Date(data.syncedAt) : null;
 
   // Pausar/reativar com atualização otimista; orçamento salva no blur.
   async function toggleCampaign(c) {
@@ -218,7 +214,7 @@ function MetricsScreen() {
           </button>
         )}
         {liveAt && (
-          <span className="mono" title="Sync automático da Meta a cada minuto com a aba aberta; leads chegam na hora via tempo real"
+          <span className="mono" title="Sync automático no servidor a cada ~3 min (último horário mostrado); leads chegam na hora via tempo real"
             style={{ fontSize: 10.5, color: "var(--pos)", display: "inline-flex", alignItems: "center", gap: 4 }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--pos)" }} />
             ao vivo · {liveAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
