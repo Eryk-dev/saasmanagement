@@ -33,6 +33,7 @@ function MetricsScreen() {
   const [note, setNote] = useState(null);
 
   const [camps, setCamps] = useState(null); // campanhas ao vivo (gerenciamento)
+  const [creative, setCreative] = useState(false); // painel de novo criativo
 
   const load = () => {
     if (!product) return;
@@ -114,6 +115,12 @@ function MetricsScreen() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Publicidade" sub={`aquisição, funil e campanhas · ${product.name}`}>
+        {metaOn && product.metaAdAccount && (
+          <button onClick={() => setCreative((v) => !v)}
+            style={{ padding: "6px 12px", borderRadius: "var(--r-1)", fontSize: 12.5, fontWeight: 600, background: "var(--accent)", color: "var(--accent-fg)" }}>
+            + criativo
+          </button>
+        )}
         <button onClick={() => setManual(manual ? null : { date: new Date().toISOString().slice(0, 10), name: "", spend: "" })}
           style={{ padding: "6px 12px", borderRadius: "var(--r-1)", fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)" }}>
           + gasto manual
@@ -129,6 +136,13 @@ function MetricsScreen() {
       <div style={{ padding: "20px var(--pad-x) 40px", display: "flex", flexDirection: "column", gap: 12 }}>
         {note && (
           <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>
+        )}
+
+        {creative && (
+          <NewCreativePanel product={product} campaigns={Array.isArray(camps) ? camps : []}
+            onDone={(msg) => { setNote({ ok: true, text: msg }); setCreative(false); load(); }}
+            onError={(msg) => setNote({ ok: false, text: msg })}
+            onClose={() => setCreative(false)} />
         )}
 
         {manual && (
@@ -213,6 +227,12 @@ function MetricsScreen() {
               <LineChart data={biz.series.map((m) => ({ x: monthLabel(m.month), v: m.mrr }))} color="var(--chart-1)" fmtValue={(v) => money(v)} />
             </Card>
           </div>
+        )}
+
+        {data && !data.error && (data.pains || []).some((p) => p.code) && (
+          <Card title="Por dor" hint="código [X] no nome do anúncio · qual roteiro traz lead que fecha, não só lead barato">
+            <PainTable pains={data.pains} money={money} />
+          </Card>
         )}
 
         {data && !data.error && data.campaigns?.length > 0 && (
@@ -305,6 +325,200 @@ function MetricsScreen() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Quebra por dor: cada linha é um código "[X]" da nomenclatura dos anúncios.
+// O que decide escala é a última coluna (custo por ganho), não o CPL.
+function PainTable({ pains, money }) {
+  const ths = ["Dor", "Anúncios", "Investimento", "Leads (UTM)", "CPL real", "Ganhos", "Custo por ganho"];
+  return (
+    <div className="tbl-x" style={{ marginTop: 10 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            {ths.map((h, i) => (
+              <th key={h} className="mono" style={{ textAlign: i === 0 ? "left" : "right", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", padding: "10px 16px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {pains.map((p) => (
+            <tr key={p.code || "_sem"} style={{ opacity: p.code ? 1 : 0.55 }}>
+              <td style={{ padding: "11px 16px", fontSize: 13, fontWeight: 600, borderBottom: "1px solid var(--line-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 300 }}>
+                {p.code && <span className="mono" style={{ marginRight: 8, fontSize: 11, color: "var(--accent)", border: "1px solid var(--line-2)", borderRadius: 5, padding: "1px 6px" }}>{p.code}</span>}
+                {p.label}
+              </td>
+              <td className="tnum" style={tdNum}>{p.adsCount}</td>
+              <td className="tnum" style={tdNum}>{money(p.spend)}</td>
+              <td className="tnum" style={tdNum}>{window.fmt.int(p.leads)}</td>
+              <td className="tnum" style={tdNum}>{p.cpl != null ? money(p.cpl) : "sem lead"}</td>
+              <td className="tnum" style={tdNum}>{window.fmt.int(p.won)}</td>
+              <td className="tnum" style={{ ...tdNum, fontWeight: 600 }}>{p.costPerWin != null ? money(p.costPerWin) : "sem ganho"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Painel de novo criativo: vídeo do videomaker + dor + copy → anúncio PAUSADO
+// no conjunto escolhido, nome "[A] variação" e UTMs da convenção. A revisão e a
+// ativação seguem no Gerenciador da Meta.
+function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
+  const [defaults, setDefaults] = useState(null); // { pageId, link, painMap }
+  const [campaignId, setCampaignId] = useState("");
+  const [adsets, setAdsets] = useState(null);
+  const [adsetId, setAdsetId] = useState("");
+  const [pain, setPain] = useState("");           // código escolhido ou "_new"
+  const [newPain, setNewPain] = useState({ code: "", label: "" });
+  const [name, setName] = useState("");
+  const [title, setTitle] = useState("");
+  const [message, setMessage] = useState("");
+  const [link, setLink] = useState("");
+  const [cta, setCta] = useState("LEARN_MORE");
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.creativeDefaults(product.id)
+      .then((d) => { setDefaults(d); if (d.link) setLink((v) => v || d.link); })
+      .catch(() => setDefaults({ painMap: {} }));
+  }, [product.id]);
+
+  useEffect(() => {
+    if (!campaignId) { setAdsets(null); setAdsetId(""); return; }
+    setAdsets(null);
+    api.metaAdsets(campaignId)
+      .then((r) => { setAdsets(r.adsets); if (r.adsets.length === 1) setAdsetId(r.adsets[0].id); })
+      .catch((e) => { setAdsets([]); onError(e.message || "Falha ao listar conjuntos."); });
+  }, [campaignId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const painMap = defaults?.painMap || {};
+  const painCodeSel = pain === "_new" ? newPain.code.trim().toUpperCase() : pain;
+  const painLabelSel = pain === "_new" ? newPain.label.trim() : painMap[pain] || "";
+  const valid = adsetId && name.trim() && message.trim() && link.trim() && file && (pain !== "_new" || (painCodeSel && painLabelSel));
+
+  async function submit() {
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("adsetId", adsetId);
+      fd.append("name", name.trim());
+      fd.append("message", message.trim());
+      if (title.trim()) fd.append("title", title.trim());
+      fd.append("link", link.trim());
+      fd.append("ctaType", cta);
+      if (painCodeSel) { fd.append("painCode", painCodeSel); fd.append("painLabel", painLabelSel); }
+      fd.append("video", file, file.name);
+      const r = await api.uploadCreative(product.id, fd);
+      onDone(`Anúncio "${r.name}" criado PAUSADO — revise e ative no Gerenciador.`);
+    } catch (e) {
+      onError(e.message || "Falha ao criar o criativo.");
+    }
+    setBusy(false);
+  }
+
+  const lbl = { display: "flex", flexDirection: "column", gap: 4 };
+  const cap = { fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" };
+  const inp = { height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
+  const activeCamps = campaigns.filter((c) => c.effectiveStatus !== "ARCHIVED" && c.effectiveStatus !== "DELETED");
+
+  return (
+    <Card title="Novo criativo" hint="o anúncio nasce pausado, com a dor no nome e as UTMs do mapeamento">
+      <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
+          <label style={lbl}>
+            <span className="mono" style={cap}>Campanha</span>
+            <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)} style={inp}>
+              <option value="">Selecione…</option>
+              {activeCamps.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
+          <label style={lbl}>
+            <span className="mono" style={cap}>Conjunto</span>
+            <select value={adsetId} onChange={(e) => setAdsetId(e.target.value)} disabled={!campaignId} style={inp}>
+              <option value="">{!campaignId ? "escolha a campanha" : adsets == null ? "carregando…" : "Selecione…"}</option>
+              {(adsets || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </label>
+          <label style={lbl}>
+            <span className="mono" style={cap}>Dor (roteiro)</span>
+            <select value={pain} onChange={(e) => setPain(e.target.value)} style={inp}>
+              <option value="">Sem código</option>
+              {Object.entries(painMap).map(([c, l]) => <option key={c} value={c}>[{c}] {l}</option>)}
+              <option value="_new">+ nova dor…</option>
+            </select>
+          </label>
+        </div>
+
+        {pain === "_new" && (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <label style={lbl}>
+              <span className="mono" style={cap}>Código (1-3 letras)</span>
+              <input type="text" maxLength={3} placeholder="C" value={newPain.code}
+                onChange={(e) => setNewPain({ ...newPain, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") })}
+                style={{ ...inp, width: 80, fontFamily: "var(--mono)", textTransform: "uppercase" }} />
+            </label>
+            <label style={{ ...lbl, flex: 1, minWidth: 220 }}>
+              <span className="mono" style={cap}>Nome da dor</span>
+              <input type="text" placeholder="ex.: Medo de banimento da conta" value={newPain.label}
+                onChange={(e) => setNewPain({ ...newPain, label: e.target.value })} style={inp} />
+            </label>
+          </div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
+          <label style={lbl}>
+            <span className="mono" style={cap}>Variação (vira o nome do anúncio)</span>
+            <input type="text" placeholder="ex.: v1 depoimento cliente" value={name} onChange={(e) => setName(e.target.value)} style={inp} />
+          </label>
+          <label style={lbl}>
+            <span className="mono" style={cap}>Título (headline)</span>
+            <input type="text" placeholder="opcional" value={title} onChange={(e) => setTitle(e.target.value)} style={inp} />
+          </label>
+          <label style={lbl}>
+            <span className="mono" style={cap}>Botão (CTA)</span>
+            <select value={cta} onChange={(e) => setCta(e.target.value)} style={inp}>
+              <option value="LEARN_MORE">Saiba mais</option>
+              <option value="SIGN_UP">Cadastre-se</option>
+              <option value="GET_OFFER">Ver oferta</option>
+              <option value="CONTACT_US">Fale conosco</option>
+            </select>
+          </label>
+        </div>
+
+        <label style={lbl}>
+          <span className="mono" style={cap}>Texto principal</span>
+          <textarea rows={3} placeholder="Copy do anúncio (aparece acima do vídeo)" value={message} onChange={(e) => setMessage(e.target.value)}
+            style={{ ...inp, height: "auto", minHeight: 64, padding: "8px 10px", resize: "vertical", fontFamily: "var(--sans)" }} />
+        </label>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
+          <label style={lbl}>
+            <span className="mono" style={cap}>Link de destino (form)</span>
+            <input type="url" placeholder="https://…" value={link} onChange={(e) => setLink(e.target.value)} style={{ ...inp, fontFamily: "var(--mono)", fontSize: 12 }} />
+          </label>
+          <label style={lbl}>
+            <span className="mono" style={cap}>Vídeo</span>
+            <input type="file" accept="video/*" onChange={(e) => setFile(e.target.files?.[0] || null)}
+              style={{ ...inp, paddingTop: 4, height: 30 }} />
+          </label>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button onClick={submit} disabled={!valid || busy}
+            style={{ height: 32, padding: "0 16px", borderRadius: "var(--r-1)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 13, fontWeight: 600, opacity: !valid || busy ? 0.55 : 1 }}>
+            {busy ? "Enviando vídeo… (pode levar uns minutos)" : "Criar anúncio pausado"}
+          </button>
+          <button onClick={onClose} disabled={busy} style={{ height: 32, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>cancelar</button>
+          {painCodeSel && name.trim() && (
+            <span className="mono dim" style={{ fontSize: 11.5 }}>nome final: [{painCodeSel}] {name.trim()}</span>
+          )}
+        </div>
+      </div>
+    </Card>
   );
 }
 

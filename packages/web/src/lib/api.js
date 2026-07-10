@@ -74,6 +74,24 @@ export const api = {
   metaCampaigns: (saas) => req("GET", `/api/marketing/${saas}/campaigns`),
   metaCampaignStatus: (id, status) => req("POST", `/api/marketing/campaigns/${id}/status`, { status }),
   metaCampaignBudget: (id, dailyBudget) => req("POST", `/api/marketing/campaigns/${id}/budget`, { dailyBudget }),
+  metaAdsets: (campaignId) => req("GET", `/api/marketing/campaigns/${campaignId}/adsets`),
+  creativeDefaults: (saas) => req("GET", `/api/marketing/${saas}/creative-defaults`),
+  // Upload multipart (vídeo) — fetch cru: o browser define o boundary do form.
+  uploadCreative: async (saas, formData) => {
+    const headers = {};
+    const key = getKey();
+    if (key) headers["x-api-key"] = key;
+    const res = await fetch(`${BASE}/api/marketing/${saas}/creatives`, { method: "POST", headers, body: formData });
+    const text = await res.text().catch(() => "");
+    if (!res.ok) {
+      let msg = text;
+      try { msg = JSON.parse(text).error || text; } catch { /* texto cru */ }
+      const err = new Error(msg || `HTTP ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    return JSON.parse(text);
+  },
   // Gasto com IA (OpenRouter/OpenAI/Anthropic), agregado em USD.
   aiCosts: (days) => req("GET", `/api/ai-costs${days ? `?days=${days}` : ""}`),
   // Custos operacionais do mês (ads + IA automáticos + lançamentos manuais).
