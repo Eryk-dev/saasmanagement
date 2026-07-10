@@ -23,10 +23,10 @@ const dayStr = (d) => new Date(d).toISOString().slice(0, 10);
 export const CREATIVE_URL_TAGS =
   "utm_source=meta&utm_medium=paid&utm_campaign={{campaign.id}}&utm_term={{adset.id}}&utm_content={{ad.id}}";
 
-// Código da dor na nomenclatura do anúncio: prefixo entre colchetes ("[A] v3
-// depoimento"). É o que liga anúncio → dor no relatório por dor.
+// Código da dor na nomenclatura do anúncio: "[X]" em QUALQUER posição do nome
+// ("[A] v3 depoimento" ou "1303 [B]"). É o que liga anúncio → dor no relatório.
 export function painCode(adName) {
-  const m = String(adName || "").match(/^\[([^\]]{1,12})\]/);
+  const m = String(adName || "").match(/\[([^\]]{1,12})\]/);
   return m ? m[1].trim().toUpperCase() : null;
 }
 
@@ -93,28 +93,45 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     }
   });
 
-  // Pausar/reativar. O corpo diz o estado alvo; a resposta ecoa o aplicado.
-  app.post("/api/marketing/campaigns/:id/status", async (req, reply) => {
+  // Pausar/reativar em QUALQUER nível — campanha, conjunto ou anúncio (o id do
+  // nó da Graph decide). O corpo diz o estado alvo; a resposta ecoa o aplicado.
+  // /campaigns/:id/status continua valendo (compat com integrações antigas).
+  const statusHandler = async (req, reply) => {
     if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
     const status = req.body?.status;
     if (status !== "ACTIVE" && status !== "PAUSED") return reply.code(400).send({ error: "status deve ser ACTIVE ou PAUSED" });
     try {
-      return { ok: true, ...(await meta.setCampaignStatus(req.params.id, status)) };
+      return { ok: true, ...(await meta.setObjectStatus(req.params.id, status)) };
     } catch (err) {
-      req.log.warn({ err: err.message, campaign: req.params.id }, "Meta: setCampaignStatus falhou");
+      req.log.warn({ err: err.message, object: req.params.id }, "Meta: setObjectStatus falhou");
       return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
     }
-  });
+  };
+  app.post("/api/marketing/campaigns/:id/status", statusHandler);
+  app.post("/api/marketing/objects/:id/status", statusHandler);
 
-  // Orçamento diário (R$) de campanha CBO.
-  app.post("/api/marketing/campaigns/:id/budget", async (req, reply) => {
+  // Orçamento diário (R$) — campanha CBO ou conjunto ABO.
+  const budgetHandler = async (req, reply) => {
     if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
     const dailyBudget = Number(req.body?.dailyBudget);
     if (!Number.isFinite(dailyBudget) || dailyBudget <= 0) return reply.code(400).send({ error: "dailyBudget (R$) deve ser um número positivo" });
     try {
-      return { ok: true, ...(await meta.setCampaignBudget(req.params.id, dailyBudget)) };
+      return { ok: true, ...(await meta.setObjectBudget(req.params.id, dailyBudget)) };
     } catch (err) {
-      req.log.warn({ err: err.message, campaign: req.params.id }, "Meta: setCampaignBudget falhou");
+      req.log.warn({ err: err.message, object: req.params.id }, "Meta: setObjectBudget falhou");
+      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+    }
+  };
+  app.post("/api/marketing/campaigns/:id/budget", budgetHandler);
+  app.post("/api/marketing/objects/:id/budget", budgetHandler);
+
+  // Anúncios de um conjunto — gerenciamento nível anúncio no mesmo bloco.
+  app.get("/api/marketing/adsets/:id/ads", async (req, reply) => {
+    if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
+    try {
+      return { ads: await meta.listAds(req.params.id) };
+    } catch (err) {
+      req.log.warn({ err: err.message, adset: req.params.id }, "Meta: listAds falhou");
       return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
     }
   });
