@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import dotenv from "dotenv";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import multipart from "@fastify/multipart";
 import { initDb, repo } from "./db.js";
 import { registerRoutes } from "./routes.js";
 import { ensureDefaultAdmins, makeAuthHook } from "./auth.js";
@@ -45,6 +46,8 @@ await runStartupMigrations(repo);
 const app = Fastify({ logger: true });
 
 await app.register(cors, { origin: true });
+// Upload de criativo (vídeo) pra Meta — limite folgado pra vídeo de anúncio.
+await app.register(multipart, { limits: { fileSize: 500 * 1024 * 1024, files: 1 } });
 
 // Auth: when COCKPIT_API_KEY is set, every route requires the key OR a valid
 // user session token (same header). CORS preflight, liveness and login stay open.

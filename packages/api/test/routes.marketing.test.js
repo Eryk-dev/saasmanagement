@@ -202,3 +202,177 @@ test("métricas: adsets/ads agregados com CPL real por utm.term/utm.content (id 
   assert.deepEqual(cat.ads.a1, { name: "Vídeo depoimento", adsetId: "s1", campaignId: "c1" });
   await app.close();
 });
+
+// ── Criativos (upload de vídeo → anúncio pausado) e quebra por dor ──────────
+
+const { painCode, CREATIVE_URL_TAGS } = await import("../src/routes.marketing.js");
+const multipart = (await import("@fastify/multipart")).default;
+
+test("painCode: extrai o código [X] do nome do anúncio", () => {
+  assert.equal(painCode("[A] v1 depoimento"), "A");
+  assert.equal(painCode("[ab] carrossel"), "AB");     // normaliza maiúscula
+  assert.equal(painCode("Vídeo sem código"), null);
+  assert.equal(painCode("[CODIGOLONGODEMAIS] x"), null); // > 12 chars não é código
+  assert.equal(painCode(""), null);
+});
+
+// fetch fake do fluxo de criativo: descoberta de página, upload, thumbnail
+// (1ª chamada vazia → poll), creative e ad. Captura os POSTs pra inspeção.
+function makeCreativeFetch() {
+  const captured = { posts: {} };
+  let thumbCalls = 0;
+  const f = async (url, init = {}) => {
+    const u = String(url);
+    const ok = (body) => ({ status: 200, text: async () => JSON.stringify(body) });
+    if (init.method === "POST") {
+      if (u.includes("/advideos")) {
+        captured.videoBody = init.body; // FormData
+        return ok({ id: "v99" });
+      }
+      const params = Object.fromEntries(new URLSearchParams(String(init.body)));
+      if (u.includes("/adcreatives")) { captured.posts.creative = params; return ok({ id: "cr9" }); }
+      if (u.includes("/ads")) { captured.posts.ad = params; return ok({ id: "ad9" }); }
+      return ok({});
+    }
+    if (u.includes("/thumbnails")) {
+      thumbCalls++;
+      return ok(thumbCalls === 1 ? { data: [] } : { data: [{ uri: "https://thumb/x.jpg", is_preferred: true }] });
+    }
+    if (u.includes("fields=creative")) {
+      return ok({ data: [{ creative: {} }, { creative: { object_story_spec: { page_id: "pg1", instagram_user_id: "ig1" } } }] });
+    }
+    if (u.includes("/adsets")) {
+      return ok({ data: [{ id: "s1", name: "Lookalike 1%", status: "ACTIVE", effective_status: "ACTIVE" }] });
+    }
+    return ok({ data: [] });
+  };
+  f.captured = captured;
+  return f;
+}
+
+function multipartPayload(fields, fileContent) {
+  const B = "----cockpittest";
+  let head = "";
+  for (const [k, v] of Object.entries(fields)) {
+    head += `--${B}\r\ncontent-disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`;
+  }
+  head += `--${B}\r\ncontent-disposition: form-data; name="video"; filename="video.mp4"\r\ncontent-type: video/mp4\r\n\r\n`;
+  return {
+    payload: Buffer.concat([Buffer.from(head), fileContent, Buffer.from(`\r\n--${B}--\r\n`)]),
+    headers: { "content-type": `multipart/form-data; boundary=${B}` },
+  };
+}
+
+async function buildCreativeApp(repo, fetchImpl) {
+  const app = Fastify();
+  await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 1 } });
+  registerRoutes(app, repo, { meta: makeMeta({ fetch: fetchImpl, accessToken: "t", sleep: async () => {} }) });
+  return app;
+}
+
+test("criativos: sobe vídeo e cria anúncio PAUSADO com dor no nome, UTMs e aprendizado no produto", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", metaAdAccount: "act_123", funnel: [] });
+  const graph = makeCreativeFetch();
+  const app = await buildCreativeApp(repo, graph);
+
+  const { payload, headers } = multipartPayload({
+    adsetId: "s1", name: "v1 depoimento", message: "Copy do anúncio",
+    link: "https://leverads.com.br/diagnostico", painCode: "a", painLabel: "Conta banida",
+  }, Buffer.from("fake-video-bytes"));
+  const res = await app.inject({ method: "POST", url: "/api/marketing/leverads/creatives", payload, headers });
+  assert.equal(res.statusCode, 200);
+  const body = res.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.adId, "ad9");
+  assert.equal(body.name, "[A] v1 depoimento"); // convenção garantida no nome
+  assert.equal(body.status, "PAUSED");
+
+  // creative: página descoberta dos anúncios atuais, vídeo + thumbnail, UTMs da convenção
+  const spec = JSON.parse(graph.captured.posts.creative.object_story_spec);
+  assert.equal(spec.page_id, "pg1");
+  assert.equal(spec.instagram_user_id, "ig1");
+  assert.equal(spec.video_data.video_id, "v99");
+  assert.equal(spec.video_data.image_url, "https://thumb/x.jpg");
+  assert.equal(spec.video_data.call_to_action.value.link, "https://leverads.com.br/diagnostico");
+  assert.equal(graph.captured.posts.creative.url_tags, CREATIVE_URL_TAGS);
+
+  // ad: no conjunto certo e pausado
+  assert.equal(graph.captured.posts.ad.adset_id, "s1");
+  assert.equal(graph.captured.posts.ad.status, "PAUSED");
+
+  // aprendizado: dor nova no painMap, página persistida, link vira default
+  const prod = await repo.get("products", "leverads");
+  assert.deepEqual(prod.painMap, { A: "Conta banida" });
+  assert.equal(prod.metaPageId, "pg1");
+  assert.equal(prod.metaLink, "https://leverads.com.br/diagnostico");
+
+  // defaults pro próximo criativo
+  const d = (await app.inject({ url: "/api/marketing/leverads/creative-defaults" })).json();
+  assert.equal(d.pageId, "pg1");
+  assert.equal(d.link, "https://leverads.com.br/diagnostico");
+  assert.deepEqual(d.painMap, { A: "Conta banida" });
+
+  // adsets da campanha (formulário)
+  const s = (await app.inject({ url: "/api/marketing/campaigns/c1/adsets" })).json();
+  assert.equal(s.adsets[0].id, "s1");
+  await app.close();
+});
+
+test("criativos: valida campos e exige vídeo", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", metaAdAccount: "act_123", funnel: [] });
+  const app = await buildCreativeApp(repo, makeCreativeFetch());
+  const { payload, headers } = multipartPayload({ adsetId: "s1", name: "x" }, Buffer.from("v")); // sem message/link
+  const res = await app.inject({ method: "POST", url: "/api/marketing/leverads/creatives", payload, headers });
+  assert.equal(res.statusCode, 400);
+  await app.close();
+});
+
+function makePainFetch() {
+  const page = {
+    data: [
+      { campaign_id: "c1", campaign_name: "006", adset_id: "s1", adset_name: "LAL", ad_id: "a1", ad_name: "[A] v1", date_start: "2026-06-01", spend: "60", impressions: "1", clicks: "1", actions: [] },
+      { campaign_id: "c1", campaign_name: "006", adset_id: "s1", adset_name: "LAL", ad_id: "a2", ad_name: "[B] v1", date_start: "2026-06-01", spend: "40", impressions: "1", clicks: "1", actions: [] },
+      { campaign_id: "c1", campaign_name: "006", adset_id: "s1", adset_name: "LAL", ad_id: "a3", ad_name: "[A] v2", date_start: "2026-06-02", spend: "100", impressions: "1", clicks: "1", actions: [] },
+      { campaign_id: "c1", campaign_name: "006", adset_id: "s1", adset_name: "LAL", ad_id: "a4", ad_name: "antigo sem código", date_start: "2026-06-02", spend: "10", impressions: "1", clicks: "1", actions: [] },
+    ],
+  };
+  return async () => ({ status: 200, text: async () => JSON.stringify(page) });
+}
+
+test("métricas por dor: agrupa [X] do nome do anúncio, rotula pelo painMap e conta ganhos", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", {
+    id: "leverads", name: "LeverAds", metaAdAccount: "act_123",
+    funnel: [{ stage: "Inbox", conv: 1 }, { stage: "Ganho", conv: 1 }],
+    painMap: { A: "Conta banida", B: "Múltiplas abas" },
+  });
+  const app = Fastify();
+  registerRoutes(app, repo, { meta: makeMeta({ fetch: makePainFetch(), accessToken: "t" }) });
+  await app.inject({ method: "POST", url: "/api/marketing/sync", payload: { since: "2026-06-01", until: "2026-06-02" } });
+
+  const now = "2026-06-02T10:00:00.000Z";
+  const mk = (id, content, stage) => repo.create("leads", { id, saas: "leverads", stage, createdAt: now, utm: { content } });
+  await mk("l1", "a1", "Ganho");
+  await mk("l2", "a1", "Inbox");
+  await mk("l3", "a3", "Inbox");
+
+  const m = (await app.inject({ url: "/api/marketing/leverads?since=2026-06-01&until=2026-06-02" })).json();
+  const A = m.pains.find((p) => p.code === "A");
+  assert.equal(A.label, "Conta banida");
+  assert.equal(A.adsCount, 2);
+  assert.equal(A.spend, 160);           // 60 + 100
+  assert.equal(A.leads, 3);
+  assert.equal(A.cpl, 53.33);
+  assert.equal(A.won, 1);               // l1 em Ganho
+  assert.equal(A.costPerWin, 160);
+  const B = m.pains.find((p) => p.code === "B");
+  assert.equal(B.label, "Múltiplas abas");
+  assert.equal(B.leads, 0);
+  assert.equal(B.cpl, null);
+  const sem = m.pains.find((p) => p.code === null);
+  assert.equal(sem.label, "Sem código");
+  assert.equal(sem.spend, 10);
+  await app.close();
+});

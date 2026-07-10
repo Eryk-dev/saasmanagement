@@ -13,9 +13,22 @@
 
 import { meta as defaultMeta } from "./meta.js";
 import { stagePassCounts } from "./routes.funnel-metrics.js";
+import { isWon } from "./stages.js";
 
 const DAY_MS = 86400000;
 const dayStr = (d) => new Date(d).toISOString().slice(0, 10);
+
+// UTMs dos criativos criados pelo cockpit — a MESMA convenção documentada acima,
+// via parâmetros dinâmicos da Meta (resolvidos na entrega do anúncio).
+export const CREATIVE_URL_TAGS =
+  "utm_source=meta&utm_medium=paid&utm_campaign={{campaign.id}}&utm_term={{adset.id}}&utm_content={{ad.id}}";
+
+// Código da dor na nomenclatura do anúncio: prefixo entre colchetes ("[A] v3
+// depoimento"). É o que liga anúncio → dor no relatório por dor.
+export function painCode(adName) {
+  const m = String(adName || "").match(/^\[([^\]]{1,12})\]/);
+  return m ? m[1].trim().toUpperCase() : null;
+}
 
 function rangeFromQuery(q, now = new Date()) {
   const until = q.until || dayStr(now);
@@ -106,6 +119,104 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     }
   });
 
+  // Conjuntos de uma campanha — o formulário de novo criativo escolhe o destino.
+  app.get("/api/marketing/campaigns/:id/adsets", async (req, reply) => {
+    if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
+    try {
+      return { adsets: await meta.listAdsets(req.params.id) };
+    } catch (err) {
+      req.log.warn({ err: err.message, campaign: req.params.id }, "Meta: listAdsets falhou");
+      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+    }
+  });
+
+  // Defaults do formulário de novo criativo: página que assina (descoberta dos
+  // anúncios atuais e persistida no produto), link da última vez e mapa de dores.
+  app.get("/api/marketing/:saas/creative-defaults", async (req, reply) => {
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "Not found" });
+    let pageId = product.metaPageId || null;
+    let instagramUserId = product.metaIgUser || null;
+    if (!pageId && meta.configured() && product.metaAdAccount) {
+      try {
+        const d = await meta.discoverCreativeDefaults(product.metaAdAccount);
+        if (d) {
+          pageId = d.pageId;
+          instagramUserId = d.instagramUserId;
+          await repo.update("products", product.id, { metaPageId: pageId, metaIgUser: instagramUserId });
+        }
+      } catch (err) {
+        req.log.warn({ err: err.message }, "Meta: discoverCreativeDefaults falhou");
+      }
+    }
+    return { pageId, instagramUserId, link: product.metaLink || "", painMap: product.painMap || {} };
+  });
+
+  // Novo criativo: recebe o vídeo (multipart) + copy e cria o anúncio PAUSADO
+  // no conjunto indicado, já com a nomenclatura da dor ("[A] …") e as UTMs da
+  // convenção — o lead que vier desse anúncio chega carimbado com a origem.
+  app.post("/api/marketing/:saas/creatives", async (req, reply) => {
+    if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "Not found" });
+    if (!product.metaAdAccount) return reply.code(400).send({ error: "conta de anúncio não configurada (Ajustes → Integrações)" });
+
+    const data = await req.file();
+    if (!data) return reply.code(400).send({ error: "envie o arquivo de vídeo no campo 'video'" });
+    const field = (k) => {
+      const v = data.fields?.[k];
+      const one = Array.isArray(v) ? v[0] : v;
+      return String(one?.value ?? "").trim();
+    };
+    const adsetId = field("adsetId");
+    const message = field("message");
+    const link = field("link");
+    const title = field("title");
+    const ctaType = field("ctaType") || "LEARN_MORE";
+    const code = painCode(`[${field("painCode")}]`) || null; // normaliza (maiúscula/limite)
+    const painLabel = field("painLabel");
+    let name = field("name");
+    if (!adsetId || !name || !message || !link) {
+      return reply.code(400).send({ error: "campos obrigatórios: adsetId, name, message, link (+ vídeo)" });
+    }
+    if (code && !painCode(name)) name = `[${code}] ${name}`; // garante a convenção no nome
+
+    try {
+      const buffer = await data.toBuffer();
+      // Página que assina o anúncio: config do produto ou descoberta dos atuais.
+      let pageId = product.metaPageId;
+      let instagramUserId = product.metaIgUser || null;
+      if (!pageId) {
+        const d = await meta.discoverCreativeDefaults(product.metaAdAccount);
+        if (!d) return reply.code(400).send({ error: "não achei a página dos anúncios atuais — configure metaPageId no produto" });
+        pageId = d.pageId;
+        instagramUserId = d.instagramUserId;
+        await repo.update("products", product.id, { metaPageId: pageId, metaIgUser: instagramUserId });
+      }
+
+      const videoId = await meta.uploadVideo(product.metaAdAccount, { buffer, filename: data.filename, title: name });
+      const imageUrl = await meta.videoThumbnail(videoId);
+      const creativeId = await meta.createAdCreative(product.metaAdAccount, {
+        name, pageId, instagramUserId, videoId, imageUrl,
+        message, title, linkUrl: link, ctaType, urlTags: CREATIVE_URL_TAGS,
+      });
+      const ad = await meta.createAd(product.metaAdAccount, { adsetId, creativeId, name });
+
+      // Aprendizados pro próximo criativo: dor nova entra no mapa, link vira default.
+      const patch = {};
+      if (code && painLabel && (product.painMap || {})[code] !== painLabel) {
+        patch.painMap = { ...(product.painMap || {}), [code]: painLabel };
+      }
+      if (link && link !== product.metaLink) patch.metaLink = link;
+      if (Object.keys(patch).length) await repo.update("products", product.id, patch);
+
+      return { ok: true, adId: ad.id, creativeId, videoId, name, status: ad.status };
+    } catch (err) {
+      req.log.warn({ err: err.message }, "Meta: criação de criativo falhou");
+      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+    }
+  });
+
   // Métricas do período — spend da Meta cruzado com os leads/funil do Cockpit.
   app.get("/api/marketing/:saas", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
@@ -191,6 +302,35 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const adsets = Object.values(byAdset).map(finishGroup("term")).sort((a, b) => b.spend - a.spend);
     const ads = Object.values(byAd).map(finishGroup("content")).sort((a, b) => b.spend - a.spend);
 
+    // Quebra por DOR — o código "[A]" no nome do anúncio agrupa spend/leads;
+    // rótulo humano vem de product.painMap. "won" = leads atribuídos ao anúncio
+    // (por UTM content) que estão em estágio de ganho — a resposta pra "qual dor
+    // traz lead que FECHA", não só lead barato.
+    const byPain = {};
+    for (const a of ads) {
+      const code = painCode(a.name);
+      const k = code || "_sem";
+      const p = byPain[k] || (byPain[k] = {
+        code, label: code ? (product.painMap || {})[code] || code : "Sem código",
+        spend: 0, leads: 0, won: 0, adsCount: 0,
+      });
+      p.spend += a.spend;
+      p.leads += a.leads;
+      p.adsCount += 1;
+      p.won += leads.filter((l) => {
+        const v = leadUtm(l, "content");
+        return v && (v === String(a.id || "") || v === String(a.name || "")) && isWon(product, l.stage);
+      }).length;
+    }
+    const pains = Object.values(byPain)
+      .map((p) => ({
+        ...p,
+        spend: Math.round(p.spend * 100) / 100,
+        cpl: p.leads > 0 ? Math.round((p.spend / p.leads) * 100) / 100 : null,
+        costPerWin: p.won > 0 ? Math.round((p.spend / p.won) * 100) / 100 : null,
+      }))
+      .sort((a, b) => b.spend - a.spend);
+
     // Série diária (spend Meta + leads Cockpit) pro gráfico.
     const byDay = {};
     for (const r of rows) (byDay[r.date] = byDay[r.date] || { date: r.date, spend: 0, leads: 0 }).spend += Number(r.spend) || 0;
@@ -213,7 +353,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         cpm: impressions > 0 ? Math.round((spend / impressions) * 1000 * 100) / 100 : null,
         ctr: impressions > 0 ? Math.round((clicks / impressions) * 10000) / 100 : null, // %
       },
-      perStage, campaigns, adsets, ads, series,
+      perStage, campaigns, adsets, ads, pains, series,
       synced: rows.length > 0,
     };
   });
