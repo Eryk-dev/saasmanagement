@@ -279,18 +279,23 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     // (utm.campaign ↔ campanha, utm.term ↔ conjunto, utm.content ↔ anúncio),
     // por ID ou por NOME. CPL real por nível sai daqui.
     const leadUtm = (l, key) => (l.utm && typeof l.utm === "object" ? String(l.utm[key] || "") : "");
-    const leadsMatching = (key, g) => leads.filter((l) => {
+    const matching = (key, g) => leads.filter((l) => {
       const v = leadUtm(l, key);
       return v && (v === String(g.id || "") || v === String(g.name || ""));
-    }).length;
+    });
     const finishGroup = (key) => (g) => {
-      const n = leadsMatching(key, g);
+      const matched = matching(key, g);
+      const n = matched.length;
+      const won = matched.filter((l) => isWon(product, l.stage)).length;
       return {
         ...g,
         spend: Math.round(g.spend * 100) / 100,
         cplMeta: g.metaLeads > 0 ? Math.round((g.spend / g.metaLeads) * 100) / 100 : null,
         leads: n,
         cpl: n > 0 ? Math.round((g.spend / n) * 100) / 100 : null,
+        won,
+        costPerWin: won > 0 ? Math.round((g.spend / won) * 100) / 100 : null,
+        ctr: g.impressions > 0 ? Math.round((g.clicks / g.impressions) * 10000) / 100 : null, // %
       };
     };
     const campaigns = Object.values(byCampaign).map(finishGroup("campaign")).sort((a, b) => b.spend - a.spend);
@@ -334,10 +339,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       p.spend += a.spend;
       p.leads += a.leads;
       p.adsCount += 1;
-      p.won += leads.filter((l) => {
-        const v = leadUtm(l, "content");
-        return v && (v === String(a.id || "") || v === String(a.name || "")) && isWon(product, l.stage);
-      }).length;
+      p.won += a.won; // já calculado por anúncio no finishGroup
     }
     const pains = Object.values(byPain)
       .map((p) => ({

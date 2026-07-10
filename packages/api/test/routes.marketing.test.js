@@ -354,7 +354,8 @@ test("métricas por dor: agrupa [X] do nome do anúncio, rotula pelo painMap e c
   await app.inject({ method: "POST", url: "/api/marketing/sync", payload: { since: "2026-06-01", until: "2026-06-02" } });
 
   const now = "2026-06-02T10:00:00.000Z";
-  const mk = (id, content, stage) => repo.create("leads", { id, saas: "leverads", stage, createdAt: now, utm: { content } });
+  // UTM completo como nos leads reais (campaign/term/content dinâmicos da Meta).
+  const mk = (id, content, stage) => repo.create("leads", { id, saas: "leverads", stage, createdAt: now, utm: { campaign: "c1", term: "s1", content } });
   await mk("l1", "a1", "Ganho");
   await mk("l2", "a1", "Inbox");
   await mk("l3", "a3", "Inbox");
@@ -375,6 +376,15 @@ test("métricas por dor: agrupa [X] do nome do anúncio, rotula pelo painMap e c
   const sem = m.pains.find((p) => p.code === null);
   assert.equal(sem.label, "Sem código");
   assert.equal(sem.spend, 10);
+
+  // métricas de decisão por nó (tabela unificada): ganhos, custo por ganho e CTR
+  const a1 = m.ads.find((a) => a.id === "a1");
+  assert.equal(a1.won, 1);
+  assert.equal(a1.costPerWin, 60);
+  assert.equal(a1.ctr, 100); // 1 clique / 1 impressão
+  const c1 = m.campaigns.find((c) => c.id === "c1");
+  assert.equal(c1.won, 1);
+  assert.equal(c1.costPerWin, 210); // spend total 210 / 1 ganho
   await app.close();
 });
 
