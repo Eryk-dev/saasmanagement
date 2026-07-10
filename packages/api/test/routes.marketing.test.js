@@ -333,7 +333,12 @@ test("criativos: valida campos e exige vídeo", async () => {
 function makePainFetch() {
   const page = {
     data: [
-      { campaign_id: "c1", campaign_name: "006", adset_id: "s1", adset_name: "LAL", ad_id: "a1", ad_name: "[A] v1", date_start: "2026-06-01", spend: "60", impressions: "1", clicks: "1", actions: [] },
+      { campaign_id: "c1", campaign_name: "006", adset_id: "s1", adset_name: "LAL", ad_id: "a1", ad_name: "[A] v1", date_start: "2026-06-01", spend: "60", impressions: "1", clicks: "1",
+        inline_link_clicks: "2",
+        actions: [{ action_type: "video_view", value: "50" }],
+        video_p25_watched_actions: [{ action_type: "video_view", value: "40" }],
+        video_p50_watched_actions: [{ action_type: "video_view", value: "30" }],
+        video_p95_watched_actions: [{ action_type: "video_view", value: "10" }] },
       { campaign_id: "c1", campaign_name: "006", adset_id: "s1", adset_name: "LAL", ad_id: "a2", ad_name: "[B] v1", date_start: "2026-06-01", spend: "40", impressions: "1", clicks: "1", actions: [] },
       { campaign_id: "c1", campaign_name: "006", adset_id: "s1", adset_name: "LAL", ad_id: "a3", ad_name: "[A] v2", date_start: "2026-06-02", spend: "100", impressions: "1", clicks: "1", actions: [] },
       { campaign_id: "c1", campaign_name: "006", adset_id: "s1", adset_name: "LAL", ad_id: "a4", ad_name: "antigo sem código", date_start: "2026-06-02", spend: "10", impressions: "1", clicks: "1", actions: [] },
@@ -377,11 +382,18 @@ test("métricas por dor: agrupa [X] do nome do anúncio, rotula pelo painMap e c
   assert.equal(sem.label, "Sem código");
   assert.equal(sem.spend, 10);
 
-  // métricas de decisão por nó (tabela unificada): ganhos, custo por ganho e CTR
+  // métricas de decisão por nó (tabela unificada): ganhos, custo por ganho, CTR,
+  // CPM, custo por clique no link e funil de vídeo (3s + 25/50/95%)
   const a1 = m.ads.find((a) => a.id === "a1");
   assert.equal(a1.won, 1);
   assert.equal(a1.costPerWin, 60);
   assert.equal(a1.ctr, 100); // 1 clique / 1 impressão
+  assert.equal(a1.cpm, 60000); // 60 / 1 impressão × 1000
+  assert.equal(a1.costPerLinkClick, 30); // 60 / 2 cliques no link
+  assert.equal(a1.video3s, 50);
+  assert.equal(a1.videoP25, 40);
+  assert.equal(a1.videoP50, 30);
+  assert.equal(a1.videoP95, 10);
   const c1 = m.campaigns.find((c) => c.id === "c1");
   assert.equal(c1.won, 1);
   assert.equal(c1.costPerWin, 210); // spend total 210 / 1 ganho
