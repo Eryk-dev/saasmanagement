@@ -8,6 +8,7 @@ import { leadScoreLabel, leadAge, chromeBtnStyleSmall, waLink, leadTier } from "
 import { stageKind, lossReasonLabel, nextTouchPill, workableStages } from "../lib/funnel.js";
 import { displayName } from "../lib/users.js";
 import { api } from "../lib/api.js";
+import { useAttribution, leadPain } from "../lib/pains.js";
 import { useData } from "../data.jsx";
 // Lead detail drawer — slides over the pipeline when a card is opened.
 // (Funil unificado: o card do pipeline é um lead, então o detalhe é do lead.)
@@ -31,21 +32,8 @@ const localToIso = (v) => {
   return Number.isFinite(d.getTime()) ? d.toISOString() : "";
 };
 
-// Catálogo de atribuição (id → nome de campanha/conjunto/anúncio) — cache por
-// SaaS no módulo: o drawer abre e fecha o tempo todo, a Meta não muda tanto.
-const attributionCache = {};
-function useAttribution(saas, hasUtm) {
-  const [cat, setCat] = React.useState(attributionCache[saas] || null);
-  React.useEffect(() => {
-    if (!saas || !hasUtm || attributionCache[saas]) return;
-    let alive = true;
-    api.marketingAttribution(saas)
-      .then((c) => { attributionCache[saas] = c; if (alive) setCat(c); })
-      .catch(() => { /* sem catálogo → mostra UTM cru */ });
-    return () => { alive = false; };
-  }, [saas, hasUtm]);
-  return cat;
-}
+// Catálogo de atribuição e dor do criativo: helpers compartilhados com o
+// pipeline (lib/pains.js) — cache por SaaS no módulo.
 
 function LeadDetail({ lead: initial, onClose }) {
   const { openForm, openDelete, refresh, version } = useData();
@@ -98,10 +86,13 @@ function LeadDetail({ lead: initial, onClose }) {
   const hasIcp = lead.icp != null && lead.icp !== "";
   const icpPct = hasIcp ? `${Math.round(Number(lead.icp) * 100)}%` : null;
 
-  // Atribuição: resolve utm.campaign/term/content pra nomes via catálogo.
+  // Atribuição: resolve utm.campaign/term/content pra nomes via catálogo, e a
+  // dor do criativo ("[X]" no nome do anúncio → rótulo do painMap do produto).
   const cat = useAttribution(lead.saas, !!lead.utm);
   const utm = lead.utm || {};
+  const pain = leadPain(lead, cat, saasCfg?.painMap);
   const attribution = [
+    ["Dor (criativo)", pain ? `[${pain.code}] ${pain.label}` : null],
     ["Campanha", cat?.campaigns?.[utm.campaign]?.name || utm.campaign],
     ["Conjunto", cat?.adsets?.[utm.term]?.name || utm.term],
     ["Anúncio", cat?.ads?.[utm.content]?.name || utm.content],

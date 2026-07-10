@@ -10,6 +10,7 @@ import {
 } from "../lib/funnel.js";
 import { usersByRole, userTone, displayName, currentUser } from "../lib/users.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
+import { useAttribution, leadPain } from "../lib/pains.js";
 // Pipeline — Kanban + List + Agenda + Análise. Drag-and-drop between columns.
 // Funil unificado: os LEADS são os cards do pipeline (window.SEED.LEADS). Cada
 // lead já carrega seu `saas` + `stage`. Uma cópia local deixa o drag-and-drop
@@ -661,6 +662,9 @@ function LeadCard({ d, s, stale, currentStage, onDragStart, selected, onSelect, 
   const lost = (kind === "perdido" || kind === "desqualificado") && d.lostReason;
   const tinted = tier.key !== "sem";
   const picker = pickerFor(saasCfg, currentStage);
+  // Dor do criativo que trouxe o lead (utm.content → nome do anúncio → "[X]").
+  const cat = useAttribution(d.saas, !!d.utm?.content);
+  const pain = leadPain(d, cat, saasCfg?.painMap);
 
   return (
     <div
@@ -706,6 +710,7 @@ function LeadCard({ d, s, stale, currentStage, onDragStart, selected, onSelect, 
         {isNew && <Pill tone="accent">novo</Pill>}
         {days != null && <Pill tone={stale ? "warn" : "mut"} title="tempo nesta etapa">{days}d</Pill>}
         {next && <Pill tone={next.key === "late" ? "neg" : next.key === "today" ? "pos" : next.key === "none" ? "warn" : "mut"}>{next.text}</Pill>}
+        {pain && <Pill tone="mut" title={`Dor: ${pain.label}`}>dor {pain.code}</Pill>}
         {lost && <Pill tone="mut" title={d.lostNote || ""}>{lossReasonLabel(saasCfg, d.lostReason)}</Pill>}
         <span className="mono tnum" style={{ fontSize: 11.5, fontWeight: 500, color: "var(--fg-2)", marginLeft: "auto" }}>{window.fmt.money(d.amount || 0)}</span>
       </div>

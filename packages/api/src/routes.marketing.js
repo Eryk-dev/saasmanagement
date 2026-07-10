@@ -266,13 +266,15 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const { ladder, counts } = stagePassCounts(product, leads, stageActsByLead);
     const perStage = ladder.map((stage, i) => ({ stage, count: counts[i], costPer: per(counts[i]) }));
 
+    // Somas por grupo (linhas antigas sem os campos de vídeo/link contam 0).
+    const SUM_KEYS = ["spend", "impressions", "clicks", "metaLeads", "linkClicks", "video3s", "videoP25", "videoP50", "videoP95"];
+    const newGroup = (base) => ({ ...base, ...Object.fromEntries(SUM_KEYS.map((k) => [k, 0])) });
+    const addRow = (g, r) => { for (const k of SUM_KEYS) g[k] += Number(r[k]) || 0; };
+
     const byCampaign = {};
     for (const r of rows) {
-      const c = byCampaign[r.campaignId] || (byCampaign[r.campaignId] = { id: r.campaignId, name: r.campaignName, spend: 0, impressions: 0, clicks: 0, metaLeads: 0 });
-      c.spend += Number(r.spend) || 0;
-      c.impressions += Number(r.impressions) || 0;
-      c.clicks += Number(r.clicks) || 0;
-      c.metaLeads += Number(r.metaLeads) || 0;
+      const c = byCampaign[r.campaignId] || (byCampaign[r.campaignId] = newGroup({ id: r.campaignId, name: r.campaignName }));
+      addRow(c, r);
       c.name = r.campaignName || c.name;
     }
     // Atribuição real por campanha/conjunto/anúncio: o lead casa pelo UTM
@@ -296,6 +298,8 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         won,
         costPerWin: won > 0 ? Math.round((g.spend / won) * 100) / 100 : null,
         ctr: g.impressions > 0 ? Math.round((g.clicks / g.impressions) * 10000) / 100 : null, // %
+        cpm: g.impressions > 0 ? Math.round((g.spend / g.impressions) * 1000 * 100) / 100 : null,
+        costPerLinkClick: g.linkClicks > 0 ? Math.round((g.spend / g.linkClicks) * 100) / 100 : null,
       };
     };
     const campaigns = Object.values(byCampaign).map(finishGroup("campaign")).sort((a, b) => b.spend - a.spend);
@@ -305,19 +309,13 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const byAd = {};
     for (const r of rows) {
       if (r.adsetId) {
-        const g = byAdset[r.adsetId] || (byAdset[r.adsetId] = { id: r.adsetId, name: r.adsetName, campaignId: r.campaignId, spend: 0, impressions: 0, clicks: 0, metaLeads: 0 });
-        g.spend += Number(r.spend) || 0;
-        g.impressions += Number(r.impressions) || 0;
-        g.clicks += Number(r.clicks) || 0;
-        g.metaLeads += Number(r.metaLeads) || 0;
+        const g = byAdset[r.adsetId] || (byAdset[r.adsetId] = newGroup({ id: r.adsetId, name: r.adsetName, campaignId: r.campaignId }));
+        addRow(g, r);
         g.name = r.adsetName || g.name;
       }
       if (r.adId) {
-        const g = byAd[r.adId] || (byAd[r.adId] = { id: r.adId, name: r.adName, adsetId: r.adsetId, campaignId: r.campaignId, spend: 0, impressions: 0, clicks: 0, metaLeads: 0 });
-        g.spend += Number(r.spend) || 0;
-        g.impressions += Number(r.impressions) || 0;
-        g.clicks += Number(r.clicks) || 0;
-        g.metaLeads += Number(r.metaLeads) || 0;
+        const g = byAd[r.adId] || (byAd[r.adId] = newGroup({ id: r.adId, name: r.adName, adsetId: r.adsetId, campaignId: r.campaignId }));
+        addRow(g, r);
         g.name = r.adName || g.name;
       }
     }

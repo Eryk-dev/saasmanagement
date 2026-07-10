@@ -24,6 +24,43 @@ const PERIODS = [
 // A Meta só devolve insights de até ~37 meses; o sync respeita esse teto.
 const META_LOOKBACK_DAYS = 1125;
 
+// Contêiner com rolagem horizontal por ARRASTO (a tabela unificada é larga).
+// Clique em linha/controle continua funcionando: só vira arrasto depois de
+// mover alguns pixels, e aí o click seguinte é engolido pra não expandir linha.
+function DragScroll({ children }) {
+  const ref = React.useRef(null);
+  const drag = React.useRef(null);
+  const moved = React.useRef(false);
+  const onDown = (e) => {
+    if (e.button !== 0 || e.target.closest("input,button,select,textarea,a")) return;
+    drag.current = { x: e.clientX, left: ref.current.scrollLeft };
+    moved.current = false;
+  };
+  const onMove = (e) => {
+    if (!drag.current) return;
+    const dx = e.clientX - drag.current.x;
+    if (Math.abs(dx) > 4) {
+      moved.current = true;
+      ref.current.style.cursor = "grabbing";
+      ref.current.style.userSelect = "none";
+    }
+    ref.current.scrollLeft = drag.current.left - dx;
+  };
+  const end = () => {
+    drag.current = null;
+    if (ref.current) { ref.current.style.cursor = ""; ref.current.style.userSelect = ""; }
+  };
+  const onClickCapture = (e) => {
+    if (moved.current) { e.stopPropagation(); e.preventDefault(); moved.current = false; }
+  };
+  return (
+    <div ref={ref} className="tbl-x" style={{ marginTop: 10 }}
+      onMouseDown={onDown} onMouseMove={onMove} onMouseUp={end} onMouseLeave={end} onClickCapture={onClickCapture}>
+      {children}
+    </div>
+  );
+}
+
 // Range efetivo do filtro: preset relativo, lifetime ou intervalo custom
 // (de/até no mesmo dia = filtro de um dia específico).
 function rangeOf(r) {
@@ -251,15 +288,21 @@ function MetricsScreen() {
           </Card>
         </div>
 
-        {biz?.series?.length > 0 && (
-          <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: 12 }}>
-            <Card title="Clientes novos por mês" hint="conversões do pipeline · 12 meses">
-              <LineChart data={biz.series.map((m) => ({ x: monthLabel(m.month), v: m.newCustomers }))} color="var(--chart-2)" fmtValue={(v) => String(Math.round(v))} />
-            </Card>
-            <Card title="MRR por mês" hint="aproximado pela base atual · melhora quando houver histórico de churn">
-              <LineChart data={biz.series.map((m) => ({ x: monthLabel(m.month), v: m.mrr }))} color="var(--chart-1)" fmtValue={(v) => money(v)} />
-            </Card>
-          </div>
+        {perStage.length > 0 && t?.spend > 0 && (
+          <Card title="Custo por etapa do funil" hint="investimento dividido pelos leads que chegaram em cada etapa">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, padding: "12px 16px 16px" }}>
+              {perStage.slice(0, 6).map((s) => (
+                <div key={s.stage} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "9px 11px", background: "var(--bg-inset)" }}>
+                  <span className="tnum" style={{ display: "block", fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>
+                    {s.costPer != null ? money(s.costPer) : "sem lead"}
+                  </span>
+                  <span style={{ fontSize: 11.5, color: "var(--fg-3)", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {s.stage} · {s.count}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Card>
         )}
 
         {data && !data.error && (data.pains || []).some((p) => p.code) && (
@@ -289,23 +332,6 @@ function MetricsScreen() {
                 } : null}
                 onToggleCampaign={toggleCampaign} onBudgetCampaign={saveBudget} onNote={setNote} />
             )}
-          </Card>
-        )}
-
-        {perStage.length > 0 && t?.spend > 0 && (
-          <Card title="Custo por etapa do funil" hint="investimento dividido pelos leads que chegaram em cada etapa">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, padding: "12px 16px 16px" }}>
-              {perStage.slice(0, 6).map((s) => (
-                <div key={s.stage} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "9px 11px", background: "var(--bg-inset)" }}>
-                  <span className="tnum" style={{ display: "block", fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>
-                    {s.costPer != null ? money(s.costPer) : "sem lead"}
-                  </span>
-                  <span style={{ fontSize: 11.5, color: "var(--fg-3)", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {s.stage} · {s.count}
-                  </span>
-                </div>
-              ))}
-            </div>
           </Card>
         )}
 
@@ -419,18 +445,25 @@ function ManageTree({ camps, metrics, money, onToggleCampaign, onBudgetCampaign,
   );
   const infoRow = (key, depth, text, isErr) => (
     <tr key={key} style={{ background: "var(--bg-inset)" }}>
-      <td colSpan={10} className="mono" style={{ ...td, paddingLeft: 16 + depth * 22, fontSize: 11.5, color: isErr ? "var(--neg)" : "var(--fg-4)" }}>{text}</td>
+      <td colSpan={16} className="mono" style={{ ...td, paddingLeft: 16 + depth * 22, fontSize: 11.5, color: isErr ? "var(--neg)" : "var(--fg-4)" }}>{text}</td>
     </tr>
   );
   // Métricas do período pro nó (campanha/conjunto/anúncio). Sem dado sincronizado
   // no período, as células ficam vazias — não é zero, é "ainda não sincronizado".
   const tdM = { ...td, textAlign: "right", fontFamily: "var(--mono)", fontSize: 12.5 };
+  const pct = (v) => (v != null ? String(v).replace(".", ",") + "%" : "");
   const mCells = (m, { bold } = {}) => (
     <>
       <td className="tnum" style={tdM}>{m ? money(m.spend) : ""}</td>
       <td className="tnum" style={tdM}>{m ? window.fmt.int(m.leads || 0) : ""}</td>
       <td className="tnum" style={tdM}>{m ? (m.cpl != null ? money(m.cpl) : "sem lead") : ""}</td>
-      <td className="tnum" style={tdM}>{m?.ctr != null ? String(m.ctr).replace(".", ",") + "%" : ""}</td>
+      <td className="tnum" style={tdM}>{m ? pct(m.ctr) : ""}</td>
+      <td className="tnum" style={tdM}>{m ? (m.cpm != null ? money(m.cpm) : "") : ""}</td>
+      <td className="tnum" style={tdM}>{m ? (m.costPerLinkClick != null ? money(m.costPerLinkClick) : "") : ""}</td>
+      <td className="tnum" style={tdM}>{m ? window.fmt.int(m.video3s || 0) : ""}</td>
+      <td className="tnum" style={tdM}>{m ? window.fmt.int(m.videoP25 || 0) : ""}</td>
+      <td className="tnum" style={tdM}>{m ? window.fmt.int(m.videoP50 || 0) : ""}</td>
+      <td className="tnum" style={tdM}>{m ? window.fmt.int(m.videoP95 || 0) : ""}</td>
       <td className="tnum" style={tdM}>{m ? window.fmt.int(m.won || 0) : ""}</td>
       <td className="tnum" style={{ ...tdM, fontWeight: bold ? 600 : 400 }}>{m ? (m.costPerWin != null ? money(m.costPerWin) : "sem ganho") : ""}</td>
     </>
@@ -438,11 +471,11 @@ function ManageTree({ camps, metrics, money, onToggleCampaign, onBudgetCampaign,
   const mOf = (kind, id) => metrics?.[kind]?.[String(id)] || null;
 
   return (
-    <div className="tbl-x" style={{ marginTop: 10 }}>
+    <DragScroll>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr>
-            {["Campanha / conjunto / anúncio", "Investimento", "Leads", "CPL", "CTR", "Ganhos", "R$ / ganho", "Orçamento/dia", "Situação", ""].map((h, i) => (
+            {["Campanha / conjunto / anúncio", "Investimento", "Leads", "CPL", "CTR", "CPM", "R$ / clique link", "Vídeo 3s", "Vídeo 25%", "Vídeo 50%", "Vídeo 95%", "Ganhos", "R$ / ganho", "Orçamento/dia", "Situação", ""].map((h, i) => (
               <th key={h + i} className="mono" style={{ textAlign: i === 0 ? "left" : "right", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", padding: "10px 16px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", whiteSpace: "nowrap" }}>{h}</th>
             ))}
           </tr>
@@ -507,7 +540,7 @@ function ManageTree({ camps, metrics, money, onToggleCampaign, onBudgetCampaign,
           })}
         </tbody>
       </table>
-    </div>
+    </DragScroll>
   );
 }
 
@@ -783,12 +816,6 @@ function CampaignDrilldown({ data, money }) {
     </div>
   );
 }
-
-const monthLabel = (mk) => {
-  const [y, m] = String(mk).split("-");
-  const names = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
-  return `${names[Number(m) - 1] || m} ${String(y).slice(2)}`;
-};
 
 const tdNum = { padding: "11px 16px", fontSize: 13, textAlign: "right", borderBottom: "1px solid var(--line-1)", fontFamily: "var(--mono)" };
 

@@ -89,7 +89,8 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
 
     // Insights diários por ANÚNCIO (level=ad) — base da atribuição campanha →
     // conjunto → anúncio. Mesmo contrato do campaignInsights, linhas ganham
-    // adsetId/adsetName/adId/adName.
+    // adsetId/adsetName/adId/adName + métricas de criativo (clique no link e
+    // funil de vídeo: 3s e 25/50/95% assistidos).
     async adInsights(adAccountId, { since, until }) {
       if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
       const account = String(adAccountId).startsWith("act_") ? adAccountId : `act_${adAccountId}`;
@@ -97,13 +98,15 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
         level: "ad",
         time_increment: "1",
         time_range: JSON.stringify({ since, until }),
-        fields: "campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,spend,impressions,clicks,actions",
+        fields: "campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,spend,impressions,clicks,inline_link_clicks,actions,video_p25_watched_actions,video_p50_watched_actions,video_p95_watched_actions",
         limit: "500",
         access_token: accessToken,
       });
       let url = `${GRAPH}/${account}/insights?${params}`;
       const rows = [];
       let guard = 0; // paginação não pode virar loop infinito
+      // Campos de vídeo voltam como [{action_type:"video_view", value}] por métrica.
+      const vid = (arr) => Number((arr || []).find((a) => a.action_type === "video_view")?.value) || 0;
       while (url && guard++ < 50) {
         const body = await get(url);
         for (const r of body.data || []) {
@@ -119,6 +122,11 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
             spend: Number(r.spend) || 0,
             impressions: Number(r.impressions) || 0,
             clicks: Number(r.clicks) || 0,
+            linkClicks: Number(r.inline_link_clicks) || 0,
+            video3s: vid(r.actions),           // "video_view" nas actions = 3s assistidos
+            videoP25: vid(r.video_p25_watched_actions),
+            videoP50: vid(r.video_p50_watched_actions),
+            videoP95: vid(r.video_p95_watched_actions),
             metaLeads: Number(leadAction?.value) || 0,
           });
         }
