@@ -6,23 +6,25 @@ import React from "react";
 import { api } from "./api.js";
 
 // Código "[X]" em qualquer posição do nome do anúncio — espelho do painCode
-// da API (routes.marketing.js); mantenha os dois em sincronia.
+// da API (routes.marketing.js); mantenha os dois em sincronia. Código = 1-3
+// alfanuméricos ("[TESTE]" não vira dor fantasma).
 export function painCodeOf(adName) {
-  const m = String(adName || "").match(/\[([^\]]{1,12})\]/);
-  return m ? m[1].trim().toUpperCase() : null;
+  const m = String(adName || "").match(/\[([A-Za-z0-9]{1,3})\]/);
+  return m ? m[1].toUpperCase() : null;
 }
 
-// Catálogo de atribuição (id → nome de campanha/conjunto/anúncio) — cache por
-// SaaS no módulo: drawers e cards abrem o tempo todo, a Meta não muda tanto.
+// Catálogo de atribuição (id → nome de campanha/conjunto/anúncio). Cacheia a
+// PROMESSA por SaaS: os ~50 cards do kanban montam no mesmo tick e todos
+// compartilham UMA requisição (cachear só o resultado disparava uma rajada de
+// GETs idênticos no primeiro render). Falha limpa o cache pra tentar de novo.
 const attributionCache = {};
 export function useAttribution(saas, enabled = true) {
-  const [cat, setCat] = React.useState(attributionCache[saas] || null);
+  const [cat, setCat] = React.useState(null);
   React.useEffect(() => {
-    if (!saas || !enabled || attributionCache[saas]) return;
+    if (!saas || !enabled) return;
     let alive = true;
-    api.marketingAttribution(saas)
-      .then((c) => { attributionCache[saas] = c; if (alive) setCat(c); })
-      .catch(() => { /* sem catálogo → sem dor, sem erro */ });
+    (attributionCache[saas] ??= api.marketingAttribution(saas).catch(() => { delete attributionCache[saas]; return null; }))
+      .then((c) => { if (alive && c) setCat(c); });
     return () => { alive = false; };
   }, [saas, enabled]);
   return cat;

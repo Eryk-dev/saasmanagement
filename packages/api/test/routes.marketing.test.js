@@ -213,7 +213,8 @@ test("painCode: extrai o código [X] de qualquer posição do nome do anúncio",
   assert.equal(painCode("1303 [B]"), "B");            // código no fim (padrão do Leo)
   assert.equal(painCode("[ab] carrossel"), "AB");     // normaliza maiúscula
   assert.equal(painCode("Vídeo sem código"), null);
-  assert.equal(painCode("[CODIGOLONGODEMAIS] x"), null); // > 12 chars não é código
+  assert.equal(painCode("[TESTE] video novo"), null); // 4+ chars: tag, não código de dor
+  assert.equal(painCode("[CODIGOLONGODEMAIS] x"), null);
   assert.equal(painCode(""), null);
 });
 
@@ -452,5 +453,58 @@ test("gerenciamento: adsets com orçamento em reais, ads do conjunto e status/or
   const budgetPost = graph.captured.posts.find((p) => p.url.endsWith("/s1"));
   assert.equal(budgetPost.params.daily_budget, "15000");
 
+  await app.close();
+});
+
+// ── Auto-sync no servidor + catálogo com anúncios vivos ─────────────────────
+
+const { startMarketingAutoSync } = await import("../src/routes.marketing.js");
+
+test("auto-sync do servidor: tick sincroniza, expõe syncedAt e não regrava linha idêntica", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", metaAdAccount: "act_123", funnel: [] });
+  const metaClient = makeMeta({ fetch: makeAdLevelFetch(), accessToken: "t" });
+  const auto = startMarketingAutoSync(repo, { meta: metaClient, intervalMs: 3_600_000, log: { warn: () => {} }, immediate: false });
+  auto.stop();
+
+  await auto.tick();
+  assert.equal((await repo.list("ad_insights")).length, 3);
+
+  // segunda leva com os MESMOS dados: nenhum update (linha igual não vira evento SSE)
+  let updates = 0;
+  const origUpdate = repo.update.bind(repo);
+  repo.update = (c, id, patch) => { if (c === "ad_insights") updates++; return origUpdate(c, id, patch); };
+  await auto.tick();
+  assert.equal(updates, 0);
+  assert.equal((await repo.list("ad_insights")).length, 3);
+  repo.update = origUpdate;
+
+  // o "ao vivo" da tela lê o syncedAt carimbado pelo auto-sync
+  const app = Fastify();
+  registerRoutes(app, repo, { meta: metaClient });
+  const m = (await app.inject({ url: "/api/marketing/leverads?since=2026-06-01&until=2026-06-02" })).json();
+  assert.ok(m.syncedAt, "syncedAt presente após auto-sync");
+  await app.close();
+});
+
+test("attribution: mescla anúncios VIVOS da conta sem sobrescrever o insight", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", metaAdAccount: "act_123", funnel: [] });
+  await repo.create("ad_insights", { id: "x1", saas: "leverads", campaignId: "c1", campaignName: "006", adsetId: "s1", adsetName: "LAL", adId: "a1", adName: "[A] v1", date: "2026-07-01", spend: 1, impressions: 1, clicks: 1, metaLeads: 0 });
+  const f = async (url) => {
+    const u = String(url);
+    if (u.includes("/ads?")) {
+      return { status: 200, text: async () => JSON.stringify({ data: [
+        { id: "aNEW", name: "[C] recém-criado", adset_id: "s9", campaign_id: "c9" },
+        { id: "a1", name: "nome vivo NÃO sobrescreve", adset_id: "s1", campaign_id: "c1" },
+      ] }) };
+    }
+    return { status: 200, text: async () => JSON.stringify({ data: [] }) };
+  };
+  const app = Fastify();
+  registerRoutes(app, repo, { meta: makeMeta({ fetch: f, accessToken: "t" }) });
+  const cat = (await app.inject({ url: "/api/marketing/leverads/attribution" })).json();
+  assert.equal(cat.ads.aNEW.name, "[C] recém-criado"); // anúncio novo resolve antes do 1º sync
+  assert.equal(cat.ads.a1.name, "[A] v1");             // insight tem precedência
   await app.close();
 });

@@ -191,6 +191,29 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       return rows;
     },
 
+    // Anúncios da CONTA inteira (id → nome/conjunto/campanha) — alimenta o
+    // catálogo de atribuição com nomes vivos: anúncio recém-criado resolve
+    // nome e dor antes do primeiro sync de insights.
+    async listAccountAds(adAccountId) {
+      if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
+      const params = new URLSearchParams({
+        fields: "id,name,adset_id,campaign_id",
+        limit: "200",
+        access_token: accessToken,
+      });
+      let url = `${GRAPH}/${acct(adAccountId)}/ads?${params}`;
+      const rows = [];
+      let guard = 0;
+      while (url && guard++ < 10) {
+        const body = await get(url);
+        for (const a of body.data || []) {
+          rows.push({ id: a.id, name: a.name, adsetId: a.adset_id || "", campaignId: a.campaign_id || "" });
+        }
+        url = body.paging?.next || null;
+      }
+      return rows;
+    },
+
     // Anúncios de um conjunto — gerenciamento nível anúncio.
     async listAds(adsetId) {
       if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
@@ -331,6 +354,7 @@ export const meta = {
   listCampaigns: (a) => inst().listCampaigns(a),
   listAdsets: (id) => inst().listAdsets(id),
   listAds: (id) => inst().listAds(id),
+  listAccountAds: (a) => inst().listAccountAds(a),
   discoverCreativeDefaults: (a) => inst().discoverCreativeDefaults(a),
   uploadVideo: (a, o) => inst().uploadVideo(a, o),
   videoThumbnail: (id, o) => inst().videoThumbnail(id, o),
