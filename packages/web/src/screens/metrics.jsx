@@ -406,6 +406,15 @@ function ManageTree({ camps, metrics, money, onToggleCampaign, onBudgetCampaign,
   const [open, setOpen] = useState(() => new Set());
   const [adsetsBy, setAdsetsBy] = useState({}); // campId  -> rows | "loading" | { error }
   const [adsBy, setAdsBy] = useState({});       // adsetId -> rows | "loading" | { error }
+  // Filtro por situação, aplicado nos TRÊS níveis. "pausadas" = tudo que não
+  // está entregando (inclui pausa herdada da campanha/conjunto).
+  const [statusFilter, setStatusFilter] = useState("all");
+  const matchStatus = (o) => {
+    if (statusFilter === "all") return true;
+    const eff = o.effectiveStatus || o.status;
+    return statusFilter === "active" ? eff === "ACTIVE" : eff !== "ACTIVE";
+  };
+  const visibleCamps = camps.filter(matchStatus);
 
   const flip = (id) => setOpen((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const openCampaign = (c) => {
@@ -519,7 +528,17 @@ function ManageTree({ camps, metrics, money, onToggleCampaign, onBudgetCampaign,
   const mOf = (kind, id) => metrics?.[kind]?.[String(id)] || null;
 
   return (
-    <DragScroll>
+    <>
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, padding: "10px 16px 0" }}>
+        <Segmented value={statusFilter} onChange={setStatusFilter}
+          options={[{ value: "all", label: "todas" }, { value: "active", label: "ativas" }, { value: "paused", label: "pausadas" }]} />
+      </div>
+      {visibleCamps.length === 0 && (
+        <div className="mono" style={{ padding: "12px 16px", fontSize: 11.5, color: "var(--fg-4)" }}>
+          nenhuma campanha {statusFilter === "active" ? "ativa" : "pausada"} na conta
+        </div>
+      )}
+      <DragScroll>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr>
@@ -529,7 +548,7 @@ function ManageTree({ camps, metrics, money, onToggleCampaign, onBudgetCampaign,
           </tr>
         </thead>
         <tbody>
-          {camps.map((c) => {
+          {visibleCamps.map((c) => {
             const cOpen = open.has(c.id);
             const sets = adsetsBy[c.id];
             return (
@@ -548,7 +567,7 @@ function ManageTree({ camps, metrics, money, onToggleCampaign, onBudgetCampaign,
                 {cOpen && sets === "loading" && infoRow(c.id + "_l", 1, "carregando conjuntos…")}
                 {cOpen && sets?.error && infoRow(c.id + "_e", 1, sets.error, true)}
                 {cOpen && Array.isArray(sets) && sets.length === 0 && infoRow(c.id + "_0", 1, "campanha sem conjuntos")}
-                {cOpen && Array.isArray(sets) && sets.map((s) => {
+                {cOpen && Array.isArray(sets) && sets.filter(matchStatus).map((s) => {
                   const sOpen = open.has(s.id);
                   const ads = adsBy[s.id];
                   const patchSet = patchRow(setAdsetsBy, c.id);
@@ -568,7 +587,7 @@ function ManageTree({ camps, metrics, money, onToggleCampaign, onBudgetCampaign,
                       {sOpen && ads === "loading" && infoRow(s.id + "_l", 2, "carregando anúncios…")}
                       {sOpen && ads?.error && infoRow(s.id + "_e", 2, ads.error, true)}
                       {sOpen && Array.isArray(ads) && ads.length === 0 && infoRow(s.id + "_0", 2, "conjunto sem anúncios")}
-                      {sOpen && Array.isArray(ads) && ads.map((a) => {
+                      {sOpen && Array.isArray(ads) && ads.filter(matchStatus).map((a) => {
                         const patchAd = patchRow(setAdsBy, s.id);
                         return (
                           <tr key={a.id} style={{ background: "var(--bg-inset)" }}>
@@ -588,7 +607,8 @@ function ManageTree({ camps, metrics, money, onToggleCampaign, onBudgetCampaign,
           })}
         </tbody>
       </table>
-    </DragScroll>
+      </DragScroll>
+    </>
   );
 }
 
