@@ -92,16 +92,42 @@ function MetricsScreen() {
   const [camps, setCamps] = useState(null); // campanhas ao vivo (gerenciamento)
   const [creative, setCreative] = useState(false); // painel de novo criativo
 
-  const load = () => {
+  const load = (reset = true) => {
     if (!product) return;
-    setData(null);
+    if (reset) setData(null);
     api.marketingMetrics(product.id, { since, until }).then(setData).catch(() => setData({ error: true }));
     api.metrics(product.id, { days: rangeDays, months: 12 }).then(setBiz).catch(() => setBiz(null));
     if (metaOn && product.metaAdAccount) {
       api.metaCampaigns(product.id).then((r) => setCamps(r.campaigns)).catch((e) => setCamps({ error: e.message }));
     }
   };
-  useEffect(load, [product?.id, since, until, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => load(true), [product?.id, since, until]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Mudança vinda do tempo real (SSE: lead criado/movido/etc.) recarrega SEM
+  // piscar — os números do painel acompanham o pipeline na hora.
+  const firstVersion = React.useRef(version);
+  useEffect(() => {
+    if (version !== firstVersion.current) load(false);
+  }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Tempo real do lado da Meta: a cada 60s (com a aba visível) sincroniza os
+  // últimos 2 dias de insights e recarrega as métricas silenciosamente. O gasto
+  // é pull mesmo — a Insights API da Meta tem alguns minutos de atraso deles.
+  const [liveAt, setLiveAt] = useState(null);
+  useEffect(() => {
+    if (!metaOn || !product?.metaAdAccount) return;
+    let stop = false;
+    const tick = async () => {
+      if (stop || document.visibilityState !== "visible") return;
+      try {
+        await api.marketingSync({ saas: product.id, since: dayStr(Date.now() - DAY) });
+        if (stop) return;
+        const fresh = await api.marketingMetrics(product.id, { since, until });
+        if (!stop) { setData(fresh); setLiveAt(new Date()); }
+      } catch { /* silencioso — tenta de novo no próximo tick */ }
+    };
+    const id = setInterval(tick, 60_000);
+    return () => { stop = true; clearInterval(id); };
+  }, [product?.id, since, until, metaOn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pausar/reativar com atualização otimista; orçamento salva no blur.
   async function toggleCampaign(c) {
@@ -186,9 +212,17 @@ function MetricsScreen() {
           + gasto manual
         </button>
         {metaOn && (
-          <button onClick={sync} disabled={syncing} style={{ padding: "6px 12px", borderRadius: "var(--r-1)", fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", opacity: syncing ? 0.6 : 1 }}>
+          <button onClick={sync} disabled={syncing} style={{ padding: "6px 12px", borderRadius: "var(--r-1)", fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", opacity: syncing ? 0.6 : 1 }}
+            title="Sincroniza o período filtrado agora (além do automático de 1 em 1 minuto)">
             {syncing ? "Sincronizando…" : "↻ sincronizar Meta"}
           </button>
+        )}
+        {liveAt && (
+          <span className="mono" title="Sync automático da Meta a cada minuto com a aba aberta; leads chegam na hora via tempo real"
+            style={{ fontSize: 10.5, color: "var(--pos)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--pos)" }} />
+            ao vivo · {liveAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+          </span>
         )}
         <Segmented value={range.preset} options={PERIODS} onChange={(v) => setRange({ preset: v })} />
         <div style={{ display: "flex", gap: 4, alignItems: "center" }} title="Intervalo específico (de/até no mesmo dia filtra um dia só)">
@@ -283,11 +317,13 @@ function MetricsScreen() {
         </div>
 
         {milestones.length > 0 && t?.spend > 0 && (
-          <Card title="Custo por etapa do funil" hint="investimento dividido pelos leads que chegaram em cada marco · % = conversão vinda do marco anterior">
+          <Card title="Custo por etapa do funil" hint="investimento dividido pelos leads que chegaram em cada marco · % = quantos dos leads do período chegaram até ali">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, padding: "12px 16px 16px" }}>
               {milestones.map((s, i) => {
-                const prev = i > 0 ? milestones[i - 1] : null;
-                const conv = prev && prev.count > 0 ? Math.round((s.count / prev.count) * 100) : null;
+                // Conversão sobre o TOTAL de leads (marco de entrada), não sobre
+                // o marco anterior — "quantos % dos leads viram call/ganho".
+                const total = milestones[0]?.count || 0;
+                const conv = i > 0 && total > 0 ? Math.round((s.count / total) * 1000) / 10 : null;
                 return (
                   <div key={s.stage} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "9px 11px", background: "var(--bg-inset)" }}>
                     <span style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 6 }}>
@@ -295,9 +331,9 @@ function MetricsScreen() {
                         {s.costPer != null ? money(s.costPer) : "sem lead"}
                       </span>
                       {conv != null && (
-                        <span className="mono" title={`${s.count} de ${prev.count} vindos de ${prev.stage}`}
-                          style={{ fontSize: 11, fontWeight: 600, color: conv >= 50 ? "var(--pos)" : conv >= 25 ? "var(--fg-3)" : "var(--neg)" }}>
-                          {conv}%
+                        <span className="mono" title={`${s.count} de ${total} leads chegaram em ${s.stage}`}
+                          style={{ fontSize: 11, fontWeight: 600, color: "var(--fg-3)" }}>
+                          {String(conv).replace(".", ",")}%
                         </span>
                       )}
                     </span>
