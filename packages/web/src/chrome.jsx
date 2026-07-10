@@ -14,7 +14,6 @@ const NAV = [
   { id: "expenses",   label: "Custos",      icon: "◫",  group: "main" },
   { id: "forms",      label: "Formulários", icon: "▤",  group: "tools" },
   { id: "proposals",  label: "Propostas",   icon: "▥",  group: "tools" },
-  { id: "subscriptions", label: "Assinaturas", icon: "↻", group: "tools" },
   { id: "tasks",      label: "Tarefas",     icon: "▣",  group: "tools" },
   { id: "settings",   label: "Ajustes",     icon: "✦",  group: "system" },
 ];

@@ -10,7 +10,6 @@ import { PipelineScreen } from "./screens/pipeline.jsx";
 import { FormsScreen } from "./screens/forms.jsx";
 import { ProposalsScreen } from "./screens/proposals.jsx";
 import { CustomersScreen } from "./screens/customers.jsx";
-import { SubscriptionsScreen } from "./screens/subscriptions.jsx";
 import { TasksScreen } from "./screens/tasks.jsx";
 import { SettingsScreen } from "./screens/settings.jsx";
 import { LeadDetail } from "./screens/deal.jsx";
@@ -113,7 +112,7 @@ function App() {
     expenses:    ["Custos"],
     forms:       ["Ferramentas", "Formulários"],
     proposals:   ["Ferramentas", "Propostas"],
-    subscriptions: ["Ferramentas", "Assinaturas"],
+    subscriptions: ["Clientes", "Assinaturas"], // rota antiga → aba dentro de Clientes
     tasks:       ["Ferramentas", "Tarefas"],
     settings:    ["Ajustes"],
   };
@@ -155,7 +154,7 @@ function App() {
           {screen === "expenses"    && <ExpensesScreen />}
           {screen === "forms"       && <FormsScreen saasId={params.saas} />}
           {screen === "proposals"   && <ProposalsScreen saasId={params.saas} />}
-          {screen === "subscriptions" && <SubscriptionsScreen saasId={params.saas} />}
+          {screen === "subscriptions" && <CustomersScreen initialTab="billing" />}
           {screen === "tasks"       && <TasksScreen />}
           {screen === "settings"    && <SettingsScreen saasId={params.saas} />}
         </div>

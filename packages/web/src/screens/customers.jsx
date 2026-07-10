@@ -5,10 +5,13 @@ import { PageHead, Card, Pill } from "../components/viz.jsx";
 import { EmptyState, PrimaryButton, RowActions } from "../atoms.jsx";
 import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/milestones.js";
 import { ActivityList } from "../components/timeline.jsx";
+import { SubscriptionsScreen } from "./subscriptions.jsx";
 // Clientes — a base ativa do produto (estilo Attio: tabela + painel de detalhe
 // sem trocar de página). A receita vem das assinaturas (customer.arr é
 // derivado). Pós-venda: linha do tempo de marcos por tempo de casa
 // (startedAt, carimbado na conversão automática do pipeline).
+// Assinaturas/faturas/planos moram AQUI, numa aba — cliente e cobrança são a
+// mesma conversa (a antiga tela "Assinaturas" virou a aba billing).
 
 const { useState, useEffect, useMemo } = React;
 
@@ -20,10 +23,11 @@ const SUB_STATUS = {
   canceled: { label: "cancelada", tone: "mut" },
 };
 
-function CustomersScreen() {
+function CustomersScreen({ initialTab = "base" }) {
   const { SAAS, CUSTOMERS } = window.SEED;
   const { version, openForm, openDelete, refresh } = useData();
   const product = SAAS[0];
+  const [tab, setTab] = useState(initialTab); // base | billing
   const [subs, setSubs] = useState([]);
   const [plans, setPlans] = useState([]);
   const [invoices, setInvoices] = useState([]);
@@ -58,12 +62,27 @@ function CustomersScreen() {
 
   if (!product) return <EmptyState title="Nenhum produto cadastrado" hint="Crie o produto em Ajustes." />;
 
+  const TabBtn = ({ k, label }) => (
+    <button onClick={() => setTab(k)} style={{
+      padding: "5px 12px", borderRadius: 5,
+      background: tab === k ? "var(--bg-3)" : "transparent",
+      color: tab === k ? "var(--fg-1)" : "var(--fg-3)",
+      fontSize: 12.5, fontWeight: tab === k ? 600 : 500,
+      border: "1px solid " + (tab === k ? "var(--line-2)" : "transparent"),
+    }}>{label}</button>
+  );
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Clientes" sub={`${customers.length} ${customers.length === 1 ? "ativo" : "ativos"} · MRR ${money(totalMrr)}`}>
-        <PrimaryButton onClick={() => openForm("customers")}>+ novo cliente</PrimaryButton>
+        <TabBtn k="base" label="Clientes" />
+        <TabBtn k="billing" label="Assinaturas" />
+        {tab === "base" && <PrimaryButton onClick={() => openForm("customers")}>+ novo cliente</PrimaryButton>}
       </PageHead>
 
+      {tab === "billing" && <SubscriptionsScreen saasId={product.id} />}
+
+      {tab === "base" && (
       <div style={{ padding: "20px var(--pad-x) 40px" }}>
         {customers.length === 0 ? (
           <EmptyState
@@ -185,7 +204,7 @@ function CustomersScreen() {
                 <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--line-1)" }}>
                   <div className="mono" style={{ fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>Assinaturas</div>
                   {subsOf(selected).length === 0 && (
-                    <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Nenhuma assinatura. Crie em Ferramentas, Assinaturas.</div>
+                    <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Nenhuma assinatura. Crie na aba Assinaturas aqui em cima.</div>
                   )}
                   {subsOf(selected).map((s) => {
                     const st = SUB_STATUS[s.status] || { label: s.status, tone: "mut" };
@@ -227,6 +246,7 @@ function CustomersScreen() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
