@@ -162,11 +162,11 @@ function MetricsScreen() {
 
   const t = data && !data.error ? data.totals : null;
   const perStage = data && !data.error ? data.perStage : [];
-  // Custo por etapa só nos MARCOS do funil (call → proposta → integração →
-  // ganho) — as etapas de cadência (contato/qualificação/follow-up) repetem os
-  // vizinhos e não orientam decisão de verba.
+  // Custo por etapa só nos MARCOS do funil: entrada (leads + CPL, que moravam
+  // nos tiles) → call → proposta → integração → ganho. As etapas de cadência
+  // (contato/qualificação/follow-up) repetem os vizinhos e não orientam verba.
   const MILESTONE_KINDS = new Set(["call", "proposta", "integracao", "ganho"]);
-  const milestones = perStage.filter((s) => MILESTONE_KINDS.has(stageKind(product, s.stage)));
+  const milestones = perStage.filter((s, i) => i === 0 || MILESTONE_KINDS.has(stageKind(product, s.stage)));
   const money = window.fmt.money;
 
   const spendSeries = (data?.series || []).map((d) => ({ x: shortDay(d.date), v: d.spend }));
@@ -258,12 +258,10 @@ function MetricsScreen() {
           </Card>
         )}
 
-        {/* Uma fileira só, sem repetir o que o card de custo por etapa já mostra
-            (custo por call/ganho) nem contar leads duas vezes. */}
+        {/* Uma fileira só — leads e custo por lead moram no card de custo por
+            etapa (marco de entrada do funil). */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
           <StatTile label="Investimento" value={t ? money(t.spend) : "…"} delta={t?.ctr != null ? `CTR ${String(t.ctr).replace(".", ",")}%` : null} />
-          <StatTile label="Leads no período" value={t ? String(t.leads) : "…"} delta={t?.metaLeads ? `${t.metaLeads} reportados pela Meta` : null} />
-          <StatTile label="Custo por lead" value={t?.cpl != null ? money(t.cpl) : "sem gasto"} delta={t?.cplMeta != null ? `${money(t.cplMeta)} na visão da Meta` : null} />
           <StatTile label="Lead → cliente" value={biz?.window?.convRate != null ? `${String(biz.window.convRate).replace(".", ",")}%` : "sem dado"}
             delta="conversão no período" />
           <StatTile label={`CAC · ${rangeDays}d`} value={biz?.window?.cac != null ? money(biz.window.cac) : "sem dado"}
@@ -285,18 +283,36 @@ function MetricsScreen() {
         </div>
 
         {milestones.length > 0 && t?.spend > 0 && (
-          <Card title="Custo por etapa do funil" hint="investimento dividido pelos leads que chegaram em cada marco (call → proposta → integração → ganho)">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, padding: "12px 16px 16px" }}>
-              {milestones.map((s) => (
-                <div key={s.stage} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "9px 11px", background: "var(--bg-inset)" }}>
-                  <span className="tnum" style={{ display: "block", fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>
-                    {s.costPer != null ? money(s.costPer) : "sem lead"}
-                  </span>
-                  <span style={{ fontSize: 11.5, color: "var(--fg-3)", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {s.stage} · {s.count}
-                  </span>
-                </div>
-              ))}
+          <Card title="Custo por etapa do funil" hint="investimento dividido pelos leads que chegaram em cada marco · % = conversão vinda do marco anterior">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, padding: "12px 16px 16px" }}>
+              {milestones.map((s, i) => {
+                const prev = i > 0 ? milestones[i - 1] : null;
+                const conv = prev && prev.count > 0 ? Math.round((s.count / prev.count) * 100) : null;
+                return (
+                  <div key={s.stage} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "9px 11px", background: "var(--bg-inset)" }}>
+                    <span style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 6 }}>
+                      <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>
+                        {s.costPer != null ? money(s.costPer) : "sem lead"}
+                      </span>
+                      {conv != null && (
+                        <span className="mono" title={`${s.count} de ${prev.count} vindos de ${prev.stage}`}
+                          style={{ fontSize: 11, fontWeight: 600, color: conv >= 50 ? "var(--pos)" : conv >= 25 ? "var(--fg-3)" : "var(--neg)" }}>
+                          {conv}%
+                        </span>
+                      )}
+                    </span>
+                    <span style={{ fontSize: 11.5, color: "var(--fg-3)", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {s.stage} · {s.count}
+                    </span>
+                    {i === 0 && t?.metaLeads > 0 && (
+                      <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", display: "block", marginTop: 2 }}
+                        title={t?.cplMeta != null ? `CPL na visão da Meta: ${money(t.cplMeta)}` : undefined}>
+                        {t.metaLeads} na visão da Meta{t?.cplMeta != null ? ` · ${money(t.cplMeta)}` : ""}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </Card>
         )}
