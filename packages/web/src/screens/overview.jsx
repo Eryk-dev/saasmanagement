@@ -96,25 +96,27 @@ function OverviewScreen({ onNav, onOpenLead }) {
   const endToday = new Date(); endToday.setHours(23, 59, 59, 999);
 
   const queue = useMemo(() => {
-    const late = [], today = [], noNext = [];
+    const endTomorrow = new Date(); endTomorrow.setDate(endTomorrow.getDate() + 1); endTomorrow.setHours(23, 59, 59, 999);
+    const late = [], today = [], tomorrow = [], upcoming = [], noNext = [];
     for (const l of openLeads) {
       if (!mineMatch(l)) continue;
       const t = nextTouch(l);
       if (!t) { noNext.push(l); continue; }
       if (t.at < startToday.getTime()) late.push({ l, t });
       else if (t.at <= endToday.getTime()) today.push({ l, t });
+      else if (t.at <= endTomorrow.getTime()) tomorrow.push({ l, t });
+      else upcoming.push({ l, t });
     }
-    late.sort((a, b) => a.t.at - b.t.at);
-    today.sort((a, b) => a.t.at - b.t.at);
+    for (const arr of [late, today, tomorrow, upcoming]) arr.sort((a, b) => a.t.at - b.t.at);
     // Sem próximo passo: violação de SLA de 1º toque primeiro (lead novo nunca
     // tocado além do prazo da cadência), depois os mais parados.
     const slaMs = (Number(cadenceOf(product, firstStage).firstTouchHours) || 48) * 3_600_000;
     const breach = (l) => !l.lastActivityAt && l.createdAt && now - new Date(l.createdAt).getTime() > slaMs;
     noNext.sort((a, b) => (breach(b) - breach(a)) || String(a.stageSince || a.createdAt || "").localeCompare(String(b.stageSince || b.createdAt || "")));
-    return { late, today, noNext, breach };
+    return { late, today, tomorrow, upcoming, noNext, breach };
   }, [openLeads, mine, me, product, firstStage]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const queueTotal = queue.late.length + queue.today.length + queue.noNext.length;
+  const queueTotal = queue.late.length + queue.today.length + queue.tomorrow.length + queue.upcoming.length + queue.noNext.length;
   const slaBreaches = queue.noNext.filter(queue.breach).length;
 
   // Toque dado direto da fila: vira activity (o servidor conta a tentativa e
@@ -174,11 +176,13 @@ function OverviewScreen({ onNav, onOpenLead }) {
 
         <div className="resp-cols" style={{ "--cols": "minmax(0,1fr) 340px", gap: 12, alignItems: "start" }}>
           {/* Fila de trabalho — por onde o dia começa. */}
-          <Card title="Fila de hoje" hint="o GPS do funil: atrasados → hoje → sem próximo passo">
+          <Card title="Fila de hoje" hint="o GPS do funil: hoje → amanhã → próximos dias → atrasados no fim">
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 16px 4px", flexWrap: "wrap" }}>
-              <QueueStat n={queue.late.length} label="atrasados" tone="var(--neg)" />
               <QueueStat n={queue.today.length} label="pra hoje" tone="var(--warn)" />
+              <QueueStat n={queue.tomorrow.length} label="amanhã" tone="var(--fg-3)" />
+              <QueueStat n={queue.upcoming.length} label="próximos dias" tone="var(--fg-3)" />
               <QueueStat n={queue.noNext.length} label="sem próximo passo" tone="var(--fg-3)" />
+              <QueueStat n={queue.late.length} label="atrasados" tone="var(--neg)" />
               {slaBreaches > 0 && <QueueStat n={slaBreaches} label="fora do SLA de 1º toque" tone="var(--neg)" />}
               <span style={{ flex: 1 }} />
               <button onClick={() => setMineP(!mine)} disabled={!me}
@@ -196,14 +200,22 @@ function OverviewScreen({ onNav, onOpenLead }) {
                   Nada vencido — todos os leads abertos têm próximo passo. 🎯
                 </div>
               )}
-              {queue.late.slice(0, 12).map(({ l }) => (
-                <QueueRow key={l.id} l={l} product={product} onOpen={onOpenLead} onDone={doneTouch} onSnooze={snooze} />
-              ))}
-              {queue.today.slice(0, 12).map(({ l }) => (
-                <QueueRow key={l.id} l={l} product={product} onOpen={onOpenLead} onDone={doneTouch} onSnooze={snooze} />
-              ))}
-              {queue.noNext.slice(0, Math.max(0, 30 - Math.min(12, queue.late.length) - Math.min(12, queue.today.length))).map((l) => (
-                <QueueRow key={l.id} l={l} product={product} onOpen={onOpenLead} onDone={doneTouch} onSnooze={snooze} breach={queue.breach(l)} />
+              {[
+                ["Hoje", queue.today.slice(0, 12).map((x) => x.l)],
+                ["Amanhã", queue.tomorrow.slice(0, 8).map((x) => x.l)],
+                ["Próximos dias", queue.upcoming.slice(0, 8).map((x) => x.l)],
+                ["Sem próximo passo", queue.noNext.slice(0, 8)],
+                ["Atrasados", queue.late.slice(0, 12).map((x) => x.l)],
+              ].map(([label, rows]) => rows.length > 0 && (
+                <div key={label}>
+                  <div className="mono" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: label === "Atrasados" ? "var(--neg)" : "var(--fg-4)", padding: "8px 8px 3px" }}>
+                    {label}
+                  </div>
+                  {rows.map((l) => (
+                    <QueueRow key={l.id} l={l} product={product} onOpen={onOpenLead} onDone={doneTouch} onSnooze={snooze}
+                      breach={label === "Sem próximo passo" ? queue.breach(l) : undefined} />
+                  ))}
+                </div>
               ))}
               {queueTotal > 30 && (
                 <button onClick={() => onNav && onNav("pipeline", { saas: product.id })} className="mono" style={{ width: "100%", padding: "8px 0", fontSize: 11, color: "var(--accent)" }}>

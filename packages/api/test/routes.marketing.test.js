@@ -387,7 +387,7 @@ test("métricas por dor: agrupa [X] do nome do anúncio, rotula pelo painMap e c
   const a1 = m.ads.find((a) => a.id === "a1");
   assert.equal(a1.won, 1);
   assert.equal(a1.costPerWin, 60);
-  assert.equal(a1.ctr, 100); // 1 clique / 1 impressão
+  assert.equal(a1.ctr, 200); // link CTR: 2 cliques no link / 1 impressão
   assert.equal(a1.cpm, 60000); // 60 / 1 impressão × 1000
   assert.equal(a1.costPerLinkClick, 30); // 60 / 2 cliques no link
   assert.equal(a1.video3s, 50);
