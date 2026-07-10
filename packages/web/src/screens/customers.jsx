@@ -25,6 +25,7 @@ function CustomersScreen() {
   const { version, openForm, openDelete, refresh } = useData();
   const product = SAAS[0];
   const [subs, setSubs] = useState([]);
+  const [plans, setPlans] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [sel, setSel] = useState(null);
   // Conclusão de marco: otimista no objeto do SEED (a tela lê dele) + PATCH.
@@ -38,6 +39,7 @@ function CustomersScreen() {
 
   useEffect(() => {
     api.list("subscriptions").then((rows) => setSubs(rows.filter((s) => s.saas === product?.id))).catch(() => {});
+    api.list("plans").then((rows) => setPlans(rows.filter((p) => p.saas === product?.id))).catch(() => {});
     api.list("invoices").then((rows) => setInvoices(rows.filter((i) => i.saas === product?.id))).catch(() => {});
   }, [product?.id, version]);
 
@@ -49,6 +51,8 @@ function CustomersScreen() {
   const selected = customers.find((c) => c.id === sel) || customers[0] || null;
   const subsOf = (c) => subs.filter((s) => s.customer === c.id);
   const mainSub = (c) => subsOf(c).find((s) => s.status === "active" || s.status === "past_due") || subsOf(c)[0] || null;
+  // sub.plan é FK pra `plans` — resolve o nome (nunca mostrar o id cru na UI).
+  const planLabel = (s) => plans.find((p) => p.id === s.plan)?.name || CYCLE_LABEL[s.cycle] || s.cycle || "plano";
   const totalMrr = customers.reduce((a, c) => a + (c.arr || 0), 0) / 12;
   const money = window.fmt.money;
 
@@ -91,7 +95,7 @@ function CustomersScreen() {
                         onMouseLeave={(e) => { e.currentTarget.style.background = isSel ? "var(--accent-soft)" : "transparent"; }}>
                         <td style={{ padding: "11px 14px", fontSize: 13.5, fontWeight: 600, borderBottom: "1px solid var(--line-1)" }}>{c.name}</td>
                         <td style={{ padding: "11px 14px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-1)" }}>
-                          {c.plan || (sub ? `${sub.plan || ""} ${CYCLE_LABEL[sub.cycle] || ""}`.trim() : "sem plano")}
+                          {sub ? planLabel(sub) : c.plan || "sem plano"}
                         </td>
                         <td className="tnum mono" style={{ padding: "11px 14px", fontSize: 13, textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>
                           {money((c.arr || 0) / 12)}
@@ -122,7 +126,7 @@ function CustomersScreen() {
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700 }}>{selected.name}</div>
                       <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 2 }}>
-                        {money((selected.arr || 0) / 12)}/mês{selected.email ? ` · ${selected.email}` : ""}
+                        {money((selected.arr || 0) / 12)}/mês · {money(selected.arr || 0)}/ano{selected.email ? ` · ${selected.email}` : ""}
                       </div>
                     </div>
                     <RowActions onEdit={() => openForm("customers", selected)} onDelete={() => openDelete("customers", selected)} />
@@ -187,7 +191,7 @@ function CustomersScreen() {
                     const st = SUB_STATUS[s.status] || { label: s.status, tone: "mut" };
                     return (
                       <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", fontSize: 13 }}>
-                        <span style={{ color: "var(--fg-2)" }}>{s.plan || "plano"} · {CYCLE_LABEL[s.cycle] || s.cycle}</span>
+                        <span style={{ color: "var(--fg-2)" }}>{planLabel(s)} · {CYCLE_LABEL[s.cycle] || s.cycle}</span>
                         <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
                           <span className="tnum mono" style={{ fontWeight: 500 }}>{money(s.price || 0)}</span>
                           <Pill tone={st.tone}>{st.label}</Pill>
