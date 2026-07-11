@@ -33,7 +33,9 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   // Aba ativa persistida (localStorage): sobrevive ao refresh da página e à
   // remontagem da tela quando o tempo real recarrega o SEED. "forecast" é o
   // nome antigo da aba Análise — alias pra não perder a preferência salva.
-  const VIEWS = ["kanban", "all", "list", "agenda", "analise"];
+  // "all" (Todos os pipelines) foi aposentada com o workspace por produto:
+  // cada marca tem o cockpit inteiro só dela, nada de empilhar produtos.
+  const VIEWS = ["kanban", "list", "agenda", "analise"];
   const [view, setViewState] = useStP(() => {
     try {
       const v = localStorage.getItem("cockpit_pipeline_view");
@@ -177,7 +179,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           <span style={{ fontSize: 11.5, color: "var(--fg-3)" }}>contas + anúncios</span>
         </span>
         <ViewToggle view={view} onChange={setView} />
-        {(view === "kanban" || view === "all") && <PhaseFilter phase={phase} onChange={setPhase} />}
+        {view === "kanban" && <PhaseFilter phase={phase} onChange={setPhase} />}
         <PriorityFilter pri={pri} onChange={setPri} />
         <PersonFilter person={person} onChange={setPerson} me={me} />
         {selected.size > 0 && (
@@ -186,8 +188,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
         <PrimaryButton onClick={() => openForm("leads", { saas: activeSaas })}>+ novo lead</PrimaryButton>
       </PageHead>
 
-      {/* Forecast strip — single-product views only */}
-      {view !== "all" && <ForecastStrip s={s} leads={saasAll} />}
+      <ForecastStrip s={s} leads={saasAll} />
 
       {/* Body */}
       {view === "kanban" && (
@@ -204,9 +205,6 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           setSelected={setSelected}
           onOpenLead={onOpenLead}
         />
-      )}
-      {view === "all" && (
-        <AllPipelines leads={priLeads} onMove={requestMove} onPatch={patchLead} onLogTouch={logTouch} highlight={highlight} onOpenLead={onOpenLead} phase={phase} />
       )}
       {view === "list" && <LeadList leads={saasLeads} />}
       {view === "agenda" && <AgendaView leads={saasAll} onOpenLead={onOpenLead} />}
@@ -231,7 +229,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
 }
 
 function ViewToggle({ view, onChange }) {
-  const views = [["kanban","Kanban"],["all","Todos os pipelines"],["list","Lista"],["agenda","Agenda"],["analise","Análise"]];
+  const views = [["kanban","Kanban"],["list","Lista"],["agenda","Agenda"],["analise","Análise"]];
   return (
     <div style={{ display: "flex", gap: 2 }}>
       {views.map(([k, label]) => (
@@ -352,75 +350,6 @@ function ForecastCell({ label, v, sub }) {
       <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</div>
       <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700, marginTop: 2 }}>{v}</div>
       {sub && <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)" }}>{sub}</div>}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────── All pipelines (stacked)
-function AllPipelines({ leads, onMove, onPatch, onLogTouch, highlight, onOpenLead, phase }) {
-  const { SAAS } = window.SEED;
-  return (
-    <div style={{ flex: 1, overflowY: "auto", padding: "14px 0" }}>
-      {SAAS.map(s => (
-        <PipelineBand key={s.id} s={s} leads={leads.filter(l => l.saas === s.id)} onMove={onMove} onPatch={onPatch} onLogTouch={onLogTouch} highlight={highlight} onOpenLead={onOpenLead} phase={phase} />
-      ))}
-    </div>
-  );
-}
-
-function PipelineBand({ s, leads, onMove, onPatch, onLogTouch, highlight, onOpenLead, phase = "all" }) {
-  const [dragging, setDragging] = useStP(null);
-  const [noop, setNoop] = useStP(new Set());
-  const allStages = s.funnel.map(f => f.stage);
-  const stages = stagesForPhase(s, allStages, phase);
-  const stageMeta = Object.fromEntries(s.funnel.map(f => [f.stage, f]));
-  const byStage = {};
-  allStages.forEach(st => byStage[st] = []);
-  leads.forEach(l => {
-    const st = allStages.includes(l.stage) ? l.stage : allStages[0];
-    byStage[st].push(l);
-  });
-  const tcv = leads.reduce((a, l) => a + (l.amount || 0), 0);
-  const tone = window.productTone(s);
-
-  return (
-    <div style={{ marginBottom: 8, borderBottom: "1px solid var(--line-1)", paddingBottom: 8 }}>
-      {/* Band header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px var(--pad-x) 10px", position: "sticky", left: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: tone }} />
-          <span style={{ fontSize: 14, fontWeight: 500 }}>{s.name}</span>
-          <span className="mono dim" style={{ fontSize: 11 }}>{s.tag}</span>
-          <TrendBadge trend={s.healthTrend} />
-        </div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 16 }}>
-          <span className="mono dim" style={{ fontSize: 11 }}>{leads.length} leads</span>
-          <span className="mono tnum" style={{ fontSize: 13 }}>{window.fmt.money(tcv)} <span className="dim">TCV aberto</span></span>
-        </div>
-      </div>
-      {/* Horizontal kanban */}
-      <div style={{ overflowX: "auto", padding: "0 var(--pad-x) 4px", display: "grid", gridAutoFlow: "column", gridAutoColumns: "minmax(220px, 1fr)", gap: 10, alignItems: "start" }}>
-        {stages.map((st, i) => (
-          <KanbanColumn key={st}
-            s={s}
-            stage={st}
-            meta={stageMeta[st]}
-            cards={byStage[st] || []}
-            highlight={highlight === st}
-            phaseStart={phaseKicker(s, stages, i)}
-            onMove={onMove}
-            onPatch={onPatch}
-            onLogTouch={onLogTouch}
-            onDropCard={(id) => { onMove(id, st); setDragging(null); }}
-            dragging={dragging}
-            setDragging={setDragging}
-            selected={noop}
-            setSelected={setNoop}
-            onOpenLead={onOpenLead}
-            compact
-          />
-        ))}
-      </div>
     </div>
   );
 }

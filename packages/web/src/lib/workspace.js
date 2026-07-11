@@ -32,6 +32,14 @@ export function pinActiveSaas(id) {
 const subscribe = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
 const snapshot = () => current;
 
+// Getter sem hook (pra módulos de config, ex. lib/entities.js): id do produto
+// ativo com o mesmo fallback do hook (1º do portfólio).
+export function getActiveSaasId() {
+  const saas = window.SEED?.SAAS || [];
+  const p = saas.find((s) => s.id === current) || saas[0] || null;
+  return p?.id || null;
+}
+
 export function useActiveSaas() {
   const active = React.useSyncExternalStore(subscribe, snapshot);
   const { SAAS } = window.SEED;

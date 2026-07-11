@@ -10,7 +10,15 @@
 // render time so dynamic lists (products, people) reflect the live window.SEED.
 
 // ── dynamic option helpers ──────────────────────────────────────────────────
-const saasOptions = () => (window.SEED?.SAAS || []).map((s) => ({ value: s.id, label: s.name }));
+import { getActiveSaasId } from "./workspace.js";
+// Select "Produto" escopado ao WORKSPACE: só o produto ativo (e o do próprio
+// registro, por segurança ao editar) — a outra marca não vaza no formulário.
+const saasOptions = (values) => {
+  const all = window.SEED?.SAAS || [];
+  const keep = new Set([values?.saas, getActiveSaasId()].filter(Boolean));
+  const scoped = all.filter((s) => keep.has(s.id));
+  return (scoped.length ? scoped : all).map((s) => ({ value: s.id, label: s.name }));
+};
 const peopleOptions = () => Object.values(window.SEED?.PEOPLE || {}).map((p) => ({ value: p.id, label: p.name }));
 // Usuários do time (com roles) — donos/closers dos leads. Fallback PEOPLE pra
 // instância sem /auth/users carregado.
