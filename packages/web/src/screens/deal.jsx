@@ -93,6 +93,7 @@ function LeadDetail({ lead: initial, onClose }) {
   const pain = leadPain(lead, cat, saasCfg?.painMap);
   const attribution = [
     ["Dor (criativo)", pain ? `[${pain.code}] ${pain.label}` : null],
+    ["Variante da headline", lead.formVariant ? `versão ${lead.formVariant}` : null],
     ["Campanha", cat?.campaigns?.[utm.campaign]?.name || utm.campaign],
     ["Conjunto", cat?.adsets?.[utm.term]?.name || utm.term],
     ["Anúncio", cat?.ads?.[utm.content]?.name || utm.content],

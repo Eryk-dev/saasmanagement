@@ -76,6 +76,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
     const disqualified = submissionTerminal(form.questions || [], answers) === "_reject";
 
     const utm = sanitizeUtm(body.utm);
+    const variant = String(body.variant || "").slice(0, 40); // versão da welcome que converteu
     // Desqualificado vai pro estágio de kind `desqualificado` do funil (perda
     // estruturada, com motivo); fallback legado "disqualified" quando o produto/
     // funil não existe. Lead qualificado nasce com o próximo toque do GPS marcado
@@ -88,6 +89,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
       ...leadFromSubmission(form, answers),
       ...(disqualified ? { disqualified: true, stage: dqStage, lostReason: "sem_fit", lostNote: "Reprovado no funil do form" } : {}),
       ...(utm ? { utm } : {}),
+      ...(variant ? { formVariant: variant } : {}),
       ...(nextAt ? { nextActionAt: nextAt } : {}),
       createdAt: new Date().toISOString(), // métricas de marketing filtram por período
     });
@@ -109,6 +111,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
       lead: lead.id,
       answers,
       ...(utm ? { utm } : {}),
+      ...(variant ? { variant } : {}),
       createdAt: new Date().toISOString(),
       ua: String(req.headers["user-agent"] || "").slice(0, 300),
     });
@@ -170,6 +173,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
     const event = String(body.event || "");
     const session = String(body.session || "").slice(0, 64);
     const key = String(body.key || "").slice(0, 80);
+    const variant = String(body.variant || "").slice(0, 40); // teste A/B da welcome
     if (!EVENT_TYPES.has(event) || !session) return reply.code(400).send({ error: "Evento inválido" });
     if (event === "step" && !(form.questions || []).some((q) => q.key === key)) {
       return reply.code(400).send({ error: "Etapa desconhecida" });
@@ -183,6 +187,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
       session,
       event,
       key: event === "step" ? key : "",
+      ...(variant ? { variant } : {}),
       createdAt: new Date().toISOString(),
       ua: String(req.headers["user-agent"] || "").slice(0, 300),
     });
@@ -202,10 +207,19 @@ export function registerFormRoutes(app, repo, opts = {}) {
     const uniq = (pred) => new Set(events.filter(pred).map((e) => e.session)).size;
     const questions = form.questions || [];
     const steps = buildSteps(questions).map((idxs) => questions[idxs[0]]);
+    // Teste A/B: sessões carimbadas com variante viram um funil paralelo por
+    // versão da welcome (view → start → submit). Sem variantes, o array some.
+    const variantIds = [...new Set(events.map((e) => e.variant || "").filter(Boolean))].sort();
+    const variants = variantIds.map((vid) => {
+      const mine = new Set(events.filter((e) => (e.variant || "") === vid).map((e) => e.session));
+      const vu = (ev) => new Set(events.filter((e) => (e.variant || "") === vid && e.event === ev).map((e) => e.session)).size;
+      return { id: vid, sessions: mine.size, views: vu("view"), starts: vu("start"), submits: vu("submit") };
+    });
     return {
       views: uniq((e) => e.event === "view"),
       starts: uniq((e) => e.event === "start"),
       submits: uniq((e) => e.event === "submit"),
+      ...(variants.length ? { variants } : {}),
       steps: steps.map((q) => ({
         key: q.key,
         label: q.label || q.key,

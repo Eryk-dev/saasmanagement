@@ -283,6 +283,28 @@ ${metaPixelHead(pixelId)}
       return Object.keys(o).length ? o : null;
     } catch (e) { return null; }
   })();
+  // Teste A/B da tela de boas-vindas: welcome.variants = [{ id, title,
+  // subtitle, button }]. Sorteio uniforme PERSISTENTE por navegador
+  // (localStorage): quem volta vê a mesma versão, e a variante vai carimbada
+  // nos eventos do funil e no submit (lead.formVariant). Campo ausente na
+  // variante herda o da welcome base. Preview do builder mostra a base.
+  var VARIANT = '';
+  (function () {
+    var vs = F.welcome && F.welcome.variants;
+    if (!vs || !vs.length || window.__PREVIEW__) return;
+    var lsKey = 'fv_' + F.id;
+    var saved = null;
+    try { saved = localStorage.getItem(lsKey); } catch (e) {}
+    var pick = null;
+    for (var i = 0; i < vs.length; i++) if (String(vs[i].id) === saved) pick = vs[i];
+    if (!pick) {
+      pick = vs[Math.floor(Math.random() * vs.length)];
+      try { localStorage.setItem(lsKey, String(pick.id)); } catch (e) {}
+    }
+    VARIANT = String(pick.id);
+    F.welcome = Object.assign({}, F.welcome, pick);
+  })();
+
   var trackSent = {};
   function track(event, key) {
     if (window.__PREVIEW__) return; // preview do builder não polui o funil
@@ -290,7 +312,7 @@ ${metaPixelHead(pixelId)}
     if (trackSent[mark]) return;
     trackSent[mark] = true;
     try {
-      var body = JSON.stringify({ session: SID, event: event, key: key || '' });
+      var body = JSON.stringify({ session: SID, event: event, key: key || '', variant: VARIANT });
       var url = '/public/forms/' + encodeURIComponent(F.id) + '/events';
       if (navigator.sendBeacon) navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
       else fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body, keepalive: true });
@@ -608,6 +630,7 @@ ${metaPixelHead(pixelId)}
       fbc: readCookie('_fbc'),
       sourceUrl: location.href,
       utm: UTM,
+      variant: VARIANT || undefined,
     };
     fetch('/public/forms/' + encodeURIComponent(F.id) + '/submissions', {
       method: 'POST',
