@@ -198,6 +198,8 @@ function OverviewScreen({ onNav, onOpenLead }) {
             delta={cpl != null ? window.fmt.money(marketing.totals.spend) + " investidos" : "conecte o Meta em Publicidade"} tone="flat" />
           <StatTile label="Lead → cliente · 30d" value={biz?.window?.convRate != null ? `${String(biz.window.convRate).replace(".", ",")}%` : "sem dado"}
             delta={biz?.window?.newCustomers != null ? `${biz.window.newCustomers} ${biz.window.newCustomers === 1 ? "cliente novo" : "clientes novos"}` : null} tone="flat" />
+          <StatTile label="Visitas no form · 30d" value={marketing?.totals?.formViews != null ? window.fmt.int(marketing.totals.formViews) : "sem dado"}
+            delta={marketing?.totals?.formViews > 0 ? `${marketing.totals.formStarts} começaram (${((marketing.totals.formStarts / marketing.totals.formViews) * 100).toFixed(1).replace(".", ",")}%)` : null} tone="flat" />
         </div>
 
         <div className="resp-cols" style={{ "--cols": "minmax(0,1fr) 340px", gap: 12, alignItems: "start" }}>

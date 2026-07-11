@@ -371,6 +371,8 @@ function MetricsScreen() {
             etapa (marco de entrada do funil). */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
           <StatTile label="Investimento" value={t ? money(t.spend) : "…"} delta={t?.ctr != null ? `CTR ${String(t.ctr).replace(".", ",")}%` : null} />
+          <StatTile label="Visitas no form" value={t?.formViews != null ? window.fmt.int(t.formViews) : "…"}
+            delta={t?.formViews > 0 ? `${t.formStarts} começaram (${((t.formStarts / t.formViews) * 100).toFixed(1).replace(".", ",")}%)` : "sem visitas no período"} />
           <StatTile label="Lead → cliente" value={biz?.window?.convRate != null ? `${String(biz.window.convRate).replace(".", ",")}%` : "sem dado"}
             delta="conversão no período" />
           <StatTile label={`CAC · ${rangeDays}d`} value={biz?.window?.cac != null ? money(biz.window.cac) : "sem dado"}

@@ -324,6 +324,13 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const leads = (await repo.list("leads"))
       .filter((l) => l.saas === product.id && l.createdAt && dayStr(l.createdAt) >= since && dayStr(l.createdAt) <= until);
 
+    // Visitas no form (páginas públicas do produto, sessões únicas no período):
+    // o topo REAL do funil de aquisição, antes do lead existir.
+    const formEvents = (await repo.list("form_events")).filter(
+      (e) => e.saas === product.id && dayStr(e.createdAt) >= since && dayStr(e.createdAt) <= until,
+    );
+    const formSessions = (ev) => new Set(formEvents.filter((e) => e.event === ev).map((e) => e.session)).size;
+
     const sum = (k) => rows.reduce((a, r) => a + (Number(r[k]) || 0), 0);
     const spend = sum("spend");
     const impressions = sum("impressions");
@@ -446,6 +453,8 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         spend: Math.round(spend * 100) / 100,
         impressions, clicks, metaLeads,
         leads: leads.length,
+        formViews: formSessions("view"),   // visitas no form no período
+        formStarts: formSessions("start"), // clicaram em começar
         cpl: per(leads.length),          // custo por lead REAL (criados no Cockpit)
         cplMeta: per(metaLeads),         // custo por lead reportado pela Meta
         cpc: per(clicks),
