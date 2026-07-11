@@ -36,6 +36,7 @@ function FormsScreen({ saasId }) {
   const [forms, setForms] = useState([]);
   const [counts, setCounts] = useState({}); // formId -> nº de respostas
   const [stats, setStats] = useState({});   // formId -> { views, submits } · 30d (funil)
+  const [openMetrics, setOpenMetrics] = useState(() => new Set()); // painéis de métricas abertos na lista
   const [view, setView] = useState({ mode: "list" }); // list | edit | subs
   const [toast, setToast] = useState(null);
 
@@ -52,6 +53,8 @@ function FormsScreen({ saasId }) {
     // Métricas de funil (30d) por form publicado — visitas e conversão da lista.
     const since = new Date(Date.now() - 30 * 86400e3).toISOString();
     const pub = fs.filter((f) => f.status === "published");
+    // O form principal (1º publicado) já abre com o painel de métricas à vista.
+    setOpenMetrics((prev) => (prev.size ? prev : new Set(pub.slice(0, 1).map((f) => f.id))));
     const results = await Promise.allSettled(pub.map((f) => api.formFunnel(f.id, since)));
     const st = {};
     results.forEach((r, i) => { if (r.status === "fulfilled") st[pub[i].id] = { views: r.value.views, submits: r.value.submits }; });
@@ -92,9 +95,7 @@ function FormsScreen({ saasId }) {
   if (view.mode === "subs") return (
     <SubmissionsView form={view.form} onBack={() => setView({ mode: "list" })} />
   );
-  if (view.mode === "funnel") return (
-    <FunnelView form={view.form} onBack={() => setView({ mode: "list" })} />
-  );
+
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -117,8 +118,11 @@ function FormsScreen({ saasId }) {
             </div>
             {forms.map((f) => {
               const pub = f.status === "published";
+              const mOpen = openMetrics.has(f.id);
+              const toggleMetrics = () => setOpenMetrics((prev) => { const n = new Set(prev); n.has(f.id) ? n.delete(f.id) : n.add(f.id); return n; });
               return (
-                <div key={f.id} style={{ display: "grid", gridTemplateColumns: "1fr 100px 74px 90px 90px 84px 360px", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", fontSize: 13 }}>
+                <React.Fragment key={f.id}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 74px 90px 90px 84px 360px", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", fontSize: 13 }}>
                   <span style={{ fontWeight: 500 }}>{f.name || f.id}</span>
                   <span><span className={"chip " + (pub ? "pos" : "")} style={{ height: 20 }}>{pub ? "publicado" : "rascunho"}</span></span>
                   <span className="mono tnum dim">{(f.questions || []).length}</span>
@@ -139,12 +143,18 @@ function FormsScreen({ saasId }) {
                     <button onClick={() => copy(embedSnippet(f), "Snippet de embed copiado")} disabled={!pub} title="Copiar código de embed" style={{ ...chromeBtnStyleSmall, opacity: pub ? 1 : 0.45 }}>
                       <span style={{ fontSize: 11 }}>embed</span>
                     </button>
-                    <button onClick={() => setView({ mode: "funnel", form: f })} title="Funil de drop-off por etapa" style={chromeBtnStyleSmall}>
-                      <span style={{ fontSize: 11 }}>funil</span>
+                    <button onClick={toggleMetrics} title="Métricas do form: visitas, teste A/B e funil de drop-off" style={{ ...chromeBtnStyleSmall, ...(mOpen ? { borderColor: "var(--accent-line)", color: "var(--accent)" } : {}) }}>
+                      <span style={{ fontSize: 11 }}>métricas {mOpen ? "▴" : "▾"}</span>
                     </button>
                     <RowActions onEdit={() => setView({ mode: "edit", form: f })} onDelete={() => openDelete("forms", f)} />
                   </span>
                 </div>
+                {mOpen && (
+                  <div style={{ padding: "14px 14px 18px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+                    <FormMetricsPanel form={f} />
+                  </div>
+                )}
+                </React.Fragment>
               );
             })}
           </div>
@@ -706,7 +716,10 @@ function championVerdicts(variants) {
 
 const FUNNEL_PERIODS = [["7", "7 dias"], ["30", "30 dias"], ["90", "90 dias"], ["", "tudo"]];
 
-function FunnelView({ form, onBack }) {
+// Painel de métricas do form, embutido na LISTA (o Leo pediu tudo à vista na
+// página principal): tiles do período + teste A/B com vereditos + funil de
+// drop-off. Cada painel busca o próprio funil e tem filtro de período próprio.
+function FormMetricsPanel({ form }) {
   const [data, setData] = useState(null);
   const [days, setDays] = useState("30");
 
@@ -723,28 +736,39 @@ function FunnelView({ form, onBack }) {
     { label: "Enviou o form", sessions: data.submits, mono: true },
   ] : [];
   const top = rows.length ? Math.max(rows[0].sessions, 1) : 1;
+  const pct = (a, b) => (b > 0 ? ((a / b) * 100).toFixed(1).replace(".", ",") + "%" : "0%");
+  const tile = (label, value, sub) => (
+    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "9px 12px", background: "var(--bg-1)" }}>
+      <span className="mono" style={{ display: "block", fontSize: 9.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-4)" }}>{label}</span>
+      <span className="tnum" style={{ display: "block", fontFamily: "var(--display)", fontSize: 20, fontWeight: 700, marginTop: 2 }}>{value}</span>
+      {sub && <span className="mono" style={{ display: "block", fontSize: 10, color: "var(--fg-4)", marginTop: 1 }}>{sub}</span>}
+    </div>
+  );
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <div style={{ padding: "12px var(--pad-x)", borderBottom: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 12 }}>
-        <button onClick={onBack} style={chromeBtnStyleSmall}><span style={{ fontSize: 12 }}>← forms</span></button>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 15, fontWeight: 500 }}>{form.name}</div>
-          <div className="mono dim" style={{ fontSize: 11 }}>funil de drop-off por etapa</div>
-        </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          {FUNNEL_PERIODS.map(([v, label]) => (
-            <button key={v} onClick={() => setDays(v)} className="mono" style={{
-              height: 24, padding: "0 10px", borderRadius: "var(--r-2)", fontSize: 11,
-              border: "1px solid " + (days === v ? "var(--line-strong)" : "var(--line-1)"),
-              background: days === v ? "var(--bg-3)" : "var(--bg-2)",
-              color: days === v ? "var(--fg-1)" : "var(--fg-3)",
-            }}>{label}</button>
-          ))}
-        </div>
+    <div style={{ maxWidth: 780 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+        <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)", flex: 1 }}>Métricas · {form.name}</span>
+        {FUNNEL_PERIODS.map(([v, label]) => (
+          <button key={v} onClick={() => setDays(v)} className="mono" style={{
+            height: 24, padding: "0 10px", borderRadius: "var(--r-2)", fontSize: 11,
+            border: "1px solid " + (days === v ? "var(--line-strong)" : "var(--line-1)"),
+            background: days === v ? "var(--bg-3)" : "var(--bg-2)",
+            color: days === v ? "var(--fg-1)" : "var(--fg-3)",
+          }}>{label}</button>
+        ))}
       </div>
 
-      <div style={{ flex: 1, overflow: "auto", padding: "20px var(--pad-x)" }}>
+      {data && !data.error && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, marginBottom: 12 }}>
+          {tile(`Visitas${days ? ` · ${days}d` : ""}`, window.fmt.int(data.views))}
+          {tile("Começaram", window.fmt.int(data.starts), pct(data.starts, data.views) + " das visitas")}
+          {tile("Enviaram", window.fmt.int(data.submits), pct(data.submits, Math.max(data.starts, 1)) + " dos que começaram")}
+          {tile("Conversão", pct(data.submits, data.views), "envios ÷ visitas")}
+        </div>
+      )}
+
+      <div>
         {!data && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
         {data?.error && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>Falha ao carregar o funil.</div>}
         {data && !data.error && !rows[0].sessions && (
