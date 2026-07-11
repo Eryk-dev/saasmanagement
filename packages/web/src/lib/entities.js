@@ -21,13 +21,15 @@ const saasOptions = (values) => {
 };
 const peopleOptions = () => Object.values(window.SEED?.PEOPLE || {}).map((p) => ({ value: p.id, label: p.name }));
 // Usuários do time (com roles) — donos/closers dos leads. Fallback PEOPLE pra
-// instância sem /auth/users carregado.
+// instância sem /auth/users carregado. Mesmo escopo de workspace dos pickers
+// do pipeline (lib/users.js): `saas` preenchido restringe ao produto ativo.
+const userInWorkspace = (u) => !u.saas || u.saas === getActiveSaasId();
 const userOptions = () => {
-  const users = window.SEED?.USERS || [];
+  const users = (window.SEED?.USERS || []).filter(userInWorkspace);
   return users.length ? users.map((u) => ({ value: u.id, label: u.name || u.id })) : peopleOptions();
 };
 const usersWithRole = (role) => () => {
-  const users = (window.SEED?.USERS || []).filter((u) => (u.roles || []).includes(role));
+  const users = (window.SEED?.USERS || []).filter((u) => (u.roles || []).includes(role) && userInWorkspace(u));
   return users.length ? users.map((u) => ({ value: u.id, label: u.name || u.id })) : userOptions();
 };
 const stageOptions = (v) => {

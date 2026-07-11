@@ -285,6 +285,7 @@ const ROLE_OPTS = [
 ];
 
 function TeamSettings() {
+  const { SAAS } = window.SEED;
   const [users, setUsers] = useStS(null);
   const [saving, setSaving] = useStS("");
   const [invite, setInvite] = useStS(null); // { name, password }
@@ -302,6 +303,15 @@ function TeamSettings() {
     setSaving("");
   }
 
+  // Escopo de produto: vazio = aparece nos pickers de TODOS os workspaces;
+  // preenchido = só no workspace daquele produto (ex.: Ana só na UniqueKids).
+  async function setUserSaas(u, saas) {
+    setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, saas } : x)));
+    setSaving(u.id);
+    try { await api.updateUser(u.id, { saas }); } catch (e) { console.warn("produto não salvo:", e.message); load(); }
+    setSaving("");
+  }
+
   async function createUser() {
     if (!invite?.name || !invite?.password) return;
     try {
@@ -315,13 +325,14 @@ function TeamSettings() {
     <div>
       <SettingHeader title="Equipe & papéis" sub="quem aparece nos pickers de SDR/closer/integração do pipeline · papel ≠ permissão (todos são admin na v1)" />
       <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
-        <div className="mono" style={{ display: "grid", gridTemplateColumns: "1fr repeat(3, 110px)", gap: 8, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
+        <div className="mono" style={{ display: "grid", gridTemplateColumns: "1fr repeat(3, 110px) 140px", gap: 8, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
           <span>Usuário</span>
           {ROLE_OPTS.map(([k, l, hint]) => <span key={k} title={hint} style={{ textAlign: "center" }}>{l}</span>)}
+          <span title="Vazio = aparece nos pickers de todos os produtos; preenchido = só no workspace daquele produto">Produto</span>
         </div>
         {users === null && <div className="mono dim" style={{ padding: "12px 14px", fontSize: 12 }}>carregando…</div>}
         {Array.isArray(users) && users.map((u) => (
-          <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1fr repeat(3, 110px)", gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
+          <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1fr repeat(3, 110px) 140px", gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 500 }}>
               <Avatar id={u.id} name={u.name} size={22} /> {u.name || u.id}
               <span className="mono dim" style={{ fontSize: 10 }}>{u.id}</span>
@@ -331,6 +342,10 @@ function TeamSettings() {
                 <input type="checkbox" checked={(u.roles || []).includes(k)} onChange={() => toggleRole(u, k)} style={{ accentColor: "var(--accent)", width: 15, height: 15, cursor: "pointer" }} />
               </span>
             ))}
+            <select value={u.saas || ""} onChange={(e) => setUserSaas(u, e.target.value)} style={{ ...inputStyle, height: 26, fontSize: 12 }}>
+              <option value="">todos os produtos</option>
+              {SAAS.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>
           </div>
         ))}
       </div>

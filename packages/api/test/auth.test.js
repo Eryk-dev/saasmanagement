@@ -167,3 +167,37 @@ test("roles: create sanitiza, list expõe, PATCH edita e reseta senha", async (t
   assert.equal((await app.inject({ method: "PATCH", url: `/api/auth/users/${created.id}`, payload: { password: "ab" } })).statusCode, 400);
   assert.equal((await app.inject({ method: "PATCH", url: "/api/auth/users/nao-existe", payload: { roles: [] } })).statusCode, 404);
 });
+
+test("saas do usuário: escopo por produto (ex.: Ana só na UniqueKids), vazio = todos", async (t) => {
+  const repo = makeMemRepo();
+  const app = Fastify();
+  registerRoutes(app, repo);
+  t.after(() => app.close());
+
+  // create com saas (sanitizado pra minúsculas/trim) e exposto na listagem
+  const ana = (await app.inject({
+    method: "POST", url: "/api/auth/users",
+    payload: { id: "ana", name: "Ana", password: "abcd", roles: ["closer"], saas: " UniqueKids " },
+  })).json();
+  assert.equal(ana.saas, "uniquekids");
+
+  const listed = (await app.inject({ url: "/api/auth/users" })).json();
+  assert.equal(listed.find((u) => u.id === "ana").saas, "uniquekids");
+
+  // usuário sem saas volta "" (todos os produtos)
+  const leo = (await app.inject({
+    method: "POST", url: "/api/auth/users",
+    payload: { id: "leo", name: "Leo", password: "abcd", roles: ["closer"] },
+  })).json();
+  assert.equal(leo.saas, "");
+
+  // PATCH muda o escopo; "" limpa (volta a valer pra todos)
+  const patched = (await app.inject({
+    method: "PATCH", url: "/api/auth/users/ana", payload: { saas: "leverads" },
+  })).json();
+  assert.equal(patched.saas, "leverads");
+  const cleared = (await app.inject({
+    method: "PATCH", url: "/api/auth/users/ana", payload: { saas: "" },
+  })).json();
+  assert.equal(cleared.saas, "");
+});

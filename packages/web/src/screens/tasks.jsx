@@ -72,6 +72,10 @@ function TasksScreen() {
   const columns = board?.columns?.length ? board.columns : DEFAULT_COLUMNS;
   const colKeyOf = (t) => columns.some((c) => c.key === t.column) ? t.column : columns[0].key;
 
+  // Time do workspace: usuário com `saas` de outro produto não aparece como
+  // responsável/filtro aqui (ex.: Ana é só da UniqueKids).
+  const teamUsers = users.filter((u) => !u.saas || u.saas === activeProduct?.id);
+
   async function saveColumns(cols) {
     const saved = board
       ? await api.update("task_boards", board.id, { columns: cols })
@@ -129,7 +133,7 @@ function TasksScreen() {
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <select value={fAssignee} onChange={(e) => setFAssignee(e.target.value)} style={{ ...inputStyle, width: "auto", height: 26, fontSize: 12 }}>
             <option value="all">todos responsáveis</option>
-            {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            {teamUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar…" style={{ ...inputStyle, width: 160, height: 26, fontSize: 12 }} />
         </div>
@@ -149,7 +153,7 @@ function TasksScreen() {
             <TaskColumn key={col.key}
               col={col} idx={i} count={columns.length}
               cards={byColumn[col.key] || []}
-              users={users}
+              users={teamUsers}
               dragging={dragging} setDragging={setDragging}
               onDrop={(beforeId) => { if (dragging) moveTask(dragging, col.key, beforeId); setDragging(null); }}
               onOpen={(t) => setModal({ task: t, column: col.key })}
@@ -177,7 +181,7 @@ function TasksScreen() {
           presetColumn={modal.column}
           presetSaas={activeProduct?.id || ""}
           columns={columns}
-          users={users}
+          users={teamUsers}
           onSave={saveTask}
           onDelete={(t) => { setModal(null); openDelete("tasks", t); }}
           onComment={(t, saved) => setTasks((prev) => prev.map((x) => x.id === saved.id ? saved : x))}

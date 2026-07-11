@@ -47,8 +47,12 @@ export async function ensureDefaultAdmins(repo) {
 // funil (quem aparece nos pickers de SDR/closer/integrador) — NÃO é ACL.
 export const ROLE_TAGS = ["sdr", "closer", "integrator"];
 const sanitizeRoles = (x) => (Array.isArray(x) ? x.filter((r) => ROLE_TAGS.includes(r)) : []);
+// `saas` = escopo de produto: vazio = time de TODOS os produtos; preenchido =
+// só aparece nos pickers do workspace daquele produto (ex.: Ana atende só a
+// UniqueKids). Também não é ACL — o login continua global.
+const sanitizeSaas = (x) => String(x || "").trim().toLowerCase();
 
-const publicUser = (u) => ({ id: u.id, name: u.name, role: u.role || "admin", roles: Array.isArray(u.roles) ? u.roles : [] });
+const publicUser = (u) => ({ id: u.id, name: u.name, role: u.role || "admin", roles: Array.isArray(u.roles) ? u.roles : [], saas: u.saas || "" });
 
 // Token de sessão → usuário (null se inexistente/expirado).
 export async function sessionUser(repo, token) {
@@ -137,12 +141,13 @@ export function registerAuthRoutes(app, repo) {
   app.get("/api/auth/users", async () => (await repo.list("users")).map(publicUser));
 
   app.post("/api/auth/users", async (req, reply) => {
-    const { name, password, id, roles } = req.body || {};
+    const { name, password, id, roles, saas } = req.body || {};
     if (!name || !password) return reply.code(400).send({ error: "name e password obrigatórios" });
     const created = await repo.create("users", {
       ...(id ? { id: String(id).toLowerCase() } : {}),
       name, role: "admin",
       roles: sanitizeRoles(roles),
+      ...(saas ? { saas: sanitizeSaas(saas) } : {}),
       passwordHash: hashPassword(password),
       createdAt: new Date().toISOString(),
     });
@@ -156,10 +161,12 @@ export function registerAuthRoutes(app, repo) {
   app.patch("/api/auth/users/:id", async (req, reply) => {
     const user = await repo.get("users", req.params.id);
     if (!user) return reply.code(404).send({ error: "Not found" });
-    const { name, roles, password } = req.body || {};
+    const { name, roles, password, saas } = req.body || {};
     const patch = {};
     if (typeof name === "string" && name.trim()) patch.name = name.trim();
     if (roles !== undefined) patch.roles = sanitizeRoles(roles);
+    if (saas !== undefined) patch.saas = sanitizeSaas(saas); // "" volta a valer pra todos
+
     if (password !== undefined) {
       if (!password || String(password).length < 4) return reply.code(400).send({ error: "senha nova precisa de 4+ caracteres" });
       patch.passwordHash = hashPassword(password);
