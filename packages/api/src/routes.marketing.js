@@ -322,7 +322,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       .filter((r) => r.saas === product.id && r.date >= since && r.date <= until)
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
     const leads = (await repo.list("leads"))
-      .filter((l) => l.saas === product.id && l.createdAt && dayStr(l.createdAt) >= since && dayStr(l.createdAt) <= until);
+      .filter((l) => l.saas === product.id && !l.internal && l.createdAt && dayStr(l.createdAt) >= since && dayStr(l.createdAt) <= until);
 
     // Visitas no form (páginas públicas do produto, sessões únicas no período):
     // o topo REAL do funil de aquisição, antes do lead existir.

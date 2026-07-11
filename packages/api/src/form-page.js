@@ -24,11 +24,27 @@ const escAttr = (s) => String(s).replace(/"/g, "&quot;").replace(/</g, "&lt;");
 // vez tem o default legado do lever-ads). Sem CAPI server-side aqui, então é
 // só client-side: PageView no load + evento Lead no submit (sem eventID/dedup).
 const META_PIXEL_ID = process.env.META_PIXEL_ID || "971201888623790";
+// Tráfego INTERNO (Leo/equipe) não pode sujar funil, A/B nem o Pixel. Como o
+// cockpit e o form dividem a mesma origem, navegador logado (cockpit_key no
+// localStorage) se auto-exclui; ?equipe=1 marca navegadores que não logam
+// (videomaker etc.) e ?equipe=0 desmarca. Roda ANTES do pixel.
+const internalHead = `<script>
+(function () {
+  try {
+    var q = new URLSearchParams(location.search);
+    var v = q.get('equipe');
+    if (v === '1' || v === '0') localStorage.setItem('fe_equipe', v);
+    window.__INTERNAL__ = localStorage.getItem('fe_equipe') === '1' || !!localStorage.getItem('cockpit_key');
+  } catch (e) { window.__INTERNAL__ = false; }
+})();
+</script>`;
+
 const metaPixelHead = (pixelId) => {
   const id = String(pixelId || "").replace(/\D/g, "") || META_PIXEL_ID;
   return id
-    ? `<!-- Meta Pixel -->
+    ? `<!-- Meta Pixel (não dispara pra equipe — __INTERNAL__) -->
 <script>
+if (!window.__INTERNAL__) {
 !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
 n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
 n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
@@ -36,6 +52,7 @@ t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
 document,'script','https://connect.facebook.net/en_US/fbevents.js');
 fbq('init', '${id}');
 fbq('track', 'PageView');
+}
 </script>
 <noscript><img height="1" width="1" style="display:none"
 src="https://www.facebook.com/tr?id=${id}&ev=PageView&noscript=1"></noscript>
@@ -84,6 +101,7 @@ export function formPageHtml(form, { embed = false, preview = false, pixelId = "
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="${fontHref(font)}" rel="stylesheet">
+${internalHead}
 ${metaPixelHead(pixelId)}
 <style>
   :root {
@@ -307,7 +325,7 @@ ${metaPixelHead(pixelId)}
 
   var trackSent = {};
   function track(event, key) {
-    if (window.__PREVIEW__) return; // preview do builder não polui o funil
+    if (window.__PREVIEW__ || window.__INTERNAL__) return; // preview/equipe não poluem o funil
     var mark = event + ':' + (key || '');
     if (trackSent[mark]) return;
     trackSent[mark] = true;
@@ -316,6 +334,16 @@ ${metaPixelHead(pixelId)}
       var url = '/public/forms/' + encodeURIComponent(F.id) + '/events';
       if (navigator.sendBeacon) navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
       else fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body, keepalive: true });
+    } catch (e) {}
+  }
+
+  if (window.__INTERNAL__ && !window.__PREVIEW__) {
+    try {
+      var tag = document.createElement('div');
+      tag.textContent = 'modo equipe · sem rastreio';
+      tag.style.cssText = 'position:fixed;bottom:10px;right:12px;z-index:99;font:600 10px/1 monospace;letter-spacing:.06em;padding:5px 9px;border-radius:999px;background:rgba(0,0,0,.55);color:#9ff;opacity:.75;pointer-events:none';
+      document.addEventListener('DOMContentLoaded', function () { document.body.appendChild(tag); });
+      if (document.body) document.body.appendChild(tag);
     } catch (e) {}
   }
 
@@ -632,6 +660,7 @@ ${metaPixelHead(pixelId)}
       utm: UTM,
       variant: VARIANT || undefined,
       pain: window.__PAIN__ || undefined,
+      internal: window.__INTERNAL__ || undefined,
     };
     fetch('/public/forms/' + encodeURIComponent(F.id) + '/submissions', {
       method: 'POST',
