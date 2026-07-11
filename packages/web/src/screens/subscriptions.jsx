@@ -31,6 +31,9 @@ function SubscriptionsScreen({ saasId }) {
   const { SAAS, CUSTOMERS } = window.SEED;
   const { version, refresh, openForm, openDelete } = useData();
   const [active, setActive] = useState(saasId || SAAS[0]?.id);
+  // Embutida em Clientes (saasId controlado): segue o produto da tela-mãe e
+  // não mostra seletor próprio — um seletor de SaaS por tela basta.
+  useEffect(() => { if (saasId) setActive(saasId); }, [saasId]);
   const [tab, setTab] = useState("subs"); // subs | invoices | plans
   const [subs, setSubs] = useState([]);
   const [invoices, setInvoices] = useState([]);
@@ -104,7 +107,7 @@ function SubscriptionsScreen({ saasId }) {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ padding: "12px var(--pad-x)", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {SAAS.length > 1 && (
+          {!saasId && SAAS.length > 1 && (
             <div style={{ display: "flex", gap: 6 }}>
               {SAAS.map((x) => (
                 <button key={x.id} onClick={() => setActive(x.id)} style={{
@@ -117,7 +120,7 @@ function SubscriptionsScreen({ saasId }) {
               ))}
             </div>
           )}
-          {SAAS.length > 1 && <span style={{ color: "var(--line-2)" }}>·</span>}
+          {!saasId && SAAS.length > 1 && <span style={{ color: "var(--line-2)" }}>·</span>}
           <TabBtn k="subs" label={`Assinaturas (${subs.length})`} />
           <TabBtn k="invoices" label={`Faturas (${invoices.length})`} />
           <TabBtn k="plans" label={`Planos (${plans.length})`} />

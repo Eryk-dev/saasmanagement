@@ -19,25 +19,29 @@
 const escJson = (obj) => JSON.stringify(obj).replace(/</g, "\\u003c");
 const escAttr = (s) => String(s).replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
-// Meta Pixel da página de conversão. Mesmo ID usado no funil do lever-ads;
-// override por ambiente via META_PIXEL_ID. Sem CAPI server-side aqui, então é
+// Meta Pixel da página de conversão. O pixel é POR PRODUTO (product.metaPixelId,
+// editado em Ajustes → Integrações); fallback no env META_PIXEL_ID (que por sua
+// vez tem o default legado do lever-ads). Sem CAPI server-side aqui, então é
 // só client-side: PageView no load + evento Lead no submit (sem eventID/dedup).
 const META_PIXEL_ID = process.env.META_PIXEL_ID || "971201888623790";
-const metaPixelHead = META_PIXEL_ID
-  ? `<!-- Meta Pixel -->
+const metaPixelHead = (pixelId) => {
+  const id = String(pixelId || "").replace(/\D/g, "") || META_PIXEL_ID;
+  return id
+    ? `<!-- Meta Pixel -->
 <script>
 !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
 n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
 n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
 t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
 document,'script','https://connect.facebook.net/en_US/fbevents.js');
-fbq('init', '${META_PIXEL_ID}');
+fbq('init', '${id}');
 fbq('track', 'PageView');
 </script>
 <noscript><img height="1" width="1" style="display:none"
-src="https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1"></noscript>
+src="https://www.facebook.com/tr?id=${id}&ev=PageView&noscript=1"></noscript>
 <!-- End Meta Pixel -->`
-  : "";
+    : "";
+};
 
 // Marca padrão de todo formulário: o ícone Lever (círculo + seta), versão branca
 // pro fundo escuro. Usado quando o tema do form não define um logoUrl próprio.
@@ -54,7 +58,7 @@ const fontHref = (font) => {
   return `https://fonts.googleapis.com/css2?family=${enc}:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap`;
 };
 
-export function formPageHtml(form, { embed = false, preview = false } = {}) {
+export function formPageHtml(form, { embed = false, preview = false, pixelId = "" } = {}) {
   const t = form.theme || {};
   const bg = t.bg || "#0f1115";
   const surface = t.surface || "color-mix(in oklab, #ffffff 5%, transparent)";
@@ -80,7 +84,7 @@ export function formPageHtml(form, { embed = false, preview = false } = {}) {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="${fontHref(font)}" rel="stylesheet">
-${metaPixelHead}
+${metaPixelHead(pixelId)}
 <style>
   :root {
     --bg: ${bg}; --surface: ${surface}; --fg: ${fg};

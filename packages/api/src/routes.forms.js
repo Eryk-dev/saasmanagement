@@ -117,7 +117,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // do Pixel. IP/UA vêm da request. PII (email/phone) é hasheada no módulo.
     // Best-effort: nenhuma falha de CAPI pode quebrar o envio do form.
     // Desqualificado NÃO conta como conversão (espelha o Pixel client-side).
-    if (!disqualified && metaCapi?.configured()) {
+    if (!disqualified && metaCapi?.configured(product?.metaPixelId)) {
       try {
         await metaCapi.sendLead({
           eventId: body.eventId || submission.id,
@@ -130,6 +130,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
           clientIp: clientIp(req),
           userAgent: String(req.headers["user-agent"] || "") || undefined,
           customData: { content_name: form.name },
+          pixelId: product?.metaPixelId || undefined, // pixel do SaaS do form (fallback env)
         });
       } catch (err) {
         req.log?.warn?.({ err }, "meta_capi.sendLead falhou (envio do form segue)");
@@ -221,7 +222,9 @@ export function registerFormRoutes(app, repo, opts = {}) {
       return reply.code(404).type("text/html").send("<!doctype html><meta charset=utf-8><title>404</title><p style='font-family:system-ui;padding:40px'>Formulário não encontrado.</p>");
     }
     const embed = req.query.embed === "1" || req.query.embed === "true";
-    return reply.type("text/html").send(formPageHtml(publicForm(form), { embed }));
+    // Pixel por produto: o form dispara o pixel do SaaS dele (fallback env).
+    const product = form.saas ? await repo.get("products", form.saas) : null;
+    return reply.type("text/html").send(formPageHtml(publicForm(form), { embed, pixelId: product?.metaPixelId || "" }));
   });
 
   app.get("/embed.js", async (_req, reply) => reply.type("text/javascript").send(EMBED_JS));

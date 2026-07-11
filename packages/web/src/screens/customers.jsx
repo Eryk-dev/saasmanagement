@@ -6,6 +6,7 @@ import { EmptyState, PrimaryButton, RowActions } from "../atoms.jsx";
 import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/milestones.js";
 import { ActivityList } from "../components/timeline.jsx";
 import { SubscriptionsScreen } from "./subscriptions.jsx";
+import { SaasTabs } from "../components/saas-tabs.jsx";
 // Clientes — a base ativa do produto (estilo Attio: tabela + painel de detalhe
 // sem trocar de página). A receita vem das assinaturas (customer.arr é
 // derivado). Pós-venda: linha do tempo de marcos por tempo de casa
@@ -26,7 +27,8 @@ const SUB_STATUS = {
 function CustomersScreen({ initialTab = "base" }) {
   const { SAAS, CUSTOMERS } = window.SEED;
   const { version, openForm, openDelete, refresh } = useData();
-  const product = SAAS[0];
+  const [activeSaas, setActiveSaas] = useState(null);
+  const product = SAAS.find((s) => s.id === activeSaas) || SAAS[0];
   const [tab, setTab] = useState(initialTab); // base | billing
   const [subs, setSubs] = useState([]);
   const [plans, setPlans] = useState([]);
@@ -75,9 +77,10 @@ function CustomersScreen({ initialTab = "base" }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Clientes" sub={`${customers.length} ${customers.length === 1 ? "ativo" : "ativos"} · MRR ${money(totalMrr)}`}>
+        <SaasTabs active={product.id} onSelect={setActiveSaas} />
         <TabBtn k="base" label="Clientes" />
         <TabBtn k="billing" label="Assinaturas" />
-        {tab === "base" && <PrimaryButton onClick={() => openForm("customers")}>+ novo cliente</PrimaryButton>}
+        {tab === "base" && <PrimaryButton onClick={() => openForm("customers", { saas: product.id })}>+ novo cliente</PrimaryButton>}
       </PageHead>
 
       {tab === "billing" && <SubscriptionsScreen saasId={product.id} />}

@@ -11,6 +11,7 @@ import {
 import { usersByRole, userTone, displayName, currentUser } from "../lib/users.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 import { useAttribution, leadPain } from "../lib/pains.js";
+import { SaasTabs } from "../components/saas-tabs.jsx";
 // Pipeline — Kanban + List + Agenda + Análise. Drag-and-drop between columns.
 // Funil unificado: os LEADS são os cards do pipeline (window.SEED.LEADS). Cada
 // lead já carrega seu `saas` + `stage`. Uma cópia local deixa o drag-and-drop
@@ -24,7 +25,7 @@ const { useState: useStP, useMemo: useMP, useEffect: useEfP } = React;
 function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   const { SAAS } = window.SEED;
   const { openForm } = useData();
-  const [activeSaas, setActiveSaas] = useStP(saasId || "leverads");
+  const [activeSaas, setActiveSaas] = useStP(saasId || SAAS[0]?.id);
   // Aba ativa persistida (localStorage): sobrevive ao refresh da página e à
   // remontagem da tela quando o tempo real recarrega o SEED. "forecast" é o
   // nome antigo da aba Análise — alias pra não perder a preferência salva.
@@ -219,27 +220,6 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           }}
         />
       )}
-    </div>
-  );
-}
-
-function SaasTabs({ active, onSelect }) {
-  const { SAAS } = window.SEED;
-  if (SAAS.length <= 1) return null; // 1 produto: aba é ruído (volta sozinha com o 2º SaaS)
-  return (
-    <div style={{ display: "flex", gap: 2, padding: 2, background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)" }}>
-      {SAAS.map(s => (
-        <button key={s.id} onClick={() => onSelect(s.id)} style={{
-          padding: "4px 10px", borderRadius: 4,
-          background: active === s.id ? "var(--bg-0)" : "transparent",
-          color: active === s.id ? "var(--fg-1)" : "var(--fg-3)",
-          fontSize: 12, fontWeight: 500,
-          border: active === s.id ? "1px solid var(--line-2)" : "1px solid transparent",
-        }}>
-          <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 2, background: window.productTone(s), marginRight: 6 }} />
-          {s.name}
-        </button>
-      ))}
     </div>
   );
 }
