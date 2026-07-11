@@ -8,6 +8,7 @@
 
 import { randomUUID } from "node:crypto";
 import { publicForm, validateAnswers, leadFromSubmission, submissionTerminal, makeRateLimiter, buildSteps } from "./forms.js";
+import { painCode } from "./routes.marketing.js";
 import { formPageHtml, EMBED_JS } from "./form-page.js";
 import { CREATE_DEFAULTS, dispatchProposal, publicBase } from "./routes.js";
 import { stageByKind, firstStage } from "./stages.js";
@@ -77,6 +78,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
 
     const utm = sanitizeUtm(body.utm);
     const variant = String(body.variant || "").slice(0, 40); // versão da welcome que converteu
+    const pain = String(body.pain || "").slice(0, 8);         // dor da welcome mostrada
     // Desqualificado vai pro estágio de kind `desqualificado` do funil (perda
     // estruturada, com motivo); fallback legado "disqualified" quando o produto/
     // funil não existe. Lead qualificado nasce com o próximo toque do GPS marcado
@@ -112,6 +114,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
       answers,
       ...(utm ? { utm } : {}),
       ...(variant ? { variant } : {}),
+      ...(pain ? { pain } : {}),
       createdAt: new Date().toISOString(),
       ua: String(req.headers["user-agent"] || "").slice(0, 300),
     });
@@ -174,6 +177,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
     const session = String(body.session || "").slice(0, 64);
     const key = String(body.key || "").slice(0, 80);
     const variant = String(body.variant || "").slice(0, 40); // teste A/B da welcome
+    const pain = String(body.pain || "").slice(0, 8);         // dor do anúncio de origem
     if (!EVENT_TYPES.has(event) || !session) return reply.code(400).send({ error: "Evento inválido" });
     if (event === "step" && !(form.questions || []).some((q) => q.key === key)) {
       return reply.code(400).send({ error: "Etapa desconhecida" });
@@ -188,6 +192,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
       event,
       key: event === "step" ? key : "",
       ...(variant ? { variant } : {}),
+      ...(pain ? { pain } : {}),
       createdAt: new Date().toISOString(),
       ua: String(req.headers["user-agent"] || "").slice(0, 300),
     });
@@ -209,11 +214,16 @@ export function registerFormRoutes(app, repo, opts = {}) {
     const steps = buildSteps(questions).map((idxs) => questions[idxs[0]]);
     // Teste A/B: sessões carimbadas com variante viram um funil paralelo por
     // versão da welcome (view → start → submit). Sem variantes, o array some.
-    const variantIds = [...new Set(events.map((e) => e.variant || "").filter(Boolean))].sort();
-    const variants = variantIds.map((vid) => {
-      const mine = new Set(events.filter((e) => (e.variant || "") === vid).map((e) => e.session));
-      const vu = (ev) => new Set(events.filter((e) => (e.variant || "") === vid && e.event === ev).map((e) => e.session)).size;
-      return { id: vid, sessions: mine.size, views: vu("view"), starts: vu("start"), submits: vu("submit") };
+    const groupKeys = [...new Set(events.filter((e) => e.variant).map((e) => `${e.pain || ""}|${e.variant}`))].sort();
+    const variants = groupKeys.map((gk) => {
+      const [pain, vid] = gk.split("|");
+      const mine = (e) => (e.variant || "") === vid && (e.pain || "") === pain;
+      const vu = (ev) => new Set(events.filter((e) => mine(e) && e.event === ev).map((e) => e.session)).size;
+      return {
+        id: vid, ...(pain ? { pain } : {}),
+        sessions: new Set(events.filter(mine).map((e) => e.session)).size,
+        views: vu("view"), starts: vu("start"), submits: vu("submit"),
+      };
     });
     return {
       views: uniq((e) => e.event === "view"),
@@ -229,6 +239,25 @@ export function registerFormRoutes(app, repo, opts = {}) {
     };
   });
 
+  // Dor do anúncio de origem: utm_content = ad id → nome do anúncio (insights
+  // sincronizados) → código "[X]". "" quando não dá pra resolver (sem utm, ad
+  // ainda sem sync) — a página cai na welcome base.
+  async function adPainOf(content) {
+    if (!content) return "";
+    const row = (await repo.list("ad_insights")).find((r) => String(r.adId || "") === String(content));
+    return row ? (painCode(row.adName) || "") : "";
+  }
+  // welcome específica da dor sobrescreve a base (título/CTA/variantes da dor);
+  // byPain nunca vai pro client inteiro — só a versão já resolvida.
+  function resolveWelcome(pf, pain) {
+    const w = pf.welcome;
+    if (!w) return pf;
+    const byPain = w.byPain || {};
+    const chosen = pain && byPain[pain] ? { ...w, ...byPain[pain] } : w;
+    const { byPain: _drop, ...clean } = chosen;
+    return { ...pf, welcome: clean };
+  }
+
   // Página hospedada. `?embed=1` = modo iframe (sem altura cheia, posta a altura).
   app.get("/f/:id", async (req, reply) => {
     const form = await publishedForm(req.params.id);
@@ -238,7 +267,8 @@ export function registerFormRoutes(app, repo, opts = {}) {
     const embed = req.query.embed === "1" || req.query.embed === "true";
     // Pixel por produto: o form dispara o pixel do SaaS dele (fallback env).
     const product = form.saas ? await repo.get("products", form.saas) : null;
-    return reply.type("text/html").send(formPageHtml(publicForm(form), { embed, pixelId: product?.metaPixelId || "" }));
+    const pain = await adPainOf(String(req.query.utm_content || ""));
+    return reply.type("text/html").send(formPageHtml(resolveWelcome(publicForm(form), pain), { embed, pixelId: product?.metaPixelId || "", pain }));
   });
 
   app.get("/embed.js", async (_req, reply) => reply.type("text/javascript").send(EMBED_JS));
@@ -249,6 +279,6 @@ export function registerFormRoutes(app, repo, opts = {}) {
   app.post("/api/forms/preview", async (req, reply) => {
     const draft = req.body && typeof req.body === "object" ? req.body : null;
     if (!draft) return reply.code(400).send({ error: "JSON body required" });
-    return { html: formPageHtml(publicForm(draft), { embed: false, preview: true }) };
+    return { html: formPageHtml(resolveWelcome(publicForm(draft), ""), { embed: false, preview: true }) };
   });
 }

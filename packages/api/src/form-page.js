@@ -58,7 +58,7 @@ const fontHref = (font) => {
   return `https://fonts.googleapis.com/css2?family=${enc}:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap`;
 };
 
-export function formPageHtml(form, { embed = false, preview = false, pixelId = "" } = {}) {
+export function formPageHtml(form, { embed = false, preview = false, pixelId = "", pain = "" } = {}) {
   const t = form.theme || {};
   const bg = t.bg || "#0f1115";
   const surface = t.surface || "color-mix(in oklab, #ffffff 5%, transparent)";
@@ -240,7 +240,7 @@ ${metaPixelHead(pixelId)}
 <div class="atmos"></div>
 <div class="shell"><div id="root"></div></div>
 <input class="hp" id="hp" name="website" tabindex="-1" autocomplete="off">
-<script>window.__FORM__ = ${escJson(form)}; window.__EMBED__ = ${embed ? "true" : "false"}; window.__PREVIEW__ = ${preview ? "true" : "false"}; window.__LOGO__ = ${escJson(logo)};</script>
+<script>window.__FORM__ = ${escJson(form)}; window.__EMBED__ = ${embed ? "true" : "false"}; window.__PREVIEW__ = ${preview ? "true" : "false"}; window.__LOGO__ = ${escJson(logo)}; window.__PAIN__ = ${escJson(pain || "")};</script>
 <script>
 (function () {
   var F = window.__FORM__;
@@ -312,7 +312,7 @@ ${metaPixelHead(pixelId)}
     if (trackSent[mark]) return;
     trackSent[mark] = true;
     try {
-      var body = JSON.stringify({ session: SID, event: event, key: key || '', variant: VARIANT });
+      var body = JSON.stringify({ session: SID, event: event, key: key || '', variant: VARIANT, pain: window.__PAIN__ || '' });
       var url = '/public/forms/' + encodeURIComponent(F.id) + '/events';
       if (navigator.sendBeacon) navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
       else fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body, keepalive: true });
@@ -631,6 +631,7 @@ ${metaPixelHead(pixelId)}
       sourceUrl: location.href,
       utm: UTM,
       variant: VARIANT || undefined,
+      pain: window.__PAIN__ || undefined,
     };
     fetch('/public/forms/' + encodeURIComponent(F.id) + '/submissions', {
       method: 'POST',

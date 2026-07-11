@@ -153,7 +153,10 @@ function App() {
           )}
         />
 
-        <div key={dataVersion} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+        {/* SEM key={dataVersion}: remontar a árvore a cada escrita fazia o app
+            inteiro "piscar" (scroll, foco e estado locais perdidos). As telas
+            se ressincronizam pelo `version` do contexto, em re-render normal. */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
           {screen === "overview"    && <OverviewScreen onNav={nav} onOpenLead={openLead} />}
           {screen === "pipeline"    && <PipelineScreen saasId={params.saas} onJump={jump} jumpFilter={params} onOpenLead={openLead} />}
           {screen === "customers"   && <CustomersScreen />}
