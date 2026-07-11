@@ -343,6 +343,42 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   @media (prefers-reduced-motion: reduce) { .accept-btn { animation: none; } }
   .accept-done { display: inline-flex; align-items: center; gap: 10px; padding: 14px 28px; border-radius: var(--r-full); background: var(--accent-soft); border: 1px solid var(--accent); color: inherit; font-weight: 600; }
 
+  /* Reveal do preço (slide pricing com s.revealPrice): a seção abre "pendente",
+     só com os benefícios visíveis; o bloco de preço fica sob um véu clicável e
+     o valor, a frase final e o CTA entram animados no clique (o closer empilha
+     valor falando dos entregáveis antes de mostrar o número). Sem o flag no
+     slide, nada muda. No print, tudo aparece revelado. */
+  .price-reveal { position: relative; }
+  .price-pending .price-reveal .price-card, .price-revealed .price-reveal .price-card {
+    transition: opacity .6s var(--ease-out), transform .6s var(--ease-out); }
+  .price-pending .price-reveal .price-card { opacity: 0; transform: translateY(18px) scale(.97); }
+  .price-veil { position: absolute; inset: 0; width: 100%; border-radius: calc(var(--radius) + 10px);
+    background: linear-gradient(155deg, #073143 0%, #051C2C 60%, #03141D 100%); color: #F3FBFF;
+    border: 1px solid color-mix(in oklab, var(--accent) 32%, transparent);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+    cursor: pointer; transition: opacity .45s var(--ease-out), transform .45s var(--ease-out); }
+  .price-veil:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .veil-tag { font-family: var(--font-mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+  .veil-cta { padding: 12px 28px; border-radius: var(--r-full); border: 1px solid var(--accent);
+    background: color-mix(in oklab, var(--accent) 14%, transparent); color: var(--accent);
+    font-weight: 600; font-size: 16px; animation: veil-pulse 2.2s ease-in-out infinite; }
+  @keyframes veil-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent) 0%, transparent); }
+    50% { box-shadow: 0 0 0 8px color-mix(in oklab, var(--accent) 14%, transparent); } }
+  .price-revealed .price-veil { opacity: 0; transform: scale(.96); pointer-events: none; }
+  .price-pending .close-line, .price-pending .accept-row, .price-pending .plan-opts { opacity: 0; transform: translateY(12px); }
+  .price-revealed .close-line, .price-revealed .accept-row, .price-revealed .plan-opts {
+    transition: opacity .5s var(--ease-out), transform .5s var(--ease-out); }
+  .price-revealed .close-line { transition-delay: .2s; }
+  .price-revealed .accept-row { transition-delay: .35s; }
+  @media (prefers-reduced-motion: reduce) {
+    .veil-cta { animation: none; }
+    .price-pending .price-reveal .price-card, .price-revealed .price-reveal .price-card, .price-veil,
+    .price-revealed .close-line, .price-revealed .accept-row, .price-revealed .plan-opts { transition: none; } }
+  @media print {
+    .price-veil { display: none; }
+    .price-pending .price-reveal .price-card, .price-pending .close-line, .price-pending .accept-row, .price-pending .plan-opts { opacity: 1; transform: none; } }
+
   .closer-block { margin: 48px auto 0; max-width: 520px; padding: 24px; background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); display: flex; align-items: center; gap: 16px; text-align: left; }
   .light .closer-block { background: var(--bg); color: var(--fg); border-color: transparent; }
   .closer-avatar { width: 56px; height: 56px; border-radius: var(--r-full); background: linear-gradient(135deg, var(--accent), color-mix(in oklab, var(--accent) 40%, var(--bg))); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 600; color: var(--accent-fg); overflow: hidden; }
@@ -880,12 +916,15 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     },
     pricing: function (s, num, total) {
       var hasOpts = s.optionsFeatured != null && s.optionsFeatured !== '';
-      var sec = el('section', hasOpts ? 'compact-pricing' : '');
+      // Reveal do preço: elementos que o véu controla NÃO levam data-reveal
+      // (os dois mecanismos disputariam opacity/transform).
+      var reveal = !!s.revealPrice;
+      var sec = el('section', ((hasOpts ? 'compact-pricing ' : '') + (reveal ? 'price-pending' : '')).trim() || null);
       var w = el('div', 'wrap');
       w.appendChild(band(s, num, total));
       if (hasOpts) {
         var po = el('div', 'plan-opts');
-        po.setAttribute('data-reveal', '');
+        if (!reveal) po.setAttribute('data-reveal', '');
         po.setAttribute('data-plan-options', String(s.optionsFeatured));
         if (s.optionsBadge) po.setAttribute('data-badge', String(s.optionsBadge));
         w.appendChild(po); // conteúdo entra via renderPlanOptions() (dinâmico)
@@ -906,13 +945,15 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       // Garantia e payback são opcionais (só entram se preenchidos no template).
       var hasGuarantee = (s.guaranteeTitle || s.guaranteeText || s.guaranteeHead);
       pw.innerHTML =
-        '<div class="price-card" data-reveal>' + (s.planPill ? '<span class="pill accent">' + fmt(s.planPill) + '</span>' : '') +
+        (reveal ? '<div class="price-reveal">' : '') +
+        '<div class="price-card"' + (reveal ? '' : ' data-reveal') + '>' + (s.planPill ? '<span class="pill accent">' + fmt(s.planPill) + '</span>' : '') +
           '<div class="price-tag">' + fmt(s.planTag || '') + '</div>' +
           (s.priceFrom ? '<div class="price-from">de R$ ' + fmt(s.priceFrom) + '</div>' : '') +
           '<div class="price-number"><span class="currency">R$</span><span class="amount">' + fmt(s.price || '{{calc.preco}}') + '</span><span class="per">' + fmt(s.per || '/ mês') + '</span></div>' +
           (s.sub ? '<div class="price-sub">' + fmt(s.sub) + '</div>' : '') +
           '<div class="price-cycles">' + (s.cyclesLabel ? fmt(s.cyclesLabel) + ' ' : '') + (s.cyclesFrom ? '<span class="cycles-from">' + fmt(s.cyclesFrom) + '</span> ' : '') + fmt(s.cycles != null ? s.cycles : '{{calc.precoCiclos}}') + '</div>' +
         '</div>' +
+        (reveal ? '<button type="button" class="price-veil"><span class="veil-tag">' + fmt(s.revealLabel || 'O investimento') + '</span><span class="veil-cta">' + fmt(s.revealCta || 'Mostrar valor') + '</span></button></div>' : '') +
         '<div data-reveal>' +
           '<div class="benefits-card">' + (s.featuresTitle ? '<div class="benefits-title">' + fmt(s.featuresTitle) + '</div>' : '') +
             '<ul class="price-list">' + feats + '</ul></div>' +
@@ -921,10 +962,17 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
             '<span>' + fmt(s.guaranteeHead || '') + '</span></div><h3>' + fmt(s.guaranteeTitle || '') + '</h3><p>' + fmt(s.guaranteeText || '') + '</p></div>' : '') +
           (s.paybackNum ? '<div class="payback"><div class="mono">' + fmt(s.paybackLabel || '') + '</div><div class="pb-num">' + fmt(s.paybackNum) + '</div><div class="pb-cap">' + fmt(s.paybackCaption || '') + '</div></div>' : '') + '</div>';
       w.appendChild(pw);
-      if (s.closeLine) { var cl = el('div', 'close-line', fmt(s.closeLine)); cl.setAttribute('data-reveal', ''); w.appendChild(cl); }
+      if (reveal) {
+        var veil = pw.querySelector('.price-veil');
+        if (veil) veil.addEventListener('click', function () {
+          sec.classList.remove('price-pending');
+          sec.classList.add('price-revealed');
+        });
+      }
+      if (s.closeLine) { var cl = el('div', 'close-line', fmt(s.closeLine)); if (!reveal) cl.setAttribute('data-reveal', ''); w.appendChild(cl); }
       if (s.acceptLabel) {
         var ar = el('div', 'accept-row');
-        ar.setAttribute('data-reveal', '');
+        if (!reveal) ar.setAttribute('data-reveal', '');
         if (P.accepted) {
           ar.appendChild(el('span', 'accept-done', '✓ Proposta aceita'));
         } else {
