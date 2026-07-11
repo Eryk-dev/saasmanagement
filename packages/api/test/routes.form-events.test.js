@@ -253,3 +253,14 @@ test("lead interno fica fora do CPL/leads das métricas de marketing", async () 
   assert.equal(m.totals.leads, 1); // só o lead real conta
   await app.close();
 });
+
+test("GET /funnel?until= fecha o range (hoje/ontem/data custom)", async () => {
+  const { app, repo } = await buildApp();
+  const mk = (sess, day) => repo.create("form_events", { id: `fe_${sess}`, form: "fo_test", saas: "leverads", session: sess, event: "view", key: "", createdAt: `${day}T12:00:00.000Z` });
+  await mk("d1", "2026-07-01");
+  await mk("d2", "2026-07-05");
+  await mk("d3", "2026-07-09");
+  const f = (await app.inject({ url: "/api/forms/fo_test/funnel?since=2026-07-02T00:00:00.000Z&until=2026-07-06T23:59:59.999Z" })).json();
+  assert.equal(f.views, 1); // só a sessão de 05/07 cai no range fechado
+  await app.close();
+});

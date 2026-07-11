@@ -210,8 +210,9 @@ export function registerFormRoutes(app, repo, opts = {}) {
     const form = await repo.get("forms", req.params.id);
     if (!form) return reply.code(404).send({ error: "Not found" });
     const since = String(req.query.since || "");
+    const until = String(req.query.until || ""); // range fechado (hoje/ontem/data custom)
     const events = (await repo.list("form_events")).filter(
-      (e) => e.form === form.id && (!since || String(e.createdAt || "") >= since),
+      (e) => e.form === form.id && (!since || String(e.createdAt || "") >= since) && (!until || String(e.createdAt || "") <= until),
     );
     const uniq = (pred) => new Set(events.filter(pred).map((e) => e.session)).size;
     const questions = form.questions || [];
@@ -223,7 +224,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // É o que elege campeã de verdade (headline que vira CONTRATO, não clique).
     const product = form.saas ? await repo.get("products", form.saas) : null;
     const subs = groupKeys.length
-      ? (await repo.list("form_submissions")).filter((x) => x.form === form.id && !x.internal && (!since || String(x.createdAt || "") >= since))
+      ? (await repo.list("form_submissions")).filter((x) => x.form === form.id && !x.internal && (!since || String(x.createdAt || "") >= since) && (!until || String(x.createdAt || "") <= until))
       : [];
     const leadsById = groupKeys.length ? new Map((await repo.list("leads")).map((l) => [l.id, l])) : new Map();
     const variants = groupKeys.map((gk) => {
