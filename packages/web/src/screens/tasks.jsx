@@ -39,25 +39,25 @@ function fmtDue(d) {
 
 // O App remonta a tela a cada refresh (key=dataVersion) — filtros sobrevivem
 // numa variável de módulo, mesmo padrão do settings.jsx.
-let lastFilters = { saas: "all", assignee: "all" };
+let lastFilters = { assignee: "all" };
 
 function TasksScreen() {
   const { SAAS } = window.SEED;
   const { version, openDelete } = useData();
-  // Workspace: tarefa nova nasce no produto ativo quando o filtro está em
-  // "Todos" (os chips de filtro continuam valendo pra VER o board inteiro).
+  // Workspace: o board mostra as tarefas do produto ativo + as gerais (sem
+  // produto). Tarefa nova nasce no produto ativo. Sem chips por SaaS — o
+  // contexto vem do seletor da sidebar, como em toda tela.
   const [activeProduct] = useActiveSaas();
   const [tasks, setTasks] = useState([]);
   const [board, setBoard] = useState(null);   // registro task_boards (null = só defaults)
   const [users, setUsers] = useState([]);
   const [loaded, setLoaded] = useState(false);
-  const [fSaas, setFSaas] = useState(lastFilters.saas);
   const [fAssignee, setFAssignee] = useState(lastFilters.assignee);
   const [q, setQ] = useState("");
   const [modal, setModal] = useState(null);   // { task: record|null, column: key }
   const [dragging, setDragging] = useState(null);
 
-  useEffect(() => { lastFilters = { saas: fSaas, assignee: fAssignee }; }, [fSaas, fAssignee]);
+  useEffect(() => { lastFilters = { assignee: fAssignee }; }, [fAssignee]);
 
   const load = useCallback(async () => {
     const [ts, boards, us] = await Promise.all([
@@ -80,7 +80,7 @@ function TasksScreen() {
   }
 
   const shown = tasks.filter((t) =>
-    (fSaas === "all" || t.saas === fSaas) &&
+    (t.saas === activeProduct?.id || !t.saas) &&
     (fAssignee === "all" || assigneesOf(t).includes(fAssignee)) &&
     (!q || `${t.title} ${t.description || ""}`.toLowerCase().includes(q.toLowerCase())));
 
@@ -127,15 +127,6 @@ function TasksScreen() {
       {/* Toolbar — filtros + nova tarefa */}
       <div style={{ padding: "12px var(--pad-x)", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, background: "var(--bg-0)" }}>
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          {SAAS.length > 1 && (
-            <>
-              <FilterChip label="Todos" active={fSaas === "all"} onClick={() => setFSaas("all")} />
-              {SAAS.map((s) => (
-                <FilterChip key={s.id} label={s.name} dot={window.productTone(s)} active={fSaas === s.id} onClick={() => setFSaas(s.id)} />
-              ))}
-              <span style={{ color: "var(--line-2)" }}>·</span>
-            </>
-          )}
           <select value={fAssignee} onChange={(e) => setFAssignee(e.target.value)} style={{ ...inputStyle, width: "auto", height: 26, fontSize: 12 }}>
             <option value="all">todos responsáveis</option>
             {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
@@ -184,7 +175,7 @@ function TasksScreen() {
         <TaskModal
           task={modal.task}
           presetColumn={modal.column}
-          presetSaas={fSaas !== "all" ? fSaas : (activeProduct?.id || "")}
+          presetSaas={activeProduct?.id || ""}
           columns={columns}
           users={users}
           onSave={saveTask}
@@ -197,21 +188,6 @@ function TasksScreen() {
   );
 }
 
-function FilterChip({ label, dot, active, onClick }) {
-  return (
-    <button onClick={onClick} style={{
-      height: 26, padding: "0 10px", borderRadius: "var(--r-2)",
-      border: "1px solid " + (active ? "var(--line-strong)" : "var(--line-1)"),
-      background: active ? "var(--bg-3)" : "var(--bg-2)",
-      color: active ? "var(--fg-1)" : "var(--fg-3)",
-      fontSize: 12, fontFamily: "var(--mono)",
-      display: "inline-flex", alignItems: "center", gap: 6,
-    }}>
-      {dot && <span style={{ width: 6, height: 6, borderRadius: 2, background: dot }} />}
-      {label}
-    </button>
-  );
-}
 
 // ─────────────────────────────────────────────── Coluna
 function TaskColumn({ col, idx, count, cards, users, dragging, setDragging, onDrop, onOpen, onAdd, onRename, onColor, onMove, onRemove }) {
@@ -427,8 +403,10 @@ function TaskModal({ task, presetColumn, presetSaas, columns, users, onSave, onD
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span style={labelStyle}>SaaS</span>
             <select value={d.saas} onChange={set("saas")} style={selStyle}>
-              <option value="">—</option>
-              {SAAS.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              <option value="">— (geral do time)</option>
+              {/* Escopo do workspace: só o produto ativo (e o da própria tarefa,
+                  por segurança ao editar) — a outra marca não aparece aqui. */}
+              {SAAS.filter((s) => s.id === d.saas || s.id === presetSaas).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </label>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
