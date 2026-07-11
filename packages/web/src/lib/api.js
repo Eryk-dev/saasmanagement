@@ -69,7 +69,12 @@ export const api = {
   // Builders: preview server-side do rascunho (mesmo HTML da página pública).
   formPreview: (draft) => req("POST", "/api/forms/preview", draft),
   // Funil de drop-off do form: sessões únicas por etapa. `since` (ISO) filtra o período.
-  formFunnel: (id, since) => req("GET", `/api/forms/${id}/funnel${since ? `?since=${encodeURIComponent(since)}` : ""}`),
+  formFunnel: (id, { since, until } = {}) => {
+    const q = new URLSearchParams();
+    if (since) q.set("since", since);
+    if (until) q.set("until", until);
+    return req("GET", `/api/forms/${id}/funnel${q.toString() ? `?${q}` : ""}`);
+  },
   // Gerenciamento de campanha Meta (status/orçamento direto do cockpit).
   metaAdsets: (campaignId) => req("GET", `/api/marketing/campaigns/${campaignId}/adsets`),
   adObjects: (saas) => req("GET", `/api/marketing/${saas}/adobjects`),

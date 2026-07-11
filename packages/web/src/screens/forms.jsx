@@ -36,7 +36,6 @@ function FormsScreen({ saasId }) {
   const [forms, setForms] = useState([]);
   const [counts, setCounts] = useState({}); // formId -> nº de respostas
   const [stats, setStats] = useState({});   // formId -> { views, submits } · 30d (funil)
-  const [openMetrics, setOpenMetrics] = useState(() => new Set()); // painéis de métricas abertos na lista
   const [view, setView] = useState({ mode: "list" }); // list | edit | subs
   const [toast, setToast] = useState(null);
 
@@ -53,9 +52,7 @@ function FormsScreen({ saasId }) {
     // Métricas de funil (30d) por form publicado — visitas e conversão da lista.
     const since = new Date(Date.now() - 30 * 86400e3).toISOString();
     const pub = fs.filter((f) => f.status === "published");
-    // O form principal (1º publicado) já abre com o painel de métricas à vista.
-    setOpenMetrics((prev) => (prev.size ? prev : new Set(pub.slice(0, 1).map((f) => f.id))));
-    const results = await Promise.allSettled(pub.map((f) => api.formFunnel(f.id, since)));
+    const results = await Promise.allSettled(pub.map((f) => api.formFunnel(f.id, { since })));
     const st = {};
     results.forEach((r, i) => { if (r.status === "fulfilled") st[pub[i].id] = { views: r.value.views, submits: r.value.submits }; });
     setStats(st);
@@ -105,6 +102,9 @@ function FormsScreen({ saasId }) {
       </div>
 
       <div style={{ flex: 1, overflow: "auto", padding: "20px var(--pad-x)" }}>
+        {forms.some((f) => f.status === "published") && (
+          <FormsDashboard forms={forms.filter((f) => f.status === "published")} />
+        )}
         {!forms.length ? (
           <EmptyState
             title="Nenhum form neste SaaS"
@@ -118,11 +118,8 @@ function FormsScreen({ saasId }) {
             </div>
             {forms.map((f) => {
               const pub = f.status === "published";
-              const mOpen = openMetrics.has(f.id);
-              const toggleMetrics = () => setOpenMetrics((prev) => { const n = new Set(prev); n.has(f.id) ? n.delete(f.id) : n.add(f.id); return n; });
               return (
-                <React.Fragment key={f.id}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 74px 90px 90px 84px 360px", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", fontSize: 13 }}>
+                <div key={f.id} style={{ display: "grid", gridTemplateColumns: "1fr 100px 74px 90px 90px 84px 360px", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", fontSize: 13 }}>
                   <span style={{ fontWeight: 500 }}>{f.name || f.id}</span>
                   <span><span className={"chip " + (pub ? "pos" : "")} style={{ height: 20 }}>{pub ? "publicado" : "rascunho"}</span></span>
                   <span className="mono tnum dim">{(f.questions || []).length}</span>
@@ -143,18 +140,9 @@ function FormsScreen({ saasId }) {
                     <button onClick={() => copy(embedSnippet(f), "Snippet de embed copiado")} disabled={!pub} title="Copiar código de embed" style={{ ...chromeBtnStyleSmall, opacity: pub ? 1 : 0.45 }}>
                       <span style={{ fontSize: 11 }}>embed</span>
                     </button>
-                    <button onClick={toggleMetrics} title="Métricas do form: visitas, teste A/B e funil de drop-off" style={{ ...chromeBtnStyleSmall, ...(mOpen ? { borderColor: "var(--accent-line)", color: "var(--accent)" } : {}) }}>
-                      <span style={{ fontSize: 11 }}>métricas {mOpen ? "▴" : "▾"}</span>
-                    </button>
                     <RowActions onEdit={() => setView({ mode: "edit", form: f })} onDelete={() => openDelete("forms", f)} />
                   </span>
                 </div>
-                {mOpen && (
-                  <div style={{ padding: "14px 14px 18px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
-                    <FormMetricsPanel form={f} />
-                  </div>
-                )}
-                </React.Fragment>
               );
             })}
           </div>
@@ -710,143 +698,194 @@ function championVerdicts(variants) {
   return out;
 }
 
-// ── Funil de drop-off ───────────────────────────────────────────────────────
-// Sessões únicas por tela (eventos da página pública), na ordem do renderer.
-// A barra é relativa ao topo do funil; o % vermelho é a perda vs. a tela anterior.
+// ── Dashboard de métricas (visão principal da tela) ─────────────────────────
+// Seletor de form (quando há mais de um publicado), filtros completos (hoje/
+// ontem/3/7/30/tudo + data personalizada), tiles do topo, RESULTADOS DOS
+// TESTES A/B agrupados por dor (veredito de campeã por grupo) e o funil de
+// drop-off. A lista de forms fica logo abaixo, só gestão.
+const DASH_PRESETS = [["hoje", "hoje"], ["ontem", "ontem"], ["3", "3 dias"], ["7", "7 dias"], ["30", "30 dias"], ["", "tudo"]];
 
-const FUNNEL_PERIODS = [["7", "7 dias"], ["30", "30 dias"], ["90", "90 dias"], ["", "tudo"]];
-
-// Painel de métricas do form, embutido na LISTA (o Leo pediu tudo à vista na
-// página principal): tiles do período + teste A/B com vereditos + funil de
-// drop-off. Cada painel busca o próprio funil e tem filtro de período próprio.
-function FormMetricsPanel({ form }) {
+function FormsDashboard({ forms }) {
+  const [formId, setFormId] = useState(forms[0]?.id);
+  const form = forms.find((f) => f.id === formId) || forms[0];
+  const [preset, setPreset] = useState("30"); // chave em DASH_PRESETS ou "custom"
+  const [custom, setCustom] = useState({ since: "", until: "" });
   const [data, setData] = useState(null);
-  const [days, setDays] = useState("30");
+
+  const dayStart = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.toISOString(); };
+  const dayEnd = (d) => { const x = new Date(d); x.setHours(23, 59, 59, 999); return x.toISOString(); };
+  const range = (() => {
+    const now = new Date();
+    if (preset === "hoje") return { since: dayStart(now), until: "" };
+    if (preset === "ontem") { const y = new Date(now); y.setDate(y.getDate() - 1); return { since: dayStart(y), until: dayEnd(y) }; }
+    if (preset === "custom") {
+      return {
+        since: custom.since ? dayStart(custom.since + "T12:00:00") : "",
+        until: custom.until ? dayEnd(custom.until + "T12:00:00") : "",
+      };
+    }
+    if (!preset) return { since: "", until: "" };
+    return { since: new Date(Date.now() - Number(preset) * 86400e3).toISOString(), until: "" };
+  })();
 
   useEffect(() => {
+    if (!form) return;
     setData(null);
-    const since = days ? new Date(Date.now() - Number(days) * 86400e3).toISOString() : "";
-    api.formFunnel(form.id, since).then(setData).catch(() => setData({ error: true }));
-  }, [form.id, days]);
+    api.formFunnel(form.id, range).then(setData).catch(() => setData({ error: true }));
+  }, [form?.id, range.since, range.until]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  if (!form) return null;
+  const painMap = ((window.SEED?.SAAS || []).find((x) => x.id === form.saas) || {}).painMap || {};
   const rows = data && !data.error ? [
     { label: "Abriu a página", sessions: data.views, mono: true },
     ...(form.welcome ? [{ label: "Clicou em começar", sessions: data.starts, mono: true }] : []),
-    ...(data.steps || []).map((s, i) => ({ label: s.label, sessions: s.sessions, insight: s.insight, n: i + 1 })),
+    ...(data.steps || []).map((st, i) => ({ label: st.label, sessions: st.sessions, insight: st.insight, n: i + 1 })),
     { label: "Enviou o form", sessions: data.submits, mono: true },
   ] : [];
   const top = rows.length ? Math.max(rows[0].sessions, 1) : 1;
   const pct = (a, b) => (b > 0 ? ((a / b) * 100).toFixed(1).replace(".", ",") + "%" : "0%");
   const tile = (label, value, sub) => (
-    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "9px 12px", background: "var(--bg-1)" }}>
+    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "10px 13px", background: "var(--bg-1)" }}>
       <span className="mono" style={{ display: "block", fontSize: 9.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-4)" }}>{label}</span>
-      <span className="tnum" style={{ display: "block", fontFamily: "var(--display)", fontSize: 20, fontWeight: 700, marginTop: 2 }}>{value}</span>
+      <span className="tnum" style={{ display: "block", fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, marginTop: 2 }}>{value}</span>
       {sub && <span className="mono" style={{ display: "block", fontSize: 10, color: "var(--fg-4)", marginTop: 1 }}>{sub}</span>}
     </div>
   );
+  const dateInput = (key) => (
+    <input type="date" value={custom[key]}
+      onChange={(e) => { setCustom((c) => ({ ...c, [key]: e.target.value })); setPreset("custom"); }}
+      style={{ height: 24, padding: "0 6px", borderRadius: "var(--r-2)", fontSize: 10.5, fontFamily: "var(--mono)",
+        border: "1px solid " + (preset === "custom" ? "var(--accent-line)" : "var(--line-1)"),
+        background: "var(--bg-1)", color: "var(--fg-1)" }} />
+  );
+
+  // Testes A/B agrupados por dor (base primeiro) — visão completa por grupo.
+  const variants = data && !data.error ? (data.variants || []) : [];
+  const verdicts = championVerdicts(variants);
+  const groups = [];
+  for (const v of variants) {
+    const key = v.pain || "";
+    let g = groups.find((x) => x.pain === key);
+    if (!g) { g = { pain: key, rows: [] }; groups.push(g); }
+    g.rows.push(v);
+  }
+  groups.sort((a, b) => (a.pain === "" ? -1 : b.pain === "" ? 1 : a.pain.localeCompare(b.pain)));
+  const vDefs = [
+    ...(form.welcome?.variants || []),
+    ...Object.values(form.welcome?.byPain || {}).flatMap((pn) => pn.variants || []),
+  ];
+  const titleOf = (v) => vDefs.find((d) => String(d.id) === String(v.id))?.title
+    || form.welcome?.byPain?.[v.pain]?.title || form.welcome?.title || v.id;
+  const thAB = (h, i) => (
+    <th key={h + i} className="mono" style={{ textAlign: i < 2 ? "left" : "right", fontSize: 10, fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", padding: "6px 8px", borderBottom: "1px solid var(--line-1)" }}>{h}</th>
+  );
+  const tdAB = { padding: "7px 8px", fontSize: 12, textAlign: "right", borderBottom: "1px solid var(--line-1)" };
 
   return (
-    <div style={{ maxWidth: 780 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
-        <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)", flex: 1 }}>Métricas · {form.name}</span>
-        {FUNNEL_PERIODS.map(([v, label]) => (
-          <button key={v} onClick={() => setDays(v)} className="mono" style={{
+    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 16px 16px", marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        {forms.length > 1 ? (
+          <select value={form.id} onChange={(e) => setFormId(e.target.value)}
+            style={{ height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontWeight: 600 }}>
+            {forms.map((f) => <option key={f.id} value={f.id}>{f.name || f.id}</option>)}
+          </select>
+        ) : (
+          <span style={{ fontSize: 14, fontWeight: 600 }}>{form.name}</span>
+        )}
+        <span className="mono dim" style={{ fontSize: 10.5 }}>métricas · testes A/B · funil</span>
+        <span style={{ flex: 1 }} />
+        {DASH_PRESETS.map(([v, label]) => (
+          <button key={v || "all"} onClick={() => setPreset(v)} className="mono" style={{
             height: 24, padding: "0 10px", borderRadius: "var(--r-2)", fontSize: 11,
-            border: "1px solid " + (days === v ? "var(--line-strong)" : "var(--line-1)"),
-            background: days === v ? "var(--bg-3)" : "var(--bg-2)",
-            color: days === v ? "var(--fg-1)" : "var(--fg-3)",
+            border: "1px solid " + (preset === v ? "var(--line-strong)" : "var(--line-1)"),
+            background: preset === v ? "var(--bg-3)" : "var(--bg-2)",
+            color: preset === v ? "var(--fg-1)" : "var(--fg-3)",
           }}>{label}</button>
         ))}
+        {dateInput("since")}
+        <span className="mono dim" style={{ fontSize: 10 }}>até</span>
+        {dateInput("until")}
       </div>
 
+      {!data && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
+      {data?.error && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>Falha ao carregar as métricas.</div>}
+
       {data && !data.error && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, marginBottom: 12 }}>
-          {tile(`Visitas${days ? ` · ${days}d` : ""}`, window.fmt.int(data.views))}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, marginBottom: 14 }}>
+          {tile("Visitas", window.fmt.int(data.views))}
           {tile("Começaram", window.fmt.int(data.starts), pct(data.starts, data.views) + " das visitas")}
           {tile("Enviaram", window.fmt.int(data.submits), pct(data.submits, Math.max(data.starts, 1)) + " dos que começaram")}
           {tile("Conversão", pct(data.submits, data.views), "envios ÷ visitas")}
         </div>
       )}
 
-      <div>
-        {!data && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
-        {data?.error && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>Falha ao carregar o funil.</div>}
-        {data && !data.error && !rows[0].sessions && (
-          <EmptyState title="Nenhum evento no período" hint="Os eventos de funil são registrados pela página pública do form a cada visita. Compartilhe o link e volte aqui pra ver onde as pessoas param." />
-        )}
-        {data && !data.error && (data.variants || []).length > 0 && (
-          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", maxWidth: 760, marginBottom: 14, padding: "12px 14px" }}>
-            <div className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
-              Teste A/B da headline · view → começar → envio por variante
-            </div>
-            <div className="tbl-x">
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    {["Dor", "Variante", "Título mostrado", "Visitas", "Começou", "% começar", "Enviou", "% envio", "Ganhos", "% fechou", "Status"].map((h, i) => (
-                      <th key={h} className="mono" style={{ textAlign: i < 2 ? "left" : "right", fontSize: 10, fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", padding: "6px 8px", borderBottom: "1px solid var(--line-1)" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(() => {
-                    const vDefs = [
-                      ...(form.welcome?.variants || []),
-                      ...Object.values(form.welcome?.byPain || {}).flatMap((p) => p.variants || []),
-                    ];
-                    const verdicts = championVerdicts(data.variants);
-                    return data.variants.map((v) => {
-                      const def = vDefs.find((d) => String(d.id) === String(v.id));
-                      const startRate = v.views > 0 ? (v.starts / v.views) * 100 : null;
-                      const submitRate = v.views > 0 ? (v.submits / v.views) * 100 : null;
-                      const verdict = verdicts[`${v.pain || ""}|${v.id}`];
-                      const leader = !!verdict?.label;
-                      return (
-                        <tr key={(v.pain || "") + "|" + v.id}>
-                          <td className="mono" style={{ padding: "7px 8px", fontSize: 11, color: "var(--fg-3)", borderBottom: "1px solid var(--line-1)" }}>{v.pain ? `[${v.pain}]` : "base"}</td>
-                          <td className="mono" style={{ padding: "7px 8px", fontSize: 12, fontWeight: 700, color: leader ? "var(--fg-1)" : "var(--fg-2)", borderBottom: "1px solid var(--line-1)" }}>{v.id}</td>
-                          <td style={{ padding: "7px 8px", fontSize: 12, color: "var(--fg-2)", borderBottom: "1px solid var(--line-1)", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={def?.title || form.welcome?.byPain?.[v.pain]?.title || form.welcome?.title || ""}>
-                            {def?.title || form.welcome?.byPain?.[v.pain]?.title || form.welcome?.title || v.id}
-                          </td>
-                          <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>{v.views}</td>
-                          <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>{v.starts}</td>
-                          <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", fontWeight: 600, borderBottom: "1px solid var(--line-1)" }}>
-                            {startRate != null ? startRate.toFixed(1).replace(".", ",") + "%" : ""}
-                          </td>
-                          <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>{v.submits}</td>
-                          <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>
-                            {submitRate != null ? submitRate.toFixed(1).replace(".", ",") + "%" : ""}
-                          </td>
-                          <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>{v.won || 0}</td>
-                          <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>
-                            {v.leads > 0 ? ((v.won / v.leads) * 100).toFixed(0) + "%" : ""}
-                          </td>
-                          <td className="mono" style={{ padding: "7px 8px", fontSize: 10.5, whiteSpace: "nowrap", color: verdict?.tone || "var(--fg-4)", borderBottom: "1px solid var(--line-1)" }}>
-                            {verdict?.label || ""}
-                          </td>
-                        </tr>
-                      );
-                    });
-                  })()}
-                </tbody>
-              </table>
-            </div>
-            <div className="mono dim" style={{ fontSize: 10.5, marginTop: 6, lineHeight: 1.6 }}>
-              regras da campeã: ≥100 visitas e ≥7 dias na líder · ≥95% de confiança na % de começar vs. a vice (z de 2 proporções) · sem regressão de envio nem de ganhos. Campeã eleita: promova a copy pro texto base e remova as variantes; teste novo = variante nova (numeração nunca repete).
-            </div>
+      {data && !data.error && groups.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
+            Resultados dos testes A/B · por dor
           </div>
-        )}
-        {data && !data.error && rows[0].sessions > 0 && (
-          <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", maxWidth: 760 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {groups.map((g) => {
+              const leader = g.rows.map((v) => verdicts[`${v.pain || ""}|${v.id}`]).find((x) => x?.label);
+              return (
+                <div key={g.pain || "base"} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "10px 12px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                    <span className="mono" style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", border: "1px solid var(--accent-line)", borderRadius: 5, padding: "1px 7px" }}>
+                      {g.pain ? `[${g.pain}]` : "BASE"}
+                    </span>
+                    <span style={{ fontSize: 12.5, fontWeight: 600 }}>{g.pain ? (painMap[g.pain] || "dor " + g.pain) : "Sem dor identificada (tráfego direto)"}</span>
+                    <span style={{ flex: 1 }} />
+                    {leader && <span className="mono" style={{ fontSize: 10.5, fontWeight: 600, color: leader.tone }}>{leader.label}</span>}
+                  </div>
+                  <div className="tbl-x">
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead><tr>{["Variante", "Título mostrado", "Visitas", "Começou", "% começar", "Enviou", "% envio", "Ganhos", "% fechou"].map(thAB)}</tr></thead>
+                      <tbody>
+                        {g.rows.map((v) => {
+                          const verdict = verdicts[`${v.pain || ""}|${v.id}`];
+                          const isLeader = !!verdict?.label;
+                          return (
+                            <tr key={v.id}>
+                              <td className="mono" style={{ ...tdAB, textAlign: "left", fontWeight: 700, color: isLeader ? "var(--fg-1)" : "var(--fg-2)" }}>{v.id}</td>
+                              <td style={{ ...tdAB, textAlign: "left", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--fg-2)" }} title={titleOf(v)}>{titleOf(v)}</td>
+                              <td className="mono tnum" style={tdAB}>{v.views}</td>
+                              <td className="mono tnum" style={tdAB}>{v.starts}</td>
+                              <td className="mono tnum" style={{ ...tdAB, fontWeight: 600 }}>{v.views > 0 ? pct(v.starts, v.views) : ""}</td>
+                              <td className="mono tnum" style={tdAB}>{v.submits}</td>
+                              <td className="mono tnum" style={tdAB}>{v.views > 0 ? pct(v.submits, v.views) : ""}</td>
+                              <td className="mono tnum" style={tdAB}>{v.won || 0}</td>
+                              <td className="mono tnum" style={tdAB}>{v.leads > 0 ? pct(v.won, v.leads) : ""}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mono dim" style={{ fontSize: 10.5, marginTop: 6, lineHeight: 1.6 }}>
+            regras da campeã: ≥100 visitas e ≥7 dias na líder · ≥95% de confiança na % de começar vs. a vice (z de 2 proporções) · sem regressão de envio nem de ganhos. Campeã eleita: promova a copy pro texto base e remova as variantes; teste novo = variante nova (numeração nunca repete).
+          </div>
+        </div>
+      )}
+
+      {data && !data.error && rows[0].sessions > 0 && (
+        <div>
+          <div className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
+            Funil de drop-off por etapa
+          </div>
+          <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)" }}>
             {rows.map((r, i) => {
               const prev = i > 0 ? rows[i - 1].sessions : null;
               const drop = prev > 0 ? Math.round((1 - r.sessions / prev) * 100) : 0;
               return (
-                <div key={i} style={{ display: "grid", gridTemplateColumns: "220px 1fr 60px 70px", gap: 12, alignItems: "center", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", opacity: r.insight ? 0.6 : 1 }}>
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "220px 1fr 60px 70px", gap: 12, alignItems: "center", padding: "9px 12px", borderBottom: "1px solid var(--line-1)", opacity: r.insight ? 0.6 : 1 }}>
                   <span className={r.mono ? "mono dim" : ""} style={{ fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.label}>
                     {r.n ? `${String(r.n).padStart(2, "0")} · ` : ""}{r.label}{r.insight ? " (insight)" : ""}
                   </span>
-                  <div style={{ height: 8, background: "var(--bg-inset)", borderRadius: 999, overflow: "hidden" }}>
+                  <div style={{ height: 8, background: "var(--bg-1)", borderRadius: 999, overflow: "hidden" }}>
                     <div style={{ height: "100%", width: `${Math.round((r.sessions / top) * 100)}%`, background: "var(--accent)", borderRadius: 999 }} />
                   </div>
                   <span className="mono tnum" style={{ fontSize: 12, textAlign: "right" }}>{r.sessions}</span>
@@ -857,8 +896,11 @@ function FormMetricsPanel({ form }) {
               );
             })}
           </div>
-        )}
-      </div>
+        </div>
+      )}
+      {data && !data.error && rows.length > 0 && !rows[0].sessions && (
+        <div className="mono dim" style={{ fontSize: 12 }}>Nenhum evento no período selecionado.</div>
+      )}
     </div>
   );
 }
