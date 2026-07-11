@@ -5,7 +5,7 @@
 //   niche: "autopecas"|"eletronicos"|"moda"|"casa"|"beleza"|"outros"
 //   plan_expand: "sim-3m"|"sim-6m"|"talvez"|"nao"
 // Por isso o editor do cockpit TRAVA o `key` no produto leverads (ver QuestionsEditor).
-// staff/volume/marketplaces/thesis saíram do form fo_diagnostico_leverads (jul/2026)
+// staff/volume/marketplaces/thesis/revenue saíram do form fo_diagnostico_leverads (jul/2026)
 // e foram removidos daqui; DiagnosticoIn é todo opcional e a calculadora tem fallback.
 export const LEVERADS_LEAD_QUESTIONS = [
   {
@@ -27,18 +27,6 @@ export const LEVERADS_LEAD_QUESTIONS = [
       { value: "500-2000", label: "500 a 2 mil" },
       { value: "2000-10000", label: "2 a 10 mil" },
       { value: "10000+", label: "Mais de 10 mil" },
-    ],
-  },
-  {
-    // Faixa de faturamento mensal — "nao-informar" existe de propósito: responder
-    // é obrigatório, mas informar não é (reduz abandono na pergunta sensível).
-    key: "revenue", label: "Faixa de faturamento mensal", type: "select", required: true,
-    options: [
-      { value: "0-50k", label: "Até R$ 50 mil" },
-      { value: "50-200k", label: "R$ 50 a 200 mil" },
-      { value: "200k-1m", label: "R$ 200 mil a 1 milhão" },
-      { value: "1m+", label: "Mais de R$ 1 milhão" },
-      { value: "nao-informar", label: "Prefiro não informar" },
     ],
   },
   {
