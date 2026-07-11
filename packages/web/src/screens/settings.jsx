@@ -5,14 +5,16 @@ import { useData } from "../data.jsx";
 import { api } from "../lib/api.js";
 import { useIsMobile } from "../lib/responsive.js";
 import { KINDS, KIND_IDS, guessKind, lossReasonsOf } from "../lib/funnel.js";
+import { useActiveSaas } from "../lib/workspace.js";
 // SaaS Settings (fase 3) — funil, campos custom, pesos da saúde e Aha EDITÁVEIS
 // por SaaS (gravam no produto). Equipe (roles sdr/closer/integrator) é global.
 
 const { useState: useStS } = React;
 
 // O App remonta a tela a cada refresh pós-save (key=dataVersion); guardar a
-// última visão em módulo preserva aba/SaaS escolhidos entre os remounts.
-const lastView = { saas: null, tab: "funnel" };
+// última visão em módulo preserva a aba escolhida entre os remounts. O SaaS
+// ativo vem do workspace global (seletor no pé da sidebar).
+const lastView = { tab: "funnel" };
 
 const inputStyle = {
   width: "100%", height: 28, padding: "0 8px",
@@ -25,11 +27,11 @@ const slug = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
 function SettingsScreen({ saasId }) {
   const { SAAS } = window.SEED;
   const { openForm, openDelete } = useData();
-  const [active, setActive] = useStS(lastView.saas || saasId || SAAS[0]?.id);
+  const [activeProduct] = useActiveSaas();
   const [tab, setTab] = useStS(lastView.tab);
   const isMobile = useIsMobile();
-  lastView.saas = active; lastView.tab = tab;
-  const s = SAAS.find(x => x.id === active) || SAAS[0];
+  lastView.tab = tab;
+  const s = activeProduct;
 
   const TABS = [
     ["funnel",      "Funil & estágios"],
@@ -52,17 +54,7 @@ function SettingsScreen({ saasId }) {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ padding: "12px var(--pad-x)", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          {SAAS.length > 1 ? SAAS.map(x => (
-            <button key={x.id} onClick={() => setActive(x.id)} style={{
-              height: 26, padding: "0 10px", borderRadius: "var(--r-2)",
-              border: "1px solid " + (active === x.id ? "var(--line-strong)" : "var(--line-1)"),
-              background: active === x.id ? "var(--bg-3)" : "var(--bg-2)",
-              color: active === x.id ? "var(--fg-1)" : "var(--fg-3)",
-              fontSize: 12, fontFamily: "var(--mono)",
-            }}>{x.name}</button>
-          )) : (
-            <span style={{ fontSize: 13.5, fontWeight: 600 }}>{s?.name}</span>
-          )}
+          <span style={{ fontSize: 13.5, fontWeight: 600 }}>{s?.name}</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <RowActions onEdit={() => openForm("products", s)} onDelete={() => openDelete("products", s)} />
@@ -88,11 +80,14 @@ function SettingsScreen({ saasId }) {
           ))}
         </nav>
         <div style={{ overflow: "auto", padding: "20px var(--pad-x)" }}>
-          {tab === "funnel"       && <FunnelSettings s={s} />}
+          {/* key={s.id}: troca de workspace REMONTA o editor — sem isso o rascunho
+              seedado do produto anterior sobrevive e o Salvar gravaria a config
+              de um produto por cima do outro. */}
+          {tab === "funnel"       && <FunnelSettings key={s.id} s={s} />}
           {tab === "team"         && <TeamSettings />}
-          {tab === "fields"       && <FieldsSettings s={s} />}
-          {tab === "health"       && <HealthSettings s={s} />}
-          {tab === "aha"          && <AhaSettings s={s} />}
+          {tab === "fields"       && <FieldsSettings key={s.id} s={s} />}
+          {tab === "health"       && <HealthSettings key={s.id} s={s} />}
+          {tab === "aha"          && <AhaSettings key={s.id} s={s} />}
           {tab === "integrations" && <IntegrationsSettings key={s.id} s={s} />}
         </div>
       </div>

@@ -4,6 +4,7 @@ import { useData } from "../data.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
 import { EmptyState, PrimaryButton, RowActions } from "../atoms.jsx";
 import { inputStyle, labelStyle, sectionTitle, cardStyle, addBtnStyle, THEME_DEFAULTS, LabeledInput, LabeledTextarea, ThemeEditor } from "../components/theme-inputs.jsx";
+import { useActiveSaas } from "../lib/workspace.js";
 // Proposal builder — propostas comerciais por marca, no MESMO modelo do form
 // builder: template = lista de SLIDES estruturados + tema + calculadora; cada
 // lead ganha uma instância (snapshot) servida em /p/:id com trava magnética.
@@ -119,7 +120,9 @@ const publicBase = () => import.meta.env.VITE_API_BASE || window.location.origin
 function ProposalsScreen({ saasId }) {
   const { SAAS } = window.SEED;
   const { version, openDelete } = useData();
-  const [active, setActive] = useState(saasId || SAAS[0]?.id);
+  // Produto do WORKSPACE (seletor no pé da sidebar) — sem abas próprias.
+  const [activeProduct] = useActiveSaas();
+  const active = activeProduct?.id;
   const [tab, setTab] = useState("templates"); // templates | geradas
   const [templates, setTemplates] = useState([]);
   const [proposals, setProposals] = useState([]);
@@ -136,6 +139,11 @@ function ProposalsScreen({ saasId }) {
     setTemplates(ts); setProposals(ps);
   }, [active]);
   useEffect(() => { load(); }, [load, version]);
+
+  // Troca de produto (workspace) fecha o editor e limpa as linhas antigas —
+  // um template da outra marca não pode ficar aberto (nem ser salvo) sob o
+  // workspace novo.
+  useEffect(() => { setEditing(null); setTemplates([]); setProposals([]); }, [active]);
 
   function flash(msg) { setToast(msg); setTimeout(() => setToast(null), 1800); }
   async function copy(text, msg) {
@@ -162,17 +170,7 @@ function ProposalsScreen({ saasId }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ padding: "12px var(--pad-x)", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-        <div style={{ display: "flex", gap: 6 }}>
-          {SAAS.length > 1 && SAAS.map((x) => (
-            <button key={x.id} onClick={() => setActive(x.id)} style={{
-              height: 26, padding: "0 10px", borderRadius: "var(--r-2)",
-              border: "1px solid " + (active === x.id ? "var(--line-strong)" : "var(--line-1)"),
-              background: active === x.id ? "var(--bg-3)" : "var(--bg-2)",
-              color: active === x.id ? "var(--fg-1)" : "var(--fg-3)",
-              fontSize: 12, fontFamily: "var(--mono)",
-            }}>{x.name}</button>
-          ))}
-        </div>
+        <span style={{ fontSize: 13.5, fontWeight: 600 }}>{activeProduct?.name}</span>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
           {[["templates", "Templates"], ["geradas", `Geradas (${proposals.length})`]].map(([k, l]) => (
             <button key={k} onClick={() => setTab(k)} style={{

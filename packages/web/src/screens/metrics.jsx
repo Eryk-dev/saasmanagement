@@ -2,7 +2,7 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { PageHead, Segmented, StatTile, Card, LineChart } from "../components/viz.jsx";
-import { SaasTabs } from "../components/saas-tabs.jsx";
+import { useActiveSaas } from "../lib/workspace.js";
 import { EmptyState } from "../atoms.jsx";
 import { stageKind } from "../lib/funnel.js";
 // Métricas — aquisição × funil do produto ativo (substitui a tela Marketing).
@@ -97,6 +97,10 @@ function MetricsScreen() {
 
   const [objects, setObjects] = useState(null); // { campaigns, adsets, ads } ao vivo (gerenciamento)
   const [creative, setCreative] = useState(false); // painel de novo criativo
+  // Troca de produto (workspace) fecha o painel de criativo e descarta o rascunho
+  // de gasto manual — nada pode ser registrado no produto errado. (setManual é
+  // declarado abaixo; o efeito roda pós-render, então a captura é segura.)
+  useEffect(() => { setCreative(false); setManual(null); setNote(null); }, [product?.id]); // eslint-disable-line no-use-before-define
 
   // reset=true (troca de range/produto): zera a tela e recarrega TUDO, inclusive
   // a lista viva de campanhas. Silencioso (SSE/tick): só métricas + CAC — nada
@@ -269,7 +273,6 @@ function MetricsScreen() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Publicidade" sub={`aquisição, funil e campanhas · ${product.name}`}>
-        <SaasTabs active={product.id} onSelect={(id) => { setCreative(false); setActiveSaas(id); }} />
         {metaOn && product.metaAdAccount && (
           <button onClick={() => setCreative((v) => !v)}
             style={{ padding: "6px 12px", borderRadius: "var(--r-1)", fontSize: 12.5, fontWeight: 600, background: "var(--accent)", color: "var(--accent-fg)" }}>
