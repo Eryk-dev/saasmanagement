@@ -3,6 +3,27 @@ import React from "react";
 // produto só (aba única é ruído) e volta sozinho quando o portfólio cresce.
 // Usado por Pipeline, Visão geral, Clientes, Publicidade e Custos.
 
+// Seleção de produto COMPARTILHADA entre as telas. Vive fora do React porque o
+// app remonta a árvore de telas a cada mudança de dados (key={dataVersion} no
+// app.jsx) — estado local voltaria pro 1º produto a cada tick do SSE. O mesmo
+// truque do lastView de settings.jsx, com localStorage pra sobreviver ao F5.
+const LS_KEY = "cockpit_active_saas";
+let lastSaas = null;
+try { lastSaas = localStorage.getItem(LS_KEY); } catch { /* storage indisponível */ }
+
+export function useActiveSaas() {
+  const { SAAS } = window.SEED;
+  const [activeSaas, set] = React.useState(lastSaas);
+  const select = React.useCallback((id) => {
+    lastSaas = id;
+    set(id);
+    try { localStorage.setItem(LS_KEY, id); } catch { /* ignore */ }
+  }, []);
+  // id salvo pode não existir mais (produto removido) — cai no 1º do portfólio.
+  const product = SAAS.find((s) => s.id === activeSaas) || SAAS[0] || null;
+  return [product, select];
+}
+
 export function SaasTabs({ active, onSelect }) {
   const { SAAS } = window.SEED;
   if (SAAS.length <= 1) return null;

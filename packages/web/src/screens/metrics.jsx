@@ -84,8 +84,7 @@ function rangeOf(r) {
 function MetricsScreen() {
   const { SAAS, CONFIG } = window.SEED;
   const { version } = useData();
-  const [activeSaas, setActiveSaas] = useState(null);
-  const product = SAAS.find((s) => s.id === activeSaas) || SAAS[0];
+  const [product, setActiveSaas] = useActiveSaas();
   const metaOn = !!CONFIG?.meta?.configured;
 
   const [range, setRange] = useState({ preset: "30" });
@@ -102,13 +101,18 @@ function MetricsScreen() {
   // reset=true (troca de range/produto): zera a tela e recarrega TUDO, inclusive
   // a lista viva de campanhas. Silencioso (SSE/tick): só métricas + CAC — nada
   // de bater na Graph a cada lead movido por alguém do time.
+  // `loadEpoch` descarta resposta atrasada de um load anterior (troca rápida de
+  // produto A→B→A não pode assentar com dados/campanhas do produto errado).
+  const loadEpoch = React.useRef(0);
   const load = (reset = true) => {
     if (!product) return;
-    if (reset) setData(null);
-    api.marketingMetrics(product.id, { since, until }).then(setData).catch(() => setData({ error: true }));
-    api.metrics(product.id, { days: rangeDays, months: 12 }).then(setBiz).catch(() => setBiz(null));
+    const ep = ++loadEpoch.current;
+    const fresh = (set) => (v) => { if (ep === loadEpoch.current) set(v); };
+    if (reset) { setData(null); setObjects(null); setNote(null); }
+    api.marketingMetrics(product.id, { since, until }).then(fresh(setData)).catch(() => fresh(setData)({ error: true }));
+    api.metrics(product.id, { days: rangeDays, months: 12 }).then(fresh(setBiz)).catch(() => fresh(setBiz)(null));
     if (reset && metaOn && product.metaAdAccount) {
-      api.adObjects(product.id).then(setObjects).catch((e) => setObjects({ error: e.message }));
+      api.adObjects(product.id).then(fresh(setObjects)).catch((e) => fresh(setObjects)({ error: e.message }));
     }
   };
   useEffect(() => load(true), [product?.id, since, until]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -126,7 +130,8 @@ function MetricsScreen() {
     if (!metaOn || !product?.metaAdAccount) return;
     const id = setInterval(() => {
       if (document.visibilityState !== "visible") return;
-      api.marketingMetrics(product.id, { since, until }).then(setData).catch(() => { /* próximo tick */ });
+      const ep = loadEpoch.current; // descarta se um load novo (troca de produto) chegou depois
+      api.marketingMetrics(product.id, { since, until }).then((v) => { if (ep === loadEpoch.current) setData(v); }).catch(() => { /* próximo tick */ });
     }, 60_000);
     return () => clearInterval(id);
   }, [product?.id, since, until, metaOn]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -184,7 +189,8 @@ function MetricsScreen() {
       await api.metaObjectStatus(o.id, target);
       setNote({ ok: true, text: `${LEVEL_LABEL[level]} "${o.name}" ${target === "PAUSED" ? "pausado(a)" : "ativado(a)"} na Meta ✓` });
       // Verdade da Meta em seguida (efetivo herdado, revisão, etc.) — sem piscar.
-      api.adObjects(product.id).then(setObjects).catch(() => { /* otimista já aplicado */ });
+      const ep = loadEpoch.current;
+      api.adObjects(product.id).then((v) => { if (ep === loadEpoch.current) setObjects(v); }).catch(() => { /* otimista já aplicado */ });
     } catch (e) {
       patchObject(level, o.id, { status: o.status, effectiveStatus: o.effectiveStatus });
       if (level !== "ads") cascadeStatus(level, o, o.status === "PAUSED" ? "PAUSED" : "ACTIVE");
@@ -263,7 +269,7 @@ function MetricsScreen() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Publicidade" sub={`aquisição, funil e campanhas · ${product.name}`}>
-        <SaasTabs active={product.id} onSelect={setActiveSaas} />
+        <SaasTabs active={product.id} onSelect={(id) => { setCreative(false); setActiveSaas(id); }} />
         {metaOn && product.metaAdAccount && (
           <button onClick={() => setCreative((v) => !v)}
             style={{ padding: "6px 12px", borderRadius: "var(--r-1)", fontSize: 12.5, fontWeight: 600, background: "var(--accent)", color: "var(--accent-fg)" }}>
@@ -305,7 +311,7 @@ function MetricsScreen() {
         )}
 
         {creative && (
-          <NewCreativePanel product={product} campaigns={objects && !objects.error ? objects.campaigns : []}
+          <NewCreativePanel key={product.id} product={product} campaigns={objects && !objects.error ? objects.campaigns : []}
             onDone={(msg) => { setNote({ ok: true, text: msg }); setCreative(false); load(); }}
             onError={(msg) => setNote({ ok: false, text: msg })}
             onClose={() => setCreative(false)} />

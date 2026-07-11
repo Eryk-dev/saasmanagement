@@ -315,8 +315,12 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     if (!product) return reply.code(404).send({ error: "Not found" });
     const { since, until } = rangeFromQuery(req.query || {});
 
+    // Ordena por data: a resolução de nome (campanha/conjunto) é last-write-wins
+    // no loop abaixo, e o sync só rescreve o nome nas linhas da janela — a linha
+    // mais recente é a que tem o nome atual (repo.list vem em ordem de id).
     const rows = (await repo.list("ad_insights"))
-      .filter((r) => r.saas === product.id && r.date >= since && r.date <= until);
+      .filter((r) => r.saas === product.id && r.date >= since && r.date <= until)
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
     const leads = (await repo.list("leads"))
       .filter((l) => l.saas === product.id && l.createdAt && dayStr(l.createdAt) >= since && dayStr(l.createdAt) <= until);
 
@@ -467,8 +471,12 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const campaigns = {};
     const adsets = {};
     const ads = {};
-    for (const r of await repo.list("ad_insights")) {
-      if (r.saas !== product.id) continue;
+    // Ordena por data pelo mesmo motivo do /api/marketing/:saas: o último a
+    // escrever vence, e o nome atual (pós-rename) vive nas linhas mais novas.
+    const catalogRows = (await repo.list("ad_insights"))
+      .filter((r) => r.saas === product.id)
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    for (const r of catalogRows) {
       if (r.campaignId) campaigns[r.campaignId] = { name: r.campaignName || "" };
       if (r.adsetId) adsets[r.adsetId] = { name: r.adsetName || "", campaignId: r.campaignId || "" };
       if (r.adId) ads[r.adId] = { name: r.adName || "", adsetId: r.adsetId || "", campaignId: r.campaignId || "" };

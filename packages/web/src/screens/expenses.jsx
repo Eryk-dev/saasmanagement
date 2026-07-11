@@ -2,7 +2,7 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { PageHead, StatTile, Card, Pill } from "../components/viz.jsx";
-import { SaasTabs } from "../components/saas-tabs.jsx";
+import { SaasTabs, useActiveSaas } from "../components/saas-tabs.jsx";
 import { EmptyState } from "../atoms.jsx";
 // Custos operacionais — o ledger mensal do produto. Publicidade (ad_insights)
 // e IA (APIs dos provedores, em R$) entram AUTOMÁTICOS; o resto (fixos,
@@ -36,8 +36,7 @@ const brl = (n) => `R$ ${(Number(n) || 0).toFixed(2).replace(".", ",")}`;
 function ExpensesScreen() {
   const { SAAS } = window.SEED;
   const { version } = useData();
-  const [activeSaas, setActiveSaas] = useState(null);
-  const product = SAAS.find((s) => s.id === activeSaas) || SAAS[0];
+  const [product, setActiveSaas] = useActiveSaas();
   const [month, setMonth] = useState(monthKey(new Date()));
   const [data, setData] = useState(null);
   const [form, setForm] = useState({ category: "fixo", name: "", amount: "", recurring: false });
@@ -49,6 +48,13 @@ function ExpensesScreen() {
     api.expensesSummary(product.id, month).then(setData).catch(() => setData({ error: true }));
   };
   useEffect(load, [product?.id, month, version]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Troca de produto: descarta rascunho e aviso — o custo em digitação não pode
+  // ser registrado silenciosamente no SaaS errado.
+  useEffect(() => {
+    setForm({ category: "fixo", name: "", amount: "", recurring: false });
+    setNote(null);
+  }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function addExpense() {
     const amount = Number(String(form.amount).replace(",", "."));

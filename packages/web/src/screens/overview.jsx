@@ -6,7 +6,7 @@ import { EmptyState, Avatar } from "../atoms.jsx";
 import { nextMilestone, dueLabel } from "../lib/milestones.js";
 import { openStages, workableStages, isWonStage, stageKind, cadenceOf, nextTouch, nextTouchPill, firstStage as firstStageOf } from "../lib/funnel.js";
 import { displayName, currentUser } from "../lib/users.js";
-import { SaasTabs } from "../components/saas-tabs.jsx";
+import { SaasTabs, useActiveSaas } from "../components/saas-tabs.jsx";
 // Visão geral — a home do dia a dia. Responde: como está a receita, quantos
 // leads entraram, quanto custa o lead, e — principal — QUEM CONTATAR AGORA
 // (fila de trabalho do GPS: atrasados → hoje → sem próximo passo).
@@ -21,19 +21,28 @@ const shortDay = (d) => d.toLocaleDateString("pt-BR", { day: "2-digit", month: "
 function OverviewScreen({ onNav, onOpenLead }) {
   const { SAAS, LEADS, CUSTOMERS } = window.SEED;
   const { version } = useData();
-  const [activeSaas, setActiveSaas] = useState(null);
-  const product = SAAS.find((s) => s.id === activeSaas) || SAAS[0];
+  const [product, setActiveSaas] = useActiveSaas();
   const [marketing, setMarketing] = useState(null);
   const [invoices, setInvoices] = useState([]);
   const [costs, setCosts] = useState(null); // custos do mês corrente (tela Custos)
   // Ações da fila (toque dado / adiar) aplicam otimista aqui até o SSE recarregar.
   const [patched, setPatched] = useState({});
 
+  // Troca de PRODUTO zera os painéis (não mistura CPL/custos do produto anterior);
+  // refresh por versão (SSE) só refaz o fetch sem piscar. Respostas atrasadas de
+  // um produto anterior são descartadas (guard `alive`).
+  const loadedFor = React.useRef(null);
   useEffect(() => {
     if (!product) return;
-    api.marketingMetrics(product.id).then(setMarketing).catch(() => setMarketing(null));
-    api.list("invoices").then((rows) => setInvoices(rows.filter((i) => i.saas === product.id))).catch(() => {});
-    api.expensesSummary(product.id).then(setCosts).catch(() => setCosts(null));
+    if (loadedFor.current !== product.id) {
+      loadedFor.current = product.id;
+      setMarketing(null); setInvoices([]); setCosts(null);
+    }
+    let alive = true;
+    api.marketingMetrics(product.id).then((m) => alive && setMarketing(m)).catch(() => alive && setMarketing(null));
+    api.list("invoices").then((rows) => alive && setInvoices(rows.filter((i) => i.saas === product.id))).catch(() => {});
+    api.expensesSummary(product.id).then((c) => alive && setCosts(c)).catch(() => alive && setCosts(null));
+    return () => { alive = false; };
   }, [product?.id, version]);
 
   const leads = useMemo(
