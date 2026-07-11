@@ -71,11 +71,8 @@ export const api = {
   // Funil de drop-off do form: sessões únicas por etapa. `since` (ISO) filtra o período.
   formFunnel: (id, since) => req("GET", `/api/forms/${id}/funnel${since ? `?since=${encodeURIComponent(since)}` : ""}`),
   // Gerenciamento de campanha Meta (status/orçamento direto do cockpit).
-  metaCampaigns: (saas) => req("GET", `/api/marketing/${saas}/campaigns`),
-  metaCampaignStatus: (id, status) => req("POST", `/api/marketing/campaigns/${id}/status`, { status }),
-  metaCampaignBudget: (id, dailyBudget) => req("POST", `/api/marketing/campaigns/${id}/budget`, { dailyBudget }),
   metaAdsets: (campaignId) => req("GET", `/api/marketing/campaigns/${campaignId}/adsets`),
-  metaAds: (adsetId) => req("GET", `/api/marketing/adsets/${adsetId}/ads`),
+  adObjects: (saas) => req("GET", `/api/marketing/${saas}/adobjects`),
   metaObjectStatus: (id, status) => req("POST", `/api/marketing/objects/${id}/status`, { status }),
   metaObjectBudget: (id, dailyBudget) => req("POST", `/api/marketing/objects/${id}/budget`, { dailyBudget }),
   creativeDefaults: (saas) => req("GET", `/api/marketing/${saas}/creative-defaults`),
