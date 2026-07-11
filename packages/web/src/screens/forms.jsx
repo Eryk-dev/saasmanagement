@@ -613,8 +613,12 @@ function VariantsEditor({ welcome, onChange, idPrefix = "" }) {
   const variants = welcome.variants || [];
   const setV = (i, patch) => onChange({ ...welcome, variants: variants.map((v, j) => (j === i ? { ...v, ...patch } : v)) });
   const add = () => {
-    const id = idPrefix + String.fromCharCode(65 + variants.length); // A, B, C… (com prefixo da dor, se houver)
-    onChange({ ...welcome, variants: [...variants, { id, title: "", subtitle: "", button: "" }] });
+    // Numeração B-001, B-002… monotônica (variantSeq nunca decresce): id de
+    // variante NUNCA se repete entre rodadas — o histórico do funil não mistura
+    // copies diferentes na mesma linha.
+    const seq = (Number(welcome.variantSeq) || 0) + 1;
+    const id = `${idPrefix}${String(seq).padStart(3, "0")}`;
+    onChange({ ...welcome, variantSeq: seq, variants: [...variants, { id, title: "", subtitle: "", button: "" }] });
   };
   const remove = (i) => {
     const next = variants.filter((_, j) => j !== i);
@@ -642,9 +646,56 @@ function VariantsEditor({ welcome, onChange, idPrefix = "" }) {
           <LabeledInput label="Texto do botão (CTA)" value={v.button || ""} onChange={(x) => setV(i, { button: x })} placeholder="vazio = herda" />
         </div>
       ))}
-      <button onClick={add} style={addBtnStyle}>+ variante {idPrefix + String.fromCharCode(65 + variants.length)}</button>
+      <button onClick={add} style={addBtnStyle}>+ variante {idPrefix + String((Number(welcome.variantSeq) || 0) + 1).padStart(3, "0")}</button>
     </div>
   );
+}
+
+// ── Regras do campeão do teste A/B ───────────────────────────────────────────
+// Elegibilidade: ≥100 visitas E ≥7 dias corridos na variante líder. Decisão:
+// líder pela % de começar com ≥95% de confiança (z de duas proporções vs. a
+// vice) e SEM regressão de envio (% envio ≥ 70% da vice, quando a vice tem
+// amostra). Ganhos desempatam e vetam: campeã de clique que não fecha, não é
+// campeã. Comparação sempre DENTRO da mesma dor (ou da base).
+const MIN_VIEWS = 100;
+const MIN_DAYS = 7;
+function normCdf(z) {
+  const x = Math.abs(z) / Math.SQRT2;
+  const t = 1 / (1 + 0.3275911 * x);
+  const erf = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+  const pos = 0.5 * (1 + erf);
+  return z >= 0 ? pos : 1 - pos;
+}
+function championVerdicts(variants) {
+  const out = {}; // `${pain}|${id}` -> { label, tone }
+  const groups = {};
+  for (const v of variants) (groups[v.pain || ""] = groups[v.pain || ""] || []).push(v);
+  for (const pain of Object.keys(groups)) {
+    const g = groups[pain].filter((v) => v.views > 0).sort((a, b) => b.starts / b.views - a.starts / a.views);
+    const key = (v) => `${v.pain || ""}|${v.id}`;
+    if (g.length === 0) continue;
+    if (g.length === 1) { out[key(g[0])] = { label: "sem rival", tone: "var(--fg-4)" }; continue; }
+    const [top, second] = g;
+    const days = top.firstAt ? Math.max(1, Math.ceil((Date.now() - new Date(top.firstAt).getTime()) / 86400e3)) : 0;
+    for (const v of g.slice(1)) out[key(v)] = { label: "", tone: "var(--fg-4)" };
+    if (top.views < MIN_VIEWS || days < MIN_DAYS) {
+      out[key(top)] = { label: `coletando · ${top.views}/${MIN_VIEWS} visitas · ${Math.min(days, MIN_DAYS)}/${MIN_DAYS}d`, tone: "var(--warn)" };
+      continue;
+    }
+    const p1 = top.starts / top.views;
+    const p2 = second.starts / second.views;
+    const pool = (top.starts + second.starts) / (top.views + second.views);
+    const se = Math.sqrt(pool * (1 - pool) * (1 / top.views + 1 / second.views));
+    const conf = se > 0 ? normCdf((p1 - p2) / se) : 0.5;
+    const subTop = top.submits / top.views;
+    const subSecond = second.views > 0 ? second.submits / second.views : 0;
+    const submitWorse = second.views >= 50 && subSecond > 0 && subTop < 0.7 * subSecond;
+    const wonWorse = second.won > top.won; // fechou menos contrato que a vice
+    if (conf >= 0.95 && !submitWorse && !wonWorse) out[key(top)] = { label: "campeã ✓ promova pro texto base", tone: "var(--pos)" };
+    else if (conf >= 0.95 && (submitWorse || wonWorse)) out[key(top)] = { label: submitWorse ? "ganha clique, perde envio ⚠" : "ganha clique, fecha menos ⚠", tone: "var(--neg)" };
+    else out[key(top)] = { label: `líder · ${Math.round(conf * 100)}% de confiança`, tone: "var(--fg-3)" };
+  }
+  return out;
 }
 
 // ── Funil de drop-off ───────────────────────────────────────────────────────
@@ -706,7 +757,7 @@ function FunnelView({ form, onBack }) {
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
-                    {["Dor", "Variante", "Título mostrado", "Visitas", "Começou", "% começar", "Enviou", "% envio"].map((h, i) => (
+                    {["Dor", "Variante", "Título mostrado", "Visitas", "Começou", "% começar", "Enviou", "% envio", "Ganhos", "% fechou", "Status"].map((h, i) => (
                       <th key={h} className="mono" style={{ textAlign: i < 2 ? "left" : "right", fontSize: 10, fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", padding: "6px 8px", borderBottom: "1px solid var(--line-1)" }}>{h}</th>
                     ))}
                   </tr>
@@ -717,27 +768,35 @@ function FunnelView({ form, onBack }) {
                       ...(form.welcome?.variants || []),
                       ...Object.values(form.welcome?.byPain || {}).flatMap((p) => p.variants || []),
                     ];
-                    const best = Math.max(...data.variants.map((v) => (v.views > 0 ? v.starts / v.views : 0)));
+                    const verdicts = championVerdicts(data.variants);
                     return data.variants.map((v) => {
                       const def = vDefs.find((d) => String(d.id) === String(v.id));
                       const startRate = v.views > 0 ? (v.starts / v.views) * 100 : null;
                       const submitRate = v.views > 0 ? (v.submits / v.views) * 100 : null;
-                      const leader = v.views > 0 && best > 0 && v.starts / v.views === best;
+                      const verdict = verdicts[`${v.pain || ""}|${v.id}`];
+                      const leader = !!verdict?.label;
                       return (
                         <tr key={(v.pain || "") + "|" + v.id}>
                           <td className="mono" style={{ padding: "7px 8px", fontSize: 11, color: "var(--fg-3)", borderBottom: "1px solid var(--line-1)" }}>{v.pain ? `[${v.pain}]` : "base"}</td>
-                          <td className="mono" style={{ padding: "7px 8px", fontSize: 12, fontWeight: 700, color: leader ? "var(--pos)" : "var(--fg-1)", borderBottom: "1px solid var(--line-1)" }}>{v.id}{leader ? " ★" : ""}</td>
+                          <td className="mono" style={{ padding: "7px 8px", fontSize: 12, fontWeight: 700, color: leader ? "var(--fg-1)" : "var(--fg-2)", borderBottom: "1px solid var(--line-1)" }}>{v.id}</td>
                           <td style={{ padding: "7px 8px", fontSize: 12, color: "var(--fg-2)", borderBottom: "1px solid var(--line-1)", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={def?.title || form.welcome?.byPain?.[v.pain]?.title || form.welcome?.title || ""}>
                             {def?.title || form.welcome?.byPain?.[v.pain]?.title || form.welcome?.title || v.id}
                           </td>
                           <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>{v.views}</td>
                           <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>{v.starts}</td>
-                          <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", fontWeight: 600, color: leader ? "var(--pos)" : "var(--fg-1)", borderBottom: "1px solid var(--line-1)" }}>
+                          <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", fontWeight: 600, borderBottom: "1px solid var(--line-1)" }}>
                             {startRate != null ? startRate.toFixed(1).replace(".", ",") + "%" : ""}
                           </td>
                           <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>{v.submits}</td>
                           <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>
                             {submitRate != null ? submitRate.toFixed(1).replace(".", ",") + "%" : ""}
+                          </td>
+                          <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>{v.won || 0}</td>
+                          <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>
+                            {v.leads > 0 ? ((v.won / v.leads) * 100).toFixed(0) + "%" : ""}
+                          </td>
+                          <td className="mono" style={{ padding: "7px 8px", fontSize: 10.5, whiteSpace: "nowrap", color: verdict?.tone || "var(--fg-4)", borderBottom: "1px solid var(--line-1)" }}>
+                            {verdict?.label || ""}
                           </td>
                         </tr>
                       );
@@ -746,8 +805,8 @@ function FunnelView({ form, onBack }) {
                 </tbody>
               </table>
             </div>
-            <div className="mono dim" style={{ fontSize: 10.5, marginTop: 6 }}>
-              ★ = melhor taxa de começar · espere 100+ visitas por variante antes de bater o martelo
+            <div className="mono dim" style={{ fontSize: 10.5, marginTop: 6, lineHeight: 1.6 }}>
+              regras da campeã: ≥100 visitas e ≥7 dias na líder · ≥95% de confiança na % de começar vs. a vice (z de 2 proporções) · sem regressão de envio nem de ganhos. Campeã eleita: promova a copy pro texto base e remova as variantes; teste novo = variante nova (numeração nunca repete).
             </div>
           </div>
         )}
