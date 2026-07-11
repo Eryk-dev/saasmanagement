@@ -35,6 +35,7 @@ function FormsScreen({ saasId }) {
   const active = activeProduct?.id;
   const [forms, setForms] = useState([]);
   const [counts, setCounts] = useState({}); // formId -> nº de respostas
+  const [stats, setStats] = useState({});   // formId -> { views, submits } · 30d (funil)
   const [view, setView] = useState({ mode: "list" }); // list | edit | subs
   const [toast, setToast] = useState(null);
 
@@ -48,6 +49,13 @@ function FormsScreen({ saasId }) {
     const c = {};
     for (const s of subs) c[s.form] = (c[s.form] || 0) + 1;
     setForms(fs); setCounts(c);
+    // Métricas de funil (30d) por form publicado — visitas e conversão da lista.
+    const since = new Date(Date.now() - 30 * 86400e3).toISOString();
+    const pub = fs.filter((f) => f.status === "published");
+    const results = await Promise.allSettled(pub.map((f) => api.formFunnel(f.id, since)));
+    const st = {};
+    results.forEach((r, i) => { if (r.status === "fulfilled") st[pub[i].id] = { views: r.value.views, submits: r.value.submits }; });
+    setStats(st);
   }, [active]);
 
   useEffect(() => { load(); }, [load, version]);
@@ -57,7 +65,7 @@ function FormsScreen({ saasId }) {
   // do outro, nem as linhas dele aparecer sob o cabeçalho novo.
   useEffect(() => {
     setView((v) => (v.mode === "list" ? v : { mode: "list" }));
-    setForms([]); setCounts({});
+    setForms([]); setCounts({}); setStats({});
   }, [active]);
 
   function flash(msg) { setToast(msg); setTimeout(() => setToast(null), 1800); }
@@ -104,16 +112,20 @@ function FormsScreen({ saasId }) {
           />
         ) : (
           <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
-            <div className="mono" style={{ display: "grid", gridTemplateColumns: "1fr 110px 90px 90px 360px", padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
-              <span>Form</span><span>Status</span><span>Perguntas</span><span>Respostas</span><span style={{ textAlign: "right" }}>Ações</span>
+            <div className="mono" style={{ display: "grid", gridTemplateColumns: "1fr 100px 74px 90px 90px 84px 360px", padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
+              <span>Form</span><span>Status</span><span>Perguntas</span><span title="sessões que abriram a página nos últimos 30 dias">Visitas · 30d</span><span title="envios ÷ visitas (30d)">Conversão</span><span>Respostas</span><span style={{ textAlign: "right" }}>Ações</span>
             </div>
             {forms.map((f) => {
               const pub = f.status === "published";
               return (
-                <div key={f.id} style={{ display: "grid", gridTemplateColumns: "1fr 110px 90px 90px 360px", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", fontSize: 13 }}>
+                <div key={f.id} style={{ display: "grid", gridTemplateColumns: "1fr 100px 74px 90px 90px 84px 360px", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", fontSize: 13 }}>
                   <span style={{ fontWeight: 500 }}>{f.name || f.id}</span>
                   <span><span className={"chip " + (pub ? "pos" : "")} style={{ height: 20 }}>{pub ? "publicado" : "rascunho"}</span></span>
                   <span className="mono tnum dim">{(f.questions || []).length}</span>
+                  <span className="mono tnum dim">{stats[f.id] ? window.fmt.int(stats[f.id].views) : ""}</span>
+                  <span className="mono tnum" style={{ fontWeight: 600, color: stats[f.id]?.views > 0 ? "var(--fg-1)" : "var(--fg-4)" }}>
+                    {stats[f.id]?.views > 0 ? ((stats[f.id].submits / stats[f.id].views) * 100).toFixed(1).replace(".", ",") + "%" : ""}
+                  </span>
                   <button className="mono tnum" onClick={() => setView({ mode: "subs", form: f })} style={{ textAlign: "left", color: "var(--accent)", fontSize: 13 }}>
                     {counts[f.id] || 0}
                   </button>
@@ -278,6 +290,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
                 <button onClick={() => set({ welcome: null })} className="mono dim" style={{ fontSize: 12, padding: "8px 6px" }}>remover</button>
               </div>
               <VariantsEditor welcome={draft.welcome} onChange={(w) => set({ welcome: w })} />
+              <PainWelcomesEditor welcome={draft.welcome} saas={draft.saas} onChange={(w) => set({ welcome: w })} />
             </div>
           )}
 
@@ -541,15 +554,66 @@ function SubmissionsView({ form, onBack }) {
   );
 }
 
+// ── Welcome por DOR (anúncio → headline) ─────────────────────────────────────
+// A página /f/:id resolve a dor do anúncio de origem (utm_content → nome →
+// "[X]") e mostra a welcome daquela dor — consistência anúncio → página sem
+// duplicar o form. Cada dor pode ter o próprio teste A/B (ids das variantes
+// ganham o prefixo da dor pra não colidir no funil).
+function PainWelcomesEditor({ welcome, saas, onChange }) {
+  const painMap = ((window.SEED?.SAAS || []).find((x) => x.id === saas) || {}).painMap || {};
+  const codes = Object.keys(painMap);
+  if (!codes.length) return null;
+  const byPain = welcome.byPain || {};
+  const setPain = (code, patch) => onChange({ ...welcome, byPain: { ...byPain, [code]: { ...(byPain[code] || {}), ...patch } } });
+  const removePain = (code) => {
+    const next = { ...byPain };
+    delete next[code];
+    onChange({ ...welcome, ...(Object.keys(next).length ? { byPain: next } : { byPain: undefined }) });
+  };
+  return (
+    <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--line-2)" }}>
+      <div className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 6 }}>
+        Headline por dor (anúncio → página)
+      </div>
+      <div className="mono dim" style={{ fontSize: 11, lineHeight: 1.5, marginBottom: 8 }}>
+        Quem chega por um anúncio com código de dor vê a welcome daquela dor (campo vazio herda a base). Sem dor resolvida, vale a base acima.
+      </div>
+      {codes.map((code) => {
+        const pw = byPain[code];
+        if (!pw) {
+          return (
+            <button key={code} onClick={() => setPain(code, { title: "", subtitle: "", button: "" })} style={{ ...addBtnStyle, marginBottom: 6 }}>
+              + headline pra dor [{code}] · {painMap[code]}
+            </button>
+          );
+        }
+        return (
+          <div key={code} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: 10, marginBottom: 8, background: "var(--bg-inset)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <span className="mono" style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", border: "1px solid var(--accent-line)", borderRadius: 5, padding: "1px 7px" }}>[{code}]</span>
+              <span style={{ fontSize: 12, color: "var(--fg-3)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{painMap[code]}</span>
+              <button onClick={() => removePain(code)} className="mono dim" style={{ fontSize: 12 }}>✕</button>
+            </div>
+            <LabeledInput label="Título" value={pw.title || ""} onChange={(x) => setPain(code, { title: x })} placeholder="vazio = herda o título base" />
+            <LabeledInput label="Subtítulo" value={pw.subtitle || ""} onChange={(x) => setPain(code, { subtitle: x })} placeholder="vazio = herda" />
+            <LabeledInput label="Texto do botão (CTA)" value={pw.button || ""} onChange={(x) => setPain(code, { button: x })} placeholder="vazio = herda" />
+            <VariantsEditor welcome={pw} idPrefix={code + "-"} onChange={(w) => setPain(code, w)} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Teste A/B da tela de boas-vindas ─────────────────────────────────────────
 // Cada variante sobrescreve título/subtítulo/botão da welcome base (campo vazio
 // herda). A página sorteia por navegador (sticky) e carimba a variante nos
 // eventos do funil e no lead (formVariant) — o funil compara as versões.
-function VariantsEditor({ welcome, onChange }) {
+function VariantsEditor({ welcome, onChange, idPrefix = "" }) {
   const variants = welcome.variants || [];
   const setV = (i, patch) => onChange({ ...welcome, variants: variants.map((v, j) => (j === i ? { ...v, ...patch } : v)) });
   const add = () => {
-    const id = String.fromCharCode(65 + variants.length); // A, B, C…
+    const id = idPrefix + String.fromCharCode(65 + variants.length); // A, B, C… (com prefixo da dor, se houver)
     onChange({ ...welcome, variants: [...variants, { id, title: "", subtitle: "", button: "" }] });
   };
   const remove = (i) => {
@@ -578,7 +642,7 @@ function VariantsEditor({ welcome, onChange }) {
           <LabeledInput label="Texto do botão (CTA)" value={v.button || ""} onChange={(x) => setV(i, { button: x })} placeholder="vazio = herda" />
         </div>
       ))}
-      <button onClick={add} style={addBtnStyle}>+ variante {String.fromCharCode(65 + variants.length)}</button>
+      <button onClick={add} style={addBtnStyle}>+ variante {idPrefix + String.fromCharCode(65 + variants.length)}</button>
     </div>
   );
 }
@@ -642,14 +706,17 @@ function FunnelView({ form, onBack }) {
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
-                    {["Variante", "Título mostrado", "Visitas", "Começou", "% começar", "Enviou", "% envio"].map((h, i) => (
+                    {["Dor", "Variante", "Título mostrado", "Visitas", "Começou", "% começar", "Enviou", "% envio"].map((h, i) => (
                       <th key={h} className="mono" style={{ textAlign: i < 2 ? "left" : "right", fontSize: 10, fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", padding: "6px 8px", borderBottom: "1px solid var(--line-1)" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {(() => {
-                    const vDefs = form.welcome?.variants || [];
+                    const vDefs = [
+                      ...(form.welcome?.variants || []),
+                      ...Object.values(form.welcome?.byPain || {}).flatMap((p) => p.variants || []),
+                    ];
                     const best = Math.max(...data.variants.map((v) => (v.views > 0 ? v.starts / v.views : 0)));
                     return data.variants.map((v) => {
                       const def = vDefs.find((d) => String(d.id) === String(v.id));
@@ -657,10 +724,11 @@ function FunnelView({ form, onBack }) {
                       const submitRate = v.views > 0 ? (v.submits / v.views) * 100 : null;
                       const leader = v.views > 0 && best > 0 && v.starts / v.views === best;
                       return (
-                        <tr key={v.id}>
+                        <tr key={(v.pain || "") + "|" + v.id}>
+                          <td className="mono" style={{ padding: "7px 8px", fontSize: 11, color: "var(--fg-3)", borderBottom: "1px solid var(--line-1)" }}>{v.pain ? `[${v.pain}]` : "base"}</td>
                           <td className="mono" style={{ padding: "7px 8px", fontSize: 12, fontWeight: 700, color: leader ? "var(--pos)" : "var(--fg-1)", borderBottom: "1px solid var(--line-1)" }}>{v.id}{leader ? " ★" : ""}</td>
-                          <td style={{ padding: "7px 8px", fontSize: 12, color: "var(--fg-2)", borderBottom: "1px solid var(--line-1)", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={def?.title || form.welcome?.title || ""}>
-                            {def?.title || form.welcome?.title || v.id}
+                          <td style={{ padding: "7px 8px", fontSize: 12, color: "var(--fg-2)", borderBottom: "1px solid var(--line-1)", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={def?.title || form.welcome?.byPain?.[v.pain]?.title || form.welcome?.title || ""}>
+                            {def?.title || form.welcome?.byPain?.[v.pain]?.title || form.welcome?.title || v.id}
                           </td>
                           <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>{v.views}</td>
                           <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>{v.starts}</td>

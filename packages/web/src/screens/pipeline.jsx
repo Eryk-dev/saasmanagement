@@ -24,7 +24,7 @@ const { useState: useStP, useMemo: useMP, useEffect: useEfP } = React;
 
 function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   const { SAAS } = window.SEED;
-  const { openForm } = useData();
+  const { openForm, version } = useData();
   // Produto do WORKSPACE (seletor no pé da sidebar) — a tela não tem mais abas
   // próprias. Navegação com saas explícito (ex.: "ver no pipeline") pina uma vez.
   const [activeProduct] = useActiveSaas();
@@ -46,6 +46,9 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     try { localStorage.setItem("cockpit_pipeline_view", v); } catch { /* ignore */ }
   };
   const [leads, setLeads] = useStP(() => window.SEED.LEADS.map(l => ({ ...l })));
+  // Sem o remount global (app.jsx), a cópia local ressincroniza aqui quando o
+  // tempo real recarrega o SEED — re-render suave, drag e scroll preservados.
+  useEfP(() => { setLeads(window.SEED.LEADS.map((l) => ({ ...l }))); }, [version]);
   const [highlight, setHighlight] = useStP(jumpFilter?.stage || null);
   const [selected, setSelected] = useStP(new Set());
   const [pri, setPri] = useStP("all");

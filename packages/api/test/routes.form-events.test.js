@@ -149,3 +149,41 @@ test("submission com variant carimba lead.formVariant e a submission", async () 
   assert.equal(sub.variant, "B");
   await app.close();
 });
+
+// ── Welcome por DOR (anúncio → headline) ─────────────────────────────────────
+
+test("/f/:id resolve a dor do utm_content e injeta a welcome da dor (byPain fora do payload)", async () => {
+  const { app, repo } = await buildApp();
+  await repo.update("forms", "fo_test", {
+    welcome: {
+      title: "Base", button: "Começar",
+      byPain: { B: { title: "Conta banida? A gente resolve.", button: "Quero operar seguro", variants: [{ id: "B-A", title: "v1 da dor B" }] } },
+    },
+  });
+  // anúncio sincronizado com código de dor no nome
+  await repo.create("ad_insights", { id: "x9", saas: "leverads", campaignId: "c1", adId: "ad9", adName: "1303 [B]", date: "2026-07-01", spend: 1 });
+
+  const withPain = await app.inject({ url: "/f/fo_test?utm_content=ad9" });
+  assert.equal(withPain.statusCode, 200);
+  assert.ok(withPain.body.includes("Conta banida? A gente resolve."), "welcome da dor B injetada");
+  assert.ok(withPain.body.includes('window.__PAIN__ = "B"'));
+  assert.ok(!withPain.body.includes("byPain"), "as outras copies não vazam pro client");
+
+  const noPain = await app.inject({ url: "/f/fo_test" });
+  assert.ok(noPain.body.includes("Base"), "sem utm resolvível cai na welcome base");
+  assert.ok(noPain.body.includes('window.__PAIN__ = ""'));
+  await app.close();
+});
+
+test("funil separa variantes por dor (mesmo id em dores diferentes não colide)", async () => {
+  const { app } = await buildApp();
+  await post(app, { session: "p1", event: "view", variant: "V1", pain: "B" });
+  await post(app, { session: "p1", event: "start", variant: "V1", pain: "B" });
+  await post(app, { session: "p2", event: "view", variant: "V1" }); // base, sem dor
+  const f = (await app.inject({ method: "GET", url: "/api/forms/fo_test/funnel" })).json();
+  assert.deepEqual(f.variants, [
+    { id: "V1", pain: "B", sessions: 1, views: 1, starts: 1, submits: 0 },
+    { id: "V1", sessions: 1, views: 1, starts: 0, submits: 0 },
+  ]);
+  await app.close();
+});
