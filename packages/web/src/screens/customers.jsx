@@ -6,7 +6,7 @@ import { EmptyState, PrimaryButton, RowActions } from "../atoms.jsx";
 import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/milestones.js";
 import { ActivityList } from "../components/timeline.jsx";
 import { SubscriptionsScreen } from "./subscriptions.jsx";
-import { SaasTabs } from "../components/saas-tabs.jsx";
+import { SaasTabs, useActiveSaas } from "../components/saas-tabs.jsx";
 // Clientes — a base ativa do produto (estilo Attio: tabela + painel de detalhe
 // sem trocar de página). A receita vem das assinaturas (customer.arr é
 // derivado). Pós-venda: linha do tempo de marcos por tempo de casa
@@ -27,8 +27,7 @@ const SUB_STATUS = {
 function CustomersScreen({ initialTab = "base" }) {
   const { SAAS, CUSTOMERS } = window.SEED;
   const { version, openForm, openDelete, refresh } = useData();
-  const [activeSaas, setActiveSaas] = useState(null);
-  const product = SAAS.find((s) => s.id === activeSaas) || SAAS[0];
+  const [product, setActiveSaas] = useActiveSaas();
   const [tab, setTab] = useState(initialTab); // base | billing
   const [subs, setSubs] = useState([]);
   const [plans, setPlans] = useState([]);
@@ -91,7 +90,7 @@ function CustomersScreen({ initialTab = "base" }) {
           <EmptyState
             title="Nenhum cliente ainda"
             hint="Quando um lead fechar, cadastre o cliente e a assinatura aqui (a conversão automática a partir do pipeline chega na fase de pós-venda)."
-            action={<PrimaryButton onClick={() => openForm("customers")}>+ Cadastrar cliente</PrimaryButton>}
+            action={<PrimaryButton onClick={() => openForm("customers", { saas: product.id })}>+ Cadastrar cliente</PrimaryButton>}
           />
         ) : (
           <div className="resp-cols" style={{ "--cols": "minmax(0,1fr) 340px", gap: 12, alignItems: "start" }}>

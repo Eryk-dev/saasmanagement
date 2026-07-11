@@ -39,8 +39,11 @@ export function makeMetaCapi({
 } = {}) {
   // O pixel pode ser POR PRODUTO (product.metaPixelId) — o token de sistema é
   // um só e vale pra qualquer pixel que o system user acessa. `pixelOverride`
-  // vazio/ausente cai no pixel do env (single-tenant legado).
-  const configured = (pixelOverride) => !!(pixelOverride || pixelId) && !!accessToken;
+  // vazio/ausente cai no pixel do env (single-tenant legado). Sanitiza pra
+  // dígitos igual à página pública (form-page.js): valor malformado degrada
+  // pro pixel do env em AMBOS os lados, preservando o dedup por eventId.
+  const digits = (v) => String(v || "").replace(/\D/g, "");
+  const configured = (pixelOverride) => !!(digits(pixelOverride) || pixelId) && !!accessToken;
 
   function buildUserData({ email, phone, externalId, fbp, fbc, clientIp, userAgent } = {}) {
     const u = {};
@@ -69,8 +72,8 @@ export function makeMetaCapi({
     actionSource = "website",
     pixelId: pixelOverride,
   }) {
-    const pixel = pixelOverride || pixelId;
-    if (!configured(pixel)) return { skipped: true };
+    const pixel = digits(pixelOverride) || pixelId;
+    if (!pixel || !accessToken) return { skipped: true };
 
     const payload = {
       data: [

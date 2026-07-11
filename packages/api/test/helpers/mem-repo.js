@@ -9,7 +9,8 @@ export function makeMemRepo() {
   };
   return {
     async list(name) {
-      return [...col(name).values()].map((r) => ({ ...r }));
+      // Mesma semântica do db.js: ORDER BY id (ordem estável entre produtos).
+      return [...col(name).values()].map((r) => ({ ...r })).sort((a, b) => String(a.id).localeCompare(String(b.id)));
     },
     async get(name, id) {
       const r = col(name).get(String(id));

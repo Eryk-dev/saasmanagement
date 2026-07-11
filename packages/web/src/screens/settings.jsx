@@ -515,7 +515,7 @@ function IntegrationsSettings({ s }) {
   const [pixelId, setPixelId] = useStS(s.metaPixelId || "");
 
   async function saveMeta() {
-    await api.update("products", s.id, { metaAdAccount: adAccount.trim(), metaPixelId: pixelId.trim() });
+    await api.update("products", s.id, { metaAdAccount: adAccount.trim(), metaPixelId: pixelId.replace(/\D/g, "") });
     await refresh();
   }
 

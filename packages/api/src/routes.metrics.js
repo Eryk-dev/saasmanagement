@@ -40,8 +40,12 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts } = {}) {
 
     // IA do mês: soma as séries diárias dos provedores dentro do mês pedido.
     // A janela das APIs cobre ~6 meses; mês mais antigo volta null (sem dado).
+    // O custo de IA é GLOBAL (uma conta por provedor) — atribui inteiro ao
+    // PRIMEIRO produto do portfólio (ordem de id, determinística) pra não
+    // contar em dobro quando existe mais de um SaaS.
+    const aiOwner = (await repo.list("products"))[0]?.id === product.id;
     let aiUSD = null, aiBRL = null, usdBrl = null;
-    if (ai.configured()) {
+    if (aiOwner && ai.configured()) {
       try {
         const monthStart = new Date(`${month}-01T00:00:00Z`).getTime();
         const days = Math.min(180, Math.max(35, Math.ceil((Date.now() - monthStart) / 86400000) + 2));

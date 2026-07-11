@@ -75,3 +75,26 @@ test("GET /api/expenses/summary soma ads + IA (em R$) + manuais do mês", async 
   assert.equal(past.manualTotal, 955);
   await app.close();
 });
+
+test("custo de IA é global: só o PRIMEIRO produto (ordem de id) carrega, sem dobrar no portfólio", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL });
+  await repo.create("products", { id: "uniquekids", name: "UniqueKids", funnel: FUNNEL });
+  const month = new Date().toISOString().slice(0, 7);
+  const day = new Date().toISOString().slice(0, 10);
+  const ai = {
+    configured: () => true,
+    report: async () => ({ usdBrl: 5, providers: [{ provider: "openai", ok: true, series: [{ date: day, spend: 10 }] }] }),
+  };
+  const app = Fastify();
+  registerMetricsRoutes(app, repo, { ai });
+
+  const first = (await app.inject({ method: "GET", url: `/api/expenses/summary/leverads?month=${month}` })).json();
+  assert.equal(first.ai, 50); // dono: "leverads" < "uniquekids" na ordem de id
+
+  const second = (await app.inject({ method: "GET", url: `/api/expenses/summary/uniquekids?month=${month}` })).json();
+  assert.equal(second.ai, null);
+  assert.equal(second.aiUSD, null);
+  assert.equal(second.total, 0); // nada de IA duplicada no segundo produto
+  await app.close();
+});
