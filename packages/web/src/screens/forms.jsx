@@ -277,6 +277,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
                 <LabeledInput label="Texto do botão" value={draft.welcome.button} onChange={(v) => set({ welcome: { ...draft.welcome, button: v } })} />
                 <button onClick={() => set({ welcome: null })} className="mono dim" style={{ fontSize: 12, padding: "8px 6px" }}>remover</button>
               </div>
+              <VariantsEditor welcome={draft.welcome} onChange={(w) => set({ welcome: w })} />
             </div>
           )}
 
@@ -540,6 +541,48 @@ function SubmissionsView({ form, onBack }) {
   );
 }
 
+// ── Teste A/B da tela de boas-vindas ─────────────────────────────────────────
+// Cada variante sobrescreve título/subtítulo/botão da welcome base (campo vazio
+// herda). A página sorteia por navegador (sticky) e carimba a variante nos
+// eventos do funil e no lead (formVariant) — o funil compara as versões.
+function VariantsEditor({ welcome, onChange }) {
+  const variants = welcome.variants || [];
+  const setV = (i, patch) => onChange({ ...welcome, variants: variants.map((v, j) => (j === i ? { ...v, ...patch } : v)) });
+  const add = () => {
+    const id = String.fromCharCode(65 + variants.length); // A, B, C…
+    onChange({ ...welcome, variants: [...variants, { id, title: "", subtitle: "", button: "" }] });
+  };
+  const remove = (i) => {
+    const next = variants.filter((_, j) => j !== i);
+    onChange({ ...welcome, ...(next.length ? { variants: next } : { variants: undefined }) });
+  };
+  return (
+    <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--line-2)" }}>
+      <div className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 6 }}>
+        Teste A/B da headline {variants.length > 0 && `· ${variants.length} variante${variants.length > 1 ? "s" : ""} ativas`}
+      </div>
+      {variants.length === 0 && (
+        <div className="mono dim" style={{ fontSize: 11, lineHeight: 1.5, marginBottom: 8 }}>
+          Com 2+ variantes, cada visitante vê UMA versão (sorteio fixo por navegador) e o funil compara view → começar → envio por versão. Campo vazio herda o da welcome acima.
+        </div>
+      )}
+      {variants.map((v, i) => (
+        <div key={i} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: 10, marginBottom: 8, background: "var(--bg-inset)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <span className="mono" style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", border: "1px solid var(--accent-line)", borderRadius: 5, padding: "1px 7px" }}>{v.id}</span>
+            <span style={{ flex: 1 }} />
+            <button onClick={() => remove(i)} className="mono dim" style={{ fontSize: 12 }}>✕</button>
+          </div>
+          <LabeledInput label="Título" value={v.title || ""} onChange={(x) => setV(i, { title: x })} placeholder="vazio = herda o título base" />
+          <LabeledInput label="Subtítulo" value={v.subtitle || ""} onChange={(x) => setV(i, { subtitle: x })} placeholder="vazio = herda" />
+          <LabeledInput label="Texto do botão (CTA)" value={v.button || ""} onChange={(x) => setV(i, { button: x })} placeholder="vazio = herda" />
+        </div>
+      ))}
+      <button onClick={add} style={addBtnStyle}>+ variante {String.fromCharCode(65 + variants.length)}</button>
+    </div>
+  );
+}
+
 // ── Funil de drop-off ───────────────────────────────────────────────────────
 // Sessões únicas por tela (eventos da página pública), na ordem do renderer.
 // A barra é relativa ao topo do funil; o % vermelho é a perda vs. a tela anterior.
@@ -589,6 +632,56 @@ function FunnelView({ form, onBack }) {
         {data?.error && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>Falha ao carregar o funil.</div>}
         {data && !data.error && !rows[0].sessions && (
           <EmptyState title="Nenhum evento no período" hint="Os eventos de funil são registrados pela página pública do form a cada visita. Compartilhe o link e volte aqui pra ver onde as pessoas param." />
+        )}
+        {data && !data.error && (data.variants || []).length > 0 && (
+          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", maxWidth: 760, marginBottom: 14, padding: "12px 14px" }}>
+            <div className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
+              Teste A/B da headline · view → começar → envio por variante
+            </div>
+            <div className="tbl-x">
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    {["Variante", "Título mostrado", "Visitas", "Começou", "% começar", "Enviou", "% envio"].map((h, i) => (
+                      <th key={h} className="mono" style={{ textAlign: i < 2 ? "left" : "right", fontSize: 10, fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", padding: "6px 8px", borderBottom: "1px solid var(--line-1)" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const vDefs = form.welcome?.variants || [];
+                    const best = Math.max(...data.variants.map((v) => (v.views > 0 ? v.starts / v.views : 0)));
+                    return data.variants.map((v) => {
+                      const def = vDefs.find((d) => String(d.id) === String(v.id));
+                      const startRate = v.views > 0 ? (v.starts / v.views) * 100 : null;
+                      const submitRate = v.views > 0 ? (v.submits / v.views) * 100 : null;
+                      const leader = v.views > 0 && best > 0 && v.starts / v.views === best;
+                      return (
+                        <tr key={v.id}>
+                          <td className="mono" style={{ padding: "7px 8px", fontSize: 12, fontWeight: 700, color: leader ? "var(--pos)" : "var(--fg-1)", borderBottom: "1px solid var(--line-1)" }}>{v.id}{leader ? " ★" : ""}</td>
+                          <td style={{ padding: "7px 8px", fontSize: 12, color: "var(--fg-2)", borderBottom: "1px solid var(--line-1)", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={def?.title || form.welcome?.title || ""}>
+                            {def?.title || form.welcome?.title || v.id}
+                          </td>
+                          <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>{v.views}</td>
+                          <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>{v.starts}</td>
+                          <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", fontWeight: 600, color: leader ? "var(--pos)" : "var(--fg-1)", borderBottom: "1px solid var(--line-1)" }}>
+                            {startRate != null ? startRate.toFixed(1).replace(".", ",") + "%" : ""}
+                          </td>
+                          <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>{v.submits}</td>
+                          <td className="mono tnum" style={{ padding: "7px 8px", fontSize: 12, textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>
+                            {submitRate != null ? submitRate.toFixed(1).replace(".", ",") + "%" : ""}
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+            <div className="mono dim" style={{ fontSize: 10.5, marginTop: 6 }}>
+              ★ = melhor taxa de começar · espere 100+ visitas por variante antes de bater o martelo
+            </div>
+          </div>
         )}
         {data && !data.error && rows[0].sessions > 0 && (
           <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", maxWidth: 760 }}>

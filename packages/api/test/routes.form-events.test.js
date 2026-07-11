@@ -107,3 +107,45 @@ test("rate-limit dos eventos é separado do de submissions", async () => {
   assert.equal((await post(app, { session: "s1", event: "submit" })).statusCode, 429);
   await app.close();
 });
+
+// ── Teste A/B da welcome: variante nos eventos, funil por variante, lead carimbado ──
+
+test("eventos com variant → funil ganha o recorte por variante (view/começar/envio)", async () => {
+  const { app } = await buildApp();
+  // A: 2 visitas, 2 começam, 1 envia · B: 2 visitas, 1 começa, 0 enviam
+  for (const [session, variant, start, submit] of [
+    ["a1", "A", true, true], ["a2", "A", true, false],
+    ["b1", "B", true, false], ["b2", "B", false, false],
+  ]) {
+    await post(app, { session, event: "view", variant });
+    if (start) await post(app, { session, event: "start", variant });
+    if (submit) await post(app, { session, event: "submit", variant });
+  }
+  // sessão SEM variante (form aberto antes do teste começar) não entra no recorte
+  await post(app, { session: "s0", event: "view" });
+
+  const f = (await app.inject({ method: "GET", url: "/api/forms/fo_test/funnel" })).json();
+  assert.equal(f.views, 5);
+  assert.deepEqual(f.variants, [
+    { id: "A", sessions: 2, views: 2, starts: 2, submits: 1 },
+    { id: "B", sessions: 2, views: 2, starts: 1, submits: 0 },
+  ]);
+  await app.close();
+});
+
+test("submission com variant carimba lead.formVariant e a submission", async () => {
+  const { app, repo } = await buildApp();
+  const res = await app.inject({
+    method: "POST", url: "/public/forms/fo_test/submissions",
+    payload: {
+      answers: { niche: "moda", accounts: "2", nome: "Ana", whatsapp: "41999990000" },
+      variant: "B",
+    },
+  });
+  assert.equal(res.statusCode, 201);
+  const lead = (await repo.list("leads"))[0];
+  assert.equal(lead.formVariant, "B");
+  const sub = (await repo.list("form_submissions"))[0];
+  assert.equal(sub.variant, "B");
+  await app.close();
+});

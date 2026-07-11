@@ -23,6 +23,7 @@ function OverviewScreen({ onNav, onOpenLead }) {
   const { version } = useData();
   const [product, setActiveSaas] = useActiveSaas();
   const [marketing, setMarketing] = useState(null);
+  const [biz, setBiz] = useState(null); // CAC/conversão (30d) — mesmo endpoint da Publicidade
   const [invoices, setInvoices] = useState([]);
   const [costs, setCosts] = useState(null); // custos do mês corrente (tela Custos)
   // Ações da fila (toque dado / adiar) aplicam otimista aqui até o SSE recarregar.
@@ -40,6 +41,7 @@ function OverviewScreen({ onNav, onOpenLead }) {
     }
     let alive = true;
     api.marketingMetrics(product.id).then((m) => alive && setMarketing(m)).catch(() => alive && setMarketing(null));
+    api.metrics(product.id, { days: 30 }).then((b) => alive && setBiz(b)).catch(() => alive && setBiz(null));
     api.list("invoices").then((rows) => alive && setInvoices(rows.filter((i) => i.saas === product.id))).catch(() => {});
     api.expensesSummary(product.id).then((c) => alive && setCosts(c)).catch(() => alive && setCosts(null));
     return () => { alive = false; };
@@ -194,6 +196,8 @@ function OverviewScreen({ onNav, onOpenLead }) {
             tone={leadsDeltaPct == null ? "flat" : leadsDeltaPct >= 0 ? "up" : "down"} />
           <StatTile label="Custo por lead · 30d" value={cpl != null ? window.fmt.money(cpl) : "sem gasto"}
             delta={cpl != null ? window.fmt.money(marketing.totals.spend) + " investidos" : "conecte o Meta em Publicidade"} tone="flat" />
+          <StatTile label="Lead → cliente · 30d" value={biz?.window?.convRate != null ? `${String(biz.window.convRate).replace(".", ",")}%` : "sem dado"}
+            delta={biz?.window?.newCustomers != null ? `${biz.window.newCustomers} ${biz.window.newCustomers === 1 ? "cliente novo" : "clientes novos"}` : null} tone="flat" />
         </div>
 
         <div className="resp-cols" style={{ "--cols": "minmax(0,1fr) 340px", gap: 12, alignItems: "start" }}>
