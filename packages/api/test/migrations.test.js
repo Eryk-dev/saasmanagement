@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   ensureIntegrationStage, migrateLeverAdsCrmFunnel, ensureFunnelKinds,
-  ensureLossReasons, ensureUserRoles, DEFAULT_LOSS_REASONS,
+  ensureLossReasons, ensureUserRoles, ensureUserSaasScope, DEFAULT_LOSS_REASONS,
 } from "../src/migrations.js";
 
 const FUNNEL = [
@@ -210,4 +210,25 @@ test("ensureUserRoles espelha o time antigo e não inventa usuário", async () =
   assert.deepEqual((await repo.get("users", "ja")).roles, ["sdr"]);
   assert.equal((await repo.list("users")).length, 4); // jonathan NÃO foi criado
   assert.equal(await ensureUserRoles(repo), 0);
+});
+
+test("ensureUserSaasScope escopa a Ana na UniqueKids uma vez, sem inventar usuário", async () => {
+  const repo = makeMemRepo();
+  await repo.create("users", { id: "ana", name: "Ana", roles: ["closer"] });
+  await repo.create("users", { id: "leonardo", name: "Leonardo", roles: ["closer"] });
+
+  assert.equal(await ensureUserSaasScope(repo), 1);
+  assert.equal((await repo.get("users", "ana")).saas, "uniquekids");
+  assert.equal((await repo.get("users", "leonardo")).saas, undefined); // global segue global
+  assert.equal(await ensureUserSaasScope(repo), 0); // idempotente
+
+  // Admin limpou manualmente ("" = todos os produtos): a migração NÃO reaplica.
+  await repo.update("users", "ana", { saas: "" });
+  assert.equal(await ensureUserSaasScope(repo), 0);
+  assert.equal((await repo.get("users", "ana")).saas, "");
+
+  // Sem a Ana no banco, nada acontece (não cria usuário).
+  const repo2 = makeMemRepo();
+  assert.equal(await ensureUserSaasScope(repo2), 0);
+  assert.equal((await repo2.list("users")).length, 0);
 });
