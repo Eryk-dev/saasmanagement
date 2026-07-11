@@ -2,6 +2,7 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { PageHead, Segmented, StatTile, Card, LineChart } from "../components/viz.jsx";
+import { SaasTabs } from "../components/saas-tabs.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { stageKind } from "../lib/funnel.js";
 // Métricas — aquisição × funil do produto ativo (substitui a tela Marketing).
@@ -83,7 +84,8 @@ function rangeOf(r) {
 function MetricsScreen() {
   const { SAAS, CONFIG } = window.SEED;
   const { version } = useData();
-  const product = SAAS[0];
+  const [activeSaas, setActiveSaas] = useState(null);
+  const product = SAAS.find((s) => s.id === activeSaas) || SAAS[0];
   const metaOn = !!CONFIG?.meta?.configured;
 
   const [range, setRange] = useState({ preset: "30" });
@@ -168,40 +170,41 @@ function MetricsScreen() {
       };
     });
   }
+  // Ids com chamada em voo — o toggle mostra estado "enviando" em vez de fingir
+  // que já aplicou (a confirmação de verdade vem da resposta da Meta).
+  const [busyIds, setBusyIds] = useState(() => new Set());
+  const markBusy = (id, on) => setBusyIds((prev) => { const n = new Set(prev); if (on) n.add(id); else n.delete(id); return n; });
   async function toggleObject(level, o) {
+    if (busyIds.has(o.id)) return;
     const target = o.status === "PAUSED" ? "ACTIVE" : "PAUSED";
     patchObject(level, o.id, { status: target, effectiveStatus: target === "PAUSED" ? "PAUSED" : effOnActivate(level, o) });
     if (level !== "ads") cascadeStatus(level, o, target);
+    markBusy(o.id, true);
     try {
       await api.metaObjectStatus(o.id, target);
-      setNote({ ok: true, text: `${LEVEL_LABEL[level]} "${o.name}" ${target === "PAUSED" ? "pausado(a)" : "ativado(a)"}.` });
+      setNote({ ok: true, text: `${LEVEL_LABEL[level]} "${o.name}" ${target === "PAUSED" ? "pausado(a)" : "ativado(a)"} na Meta ✓` });
       // Verdade da Meta em seguida (efetivo herdado, revisão, etc.) — sem piscar.
       api.adObjects(product.id).then(setObjects).catch(() => { /* otimista já aplicado */ });
     } catch (e) {
       patchObject(level, o.id, { status: o.status, effectiveStatus: o.effectiveStatus });
       if (level !== "ads") cascadeStatus(level, o, o.status === "PAUSED" ? "PAUSED" : "ACTIVE");
-      setNote({ ok: false, text: e.message || "Falha na Meta." });
+      setNote({ ok: false, text: `NÃO aplicado na Meta: ${e.message || "falha desconhecida"}` });
+    } finally {
+      markBusy(o.id, false);
     }
   }
-  // Remount dos inputs de orçamento quando um valor é recusado/inválido — o
-  // campo é uncontrolled; sem isso ele seguiria mostrando o número que NÃO
-  // foi salvo como se fosse o vigente.
-  const [budgetEpoch, setBudgetEpoch] = useState(0);
-  async function saveObjectBudget(level, o, value) {
-    const v = Number(value);
-    if (!Number.isFinite(v) || v <= 0) {
-      if (String(value).trim() !== "") setNote({ ok: false, text: "Orçamento inválido, use um valor em R$ maior que zero." });
-      setBudgetEpoch((n) => n + 1);
-      return;
-    }
-    if (v === o.dailyBudget) return;
+  // Orçamento: quem confirma é o BudgetCell (dirty → enviando → aplicado no
+  // Gerenciador / erro com revert). Aqui só a chamada + patch com o valor
+  // normalizado; lança pro cell mostrar o erro, e a note carrega a msg da Meta.
+  async function commitBudget(level, o, v) {
     try {
       const r = await api.metaObjectBudget(o.id, v);
-      patchObject(level, o.id, { dailyBudget: r?.dailyBudget ?? v }); // valor normalizado pela API (centavos)
-      setNote({ ok: true, text: `Orçamento de "${o.name}" atualizado.` });
+      const applied = r?.dailyBudget ?? v;
+      patchObject(level, o.id, { dailyBudget: applied });
+      return applied;
     } catch (e) {
-      setBudgetEpoch((n) => n + 1);
-      setNote({ ok: false, text: e.message || "Falha ao atualizar orçamento." });
+      setNote({ ok: false, text: `Orçamento de "${o.name}" NÃO aplicado na Meta: ${e.message || "falha desconhecida"}` });
+      throw e;
     }
   }
 
@@ -260,6 +263,7 @@ function MetricsScreen() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Publicidade" sub={`aquisição, funil e campanhas · ${product.name}`}>
+        <SaasTabs active={product.id} onSelect={setActiveSaas} />
         {metaOn && product.metaAdAccount && (
           <button onClick={() => setCreative((v) => !v)}
             style={{ padding: "6px 12px", borderRadius: "var(--r-1)", fontSize: 12.5, fontWeight: 600, background: "var(--accent)", color: "var(--accent-fg)" }}>
@@ -435,13 +439,13 @@ function MetricsScreen() {
               </div>
             )}
             {objects && !objects.error && (
-              <AdsManager objects={objects} money={money} budgetEpoch={budgetEpoch}
+              <AdsManager objects={objects} money={money} busyIds={busyIds}
                 metrics={data && !data.error ? {
                   campaigns: Object.fromEntries((data.campaigns || []).map((g) => [String(g.id), g])),
                   adsets: Object.fromEntries((data.adsets || []).map((g) => [String(g.id), g])),
                   ads: Object.fromEntries((data.ads || []).map((g) => [String(g.id), g])),
                 } : null}
-                onToggle={toggleObject} onBudget={saveObjectBudget} />
+                onToggle={toggleObject} onBudget={commitBudget} />
             )}
           </Card>
         )}
@@ -492,23 +496,90 @@ const METRIC_COLS = [
 
 // Toggle Off/On no padrão do Gerenciador — controla o status PRÓPRIO da linha
 // (a coluna Veiculação mostra o efetivo, com pausa herdada).
-function Toggle({ on, label, onChange }) {
-  const action = on ? "pausar" : "ativar";
+function Toggle({ on, label, busy, onChange }) {
+  const action = busy ? "enviando pra Meta" : on ? "pausar" : "ativar";
   return (
-    <button onClick={onChange} role="switch" aria-checked={on} title={`${action} ${label}`} aria-label={`${action} ${label}`} style={{
-      width: 34, height: 19, borderRadius: 999, padding: 2, flexShrink: 0,
-      background: on ? "var(--accent)" : "var(--bg-3)",
-      border: "1px solid " + (on ? "var(--accent)" : "var(--line-2)"),
-      display: "inline-flex", alignItems: "center",
-      justifyContent: on ? "flex-end" : "flex-start",
-      transition: "background 120ms ease",
-    }}>
+    <button onClick={onChange} disabled={busy} role="switch" aria-checked={on} aria-busy={busy || undefined}
+      title={`${action} ${busy ? "" : label}`.trim()} aria-label={`${action} ${label}`} style={{
+        width: 34, height: 19, borderRadius: 999, padding: 2, flexShrink: 0,
+        background: on ? "var(--accent)" : "var(--bg-3)",
+        border: "1px solid " + (on ? "var(--accent)" : "var(--line-2)"),
+        display: "inline-flex", alignItems: "center",
+        justifyContent: on ? "flex-end" : "flex-start",
+        transition: "background 120ms ease",
+        opacity: busy ? 0.55 : 1,
+        cursor: busy ? "wait" : "pointer",
+      }}>
       <span style={{ width: 13, height: 13, borderRadius: 999, background: "#fff", boxShadow: "0 1px 2px oklch(0 0 0 / 0.3)" }} />
     </button>
   );
 }
 
-function AdsManager({ objects, metrics, money, onToggle, onBudget, budgetEpoch = 0 }) {
+// Campo de orçamento com CONFIRMAÇÃO explícita de que replicou pro Gerenciador:
+// editar mostra ✓/✕, salvar passa por "enviando…" e termina em "✓ no Gerenciador"
+// (ou erro em vermelho com o valor revertido pro vigente). Enter salva, Esc cancela.
+function BudgetCell({ o, onCommit, sub = "diário" }) {
+  const [val, setVal] = useState(String(o.dailyBudget));
+  const [phase, setPhase] = useState("idle"); // idle | saving | saved | error
+  useEffect(() => { setVal(String(o.dailyBudget)); setPhase("idle"); }, [o.id, o.dailyBudget]); // eslint-disable-line react-hooks/exhaustive-deps
+  const num = Number(val);
+  const valid = Number.isFinite(num) && num > 0;
+  const dirty = String(val).trim() !== "" && num !== o.dailyBudget;
+  async function commit() {
+    if (!valid || !dirty || phase === "saving") return;
+    setPhase("saving");
+    try {
+      const applied = await onCommit(num);
+      setVal(String(applied));
+      setPhase("saved");
+      setTimeout(() => setPhase((p) => (p === "saved" ? "idle" : p)), 3000);
+    } catch {
+      setVal(String(o.dailyBudget)); // reverte pro valor VIGENTE na Meta
+      setPhase("error");
+      setTimeout(() => setPhase((p) => (p === "error" ? "idle" : p)), 4000);
+    }
+  }
+  function cancel() { setVal(String(o.dailyBudget)); setPhase("idle"); }
+  const miniBtn = (label, title, onClick, tone) => (
+    <button onClick={onClick} title={title} style={{
+      width: 22, height: 22, borderRadius: 5, fontSize: 12, fontWeight: 700, flexShrink: 0,
+      border: "1px solid " + (tone === "ok" ? "var(--accent-line)" : "var(--line-2)"),
+      background: tone === "ok" ? "var(--accent)" : "var(--bg-2)",
+      color: tone === "ok" ? "var(--accent-fg)" : "var(--fg-3)",
+    }}>{label}</button>
+  );
+  return (
+    <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+        <input type="number" min="1" step="1" value={val} disabled={phase === "saving"}
+          onChange={(e) => { setVal(e.target.value); if (phase !== "idle") setPhase("idle"); }}
+          onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") cancel(); }}
+          title="Orçamento diário em R$ · Enter ou ✓ envia pra Meta"
+          style={{
+            width: 86, height: 25, padding: "0 8px", borderRadius: "var(--r-1)",
+            border: "1px solid " + (phase === "error" ? "var(--neg)" : dirty ? "var(--accent-line)" : "var(--line-2)"),
+            background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)", textAlign: "right",
+            opacity: phase === "saving" ? 0.6 : 1,
+          }} />
+        {dirty && phase !== "saving" && miniBtn("✓", valid ? "aplicar na Meta" : "valor inválido", commit, valid ? "ok" : undefined)}
+        {dirty && phase !== "saving" && miniBtn("✕", "descartar (volta pro valor vigente)", cancel)}
+      </span>
+      <span className="mono" style={{
+        fontSize: 9,
+        color: phase === "saved" ? "var(--pos)" : phase === "error" ? "var(--neg)" : phase === "saving" ? "var(--warn)" : "var(--fg-4)",
+        whiteSpace: "nowrap",
+      }}>
+        {phase === "saving" ? "enviando pra Meta…"
+          : phase === "saved" ? "✓ aplicado no Gerenciador"
+          : phase === "error" ? "não aplicado · revertido"
+          : dirty ? (valid ? "não salvo ainda" : "valor inválido")
+          : sub}
+      </span>
+    </span>
+  );
+}
+
+function AdsManager({ objects, metrics, money, onToggle, onBudget, busyIds }) {
   const [level, setLevel] = useState("campaigns"); // campaigns | adsets | ads
   const [selCampaign, setSelCampaign] = useState(null); // drill-down herdado
   const [selAdset, setSelAdset] = useState(null);
@@ -633,7 +704,7 @@ function AdsManager({ objects, metrics, money, onToggle, onBudget, budgetEpoch =
               return (
                 <tr key={o.id}>
                   <td style={{ ...td, paddingRight: 0 }}>
-                    <Toggle on={o.status !== "PAUSED"} label={o.name} onChange={() => onToggle(level, o)} />
+                    <Toggle on={o.status !== "PAUSED"} label={o.name} busy={busyIds?.has(o.id)} onChange={() => onToggle(level, o)} />
                   </td>
                   <td onClick={canDrill ? () => drill(o) : undefined} title={canDrill ? "ver o nível de baixo filtrado" : o.name} style={{
                     ...td, fontSize: 13, fontWeight: 600, cursor: canDrill ? "pointer" : "default",
@@ -648,14 +719,7 @@ function AdsManager({ objects, metrics, money, onToggle, onBudget, budgetEpoch =
                   </td>
                   <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
                     {o.dailyBudget != null ? (
-                      <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
-                        <input type="number" min="1" step="1" defaultValue={o.dailyBudget} key={`${o.id}·${o.dailyBudget}·${budgetEpoch}`}
-                          onBlur={(e) => onBudget(level, o, e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
-                          title="Orçamento diário em R$ (salva ao sair do campo)"
-                          style={{ width: 86, height: 25, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)", textAlign: "right" }} />
-                        <span className="mono" style={{ fontSize: 9, color: "var(--fg-4)" }}>diário</span>
-                      </span>
+                      <BudgetCell o={o} onCommit={(v) => onBudget(level, o, v)} />
                     ) : o.lifetimeBudget != null ? (
                       <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
                         <span className="mono" style={{ fontSize: 12.5 }}>{money(o.lifetimeBudget)}</span>

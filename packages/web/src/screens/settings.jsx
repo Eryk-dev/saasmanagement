@@ -510,9 +510,12 @@ function IntegrationsSettings({ s }) {
   const mpOn = !!window.SEED?.CONFIG?.mp?.configured;
   const metaOn = !!window.SEED?.CONFIG?.meta?.configured;
   const [adAccount, setAdAccount] = useStS(s.metaAdAccount || "");
+  // Pixel POR SAAS: dispara na página pública do form (/f/:id) e no CAPI
+  // server-side. Independe do META_ACCESS_TOKEN (que é só Marketing API).
+  const [pixelId, setPixelId] = useStS(s.metaPixelId || "");
 
   async function saveMeta() {
-    await api.update("products", s.id, { metaAdAccount: adAccount.trim() });
+    await api.update("products", s.id, { metaAdAccount: adAccount.trim(), metaPixelId: pixelId.trim() });
     await refresh();
   }
 
@@ -534,13 +537,18 @@ function IntegrationsSettings({ s }) {
           </div>
           <span className={"chip " + (metaOn ? "pos" : "")} style={{ height: 22 }}>{metaOn ? "conectado" : "configurar META_ACCESS_TOKEN"}</span>
         </div>
-        {metaOn && (
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12 }}>
-            <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>ad account de {s.name}</span>
-            <input value={adAccount} placeholder="act_1234567890" onChange={(e) => setAdAccount(e.target.value)} className="mono" style={{ ...inputStyle, width: 220, fontFamily: "var(--mono)" }} />
-            <button onClick={saveMeta} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}><span style={{ fontSize: 11 }}>salvar</span></button>
-          </div>
-        )}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
+          {metaOn && (
+            <>
+              <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>ad account de {s.name}</span>
+              <input value={adAccount} placeholder="act_1234567890" onChange={(e) => setAdAccount(e.target.value)} className="mono" style={{ ...inputStyle, width: 220, fontFamily: "var(--mono)" }} />
+            </>
+          )}
+          <span className="mono" title="Pixel disparado na página pública do form deste SaaS (/f/:id) e no CAPI. Vazio = pixel padrão do env."
+            style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>pixel de {s.name}</span>
+          <input value={pixelId} placeholder="971201888623790" onChange={(e) => setPixelId(e.target.value)} className="mono" style={{ ...inputStyle, width: 170, fontFamily: "var(--mono)" }} />
+          <button onClick={saveMeta} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}><span style={{ fontSize: 11 }}>salvar</span></button>
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>

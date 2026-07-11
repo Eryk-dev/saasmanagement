@@ -6,10 +6,11 @@ import { EmptyState, Avatar } from "../atoms.jsx";
 import { nextMilestone, dueLabel } from "../lib/milestones.js";
 import { openStages, workableStages, isWonStage, stageKind, cadenceOf, nextTouch, nextTouchPill, firstStage as firstStageOf } from "../lib/funnel.js";
 import { displayName, currentUser } from "../lib/users.js";
+import { SaasTabs } from "../components/saas-tabs.jsx";
 // Visão geral — a home do dia a dia. Responde: como está a receita, quantos
 // leads entraram, quanto custa o lead, e — principal — QUEM CONTATAR AGORA
 // (fila de trabalho do GPS: atrasados → hoje → sem próximo passo).
-// Focada no produto ativo (SAAS[0]).
+// Focada no produto ativo (abas por SaaS quando o portfólio tem mais de um).
 
 const { useState, useEffect, useMemo } = React;
 
@@ -20,7 +21,8 @@ const shortDay = (d) => d.toLocaleDateString("pt-BR", { day: "2-digit", month: "
 function OverviewScreen({ onNav, onOpenLead }) {
   const { SAAS, LEADS, CUSTOMERS } = window.SEED;
   const { version } = useData();
-  const product = SAAS[0];
+  const [activeSaas, setActiveSaas] = useState(null);
+  const product = SAAS.find((s) => s.id === activeSaas) || SAAS[0];
   const [marketing, setMarketing] = useState(null);
   const [invoices, setInvoices] = useState([]);
   const [costs, setCosts] = useState(null); // custos do mês corrente (tela Custos)
@@ -168,7 +170,9 @@ function OverviewScreen({ onNav, onOpenLead }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-      <PageHead title="Visão geral" sub={today} />
+      <PageHead title="Visão geral" sub={today}>
+        <SaasTabs active={product.id} onSelect={setActiveSaas} />
+      </PageHead>
 
       <div style={{ padding: "20px var(--pad-x) 40px", display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>

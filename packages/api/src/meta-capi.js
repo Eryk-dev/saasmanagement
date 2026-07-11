@@ -37,7 +37,10 @@ export function makeMetaCapi({
   accessToken = "",
   testEventCode = "",
 } = {}) {
-  const configured = () => !!pixelId && !!accessToken;
+  // O pixel pode ser POR PRODUTO (product.metaPixelId) — o token de sistema é
+  // um só e vale pra qualquer pixel que o system user acessa. `pixelOverride`
+  // vazio/ausente cai no pixel do env (single-tenant legado).
+  const configured = (pixelOverride) => !!(pixelOverride || pixelId) && !!accessToken;
 
   function buildUserData({ email, phone, externalId, fbp, fbc, clientIp, userAgent } = {}) {
     const u = {};
@@ -64,8 +67,10 @@ export function makeMetaCapi({
     customData,
     eventTime,
     actionSource = "website",
+    pixelId: pixelOverride,
   }) {
-    if (!configured()) return { skipped: true };
+    const pixel = pixelOverride || pixelId;
+    if (!configured(pixel)) return { skipped: true };
 
     const payload = {
       data: [
@@ -82,7 +87,7 @@ export function makeMetaCapi({
     };
     if (testEventCode) payload.test_event_code = testEventCode;
 
-    const url = `${GRAPH}/${pixelId}/events?access_token=${encodeURIComponent(accessToken)}`;
+    const url = `${GRAPH}/${pixel}/events?access_token=${encodeURIComponent(accessToken)}`;
     const res = await f(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -113,6 +118,7 @@ export function makeMetaCapi({
     clientIp,
     userAgent,
     customData,
+    pixelId: pixelOverride,
   }) {
     return sendEvent({
       eventName: "Lead",
@@ -120,6 +126,7 @@ export function makeMetaCapi({
       eventSourceUrl,
       userData: buildUserData({ email, phone, externalId: leadId, fbp, fbc, clientIp, userAgent }),
       customData,
+      pixelId: pixelOverride,
     });
   }
 

@@ -352,3 +352,42 @@ test("submission qualificada (_end) → CAPI dispara e lead NÃO é desqualifica
   assert.equal(capi.calls[0].email, "ana@ex.com");
   await app.close();
 });
+
+test("GET /f/:id — pixel POR PRODUTO (product.metaPixelId) substitui o default do env", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("products", { id: "leverads", name: "LeverAds", metaPixelId: "555000111222333" });
+
+  const res = await app.inject({ method: "GET", url: "/f/fo_test" });
+  assert.equal(res.statusCode, 200);
+  assert.match(res.body, /fbq\('init', '555000111222333'\)/);
+  assert.doesNotMatch(res.body, /971201888623790/);
+  await app.close();
+});
+
+test("GET /f/:id — produto sem metaPixelId cai no pixel default (env/legado)", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("products", { id: "leverads", name: "LeverAds" });
+
+  const res = await app.inject({ method: "GET", url: "/f/fo_test" });
+  assert.equal(res.statusCode, 200);
+  assert.match(res.body, /fbq\('init', '971201888623790'\)/);
+  await app.close();
+});
+
+test("CAPI recebe o pixel do produto do form (multi-produto)", async () => {
+  const repo = makeMemRepo();
+  await repo.create("forms", { ...FORM_REJECT, saas: "uniquekids" });
+  await repo.create("products", { id: "uniquekids", name: "UniqueKids", metaPixelId: "888999777666555" });
+  const capi = fakeCapi();
+  const app = Fastify();
+  registerRoutes(app, repo, { metaCapi: capi });
+
+  const res = await app.inject({
+    method: "POST", url: "/public/forms/fo_reject/submissions",
+    payload: { answers: { nome: "Ana", email: "ana@ex.com", expand: "sim" }, eventId: "evt-z" },
+  });
+  assert.equal(res.statusCode, 201);
+  assert.equal(capi.calls.length, 1);
+  assert.equal(capi.calls[0].pixelId, "888999777666555");
+  await app.close();
+});

@@ -109,7 +109,11 @@ export async function initDb() {
 // ── Repository ────────────────────────────────────────────────────────────
 export const repo = {
   async list(name) {
-    const { rows } = await getPool().query(`SELECT json FROM ${tbl(name)}`);
+    // ORDER BY id: sem ele a ordem é a do heap do Postgres, que muda quando uma
+    // linha é atualizada — e SAAS[0]/bootstrap dependem de ordem estável entre
+    // produtos ("leverads" < "uniquekids"). Telas que precisam de outra ordem
+    // já ordenam no cliente.
+    const { rows } = await getPool().query(`SELECT json FROM ${tbl(name)} ORDER BY id`);
     return rows.map((r) => r.json);
   },
   async get(name, id) {
