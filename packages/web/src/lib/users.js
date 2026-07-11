@@ -3,7 +3,15 @@
 // integrator), as etiquetas que alimentam os pickers do pipeline. Substitui os
 // arrays hardcoded (CLOSERS/INTEGRATORS) do pipeline.jsx.
 
+import { getActiveSaasId } from "./workspace.js";
+
 const usersList = () => (Array.isArray(window.SEED?.USERS) ? window.SEED.USERS : []);
+
+// Escopo por produto: usuário com `saas` preenchido só aparece nos pickers do
+// workspace daquele produto (ex.: Ana atende só a UniqueKids); vazio = time de
+// todos os produtos. displayName/userById seguem globais — registro antigo com
+// responsável de outro produto continua mostrando o nome.
+const inWorkspace = (u) => !u.saas || u.saas === getActiveSaasId();
 
 // Fallback pré-migração (USERS vazio ou ninguém com a role): o time que era
 // hardcoded no board — some sozinho quando as roles chegarem do servidor.
@@ -15,7 +23,7 @@ const LEGACY = {
 
 export function usersByRole(role) {
   const tagged = usersList().filter((u) => (u.roles || []).includes(role));
-  if (tagged.length) return tagged;
+  if (tagged.length) return tagged.filter(inWorkspace);
   return LEGACY[role] || [];
 }
 
