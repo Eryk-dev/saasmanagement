@@ -22,6 +22,8 @@ const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" 
 const money = (v) => BRL.format(Number(v) || 0);
 
 const PERIODS = [
+  { value: "1", label: "hoje" },
+  { value: "yesterday", label: "ontem" },
   { value: "3", label: "3 dias" },
   { value: "7", label: "7 dias" },
   { value: "30", label: "30 dias" },
@@ -77,7 +79,8 @@ function rangeOf(r) {
     return since <= until ? { since, until } : { since: until, until: since };
   }
   if (r.preset === "life") return { since: "2020-01-01", until: today };
-  const n = Number(r.preset) || 30;
+  if (r.preset === "yesterday") { const y = dayStr(Date.now() - DAY); return { since: y, until: y }; }
+  const n = Number(r.preset) || 30; // "1" = hoje (since = until = hoje)
   return { since: dayStr(Date.now() - (n - 1) * DAY), until: today };
 }
 
