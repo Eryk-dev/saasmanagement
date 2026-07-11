@@ -581,8 +581,12 @@ function BudgetCell({ o, onCommit, sub = "diário" }) {
 
 function AdsManager({ objects, metrics, money, onToggle, onBudget, busyIds }) {
   const [level, setLevel] = useState("campaigns"); // campaigns | adsets | ads
-  const [selCampaign, setSelCampaign] = useState(null); // drill-down herdado
-  const [selAdset, setSelAdset] = useState(null);
+  // Seleção estilo Gerenciador: checkbox nas linhas; campanhas marcadas filtram
+  // a aba de conjuntos, conjuntos marcados filtram a de anúncios (os rótulos
+  // das abas viram "Conjuntos de N campanhas" etc.). Clique no nome = atalho
+  // que seleciona SÓ aquela linha e desce um nível.
+  const [selCampaigns, setSelCampaigns] = useState(() => new Set());
+  const [selAdsets, setSelAdsets] = useState(() => new Set());
   const [statusFilter, setStatusFilter] = useState("all");
   const [sort, setSort] = useState({ key: "spend", dir: -1 });
 
@@ -591,12 +595,28 @@ function AdsManager({ objects, metrics, money, onToggle, onBudget, busyIds }) {
     const eff = o.effectiveStatus || o.status;
     return statusFilter === "active" ? eff === "ACTIVE" : eff !== "ACTIVE";
   };
+  // Poda conjuntos selecionados que saíram do recorte quando a seleção de
+  // campanhas muda (senão a aba Anúncios filtraria por um conjunto invisível).
+  const pruneAdsets = (camps) => setSelAdsets((prev) => (camps.size
+    ? new Set([...prev].filter((sid) => {
+        const st = (objects.adsets || []).find((x) => String(x.id) === sid);
+        return st && camps.has(String(st.campaignId));
+      }))
+    : prev));
+  const toggleSel = (lv, id) => {
+    const key = String(id);
+    if (lv === "campaigns") {
+      setSelCampaigns((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); pruneAdsets(n); return n; });
+    } else if (lv === "adsets") {
+      setSelAdsets((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+    }
+  };
   const baseOf = (lv) => {
     if (lv === "campaigns") return objects.campaigns || [];
-    if (lv === "adsets") return (objects.adsets || []).filter((s) => !selCampaign || String(s.campaignId) === String(selCampaign.id));
+    if (lv === "adsets") return (objects.adsets || []).filter((s) => !selCampaigns.size || selCampaigns.has(String(s.campaignId)));
     return (objects.ads || []).filter((a) =>
-      (!selCampaign || String(a.campaignId) === String(selCampaign.id)) &&
-      (!selAdset || String(a.adsetId) === String(selAdset.id)));
+      (!selCampaigns.size || selCampaigns.has(String(a.campaignId))) &&
+      (!selAdsets.size || selAdsets.has(String(a.adsetId))));
   };
   const mOf = (id) => metrics?.[level]?.[String(id)] || null;
   const rows = baseOf(level).filter(matchStatus).map((o) => ({ o, m: mOf(o.id) }));
@@ -628,14 +648,12 @@ function AdsManager({ objects, metrics, money, onToggle, onBudget, busyIds }) {
   };
 
   const drill = (o) => {
-    if (level === "campaigns") { setSelCampaign({ id: o.id, name: o.name }); setSelAdset(null); setLevel("adsets"); }
-    else if (level === "adsets") { setSelAdset({ id: o.id, name: o.name }); setLevel("ads"); }
+    if (level === "campaigns") { const n = new Set([String(o.id)]); setSelCampaigns(n); pruneAdsets(n); setLevel("adsets"); }
+    else if (level === "adsets") { setSelAdsets(new Set([String(o.id)])); setLevel("ads"); }
   };
-  const gotoLevel = (lv) => {
-    if (lv === "campaigns") { setSelCampaign(null); setSelAdset(null); }
-    if (lv === "adsets") setSelAdset(null);
-    setLevel(lv);
-  };
+  // Trocar de aba NÃO limpa a seleção (igual ao Gerenciador) — limpar é nos
+  // chips ✕ ou desmarcando os checkboxes.
+  const gotoLevel = (lv) => setLevel(lv);
 
   const td = { padding: "10px 14px", borderBottom: "1px solid var(--line-1)" };
   const tdM = { ...td, textAlign: "right", fontFamily: "var(--mono)", fontSize: 12.5, whiteSpace: "nowrap" };
@@ -653,7 +671,27 @@ function AdsManager({ objects, metrics, money, onToggle, onBudget, busyIds }) {
       <button onClick={onClear} title="limpar filtro" style={{ fontSize: 12, padding: "0 6px", color: "var(--accent)" }}>✕</button>
     </span>
   );
-  const LEVELS = [["campaigns", "Campanhas"], ["adsets", "Conjuntos"], ["ads", "Anúncios"]];
+  const nameOf = (lv, id) => ((objects[lv] || []).find((x) => String(x.id) === String(id))?.name) || id;
+  const plural = (n, um, muitos) => (n === 1 ? um : muitos);
+  const LEVELS = [
+    ["campaigns", selCampaigns.size ? `Campanhas · ${selCampaigns.size} selecionada${selCampaigns.size > 1 ? "s" : ""}` : "Campanhas"],
+    ["adsets", selCampaigns.size ? `Conjuntos de ${selCampaigns.size} ${plural(selCampaigns.size, "campanha", "campanhas")}` : "Conjuntos"],
+    ["ads", selAdsets.size ? `Anúncios de ${selAdsets.size} ${plural(selAdsets.size, "conjunto", "conjuntos")}`
+      : selCampaigns.size ? `Anúncios de ${selCampaigns.size} ${plural(selCampaigns.size, "campanha", "campanhas")}` : "Anúncios"],
+  ];
+
+  const selSetOf = (lv) => (lv === "campaigns" ? selCampaigns : lv === "adsets" ? selAdsets : null);
+  const isChecked = (o) => !!selSetOf(level)?.has(String(o.id));
+  const allChecked = level !== "ads" && rows.length > 0 && rows.every(({ o }) => isChecked(o));
+  const toggleSelAll = () => {
+    const ids = rows.map(({ o }) => String(o.id));
+    if (level === "campaigns") {
+      setSelCampaigns((prev) => { const n = new Set(prev); ids.forEach((id) => (allChecked ? n.delete(id) : n.add(id))); pruneAdsets(n); return n; });
+    } else if (level === "adsets") {
+      setSelAdsets((prev) => { const n = new Set(prev); ids.forEach((id) => (allChecked ? n.delete(id) : n.add(id))); return n; });
+    }
+  };
+  const checkboxStyle = { width: 14, height: 14, accentColor: "var(--accent)", cursor: "pointer" };
 
   return (
     <>
@@ -671,8 +709,12 @@ function AdsManager({ objects, metrics, money, onToggle, onBudget, busyIds }) {
             </button>
           ))}
         </div>
-        {selCampaign && chip(`campanha: ${selCampaign.name}`, () => { setSelCampaign(null); setSelAdset(null); })}
-        {selAdset && chip(`conjunto: ${selAdset.name}`, () => setSelAdset(null))}
+        {selCampaigns.size > 0 && chip(
+          selCampaigns.size === 1 ? `campanha: ${nameOf("campaigns", [...selCampaigns][0])}` : `${selCampaigns.size} campanhas`,
+          () => { setSelCampaigns(new Set()); })}
+        {selAdsets.size > 0 && chip(
+          selAdsets.size === 1 ? `conjunto: ${nameOf("adsets", [...selAdsets][0])}` : `${selAdsets.size} conjuntos`,
+          () => setSelAdsets(new Set()))}
         <span style={{ flex: 1 }} />
         <Segmented value={statusFilter} onChange={setStatusFilter}
           options={[{ value: "all", label: "todas" }, { value: "active", label: "ativas" }, { value: "paused", label: "pausadas" }]} />
@@ -687,6 +729,13 @@ function AdsManager({ objects, metrics, money, onToggle, onBudget, busyIds }) {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr>
+              <th style={{ ...thStyle, width: 34 }}>
+                {level !== "ads" && (
+                  <input type="checkbox" checked={allChecked} onChange={toggleSelAll}
+                    title={allChecked ? "desmarcar todos os visíveis" : "selecionar todos os visíveis (filtra os níveis de baixo)"}
+                    style={checkboxStyle} />
+                )}
+              </th>
               <th style={{ ...thStyle, width: 46 }} />
               <th style={{ ...thStyle, textAlign: "left", cursor: "pointer" }} onClick={() => clickSort("name")}>Nome{arrow("name")}</th>
               <th style={thStyle}>Veiculação</th>
@@ -701,8 +750,16 @@ function AdsManager({ objects, metrics, money, onToggle, onBudget, busyIds }) {
               const eff = o.effectiveStatus || o.status;
               const d = DELIVERY[eff] || { label: String(eff || "").toLowerCase().replaceAll("_", " "), tone: "var(--fg-4)" };
               const canDrill = level !== "ads";
+              const checked = isChecked(o);
               return (
-                <tr key={o.id}>
+                <tr key={o.id} style={checked ? { background: "var(--accent-soft)" } : undefined}>
+                  <td style={{ ...td, paddingRight: 0 }}>
+                    {level !== "ads" && (
+                      <input type="checkbox" checked={checked} onChange={() => toggleSel(level, o.id)}
+                        title="selecionar pra filtrar os níveis de baixo (como no Gerenciador)"
+                        style={checkboxStyle} />
+                    )}
+                  </td>
                   <td style={{ ...td, paddingRight: 0 }}>
                     <Toggle on={o.status !== "PAUSED"} label={o.name} busy={busyIds?.has(o.id)} onChange={() => onToggle(level, o)} />
                   </td>
@@ -739,6 +796,7 @@ function AdsManager({ objects, metrics, money, onToggle, onBudget, busyIds }) {
             })}
             {/* Linha de totais, como o rodapé do Gerenciador. */}
             <tr style={{ background: "var(--bg-inset)" }}>
+              <td style={td} />
               <td style={td} />
               <td style={{ ...td, fontSize: 12, fontWeight: 600, color: "var(--fg-2)", whiteSpace: "nowrap" }}>
                 Resultados de {rows.length} {rows.length === 1 ? "item" : "itens"}
