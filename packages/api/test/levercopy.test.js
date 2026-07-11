@@ -71,14 +71,14 @@ test("buildBody omits absent optional fields (Levercopy applies defaults)", () =
 test("buildBody forwards declared qualification answers, including arrays", () => {
   const lead = {
     id: "le_q1", name: "Lia", saas: "leverads",
-    accounts: "3-5", listings: "500-2000", revenue: "200k-1m",
+    accounts: "3-5", listings: "500-2000", niche2: "x",
     tags: ["ml", "shopee"], niche: "moda",
   };
   const questions = [...LEVERADS_LEAD_QUESTIONS, { key: "tags", label: "Tags", type: "multiselect" }];
   const body = buildBody(lead, questions);
   assert.equal(body.accounts, "3-5");
   assert.equal(body.listings, "500-2000");
-  assert.equal(body.revenue, "200k-1m");
+  assert.ok(!("niche2" in body)); // chave não declarada não vai
   assert.equal(body.niche, "moda");
   assert.deepEqual(body.tags, ["ml", "shopee"]); // array passa direto
 });
@@ -90,7 +90,7 @@ test("buildBody skips unanswered/empty qualification fields", () => {
   assert.equal(body.accounts, "1");
   assert.ok(!("tags" in body));    // array vazio não vai
   assert.ok(!("niche" in body));   // string vazia não vai
-  assert.ok(!("revenue" in body)); // ausente não vai
+  assert.ok(!("listings" in body)); // ausente não vai
 });
 
 test("buildBody ignores lead keys not declared in leadQuestions", () => {
@@ -123,7 +123,7 @@ test("runProposal success persists proposta_id, proposalUrl, proposal_edit_url",
 
 test("runProposal forwards the pipeline's qualification answers to Levercopy", async () => {
   await repo.create("products", { id: "leverads", name: "LeverAds", leadQuestions: LEVERADS_LEAD_QUESTIONS });
-  const lead = await newLead({ accounts: "3-5", listings: "500-2000", revenue: "200k-1m", niche: "moda" });
+  const lead = await newLead({ accounts: "3-5", listings: "500-2000", niche: "moda" });
   const captured = {};
   const res = await runProposal(repo, lead, { ...CFG, fetch: stubFetch(201, okBody(), captured) });
 

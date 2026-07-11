@@ -29,6 +29,7 @@ export function publicForm(form) {
     name: form.name,
     theme: form.theme || {},
     welcome: form.welcome || null,
+    submitLabel: form.submitLabel || "", // CTA da última tela ("Receber meu diagnóstico")
     questions: (form.questions || []).map((q) => ({
       key: q.key, label: q.label, type: q.type || "text", required: !!q.required,
       placeholder: q.placeholder || "", help: q.help || "", stack: !!q.stack,

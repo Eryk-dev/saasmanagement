@@ -577,7 +577,7 @@ ${metaPixelHead(pixelId)}
     var onlySelect = single && (first.type === 'select');
     if (!onlySelect) {
       var row = el('div', 'cta-row');
-      var ok = el('button', 'cta', (nextStep(cur) === -1 ? 'Enviar' : single && first.type === 'multiselect' ? 'Continuar' : 'OK') + ' →');
+      var ok = el('button', 'cta', (nextStep(cur) === -1 ? (F.submitLabel || 'Enviar') : single && first.type === 'multiselect' ? 'Continuar' : 'OK') + ' →');
       ok.onclick = advance;
       row.appendChild(ok);
       var hint = single
@@ -674,7 +674,7 @@ ${metaPixelHead(pixelId)}
       var url = !rejected && F.thanks && F.thanks.redirectUrl;
       if (url) setTimeout(function () { window.top.location.href = url; }, 1600);
     }).catch(function (e) {
-      for (var i = 0; i < btns.length; i++) { btns[i].disabled = false; btns[i].textContent = 'Enviar →'; }
+      for (var i = 0; i < btns.length; i++) { btns[i].disabled = false; btns[i].textContent = (F.submitLabel || 'Enviar') + ' →'; }
       var errBox = document.getElementById('err');
       if (errBox) errBox.textContent = '⚠ ' + (e.message || 'Falha ao enviar. Tente de novo.');
     });

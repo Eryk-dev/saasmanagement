@@ -212,6 +212,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
     const payload = {
       name: draft.name.trim(), saas: draft.saas, status: draft.status,
       theme: draft.theme,
+      submitLabel: String(draft.submitLabel || '').trim(),
       welcome: draft.welcome && String(draft.welcome.title || "").trim() ? draft.welcome : null,
       questions: (draft.questions || [])
         .filter((q) => String(q.label).trim() && String(q.key).trim())
@@ -277,6 +278,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
 
           <div style={sectionTitle}>Básico</div>
           <LabeledInput label="Nome do form" value={draft.name} onChange={(v) => set({ name: v })} placeholder="Diagnóstico · LeverAds" />
+          <LabeledInput label="Texto do botão de enviar (última tela)" value={draft.submitLabel || ""} onChange={(v) => set({ submitLabel: v })} placeholder="Enviar" />
 
           <div style={sectionTitle}>Boas-vindas (opcional)</div>
           {!draft.welcome ? (
