@@ -80,6 +80,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
     const utm = sanitizeUtm(body.utm);
     const variant = String(body.variant || "").slice(0, 40); // versão da welcome que converteu
     const pain = String(body.pain || "").slice(0, 8);         // dor da welcome mostrada
+    const internal = body.internal === true;                  // teste da equipe (não suja métrica nem CAPI)
     // Desqualificado vai pro estágio de kind `desqualificado` do funil (perda
     // estruturada, com motivo); fallback legado "disqualified" quando o produto/
     // funil não existe. Lead qualificado nasce com o próximo toque do GPS marcado
@@ -94,6 +95,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
       ...(utm ? { utm } : {}),
       ...(variant ? { formVariant: variant } : {}),
       ...(nextAt ? { nextActionAt: nextAt } : {}),
+      ...(internal ? { internal: true, source: `Form · ${form.name || form.id} · teste da equipe` } : {}),
       createdAt: new Date().toISOString(), // métricas de marketing filtram por período
     });
     // Timeline: nascimento do lead via form (o POST genérico tem log próprio).
@@ -116,6 +118,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
       ...(utm ? { utm } : {}),
       ...(variant ? { variant } : {}),
       ...(pain ? { pain } : {}),
+      ...(internal ? { internal: true } : {}),
       createdAt: new Date().toISOString(),
       ua: String(req.headers["user-agent"] || "").slice(0, 300),
     });
@@ -124,7 +127,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // do Pixel. IP/UA vêm da request. PII (email/phone) é hasheada no módulo.
     // Best-effort: nenhuma falha de CAPI pode quebrar o envio do form.
     // Desqualificado NÃO conta como conversão (espelha o Pixel client-side).
-    if (!disqualified && metaCapi?.configured(product?.metaPixelId)) {
+    if (!disqualified && !internal && metaCapi?.configured(product?.metaPixelId)) {
       try {
         await metaCapi.sendLead({
           eventId: body.eventId || submission.id,
@@ -220,7 +223,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // É o que elege campeã de verdade (headline que vira CONTRATO, não clique).
     const product = form.saas ? await repo.get("products", form.saas) : null;
     const subs = groupKeys.length
-      ? (await repo.list("form_submissions")).filter((x) => x.form === form.id && (!since || String(x.createdAt || "") >= since))
+      ? (await repo.list("form_submissions")).filter((x) => x.form === form.id && !x.internal && (!since || String(x.createdAt || "") >= since))
       : [];
     const leadsById = groupKeys.length ? new Map((await repo.list("leads")).map((l) => [l.id, l])) : new Map();
     const variants = groupKeys.map((gk) => {

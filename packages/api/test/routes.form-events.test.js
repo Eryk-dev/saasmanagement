@@ -214,3 +214,42 @@ test("funil por variante inclui leads/ganhos (submission → lead → estágio d
   assert.ok(v.firstAt && v.lastAt && v.firstAt <= v.lastAt);
   await app.close();
 });
+
+// ── Tráfego interno (equipe) não suja métricas ───────────────────────────────
+
+test("submission internal: lead marcado + source de teste, CAPI pulado, fora do funil A/B", async () => {
+  const { app, repo } = await buildApp();
+  let capiCalls = 0;
+  // buildApp não injeta metaCapi custom — chama a rota com internal e valida os efeitos persistidos
+  const res = await app.inject({
+    method: "POST", url: "/public/forms/fo_test/submissions",
+    payload: { answers: { niche: "moda", accounts: "2", nome: "Leo", whatsapp: "41999990000" }, variant: "B-001", pain: "B", internal: true },
+  });
+  assert.equal(res.statusCode, 201);
+  const lead = (await repo.list("leads"))[0];
+  assert.equal(lead.internal, true);
+  assert.ok(String(lead.source).includes("teste da equipe"));
+  const sub = (await repo.list("form_submissions"))[0];
+  assert.equal(sub.internal, true);
+
+  // funil A/B ignora a submission interna nos ganhos/leads por variante
+  await post(app, { session: "i1", event: "view", variant: "B-001", pain: "B" });
+  const f = (await app.inject({ method: "GET", url: "/api/forms/fo_test/funnel" })).json();
+  const v = f.variants.find((x) => x.id === "B-001");
+  assert.equal(v.leads, 0);
+  assert.equal(capiCalls, 0);
+  await app.close();
+});
+
+test("lead interno fica fora do CPL/leads das métricas de marketing", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", metaAdAccount: "act_123", funnel: [] });
+  const now = new Date().toISOString();
+  await repo.create("leads", { id: "lr", saas: "leverads", stage: "", createdAt: now });
+  await repo.create("leads", { id: "li", saas: "leverads", stage: "", createdAt: now, internal: true });
+  const app = Fastify();
+  registerRoutes(app, repo, {});
+  const m = (await app.inject({ url: "/api/marketing/leverads" })).json();
+  assert.equal(m.totals.leads, 1); // só o lead real conta
+  await app.close();
+});
