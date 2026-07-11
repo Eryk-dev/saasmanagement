@@ -191,23 +191,53 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       return rows;
     },
 
-    // Anúncios da CONTA inteira (id → nome/conjunto/campanha) — alimenta o
-    // catálogo de atribuição com nomes vivos: anúncio recém-criado resolve
-    // nome e dor antes do primeiro sync de insights.
+    // Anúncios da CONTA inteira (id → nome/conjunto/campanha + situação) —
+    // alimenta o catálogo de atribuição com nomes vivos e a visão por nível
+    // (estilo Gerenciador) com toggle de status.
     async listAccountAds(adAccountId) {
       if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
       const params = new URLSearchParams({
-        fields: "id,name,adset_id,campaign_id",
+        fields: "id,name,adset_id,campaign_id,status,effective_status",
         limit: "200",
         access_token: accessToken,
       });
       let url = `${GRAPH}/${acct(adAccountId)}/ads?${params}`;
       const rows = [];
       let guard = 0;
-      while (url && guard++ < 10) {
+      while (url && guard++ < 25) {
         const body = await get(url);
         for (const a of body.data || []) {
-          rows.push({ id: a.id, name: a.name, adsetId: a.adset_id || "", campaignId: a.campaign_id || "" });
+          rows.push({
+            id: a.id, name: a.name, adsetId: a.adset_id || "", campaignId: a.campaign_id || "",
+            status: a.status, effectiveStatus: a.effective_status,
+          });
+        }
+        url = body.paging?.next || null;
+      }
+      return rows;
+    },
+
+    // Conjuntos da CONTA inteira — a visão por nível lista tudo de uma vez;
+    // status/orçamento vivos pra toggle e edição inline (ABO ou orçamento total).
+    async listAccountAdsets(adAccountId) {
+      if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
+      const params = new URLSearchParams({
+        fields: "id,name,status,effective_status,daily_budget,lifetime_budget,campaign_id",
+        limit: "200",
+        access_token: accessToken,
+      });
+      let url = `${GRAPH}/${acct(adAccountId)}/adsets?${params}`;
+      const rows = [];
+      let guard = 0;
+      while (url && guard++ < 25) {
+        const body = await get(url);
+        for (const s of body.data || []) {
+          rows.push({
+            id: s.id, name: s.name, status: s.status, effectiveStatus: s.effective_status,
+            dailyBudget: s.daily_budget != null ? Number(s.daily_budget) / 100 : null,
+            lifetimeBudget: s.lifetime_budget != null ? Number(s.lifetime_budget) / 100 : null,
+            campaignId: s.campaign_id || "",
+          });
         }
         url = body.paging?.next || null;
       }
@@ -355,6 +385,7 @@ export const meta = {
   listAdsets: (id) => inst().listAdsets(id),
   listAds: (id) => inst().listAds(id),
   listAccountAds: (a) => inst().listAccountAds(a),
+  listAccountAdsets: (a) => inst().listAccountAdsets(a),
   discoverCreativeDefaults: (a) => inst().discoverCreativeDefaults(a),
   uploadVideo: (a, o) => inst().uploadVideo(a, o),
   videoThumbnail: (id, o) => inst().videoThumbnail(id, o),

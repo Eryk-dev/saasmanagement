@@ -176,6 +176,41 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     }
   });
 
+  // Os TRÊS níveis ao vivo da conta (campanhas, conjuntos, anúncios) — base da
+  // visão estilo Gerenciador no SPA (abas por nível + toggle + orçamento).
+  app.get("/api/marketing/:saas/adobjects", async (req, reply) => {
+    if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "Not found" });
+    if (!product.metaAdAccount) return reply.code(400).send({ error: "conta de anúncio não configurada (Ajustes → Integrações)" });
+    // allSettled: um nível com erro (rate limit numa página, etc.) não derruba
+    // os outros — devolve o que veio + `errors` por nível. Arquivados/deletados
+    // ficam de fora (a Graph retorna ARCHIVED por padrão e toggle neles não faz
+    // sentido; o catálogo de ATRIBUIÇÃO continua vendo tudo, é outra rota).
+    const settled = await Promise.allSettled([
+      meta.listCampaigns(product.metaAdAccount),
+      meta.listAccountAdsets(product.metaAdAccount),
+      meta.listAccountAds(product.metaAdAccount),
+    ]);
+    const KEYS = ["campaigns", "adsets", "ads"];
+    if (settled.every((r) => r.status === "rejected")) {
+      req.log.warn({ err: settled[0].reason?.message }, "Meta: adobjects falhou");
+      return reply.code(502).send({ error: String(settled[0].reason?.message || "Meta indisponível").slice(0, 300) });
+    }
+    const alive = (o) => o.effectiveStatus !== "ARCHIVED" && o.effectiveStatus !== "DELETED";
+    const out = {};
+    const errors = {};
+    settled.forEach((r, i) => {
+      if (r.status === "fulfilled") out[KEYS[i]] = r.value.filter(alive);
+      else {
+        out[KEYS[i]] = [];
+        errors[KEYS[i]] = String(r.reason?.message || r.reason).slice(0, 200);
+        req.log.warn({ level: KEYS[i], err: errors[KEYS[i]] }, "Meta: adobjects nível falhou");
+      }
+    });
+    return Object.keys(errors).length ? { ...out, errors } : out;
+  });
+
   // Conjuntos de uma campanha — o formulário de novo criativo escolhe o destino.
   app.get("/api/marketing/campaigns/:id/adsets", async (req, reply) => {
     if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });

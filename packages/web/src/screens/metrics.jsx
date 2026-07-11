@@ -1,7 +1,7 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { PageHead, Segmented, StatTile, Card, LineChart, Pill } from "../components/viz.jsx";
+import { PageHead, Segmented, StatTile, Card, LineChart } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { stageKind } from "../lib/funnel.js";
 // Métricas — aquisição × funil do produto ativo (substitui a tela Marketing).
@@ -14,6 +14,11 @@ const { useState, useEffect } = React;
 const DAY = 86_400_000;
 const dayStr = (t) => new Date(t).toISOString().slice(0, 10);
 const shortDay = (iso) => new Date(iso + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "");
+
+// Dinheiro COM CENTAVOS (pedido do Leo, padrão do Gerenciador da Meta) — vale
+// pra tiles, tabelas e cards da tela; só os eixos dos gráficos ficam compactos.
+const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const money = (v) => BRL.format(Number(v) || 0);
 
 const PERIODS = [
   { value: "3", label: "3 dias" },
@@ -89,7 +94,7 @@ function MetricsScreen() {
   const [syncing, setSyncing] = useState(false);
   const [note, setNote] = useState(null);
 
-  const [camps, setCamps] = useState(null); // campanhas ao vivo (gerenciamento)
+  const [objects, setObjects] = useState(null); // { campaigns, adsets, ads } ao vivo (gerenciamento)
   const [creative, setCreative] = useState(false); // painel de novo criativo
 
   // reset=true (troca de range/produto): zera a tela e recarrega TUDO, inclusive
@@ -101,7 +106,7 @@ function MetricsScreen() {
     api.marketingMetrics(product.id, { since, until }).then(setData).catch(() => setData({ error: true }));
     api.metrics(product.id, { days: rangeDays, months: 12 }).then(setBiz).catch(() => setBiz(null));
     if (reset && metaOn && product.metaAdAccount) {
-      api.metaCampaigns(product.id).then((r) => setCamps(r.campaigns)).catch((e) => setCamps({ error: e.message }));
+      api.adObjects(product.id).then(setObjects).catch((e) => setObjects({ error: e.message }));
     }
   };
   useEffect(() => load(true), [product?.id, since, until]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -125,20 +130,79 @@ function MetricsScreen() {
   }, [product?.id, since, until, metaOn]); // eslint-disable-line react-hooks/exhaustive-deps
   const liveAt = data?.syncedAt ? new Date(data.syncedAt) : null;
 
-  // Pausar/reativar com atualização otimista; orçamento salva no blur.
-  async function toggleCampaign(c) {
-    const target = c.status === "PAUSED" ? "ACTIVE" : "PAUSED";
-    const verb = target === "PAUSED" ? "Pausar" : "Reativar";
-    if (!window.confirm(`${verb} a campanha "${c.name}" na Meta?`)) return;
-    setCamps((prev) => prev.map((x) => (x.id === c.id ? { ...x, status: target, effectiveStatus: target } : x)));
-    try { await api.metaCampaignStatus(c.id, target); setNote({ ok: true, text: `Campanha ${target === "PAUSED" ? "pausada" : "reativada"}.` }); }
-    catch (e) { setNote({ ok: false, text: e.message || "Falha na Meta." }); load(); }
+  // Toggle Off/On e orçamento em QUALQUER nível — sem confirmação, como no
+  // Gerenciador: otimista aqui, reverte se a Meta recusar.
+  const LEVEL_LABEL = { campaigns: "Campanha", adsets: "Conjunto", ads: "Anúncio" };
+  function patchObject(level, id, patch) {
+    setObjects((prev) => (prev && !prev.error
+      ? { ...prev, [level]: (prev[level] || []).map((x) => (x.id === id ? { ...x, ...patch } : x)) }
+      : prev));
   }
-  async function saveBudget(c, value) {
+  // Efetivo REAL ao ativar: pai pausado segura a entrega (a bolinha não pode
+  // ficar verde só porque o status próprio virou ACTIVE).
+  function effOnActivate(level, o) {
+    const camp = (objects?.campaigns || []).find((c) => String(c.id) === String(o.campaignId));
+    if (camp && camp.status === "PAUSED") return "CAMPAIGN_PAUSED";
+    if (level === "ads") {
+      const set = (objects?.adsets || []).find((s) => String(s.id) === String(o.adsetId));
+      if (set && set.status === "PAUSED") return "ADSET_PAUSED";
+    }
+    return "ACTIVE";
+  }
+  // Pausa herdada nos FILHOS quando pausa campanha/conjunto (e o inverso ao
+  // reativar) — a tela não pode mostrar filho "ativo" de pai pausado.
+  function cascadeStatus(level, o, target) {
+    setObjects((prev) => {
+      if (!prev || prev.error) return prev;
+      const inherit = level === "campaigns" ? "CAMPAIGN_PAUSED" : "ADSET_PAUSED";
+      const isChild = (x) => (level === "campaigns" ? String(x.campaignId) === String(o.id) : String(x.adsetId) === String(o.id));
+      const apply = (x) => {
+        if (!isChild(x)) return x;
+        if (target === "PAUSED") return x.effectiveStatus === "ACTIVE" ? { ...x, effectiveStatus: inherit } : x;
+        return x.effectiveStatus === inherit && x.status !== "PAUSED" ? { ...x, effectiveStatus: "ACTIVE" } : x;
+      };
+      return {
+        ...prev,
+        adsets: level === "campaigns" ? (prev.adsets || []).map(apply) : prev.adsets,
+        ads: (prev.ads || []).map(apply),
+      };
+    });
+  }
+  async function toggleObject(level, o) {
+    const target = o.status === "PAUSED" ? "ACTIVE" : "PAUSED";
+    patchObject(level, o.id, { status: target, effectiveStatus: target === "PAUSED" ? "PAUSED" : effOnActivate(level, o) });
+    if (level !== "ads") cascadeStatus(level, o, target);
+    try {
+      await api.metaObjectStatus(o.id, target);
+      setNote({ ok: true, text: `${LEVEL_LABEL[level]} "${o.name}" ${target === "PAUSED" ? "pausado(a)" : "ativado(a)"}.` });
+      // Verdade da Meta em seguida (efetivo herdado, revisão, etc.) — sem piscar.
+      api.adObjects(product.id).then(setObjects).catch(() => { /* otimista já aplicado */ });
+    } catch (e) {
+      patchObject(level, o.id, { status: o.status, effectiveStatus: o.effectiveStatus });
+      if (level !== "ads") cascadeStatus(level, o, o.status === "PAUSED" ? "PAUSED" : "ACTIVE");
+      setNote({ ok: false, text: e.message || "Falha na Meta." });
+    }
+  }
+  // Remount dos inputs de orçamento quando um valor é recusado/inválido — o
+  // campo é uncontrolled; sem isso ele seguiria mostrando o número que NÃO
+  // foi salvo como se fosse o vigente.
+  const [budgetEpoch, setBudgetEpoch] = useState(0);
+  async function saveObjectBudget(level, o, value) {
     const v = Number(value);
-    if (!Number.isFinite(v) || v <= 0 || v === c.dailyBudget) return;
-    try { await api.metaCampaignBudget(c.id, v); setNote({ ok: true, text: "Orçamento atualizado." }); load(); }
-    catch (e) { setNote({ ok: false, text: e.message || "Falha ao atualizar orçamento." }); }
+    if (!Number.isFinite(v) || v <= 0) {
+      if (String(value).trim() !== "") setNote({ ok: false, text: "Orçamento inválido, use um valor em R$ maior que zero." });
+      setBudgetEpoch((n) => n + 1);
+      return;
+    }
+    if (v === o.dailyBudget) return;
+    try {
+      const r = await api.metaObjectBudget(o.id, v);
+      patchObject(level, o.id, { dailyBudget: r?.dailyBudget ?? v }); // valor normalizado pela API (centavos)
+      setNote({ ok: true, text: `Orçamento de "${o.name}" atualizado.` });
+    } catch (e) {
+      setBudgetEpoch((n) => n + 1);
+      setNote({ ok: false, text: e.message || "Falha ao atualizar orçamento." });
+    }
   }
 
   // Premissa de permanência (meses) usada no LTV — editável aqui mesmo.
@@ -189,7 +253,6 @@ function MetricsScreen() {
   // (contato/qualificação/follow-up) repetem os vizinhos e não orientam verba.
   const MILESTONE_KINDS = new Set(["call", "proposta", "integracao", "ganho"]);
   const milestones = perStage.filter((s, i) => i === 0 || MILESTONE_KINDS.has(stageKind(product, s.stage)));
-  const money = window.fmt.money;
 
   const spendSeries = (data?.series || []).map((d) => ({ x: shortDay(d.date), v: d.spend }));
   const leadSeries = (data?.series || []).map((d) => ({ x: shortDay(d.date), v: d.leads }));
@@ -238,7 +301,7 @@ function MetricsScreen() {
         )}
 
         {creative && (
-          <NewCreativePanel product={product} campaigns={Array.isArray(camps) ? camps : []}
+          <NewCreativePanel product={product} campaigns={objects && !objects.error ? objects.campaigns : []}
             onDone={(msg) => { setNote({ ok: true, text: msg }); setCreative(false); load(); }}
             onError={(msg) => setNote({ ok: false, text: msg })}
             onClose={() => setCreative(false)} />
@@ -305,7 +368,7 @@ function MetricsScreen() {
 
         <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: 12 }}>
           <Card title="Investimento por dia" hint="Meta Ads">
-            <LineChart data={spendSeries} color="var(--chart-1)" fmtValue={(v) => money(v)} />
+            <LineChart data={spendSeries} color="var(--chart-1)" fmtValue={(v) => window.fmt.money(v)} />
           </Card>
           <Card title="Leads por dia" hint="criados no cockpit">
             <LineChart data={leadSeries} color="var(--chart-2)" fmtValue={(v) => String(Math.round(v))} />
@@ -363,18 +426,22 @@ function MetricsScreen() {
         )}
 
         {metaOn && product.metaAdAccount && (
-          <Card title="Anúncios" hint="métricas do período filtrado + gerenciamento · expanda campanha → conjunto → anúncio">
-            {camps == null && <div style={{ padding: "12px 16px", fontSize: 12.5, color: "var(--fg-4)" }}>carregando campanhas…</div>}
-            {camps?.error && <div className="mono" style={{ padding: "12px 16px", fontSize: 12, color: "var(--neg)" }}>{camps.error}</div>}
-            {Array.isArray(camps) && camps.length === 0 && <div style={{ padding: "12px 16px", fontSize: 12.5, color: "var(--fg-4)" }}>Nenhuma campanha na conta.</div>}
-            {Array.isArray(camps) && camps.length > 0 && (
-              <ManageTree camps={camps} money={money}
+          <Card title="Anúncios" hint="estilo Gerenciador: abas por nível, toggle pra pausar, clique no nome pra descer de nível · métricas do período filtrado">
+            {objects == null && <div style={{ padding: "12px 16px", fontSize: 12.5, color: "var(--fg-4)" }}>carregando conta de anúncios…</div>}
+            {objects?.error && <div className="mono" style={{ padding: "12px 16px", fontSize: 12, color: "var(--neg)" }}>{objects.error}</div>}
+            {objects?.errors && (
+              <div className="mono" style={{ padding: "8px 16px 0", fontSize: 11, color: "var(--warn)" }}>
+                a Meta falhou ao listar: {Object.keys(objects.errors).map((k) => ({ campaigns: "campanhas", adsets: "conjuntos", ads: "anúncios" })[k] || k).join(", ")} · tente recarregar
+              </div>
+            )}
+            {objects && !objects.error && (
+              <AdsManager objects={objects} money={money} budgetEpoch={budgetEpoch}
                 metrics={data && !data.error ? {
                   campaigns: Object.fromEntries((data.campaigns || []).map((g) => [String(g.id), g])),
                   adsets: Object.fromEntries((data.adsets || []).map((g) => [String(g.id), g])),
                   ads: Object.fromEntries((data.ads || []).map((g) => [String(g.id), g])),
                 } : null}
-                onToggleCampaign={toggleCampaign} onBudgetCampaign={saveBudget} onNote={setNote} />
+                onToggle={toggleObject} onBudget={saveObjectBudget} />
             )}
           </Card>
         )}
@@ -392,221 +459,250 @@ function MetricsScreen() {
   );
 }
 
-// Árvore unificada: campanha → conjunto → anúncio com MÉTRICAS do período
-// (lookup por id no que veio do ad_insights) + gerenciamento no mesmo bloco.
-// Conjuntos e anúncios carregam AO VIVO da Meta ao expandir; pausar/reativar
-// vale em qualquer nível (POST genérico pelo id do nó) e orçamento diário
-// edita campanha CBO ou conjunto ABO. Nó sem dado sincronizado no período
-// mostra as métricas vazias (sincronize pra preencher).
-function ManageTree({ camps, metrics, money, onToggleCampaign, onBudgetCampaign, onNote }) {
-  const [open, setOpen] = useState(() => new Set());
-  const [adsetsBy, setAdsetsBy] = useState({}); // campId  -> rows | "loading" | { error }
-  const [adsBy, setAdsBy] = useState({});       // adsetId -> rows | "loading" | { error }
-  // Filtro por situação, aplicado nos TRÊS níveis. "pausadas" = tudo que não
-  // está entregando (inclui pausa herdada da campanha/conjunto).
+// Gerenciador estilo Meta Ads (o Leo vive nele): ABAS por nível (Campanhas →
+// Conjuntos → Anúncios), toggle Off/On por linha (sem confirmação, otimista),
+// colunas ordenáveis, linha de TOTAIS no rodapé e drill-down clicando no nome
+// (vira chip de filtro no nível de baixo). Status/orçamento são vivos da conta;
+// as métricas do período entram por id (ad_insights) — célula vazia = ainda
+// sem dado sincronizado naquele range, não é zero.
+const DELIVERY = {
+  ACTIVE: { label: "ativo", tone: "var(--pos)" },
+  PAUSED: { label: "pausado", tone: "var(--fg-4)" },
+  CAMPAIGN_PAUSED: { label: "pausado pela campanha", tone: "var(--fg-4)" },
+  ADSET_PAUSED: { label: "pausado pelo conjunto", tone: "var(--fg-4)" },
+  PENDING_REVIEW: { label: "em análise", tone: "var(--warn)" },
+  IN_PROCESS: { label: "processando", tone: "var(--warn)" },
+  WITH_ISSUES: { label: "com problemas", tone: "var(--neg)" },
+  DISAPPROVED: { label: "reprovado", tone: "var(--neg)" },
+};
+const METRIC_COLS = [
+  { key: "spend", label: "Investimento", kind: "money" },
+  { key: "leads", label: "Leads", kind: "int" },
+  { key: "cpl", label: "CPL", kind: "money", empty: "sem lead", hint: "investimento ÷ leads reais do cockpit (UTM)" },
+  { key: "ctr", label: "CTR", kind: "pct", hint: "cliques no link ÷ impressões (link CTR)" },
+  { key: "cpm", label: "CPM", kind: "money", hint: "custo por mil impressões" },
+  { key: "costPerLinkClick", label: "R$ / clique link", kind: "money" },
+  { key: "video3s", label: "Vídeo 3s", kind: "int" },
+  { key: "videoP25", label: "Vídeo 25%", kind: "int" },
+  { key: "videoP50", label: "Vídeo 50%", kind: "int" },
+  { key: "videoP95", label: "Vídeo 95%", kind: "int" },
+  { key: "won", label: "Ganhos", kind: "int" },
+  { key: "costPerWin", label: "R$ / ganho", kind: "money", empty: "sem ganho", bold: true, hint: "coorte: investimento ÷ leads do período que fecharam" },
+];
+
+// Toggle Off/On no padrão do Gerenciador — controla o status PRÓPRIO da linha
+// (a coluna Veiculação mostra o efetivo, com pausa herdada).
+function Toggle({ on, label, onChange }) {
+  const action = on ? "pausar" : "ativar";
+  return (
+    <button onClick={onChange} role="switch" aria-checked={on} title={`${action} ${label}`} aria-label={`${action} ${label}`} style={{
+      width: 34, height: 19, borderRadius: 999, padding: 2, flexShrink: 0,
+      background: on ? "var(--accent)" : "var(--bg-3)",
+      border: "1px solid " + (on ? "var(--accent)" : "var(--line-2)"),
+      display: "inline-flex", alignItems: "center",
+      justifyContent: on ? "flex-end" : "flex-start",
+      transition: "background 120ms ease",
+    }}>
+      <span style={{ width: 13, height: 13, borderRadius: 999, background: "#fff", boxShadow: "0 1px 2px oklch(0 0 0 / 0.3)" }} />
+    </button>
+  );
+}
+
+function AdsManager({ objects, metrics, money, onToggle, onBudget, budgetEpoch = 0 }) {
+  const [level, setLevel] = useState("campaigns"); // campaigns | adsets | ads
+  const [selCampaign, setSelCampaign] = useState(null); // drill-down herdado
+  const [selAdset, setSelAdset] = useState(null);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [sort, setSort] = useState({ key: "spend", dir: -1 });
+
   const matchStatus = (o) => {
     if (statusFilter === "all") return true;
     const eff = o.effectiveStatus || o.status;
     return statusFilter === "active" ? eff === "ACTIVE" : eff !== "ACTIVE";
   };
-  const visibleCamps = camps.filter(matchStatus);
-
-  const flip = (id) => setOpen((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const openCampaign = (c) => {
-    flip(c.id);
-    if (!adsetsBy[c.id]) {
-      setAdsetsBy((p) => ({ ...p, [c.id]: "loading" }));
-      api.metaAdsets(c.id)
-        .then((r) => setAdsetsBy((p) => ({ ...p, [c.id]: r.adsets })))
-        .catch((e) => setAdsetsBy((p) => ({ ...p, [c.id]: { error: e.message || "falha ao listar conjuntos" } })));
-    }
+  const baseOf = (lv) => {
+    if (lv === "campaigns") return objects.campaigns || [];
+    if (lv === "adsets") return (objects.adsets || []).filter((s) => !selCampaign || String(s.campaignId) === String(selCampaign.id));
+    return (objects.ads || []).filter((a) =>
+      (!selCampaign || String(a.campaignId) === String(selCampaign.id)) &&
+      (!selAdset || String(a.adsetId) === String(selAdset.id)));
   };
-  const openAdset = (s) => {
-    flip(s.id);
-    if (!adsBy[s.id]) {
-      setAdsBy((p) => ({ ...p, [s.id]: "loading" }));
-      api.metaAds(s.id)
-        .then((r) => setAdsBy((p) => ({ ...p, [s.id]: r.ads })))
-        .catch((e) => setAdsBy((p) => ({ ...p, [s.id]: { error: e.message || "falha ao listar anúncios" } })));
-    }
+  const mOf = (id) => metrics?.[level]?.[String(id)] || null;
+  const rows = baseOf(level).filter(matchStatus).map((o) => ({ o, m: mOf(o.id) }));
+
+  const sortVal = ({ o, m }) => {
+    if (sort.key === "name") return String(o.name || "").toLowerCase();
+    if (sort.key === "dailyBudget") return o.dailyBudget ?? -1;
+    const v = m?.[sort.key];
+    return v == null ? -Infinity : v;
+  };
+  rows.sort((a, b) => { const x = sortVal(a), y = sortVal(b); return (x < y ? -1 : x > y ? 1 : 0) * sort.dir; });
+  const clickSort = (key) => setSort((s) => (s.key === key ? { key, dir: -s.dir } : { key, dir: key === "name" ? 1 : -1 }));
+
+  // Totais do que está NA TELA (nível + drill + filtro), derivados dos brutos.
+  const sums = rows.reduce((acc, { m }) => {
+    if (!m) return acc;
+    for (const k of ["spend", "impressions", "linkClicks", "leads", "won", "video3s", "videoP25", "videoP50", "videoP95"]) acc[k] += Number(m[k]) || 0;
+    return acc;
+  }, { spend: 0, impressions: 0, linkClicks: 0, leads: 0, won: 0, video3s: 0, videoP25: 0, videoP50: 0, videoP95: 0 });
+  const hasMetrics = rows.some(({ m }) => m);
+  const totals = {
+    spend: sums.spend, leads: sums.leads, won: sums.won,
+    video3s: sums.video3s, videoP25: sums.videoP25, videoP50: sums.videoP50, videoP95: sums.videoP95,
+    cpl: sums.leads > 0 ? sums.spend / sums.leads : null,
+    ctr: sums.impressions > 0 ? Math.round((sums.linkClicks / sums.impressions) * 10000) / 100 : null,
+    cpm: sums.impressions > 0 ? (sums.spend / sums.impressions) * 1000 : null,
+    costPerLinkClick: sums.linkClicks > 0 ? sums.spend / sums.linkClicks : null,
+    costPerWin: sums.won > 0 ? sums.spend / sums.won : null,
   };
 
-  const patchRow = (setter, groupId) => (id, patch) =>
-    setter((p) => (Array.isArray(p[groupId]) ? { ...p, [groupId]: p[groupId].map((x) => (x.id === id ? { ...x, ...patch } : x)) } : p));
-
-  async function toggleStatus(level, obj, applyLocal) {
-    const target = obj.status === "PAUSED" ? "ACTIVE" : "PAUSED";
-    const verb = target === "PAUSED" ? "Pausar" : "Reativar";
-    if (!window.confirm(`${verb} ${level} "${obj.name}" na Meta?`)) return;
-    applyLocal({ status: target, effectiveStatus: target });
-    try {
-      await api.metaObjectStatus(obj.id, target);
-      onNote({ ok: true, text: `${level} ${target === "PAUSED" ? "pausado(a)" : "reativado(a)"}: ${obj.name}` });
-    } catch (e) {
-      applyLocal({ status: obj.status, effectiveStatus: obj.effectiveStatus });
-      onNote({ ok: false, text: e.message || "Falha na Meta." });
-    }
-  }
-  async function saveAdsetBudget(campId, s, value) {
-    const v = Number(value);
-    if (!Number.isFinite(v) || v <= 0 || v === s.dailyBudget) return;
-    try {
-      await api.metaObjectBudget(s.id, v);
-      patchRow(setAdsetsBy, campId)(s.id, { dailyBudget: v });
-      onNote({ ok: true, text: `Orçamento do conjunto "${s.name}" atualizado.` });
-    } catch (e) { onNote({ ok: false, text: e.message || "Falha ao atualizar orçamento." }); }
-  }
-
-  const td = { padding: "10px 16px", borderBottom: "1px solid var(--line-1)" };
-  const budgetInput = (obj, onBlur, title) => (
-    <input type="number" min="1" step="1" defaultValue={obj.dailyBudget} key={obj.id + obj.dailyBudget}
-      onBlur={(e) => onBlur(e.target.value)}
-      onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
-      title={title}
-      style={{ width: 90, height: 26, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)", textAlign: "right" }} />
-  );
-  const statusPill = (obj) => {
-    const eff = obj.effectiveStatus || obj.status;
-    const paused = obj.status === "PAUSED";
-    return (
-      <Pill tone={eff === "ACTIVE" ? "pos" : paused ? "mut" : "warn"}>
-        {eff === "ACTIVE" ? "ativo" : paused ? "pausado" : String(eff).toLowerCase().replaceAll("_", " ")}
-      </Pill>
-    );
+  const drill = (o) => {
+    if (level === "campaigns") { setSelCampaign({ id: o.id, name: o.name }); setSelAdset(null); setLevel("adsets"); }
+    else if (level === "adsets") { setSelAdset({ id: o.id, name: o.name }); setLevel("ads"); }
   };
-  const toggleBtn = (obj, onClick) => {
-    const paused = obj.status === "PAUSED";
-    return (
-      <button onClick={onClick}
-        style={{ height: 26, padding: "0 12px", borderRadius: 999, fontSize: 11.5, fontWeight: 600, border: "1px solid var(--line-2)", background: paused ? "var(--accent-soft)" : "var(--bg-2)", color: paused ? "var(--accent)" : "var(--fg-2)" }}>
-        {paused ? "reativar" : "pausar"}
-      </button>
-    );
+  const gotoLevel = (lv) => {
+    if (lv === "campaigns") { setSelCampaign(null); setSelAdset(null); }
+    if (lv === "adsets") setSelAdset(null);
+    setLevel(lv);
   };
-  const nameTd = (label, depth, expandable, isOpen, onClick, tag) => (
-    <td onClick={onClick} style={{
-      ...td, paddingLeft: 16 + depth * 22, fontSize: depth ? 12.5 : 13,
-      fontWeight: depth === 2 ? 400 : 600, color: depth === 2 ? "var(--fg-2)" : "var(--fg-1)",
-      cursor: expandable ? "pointer" : "default",
-      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 340,
-    }}>
-      {expandable && <span className="mono" style={{ marginRight: 7, color: "var(--fg-4)", fontSize: 10 }}>{isOpen ? "▾" : "▸"}</span>}
-      {tag && <span className="mono" style={{ marginRight: 6, color: "var(--fg-4)", fontSize: 10 }}>{tag}</span>}
+
+  const td = { padding: "10px 14px", borderBottom: "1px solid var(--line-1)" };
+  const tdM = { ...td, textAlign: "right", fontFamily: "var(--mono)", fontSize: 12.5, whiteSpace: "nowrap" };
+  const fmtCell = (m, col) => {
+    if (!m) return "";
+    const v = m[col.key];
+    if (col.kind === "int") return window.fmt.int(v || 0);
+    if (col.kind === "pct") return v != null ? String(v).replace(".", ",") + "%" : "";
+    return v != null ? money(v) : (col.empty || "");
+  };
+  const arrow = (key) => (sort.key === key ? (sort.dir === 1 ? " ↑" : " ↓") : "");
+  const chip = (label, onClear) => (
+    <span className="mono" style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 4px 0 10px", borderRadius: 999, fontSize: 11, border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)" }}>
       {label}
-    </td>
+      <button onClick={onClear} title="limpar filtro" style={{ fontSize: 12, padding: "0 6px", color: "var(--accent)" }}>✕</button>
+    </span>
   );
-  const infoRow = (key, depth, text, isErr) => (
-    <tr key={key} style={{ background: "var(--bg-inset)" }}>
-      <td colSpan={16} className="mono" style={{ ...td, paddingLeft: 16 + depth * 22, fontSize: 11.5, color: isErr ? "var(--neg)" : "var(--fg-4)" }}>{text}</td>
-    </tr>
-  );
-  // Métricas do período pro nó (campanha/conjunto/anúncio). Sem dado sincronizado
-  // no período, as células ficam vazias — não é zero, é "ainda não sincronizado".
-  const tdM = { ...td, textAlign: "right", fontFamily: "var(--mono)", fontSize: 12.5 };
-  const pct = (v) => (v != null ? String(v).replace(".", ",") + "%" : "");
-  const mCells = (m, { bold } = {}) => (
-    <>
-      <td className="tnum" style={tdM}>{m ? money(m.spend) : ""}</td>
-      <td className="tnum" style={tdM}>{m ? window.fmt.int(m.leads || 0) : ""}</td>
-      <td className="tnum" style={tdM}>{m ? (m.cpl != null ? money(m.cpl) : "sem lead") : ""}</td>
-      <td className="tnum" style={tdM}>{m ? pct(m.ctr) : ""}</td>
-      <td className="tnum" style={tdM}>{m ? (m.cpm != null ? money(m.cpm) : "") : ""}</td>
-      <td className="tnum" style={tdM}>{m ? (m.costPerLinkClick != null ? money(m.costPerLinkClick) : "") : ""}</td>
-      <td className="tnum" style={tdM}>{m ? window.fmt.int(m.video3s || 0) : ""}</td>
-      <td className="tnum" style={tdM}>{m ? window.fmt.int(m.videoP25 || 0) : ""}</td>
-      <td className="tnum" style={tdM}>{m ? window.fmt.int(m.videoP50 || 0) : ""}</td>
-      <td className="tnum" style={tdM}>{m ? window.fmt.int(m.videoP95 || 0) : ""}</td>
-      <td className="tnum" style={tdM}>{m ? window.fmt.int(m.won || 0) : ""}</td>
-      <td className="tnum" style={{ ...tdM, fontWeight: bold ? 600 : 400 }}>{m ? (m.costPerWin != null ? money(m.costPerWin) : "sem ganho") : ""}</td>
-    </>
-  );
-  const mOf = (kind, id) => metrics?.[kind]?.[String(id)] || null;
+  const LEVELS = [["campaigns", "Campanhas"], ["adsets", "Conjuntos"], ["ads", "Anúncios"]];
 
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, padding: "10px 16px 0" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 16px 0", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 2, border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: 3, background: "var(--bg-inset)" }}>
+          {LEVELS.map(([lv, label]) => (
+            <button key={lv} onClick={() => gotoLevel(lv)} style={{
+              padding: "4px 12px", borderRadius: 5, fontSize: 12.5,
+              fontWeight: level === lv ? 600 : 500,
+              background: level === lv ? "var(--bg-1)" : "transparent",
+              color: level === lv ? "var(--fg-1)" : "var(--fg-3)",
+              boxShadow: level === lv ? "var(--shadow-1)" : "none",
+            }}>
+              {label} <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)" }}>{baseOf(lv).filter(matchStatus).length}</span>
+            </button>
+          ))}
+        </div>
+        {selCampaign && chip(`campanha: ${selCampaign.name}`, () => { setSelCampaign(null); setSelAdset(null); })}
+        {selAdset && chip(`conjunto: ${selAdset.name}`, () => setSelAdset(null))}
+        <span style={{ flex: 1 }} />
         <Segmented value={statusFilter} onChange={setStatusFilter}
           options={[{ value: "all", label: "todas" }, { value: "active", label: "ativas" }, { value: "paused", label: "pausadas" }]} />
       </div>
-      {visibleCamps.length === 0 && (
+      {rows.length === 0 && (
         <div className="mono" style={{ padding: "12px 16px", fontSize: 11.5, color: "var(--fg-4)" }}>
-          nenhuma campanha {statusFilter === "active" ? "ativa" : "pausada"} na conta
+          nada neste nível com os filtros atuais
         </div>
       )}
+      {rows.length > 0 && (
       <DragScroll>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr>
-            {["Campanha / conjunto / anúncio", "Investimento", "Leads", "CPL", "CTR", "CPM", "R$ / clique link", "Vídeo 3s", "Vídeo 25%", "Vídeo 50%", "Vídeo 95%", "Ganhos", "R$ / ganho", "Orçamento/dia", "Situação", ""].map((h, i) => (
-              <th key={h + i} className="mono" style={{ textAlign: i === 0 ? "left" : "right", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", padding: "10px 16px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", whiteSpace: "nowrap" }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {visibleCamps.map((c) => {
-            const cOpen = open.has(c.id);
-            const sets = adsetsBy[c.id];
-            return (
-              <React.Fragment key={c.id}>
-                <tr>
-                  {nameTd(c.name, 0, true, cOpen, () => openCampaign(c))}
-                  {mCells(mOf("campaigns", c.id), { bold: true })}
-                  <td style={{ ...td, textAlign: "right" }}>
-                    {c.dailyBudget != null
-                      ? budgetInput(c, (v) => onBudgetCampaign(c, v), "Orçamento diário da campanha em R$ (salva ao sair do campo)")
-                      : <span className="mono" style={{ fontSize: 11.5, color: "var(--fg-4)" }} title="Orçamento definido nos conjuntos (ABO)">no conjunto</span>}
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={{ ...thStyle, width: 46 }} />
+              <th style={{ ...thStyle, textAlign: "left", cursor: "pointer" }} onClick={() => clickSort("name")}>Nome{arrow("name")}</th>
+              <th style={thStyle}>Veiculação</th>
+              <th style={{ ...thStyle, cursor: "pointer" }} onClick={() => clickSort("dailyBudget")}>Orçamento/dia{arrow("dailyBudget")}</th>
+              {METRIC_COLS.map((c) => (
+                <th key={c.key} title={c.hint} style={{ ...thStyle, cursor: "pointer" }} onClick={() => clickSort(c.key)}>{c.label}{arrow(c.key)}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ o, m }) => {
+              const eff = o.effectiveStatus || o.status;
+              const d = DELIVERY[eff] || { label: String(eff || "").toLowerCase().replaceAll("_", " "), tone: "var(--fg-4)" };
+              const canDrill = level !== "ads";
+              return (
+                <tr key={o.id}>
+                  <td style={{ ...td, paddingRight: 0 }}>
+                    <Toggle on={o.status !== "PAUSED"} label={o.name} onChange={() => onToggle(level, o)} />
                   </td>
-                  <td style={{ ...td, textAlign: "right" }}>{statusPill(c)}</td>
-                  <td style={{ ...td, textAlign: "right" }}>{toggleBtn(c, () => onToggleCampaign(c))}</td>
+                  <td onClick={canDrill ? () => drill(o) : undefined} title={canDrill ? "ver o nível de baixo filtrado" : o.name} style={{
+                    ...td, fontSize: 13, fontWeight: 600, cursor: canDrill ? "pointer" : "default",
+                    color: canDrill ? "var(--accent)" : "var(--fg-1)",
+                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 300, minWidth: 170,
+                  }}>{o.name}</td>
+                  <td style={{ ...td, whiteSpace: "nowrap", fontSize: 12, color: "var(--fg-2)" }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ width: 7, height: 7, borderRadius: 999, background: d.tone, flexShrink: 0 }} />
+                      {d.label}
+                    </span>
+                  </td>
+                  <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
+                    {o.dailyBudget != null ? (
+                      <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+                        <input type="number" min="1" step="1" defaultValue={o.dailyBudget} key={`${o.id}·${o.dailyBudget}·${budgetEpoch}`}
+                          onBlur={(e) => onBudget(level, o, e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+                          title="Orçamento diário em R$ (salva ao sair do campo)"
+                          style={{ width: 86, height: 25, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)", textAlign: "right" }} />
+                        <span className="mono" style={{ fontSize: 9, color: "var(--fg-4)" }}>diário</span>
+                      </span>
+                    ) : o.lifetimeBudget != null ? (
+                      <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+                        <span className="mono" style={{ fontSize: 12.5 }}>{money(o.lifetimeBudget)}</span>
+                        <span className="mono" style={{ fontSize: 9, color: "var(--fg-4)" }}>total</span>
+                      </span>
+                    ) : level === "ads" ? "" : (
+                      <span className="mono" style={{ fontSize: 11, color: "var(--fg-4)" }} title={level === "campaigns" ? "orçamento definido nos conjuntos (ABO)" : "orçamento definido na campanha (CBO)"}>
+                        {level === "campaigns" ? "no conjunto" : "na campanha"}
+                      </span>
+                    )}
+                  </td>
+                  {METRIC_COLS.map((c) => (
+                    <td key={c.key} className="tnum" style={{ ...tdM, fontWeight: c.bold ? 600 : 400 }}>{fmtCell(m, c)}</td>
+                  ))}
                 </tr>
-                {cOpen && sets === "loading" && infoRow(c.id + "_l", 1, "carregando conjuntos…")}
-                {cOpen && sets?.error && infoRow(c.id + "_e", 1, sets.error, true)}
-                {cOpen && Array.isArray(sets) && sets.length === 0 && infoRow(c.id + "_0", 1, "campanha sem conjuntos")}
-                {cOpen && Array.isArray(sets) && sets.filter(matchStatus).map((s) => {
-                  const sOpen = open.has(s.id);
-                  const ads = adsBy[s.id];
-                  const patchSet = patchRow(setAdsetsBy, c.id);
-                  return (
-                    <React.Fragment key={s.id}>
-                      <tr style={{ background: "var(--bg-inset)" }}>
-                        {nameTd(s.name, 1, true, sOpen, () => openAdset(s), "conj")}
-                        {mCells(mOf("adsets", s.id))}
-                        <td style={{ ...td, textAlign: "right" }}>
-                          {s.dailyBudget != null
-                            ? budgetInput(s, (v) => saveAdsetBudget(c.id, s, v), "Orçamento diário do conjunto em R$ (salva ao sair do campo)")
-                            : <span className="mono" style={{ fontSize: 11.5, color: "var(--fg-4)" }} title="Orçamento definido na campanha (CBO)">na campanha</span>}
-                        </td>
-                        <td style={{ ...td, textAlign: "right" }}>{statusPill(s)}</td>
-                        <td style={{ ...td, textAlign: "right" }}>{toggleBtn(s, () => toggleStatus("conjunto", s, (patch) => patchSet(s.id, patch)))}</td>
-                      </tr>
-                      {sOpen && ads === "loading" && infoRow(s.id + "_l", 2, "carregando anúncios…")}
-                      {sOpen && ads?.error && infoRow(s.id + "_e", 2, ads.error, true)}
-                      {sOpen && Array.isArray(ads) && ads.length === 0 && infoRow(s.id + "_0", 2, "conjunto sem anúncios")}
-                      {sOpen && Array.isArray(ads) && ads.filter(matchStatus).map((a) => {
-                        const patchAd = patchRow(setAdsBy, s.id);
-                        return (
-                          <tr key={a.id} style={{ background: "var(--bg-inset)" }}>
-                            {nameTd(a.name, 2, false, false, undefined, "ad")}
-                            {mCells(mOf("ads", a.id))}
-                            <td style={td} />
-                            <td style={{ ...td, textAlign: "right" }}>{statusPill(a)}</td>
-                            <td style={{ ...td, textAlign: "right" }}>{toggleBtn(a, () => toggleStatus("anúncio", a, (patch) => patchAd(a.id, patch)))}</td>
-                          </tr>
-                        );
-                      })}
-                    </React.Fragment>
-                  );
-                })}
-              </React.Fragment>
-            );
-          })}
-        </tbody>
-      </table>
+              );
+            })}
+            {/* Linha de totais, como o rodapé do Gerenciador. */}
+            <tr style={{ background: "var(--bg-inset)" }}>
+              <td style={td} />
+              <td style={{ ...td, fontSize: 12, fontWeight: 600, color: "var(--fg-2)", whiteSpace: "nowrap" }}>
+                Resultados de {rows.length} {rows.length === 1 ? "item" : "itens"}
+              </td>
+              <td style={td} />
+              <td style={td} />
+              {METRIC_COLS.map((c) => (
+                <td key={c.key} className="tnum" style={{ ...tdM, fontWeight: 600 }}>
+                  {!hasMetrics ? "" /* período sem sync: vazio ≠ zero, igual às linhas */
+                    : c.kind === "int" ? window.fmt.int(totals[c.key] || 0)
+                    : c.kind === "pct" ? (totals[c.key] != null ? String(totals[c.key]).replace(".", ",") + "%" : "")
+                    : totals[c.key] != null ? money(totals[c.key]) : ""}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
       </DragScroll>
+      )}
     </>
   );
 }
+
+const thStyle = {
+  textAlign: "right", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase",
+  color: "var(--fg-3)", padding: "10px 14px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)",
+  background: "var(--bg-inset)", whiteSpace: "nowrap", fontFamily: "var(--mono)", userSelect: "none",
+};
 
 // Quebra por dor: cada linha é um código "[X]" da nomenclatura dos anúncios.
 // O que decide escala é a última coluna (custo por ganho), não o CPL.

@@ -508,3 +508,56 @@ test("attribution: mescla anúncios VIVOS da conta sem sobrescrever o insight", 
   assert.equal(cat.ads.a1.name, "[A] v1");             // insight tem precedência
   await app.close();
 });
+
+test("adobjects: três níveis vivos, arquivados fora, falha parcial não derruba o resto", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", metaAdAccount: "act_123", funnel: [] });
+  const f = async (url) => {
+    const u = String(url);
+    const ok = (body) => ({ status: 200, text: async () => JSON.stringify(body) });
+    if (u.includes("/campaigns?")) return ok({ data: [{ id: "c1", name: "006", status: "ACTIVE", effective_status: "ACTIVE", objective: "OUTCOME_LEADS", daily_budget: "10500" }] });
+    if (u.includes("/adsets?")) return ok({ data: [
+      { id: "s1", name: "LAL", status: "ACTIVE", effective_status: "ACTIVE", daily_budget: "20000", campaign_id: "c1" },
+      { id: "s2", name: "Velho", status: "ARCHIVED", effective_status: "ARCHIVED", campaign_id: "c1" },
+    ] });
+    if (u.includes("/ads?")) return ok({ data: [{ id: "a1", name: "[A] v1", adset_id: "s1", campaign_id: "c1", status: "PAUSED", effective_status: "PAUSED" }] });
+    return ok({ data: [] });
+  };
+  const app = Fastify();
+  registerRoutes(app, repo, { meta: makeMeta({ fetch: f, accessToken: "t" }) });
+  const r = (await app.inject({ url: "/api/marketing/leverads/adobjects" })).json();
+  assert.equal(r.campaigns[0].dailyBudget, 105);
+  assert.deepEqual(r.adsets.map((s) => s.id), ["s1"]); // ARCHIVED fica de fora
+  assert.equal(r.adsets[0].dailyBudget, 200);
+  assert.equal(r.ads[0].status, "PAUSED");             // toggle da visão por nível lê daqui
+  assert.equal(r.errors, undefined);
+  await app.close();
+
+  // guards: sem token → 503; sem conta → 400
+  const off = Fastify();
+  registerRoutes(off, repo, { meta: makeMeta({}) });
+  assert.equal((await off.inject({ url: "/api/marketing/leverads/adobjects" })).statusCode, 503);
+  await off.close();
+  const repo2 = makeMemRepo();
+  await repo2.create("products", { id: "p1", name: "P1" });
+  const app2 = Fastify();
+  registerRoutes(app2, repo2, { meta: makeMeta({ fetch: f, accessToken: "t" }) });
+  assert.equal((await app2.inject({ url: "/api/marketing/p1/adobjects" })).statusCode, 400);
+  await app2.close();
+
+  // falha parcial: ads quebra → 200 com campaigns/adsets + errors.ads
+  const fPartial = async (url) => {
+    const u = String(url);
+    if (u.includes("/ads?")) return { status: 500, text: async () => JSON.stringify({ error: { message: "rate limit" } }) };
+    return f(url);
+  };
+  const app3 = Fastify();
+  registerRoutes(app3, repo, { meta: makeMeta({ fetch: fPartial, accessToken: "t" }) });
+  const r3raw = await app3.inject({ url: "/api/marketing/leverads/adobjects" });
+  assert.equal(r3raw.statusCode, 200);
+  const r3 = r3raw.json();
+  assert.equal(r3.campaigns.length, 1);
+  assert.deepEqual(r3.ads, []);
+  assert.ok(r3.errors.ads.includes("rate limit"));
+  await app3.close();
+});
