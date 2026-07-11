@@ -126,7 +126,8 @@ test("eventos com variant → funil ganha o recorte por variante (view/começar/
 
   const f = (await app.inject({ method: "GET", url: "/api/forms/fo_test/funnel" })).json();
   assert.equal(f.views, 5);
-  assert.deepEqual(f.variants, [
+  const core = f.variants.map(({ id, pain, sessions, views, starts, submits }) => ({ id, ...(pain ? { pain } : {}), sessions, views, starts, submits }));
+  assert.deepEqual(core, [
     { id: "A", sessions: 2, views: 2, starts: 2, submits: 1 },
     { id: "B", sessions: 2, views: 2, starts: 1, submits: 0 },
   ]);
@@ -181,9 +182,35 @@ test("funil separa variantes por dor (mesmo id em dores diferentes não colide)"
   await post(app, { session: "p1", event: "start", variant: "V1", pain: "B" });
   await post(app, { session: "p2", event: "view", variant: "V1" }); // base, sem dor
   const f = (await app.inject({ method: "GET", url: "/api/forms/fo_test/funnel" })).json();
-  assert.deepEqual(f.variants, [
+  const core = f.variants.map(({ id, pain, sessions, views, starts, submits }) => ({ id, ...(pain ? { pain } : {}), sessions, views, starts, submits }));
+  assert.deepEqual(core, [
     { id: "V1", pain: "B", sessions: 1, views: 1, starts: 1, submits: 0 },
     { id: "V1", sessions: 1, views: 1, starts: 0, submits: 0 },
   ]);
+  await app.close();
+});
+
+test("funil por variante inclui leads/ganhos (submission → lead → estágio de ganho) e janelas de tempo", async () => {
+  const { app, repo } = await buildApp();
+  // duas conversões da variante B-001 na dor B; uma fecha contrato
+  for (const [session, nome] of [["w1", "Ana"], ["w2", "Bia"]]) {
+    await post(app, { session, event: "view", variant: "B-001", pain: "B" });
+    await post(app, { session, event: "start", variant: "B-001", pain: "B" });
+    await app.inject({
+      method: "POST", url: "/public/forms/fo_test/submissions",
+      payload: { answers: { niche: "moda", accounts: "2", nome, whatsapp: "41999990000" }, variant: "B-001", pain: "B" },
+    });
+    await post(app, { session, event: "submit", variant: "B-001", pain: "B" });
+  }
+  const leads = await repo.list("leads");
+  await repo.update("leads", leads[0].id, { stage: "Ganho" }); // isWon via fallback de nome
+
+  const f = (await app.inject({ method: "GET", url: "/api/forms/fo_test/funnel" })).json();
+  const v = f.variants.find((x) => x.id === "B-001" && x.pain === "B");
+  assert.equal(v.views, 2);
+  assert.equal(v.submits, 2);
+  assert.equal(v.leads, 2);   // submissions carimbadas
+  assert.equal(v.won, 1);     // 1 contrato fechado
+  assert.ok(v.firstAt && v.lastAt && v.firstAt <= v.lastAt);
   await app.close();
 });

@@ -9,6 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { publicForm, validateAnswers, leadFromSubmission, submissionTerminal, makeRateLimiter, buildSteps } from "./forms.js";
 import { painCode } from "./routes.marketing.js";
+import { isWon } from "./stages.js";
 import { formPageHtml, EMBED_JS } from "./form-page.js";
 import { CREATE_DEFAULTS, dispatchProposal, publicBase } from "./routes.js";
 import { stageByKind, firstStage } from "./stages.js";
@@ -215,14 +216,26 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // Teste A/B: sessões carimbadas com variante viram um funil paralelo por
     // versão da welcome (view → start → submit). Sem variantes, o array some.
     const groupKeys = [...new Set(events.filter((e) => e.variant).map((e) => `${e.pain || ""}|${e.variant}`))].sort();
+    // Fechamento por variante: submission carimbada → lead → estágio de ganho.
+    // É o que elege campeã de verdade (headline que vira CONTRATO, não clique).
+    const product = form.saas ? await repo.get("products", form.saas) : null;
+    const subs = groupKeys.length
+      ? (await repo.list("form_submissions")).filter((x) => x.form === form.id && (!since || String(x.createdAt || "") >= since))
+      : [];
+    const leadsById = groupKeys.length ? new Map((await repo.list("leads")).map((l) => [l.id, l])) : new Map();
     const variants = groupKeys.map((gk) => {
       const [pain, vid] = gk.split("|");
       const mine = (e) => (e.variant || "") === vid && (e.pain || "") === pain;
       const vu = (ev) => new Set(events.filter((e) => mine(e) && e.event === ev).map((e) => e.session)).size;
+      const vSubs = subs.filter((x) => String(x.variant || "") === vid && String(x.pain || "") === pain);
+      const won = vSubs.filter((x) => isWon(product, leadsById.get(x.lead)?.stage)).length;
+      const times = events.filter(mine).map((e) => String(e.createdAt || "")).filter(Boolean).sort();
       return {
         id: vid, ...(pain ? { pain } : {}),
         sessions: new Set(events.filter(mine).map((e) => e.session)).size,
         views: vu("view"), starts: vu("start"), submits: vu("submit"),
+        leads: vSubs.length, won,
+        firstAt: times[0] || null, lastAt: times[times.length - 1] || null,
       };
     });
     return {
