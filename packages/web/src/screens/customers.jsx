@@ -6,7 +6,7 @@ import { EmptyState, PrimaryButton, RowActions } from "../atoms.jsx";
 import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/milestones.js";
 import { ActivityList } from "../components/timeline.jsx";
 import { SubscriptionsScreen } from "./subscriptions.jsx";
-import { SaasTabs, useActiveSaas } from "../components/saas-tabs.jsx";
+import { useActiveSaas } from "../lib/workspace.js";
 // Clientes — a base ativa do produto (estilo Attio: tabela + painel de detalhe
 // sem trocar de página). A receita vem das assinaturas (customer.arr é
 // derivado). Pós-venda: linha do tempo de marcos por tempo de casa
@@ -76,7 +76,6 @@ function CustomersScreen({ initialTab = "base" }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Clientes" sub={`${customers.length} ${customers.length === 1 ? "ativo" : "ativos"} · MRR ${money(totalMrr)}`}>
-        <SaasTabs active={product.id} onSelect={setActiveSaas} />
         <TabBtn k="base" label="Clientes" />
         <TabBtn k="billing" label="Assinaturas" />
         {tab === "base" && <PrimaryButton onClick={() => openForm("customers", { saas: product.id })}>+ novo cliente</PrimaryButton>}

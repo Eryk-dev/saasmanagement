@@ -6,7 +6,7 @@ import { EmptyState, Avatar } from "../atoms.jsx";
 import { nextMilestone, dueLabel } from "../lib/milestones.js";
 import { openStages, workableStages, isWonStage, stageKind, cadenceOf, nextTouch, nextTouchPill, firstStage as firstStageOf } from "../lib/funnel.js";
 import { displayName, currentUser } from "../lib/users.js";
-import { SaasTabs, useActiveSaas } from "../components/saas-tabs.jsx";
+import { useActiveSaas } from "../lib/workspace.js";
 // Visão geral — a home do dia a dia. Responde: como está a receita, quantos
 // leads entraram, quanto custa o lead, e — principal — QUEM CONTATAR AGORA
 // (fila de trabalho do GPS: atrasados → hoje → sem próximo passo).
@@ -180,7 +180,6 @@ function OverviewScreen({ onNav, onOpenLead }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Visão geral" sub={today}>
-        <SaasTabs active={product.id} onSelect={setActiveSaas} />
       </PageHead>
 
       <div style={{ padding: "20px var(--pad-x) 40px", display: "flex", flexDirection: "column", gap: 12 }}>

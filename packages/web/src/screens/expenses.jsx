@@ -2,7 +2,7 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { PageHead, StatTile, Card, Pill } from "../components/viz.jsx";
-import { SaasTabs, useActiveSaas } from "../components/saas-tabs.jsx";
+import { useActiveSaas } from "../lib/workspace.js";
 import { EmptyState } from "../atoms.jsx";
 // Custos operacionais — o ledger mensal do produto. Publicidade (ad_insights)
 // e IA (APIs dos provedores, em R$) entram AUTOMÁTICOS; o resto (fixos,
@@ -94,7 +94,6 @@ function ExpensesScreen() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Custos operacionais" sub={monthLabel(month)}>
-        <SaasTabs active={product.id} onSelect={setActiveSaas} />
         <select value={month} onChange={(e) => setMonth(e.target.value)}
           style={{ ...inputStyle, fontFamily: "var(--mono)", fontSize: 12.5 }}>
           {lastMonths(12).map((mk) => <option key={mk} value={mk}>{mk}</option>)}

@@ -21,7 +21,7 @@ function Shell({ children }) {
       height: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
       flexDirection: "column", gap: 14, color: "var(--fg-3)", fontFamily: "var(--sans)", background: "var(--bg-0)",
     }}>
-      <div style={{ fontSize: 14, color: "var(--fg-1)", fontWeight: 600 }}>LeverAds · Cockpit</div>
+      <div style={{ fontSize: 14, color: "var(--fg-1)", fontWeight: 600 }}>Cockpit</div>
       {children}
     </div>
   );

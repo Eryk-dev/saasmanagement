@@ -4,6 +4,7 @@ import { useData } from "../data.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
 import { Avatar, EmptyState, PrimaryButton } from "../atoms.jsx";
 import { inputStyle, labelStyle } from "../components/theme-inputs.jsx";
+import { useActiveSaas } from "../lib/workspace.js";
 // Tarefas — kanban interno do time (estilo Trello). Cards = collection `tasks`
 // (CRUD genérico); colunas = 1 registro em `task_boards` (criado ao editar — sem
 // board salvo, vale DEFAULT_COLUMNS). Coluna tem KEY estável: renomear não órfã
@@ -43,6 +44,9 @@ let lastFilters = { saas: "all", assignee: "all" };
 function TasksScreen() {
   const { SAAS } = window.SEED;
   const { version, openDelete } = useData();
+  // Workspace: tarefa nova nasce no produto ativo quando o filtro está em
+  // "Todos" (os chips de filtro continuam valendo pra VER o board inteiro).
+  const [activeProduct] = useActiveSaas();
   const [tasks, setTasks] = useState([]);
   const [board, setBoard] = useState(null);   // registro task_boards (null = só defaults)
   const [users, setUsers] = useState([]);
@@ -180,7 +184,7 @@ function TasksScreen() {
         <TaskModal
           task={modal.task}
           presetColumn={modal.column}
-          presetSaas={fSaas !== "all" ? fSaas : ""}
+          presetSaas={fSaas !== "all" ? fSaas : (activeProduct?.id || "")}
           columns={columns}
           users={users}
           onSave={saveTask}

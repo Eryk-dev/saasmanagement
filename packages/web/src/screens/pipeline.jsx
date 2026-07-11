@@ -11,7 +11,7 @@ import {
 import { usersByRole, userTone, displayName, currentUser } from "../lib/users.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 import { useAttribution, leadPain } from "../lib/pains.js";
-import { SaasTabs } from "../components/saas-tabs.jsx";
+import { useActiveSaas, pinActiveSaas } from "../lib/workspace.js";
 // Pipeline — Kanban + List + Agenda + Análise. Drag-and-drop between columns.
 // Funil unificado: os LEADS são os cards do pipeline (window.SEED.LEADS). Cada
 // lead já carrega seu `saas` + `stage`. Uma cópia local deixa o drag-and-drop
@@ -25,7 +25,11 @@ const { useState: useStP, useMemo: useMP, useEffect: useEfP } = React;
 function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   const { SAAS } = window.SEED;
   const { openForm } = useData();
-  const [activeSaas, setActiveSaas] = useStP(saasId || SAAS[0]?.id);
+  // Produto do WORKSPACE (seletor no pé da sidebar) — a tela não tem mais abas
+  // próprias. Navegação com saas explícito (ex.: "ver no pipeline") pina uma vez.
+  const [activeProduct] = useActiveSaas();
+  const activeSaas = activeProduct?.id;
+  useEfP(() => { pinActiveSaas(saasId); }, [saasId]);
   // Aba ativa persistida (localStorage): sobrevive ao refresh da página e à
   // remontagem da tela quando o tempo real recarrega o SEED. "forecast" é o
   // nome antigo da aba Análise — alias pra não perder a preferência salva.
@@ -169,7 +173,6 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           ))}
           <span style={{ fontSize: 11.5, color: "var(--fg-3)" }}>contas + anúncios</span>
         </span>
-        {view !== "all" && <SaasTabs active={activeSaas} onSelect={setActiveSaas} />}
         <ViewToggle view={view} onChange={setView} />
         {(view === "kanban" || view === "all") && <PhaseFilter phase={phase} onChange={setPhase} />}
         <PriorityFilter pri={pri} onChange={setPri} />

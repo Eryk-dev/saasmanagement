@@ -14,6 +14,7 @@ import { TasksScreen } from "./screens/tasks.jsx";
 import { SettingsScreen } from "./screens/settings.jsx";
 import { LeadDetail } from "./screens/deal.jsx";
 import { DataContext, loadSeed } from "./data.jsx";
+import { useActiveSaas } from "./lib/workspace.js";
 import { EntityForm } from "./components/EntityForm.jsx";
 import { ConfirmDelete } from "./components/ConfirmDelete.jsx";
 import { useIsMobile } from "./lib/responsive.js";
@@ -30,6 +31,9 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
 
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  // Workspace: o produto ativo tinge o cockpit com a cor da marca dele
+  // (product.accent = hue oklch; Lever teal 183 · UniqueKids azul 250).
+  const [activeProduct] = useActiveSaas();
 
   // Tela ativa vive no hash da URL (#pipeline): sobrevive ao refresh e ao
   // back/forward do navegador. Hash inválido/vazio cai na visão geral.
@@ -56,8 +60,11 @@ function App() {
     document.body.dataset.density = t.density;
     document.body.dataset.type = t.typeSystem === "mono" ? "mono" : "default";
     // Only the accent HUE is themed here; lightness/chroma come from tokens per theme.
-    document.documentElement.style.setProperty("--accent-h", String(t.accentHue));
-  }, [t.theme, t.density, t.typeSystem, t.accentHue]);
+    // A marca do produto ativo VENCE o acento do Personalizar (workspace com a
+    // cara do produto); produto sem accent cadastrado cai na preferência do usuário.
+    const hue = Number(activeProduct?.accent) || t.accentHue;
+    document.documentElement.style.setProperty("--accent-h", String(hue));
+  }, [t.theme, t.density, t.typeSystem, t.accentHue, activeProduct?.accent]);
 
   // Tempo real: qualquer escrita na API (deste ou de outro usuário) emite um
   // tick no /api/events; recarregamos o SEED com debounce. O primeiro evento é

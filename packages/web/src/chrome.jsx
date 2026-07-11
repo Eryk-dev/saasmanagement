@@ -1,6 +1,9 @@
 import React from "react";
 import { api, clearKey } from "./lib/api.js";
+import { useActiveSaas } from "./lib/workspace.js";
 // App chrome v3 "Operations Terminal" — grouped nav rail + topbar with live clock.
+// A sidebar veste a MARCA do produto ativo (workspace): logo + nome no topo,
+// seletor de produto no pé (a "bolinha" com o contador abre o menu de troca).
 
 const { useState: useS, useEffect: useE, useRef: useR } = React;
 
@@ -27,6 +30,10 @@ const GROUP_LABELS = {
 
 function NavRail({ current, onNav, collapsed }) {
   const w = collapsed ? 52 : 220;
+  const [product] = useActiveSaas();
+  const brand = BRANDS[product?.id] || { label: product?.name || "Cockpit", Icon: GenericMark };
+  // Aba do navegador acompanha a marca do workspace ativo.
+  useE(() => { document.title = `${brand.label} · Cockpit`; }, [brand.label]);
   // Build grouped list
   const groups = [];
   NAV.forEach(item => {
@@ -47,10 +54,10 @@ function NavRail({ current, onNav, collapsed }) {
       overflow: "hidden",
     }}>
       <div style={{ padding: "0 14px", display: "flex", alignItems: "center", gap: 10, height: 54 }}>
-        <Logo />
+        <brand.Icon />
         {!collapsed && (
           <div style={{ lineHeight: 1.1, minWidth: 0 }}>
-            <div style={{ fontFamily: "var(--display)", fontSize: 14.5, fontWeight: 700, color: "var(--fg-1)", letterSpacing: "-0.01em" }}>LeverAds</div>
+            <div style={{ fontFamily: "var(--display)", fontSize: 14.5, fontWeight: 700, color: "var(--fg-1)", letterSpacing: "-0.01em" }}>{brand.label}</div>
           </div>
         )}
       </div>
@@ -92,24 +99,101 @@ function NavRail({ current, onNav, collapsed }) {
       </div>
 
       <div style={{ padding: "10px 12px", borderTop: "1px solid var(--line-1)" }}>
-        {!collapsed && <SaasFootChip />}
+        {!collapsed && <WorkspaceSwitcher />}
       </div>
     </nav>
   );
 }
 
-// Chip do produto ativo no pé da sidebar. Com 1 SaaS é informativo; quando o
-// portfólio voltar a ter vários (2027), vira o alternador de produto.
-function SaasFootChip() {
+// Seletor de produto (workspace) no pé da sidebar. Com 1 produto é um chip
+// informativo; com 2+ vira o alternador: a bolinha mostra o contador e o clique
+// abre o menu — o cockpit INTEIRO troca de contexto (telas + cor da marca).
+function WorkspaceSwitcher() {
+  const [product, setProduct] = useActiveSaas();
   const saas = (window.SEED?.SAAS || []);
-  const active = saas[0];
-  if (!active) return null;
+  const [open, setOpen] = useS(false);
+  const ref = useR(null);
+  useE(() => {
+    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+  if (!product) return null;
+  const single = saas.length <= 1;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)" }}>
-      <span className="dot" style={{ color: "var(--accent)", width: 7, height: 7 }} />
-      <span style={{ fontSize: 12.5, color: "var(--fg-2)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{active.name}</span>
-      <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", marginLeft: "auto", flexShrink: 0 }}>{saas.length} SaaS</span>
+    <div ref={ref} style={{ position: "relative" }}>
+      <button onClick={() => !single && setOpen((o) => !o)}
+        title={single ? undefined : "Trocar de produto"}
+        style={{
+          display: "flex", alignItems: "center", gap: 8, width: "100%",
+          padding: "7px 10px", border: "1px solid " + (open ? "var(--accent-line)" : "var(--line-1)"),
+          borderRadius: "var(--r-2)", background: "var(--bg-1)",
+          cursor: single ? "default" : "pointer",
+        }}>
+        <span className="dot" style={{ color: "var(--accent)", width: 7, height: 7, flexShrink: 0 }} />
+        <span style={{ fontSize: 12.5, color: "var(--fg-2)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{product.name}</span>
+        {!single && (
+          <span style={{
+            marginLeft: "auto", flexShrink: 0, minWidth: 16, height: 16, padding: "0 4px",
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            borderRadius: 99, background: "var(--accent-soft)", color: "var(--accent)",
+            fontSize: 10, fontWeight: 700, fontFamily: "var(--mono)",
+          }}>{saas.length}</span>
+        )}
+        {!single && <span className="dim" style={{ fontSize: 9, flexShrink: 0 }}>{open ? "▾" : "▴"}</span>}
+        {single && <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", marginLeft: "auto", flexShrink: 0 }}>1 SaaS</span>}
+      </button>
+      {open && (
+        <div style={{
+          position: "absolute", bottom: "calc(100% + 6px)", left: 0, right: 0,
+          border: "1px solid var(--line-2)", background: "var(--bg-1)",
+          borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 5, zIndex: 80,
+        }}>
+          <div className="mono" style={{ fontSize: 10, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-4)", padding: "6px 8px 4px" }}>Produtos</div>
+          {saas.map((s) => {
+            const isActive = s.id === product.id;
+            return (
+              <button key={s.id} onClick={() => { setProduct(s.id); setOpen(false); }}
+                style={{ ...menuItemStyle, display: "flex", alignItems: "center", gap: 8, fontWeight: isActive ? 600 : 450 }}>
+                <span style={{ width: 7, height: 7, borderRadius: 2, background: window.productTone ? window.productTone(s) : "var(--accent)", flexShrink: 0 }} />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
+                {isActive && <span style={{ marginLeft: "auto", color: "var(--accent)", fontSize: 11 }}>✓</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
+  );
+}
+
+// Marcas conhecidas do portfólio — logo + nome oficiais na sidebar. Produto
+// sem marca registrada aqui cai no mark genérico com o nome do cadastro.
+const BRANDS = {
+  leverads: { label: "LeverAds", Icon: Logo },
+  uniquekids: { label: "UniqueKids", Icon: UniqueKidsMark },
+};
+
+// Símbolo da UniqueKids (manual de marca): quadrado amarelo, círculo laranja e
+// triângulo verde — as formas geométricas do logo, sem o wordmark.
+function UniqueKidsMark() {
+  return (
+    <svg width="30" height="30" viewBox="0 0 30 30" style={{ flexShrink: 0 }} aria-label="UniqueKids">
+      <rect x="3" y="12" width="12.5" height="12.5" rx="3.5" fill="#FFD71E" transform="rotate(-9 9 18)" />
+      <circle cx="20.5" cy="9.5" r="5" fill="#EF5D2B" />
+      <path d="M18 17.5 L26.5 15 L24.5 23.5 Z" fill="#00B800" />
+    </svg>
+  );
+}
+
+function GenericMark() {
+  return (
+    <span style={{
+      width: 30, height: 30, borderRadius: "var(--r-1)", flexShrink: 0,
+      display: "inline-flex", alignItems: "center", justifyContent: "center",
+      background: "var(--accent-soft)", border: "1px solid var(--accent-line)",
+      color: "var(--accent)", fontSize: 14, fontWeight: 700, fontFamily: "var(--display)",
+    }}>◆</span>
   );
 }
 
