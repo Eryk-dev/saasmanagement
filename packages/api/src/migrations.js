@@ -172,6 +172,26 @@ export async function ensureUserRoles(repo) {
   return changed;
 }
 
+// Escopo de produto do time (user.saas): quem atende UM produto só não aparece
+// nos pickers dos outros workspaces. Mesmo padrão do ROLE_SEED: aplica uma vez
+// (só quando o campo ainda não existe no registro) e não cria usuário novo.
+// A Ana foi criada antes do campo existir na API — o PATCH em produção era
+// no-op até o deploy do código novo; este seed fecha a lacuna no 1º boot.
+const SAAS_SEED = {
+  ana: "uniquekids",
+};
+
+export async function ensureUserSaasScope(repo) {
+  let changed = 0;
+  for (const [id, saas] of Object.entries(SAAS_SEED)) {
+    const user = await repo.get("users", id);
+    if (!user || user.saas !== undefined) continue;
+    await repo.update("users", id, { saas });
+    changed++;
+  }
+  return changed;
+}
+
 // Orquestrador chamado no boot. Cada migração é isolada num try/catch pra que
 // uma falha não derrube o start da API.
 export async function runStartupMigrations(repo) {
@@ -204,5 +224,11 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] roles garantidas em ${n} usuário(s)`);
   } catch (err) {
     console.error("[migration] ensureUserRoles falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureUserSaasScope(repo);
+    if (n) console.log(`[migration] escopo de produto aplicado em ${n} usuário(s)`);
+  } catch (err) {
+    console.error("[migration] ensureUserSaasScope falhou:", err?.message || err);
   }
 }
