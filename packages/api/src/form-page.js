@@ -461,7 +461,10 @@ ${metaPixelHead(pixelId)}
     var b = el('button', 'cta', esc(w.button || 'Começar') + ' →');
     b.onclick = start;
     row.appendChild(b);
-    row.appendChild(el('p', 'hint', realTotal + (realTotal === 1 ? ' etapa rápida' : ' etapas rápidas') + ' · pressione <b>Enter ↵</b>'));
+    // Custo percebido baixinho: relógio + "~30 segundos" vende melhor que a
+    // promessa de minutos (e o "pressione Enter" só fazia sentido em desktop).
+    var clock = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" style="vertical-align:-1px;margin-right:5px"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+    row.appendChild(el('p', 'hint', clock + 'leva <b>~30 segundos</b> · ' + realTotal + (realTotal === 1 ? ' etapa rápida' : ' etapas rápidas')));
     s.appendChild(row);
     root.appendChild(s);
   }
