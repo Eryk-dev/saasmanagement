@@ -82,10 +82,19 @@ test("métricas: CPL real, custo por estágio do funil e campanhas", async () =>
   const app = buildApp(repo);
   await app.inject({ method: "POST", url: "/api/marketing/sync", payload: { since: "2026-06-01", until: "2026-06-02" } });
 
+  // visitas no form no período (2 sessões view, 1 start) + 1 fora do período
+  const fe = (sess, event, day) => repo.create("form_events", { id: `fe_${sess}_${event}_${day}`, form: "fo_x", saas: "leverads", session: sess, event, key: "", createdAt: day + "T10:00:00.000Z" });
+  await fe("v1", "view", "2026-06-01");
+  await fe("v1", "start", "2026-06-01");
+  await fe("v2", "view", "2026-06-02");
+  await fe("v3", "view", "2026-05-01"); // fora do range
+
   const m = (await app.inject({ method: "GET", url: "/api/marketing/leverads?since=2026-06-01&until=2026-06-02" })).json();
   // spend total = 100 + 120 + 50.5 = 270.5
   assert.equal(m.totals.spend, 270.5);
   assert.equal(m.totals.leads, 4);
+  assert.equal(m.totals.formViews, 2);   // sessões únicas na janela
+  assert.equal(m.totals.formStarts, 1);
   assert.equal(m.totals.cpl, 67.63);            // 270.5 / 4
   assert.equal(m.totals.metaLeads, 7);
   assert.equal(m.totals.cplMeta, 38.64);        // 270.5 / 7
