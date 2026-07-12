@@ -19,6 +19,7 @@ const TYPE_META = {
 };
 
 const SYSTEM_TEXT = {
+  meet_created: (m) => `Meet criado na agenda${(m.attendees || []).length ? ` · ${m.attendees.length} convidado(s)` : ""}`,
   lead_created: (m) => `Lead criado${m.via === "form" ? " pelo formulário" : ""}${m.stage ? ` em “${m.stage}”` : ""}`,
   proposal_viewed: () => "Proposta visualizada pela 1ª vez",
   proposal_accepted: (m) => `Proposta aceita${m.stage ? ` → “${m.stage}”` : ""}`,
@@ -38,6 +39,20 @@ function when(iso) {
 }
 
 function itemText(a) {
+  // Resumo de call gerado pela IA: texto completo multiline + link da gravação.
+  if (a.type === "system" && a.meta?.event === "call_summary") {
+    return (
+      <div>
+        <div style={{ whiteSpace: "pre-wrap", color: "var(--fg-1)" }}>{a.text}</div>
+        {a.meta.recordingUrl && (
+          <a href={a.meta.recordingUrl} target="_blank" rel="noopener noreferrer"
+            style={{ color: "var(--accent)", fontSize: 11.5, display: "inline-block", marginTop: 6 }}>
+            🎥 ver gravação no Drive
+          </a>
+        )}
+      </div>
+    );
+  }
   if (a.type === "stage") {
     const from = a.meta?.from || "?";
     const to = a.meta?.to || "?";

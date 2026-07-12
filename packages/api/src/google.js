@@ -14,6 +14,7 @@ const SCOPE = [
   "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/meetings.space.created",
   "https://www.googleapis.com/auth/meetings.space.settings",
+  "https://www.googleapis.com/auth/meetings.space.readonly", // ler gravações/transcrições pós-call
   "openid",
   "email",
 ].join(" ");
@@ -169,5 +170,77 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
     return applied;
   }
 
-  return { configured, connected, account, authUrl, exchangeCode, accessToken, createMeetEvent, configureSpace };
+  // GET autenticado na Meet API com paginação (nextPageToken) — devolve a
+  // lista concatenada de `field` ou lança com a mensagem do Google.
+  async function meetList(path, field, params = {}) {
+    const token = await accessToken();
+    const out = [];
+    let pageToken = "";
+    do {
+      const q = new URLSearchParams({ ...params, ...(pageToken ? { pageToken } : {}) });
+      const res = await f(`${MEET_URL}/${path}${q.size ? `?${q}` : ""}`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.status >= 400 || body.error) {
+        throw new Error(`Meet API ${path} -> ${res.status}: ${body.error?.message || "falha"}`);
+      }
+      out.push(...(body[field] || []));
+      pageToken = body.nextPageToken || "";
+    } while (pageToken && out.length < 5000);
+    return out;
+  }
+
+  // Transcrição COMPLETA da última call encerrada de uma sala: resolve o
+  // space, acha o conferenceRecord mais recente já encerrado, monta o texto
+  // fala-a-fala com o nome de quem falou e anexa o link da gravação no Drive.
+  // Retorna null quando o Google ainda está processando (quem chama re-tenta).
+  async function fetchTranscript(meetingCode) {
+    const token = await accessToken();
+    const got = await f(`${MEET_URL}/spaces/${encodeURIComponent(meetingCode)}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const space = await got.json().catch(() => ({}));
+    if (got.status >= 400 || !space.name) {
+      throw new Error(`Meet API spaces/${meetingCode} -> ${got.status}: ${space.error?.message || "sala não encontrada"}`);
+    }
+
+    const records = await meetList("conferenceRecords", "conferenceRecords", {
+      filter: `space.name = "${space.name}"`,
+    });
+    const done = records.filter((r) => r.endTime).sort((a, b) => String(b.endTime).localeCompare(String(a.endTime)));
+    if (!done.length) return null; // call não aconteceu ou ainda está rolando
+
+    const rec = done[0];
+    const transcripts = await meetList(`${rec.name}/transcripts`, "transcripts");
+    const ready = transcripts.find((t) => t.state === "ENDED") || transcripts[0];
+    if (!ready || ready.state !== "ENDED") return null; // Google ainda processando
+
+    const [entries, participants, recordings] = await Promise.all([
+      meetList(`${ready.name}/entries`, "transcriptEntries", { pageSize: "1000" }),
+      meetList(`${rec.name}/participants`, "participants", { pageSize: "250" }).catch(() => []),
+      meetList(`${rec.name}/recordings`, "recordings").catch(() => []),
+    ]);
+    if (!entries.length) return null;
+
+    const nameOf = new Map(participants.map((p) => [
+      p.name,
+      p.signedinUser?.displayName || p.anonymousUser?.displayName || p.phoneUser?.displayName || "",
+    ]));
+    const text = entries
+      .map((e) => `${nameOf.get(e.participant) || "Participante"}: ${String(e.text || "").trim()}`)
+      .filter((l) => !l.endsWith(": "))
+      .join("\n");
+
+    const recFile = recordings.find((r) => r.driveDestination?.file)?.driveDestination;
+    return {
+      text,
+      startTime: rec.startTime || "",
+      endTime: rec.endTime || "",
+      recordingUrl: recFile ? (recFile.exportUri || `https://drive.google.com/file/d/${recFile.file}/view`) : "",
+      conferenceRecord: rec.name,
+    };
+  }
+
+  return { configured, connected, account, authUrl, exchangeCode, accessToken, createMeetEvent, configureSpace, fetchTranscript };
 }

@@ -11,6 +11,7 @@ import multipart from "@fastify/multipart";
 import { initDb, repo } from "./db.js";
 import { registerRoutes } from "./routes.js";
 import { startMarketingAutoSync } from "./routes.marketing.js";
+import { startCallSummaries } from "./call-summaries.js";
 import { ensureDefaultAdmins, makeAuthHook } from "./auth.js";
 import { makeScreenGuardHook } from "./screens.js";
 import { runStartupMigrations } from "./migrations.js";
@@ -70,6 +71,8 @@ try {
   // Sync automático da Meta no servidor (uma execução pro time inteiro; no-op
   // sem META_ACCESS_TOKEN). O SPA só lê — não faz mais polling por aba.
   startMarketingAutoSync(repo, { log: app.log });
+  // Resumo automático de calls: só faz algo com ANTHROPIC_API_KEY + Google conectado.
+  startCallSummaries(repo, { ...app.integrationClients, log: app.log });
 } catch (err) {
   app.log.error(err);
   process.exit(1);

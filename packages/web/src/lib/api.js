@@ -84,6 +84,7 @@ export const api = {
   // Google Meet: URL de consentimento (Ajustes) + criar a call do lead na agenda.
   googleAuthUrl: () => req("GET", "/api/google/auth-url"),
   createMeet: (leadId) => req("POST", `/api/leads/${leadId}/meet`),
+  callSummary: (leadId, force = false) => req("POST", `/api/leads/${leadId}/call-summary`, { force }),
   // Upload multipart (vídeo) — fetch cru: o browser define o boundary do form.
   uploadCreative: async (saas, formData) => {
     const headers = {};
