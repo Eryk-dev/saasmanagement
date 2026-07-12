@@ -247,6 +247,26 @@ function RateCell({ pct, num, den, good, ok }) {
   );
 }
 
+// Contagem com taxa embaixo (ex.: Contatados = 12 · 24% dos leads), colorida
+// por saúde e com mini-barra da taxa.
+function CountRate({ count, pct, good, ok }) {
+  const tone = rateTone(pct, good, ok);
+  const w = pct == null ? 0 : Math.min(100, Math.max(0, pct));
+  return (
+    <div style={{ minWidth: 78 }}>
+      <span className="tnum" style={{ fontSize: 13, fontWeight: 600 }}>
+        {int(count)}
+        {pct != null && <span style={{ fontWeight: 400, fontSize: 10.5, color: tone }}> · {pctStr(pct)}</span>}
+      </span>
+      {pct != null && (
+        <span style={{ display: "block", height: 4, borderRadius: 999, background: "var(--bg-3)", marginTop: 4, overflow: "hidden" }}>
+          <span style={{ display: "block", height: "100%", width: `${w}%`, borderRadius: 999, background: tone }} />
+        </span>
+      )}
+    </div>
+  );
+}
+
 // SLA de 1º toque: mediana em horas + % no prazo (colorido) + fora do prazo.
 function SlaCell({ p }) {
   const within = p.leadsNew > 0 ? Math.round((p.withinSla / p.leadsNew) * 100) : null;
@@ -279,6 +299,7 @@ const PANELS = [
     key: "sdr", title: "SDR", hint: "topo de funil: qualifica e agenda a call",
     alarm: (rows) => <SlaAlarm n={rows.reduce((a, p) => a + (p.breached || 0), 0)} />,
     cols: [
+      { label: "Contatados", render: (p) => <CountRate count={p.contacted} pct={p.contactRate} good={70} ok={50} /> },
       { label: "Calls agendadas", render: (p) => <MetaCell value={p.callsBooked} goal={p.goals?.callsBooked} /> },
       { label: "Taxa agend.", render: (p) => <RateCell pct={p.bookingRate} num={p.callsBooked} den={p.leadsNew} good={30} ok={15} /> },
       { label: "SLA 1º toque", render: (p) => <SlaCell p={p} /> },

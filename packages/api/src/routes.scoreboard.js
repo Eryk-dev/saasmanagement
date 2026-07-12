@@ -115,9 +115,12 @@ export function registerScoreboardRoutes(app, repo) {
       }
       const resolved = shown + noShow;
       const leadsNew = cohort.length;
+      const contacted = touchHours.length; // leads novos que ele JÁ tocou (1º contato feito)
       return {
         user: uid, name: nameOf(uid),
         leadsNew,
+        contacted,
+        contactRate: leadsNew > 0 ? round2((contacted / leadsNew) * 100) : null,
         callsBooked,
         bookingRate: leadsNew > 0 ? round2((callsBooked / leadsNew) * 100) : null,
         firstTouchMedianH: median(touchHours),
