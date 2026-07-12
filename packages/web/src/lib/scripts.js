@@ -85,19 +85,20 @@ export const DEFAULT_SCRIPTS = {
   novo: {
     titulo: "1º ato · novo lead (prioridade máxima)",
     resumo: "O lead acabou de entrar: é o topo da fila, sempre (cadastro de fim de semana se trabalha na segunda, nos primeiros horários). A sessão é uma só: ligue 2 vezes; não atendeu, deixe o WhatsApp de apresentação. Tom leve, sorriso na voz. Atendeu? Siga a sequência de perguntas do passo a passo, confirmando e corrigindo os campos ao lado. Registrou o toque, o card segue sozinho pra Qualificando.",
-    objetivo: "Conversa breve de confirmação: dados completos na ordem (nicho, empresa, contas, anúncios, expansão, time, e-mail por último) e call agendada. Não atendeu? Apresentação no WhatsApp pedindo o melhor horário.",
+    objetivo: "Conversa breve de confirmação: dados completos na ordem (nicho, empresa, contas, anúncios, expansão, time), call agendada e o e-mail confirmado no fechamento, pra receber o convite. Não atendeu? Apresentação no WhatsApp pedindo o melhor horário.",
     passos: [
-      { t: "Identificação (ligar 2 vezes)", fala: "Olá {{nome}}, tudo bom? Sou {{eu}}, da {{produto}}. Recebi o seu cadastro com interesse na nossa ferramenta de clonar anúncios, você confirma pra mim?", dica: "Não atendeu? Liga de novo em seguida. Caiu na caixa duas vezes, manda o WhatsApp do passo 2 e registra o toque." },
+      { t: "Ligar (2 tentativas)", dica: "Ainda sem fala: liga e aguarda. Não atendeu? Liga de novo em seguida. Caiu na caixa duas vezes, manda o WhatsApp do passo 2 e registra o toque." },
       { t: "Não atendeu: WhatsApp de apresentação", fala: "Olá {{nome}}, tudo bem? Aqui é {{eu}}, da plataforma {{produto}}. Recebemos o seu cadastro dizendo estar interessado no nosso serviço de clonagem de anúncios. Tem algum horário em que a gente possa te retornar pra conversar sobre?", dica: "Depois registra o toque: o card vai pra Qualificando e o GPS marca a retomada pra amanhã." },
-      { t: "Atendeu: transição", fala: "Que bom! Queria confirmar só algumas informações com você, essa primeira conversa é bem breve." },
+      { t: "Atendeu: identificação", fala: "Olá {{nome}}, tudo bom? Sou {{eu}}, da {{produto}}. Recebi o seu cadastro com interesse na nossa ferramenta de clonar anúncios, você confirma pra mim?" },
+      { t: "Transição", fala: "Que bom! Queria confirmar só algumas informações com você, essa primeira conversa é bem breve." },
       { t: "Nicho", fala: "Vi que você preencheu que trabalha com {{nicho}}, é isso mesmo?" },
       { t: "Nome da empresa", fala: "Legal! E qual o nome da sua loja, da sua empresa?", dica: "Preenche no campo ao lado. Abrir a loja na hora cria assunto e arma o closer pra call." },
       { t: "Contas nos marketplaces", fala: "Hoje você opera quantas contas dentro dos marketplaces? No formulário você marcou {{contas}}." },
       { t: "Anúncios na maior conta", fala: "E na sua maior conta, quantos anúncios publicados você tem? Você indicou {{anuncios}}." },
       { t: "Abrir mais contas", fala: "E você pretende abrir mais contas nos próximos meses?", dica: "Resposta do formulário: {{expansao}}." },
       { t: "Time de marketing", fala: "Quantas pessoas você tem hoje no time de marketing, cuidando dos anúncios?" },
-      { t: "E-mail, por último", fala: "Perfeito, já confirmei tudo por aqui. Me passa seu melhor e-mail? É pra onde vai o convite da nossa call.", dica: "Preenche no campo ao lado; o convite do Meet vai automático pra ele." },
       { t: "Agendar a call", fala: "Fechado {{nome}}! Vou te colocar com nosso especialista pra você ver a ferramenta clonando anúncio de verdade na sua operação. Fica melhor amanhã de manhã ou no fim da tarde?", dica: "Sempre 2 opções de horário. Marcou? Registra em Call agendada no lead e gera o link da videochamada." },
+      { t: "E-mail pra receber o convite", fala: "Perfeito! Pra fechar, me confirma seu melhor e-mail? Te mando o convite da nossa call por ele.", dica: "Preenche no campo ao lado; o convite do Meet vai automático pra ele." },
     ],
   },
   contato: {
@@ -115,7 +116,7 @@ export const DEFAULT_SCRIPTS = {
     objetivo: "Qualificação completa (formulário confirmado + empresa, time de marketing e e-mail) e call agendada com o closer.",
     passos: [
       { t: "Atendeu: identificação", fala: "Oi {{nome}}, tudo bom? Sou {{eu}}, da {{produto}}. A gente se falou sobre o seu interesse na clonagem de anúncios. Consegue falar rapidinho agora?" },
-      { t: "Rodar a sequência de dados", fala: "Deixa eu confirmar o que tenho: nicho de {{nicho}}, loja {{empresa}}, {{contas}} nos marketplaces e uns {{anuncios}} anúncios na maior conta, confere?", dica: "Siga a ordem dos campos ao lado e complete o que faltar: expansão ({{expansao}}), time de marketing ({{equipe}}) e o e-mail por último." },
+      { t: "Rodar a sequência de dados", fala: "Deixa eu confirmar o que tenho: nicho de {{nicho}}, loja {{empresa}}, {{contas}} nos marketplaces e uns {{anuncios}} anúncios na maior conta, confere?", dica: "Siga a ordem dos campos ao lado e complete o que faltar: expansão ({{expansao}}) e time de marketing ({{equipe}}). O e-mail fica pro final, depois de marcar a call." },
       { t: "Agendar a call", fala: "Fechado! Vou te colocar com nosso especialista pra você ver a ferramenta clonando anúncio de verdade na sua operação. Fica melhor amanhã de manhã ou no fim da tarde?", dica: "Sempre 2 opções de horário. Marcou? Registra em Call agendada e gera o link da videochamada." },
       { t: "Sessão 2, sem resposta (WhatsApp)", fala: "Oi, tudo bem? Estou falando com {{nome_completo}}? Sou {{eu}}, da plataforma {{produto}}, sobre o seu cadastro de interesse na clonagem de anúncios." },
       { t: "Sessão 3, última (WhatsApp)", fala: "Oi {{nome}}! A gente entende que às vezes o momento não é o ideal. Você gostaria de conhecer a plataforma {{produto}} ou podemos finalizar o seu atendimento por aqui?", dica: "Sem retorno até o fim do dia: mover o card pra Nutrição. O GPS devolve ele pra fila em 20 dias, num dia útil." },

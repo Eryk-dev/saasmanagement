@@ -598,9 +598,12 @@ function ScriptPanel({ item, saasCfg, hasNext, onPatch, onClose, onTouch, onSkip
                     }}>{i + 1}</span>
                     <div style={{ minWidth: 0, flex: 1 }}>
                       {p.t && <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 1 }}>{p.t}</div>}
-                      <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--fg-1)", borderLeft: "3px solid var(--accent-line)", paddingLeft: 10, whiteSpace: "pre-wrap" }}>
-                        {renderFala(p.fala)}
-                      </div>
+                      {/* Passo sem fala é ação pura (ex.: "ligar 2 vezes"): só a dica. */}
+                      {p.fala && (
+                        <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--fg-1)", borderLeft: "3px solid var(--accent-line)", paddingLeft: 10, whiteSpace: "pre-wrap" }}>
+                          {renderFala(p.fala)}
+                        </div>
+                      )}
                       {p.dica && <div className="dim" style={{ fontSize: 10.5, marginTop: 2, paddingLeft: 13 }}>{renderFala(p.dica)}</div>}
                     </div>
                   </div>
