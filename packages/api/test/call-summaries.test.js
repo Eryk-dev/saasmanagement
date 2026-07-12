@@ -71,6 +71,43 @@ test("anthropic client: manda opus-4-8 + structured output e devolve o resumo pa
   assert.equal(makeAnthropic({}).configured(), false);
 });
 
+test("openrouter: chave sk-or-* muda endpoint/formato sozinha e parseia (até com cerca de código)", async () => {
+  const calls = [];
+  const f = async (url, init) => {
+    calls.push({ url: String(url), init, body: JSON.parse(init.body) });
+    return {
+      status: 200,
+      json: async () => ({
+        model: "anthropic/claude-opus-4.8",
+        choices: [{ message: { content: "```json\n" + JSON.stringify(SUMMARY) + "\n```" } }],
+        usage: { prompt_tokens: 1000, completion_tokens: 300 },
+      }),
+    };
+  };
+  const a = makeAnthropic({ fetch: f, apiKey: "sk-or-v1-teste" });
+  assert.equal(a.provider, "openrouter");
+  assert.equal(a.model, "anthropic/claude-opus-4.8");
+
+  const { summary } = await a.summarizeCall({ transcript: "Leo: oi", lead: { name: "Ana" } });
+  assert.equal(summary.temperatura, "quente");
+
+  const req = calls[0];
+  assert.ok(req.url.includes("openrouter.ai/api/v1/chat/completions"));
+  assert.equal(req.init.headers.authorization, "Bearer sk-or-v1-teste");
+  assert.equal(req.body.response_format.type, "json_schema");
+  assert.equal(req.body.response_format.json_schema.strict, true);
+  assert.equal(req.body.messages[0].role, "system");
+  assert.ok(req.body.messages[0].content.includes("SOMENTE com o JSON"));
+  assert.equal(req.body.thinking, undefined); // formato OpenAI, sem campos da Anthropic
+
+  // erro do OpenRouter vira mensagem legível
+  const fErr = async () => ({ status: 402, json: async () => ({ error: { message: "Insufficient credits" } }) });
+  await assert.rejects(
+    () => makeAnthropic({ fetch: fErr, apiKey: "sk-or-v1-x" }).summarizeCall({ transcript: "x" }),
+    /OpenRouter -> 402: Insufficient credits/,
+  );
+});
+
 test("google.fetchTranscript: monta o texto com nomes + link da gravação; null enquanto processa", async () => {
   const calls = [];
   const f = async (url, init = {}) => {

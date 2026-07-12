@@ -191,8 +191,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Google Meet: conectar conta (OAuth) + criar call na agenda do closer.
   // Claude resume as calls (transcrição → timeline) quando há ANTHROPIC_API_KEY.
   const anthropicClient = opts.anthropic || makeAnthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY || "",
-    model: process.env.ANTHROPIC_MODEL || "",
+    apiKey: process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_API_KEY || "",
+    model: process.env.AI_MODEL || process.env.ANTHROPIC_MODEL || "",
   });
   const googleClient = registerGoogleRoutes(app, repo, { google: opts.google, anthropic: anthropicClient });
   // Poller de resumos (index.js) usa os MESMOS clients das rotas.
