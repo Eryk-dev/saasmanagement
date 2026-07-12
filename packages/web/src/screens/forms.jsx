@@ -714,6 +714,9 @@ function FormsDashboard({ forms }) {
 
   const dayStart = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.toISOString(); };
   const dayEnd = (d) => { const x = new Date(d); x.setHours(23, 59, 59, 999); return x.toISOString(); };
+  // Range SEMPRE ancorado em fronteira de dia: o valor é estável entre
+  // re-renders (um since com Date.now() cru mudava a cada tick do tempo real,
+  // re-disparava o fetch e fazia a tela piscar "carregando…" sem parar).
   const range = (() => {
     const now = new Date();
     if (preset === "hoje") return { since: dayStart(now), until: "" };
@@ -725,7 +728,8 @@ function FormsDashboard({ forms }) {
       };
     }
     if (!preset) return { since: "", until: "" };
-    return { since: new Date(Date.now() - Number(preset) * 86400e3).toISOString(), until: "" };
+    const from = new Date(now); from.setDate(from.getDate() - (Number(preset) - 1));
+    return { since: dayStart(from), until: "" }; // "últimos N dias" = N dias corridos incluindo hoje
   })();
 
   useEffect(() => {
