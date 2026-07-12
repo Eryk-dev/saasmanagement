@@ -43,6 +43,8 @@ test("SDR: leads novos, calls agendadas (transição pra kind call) e SLA de 1º
   const s = sb.sdr.find((x) => x.user === "u_sdr");
   assert.equal(s.name, "Sara SDR");
   assert.equal(s.leadsNew, 2);
+  assert.equal(s.contacted, 1);            // só l1 recebeu 1º toque
+  assert.equal(s.contactRate, 50);         // 1 de 2 leads novos
   assert.equal(s.callsBooked, 1);          // 1 transição pra Call agendada
   assert.equal(s.bookingRate, 50);         // 1/2
   assert.equal(s.firstTouchMedianH, 1);    // l1 tocado 1h depois
