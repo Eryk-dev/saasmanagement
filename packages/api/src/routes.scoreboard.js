@@ -86,14 +86,34 @@ export function registerScoreboardRoutes(app, repo) {
           breached++;
         }
       }
-      // Calls agendadas = transições pra estágio de kind `call` na janela, em
-      // leads desse SDR (é o output dele, a moeda de handoff pro closer).
-      let callsBooked = 0;
+      // Calls agendadas = leads DISTINTOS desse SDR que atingiram estágio de kind
+      // `call` na janela (a moeda de handoff; a atribuição é sempre do owner,
+      // mesmo que o closer tenha movido o card — decisão do processo).
+      const bookedIds = new Set();
       for (const l of mine) {
         for (const a of actsByLead.get(l.id) || []) {
-          if (a.type === "stage" && inWin(a.at) && kindOf(product, a.meta?.to) === "call") callsBooked++;
+          if (a.type === "stage" && inWin(a.at) && kindOf(product, a.meta?.to) === "call") bookedIds.add(l.id);
         }
       }
+      const booked = [...bookedIds].map((id) => leadById.get(id)).filter(Boolean);
+      const callsBooked = booked.length;
+
+      // Show-rate e calls→ganho sobre o cohort de calls agendadas. Compareceu =
+      // avançou pra frente (proposta/follow-up/integração/ganho) OU perdeu por
+      // OUTRO motivo (a call aconteceu). Não compareceu = perda com motivo
+      // "nao_compareceu" (o closer marca). Ainda em Call agendada = não resolvido.
+      const FORWARD = new Set(["proposta", "followup", "integracao", "ganho"]);
+      let shown = 0, noShow = 0, wonFromCalls = 0;
+      for (const l of booked) {
+        const won = isWon(product, l.stage);
+        const lost = isLoss(product, l.stage);
+        if (won) wonFromCalls++;
+        const advanced = won || FORWARD.has(kindOf(product, l.stage))
+          || (actsByLead.get(l.id) || []).some((a) => a.type === "stage" && FORWARD.has(kindOf(product, a.meta?.to)));
+        if (lost && l.lostReason === "nao_compareceu") noShow++;
+        else if (advanced || lost) shown++;
+      }
+      const resolved = shown + noShow;
       const leadsNew = cohort.length;
       return {
         user: uid, name: nameOf(uid),
@@ -103,7 +123,11 @@ export function registerScoreboardRoutes(app, repo) {
         firstTouchMedianH: median(touchHours),
         withinSla: touchHours.filter((h) => h <= slaMs / HOUR).length,
         breached, // novos que estouraram o SLA e seguem sem toque
-        goals: goalMap(uid, "sdr", ["callsBooked", "leadsNew", "bookingRate"]),
+        showRate: resolved > 0 ? round2((shown / resolved) * 100) : null,
+        noShow,
+        wonFromCalls,
+        callWinRate: callsBooked > 0 ? round2((wonFromCalls / callsBooked) * 100) : null,
+        goals: goalMap(uid, "sdr", ["callsBooked", "bookingRate"]),
       };
     }).filter((p) => p.leadsNew > 0 || p.callsBooked > 0)
       .sort((a, b) => b.callsBooked - a.callsBooked);

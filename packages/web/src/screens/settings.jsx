@@ -413,7 +413,6 @@ function TeamSettings() {
 // mas aqui é o alvo geral do papel, que já faz a barra aparecer pra todo mundo.
 const GOAL_METRICS = [
   { role: "sdr", metric: "callsBooked", label: "SDR · Calls agendadas / mês" },
-  { role: "sdr", metric: "leadsNew", label: "SDR · Leads novos / mês" },
   { role: "closer", metric: "won", label: "Closer · Ganhos / mês" },
   { role: "closer", metric: "revenue", label: "Closer · Receita / mês (R$)" },
   { role: "integrator", metric: "newAccounts", label: "CS · Contas novas / mês" },

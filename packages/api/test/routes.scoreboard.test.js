@@ -50,6 +50,29 @@ test("SDR: leads novos, calls agendadas (transição pra kind call) e SLA de 1º
   await app.close();
 });
 
+test("SDR: show-rate (não compareceu) e calls→ganho sobre o cohort de calls", async () => {
+  const { app, repo } = await buildApp();
+  const mk = async (id, stage, extra = {}) => {
+    await repo.create("leads", { id, saas: "leverads", owner: "u_sdr", stage, createdAt: now, ...extra });
+    // transição pra Call agendada na janela (entra no cohort de booked)
+    await repo.create("activities", { id: `st_${id}`, saas: "leverads", lead: id, type: "stage", at: now, meta: { from: "Qualificando", to: "Call agendada" } });
+  };
+  await mk("b1", "Ganho", { amount: 500, stageSince: now });   // compareceu + fechou
+  await mk("b2", "Follow-up");                                 // compareceu (avançou), não fechou
+  await mk("b3", "Perdido", { lostReason: "nao_compareceu", stageSince: now }); // NÃO compareceu
+  await mk("b4", "Perdido", { lostReason: "preco", stageSince: now });          // compareceu (perdeu por outro motivo)
+  await mk("b5", "Call agendada");                             // ainda não resolvido (não conta)
+
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  const s = sb.sdr.find((x) => x.user === "u_sdr");
+  assert.equal(s.callsBooked, 5);
+  assert.equal(s.noShow, 1);          // b3
+  assert.equal(s.showRate, 75);       // compareceram 3 (b1,b2,b4) / resolvidos 4 (b1,b2,b3,b4)
+  assert.equal(s.wonFromCalls, 1);    // b1
+  assert.equal(s.callWinRate, 20);    // 1 / 5
+  await app.close();
+});
+
 test("Closer: ganhos, receita, taxa de fechamento e ticket na janela", async () => {
   const { app, repo } = await buildApp();
   await repo.create("leads", { id: "w1", saas: "leverads", closer: "u_clo", stage: "Ganho", amount: 600, createdAt: "2026-07-02T10:00:00.000Z", stageSince: "2026-07-08T10:00:00.000Z", callAt: "2026-07-05T10:00:00.000Z" });
