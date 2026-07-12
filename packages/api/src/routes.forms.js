@@ -36,6 +36,7 @@ function sanitizeUtm(raw) {
 export function registerFormRoutes(app, repo, opts = {}) {
   const discord = opts.discord; // injetado por routes.js (fail-open, pode faltar em teste direto)
   const metaCapi = opts.metaCapi; // CAPI "Lead" server-side (fail-open, pode faltar em teste direto)
+  const anthropic = opts.anthropic; // IA da variante de welcome (503 quando falta chave)
   const allow = makeRateLimiter({
     limit: opts.rateLimit ?? Number(process.env.FORM_RATE_LIMIT || 10),
     windowMs: opts.rateWindowMs ?? 60_000,
@@ -327,6 +328,36 @@ export function registerFormRoutes(app, repo, opts = {}) {
   });
 
   app.get("/embed.js", async (_req, reply) => reply.type("text/javascript").send(EMBED_JS));
+
+  // Variante de welcome por IA (título/subtítulo/botão) — o "aplicar" do
+  // insight de welcome fraca no dashboard. NÃO grava nada: o client mostra a
+  // copy pra edição e é o PATCH do form que publica a variante. Contexto que
+  // vai pro modelo: welcome atual + títulos já testados (base e por dor, pra
+  // não repetir ângulo) + taxa de início que disparou o insight.
+  app.post("/api/forms/:id/suggest-welcome", async (req, reply) => {
+    const form = await repo.get("forms", req.params.id);
+    if (!form) return reply.code(404).send({ error: "Not found" });
+    if (!anthropic?.configured()) return reply.code(503).send({ error: "IA não configurada (OPENROUTER_API_KEY ou ANTHROPIC_API_KEY)" });
+    const product = form.saas ? await repo.get("products", form.saas) : null;
+    const w = form.welcome || {};
+    const tested = [
+      ...(w.variants || []),
+      ...Object.values(w.byPain || {}).flatMap((p) => p.variants || []),
+    ].map((v) => v.title).filter(Boolean);
+    try {
+      const { suggestion } = await anthropic.suggestWelcome({
+        productName: product?.name || "",
+        pitch: product?.pitch || product?.description || "",
+        welcome: { title: w.title || "", subtitle: w.subtitle || "", button: w.button || "" },
+        variants: tested,
+        startRate: req.body?.startRate != null ? Number(req.body.startRate) : null,
+      });
+      return suggestion;
+    } catch (err) {
+      req.log?.warn?.({ err }, "suggest-welcome falhou");
+      return reply.code(502).send({ error: String(err?.message || err).slice(0, 300) });
+    }
+  });
 
   // Preview autenticado pro builder (rota /api → exige key): recebe o rascunho
   // inteiro no body e devolve o MESMO HTML da página pública, sem persistir nada.

@@ -55,19 +55,47 @@ function InsightRow({ it, onDismiss, onApply }) {
 }
 
 // Popup de confirmação do "aplicar": mostra os passos EXATOS que vão ser
-// executados (it.action.steps) e só age no confirmar. Depois de aplicado, o
-// insight é dispensado (a sugestão foi atendida) e `onApplied` deixa a tela
-// recarregar o estado vivo (status/orçamento na Meta).
+// executados (it.action.steps) e só age no confirmar. Ações de TEXTO (copy)
+// declaram `action.prepare()` — gera os campos (ex.: headline por IA) e eles
+// ficam EDITÁVEIS antes de confirmar, com "gerar outra" pra nova sugestão; o
+// execute recebe os valores finais editados. Depois de aplicado, o insight é
+// dispensado e `onApplied` deixa a tela recarregar o estado vivo.
+const fieldStyle = {
+  width: "100%", padding: "6px 10px",
+  background: "var(--bg-2)", border: "1px solid var(--line-2)",
+  borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13,
+};
 function ApplyInsightModal({ item, onCancel, onApplied }) {
-  const [phase, setPhase] = React.useState("confirm"); // confirm | running | done | error
+  const a = item.action;
+  // preparing | confirm | prepare-error | running | done | error
+  const [phase, setPhase] = React.useState(a.prepare ? "preparing" : "confirm");
+  const [fields, setFields] = React.useState(null); // [{ key, label, value, multiline }]
   const [error, setError] = React.useState("");
-  const running = phase === "running";
+  const busy = phase === "running" || phase === "preparing";
+
+  async function prepare() {
+    setPhase("preparing");
+    setError("");
+    try {
+      setFields(await a.prepare());
+      setPhase("confirm");
+    } catch (e) {
+      setError(String(e?.message || e).slice(0, 300));
+      setPhase("prepare-error");
+    }
+  }
+  React.useEffect(() => { if (a.prepare) prepare(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const setField = (key, value) => setFields((fs) => fs.map((f) => (f.key === key ? { ...f, value } : f)));
+  const values = () => Object.fromEntries((fields || []).map((f) => [f.key, String(f.value || "").trim()]));
+  const ready = !a.prepare || (fields && fields.every((f) => f.optional || String(f.value || "").trim()));
 
   async function run() {
-    if (running) return;
+    if (busy || !ready) return;
     setPhase("running");
+    setError("");
     try {
-      await item.action.execute();
+      await a.execute(values());
       setPhase("done");
     } catch (e) {
       setError(String(e?.message || e).slice(0, 300));
@@ -76,27 +104,56 @@ function ApplyInsightModal({ item, onCancel, onApplied }) {
   }
 
   return (
-    <div onClick={running ? undefined : (phase === "done" ? onApplied : onCancel)} style={{ position: "fixed", inset: 0, zIndex: 90, background: "color-mix(in srgb, var(--bg-0) 62%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(460px, 100%)", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 18 }}>
-        <div style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700 }}>{item.action.label}</div>
+    <div onClick={busy ? undefined : (phase === "done" ? onApplied : onCancel)} style={{ position: "fixed", inset: 0, zIndex: 90, background: "color-mix(in srgb, var(--bg-0) 62%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(500px, 100%)", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 18 }}>
+        <div style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700 }}>{a.label}</div>
         <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 4, lineHeight: 1.5 }}>{item.text}</div>
+
+        {phase === "preparing" && (
+          <div className="mono" style={{ fontSize: 12, color: "var(--fg-3)", margin: "16px 0 4px" }}>gerando sugestão…</div>
+        )}
+        {phase === "prepare-error" && (
+          <div className="mono" style={{ fontSize: 11.5, color: "var(--neg)", margin: "16px 0 4px" }}>Falha ao gerar: {error}</div>
+        )}
+
+        {fields && phase !== "preparing" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
+            {fields.map((f) => (
+              <div key={f.key}>
+                <label style={{ fontSize: 10.5, fontFamily: "var(--mono)", color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>{f.label}</label>
+                {f.multiline ? (
+                  <textarea value={f.value} rows={2} onChange={(e) => setField(f.key, e.target.value)} disabled={busy}
+                    style={{ ...fieldStyle, resize: "vertical" }} />
+                ) : (
+                  <input value={f.value} onChange={(e) => setField(f.key, e.target.value)} disabled={busy} style={fieldStyle} />
+                )}
+              </div>
+            ))}
+            {a.prepare && phase !== "done" && (
+              <button onClick={prepare} disabled={busy}
+                style={{ alignSelf: "flex-start", height: 24, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, opacity: busy ? 0.6 : 1 }}>
+                ↻ gerar outra
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="mono" style={{ fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-3)", margin: "14px 0 6px" }}>
           O que vai ser feito
         </div>
         <ul style={{ margin: 0, padding: "0 0 0 18px", display: "flex", flexDirection: "column", gap: 5 }}>
-          {item.action.steps.map((s, i) => (
+          {a.steps.map((s, i) => (
             <li key={i} style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--fg-1)" }}>{s}</li>
           ))}
         </ul>
 
         {phase === "error" && (
           <div className="mono" style={{ fontSize: 11.5, color: "var(--neg)", marginTop: 12 }}>
-            A Meta recusou: {error} · nada além do que já foi confirmado foi alterado
+            Falhou: {error} · nada além do que já foi confirmado foi alterado
           </div>
         )}
         {phase === "done" && (
-          <div className="mono" style={{ fontSize: 12, color: "var(--pos)", marginTop: 12 }}>✓ aplicado na Meta</div>
+          <div className="mono" style={{ fontSize: 12, color: "var(--pos)", marginTop: 12 }}>✓ aplicado</div>
         )}
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
@@ -104,8 +161,12 @@ function ApplyInsightModal({ item, onCancel, onApplied }) {
             <PrimaryButton onClick={onApplied}>fechar</PrimaryButton>
           ) : (
             <>
-              <button onClick={onCancel} disabled={running} style={{ height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5, opacity: running ? 0.6 : 1 }}>cancelar</button>
-              <PrimaryButton onClick={run} disabled={running}>{running ? "aplicando…" : phase === "error" ? "tentar de novo" : "confirmar e aplicar"}</PrimaryButton>
+              <button onClick={onCancel} disabled={phase === "running"} style={{ height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5, opacity: phase === "running" ? 0.6 : 1 }}>cancelar</button>
+              {phase !== "prepare-error" ? (
+                <PrimaryButton onClick={run} disabled={busy || !ready}>{phase === "running" ? "aplicando…" : phase === "error" ? "tentar de novo" : "confirmar e aplicar"}</PrimaryButton>
+              ) : (
+                <PrimaryButton onClick={prepare}>gerar de novo</PrimaryButton>
+              )}
             </>
           )}
         </div>

@@ -713,7 +713,7 @@ function buildFormInsights(data, form, cat) {
   if (data.views >= 30 && form.welcome) {
     const startRate = pctN(data.starts, data.views);
     if (startRate < 40) {
-      out.push({ id: "welcome-starts", tone: "atencao", tag: "Atenção", text: `Só ${startRate}% das ${data.views} visitas clicam em começar. A headline/promessa da boas-vindas é o primeiro suspeito — vale rodar uma variante nova no teste A/B.` });
+      out.push({ id: "welcome-starts", meta: { kind: "newHeadline", startRate }, tone: "atencao", tag: "Atenção", text: `Só ${startRate}% das ${data.views} visitas clicam em começar. A headline/promessa da boas-vindas é o primeiro suspeito, vale rodar uma variante nova no teste A/B.` });
     }
   }
   // Etapa que mais derruba: maior queda relativa entre telas consecutivas.
@@ -759,6 +759,36 @@ const moneyBRL = (v) => new Intl.NumberFormat("pt-BR", { style: "currency", curr
 function withFormInsightAction(it, { form, adObjects }) {
   const m = it.meta;
   if (!m) return it;
+  if (m.kind === "newHeadline") {
+    // A IA escreve a variante; os campos chegam EDITÁVEIS no popup (regra do
+    // Leo pra ação de texto) e o confirmar publica como variante nova do A/B,
+    // com o id monotônico do builder (variantSeq nunca repete entre rodadas).
+    return {
+      ...it,
+      action: {
+        label: "Criar variante de headline (IA)",
+        prepare: async () => {
+          const s = await api.suggestWelcome(form.id, { startRate: m.startRate });
+          return [
+            { key: "title", label: "Título", value: s.title || "" },
+            { key: "subtitle", label: "Subtítulo", value: s.subtitle || "", multiline: true, optional: true },
+            { key: "button", label: "Botão", value: s.button || "" },
+          ];
+        },
+        steps: [
+          "Ajuste os textos acima se quiser (o que estiver nos campos é o que vai pro ar).",
+          `Confirmar publica a copy como VARIANTE NOVA do teste A/B da welcome do form “${form.name || form.id}”: a versão atual continua no ar e o sorteio por visitante decide quem vê qual.`,
+          "O funil passa a comparar as duas versões; a campeã você promove no builder, como sempre.",
+        ],
+        execute: (v) => {
+          const w = form.welcome || {};
+          const seq = (Number(w.variantSeq) || 0) + 1;
+          const variant = { id: String(seq).padStart(3, "0"), title: v.title, subtitle: v.subtitle || "", button: v.button };
+          return api.update("forms", form.id, { welcome: { ...w, variantSeq: seq, variants: [...(w.variants || []), variant] } });
+        },
+      },
+    };
+  }
   if (m.kind === "makeOptional") {
     const q = (form.questions || []).find((x) => x.key === m.key);
     if (!q || !q.required) return it; // já é opcional (ou saiu do form)
