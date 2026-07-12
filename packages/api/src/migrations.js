@@ -3,7 +3,7 @@
 // vezes (todo deploy reinicia o container) e nunca deve corromper dados que já
 // existem: na dúvida sobre o estado, não mexe.
 
-import { normalizeFunnel } from "./stages.js";
+import { normalizeFunnel, kindOf } from "./stages.js";
 
 // Garante o estágio "Integração" no funil do produto `leverads`, posicionado
 // entre "Negociação" e "Ganho". Integração é pós-venda: negócio já fechado,
@@ -223,6 +223,7 @@ export const DEFAULT_LOSS_REASONS = [
   { id: "sem_fit", label: "Sem fit" },
   { id: "timing", label: "Timing" },
   { id: "concorrente", label: "Concorrente" },
+  { id: "nao_compareceu", label: "Não compareceu na call" },
   { id: "outro", label: "Outro" },
 ];
 
@@ -231,6 +232,26 @@ export async function ensureLossReasons(repo) {
   for (const product of await repo.list("products")) {
     if (Array.isArray(product.lossReasons)) continue;
     await repo.update("products", product.id, { lossReasons: DEFAULT_LOSS_REASONS });
+    changed++;
+  }
+  return changed;
+}
+
+// "Não compareceu na call" é o sinal que alimenta o show-rate do SDR (o closer
+// marca ao mover pra Perdido). Produto que já tinha lossReasons (leverads) não
+// entra no ensureLossReasons acima, então este anexa o motivo aos funis COM
+// estágio de call, uma vez (marcador noShowReasonV1 respeita remoção manual).
+export async function ensureNoShowReason(repo) {
+  let changed = 0;
+  for (const product of await repo.list("products")) {
+    if (product.noShowReasonV1) continue;
+    const patch = { noShowReasonV1: true };
+    const reasons = Array.isArray(product.lossReasons) ? product.lossReasons : [];
+    const hasCall = (product.funnel || []).some((f) => kindOf(product, f.stage) === "call");
+    if (hasCall && !reasons.some((r) => r.id === "nao_compareceu")) {
+      patch.lossReasons = [...reasons, { id: "nao_compareceu", label: "Não compareceu na call" }];
+    }
+    await repo.update("products", product.id, patch);
     changed++;
   }
   return changed;
@@ -326,6 +347,12 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] lossReasons padrão em ${n} produto(s)`);
   } catch (err) {
     console.error("[migration] ensureLossReasons falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureNoShowReason(repo);
+    if (n) console.log(`[migration] motivo "não compareceu" verificado em ${n} produto(s)`);
+  } catch (err) {
+    console.error("[migration] ensureNoShowReason falhou:", err?.message || err);
   }
   try {
     const n = await ensureUserRoles(repo);

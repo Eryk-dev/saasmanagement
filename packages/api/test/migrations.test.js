@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   ensureIntegrationStage, migrateLeverAdsCrmFunnel, migrateLeverAdsSdrCadence, ensureFunnelKinds,
-  ensureLossReasons, ensureUserRoles, ensureUserSaasScope, ensureUserScreens, DEFAULT_LOSS_REASONS,
+  ensureLossReasons, ensureNoShowReason, ensureUserRoles, ensureUserSaasScope, ensureUserScreens, DEFAULT_LOSS_REASONS,
 } from "../src/migrations.js";
 
 const FUNNEL = [
@@ -194,6 +194,25 @@ test("ensureLossReasons semeia a lista padrão sem sobrescrever custom", async (
   assert.deepEqual((await repo.get("products", "a")).lossReasons, DEFAULT_LOSS_REASONS);
   assert.deepEqual((await repo.get("products", "b")).lossReasons, [{ id: "x", label: "X" }]);
   assert.equal(await ensureLossReasons(repo), 0);
+});
+
+test("ensureNoShowReason anexa 'não compareceu' só em funil com call, uma vez", async () => {
+  const repo = makeMemRepo();
+  // funil com call, sem o motivo → anexa
+  await repo.create("products", { id: "lev", funnel: [{ stage: "Call agendada", kind: "call" }], lossReasons: [{ id: "preco", label: "Preço" }] });
+  // funil sem call → só marca, não anexa
+  await repo.create("products", { id: "semcall", funnel: [{ stage: "Novo", kind: "novo" }], lossReasons: [{ id: "x", label: "X" }] });
+  // já tem o motivo → não duplica
+  await repo.create("products", { id: "jatem", funnel: [{ stage: "Call", kind: "call" }], lossReasons: [{ id: "nao_compareceu", label: "outro texto" }] });
+
+  assert.equal(await ensureNoShowReason(repo), 3);
+  const lev = await repo.get("products", "lev");
+  assert.ok(lev.lossReasons.some((r) => r.id === "nao_compareceu"));
+  assert.ok(lev.lossReasons.some((r) => r.id === "preco")); // preserva os existentes
+  assert.equal((await repo.get("products", "semcall")).lossReasons.length, 1); // não anexou
+  assert.equal((await repo.get("products", "jatem")).lossReasons.filter((r) => r.id === "nao_compareceu").length, 1); // não duplicou
+
+  assert.equal(await ensureNoShowReason(repo), 0); // idempotente (marcador)
 });
 
 test("ensureUserRoles espelha o time antigo e não inventa usuário", async () => {

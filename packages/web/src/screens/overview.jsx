@@ -226,8 +226,8 @@ const PANELS = [
   {
     key: "sdr", title: "SDR", hint: "topo de funil: qualifica e agenda a call",
     cols: [
-      { label: "Leads", render: (p) => <span className="tnum">{int(p.leadsNew)}</span> },
       { label: "Calls agendadas", meta: true, render: (p) => <MetaCell value={p.callsBooked} goal={p.goals?.callsBooked} /> },
+      { label: "Taxa agend.", render: (p) => <span className="tnum">{pctStr(p.bookingRate) || "—"}</span> },
       { label: "SLA 1º toque", render: (p) => (
         <span className="mono" style={{ fontSize: 12 }}>
           {p.firstTouchMedianH != null ? `${String(p.firstTouchMedianH).replace(".", ",")}h` : "—"}
@@ -235,7 +235,16 @@ const PANELS = [
           {p.breached > 0 && <span style={{ color: "var(--neg)" }}> · {p.breached} fora</span>}
         </span>
       ) },
-      { label: "Taxa agend.", render: (p) => <span className="tnum">{pctStr(p.bookingRate) || "—"}</span> },
+      { label: "% compareceram", render: (p) => (
+        <span className="tnum" title={p.showRate != null ? `${p.noShow} não compareceram` : "sem call resolvida no período"}>
+          {p.showRate != null ? pctStr(p.showRate) : "—"}
+        </span>
+      ) },
+      { label: "Calls → ganho", render: (p) => (
+        <span className="tnum" title={p.wonFromCalls != null ? `${p.wonFromCalls} das ${p.callsBooked} calls fecharam` : ""}>
+          {p.callWinRate != null ? pctStr(p.callWinRate) : "—"}
+        </span>
+      ) },
     ],
   },
   {
