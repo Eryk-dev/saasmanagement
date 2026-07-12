@@ -33,6 +33,22 @@ function sanitizeUtm(raw) {
   return Object.keys(out).length ? out : null;
 }
 
+// Origem derivada do REFERRER quando a visita chega sem UTM: é o que enxerga
+// bio do Instagram (l.instagram.com), busca do Google e a própria home do site
+// (que manda o visitante pro form). Rótulos estáveis pros conhecidos; o resto
+// fica com o hostname limpo.
+export function referrerSource(referrer) {
+  let host = "";
+  try { host = new URL(String(referrer)).hostname.toLowerCase(); } catch { return ""; }
+  host = host.replace(/^(www|m|l|lm|out)\./, "");
+  if (host.includes("google.")) return "google";
+  if (host.includes("instagram.com")) return "instagram";
+  if (host.includes("facebook.com") || host === "fb.com") return "facebook";
+  if (host.includes("bing.")) return "bing";
+  if (host.includes("leverads.com.br")) return "site leverads";
+  return host.slice(0, 60);
+}
+
 export function registerFormRoutes(app, repo, opts = {}) {
   const discord = opts.discord; // injetado por routes.js (fail-open, pode faltar em teste direto)
   const metaCapi = opts.metaCapi; // CAPI "Lead" server-side (fail-open, pode faltar em teste direto)
@@ -80,7 +96,13 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // contar como conversão (Lead Pixel/CAPI) — pra não otimizar anúncio nesse público.
     const disqualified = submissionTerminal(form.questions || [], answers) === "_reject";
 
-    const utm = sanitizeUtm(body.utm);
+    let utm = sanitizeUtm(body.utm);
+    // Orgânico ganha origem legível pelo referrer (google, instagram, site) —
+    // sem isso o lead sem UTM aparece "sem origem" no drawer e nos relatórios.
+    if (utm && !utm.source && !utm.campaign && utm.referrer) {
+      const src = referrerSource(utm.referrer);
+      if (src) utm = { ...utm, source: src };
+    }
     const variant = String(body.variant || "").slice(0, 40); // versão da welcome que converteu
     const pain = String(body.pain || "").slice(0, 8);         // dor da welcome mostrada
     const internal = body.internal === true;                  // teste da equipe (não suja métrica nem CAPI)
@@ -198,11 +220,17 @@ export function registerFormRoutes(app, repo, opts = {}) {
     const variant = String(body.variant || "").slice(0, 40); // teste A/B da welcome
     const pain = String(body.pain || "").slice(0, 8);         // dor do anúncio de origem
     // Origem no evento (slim: só chaves de atribuição, sem referrer/click-ids) —
-    // é o que permite medir o drop-off POR CAMPANHA, não só por variante/dor.
+    // é o que permite medir o drop-off POR ORIGEM/ANÚNCIO, não só variante/dor.
+    // Visita sem UTM mas com referrer vira origem derivada (google/instagram/
+    // site), senão bio do IG, busca e home ficam invisíveis na quebra.
     const rawUtm = sanitizeUtm(body.utm);
-    const utm = rawUtm
+    let utm = rawUtm
       ? Object.fromEntries(["source", "medium", "campaign", "content", "term"].filter((k) => rawUtm[k]).map((k) => [k, rawUtm[k]]))
       : null;
+    if ((!utm || (!utm.source && !utm.campaign)) && rawUtm?.referrer) {
+      const src = referrerSource(rawUtm.referrer);
+      if (src) utm = { ...(utm || {}), source: src };
+    }
     if (!EVENT_TYPES.has(event) || !session) return reply.code(400).send({ error: "Evento inválido" });
     if (event === "step" && !(form.questions || []).some((q) => q.key === key)) {
       return reply.code(400).send({ error: "Etapa desconhecida" });
@@ -265,17 +293,19 @@ export function registerFormRoutes(app, repo, opts = {}) {
       };
     });
     // Drop-off por ORIGEM (utm carimbada nos eventos): funil paralelo por
-    // source|campaign — responde "qual campanha traz gente que abandona no meio".
-    // Campaign chega como id dinâmico da Meta; o SPA resolve o nome pelo catálogo
-    // de atribuição (useAttribution).
-    const originKey = (e) => (e.utm && (e.utm.source || e.utm.campaign) ? `${e.utm.source || ""}|${e.utm.campaign || ""}` : "");
+    // source|campaign|content — o ANÚNCIO (utm_content = ad id) é o nível que
+    // decide criativo, a campanha fica de contexto/fallback. Ids dinâmicos da
+    // Meta; o SPA resolve nomes pelo catálogo de atribuição (useAttribution).
+    // Orgânico derivado do referrer entra só com source (google/instagram/site).
+    const originKey = (e) => (e.utm && (e.utm.source || e.utm.campaign || e.utm.content)
+      ? `${e.utm.source || ""}|${e.utm.campaign || ""}|${e.utm.content || ""}` : "");
     const originKeys = [...new Set(events.map(originKey).filter(Boolean))].sort();
     const origins = originKeys.map((k) => {
-      const [source, campaign] = k.split("|");
+      const [source, campaign, content] = k.split("|");
       const mine = (e) => originKey(e) === k;
       const ou = (ev) => new Set(events.filter((e) => mine(e) && e.event === ev).map((e) => e.session)).size;
       return {
-        ...(source ? { source } : {}), ...(campaign ? { campaign } : {}),
+        ...(source ? { source } : {}), ...(campaign ? { campaign } : {}), ...(content ? { content } : {}),
         sessions: new Set(events.filter(mine).map((e) => e.session)).size,
         views: ou("view"), starts: ou("start"), submits: ou("submit"),
       };
