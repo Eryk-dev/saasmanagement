@@ -16,6 +16,7 @@ import { registerAuthRoutes } from "./auth.js";
 import { registerMpRoutes, mirrorSubscriptionToMp } from "./routes.mp.js";
 import { mp as defaultMpClient } from "./mp.js";
 import { registerMarketingRoutes } from "./routes.marketing.js";
+import { registerGoogleRoutes } from "./routes.google.js";
 import { registerMetricsRoutes } from "./routes.metrics.js";
 import { meta as defaultMetaClient } from "./meta.js";
 import { metaCapi as defaultMetaCapi } from "./meta-capi.js";
@@ -185,6 +186,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerFunnelMetricsRoutes(app, repo);
   // Usuários do time: login/logout/me + gestão mínima (rotas dedicadas).
   registerAuthRoutes(app, repo);
+  // Google Meet: conectar conta (OAuth) + criar call na agenda do closer.
+  const googleClient = registerGoogleRoutes(app, repo, { google: opts.google });
 
   // ── Tempo real ─────────────────────────────────────────────────────────
   // Toda escrita no repo (db.js) incrementa um contador global (changes.js).
@@ -247,6 +250,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         proposals: { nativeSaas: (await repo.list("proposal_templates")).filter((t) => t.status === "published").map((t) => t.saas) },
         mp: { configured: mpClient.configured() },
         meta: { configured: metaClient.configured() },
+        google: { configured: googleClient.configured(), connected: await googleClient.connected(), account: await googleClient.account() },
         discord: { configured: discordClient.configured() },
       },
     };

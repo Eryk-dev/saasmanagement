@@ -12,6 +12,7 @@ import { initDb, repo } from "./db.js";
 import { registerRoutes } from "./routes.js";
 import { startMarketingAutoSync } from "./routes.marketing.js";
 import { ensureDefaultAdmins, makeAuthHook } from "./auth.js";
+import { makeScreenGuardHook } from "./screens.js";
 import { runStartupMigrations } from "./migrations.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -20,7 +21,7 @@ dotenv.config({ path: join(__dirname, "..", "..", "..", ".env") });
 const PORT = Number(process.env.API_PORT || 8787);
 const API_KEY = process.env.COCKPIT_API_KEY || "";
 // Routes that stay open even with a key (liveness probes from the PaaS + login).
-const OPEN_PATHS = new Set(["/api/health", "/embed.js", "/favicon.ico", "/api/auth/login"]);
+const OPEN_PATHS = new Set(["/api/health", "/embed.js", "/favicon.ico", "/api/auth/login", "/api/google/callback"]);
 // Superfície pública do form builder (página + envio anônimo) e do proposal
 // builder (página /p/:id, aceite, painel do closer via editKey). Endurecimento
 // (rate-limit, honeypot, token) vive em routes.forms.js / routes.proposals.js.
@@ -57,6 +58,9 @@ app.addHook("onRequest", makeAuthHook({
   openPaths: OPEN_PATHS, openPrefixes: OPEN_PREFIXES,
   providedKey,
 }));
+// Restrição de telas por usuário (user.screens): sessão restrita só alcança as
+// rotas das telas permitidas; key mestre (MCP/integrações) passa direto.
+app.addHook("onRequest", makeScreenGuardHook());
 
 registerRoutes(app);
 

@@ -259,16 +259,44 @@ function LeadDetail({ lead: initial, onClose }) {
                     mandar no Whats ↗
                   </a>
                 )}
-                <button className="mono dim" style={{ fontSize: 11, flexShrink: 0 }} title="Gerar um link novo (o antigo deixa de valer pra você)"
-                  onClick={() => patch({ callUrl: `https://meet.jit.si/LeverAds-${Math.random().toString(36).slice(2, 10)}` })}>
+                <button className="mono dim" style={{ fontSize: 11, flexShrink: 0 }}
+                  title={lead.callUrl.includes("meet.google.com") ? "Criar OUTRO evento com Meet na agenda" : "Gerar um link novo (o antigo deixa de valer pra você)"}
+                  onClick={async () => {
+                    if (lead.callUrl.includes("meet.google.com") && window.SEED?.CONFIG?.google?.connected) {
+                      try {
+                        const r = await api.createMeet(lead.id);
+                        dirty.current = true;
+                        setLead((prev) => ({ ...prev, callUrl: r.callUrl, meetEventId: r.eventId }));
+                      } catch (e) { window.alert(e.message || "Falha ao criar o Meet."); }
+                    } else {
+                      patch({ callUrl: `https://meet.jit.si/LeverAds-${Math.random().toString(36).slice(2, 10)}` });
+                    }
+                  }}>
                   ↻
                 </button>
               </>
             ) : (
-              <button onClick={() => patch({ callUrl: `https://meet.jit.si/LeverAds-${Math.random().toString(36).slice(2, 10)}` })}
-                style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600 }}>
-                🎥 criar link da call
-              </button>
+              <>
+                {window.SEED?.CONFIG?.google?.connected && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const r = await api.createMeet(lead.id);
+                        dirty.current = true;
+                        setLead((prev) => ({ ...prev, callUrl: r.callUrl, meetEventId: r.eventId }));
+                      } catch (e) { window.alert(e.message || "Falha ao criar o Meet."); }
+                    }}
+                    title="Cria o evento com Meet na agenda Google da conta conectada (convida o lead por e-mail quando houver)"
+                    style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 11.5, fontWeight: 600 }}>
+                    🎥 criar Meet na agenda
+                  </button>
+                )}
+                <button onClick={() => patch({ callUrl: `https://meet.jit.si/LeverAds-${Math.random().toString(36).slice(2, 10)}` })}
+                  title={window.SEED?.CONFIG?.google?.connected ? "Alternativa sem agenda: sala Jitsi instantânea" : "Sala Jitsi instantânea (conecte o Google em Ajustes pra criar Meet na agenda)"}
+                  style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600 }}>
+                  {window.SEED?.CONFIG?.google?.connected ? "sala Jitsi" : "🎥 criar link da call"}
+                </button>
+              </>
             )}
           </div>
           {(kind === "proposta" || kind === "followup") && (
