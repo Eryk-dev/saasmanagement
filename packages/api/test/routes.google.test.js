@@ -28,6 +28,12 @@ function makeGoogleFetch() {
     if (String(url).includes("/calendars/primary/events")) {
       return ok({ id: "ev1", hangoutLink: "https://meet.google.com/abc-defg-hij", htmlLink: "https://calendar.google.com/event?eid=1" });
     }
+    if (String(url).includes("meet.googleapis.com/v2/spaces/abc-defg-hij")) {
+      return ok({ name: "spaces/sp123", meetingCode: "abc-defg-hij" });
+    }
+    if (String(url).includes("meet.googleapis.com/v2/spaces/sp123")) {
+      return ok({}); // PATCH de config aceito
+    }
     return ok({});
   };
   f.calls = calls;
@@ -52,15 +58,25 @@ test("google client: exchangeCode persiste refresh token + conta; accessToken re
     summary: "Call LeverAds · Ana",
     start: { dateTime: "2026-07-14T15:00:00", timeZone: "America/Sao_Paulo" },
     end: { dateTime: "2026-07-14T15:45:00", timeZone: "America/Sao_Paulo" },
-    attendeeEmail: "ana@x.com",
+    attendees: ["ana@x.com", "closer@leverads.com.br"],
   });
   assert.equal(ev.meetUrl, "https://meet.google.com/abc-defg-hij");
   const calReq = f.calls.find((c) => c.url.includes("/calendars/primary/events"));
   assert.ok(calReq.url.includes("conferenceDataVersion=1"));
   const sent = JSON.parse(calReq.init.body);
-  assert.equal(sent.attendees[0].email, "ana@x.com");
+  assert.deepEqual(sent.attendees.map((a) => a.email), ["ana@x.com", "closer@leverads.com.br"]);
   assert.equal(sent.start.timeZone, "America/Sao_Paulo");
   assert.equal(sent.conferenceData.createRequest.conferenceSolutionKey.type, "hangoutsMeet");
+
+  // sala: aberta + gravação + transcrição (3 PATCHes com updateMask próprios)
+  const applied = await g.configureSpace("abc-defg-hij");
+  assert.deepEqual(applied, { open: true, recording: true, transcription: true });
+  const patches = f.calls.filter((c) => c.url.includes("spaces/sp123") && c.init.method === "PATCH");
+  assert.equal(patches.length, 3);
+  assert.ok(patches[0].url.includes("config.accessType"));
+  assert.equal(JSON.parse(patches[0].init.body).config.accessType, "OPEN");
+  assert.ok(patches[1].url.includes("recordingConfig.autoRecordingGeneration"));
+  assert.ok(patches[2].url.includes("transcriptionConfig.autoTranscriptionGeneration"));
 });
 
 test("rotas: status/auth-url/callback com state + POST /leads/:id/meet grava callUrl", async () => {
@@ -89,12 +105,16 @@ test("rotas: status/auth-url/callback com state + POST /leads/:id/meet grava cal
   assert.equal(st.connected, true);
   assert.equal(st.account, "time@leverads.com.br");
 
-  // cria o Meet: grava callUrl/meetEventId no lead e registra na timeline
-  const meet = (await app.inject({ method: "POST", url: "/api/leads/le1/meet" })).json();
+  // cria o Meet: convidados = lead + extras do body (dedup, inválido fora),
+  // sala configurada, callUrl/meetEventId/meetGuests gravados no lead
+  const meet = (await app.inject({ method: "POST", url: "/api/leads/le1/meet", payload: { guests: ["closer@leverads.com.br", "ana@x.com", "invalido"] } })).json();
   assert.equal(meet.callUrl, "https://meet.google.com/abc-defg-hij");
+  assert.deepEqual(meet.attendees, ["ana@x.com", "closer@leverads.com.br"]);
+  assert.deepEqual(meet.meetConfig, { open: true, recording: true, transcription: true });
   const lead = await repo.get("leads", "le1");
   assert.equal(lead.callUrl, "https://meet.google.com/abc-defg-hij");
   assert.equal(lead.meetEventId, "ev1");
+  assert.equal(lead.meetGuests, "closer@leverads.com.br"); // extra persistido pro próximo Meet
   const acts = (await repo.list("activities")).filter((a) => a.lead === "le1");
   assert.ok(acts.some((a) => a.meta?.event === "meet_created"));
 

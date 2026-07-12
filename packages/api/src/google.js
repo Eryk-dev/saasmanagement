@@ -7,9 +7,17 @@
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const CAL_URL = "https://www.googleapis.com/calendar/v3";
-// calendar.events basta pra criar evento+Meet; openid/email só pra mostrar
-// QUAL conta está conectada em Ajustes.
-const SCOPE = "https://www.googleapis.com/auth/calendar.events openid email";
+// calendar.events cria evento+Meet; meetings.space.* configura a SALA (acesso
+// aberto sem "pedir pra entrar", gravação e transcrição automáticas); openid/
+// email só mostra QUAL conta está conectada em Ajustes.
+const SCOPE = [
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/meetings.space.created",
+  "https://www.googleapis.com/auth/meetings.space.settings",
+  "openid",
+  "email",
+].join(" ");
+const MEET_URL = "https://meet.googleapis.com/v2";
 
 export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientSecret = "", repo } = {}) {
   const configured = () => !!(clientId && clientSecret);
@@ -82,7 +90,7 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
   // Evento no calendário PRIMÁRIO da conta conectada, com Meet anexado.
   // start/end no formato do Calendar ({ dateTime, timeZone? }) — quem chama
   // decide o fuso (callAt do lead é hora de Brasília, sem sufixo Z).
-  async function createMeetEvent({ summary, description = "", start, end, attendeeEmail = "" }) {
+  async function createMeetEvent({ summary, description = "", start, end, attendees = [] }) {
     const token = await accessToken();
     const res = await f(`${CAL_URL}/calendars/primary/events?conferenceDataVersion=1&sendUpdates=all`, {
       method: "POST",
@@ -92,7 +100,7 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
         description,
         start,
         end,
-        ...(attendeeEmail ? { attendees: [{ email: attendeeEmail }] } : {}),
+        ...(attendees.length ? { attendees: attendees.map((email) => ({ email })) } : {}),
         conferenceData: {
           createRequest: {
             requestId: `lever-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -112,5 +120,48 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
     return { meetUrl, eventId: body.id, htmlLink: body.htmlLink || "" };
   }
 
-  return { configured, connected, account, authUrl, exchangeCode, accessToken, createMeetEvent };
+  // Configura a SALA do Meet criada pelo evento: acesso ABERTO (ninguém "pede
+  // pra entrar"), gravação e transcrição automáticas. Cada ajuste é best-effort
+  // e INDEPENDENTE — gravação/transcrição exigem plano Workspace com gravação
+  // (Business Standard+); o retorno diz o que o plano aceitou.
+  async function configureSpace(meetingCode, { open = true, record = true, transcribe = true } = {}) {
+    const token = await accessToken();
+    const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
+    // O patch exige o resource name real (spaces/{space}) — o meetingCode é só alias no GET.
+    const got = await f(`${MEET_URL}/spaces/${encodeURIComponent(meetingCode)}`, { headers });
+    const space = await got.json().catch(() => ({}));
+    if (got.status >= 400 || !space.name) return { open: false, recording: false, transcription: false };
+
+    const applied = { open: false, recording: false, transcription: false };
+    const patch = async (config, mask) => {
+      const res = await f(`${MEET_URL}/${space.name}?updateMask=${encodeURIComponent(mask)}`, {
+        method: "PATCH", headers, body: JSON.stringify({ config }),
+      });
+      if (res.status >= 400) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error?.message || `Meet -> ${res.status}`);
+      }
+    };
+    if (open) {
+      try {
+        await patch({ accessType: "OPEN", entryPointAccess: "ALL" }, "config.accessType,config.entryPointAccess");
+        applied.open = true;
+      } catch { /* plano/conta não permite — sala fica no padrão */ }
+    }
+    if (record) {
+      try {
+        await patch({ artifactConfig: { recordingConfig: { autoRecordingGeneration: "ON" } } }, "config.artifactConfig.recordingConfig.autoRecordingGeneration");
+        applied.recording = true;
+      } catch { /* exige Workspace com gravação */ }
+    }
+    if (transcribe) {
+      try {
+        await patch({ artifactConfig: { transcriptionConfig: { autoTranscriptionGeneration: "ON" } } }, "config.artifactConfig.transcriptionConfig.autoTranscriptionGeneration");
+        applied.transcription = true;
+      } catch { /* idem gravação */ }
+    }
+    return applied;
+  }
+
+  return { configured, connected, account, authUrl, exchangeCode, accessToken, createMeetEvent, configureSpace };
 }

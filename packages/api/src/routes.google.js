@@ -83,22 +83,41 @@ export function registerGoogleRoutes(app, repo, { google } = {}) {
       end = { dateTime: new Date(s.getTime() + 45 * 60_000).toISOString() };
     }
 
+    // Convidados: e-mail do LEAD (quando cadastrado) + extras do body
+    // (body.guests) + extras salvos no lead (meetGuests, string com vírgulas).
+    const emailOk = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || "").trim());
+    const extraFromBody = Array.isArray(req.body?.guests) ? req.body.guests : [];
+    const extraFromLead = String(lead.meetGuests || "").split(/[,;\s]+/);
+    const attendees = [...new Set([lead.email, ...extraFromBody, ...extraFromLead]
+      .map((e) => String(e || "").trim().toLowerCase())
+      .filter(emailOk))].slice(0, 15);
+    // Extras novos ficam salvos no lead pro próximo Meet já vir preenchido.
+    const guestsToSave = attendees.filter((e) => e !== String(lead.email || "").toLowerCase()).join(", ");
+
     try {
       const { meetUrl, eventId, htmlLink } = await client.createMeetEvent({
         summary: `Call ${product?.name || "LeverAds"} · ${lead.name}${lead.company ? ` (${lead.company})` : ""}`,
         description: [`Lead: ${lead.name}`, lead.phone ? `WhatsApp: ${lead.phone}` : "", lead.company ? `Empresa: ${lead.company}` : ""].filter(Boolean).join("\n"),
         start, end,
-        attendeeEmail: lead.email || "",
+        attendees,
       });
-      await repo.update("leads", lead.id, { callUrl: meetUrl, meetEventId: eventId });
+      // Sala aberta (sem "pedir pra entrar") + gravação/transcrição automáticas —
+      // best-effort: o que o plano da conta não suportar volta como false.
+      let meetConfig = { open: false, recording: false, transcription: false };
+      const code = (meetUrl.match(/meet\.google\.com\/([a-z0-9-]+)/i) || [])[1];
+      if (code) {
+        try { meetConfig = await client.configureSpace(code); }
+        catch (err) { req.log.warn({ err: err.message }, "Google: configuração da sala falhou (Meet criado mesmo assim)"); }
+      }
+      await repo.update("leads", lead.id, { callUrl: meetUrl, meetEventId: eventId, ...(guestsToSave ? { meetGuests: guestsToSave } : {}) });
       try {
         await logActivity(repo, {
           saas: lead.saas || "", lead: lead.id, type: "system",
-          meta: { event: "meet_created", url: meetUrl, calendarEvent: htmlLink },
+          meta: { event: "meet_created", url: meetUrl, calendarEvent: htmlLink, attendees, meetConfig },
           author: "cockpit",
         });
       } catch { /* fail-open */ }
-      return { ok: true, callUrl: meetUrl, eventId, htmlLink };
+      return { ok: true, callUrl: meetUrl, eventId, htmlLink, attendees, meetConfig };
     } catch (err) {
       req.log.warn({ err: err.message, lead: lead.id }, "Google: criação do Meet falhou");
       return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
