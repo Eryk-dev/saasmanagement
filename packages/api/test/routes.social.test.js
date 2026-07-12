@@ -138,11 +138,12 @@ test("publishFacebook: pega o token da página e posta a foto com message", asyn
 });
 
 // ── Rotas ────────────────────────────────────────────────────────────────────
-function buildApp(repo, social) {
+function buildApp(repo, social, anthropic = null) {
   const app = Fastify();
   registerSocialRoutes(app, repo, {
     social,
     meta: { discoverCreativeDefaults: async () => null },
+    anthropic,
   });
   return app;
 }
@@ -197,6 +198,43 @@ test("rotas: summary junta perfil+insights+página; publish resolve URL pública
   assert.equal(served.statusCode, 200);
   assert.equal(served.headers["content-type"], "image/png");
   assert.equal(served.body, "PNG!");
+});
+
+test("rotas: summary expõe as dores do produto (painMap) e o estado da IA", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", metaIgUserId: "ig1", painMap: { A: "Perde tempo subindo à mão", B: "Medo de banimento", C: "" } });
+  const app = buildApp(repo, fakeSocialOk(), { configured: () => true });
+  const s = (await app.inject({ method: "GET", url: "/api/social/summary?saas=leverads" })).json();
+  assert.equal(s.aiConfigured, true);
+  assert.deepEqual(s.pains.map((p) => p.label).sort(), ["Medo de banimento", "Perde tempo subindo à mão"]);
+});
+
+test("rotas: ai-copy chama a IA com os campos do template e devolve mapa + legenda", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds" });
+  let seen = null;
+  const anthropic = {
+    configured: () => true,
+    async suggestSocialCopy(args) {
+      seen = args;
+      return { fields: { title: "Título *forte*", cta: "Chama no direct" }, caption: "legenda pronta #leverads" };
+    },
+  };
+  const app = buildApp(repo, fakeSocialOk(), anthropic);
+  const res = await app.inject({
+    method: "POST", url: "/api/social/ai-copy",
+    payload: { saas: "leverads", dor: "Perde tempo à mão", suggestion: "tom provocativo", formatLabel: "Story", templateName: "Chamada", fields: [{ key: "title", label: "Título", example: "Pare de..." }, { key: "cta", label: "CTA", example: "Fala com a gente" }] },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.json().fields, { title: "Título *forte*", cta: "Chama no direct" });
+  assert.match(res.json().caption, /#leverads/);
+  assert.equal(seen.dor, "Perde tempo à mão");
+  assert.equal(seen.fields.length, 2);
+
+  // sem IA configurada → 400; sem campos → 400
+  const app2 = buildApp(repo, fakeSocialOk(), { configured: () => false });
+  assert.equal((await app2.inject({ method: "POST", url: "/api/social/ai-copy", payload: { saas: "leverads", fields: [{ key: "x" }] } })).statusCode, 400);
+  assert.equal((await app.inject({ method: "POST", url: "/api/social/ai-copy", payload: { saas: "leverads", fields: [] } })).statusCode, 400);
 });
 
 test("rotas: falha por rede não derruba a outra; publish sem asset é 400", async () => {

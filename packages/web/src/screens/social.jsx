@@ -28,6 +28,18 @@ const KIND_HINTS = {
   sequence: "4 stories em sequência, com a marca",
   video: "upload de arquivo",
 };
+// Só os tipos "criados aqui" abrem o editor (e ganham dor + copy por IA).
+const CREATED_HERE = new Set(["image", "carousel", "sequence"]);
+// Dores base da LeverAds — usadas quando o produto ainda não tem painMap; se o
+// produto tiver dores cadastradas (product.painMap), elas entram junto.
+const DEFAULT_PAINS = [
+  "Perde tempo subindo anúncio um por um em cada conta",
+  "Anúncio some ou fica desatualizado em algumas contas",
+  "Não consegue escalar pra mais contas sem contratar gente",
+  "Retrabalho de atributo e SKU entre as contas",
+  "Pouca exposição: mesmo produto, poucas contas ativas",
+  "Medo de perder a operação por erro manual",
+];
 
 const fmtNum = (n) => {
   if (n == null) return "–";
@@ -102,7 +114,10 @@ function SocialScreen() {
                     <a key={m.id} href={m.permalink || "#"} target="_blank" rel="noopener noreferrer"
                       style={{ display: "block", textDecoration: "none", color: "inherit", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", overflow: "hidden", background: "var(--bg-1)" }}>
                       <div style={{ aspectRatio: "1", background: "var(--bg-3)", overflow: "hidden" }}>
-                        {m.mediaUrl && <img src={m.mediaUrl} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
+                        {/* referrerPolicy no-referrer: o CDN do Instagram devolve
+                            403 se a requisição carrega Referer do nosso domínio. */}
+                        {m.mediaUrl && <img src={m.mediaUrl} alt="" loading="lazy" referrerPolicy="no-referrer"
+                          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
                       </div>
                       <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", padding: "5px 8px", display: "flex", gap: 8 }}>
                         <span>♥ {fmtNum(m.likes)}</span>
@@ -142,13 +157,21 @@ function SocialScreen() {
         )}
       </div>
 
-      {wizard && <PostWizard saas={product?.id} onClose={() => setWizard(false)} onPublished={load} />}
+      {wizard && (
+        <PostWizard
+          saas={product?.id}
+          pains={sum?.pains || []}
+          aiConfigured={!!sum?.aiConfigured}
+          onClose={() => setWizard(false)}
+          onPublished={load}
+        />
+      )}
     </div>
   );
 }
 
 // ── Wizard "Criar post" ──────────────────────────────────────────────────────
-function PostWizard({ saas, onClose, onPublished }) {
+function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
   const [step, setStep] = useS(1);
   const [format, setFormat] = useS("feed");
   const [kind, setKind] = useS("image");
@@ -159,6 +182,32 @@ function PostWizard({ saas, onClose, onPublished }) {
   const [nets, setNets] = useS({ instagram: true, facebook: false });
   const [busy, setBusy] = useS(null);
   const [result, setResult] = useS(null);
+  // Copy por IA: dor escolhida + sugestão livre pra criação.
+  const [dor, setDor] = useS("");
+  const [suggestion, setSuggestion] = useS("");
+  const [aiBusy, setAiBusy] = useS(false);
+  const [aiErr, setAiErr] = useS(null);
+  const [aiDone, setAiDone] = useS(false);
+
+  // Lista de dores: as do produto (painMap) + as base, sem repetir.
+  const dorOptions = [...new Set([...(pains || []).map((p) => p.label), ...DEFAULT_PAINS])];
+
+  async function generateCopy() {
+    setAiBusy(true); setAiErr(null);
+    try {
+      const ed = editorRef.current;
+      if (!ed) throw new Error("editor não carregou");
+      const { fields, caption: cap } = await api.socialAiCopy({
+        saas, dor, suggestion,
+        formatLabel: ed.formatLabel, templateName: ed.templateName,
+        fields: ed.fieldsSpec(),
+      });
+      ed.applyVals(fields);
+      if (cap) setCaption(cap);
+      setAiDone(true);
+    } catch (e) { setAiErr(e.message); }
+    finally { setAiBusy(false); }
+  }
 
   useE(() => () => { if (videoUrl) URL.revokeObjectURL(videoUrl); }, [videoUrl]);
 
@@ -266,11 +315,52 @@ function PostWizard({ saas, onClose, onPublished }) {
                   ))}
                 </div>
               </div>
+
+              {/* Dor + sugestão só valem pra conteúdo criado aqui (o vídeo é
+                  upload pronto). A IA usa isso pra escrever a copy no passo 2. */}
+              {CREATED_HERE.has(kind) && (
+                <div style={{ borderTop: "1px solid var(--line-1)", paddingTop: 16, display: "flex", flexDirection: "column", gap: 12, maxWidth: 620 }}>
+                  <div>
+                    <label className="mono" style={{ ...kicker, display: "block", marginBottom: 6 }}>Sobre qual dor é esse post?</label>
+                    <select value={dor} onChange={(e) => setDor(e.target.value)}
+                      style={{ width: "100%", height: 34, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 }}>
+                      <option value="">sem dor específica (valor central da LeverAds)</option>
+                      {dorOptions.map((d, i) => <option key={i} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mono" style={{ ...kicker, display: "block", marginBottom: 6 }}>Sugestão pra criação (opcional)</label>
+                    <textarea rows={2} value={suggestion} onChange={(e) => setSuggestion(e.target.value)}
+                      placeholder="ex.: cita o case da conta que fez +105%, tom mais provocativo, fala com quem tem 5+ contas…"
+                      style={{ width: "100%", padding: "8px 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.4, resize: "vertical", fontFamily: "inherit" }} />
+                  </div>
+                  <div className="mono dim" style={{ fontSize: 10.5 }}>
+                    {aiConfigured
+                      ? "no próximo passo tem o botão de gerar a copy com IA a partir disso"
+                      : "IA não configurada no servidor: dá pra escrever a copy à mão no editor"}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {step === 2 && kind !== "video" && (
-            <CreativeEditor groups={editorGroups} zoomIndex={2} apiRef={editorRef} />
+            <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+              {aiConfigured && (
+                <div style={{ padding: "8px 14px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <button onClick={generateCopy} disabled={aiBusy} style={{ ...primary, height: 28, opacity: aiBusy ? 0.6 : 1 }}>
+                    {aiBusy ? "escrevendo…" : aiDone ? "✨ gerar de novo" : "✨ gerar copy com IA"}
+                  </button>
+                  <span className="mono dim" style={{ fontSize: 11 }}>
+                    dor: {dor ? (dor.length > 46 ? dor.slice(0, 46) + "…" : dor) : "valor central"}
+                  </span>
+                  {aiDone && !aiBusy && !aiErr && <span className="mono" style={{ fontSize: 11, color: "var(--pos)" }}>copy aplicada · edite à vontade</span>}
+                  {aiErr && <span className="mono" style={{ fontSize: 11, color: "var(--neg)" }}>{aiErr}</span>}
+                  <span className="mono dim" style={{ fontSize: 10.5, marginLeft: "auto" }}>troque o template e gere de novo se quiser</span>
+                </div>
+              )}
+              <CreativeEditor groups={editorGroups} zoomIndex={2} apiRef={editorRef} />
+            </div>
           )}
 
           {step === 2 && kind === "video" && (

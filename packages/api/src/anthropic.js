@@ -66,6 +66,34 @@ const WELCOME_SYSTEM = `Você é o copywriter de resposta direta da LeverAds, Sa
 Sua tarefa: escrever UMA variante nova da tela de boas-vindas do formulário de diagnóstico, pra teste A/B contra a versão atual.
 Regras: português do Brasil, direto e específico, promessa crível (nada de clickbait ou número inventado). NUNCA use travessão (—) em nenhum texto; use vírgula ou parênteses. A variante precisa atacar um ângulo DIFERENTE das versões existentes, não parafrasear. Fale com dono de operação de marketplace (vendedor ML/Shopee).`;
 
+// Copy de post social: preenche os campos do template escolhido + a legenda.
+// `fields` é uma LISTA (não objeto) pra manter o schema estável independente do
+// template — cada item volta com o mesmo `key` que entrou.
+const SOCIAL_COPY_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["fields", "caption"],
+  properties: {
+    fields: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["key", "value"],
+        properties: {
+          key: { type: "string", description: "o mesmo key do campo que foi pedido" },
+          value: { type: "string", description: "o texto do campo, no comprimento do exemplo" },
+        },
+      },
+    },
+    caption: { type: "string", description: "legenda do post pro Instagram: 2 a 5 linhas + 3 a 6 hashtags relevantes no fim" },
+  },
+};
+
+const SOCIAL_SYSTEM = `Você é o social media e copywriter de resposta direta da LeverAds, SaaS que clona e sincroniza anúncios entre contas de Mercado Livre e Shopee (multi-contas, mais exposição, menos retrabalho, proteção da operação).
+Sua tarefa: escrever a copy de um post de rede social preenchendo os CAMPOS de um template pronto, a partir da DOR escolhida.
+Regras: português do Brasil, direto, específico e crível (nada de número inventado nem promessa mágica). Fale com dono de operação de marketplace (vendedor ML/Shopee). NUNCA use travessão (—); use vírgula, parênteses ou ponto. Respeite o PAPEL de cada campo (um "Kicker" é curto e em caixa, um "CTA" tem 2 a 4 palavras, um "Número" é uma métrica curta tipo +105% ou 2h) e o COMPRIMENTO do exemplo dado. Para destacar 1 a 3 palavras-chave, envolva em *asteriscos* (o template pinta em destaque). Preencha TODOS os campos pedidos, cada um com seu key. Não invente campos.`;
+
 export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model = "" } = {}) {
   const configured = () => !!apiKey;
   const openrouter = apiKey.startsWith("sk-or-");
@@ -187,5 +215,26 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
     return { suggestion: r.parsed, usage: r.usage, model: r.model };
   }
 
-  return { configured, summarizeCall, suggestWelcome, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
+  // Copy de um post social: recebe a dor, o formato/template e a LISTA de
+  // campos (key + label/papel + exemplo), devolve cada campo preenchido + a
+  // legenda. Não grava nada — o usuário revisa no editor antes de publicar.
+  async function suggestSocialCopy({ dor = "", suggestion = "", formatLabel = "", templateName = "", fields = [] }) {
+    if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
+    const fieldLines = fields.map((c) => `• key "${c.key}" (${c.label || "campo"}): exemplo = ${JSON.stringify(c.example ?? "")}`).join("\n");
+    const context = [
+      `Formato do post: ${formatLabel || "post"}${templateName ? ` · template "${templateName}"` : ""}`,
+      dor ? `DOR que o post ataca: ${dor}` : "Sem dor específica: fale do valor central da LeverAds (clonar e sincronizar anúncios entre contas ML/Shopee).",
+      suggestion ? `Sugestão do time pra criação (siga se fizer sentido): ${suggestion}` : "",
+      "",
+      "Preencha estes campos (devolva um item por key, com o texto no comprimento do exemplo):",
+      fieldLines,
+    ].filter(Boolean).join("\n");
+    const r = await requestJson(context, { system: SOCIAL_SYSTEM, schema: SOCIAL_COPY_SCHEMA, schemaName: "social_copy" });
+    // vira mapa key→value pro cliente aplicar direto nos campos do template
+    const map = {};
+    for (const it of r.parsed.fields || []) if (it?.key) map[it.key] = it.value ?? "";
+    return { fields: map, caption: r.parsed.caption || "", usage: r.usage, model: r.model };
+  }
+
+  return { configured, summarizeCall, suggestWelcome, suggestSocialCopy, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
 }

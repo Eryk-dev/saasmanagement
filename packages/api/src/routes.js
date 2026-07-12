@@ -190,8 +190,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Marketing: sync de insights da Meta + métricas cruzadas com o funil.
   const metaClient = opts.meta || defaultMetaClient;
   registerMarketingRoutes(app, repo, { meta: metaClient });
-  // Mídia social: métricas do perfil + publicação orgânica (IG/página FB).
-  registerSocialRoutes(app, repo, { social: opts.social, meta: metaClient });
+  // Mídia social: métricas do perfil + publicação orgânica (IG/página FB) +
+  // copy do post por IA (mesma chave OpenRouter/Anthropic do resto).
+  registerSocialRoutes(app, repo, { social: opts.social, meta: metaClient, anthropic: anthropicClient });
   registerMetricsRoutes(app, repo);
   // Métricas reais de funil (conversão/tempo por estágio, motivos de perda, SLA)
   // a partir do histórico de transições da timeline.
