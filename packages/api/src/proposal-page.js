@@ -381,8 +381,11 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .price-pending .stage-item, .price-revealed .stage-item { transition: opacity .45s var(--ease-out), transform .45s var(--ease-out); }
   .price-pending .stage-item:not(.on) { opacity: 0; transform: translateY(10px); }
   .price-revealed .stage-item { opacity: 1; transform: none; }
-  /* Segunda oferta (s.offer2): entra abaixo da principal num avanço extra e a
-     principal fica cinza (comparativo). Sem revealPrice, já nasce montado. */
+  /* Segunda oferta (s.offer2): SECRETA — entra abaixo da principal só com
+     Shift+Espaço (negociação) e acinzenta a principal (comparativo). A pilha
+     ancora no rodapé da célula: o card principal aparece embaixo e, quando a
+     oferta 2 entra, ele sobe e ela assume o rodapé (a borda inferior não muda). */
+  .has-offer2 { align-self: stretch; display: flex; flex-direction: column; justify-content: flex-end; }
   .price-card.offer2 { display: none; margin-top: 16px; }
   .offer2-on .price-card.offer2 { display: block; animation: offer2-in .5s var(--ease-out); }
   @keyframes offer2-in { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
@@ -395,8 +398,7 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
     .price-revealed .close-line, .price-revealed .accept-row, .price-revealed .plan-opts { transition: none; animation: none; } }
   @media print {
     .price-veil { display: none; }
-    .price-card.offer2 { display: block; }
-    .price-card.offer1 { filter: grayscale(1); opacity: .55; }
+    /* Oferta 2 secreta NÃO sai no print (só se o closer já tiver ativado). */
     .price-pending .price-reveal .price-card, .price-pending .close-line, .price-pending .accept-row, .price-pending .plan-opts,
     .price-pending .stage-item { opacity: 1; transform: none; } }
 
@@ -1002,7 +1004,8 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         '</div>';
       }
       var hasOffer2 = !!(s.offer2 && (s.offer2.price || s.offer2.planTag));
-      if (hasOffer2 && !reveal) sec.classList.add('offer2-on'); // sem reveal, o comparativo já nasce montado
+      // Oferta 2 é secreta (só Shift+Espaço, no modo reveal): sem revealPrice
+      // ela fica no DOM mas nunca aparece — não nasce montada de propósito.
       // O wrapper .price-reveal mantém os dois cards na MESMA célula do grid
       // (empilhados); sem ele, o offer2 cairia na coluna dos benefícios.
       var wrapCards = reveal || hasOffer2;
@@ -1031,34 +1034,39 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
             pendTitle = null;
           });
         }
-        var stagePending = function () {
-          return sec.classList.contains('price-pending') ||
-            (hasOffer2 && !sec.classList.contains('offer2-on'));
-        };
         var advance = function () {
-          if (sec.classList.contains('price-pending')) {
-            if (steps.length) { steps.shift().forEach(function (n) { n.classList.add('on'); }); return; }
-            sec.classList.remove('price-pending');
-            sec.classList.add('price-revealed');
-            return;
-          }
-          // Avanço extra: segunda oferta entra abaixo e a primeira acinzenta.
-          if (hasOffer2 && !sec.classList.contains('offer2-on')) {
-            sec.classList.add('offer2-on');
-            fitSlides();
-          }
+          if (!sec.classList.contains('price-pending')) return;
+          if (steps.length) { steps.shift().forEach(function (n) { n.classList.add('on'); }); return; }
+          sec.classList.remove('price-pending');
+          sec.classList.add('price-revealed');
+        };
+        var inView = function () {
+          var r = sec.getBoundingClientRect();
+          var mid = (window.innerHeight || document.documentElement.clientHeight) / 2;
+          return r.top <= mid && r.bottom >= mid;
         };
         // "Comando de passar o slide": tecla de avanço com o slide dominando a
         // viewport (senão a tecla estaria rolando outra parte da página), ou
         // clique/tap em qualquer ponto da seção. Sem botão visível de propósito.
         sec.addEventListener('click', advance);
         document.addEventListener('keydown', function (e) {
-          if (!stagePending()) return;
+          // Oferta 2 é SECRETA (ferramenta de negociação do closer): só entra
+          // com Shift+Espaço, nunca por clique/avanço normal, e não sai no print.
+          if (hasOffer2 && !sec.classList.contains('offer2-on') &&
+              !sec.classList.contains('price-pending') &&
+              e.shiftKey && (e.key === ' ' || e.code === 'Space')) {
+            if (!inView()) return;
+            e.preventDefault();
+            sec.classList.add('offer2-on');
+            fitSlides();
+            return;
+          }
+          if (!sec.classList.contains('price-pending')) return;
           var k = e.key;
           if (k !== 'ArrowRight' && k !== 'ArrowDown' && k !== 'PageDown' && k !== ' ' && k !== 'Enter') return;
-          var r = sec.getBoundingClientRect();
-          var mid = (window.innerHeight || document.documentElement.clientHeight) / 2;
-          if (r.top <= mid && r.bottom >= mid) { e.preventDefault(); advance(); }
+          if (!inView()) return;
+          e.preventDefault();
+          advance();
         });
       }
       if (s.closeLine) { var cl = el('div', 'close-line', fmt(s.closeLine)); if (!reveal) cl.setAttribute('data-reveal', ''); w.appendChild(cl); }
