@@ -153,7 +153,7 @@ function MetricsScreen() {
     return () => clearInterval(id);
   }, [product?.id, since, until, metaOn]); // eslint-disable-line react-hooks/exhaustive-deps
   const liveAt = data?.syncedAt ? new Date(data.syncedAt) : null;
-  const insights = (data && !data.error ? buildInsights(data, placements) : [])
+  const insights = (data && !data.error ? buildInsights(data, placements, objects) : [])
     .map((it) => withInsightAction(it, { data, objects }));
   // Aplicou uma ação (pausa/orçamento) → recarrega o estado vivo da conta,
   // igual ao pós-toggle do card Anúncios.
@@ -880,7 +880,7 @@ const thStyle = {
 const PLATFORM_LABEL = { facebook: "Facebook", instagram: "Instagram", audience_network: "Audience Network", messenger: "Messenger" };
 const placementLabel = (r) => `${PLATFORM_LABEL[r.platform] || r.platform} · ${String(r.position || "").replaceAll("_", " ")}`;
 
-function buildInsights(data, placements) {
+function buildInsights(data, placements, objects) {
   const out = [];
   const x = (v) => String(v).replace(".", ",") + "x";
   const pains = (data.pains || []).filter((p) => p.code);
@@ -896,9 +896,15 @@ function buildInsights(data, placements) {
     out.push({ id: `dor-nao-fecha:${p.code}`, tone: "atencao", tag: "Atenção", text: `A dor [${p.code}] ${p.label} investiu ${money(p.spend)} e trouxe ${p.leads} leads, mas nenhum fechou. Antes de escalar, revise a qualificação desse público ou o pitch da call.` });
   }
   // Anúncio queimando: gastou ≥ 3× o CPL médio da conta sem gerar nenhum lead.
+  // O gasto é do PERÍODO (ad_insights), então só vira insight se o anúncio está
+  // veiculando AGORA (effectiveStatus vivo da conta) — anúncio já pausado ou com
+  // campanha/conjunto pausado é histórico, não candidato a corte. Sem a lista
+  // viva carregada, a regra fica muda em vez de sugerir corte de anúncio morto.
   const cplRef = data.totals?.cpl;
-  if (cplRef) {
-    for (const a of (data.ads || []).filter((a) => a.leads === 0 && a.spend >= 3 * cplRef)
+  const liveAds = objects && !objects.error ? new Map((objects.ads || []).map((o) => [String(o.id), o])) : null;
+  if (cplRef && liveAds) {
+    const delivering = (a) => (liveAds.get(String(a.id))?.effectiveStatus || liveAds.get(String(a.id))?.status) === "ACTIVE";
+    for (const a of (data.ads || []).filter((a) => a.leads === 0 && a.spend >= 3 * cplRef && delivering(a))
       .sort((a, b) => b.spend - a.spend).slice(0, 2)) {
       out.push({ id: `ad-sem-lead:${a.id}`, meta: { kind: "pauseAd", adId: a.id, adName: a.name }, tone: "cortar", tag: "Cortar", text: `O anúncio “${a.name}” já gastou ${money(a.spend)} (3× o CPL médio de ${money(cplRef)}) sem gerar nenhum lead. Candidato a pausar no card Anúncios.` });
     }
