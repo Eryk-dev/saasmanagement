@@ -12,6 +12,7 @@ const { useState: useS, useEffect: useE, useRef: useR } = React;
 // operacional. Telas antigas de portfólio/demo saem do nav (aposentadas na fase 2).
 const NAV = [
   { id: "overview",   label: "Visão geral", icon: "◈",  group: "main" },
+  { id: "today",      label: "Meu dia",     icon: "◷",  group: "main" },
   { id: "pipeline",   label: "Pipeline",    icon: "≡",  group: "main" },
   { id: "customers",  label: "Clientes",    icon: "○",  group: "main" },
   { id: "metrics",    label: "Publicidade", icon: "∿",  group: "main" },

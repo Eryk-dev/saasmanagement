@@ -122,6 +122,7 @@ function FunnelSettings({ s }) {
   const { refresh } = useData();
   const [rows, setRows] = useStS(() => (s.funnel || []).map(f => ({ ...f, _orig: f.stage })));
   const [migrated, setMigrated] = useStS(null);
+  const [scriptOpen, setScriptOpen] = useStS(null); // índice da linha com o editor de roteiro aberto
 
   const update = (i, patch) => setRows(r => r.map((x, j) => j === i ? { ...x, ...patch } : x));
   const remove = (i) => setRows(r => r.filter((_, j) => j !== i));
@@ -156,6 +157,9 @@ function FunnelSettings({ s }) {
         conv: i === 0 || f.conv === "" || f.conv == null || Number.isNaN(Number(f.conv)) ? 1 : Number(f.conv),
         staleDays: f.staleDays === "" || f.staleDays == null ? null : Number(f.staleDays),
         ...(Object.keys(cadence).length ? { cadence } : { cadence: undefined }),
+        // Roteiro da etapa (tela Meu dia): vazio some do registro e a tela cai
+        // no roteiro padrão do tipo (lib/scripts.js).
+        script: String(f.script || "").trim() ? f.script : undefined,
       };
     });
     const renames = {};
@@ -176,11 +180,12 @@ function FunnelSettings({ s }) {
     <div>
       <SettingHeader title="Estágios do funil" sub="renomear migra os cards junto · TIPO define o comportamento (fase SDR/Closer, ganho/perda, gates) · cadência alimenta os dots e o GPS" />
       <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
-        <div className="mono" style={{ display: "grid", gridTemplateColumns: "52px 1fr 128px 62px 76px 100px 176px 30px", gap: 8, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
+        <div className="mono" style={{ display: "grid", gridTemplateColumns: "52px 1fr 128px 62px 76px 100px 176px 56px", gap: 8, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
           <span></span><span>Estágio</span><span>Tipo</span><span>Cor</span><span>Conv.</span><span>Auto-regra</span><span title="toques máx. · re-toque (dias) · SLA 1º toque (horas)">Cadência (n · d · h)</span><span></span>
         </div>
         {rows.map((f, i) => (
-          <div key={i} style={{ display: "grid", gridTemplateColumns: "52px 1fr 128px 62px 76px 100px 176px 30px", gap: 8, padding: "8px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center" }}>
+          <React.Fragment key={i}>
+          <div style={{ display: "grid", gridTemplateColumns: "52px 1fr 128px 62px 76px 100px 176px 56px", gap: 8, padding: "8px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center" }}>
             <span style={{ display: "flex" }}>
               <button type="button" onClick={() => move(i, -1)} disabled={i === 0} style={arrowStyle(i === 0)}>↑</button>
               <button type="button" onClick={() => move(i, 1)} disabled={i === rows.length - 1} style={arrowStyle(i === rows.length - 1)}>↓</button>
@@ -218,8 +223,28 @@ function FunnelSettings({ s }) {
               {cadInput(i, f, "retryDays", "d", "toque registrado → próximo em N dias (GPS)")}
               {cadInput(i, f, "firstTouchHours", "h", "SLA do 1º contato em horas (estágio de entrada)")}
             </div>
-            <button type="button" onClick={() => remove(i)} className="mono dim" style={{ fontSize: 13 }}>✕</button>
+            <span style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+              <button type="button" onClick={() => setScriptOpen(scriptOpen === i ? null : i)}
+                title={String(f.script || "").trim() ? "Roteiro personalizado desta etapa (tela Meu dia)" : "Escrever o roteiro desta etapa (tela Meu dia); vazio usa o padrão do tipo"}
+                className="mono" style={{ fontSize: 12, color: String(f.script || "").trim() ? "var(--accent)" : "var(--fg-4)" }}>✎</button>
+              <button type="button" onClick={() => remove(i)} className="mono dim" style={{ fontSize: 13 }}>✕</button>
+            </span>
           </div>
+          {scriptOpen === i && (
+            <div style={{ padding: "10px 14px 12px 66px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+              <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>
+                Roteiro da etapa · aparece no botão Roteiro da tela Meu dia
+              </div>
+              <textarea value={f.script || ""} rows={6}
+                placeholder={"Bloco separado por linha em branco = um passo.\nLinha terminando em dois-pontos vira o título do passo.\n\nAbertura:\nOlá {{nome}}, tudo bom? Vi que você trabalha com {{nicho}}..."}
+                onChange={(e) => update(i, { script: e.target.value })}
+                style={{ ...inputStyle, height: "auto", width: "100%", padding: 8, fontSize: 12.5, lineHeight: 1.5, fontFamily: "inherit", resize: "vertical" }} />
+              <div className="mono dim" style={{ fontSize: 10.5, marginTop: 5 }}>
+                {"tokens: {{nome}} {{nome_completo}} {{empresa}} {{nicho}} {{contas}} {{anuncios}} {{produto}} {{call}} {{link_call}} · vazio volta pro roteiro padrão do tipo"}
+              </div>
+            </div>
+          )}
+          </React.Fragment>
         ))}
       </div>
       <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10 }}>
