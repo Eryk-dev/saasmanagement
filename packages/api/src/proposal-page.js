@@ -987,7 +987,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           (o.planPill ? '<span class="pill accent">' + fmt(o.planPill) + '</span>' : '') +
           '<div class="price-tag">' + fmt(o.planTag || '') + '</div>' +
           (o.priceFrom ? '<div class="price-from">de R$ ' + fmt(o.priceFrom) + '</div>' : '') +
-          '<div class="price-number"><span class="currency">R$</span><span class="amount">' + fmt(o.price || '{{calc.preco}}') + '</span><span class="per">' + fmt(o.per || '/ mês') + '</span></div>' +
+          '<div class="price-number">' + (o.pricePrefix ? '<span class="currency">' + fmt(o.pricePrefix) + '</span>' : '') + '<span class="currency">R$</span><span class="amount">' + fmt(o.price || '{{calc.preco}}') + '</span><span class="per">' + fmt(o.per || '/ mês') + '</span></div>' +
           (o.sub ? '<div class="price-sub">' + fmt(o.sub) + '</div>' : '') +
           '<div class="price-cycles">' + (o.cyclesLabel ? fmt(o.cyclesLabel) + ' ' : '') + (o.cyclesFrom ? '<span class="cycles-from">' + fmt(o.cyclesFrom) + '</span> ' : '') + fmt(o.cycles != null ? o.cycles : '{{calc.precoCiclos}}') + '</div>' +
         '</div>';
