@@ -401,6 +401,78 @@ function TeamSettings() {
         )}
         <span className="mono dim" style={{ fontSize: 11 }}>papéis salvam ao clicar · senha troca em Ajustes do usuário (ou peça pro admin resetar)</span>
       </div>
+
+      <GoalsEditor />
+    </div>
+  );
+}
+
+// Metas do time (por papel) — alimentam o progresso vs. meta da Visão geral.
+// Escopo por produto ativo (metas do LeverAds ≠ do UniqueKids). Grava role-scope
+// na coleção `goals`; o placar prefere meta por pessoa (user-scope) quando existir,
+// mas aqui é o alvo geral do papel, que já faz a barra aparecer pra todo mundo.
+const GOAL_METRICS = [
+  { role: "sdr", metric: "callsBooked", label: "SDR · Calls agendadas / mês" },
+  { role: "sdr", metric: "leadsNew", label: "SDR · Leads novos / mês" },
+  { role: "closer", metric: "won", label: "Closer · Ganhos / mês" },
+  { role: "closer", metric: "revenue", label: "Closer · Receita / mês (R$)" },
+  { role: "integrator", metric: "newAccounts", label: "CS · Contas novas / mês" },
+];
+
+function GoalsEditor() {
+  const [product] = useActiveSaas();
+  const [goals, setGoals] = useStS(null);
+  const [saving, setSaving] = useStS("");
+
+  const load = React.useCallback(() => {
+    if (!product) return;
+    api.list("goals")
+      .then((rows) => setGoals(rows.filter((g) => g.saas === product.id && g.scope === "role")))
+      .catch(() => setGoals([]));
+  }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => { setGoals(null); load(); }, [product?.id, load]);
+
+  const goalOf = (role, metric) => (goals || []).find((g) => g.key === role && g.metric === metric);
+  const valueOf = (role, metric) => { const g = goalOf(role, metric); return g ? String(g.target) : ""; };
+
+  async function saveGoal(role, metric, raw) {
+    const target = Number(raw);
+    const existing = goalOf(role, metric);
+    const id = `${role}:${metric}`;
+    setSaving(id);
+    try {
+      if (!raw.trim() || !(target > 0)) {
+        // limpar a meta: apaga o registro (barra some, volta a mostrar só o número)
+        if (existing) { await api.remove("goals", existing.id); }
+      } else if (existing) {
+        await api.update("goals", existing.id, { target });
+      } else {
+        await api.create("goals", { saas: product.id, scope: "role", key: role, metric, target, period: "month" });
+      }
+      load();
+    } catch (e) { console.warn("meta não salva:", e.message); }
+    setSaving("");
+  }
+
+  if (!product) return null;
+  const field = { width: 90, height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, fontFamily: "var(--mono)", textAlign: "right" };
+
+  return (
+    <div style={{ marginTop: 22 }}>
+      <SettingHeader title="Metas do time" sub={`alvos por papel do ${product.name} · alimentam a barra de progresso na Visão geral · deixe vazio pra tirar a meta`} />
+      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "6px 4px" }}>
+        {goals === null && <div className="mono dim" style={{ padding: "12px 14px", fontSize: 12 }}>carregando…</div>}
+        {goals !== null && GOAL_METRICS.map(({ role, metric, label }) => (
+          <div key={`${role}:${metric}`} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 14px", borderBottom: "1px solid var(--line-1)", opacity: saving === `${role}:${metric}` ? 0.6 : 1 }}>
+            <span style={{ flex: 1, fontSize: 13 }}>{label}</span>
+            <input type="number" min="0" defaultValue={valueOf(role, metric)} key={`${product.id}:${role}:${metric}:${valueOf(role, metric)}`}
+              placeholder="sem meta"
+              onBlur={(e) => { if (e.target.value !== valueOf(role, metric)) saveGoal(role, metric, e.target.value); }}
+              onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+              style={field} />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
