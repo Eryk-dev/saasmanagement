@@ -4,8 +4,8 @@ import { PageHead, Pill } from "../components/viz.jsx";
 import { waLink, leadTier } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay } from "../lib/funnel.js";
-import { allUsers, currentUser, displayName, userById } from "../lib/users.js";
+import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf } from "../lib/funnel.js";
+import { allUsers, currentUser, displayName, userById, usersByRole } from "../lib/users.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { resolveScript, scriptTokens, scriptSegments, scriptChecklist } from "../lib/scripts.js";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
@@ -210,6 +210,20 @@ function TodayScreen({ onOpenLead }) {
     api.update("leads", leadId, patch).catch((err) => console.warn("lead não salvo:", err.message));
   }
 
+  // Mover o card pra próxima coluna a partir do roteiro (com o setup do destino
+  // já resolvido: closer+call, integrador, valor, motivo). Otimista igual ao
+  // board — o servidor recarimba stageSince, agenda o GPS e faz o resto
+  // (applyStageMove). Depois avança pro próximo pendente da fila.
+  function moveAndNext(patch) {
+    const cur = scriptItem;
+    if (!cur) return;
+    const nx = nextAfter(cur);
+    setLeads((prev) => prev.map((x) => x.id === cur.l.id
+      ? { ...x, ...patch, stageSince: new Date().toISOString(), stageAttempts: 0 } : x));
+    api.update("leads", cur.l.id, patch).catch((err) => console.warn("movimento não persistido:", err.message));
+    setScriptItem(nx);
+  }
+
   const users = allUsers().filter((u) => !u.saas || u.saas === saasCfg?.id);
   const stageMeta = Object.fromEntries((saasCfg?.funnel || []).map((f) => [f.stage, f]));
   const dateLabel = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
@@ -280,7 +294,6 @@ function TodayScreen({ onOpenLead }) {
                   )}
                   {rows.map((item, i) => (
                     <QueueRow key={item.l.id} item={item} seq={i + 1} block={key} saasCfg={saasCfg} stageMeta={stageMeta}
-                      onOpen={() => onOpenLead && onOpenLead(item.l)}
                       onScript={() => setScriptItem(item)}
                       onTouch={() => logTouch(item)}
                       onClaim={() => claim(item)}
@@ -297,8 +310,10 @@ function TodayScreen({ onOpenLead }) {
         <ScriptPanel
           item={scriptItem}
           saasCfg={saasCfg}
+          leads={leads}
           hasNext={!!nextAfter(scriptItem)}
           onPatch={patchLead}
+          onMove={moveAndNext}
           onClose={() => setScriptItem(null)}
           onTouch={() => { const nx = nextAfter(scriptItem); logTouch(scriptItem); setScriptItem(nx); }}
           onSkip={() => setScriptItem(nextAfter(scriptItem))}
@@ -310,8 +325,9 @@ function TodayScreen({ onOpenLead }) {
 }
 
 // Uma linha da fila: sequência, quando, etapa (coluna do funil), ação a fazer,
-// lead com a qualificação compilada e as ações. Clique no corpo abre o drawer.
-function QueueRow({ item, seq, block, saasCfg, stageMeta, onOpen, onScript, onTouch, onClaim }) {
+// lead com a qualificação compilada e as ações. Clique no corpo abre o ROTEIRO
+// (o painel de execução), não o card de status; o drawer fica no "abrir lead".
+function QueueRow({ item, seq, block, saasCfg, stageMeta, onScript, onTouch, onClaim }) {
   const { l, kind, due, done, stage, who, phase, group } = item;
   const tier = leadTier(l);
   const wa = waLink(l.phone);
@@ -347,7 +363,7 @@ function QueueRow({ item, seq, block, saasCfg, stageMeta, onOpen, onScript, onTo
   const stageColor = stageMeta?.[stage]?.color || "var(--accent)";
 
   return (
-    <div onClick={onOpen} style={{
+    <div onClick={onScript} title="Abrir o roteiro desta atividade" style={{
       ...GRID,
       padding: "9px 14px", borderBottom: "1px solid var(--line-1)", cursor: "pointer",
       opacity: done ? 0.55 : 1, background: "transparent",
@@ -409,7 +425,7 @@ function QueueRow({ item, seq, block, saasCfg, stageMeta, onOpen, onScript, onTo
             ✓ toque
           </button>
         )}
-        <button onClick={onScript} title="Abrir o roteiro desta etapa com o resumo e os dados do lead"
+        <button onClick={onScript} title="Abrir o roteiro desta atividade com o resumo, os dados e o próximo passo"
           style={{ height: 24, padding: "0 10px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 11.5, fontWeight: 600 }}>
           Roteiro
         </button>
@@ -426,7 +442,7 @@ const ACT_LABELS = { whatsapp: "whatsapp", call: "ligação", email: "e-mail", m
 // conversa) e ROTEIRO à direita (postura, objetivo e o passo a passo com a
 // fala pronta). Em tela estreita as colunas empilham. "Toque e próximo"
 // mantém o operador em fluxo: registra e já abre o cliente seguinte.
-function ScriptPanel({ item, saasCfg, hasNext, onPatch, onClose, onTouch, onSkip, onOpenLead }) {
+function ScriptPanel({ item, saasCfg, leads, hasNext, onPatch, onMove, onClose, onTouch, onSkip, onOpenLead }) {
   // Cópia local do lead: a edição inline dos campos reflete na hora aqui (fala
   // interpolada + checklist) e persiste via onPatch (fila + API).
   const [l, setL] = useS(item.l);
@@ -517,8 +533,9 @@ function ScriptPanel({ item, saasCfg, hasNext, onPatch, onClose, onTouch, onSkip
           <button onClick={onClose} className="mono dim" style={{ fontSize: 16, flexShrink: 0 }}>✕</button>
         </div>
 
-        {/* Duas colunas lado a lado: CLIENTE | ROTEIRO (empilham no mobile). */}
-        <div style={{ padding: "12px 18px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(310px, 1fr))", gap: 16, overflowY: "auto", minHeight: 0 }}>
+        {/* Corpo rolável: duas colunas (CLIENTE | ROTEIRO) + o destino do card. */}
+        <div style={{ padding: "12px 18px", display: "flex", flexDirection: "column", gap: 14, overflowY: "auto", minHeight: 0 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(310px, 1fr))", gap: 16 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
             <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Cliente</div>
               <div style={box}>
@@ -613,6 +630,9 @@ function ScriptPanel({ item, saasCfg, hasNext, onPatch, onClose, onTouch, onSkip
           </div>
         </div>
 
+        <DestinoSection saasCfg={saasCfg} lead={l} leads={leads} onMove={onMove} />
+        </div>
+
         <div style={{ marginTop: "auto", padding: "10px 18px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <button onClick={onTouch} style={{ padding: "8px 14px", background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600 }}
             title="Registra a tentativa na timeline; o GPS re-agenda sozinho (e lead novo segue pra Qualificando)">
@@ -636,6 +656,245 @@ function ScriptPanel({ item, saasCfg, hasNext, onPatch, onClose, onTouch, onSkip
           <button onClick={onClose} className="mono dim" style={{ marginLeft: "auto", fontSize: 12 }}>fechar</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────── Destino do card (o próximo passo)
+// Pra onde o card vai DEPOIS da ação, por KIND do estágio atual (resolvido pro
+// nome real do funil via stageByKind). Cada destino abre o SETUP do seu tipo:
+// call → closer + horário livre na agenda dele; entrega → integrador; ganho →
+// valor; perda → motivo. O movimento é otimista e o servidor faz o resto.
+const NEXT_KINDS = {
+  novo:          ["call", "contato", "desqualificado"],
+  contato:       ["call", "desqualificado"],          // reativação da Nutrição
+  qualificacao:  ["call", "contato", "desqualificado"],
+  call:          ["followup", "ganho", "desqualificado"],
+  followup:      ["integracao", "ganho", "desqualificado"],
+  proposta:      ["followup", "ganho", "desqualificado"],
+  integracao:    ["posvenda", "ganho"],
+  posvenda:      ["ganho"],
+  outro:         ["call", "desqualificado"],
+};
+
+export function destinationsFor(saasCfg, lead) {
+  const curStage = lead.stage || firstStage(saasCfg);
+  const curKind = stageKind(saasCfg, curStage);
+  const out = [];
+  const seen = new Set([curStage]);
+  for (const k of (NEXT_KINDS[curKind] || ["desqualificado"])) {
+    const stage = stageByKind(saasCfg, k);
+    if (stage && !seen.has(stage)) { seen.add(stage); out.push({ stage, kind: stageKind(saasCfg, stage) }); }
+  }
+  return out;
+}
+
+// Setup que cada destino pede antes de mover.
+export function setupType(kind) {
+  if (kind === "call") return "call";
+  if (kind === "integracao" || kind === "posvenda") return "integrator";
+  if (kind === "ganho") return "won";
+  if (kind === "perdido" || kind === "desqualificado") return "loss";
+  return "none";
+}
+
+// Agenda da call: horário comercial em blocos de 1h; a call OCUPA a hora do
+// closer (leads dele com callAt na mesma hora). Fim de semana fora (seg a sex).
+const CALL_H0 = 9, CALL_H1 = 18;
+function nextBusinessDays(n) {
+  const out = []; const d = new Date(); d.setHours(0, 0, 0, 0);
+  while (out.length < n) { const w = d.getDay(); if (w !== 0 && w !== 6) out.push(new Date(d)); d.setDate(d.getDate() + 1); }
+  return out;
+}
+const cellKey = (d) => { const p = (x) => String(x).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}`; };
+const slotVal = (day, hour) => { const p = (x) => String(x).padStart(2, "0"); return `${day.getFullYear()}-${p(day.getMonth() + 1)}-${p(day.getDate())}T${p(hour)}:00`; };
+
+// Horas já ocupadas na agenda de um closer: cada lead dele com callAt marca a
+// hora daquele slot (a call ocupa 1h). Ignora o próprio lead (reagendamento).
+export function callBusyKeys(leads, closerId, selfId) {
+  const busy = new Set();
+  for (const o of leads || []) {
+    if (!closerId || o.id === selfId || o.closer !== closerId || !o.callAt) continue;
+    const d = new Date(o.callAt);
+    if (Number.isFinite(d.getTime())) busy.add(cellKey(d));
+  }
+  return busy;
+}
+
+function DestinoSection({ saasCfg, lead, leads, onMove }) {
+  const dests = destinationsFor(saasCfg, lead);
+  const stageMeta = Object.fromEntries((saasCfg?.funnel || []).map((f) => [f.stage, f]));
+  const closers = usersByRole("closer");
+  const integrators = usersByRole("integrator");
+  const reasons = lossReasonsOf(saasCfg);
+
+  const [dest, setDest] = useS(null);       // { stage, kind }
+  const [closer, setCloser] = useS(lead.closer || "");
+  const [integrator, setIntegrator] = useS(lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
+  const [amount, setAmount] = useS(lead.amount || "");
+  const [reason, setReason] = useS("");
+  const [note, setNote] = useS("");
+  const [slot, setSlot] = useS(lead.callAt || "");
+  const [dayIdx, setDayIdx] = useS(0);
+  useE(() => {
+    setDest(null); setCloser(lead.closer || ""); setSlot(lead.callAt || ""); setDayIdx(0);
+    setIntegrator(lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
+    setAmount(lead.amount || ""); setReason(""); setNote("");
+  }, [lead.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (dests.length === 0) return null;
+  const setup = dest ? setupType(dest.kind) : null;
+  const days = nextBusinessDays(6);
+
+  // Horas ocupadas na agenda do closer (cada call = 1h; ignora o próprio lead).
+  const busy = setup === "call" && closer ? callBusyKeys(leads, closer, lead.id) : new Set();
+
+  const ready = !dest ? false
+    : setup === "call" ? !!(closer && slot)
+    : setup === "integrator" ? !!integrator
+    : setup === "won" ? Number(amount) > 0
+    : setup === "loss" ? !!reason
+    : true;
+
+  function confirm() {
+    if (!ready) return;
+    const patch = { stage: dest.stage };
+    if (setup === "call") { patch.closer = closer; patch.callAt = slot; }
+    else if (setup === "integrator") patch.integrator = integrator;
+    else if (setup === "won") patch.amount = Number(amount);
+    else if (setup === "loss") { patch.lostReason = reason; if (note.trim()) patch.lostNote = note.trim(); }
+    onMove && onMove(patch);
+  }
+
+  const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
+  const label = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 4 };
+  const fieldStyle = { width: "100%", height: 30, padding: "0 8px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 };
+  const slotFmt = (v) => { const d = new Date(v); return Number.isFinite(d.getTime()) ? d.toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""; };
+
+  return (
+    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "12px 14px" }}>
+      <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Depois da ação · pra onde vai esse card</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {dests.map((d) => {
+          const on = dest?.stage === d.stage;
+          const color = stageMeta[d.stage]?.color || "var(--accent)";
+          return (
+            <button key={d.stage} onClick={() => setDest(on ? null : d)} style={{
+              display: "inline-flex", alignItems: "center", gap: 7, height: 30, padding: "0 12px", borderRadius: "var(--r-2)",
+              background: on ? "var(--accent-soft)" : "var(--bg-1)",
+              border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"),
+              color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: on ? 600 : 500,
+            }}>
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
+              {d.stage} {on ? "" : "→"}
+            </button>
+          );
+        })}
+      </div>
+
+      {dest && (
+        <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+          {setup === "call" && (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
+                <div>
+                  <label style={label}>Closer da call *</label>
+                  <select value={closer} onChange={(e) => { setCloser(e.target.value); setSlot(""); }} style={fieldStyle}>
+                    <option value="">— escolher closer —</option>
+                    {closers.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
+                  </select>
+                </div>
+              </div>
+              {closer ? (
+                <div>
+                  <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginBottom: 6 }}>
+                    Horários livres na agenda de {displayName(closer)} · a call ocupa 1h
+                  </div>
+                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>
+                    {days.map((d, i) => (
+                      <button key={i} onClick={() => setDayIdx(i)} style={{
+                        height: 30, padding: "0 10px", borderRadius: "var(--r-2)", fontSize: 11, fontFamily: "var(--mono)",
+                        background: dayIdx === i ? "var(--accent)" : "var(--bg-1)",
+                        color: dayIdx === i ? "var(--accent-fg)" : "var(--fg-3)",
+                        border: "1px solid " + (dayIdx === i ? "var(--accent)" : "var(--line-2)"),
+                      }}>{d.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" }).replace(/\./g, "")}</button>
+                    ))}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))", gap: 6 }}>
+                    {Array.from({ length: CALL_H1 - CALL_H0 }, (_, i) => CALL_H0 + i).map((h) => {
+                      const cell = new Date(days[dayIdx]); cell.setHours(h, 0, 0, 0);
+                      const occupied = busy.has(cellKey(cell));
+                      const past = cell.getTime() < Date.now();
+                      const val = slotVal(days[dayIdx], h);
+                      const sel = slot === val;
+                      const disabled = occupied || past;
+                      return (
+                        <button key={h} disabled={disabled} onClick={() => setSlot(val)} title={occupied ? "closer já tem call nesse horário" : past ? "horário já passou" : "marcar"}
+                          style={{
+                            height: 32, borderRadius: "var(--r-2)", fontSize: 11.5, fontFamily: "var(--mono)",
+                            background: sel ? "var(--accent)" : occupied ? "var(--neg-soft)" : "var(--bg-1)",
+                            color: sel ? "var(--accent-fg)" : occupied ? "var(--neg)" : past ? "var(--fg-4)" : "var(--fg-2)",
+                            border: "1px solid " + (sel ? "var(--accent)" : occupied ? "color-mix(in srgb, var(--neg) 30%, var(--line-2))" : "var(--line-2)"),
+                            opacity: past && !sel ? 0.45 : 1, cursor: disabled ? "not-allowed" : "pointer",
+                            textDecoration: occupied ? "line-through" : "none",
+                          }}>{String(h).padStart(2, "0")}:00</button>
+                      );
+                    })}
+                  </div>
+                  {slot && <div className="mono" style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 8 }}>Call: {slotFmt(slot)} · {displayName(closer)}</div>}
+                </div>
+              ) : (
+                <div className="mono dim" style={{ fontSize: 11 }}>escolha o closer pra ver os horários livres da agenda dele</div>
+              )}
+            </>
+          )}
+
+          {setup === "integrator" && (
+            <div style={{ maxWidth: 280 }}>
+              <label style={label}>Responsável pela {dest.kind === "integracao" ? "integração" : "entrega/CS"} *</label>
+              <select value={integrator} onChange={(e) => setIntegrator(e.target.value)} style={fieldStyle}>
+                <option value="">— escolher integrador —</option>
+                {integrators.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
+              </select>
+              {lead.closer && <div className="mono dim" style={{ fontSize: 10.5, marginTop: 5 }}>closer da venda: {displayName(lead.closer)} (fica registrado)</div>}
+            </div>
+          )}
+
+          {setup === "won" && (
+            <div style={{ maxWidth: 220 }}>
+              <label style={label}>Valor do negócio (R$) *</label>
+              <input type="number" min="0" step="0.01" value={amount} placeholder="ex.: 7188"
+                onChange={(e) => setAmount(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") confirm(); }} style={fieldStyle} />
+              <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>vira a receita no marketing e a conversão enviada pra Meta</div>
+            </div>
+          )}
+
+          {setup === "loss" && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
+              <div>
+                <label style={label}>Motivo *</label>
+                <select value={reason} onChange={(e) => setReason(e.target.value)} style={fieldStyle}>
+                  <option value="">— escolha o motivo —</option>
+                  {reasons.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={label}>Detalhe (opcional)</label>
+                <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="ex.: fechou com concorrente" style={fieldStyle} />
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button onClick={confirm} disabled={!ready} style={{
+              height: 32, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
+              background: ready ? "var(--accent)" : "var(--bg-2)", color: ready ? "var(--accent-fg)" : "var(--fg-4)",
+              border: "1px solid " + (ready ? "var(--accent)" : "var(--line-2)"), cursor: ready ? "pointer" : "not-allowed",
+            }}>mover pra {dest.stage} →</button>
+            <button onClick={() => setDest(null)} className="mono dim" style={{ fontSize: 11.5 }}>cancelar</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
