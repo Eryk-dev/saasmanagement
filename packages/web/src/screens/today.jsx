@@ -452,12 +452,12 @@ export function clientSummary(saasCfg, lead, stage, cat) {
     ["SDR / closer", [lead.owner && displayName(lead.owner), lead.closer && displayName(lead.closer)].filter(Boolean).join(" / ") || null],
     ["Próximo passo (nota)", lead.nextActionNote],
   ].filter(([, v]) => v != null && v !== "");
+  // De onde veio: só o anúncio basta. Com teste A/B no form, mostra também o
+  // HEADLINE que o lead viu (denormalizado no submit; fallback pro id da versão).
+  const headline = lead.formHeadline || (lead.formVariant ? `versão ${lead.formVariant}` : null);
   const attribution = [
-    ["Campanha", cat?.campaigns?.[utm.campaign]?.name || utm.campaign],
-    ["Conjunto", cat?.adsets?.[utm.term]?.name || utm.term],
     ["Anúncio", cat?.ads?.[utm.content]?.name || utm.content],
-    ["Origem / mídia", [utm.source, utm.medium].filter(Boolean).join(" / ") || null],
-    ["Variante da headline", lead.formVariant ? `versão ${lead.formVariant}` : null],
+    ["Headline do formulário", headline],
   ].filter(([, v]) => v != null && v !== "");
   return { pain: leadPain(lead, cat, saasCfg?.painMap), facts, attribution };
 }

@@ -8,6 +8,7 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
+const { variantHeadline } = await import("../src/forms.js");
 
 // Form com branching: porte=small pula direto pro fim (faturamento nem aparece).
 const FORM = {
@@ -98,6 +99,41 @@ test("POST submission válida → 201, lead mapeado + submission vinculada", asy
   assert.equal(subs[0].form, "fo_test");
   assert.equal(subs[0].lead, lead.id);
   assert.deepEqual(subs[0].answers, ANSWERS_FULL);
+  await app.close();
+});
+
+test("variantHeadline: resolve o título da variante A/B (byPain sobrescreve a base)", () => {
+  const form = { welcome: {
+    variants: [{ id: "A", title: "Clone anúncios em minutos" }, { id: "B", title: "Espelhe suas contas sem redigitar" }],
+    byPain: { E: { variants: [{ id: "A", title: "Chega de replicar anúncio na mão" }] } },
+  } };
+  assert.equal(variantHeadline(form, "B"), "Espelhe suas contas sem redigitar");
+  assert.equal(variantHeadline(form, "A", "E"), "Chega de replicar anúncio na mão"); // byPain vence
+  assert.equal(variantHeadline(form, "A"), "Clone anúncios em minutos");             // sem pain, base
+  assert.equal(variantHeadline(form, "Z"), "");   // id inexistente
+  assert.equal(variantHeadline(form, ""), "");    // sem variante
+  assert.equal(variantHeadline({}, "A"), "");     // form sem welcome
+});
+
+test("submission com variante A/B denormaliza formHeadline + formVariant no lead", async () => {
+  const repo = makeMemRepo();
+  await repo.create("forms", {
+    ...FORM, id: "fo_ab",
+    welcome: { title: "Base", variants: [{ id: "B", title: "Espelhe suas contas sem redigitar" }] },
+  });
+  const app = Fastify();
+  registerRoutes(app, repo);
+
+  await app.inject({ method: "POST", url: "/public/forms/fo_ab/submissions", payload: { answers: ANSWERS_FULL, variant: "B" } });
+  const lead = (await repo.list("leads"))[0];
+  assert.equal(lead.formVariant, "B");
+  assert.equal(lead.formHeadline, "Espelhe suas contas sem redigitar");
+
+  // Variante sem headline resolvível: grava a versão, mas não inventa headline.
+  await app.inject({ method: "POST", url: "/public/forms/fo_ab/submissions", payload: { answers: { ...ANSWERS_FULL, nome: "Bia" }, variant: "Z" } });
+  const bia = (await repo.list("leads")).find((l) => l.name === "Bia");
+  assert.equal(bia.formVariant, "Z");
+  assert.equal(bia.formHeadline, undefined);
   await app.close();
 });
 
