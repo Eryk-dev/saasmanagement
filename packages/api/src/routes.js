@@ -17,6 +17,7 @@ import { registerAuthRoutes } from "./auth.js";
 import { registerMpRoutes, mirrorSubscriptionToMp } from "./routes.mp.js";
 import { mp as defaultMpClient } from "./mp.js";
 import { registerMarketingRoutes } from "./routes.marketing.js";
+import { registerSocialRoutes } from "./routes.social.js";
 import { registerGoogleRoutes } from "./routes.google.js";
 import { makeAnthropic } from "./anthropic.js";
 import { registerMetricsRoutes } from "./routes.metrics.js";
@@ -189,6 +190,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Marketing: sync de insights da Meta + métricas cruzadas com o funil.
   const metaClient = opts.meta || defaultMetaClient;
   registerMarketingRoutes(app, repo, { meta: metaClient });
+  // Mídia social: métricas do perfil + publicação orgânica (IG/página FB).
+  registerSocialRoutes(app, repo, { social: opts.social, meta: metaClient });
   registerMetricsRoutes(app, repo);
   // Métricas reais de funil (conversão/tempo por estágio, motivos de perda, SLA)
   // a partir do histórico de transições da timeline.

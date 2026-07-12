@@ -17,6 +17,7 @@ const NAV = [
   { id: "customers",  label: "Clientes",    icon: "○",  group: "main" },
   { id: "metrics",    label: "Publicidade", icon: "∿",  group: "main" },
   { id: "expenses",   label: "Custos",      icon: "◫",  group: "main" },
+  { id: "social",     label: "Mídia social", icon: "◍", group: "main" },
   { id: "forms",      label: "Formulários", icon: "▤",  group: "tools" },
   { id: "proposals",  label: "Propostas",   icon: "▥",  group: "tools" },
   { id: "creative",   label: "Estáticos",   icon: "◨",  group: "tools" },
