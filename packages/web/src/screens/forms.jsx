@@ -6,6 +6,7 @@ import { EmptyState, PrimaryButton, RowActions } from "../atoms.jsx";
 import { inputStyle, labelStyle, sectionTitle, cardStyle, addBtnStyle, THEME_DEFAULTS, LabeledInput, ThemeEditor } from "../components/theme-inputs.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useAttribution } from "../lib/pains.js";
+import { InsightsList } from "../components/insights.jsx";
 // Form builder — formulários de captação por SaaS, estilo Typeform: uma pergunta
 // por vez, branching por opção, tema por marca. Lista → editor (com preview
 // server-side em iframe) → respostas. A página pública vive na API (/f/:id).
@@ -699,6 +700,54 @@ function championVerdicts(variants) {
   return out;
 }
 
+// ── Insights do funil do form ────────────────────────────────────────────────
+// Mesma filosofia do card da Publicidade (regras explicáveis, cada uma com os
+// números do porquê); render/dispensa no components/insights.jsx. Ids estáveis
+// por regra+alvo. Volumes mínimos evitam insight de amostra pequena.
+function buildFormInsights(data, form, cat) {
+  if (!data || data.error) return [];
+  const out = [];
+  const pctN = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
+
+  // Welcome segurando pouca gente: poucas visitas viram "começar".
+  if (data.views >= 30 && form.welcome) {
+    const startRate = pctN(data.starts, data.views);
+    if (startRate < 40) {
+      out.push({ id: "welcome-starts", tone: "atencao", tag: "Atenção", text: `Só ${startRate}% das ${data.views} visitas clicam em começar. A headline/promessa da boas-vindas é o primeiro suspeito — vale rodar uma variante nova no teste A/B.` });
+    }
+  }
+  // Etapa que mais derruba: maior queda relativa entre telas consecutivas.
+  const steps = (data.steps || []).filter((s) => !s.insight);
+  const chain = [{ key: "_start", label: "começar", sessions: data.starts }, ...steps];
+  let worst = null;
+  for (let i = 1; i < chain.length; i++) {
+    const prev = chain[i - 1].sessions;
+    if (prev < 15) continue; // amostra pequena não vira insight
+    const drop = 1 - chain[i].sessions / prev;
+    if (drop >= 0.25 && (!worst || drop > worst.drop)) worst = { step: chain[i], prev, drop };
+  }
+  if (worst) {
+    out.push({ id: `drop-step:${worst.step.key}`, tone: "cortar", tag: "Revisar", text: `A pergunta “${worst.step.label}” derruba ${Math.round(worst.drop * 100)}% de quem chega nela (${worst.prev} → ${worst.step.sessions} sessões). Simplifique a pergunta, torne opcional ou mova pra mais perto do fim.` });
+  }
+  // Origens: taxa de envio muito abaixo/acima da média do form.
+  const origins = (data.origins || []).filter((o) => o.views >= 15);
+  if (origins.length >= 2 && data.views > 0) {
+    const rate = (o) => (o.views > 0 ? o.submits / o.views : 0);
+    const overall = data.submits / data.views;
+    const name = (o) => `${o.source || "(sem source)"}${o.campaign ? ` · ${cat?.campaigns?.[o.campaign]?.name || o.campaign}` : ""}`;
+    const sorted = [...origins].sort((a, b) => rate(a) - rate(b));
+    const weak = sorted[0];
+    const best = sorted[sorted.length - 1];
+    if (overall > 0 && rate(weak) < overall / 2) {
+      out.push({ id: `origin-weak:${weak.source || ""}|${weak.campaign || ""}`, tone: "atencao", tag: "Atenção", text: `A origem ${name(weak)} converte ${pctN(weak.submits, weak.views)}% das visitas em envio, menos da metade da média do form (${Math.round(overall * 100)}%). O público desse tráfego pode não casar com a promessa ou com as perguntas.` });
+    }
+    if (best !== weak && rate(best) >= overall * 1.5) {
+      out.push({ id: `origin-best:${best.source || ""}|${best.campaign || ""}`, tone: "escalar", tag: "Escalar", text: `${name(best)} converte ${pctN(best.submits, best.views)}% das visitas em envio (média do form: ${Math.round(overall * 100)}%). Tráfego com esse perfil rende mais form completo — vale priorizar.` });
+    }
+  }
+  return out.slice(0, 5);
+}
+
 // ── Dashboard de métricas (visão principal da tela) ─────────────────────────
 // Seletor de form (quando há mais de um publicado), filtros completos (hoje/
 // ontem/3/7/30/tudo + data personalizada), tiles do topo, RESULTADOS DOS
@@ -825,6 +874,16 @@ function FormsDashboard({ forms }) {
           {tile("Enviaram", window.fmt.int(data.submits), pct(data.submits, Math.max(data.starts, 1)) + " dos que começaram")}
           {tile("Conversão", pct(data.submits, data.views), "envios ÷ visitas")}
         </div>
+      )}
+
+      {data && !data.error && (
+        <InsightsList items={buildFormInsights(data, form, cat)} scope={`form:${form.id}`}
+          style={{ marginBottom: 14 }}
+          header={
+            <div className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
+              Insights do funil · ✕ dispensa por 7 dias
+            </div>
+          } />
       )}
 
       {data && !data.error && groups.length > 0 && (

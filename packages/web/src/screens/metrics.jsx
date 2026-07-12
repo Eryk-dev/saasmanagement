@@ -2,6 +2,7 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { PageHead, Segmented, StatTile, Card, LineChart } from "../components/viz.jsx";
+import { InsightsCard } from "../components/insights.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { EmptyState } from "../atoms.jsx";
 import { stageKind } from "../lib/funnel.js";
@@ -439,17 +440,9 @@ function MetricsScreen() {
           </Card>
         )}
 
-        {data && !data.error && insights.length > 0 && (
-          <Card title="Insights" hint="sugestões por regra (ROAS por dor, CPL por anúncio, placement) · a decisão continua sua">
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 16px 14px" }}>
-              {insights.map((it, i) => (
-                <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "10px 12px" }}>
-                  <span className="mono" style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: INSIGHT_TONES[it.tone], border: "1px solid currentColor", borderRadius: 999, padding: "2px 8px", flexShrink: 0, marginTop: 1 }}>{it.tag}</span>
-                  <span style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--fg-2)" }}>{it.text}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
+        {data && !data.error && (
+          <InsightsCard scope={`ads:${product.id}`} items={insights}
+            hint="sugestões por regra (ROAS por dor, CPL por anúncio, placement) · a decisão continua sua · ✕ dispensa por 7 dias" />
         )}
 
         {data && !data.error && (data.pains || []).some((p) => p.code) && (
@@ -876,8 +869,9 @@ const thStyle = {
 // ── Insights de escala ───────────────────────────────────────────────────────
 // Sugestões por REGRA (explicáveis, sem IA): cruzam ROAS/receita por dor, CPL
 // por anúncio e o breakdown de placement. Cada item diz o porquê com os números;
-// a ação (pausar/orçamento) continua manual no card Anúncios.
-const INSIGHT_TONES = { escalar: "var(--pos)", cortar: "var(--neg)", atencao: "var(--warn)" };
+// a ação (pausar/orçamento) continua manual no card Anúncios. Render + dispensa
+// (✕, 7 dias) no componente compartilhado components/insights.jsx — por isso os
+// ids são estáveis por regra+alvo (sem números), senão a dispensa ressuscita.
 const PLATFORM_LABEL = { facebook: "Facebook", instagram: "Instagram", audience_network: "Audience Network", messenger: "Messenger" };
 const placementLabel = (r) => `${PLATFORM_LABEL[r.platform] || r.platform} · ${String(r.position || "").replaceAll("_", " ")}`;
 
@@ -890,18 +884,18 @@ function buildInsights(data, placements) {
   const withRoas = pains.filter((p) => p.roas != null);
   if (withRoas.length) {
     const best = [...withRoas].sort((a, b) => b.roas - a.roas)[0];
-    out.push({ tone: "escalar", tag: "Escalar", text: `A dor [${best.code}] ${best.label} tem o melhor retorno do período: ROAS ${x(best.roas)} (${money(best.revenue)} de receita sobre ${money(best.spend)} investidos). Vale subir o orçamento dos conjuntos que rodam essa dor.` });
+    out.push({ id: `escalar-dor:${best.code}`, tone: "escalar", tag: "Escalar", text: `A dor [${best.code}] ${best.label} tem o melhor retorno do período: ROAS ${x(best.roas)} (${money(best.revenue)} de receita sobre ${money(best.spend)} investidos). Vale subir o orçamento dos conjuntos que rodam essa dor.` });
   }
   // Dor que gasta, gera lead e não fecha nenhum → problema de fundo de funil.
   for (const p of pains.filter((p) => p.spend >= 100 && p.leads >= 3 && !p.won).slice(0, 2)) {
-    out.push({ tone: "atencao", tag: "Atenção", text: `A dor [${p.code}] ${p.label} investiu ${money(p.spend)} e trouxe ${p.leads} leads, mas nenhum fechou. Antes de escalar, revise a qualificação desse público ou o pitch da call.` });
+    out.push({ id: `dor-nao-fecha:${p.code}`, tone: "atencao", tag: "Atenção", text: `A dor [${p.code}] ${p.label} investiu ${money(p.spend)} e trouxe ${p.leads} leads, mas nenhum fechou. Antes de escalar, revise a qualificação desse público ou o pitch da call.` });
   }
   // Anúncio queimando: gastou ≥ 3× o CPL médio da conta sem gerar nenhum lead.
   const cplRef = data.totals?.cpl;
   if (cplRef) {
     for (const a of (data.ads || []).filter((a) => a.leads === 0 && a.spend >= 3 * cplRef)
       .sort((a, b) => b.spend - a.spend).slice(0, 2)) {
-      out.push({ tone: "cortar", tag: "Cortar", text: `O anúncio “${a.name}” já gastou ${money(a.spend)} (3× o CPL médio de ${money(cplRef)}) sem gerar nenhum lead. Candidato a pausar no card Anúncios.` });
+      out.push({ id: `ad-sem-lead:${a.id}`, tone: "cortar", tag: "Cortar", text: `O anúncio “${a.name}” já gastou ${money(a.spend)} (3× o CPL médio de ${money(cplRef)}) sem gerar nenhum lead. Candidato a pausar no card Anúncios.` });
     }
   }
   // Placements: fatia relevante do gasto sem nenhum lead na visão da Meta.
@@ -909,7 +903,7 @@ function buildInsights(data, placements) {
   const totalSpend = rows.reduce((s, r) => s + r.spend, 0);
   if (totalSpend > 0) {
     for (const r of rows.filter((r) => r.spend / totalSpend >= 0.12 && r.metaLeads === 0).slice(0, 2)) {
-      out.push({ tone: "cortar", tag: "Cortar", text: `${placementLabel(r)} consome ${Math.round((r.spend / totalSpend) * 100)}% do investimento (${money(r.spend)}) sem nenhum lead na visão da Meta. Considere excluir esse posicionamento nos conjuntos.` });
+      out.push({ id: `placement-sem-lead:${r.platform}|${r.position}`, tone: "cortar", tag: "Cortar", text: `${placementLabel(r)} consome ${Math.round((r.spend / totalSpend) * 100)}% do investimento (${money(r.spend)}) sem nenhum lead na visão da Meta. Considere excluir esse posicionamento nos conjuntos.` });
     }
     // Diferença grande de CPL entre posicionamentos com gasto relevante.
     const withLeads = rows.filter((r) => r.cplMeta != null && r.spend >= totalSpend * 0.08);
@@ -918,7 +912,7 @@ function buildInsights(data, placements) {
       const best = sorted[0];
       const worst = sorted[sorted.length - 1];
       if (worst.cplMeta >= best.cplMeta * 2) {
-        out.push({ tone: "atencao", tag: "Atenção", text: `${placementLabel(best)} converte a ${money(best.cplMeta)} por lead vs ${money(worst.cplMeta)} em ${placementLabel(worst)} (visão da Meta). Se a diferença persistir, concentre o orçamento no posicionamento mais barato.` });
+        out.push({ id: `placement-gap:${best.platform}|${best.position}:${worst.platform}|${worst.position}`, tone: "atencao", tag: "Atenção", text: `${placementLabel(best)} converte a ${money(best.cplMeta)} por lead vs ${money(worst.cplMeta)} em ${placementLabel(worst)} (visão da Meta). Se a diferença persistir, concentre o orçamento no posicionamento mais barato.` });
       }
     }
   }
