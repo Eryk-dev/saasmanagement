@@ -132,7 +132,11 @@ export async function migrateLeverAdsSdrCadence(repo) {
   if (!product || product.sdrCadenceV1) return false;
   if (!Array.isArray(product.funnel) || product.funnel.length === 0) return false;
   let funnel = product.funnel.map((f) => ({ ...(f || {}) }));
-  const cadEq = (f, cad) => JSON.stringify(f.cadence || null) === JSON.stringify(cad);
+  // Comparação por chave, não por JSON: o jsonb do Postgres reordena as chaves
+  // do objeto salvo (foi o que fez a 1ª rodada pular a cadência do Qualificando
+  // em produção — corrigido lá via PUT /funnel em 2026-07-12).
+  const canon = (o) => JSON.stringify(Object.fromEntries(Object.entries(o || {}).sort(([a], [b]) => a.localeCompare(b))));
+  const cadEq = (f, cad) => canon(f.cadence) === canon(cad);
   let movedCards = 0;
 
   // 1. "Em contato" sai (Qualificando cobre a fase); os cards migram por rename
