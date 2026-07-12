@@ -286,7 +286,8 @@ function LeadDetail({ lead: initial, onClose }) {
                         setLead((prev) => ({ ...prev, callUrl: r.callUrl, meetEventId: r.eventId }));
                         const cfg = r.meetConfig || {};
                         const faltou = [!cfg.open && "entrada sem aprovação", !cfg.recording && "gravação automática", !cfg.transcription && "transcrição automática"].filter(Boolean);
-                        if (faltou.length) window.alert(`Meet criado ✓ Mas o plano da conta Google não aceitou: ${faltou.join(", ")}. Dá pra ativar manualmente dentro da chamada.`);
+                        const motivo = cfg.errors ? ` Motivo do Google: ${Object.values(cfg.errors)[0]}` : "";
+                        if (faltou.length) window.alert(`Meet criado ✓ Mas não deu pra ativar: ${faltou.join(", ")}.${motivo}`);
                       } catch (e) { window.alert(e.message || "Falha ao criar o Meet."); }
                     }}
                     title="Evento com Meet na agenda: convida o lead (se tiver e-mail) e os convidados extras; sala aberta com gravação e transcrição automáticas quando o plano permite"

@@ -130,9 +130,14 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
     // O patch exige o resource name real (spaces/{space}) — o meetingCode é só alias no GET.
     const got = await f(`${MEET_URL}/spaces/${encodeURIComponent(meetingCode)}`, { headers });
     const space = await got.json().catch(() => ({}));
-    if (got.status >= 400 || !space.name) return { open: false, recording: false, transcription: false };
+    if (got.status >= 400 || !space.name) {
+      const why = space.error?.message || `Meet API -> ${got.status}`;
+      // 403 SERVICE_DISABLED = Meet API não habilitada no projeto do Cloud;
+      // ACCESS_TOKEN_SCOPE_INSUFFICIENT = precisa reconectar (escopos novos).
+      return { open: false, recording: false, transcription: false, errors: { sala: String(why).slice(0, 180) } };
+    }
 
-    const applied = { open: false, recording: false, transcription: false };
+    const applied = { open: false, recording: false, transcription: false, errors: {} };
     const patch = async (config, mask) => {
       const res = await f(`${MEET_URL}/${space.name}?updateMask=${encodeURIComponent(mask)}`, {
         method: "PATCH", headers, body: JSON.stringify({ config }),
@@ -146,20 +151,21 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
       try {
         await patch({ accessType: "OPEN", entryPointAccess: "ALL" }, "config.accessType,config.entryPointAccess");
         applied.open = true;
-      } catch { /* plano/conta não permite — sala fica no padrão */ }
+      } catch (e) { applied.errors.aberta = String(e.message || e).slice(0, 180); }
     }
     if (record) {
       try {
         await patch({ artifactConfig: { recordingConfig: { autoRecordingGeneration: "ON" } } }, "config.artifactConfig.recordingConfig.autoRecordingGeneration");
         applied.recording = true;
-      } catch { /* exige Workspace com gravação */ }
+      } catch (e) { applied.errors.gravacao = String(e.message || e).slice(0, 180); }
     }
     if (transcribe) {
       try {
         await patch({ artifactConfig: { transcriptionConfig: { autoTranscriptionGeneration: "ON" } } }, "config.artifactConfig.transcriptionConfig.autoTranscriptionGeneration");
         applied.transcription = true;
-      } catch { /* idem gravação */ }
+      } catch (e) { applied.errors.transcricao = String(e.message || e).slice(0, 180); }
     }
+    if (!Object.keys(applied.errors).length) delete applied.errors;
     return applied;
   }
 
