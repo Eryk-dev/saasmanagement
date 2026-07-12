@@ -971,6 +971,8 @@ const GROUPS = [
   ["car", "Carrossel · 4 slides"],
 ];
 
+const GROUP_FMT_LABEL = { story: "Story", storyseq: "Sequência de stories", post: "Post de feed", car: "Carrossel" };
+
 const defaultsOf = (tpl) => Object.fromEntries(tpl.fields.map((f) => [f.k, f.def]));
 const photoSlotsOf = (tpl) => tpl.els.filter((e) => e.type === "photo");
 
@@ -1123,9 +1125,16 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
     return out;
   }
 
-  // Quem embeda o editor (Mídia social) alcança o estado atual por aqui.
+  // Quem embeda o editor (Mídia social) alcança o estado atual por aqui:
+  // PNGs finais, além de ler os campos do template e injetar copy da IA.
   useE(() => {
-    if (apiRef) apiRef.current = { tpl, getBlobs, downloadAll };
+    if (apiRef) apiRef.current = {
+      tpl, getBlobs, downloadAll,
+      templateName: tpl.name,
+      formatLabel: GROUP_FMT_LABEL[tpl.group] || tpl.group,
+      fieldsSpec: () => tpl.fields.map((f) => ({ key: f.k, label: f.label, example: f.def })),
+      applyVals: (map) => setVals((v) => ({ ...v, ...map })),
+    };
   });
 
   const previewW = Math.round((tpl.group === "story" ? 300 : 340) * ZOOMS[zoom]);

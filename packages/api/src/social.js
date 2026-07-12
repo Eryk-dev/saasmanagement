@@ -73,17 +73,22 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
       return out;
     },
 
-    // Últimos posts do perfil com engajamento — o feed da tela.
+    // Últimos posts do perfil com engajamento — o feed da tela. Carrossel
+    // (CAROUSEL_ALBUM) não tem media_url no nível de cima; a thumbnail vem do
+    // primeiro filho, por isso pedimos children{media_url}.
     async igMedia(igUserId, { limit = 12 } = {}) {
       const body = await get(`${igUserId}/media`, {
-        fields: "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count",
+        fields: "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,children{media_url,thumbnail_url}",
         limit: String(limit),
       });
+      const child = (m) => m.children?.data?.[0];
       return (body.data || []).map((m) => ({
         id: m.id,
         caption: m.caption || "",
         type: m.media_type,
-        mediaUrl: m.media_url || m.thumbnail_url || "",
+        // vídeo usa thumbnail_url (o media_url é o arquivo do vídeo); carrossel
+        // cai no primeiro filho.
+        mediaUrl: m.thumbnail_url || m.media_url || child(m)?.media_url || child(m)?.thumbnail_url || "",
         permalink: m.permalink || "",
         at: m.timestamp || "",
         likes: Number(m.like_count) || 0,

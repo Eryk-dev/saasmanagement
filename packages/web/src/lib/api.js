@@ -109,6 +109,8 @@ export const api = {
   socialSummary: (saas) => req("GET", `/api/social/summary?saas=${encodeURIComponent(saas)}`),
   socialPosts: (saas) => req("GET", `/api/social/posts?saas=${encodeURIComponent(saas)}`),
   socialPublish: (payload) => req("POST", "/api/social/publish", payload),
+  // Copy do post por IA: preenche os campos do template + legenda a partir da dor.
+  socialAiCopy: (payload) => req("POST", "/api/social/ai-copy", payload),
   // Upload de mídia (PNG do editor / vídeo) → asset com URL pública que a Meta baixa.
   socialUpload: async (blob, name, saas) => {
     const fd = new FormData();

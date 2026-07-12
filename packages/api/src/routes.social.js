@@ -19,7 +19,7 @@ const VID_MAX = 80 * 1024 * 1024;   // reel curto; acima disso o jsonb sofre
 
 const dayStr = (d) => new Date(new Date(d).getTime() - 3 * 3600e3).toISOString().slice(0, 10);
 
-export function registerSocialRoutes(app, repo, { social = defaultSocial, meta = defaultMeta } = {}) {
+export function registerSocialRoutes(app, repo, { social = defaultSocial, meta = defaultMeta, anthropic = null } = {}) {
   // Descoberta page/IG por saas (cache do processo; muda raro).
   const discovered = new Map();
   async function idsFor(product) {
@@ -47,7 +47,10 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
     if (!product) return;
     if (!social.configured()) return { configured: false, missing: "META_ACCESS_TOKEN" };
     const { igUserId, pageId } = await idsFor(product);
-    const out = { configured: true, igUserId, pageId, account: null, insights: null, media: [], page: null, errors: {} };
+    // Dores do produto (product.painMap = { código: rótulo }) — alimentam o
+    // seletor de dor do "criar post". Rótulos únicos, sem os códigos vazios.
+    const pains = [...new Set(Object.values(product.painMap || {}).filter((v) => v && String(v).trim()))].map((label) => ({ label }));
+    const out = { configured: true, igUserId, pageId, aiConfigured: !!anthropic?.configured?.(), pains, account: null, insights: null, media: [], page: null, errors: {} };
     if (!igUserId && !pageId) {
       out.errors.setup = "sem Instagram/página: configure metaIgUserId/metaPageId no produto ou rode um anúncio na conta pra descoberta automática";
       return out;
@@ -142,6 +145,22 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
     // por rede e mostra o erro do lado que falhou.
     const ok = Object.values(results).some((r) => r.ok);
     return { ok, postId: post.id, results };
+  });
+
+  // ── Copy do post por IA ─────────────────────────────────────────────────
+  // body: { saas, dor, suggestion, formatLabel, templateName, fields: [{key,label,example}] }
+  // Devolve { fields: {key:value}, caption } pro editor pré-preencher. Nada é
+  // gravado — o usuário revisa antes de publicar.
+  app.post("/api/social/ai-copy", async (req, reply) => {
+    if (!anthropic?.configured?.()) return reply.code(400).send({ error: "IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor" });
+    const { dor = "", suggestion = "", formatLabel = "", templateName = "", fields = [] } = req.body || {};
+    if (!Array.isArray(fields) || fields.length === 0) return reply.code(400).send({ error: "sem campos pra preencher" });
+    try {
+      const r = await anthropic.suggestSocialCopy({ dor, suggestion, formatLabel, templateName, fields });
+      return { fields: r.fields, caption: r.caption };
+    } catch (e) {
+      return reply.code(502).send({ error: e.message });
+    }
   });
 
   // Histórico de publicações feitas pelo cockpit.
