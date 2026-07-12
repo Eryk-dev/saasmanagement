@@ -230,6 +230,18 @@ function arrowHint(ctx, W, H, M) {
   ctx.fillText(t, W - M - ctx.measureText(t).width, H - 78);
 }
 
+// Barra de segmentos no topo do story (as barrinhas nativas do Instagram):
+// tudo antes/incluindo o atual em teal, o resto apagado.
+function seqBar(ctx, W, y, i, n) {
+  const M = 90, gap = 12;
+  const seg = (W - 2 * M - (n - 1) * gap) / n;
+  for (let k = 0; k < n; k++) {
+    const x = M + k * (seg + gap);
+    ctx.fillStyle = k <= i ? B.teal : "rgba(243,251,255,0.25)";
+    rr(ctx, x, y, seg, 8, 4); ctx.fill();
+  }
+}
+
 // ── Elementos ────────────────────────────────────────────────────────────────
 // Cada drawer: (ctx, el, x, y, env) → bbox {x,y,w,h}. env = {vals, imgs, mode}.
 // `el.color`/`el.hl` são chaves da paleta (fg/soft/dim/accent).
@@ -425,6 +437,17 @@ function renderSlide(ctx, tpl, i, env, pos, extras, selKey) {
     pageDots(ctx, tpl.w, tpl.h - 86, i, tpl.slides);
     if (i < tpl.slides - 1) arrowHint(ctx, tpl.w, tpl.h, 100);
   }
+  if (tpl.group === "storyseq") {
+    // Barra de segmentos no topo, igual às barrinhas nativas do story: sinaliza
+    // que é uma sequência e mostra em qual dos 4 o espectador está.
+    seqBar(ctx, tpl.w, 56, i, tpl.slides);
+    if (i < tpl.slides - 1) {
+      ctx.font = `600 30px ${FM}`;
+      ctx.fillStyle = B.teal;
+      const t = "continua →";
+      ctx.fillText(t, tpl.w - 110 - ctx.measureText(t).width, tpl.h - 118);
+    }
+  }
   if (selKey) {
     const b = boxes.find((bb) => bb.key === selKey);
     if (b) {
@@ -446,6 +469,13 @@ function renderSlide(ctx, tpl, i, env, pos, extras, selKey) {
 const carChrome = [
   { id: "logo", type: "logo", slide: "all", x: 100, y: 88, h: 64 },
   { id: "handle", type: "handle", field: "handle", slide: "all", x: 100, y: 1242 },
+];
+
+// Chrome comum de uma sequência de stories (1080×1920): logo abaixo da barra de
+// segmentos e handle centralizado no rodapé.
+const storyChrome = [
+  { id: "logo", type: "logo", slide: "all", x: 110, y: 108, h: 72 },
+  { id: "handle", type: "handle", field: "handle", slide: "all", x: 540, y: 1808, align: "center" },
 ];
 
 const TEMPLATES = [
@@ -836,10 +866,107 @@ const TEMPLATES = [
       { id: "s4_cta", type: "pill", field: "s4_cta", slide: 4, x: 100, y: { after: "s4_title", gap: 72 }, size: 42 },
     ],
   },
+
+  // ── Sequências de story 1080×1920 (4 stories seguidos) ────────────────────
+  {
+    id: "seq-dor", group: "storyseq", name: "Dor e solução", w: 1080, h: 1920, slides: 4,
+    fields: [
+      { k: "handle", label: "Rodapé (todos)", def: "@lever.ads" },
+      { k: "s1_eyebrow", label: "Kicker", def: "Pra quem vende em várias contas", slide: 1 },
+      { k: "s1_title", label: "Capa", type: "textarea", def: "O gargalo da sua operação *não é anúncio*. É retrabalho.", slide: 1 },
+      { k: "s2_kicker", label: "Kicker", def: "O problema", slide: 2 },
+      { k: "s2_title", label: "Título", type: "textarea", def: "Cada conta nova recomeça *do zero*", slide: 2 },
+      { k: "s2_body", label: "Texto", type: "textarea", def: "Subir catálogo, revisar atributo, conferir SKU. Multiplica por 3, 5, 8 contas e a semana acabou.", slide: 2 },
+      { k: "s3_kicker", label: "Kicker", def: "A solução", slide: 3 },
+      { k: "s3_title", label: "Título", type: "textarea", def: "Uma conta-mãe, todas as filhas *sincronizadas*", slide: 3 },
+      { k: "s3_body", label: "Texto", type: "textarea", def: "A LeverAds clona e mantém seus anúncios em todas as contas de Mercado Livre e Shopee, sozinha.", slide: 3 },
+      { k: "s4_title", label: "Fechamento", type: "textarea", def: "Testa com *10 anúncios seus*, sem cartão.", slide: 4 },
+      { k: "s4_cta", label: "CTA", def: "Chama no direct", slide: 4 },
+    ],
+    els: [
+      ...storyChrome,
+      { id: "s1_eyebrow", type: "eyebrow", field: "s1_eyebrow", slide: 1, x: 110, y: 640, size: 32 },
+      { id: "s1_title", type: "rich", field: "s1_title", slide: 1, x: 110, y: { after: "s1_eyebrow", gap: 30 }, maxW: 860, size: 108, lineH: 122 },
+      { id: "s2_kicker", type: "eyebrow", field: "s2_kicker", slide: 2, x: 110, y: 560, size: 32 },
+      { id: "s2_title", type: "rich", field: "s2_title", slide: 2, x: 110, y: { after: "s2_kicker", gap: 28 }, maxW: 860, size: 92, lineH: 106 },
+      { id: "s2_body", type: "rich", field: "s2_body", slide: 2, x: 110, y: { after: "s2_title", gap: 48 }, maxW: 860, size: 46, weight: 500, color: "soft", lineH: 64 },
+      { id: "s3_kicker", type: "eyebrow", field: "s3_kicker", slide: 3, x: 110, y: 560, size: 32 },
+      { id: "s3_title", type: "rich", field: "s3_title", slide: 3, x: 110, y: { after: "s3_kicker", gap: 28 }, maxW: 860, size: 92, lineH: 106 },
+      { id: "s3_body", type: "rich", field: "s3_body", slide: 3, x: 110, y: { after: "s3_title", gap: 48 }, maxW: 860, size: 46, weight: 500, color: "soft", lineH: 64 },
+      { id: "s4_title", type: "rich", field: "s4_title", slide: 4, x: 110, y: 700, maxW: 860, size: 100, lineH: 114 },
+      { id: "s4_cta", type: "pill", field: "s4_cta", slide: 4, x: 110, y: { after: "s4_title", gap: 80 }, size: 46 },
+    ],
+  },
+  {
+    id: "seq-passos", group: "storyseq", name: "Passo a passo", w: 1080, h: 1920, slides: 4,
+    fields: [
+      { k: "handle", label: "Rodapé (todos)", def: "@lever.ads" },
+      { k: "s1_eyebrow", label: "Kicker", def: "Guia rápido", slide: 1 },
+      { k: "s1_title", label: "Capa", type: "textarea", def: "Como escalar pra *várias contas* sem contratar ninguém", slide: 1 },
+      { k: "s2_title", label: "Passo 1 · título", def: "Conecte suas contas", slide: 2 },
+      { k: "s2_body", label: "Passo 1 · texto", type: "textarea", def: "Mercado Livre e Shopee, todas no mesmo painel. Uma vira a conta-mãe.", slide: 2 },
+      { k: "s3_title", label: "Passo 2 · título", def: "Clone os anúncios", slide: 3 },
+      { k: "s3_body", label: "Passo 2 · texto", type: "textarea", def: "Escolha os anúncios e o destino. Atributos, fotos e SKU vão junto, do jeito certo.", slide: 3 },
+      { k: "s4_title", label: "Passo 3 · título", def: "Deixe no automático", slide: 4 },
+      { k: "s4_body", label: "Passo 3 · texto", type: "textarea", def: "Anúncio novo na mãe replica nas filhas sozinho. Cresce sem crescer o time.", slide: 4 },
+      { k: "s4_cta", label: "CTA final", def: "Testa grátis · link na bio", slide: 4 },
+    ],
+    els: [
+      ...storyChrome,
+      { id: "s1_eyebrow", type: "eyebrow", field: "s1_eyebrow", slide: 1, x: 110, y: 640, size: 32 },
+      { id: "s1_title", type: "rich", field: "s1_title", slide: 1, x: 110, y: { after: "s1_eyebrow", gap: 30 }, maxW: 860, size: 104, lineH: 118 },
+      { id: "s2_num", type: "rich", text: "01", slide: 2, x: 110, y: 500, maxW: 860, size: 230, color: "accent", lineH: 240 },
+      { id: "s2_title", type: "rich", field: "s2_title", slide: 2, x: 110, y: { after: "s2_num", gap: 50 }, maxW: 860, size: 84, lineH: 96 },
+      { id: "s2_body", type: "rich", field: "s2_body", slide: 2, x: 110, y: { after: "s2_title", gap: 44 }, maxW: 860, size: 46, weight: 500, color: "soft", lineH: 64 },
+      { id: "s3_num", type: "rich", text: "02", slide: 3, x: 110, y: 500, maxW: 860, size: 230, color: "accent", lineH: 240 },
+      { id: "s3_title", type: "rich", field: "s3_title", slide: 3, x: 110, y: { after: "s3_num", gap: 50 }, maxW: 860, size: 84, lineH: 96 },
+      { id: "s3_body", type: "rich", field: "s3_body", slide: 3, x: 110, y: { after: "s3_title", gap: 44 }, maxW: 860, size: 46, weight: 500, color: "soft", lineH: 64 },
+      { id: "s4_num", type: "rich", text: "03", slide: 4, x: 110, y: 470, maxW: 860, size: 230, color: "accent", lineH: 240 },
+      { id: "s4_title", type: "rich", field: "s4_title", slide: 4, x: 110, y: { after: "s4_num", gap: 50 }, maxW: 860, size: 84, lineH: 96 },
+      { id: "s4_body", type: "rich", field: "s4_body", slide: 4, x: 110, y: { after: "s4_title", gap: 44 }, maxW: 860, size: 46, weight: 500, color: "soft", lineH: 64 },
+      { id: "s4_cta", type: "pill", field: "s4_cta", slide: 4, x: 110, y: { after: "s4_body", gap: 56 }, size: 42 },
+    ],
+  },
+  {
+    id: "seq-case", group: "storyseq", name: "Case", w: 1080, h: 1920, slides: 4, mode: ["dark", "light", "dark", "dark"],
+    fields: [
+      { k: "handle", label: "Rodapé (todos)", def: "@lever.ads" },
+      { k: "s1_eyebrow", label: "Kicker", def: "Case real", slide: 1 },
+      { k: "s1_title", label: "Capa", type: "textarea", def: "A conta nova que fez *+105%* já no primeiro mês", slide: 1 },
+      { k: "s2_stat1", label: "Número 1", def: "+105%", slide: 2 },
+      { k: "s2_label1", label: "Legenda 1", def: "vendas brutas em 1 mês", slide: 2 },
+      { k: "s2_stat2", label: "Número 2", def: "+98,8%", slide: 2 },
+      { k: "s2_label2", label: "Legenda 2", def: "pedidos", slide: 2 },
+      { k: "s2_stat3", label: "Número 3", def: "+115%", slide: 2 },
+      { k: "s2_label3", label: "Legenda 3", def: "visitas", slide: 2 },
+      { k: "s3_kicker", label: "Kicker", def: "Como", slide: 3 },
+      { k: "s3_title", label: "Título", type: "textarea", def: "Clonamos a conta-mãe inteira pra conta nova", slide: 3 },
+      { k: "s3_body", label: "Texto", type: "textarea", def: "Mesmos anúncios, mais exposição. Números reais, direto do painel do Mercado Livre.", slide: 3 },
+      { k: "s4_title", label: "Fechamento", type: "textarea", def: "Sua próxima conta pode ser *essa*.", slide: 4 },
+      { k: "s4_cta", label: "CTA", def: "Chama no direct", slide: 4 },
+    ],
+    els: [
+      ...storyChrome,
+      { id: "s1_eyebrow", type: "eyebrow", field: "s1_eyebrow", slide: 1, x: 110, y: 640, size: 32 },
+      { id: "s1_title", type: "rich", field: "s1_title", slide: 1, x: 110, y: { after: "s1_eyebrow", gap: 30 }, maxW: 860, size: 104, lineH: 118 },
+      { id: "s2_stat1", type: "rich", field: "s2_stat1", slide: 2, x: 110, y: 470, maxW: 860, size: 150, color: "accent", hl: "fg", lineH: 160 },
+      { id: "s2_label1", type: "rich", field: "s2_label1", slide: 2, x: 110, y: { after: "s2_stat1", gap: 10 }, maxW: 860, size: 46, weight: 600, color: "soft", lineH: 56 },
+      { id: "s2_stat2", type: "rich", field: "s2_stat2", slide: 2, x: 110, y: { after: "s2_label1", gap: 70 }, maxW: 860, size: 150, color: "accent", hl: "fg", lineH: 160 },
+      { id: "s2_label2", type: "rich", field: "s2_label2", slide: 2, x: 110, y: { after: "s2_stat2", gap: 10 }, maxW: 860, size: 46, weight: 600, color: "soft", lineH: 56 },
+      { id: "s2_stat3", type: "rich", field: "s2_stat3", slide: 2, x: 110, y: { after: "s2_label2", gap: 70 }, maxW: 860, size: 150, color: "accent", hl: "fg", lineH: 160 },
+      { id: "s2_label3", type: "rich", field: "s2_label3", slide: 2, x: 110, y: { after: "s2_stat3", gap: 10 }, maxW: 860, size: 46, weight: 600, color: "soft", lineH: 56 },
+      { id: "s3_kicker", type: "eyebrow", field: "s3_kicker", slide: 3, x: 110, y: 560, size: 32 },
+      { id: "s3_title", type: "rich", field: "s3_title", slide: 3, x: 110, y: { after: "s3_kicker", gap: 28 }, maxW: 860, size: 92, lineH: 106 },
+      { id: "s3_body", type: "rich", field: "s3_body", slide: 3, x: 110, y: { after: "s3_title", gap: 48 }, maxW: 860, size: 46, weight: 500, color: "soft", lineH: 64 },
+      { id: "s4_title", type: "rich", field: "s4_title", slide: 4, x: 110, y: 700, maxW: 860, size: 100, lineH: 114 },
+      { id: "s4_cta", type: "pill", field: "s4_cta", slide: 4, x: 110, y: { after: "s4_title", gap: 80 }, size: 46 },
+    ],
+  },
 ];
 
 const GROUPS = [
   ["story", "Stories · 1080×1920"],
+  ["storyseq", "Sequência de stories · 4×"],
   ["post", "Post fixo · 1080×1350"],
   ["car", "Carrossel · 4 slides"],
 ];
@@ -853,7 +980,7 @@ const photoSlotsOf = (tpl) => tpl.els.filter((e) => e.type === "photo");
 // puxa os PNGs finais via apiRef.current.getBlobs() na hora de publicar.
 const ZOOMS = [1, 1.35, 1.75];
 
-function CreativeEditor({ groups = ["story", "post", "car"], zoomIndex = 1, apiRef }) {
+function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomIndex = 1, apiRef }) {
   const allowed = TEMPLATES.filter((t) => groups.includes(t.group));
   const [tplId, setTplId] = useS(allowed[0]?.id);
   const tpl = allowed.find((t) => t.id === tplId) || allowed[0] || TEMPLATES[0];
