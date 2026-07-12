@@ -259,6 +259,34 @@ function LeadDetail({ lead: initial, onClose }) {
                     mandar no Whats ↗
                   </a>
                 )}
+                {lead.callUrl.includes("meet.google.com") && window.SEED?.CONFIG?.ai?.configured && (
+                  <button className="mono" style={{ fontSize: 11, flexShrink: 0, color: "var(--accent)" }}
+                    title="Buscar a transcrição da call no Google e gerar o resumo estratégico na timeline (dores, objeções, follow-up)"
+                    onClick={async (ev) => {
+                      const btn = ev.currentTarget;
+                      btn.disabled = true; btn.textContent = "resumindo…";
+                      try {
+                        let r = await api.callSummary(lead.id);
+                        if (!r.ok && r.reason === "already_done" && window.confirm("Essa call já tem resumo na timeline. Gerar de novo?")) {
+                          r = await api.callSummary(lead.id, true);
+                        }
+                        if (r.ok) {
+                          refetchTimeline?.();
+                          const f = r.summary?.followup;
+                          window.alert(`Resumo pronto na timeline ✓ Temperatura: ${r.summary?.temperatura || "?"}.${f?.quando ? " Próximo toque sugerido já foi agendado no GPS." : ""}`);
+                        } else if (r.reason === "transcript_not_ready") {
+                          window.alert("A transcrição ainda não está pronta no Google. A call já terminou? Gravação e transcrição estavam ligadas? Tenta de novo em alguns minutos (o cockpit também tenta sozinho a cada 10 min).");
+                        } else if (r.reason === "not_connected") {
+                          window.alert("Google não conectado. Ajustes → Integrações → Conectar Google.");
+                        } else if (r.reason) {
+                          window.alert(`Não deu: ${r.reason}`);
+                        }
+                      } catch (e) { window.alert(e.message || "Falha ao resumir a call."); }
+                      finally { btn.disabled = false; btn.textContent = "✨ resumir call"; }
+                    }}>
+                    ✨ resumir call
+                  </button>
+                )}
                 <button className="mono dim" style={{ fontSize: 11, flexShrink: 0 }}
                   title={lead.callUrl.includes("meet.google.com") ? "Criar OUTRO evento com Meet na agenda" : "Gerar um link novo (o antigo deixa de valer pra você)"}
                   onClick={async () => {

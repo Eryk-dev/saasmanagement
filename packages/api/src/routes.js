@@ -18,6 +18,7 @@ import { registerMpRoutes, mirrorSubscriptionToMp } from "./routes.mp.js";
 import { mp as defaultMpClient } from "./mp.js";
 import { registerMarketingRoutes } from "./routes.marketing.js";
 import { registerGoogleRoutes } from "./routes.google.js";
+import { makeAnthropic } from "./anthropic.js";
 import { registerMetricsRoutes } from "./routes.metrics.js";
 import { meta as defaultMetaClient } from "./meta.js";
 import { metaCapi as defaultMetaCapi } from "./meta-capi.js";
@@ -188,7 +189,14 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Usuários do time: login/logout/me + gestão mínima (rotas dedicadas).
   registerAuthRoutes(app, repo);
   // Google Meet: conectar conta (OAuth) + criar call na agenda do closer.
-  const googleClient = registerGoogleRoutes(app, repo, { google: opts.google });
+  // Claude resume as calls (transcrição → timeline) quando há ANTHROPIC_API_KEY.
+  const anthropicClient = opts.anthropic || makeAnthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY || "",
+    model: process.env.ANTHROPIC_MODEL || "",
+  });
+  const googleClient = registerGoogleRoutes(app, repo, { google: opts.google, anthropic: anthropicClient });
+  // Poller de resumos (index.js) usa os MESMOS clients das rotas.
+  if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, anthropic: anthropicClient });
 
   // ── Tempo real ─────────────────────────────────────────────────────────
   // Toda escrita no repo (db.js) incrementa um contador global (changes.js).
@@ -262,6 +270,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         mp: { configured: mpClient.configured() },
         meta: { configured: metaClient.configured() },
         google: { configured: googleClient.configured(), connected: await googleClient.connected(), account: await googleClient.account() },
+        ai: { configured: anthropicClient.configured() },
         discord: { configured: discordClient.configured() },
       },
     };

@@ -6,13 +6,15 @@ import { randomUUID } from "node:crypto";
 import { makeGoogle } from "./google.js";
 import { publicBase } from "./routes.js";
 import { logActivity } from "./lead-flow.js";
+import { makeCallSummarizer } from "./call-summaries.js";
 
-export function registerGoogleRoutes(app, repo, { google } = {}) {
+export function registerGoogleRoutes(app, repo, { google, anthropic } = {}) {
   const client = google || makeGoogle({
     clientId: process.env.GOOGLE_CLIENT_ID || "",
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
     repo,
   });
+  const summarizer = anthropic ? makeCallSummarizer({ repo, google: client, anthropic, log: app.log }) : null;
 
   // Anti-CSRF do callback (rota aberta): só aceita state emitido por aqui,
   // com validade curta. Memória do processo basta (fluxo de segundos).
@@ -109,7 +111,12 @@ export function registerGoogleRoutes(app, repo, { google } = {}) {
         try { meetConfig = await client.configureSpace(code); }
         catch (err) { req.log.warn({ err: err.message }, "Google: configuração da sala falhou (Meet criado mesmo assim)"); }
       }
-      await repo.update("leads", lead.id, { callUrl: meetUrl, meetEventId: eventId, ...(guestsToSave ? { meetGuests: guestsToSave } : {}) });
+      // Horário REAL da call em ISO UTC (callAt é hora de Brasília sem fuso) —
+      // é a referência do poller que resume a call depois que ela termina.
+      const meetScheduledAt = lead.callAt
+        ? new Date(`${lead.callAt}${lead.callAt.length === 16 ? ":00" : ""}-03:00`).toISOString()
+        : new Date(Date.now() + 30 * 60_000).toISOString();
+      await repo.update("leads", lead.id, { callUrl: meetUrl, meetEventId: eventId, meetScheduledAt, ...(guestsToSave ? { meetGuests: guestsToSave } : {}) });
       try {
         await logActivity(repo, {
           saas: lead.saas || "", lead: lead.id, type: "system",
@@ -120,6 +127,20 @@ export function registerGoogleRoutes(app, repo, { google } = {}) {
       return { ok: true, callUrl: meetUrl, eventId, htmlLink, attendees, meetConfig };
     } catch (err) {
       req.log.warn({ err: err.message, lead: lead.id }, "Google: criação do Meet falhou");
+      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+    }
+  });
+
+  // Resumo estratégico da call (transcrição do Meet → Claude → timeline).
+  // force = re-resumir mesmo já tendo resumo desta call.
+  app.post("/api/leads/:id/call-summary", async (req, reply) => {
+    if (!summarizer) return reply.code(503).send({ error: "IA não configurada — defina ANTHROPIC_API_KEY no servidor" });
+    try {
+      const r = await summarizer.summarizeLead(req.params.id, { force: !!req.body?.force });
+      if (!r.ok && r.reason === "not_found") return reply.code(404).send({ error: "Not found" });
+      return r;
+    } catch (err) {
+      req.log.warn({ err: err.message, lead: req.params.id }, "resumo de call falhou");
       return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
     }
   });
