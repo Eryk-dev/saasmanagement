@@ -13,7 +13,12 @@ import { stageKind } from "../lib/funnel.js";
 const { useState, useEffect } = React;
 
 const DAY = 86_400_000;
-const dayStr = (t) => new Date(t).toISOString().slice(0, 10);
+// Dia LOCAL do navegador (Brasil), não UTC — às 21h de Brasília o toISOString
+// já vira o dia seguinte e o filtro "hoje" apontava pra um dia sem dados.
+const dayStr = (t) => {
+  const d = new Date(t);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 const shortDay = (iso) => new Date(iso + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "");
 
 // Dinheiro COM CENTAVOS (pedido do Leo, padrão do Gerenciador da Meta) — vale

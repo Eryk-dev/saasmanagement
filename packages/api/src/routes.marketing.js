@@ -16,7 +16,11 @@ import { stagePassCounts } from "./routes.funnel-metrics.js";
 import { isWon } from "./stages.js";
 
 const DAY_MS = 86400000;
-const dayStr = (d) => new Date(d).toISOString().slice(0, 10);
+// Dia no FUSO DO NEGÓCIO (America/Sao_Paulo, UTC-3 fixo — o Brasil não tem
+// horário de verão desde 2019). Sem isso, lead criado às 22h de Brasília caía
+// no dia UTC seguinte e sumia do filtro "hoje"; os insights da Meta já vêm
+// datados no fuso da conta de anúncio (BRT), então agora tudo casa.
+const dayStr = (d) => new Date(new Date(d).getTime() - 3 * 3600e3).toISOString().slice(0, 10);
 
 // UTMs dos criativos criados pelo cockpit — a MESMA convenção documentada acima,
 // via parâmetros dinâmicos da Meta (resolvidos na entrega do anúncio).
