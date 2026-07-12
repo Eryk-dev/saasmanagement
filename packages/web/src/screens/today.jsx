@@ -1,12 +1,13 @@
 import React from "react";
 import { Avatar, EmptyState } from "../atoms.jsx";
 import { PageHead, Pill } from "../components/viz.jsx";
-import { waLink, leadTier } from "../lib/ui.js";
+import { waLink, leadTier, leadScoreLabel } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf } from "../lib/funnel.js";
 import { allUsers, currentUser, displayName, userById, usersByRole } from "../lib/users.js";
 import { useActiveSaas } from "../lib/workspace.js";
+import { useAttribution, leadPain } from "../lib/pains.js";
 import { resolveScript, scriptTokens, scriptSegments, scriptChecklist } from "../lib/scripts.js";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
@@ -424,6 +425,43 @@ function QueueRow({ item, seq, block, saasCfg, stageMeta, onScript, onClaim }) {
 // Rótulo curto dos tipos de activity nos "últimos contatos" do resumo.
 const ACT_LABELS = { whatsapp: "whatsapp", call: "ligação", email: "e-mail", meeting: "reunião", note: "nota", stage: "mudou de etapa", system: "sistema" };
 
+// Resumo compilado do cliente pro roteiro: a dor do anúncio (gancho da
+// conversa), os fatos relevantes (potencial, temperatura, ICP, prioridade,
+// faixa, etapa, toques, valor, origem, responsáveis, nota) e a atribuição (de
+// onde o lead veio). Só entra o que está preenchido. `cat` = catálogo de
+// atribuição (id → nome de campanha/conjunto/anúncio) já resolvido no componente.
+export function clientSummary(saasCfg, lead, stage, cat) {
+  const tier = leadTier(lead);
+  const daysInStage = lead.stageSince || lead.createdAt
+    ? Math.max(0, Math.floor((Date.now() - new Date(lead.stageSince || lead.createdAt).getTime()) / DAY)) : null;
+  const cad = cadenceOf(saasCfg, stage);
+  const hasScore = lead.score != null && lead.score !== "";
+  const icpPct = (lead.icp != null && lead.icp !== "") ? `${Math.round(Number(lead.icp) * 100)}%` : null;
+  const utm = lead.utm || {};
+  const money = (v) => (typeof window !== "undefined" && window.fmt?.money?.(v)) || v;
+  const facts = [
+    ["Potencial", tier.grade ? `${tier.grade} · ${tier.label}` : null],
+    ["Temperatura", hasScore ? `${leadScoreLabel(lead.score)} · ${lead.score}` : null],
+    ["ICP (fit)", icpPct],
+    ["Prioridade", lead.priority],
+    ["Faixa de faturamento", lead.value],
+    ["Etapa", `${stage}${daysInStage != null ? ` · ${daysInStage}d nela` : ""}`],
+    ["Toques na etapa", Number(cad.maxAttempts) ? `${Number(lead.stageAttempts) || 0} de ${cad.maxAttempts}` : (Number(lead.stageAttempts) || 0) || null],
+    ["Valor", lead.amount ? money(lead.amount) : null],
+    ["Origem", lead.source],
+    ["SDR / closer", [lead.owner && displayName(lead.owner), lead.closer && displayName(lead.closer)].filter(Boolean).join(" / ") || null],
+    ["Próximo passo (nota)", lead.nextActionNote],
+  ].filter(([, v]) => v != null && v !== "");
+  const attribution = [
+    ["Campanha", cat?.campaigns?.[utm.campaign]?.name || utm.campaign],
+    ["Conjunto", cat?.adsets?.[utm.term]?.name || utm.term],
+    ["Anúncio", cat?.ads?.[utm.content]?.name || utm.content],
+    ["Origem / mídia", [utm.source, utm.medium].filter(Boolean).join(" / ") || null],
+    ["Variante da headline", lead.formVariant ? `versão ${lead.formVariant}` : null],
+  ].filter(([, v]) => v != null && v !== "");
+  return { pain: leadPain(lead, cat, saasCfg?.painMap), facts, attribution };
+}
+
 // Painel do roteiro em DUAS COLUNAS lado a lado (sem abas): CLIENTE à esquerda
 // (resumo da situação + últimos contatos + dados EDITÁVEIS na ordem da
 // conversa) e ROTEIRO à direita (postura, objetivo e o passo a passo com a
@@ -443,6 +481,10 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onClose, onTouch, 
   const checklist = scriptChecklist(saasCfg, l);
   const wa = waLink(l.phone);
   const tier = leadTier(l);
+  // Atribuição + dor do criativo (mesmo catálogo do drawer): de onde o lead veio
+  // e qual dor o anúncio prometeu resolver — o gancho pra conduzir a conversa.
+  const cat = useAttribution(l.saas, !!l.utm);
+  const { pain, facts, attribution } = clientSummary(saasCfg, l, item.stage, cat);
 
   // Últimos contatos da timeline — contexto de quem já falou com esse lead.
   const [acts, setActs] = useS(null);
@@ -469,20 +511,6 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onClose, onTouch, 
       </span>
     );
   });
-
-  // Situação compilada do cliente — só fatos preenchidos.
-  const daysInStage = l.stageSince || l.createdAt
-    ? Math.max(0, Math.floor((Date.now() - new Date(l.stageSince || l.createdAt).getTime()) / DAY)) : null;
-  const cad = cadenceOf(saasCfg, item.stage);
-  const facts = [
-    ["Potencial", tier.grade ? `${tier.grade} · ${tier.label}` : null],
-    ["Etapa", `${item.stage}${daysInStage != null ? ` · ${daysInStage}d nela` : ""}`],
-    ["Toques na etapa", Number(cad.maxAttempts) ? `${Number(l.stageAttempts) || 0} de ${cad.maxAttempts}` : (Number(l.stageAttempts) || 0) || null],
-    ["Valor", l.amount ? window.fmt?.money?.(l.amount) || l.amount : null],
-    ["Origem", l.source],
-    ["SDR / closer", [l.owner && displayName(l.owner), l.closer && displayName(l.closer)].filter(Boolean).join(" / ") || null],
-    ["Próximo passo (nota)", l.nextActionNote],
-  ].filter(([, v]) => v != null && v !== "");
 
   const fmtWhen = (iso) => {
     const d = new Date(iso);
@@ -527,6 +555,14 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onClose, onTouch, 
             <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Cliente</div>
               <div style={box}>
                 <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Resumo do cliente</div>
+                {/* Dor do anúncio em destaque: o gancho pra conversa (o problema
+                    que trouxe o lead até aqui). Só quando veio de criativo mapeado. */}
+                {pain && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 9px", marginBottom: 8, borderRadius: "var(--r-2)", background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
+                    <span className="mono" style={{ fontSize: 9.5, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", flexShrink: 0 }}>dor do anúncio</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 600, minWidth: 0 }}>[{pain.code}] {pain.label}</span>
+                  </div>
+                )}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "4px 14px" }}>
                   {facts.map(([k, v]) => (
                     <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, padding: "3px 0", borderBottom: "1px solid var(--line-1)" }}>
@@ -550,6 +586,18 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onClose, onTouch, 
                   ))}
                 </div>
               </div>
+
+            {attribution.length > 0 && (
+              <div style={box}>
+                <div className="mono" style={{ ...kicker, marginBottom: 6 }}>De onde veio · atribuição do anúncio</div>
+                {attribution.map(([k, v]) => (
+                  <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11.5, padding: "3px 0", borderBottom: "1px solid var(--line-1)" }}>
+                    <span className="mono dim" style={{ flexShrink: 0, fontSize: 10.5 }}>{k}</span>
+                    <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div>
               <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Dados do lead · na ordem da conversa · edite ao confirmar</div>
