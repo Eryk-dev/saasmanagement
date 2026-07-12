@@ -10,6 +10,7 @@ import { ExpensesScreen } from "./screens/expenses.jsx";
 import { PipelineScreen } from "./screens/pipeline.jsx";
 import { FormsScreen } from "./screens/forms.jsx";
 import { ProposalsScreen } from "./screens/proposals.jsx";
+import { CreativeScreen } from "./screens/creative.jsx";
 import { CustomersScreen } from "./screens/customers.jsx";
 import { TasksScreen } from "./screens/tasks.jsx";
 import { SettingsScreen } from "./screens/settings.jsx";
@@ -122,6 +123,7 @@ function App() {
     expenses:    ["Custos"],
     forms:       ["Ferramentas", "Formulários"],
     proposals:   ["Ferramentas", "Propostas"],
+    creative:    ["Ferramentas", "Estáticos"],
     subscriptions: ["Clientes", "Assinaturas"], // rota antiga → aba dentro de Clientes
     tasks:       ["Ferramentas", "Tarefas"],
     settings:    ["Ajustes"],
@@ -175,6 +177,7 @@ function App() {
           {scr === "expenses"    && <ExpensesScreen />}
           {scr === "forms"       && <FormsScreen saasId={params.saas} />}
           {scr === "proposals"   && <ProposalsScreen saasId={params.saas} />}
+          {scr === "creative"    && <CreativeScreen />}
           {scr === "subscriptions" && <CustomersScreen initialTab="billing" />}
           {scr === "tasks"       && <TasksScreen />}
           {scr === "settings"    && <SettingsScreen saasId={params.saas} />}
@@ -240,6 +243,7 @@ function subtitleFor(screen, params) {
     expenses:    "",
     forms:       "formulários de captação",
     proposals:   "templates por marca",
+    creative:    "stories, feed e carrossel · PNG pronto pra postar",
     subscriptions: "a receita do cliente deriva daqui",
     tasks:       "kanban do time · arraste para mover",
     settings:    "funil, campos e integrações",
