@@ -31,6 +31,7 @@ export function scriptTokens(lead, saasCfg) {
     nicho: answerLabel(saasCfg, lead, "niche") || (lead?.niche || ""),
     contas: answerLabel(saasCfg, lead, "accounts"),
     anuncios: answerLabel(saasCfg, lead, "listings"),
+    expansao: answerLabel(saasCfg, lead, "plan_expand"),
     equipe: answerLabel(saasCfg, lead, "staff"),
     email: lead?.email || "",
     produto: saasCfg?.name || "",
@@ -48,6 +49,7 @@ const GAP_HINTS = {
   nicho: "perguntar o nicho",
   contas: "perguntar quantas contas",
   anuncios: "perguntar o volume de anúncios",
+  expansao: "perguntar sobre abrir contas",
   equipe: "perguntar o time de marketing",
   email: "pedir o e-mail",
   produto: "produto",
@@ -82,12 +84,20 @@ export function scriptSegments(text, tokens) {
 export const DEFAULT_SCRIPTS = {
   novo: {
     titulo: "1º ato · novo lead (prioridade máxima)",
-    resumo: "O lead acabou de entrar: é o topo da fila, sempre (cadastro de fim de semana se trabalha na segunda, nos primeiros horários). A sessão é uma só: ligue 2 vezes; não atendeu, deixe o WhatsApp de apresentação. Tom leve, sorriso na voz. Registrou o toque, o card segue sozinho pra Qualificando e volta na sua fila amanhã.",
-    objetivo: "Falar com o lead agora (e emendar a qualificação) ou deixar a apresentação no WhatsApp pedindo o melhor horário.",
+    resumo: "O lead acabou de entrar: é o topo da fila, sempre (cadastro de fim de semana se trabalha na segunda, nos primeiros horários). A sessão é uma só: ligue 2 vezes; não atendeu, deixe o WhatsApp de apresentação. Tom leve, sorriso na voz. Atendeu? Siga a sequência de perguntas do passo a passo, confirmando e corrigindo os campos ao lado. Registrou o toque, o card segue sozinho pra Qualificando.",
+    objetivo: "Conversa breve de confirmação: dados completos na ordem (nicho, empresa, contas, anúncios, expansão, time, e-mail por último) e call agendada. Não atendeu? Apresentação no WhatsApp pedindo o melhor horário.",
     passos: [
-      { t: "Ligar (2 tentativas)", fala: "Olá {{nome}}, bom dia! Tudo bom? Vi que você se cadastrou no nosso formulário pra conhecer nossa ferramenta de clone de anúncios, você confirma?", dica: "Não atendeu? Liga de novo em seguida. Caiu na caixa duas vezes, vai pro passo 3." },
-      { t: "Atendeu: emenda a qualificação", fala: "Que bom que te achei! Deixa eu confirmar rapidinho os dados do seu cadastro com você.", dica: "Segue direto o roteiro de Qualificando: nicho, contas, anúncios, empresa, time de marketing e e-mail. Saiu com call marcada, melhor ainda." },
+      { t: "Identificação (ligar 2 vezes)", fala: "Olá {{nome}}, tudo bom? Sou {{eu}}, da {{produto}}. Recebi o seu cadastro com interesse na nossa ferramenta de clonar anúncios, você confirma pra mim?", dica: "Não atendeu? Liga de novo em seguida. Caiu na caixa duas vezes, manda o WhatsApp do passo 2 e registra o toque." },
       { t: "Não atendeu: WhatsApp de apresentação", fala: "Olá {{nome}}, tudo bem? Aqui é {{eu}}, da plataforma {{produto}}. Recebemos o seu cadastro dizendo estar interessado no nosso serviço de clonagem de anúncios. Tem algum horário em que a gente possa te retornar pra conversar sobre?", dica: "Depois registra o toque: o card vai pra Qualificando e o GPS marca a retomada pra amanhã." },
+      { t: "Atendeu: transição", fala: "Que bom! Queria confirmar só algumas informações com você, essa primeira conversa é bem breve." },
+      { t: "Nicho", fala: "Vi que você preencheu que trabalha com {{nicho}}, é isso mesmo?" },
+      { t: "Nome da empresa", fala: "Legal! E qual o nome da sua loja, da sua empresa?", dica: "Preenche no campo ao lado. Abrir a loja na hora cria assunto e arma o closer pra call." },
+      { t: "Contas nos marketplaces", fala: "Hoje você opera quantas contas dentro dos marketplaces? No formulário você marcou {{contas}}." },
+      { t: "Anúncios na maior conta", fala: "E na sua maior conta, quantos anúncios publicados você tem? Você indicou {{anuncios}}." },
+      { t: "Abrir mais contas", fala: "E você pretende abrir mais contas nos próximos meses?", dica: "Resposta do formulário: {{expansao}}." },
+      { t: "Time de marketing", fala: "Quantas pessoas você tem hoje no time de marketing, cuidando dos anúncios?" },
+      { t: "E-mail, por último", fala: "Perfeito, já confirmei tudo por aqui. Me passa seu melhor e-mail? É pra onde vai o convite da nossa call.", dica: "Preenche no campo ao lado; o convite do Meet vai automático pra ele." },
+      { t: "Agendar a call", fala: "Fechado {{nome}}! Vou te colocar com nosso especialista pra você ver a ferramenta clonando anúncio de verdade na sua operação. Fica melhor amanhã de manhã ou no fim da tarde?", dica: "Sempre 2 opções de horário. Marcou? Registra em Call agendada no lead e gera o link da videochamada." },
     ],
   },
   contato: {
@@ -104,8 +114,8 @@ export const DEFAULT_SCRIPTS = {
     resumo: "Retomada do dia: ligue 2 vezes; sem resposta, manda o WhatsApp da sessão. Atendeu? Roda a qualificação completa e sai com a call marcada. O processo inteiro são 3 sessões (1º ato + 2 retomadas); acabou a terceira sem retorno, o card vai pra Nutrição.",
     objetivo: "Qualificação completa (formulário confirmado + empresa, time de marketing e e-mail) e call agendada com o closer.",
     passos: [
-      { t: "Atendeu: confirmar o formulário", fala: "Perfeito {{nome}}! Vi que você trabalha com {{nicho}}, opera {{contas}} nos marketplaces e tem uns {{anuncios}} anúncios na maior conta, confere?", dica: "Mudou algo? Corrige no cadastro na hora." },
-      { t: "Completar o cadastro", fala: "Me conta: qual o nome da sua empresa, quantas pessoas você tem no time de marketing e qual seu melhor e-mail? Te mando o convite da call por ele.", dica: "Grava empresa, equipe e e-mail no lead: o convite do Meet vai pro e-mail e o closer entra na call armado." },
+      { t: "Atendeu: identificação", fala: "Oi {{nome}}, tudo bom? Sou {{eu}}, da {{produto}}. A gente se falou sobre o seu interesse na clonagem de anúncios. Consegue falar rapidinho agora?" },
+      { t: "Rodar a sequência de dados", fala: "Deixa eu confirmar o que tenho: nicho de {{nicho}}, loja {{empresa}}, {{contas}} nos marketplaces e uns {{anuncios}} anúncios na maior conta, confere?", dica: "Siga a ordem dos campos ao lado e complete o que faltar: expansão ({{expansao}}), time de marketing ({{equipe}}) e o e-mail por último." },
       { t: "Agendar a call", fala: "Fechado! Vou te colocar com nosso especialista pra você ver a ferramenta clonando anúncio de verdade na sua operação. Fica melhor amanhã de manhã ou no fim da tarde?", dica: "Sempre 2 opções de horário. Marcou? Registra em Call agendada e gera o link da videochamada." },
       { t: "Sessão 2, sem resposta (WhatsApp)", fala: "Oi, tudo bem? Estou falando com {{nome_completo}}? Sou {{eu}}, da plataforma {{produto}}, sobre o seu cadastro de interesse na clonagem de anúncios." },
       { t: "Sessão 3, última (WhatsApp)", fala: "Oi {{nome}}! A gente entende que às vezes o momento não é o ideal. Você gostaria de conhecer a plataforma {{produto}} ou podemos finalizar o seu atendimento por aqui?", dica: "Sem retorno até o fim do dia: mover o card pra Nutrição. O GPS devolve ele pra fila em 20 dias, num dia útil." },
@@ -213,15 +223,35 @@ export function resolveScript(saasCfg, lead) {
   return base;
 }
 
-// Checklist de dados do lead pro painel do roteiro (o que confirmar na ligação).
-// Cobre as perguntas de qualificação do produto + empresa/loja + e-mail (o
-// convite da call do closer vai por ele).
+// Checklist de dados do lead pro painel do roteiro, NA ORDEM DA CONVERSA que o
+// Leo definiu: nicho → empresa → contas → anúncios → expansão → time de
+// marketing → e-mail por último (quando já está tudo confirmado). Cada item sai
+// com type/options pro painel renderizar o campo EDITÁVEL (select com as opções
+// do formulário; texto onde é livre). `key` é o campo do lead a ser gravado.
+const CHECKLIST_ORDER = ["niche", "company", "accounts", "listings", "plan_expand", "staff"];
+
 export function scriptChecklist(saasCfg, lead) {
+  const qs = saasCfg?.leadQuestions || [];
+  const byKey = Object.fromEntries(qs.map((q) => [q.key, q]));
+  const fromQuestion = (q) => ({
+    key: q.key, label: q.label,
+    type: (q.options || []).length ? "select" : "text",
+    options: q.options || [],
+    value: answerLabel(saasCfg, lead, q.key),
+    raw: lead?.[q.key] ?? "",
+  });
   const items = [];
-  for (const q of saasCfg?.leadQuestions || []) {
-    items.push({ label: q.label, value: answerLabel(saasCfg, lead, q.key) });
+  const seen = new Set(["email"]);
+  for (const k of CHECKLIST_ORDER) {
+    seen.add(k);
+    if (k === "company") {
+      items.push({ key: "company", label: "Nome da loja / empresa", type: "text", options: [], value: lead?.company || "", raw: lead?.company || "" });
+    } else if (byKey[k]) {
+      items.push(fromQuestion(byKey[k]));
+    }
   }
-  items.push({ label: "Nome da loja / empresa", value: lead?.company || "" });
-  items.push({ label: "E-mail (convite da call)", value: lead?.email || "" });
+  // Perguntas extras do produto (fora da ordem canônica) entram antes do e-mail.
+  for (const q of qs) if (!seen.has(q.key)) items.push(fromQuestion(q));
+  items.push({ key: "email", label: "E-mail (convite da call) · por último", type: "text", options: [], value: lead?.email || "", raw: lead?.email || "" });
   return items;
 }

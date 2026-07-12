@@ -204,6 +204,12 @@ function TodayScreen({ onOpenLead }) {
     api.update("leads", item.l.id, { owner: ownerId }).catch((err) => console.warn("dono não salvo:", err.message));
   }
 
+  // Edição inline dos dados do lead (checklist do roteiro). Otimista.
+  function patchLead(leadId, patch) {
+    setLeads((prev) => prev.map((x) => x.id === leadId ? { ...x, ...patch } : x));
+    api.update("leads", leadId, patch).catch((err) => console.warn("lead não salvo:", err.message));
+  }
+
   const users = allUsers().filter((u) => !u.saas || u.saas === saasCfg?.id);
   const stageMeta = Object.fromEntries((saasCfg?.funnel || []).map((f) => [f.stage, f]));
   const dateLabel = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
@@ -292,6 +298,7 @@ function TodayScreen({ onOpenLead }) {
           item={scriptItem}
           saasCfg={saasCfg}
           hasNext={!!nextAfter(scriptItem)}
+          onPatch={patchLead}
           onClose={() => setScriptItem(null)}
           onTouch={() => { const nx = nextAfter(scriptItem); logTouch(scriptItem); setScriptItem(nx); }}
           onSkip={() => setScriptItem(nextAfter(scriptItem))}
@@ -415,12 +422,19 @@ function QueueRow({ item, seq, block, saasCfg, stageMeta, onOpen, onScript, onTo
 const ACT_LABELS = { whatsapp: "whatsapp", call: "ligação", email: "e-mail", meeting: "reunião", note: "nota", stage: "mudou de etapa", system: "sistema" };
 
 // Painel do roteiro em DUAS COLUNAS lado a lado (sem abas): CLIENTE à esquerda
-// (resumo da situação + últimos contatos + dados a confirmar) e ROTEIRO à
-// direita (postura, objetivo e o passo a passo com a fala pronta) — as duas
-// visões ao mesmo tempo. Em tela estreita as colunas empilham. "Toque e
-// próximo" mantém o operador em fluxo: registra e já abre o cliente seguinte.
-function ScriptPanel({ item, saasCfg, hasNext, onClose, onTouch, onSkip, onOpenLead }) {
-  const { l } = item;
+// (resumo da situação + últimos contatos + dados EDITÁVEIS na ordem da
+// conversa) e ROTEIRO à direita (postura, objetivo e o passo a passo com a
+// fala pronta). Em tela estreita as colunas empilham. "Toque e próximo"
+// mantém o operador em fluxo: registra e já abre o cliente seguinte.
+function ScriptPanel({ item, saasCfg, hasNext, onPatch, onClose, onTouch, onSkip, onOpenLead }) {
+  // Cópia local do lead: a edição inline dos campos reflete na hora aqui (fala
+  // interpolada + checklist) e persiste via onPatch (fila + API).
+  const [l, setL] = useS(item.l);
+  useE(() => { setL(item.l); }, [item.l.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  function patch(p) {
+    setL((prev) => ({ ...prev, ...p }));
+    onPatch && onPatch(item.l.id, p);
+  }
   const script = resolveScript(saasCfg, l);
   const tokens = scriptTokens(l, saasCfg);
   const checklist = scriptChecklist(saasCfg, l);
@@ -534,14 +548,27 @@ function ScriptPanel({ item, saasCfg, hasNext, onClose, onTouch, onSkip, onOpenL
               </div>
 
             <div>
-              <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Dados do lead · confirme o que estiver faltando</div>
-              {/* Empilhado (1 por linha): pergunta longa quebra, resposta fica à direita. */}
+              <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Dados do lead · na ordem da conversa · edite ao confirmar</div>
+              {/* Empilhado (1 por linha), CAMPO EDITÁVEL à direita: select com as
+                  opções do formulário; texto livre pra empresa/e-mail. Grava na hora. */}
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {checklist.map((c, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "6px 9px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.value ? "var(--bg-1)" : "var(--warn-soft)" }}>
+                {checklist.map((c) => (
+                  <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "5px 9px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.value ? "var(--bg-1)" : "var(--warn-soft)" }}>
                     <span style={{ color: c.value ? "var(--pos)" : "var(--warn)", flexShrink: 0, fontSize: 12 }}>{c.value ? "✓" : "○"}</span>
                     <span className="dim" style={{ flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.35 }}>{c.label}</span>
-                    <span style={{ flexShrink: 0, maxWidth: "45%", fontWeight: 500, textAlign: "right", overflowWrap: "anywhere" }}>{c.value || "perguntar"}</span>
+                    {c.type === "select" ? (
+                      <select value={c.raw || ""} onChange={(e) => patch({ [c.key]: e.target.value })}
+                        style={{ flexShrink: 0, maxWidth: "48%", height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12, fontWeight: 500 }}>
+                        <option value="">selecionar…</option>
+                        {c.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        {c.raw && !c.options.some((o) => o.value === c.raw) && <option value={c.raw}>{c.raw}</option>}
+                      </select>
+                    ) : (
+                      <input key={l.id + c.key} type="text" defaultValue={c.raw || ""} placeholder="preencher…"
+                        onBlur={(e) => { if (e.target.value !== (c.raw || "")) patch({ [c.key]: e.target.value }); }}
+                        onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                        style={{ flexShrink: 0, width: "48%", height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontWeight: 500 }} />
+                    )}
                   </div>
                 ))}
               </div>
@@ -574,7 +601,7 @@ function ScriptPanel({ item, saasCfg, hasNext, onClose, onTouch, onSkip, onOpenL
                       <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--fg-1)", borderLeft: "3px solid var(--accent-line)", paddingLeft: 10, whiteSpace: "pre-wrap" }}>
                         {renderFala(p.fala)}
                       </div>
-                      {p.dica && <div className="dim" style={{ fontSize: 10.5, marginTop: 2, paddingLeft: 13 }}>{p.dica}</div>}
+                      {p.dica && <div className="dim" style={{ fontSize: 10.5, marginTop: 2, paddingLeft: 13 }}>{renderFala(p.dica)}</div>}
                     </div>
                   </div>
                 ))}
