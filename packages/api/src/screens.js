@@ -15,7 +15,7 @@
 
 export const SCREEN_IDS = [
   "overview", "today", "pipeline", "customers", "metrics", "expenses",
-  "forms", "proposals", "tasks", "settings",
+  "forms", "proposals", "creative", "tasks", "settings",
 ];
 
 export const sanitizeScreens = (x) =>
