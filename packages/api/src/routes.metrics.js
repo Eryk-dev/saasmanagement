@@ -12,6 +12,7 @@
 
 import { annualized } from "./billing.js";
 import { aiCosts as defaultAiCosts } from "./ai-costs.js";
+import { isWon } from "./stages.js";
 
 const round2 = (n) => Math.round(n * 100) / 100;
 const monthOf = (iso) => String(iso || "").slice(0, 7);
@@ -68,12 +69,25 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts } = {}) {
     const applies = (e) => e.recurring
       ? String(e.month) <= month && (!e.endMonth || String(e.endMonth) >= month)
       : e.month === month;
+    // Custo PERCENTUAL (e.pct, ex.: checkout 12%, imposto): calculado mês a mês
+    // sobre os GANHOS do pipeline no mês (lead.amount dos leads que viraram
+    // Ganho, pelo carimbo stageSince) — a MESMA base do "Resultado do mês" da
+    // Visão geral, então Resultado = ganhos − custos fecha redondo.
+    const hasPct = expenses.some((e) => e.saas === product.id && Number(e.pct) > 0 && applies(e));
+    let wonBase = 0;
+    if (hasPct) {
+      const leads = await repo.list("leads");
+      wonBase = leads
+        .filter((l) => l.saas === product.id && isWon(product, l.stage) && monthOf(l.stageSince) === month)
+        .reduce((a, l) => a + (Number(l.amount) || 0), 0);
+    }
     const manual = expenses
       .filter((e) => e.saas === product.id && applies(e))
+      .map((e) => (Number(e.pct) > 0 ? { ...e, amount: round2((Number(e.pct) / 100) * wonBase) } : e))
       .sort((a, b) => (b.recurring === true) - (a.recurring === true) || String(a.category).localeCompare(String(b.category)));
     const manualTotal = round2(manual.reduce((a, e) => a + (Number(e.amount) || 0), 0));
     const total = round2(ads + (aiBRL || 0) + manualTotal);
-    return { month, ads, ai: aiBRL, aiUSD, usdBrl, manual, manualTotal, total };
+    return { month, ads, ai: aiBRL, aiUSD, usdBrl, manual, manualTotal, total, wonBase: hasPct ? round2(wonBase) : undefined };
   });
 
   app.get("/api/metrics/:saas", async (req, reply) => {
