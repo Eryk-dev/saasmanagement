@@ -55,7 +55,8 @@ test("submissão com utm grava sanitizado no lead e na submission", async () => 
 
 test("GET /api/marketing/:saas atribui leads e CPL real por utm_campaign (nome ou id)", async () => {
   const { app, repo } = await buildApp();
-  const today = new Date().toISOString().slice(0, 10);
+  // mesmo recorte de dia da rota: fuso do negócio (UTC-3), não UTC
+  const today = new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
   await repo.create("ad_insights", { id: "a1", saas: "leverads", campaignId: "c_1", campaignName: "Lookalike", date: today, spend: 300, impressions: 1000, clicks: 50, metaLeads: 9 });
   await repo.create("ad_insights", { id: "a2", saas: "leverads", campaignId: "c_2", campaignName: "Remarketing", date: today, spend: 100, impressions: 500, clicks: 20, metaLeads: 4 });
   const now = new Date().toISOString();
