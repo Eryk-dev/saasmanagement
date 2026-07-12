@@ -468,8 +468,10 @@ function KanbanColumn({ s, stage, meta, cards, highlight, phaseStart, onMove, on
   );
 }
 
-// Picker de responsável por fase: SDR (dono) na pré-venda, closer da call em
-// diante, integrador na entrega. Lê o time real (users + roles, Ajustes → Equipe).
+// Picker de responsável por fase: SDR (dono) na pré-venda; closer da call em
+// diante (campo closer); integrador na ENTREGA e no GANHO (campo integrator,
+// separado: o closer que fez a call fica preservado e aparece ao lado). Lê o
+// time real (users + roles, Ajustes → Equipe).
 function pickerFor(s, stage) {
   const k = stageKind(s, stage);
   const p = phaseOf(k);
@@ -478,20 +480,29 @@ function pickerFor(s, stage) {
     return opts.length ? { field: "owner", options: opts, hint: "SDR dono do lead" } : null;
   }
   if (p === "closer") {
+    // Definido o closer (quem fez/fará a call), só o nome dele fica no card.
     const opts = usersByRole("closer");
-    return opts.length ? { field: "closer", options: opts, hint: "closer responsável" } : null;
+    return opts.length ? { field: "closer", options: opts, hint: "closer responsável", solo: true } : null;
   }
-  if (p === "entrega") { // integração + acompanhamento (CS)
+  if (p === "entrega" || k === "ganho") { // integração + acompanhamento + pós-venda do ganho
     const opts = usersByRole("integrator");
-    return opts.length ? { field: "closer", options: opts, hint: k === "integracao" ? "quem faz a integração" : "responsável do CS" } : null;
+    const hint = k === "integracao" ? "quem faz a integração" : k === "ganho" ? "responsável do pós-venda" : "responsável do CS";
+    return opts.length ? { field: "integrator", options: opts, hint, solo: true, showCloser: true } : null;
   }
   return null;
 }
 
-function TeamPicker({ d, field, options, hint, onPatch }) {
+function TeamPicker({ d, field, options, hint, solo, onPatch }) {
+  // solo: com responsável definido, só o chip dele aparece (clique desmarca).
+  // Valor fora das opções (dado legado) ainda vira chip, pra dar como desmarcar.
+  let shown = options;
+  if (solo && d[field]) {
+    const hit = options.find((u) => u.id === d[field]);
+    shown = [hit || { id: d[field], name: displayName(d[field]) }];
+  }
   return (
     <span style={{ display: "inline-flex", gap: 3, marginLeft: "auto", flexShrink: 0 }}>
-      {options.map(u => {
+      {shown.map(u => {
         const on = d[field] === u.id;
         const tone = `oklch(0.55 0.13 ${userTone(u.id)})`;
         const short = (u.name || u.id).split(" ")[0].slice(0, 4);
@@ -510,6 +521,21 @@ function TeamPicker({ d, field, options, hint, onPatch }) {
         );
       })}
     </span>
+  );
+}
+
+// Chip informativo do closer que fechou (colunas de entrega/ganho): o dono da
+// venda continua à vista mesmo com a responsabilidade na mão do integrador.
+function CloserChip({ id }) {
+  if (!id) return null;
+  const tone = `oklch(0.55 0.13 ${userTone(id)})`;
+  return (
+    <span className="mono" title={`closer que fechou: ${displayName(id)}`} style={{
+      height: 18, padding: "0 7px", borderRadius: 9, display: "inline-flex", alignItems: "center",
+      fontSize: 10, fontWeight: 700, flexShrink: 0,
+      background: `color-mix(in srgb, ${tone} 16%, var(--bg-1))`,
+      color: tone, border: `1px dashed color-mix(in srgb, ${tone} 55%, var(--line-2))`,
+    }}>{displayName(id).split(" ")[0].slice(0, 4)}</span>
   );
 }
 
@@ -632,7 +658,8 @@ function LeadCard({ d, s, stale, currentStage, onDragStart, selected, onSelect, 
       {(Number(cadenceOf(saasCfg, currentStage).maxAttempts) > 0 || picker) && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7 }}>
           <AttemptSlots d={d} s={saasCfg} stage={currentStage} onLogTouch={onLogTouch} />
-          {picker && <TeamPicker d={d} field={picker.field} options={picker.options} hint={picker.hint} onPatch={onPatch} />}
+          {picker?.showCloser && <span style={{ marginLeft: "auto", display: "inline-flex" }}><CloserChip id={d.closer} /></span>}
+          {picker && <TeamPicker d={d} field={picker.field} options={picker.options} hint={picker.hint} solo={picker.solo} onPatch={onPatch} />}
         </div>
       )}
     </div>
@@ -761,7 +788,7 @@ function AgendaView({ leads, onOpenLead }) {
                 backgroundColor: isToday ? "color-mix(in srgb, var(--accent) 5%, transparent)" : "transparent",
               }}>
                 {placed.map(({ l, t, lane, kind }) => {
-                  const who = kind === "toque" ? (l.owner || l.closer) : l.closer;
+                  const who = kind === "toque" ? (l.owner || l.closer) : kind === "integração" ? (l.integrator || l.closer) : l.closer;
                   const tone = toneOf(who);
                   const isTouch = kind === "toque";
                   const hour = Math.min(H1 - 1, Math.max(H0, t.getHours() + t.getMinutes() / 60));
