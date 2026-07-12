@@ -700,6 +700,15 @@ function championVerdicts(variants) {
   return out;
 }
 
+// Rótulo do ANÚNCIO de uma origem: utm_content (ad id) resolvido pra nome pelo
+// catálogo; sem content, cai no nome da campanha; orgânico (só source, derivado
+// do referrer) mostra "(orgânico)".
+function originAdLabel(o, cat) {
+  if (o.content) return cat?.ads?.[o.content]?.name || o.content;
+  if (o.campaign) return cat?.campaigns?.[o.campaign]?.name || o.campaign;
+  return "(orgânico)";
+}
+
 // ── Insights do funil do form ────────────────────────────────────────────────
 // Mesma filosofia do card da Publicidade (regras explicáveis, cada uma com os
 // números do porquê); render/dispensa no components/insights.jsx. Ids estáveis
@@ -734,15 +743,15 @@ function buildFormInsights(data, form, cat) {
   if (origins.length >= 2 && data.views > 0) {
     const rate = (o) => (o.views > 0 ? o.submits / o.views : 0);
     const overall = data.submits / data.views;
-    const name = (o) => `${o.source || "(sem source)"}${o.campaign ? ` · ${cat?.campaigns?.[o.campaign]?.name || o.campaign}` : ""}`;
+    const name = (o) => `${o.source || "(sem source)"}${o.content || o.campaign ? ` · ${originAdLabel(o, cat)}` : ""}`;
     const sorted = [...origins].sort((a, b) => rate(a) - rate(b));
     const weak = sorted[0];
     const best = sorted[sorted.length - 1];
     if (overall > 0 && rate(weak) < overall / 2) {
-      out.push({ id: `origin-weak:${weak.source || ""}|${weak.campaign || ""}`, meta: { kind: "pauseCampaign", campaign: weak.campaign || "" }, tone: "atencao", tag: "Atenção", text: `A origem ${name(weak)} converte ${pctN(weak.submits, weak.views)}% das visitas em envio, menos da metade da média do form (${Math.round(overall * 100)}%). O público desse tráfego pode não casar com a promessa ou com as perguntas.` });
+      out.push({ id: `origin-weak:${weak.source || ""}|${weak.content || weak.campaign || ""}`, meta: { kind: "pauseCampaign", campaign: weak.campaign || "" }, tone: "atencao", tag: "Atenção", text: `A origem ${name(weak)} converte ${pctN(weak.submits, weak.views)}% das visitas em envio, menos da metade da média do form (${Math.round(overall * 100)}%). O público desse tráfego pode não casar com a promessa ou com as perguntas.` });
     }
     if (best !== weak && rate(best) >= overall * 1.5) {
-      out.push({ id: `origin-best:${best.source || ""}|${best.campaign || ""}`, meta: { kind: "raiseCampaignBudget", campaign: best.campaign || "" }, tone: "escalar", tag: "Escalar", text: `${name(best)} converte ${pctN(best.submits, best.views)}% das visitas em envio (média do form: ${Math.round(overall * 100)}%). Tráfego com esse perfil rende mais form completo — vale priorizar.` });
+      out.push({ id: `origin-best:${best.source || ""}|${best.content || best.campaign || ""}`, meta: { kind: "raiseCampaignBudget", campaign: best.campaign || "" }, tone: "escalar", tag: "Escalar", text: `${name(best)} converte ${pctN(best.submits, best.views)}% das visitas em envio (média do form: ${Math.round(overall * 100)}%). Tráfego com esse perfil rende mais form completo — vale priorizar.` });
     }
   }
   return out.slice(0, 5);
@@ -1050,17 +1059,17 @@ function FormsDashboard({ forms }) {
       {data && !data.error && (data.origins || []).length > 0 && (
         <div style={{ marginBottom: 14 }}>
           <div className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
-            Origens do tráfego · drop-off por campanha
+            Origens do tráfego · drop-off por anúncio (orgânico entra pelo referrer: google, instagram, site)
           </div>
           <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "4px 12px 8px" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead><tr>{["Origem", "Campanha", "Visitas", "Começou", "% começar", "Enviou", "% envio"].map(thAB)}</tr></thead>
+              <thead><tr>{["Origem", "Anúncio", "Visitas", "Começou", "% começar", "Enviou", "% envio"].map(thAB)}</tr></thead>
               <tbody>
                 {data.origins.map((o, i) => (
                   <tr key={i}>
                     <td className="mono" style={{ ...tdAB, textAlign: "left", fontWeight: 600 }}>{o.source || "(sem source)"}</td>
-                    <td style={{ ...tdAB, textAlign: "left", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--fg-2)" }} title={cat?.campaigns?.[o.campaign]?.name || o.campaign}>
-                      {cat?.campaigns?.[o.campaign]?.name || o.campaign || "(sem campanha)"}
+                    <td style={{ ...tdAB, textAlign: "left", maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--fg-2)" }} title={originAdLabel(o, cat)}>
+                      {originAdLabel(o, cat)}
                     </td>
                     <td className="mono tnum" style={tdAB}>{o.views}</td>
                     <td className="mono tnum" style={tdAB}>{o.starts}</td>

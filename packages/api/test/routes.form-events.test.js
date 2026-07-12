@@ -297,3 +297,23 @@ test("utm nos eventos (slim) e funil com quebra origins por source|campaign", as
   assert.deepEqual([ig.views, ig.starts, ig.submits], [1, 1, 0]);
   await app.close();
 });
+
+test("origem derivada do referrer: google/instagram/site entram na quebra sem UTM", async () => {
+  const { app, repo } = await buildApp();
+  await post(app, { session: "g1", event: "view", utm: { referrer: "https://www.google.com/" } });
+  await post(app, { session: "i1", event: "view", utm: { referrer: "https://l.instagram.com/?u=x" } });
+  await post(app, { session: "h1", event: "view", utm: { referrer: "https://leverads.com.br/" } });
+  await post(app, { session: "d1", event: "view" }); // direto de verdade: fora da quebra
+
+  // o evento guarda só o source derivado (slim) — o referrer cru não persiste
+  const ev = (await repo.list("form_events")).find((e) => e.session === "g1");
+  assert.deepEqual(ev.utm, { source: "google" });
+
+  const { origins } = (await app.inject({ url: "/api/forms/fo_test/funnel" })).json();
+  assert.deepEqual(origins.map((o) => o.source).sort(), ["google", "instagram", "site leverads"]);
+  const g = origins.find((o) => o.source === "google");
+  assert.equal(g.views, 1);
+  assert.equal(g.campaign, undefined);
+  assert.equal(g.content, undefined);
+  await app.close();
+});

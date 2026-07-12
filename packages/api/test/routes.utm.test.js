@@ -125,3 +125,23 @@ test("click-ids/referrer sanitizados + fbp/fbc/sourceUrl persistem no lead; fbc 
   assert.equal(ceu.fbc, "fb.1.999.abc");
   await app.close();
 });
+
+test("lead sem UTM mas com referrer ganha source derivado", async () => {
+  const { app, repo } = await buildApp();
+  await app.inject({
+    method: "POST", url: "/public/forms/fo_utm/submissions",
+    payload: { answers: { nome: "Gio" }, utm: { referrer: "https://www.google.com/" } },
+  });
+  const gio = (await repo.list("leads")).find((l) => l.name === "Gio");
+  assert.equal(gio.utm.source, "google");
+  assert.equal(gio.utm.referrer, "https://www.google.com/"); // o cru continua pra auditoria
+
+  // UTM explícita vence: referrer não sobrescreve source de anúncio
+  await app.inject({
+    method: "POST", url: "/public/forms/fo_utm/submissions",
+    payload: { answers: { nome: "Hua" }, utm: { source: "meta", referrer: "https://l.instagram.com/" } },
+  });
+  const hua = (await repo.list("leads")).find((l) => l.name === "Hua");
+  assert.equal(hua.utm.source, "meta");
+  await app.close();
+});
