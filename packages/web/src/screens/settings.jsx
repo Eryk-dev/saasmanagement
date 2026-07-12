@@ -529,6 +529,14 @@ function IntegrationsSettings({ s }) {
     await refresh();
   }
 
+  const g = window.SEED?.CONFIG?.google || {};
+  async function connectGoogle() {
+    try {
+      const r = await api.googleAuthUrl();
+      window.open(r.url, "_blank", "noopener");
+    } catch (e) { window.alert(e.message || "Configure GOOGLE_CLIENT_ID/SECRET no servidor primeiro."); }
+  }
+
   const items = [
     { k: "Mercado Pago", desc: "assinaturas (preapproval) + baixa automática de fatura via webhook", on: mpOn, off: "configurar MERCADOPAGO_ACCESS_TOKEN" },
     { k: "E-mail", desc: "envio de proposta + notificações (Resend/SMTP)", on: false, off: "em breve" },
@@ -558,6 +566,25 @@ function IntegrationsSettings({ s }) {
             style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>pixel de {s.name}</span>
           <input value={pixelId} placeholder="971201888623790" onChange={(e) => setPixelId(e.target.value)} className="mono" style={{ ...inputStyle, width: 170, fontFamily: "var(--mono)" }} />
           <button onClick={saveMeta} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}><span style={{ fontSize: 11 }}>salvar</span></button>
+        </div>
+      </div>
+
+      {/* Google Meet: calls criadas direto na agenda da conta conectada. */}
+      <div style={{ padding: "14px 16px", border: g.connected ? "1px solid var(--line-1)" : "1px dashed var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 500 }}>Google Meet</div>
+          <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>
+            call do lead criada direto na agenda Google (com Meet e convite por e-mail)
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {g.connected && <span className="chip pos" style={{ height: 22 }}>conectado · {g.account || "conta do time"}</span>}
+          {!g.connected && !g.configured && <span className="chip" style={{ height: 22 }}>configurar GOOGLE_CLIENT_ID/SECRET</span>}
+          {g.configured && (
+            <button onClick={connectGoogle} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}>
+              <span style={{ fontSize: 11 }}>{g.connected ? "reconectar" : "Conectar Google"}</span>
+            </button>
+          )}
         </div>
       </div>
 

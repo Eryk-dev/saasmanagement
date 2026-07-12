@@ -81,6 +81,9 @@ export const api = {
   metaObjectStatus: (id, status) => req("POST", `/api/marketing/objects/${id}/status`, { status }),
   metaObjectBudget: (id, dailyBudget) => req("POST", `/api/marketing/objects/${id}/budget`, { dailyBudget }),
   creativeDefaults: (saas) => req("GET", `/api/marketing/${saas}/creative-defaults`),
+  // Google Meet: URL de consentimento (Ajustes) + criar a call do lead na agenda.
+  googleAuthUrl: () => req("GET", "/api/google/auth-url"),
+  createMeet: (leadId) => req("POST", `/api/leads/${leadId}/meet`),
   // Upload multipart (vídeo) — fetch cru: o browser define o boundary do form.
   uploadCreative: async (saas, formData) => {
     const headers = {};

@@ -38,4 +38,5 @@ export const COLLECTIONS = {
   tasks: [],
   task_boards: [],
   activities: [],
+  app_config: [], // chave-valor de integrações (ex.: google_oauth = refresh token da conta conectada)
 };
