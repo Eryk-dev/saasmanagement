@@ -140,6 +140,13 @@ export const api = {
     if (until) q.set("until", until);
     return req("GET", `/api/funnel/${saas}${q.toString() ? `?${q}` : ""}`);
   },
+  // Placar por pessoa/papel (SDR/closer/CS) — cockpit de gestão da Visão geral.
+  scoreboard: (saas, { since, until } = {}) => {
+    const q = new URLSearchParams();
+    if (since) q.set("since", since);
+    if (until) q.set("until", until);
+    return req("GET", `/api/scoreboard/${saas}${q.toString() ? `?${q}` : ""}`);
+  },
   // Catálogo id → nome (campanha/conjunto/anúncio) pro bloco de atribuição.
   marketingAttribution: (saas) => req("GET", `/api/marketing/${saas}/attribution`),
   // Variante de welcome por IA (insight "welcome fraca" → aplicar).
