@@ -154,6 +154,25 @@ test("ganho: limpa GPS, cria cliente e loga customer_created", async () => {
   await app.close();
 });
 
+test("lead novo entra com o único SDR do produto como dono; owner explícito respeitado", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("users", { id: "sdr", name: "SDR", roles: ["sdr"] });
+
+  // POST genérico (espelho externo/MCP): sem owner → vira o SDR.
+  const l1 = (await app.inject({ method: "POST", url: "/api/leads", payload: { name: "Ana", saas: "leverads" } })).json();
+  assert.equal(l1.owner, "sdr");
+
+  // owner explícito no payload é respeitado (não sobrescreve).
+  const l2 = (await app.inject({ method: "POST", url: "/api/leads", payload: { name: "Bia", saas: "leverads", owner: "outro" } })).json();
+  assert.equal(l2.owner, "outro");
+
+  // Com 2+ SDRs ninguém é escolhido (o time decide na mão): owner fica vazio.
+  await repo.create("users", { id: "sdr2", name: "SDR2", roles: ["sdr"] });
+  const l3 = (await app.inject({ method: "POST", url: "/api/leads", payload: { name: "Cid", saas: "leverads" } })).json();
+  assert.ok(!l3.owner, `esperava owner vazio, veio "${l3.owner}"`);
+  await app.close();
+});
+
 test("mover pra Integração/Ganho auto-atribui o único integrador; closer preservado", async () => {
   const { app, repo } = await buildApp();
   await repo.create("users", { id: "eryk", name: "Eryk", roles: ["integrator"] });

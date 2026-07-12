@@ -71,6 +71,15 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     setPersonState(p);
     try { localStorage.setItem("cockpit_pipeline_person", p); } catch { /* ignore */ }
   };
+  // Desqualificado é o "cemitério" (leads pra reaproveitar depois): fica OCULTO
+  // por padrão pra não poluir o fluxo; um botão revela a coluna. Persistido.
+  const [showDiscarded, setShowDiscardedState] = useStP(() => {
+    try { return localStorage.getItem("cockpit_pipeline_discarded") === "1"; } catch { return false; }
+  });
+  const setShowDiscarded = (v) => {
+    setShowDiscardedState(v);
+    try { localStorage.setItem("cockpit_pipeline_discarded", v ? "1" : "0"); } catch { /* ignore */ }
+  };
   // Gate de movimento pendente (handoff / motivo de perda).
   const [pendingMove, setPendingMove] = useStP(null); // { lead, toStage, gate, saasCfg }
 
@@ -97,7 +106,10 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   // Fatia por fase do processo: SDR vê a pré-venda (+ Desqualificado, o terminal
   // dela); Closer vê da call em diante (sem Desqualificado); CS vê o pós-venda
   // (integração/acompanhamento + Ganho).
-  const visibleStages = useMP(() => stagesForPhase(s, stages, phase), [stages.join("|"), phase, activeSaas]);
+  const visibleStages = useMP(() => {
+    const base = stagesForPhase(s, stages, phase);
+    return showDiscarded ? base : base.filter((st) => stageKind(s, st) !== "desqualificado");
+  }, [stages.join("|"), phase, activeSaas, showDiscarded]);
   const byStage = useMP(() => {
     const m = {}; stages.forEach(st => m[st] = []);
     saasLeads.forEach(l => {
@@ -180,6 +192,21 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
         </span>
         <ViewToggle view={view} onChange={setView} />
         {view === "kanban" && <PhaseFilter phase={phase} onChange={setPhase} />}
+        {view === "kanban" && (phase === "all" || phase === "sdr") && (() => {
+          const n = saasAll.filter((l) => stageKind(s, l.stage) === "desqualificado").length;
+          return (
+            <button onClick={() => setShowDiscarded(!showDiscarded)}
+              title={showDiscarded ? "Ocultar o cemitério de desqualificados" : "Mostrar os desqualificados (leads pra reaproveitar depois)"}
+              style={{
+                height: 24, padding: "0 10px", borderRadius: 4, fontSize: 11, fontFamily: "var(--mono)",
+                border: "1px solid " + (showDiscarded ? "var(--accent-line)" : "var(--line-1)"),
+                background: showDiscarded ? "var(--accent-soft)" : "var(--bg-2)",
+                color: showDiscarded ? "var(--accent)" : "var(--fg-3)",
+              }}>
+              {showDiscarded ? "ocultar descartados" : `⚰ descartados ${n}`}
+            </button>
+          );
+        })()}
         <PriorityFilter pri={pri} onChange={setPri} />
         <PersonFilter person={person} onChange={setPerson} me={me} />
         {selected.size > 0 && (

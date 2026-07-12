@@ -25,7 +25,7 @@ import { metaCapi as defaultMetaCapi } from "./meta-capi.js";
 import { discord as defaultDiscord } from "./discord.js";
 import { currentRev, subscribe as subscribeChanges } from "./changes.js";
 import { isWon, firstStage } from "./stages.js";
-import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt } from "./lead-flow.js";
+import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt, autoLeadOwner } from "./lead-flow.js";
 import { registerFunnelMetricsRoutes } from "./routes.funnel-metrics.js";
 
 // Auth interna fica FORA do CRUD genérico: passwordHash/token de sessão nunca
@@ -330,6 +330,12 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         const at = initialNextActionAt(product, req.body.stage);
         if (at) stamp.nextActionAt = at;
       } catch { /* fail-open */ }
+    }
+    // Responsável: todo lead novo entra com o SDR do produto como dono (quando há
+    // só um). Espelho externo/MCP que já manda `owner` é respeitado.
+    if (collection === "leads" && !req.body.owner) {
+      const owner = await autoLeadOwner(repo, req.body.saas);
+      if (owner) stamp.owner = owner;
     }
     let created = await repo.create(collection, { ...(CREATE_DEFAULTS[collection] || {}), ...req.body, ...stamp });
     // Toque registrado → denormalizações do lead (últ. contato, tentativas) +
