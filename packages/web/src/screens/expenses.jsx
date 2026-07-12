@@ -15,6 +15,7 @@ const CATEGORIES = [
   ["fixo", "Custo fixo"],
   ["ferramenta", "Ferramentas"],
   ["pessoal", "Pessoal"],
+  ["taxas", "Taxas & impostos"],
   ["outros", "Outros"],
 ];
 const CAT_LABEL = Object.fromEntries(CATEGORIES);
@@ -39,7 +40,9 @@ function ExpensesScreen() {
   const [product, setActiveSaas] = useActiveSaas();
   const [month, setMonth] = useState(monthKey(new Date()));
   const [data, setData] = useState(null);
-  const [form, setForm] = useState({ category: "fixo", name: "", amount: "", recurring: false });
+  // unit "brl" = valor fixo em R$; "pct" = percentual sobre os GANHOS do mês no
+  // pipeline (checkout, imposto) — o servidor calcula o R$ mês a mês.
+  const [form, setForm] = useState({ category: "fixo", name: "", amount: "", unit: "brl", recurring: false });
   const [note, setNote] = useState(null);
 
   const load = () => {
@@ -52,20 +55,25 @@ function ExpensesScreen() {
   // Troca de produto: descarta rascunho e aviso — o custo em digitação não pode
   // ser registrado silenciosamente no SaaS errado.
   useEffect(() => {
-    setForm({ category: "fixo", name: "", amount: "", recurring: false });
+    setForm({ category: "fixo", name: "", amount: "", unit: "brl", recurring: false });
     setNote(null);
   }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function addExpense() {
-    const amount = Number(String(form.amount).replace(",", "."));
-    if (!form.name.trim() || !Number.isFinite(amount) || amount <= 0) {
-      setNote({ ok: false, text: "Preencha descrição e valor." });
+    const value = Number(String(form.amount).replace(",", "."));
+    const isPct = form.unit === "pct";
+    if (!form.name.trim() || !Number.isFinite(value) || value <= 0 || (isPct && value > 100)) {
+      setNote({ ok: false, text: isPct ? "Preencha descrição e um percentual entre 0 e 100." : "Preencha descrição e valor." });
       return;
     }
     try {
-      await api.create("expenses", { saas: product.id, month, category: form.category, name: form.name.trim(), amount, recurring: !!form.recurring });
-      setForm({ category: form.category, name: "", amount: "", recurring: form.recurring });
-      setNote({ ok: true, text: form.recurring ? "Custo recorrente registrado (vale deste mês em diante)." : "Custo registrado." });
+      await api.create("expenses", {
+        saas: product.id, month, category: form.category, name: form.name.trim(),
+        ...(isPct ? { pct: value } : { amount: value }),
+        recurring: !!form.recurring,
+      });
+      setForm({ category: form.category, name: "", amount: "", unit: form.unit, recurring: form.recurring });
+      setNote({ ok: true, text: isPct ? "Custo percentual registrado — o valor em R$ é calculado sobre os ganhos de cada mês." : (form.recurring ? "Custo recorrente registrado (vale deste mês em diante)." : "Custo registrado.") });
       load();
     } catch (e) { setNote({ ok: false, text: e.message || "Falha ao registrar." }); }
   }
@@ -128,11 +136,19 @@ function ExpensesScreen() {
                 style={inputStyle} />
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>Valor (R$)</span>
-              <input type="number" min="0" step="0.01" placeholder="0,00" value={form.amount}
-                onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                onKeyDown={(e) => { if (e.key === "Enter") addExpense(); }}
-                style={{ ...inputStyle, width: 120, fontFamily: "var(--mono)", textAlign: "right" }} />
+              <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>{form.unit === "pct" ? "Percentual (%)" : "Valor (R$)"}</span>
+              <div style={{ display: "flex", gap: 4 }}>
+                <input type="number" min="0" step="0.01" placeholder={form.unit === "pct" ? "12" : "0,00"} value={form.amount}
+                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                  onKeyDown={(e) => { if (e.key === "Enter") addExpense(); }}
+                  style={{ ...inputStyle, width: 100, fontFamily: "var(--mono)", textAlign: "right" }} />
+                <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                  title="R$ = valor fixo · % = percentual sobre os ganhos do mês no pipeline (checkout, imposto)"
+                  style={{ ...inputStyle, width: 58, fontFamily: "var(--mono)", padding: "0 4px" }}>
+                  <option value="brl">R$</option>
+                  <option value="pct">%</option>
+                </select>
+              </div>
             </label>
             <label style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, fontSize: 12.5, color: "var(--fg-2)", whiteSpace: "nowrap" }}
               title="Vale deste mês em diante, todo mês, até você encerrar">
@@ -155,6 +171,11 @@ function ExpensesScreen() {
                 <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 16px", borderBottom: "1px solid var(--line-1)" }}>
                   <Pill tone="mut">{CAT_LABEL[e.category] || e.category}</Pill>
                   <span style={{ flex: 1, fontSize: 13, fontWeight: 500, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
+                  {Number(e.pct) > 0 && (
+                    <Pill tone="warn" title={`${e.pct}% sobre os ganhos do mês no pipeline${data?.wonBase != null ? ` (${brl(data.wonBase)} em ${monthLabel(month)})` : ""}`}>
+                      {String(e.pct).replace(".", ",")}% dos ganhos
+                    </Pill>
+                  )}
                   {e.recurring && (
                     <Pill tone="accent" title={`recorrente desde ${e.month}${e.endMonth ? `, encerrado em ${e.endMonth}` : ""}`}>
                       {e.endMonth ? `recorrente até ${e.endMonth}` : `recorrente · desde ${e.month}`}
