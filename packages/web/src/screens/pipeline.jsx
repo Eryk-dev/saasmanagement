@@ -782,6 +782,10 @@ function AgendaView({ leads, onOpenLead }) {
                       }}>
                       <div className="mono tnum" style={{ fontSize: 9.5, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {isTouch ? `○ ${l.name}` : `${t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}${who ? ` · ${displayName(who).split(" ")[0]}` : ""}${kind === "integração" ? " · int" : ""}`}
+                        {!isTouch && kind === "call" && l.callUrl && (
+                          <a href={l.callUrl} target="_blank" rel="noopener noreferrer" title="Entrar na videochamada"
+                            onClick={(e) => e.stopPropagation()} style={{ marginLeft: 4, textDecoration: "none" }}>🎥</a>
+                        )}
                       </div>
                       {!isTouch && <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</div>}
                       {!isTouch && l.company && <div style={{ fontSize: 10, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.company}</div>}

@@ -237,6 +237,40 @@ function LeadDetail({ lead: initial, onClose }) {
             )}
             <span className="mono dim" style={{ fontSize: 10 }}>aparece na Agenda</span>
           </div>
+          {/* Link de videochamada: sala Jitsi com slug aleatório (sem conta, abre
+              no navegador/celular), salva no lead e vai pro Whats com 1 clique. */}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0 }}>
+            <span className="mono dim" style={rowLabel}>Videochamada</span>
+            {lead.callUrl ? (
+              <>
+                <a href={lead.callUrl} target="_blank" rel="noopener noreferrer" className="mono"
+                  style={{ fontSize: 11, color: "var(--accent)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}
+                  title={lead.callUrl}>
+                  {lead.callUrl.replace("https://", "")}
+                </a>
+                <button className="mono dim" style={{ fontSize: 11, flexShrink: 0 }} title="Copiar link"
+                  onClick={() => { try { navigator.clipboard.writeText(lead.callUrl); } catch { window.prompt("Link da call:", lead.callUrl); } }}>
+                  copiar
+                </button>
+                {wa && (
+                  <a className="mono" style={{ fontSize: 11, color: "#128c4b", textDecoration: "none", flexShrink: 0 }}
+                    href={`${wa}?text=${encodeURIComponent(`Oi${lead.name ? " " + String(lead.name).trim().split(/\s+/)[0] : ""}! Aqui é da LeverAds. Nossa call vai ser por este link: ${lead.callUrl}`)}`}
+                    target="_blank" rel="noopener noreferrer" title="Enviar o link pro lead no WhatsApp">
+                    mandar no Whats ↗
+                  </a>
+                )}
+                <button className="mono dim" style={{ fontSize: 11, flexShrink: 0 }} title="Gerar um link novo (o antigo deixa de valer pra você)"
+                  onClick={() => patch({ callUrl: `https://meet.jit.si/LeverAds-${Math.random().toString(36).slice(2, 10)}` })}>
+                  ↻
+                </button>
+              </>
+            ) : (
+              <button onClick={() => patch({ callUrl: `https://meet.jit.si/LeverAds-${Math.random().toString(36).slice(2, 10)}` })}
+                style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600 }}>
+                🎥 criar link da call
+              </button>
+            )}
+          </div>
           {(kind === "proposta" || kind === "followup") && (
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <span className="mono dim" style={rowLabel}>Proposta</span>
