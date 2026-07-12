@@ -58,6 +58,7 @@ const ROUTE_SCREENS = [
   ["/api/goals", ["overview"]],
   ["/api/portfolio", ["overview"]],
   ["/api/leaderboard", ["overview"]],
+  ["/api/scoreboard", ["overview"]], // placar de gestão por pessoa/papel
 ];
 
 // Escritas administrativas: leitura fica aberta (o app inteiro precisa do
