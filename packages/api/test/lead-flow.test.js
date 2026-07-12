@@ -8,10 +8,12 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
+const { rollToBusinessDay } = await import("../src/lead-flow.js");
 
 const FUNNEL = [
   { stage: "Novo lead", kind: "novo", conv: 1, cadence: { firstTouchHours: 2 } },
   { stage: "Em contato", kind: "contato", conv: 1, cadence: { maxAttempts: 5, retryDays: 1 } },
+  { stage: "Qualificando", kind: "qualificacao", conv: 1, cadence: { maxAttempts: 3, retryDays: 1 } },
   { stage: "Follow-up", kind: "followup", conv: 0.5, cadence: { maxAttempts: 8, retryDays: 3 } },
   { stage: "Ganho", kind: "ganho", conv: 1 },
   { stage: "Perdido", kind: "perdido", conv: 0 },
@@ -39,9 +41,54 @@ test("POST /api/leads loga lead_created e marca o 1º toque pela cadência", asy
   assert.equal(acts[0].meta.via, "api");
   assert.equal(acts[0].meta.stage, "Novo lead"); // stage "" resolve pro 1º estágio
 
-  // firstTouchHours: 2 → nextActionAt ≈ agora + 2h
-  const delta = new Date(lead.nextActionAt).getTime() - Date.now();
-  assert.ok(delta > 1.9 * 3600_000 && delta < 2.1 * 3600_000, `nextActionAt fora do SLA de 2h: ${lead.nextActionAt}`);
+  // firstTouchHours: 2 → nextActionAt ≈ agora + 2h (rolado pra segunda se cair
+  // no fim de semana — o teste roda em qualquer dia).
+  const expected = rollToBusinessDay(new Date(Date.now() + 2 * 3600_000)).getTime();
+  const got = new Date(lead.nextActionAt).getTime();
+  assert.ok(Math.abs(got - expected) < 6 * 60_000, `nextActionAt fora do SLA de 2h: ${lead.nextActionAt}`);
+  await app.close();
+});
+
+test("rollToBusinessDay: dia útil intacto; sábado/domingo viram segunda 08:00 no fuso do negócio", () => {
+  // quinta-feira segue igual
+  assert.equal(rollToBusinessDay(new Date("2026-07-09T12:00:00Z")).toISOString(), "2026-07-09T12:00:00.000Z");
+  // sábado e domingo rolam pra segunda 08:00 BRT (11:00Z)
+  assert.equal(rollToBusinessDay(new Date("2026-07-11T14:00:00Z")).toISOString(), "2026-07-13T11:00:00.000Z");
+  assert.equal(rollToBusinessDay(new Date("2026-07-12T14:00:00Z")).toISOString(), "2026-07-13T11:00:00.000Z");
+  // borda de fuso: sábado 01:00Z ainda é sexta 22:00 em BRT → não rola
+  assert.equal(rollToBusinessDay(new Date("2026-07-11T01:00:00Z")).toISOString(), "2026-07-11T01:00:00.000Z");
+});
+
+test("GPS pula o fim de semana: toque de sexta re-agenda pra segunda 08:00 BRT", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("leads", { id: "l1", saas: "leverads", stage: "Em contato" });
+  // sexta 2026-07-10 18:00 BRT (21:00Z) + retryDays 1 = sábado → segunda 08:00 BRT
+  await app.inject({ method: "POST", url: "/api/activities", payload: { lead: "l1", saas: "leverads", type: "call", at: "2026-07-10T21:00:00.000Z" } });
+  const lead = await repo.get("leads", "l1");
+  assert.equal(lead.nextActionAt, "2026-07-13T11:00:00.000Z");
+  await app.close();
+});
+
+test("1º toque em estágio novo: lead segue sozinho pra Qualificando (1º ato do SDR)", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("leads", { id: "l1", saas: "leverads", stage: "Novo lead", stageAttempts: 0 });
+  const at = "2026-07-08T15:00:00.000Z"; // quarta-feira
+  await app.inject({ method: "POST", url: "/api/activities", payload: { lead: "l1", saas: "leverads", type: "call", text: "1º ato", author: "sdr", at } });
+
+  const lead = await repo.get("leads", "l1");
+  assert.equal(lead.stage, "Qualificando");
+  assert.equal(lead.stageAttempts, 0, "contador zera no estágio novo");
+  assert.equal(lead.lastActivityType, "call");
+  assert.equal(lead.nextActionAt, "2026-07-09T15:00:00.000Z", "retomada no dia seguinte (retryDays 1 do Qualificando)");
+  const stages = await activitiesOf(repo, "l1", "stage");
+  assert.equal(stages.length, 1);
+  assert.deepEqual({ from: stages[0].meta.from, to: stages[0].meta.to }, { from: "Novo lead", to: "Qualificando" });
+  assert.equal(stages[0].author, "sdr");
+
+  // Backfill (reschedule: false) em outro lead novo NÃO dispara o avanço.
+  await repo.create("leads", { id: "l2", saas: "leverads", stage: "Novo lead" });
+  await app.inject({ method: "POST", url: "/api/activities", payload: { lead: "l2", saas: "leverads", type: "call", at, meta: { reschedule: false } } });
+  assert.equal((await repo.get("leads", "l2")).stage, "Novo lead");
   await app.close();
 });
 

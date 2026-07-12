@@ -118,6 +118,84 @@ export async function migrateLeverAdsCrmFunnel(repo) {
   return { migrated };
 }
 
+// ── Cadência SDR (jul/2026) ─────────────────────────────────────────────────
+// O processo desenhado pelo Leo: 1º ato no Novo lead (2 ligações + WhatsApp de
+// apresentação, SLA 2h, fim de semana vira segunda cedo) → o toque move sozinho
+// pra Qualificando (retomadas diárias, 3 sessões no total) → sem retorno vai pra
+// Nutrição, que devolve o card à fila 20 dias depois (sempre em dia útil).
+//
+// One-shot de verdade: marca product.sdrCadenceV1 ao aplicar — edição posterior
+// do Leo (cadência, pergunta removida, estágio recriado) NUNCA é sobrescrita.
+// Sub-guardas por operação protegem estados inesperados na primeira rodada.
+export async function migrateLeverAdsSdrCadence(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || product.sdrCadenceV1) return false;
+  if (!Array.isArray(product.funnel) || product.funnel.length === 0) return false;
+  let funnel = product.funnel.map((f) => ({ ...(f || {}) }));
+  const cadEq = (f, cad) => JSON.stringify(f.cadence || null) === JSON.stringify(cad);
+  let movedCards = 0;
+
+  // 1. "Em contato" sai (Qualificando cobre a fase); os cards migram por rename
+  // direto (sem recarimbar stageSince — não é movimento real de funil).
+  const emContato = funnel.find((f) => f.stage === "Em contato" && f.kind === "contato");
+  const qualificando = funnel.find((f) => f.kind === "qualificacao");
+  if (emContato && qualificando) {
+    for (const l of await repo.list("leads")) {
+      if (l.saas === "leverads" && l.stage === "Em contato") {
+        await repo.update("leads", l.id, { stage: qualificando.stage });
+        movedCards++;
+      }
+    }
+    funnel = funnel.filter((f) => f !== emContato);
+  }
+
+  // 2. Nutrição: fila de reativação fora da régua (depois do Ganho). Entrada
+  // re-agenda o GPS pra +20 dias (480h, rola pra dia útil); dentro do ciclo,
+  // retomada diária, 3 sessões. kind explícito: a heurística por nome mandaria
+  // "nutri" pra perdido.
+  if (!funnel.some((f) => f.stage === "Nutrição")) {
+    const ganhoIdx = funnel.findIndex((f) => f.kind === "ganho");
+    if (ganhoIdx !== -1) {
+      funnel.splice(ganhoIdx + 1, 0, {
+        stage: "Nutrição", kind: "contato", conv: 1, color: "", staleDays: "",
+        cadence: { maxAttempts: 3, retryDays: 1, firstTouchHours: 480 },
+      });
+    }
+  }
+
+  // 3. Cadências do processo: só se ainda estiverem nos valores antigos do seed
+  // CRM (funil mexido pelo dono fica como está).
+  const novo = funnel.find((f) => f.kind === "novo");
+  if (novo && cadEq(novo, { firstTouchHours: 2 })) {
+    novo.cadence = { maxAttempts: 1, retryDays: 1, firstTouchHours: 2 };
+  }
+  if (qualificando && cadEq(qualificando, { maxAttempts: 5, retryDays: 1 })) {
+    qualificando.cadence = { maxAttempts: 3, retryDays: 1 };
+  }
+
+  // 4. Pergunta de qualificação que o SDR coleta na conversa: tamanho do time de
+  // marketing. key/values casam com o DiagnosticoIn do copylever (staff: 0|1|2-3|4+).
+  let leadQuestions = Array.isArray(product.leadQuestions) ? product.leadQuestions.map((q) => ({ ...q })) : null;
+  if (leadQuestions && !leadQuestions.some((q) => q && q.key === "staff")) {
+    leadQuestions.push({
+      key: "staff", label: "Quantas pessoas no time de marketing?", type: "select", required: false,
+      options: [
+        { value: "0", label: "Só eu" },
+        { value: "1", label: "1 pessoa" },
+        { value: "2-3", label: "2 a 3 pessoas" },
+        { value: "4+", label: "4 ou mais" },
+      ],
+    });
+  }
+
+  await repo.update("products", "leverads", {
+    funnel: normalizeFunnel(funnel),
+    ...(leadQuestions ? { leadQuestions } : {}),
+    sdrCadenceV1: true,
+  });
+  return { movedCards };
+}
+
 // Todo funil de todo produto ganha `kind` (heurística por nome quando ausente).
 // Cobre multi-SaaS e o caso do dono ter editado o funil (guarda acima falhou).
 export async function ensureFunnelKinds(repo) {
@@ -226,6 +304,12 @@ export async function runStartupMigrations(repo) {
     if (r) console.log(`[migration] funil CRM SDR+Closer aplicado no leverads (${r.migrated} cards migrados)`);
   } catch (err) {
     console.error("[migration] migrateLeverAdsCrmFunnel falhou:", err?.message || err);
+  }
+  try {
+    const r = await migrateLeverAdsSdrCadence(repo);
+    if (r) console.log(`[migration] cadência SDR aplicada no leverads (Em contato → Qualificando: ${r.movedCards} cards; Nutrição criada)`);
+  } catch (err) {
+    console.error("[migration] migrateLeverAdsSdrCadence falhou:", err?.message || err);
   }
   try {
     const n = await ensureFunnelKinds(repo);

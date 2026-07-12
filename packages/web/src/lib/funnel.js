@@ -142,6 +142,18 @@ export function lossReasonLabel(saasCfg, id) {
   return lossReasonsOf(saasCfg).find((r) => r.id === id)?.label || id;
 }
 
+// O funil trabalha de segunda a sexta: agendamento otimista do GPS que cair em
+// sáb/dom rola pra segunda 08:00 (espelho do rollToBusinessDay do servidor; aqui
+// no relógio local do navegador — o time opera em BRT).
+export function rollToBusinessDay(input) {
+  const d = new Date(input);
+  const dow = d.getDay();
+  if (dow !== 0 && dow !== 6) return d;
+  d.setDate(d.getDate() + (dow === 6 ? 2 : 1));
+  d.setHours(8, 0, 0, 0);
+  return d;
+}
+
 // ── Próximo toque (GPS) ─────────────────────────────────────────────────────
 // Unifica nextActionAt (toque avulso, ISO UTC) e callAt (reunião, datetime-local
 // naive) num só conceito: o compromisso mais próximo do lead.

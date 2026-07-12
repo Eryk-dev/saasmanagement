@@ -6,10 +6,24 @@
 // sozinho via onActivityCreated.
 
 import { randomUUID } from "node:crypto";
-import { kindOf, cadenceOf, firstStage, LOSS_KINDS, TOUCH_TYPES } from "./stages.js";
+import { kindOf, cadenceOf, firstStage, stageByKind, LOSS_KINDS, TOUCH_TYPES } from "./stages.js";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
+
+// O funil trabalha de segunda a sexta: agendamento do GPS que cair em sáb/dom
+// rola pra segunda às 08:00 no fuso do negócio (America/Sao_Paulo, UTC-3 fixo,
+// mesma convenção do marketing). Dia útil passa intacto.
+const BRT = 3 * HOUR;
+export function rollToBusinessDay(date) {
+  const d = new Date(date);
+  const clock = new Date(d.getTime() - BRT); // campos UTC = relógio de Brasília
+  const dow = clock.getUTCDay();
+  if (dow !== 0 && dow !== 6) return d;
+  clock.setUTCDate(clock.getUTCDate() + (dow === 6 ? 2 : 1));
+  clock.setUTCHours(8, 0, 0, 0); // "primeiros horários de segunda"
+  return new Date(clock.getTime() + BRT);
+}
 
 export async function logActivity(repo, { saas = "", lead = "", type = "note", text = "", meta = {}, author = "system", at } = {}) {
   const now = new Date().toISOString();
@@ -23,10 +37,12 @@ export async function logActivity(repo, { saas = "", lead = "", type = "note", t
 
 // Próximo toque de um lead que ACABOU de entrar num estágio (create ou move):
 // firstTouchHours (SLA de 1º contato) vence; senão retryDays; senão sem prazo.
+// Fim de semana rola pra segunda (cadastro de sábado é prioridade de segunda cedo;
+// a Nutrição usa firstTouchHours: 480 = 20 dias e cai sempre em dia útil).
 export function initialNextActionAt(product, stage, now = new Date()) {
   const cad = cadenceOf(product, stage || firstStage(product));
   const ms = cad.firstTouchHours ? cad.firstTouchHours * HOUR : cad.retryDays ? cad.retryDays * DAY : 0;
-  return ms ? new Date(now.getTime() + ms).toISOString() : "";
+  return ms ? rollToBusinessDay(new Date(now.getTime() + ms)).toISOString() : "";
 }
 
 // Calcula os campos derivados de um movimento de estágio e loga a activity
@@ -95,10 +111,26 @@ export async function onActivityCreated(repo, activity) {
   if (isTouch && activity.meta?.reschedule !== false) {
     patch.stageAttempts = (Number(lead.stageAttempts) || 0) + 1;
     const product = lead.saas ? await repo.get("products", lead.saas) : null;
-    const cad = cadenceOf(product, lead.stage || firstStage(product));
+    const stage = lead.stage || firstStage(product);
+    const cad = cadenceOf(product, stage);
     if (cad.retryDays) {
       const base = new Date(activity.at || Date.now()).getTime();
-      patch.nextActionAt = new Date(base + cad.retryDays * DAY).toISOString();
+      patch.nextActionAt = rollToBusinessDay(new Date(base + cad.retryDays * DAY)).toISOString();
+    }
+    // 1º ato do SDR feito num estágio "novo": por definição o lead deixou de ser
+    // novo — segue sozinho pra qualificação (o processo continua lá amanhã). O
+    // movimento canônico (applyStageMove) zera tentativas, loga o histórico e
+    // re-agenda o GPS pela cadência do estágio de destino.
+    if (kindOf(product, stage) === "novo") {
+      const target = stageByKind(product, "qualificacao") || stageByKind(product, "contato");
+      if (target && target.stage !== stage) {
+        const movePatch = await applyStageMove(repo, {
+          lead, toStage: target.stage,
+          author: activity.author || "system",
+          now: new Date(activity.at || Date.now()),
+        });
+        return repo.update("leads", lead.id, { ...patch, ...movePatch, stage: target.stage });
+      }
     }
   }
   return repo.update("leads", lead.id, patch);

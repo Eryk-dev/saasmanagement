@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
-  ensureIntegrationStage, migrateLeverAdsCrmFunnel, ensureFunnelKinds,
+  ensureIntegrationStage, migrateLeverAdsCrmFunnel, migrateLeverAdsSdrCadence, ensureFunnelKinds,
   ensureLossReasons, ensureUserRoles, ensureUserSaasScope, ensureUserScreens, DEFAULT_LOSS_REASONS,
 } from "../src/migrations.js";
 
@@ -231,6 +231,66 @@ test("ensureUserSaasScope escopa a Ana na UniqueKids uma vez, sem inventar usuá
   const repo2 = makeMemRepo();
   assert.equal(await ensureUserSaasScope(repo2), 0);
   assert.equal((await repo2.list("users")).length, 0);
+});
+
+// Funil pós-CRM (o estado real do leverads antes da cadência SDR).
+const CRM_FUNNEL = [
+  { stage: "Novo lead", kind: "novo", conv: 1, cadence: { firstTouchHours: 2 } },
+  { stage: "Em contato", kind: "contato", conv: 1, cadence: { maxAttempts: 5, retryDays: 1 } },
+  { stage: "Qualificando", kind: "qualificacao", conv: 1, cadence: { maxAttempts: 5, retryDays: 1 } },
+  { stage: "Call agendada", kind: "call", conv: 1, cadence: { maxAttempts: 3, retryDays: 1 } },
+  { stage: "Ganho", kind: "ganho", conv: 1 },
+  { stage: "Perdido", kind: "perdido", conv: 0 },
+];
+
+test("migrateLeverAdsSdrCadence: remove Em contato (cards migram), cria Nutrição, ajusta cadências e pergunta staff", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", {
+    id: "leverads", name: "LeverAds", funnel: CRM_FUNNEL,
+    leadQuestions: [{ key: "accounts", label: "Contas?" }],
+  });
+  await repo.create("leads", { id: "l1", saas: "leverads", stage: "Em contato", nextActionAt: "2026-07-13T12:00:00Z" });
+  await repo.create("leads", { id: "l2", saas: "leverads", stage: "Novo lead" });
+  await repo.create("leads", { id: "l3", saas: "outra", stage: "Em contato" });
+
+  const r = await migrateLeverAdsSdrCadence(repo);
+  assert.equal(r.movedCards, 1);
+  const p = await repo.get("products", "leverads");
+  const names = p.funnel.map((f) => f.stage);
+  assert.ok(!names.includes("Em contato"), "Em contato removido");
+  const nut = p.funnel.find((f) => f.stage === "Nutrição");
+  assert.equal(nut.kind, "contato");
+  assert.deepEqual(nut.cadence, { maxAttempts: 3, retryDays: 1, firstTouchHours: 480 });
+  assert.equal(names.indexOf("Nutrição"), names.indexOf("Ganho") + 1, "Nutrição fica fora da régua, depois do Ganho");
+  assert.deepEqual(p.funnel.find((f) => f.kind === "novo").cadence, { maxAttempts: 1, retryDays: 1, firstTouchHours: 2 });
+  assert.deepEqual(p.funnel.find((f) => f.kind === "qualificacao").cadence, { maxAttempts: 3, retryDays: 1 });
+  assert.equal((await repo.get("leads", "l1")).stage, "Qualificando");
+  assert.equal((await repo.get("leads", "l1")).nextActionAt, "2026-07-13T12:00:00Z", "rename não recarimba o GPS");
+  assert.equal((await repo.get("leads", "l3")).stage, "Em contato", "outro produto intacto");
+  assert.ok(p.leadQuestions.some((q) => q.key === "staff"), "pergunta do time de marketing entra");
+  assert.ok(p.sdrCadenceV1);
+
+  // One-shot: rodada seguinte não faz nada, nem re-adiciona o que o dono apagar.
+  await repo.update("products", "leverads", { leadQuestions: p.leadQuestions.filter((q) => q.key !== "staff") });
+  assert.equal(await migrateLeverAdsSdrCadence(repo), false);
+  assert.ok(!(await repo.get("products", "leverads")).leadQuestions.some((q) => q.key === "staff"));
+});
+
+test("migrateLeverAdsSdrCadence: cadência já editada pelo dono não é sobrescrita", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", {
+    id: "leverads", name: "LeverAds",
+    funnel: [
+      { stage: "Novo lead", kind: "novo", conv: 1, cadence: { firstTouchHours: 4 } },
+      { stage: "Qualificando", kind: "qualificacao", conv: 1, cadence: { maxAttempts: 7, retryDays: 2 } },
+      { stage: "Ganho", kind: "ganho", conv: 1 },
+    ],
+  });
+  await migrateLeverAdsSdrCadence(repo);
+  const p = await repo.get("products", "leverads");
+  assert.deepEqual(p.funnel.find((f) => f.kind === "novo").cadence, { firstTouchHours: 4 });
+  assert.deepEqual(p.funnel.find((f) => f.kind === "qualificacao").cadence, { maxAttempts: 7, retryDays: 2 });
+  assert.ok(p.funnel.some((f) => f.stage === "Nutrição"), "Nutrição entra mesmo com cadências customizadas");
 });
 
 test("ensureUserScreens restringe sdr e ana à operação (today+pipeline+tasks) uma vez, sem sobrescrever ajuste manual", async () => {

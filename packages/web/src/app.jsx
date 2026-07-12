@@ -233,7 +233,7 @@ function screenFromHash() {
 function subtitleFor(screen, params) {
   const map = {
     overview:    "",
-    today:       "a fila do dia em ordem de execução",
+    today:       "siga a sequência: horário marcado → novos → qualificando → nutrição",
     pipeline:    `${params.stage ? "estágio: " + params.stage + " · " : ""}arraste para mover`,
     customers:   "",
     metrics:     "",

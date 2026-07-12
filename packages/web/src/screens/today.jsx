@@ -4,17 +4,17 @@ import { PageHead, Pill } from "../components/viz.jsx";
 import { waLink, leadTier } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { stageKind, phaseOf, workableStages, cadenceOf } from "../lib/funnel.js";
+import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay } from "../lib/funnel.js";
 import { allUsers, currentUser, displayName } from "../lib/users.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { resolveScript, scriptTokens, scriptSegments, scriptChecklist } from "../lib/scripts.js";
-// Meu dia — a fila de execução de quem opera o funil. Sequencia, em ordem
-// cronológica, tudo que o usuário precisa fazer HOJE com os leads do produto
-// ativo: atrasados primeiro (recuperar), depois os compromissos com horário
-// (toques do GPS, calls, integrações), os leads novos sem horário (SLA de 1º
-// contato) e por fim o que está sem próximo passo. Cada item carrega a
-// situação compilada do lead (potencial, qualificação, tentativas) e o botão
-// Roteiro: o script daquela etapa com os dados do lead já encaixados na fala.
+// Meu dia — a fila de execução de quem opera o funil, na ordem de prioridade do
+// processo comercial: compromissos com horário marcado, depois os leads NOVOS
+// (prioridade máxima: acabaram de entrar), as retomadas de Qualificando, os
+// follow-ups do closer, a Nutrição (reativação pós-20 dias) e por fim o que
+// está sem próximo passo. É pra trabalhar em sequência, sem escolher: abre o
+// primeiro Roteiro e vai de "toque e próximo" até a fila zerar. Cada item
+// carrega a situação compilada do lead e o script da etapa com os dados dele.
 
 const { useState: useS, useMemo: useM, useEffect: useE } = React;
 
@@ -25,7 +25,7 @@ const DAY = 86400000;
 const ACTION_LABELS = {
   novo: "1º contato",
   contato: "tentativa",
-  qualificacao: "qualificar",
+  qualificacao: "retomada",
   call: "call",
   proposta: "cobrar proposta",
   followup: "follow-up",
@@ -36,15 +36,28 @@ const ACTION_LABELS = {
 
 const TIER_ORDER = { alto: 3, medio: 2, baixo: 1, sem: 0 };
 
-// Monta a fila do dia: um item por lead trabalhável que exige ação até hoje.
+// Grupos da fila, na ordem de atendimento do processo (Leo, jul/2026):
+// horário marcado é inadiável; novos são prioridade máxima; depois as retomadas
+// diárias de qualificação, os follow-ups, a nutrição e o que ficou sem agenda.
+export const QUEUE_SECTIONS = [
+  ["appt", "Com horário marcado", "accent"],
+  ["novo", "Novos leads · prioridade máxima", "warn"],
+  ["qual", "Qualificando · retomadas do dia", "mut"],
+  ["closer", "Follow-ups e propostas", "mut"],
+  ["nutri", "Nutrição · reativar (20 dias)", "mut"],
+  ["loose", "Sem próximo passo · agendar ou descartar", "mut"],
+];
+
+// Monta a fila do dia: um item por lead trabalhável que exige ação até hoje,
+// classificado no grupo de prioridade e ordenado dentro dele.
 function buildQueue(leads, saasCfg, person) {
   const workable = new Set(workableStages(saasCfg));
-  const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
+  const open = new Set(openStages(saasCfg));
   const endToday = new Date(); endToday.setHours(23, 59, 59, 999);
   const endTomorrow = new Date(endToday); endTomorrow.setDate(endTomorrow.getDate() + 1);
 
-  const g = { late: [], today: [], fresh: [], loose: [] };
-  let tomorrow = 0;
+  const g = { appt: [], novo: [], qual: [], closer: [], nutri: [], loose: [] };
+  let tomorrow = 0, doneToday = 0;
 
   for (const l of leads) {
     if (saasCfg && l.saas !== saasCfg.id) continue;
@@ -56,6 +69,11 @@ function buildQueue(leads, saasCfg, person) {
     const who = phase === "sdr" ? (l.owner || "") : (l.closer || l.owner || "");
     // Filtro de pessoa: itens do responsável + fila sem dono (qualquer um pega).
     if (person && who && who !== person) continue;
+
+    // Progresso do dia: todo lead trabalhável tocado hoje conta, mesmo que o
+    // toque já tenha re-agendado o GPS (o item some da fila, o feito fica).
+    if (TOUCH_TYPES.has(l.lastActivityType) && l.lastActivityAt &&
+      new Date(l.lastActivityAt).toDateString() === new Date().toDateString()) doneToday++;
 
     // Compromisso mais próximo do lead: toque do GPS, call marcada ou integração.
     const cands = [];
@@ -70,19 +88,24 @@ function buildQueue(leads, saasCfg, person) {
     const done = due?.type !== "call" && TOUCH_TYPES.has(l.lastActivityType) &&
       l.lastActivityAt && new Date(l.lastActivityAt).toDateString() === new Date().toDateString();
 
+    const dueToday = due && due.t <= endToday.getTime();
     const item = { l, kind, phase, who, due, done, stage };
-    if (due && due.t < startToday.getTime()) g.late.push(item);
-    else if (due && due.t <= endToday.getTime()) g.today.push(item);
-    else if (due && due.t <= endTomorrow.getTime()) tomorrow++;
-    else if (!due && kind === "novo") g.fresh.push(item);
-    else if (!due) g.loose.push(item);
+
+    // Classificação por prioridade (primeira regra que casar vence).
+    if (dueToday && due.type !== "toque") g.appt.push(item);            // call / integração marcada
+    else if (kind === "novo" && (dueToday || !due)) g.novo.push(item);  // 1º ato (SLA)
+    else if (dueToday && !open.has(stage)) g.nutri.push(item);          // fila fora da régua (Nutrição)
+    else if (dueToday && phase === "sdr") g.qual.push(item);            // retomadas de qualificação
+    else if (dueToday) g.closer.push(item);                             // follow-ups closer/entrega
+    else if (!due && kind !== "novo") g.loose.push(item);               // sem agenda
+    else if (due && due.t <= endTomorrow.getTime()) tomorrow++;         // já agendado pra amanhã
   }
 
-  g.late.sort((a, b) => a.due.t - b.due.t);
-  g.today.sort((a, b) => a.due.t - b.due.t);
-  g.fresh.sort((a, b) => new Date(a.l.createdAt || 0) - new Date(b.l.createdAt || 0)); // mais antigo primeiro (SLA)
+  g.appt.sort((a, b) => a.due.t - b.due.t);
+  g.novo.sort((a, b) => new Date(a.l.createdAt || 0) - new Date(b.l.createdAt || 0)); // mais antigo primeiro (SLA)
+  for (const k of ["qual", "closer", "nutri"]) g[k].sort((a, b) => a.due.t - b.due.t);
   g.loose.sort((a, b) => (TIER_ORDER[leadTier(b.l).key] - TIER_ORDER[leadTier(a.l).key]) || (Number(b.l.score) || 0) - (Number(a.l.score) || 0));
-  return { ...g, tomorrow };
+  return { ...g, tomorrow, doneToday };
 }
 
 function TodayScreen({ onOpenLead }) {
@@ -106,17 +129,20 @@ function TodayScreen({ onOpenLead }) {
   const [scriptItem, setScriptItem] = useS(null); // item com o painel de roteiro aberto
 
   const q = useM(() => buildQueue(leads, saasCfg, person), [leads, saasCfg, person]);
-  const sections = [
-    ["Atrasado · recuperar primeiro", q.late, "neg"],
-    ["Hoje", q.today, "accent"],
-    ["Novos leads · ligar assim que possível", q.fresh, "warn"],
-    ["Sem próximo passo · agendar ou descartar", q.loose, "mut"],
-  ].filter(([, rows]) => rows.length > 0);
-  const all = [...q.late, ...q.today, ...q.fresh, ...q.loose];
-  const doneCount = all.filter((i) => i.done).length;
+  const sections = QUEUE_SECTIONS
+    .map(([key, label, tone]) => [key, label, tone, q[key]])
+    .filter(([, , , rows]) => rows.length > 0);
+  const ordered = QUEUE_SECTIONS.flatMap(([key]) => q[key]);
 
-  // Toque direto da fila: vira activity, o servidor conta a tentativa e re-agenda
-  // o GPS (onActivityCreated). Espelho local pra resposta imediata.
+  // Próximo item pendente DEPOIS deste na fila — o motor do "toque e próximo".
+  function nextAfter(item) {
+    const idx = ordered.findIndex((i) => i.l.id === item.l.id);
+    return ordered.find((i, j) => j > idx && !i.done && i.l.id !== item.l.id) || null;
+  }
+
+  // Toque direto da fila: vira activity, o servidor conta a tentativa, re-agenda
+  // o GPS (pulando fim de semana) e, em estágio "novo", move o lead sozinho pra
+  // Qualificando. Espelho local pra resposta imediata; o SSE ressincroniza.
   function logTouch(item) {
     const l = item.l;
     const cad = cadenceOf(saasCfg, item.stage);
@@ -126,7 +152,7 @@ function TodayScreen({ onOpenLead }) {
       stageAttempts: (Number(x.stageAttempts) || 0) + 1,
       lastActivityAt: new Date(now).toISOString(),
       lastActivityType: "call",
-      ...(cad.retryDays ? { nextActionAt: new Date(now + cad.retryDays * DAY).toISOString() } : {}),
+      ...(cad.retryDays ? { nextActionAt: rollToBusinessDay(new Date(now + cad.retryDays * DAY)).toISOString() } : {}),
     } : x));
     api.logActivity({ saas: l.saas, lead: l.id, type: "call", text: "tentativa de contato (meu dia)", author: me })
       .catch((err) => console.warn("toque não registrado:", err.message));
@@ -142,17 +168,25 @@ function TodayScreen({ onOpenLead }) {
 
   const users = allUsers().filter((u) => !u.saas || u.saas === saasCfg?.id);
   const dateLabel = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+  const firstPending = ordered.find((i) => !i.done);
   let seq = 0;
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <PageHead
         title="Meu dia"
-        sub={`${dateLabel} · ${all.length} ${all.length === 1 ? "ação na fila" : "ações na fila"}${q.late.length ? ` · ${q.late.length} em atraso` : ""}`}>
-        {all.length > 0 && (
-          <Pill tone={doneCount >= all.length ? "pos" : "mut"} title="toques registrados hoje nos itens da fila">
-            {doneCount}/{all.length} feitas
+        sub={`${dateLabel} · ${ordered.length} ${ordered.length === 1 ? "ação na fila" : "ações na fila"}`}>
+        {q.doneToday > 0 && (
+          <Pill tone={ordered.every((i) => i.done) ? "pos" : "mut"} title="leads tocados hoje nesta fila (o item feito sai da lista; o feito fica)">
+            {q.doneToday} {q.doneToday === 1 ? "feita hoje" : "feitas hoje"}
           </Pill>
+        )}
+        {firstPending && (
+          <button onClick={() => setScriptItem(firstPending)}
+            title="Abrir o roteiro do 1º item pendente e seguir a fila em sequência"
+            style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12, fontWeight: 600 }}>
+            ▶ começar a fila
+          </button>
         )}
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>fila de</span>
@@ -165,15 +199,15 @@ function TodayScreen({ onOpenLead }) {
       </PageHead>
 
       <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)" }}>
-        {all.length === 0 ? (
+        {ordered.length === 0 ? (
           <EmptyState
             title="Fila limpa"
             hint={person ? "Nenhuma ação pendente pra hoje nessa fila. Confira o pipeline ou puxe leads novos." : "Nenhuma ação pendente pra hoje."}
           />
         ) : (
           <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
-            {sections.map(([label, rows, tone]) => (
-              <React.Fragment key={label}>
+            {sections.map(([key, label, tone, rows]) => (
+              <React.Fragment key={key}>
                 <div className="mono" style={{
                   padding: "8px 14px", fontSize: 10.5, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase",
                   color: tone === "neg" ? "var(--neg)" : tone === "accent" ? "var(--accent)" : tone === "warn" ? "var(--warn)" : "var(--fg-3)",
@@ -184,7 +218,7 @@ function TodayScreen({ onOpenLead }) {
                 {rows.map((item) => {
                   seq += 1;
                   return (
-                    <QueueRow key={item.l.id} item={item} seq={seq} saasCfg={saasCfg}
+                    <QueueRow key={item.l.id} item={item} seq={seq} group={key} saasCfg={saasCfg}
                       onOpen={() => onOpenLead && onOpenLead(item.l)}
                       onScript={() => setScriptItem(item)}
                       onTouch={() => logTouch(item)}
@@ -207,8 +241,10 @@ function TodayScreen({ onOpenLead }) {
         <ScriptPanel
           item={scriptItem}
           saasCfg={saasCfg}
+          hasNext={!!nextAfter(scriptItem)}
           onClose={() => setScriptItem(null)}
-          onTouch={() => { logTouch(scriptItem); setScriptItem(null); }}
+          onTouch={() => { const nx = nextAfter(scriptItem); logTouch(scriptItem); setScriptItem(nx); }}
+          onSkip={() => setScriptItem(nextAfter(scriptItem))}
           onOpenLead={() => { setScriptItem(null); onOpenLead && onOpenLead(scriptItem.l); }}
         />
       )}
@@ -218,7 +254,7 @@ function TodayScreen({ onOpenLead }) {
 
 // Uma linha da fila: sequência, quando, o que fazer, quem é o lead (com a
 // qualificação compilada) e as ações. Clique no corpo abre o drawer do lead.
-function QueueRow({ item, seq, saasCfg, onOpen, onScript, onTouch, onClaim }) {
+function QueueRow({ item, seq, group, saasCfg, onOpen, onScript, onTouch, onClaim }) {
   const { l, kind, due, done, stage, who, phase } = item;
   const tier = leadTier(l);
   const wa = waLink(l.phone);
@@ -245,6 +281,7 @@ function QueueRow({ item, seq, saasCfg, onOpen, onScript, onTouch, onClaim }) {
   const attempts = Number(cad.maxAttempts) ? `${Math.min(Number(l.stageAttempts) || 0, Number(cad.maxAttempts))}/${cad.maxAttempts}` : null;
   const showTouch = due?.type !== "call";
   const unowned = phase === "sdr" && !l.owner;
+  const action = group === "nutri" ? "reativação" : (ACTION_LABELS[kind] || "contato");
 
   return (
     <div onClick={onOpen} style={{
@@ -266,7 +303,7 @@ function QueueRow({ item, seq, saasCfg, onOpen, onScript, onTouch, onClaim }) {
       </span>
 
       <span className="mono" style={{ width: 96, flexShrink: 0, fontSize: 11, color: "var(--fg-3)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-        {ACTION_LABELS[kind] || "contato"}
+        {action}
       </span>
 
       <span style={{ flex: 1, minWidth: 180 }}>
@@ -318,7 +355,8 @@ function QueueRow({ item, seq, saasCfg, onOpen, onScript, onTouch, onClaim }) {
 
 // Painel do roteiro: postura + objetivo + passos com a fala pronta (dados do
 // lead encaixados; o que falta vira lacuna destacada) + checklist de dados.
-function ScriptPanel({ item, saasCfg, onClose, onTouch, onOpenLead }) {
+// "Toque e próximo" mantém o operador em fluxo: registra e já abre o seguinte.
+function ScriptPanel({ item, saasCfg, hasNext, onClose, onTouch, onSkip, onOpenLead }) {
   const { l } = item;
   const script = resolveScript(saasCfg, l);
   const tokens = scriptTokens(l, saasCfg);
@@ -417,9 +455,15 @@ function ScriptPanel({ item, saasCfg, onClose, onTouch, onOpenLead }) {
 
         <div style={{ marginTop: "auto", padding: "12px 18px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", display: "flex", gap: 8, flexWrap: "wrap", position: "sticky", bottom: 0 }}>
           <button onClick={onTouch} style={{ padding: "8px 14px", background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600 }}
-            title="Registra a tentativa na timeline do lead; o GPS agenda o próximo passo sozinho">
-            ✓ registrar toque
+            title="Registra a tentativa na timeline; o GPS re-agenda sozinho (e lead novo segue pra Qualificando)">
+            {hasNext ? "✓ toque e próximo" : "✓ registrar toque"}
           </button>
+          {hasNext && (
+            <button onClick={onSkip} title="Ir pro próximo da fila sem registrar toque neste"
+              style={{ padding: "8px 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 }}>
+              pular →
+            </button>
+          )}
           {wa && (
             <a href={wa} target="_blank" rel="noopener noreferrer"
               style={{ padding: "8px 14px", borderRadius: "var(--r-2)", border: "1px solid #25D36655", color: "#128c4b", fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}>
@@ -427,7 +471,7 @@ function ScriptPanel({ item, saasCfg, onClose, onTouch, onOpenLead }) {
             </a>
           )}
           <button onClick={onOpenLead} style={{ padding: "8px 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 }}>
-            abrir lead completo
+            abrir lead
           </button>
           <button onClick={onClose} className="mono dim" style={{ marginLeft: "auto", fontSize: 12 }}>fechar</button>
         </div>
