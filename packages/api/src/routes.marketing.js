@@ -24,8 +24,11 @@ const dayStr = (d) => new Date(new Date(d).getTime() - 3 * 3600e3).toISOString()
 
 // UTMs dos criativos criados pelo cockpit — a MESMA convenção documentada acima,
 // via parâmetros dinâmicos da Meta (resolvidos na entrega do anúncio).
+// utm_placement={{site_source_name}} entrega a plataforma (fb/ig/an/msg) por
+// visita sem sujar o source — anúncio criado fora do cockpit com utm_source
+// dinâmico é normalizado na ingestão (normalizeMetaSource, routes.forms.js).
 export const CREATIVE_URL_TAGS =
-  "utm_source=meta&utm_medium=paid&utm_campaign={{campaign.id}}&utm_term={{adset.id}}&utm_content={{ad.id}}";
+  "utm_source=meta&utm_medium=paid&utm_placement={{site_source_name}}&utm_campaign={{campaign.id}}&utm_term={{adset.id}}&utm_content={{ad.id}}";
 
 // Código da dor na nomenclatura do anúncio: "[X]" em QUALQUER posição do nome
 // ("[A] v3 depoimento" ou "1303 [B]"). Código = 1-3 alfanuméricos — colchete
