@@ -75,6 +75,18 @@ export async function applyStageMove(repo, { lead, toStage, patch = {}, author =
     } else if (patch.nextActionAt == null) {
       out.nextActionAt = initialNextActionAt(product, toStage, now);
     }
+    // Entrega e pós-venda: card entrando em integração/CS/ganho sem integrador
+    // definido, o ÚNICO usuário com papel integrator do produto assume sozinho
+    // ("a integração é responsabilidade do Eryk"). O closer da venda fica
+    // intacto no campo dele. Com 0 ou 2+ integradores, ninguém chuta.
+    if (["integracao", "posvenda", "ganho"].includes(kind) && !lead.integrator && patch.integrator == null) {
+      try {
+        const users = await repo.list("users");
+        const integrators = users.filter((u) =>
+          Array.isArray(u.roles) && u.roles.includes("integrator") && (!u.saas || u.saas === lead.saas));
+        if (integrators.length === 1) out.integrator = integrators[0].id;
+      } catch { /* atribuição é conveniência: nunca bloqueia o movimento */ }
+    }
   }
   try {
     await logActivity(repo, {

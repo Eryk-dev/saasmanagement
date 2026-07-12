@@ -113,6 +113,7 @@ function LeadDetail({ lead: initial, onClose }) {
     ["Origem", lead.source],
     ["Dono (SDR)", lead.owner ? displayName(lead.owner) : null],
     ["Closer", lead.closer ? displayName(lead.closer) : null],
+    ["Integrador", lead.integrator ? displayName(lead.integrator) : null],
     ["E-mail", lead.email],
     ["Telefone", lead.phone],
     ["Motivo", lead.reason],

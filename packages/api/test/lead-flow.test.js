@@ -15,6 +15,7 @@ const FUNNEL = [
   { stage: "Em contato", kind: "contato", conv: 1, cadence: { maxAttempts: 5, retryDays: 1 } },
   { stage: "Qualificando", kind: "qualificacao", conv: 1, cadence: { maxAttempts: 3, retryDays: 1 } },
   { stage: "Follow-up", kind: "followup", conv: 0.5, cadence: { maxAttempts: 8, retryDays: 3 } },
+  { stage: "Integração", kind: "integracao", conv: 1 },
   { stage: "Ganho", kind: "ganho", conv: 1 },
   { stage: "Perdido", kind: "perdido", conv: 0 },
 ];
@@ -150,6 +151,34 @@ test("ganho: limpa GPS, cria cliente e loga customer_created", async () => {
   assert.equal(customers[0].leadId, "l1");
   const sys = await activitiesOf(repo, "l1", "system");
   assert.ok(sys.some((a) => a.meta.event === "customer_created" && a.meta.customerId === customers[0].id));
+  await app.close();
+});
+
+test("mover pra Integração/Ganho auto-atribui o único integrador; closer preservado", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("users", { id: "eryk", name: "Eryk", roles: ["integrator"] });
+  await repo.create("users", { id: "jonathan", name: "Jonathan", roles: ["closer"] });
+  await repo.create("leads", { id: "l1", saas: "leverads", stage: "Follow-up", closer: "jonathan" });
+
+  let lead = (await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { stage: "Integração" } })).json();
+  assert.equal(lead.integrator, "eryk");
+  assert.equal(lead.closer, "jonathan", "closer da venda fica intacto");
+
+  // Ganho também é pós-venda do integrador.
+  await repo.create("leads", { id: "l2", saas: "leverads", stage: "Follow-up" });
+  lead = (await app.inject({ method: "PATCH", url: "/api/leads/l2", payload: { stage: "Ganho" } })).json();
+  assert.equal(lead.integrator, "eryk");
+
+  // Integrador já definido não é sobrescrito.
+  await repo.create("leads", { id: "l3", saas: "leverads", stage: "Follow-up", integrator: "outra" });
+  lead = (await app.inject({ method: "PATCH", url: "/api/leads/l3", payload: { stage: "Integração" } })).json();
+  assert.equal(lead.integrator, "outra");
+
+  // Com 2+ integradores ninguém chuta.
+  await repo.create("users", { id: "x", name: "X", roles: ["integrator"] });
+  await repo.create("leads", { id: "l4", saas: "leverads", stage: "Follow-up" });
+  lead = (await app.inject({ method: "PATCH", url: "/api/leads/l4", payload: { stage: "Integração" } })).json();
+  assert.equal(lead.integrator, undefined);
   await app.close();
 });
 
