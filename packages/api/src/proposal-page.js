@@ -372,12 +372,22 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .price-pending .stage-item, .price-revealed .stage-item { transition: opacity .45s var(--ease-out), transform .45s var(--ease-out); }
   .price-pending .stage-item:not(.on) { opacity: 0; transform: translateY(10px); }
   .price-revealed .stage-item { opacity: 1; transform: none; }
+  /* Segunda oferta (s.offer2): entra abaixo da principal num avanço extra e a
+     principal fica cinza (comparativo). Sem revealPrice, já nasce montado. */
+  .price-card.offer2 { display: none; margin-top: 16px; }
+  .offer2-on .price-card.offer2 { display: block; animation: offer2-in .5s var(--ease-out); }
+  @keyframes offer2-in { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+  .price-card.offer1 { transition: filter .5s var(--ease-out), opacity .5s var(--ease-out); }
+  .offer2-on .price-card.offer1 { filter: grayscale(1); opacity: .55; }
   @media (prefers-reduced-motion: reduce) {
     .price-pending .price-reveal .price-card, .price-revealed .price-reveal .price-card, .price-veil,
     .price-pending .stage-item, .price-revealed .stage-item,
-    .price-revealed .close-line, .price-revealed .accept-row, .price-revealed .plan-opts { transition: none; } }
+    .price-card.offer1, .offer2-on .price-card.offer2,
+    .price-revealed .close-line, .price-revealed .accept-row, .price-revealed .plan-opts { transition: none; animation: none; } }
   @media print {
     .price-veil { display: none; }
+    .price-card.offer2 { display: block; }
+    .price-card.offer1 { filter: grayscale(1); opacity: .55; }
     .price-pending .price-reveal .price-card, .price-pending .close-line, .price-pending .accept-row, .price-pending .plan-opts,
     .price-pending .stage-item { opacity: 1; transform: none; } }
 
@@ -969,16 +979,30 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       // Esquerda: só o bloco de preço. Direita: benefícios/entregáveis (features).
       // Garantia e payback são opcionais (só entram se preenchidos no template).
       var hasGuarantee = (s.guaranteeTitle || s.guaranteeText || s.guaranteeHead);
+      // Card de preço parametrizado: usado pela oferta principal e, quando
+      // s.offer2 existe, pela segunda oferta (ex.: pacote semestral), que entra
+      // abaixo da primeira num avanço extra e acinzenta a principal (comparativo).
+      function priceCardHtml(o, cls, dr) {
+        return '<div class="price-card' + (cls ? ' ' + cls : '') + '"' + (dr ? ' data-reveal' : '') + '>' +
+          (o.planPill ? '<span class="pill accent">' + fmt(o.planPill) + '</span>' : '') +
+          '<div class="price-tag">' + fmt(o.planTag || '') + '</div>' +
+          (o.priceFrom ? '<div class="price-from">de R$ ' + fmt(o.priceFrom) + '</div>' : '') +
+          '<div class="price-number"><span class="currency">R$</span><span class="amount">' + fmt(o.price || '{{calc.preco}}') + '</span><span class="per">' + fmt(o.per || '/ mês') + '</span></div>' +
+          (o.sub ? '<div class="price-sub">' + fmt(o.sub) + '</div>' : '') +
+          '<div class="price-cycles">' + (o.cyclesLabel ? fmt(o.cyclesLabel) + ' ' : '') + (o.cyclesFrom ? '<span class="cycles-from">' + fmt(o.cyclesFrom) + '</span> ' : '') + fmt(o.cycles != null ? o.cycles : '{{calc.precoCiclos}}') + '</div>' +
+        '</div>';
+      }
+      var hasOffer2 = !!(s.offer2 && (s.offer2.price || s.offer2.planTag));
+      if (hasOffer2 && !reveal) sec.classList.add('offer2-on'); // sem reveal, o comparativo já nasce montado
+      // O wrapper .price-reveal mantém os dois cards na MESMA célula do grid
+      // (empilhados); sem ele, o offer2 cairia na coluna dos benefícios.
+      var wrapCards = reveal || hasOffer2;
       pw.innerHTML =
-        (reveal ? '<div class="price-reveal">' : '') +
-        '<div class="price-card"' + (reveal ? '' : ' data-reveal') + '>' + (s.planPill ? '<span class="pill accent">' + fmt(s.planPill) + '</span>' : '') +
-          '<div class="price-tag">' + fmt(s.planTag || '') + '</div>' +
-          (s.priceFrom ? '<div class="price-from">de R$ ' + fmt(s.priceFrom) + '</div>' : '') +
-          '<div class="price-number"><span class="currency">R$</span><span class="amount">' + fmt(s.price || '{{calc.preco}}') + '</span><span class="per">' + fmt(s.per || '/ mês') + '</span></div>' +
-          (s.sub ? '<div class="price-sub">' + fmt(s.sub) + '</div>' : '') +
-          '<div class="price-cycles">' + (s.cyclesLabel ? fmt(s.cyclesLabel) + ' ' : '') + (s.cyclesFrom ? '<span class="cycles-from">' + fmt(s.cyclesFrom) + '</span> ' : '') + fmt(s.cycles != null ? s.cycles : '{{calc.precoCiclos}}') + '</div>' +
-        '</div>' +
-        (reveal ? '<div class="price-veil" aria-hidden="true"></div></div>' : '') +
+        (wrapCards ? '<div class="price-reveal">' : '') +
+        priceCardHtml(s, hasOffer2 ? 'offer1' : '', !reveal) +
+        (hasOffer2 ? priceCardHtml(s.offer2, 'offer2', false) : '') +
+        (reveal ? '<div class="price-veil" aria-hidden="true"></div>' : '') +
+        (wrapCards ? '</div>' : '') +
         '<div data-reveal>' +
           '<div class="benefits-card">' + (s.featuresTitle ? '<div class="benefits-title">' + fmt(s.featuresTitle) + '</div>' : '') +
             benefitsInner + '</div>' +
@@ -998,18 +1022,29 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
             pendTitle = null;
           });
         }
+        var stagePending = function () {
+          return sec.classList.contains('price-pending') ||
+            (hasOffer2 && !sec.classList.contains('offer2-on'));
+        };
         var advance = function () {
-          if (!sec.classList.contains('price-pending')) return;
-          if (steps.length) { steps.shift().forEach(function (n) { n.classList.add('on'); }); return; }
-          sec.classList.remove('price-pending');
-          sec.classList.add('price-revealed');
+          if (sec.classList.contains('price-pending')) {
+            if (steps.length) { steps.shift().forEach(function (n) { n.classList.add('on'); }); return; }
+            sec.classList.remove('price-pending');
+            sec.classList.add('price-revealed');
+            return;
+          }
+          // Avanço extra: segunda oferta entra abaixo e a primeira acinzenta.
+          if (hasOffer2 && !sec.classList.contains('offer2-on')) {
+            sec.classList.add('offer2-on');
+            fitSlides();
+          }
         };
         // "Comando de passar o slide": tecla de avanço com o slide dominando a
         // viewport (senão a tecla estaria rolando outra parte da página), ou
         // clique/tap em qualquer ponto da seção. Sem botão visível de propósito.
         sec.addEventListener('click', advance);
         document.addEventListener('keydown', function (e) {
-          if (!sec.classList.contains('price-pending')) return;
+          if (!stagePending()) return;
           var k = e.key;
           if (k !== 'ArrowRight' && k !== 'ArrowDown' && k !== 'PageDown' && k !== ' ' && k !== 'Enter') return;
           var r = sec.getBoundingClientRect();
