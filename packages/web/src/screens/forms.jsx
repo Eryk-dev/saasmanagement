@@ -7,6 +7,7 @@ import { inputStyle, labelStyle, sectionTitle, cardStyle, addBtnStyle, THEME_DEF
 import { useActiveSaas } from "../lib/workspace.js";
 import { useAttribution } from "../lib/pains.js";
 import { InsightsList } from "../components/insights.jsx";
+import { sourceLabel } from "../lib/sources.js";
 // Form builder — formulários de captação por SaaS, estilo Typeform: uma pergunta
 // por vez, branching por opção, tema por marca. Lista → editor (com preview
 // server-side em iframe) → respostas. A página pública vive na API (/f/:id).
@@ -743,7 +744,7 @@ function buildFormInsights(data, form, cat) {
   if (origins.length >= 2 && data.views > 0) {
     const rate = (o) => (o.views > 0 ? o.submits / o.views : 0);
     const overall = data.submits / data.views;
-    const name = (o) => `${o.source || "(sem source)"}${o.content || o.campaign ? ` · ${originAdLabel(o, cat)}` : ""}`;
+    const name = (o) => `${sourceLabel(o) || "(sem source)"}${o.content || o.campaign ? ` · ${originAdLabel(o, cat)}` : ""}`;
     const sorted = [...origins].sort((a, b) => rate(a) - rate(b));
     const weak = sorted[0];
     const best = sorted[sorted.length - 1];
@@ -1067,7 +1068,7 @@ function FormsDashboard({ forms }) {
               <tbody>
                 {data.origins.map((o, i) => (
                   <tr key={i}>
-                    <td className="mono" style={{ ...tdAB, textAlign: "left", fontWeight: 600 }}>{o.source || "(sem source)"}</td>
+                    <td className="mono" style={{ ...tdAB, textAlign: "left", fontWeight: 600 }}>{sourceLabel(o) || "(sem source)"}</td>
                     <td style={{ ...tdAB, textAlign: "left", maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--fg-2)" }} title={originAdLabel(o, cat)}>
                       {originAdLabel(o, cat)}
                     </td>

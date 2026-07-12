@@ -34,7 +34,7 @@ test("submissão com utm grava sanitizado no lead e na submission", async () => 
     payload: {
       answers: { nome: "Ana" },
       utm: {
-        source: "fb", medium: "cpc", campaign: "Lookalike compradores",
+        source: "news", medium: "cpc", campaign: "Lookalike compradores",
         fbclid: "abc123",
         hack: "descartar", nested: { x: 1 }, term: 42, // inválidos: chave desconhecida e tipos errados
       },
@@ -42,7 +42,7 @@ test("submissão com utm grava sanitizado no lead e na submission", async () => 
   });
   assert.equal(res.statusCode, 201);
   const lead = (await repo.list("leads"))[0];
-  assert.deepEqual(lead.utm, { source: "fb", medium: "cpc", campaign: "Lookalike compradores", fbclid: "abc123" });
+  assert.deepEqual(lead.utm, { source: "news", medium: "cpc", campaign: "Lookalike compradores", fbclid: "abc123" });
   const sub = (await repo.list("form_submissions"))[0];
   assert.deepEqual(sub.utm, lead.utm);
 
@@ -143,5 +143,27 @@ test("lead sem UTM mas com referrer ganha source derivado", async () => {
   });
   const hua = (await repo.list("leads")).find((l) => l.name === "Hua");
   assert.equal(hua.utm.source, "meta");
+  await app.close();
+});
+
+test("source fb/ig/an/msg normaliza pra meta + placement (duas grafias, uma origem)", async () => {
+  const { app, repo } = await buildApp();
+  await app.inject({
+    method: "POST", url: "/public/forms/fo_utm/submissions",
+    payload: { answers: { nome: "Ivo" }, utm: { source: "an", medium: "paid", campaign: "c9", content: "a9" } },
+  });
+  const ivo = (await repo.list("leads")).find((l) => l.name === "Ivo");
+  assert.equal(ivo.utm.source, "meta");
+  assert.equal(ivo.utm.placement, "an");
+  assert.equal(ivo.utm.campaign, "c9"); // atribuição por campanha/anúncio intacta
+
+  // convenção nova do cockpit: utm_placement explícito passa direto
+  await app.inject({
+    method: "POST", url: "/public/forms/fo_utm/submissions",
+    payload: { answers: { nome: "Jo" }, utm: { source: "meta", placement: "ig", campaign: "c9" } },
+  });
+  const jo = (await repo.list("leads")).find((l) => l.name === "Jo");
+  assert.equal(jo.utm.source, "meta");
+  assert.equal(jo.utm.placement, "ig");
   await app.close();
 });

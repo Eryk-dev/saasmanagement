@@ -9,6 +9,7 @@ import { stageKind, lossReasonLabel, nextTouchPill, workableStages } from "../li
 import { displayName } from "../lib/users.js";
 import { api } from "../lib/api.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
+import { sourceLabel } from "../lib/sources.js";
 import { useData } from "../data.jsx";
 // Lead detail drawer — slides over the pipeline when a card is opened.
 // (Funil unificado: o card do pipeline é um lead, então o detalhe é do lead.)
@@ -97,7 +98,7 @@ function LeadDetail({ lead: initial, onClose }) {
     ["Campanha", cat?.campaigns?.[utm.campaign]?.name || utm.campaign],
     ["Conjunto", cat?.adsets?.[utm.term]?.name || utm.term],
     ["Anúncio", cat?.ads?.[utm.content]?.name || utm.content],
-    ["Origem", [utm.source, utm.medium].filter(Boolean).join(" / ") || null],
+    ["Origem", [sourceLabel(utm), utm.medium].filter(Boolean).join(" / ") || null],
     ["Veio de", utm.referrer || null],           // referrer externo (orgânico/bio)
     ["Página de entrada", lead.sourceUrl || null],
   ].filter(([, v]) => v != null && v !== "");

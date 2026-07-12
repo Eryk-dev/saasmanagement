@@ -22,7 +22,7 @@ const clientIp = (req) =>
 // (atribuição por campanha em /api/marketing) e na submission (auditoria).
 // Click-ids de cada plataforma (fbclid/gclid/ttclid) + referrer externo entram
 // no mesmo objeto — atribuição não fica restrita à Meta.
-const UTM_KEYS = ["source", "medium", "campaign", "content", "term", "fbclid", "gclid", "ttclid", "referrer"];
+const UTM_KEYS = ["source", "medium", "campaign", "content", "term", "placement", "fbclid", "gclid", "ttclid", "referrer"];
 function sanitizeUtm(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const out = {};
@@ -31,6 +31,18 @@ function sanitizeUtm(raw) {
     if (typeof v === "string" && v.trim()) out[k] = v.trim().slice(0, k === "referrer" ? 300 : 200);
   }
   return Object.keys(out).length ? out : null;
+}
+
+// Anúncio criado direto no Gerenciador costuma vir com utm_source =
+// {{site_source_name}} (fb/ig/an/msg = plataforma), enquanto a convenção do
+// cockpit usa utm_source=meta fixo — duas grafias pra MESMA coisa (tráfego pago
+// da Meta) sujavam a leitura por origem. Normaliza: source vira "meta" e a
+// plataforma sobrevive em utm.placement (a convenção nova do cockpit também
+// manda utm_placement={{site_source_name}}).
+const META_PLATFORM_CODES = new Set(["fb", "ig", "an", "msg"]);
+export function normalizeMetaSource(utm) {
+  if (!utm || !META_PLATFORM_CODES.has(utm.source)) return utm;
+  return { ...utm, source: "meta", placement: utm.placement || utm.source };
 }
 
 // Origem derivada do REFERRER quando a visita chega sem UTM: é o que enxerga
@@ -96,7 +108,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // contar como conversão (Lead Pixel/CAPI) — pra não otimizar anúncio nesse público.
     const disqualified = submissionTerminal(form.questions || [], answers) === "_reject";
 
-    let utm = sanitizeUtm(body.utm);
+    let utm = normalizeMetaSource(sanitizeUtm(body.utm));
     // Orgânico ganha origem legível pelo referrer (google, instagram, site) —
     // sem isso o lead sem UTM aparece "sem origem" no drawer e nos relatórios.
     if (utm && !utm.source && !utm.campaign && utm.referrer) {
@@ -223,9 +235,9 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // é o que permite medir o drop-off POR ORIGEM/ANÚNCIO, não só variante/dor.
     // Visita sem UTM mas com referrer vira origem derivada (google/instagram/
     // site), senão bio do IG, busca e home ficam invisíveis na quebra.
-    const rawUtm = sanitizeUtm(body.utm);
+    const rawUtm = normalizeMetaSource(sanitizeUtm(body.utm));
     let utm = rawUtm
-      ? Object.fromEntries(["source", "medium", "campaign", "content", "term"].filter((k) => rawUtm[k]).map((k) => [k, rawUtm[k]]))
+      ? Object.fromEntries(["source", "medium", "campaign", "content", "term", "placement"].filter((k) => rawUtm[k]).map((k) => [k, rawUtm[k]]))
       : null;
     if ((!utm || (!utm.source && !utm.campaign)) && rawUtm?.referrer) {
       const src = referrerSource(rawUtm.referrer);
@@ -297,15 +309,20 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // decide criativo, a campanha fica de contexto/fallback. Ids dinâmicos da
     // Meta; o SPA resolve nomes pelo catálogo de atribuição (useAttribution).
     // Orgânico derivado do referrer entra só com source (google/instagram/site).
-    const originKey = (e) => (e.utm && (e.utm.source || e.utm.campaign || e.utm.content)
-      ? `${e.utm.source || ""}|${e.utm.campaign || ""}|${e.utm.content || ""}` : "");
+    // normalizeMetaSource também na LEITURA: evento antigo gravado antes da
+    // normalização (source fb/ig/an) agrupa junto dos novos, como "meta".
+    const originKey = (e) => {
+      const u = normalizeMetaSource(e.utm);
+      return u && (u.source || u.campaign || u.content)
+        ? `${u.source || ""}|${u.campaign || ""}|${u.content || ""}|${u.placement || ""}` : "";
+    };
     const originKeys = [...new Set(events.map(originKey).filter(Boolean))].sort();
     const origins = originKeys.map((k) => {
-      const [source, campaign, content] = k.split("|");
+      const [source, campaign, content, placement] = k.split("|");
       const mine = (e) => originKey(e) === k;
       const ou = (ev) => new Set(events.filter((e) => mine(e) && e.event === ev).map((e) => e.session)).size;
       return {
-        ...(source ? { source } : {}), ...(campaign ? { campaign } : {}), ...(content ? { content } : {}),
+        ...(source ? { source } : {}), ...(campaign ? { campaign } : {}), ...(content ? { content } : {}), ...(placement ? { placement } : {}),
         sessions: new Set(events.filter(mine).map((e) => e.session)).size,
         views: ou("view"), starts: ou("start"), submits: ou("submit"),
       };

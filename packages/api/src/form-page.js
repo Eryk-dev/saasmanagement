@@ -292,7 +292,7 @@ ${metaPixelHead(pixelId)}
     try {
       var p = new URLSearchParams(location.search);
       var o = {};
-      ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'].forEach(function (k) {
+      ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'utm_placement'].forEach(function (k) {
         var v = p.get(k);
         if (v) o[k.slice(4)] = v.slice(0, 200);
       });

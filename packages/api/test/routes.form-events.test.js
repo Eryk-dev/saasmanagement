@@ -317,3 +317,23 @@ test("origem derivada do referrer: google/instagram/site entram na quebra sem UT
   assert.equal(g.content, undefined);
   await app.close();
 });
+
+test("eventos com source fb/ig/an agrupam como meta + placement na quebra origins", async () => {
+  const { app, repo } = await buildApp();
+  const base = { campaign: "c1", content: "a1", medium: "paid" };
+  await post(app, { session: "s1", event: "view", utm: { ...base, source: "an" } });
+  await post(app, { session: "s2", event: "view", utm: { ...base, source: "ig" } });
+  await post(app, { session: "s3", event: "view", utm: { ...base, source: "meta", placement: "ig" } });
+
+  const ev = (await repo.list("form_events")).find((e) => e.session === "s1");
+  assert.equal(ev.utm.source, "meta");
+  assert.equal(ev.utm.placement, "an");
+
+  const { origins } = (await app.inject({ url: "/api/forms/fo_test/funnel" })).json();
+  assert.ok(origins.every((o) => o.source === "meta"));
+  const ig = origins.find((o) => o.placement === "ig");
+  assert.equal(ig.views, 2); // s2 (normalizado) e s3 (convenção nova) na MESMA linha
+  const an = origins.find((o) => o.placement === "an");
+  assert.equal(an.views, 1);
+  await app.close();
+});
