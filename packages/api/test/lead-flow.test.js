@@ -194,7 +194,7 @@ test("lead ganho manda Purchase pro CAPI com o valor do negócio, uma vez só", 
   await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL, metaPixelId: "555666777" });
   const app = Fastify();
   registerRoutes(app, repo, { metaCapi });
-  await repo.create("leads", { id: "l1", saas: "leverads", name: "Ana", stage: "Novo lead", email: "ana@x.com" });
+  await repo.create("leads", { id: "l1", saas: "leverads", name: "Ana", stage: "Novo lead", email: "ana@x.com", fbp: "fb.1.1.2", fbc: "fb.1.3.abc" });
 
   // O modal de fechamento manda amount junto com o stage no mesmo PATCH.
   await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { stage: "Ganho", amount: 600 } });
@@ -203,6 +203,8 @@ test("lead ganho manda Purchase pro CAPI com o valor do negócio, uma vez só", 
   assert.equal(purchases[0].leadId, "l1");
   assert.equal(purchases[0].value, 600);
   assert.equal(purchases[0].pixelId, "555666777");
+  assert.equal(purchases[0].fbp, "fb.1.1.2");   // cookies persistidos no submit
+  assert.equal(purchases[0].fbc, "fb.1.3.abc"); // melhoram o match do Purchase
 
   // Reenvio não acontece: o guard de customer do convertWonLead segura.
   await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { stage: "Follow-up" } });

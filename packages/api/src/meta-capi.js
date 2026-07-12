@@ -143,6 +143,8 @@ export function makeMetaCapi({
     leadId,
     email,
     phone,
+    fbp,
+    fbc,
     value = 0,
     currency = "BRL",
     pixelId: pixelOverride,
@@ -151,7 +153,7 @@ export function makeMetaCapi({
       eventName: "Purchase",
       eventId,
       actionSource: "system_generated",
-      userData: buildUserData({ email, phone, externalId: leadId }),
+      userData: buildUserData({ email, phone, externalId: leadId, fbp, fbc }),
       customData: { value: Math.round((Number(value) || 0) * 100) / 100, currency },
       pixelId: pixelOverride,
     });

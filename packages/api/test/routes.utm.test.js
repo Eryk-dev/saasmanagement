@@ -90,3 +90,38 @@ test("utm term/content (conjunto/anúncio) persistem sanitizados no lead", async
   assert.deepEqual(lead.utm, { source: "meta", medium: "paid", campaign: "c_9", term: "s_9", content: "a_9" });
   await app.close();
 });
+
+test("click-ids/referrer sanitizados + fbp/fbc/sourceUrl persistem no lead; fbc deriva do fbclid", async () => {
+  const { app, repo } = await buildApp();
+  await app.inject({
+    method: "POST", url: "/public/forms/fo_utm/submissions",
+    payload: {
+      answers: { nome: "Ana" },
+      utm: { source: "google", gclid: "g123", ttclid: "t456", referrer: "https://instagram.com/leverads" },
+      fbp: "fb.1.111.222",
+      sourceUrl: "https://levermoney.com.br/f/fo_utm?gclid=g123",
+    },
+  });
+  const ana = (await repo.list("leads")).find((l) => l.name === "Ana");
+  assert.deepEqual(ana.utm, { source: "google", gclid: "g123", ttclid: "t456", referrer: "https://instagram.com/leverads" });
+  assert.equal(ana.fbp, "fb.1.111.222");
+  assert.equal(ana.sourceUrl, "https://levermoney.com.br/f/fo_utm?gclid=g123");
+  assert.equal(ana.fbc, undefined); // sem cookie e sem fbclid não inventa fbc
+
+  // fbclid sem cookie _fbc (Pixel bloqueado) → fbc derivado no formato oficial
+  await app.inject({
+    method: "POST", url: "/public/forms/fo_utm/submissions",
+    payload: { answers: { nome: "Bia" }, utm: { fbclid: "abc" } },
+  });
+  const bia = (await repo.list("leads")).find((l) => l.name === "Bia");
+  assert.match(bia.fbc, /^fb\.1\.\d+\.abc$/);
+
+  // cookie _fbc presente vence a derivação
+  await app.inject({
+    method: "POST", url: "/public/forms/fo_utm/submissions",
+    payload: { answers: { nome: "Céu" }, utm: { fbclid: "abc" }, fbc: "fb.1.999.abc" },
+  });
+  const ceu = (await repo.list("leads")).find((l) => l.name === "Céu");
+  assert.equal(ceu.fbc, "fb.1.999.abc");
+  await app.close();
+});

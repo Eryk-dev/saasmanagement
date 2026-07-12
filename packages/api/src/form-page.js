@@ -286,8 +286,8 @@ ${metaPixelHead(pixelId)}
     ? crypto.randomUUID()
     : 's-' + Date.now() + '-' + Math.random().toString(36).slice(2);
 
-  // UTM/fbclid da URL de entrada: vai junto do submit pra atribuição por
-  // campanha no cockpit (CAC/CPL por campanha). Só chaves conhecidas.
+  // UTM/click-ids/referrer da URL de entrada: vai junto do submit pra atribuição
+  // por origem no cockpit (CAC/CPL por campanha). Só chaves conhecidas.
   var UTM = (function () {
     try {
       var p = new URLSearchParams(location.search);
@@ -296,8 +296,14 @@ ${metaPixelHead(pixelId)}
         var v = p.get(k);
         if (v) o[k.slice(4)] = v.slice(0, 200);
       });
-      var fb = p.get('fbclid');
-      if (fb) o.fbclid = fb.slice(0, 200);
+      ['fbclid', 'gclid', 'ttclid'].forEach(function (k) {
+        var v = p.get(k);
+        if (v) o[k] = v.slice(0, 200);
+      });
+      // Referrer EXTERNO = de onde veio quem chegou sem UTM (orgânico, bio,
+      // outro site). Navegação interna não conta.
+      var ref = document.referrer;
+      if (ref && ref.indexOf(location.origin) !== 0) o.referrer = ref.slice(0, 300);
       return Object.keys(o).length ? o : null;
     } catch (e) { return null; }
   })();
@@ -330,7 +336,8 @@ ${metaPixelHead(pixelId)}
     if (trackSent[mark]) return;
     trackSent[mark] = true;
     try {
-      var body = JSON.stringify({ session: SID, event: event, key: key || '', variant: VARIANT, pain: window.__PAIN__ || '' });
+      // UTM junto: o funil de drop-off segmenta por campanha, não só por variante/dor.
+      var body = JSON.stringify({ session: SID, event: event, key: key || '', variant: VARIANT, pain: window.__PAIN__ || '', utm: UTM || undefined });
       var url = '/public/forms/' + encodeURIComponent(F.id) + '/events';
       if (navigator.sendBeacon) navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
       else fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body, keepalive: true });
