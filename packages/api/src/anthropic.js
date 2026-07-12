@@ -1,9 +1,13 @@
-// Claude (API da Anthropic) — resume a transcrição da call de vendas com
-// ESTRUTURA de vendas (dores, objeções, temperatura, follow-up sugerido).
-// Raw HTTP por fetch injetável, mesmo padrão do meta.js/google.js (os testes
-// rodam offline). Chave via ANTHROPIC_API_KEY; modelo via ANTHROPIC_MODEL.
-const API_URL = "https://api.anthropic.com/v1/messages";
+// IA que resume a transcrição da call de vendas com ESTRUTURA de vendas
+// (dores, objeções, temperatura, follow-up sugerido). Dois provedores, com
+// detecção AUTOMÁTICA pela chave: sk-or-* = OpenRouter (API compatível com
+// OpenAI, modelos Claude via slug anthropic/*), senão API da Anthropic
+// direto. Raw HTTP por fetch injetável, mesmo padrão do meta.js/google.js.
+// Env: OPENROUTER_API_KEY ou ANTHROPIC_API_KEY; modelo via AI_MODEL.
+const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "claude-opus-4-8";
+const DEFAULT_OPENROUTER_MODEL = "anthropic/claude-opus-4.8";
 
 // Schema do resumo — structured output garante JSON válido (sem parse frágil).
 const SUMMARY_SCHEMA = {
@@ -48,12 +52,70 @@ Regras: escreva em português direto, sem formalidade e sem enrolação. NUNCA u
 
 export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model = "" } = {}) {
   const configured = () => !!apiKey;
-  const modelId = model || DEFAULT_MODEL;
+  const openrouter = apiKey.startsWith("sk-or-");
+  const modelId = model || (openrouter ? DEFAULT_OPENROUTER_MODEL : DEFAULT_MODEL);
+
+  // Corpo/headers/parse de cada provedor. OpenRouter fala o formato da OpenAI
+  // (chat/completions + response_format json_schema); Anthropic fala Messages
+  // API (output_config + thinking adaptativo).
+  function buildRequest(userContent) {
+    if (openrouter) {
+      return {
+        url: OPENROUTER_URL,
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          "content-type": "application/json",
+          "http-referer": "https://levermoney.com.br",
+          "x-title": "LeverAds Cockpit",
+        },
+        body: {
+          model: modelId,
+          max_tokens: 16000,
+          messages: [
+            { role: "system", content: `${SYSTEM}\nResponda SOMENTE com o JSON pedido, sem texto fora dele.` },
+            { role: "user", content: userContent },
+          ],
+          response_format: { type: "json_schema", json_schema: { name: "call_summary", strict: true, schema: SUMMARY_SCHEMA } },
+        },
+      };
+    }
+    return {
+      url: ANTHROPIC_URL,
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: {
+        model: modelId,
+        max_tokens: 16000,
+        thinking: { type: "adaptive" },
+        system: SYSTEM,
+        output_config: { format: { type: "json_schema", schema: SUMMARY_SCHEMA } },
+        messages: [{ role: "user", content: userContent }],
+      },
+    };
+  }
+
+  function extractText(body) {
+    if (openrouter) {
+      if (body.error) throw new Error(`OpenRouter: ${body.error.message || body.error.code || "falha na API"}`);
+      const msg = body.choices?.[0]?.message;
+      if (!msg?.content) throw new Error("OpenRouter: resposta vazia");
+      // alguns provedores devolvem o JSON cercado de ```json ... ```
+      return String(msg.content).replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
+    }
+    if (body.type === "error") throw new Error(`Claude: ${body.error?.message || "falha na API"}`);
+    if (body.stop_reason === "refusal") throw new Error("Claude recusou o conteúdo da transcrição");
+    const textBlock = (body.content || []).find((b) => b.type === "text");
+    if (body.stop_reason === "max_tokens" || !textBlock) throw new Error("Claude: resposta incompleta (sem bloco de texto)");
+    return textBlock.text;
+  }
 
   // Uma call → um resumo estruturado. Transcrição grande é cortada em ~180k
   // chars (mantém o FINAL, onde vivem compromissos e próximos passos).
   async function summarizeCall({ transcript, lead = {}, productName = "LeverAds", callDate = "", today = "" }) {
-    if (!configured()) throw new Error("IA não configurada — defina ANTHROPIC_API_KEY no servidor");
+    if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
     const MAX = 180_000;
     const text = String(transcript || "");
     const clipped = text.length > MAX ? `[início da call omitido]\n${text.slice(-MAX)}` : text;
@@ -67,40 +129,20 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
       `Produto: ${productName}`,
     ].filter(Boolean).join("\n");
 
-    const res = await f(API_URL, {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: modelId,
-        max_tokens: 16000,
-        thinking: { type: "adaptive" },
-        system: SYSTEM,
-        output_config: { format: { type: "json_schema", schema: SUMMARY_SCHEMA } },
-        messages: [{
-          role: "user",
-          content: `${context}\n\nTranscrição da call:\n\n${clipped}`,
-        }],
-      }),
-    });
+    const req = buildRequest(`${context}\n\nTranscrição da call:\n\n${clipped}`);
+    const res = await f(req.url, { method: "POST", headers: req.headers, body: JSON.stringify(req.body) });
     const body = await res.json().catch(() => ({}));
-    if (res.status >= 400 || body.type === "error") {
-      throw new Error(`Claude -> ${res.status}: ${body.error?.message || "falha na API"}`);
+    if (res.status >= 400) {
+      const why = body.error?.message || body.error?.code || "falha na API";
+      throw new Error(`${openrouter ? "OpenRouter" : "Claude"} -> ${res.status}: ${why}`);
     }
-    if (body.stop_reason === "refusal") throw new Error("Claude recusou o conteúdo da transcrição");
-    const textBlock = (body.content || []).find((b) => b.type === "text");
-    if (body.stop_reason === "max_tokens" || !textBlock) {
-      throw new Error("Claude: resposta incompleta (sem bloco de texto)");
-    }
+    const raw = extractText(body);
     let parsed;
-    try { parsed = JSON.parse(textBlock.text); } catch {
-      throw new Error("Claude: resposta fora do formato esperado");
+    try { parsed = JSON.parse(raw); } catch {
+      throw new Error(`${openrouter ? "OpenRouter" : "Claude"}: resposta fora do formato esperado`);
     }
     return { summary: parsed, usage: body.usage || {}, model: body.model || modelId };
   }
 
-  return { configured, summarizeCall, model: modelId };
+  return { configured, summarizeCall, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
 }

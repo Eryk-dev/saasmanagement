@@ -134,7 +134,7 @@ export function registerGoogleRoutes(app, repo, { google, anthropic } = {}) {
   // Resumo estratégico da call (transcrição do Meet → Claude → timeline).
   // force = re-resumir mesmo já tendo resumo desta call.
   app.post("/api/leads/:id/call-summary", async (req, reply) => {
-    if (!summarizer) return reply.code(503).send({ error: "IA não configurada — defina ANTHROPIC_API_KEY no servidor" });
+    if (!summarizer) return reply.code(503).send({ error: "IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor" });
     try {
       const r = await summarizer.summarizeLead(req.params.id, { force: !!req.body?.force });
       if (!r.ok && r.reason === "not_found") return reply.code(404).send({ error: "Not found" });
