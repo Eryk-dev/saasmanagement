@@ -153,7 +153,11 @@ function MetricsScreen() {
     return () => clearInterval(id);
   }, [product?.id, since, until, metaOn]); // eslint-disable-line react-hooks/exhaustive-deps
   const liveAt = data?.syncedAt ? new Date(data.syncedAt) : null;
-  const insights = data && !data.error ? buildInsights(data, placements) : [];
+  const insights = (data && !data.error ? buildInsights(data, placements) : [])
+    .map((it) => withInsightAction(it, { data, objects }));
+  // Aplicou uma ação (pausa/orçamento) → recarrega o estado vivo da conta,
+  // igual ao pós-toggle do card Anúncios.
+  const reloadObjects = () => { if (product?.metaAdAccount) api.adObjects(product.id).then(setObjects).catch(() => { /* mantém o atual */ }); };
 
   // Toggle Off/On e orçamento em QUALQUER nível — sem confirmação, como no
   // Gerenciador: otimista aqui, reverte se a Meta recusar.
@@ -442,8 +446,8 @@ function MetricsScreen() {
         )}
 
         {data && !data.error && (
-          <InsightsCard scope={`ads:${product.id}`} items={insights}
-            hint="sugestões por regra (ROAS por dor, CPL por anúncio, placement) · a decisão continua sua · ✕ dispensa por 7 dias" />
+          <InsightsCard scope={`ads:${product.id}`} items={insights} onApplied={reloadObjects}
+            hint="sugestões por regra (ROAS por dor, CPL por anúncio, placement) · aplicar mostra os passos exatos e pede confirmação · ✕ dispensa por 7 dias" />
         )}
 
         {data && !data.error && (data.pains || []).some((p) => p.code) && (
@@ -918,6 +922,43 @@ function buildInsights(data, placements) {
     }
   }
   return out.slice(0, 6);
+}
+
+// Ação executável de um insight (botão "aplicar" + popup de confirmação): só
+// entra quando dá pra fazer com segurança pelas rotas que o cockpit já usa —
+// pausar anúncio e orçamento de conjunto ABO. Insights de copy/pitch/placement
+// ficam sem botão (a mudança é manual). Os `steps` do popup são os passos
+// EXATOS, com valores; nada além deles é executado.
+function withInsightAction(it, { data, objects }) {
+  const m = it.meta;
+  if (!m || !objects || objects.error) return it;
+  if (m.kind === "pauseAd") {
+    return {
+      ...it,
+      action: {
+        label: "Pausar anúncio",
+        steps: [`Pausar o anúncio “${m.adName}” na Meta — para de veicular na hora; dá pra reativar quando quiser no card Anúncios.`],
+        execute: () => api.metaObjectStatus(m.adId, "PAUSED"),
+      },
+    };
+  }
+  if (m.kind === "raiseBudget") {
+    // Conjuntos ABO ativos que rodam anúncios da dor; CBO (orçamento na
+    // campanha) fica de fora pra não mexer na verba de outras dores junto.
+    const adsetIds = new Set((data.ads || []).filter((a) => painCodeOf(a.name) === m.code).map((a) => String(a.adsetId || "")).filter(Boolean));
+    const targets = (objects.adsets || []).filter((s) => adsetIds.has(String(s.id)) && s.dailyBudget > 0 && s.status !== "PAUSED");
+    if (!targets.length) return it; // só CBO/pausados → sem ação automática segura
+    const bump = (v) => Math.ceil(v * 1.2);
+    return {
+      ...it,
+      action: {
+        label: "Subir orçamento (+20%)",
+        steps: targets.map((s) => `Conjunto “${s.name}”: orçamento diário ${money(s.dailyBudget)} → ${money(bump(s.dailyBudget))} (+20%), aplicado direto no Gerenciador da Meta.`),
+        execute: async () => { for (const s of targets) await api.metaObjectBudget(s.id, bump(s.dailyBudget)); },
+      },
+    };
+  }
+  return it;
 }
 
 // Breakdown por placement: onde o dinheiro roda (plataforma × posição). Sem
