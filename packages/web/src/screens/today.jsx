@@ -533,12 +533,13 @@ function ScriptPanel({ item, saasCfg, hasNext, onClose, onTouch, onSkip, onOpenL
 
             <div>
               <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Dados do lead · confirme o que estiver faltando</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 6 }}>
+              {/* Empilhado (1 por linha): pergunta longa quebra, resposta fica à direita. */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {checklist.map((c, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, padding: "5px 8px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.value ? "var(--bg-1)" : "var(--warn-soft)" }}>
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "6px 9px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.value ? "var(--bg-1)" : "var(--warn-soft)" }}>
                     <span style={{ color: c.value ? "var(--pos)" : "var(--warn)", flexShrink: 0, fontSize: 12 }}>{c.value ? "✓" : "○"}</span>
-                    <span className="dim" style={{ flexShrink: 0, fontSize: 11 }}>{c.label}</span>
-                    <span style={{ marginLeft: "auto", fontWeight: 500, textAlign: "right" }}>{c.value || "perguntar"}</span>
+                    <span className="dim" style={{ flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.35 }}>{c.label}</span>
+                    <span style={{ flexShrink: 0, maxWidth: "45%", fontWeight: 500, textAlign: "right", overflowWrap: "anywhere" }}>{c.value || "perguntar"}</span>
                   </div>
                 ))}
               </div>
