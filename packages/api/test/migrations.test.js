@@ -276,6 +276,22 @@ test("migrateLeverAdsSdrCadence: remove Em contato (cards migram), cria Nutriç�
   assert.ok(!(await repo.get("products", "leverads")).leadQuestions.some((q) => q.key === "staff"));
 });
 
+test("migrateLeverAdsSdrCadence: reconhece a cadência antiga mesmo com chaves reordenadas (jsonb)", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", {
+    id: "leverads", name: "LeverAds",
+    funnel: [
+      { stage: "Novo lead", kind: "novo", conv: 1, cadence: { firstTouchHours: 2 } },
+      // Postgres jsonb devolve retryDays antes de maxAttempts — tem que casar igual.
+      { stage: "Qualificando", kind: "qualificacao", conv: 1, cadence: { retryDays: 1, maxAttempts: 5 } },
+      { stage: "Ganho", kind: "ganho", conv: 1 },
+    ],
+  });
+  await migrateLeverAdsSdrCadence(repo);
+  const p = await repo.get("products", "leverads");
+  assert.deepEqual(p.funnel.find((f) => f.kind === "qualificacao").cadence, { maxAttempts: 3, retryDays: 1 });
+});
+
 test("migrateLeverAdsSdrCadence: cadência já editada pelo dono não é sobrescrita", async () => {
   const repo = makeMemRepo();
   await repo.create("products", {
