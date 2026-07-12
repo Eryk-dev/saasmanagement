@@ -4,6 +4,7 @@ import { NavRail, TopBar, NAV } from "./chrome.jsx";
 import { eventsUrl } from "./lib/api.js";
 import { chromeBtnStyleSmall } from "./lib/ui.js";
 import { OverviewScreen } from "./screens/overview.jsx";
+import { TodayScreen } from "./screens/today.jsx";
 import { MetricsScreen } from "./screens/metrics.jsx";
 import { ExpensesScreen } from "./screens/expenses.jsx";
 import { PipelineScreen } from "./screens/pipeline.jsx";
@@ -114,6 +115,7 @@ function App() {
   // Breadcrumb per screen
   const crumbsFor = {
     overview:    ["Visão geral"],
+    today:       ["Meu dia"],
     pipeline:    ["Pipeline"],
     customers:   ["Clientes"],
     metrics:     ["Publicidade"],
@@ -166,6 +168,7 @@ function App() {
             se ressincronizam pelo `version` do contexto, em re-render normal. */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
           {scr === "overview"    && <OverviewScreen onNav={nav} onOpenLead={openLead} />}
+          {scr === "today"       && <TodayScreen onOpenLead={openLead} />}
           {scr === "pipeline"    && <PipelineScreen saasId={params.saas} onJump={jump} jumpFilter={params} onOpenLead={openLead} />}
           {scr === "customers"   && <CustomersScreen />}
           {scr === "metrics"     && <MetricsScreen />}
@@ -230,6 +233,7 @@ function screenFromHash() {
 function subtitleFor(screen, params) {
   const map = {
     overview:    "",
+    today:       "a fila do dia em ordem de execução",
     pipeline:    `${params.stage ? "estágio: " + params.stage + " · " : ""}arraste para mover`,
     customers:   "",
     metrics:     "",

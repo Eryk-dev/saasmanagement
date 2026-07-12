@@ -233,15 +233,15 @@ test("ensureUserSaasScope escopa a Ana na UniqueKids uma vez, sem inventar usuá
   assert.equal((await repo2.list("users")).length, 0);
 });
 
-test("ensureUserScreens restringe sdr e ana a pipeline+tasks uma vez, sem sobrescrever ajuste manual", async () => {
+test("ensureUserScreens restringe sdr e ana à operação (today+pipeline+tasks) uma vez, sem sobrescrever ajuste manual", async () => {
   const repo = makeMemRepo();
   await repo.create("users", { id: "sdr", name: "SDR" });
   await repo.create("users", { id: "ana", name: "Ana" });
   await repo.create("users", { id: "leonardo", name: "Leonardo" });
 
   assert.equal(await ensureUserScreens(repo), 2);
-  assert.deepEqual((await repo.get("users", "sdr")).screens, ["pipeline", "tasks"]);
-  assert.deepEqual((await repo.get("users", "ana")).screens, ["pipeline", "tasks"]);
+  assert.deepEqual((await repo.get("users", "sdr")).screens, ["today", "pipeline", "tasks"]);
+  assert.deepEqual((await repo.get("users", "ana")).screens, ["today", "pipeline", "tasks"]);
   assert.equal((await repo.get("users", "leonardo")).screens, undefined); // admin segue com tudo
   assert.equal(await ensureUserScreens(repo), 0); // idempotente
 

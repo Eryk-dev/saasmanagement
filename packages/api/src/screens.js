@@ -14,7 +14,7 @@
 // deve entrar no mapa abaixo.
 
 export const SCREEN_IDS = [
-  "overview", "pipeline", "customers", "metrics", "expenses",
+  "overview", "today", "pipeline", "customers", "metrics", "expenses",
   "forms", "proposals", "tasks", "settings",
 ];
 
@@ -28,35 +28,36 @@ export function canScreen(user, screen) {
   return s.length === 0 || s.includes(screen);
 }
 
-// Prefixo de rota → tela que ela serve. Ordem importa (primeiro match vence).
-// Rotas fora do mapa (bootstrap, rev/events, auth próprio, people, leaderboard)
-// ficam liberadas pra qualquer sessão — o bootstrap filtra o payload por conta
-// própria (routes.js).
+// Prefixo de rota → telas que ela serve (basta o usuário ter UMA delas). Ordem
+// importa (primeiro match vence). "Meu dia" (today) é uma view sobre os mesmos
+// dados do pipeline: leads e toques servem as duas telas. Rotas fora do mapa
+// (bootstrap, rev/events, auth próprio, people, leaderboard) ficam liberadas pra
+// qualquer sessão — o bootstrap filtra o payload por conta própria (routes.js).
 const ROUTE_SCREENS = [
-  ["/api/marketing", "metrics"],
-  ["/api/metrics/", "metrics"],
-  ["/api/ad_insights", "metrics"],
-  ["/api/ai-costs", "expenses"],
-  ["/api/expenses", "expenses"], // CRUD genérico E /api/expenses/summary/:saas
-  ["/api/funnel/", "pipeline"],  // análise do pipeline
-  ["/api/leads", "pipeline"],    // inclui /api/leads/:id/proposal (ação do closer)
-  ["/api/activities", "pipeline"],
-  ["/api/customers", "customers"],
-  ["/api/subscriptions", "customers"], // inclui /change e /mp/link
-  ["/api/invoices", "customers"],      // inclui /pay
-  ["/api/plans", "customers"],
-  ["/api/nps", "customers"],
-  ["/api/billing/", "customers"],
-  ["/api/forms", "forms"],             // inclui /:id/funnel e /preview
-  ["/api/form_submissions", "forms"],
-  ["/api/form_events", "forms"],
-  ["/api/proposal_templates", "proposals"],
-  ["/api/proposals", "proposals"],     // inclui /preview
-  ["/api/tasks", "tasks"],
-  ["/api/task_boards", "tasks"],
-  ["/api/goals", "overview"],
-  ["/api/portfolio", "overview"],
-  ["/api/leaderboard", "overview"],
+  ["/api/marketing", ["metrics"]],
+  ["/api/metrics/", ["metrics"]],
+  ["/api/ad_insights", ["metrics"]],
+  ["/api/ai-costs", ["expenses"]],
+  ["/api/expenses", ["expenses"]], // CRUD genérico E /api/expenses/summary/:saas
+  ["/api/funnel/", ["pipeline"]],  // análise do pipeline
+  ["/api/leads", ["pipeline", "today"]],    // inclui /api/leads/:id/proposal (ação do closer)
+  ["/api/activities", ["pipeline", "today"]],
+  ["/api/customers", ["customers"]],
+  ["/api/subscriptions", ["customers"]], // inclui /change e /mp/link
+  ["/api/invoices", ["customers"]],      // inclui /pay
+  ["/api/plans", ["customers"]],
+  ["/api/nps", ["customers"]],
+  ["/api/billing/", ["customers"]],
+  ["/api/forms", ["forms"]],             // inclui /:id/funnel e /preview
+  ["/api/form_submissions", ["forms"]],
+  ["/api/form_events", ["forms"]],
+  ["/api/proposal_templates", ["proposals"]],
+  ["/api/proposals", ["proposals"]],     // inclui /preview
+  ["/api/tasks", ["tasks"]],
+  ["/api/task_boards", ["tasks"]],
+  ["/api/goals", ["overview"]],
+  ["/api/portfolio", ["overview"]],
+  ["/api/leaderboard", ["overview"]],
 ];
 
 // Escritas administrativas: leitura fica aberta (o app inteiro precisa do
@@ -65,7 +66,7 @@ const ROUTE_SCREENS = [
 const SETTINGS_WRITE_PREFIXES = ["/api/products", "/api/auth/users"];
 
 export function screenForRequest(method, path) {
-  if (method !== "GET" && SETTINGS_WRITE_PREFIXES.some((p) => path.startsWith(p))) return "settings";
+  if (method !== "GET" && SETTINGS_WRITE_PREFIXES.some((p) => path.startsWith(p))) return ["settings"];
   const hit = ROUTE_SCREENS.find(([prefix]) => path.startsWith(prefix));
   return hit ? hit[1] : null;
 }
@@ -75,8 +76,8 @@ export function makeScreenGuardHook() {
   return async (req, reply) => {
     const user = req.authUser;
     if (!user) return; // key mestre ou rota aberta — auth já decidiu
-    const screen = screenForRequest(req.method, req.url.split("?")[0]);
-    if (screen && !canScreen(user, screen)) {
+    const screens = screenForRequest(req.method, req.url.split("?")[0]);
+    if (screens && !screens.some((s) => canScreen(user, s))) {
       return reply.code(403).send({ error: "Sem acesso a esta área" });
     }
   };

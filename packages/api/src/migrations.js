@@ -197,8 +197,8 @@ export async function ensureUserSaasScope(repo) {
 // aplica só quando o campo ainda não existe (ajuste manual em Ajustes → Equipe
 // nunca é sobrescrito) e não cria usuário.
 const SCREENS_SEED = {
-  sdr: ["pipeline", "tasks"],
-  ana: ["pipeline", "tasks"],
+  sdr: ["today", "pipeline", "tasks"],
+  ana: ["today", "pipeline", "tasks"],
 };
 
 export async function ensureUserScreens(repo) {
