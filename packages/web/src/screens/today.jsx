@@ -5,7 +5,7 @@ import { waLink, leadTier } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay } from "../lib/funnel.js";
-import { allUsers, currentUser, displayName } from "../lib/users.js";
+import { allUsers, currentUser, displayName, userById } from "../lib/users.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { resolveScript, scriptTokens, scriptSegments, scriptChecklist } from "../lib/scripts.js";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
@@ -41,6 +41,11 @@ const TIER_ORDER = { alto: 3, medio: 2, baixo: 1, sem: 0 };
 // follow-ups, nutrição e o que ficou sem agenda.
 const GROUP_ORDER = ["appt", "novo", "qual", "closer", "nutri", "loose"];
 
+// Fase do processo → papel que trabalha nela. Card SEM responsável só entra na
+// fila de quem tem o papel da fase: SDR não vê follow-up/integração soltos
+// (exclusivos de closer/integrador) e closer não herda a fila de novos.
+const PHASE_ROLE = { sdr: "sdr", closer: "closer", entrega: "integrator" };
+
 // Blocos por dia. "Hoje" SEMPRE aparece (vazio ganha a mensagem de descanso);
 // os demais só quando têm itens.
 const DAY_BLOCKS = [
@@ -65,6 +70,9 @@ function buildQueue(leads, saasCfg, person) {
 
   const g = { hoje: [], amanha: [], proximos: [], semdata: [] };
   let doneToday = 0;
+  // Papéis de quem é a fila (sdr/closer/integrator) — decide quais cards sem
+  // dono aparecem. Fila "time todo" (person vazio) mostra tudo.
+  const personRoles = person ? new Set(userById(person)?.roles || []) : null;
 
   for (const l of leads) {
     if (saasCfg && l.saas !== saasCfg.id) continue;
@@ -74,8 +82,15 @@ function buildQueue(leads, saasCfg, person) {
     const phase = phaseOf(kind);
     // Responsável da vez: SDR (dono) na pré-venda; closer/integrador dali em diante.
     const who = phase === "sdr" ? (l.owner || "") : (l.closer || l.owner || "");
-    // Filtro de pessoa: itens do responsável + fila sem dono (qualquer um pega).
-    if (person && who && who !== person) continue;
+    // Filtro de pessoa: card atribuído à pessoa sempre entra; card SEM dono só
+    // entra pra quem tem o papel da fase (SDR não vê follow-up/integração).
+    if (person) {
+      if (who) { if (who !== person) continue; }
+      else {
+        const need = PHASE_ROLE[phase];
+        if (!need || !personRoles.has(need)) continue;
+      }
+    }
 
     // Progresso do dia: todo lead trabalhável tocado hoje conta, mesmo que o
     // toque já tenha re-agendado o GPS (o item muda de bloco, o feito fica).
