@@ -8,13 +8,13 @@ import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusine
 import { allUsers, currentUser, displayName } from "../lib/users.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { resolveScript, scriptTokens, scriptSegments, scriptChecklist } from "../lib/scripts.js";
-// Meu dia — a fila de execução de quem opera o funil, na ordem de prioridade do
-// processo comercial: compromissos com horário marcado, depois os leads NOVOS
-// (prioridade máxima: acabaram de entrar), as retomadas de Qualificando, os
-// follow-ups do closer, a Nutrição (reativação pós-20 dias) e por fim o que
-// está sem próximo passo. É pra trabalhar em sequência, sem escolher: abre o
-// primeiro Roteiro e vai de "toque e próximo" até a fila zerar. Cada item
-// carrega a situação compilada do lead e o script da etapa com os dados dele.
+// Meu dia — a fila de execução de quem opera o funil: UMA lista única, em
+// formato de tabela (colunas Quando · Etapa · Ação · Lead), numerada na ordem
+// de prioridade do processo comercial: compromissos com horário de HOJE,
+// leads novos (prioridade máxima, por chegada), retomadas de Qualificando,
+// follow-ups do closer, Nutrição (reativação) e por fim o que está sem
+// próximo passo. É pra trabalhar em sequência, sem escolher: "começar a fila"
+// abre o roteiro do 1º pendente e "toque e próximo" segue até zerar.
 
 const { useState: useS, useMemo: useM, useEffect: useE } = React;
 
@@ -36,23 +36,21 @@ const ACTION_LABELS = {
 
 const TIER_ORDER = { alto: 3, medio: 2, baixo: 1, sem: 0 };
 
-// Grupos da fila, na ordem de atendimento do processo (Leo, jul/2026):
-// horário marcado é inadiável; novos são prioridade máxima; depois as retomadas
-// diárias de qualificação, os follow-ups, a nutrição e o que ficou sem agenda.
-export const QUEUE_SECTIONS = [
-  ["appt", "Com horário marcado", "accent"],
-  ["novo", "Novos leads · prioridade máxima", "warn"],
-  ["qual", "Qualificando · retomadas do dia", "mut"],
-  ["closer", "Follow-ups e propostas", "mut"],
-  ["nutri", "Nutrição · reativar (20 dias)", "mut"],
-  ["loose", "Sem próximo passo · agendar ou descartar", "mut"],
-];
+// Ordem de atendimento do processo (Leo, jul/2026): horário marcado de hoje é
+// inadiável; novos são prioridade máxima; depois retomadas de qualificação,
+// follow-ups, nutrição e o que ficou sem agenda.
+const GROUP_ORDER = ["appt", "novo", "qual", "closer", "nutri", "loose"];
+
+// Grade compartilhada entre cabeçalho e linhas — é o que mantém as colunas
+// alinhadas (dentro de .tbl-x, com rolagem horizontal no mobile).
+const GRID = { display: "grid", gridTemplateColumns: "30px 100px 140px 110px minmax(240px, 1fr) max-content", gap: 10, alignItems: "center" };
 
 // Monta a fila do dia: um item por lead trabalhável que exige ação até hoje,
 // classificado no grupo de prioridade e ordenado dentro dele.
 function buildQueue(leads, saasCfg, person) {
   const workable = new Set(workableStages(saasCfg));
   const open = new Set(openStages(saasCfg));
+  const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
   const endToday = new Date(); endToday.setHours(23, 59, 59, 999);
   const endTomorrow = new Date(endToday); endTomorrow.setDate(endTomorrow.getDate() + 1);
 
@@ -75,12 +73,17 @@ function buildQueue(leads, saasCfg, person) {
     if (TOUCH_TYPES.has(l.lastActivityType) && l.lastActivityAt &&
       new Date(l.lastActivityAt).toDateString() === new Date().toDateString()) doneToday++;
 
-    // Compromisso mais próximo do lead: toque do GPS, call marcada ou integração.
+    // Compromisso mais próximo do lead. Call/integração SÓ contam de hoje em
+    // diante: data velha esquecida no card não é compromisso, é histórico — o
+    // agendamento vivo é o do GPS (nextActionAt).
     const cands = [];
-    const push = (v, type) => { const t = v ? new Date(v).getTime() : NaN; if (Number.isFinite(t)) cands.push({ t, type }); };
+    const push = (v, type, min = 0) => {
+      const t = v ? new Date(v).getTime() : NaN;
+      if (Number.isFinite(t) && t >= min) cands.push({ t, type });
+    };
     push(l.nextActionAt, "toque");
-    push(l.callAt, "call");
-    if (kind === "integracao") push(l.integrationAt, "integração");
+    push(l.callAt, "call", startToday.getTime());
+    if (kind === "integracao") push(l.integrationAt, "integração", startToday.getTime());
     cands.sort((a, b) => a.t - b.t);
     const due = cands[0] || null;
 
@@ -92,13 +95,13 @@ function buildQueue(leads, saasCfg, person) {
     const item = { l, kind, phase, who, due, done, stage };
 
     // Classificação por prioridade (primeira regra que casar vence).
-    if (dueToday && due.type !== "toque") g.appt.push(item);            // call / integração marcada
-    else if (kind === "novo" && (dueToday || !due)) g.novo.push(item);  // 1º ato (SLA)
-    else if (dueToday && !open.has(stage)) g.nutri.push(item);          // fila fora da régua (Nutrição)
-    else if (dueToday && phase === "sdr") g.qual.push(item);            // retomadas de qualificação
-    else if (dueToday) g.closer.push(item);                             // follow-ups closer/entrega
-    else if (!due && kind !== "novo") g.loose.push(item);               // sem agenda
-    else if (due && due.t <= endTomorrow.getTime()) tomorrow++;         // já agendado pra amanhã
+    if (dueToday && due.type !== "toque") { item.group = "appt"; g.appt.push(item); }
+    else if (kind === "novo" && (dueToday || !due)) { item.group = "novo"; g.novo.push(item); }
+    else if (dueToday && !open.has(stage)) { item.group = "nutri"; g.nutri.push(item); }
+    else if (dueToday && phase === "sdr") { item.group = "qual"; g.qual.push(item); }
+    else if (dueToday) { item.group = "closer"; g.closer.push(item); }
+    else if (!due && kind !== "novo") { item.group = "loose"; g.loose.push(item); }
+    else if (due && due.t <= endTomorrow.getTime()) tomorrow++;
   }
 
   g.appt.sort((a, b) => a.due.t - b.due.t);
@@ -129,10 +132,7 @@ function TodayScreen({ onOpenLead }) {
   const [scriptItem, setScriptItem] = useS(null); // item com o painel de roteiro aberto
 
   const q = useM(() => buildQueue(leads, saasCfg, person), [leads, saasCfg, person]);
-  const sections = QUEUE_SECTIONS
-    .map(([key, label, tone]) => [key, label, tone, q[key]])
-    .filter(([, , , rows]) => rows.length > 0);
-  const ordered = QUEUE_SECTIONS.flatMap(([key]) => q[key]);
+  const ordered = GROUP_ORDER.flatMap((key) => q[key]);
 
   // Próximo item pendente DEPOIS deste na fila — o motor do "toque e próximo".
   function nextAfter(item) {
@@ -167,9 +167,10 @@ function TodayScreen({ onOpenLead }) {
   }
 
   const users = allUsers().filter((u) => !u.saas || u.saas === saasCfg?.id);
+  const stageMeta = Object.fromEntries((saasCfg?.funnel || []).map((f) => [f.stage, f]));
   const dateLabel = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
   const firstPending = ordered.find((i) => !i.done);
-  let seq = 0;
+  const headCell = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" };
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -206,27 +207,21 @@ function TodayScreen({ onOpenLead }) {
           />
         ) : (
           <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
-            {sections.map(([key, label, tone, rows]) => (
-              <React.Fragment key={key}>
-                <div className="mono" style={{
-                  padding: "8px 14px", fontSize: 10.5, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase",
-                  color: tone === "neg" ? "var(--neg)" : tone === "accent" ? "var(--accent)" : tone === "warn" ? "var(--warn)" : "var(--fg-3)",
-                  background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)",
-                }}>
-                  {label} · {rows.length}
-                </div>
-                {rows.map((item) => {
-                  seq += 1;
-                  return (
-                    <QueueRow key={item.l.id} item={item} seq={seq} group={key} saasCfg={saasCfg}
-                      onOpen={() => onOpenLead && onOpenLead(item.l)}
-                      onScript={() => setScriptItem(item)}
-                      onTouch={() => logTouch(item)}
-                      onClaim={() => claim(item)}
-                    />
-                  );
-                })}
-              </React.Fragment>
+            <div className="mono" style={{ ...GRID, padding: "9px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
+              <span style={headCell}>#</span>
+              <span style={headCell}>Quando</span>
+              <span style={headCell}>Etapa</span>
+              <span style={headCell}>Ação</span>
+              <span style={headCell}>Lead · qualificação</span>
+              <span />
+            </div>
+            {ordered.map((item, i) => (
+              <QueueRow key={item.l.id} item={item} seq={i + 1} saasCfg={saasCfg} stageMeta={stageMeta}
+                onOpen={() => onOpenLead && onOpenLead(item.l)}
+                onScript={() => setScriptItem(item)}
+                onTouch={() => logTouch(item)}
+                onClaim={() => claim(item)}
+              />
             ))}
           </div>
         )}
@@ -252,10 +247,10 @@ function TodayScreen({ onOpenLead }) {
   );
 }
 
-// Uma linha da fila: sequência, quando, o que fazer, quem é o lead (com a
-// qualificação compilada) e as ações. Clique no corpo abre o drawer do lead.
-function QueueRow({ item, seq, group, saasCfg, onOpen, onScript, onTouch, onClaim }) {
-  const { l, kind, due, done, stage, who, phase } = item;
+// Uma linha da fila: sequência, quando, etapa (coluna do funil), ação a fazer,
+// lead com a qualificação compilada e as ações. Clique no corpo abre o drawer.
+function QueueRow({ item, seq, saasCfg, stageMeta, onOpen, onScript, onTouch, onClaim }) {
+  const { l, kind, due, done, stage, who, phase, group } = item;
   const tier = leadTier(l);
   const wa = waLink(l.phone);
   const now = Date.now();
@@ -282,31 +277,35 @@ function QueueRow({ item, seq, group, saasCfg, onOpen, onScript, onTouch, onClai
   const showTouch = due?.type !== "call";
   const unowned = phase === "sdr" && !l.owner;
   const action = group === "nutri" ? "reativação" : (ACTION_LABELS[kind] || "contato");
+  const stageColor = stageMeta?.[stage]?.color || "var(--accent)";
 
   return (
     <div onClick={onOpen} style={{
-      display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
-      padding: "10px 14px", borderBottom: "1px solid var(--line-1)", cursor: "pointer",
+      ...GRID,
+      padding: "9px 14px", borderBottom: "1px solid var(--line-1)", cursor: "pointer",
       opacity: done ? 0.55 : 1, background: "transparent",
     }}
       onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
       <span className="mono tnum" style={{
-        width: 26, height: 26, borderRadius: "var(--r-1)", flexShrink: 0,
+        width: 26, height: 26, borderRadius: "var(--r-1)",
         display: "inline-flex", alignItems: "center", justifyContent: "center",
         background: done ? "var(--pos-soft)" : "var(--bg-inset)", border: "1px solid var(--line-1)",
         color: done ? "var(--pos)" : "var(--fg-3)", fontSize: 11.5, fontWeight: 700,
       }}>{done ? "✓" : seq}</span>
 
-      <span style={{ width: 76, flexShrink: 0, textAlign: "left" }}>
-        <Pill tone={when.tone}>{when.text}</Pill>
+      <span><Pill tone={when.tone}>{when.text}</Pill></span>
+
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+        <span style={{ width: 8, height: 8, borderRadius: 2, background: stageColor, flexShrink: 0 }} />
+        <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--fg-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stage}</span>
       </span>
 
-      <span className="mono" style={{ width: 96, flexShrink: 0, fontSize: 11, color: "var(--fg-3)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+      <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", textTransform: "uppercase", letterSpacing: "0.04em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
         {action}
       </span>
 
-      <span style={{ flex: 1, minWidth: 180 }}>
+      <span style={{ minWidth: 0 }}>
         <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
           {tier.grade && (
             <span className="tnum" title={`${tier.label} (contas + anúncios)`} style={{
@@ -315,18 +314,17 @@ function QueueRow({ item, seq, group, saasCfg, onOpen, onScript, onTouch, onClai
               background: tier.tone, color: tier.badgeFg, fontFamily: "var(--display)", fontSize: 11, fontWeight: 700,
             }}>{tier.grade}</span>
           )}
-          <span style={{ fontSize: 13.5, fontWeight: 600, textDecoration: done ? "line-through" : "none" }}>{l.name}</span>
+          <span style={{ fontSize: 13.5, fontWeight: 600, textDecoration: done ? "line-through" : "none", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</span>
           {l.company && <span className="dim" style={{ fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.company}</span>}
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3, flexWrap: "wrap" }}>
-          <span className="mono dim" style={{ fontSize: 10.5 }}>{stage}</span>
           {chips.slice(0, 3).map((c, i) => <Pill key={i} tone="mut">{c}</Pill>)}
           {attempts && <Pill tone="mut" title="toques feitos nesta etapa">{attempts} toques</Pill>}
           {due?.type === "toque" && l.nextActionNote && <span className="dim" style={{ fontSize: 11 }}>{l.nextActionNote}</span>}
         </span>
       </span>
 
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0, marginLeft: "auto" }} onClick={(e) => e.stopPropagation()}>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>
         {who && <span title={displayName(who)}><Avatar id={who} name={displayName(who)} size={20} /></span>}
         {unowned && (
           <button onClick={onClaim} title="Assumir esse lead (vira o SDR dono)"
@@ -344,7 +342,7 @@ function QueueRow({ item, seq, group, saasCfg, onOpen, onScript, onTouch, onClai
             ✓ toque
           </button>
         )}
-        <button onClick={onScript} title="Abrir o roteiro desta etapa com os dados do lead"
+        <button onClick={onScript} title="Abrir o roteiro desta etapa com o resumo e os dados do lead"
           style={{ height: 24, padding: "0 10px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 11.5, fontWeight: 600 }}>
           Roteiro
         </button>
@@ -353,9 +351,13 @@ function QueueRow({ item, seq, group, saasCfg, onOpen, onScript, onTouch, onClai
   );
 }
 
-// Painel do roteiro: postura + objetivo + passos com a fala pronta (dados do
-// lead encaixados; o que falta vira lacuna destacada) + checklist de dados.
-// "Toque e próximo" mantém o operador em fluxo: registra e já abre o seguinte.
+// Rótulo curto dos tipos de activity nos "últimos contatos" do resumo.
+const ACT_LABELS = { whatsapp: "whatsapp", call: "ligação", email: "e-mail", meeting: "reunião", note: "nota", stage: "mudou de etapa", system: "sistema" };
+
+// Painel do roteiro: RESUMO DO CLIENTE (situação + últimos contatos) + postura
+// + objetivo + checklist de dados + passo a passo com a fala pronta (dados do
+// lead encaixados; o que falta vira lacuna destacada). "Toque e próximo"
+// mantém o operador em fluxo: registra e já abre o seguinte.
 function ScriptPanel({ item, saasCfg, hasNext, onClose, onTouch, onSkip, onOpenLead }) {
   const { l } = item;
   const script = resolveScript(saasCfg, l);
@@ -363,6 +365,21 @@ function ScriptPanel({ item, saasCfg, hasNext, onClose, onTouch, onSkip, onOpenL
   const checklist = scriptChecklist(saasCfg, l);
   const wa = waLink(l.phone);
   const tier = leadTier(l);
+
+  // Últimos contatos da timeline — contexto de quem já falou com esse lead.
+  const [acts, setActs] = useS(null);
+  useE(() => {
+    let alive = true;
+    setActs(null);
+    api.listActivities(l.id)
+      .then((a) => alive && setActs(
+        (a || []).filter((x) => x.type !== "system")
+          .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0))
+          .slice(0, 3)
+      ))
+      .catch(() => alive && setActs([]));
+    return () => { alive = false; };
+  }, [l.id]);
 
   const renderFala = (text) => scriptSegments(text, tokens).map((s, i) => {
     if (s.text != null) return <React.Fragment key={i}>{s.text}</React.Fragment>;
@@ -375,13 +392,34 @@ function ScriptPanel({ item, saasCfg, hasNext, onClose, onTouch, onSkip, onOpenL
     );
   });
 
+  // Situação compilada do cliente — só fatos preenchidos.
+  const daysInStage = l.stageSince || l.createdAt
+    ? Math.max(0, Math.floor((Date.now() - new Date(l.stageSince || l.createdAt).getTime()) / DAY)) : null;
+  const cad = cadenceOf(saasCfg, item.stage);
+  const facts = [
+    ["Potencial", tier.grade ? `${tier.grade} · ${tier.label}` : null],
+    ["Etapa", `${item.stage}${daysInStage != null ? ` · ${daysInStage}d nela` : ""}`],
+    ["Toques na etapa", Number(cad.maxAttempts) ? `${Number(l.stageAttempts) || 0} de ${cad.maxAttempts}` : (Number(l.stageAttempts) || 0) || null],
+    ["Valor", l.amount ? window.fmt?.money?.(l.amount) || l.amount : null],
+    ["Origem", l.source],
+    ["SDR / closer", [l.owner && displayName(l.owner), l.closer && displayName(l.closer)].filter(Boolean).join(" / ") || null],
+    ["Próximo passo (nota)", l.nextActionNote],
+  ].filter(([, v]) => v != null && v !== "");
+
+  const fmtWhen = (iso) => {
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) return "";
+    const days = Math.floor((Date.now() - d.getTime()) / DAY);
+    return days <= 0 ? `hoje ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : days === 1 ? "ontem" : `há ${days}d`;
+  };
+
   const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--bg-inset)" };
   const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70, padding: 12 }}>
       <div onClick={(e) => e.stopPropagation()} style={{
-        width: "min(620px, 100%)", maxHeight: "min(86vh, 100%)", overflowY: "auto",
+        width: "min(640px, 100%)", maxHeight: "min(88vh, 100%)", overflowY: "auto",
         background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)",
         boxShadow: "var(--shadow-pop)", display: "flex", flexDirection: "column",
       }}>
@@ -397,9 +435,9 @@ function ScriptPanel({ item, saasCfg, hasNext, onClose, onTouch, onSkip, onOpenL
               )}
               <span className="chip">{item.stage}</span>
             </div>
-            {(l.company || l.phone) && (
+            {(l.company || l.phone || l.email) && (
               <div className="mono dim" style={{ fontSize: 11.5, marginTop: 2 }}>
-                {[l.company, l.phone].filter(Boolean).join(" · ")}
+                {[l.company, l.phone, l.email].filter(Boolean).join(" · ")}
               </div>
             )}
           </div>
@@ -407,6 +445,33 @@ function ScriptPanel({ item, saasCfg, hasNext, onClose, onTouch, onSkip, onOpenL
         </div>
 
         <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* Resumo do cliente: a situação compilada + o que já aconteceu. */}
+          <div style={box}>
+            <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Resumo do cliente</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "4px 14px" }}>
+              {facts.map(([k, v]) => (
+                <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, padding: "3px 0", borderBottom: "1px solid var(--line-1)" }}>
+                  <span className="mono dim" style={{ flexShrink: 0, fontSize: 10.5 }}>{k}</span>
+                  <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0 }}>{v}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 3 }}>Últimos contatos</div>
+              {acts === null && <div className="mono dim" style={{ fontSize: 11 }}>carregando…</div>}
+              {acts !== null && acts.length === 0 && <div className="mono dim" style={{ fontSize: 11 }}>nenhum contato registrado ainda · você abre a conversa</div>}
+              {(acts || []).map((a) => (
+                <div key={a.id} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 11.5, padding: "2px 0", minWidth: 0 }}>
+                  <span className="mono" style={{ flexShrink: 0, color: "var(--fg-3)", fontSize: 10.5 }}>{fmtWhen(a.at)}</span>
+                  <span className="mono" style={{ flexShrink: 0, color: "var(--accent)", fontSize: 10.5 }}>{ACT_LABELS[a.type] || a.type}</span>
+                  <span className="dim" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {a.type === "stage" ? `${a.meta?.from || "?"} → ${a.meta?.to || "?"}` : (a.text || "")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div style={{ ...box, background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
             <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 4 }}>Como se comportar</div>
             <div style={{ fontSize: 12.5, lineHeight: 1.5 }}>{script.resumo}</div>

@@ -3,6 +3,7 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { PageHead, Segmented, StatTile, Card, LineChart } from "../components/viz.jsx";
 import { InsightsCard } from "../components/insights.jsx";
+import { painCodeOf } from "../lib/pains.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { EmptyState } from "../atoms.jsx";
 import { stageKind } from "../lib/funnel.js";
@@ -884,7 +885,7 @@ function buildInsights(data, placements) {
   const withRoas = pains.filter((p) => p.roas != null);
   if (withRoas.length) {
     const best = [...withRoas].sort((a, b) => b.roas - a.roas)[0];
-    out.push({ id: `escalar-dor:${best.code}`, tone: "escalar", tag: "Escalar", text: `A dor [${best.code}] ${best.label} tem o melhor retorno do período: ROAS ${x(best.roas)} (${money(best.revenue)} de receita sobre ${money(best.spend)} investidos). Vale subir o orçamento dos conjuntos que rodam essa dor.` });
+    out.push({ id: `escalar-dor:${best.code}`, meta: { kind: "raiseBudget", code: best.code }, tone: "escalar", tag: "Escalar", text: `A dor [${best.code}] ${best.label} tem o melhor retorno do período: ROAS ${x(best.roas)} (${money(best.revenue)} de receita sobre ${money(best.spend)} investidos). Vale subir o orçamento dos conjuntos que rodam essa dor.` });
   }
   // Dor que gasta, gera lead e não fecha nenhum → problema de fundo de funil.
   for (const p of pains.filter((p) => p.spend >= 100 && p.leads >= 3 && !p.won).slice(0, 2)) {
@@ -895,7 +896,7 @@ function buildInsights(data, placements) {
   if (cplRef) {
     for (const a of (data.ads || []).filter((a) => a.leads === 0 && a.spend >= 3 * cplRef)
       .sort((a, b) => b.spend - a.spend).slice(0, 2)) {
-      out.push({ id: `ad-sem-lead:${a.id}`, tone: "cortar", tag: "Cortar", text: `O anúncio “${a.name}” já gastou ${money(a.spend)} (3× o CPL médio de ${money(cplRef)}) sem gerar nenhum lead. Candidato a pausar no card Anúncios.` });
+      out.push({ id: `ad-sem-lead:${a.id}`, meta: { kind: "pauseAd", adId: a.id, adName: a.name }, tone: "cortar", tag: "Cortar", text: `O anúncio “${a.name}” já gastou ${money(a.spend)} (3× o CPL médio de ${money(cplRef)}) sem gerar nenhum lead. Candidato a pausar no card Anúncios.` });
     }
   }
   // Placements: fatia relevante do gasto sem nenhum lead na visão da Meta.
