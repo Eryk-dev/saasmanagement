@@ -96,6 +96,31 @@ test("publishInstagram: story de imagem usa media_type STORIES; reel faz poll at
   assert.equal(reel.body.video_url, "https://pub/v.mp4");
 });
 
+test("publishInstagram: sequência = 4 stories publicados um a um, em ordem", async () => {
+  let cn = 0, pn = 0;
+  const f = makeGraphFetch([
+    ["/media_publish", () => ({ id: `pub${++pn}` })],
+    ["/ig1/media", () => ({ id: `c${++cn}` })],
+  ]);
+  const s = makeSocial({ fetch: f, accessToken: "tok" });
+  const r = await s.publishInstagram("ig1", {
+    format: "story", kind: "sequence",
+    items: [{ url: "https://pub/1.png" }, { url: "https://pub/2.png" }, { url: "https://pub/3.png" }, { url: "https://pub/4.png" }],
+  });
+  assert.equal(r.count, 4);
+  assert.deepEqual(r.ids, ["pub1", "pub2", "pub3", "pub4"]);
+  // cada item vira um container STORIES + um publish, na ordem dos itens
+  const containers = f.calls.filter((c) => c.url.endsWith("/ig1/media"));
+  assert.equal(containers.length, 4);
+  assert.ok(containers.every((c) => c.body.media_type === "STORIES"));
+  assert.equal(containers[0].body.image_url, "https://pub/1.png");
+  assert.equal(containers[3].body.image_url, "https://pub/4.png");
+  const publishes = f.calls.filter((c) => c.url.endsWith("/media_publish"));
+  assert.equal(publishes.length, 4);
+  // sequência fora de story é recusada
+  await assert.rejects(() => s.publishInstagram("ig1", { format: "feed", kind: "sequence", items: [{ url: "x" }] }), /formato de story/);
+});
+
 test("publishFacebook: pega o token da página e posta a foto com message", async () => {
   const f = makeGraphFetch([
     ["fields=access_token", { access_token: "page-tok" }],

@@ -18,10 +18,16 @@ const { useState: useS, useEffect: useE, useRef: useR } = React;
 
 const FORMATS = [
   { id: "feed", label: "Feed", hint: "post fixo no perfil", kinds: ["image", "carousel", "video"] },
-  { id: "story", label: "Story", hint: "tela cheia, 24h", kinds: ["image", "video"] },
+  { id: "story", label: "Story", hint: "tela cheia, 24h", kinds: ["image", "sequence", "video"] },
   { id: "reel", label: "Reels", hint: "vídeo vertical", kinds: ["video"] },
 ];
-const KIND_LABELS = { image: "Estático", carousel: "Carrossel · 4 slides", video: "Vídeo" };
+const KIND_LABELS = { image: "Estático", carousel: "Carrossel · 4 slides", sequence: "Sequência · 4 stories", video: "Vídeo" };
+const KIND_HINTS = {
+  image: "criado aqui, com a marca",
+  carousel: "criado aqui, com a marca",
+  sequence: "4 stories em sequência, com a marca",
+  video: "upload de arquivo",
+};
 
 const fmtNum = (n) => {
   if (n == null) return "–";
@@ -157,7 +163,9 @@ function PostWizard({ saas, onClose, onPublished }) {
   useE(() => () => { if (videoUrl) URL.revokeObjectURL(videoUrl); }, [videoUrl]);
 
   const fmt = FORMATS.find((f) => f.id === format);
-  const editorGroups = format === "story" ? ["story"] : kind === "carousel" ? ["car"] : ["post"];
+  const editorGroups = format === "story"
+    ? (kind === "sequence" ? ["storyseq"] : ["story"])
+    : kind === "carousel" ? ["car"] : ["post"];
   const fbAllowed = format === "feed";
   const hasCaption = format !== "story";
   const contentReady = kind === "video" ? !!videoFile : true;
@@ -191,7 +199,7 @@ function PostWizard({ saas, onClose, onPublished }) {
       } else {
         setBusy("gerando as artes…");
         const blobs = await editorRef.current.getBlobs();
-        const wanted = kind === "carousel" ? blobs : blobs.slice(0, 1);
+        const wanted = kind === "carousel" || kind === "sequence" ? blobs : blobs.slice(0, 1);
         if (!wanted.length) throw new Error("nenhuma arte gerada — o editor carregou?");
         let n = 0;
         for (const b of wanted) {
@@ -253,9 +261,7 @@ function PostWizard({ saas, onClose, onPublished }) {
                   {fmt.kinds.map((k) => (
                     <button key={k} onClick={() => setKind(k)} style={bigChip(kind === k)}>
                       <div style={{ fontSize: 14, fontWeight: 600 }}>{KIND_LABELS[k]}</div>
-                      <div className="mono dim" style={{ fontSize: 10.5, marginTop: 2 }}>
-                        {k === "video" ? "upload de arquivo" : "criado aqui, com a marca"}
-                      </div>
+                      <div className="mono dim" style={{ fontSize: 10.5, marginTop: 2 }}>{KIND_HINTS[k]}</div>
                     </button>
                   ))}
                 </div>
@@ -290,7 +296,8 @@ function PostWizard({ saas, onClose, onPublished }) {
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   <Pill tone="mut">{fmt.label}</Pill>
                   <Pill tone="mut">{KIND_LABELS[kind]}</Pill>
-                  {kind === "carousel" && <Pill tone="mut">4 slides</Pill>}
+                  {(kind === "carousel" || kind === "sequence") && <Pill tone="mut">4 slides</Pill>}
+                  {kind === "sequence" && <Pill tone="mut">publica um a um, em ordem</Pill>}
                   {kind === "video" && videoFile && <Pill tone="mut">{videoFile.name}</Pill>}
                 </div>
               </div>

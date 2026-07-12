@@ -106,11 +106,29 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
 
     // ── Publicação · Instagram ──────────────────────────────────────────────
     // items = [{ url, mime }] com URLs PÚBLICAS. format: feed|story|reel.
-    // kind: image|carousel|video. Retorna { id, permalink }.
+    // kind: image|carousel|video|sequence. Retorna { id, permalink }.
     async publishInstagram(igUserId, { format, kind, items, caption = "" }) {
       if (!items?.length) throw new Error("publicação sem mídia");
       const ig = String(igUserId);
       let containerId;
+
+      if (kind === "sequence") {
+        // "Carrossel de story": não existe na Graph — é uma sequência de
+        // stories publicados EM ORDEM (um container+publish por item), que o
+        // espectador vê como um story só, deslizando de um pro outro.
+        if (format !== "story") throw new Error("sequência é formato de story");
+        const ids = [];
+        for (const it of items) {
+          const isVid = String(it.mime || "").startsWith("video/");
+          const c = await post(`${ig}/media`, isVid
+            ? { media_type: "STORIES", video_url: it.url }
+            : { media_type: "STORIES", image_url: it.url });
+          if (isVid) await waitContainer(String(c.id));
+          const pub = await post(`${ig}/media_publish`, { creation_id: String(c.id) });
+          ids.push(String(pub.id));
+        }
+        return { id: ids[0] || "", ids, count: ids.length, permalink: "" };
+      }
 
       if (kind === "carousel") {
         if (format !== "feed") throw new Error("carrossel só existe no feed");

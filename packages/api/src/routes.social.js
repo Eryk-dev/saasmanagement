@@ -104,7 +104,8 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
     if (!social.configured()) return reply.code(400).send({ error: "Meta não configurada — defina META_ACCESS_TOKEN" });
     const { format = "feed", kind = "image", assetIds = [], caption = "", networks = ["instagram"] } = req.body || {};
     if (!["feed", "story", "reel"].includes(format)) return reply.code(400).send({ error: `formato inválido: ${format}` });
-    if (!["image", "carousel", "video"].includes(kind)) return reply.code(400).send({ error: `tipo inválido: ${kind}` });
+    if (!["image", "carousel", "video", "sequence"].includes(kind)) return reply.code(400).send({ error: `tipo inválido: ${kind}` });
+    if (kind === "sequence" && format !== "story") return reply.code(400).send({ error: "sequência só existe como story" });
     if (!assetIds.length) return reply.code(400).send({ error: "sem mídia (assetIds vazio)" });
 
     const base = publicBase(req);
