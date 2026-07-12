@@ -300,10 +300,12 @@ ${metaPixelHead(pixelId)}
         var v = p.get(k);
         if (v) o[k] = v.slice(0, 200);
       });
-      // Referrer EXTERNO = de onde veio quem chegou sem UTM (orgânico, bio,
-      // outro site). Navegação interna não conta.
-      var ref = document.referrer;
-      if (ref && ref.indexOf(location.origin) !== 0) o.referrer = ref.slice(0, 300);
+      // Referrer: o site da LeverAds repassa o do FIRST-TOUCH via ?referrer=
+      // (cross-domain — document.referrer aqui seria sempre o próprio site).
+      // Sem o parâmetro, cai no referrer externo do navegador (orgânico, bio).
+      var ref = p.get('referrer')
+        || (document.referrer && document.referrer.indexOf(location.origin) !== 0 ? document.referrer : '');
+      if (ref) o.referrer = ref.slice(0, 300);
       return Object.keys(o).length ? o : null;
     } catch (e) { return null; }
   })();
