@@ -363,12 +363,23 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
     transition: opacity .5s var(--ease-out), transform .5s var(--ease-out); }
   .price-revealed .close-line { transition-delay: .2s; }
   .price-revealed .accept-row { transition-delay: .35s; }
+  /* Benefícios encadeados (s.benefitGroups): grupos com título mono, itens que
+     entram um a um a cada comando de avanço e banner-síntese por grupo. Altura
+     pré-alocada (invisível ≠ ausente) — o fitSlides não re-escala a cada passo. */
+  .bg-title { font-family: var(--font-mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); margin: 20px 0 12px; }
+  .benefits-card .benefits-title + .bg-title, .benefits-card .bg-title:first-child { margin-top: 0; }
+  .benefit-synth { margin: 14px 0 6px; padding: 14px 16px; border-radius: var(--radius); background: var(--accent-soft); border: 1px solid var(--accent-line); font-size: 14.5px; line-height: 1.5; color: var(--ink-2); }
+  .price-pending .stage-item, .price-revealed .stage-item { transition: opacity .45s var(--ease-out), transform .45s var(--ease-out); }
+  .price-pending .stage-item:not(.on) { opacity: 0; transform: translateY(10px); }
+  .price-revealed .stage-item { opacity: 1; transform: none; }
   @media (prefers-reduced-motion: reduce) {
     .price-pending .price-reveal .price-card, .price-revealed .price-reveal .price-card, .price-veil,
+    .price-pending .stage-item, .price-revealed .stage-item,
     .price-revealed .close-line, .price-revealed .accept-row, .price-revealed .plan-opts { transition: none; } }
   @media print {
     .price-veil { display: none; }
-    .price-pending .price-reveal .price-card, .price-pending .close-line, .price-pending .accept-row, .price-pending .plan-opts { opacity: 1; transform: none; } }
+    .price-pending .price-reveal .price-card, .price-pending .close-line, .price-pending .accept-row, .price-pending .plan-opts,
+    .price-pending .stage-item { opacity: 1; transform: none; } }
 
   .closer-block { margin: 48px auto 0; max-width: 520px; padding: 24px; background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); display: flex; align-items: center; gap: 16px; text-align: left; }
   .light .closer-block { background: var(--bg); color: var(--fg); border-color: transparent; }
@@ -924,14 +935,37 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       // Feature pode ser string (sempre visível) ou { text, showIf:{key,values} }
       // (visível só quando a resposta do lead bate — ex.: compat veicular p/ autopeças).
       var fAns = (DATA && DATA.answers) || {};
-      var feats = (s.features || []).filter(function (f) {
-        if (!f || typeof f !== 'object' || !f.showIf || !f.showIf.key) return true;
-        var want = (Array.isArray(f.showIf.values) ? f.showIf.values : [f.showIf.values])
-          .map(function (v) { return String(v == null ? '' : v).trim().toLowerCase(); });
-        var a = fAns[f.showIf.key];
-        var got = (Array.isArray(a) ? a : [a]).map(function (v) { return String(v == null ? '' : v).trim().toLowerCase(); });
-        return got.some(function (g) { return want.indexOf(g) >= 0; });
-      }).map(function (f) { return '<li>' + fmt(typeof f === 'object' ? (f.text || '') : f) + '</li>'; }).join('');
+      function visibleFeats(list) {
+        return (list || []).filter(function (f) {
+          if (!f || typeof f !== 'object' || !f.showIf || !f.showIf.key) return true;
+          var want = (Array.isArray(f.showIf.values) ? f.showIf.values : [f.showIf.values])
+            .map(function (v) { return String(v == null ? '' : v).trim().toLowerCase(); });
+          var a = fAns[f.showIf.key];
+          var got = (Array.isArray(a) ? a : [a]).map(function (v) { return String(v == null ? '' : v).trim().toLowerCase(); });
+          return got.some(function (g) { return want.indexOf(g) >= 0; });
+        });
+      }
+      function featLi(f, cls) {
+        return '<li' + (cls ? ' class="' + cls + '"' : '') + '>' + fmt(typeof f === 'object' ? (f.text || '') : f) + '</li>';
+      }
+      // Benefícios em grupos encadeados (s.benefitGroups, só com revealPrice):
+      // cada comando de avanço revela UM item (título do grupo entra junto com
+      // o primeiro); "synth" do grupo é o banner-síntese (ex.: economia total).
+      // Esgotados os passos, o próximo comando revela o preço. Sem grupos, a
+      // lista plana de s.features renderiza como sempre.
+      var groups = reveal && Array.isArray(s.benefitGroups) && s.benefitGroups.length ? s.benefitGroups : null;
+      var benefitsInner;
+      if (groups) {
+        benefitsInner = groups.map(function (g) {
+          var items = visibleFeats(g.items);
+          if (!items.length) return '';
+          return (g.title ? '<div class="bg-title stage-item">' + fmt(g.title) + '</div>' : '') +
+            '<ul class="price-list">' + items.map(function (f) { return featLi(f, 'stage-item'); }).join('') + '</ul>' +
+            (g.synth ? '<div class="benefit-synth stage-item">' + fmt(g.synth) + '</div>' : '');
+        }).join('');
+      } else {
+        benefitsInner = '<ul class="price-list">' + visibleFeats(s.features).map(function (f) { return featLi(f, ''); }).join('') + '</ul>';
+      }
       // Esquerda: só o bloco de preço. Direita: benefícios/entregáveis (features).
       // Garantia e payback são opcionais (só entram se preenchidos no template).
       var hasGuarantee = (s.guaranteeTitle || s.guaranteeText || s.guaranteeHead);
@@ -947,29 +981,40 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         (reveal ? '<div class="price-veil" aria-hidden="true"></div></div>' : '') +
         '<div data-reveal>' +
           '<div class="benefits-card">' + (s.featuresTitle ? '<div class="benefits-title">' + fmt(s.featuresTitle) + '</div>' : '') +
-            '<ul class="price-list">' + feats + '</ul></div>' +
+            benefitsInner + '</div>' +
           (hasGuarantee ? '<div class="guarantee" style="margin-top:16px"><div class="guarantee-head">' +
             '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L4 6v6c0 5.5 3.5 9.5 8 10 4.5-.5 8-4.5 8-10V6l-8-4z" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
             '<span>' + fmt(s.guaranteeHead || '') + '</span></div><h3>' + fmt(s.guaranteeTitle || '') + '</h3><p>' + fmt(s.guaranteeText || '') + '</p></div>' : '') +
           (s.paybackNum ? '<div class="payback"><div class="mono">' + fmt(s.paybackLabel || '') + '</div><div class="pb-num">' + fmt(s.paybackNum) + '</div><div class="pb-cap">' + fmt(s.paybackCaption || '') + '</div></div>' : '') + '</div>';
       w.appendChild(pw);
       if (reveal) {
-        var doReveal = function () {
+        // Fila de passos: título+1º item juntos, depois um elemento por comando.
+        var steps = [];
+        if (groups) {
+          var pendTitle = null;
+          pw.querySelectorAll('.benefits-card .stage-item').forEach(function (n) {
+            if (n.classList.contains('bg-title')) { pendTitle = n; return; }
+            steps.push(pendTitle ? [pendTitle, n] : [n]);
+            pendTitle = null;
+          });
+        }
+        var advance = function () {
           if (!sec.classList.contains('price-pending')) return;
+          if (steps.length) { steps.shift().forEach(function (n) { n.classList.add('on'); }); return; }
           sec.classList.remove('price-pending');
           sec.classList.add('price-revealed');
         };
         // "Comando de passar o slide": tecla de avanço com o slide dominando a
         // viewport (senão a tecla estaria rolando outra parte da página), ou
         // clique/tap em qualquer ponto da seção. Sem botão visível de propósito.
-        sec.addEventListener('click', doReveal);
+        sec.addEventListener('click', advance);
         document.addEventListener('keydown', function (e) {
           if (!sec.classList.contains('price-pending')) return;
           var k = e.key;
           if (k !== 'ArrowRight' && k !== 'ArrowDown' && k !== 'PageDown' && k !== ' ' && k !== 'Enter') return;
           var r = sec.getBoundingClientRect();
           var mid = (window.innerHeight || document.documentElement.clientHeight) / 2;
-          if (r.top <= mid && r.bottom >= mid) { e.preventDefault(); doReveal(); }
+          if (r.top <= mid && r.bottom >= mid) { e.preventDefault(); advance(); }
         });
       }
       if (s.closeLine) { var cl = el('div', 'close-line', fmt(s.closeLine)); if (!reveal) cl.setAttribute('data-reveal', ''); w.appendChild(cl); }
