@@ -53,7 +53,7 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     if (!t) {
       return reply.code(404).type("text/html").send("<!doctype html><meta charset=utf-8><title>404</title><p style='font-family:system-ui;padding:40px'>Template não encontrado.</p>");
     }
-    return reply.type("text/html").send(proposalPageHtml(publicProposal(previewFromTemplate(t)), { previewBanner: true }));
+    return reply.type("text/html").header("cache-control", "no-store").send(proposalPageHtml(publicProposal(previewFromTemplate(t)), { previewBanner: true }));
   });
 
   app.get("/p/:id", async (req, reply) => {
@@ -86,7 +86,9 @@ export function registerProposalRoutes(app, repo, opts = {}) {
         }
       }
     }
-    return reply.type("text/html").send(proposalPageHtml(publicProposal(p, { editable })));
+    // no-store: sem isso o navegador reusa HTML antigo por cache heurístico e o
+    // closer apresenta uma versão velha do deck (re-snapshots são frequentes).
+    return reply.type("text/html").header("cache-control", "no-store").send(proposalPageHtml(publicProposal(p, { editable })));
   });
 
   // Painel do closer: só os campos de estado, só com o editKey certo.
