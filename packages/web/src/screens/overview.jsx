@@ -222,29 +222,72 @@ function MetaCell({ value, goal, fmt = int }) {
   );
 }
 
+// Cor por saúde das TAXAS do SDR (maior = melhor). Cortes padrão abaixo — ajuste
+// fácil aqui se o Leo quiser outra régua:
+//   taxa de agendamento  bom ≥30%  ok ≥15%
+//   % compareceram       bom ≥70%  ok ≥50%
+//   calls → ganho        bom ≥25%  ok ≥10%
+const rateTone = (pct, good, ok) => (pct == null ? "var(--fg-3)" : pct >= good ? "var(--pos)" : pct >= ok ? "var(--warn)" : "var(--neg)");
+
+// Célula de taxa: número colorido por saúde + fração crua (num/den) + mini-barra.
+function RateCell({ pct, num, den, good, ok }) {
+  if (pct == null) return <span className="dim" style={{ fontSize: 13 }}>—</span>;
+  const tone = rateTone(pct, good, ok);
+  const w = Math.min(100, Math.max(0, pct));
+  return (
+    <div style={{ minWidth: 78 }}>
+      <span className="tnum" style={{ fontSize: 13, fontWeight: 600, color: tone }}>
+        {pctStr(pct)}
+        {num != null && den != null && <span className="dim" style={{ fontWeight: 400, fontSize: 10.5 }}> {int(num)}/{int(den)}</span>}
+      </span>
+      <span style={{ display: "block", height: 4, borderRadius: 999, background: "var(--bg-3)", marginTop: 4, overflow: "hidden" }}>
+        <span style={{ display: "block", height: "100%", width: `${w}%`, borderRadius: 999, background: tone }} />
+      </span>
+    </div>
+  );
+}
+
+// SLA de 1º toque: mediana em horas + % no prazo (colorido) + fora do prazo.
+function SlaCell({ p }) {
+  const within = p.leadsNew > 0 ? Math.round((p.withinSla / p.leadsNew) * 100) : null;
+  const tone = rateTone(within, 80, 50);
+  return (
+    <div style={{ minWidth: 92 }}>
+      <span className="mono" style={{ fontSize: 12 }}>
+        {p.firstTouchMedianH != null ? `${String(p.firstTouchMedianH).replace(".", ",")}h` : "—"}
+        {within != null && <span style={{ color: tone, fontWeight: 700 }}> · {within}%</span>}
+      </span>
+      {p.breached > 0 && <span style={{ display: "block", fontSize: 10, color: "var(--neg)" }}>{p.breached} fora do prazo</span>}
+    </div>
+  );
+}
+
+// Alerta do painel: total de leads novos sem 1º toque além do prazo.
+function SlaAlarm({ n }) {
+  if (!n) return null;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 8px 8px", padding: "8px 12px", borderRadius: "var(--r-2)", background: "color-mix(in srgb, var(--neg) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--neg) 30%, transparent)", flexWrap: "wrap" }}>
+      <span style={{ fontSize: 14 }}>⚠</span>
+      <span style={{ fontSize: 12.5, color: "var(--neg)", fontWeight: 700 }}>{int(n)} {n === 1 ? "lead novo fora" : "leads novos fora"} do SLA de 1º toque</span>
+      <span className="mono dim" style={{ fontSize: 10.5 }}>· nunca tocados além do prazo da cadência</span>
+    </div>
+  );
+}
+
 const PANELS = [
   {
     key: "sdr", title: "SDR", hint: "topo de funil: qualifica e agenda a call",
+    alarm: (rows) => <SlaAlarm n={rows.reduce((a, p) => a + (p.breached || 0), 0)} />,
     cols: [
-      { label: "Calls agendadas", meta: true, render: (p) => <MetaCell value={p.callsBooked} goal={p.goals?.callsBooked} /> },
-      { label: "Taxa agend.", render: (p) => <span className="tnum">{pctStr(p.bookingRate) || "—"}</span> },
-      { label: "SLA 1º toque", render: (p) => (
-        <span className="mono" style={{ fontSize: 12 }}>
-          {p.firstTouchMedianH != null ? `${String(p.firstTouchMedianH).replace(".", ",")}h` : "—"}
-          {p.leadsNew > 0 && <span className="dim"> · {Math.round((p.withinSla / p.leadsNew) * 100)}%</span>}
-          {p.breached > 0 && <span style={{ color: "var(--neg)" }}> · {p.breached} fora</span>}
-        </span>
-      ) },
+      { label: "Calls agendadas", render: (p) => <MetaCell value={p.callsBooked} goal={p.goals?.callsBooked} /> },
+      { label: "Taxa agend.", render: (p) => <RateCell pct={p.bookingRate} num={p.callsBooked} den={p.leadsNew} good={30} ok={15} /> },
+      { label: "SLA 1º toque", render: (p) => <SlaCell p={p} /> },
       { label: "% compareceram", render: (p) => (
-        <span className="tnum" title={p.showRate != null ? `${p.noShow} não compareceram` : "sem call resolvida no período"}>
-          {p.showRate != null ? pctStr(p.showRate) : "—"}
+        <span title={p.showRate != null ? `${p.noShow} não compareceram` : "sem call resolvida no período"}>
+          <RateCell pct={p.showRate} num={p.shown} den={p.showRate != null ? p.shown + p.noShow : null} good={70} ok={50} />
         </span>
       ) },
-      { label: "Calls → ganho", render: (p) => (
-        <span className="tnum" title={p.wonFromCalls != null ? `${p.wonFromCalls} das ${p.callsBooked} calls fecharam` : ""}>
-          {p.callWinRate != null ? pctStr(p.callWinRate) : "—"}
-        </span>
-      ) },
+      { label: "Calls → ganho", render: (p) => <RateCell pct={p.callWinRate} num={p.wonFromCalls} den={p.callsBooked} good={25} ok={10} /> },
     ],
   },
   {
@@ -288,6 +331,7 @@ function TeamPerformance({ score, onPerson, onNav }) {
                 <span style={{ fontSize: 12.5, fontWeight: 700 }}>{panel.title}</span>
                 <span className="mono dim" style={{ fontSize: 10.5 }}>{panel.hint}</span>
               </div>
+              {panel.alarm && panel.alarm(rows)}
               <div className="tbl-x">
                 <div style={{ minWidth: 520 }}>
                   <div className="mono" style={{ display: "grid", gridTemplateColumns: gridCols, gap: 8, padding: "6px 10px", fontSize: 9.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", borderBottom: "1px solid var(--line-1)" }}>
