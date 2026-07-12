@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   ensureIntegrationStage, migrateLeverAdsCrmFunnel, ensureFunnelKinds,
-  ensureLossReasons, ensureUserRoles, ensureUserSaasScope, DEFAULT_LOSS_REASONS,
+  ensureLossReasons, ensureUserRoles, ensureUserSaasScope, ensureUserScreens, DEFAULT_LOSS_REASONS,
 } from "../src/migrations.js";
 
 const FUNNEL = [
@@ -231,4 +231,22 @@ test("ensureUserSaasScope escopa a Ana na UniqueKids uma vez, sem inventar usuá
   const repo2 = makeMemRepo();
   assert.equal(await ensureUserSaasScope(repo2), 0);
   assert.equal((await repo2.list("users")).length, 0);
+});
+
+test("ensureUserScreens restringe sdr e ana a pipeline+tasks uma vez, sem sobrescrever ajuste manual", async () => {
+  const repo = makeMemRepo();
+  await repo.create("users", { id: "sdr", name: "SDR" });
+  await repo.create("users", { id: "ana", name: "Ana" });
+  await repo.create("users", { id: "leonardo", name: "Leonardo" });
+
+  assert.equal(await ensureUserScreens(repo), 2);
+  assert.deepEqual((await repo.get("users", "sdr")).screens, ["pipeline", "tasks"]);
+  assert.deepEqual((await repo.get("users", "ana")).screens, ["pipeline", "tasks"]);
+  assert.equal((await repo.get("users", "leonardo")).screens, undefined); // admin segue com tudo
+  assert.equal(await ensureUserScreens(repo), 0); // idempotente
+
+  // Admin liberou tudo manualmente ([]): a migração NÃO reaplica.
+  await repo.update("users", "sdr", { screens: [] });
+  assert.equal(await ensureUserScreens(repo), 0);
+  assert.deepEqual((await repo.get("users", "sdr")).screens, []);
 });

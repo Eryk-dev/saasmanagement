@@ -1,6 +1,7 @@
 import React from "react";
 import { api, clearKey } from "./lib/api.js";
 import { useActiveSaas } from "./lib/workspace.js";
+import { canSeeScreen } from "./lib/users.js";
 // App chrome v3 "Operations Terminal" — grouped nav rail + topbar with live clock.
 // A sidebar veste a MARCA do produto ativo (workspace): logo + nome no topo,
 // seletor de produto no pé (a "bolinha" com o contador abre o menu de troca).
@@ -34,9 +35,10 @@ function NavRail({ current, onNav, collapsed }) {
   const brand = BRANDS[product?.id] || { label: product?.name || "Cockpit", Icon: GenericMark };
   // Aba do navegador acompanha a marca do workspace ativo.
   useE(() => { document.title = `${brand.label} · Cockpit`; }, [brand.label]);
-  // Build grouped list
+  // Build grouped list — só as telas permitidas pro usuário (user.screens);
+  // grupo sem tela permitida some inteiro. A API tem o guard de verdade.
   const groups = [];
-  NAV.forEach(item => {
+  NAV.filter((item) => canSeeScreen(item.id)).forEach(item => {
     let g = groups.find(x => x.key === item.group);
     if (!g) { g = { key: item.group, items: [] }; groups.push(g); }
     g.items.push(item);

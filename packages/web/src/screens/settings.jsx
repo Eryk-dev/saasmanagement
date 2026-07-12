@@ -6,6 +6,7 @@ import { api } from "../lib/api.js";
 import { useIsMobile } from "../lib/responsive.js";
 import { KINDS, KIND_IDS, guessKind, lossReasonsOf } from "../lib/funnel.js";
 import { useActiveSaas } from "../lib/workspace.js";
+import { NAV } from "../chrome.jsx";
 // SaaS Settings (fase 3) — funil, campos custom, pesos da saúde e Aha EDITÁVEIS
 // por SaaS (gravam no produto). Equipe (roles sdr/closer/integrator) é global.
 
@@ -312,6 +313,15 @@ function TeamSettings() {
     setSaving("");
   }
 
+  // Telas permitidas: lista vazia = todas. O servidor também bloqueia as rotas
+  // (screens.js) — aqui é a gestão; o menu do usuário muda no próximo refresh.
+  async function setUserScreens(u, screens) {
+    setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, screens } : x)));
+    setSaving(u.id);
+    try { await api.updateUser(u.id, { screens }); } catch (e) { console.warn("telas não salvas:", e.message); load(); }
+    setSaving("");
+  }
+
   async function createUser() {
     if (!invite?.name || !invite?.password) return;
     try {
@@ -325,14 +335,15 @@ function TeamSettings() {
     <div>
       <SettingHeader title="Equipe & papéis" sub="quem aparece nos pickers de SDR/closer/integração do pipeline · papel ≠ permissão (todos são admin na v1)" />
       <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
-        <div className="mono" style={{ display: "grid", gridTemplateColumns: "1fr repeat(3, 110px) 140px", gap: 8, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
+        <div className="mono" style={{ display: "grid", gridTemplateColumns: "1fr repeat(3, 110px) 140px 120px", gap: 8, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
           <span>Usuário</span>
           {ROLE_OPTS.map(([k, l, hint]) => <span key={k} title={hint} style={{ textAlign: "center" }}>{l}</span>)}
           <span title="Vazio = aparece nos pickers de todos os produtos; preenchido = só no workspace daquele produto">Produto</span>
+          <span title="Quais telas o usuário vê (menu + rotas da API). Nenhuma marcada = todas">Telas</span>
         </div>
         {users === null && <div className="mono dim" style={{ padding: "12px 14px", fontSize: 12 }}>carregando…</div>}
         {Array.isArray(users) && users.map((u) => (
-          <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1fr repeat(3, 110px) 140px", gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
+          <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1fr repeat(3, 110px) 140px 120px", gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 500 }}>
               <Avatar id={u.id} name={u.name} size={22} /> {u.name || u.id}
               <span className="mono dim" style={{ fontSize: 10 }}>{u.id}</span>
@@ -346,6 +357,7 @@ function TeamSettings() {
               <option value="">todos os produtos</option>
               {SAAS.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
             </select>
+            <ScreensPicker screens={u.screens || []} onChange={(screens) => setUserScreens(u, screens)} />
           </div>
         ))}
       </div>
@@ -364,6 +376,39 @@ function TeamSettings() {
         )}
         <span className="mono dim" style={{ fontSize: 11 }}>papéis salvam ao clicar · senha troca em Ajustes do usuário (ou peça pro admin resetar)</span>
       </div>
+    </div>
+  );
+}
+
+// Seletor compacto de telas permitidas: botão-resumo ("todas" / "N telas") com
+// popover de checkboxes (espelho do NAV). Nenhuma marcada = todas as telas. O
+// menu do usuário e o guard das rotas na API seguem essa lista.
+function ScreensPicker({ screens, onChange }) {
+  const [open, setOpen] = useStS(false);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+  const toggle = (id) => onChange(screens.includes(id) ? screens.filter((s) => s !== id) : [...screens, id]);
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button onClick={() => setOpen((o) => !o)}
+        style={{ ...inputStyle, height: 26, fontSize: 12, textAlign: "left", cursor: "pointer", border: "1px solid " + (open ? "var(--accent-line)" : "var(--line-1)") }}>
+        {screens.length ? `${screens.length} tela${screens.length > 1 ? "s" : ""}` : "todas"}
+      </button>
+      {open && (
+        <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, width: 200, zIndex: 60, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 8 }}>
+          {NAV.map((n) => (
+            <label key={n.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px", fontSize: 12.5, cursor: "pointer" }}>
+              <input type="checkbox" checked={screens.includes(n.id)} onChange={() => toggle(n.id)} style={{ accentColor: "var(--accent)" }} />
+              {n.label}
+            </label>
+          ))}
+          <button onClick={() => onChange([])} className="mono dim" style={{ fontSize: 10.5, padding: 4 }}>limpar (todas as telas)</button>
+        </div>
+      )}
     </div>
   );
 }
