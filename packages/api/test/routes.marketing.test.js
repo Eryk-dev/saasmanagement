@@ -370,8 +370,8 @@ test("métricas por dor: agrupa [X] do nome do anúncio, rotula pelo painMap e c
 
   const now = "2026-06-02T10:00:00.000Z";
   // UTM completo como nos leads reais (campaign/term/content dinâmicos da Meta).
-  const mk = (id, content, stage) => repo.create("leads", { id, saas: "leverads", stage, createdAt: now, utm: { campaign: "c1", term: "s1", content } });
-  await mk("l1", "a1", "Ganho");
+  const mk = (id, content, stage, extra = {}) => repo.create("leads", { id, saas: "leverads", stage, createdAt: now, utm: { campaign: "c1", term: "s1", content }, ...extra });
+  await mk("l1", "a1", "Ganho", { amount: 600 }); // valor pedido pelo modal de fechamento
   await mk("l2", "a1", "Inbox");
   await mk("l3", "a3", "Inbox");
 
@@ -384,10 +384,14 @@ test("métricas por dor: agrupa [X] do nome do anúncio, rotula pelo painMap e c
   assert.equal(A.cpl, 53.33);
   assert.equal(A.won, 1);               // l1 em Ganho
   assert.equal(A.costPerWin, 160);
+  assert.equal(A.revenue, 600);         // amount do l1
+  assert.equal(A.roas, 3.75);           // 600 / 160
   const B = m.pains.find((p) => p.code === "B");
   assert.equal(B.label, "Múltiplas abas");
   assert.equal(B.leads, 0);
   assert.equal(B.cpl, null);
+  assert.equal(B.revenue, 0);
+  assert.equal(B.roas, null);           // sem receita não inventa ROAS
   const sem = m.pains.find((p) => p.code === null);
   assert.equal(sem.label, "Sem código");
   assert.equal(sem.spend, 10);
@@ -397,6 +401,8 @@ test("métricas por dor: agrupa [X] do nome do anúncio, rotula pelo painMap e c
   const a1 = m.ads.find((a) => a.id === "a1");
   assert.equal(a1.won, 1);
   assert.equal(a1.costPerWin, 60);
+  assert.equal(a1.revenue, 600);
+  assert.equal(a1.roas, 10); // 600 / 60
   assert.equal(a1.ctr, 200); // link CTR: 2 cliques no link / 1 impressão
   assert.equal(a1.cpm, 60000); // 60 / 1 impressão × 1000
   assert.equal(a1.costPerLinkClick, 30); // 60 / 2 cliques no link
@@ -407,6 +413,15 @@ test("métricas por dor: agrupa [X] do nome do anúncio, rotula pelo painMap e c
   const c1 = m.campaigns.find((c) => c.id === "c1");
   assert.equal(c1.won, 1);
   assert.equal(c1.costPerWin, 210); // spend total 210 / 1 ganho
+  assert.equal(c1.revenue, 600);
+  assert.equal(c1.roas, 2.86); // 600 / 210
+
+  // Totais do período: ganhos, receita e ROAS geral (todos os leads, não só os
+  // atribuídos por UTM).
+  assert.equal(m.totals.won, 1);
+  assert.equal(m.totals.costPerWin, 210);
+  assert.equal(m.totals.revenue, 600);
+  assert.equal(m.totals.roas, 2.86);
   await app.close();
 });
 

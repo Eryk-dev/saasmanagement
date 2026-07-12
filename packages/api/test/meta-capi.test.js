@@ -53,3 +53,22 @@ test("sem env e sem override válido, sendEvent é no-op ({skipped})", async () 
   await capi.sendLead({ eventId: "e2", leadId: "l2", pixelId: "999" });
   assert.match(urls[0], /\/999\/events/);
 });
+
+test("sendPurchase: Purchase com valor/moeda, action_source system_generated e PII hasheada", async () => {
+  const bodies = [];
+  const fetch = async (url, init) => { bodies.push(JSON.parse(init.body)); return { status: 200, text: async () => "{}" }; };
+  const capi = makeMetaCapi({ fetch, pixelId: "111", accessToken: "tok" });
+
+  await capi.sendPurchase({ eventId: "won:l1", leadId: "l1", email: "Ana@X.com", value: "599.9" });
+  const ev = bodies[0].data[0];
+  assert.equal(ev.event_name, "Purchase");
+  assert.equal(ev.event_id, "won:l1");
+  assert.equal(ev.action_source, "system_generated");
+  assert.deepEqual(ev.custom_data, { value: 599.9, currency: "BRL" });
+  assert.equal(ev.user_data.em[0].length, 64);          // sha-256 hex
+  assert.equal(ev.user_data.external_id[0].length, 64); // lead.id hasheado
+
+  // valor ausente/inválido vira 0 — ganho sem valor ainda conta como conversão
+  await capi.sendPurchase({ eventId: "won:l2", leadId: "l2" });
+  assert.deepEqual(bodies[1].data[0].custom_data, { value: 0, currency: "BRL" });
+});

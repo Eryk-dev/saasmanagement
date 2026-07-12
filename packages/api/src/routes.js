@@ -173,7 +173,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Superfície pública do form builder (/public/forms, /f/:id, /embed.js).
   registerFormRoutes(app, repo, { ...(opts.forms || {}), discord: discordClient, metaCapi: metaCapiClient });
   // Superfície pública do proposal builder (/p/:id, aceite, painel do closer).
-  registerProposalRoutes(app, repo, { ...(opts.proposals || {}), discord: discordClient });
+  registerProposalRoutes(app, repo, { ...(opts.proposals || {}), discord: discordClient, metaCapi: metaCapiClient });
   // Billing (fase 5): mudança de plano c/ pró-rata, baixa de fatura, tick do motor.
   const mpClient = opts.mp || defaultMpClient;
   registerBillingRoutes(app, repo, { mp: mpClient, discord: discordClient });
@@ -403,7 +403,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // Lead que virou "Ganho" → cria o cliente (pós-venda) com startedAt e link
     // pro lead de origem. Idempotente e best-effort: nunca quebra o PATCH.
     if (collection === "leads" && typeof req.body.stage === "string") {
-      try { await convertWonLead(repo, updated); } catch { /* fail-open */ }
+      try { await convertWonLead(repo, updated, { metaCapi: metaCapiClient }); } catch { /* fail-open */ }
     }
     if (collection === "subscriptions") {
       await syncCustomerArr(repo, updated.customer);
@@ -476,7 +476,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
 // pós-venda e do CAC) e o link bidirecional lead.customerId / customer.leadId.
 // Idempotente: se o lead já gerou cliente, não duplica. A receita continua
 // vindo das assinaturas (syncCustomerArr) — aqui só nasce o cadastro.
-export async function convertWonLead(repo, lead) {
+export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } = {}) {
   if (!lead || !lead.saas) return null;
   const product = await repo.get("products", lead.saas);
   if (!isWon(product, lead.stage)) return null;
@@ -502,6 +502,23 @@ export async function convertWonLead(repo, lead) {
       meta: { event: "customer_created", customerId: customer.id },
     });
   } catch { /* timeline é best-effort */ }
+  // A venda volta pra Meta (CAPI "Purchase" com o valor do negócio) — sem isso a
+  // otimização para no "Lead" e o algoritmo persegue lead barato, não lead que
+  // fecha. Idempotente: o guard de customer acima garante que só roda no 1º
+  // ganho, e o eventId won:{id} deduplica na Meta. Lead interno (teste da
+  // equipe) não suja o sinal, igual ao skip do Lead em routes.forms.js.
+  if (!lead.internal) {
+    try {
+      await metaCapi.sendPurchase({
+        eventId: `won:${lead.id}`,
+        leadId: lead.id,
+        email: lead.email,
+        phone: lead.phone,
+        value: Number(lead.amount) || 0,
+        pixelId: product?.metaPixelId,
+      });
+    } catch { /* best-effort — a conversão local nunca depende da Meta */ }
+  }
   return customer;
 }
 

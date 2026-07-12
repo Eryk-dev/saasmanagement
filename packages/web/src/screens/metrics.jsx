@@ -510,7 +510,9 @@ const METRIC_COLS = [
   { key: "videoP50", label: "Vídeo 50%", kind: "int" },
   { key: "videoP95", label: "Vídeo 95%", kind: "int" },
   { key: "won", label: "Ganhos", kind: "int" },
-  { key: "costPerWin", label: "R$ / ganho", kind: "money", empty: "sem ganho", bold: true, hint: "coorte: investimento ÷ leads do período que fecharam" },
+  { key: "costPerWin", label: "R$ / ganho", kind: "money", empty: "sem ganho", hint: "coorte: investimento ÷ leads do período que fecharam" },
+  { key: "revenue", label: "Receita", kind: "money", hint: "soma do valor dos negócios ganhos atribuídos (UTM)" },
+  { key: "roas", label: "ROAS", kind: "x", empty: "sem receita", bold: true, hint: "receita dos ganhos ÷ investimento" },
 ];
 
 // Toggle Off/On no padrão do Gerenciador — controla o status PRÓPRIO da linha
@@ -652,18 +654,19 @@ function AdsManager({ objects, metrics, money, onToggle, onBudget, busyIds }) {
   // Totais do que está NA TELA (nível + drill + filtro), derivados dos brutos.
   const sums = rows.reduce((acc, { m }) => {
     if (!m) return acc;
-    for (const k of ["spend", "impressions", "linkClicks", "leads", "won", "video3s", "videoP25", "videoP50", "videoP95"]) acc[k] += Number(m[k]) || 0;
+    for (const k of ["spend", "impressions", "linkClicks", "leads", "won", "revenue", "video3s", "videoP25", "videoP50", "videoP95"]) acc[k] += Number(m[k]) || 0;
     return acc;
-  }, { spend: 0, impressions: 0, linkClicks: 0, leads: 0, won: 0, video3s: 0, videoP25: 0, videoP50: 0, videoP95: 0 });
+  }, { spend: 0, impressions: 0, linkClicks: 0, leads: 0, won: 0, revenue: 0, video3s: 0, videoP25: 0, videoP50: 0, videoP95: 0 });
   const hasMetrics = rows.some(({ m }) => m);
   const totals = {
-    spend: sums.spend, leads: sums.leads, won: sums.won,
+    spend: sums.spend, leads: sums.leads, won: sums.won, revenue: sums.revenue,
     video3s: sums.video3s, videoP25: sums.videoP25, videoP50: sums.videoP50, videoP95: sums.videoP95,
     cpl: sums.leads > 0 ? sums.spend / sums.leads : null,
     ctr: sums.impressions > 0 ? Math.round((sums.linkClicks / sums.impressions) * 10000) / 100 : null,
     cpm: sums.impressions > 0 ? (sums.spend / sums.impressions) * 1000 : null,
     costPerLinkClick: sums.linkClicks > 0 ? sums.spend / sums.linkClicks : null,
     costPerWin: sums.won > 0 ? sums.spend / sums.won : null,
+    roas: sums.spend > 0 && sums.revenue > 0 ? Math.round((sums.revenue / sums.spend) * 100) / 100 : null,
   };
 
   const drill = (o) => {
@@ -681,6 +684,7 @@ function AdsManager({ objects, metrics, money, onToggle, onBudget, busyIds }) {
     const v = m[col.key];
     if (col.kind === "int") return window.fmt.int(v || 0);
     if (col.kind === "pct") return v != null ? String(v).replace(".", ",") + "%" : "";
+    if (col.kind === "x") return v != null ? String(v).replace(".", ",") + "x" : (col.empty || "");
     return v != null ? money(v) : (col.empty || "");
   };
   const arrow = (key) => (sort.key === key ? (sort.dir === 1 ? " ↑" : " ↓") : "");
@@ -827,6 +831,7 @@ function AdsManager({ objects, metrics, money, onToggle, onBudget, busyIds }) {
                   {!hasMetrics ? "" /* período sem sync: vazio ≠ zero, igual às linhas */
                     : c.kind === "int" ? window.fmt.int(totals[c.key] || 0)
                     : c.kind === "pct" ? (totals[c.key] != null ? String(totals[c.key]).replace(".", ",") + "%" : "")
+                    : c.kind === "x" ? (totals[c.key] != null ? String(totals[c.key]).replace(".", ",") + "x" : "")
                     : totals[c.key] != null ? money(totals[c.key]) : ""}
                 </td>
               ))}
@@ -846,9 +851,10 @@ const thStyle = {
 };
 
 // Quebra por dor: cada linha é um código "[X]" da nomenclatura dos anúncios.
-// O que decide escala é a última coluna (custo por ganho), não o CPL.
+// O que decide escala é a última coluna (ROAS: receita dos ganhos ÷ investimento),
+// não o CPL.
 function PainTable({ pains, money }) {
-  const ths = ["Dor", "Anúncios", "Investimento", "Leads (UTM)", "CPL real", "Ganhos", "Custo por ganho"];
+  const ths = ["Dor", "Anúncios", "Investimento", "Leads (UTM)", "CPL real", "Ganhos", "Custo por ganho", "Receita", "ROAS"];
   return (
     <div className="tbl-x" style={{ marginTop: 10 }}>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -871,7 +877,9 @@ function PainTable({ pains, money }) {
               <td className="tnum" style={tdNum}>{window.fmt.int(p.leads)}</td>
               <td className="tnum" style={tdNum}>{p.cpl != null ? money(p.cpl) : "sem lead"}</td>
               <td className="tnum" style={tdNum}>{window.fmt.int(p.won)}</td>
-              <td className="tnum" style={{ ...tdNum, fontWeight: 600 }}>{p.costPerWin != null ? money(p.costPerWin) : "sem ganho"}</td>
+              <td className="tnum" style={tdNum}>{p.costPerWin != null ? money(p.costPerWin) : "sem ganho"}</td>
+              <td className="tnum" style={tdNum}>{money(p.revenue || 0)}</td>
+              <td className="tnum" style={{ ...tdNum, fontWeight: 600 }}>{p.roas != null ? String(p.roas).replace(".", ",") + "x" : "sem receita"}</td>
             </tr>
           ))}
         </tbody>
