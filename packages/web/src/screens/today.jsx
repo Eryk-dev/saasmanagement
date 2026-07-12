@@ -412,10 +412,11 @@ function QueueRow({ item, seq, block, saasCfg, stageMeta, onOpen, onScript, onTo
 // Rótulo curto dos tipos de activity nos "últimos contatos" do resumo.
 const ACT_LABELS = { whatsapp: "whatsapp", call: "ligação", email: "e-mail", meeting: "reunião", note: "nota", stage: "mudou de etapa", system: "sistema" };
 
-// Painel do roteiro em DUAS PÁGINAS (sem rolagem): 1 · Cliente (resumo da
-// situação + últimos contatos + dados a confirmar) e 2 · Roteiro (postura,
-// objetivo e o passo a passo com a fala pronta). "Toque e próximo" mantém o
-// operador em fluxo: registra e já abre o cliente seguinte, de volta à pág. 1.
+// Painel do roteiro em DUAS COLUNAS lado a lado (sem abas): CLIENTE à esquerda
+// (resumo da situação + últimos contatos + dados a confirmar) e ROTEIRO à
+// direita (postura, objetivo e o passo a passo com a fala pronta) — as duas
+// visões ao mesmo tempo. Em tela estreita as colunas empilham. "Toque e
+// próximo" mantém o operador em fluxo: registra e já abre o cliente seguinte.
 function ScriptPanel({ item, saasCfg, hasNext, onClose, onTouch, onSkip, onOpenLead }) {
   const { l } = item;
   const script = resolveScript(saasCfg, l);
@@ -423,8 +424,6 @@ function ScriptPanel({ item, saasCfg, hasNext, onClose, onTouch, onSkip, onOpenL
   const checklist = scriptChecklist(saasCfg, l);
   const wa = waLink(l.phone);
   const tier = leadTier(l);
-  const [page, setPage] = useS(1);
-  useE(() => { setPage(1); }, [l.id]); // item novo volta pra pág. do cliente
 
   // Últimos contatos da timeline — contexto de quem já falou com esse lead.
   const [acts, setActs] = useS(null);
@@ -475,19 +474,11 @@ function ScriptPanel({ item, saasCfg, hasNext, onClose, onTouch, onSkip, onOpenL
 
   const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--bg-inset)" };
   const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
-  const tabBtn = (n, label) => (
-    <button onClick={() => setPage(n)} style={{
-      height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 600, fontFamily: "var(--mono)",
-      background: page === n ? "var(--accent)" : "var(--bg-2)",
-      color: page === n ? "var(--accent-fg)" : "var(--fg-3)",
-      border: "1px solid " + (page === n ? "var(--accent)" : "var(--line-2)"),
-    }}>{label}</button>
-  );
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70, padding: 12 }}>
       <div onClick={(e) => e.stopPropagation()} style={{
-        width: "min(660px, 100%)", maxHeight: "min(90vh, 100%)",
+        width: "min(1100px, 100%)", maxHeight: "min(92vh, 100%)",
         background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)",
         boxShadow: "var(--shadow-pop)", display: "flex", flexDirection: "column",
       }}>
@@ -507,17 +498,13 @@ function ScriptPanel({ item, saasCfg, hasNext, onClose, onTouch, onSkip, onOpenL
               )}
             </div>
           </div>
-          <span style={{ display: "inline-flex", gap: 5, flexShrink: 0 }}>
-            {tabBtn(1, "1 · Cliente")}
-            {tabBtn(2, "2 · Roteiro")}
-          </span>
           <button onClick={onClose} className="mono dim" style={{ fontSize: 16, flexShrink: 0 }}>✕</button>
         </div>
 
-        <div style={{ padding: "12px 18px", display: "flex", flexDirection: "column", gap: 10, overflowY: "auto" }}>
-          {page === 1 && (
-            <>
-              {/* Página 1 · Cliente: quem é, situação e o que confirmar. */}
+        {/* Duas colunas lado a lado: CLIENTE | ROTEIRO (empilham no mobile). */}
+        <div style={{ padding: "12px 18px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(310px, 1fr))", gap: 16, overflowY: "auto", minHeight: 0 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+            <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Cliente</div>
               <div style={box}>
                 <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Resumo do cliente</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "4px 14px" }}>
@@ -544,79 +531,65 @@ function ScriptPanel({ item, saasCfg, hasNext, onClose, onTouch, onSkip, onOpenL
                 </div>
               </div>
 
-              <div>
-                <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Dados do lead · confirme o que estiver faltando</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 6 }}>
-                  {checklist.map((c, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, padding: "5px 8px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.value ? "var(--bg-1)" : "var(--warn-soft)" }}>
-                      <span style={{ color: c.value ? "var(--pos)" : "var(--warn)", flexShrink: 0, fontSize: 12 }}>{c.value ? "✓" : "○"}</span>
-                      <span className="dim" style={{ flexShrink: 0, fontSize: 11 }}>{c.label}</span>
-                      <span style={{ marginLeft: "auto", fontWeight: 500, textAlign: "right" }}>{c.value || "perguntar"}</span>
-                    </div>
-                  ))}
-                </div>
+            <div>
+              <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Dados do lead · confirme o que estiver faltando</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 6 }}>
+                {checklist.map((c, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, padding: "5px 8px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.value ? "var(--bg-1)" : "var(--warn-soft)" }}>
+                    <span style={{ color: c.value ? "var(--pos)" : "var(--warn)", flexShrink: 0, fontSize: 12 }}>{c.value ? "✓" : "○"}</span>
+                    <span className="dim" style={{ flexShrink: 0, fontSize: 11 }}>{c.label}</span>
+                    <span style={{ marginLeft: "auto", fontWeight: 500, textAlign: "right" }}>{c.value || "perguntar"}</span>
+                  </div>
+                ))}
               </div>
-            </>
-          )}
+            </div>
+          </div>
 
-          {page === 2 && (
-            <>
-              {/* Página 2 · Roteiro: postura, objetivo e a fala pronta. */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
-                <div style={{ ...box, background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
-                  <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 4 }}>Como se comportar</div>
-                  <div style={{ fontSize: 12, lineHeight: 1.45 }}>{script.resumo}</div>
-                </div>
-                <div style={box}>
-                  <div className="mono" style={{ ...kicker, marginBottom: 4 }}>Objetivo do contato</div>
-                  <div style={{ fontSize: 12, lineHeight: 1.45, fontWeight: 500 }}>{script.objetivo}</div>
-                </div>
-              </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+            <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Roteiro</div>
+            <div style={{ ...box, background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
+              <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 4 }}>Como se comportar</div>
+              <div style={{ fontSize: 12, lineHeight: 1.45 }}>{script.resumo}</div>
+            </div>
+            <div style={box}>
+              <div className="mono" style={{ ...kicker, marginBottom: 4 }}>Objetivo do contato</div>
+              <div style={{ fontSize: 12, lineHeight: 1.45, fontWeight: 500 }}>{script.objetivo}</div>
+            </div>
 
-              <div>
-                <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Passo a passo</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                  {script.passos.map((p, i) => (
-                    <div key={i} style={{ display: "flex", gap: 10 }}>
-                      <span className="mono tnum" style={{
-                        width: 20, height: 20, borderRadius: 999, flexShrink: 0, marginTop: 1,
-                        display: "inline-flex", alignItems: "center", justifyContent: "center",
-                        background: "var(--bg-inset)", border: "1px solid var(--line-2)", fontSize: 10.5, fontWeight: 700, color: "var(--fg-3)",
-                      }}>{i + 1}</span>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        {p.t && <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 1 }}>{p.t}</div>}
-                        <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--fg-1)", borderLeft: "3px solid var(--accent-line)", paddingLeft: 10, whiteSpace: "pre-wrap" }}>
-                          {renderFala(p.fala)}
-                        </div>
-                        {p.dica && <div className="dim" style={{ fontSize: 10.5, marginTop: 2, paddingLeft: 13 }}>{p.dica}</div>}
+            <div>
+              <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Passo a passo</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                {script.passos.map((p, i) => (
+                  <div key={i} style={{ display: "flex", gap: 10 }}>
+                    <span className="mono tnum" style={{
+                      width: 20, height: 20, borderRadius: 999, flexShrink: 0, marginTop: 1,
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      background: "var(--bg-inset)", border: "1px solid var(--line-2)", fontSize: 10.5, fontWeight: 700, color: "var(--fg-3)",
+                    }}>{i + 1}</span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      {p.t && <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 1 }}>{p.t}</div>}
+                      <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--fg-1)", borderLeft: "3px solid var(--accent-line)", paddingLeft: 10, whiteSpace: "pre-wrap" }}>
+                        {renderFala(p.fala)}
                       </div>
+                      {p.dica && <div className="dim" style={{ fontSize: 10.5, marginTop: 2, paddingLeft: 13 }}>{p.dica}</div>}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
-            </>
-          )}
+            </div>
+          </div>
         </div>
 
         <div style={{ marginTop: "auto", padding: "10px 18px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          {page === 1 ? (
-            <button onClick={() => setPage(2)} style={{ padding: "8px 14px", background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600 }}>
-              ver roteiro →
+          <button onClick={onTouch} style={{ padding: "8px 14px", background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600 }}
+            title="Registra a tentativa na timeline; o GPS re-agenda sozinho (e lead novo segue pra Qualificando)">
+            {hasNext ? "✓ toque e próximo" : "✓ registrar toque"}
+          </button>
+          {hasNext && (
+            <button onClick={onSkip} title="Ir pro próximo da fila sem registrar toque neste"
+              style={{ padding: "8px 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 }}>
+              pular →
             </button>
-          ) : (
-            <>
-              <button onClick={onTouch} style={{ padding: "8px 14px", background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600 }}
-                title="Registra a tentativa na timeline; o GPS re-agenda sozinho (e lead novo segue pra Qualificando)">
-                {hasNext ? "✓ toque e próximo" : "✓ registrar toque"}
-              </button>
-              {hasNext && (
-                <button onClick={onSkip} title="Ir pro próximo da fila sem registrar toque neste"
-                  style={{ padding: "8px 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 }}>
-                  pular →
-                </button>
-              )}
-              <button onClick={() => setPage(1)} className="mono" style={{ fontSize: 11.5, color: "var(--fg-3)" }}>← cliente</button>
-            </>
           )}
           {wa && (
             <a href={wa} target="_blank" rel="noopener noreferrer"
