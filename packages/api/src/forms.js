@@ -171,6 +171,19 @@ export function validateAnswers(form, answers) {
 
 // Submission → payload de lead. Respostas entram flat (mesmo padrão das perguntas
 // de qualificação do pipeline); os campos núcleo vêm do mapping e sempre vencem.
+// Headline (título) da variante A/B que o lead viu. A welcome da dor (byPain)
+// sobrescreve a base, e o cliente sorteia de `chosen.variants` — o MESMO pool
+// que resolvemos aqui pra denormalizar o headline no lead (lead.formHeadline),
+// pra tela do SDR mostrar a versão exata que converteu. "" quando não resolve.
+export function variantHeadline(form, variantId, pain) {
+  if (!variantId) return "";
+  const w = (form && form.welcome) || {};
+  const chosen = pain && w.byPain && w.byPain[pain] ? { ...w, ...w.byPain[pain] } : w;
+  const pool = Array.isArray(chosen.variants) ? chosen.variants : [];
+  const hit = pool.find((v) => String(v.id) === String(variantId));
+  return hit && hit.title ? String(hit.title) : "";
+}
+
 export function leadFromSubmission(form, answers) {
   const m = form.mapping || {};
   const mapped = (k) => {

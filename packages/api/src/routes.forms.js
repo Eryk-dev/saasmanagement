@@ -7,7 +7,7 @@
 // definição do form. IDs são opacos; forms em rascunho não existem publicamente.
 
 import { randomUUID } from "node:crypto";
-import { publicForm, validateAnswers, leadFromSubmission, submissionTerminal, makeRateLimiter, buildSteps } from "./forms.js";
+import { publicForm, validateAnswers, leadFromSubmission, submissionTerminal, makeRateLimiter, buildSteps, variantHeadline } from "./forms.js";
 import { painCode } from "./routes.marketing.js";
 import { isWon } from "./stages.js";
 import { formPageHtml, EMBED_JS } from "./form-page.js";
@@ -117,6 +117,9 @@ export function registerFormRoutes(app, repo, opts = {}) {
     }
     const variant = String(body.variant || "").slice(0, 40); // versão da welcome que converteu
     const pain = String(body.pain || "").slice(0, 8);         // dor da welcome mostrada
+    // Headline exato que o lead viu (variante A/B da welcome) — denormalizado no
+    // lead pra tela do SDR, sobrevive a edição posterior do form.
+    const headline = variant ? variantHeadline(form, variant, pain) : "";
     const internal = body.internal === true;                  // teste da equipe (não suja métrica nem CAPI)
     // fbp/fbc dos cookies do Pixel + página de entrada persistem NO LEAD (antes
     // iam só pro CAPI do Lead e eram descartados): o Purchase do ganho reusa o
@@ -147,6 +150,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
       ...(fbc ? { fbc } : {}),
       ...(sourceUrl ? { sourceUrl } : {}),
       ...(variant ? { formVariant: variant } : {}),
+      ...(headline ? { formHeadline: headline } : {}),
       ...(nextAt ? { nextActionAt: nextAt } : {}),
       ...(internal ? { internal: true, source: `Form · ${form.name || form.id} · teste da equipe` } : {}),
       createdAt: new Date().toISOString(), // métricas de marketing filtram por período
