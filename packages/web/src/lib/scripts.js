@@ -118,7 +118,7 @@ export const DEFAULT_SCRIPTS = {
     passos: [
       { t: "Ligar (2 tentativas)", fala: "Olá {{nome}}, tudo bom? Aqui é {{eu}}, da {{produto}}. Faz um tempo que você se cadastrou pra conhecer nossa ferramenta de clone de anúncios e eu queria retomar com você." },
       { t: "WhatsApp, se não atender", fala: "Oi {{nome}}! Há um tempo você demonstrou interesse na {{produto}} (clonagem de anúncios entre contas de marketplace). Muita coisa evoluiu por aqui desde então. Faz sentido a gente conversar 5 minutinhos essa semana?" },
-      { t: "Sessão 3, encerramento (WhatsApp)", fala: "Oi {{nome}}! Pra não te incomodar, vou encerrar seu atendimento por aqui. Quando fizer sentido clonar seus anúncios, é só responder esta conversa que eu te atendo na hora.", dica: "Sem retorno: mover pra Perdido (motivo: sem resposta). Respondeu? Volta pra Qualificando e segue o fluxo normal." },
+      { t: "Sessão 3, encerramento (WhatsApp)", fala: "Oi {{nome}}! Pra não te incomodar, vou encerrar seu atendimento por aqui. Quando fizer sentido clonar seus anúncios, é só responder esta conversa que eu te atendo na hora.", dica: "Sem retorno: mover pra Desqualificado (motivo: sem resposta). Respondeu? Volta pra Qualificando e segue o fluxo normal." },
     ],
   },
   call: {
