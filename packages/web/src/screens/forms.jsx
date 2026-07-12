@@ -727,7 +727,7 @@ function buildFormInsights(data, form, cat) {
     if (drop >= 0.25 && (!worst || drop > worst.drop)) worst = { step: chain[i], prev, drop };
   }
   if (worst) {
-    out.push({ id: `drop-step:${worst.step.key}`, tone: "cortar", tag: "Revisar", text: `A pergunta “${worst.step.label}” derruba ${Math.round(worst.drop * 100)}% de quem chega nela (${worst.prev} → ${worst.step.sessions} sessões). Simplifique a pergunta, torne opcional ou mova pra mais perto do fim.` });
+    out.push({ id: `drop-step:${worst.step.key}`, meta: { kind: "makeOptional", key: worst.step.key }, tone: "cortar", tag: "Revisar", text: `A pergunta “${worst.step.label}” derruba ${Math.round(worst.drop * 100)}% de quem chega nela (${worst.prev} → ${worst.step.sessions} sessões). Simplifique a pergunta, torne opcional ou mova pra mais perto do fim.` });
   }
   // Origens: taxa de envio muito abaixo/acima da média do form.
   const origins = (data.origins || []).filter((o) => o.views >= 15);
@@ -739,13 +739,77 @@ function buildFormInsights(data, form, cat) {
     const weak = sorted[0];
     const best = sorted[sorted.length - 1];
     if (overall > 0 && rate(weak) < overall / 2) {
-      out.push({ id: `origin-weak:${weak.source || ""}|${weak.campaign || ""}`, tone: "atencao", tag: "Atenção", text: `A origem ${name(weak)} converte ${pctN(weak.submits, weak.views)}% das visitas em envio, menos da metade da média do form (${Math.round(overall * 100)}%). O público desse tráfego pode não casar com a promessa ou com as perguntas.` });
+      out.push({ id: `origin-weak:${weak.source || ""}|${weak.campaign || ""}`, meta: { kind: "pauseCampaign", campaign: weak.campaign || "" }, tone: "atencao", tag: "Atenção", text: `A origem ${name(weak)} converte ${pctN(weak.submits, weak.views)}% das visitas em envio, menos da metade da média do form (${Math.round(overall * 100)}%). O público desse tráfego pode não casar com a promessa ou com as perguntas.` });
     }
     if (best !== weak && rate(best) >= overall * 1.5) {
-      out.push({ id: `origin-best:${best.source || ""}|${best.campaign || ""}`, tone: "escalar", tag: "Escalar", text: `${name(best)} converte ${pctN(best.submits, best.views)}% das visitas em envio (média do form: ${Math.round(overall * 100)}%). Tráfego com esse perfil rende mais form completo — vale priorizar.` });
+      out.push({ id: `origin-best:${best.source || ""}|${best.campaign || ""}`, meta: { kind: "raiseCampaignBudget", campaign: best.campaign || "" }, tone: "escalar", tag: "Escalar", text: `${name(best)} converte ${pctN(best.submits, best.views)}% das visitas em envio (média do form: ${Math.round(overall * 100)}%). Tráfego com esse perfil rende mais form completo — vale priorizar.` });
     }
   }
   return out.slice(0, 5);
+}
+
+// Ação executável dos insights do form (botão "aplicar" + confirmação), na
+// mesma regra da Publicidade: só quando a plataforma consegue fazer sozinha e
+// com segurança. Pergunta que derruba → tornar opcional (edição do próprio
+// form); origem fraca/campeã → pausar campanha / subir orçamento na Meta, e
+// nesses casos a campanha precisa estar VIVA (effectiveStatus ACTIVE na
+// listagem da conta) — sem listagem (sem permissão de metrics, Meta fora) ou
+// com campanha parada, o insight fica só informativo.
+const moneyBRL = (v) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(v) || 0);
+function withFormInsightAction(it, { form, adObjects }) {
+  const m = it.meta;
+  if (!m) return it;
+  if (m.kind === "makeOptional") {
+    const q = (form.questions || []).find((x) => x.key === m.key);
+    if (!q || !q.required) return it; // já é opcional (ou saiu do form)
+    return {
+      ...it,
+      action: {
+        label: "Tornar a pergunta opcional",
+        steps: [
+          `Marcar a pergunta “${q.label || q.key}” do form “${form.name || form.id}” como opcional — quem não quiser responder consegue avançar.`,
+          "A mudança vale na hora na página pública do form.",
+        ],
+        execute: () => api.update("forms", form.id, { questions: (form.questions || []).map((x) => (x.key === m.key ? { ...x, required: false } : x)) }),
+      },
+    };
+  }
+  const live = (adObjects?.campaigns || []).find((c) => String(c.id) === String(m.campaign) || (c.name && c.name === m.campaign));
+  const active = live && (live.effectiveStatus || live.status) === "ACTIVE";
+  if (m.kind === "pauseCampaign" && active) {
+    return {
+      ...it,
+      action: {
+        label: "Pausar campanha",
+        steps: [`Pausar a campanha “${live.name}” na Meta — todos os conjuntos e anúncios dela param de veicular na hora; dá pra reativar na tela Publicidade.`],
+        execute: () => api.metaObjectStatus(live.id, "PAUSED"),
+      },
+    };
+  }
+  if (m.kind === "raiseCampaignBudget" && active) {
+    const bump = (v) => Math.ceil(v * 1.2);
+    if (live.dailyBudget > 0) {
+      return {
+        ...it,
+        action: {
+          label: "Subir orçamento (+20%)",
+          steps: [`Campanha “${live.name}” (orçamento na campanha): diário ${moneyBRL(live.dailyBudget)} → ${moneyBRL(bump(live.dailyBudget))} (+20%), aplicado direto no Gerenciador da Meta.`],
+          execute: () => api.metaObjectBudget(live.id, bump(live.dailyBudget)),
+        },
+      };
+    }
+    const targets = (adObjects?.adsets || []).filter((s) => String(s.campaignId) === String(live.id) && s.dailyBudget > 0 && s.status !== "PAUSED");
+    if (!targets.length) return it;
+    return {
+      ...it,
+      action: {
+        label: "Subir orçamento (+20%)",
+        steps: targets.map((s) => `Conjunto “${s.name}”: orçamento diário ${moneyBRL(s.dailyBudget)} → ${moneyBRL(bump(s.dailyBudget))} (+20%), aplicado direto no Gerenciador da Meta.`),
+        execute: async () => { for (const s of targets) await api.metaObjectBudget(s.id, bump(s.dailyBudget)); },
+      },
+    };
+  }
+  return it;
 }
 
 // ── Dashboard de métricas (visão principal da tela) ─────────────────────────
@@ -790,6 +854,20 @@ function FormsDashboard({ forms }) {
 
   // Campanha nos eventos chega como id dinâmico da Meta — resolve pra nome.
   const cat = useAttribution(form?.saas, !!(data && !data.error && data.origins?.length));
+
+  // Estado VIVO da conta de anúncios (mesma listagem do card Anúncios da
+  // Publicidade): valida se a campanha de um insight de origem ainda veicula
+  // antes de oferecer o "aplicar" e dá nome/orçamento pros passos do popup.
+  // Falha (sem permissão de metrics, Meta fora) só tira os botões de ação.
+  const [adObjects, setAdObjects] = useState(null);
+  const saasProd = (window.SEED?.SAAS || []).find((x) => x.id === form?.saas);
+  const wantAds = !!(saasProd?.metaAdAccount && data && !data.error && (data.origins || []).length);
+  const fetchAdObjects = () => api.adObjects(form.saas).then((v) => { if (!v?.error) setAdObjects(v); }).catch(() => { /* insights ficam informativos */ });
+  useEffect(() => { setAdObjects(null); }, [form?.saas]);
+  useEffect(() => { if (wantAds) fetchAdObjects(); }, [wantAds, form?.saas]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const formInsights = (data && !data.error ? buildFormInsights(data, form, cat) : [])
+    .map((it) => withFormInsightAction(it, { form, adObjects }));
 
   if (!form) return null;
   const painMap = ((window.SEED?.SAAS || []).find((x) => x.id === form.saas) || {}).painMap || {};
@@ -877,11 +955,12 @@ function FormsDashboard({ forms }) {
       )}
 
       {data && !data.error && (
-        <InsightsList items={buildFormInsights(data, form, cat)} scope={`form:${form.id}`}
+        <InsightsList items={formInsights} scope={`form:${form.id}`}
           style={{ marginBottom: 14 }}
+          onApplied={() => { if (wantAds) fetchAdObjects(); }}
           header={
             <div className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
-              Insights do funil · ✕ dispensa por 7 dias
+              Insights do funil · aplicar mostra os passos e pede confirmação · ✕ dispensa por 7 dias
             </div>
           } />
       )}
