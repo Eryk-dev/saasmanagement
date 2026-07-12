@@ -80,8 +80,10 @@ function buildQueue(leads, saasCfg, person) {
     if (l.stage && !workable.has(l.stage)) continue;
     const kind = stageKind(saasCfg, stage);
     const phase = phaseOf(kind);
-    // Responsável da vez: SDR (dono) na pré-venda; closer/integrador dali em diante.
-    const who = phase === "sdr" ? (l.owner || "") : (l.closer || l.owner || "");
+    // Responsável da vez: SDR (dono) na pré-venda; closer/integrador dali em
+    // diante (SÓ o campo closer: quem chegou em Follow-up passou pela call, e o
+    // dono da conversa é o closer que a fez — dono SDR antigo não puxa o card).
+    const who = phase === "sdr" ? (l.owner || "") : (l.closer || "");
     // Filtro de pessoa: card atribuído à pessoa sempre entra; card SEM dono só
     // entra pra quem tem o papel da fase (SDR não vê follow-up/integração).
     if (person) {
