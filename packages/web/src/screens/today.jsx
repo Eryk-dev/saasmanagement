@@ -8,13 +8,13 @@ import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusine
 import { allUsers, currentUser, displayName } from "../lib/users.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { resolveScript, scriptTokens, scriptSegments, scriptChecklist } from "../lib/scripts.js";
-// Meu dia — a fila de execução de quem opera o funil: UMA lista única, em
-// formato de tabela (colunas Quando · Etapa · Ação · Lead), numerada na ordem
-// de prioridade do processo comercial: compromissos com horário de HOJE,
-// leads novos (prioridade máxima, por chegada), retomadas de Qualificando,
-// follow-ups do closer, Nutrição (reativação) e por fim o que está sem
-// próximo passo. É pra trabalhar em sequência, sem escolher: "começar a fila"
-// abre o roteiro do 1º pendente e "toque e próximo" segue até zerar.
+// Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
+// "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
+// "Amanhã" e "Próximos dias" (o que já está agendado, à vista), e "Sem data".
+// Dentro de cada dia vale a mesma prioridade: horário marcado → novos →
+// qualificando → follow-ups → nutrição. Formato de tabela (Quando · Etapa ·
+// Ação · Lead). "Começar a fila" abre o roteiro do 1º pendente de HOJE e
+// "toque e próximo" segue em sequência até zerar o dia.
 
 const { useState: useS, useMemo: useM, useEffect: useE } = React;
 
@@ -36,17 +36,26 @@ const ACTION_LABELS = {
 
 const TIER_ORDER = { alto: 3, medio: 2, baixo: 1, sem: 0 };
 
-// Ordem de atendimento do processo (Leo, jul/2026): horário marcado de hoje é
+// Ordem de atendimento dentro de cada dia (Leo, jul/2026): horário marcado é
 // inadiável; novos são prioridade máxima; depois retomadas de qualificação,
 // follow-ups, nutrição e o que ficou sem agenda.
 const GROUP_ORDER = ["appt", "novo", "qual", "closer", "nutri", "loose"];
+
+// Blocos por dia. "Hoje" SEMPRE aparece (vazio ganha a mensagem de descanso);
+// os demais só quando têm itens.
+const DAY_BLOCKS = [
+  ["hoje", "Hoje", "accent"],
+  ["amanha", "Amanhã", "warn"],
+  ["proximos", "Próximos dias", "mut"],
+  ["semdata", "Sem data · agendar ou descartar", "mut"],
+];
 
 // Grade compartilhada entre cabeçalho e linhas — é o que mantém as colunas
 // alinhadas (dentro de .tbl-x, com rolagem horizontal no mobile).
 const GRID = { display: "grid", gridTemplateColumns: "30px 100px 140px 110px minmax(240px, 1fr) max-content", gap: 10, alignItems: "center" };
 
-// Monta a fila do dia: um item por lead trabalhável que exige ação até hoje,
-// classificado no grupo de prioridade e ordenado dentro dele.
+// Monta a fila: um item por lead trabalhável, no bloco do dia certo e
+// classificado no grupo de prioridade (que define a ordem dentro do bloco).
 function buildQueue(leads, saasCfg, person) {
   const workable = new Set(workableStages(saasCfg));
   const open = new Set(openStages(saasCfg));
@@ -54,8 +63,8 @@ function buildQueue(leads, saasCfg, person) {
   const endToday = new Date(); endToday.setHours(23, 59, 59, 999);
   const endTomorrow = new Date(endToday); endTomorrow.setDate(endTomorrow.getDate() + 1);
 
-  const g = { appt: [], novo: [], qual: [], closer: [], nutri: [], loose: [] };
-  let tomorrow = 0, doneToday = 0;
+  const g = { hoje: [], amanha: [], proximos: [], semdata: [] };
+  let doneToday = 0;
 
   for (const l of leads) {
     if (saasCfg && l.saas !== saasCfg.id) continue;
@@ -69,7 +78,7 @@ function buildQueue(leads, saasCfg, person) {
     if (person && who && who !== person) continue;
 
     // Progresso do dia: todo lead trabalhável tocado hoje conta, mesmo que o
-    // toque já tenha re-agendado o GPS (o item some da fila, o feito fica).
+    // toque já tenha re-agendado o GPS (o item muda de bloco, o feito fica).
     if (TOUCH_TYPES.has(l.lastActivityType) && l.lastActivityAt &&
       new Date(l.lastActivityAt).toDateString() === new Date().toDateString()) doneToday++;
 
@@ -91,24 +100,36 @@ function buildQueue(leads, saasCfg, person) {
     const done = due?.type !== "call" && TOUCH_TYPES.has(l.lastActivityType) &&
       l.lastActivityAt && new Date(l.lastActivityAt).toDateString() === new Date().toDateString();
 
-    const dueToday = due && due.t <= endToday.getTime();
-    const item = { l, kind, phase, who, due, done, stage };
+    // Grupo de prioridade (define a ordem e o rótulo da ação).
+    const group = !due
+      ? (kind === "novo" ? "novo" : "loose")
+      : due.type !== "toque" ? "appt"
+      : kind === "novo" ? "novo"
+      : !open.has(stage) ? "nutri"
+      : phase === "sdr" ? "qual"
+      : "closer";
 
-    // Classificação por prioridade (primeira regra que casar vence).
-    if (dueToday && due.type !== "toque") { item.group = "appt"; g.appt.push(item); }
-    else if (kind === "novo" && (dueToday || !due)) { item.group = "novo"; g.novo.push(item); }
-    else if (dueToday && !open.has(stage)) { item.group = "nutri"; g.nutri.push(item); }
-    else if (dueToday && phase === "sdr") { item.group = "qual"; g.qual.push(item); }
-    else if (dueToday) { item.group = "closer"; g.closer.push(item); }
-    else if (!due && kind !== "novo") { item.group = "loose"; g.loose.push(item); }
-    else if (due && due.t <= endTomorrow.getTime()) tomorrow++;
+    const item = { l, kind, phase, who, due, done, stage, group };
+
+    // Bloco do dia: novo sem agendamento é trabalho de HOJE (SLA corre).
+    if (!due) g[kind === "novo" ? "hoje" : "semdata"].push(item);
+    else if (due.t <= endToday.getTime()) g.hoje.push(item);
+    else if (due.t <= endTomorrow.getTime()) g.amanha.push(item);
+    else g.proximos.push(item);
   }
 
-  g.appt.sort((a, b) => a.due.t - b.due.t);
-  g.novo.sort((a, b) => new Date(a.l.createdAt || 0) - new Date(b.l.createdAt || 0)); // mais antigo primeiro (SLA)
-  for (const k of ["qual", "closer", "nutri"]) g[k].sort((a, b) => a.due.t - b.due.t);
-  g.loose.sort((a, b) => (TIER_ORDER[leadTier(b.l).key] - TIER_ORDER[leadTier(a.l).key]) || (Number(b.l.score) || 0) - (Number(a.l.score) || 0));
-  return { ...g, tomorrow, doneToday };
+  // Ordem dentro do bloco: prioridade do processo; no empate, novos por chegada
+  // (SLA), agendados pelo horário e os sem data pelo potencial.
+  const rank = (i) => GROUP_ORDER.indexOf(i.group);
+  const tiebreak = (a, b) => {
+    // Novos sempre por ordem de chegada (SLA): quem espera há mais tempo primeiro.
+    if (a.group === "novo") return new Date(a.l.createdAt || 0) - new Date(b.l.createdAt || 0);
+    if (a.due && b.due) return a.due.t - b.due.t;
+    if (a.due || b.due) return a.due ? -1 : 1;
+    return (TIER_ORDER[leadTier(b.l).key] - TIER_ORDER[leadTier(a.l).key]) || (Number(b.l.score) || 0) - (Number(a.l.score) || 0);
+  };
+  for (const k of Object.keys(g)) g[k].sort((a, b) => rank(a) - rank(b) || tiebreak(a, b));
+  return { ...g, doneToday };
 }
 
 function TodayScreen({ onOpenLead }) {
@@ -132,12 +153,12 @@ function TodayScreen({ onOpenLead }) {
   const [scriptItem, setScriptItem] = useS(null); // item com o painel de roteiro aberto
 
   const q = useM(() => buildQueue(leads, saasCfg, person), [leads, saasCfg, person]);
-  const ordered = GROUP_ORDER.flatMap((key) => q[key]);
+  const total = q.hoje.length + q.amanha.length + q.proximos.length + q.semdata.length;
 
-  // Próximo item pendente DEPOIS deste na fila — o motor do "toque e próximo".
+  // Próximo item pendente DEPOIS deste na fila de HOJE — o "toque e próximo".
   function nextAfter(item) {
-    const idx = ordered.findIndex((i) => i.l.id === item.l.id);
-    return ordered.find((i, j) => j > idx && !i.done && i.l.id !== item.l.id) || null;
+    const idx = q.hoje.findIndex((i) => i.l.id === item.l.id);
+    return q.hoje.find((i, j) => j > idx && !i.done && i.l.id !== item.l.id) || null;
   }
 
   // Toque direto da fila: vira activity, o servidor conta a tentativa, re-agenda
@@ -169,22 +190,23 @@ function TodayScreen({ onOpenLead }) {
   const users = allUsers().filter((u) => !u.saas || u.saas === saasCfg?.id);
   const stageMeta = Object.fromEntries((saasCfg?.funnel || []).map((f) => [f.stage, f]));
   const dateLabel = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
-  const firstPending = ordered.find((i) => !i.done);
+  const firstPending = q.hoje.find((i) => !i.done);
   const headCell = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" };
+  const blockTone = { accent: "var(--accent)", warn: "var(--warn)", mut: "var(--fg-3)" };
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <PageHead
         title="Meu dia"
-        sub={`${dateLabel} · ${ordered.length} ${ordered.length === 1 ? "ação na fila" : "ações na fila"}`}>
+        sub={`${dateLabel} · ${q.hoje.length} pra hoje · ${q.amanha.length} pra amanhã`}>
         {q.doneToday > 0 && (
-          <Pill tone={ordered.every((i) => i.done) ? "pos" : "mut"} title="leads tocados hoje nesta fila (o item feito sai da lista; o feito fica)">
+          <Pill tone={q.hoje.every((i) => i.done) ? "pos" : "mut"} title="leads tocados hoje nesta fila">
             {q.doneToday} {q.doneToday === 1 ? "feita hoje" : "feitas hoje"}
           </Pill>
         )}
         {firstPending && (
           <button onClick={() => setScriptItem(firstPending)}
-            title="Abrir o roteiro do 1º item pendente e seguir a fila em sequência"
+            title="Abrir o roteiro do 1º item pendente de hoje e seguir a fila em sequência"
             style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12, fontWeight: 600 }}>
             ▶ começar a fila
           </button>
@@ -200,10 +222,10 @@ function TodayScreen({ onOpenLead }) {
       </PageHead>
 
       <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)" }}>
-        {ordered.length === 0 ? (
+        {total === 0 ? (
           <EmptyState
             title="Fila limpa"
-            hint={person ? "Nenhuma ação pendente pra hoje nessa fila. Confira o pipeline ou puxe leads novos." : "Nenhuma ação pendente pra hoje."}
+            hint={person ? "Nenhuma ação pendente nessa fila. Confira o pipeline ou puxe leads novos." : "Nenhuma ação pendente."}
           />
         ) : (
           <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
@@ -215,19 +237,35 @@ function TodayScreen({ onOpenLead }) {
               <span style={headCell}>Lead · qualificação</span>
               <span />
             </div>
-            {ordered.map((item, i) => (
-              <QueueRow key={item.l.id} item={item} seq={i + 1} saasCfg={saasCfg} stageMeta={stageMeta}
-                onOpen={() => onOpenLead && onOpenLead(item.l)}
-                onScript={() => setScriptItem(item)}
-                onTouch={() => logTouch(item)}
-                onClaim={() => claim(item)}
-              />
-            ))}
-          </div>
-        )}
-        {q.tomorrow > 0 && (
-          <div className="mono dim" style={{ fontSize: 11, padding: "10px 2px" }}>
-            amanhã: {q.tomorrow} {q.tomorrow === 1 ? "contato já agendado" : "contatos já agendados"}
+            {DAY_BLOCKS.map(([key, label, tone]) => {
+              const rows = q[key];
+              if (key !== "hoje" && rows.length === 0) return null;
+              return (
+                <React.Fragment key={key}>
+                  <div className="mono" style={{
+                    padding: "8px 14px", fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase",
+                    color: blockTone[tone], background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)",
+                  }}>
+                    {label} · {rows.length}
+                  </div>
+                  {rows.length === 0 && (
+                    <div className="mono dim" style={{ padding: "14px", fontSize: 12, borderBottom: "1px solid var(--line-1)" }}>
+                      {q.amanha.length > 0
+                        ? "não tem atividade pra hoje · a fila de amanhã já está montada logo abaixo"
+                        : "não tem atividade pra hoje"}
+                    </div>
+                  )}
+                  {rows.map((item, i) => (
+                    <QueueRow key={item.l.id} item={item} seq={i + 1} block={key} saasCfg={saasCfg} stageMeta={stageMeta}
+                      onOpen={() => onOpenLead && onOpenLead(item.l)}
+                      onScript={() => setScriptItem(item)}
+                      onTouch={() => logTouch(item)}
+                      onClaim={() => claim(item)}
+                    />
+                  ))}
+                </React.Fragment>
+              );
+            })}
           </div>
         )}
       </div>
@@ -249,16 +287,21 @@ function TodayScreen({ onOpenLead }) {
 
 // Uma linha da fila: sequência, quando, etapa (coluna do funil), ação a fazer,
 // lead com a qualificação compilada e as ações. Clique no corpo abre o drawer.
-function QueueRow({ item, seq, saasCfg, stageMeta, onOpen, onScript, onTouch, onClaim }) {
+function QueueRow({ item, seq, block, saasCfg, stageMeta, onOpen, onScript, onTouch, onClaim }) {
   const { l, kind, due, done, stage, who, phase, group } = item;
   const tier = leadTier(l);
   const wa = waLink(l.phone);
   const now = Date.now();
 
-  // Pill de horário: atrasado (dias) · agora · hoje HH:mm · novo (idade).
+  // Pill de horário. Hoje: atrasado (dias) · agora · HH:mm · novo (idade).
+  // Amanhã: só a hora. Próximos dias: a data.
   const startToday = new Date().setHours(0, 0, 0, 0);
   let when;
-  if (due && due.t < startToday) {
+  if (due && block === "amanha") {
+    when = { text: new Date(due.t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }), tone: "mut" };
+  } else if (due && block === "proximos") {
+    when = { text: new Date(due.t).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), tone: "mut" };
+  } else if (due && due.t < startToday) {
     const daysLate = Math.max(1, Math.ceil((startToday - due.t) / DAY));
     when = { text: `atrasado ${daysLate}d`, tone: "neg" };
   } else if (due && due.t <= now) {
@@ -354,10 +397,10 @@ function QueueRow({ item, seq, saasCfg, stageMeta, onOpen, onScript, onTouch, on
 // Rótulo curto dos tipos de activity nos "últimos contatos" do resumo.
 const ACT_LABELS = { whatsapp: "whatsapp", call: "ligação", email: "e-mail", meeting: "reunião", note: "nota", stage: "mudou de etapa", system: "sistema" };
 
-// Painel do roteiro: RESUMO DO CLIENTE (situação + últimos contatos) + postura
-// + objetivo + checklist de dados + passo a passo com a fala pronta (dados do
-// lead encaixados; o que falta vira lacuna destacada). "Toque e próximo"
-// mantém o operador em fluxo: registra e já abre o seguinte.
+// Painel do roteiro em DUAS PÁGINAS (sem rolagem): 1 · Cliente (resumo da
+// situação + últimos contatos + dados a confirmar) e 2 · Roteiro (postura,
+// objetivo e o passo a passo com a fala pronta). "Toque e próximo" mantém o
+// operador em fluxo: registra e já abre o cliente seguinte, de volta à pág. 1.
 function ScriptPanel({ item, saasCfg, hasNext, onClose, onTouch, onSkip, onOpenLead }) {
   const { l } = item;
   const script = resolveScript(saasCfg, l);
@@ -365,6 +408,8 @@ function ScriptPanel({ item, saasCfg, hasNext, onClose, onTouch, onSkip, onOpenL
   const checklist = scriptChecklist(saasCfg, l);
   const wa = waLink(l.phone);
   const tier = leadTier(l);
+  const [page, setPage] = useS(1);
+  useE(() => { setPage(1); }, [l.id]); // item novo volta pra pág. do cliente
 
   // Últimos contatos da timeline — contexto de quem já falou com esse lead.
   const [acts, setActs] = useS(null);
@@ -375,7 +420,7 @@ function ScriptPanel({ item, saasCfg, hasNext, onClose, onTouch, onSkip, onOpenL
       .then((a) => alive && setActs(
         (a || []).filter((x) => x.type !== "system")
           .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0))
-          .slice(0, 3)
+          .slice(0, 4)
       ))
       .catch(() => alive && setActs([]));
     return () => { alive = false; };
@@ -415,119 +460,148 @@ function ScriptPanel({ item, saasCfg, hasNext, onClose, onTouch, onSkip, onOpenL
 
   const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--bg-inset)" };
   const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
+  const tabBtn = (n, label) => (
+    <button onClick={() => setPage(n)} style={{
+      height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 600, fontFamily: "var(--mono)",
+      background: page === n ? "var(--accent)" : "var(--bg-2)",
+      color: page === n ? "var(--accent-fg)" : "var(--fg-3)",
+      border: "1px solid " + (page === n ? "var(--accent)" : "var(--line-2)"),
+    }}>{label}</button>
+  );
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70, padding: 12 }}>
       <div onClick={(e) => e.stopPropagation()} style={{
-        width: "min(640px, 100%)", maxHeight: "min(88vh, 100%)", overflowY: "auto",
+        width: "min(660px, 100%)", maxHeight: "min(90vh, 100%)",
         background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)",
         boxShadow: "var(--shadow-pop)", display: "flex", flexDirection: "column",
       }}>
-        <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--line-1)", display: "flex", alignItems: "start", gap: 10 }}>
+        <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              Roteiro · {script.titulo}{script.custom ? " · personalizado da etapa" : ""}
+              {script.titulo}{script.custom ? " · personalizado" : ""}
             </div>
-            <div style={{ fontSize: 17, fontWeight: 600, marginTop: 3, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 16.5, fontWeight: 600, marginTop: 2, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {l.name}
               {tier.grade && (
                 <span className="tnum" style={{ width: 18, height: 18, borderRadius: 5, display: "inline-flex", alignItems: "center", justifyContent: "center", background: tier.tone, color: tier.badgeFg, fontFamily: "var(--display)", fontSize: 11, fontWeight: 700 }}>{tier.grade}</span>
               )}
               <span className="chip">{item.stage}</span>
+              {(l.company || l.phone) && (
+                <span className="mono dim" style={{ fontSize: 11 }}>{[l.company, l.phone].filter(Boolean).join(" · ")}</span>
+              )}
             </div>
-            {(l.company || l.phone || l.email) && (
-              <div className="mono dim" style={{ fontSize: 11.5, marginTop: 2 }}>
-                {[l.company, l.phone, l.email].filter(Boolean).join(" · ")}
-              </div>
-            )}
           </div>
+          <span style={{ display: "inline-flex", gap: 5, flexShrink: 0 }}>
+            {tabBtn(1, "1 · Cliente")}
+            {tabBtn(2, "2 · Roteiro")}
+          </span>
           <button onClick={onClose} className="mono dim" style={{ fontSize: 16, flexShrink: 0 }}>✕</button>
         </div>
 
-        <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-          {/* Resumo do cliente: a situação compilada + o que já aconteceu. */}
-          <div style={box}>
-            <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Resumo do cliente</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "4px 14px" }}>
-              {facts.map(([k, v]) => (
-                <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, padding: "3px 0", borderBottom: "1px solid var(--line-1)" }}>
-                  <span className="mono dim" style={{ flexShrink: 0, fontSize: 10.5 }}>{k}</span>
-                  <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0 }}>{v}</span>
-                </div>
-              ))}
-            </div>
-            <div style={{ marginTop: 8 }}>
-              <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 3 }}>Últimos contatos</div>
-              {acts === null && <div className="mono dim" style={{ fontSize: 11 }}>carregando…</div>}
-              {acts !== null && acts.length === 0 && <div className="mono dim" style={{ fontSize: 11 }}>nenhum contato registrado ainda · você abre a conversa</div>}
-              {(acts || []).map((a) => (
-                <div key={a.id} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 11.5, padding: "2px 0", minWidth: 0 }}>
-                  <span className="mono" style={{ flexShrink: 0, color: "var(--fg-3)", fontSize: 10.5 }}>{fmtWhen(a.at)}</span>
-                  <span className="mono" style={{ flexShrink: 0, color: "var(--accent)", fontSize: 10.5 }}>{ACT_LABELS[a.type] || a.type}</span>
-                  <span className="dim" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {a.type === "stage" ? `${a.meta?.from || "?"} → ${a.meta?.to || "?"}` : (a.text || "")}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ ...box, background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
-            <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 4 }}>Como se comportar</div>
-            <div style={{ fontSize: 12.5, lineHeight: 1.5 }}>{script.resumo}</div>
-          </div>
-
-          <div style={box}>
-            <div className="mono" style={{ ...kicker, marginBottom: 4 }}>Objetivo do contato</div>
-            <div style={{ fontSize: 12.5, lineHeight: 1.5, fontWeight: 500 }}>{script.objetivo}</div>
-          </div>
-
-          <div>
-            <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Dados do lead · confirme o que estiver faltando</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 6 }}>
-              {checklist.map((c, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, padding: "5px 8px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.value ? "var(--bg-1)" : "var(--warn-soft)" }}>
-                  <span style={{ color: c.value ? "var(--pos)" : "var(--warn)", flexShrink: 0, fontSize: 12 }}>{c.value ? "✓" : "○"}</span>
-                  <span className="dim" style={{ flexShrink: 0, fontSize: 11 }}>{c.label}</span>
-                  <span style={{ marginLeft: "auto", fontWeight: 500, textAlign: "right" }}>{c.value || "perguntar"}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Passo a passo</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {script.passos.map((p, i) => (
-                <div key={i} style={{ display: "flex", gap: 10 }}>
-                  <span className="mono tnum" style={{
-                    width: 20, height: 20, borderRadius: 999, flexShrink: 0, marginTop: 1,
-                    display: "inline-flex", alignItems: "center", justifyContent: "center",
-                    background: "var(--bg-inset)", border: "1px solid var(--line-2)", fontSize: 10.5, fontWeight: 700, color: "var(--fg-3)",
-                  }}>{i + 1}</span>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    {p.t && <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 2 }}>{p.t}</div>}
-                    <div style={{ fontSize: 13, lineHeight: 1.55, color: "var(--fg-1)", borderLeft: "3px solid var(--accent-line)", paddingLeft: 10, whiteSpace: "pre-wrap" }}>
-                      {renderFala(p.fala)}
+        <div style={{ padding: "12px 18px", display: "flex", flexDirection: "column", gap: 10, overflowY: "auto" }}>
+          {page === 1 && (
+            <>
+              {/* Página 1 · Cliente: quem é, situação e o que confirmar. */}
+              <div style={box}>
+                <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Resumo do cliente</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "4px 14px" }}>
+                  {facts.map(([k, v]) => (
+                    <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, padding: "3px 0", borderBottom: "1px solid var(--line-1)" }}>
+                      <span className="mono dim" style={{ flexShrink: 0, fontSize: 10.5 }}>{k}</span>
+                      <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0 }}>{v}</span>
                     </div>
-                    {p.dica && <div className="dim" style={{ fontSize: 11, marginTop: 3, paddingLeft: 13 }}>{p.dica}</div>}
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+                <div style={{ marginTop: 8 }}>
+                  <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 3 }}>Últimos contatos</div>
+                  {acts === null && <div className="mono dim" style={{ fontSize: 11 }}>carregando…</div>}
+                  {acts !== null && acts.length === 0 && <div className="mono dim" style={{ fontSize: 11 }}>nenhum contato registrado ainda · você abre a conversa</div>}
+                  {(acts || []).map((a) => (
+                    <div key={a.id} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 11.5, padding: "2px 0", minWidth: 0 }}>
+                      <span className="mono" style={{ flexShrink: 0, color: "var(--fg-3)", fontSize: 10.5 }}>{fmtWhen(a.at)}</span>
+                      <span className="mono" style={{ flexShrink: 0, color: "var(--accent)", fontSize: 10.5 }}>{ACT_LABELS[a.type] || a.type}</span>
+                      <span className="dim" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {a.type === "stage" ? `${a.meta?.from || "?"} → ${a.meta?.to || "?"}` : (a.text || "")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Dados do lead · confirme o que estiver faltando</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 6 }}>
+                  {checklist.map((c, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, padding: "5px 8px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.value ? "var(--bg-1)" : "var(--warn-soft)" }}>
+                      <span style={{ color: c.value ? "var(--pos)" : "var(--warn)", flexShrink: 0, fontSize: 12 }}>{c.value ? "✓" : "○"}</span>
+                      <span className="dim" style={{ flexShrink: 0, fontSize: 11 }}>{c.label}</span>
+                      <span style={{ marginLeft: "auto", fontWeight: 500, textAlign: "right" }}>{c.value || "perguntar"}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {page === 2 && (
+            <>
+              {/* Página 2 · Roteiro: postura, objetivo e a fala pronta. */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
+                <div style={{ ...box, background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
+                  <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 4 }}>Como se comportar</div>
+                  <div style={{ fontSize: 12, lineHeight: 1.45 }}>{script.resumo}</div>
+                </div>
+                <div style={box}>
+                  <div className="mono" style={{ ...kicker, marginBottom: 4 }}>Objetivo do contato</div>
+                  <div style={{ fontSize: 12, lineHeight: 1.45, fontWeight: 500 }}>{script.objetivo}</div>
+                </div>
+              </div>
+
+              <div>
+                <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Passo a passo</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                  {script.passos.map((p, i) => (
+                    <div key={i} style={{ display: "flex", gap: 10 }}>
+                      <span className="mono tnum" style={{
+                        width: 20, height: 20, borderRadius: 999, flexShrink: 0, marginTop: 1,
+                        display: "inline-flex", alignItems: "center", justifyContent: "center",
+                        background: "var(--bg-inset)", border: "1px solid var(--line-2)", fontSize: 10.5, fontWeight: 700, color: "var(--fg-3)",
+                      }}>{i + 1}</span>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        {p.t && <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 1 }}>{p.t}</div>}
+                        <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--fg-1)", borderLeft: "3px solid var(--accent-line)", paddingLeft: 10, whiteSpace: "pre-wrap" }}>
+                          {renderFala(p.fala)}
+                        </div>
+                        {p.dica && <div className="dim" style={{ fontSize: 10.5, marginTop: 2, paddingLeft: 13 }}>{p.dica}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
-        <div style={{ marginTop: "auto", padding: "12px 18px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", display: "flex", gap: 8, flexWrap: "wrap", position: "sticky", bottom: 0 }}>
-          <button onClick={onTouch} style={{ padding: "8px 14px", background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600 }}
-            title="Registra a tentativa na timeline; o GPS re-agenda sozinho (e lead novo segue pra Qualificando)">
-            {hasNext ? "✓ toque e próximo" : "✓ registrar toque"}
-          </button>
-          {hasNext && (
-            <button onClick={onSkip} title="Ir pro próximo da fila sem registrar toque neste"
-              style={{ padding: "8px 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 }}>
-              pular →
+        <div style={{ marginTop: "auto", padding: "10px 18px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {page === 1 ? (
+            <button onClick={() => setPage(2)} style={{ padding: "8px 14px", background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600 }}>
+              ver roteiro →
             </button>
+          ) : (
+            <>
+              <button onClick={onTouch} style={{ padding: "8px 14px", background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600 }}
+                title="Registra a tentativa na timeline; o GPS re-agenda sozinho (e lead novo segue pra Qualificando)">
+                {hasNext ? "✓ toque e próximo" : "✓ registrar toque"}
+              </button>
+              {hasNext && (
+                <button onClick={onSkip} title="Ir pro próximo da fila sem registrar toque neste"
+                  style={{ padding: "8px 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 }}>
+                  pular →
+                </button>
+              )}
+              <button onClick={() => setPage(1)} className="mono" style={{ fontSize: 11.5, color: "var(--fg-3)" }}>← cliente</button>
+            </>
           )}
           {wa && (
             <a href={wa} target="_blank" rel="noopener noreferrer"
