@@ -295,6 +295,15 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .price-card { background: var(--bg); color: var(--fg); border-radius: calc(var(--radius) + 10px); padding: 40px 32px; position: relative; overflow: hidden; }
   @media (min-width: 768px) { .price-card { padding: 56px 48px; } }
   .price-card .pill { position: absolute; top: 24px; right: 24px; }
+  /* Cabeçalho do card: tag do plano à esquerda ALINHADA com o badge à direita
+     (o badge deixa de ser absoluto quando está dentro do head). */
+  .price-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .price-card .price-head .pill { position: static; flex-shrink: 0; }
+  /* amount+per como unidade: o "/ mês" nunca desce sozinho de linha. */
+  .price-main { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+  /* Com segunda oferta, o valor grande encolhe um pouco pra "12x R$ 299,95 / mês"
+     caber numa linha só no card empilhado. */
+  .has-offer2 .price-number .amount { font-size: clamp(44px, 6.8vw, 80px); }
   .price-tag { font-family: var(--font-mono); font-size: 12px; color: var(--accent); letter-spacing: .1em; text-transform: uppercase; }
   .price-number { display: flex; align-items: baseline; gap: 6px; margin-top: 24px; flex-wrap: wrap; }
   .price-number .currency { font-size: 24px; color: var(--ink-3); }
@@ -984,10 +993,10 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       // abaixo da primeira num avanço extra e acinzenta a principal (comparativo).
       function priceCardHtml(o, cls, dr) {
         return '<div class="price-card' + (cls ? ' ' + cls : '') + '"' + (dr ? ' data-reveal' : '') + '>' +
-          (o.planPill ? '<span class="pill accent">' + fmt(o.planPill) + '</span>' : '') +
-          '<div class="price-tag">' + fmt(o.planTag || '') + '</div>' +
+          '<div class="price-head"><div class="price-tag">' + fmt(o.planTag || '') + '</div>' +
+            (o.planPill ? '<span class="pill accent">' + fmt(o.planPill) + '</span>' : '') + '</div>' +
           (o.priceFrom ? '<div class="price-from">de R$ ' + fmt(o.priceFrom) + '</div>' : '') +
-          '<div class="price-number">' + (o.pricePrefix ? '<span class="currency">' + fmt(o.pricePrefix) + '</span>' : '') + '<span class="currency">R$</span><span class="amount">' + fmt(o.price || '{{calc.preco}}') + '</span><span class="per">' + fmt(o.per || '/ mês') + '</span></div>' +
+          '<div class="price-number">' + (o.pricePrefix ? '<span class="currency">' + fmt(o.pricePrefix) + '</span>' : '') + '<span class="currency">R$</span><span class="price-main"><span class="amount">' + fmt(o.price || '{{calc.preco}}') + '</span><span class="per">' + fmt(o.per || '/ mês') + '</span></span></div>' +
           (o.sub ? '<div class="price-sub">' + fmt(o.sub) + '</div>' : '') +
           '<div class="price-cycles">' + (o.cyclesLabel ? fmt(o.cyclesLabel) + ' ' : '') + (o.cyclesFrom ? '<span class="cycles-from">' + fmt(o.cyclesFrom) + '</span> ' : '') + fmt(o.cycles != null ? o.cycles : '{{calc.precoCiclos}}') + '</div>' +
         '</div>';
@@ -998,7 +1007,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       // (empilhados); sem ele, o offer2 cairia na coluna dos benefícios.
       var wrapCards = reveal || hasOffer2;
       pw.innerHTML =
-        (wrapCards ? '<div class="price-reveal">' : '') +
+        (wrapCards ? '<div class="price-reveal' + (hasOffer2 ? ' has-offer2' : '') + '">' : '') +
         priceCardHtml(s, hasOffer2 ? 'offer1' : '', !reveal) +
         (hasOffer2 ? priceCardHtml(s.offer2, 'offer2', false) : '') +
         (reveal ? '<div class="price-veil" aria-hidden="true"></div>' : '') +
