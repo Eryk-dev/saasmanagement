@@ -25,6 +25,18 @@ export function rollToBusinessDay(date) {
   return new Date(clock.getTime() + BRT);
 }
 
+// Dono automático de um lead novo sem responsável: o ÚNICO usuário com papel
+// "sdr" do produto vira o dono (owner) — todo card entra com um SDR responsável.
+// Com 0 ou 2+ SDRs ninguém é escolhido (o time decide na mão). Espelha o
+// auto-integrador do applyStageMove.
+export async function autoLeadOwner(repo, saas) {
+  try {
+    const users = await repo.list("users");
+    const sdrs = users.filter((u) => Array.isArray(u.roles) && u.roles.includes("sdr") && (!u.saas || u.saas === saas));
+    return sdrs.length === 1 ? sdrs[0].id : null;
+  } catch { return null; }
+}
+
 export async function logActivity(repo, { saas = "", lead = "", type = "note", text = "", meta = {}, author = "system", at } = {}) {
   const now = new Date().toISOString();
   return repo.create("activities", {

@@ -13,7 +13,7 @@ import { isWon } from "./stages.js";
 import { formPageHtml, EMBED_JS } from "./form-page.js";
 import { CREATE_DEFAULTS, dispatchProposal, publicBase } from "./routes.js";
 import { stageByKind, firstStage } from "./stages.js";
-import { logActivity, initialNextActionAt } from "./lead-flow.js";
+import { logActivity, initialNextActionAt, autoLeadOwner } from "./lead-flow.js";
 
 const clientIp = (req) =>
   String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.ip || "?";
@@ -134,10 +134,14 @@ export function registerFormRoutes(app, repo, opts = {}) {
     const product = form.saas ? await repo.get("products", form.saas) : null;
     const dqStage = stageByKind(product, "desqualificado")?.stage || "disqualified";
     const nextAt = disqualified ? "" : initialNextActionAt(product, "");
+    // Lead qualificado entra com o SDR do produto como dono; desqualificado vai
+    // pro cemitério sem responsável (ninguém trabalha ele agora).
+    const owner = disqualified ? null : await autoLeadOwner(repo, form.saas);
     const lead = await repo.create("leads", {
       ...(CREATE_DEFAULTS.leads || {}),
       ...leadFromSubmission(form, answers),
       ...(disqualified ? { disqualified: true, stage: dqStage, lostReason: "sem_fit", lostNote: "Reprovado no funil do form" } : {}),
+      ...(owner ? { owner } : {}),
       ...(utm ? { utm } : {}),
       ...(fbp ? { fbp } : {}),
       ...(fbc ? { fbc } : {}),

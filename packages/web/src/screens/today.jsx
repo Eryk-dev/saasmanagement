@@ -196,12 +196,14 @@ function TodayScreen({ onOpenLead }) {
       .catch((err) => console.warn("toque não registrado:", err.message));
   }
 
-  // Lead novo sem dono: quem clica assume (vira o SDR do lead).
+  // Card sem responsável: quem clica assume (vira o responsável). Grava no
+  // campo da fase — owner na pré-venda, integrator na entrega, closer no meio.
   function claim(item) {
-    const ownerId = person || me;
-    if (!ownerId) return;
-    setLeads((prev) => prev.map((x) => x.id === item.l.id ? { ...x, owner: ownerId } : x));
-    api.update("leads", item.l.id, { owner: ownerId }).catch((err) => console.warn("dono não salvo:", err.message));
+    const whoId = me || person;
+    if (!whoId) return;
+    const field = item.phase === "sdr" ? "owner" : item.phase === "entrega" ? "integrator" : "closer";
+    setLeads((prev) => prev.map((x) => x.id === item.l.id ? { ...x, [field]: whoId } : x));
+    api.update("leads", item.l.id, { [field]: whoId }).catch((err) => console.warn("responsável não salvo:", err.message));
   }
 
   // Edição inline dos dados do lead (checklist do roteiro). Otimista.
@@ -295,7 +297,6 @@ function TodayScreen({ onOpenLead }) {
                   {rows.map((item, i) => (
                     <QueueRow key={item.l.id} item={item} seq={i + 1} block={key} saasCfg={saasCfg} stageMeta={stageMeta}
                       onScript={() => setScriptItem(item)}
-                      onTouch={() => logTouch(item)}
                       onClaim={() => claim(item)}
                     />
                   ))}
@@ -311,12 +312,10 @@ function TodayScreen({ onOpenLead }) {
           item={scriptItem}
           saasCfg={saasCfg}
           leads={leads}
-          hasNext={!!nextAfter(scriptItem)}
           onPatch={patchLead}
           onMove={moveAndNext}
           onClose={() => setScriptItem(null)}
           onTouch={() => { const nx = nextAfter(scriptItem); logTouch(scriptItem); setScriptItem(nx); }}
-          onSkip={() => setScriptItem(nextAfter(scriptItem))}
           onOpenLead={() => { setScriptItem(null); onOpenLead && onOpenLead(scriptItem.l); }}
         />
       )}
@@ -327,10 +326,9 @@ function TodayScreen({ onOpenLead }) {
 // Uma linha da fila: sequência, quando, etapa (coluna do funil), ação a fazer,
 // lead com a qualificação compilada e as ações. Clique no corpo abre o ROTEIRO
 // (o painel de execução), não o card de status; o drawer fica no "abrir lead".
-function QueueRow({ item, seq, block, saasCfg, stageMeta, onScript, onTouch, onClaim }) {
+function QueueRow({ item, seq, block, saasCfg, stageMeta, onScript, onClaim }) {
   const { l, kind, due, done, stage, who, phase, group } = item;
   const tier = leadTier(l);
-  const wa = waLink(l.phone);
   const now = Date.now();
 
   // Pill de horário. Hoje: atrasado (dias) · agora · HH:mm · novo (idade).
@@ -357,8 +355,7 @@ function QueueRow({ item, seq, block, saasCfg, stageMeta, onScript, onTouch, onC
   const chips = scriptChecklist(saasCfg, l).filter((c) => c.value).map((c) => c.value);
   const cad = cadenceOf(saasCfg, stage);
   const attempts = Number(cad.maxAttempts) ? `${Math.min(Number(l.stageAttempts) || 0, Number(cad.maxAttempts))}/${cad.maxAttempts}` : null;
-  const showTouch = due?.type !== "call";
-  const unowned = phase === "sdr" && !l.owner;
+  const unowned = !who; // assumir só quando o card não tem responsável
   const action = group === "nutri" ? "reativação" : (ACTION_LABELS[kind] || "contato");
   const stageColor = stageMeta?.[stage]?.color || "var(--accent)";
 
@@ -410,24 +407,14 @@ function QueueRow({ item, seq, block, saasCfg, stageMeta, onScript, onTouch, onC
       <span style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>
         {who && <span title={displayName(who)}><Avatar id={who} name={displayName(who)} size={20} /></span>}
         {unowned && (
-          <button onClick={onClaim} title="Assumir esse lead (vira o SDR dono)"
+          <button onClick={onClaim} title="Assumir esse card (você vira o responsável)"
             style={{ height: 24, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px dashed var(--line-2)", background: "var(--bg-2)", color: "var(--fg-3)", fontSize: 11 }}>
             assumir
           </button>
         )}
-        {wa && (
-          <a href={wa} target="_blank" rel="noopener noreferrer" title={`WhatsApp · ${l.phone}`}
-            className="mono" style={{ fontSize: 11, color: "#128c4b", textDecoration: "none" }}>Wpp ↗</a>
-        )}
-        {showTouch && !done && (
-          <button onClick={onTouch} title="Registrar tentativa de contato (vira toque na timeline; o GPS re-agenda sozinho)"
-            style={{ height: 24, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11 }}>
-            ✓ toque
-          </button>
-        )}
-        <button onClick={onScript} title="Abrir o roteiro desta atividade com o resumo, os dados e o próximo passo"
-          style={{ height: 24, padding: "0 10px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 11.5, fontWeight: 600 }}>
-          Roteiro
+        <button onClick={onScript} title="Começar essa atividade: roteiro, dados e pra onde vai o card"
+          style={{ height: 24, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 11.5, fontWeight: 600 }}>
+          Começar
         </button>
       </span>
     </div>
@@ -442,7 +429,7 @@ const ACT_LABELS = { whatsapp: "whatsapp", call: "ligação", email: "e-mail", m
 // conversa) e ROTEIRO à direita (postura, objetivo e o passo a passo com a
 // fala pronta). Em tela estreita as colunas empilham. "Toque e próximo"
 // mantém o operador em fluxo: registra e já abre o cliente seguinte.
-function ScriptPanel({ item, saasCfg, leads, hasNext, onPatch, onMove, onClose, onTouch, onSkip, onOpenLead }) {
+function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onClose, onTouch, onOpenLead }) {
   // Cópia local do lead: a edição inline dos campos reflete na hora aqui (fala
   // interpolada + checklist) e persiste via onPatch (fila + API).
   const [l, setL] = useS(item.l);
@@ -590,6 +577,10 @@ function ScriptPanel({ item, saasCfg, leads, hasNext, onPatch, onMove, onClose, 
                 ))}
               </div>
             </div>
+
+            {/* Destino do card fica AQUI, embaixo dos dados do cliente, pra
+                aproveitar o espaço vazio da coluna e encurtar o painel. */}
+            <DestinoSection saasCfg={saasCfg} lead={l} leads={leads} onMove={onMove} onTouch={onTouch} />
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
@@ -629,21 +620,12 @@ function ScriptPanel({ item, saasCfg, leads, hasNext, onPatch, onMove, onClose, 
             </div>
           </div>
         </div>
-
-        <DestinoSection saasCfg={saasCfg} lead={l} leads={leads} onMove={onMove} />
         </div>
 
+        {/* Rodapé: sem "registrar toque" — a atividade só se completa movendo o
+            card pra próxima coluna (bloco "Depois da ação"). Aqui ficam só os
+            atalhos: WhatsApp e o card completo. */}
         <div style={{ marginTop: "auto", padding: "10px 18px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <button onClick={onTouch} style={{ padding: "8px 14px", background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600 }}
-            title="Registra a tentativa na timeline; o GPS re-agenda sozinho (e lead novo segue pra Qualificando)">
-            {hasNext ? "✓ toque e próximo" : "✓ registrar toque"}
-          </button>
-          {hasNext && (
-            <button onClick={onSkip} title="Ir pro próximo da fila sem registrar toque neste"
-              style={{ padding: "8px 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 }}>
-              pular →
-            </button>
-          )}
           {wa && (
             <a href={wa} target="_blank" rel="noopener noreferrer"
               style={{ padding: "8px 14px", borderRadius: "var(--r-2)", border: "1px solid #25D36655", color: "#128c4b", fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}>
@@ -653,6 +635,7 @@ function ScriptPanel({ item, saasCfg, leads, hasNext, onPatch, onMove, onClose, 
           <button onClick={onOpenLead} style={{ padding: "8px 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 }}>
             abrir lead
           </button>
+          <span className="mono dim" style={{ fontSize: 10.5, color: "var(--fg-4)" }}>escolha o destino do card em "Depois da ação"</span>
           <button onClick={onClose} className="mono dim" style={{ marginLeft: "auto", fontSize: 12 }}>fechar</button>
         </div>
       </div>
@@ -665,16 +648,19 @@ function ScriptPanel({ item, saasCfg, leads, hasNext, onPatch, onMove, onClose, 
 // nome real do funil via stageByKind). Cada destino abre o SETUP do seu tipo:
 // call → closer + horário livre na agenda dele; entrega → integrador; ganho →
 // valor; perda → motivo. O movimento é otimista e o servidor faz o resto.
+// "retry" = não atendeu / não fechou hoje: registra a tentativa e retoma amanhã
+// (fica na mesma coluna). Num lead NOVO a tentativa promove pra Qualificando
+// sozinha (server) — por isso o chip de retry do novo mostra "Qualificando".
 const NEXT_KINDS = {
-  novo:          ["call", "contato", "desqualificado"],
-  contato:       ["call", "desqualificado"],          // reativação da Nutrição
-  qualificacao:  ["call", "contato", "desqualificado"],
-  call:          ["followup", "ganho", "desqualificado"],
-  followup:      ["integracao", "ganho", "desqualificado"],
-  proposta:      ["followup", "ganho", "desqualificado"],
+  novo:          ["retry", "call", "desqualificado"],
+  contato:       ["retry", "call", "desqualificado"],   // Nutrição: reativar
+  qualificacao:  ["retry", "call", "contato", "desqualificado"], // contato = Nutrição
+  call:          ["retry", "followup", "ganho", "desqualificado"],
+  followup:      ["retry", "integracao", "ganho", "desqualificado"],
+  proposta:      ["retry", "followup", "ganho", "desqualificado"],
   integracao:    ["posvenda", "ganho"],
   posvenda:      ["ganho"],
-  outro:         ["call", "desqualificado"],
+  outro:         ["retry", "desqualificado"],
 };
 
 export function destinationsFor(saasCfg, lead) {
@@ -683,6 +669,12 @@ export function destinationsFor(saasCfg, lead) {
   const out = [];
   const seen = new Set([curStage]);
   for (const k of (NEXT_KINDS[curKind] || ["desqualificado"])) {
+    if (k === "retry") {
+      const promote = curKind === "novo";
+      const target = promote ? (stageByKind(saasCfg, "qualificacao") || curStage) : curStage;
+      out.push({ retry: true, promote, stage: target, kind: promote ? "qualificacao" : curKind });
+      continue;
+    }
     const stage = stageByKind(saasCfg, k);
     if (stage && !seen.has(stage)) { seen.add(stage); out.push({ stage, kind: stageKind(saasCfg, stage) }); }
   }
@@ -721,7 +713,7 @@ export function callBusyKeys(leads, closerId, selfId) {
   return busy;
 }
 
-function DestinoSection({ saasCfg, lead, leads, onMove }) {
+function DestinoSection({ saasCfg, lead, leads, onMove, onTouch }) {
   const dests = destinationsFor(saasCfg, lead);
   const stageMeta = Object.fromEntries((saasCfg?.funnel || []).map((f) => [f.stage, f]));
   const closers = usersByRole("closer");
@@ -775,7 +767,25 @@ function DestinoSection({ saasCfg, lead, leads, onMove }) {
     <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "12px 14px" }}>
       <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Depois da ação · pra onde vai esse card</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {dests.map((d) => {
+        {dests.map((d, i) => {
+          // Chip de retry: não atendeu / não fechou hoje → registra a tentativa e
+          // retoma amanhã (num lead novo, promove pra Qualificando sozinho).
+          if (d.retry) {
+            const color = stageMeta[d.stage]?.color || "var(--fg-3)";
+            return (
+              <button key="retry" onClick={() => onTouch && onTouch()}
+                title={d.promote
+                  ? `Não atendeu ou ainda não fechou · registra a tentativa e vai pra ${d.stage} (tenta amanhã)`
+                  : "Não atendeu · registra a tentativa e retoma amanhã"}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 7, height: 30, padding: "0 12px", borderRadius: "var(--r-2)",
+                  background: "var(--bg-1)", border: "1px dashed var(--line-strong)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 500,
+                }}>
+                <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
+                {d.promote ? `${d.stage} · tenta amanhã` : "Retomar amanhã"}
+              </button>
+            );
+          }
           const on = dest?.stage === d.stage;
           const color = stageMeta[d.stage]?.color || "var(--accent)";
           return (
