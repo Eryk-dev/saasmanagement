@@ -342,6 +342,9 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const linkClicks = sum("linkClicks");
     const metaLeads = sum("metaLeads");
     const per = (n) => (n > 0 ? Math.round((spend / n) * 100) / 100 : null);
+    // Fecho do período inteiro: ganhos + receita (amount dos ganhos) → ROAS geral.
+    const wonAll = leads.filter((l) => isWon(product, l.stage));
+    const revenueAll = wonAll.reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
     // Custo por etapa: leads que PASSARAM por cada estágio da régua de progresso
     // (até o kind `ganho`). Lead com histórico na timeline conta cada estágio
@@ -379,7 +382,12 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const finishGroup = (key) => (g) => {
       const matched = matching(key, g);
       const n = matched.length;
-      const won = matched.filter((l) => isWon(product, l.stage)).length;
+      const wonLeads = matched.filter((l) => isWon(product, l.stage));
+      const won = wonLeads.length;
+      // Receita = soma do amount dos ganhos atribuídos (o modal de fechamento
+      // pede o valor ao mover pra ganho). Com o spend vira ROAS — a resposta
+      // pra "qual campanha traz RECEITA", não só lead/ganho barato.
+      const revenue = wonLeads.reduce((s, l) => s + (Number(l.amount) || 0), 0);
       return {
         ...g,
         spend: Math.round(g.spend * 100) / 100,
@@ -388,6 +396,8 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         cpl: n > 0 ? Math.round((g.spend / n) * 100) / 100 : null,
         won,
         costPerWin: won > 0 ? Math.round((g.spend / won) * 100) / 100 : null,
+        revenue: Math.round(revenue * 100) / 100,
+        roas: g.spend > 0 && revenue > 0 ? Math.round((revenue / g.spend) * 100) / 100 : null,
         // CTR de CLIQUE NO LINK (inline_link_clicks / impressões) — o CTR "all"
         // infla com qualquer interação (perfil, expandir legenda, etc.).
         ctr: g.impressions > 0 ? Math.round((g.linkClicks / g.impressions) * 10000) / 100 : null, // %
@@ -425,12 +435,13 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       const k = code || "_sem";
       const p = byPain[k] || (byPain[k] = {
         code, label: code ? (product.painMap || {})[code] || code : "Sem código",
-        spend: 0, leads: 0, won: 0, adsCount: 0,
+        spend: 0, leads: 0, won: 0, revenue: 0, adsCount: 0,
       });
       p.spend += a.spend;
       p.leads += a.leads;
       p.adsCount += 1;
       p.won += a.won; // já calculado por anúncio no finishGroup
+      p.revenue += a.revenue;
     }
     const pains = Object.values(byPain)
       .map((p) => ({
@@ -438,6 +449,8 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         spend: Math.round(p.spend * 100) / 100,
         cpl: p.leads > 0 ? Math.round((p.spend / p.leads) * 100) / 100 : null,
         costPerWin: p.won > 0 ? Math.round((p.spend / p.won) * 100) / 100 : null,
+        revenue: Math.round(p.revenue * 100) / 100,
+        roas: p.spend > 0 && p.revenue > 0 ? Math.round((p.revenue / p.spend) * 100) / 100 : null,
       }))
       .sort((a, b) => b.spend - a.spend);
 
@@ -461,6 +474,10 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         formStarts: formSessions("start"), // clicaram em começar
         cpl: per(leads.length),          // custo por lead REAL (criados no Cockpit)
         cplMeta: per(metaLeads),         // custo por lead reportado pela Meta
+        won: wonAll.length,
+        costPerWin: per(wonAll.length),
+        revenue: Math.round(revenueAll * 100) / 100,
+        roas: spend > 0 && revenueAll > 0 ? Math.round((revenueAll / spend) * 100) / 100 : null,
         cpc: per(clicks),
         cpm: impressions > 0 ? Math.round((spend / impressions) * 1000 * 100) / 100 : null,
         // link CTR (cliques no link / impressões), igual às linhas da tabela

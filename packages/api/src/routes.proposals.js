@@ -142,7 +142,7 @@ export function registerProposalRoutes(app, repo, opts = {}) {
         movedStage = patch.stage || "";
         // Se o acceptStage é o estágio de ganho, o cliente nasce aqui também
         // (antes só o PATCH genérico convertia). Idempotente e best-effort.
-        if (patch.stage) { try { await convertWonLead(repo, updated); } catch { /* fail-open */ } }
+        if (patch.stage) { try { await convertWonLead(repo, updated, { metaCapi: opts.metaCapi }); } catch { /* fail-open */ } }
       }
       try {
         await logActivity(repo, {

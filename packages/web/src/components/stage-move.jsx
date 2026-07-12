@@ -1,13 +1,15 @@
 import React from "react";
 import { PrimaryButton } from "../atoms.jsx";
-import { stageKind, phaseOf, isLossKind, lossReasonsOf } from "../lib/funnel.js";
+import { stageKind, phaseOf, isLossKind, isWonKind, lossReasonsOf } from "../lib/funnel.js";
 import { usersByRole, currentUser } from "../lib/users.js";
 import { api } from "../lib/api.js";
 
-// Gate de movimento de estágio — os dois momentos do processo que exigem input:
+// Gate de movimento de estágio — os três momentos do processo que exigem input:
 //   handoff  = card saindo da fase SDR pra fase Closer sem closer marcado
 //   lost     = card indo pra Perdido/Desqualificado (motivo obrigatório na UI;
 //              o servidor aceita sem e grava "nao_informado" — API/MCP não travam)
+//   won      = card indo pra Ganho sem valor de negócio (o amount vira a receita
+//              da campanha no relatório de marketing e o Purchase enviado à Meta)
 // Usado pelo drag-and-drop do board E pelo select de estágio do drawer.
 
 export function moveGate(saasCfg, lead, toStage) {
@@ -15,6 +17,7 @@ export function moveGate(saasCfg, lead, toStage) {
   if (isLossKind(toKind)) return { type: "lost", toKind };
   const fromPhase = phaseOf(stageKind(saasCfg, lead.stage || saasCfg?.funnel?.[0]?.stage));
   if (fromPhase === "sdr" && phaseOf(toKind) === "closer" && !lead.closer) return { type: "handoff", toKind };
+  if (isWonKind(toKind) && !(Number(lead.amount) > 0)) return { type: "won", toKind };
   return null;
 }
 
@@ -27,14 +30,16 @@ const label = { fontSize: 10.5, fontFamily: "var(--mono)", color: "var(--fg-3)",
 
 export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCancel }) {
   const isLost = gate.type === "lost";
+  const isWonGate = gate.type === "won";
   const reasons = lossReasonsOf(saasCfg);
   const closers = usersByRole("closer");
   const [closer, setCloser] = React.useState(lead.closer || closers[0]?.id || "");
   const [reason, setReason] = React.useState("");
   const [note, setNote] = React.useState("");
   const [callAt, setCallAt] = React.useState("");
-  const askCall = !isLost && gate.toKind === "call";
-  const ready = isLost ? !!reason : !!closer;
+  const [amount, setAmount] = React.useState("");
+  const askCall = !isLost && !isWonGate && gate.toKind === "call";
+  const ready = isLost ? !!reason : isWonGate ? Number(amount) > 0 : !!closer;
 
   function confirm() {
     if (!ready) return;
@@ -42,13 +47,15 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
     if (isLost) {
       patch.lostReason = reason;
       if (note.trim()) patch.lostNote = note.trim();
+    } else if (isWonGate) {
+      patch.amount = Number(amount);
     } else {
       patch.closer = closer;
       if (callAt) patch.callAt = callAt;
     }
     onConfirm(patch, {
       // Nota do handoff vira um toque na timeline (contexto pro closer).
-      activity: !isLost && note.trim()
+      activity: !isLost && !isWonGate && note.trim()
         ? { saas: lead.saas, lead: lead.id, type: "note", text: `Handoff → closer: ${note.trim()}`, author: currentUser()?.id || "", meta: { reschedule: false } }
         : null,
     });
@@ -58,13 +65,24 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
     <div onClick={onCancel} style={{ position: "fixed", inset: 0, zIndex: 90, background: "color-mix(in srgb, var(--bg-0) 62%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(420px, 100%)", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 18 }}>
         <div style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700 }}>
-          {isLost ? `Mover pra “${toStage}”` : "Passar pro closer"}
+          {isLost ? `Mover pra “${toStage}”` : isWonGate ? "Fechar como ganho 🎉" : "Passar pro closer"}
         </div>
         <div className="mono" style={{ fontSize: 11, color: "var(--fg-3)", marginTop: 3, marginBottom: 14 }}>
           {lead.name}{lead.company ? ` · ${lead.company}` : ""} → {toStage}
         </div>
 
-        {isLost ? (
+        {isWonGate ? (
+          <>
+            <label style={label}>Valor do negócio (R$) *</label>
+            <input type="number" min="0" step="0.01" value={amount} autoFocus placeholder="ex.: 7188"
+              onChange={(e) => setAmount(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") confirm(); }}
+              style={field} />
+            <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
+              vira a receita da campanha no relatório de marketing e o valor da conversão enviada pra Meta
+            </div>
+          </>
+        ) : isLost ? (
           <>
             <label style={label}>Motivo {gate.toKind === "desqualificado" ? "da desqualificação" : "da perda"} *</label>
             <select value={reason} onChange={(e) => setReason(e.target.value)} style={field} autoFocus>

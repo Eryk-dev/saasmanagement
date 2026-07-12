@@ -186,3 +186,33 @@ test("aceite de proposta recarimba stageSince, loga e converte quando acceptStag
   assert.ok(sys.some((a) => a.type === "system" && a.meta.event === "proposal_accepted"));
   await app.close();
 });
+
+test("lead ganho manda Purchase pro CAPI com o valor do negócio, uma vez só", async () => {
+  const purchases = [];
+  const metaCapi = { configured: () => true, sendPurchase: async (p) => { purchases.push(p); } };
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL, metaPixelId: "555666777" });
+  const app = Fastify();
+  registerRoutes(app, repo, { metaCapi });
+  await repo.create("leads", { id: "l1", saas: "leverads", name: "Ana", stage: "Novo lead", email: "ana@x.com" });
+
+  // O modal de fechamento manda amount junto com o stage no mesmo PATCH.
+  await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { stage: "Ganho", amount: 600 } });
+  assert.equal(purchases.length, 1);
+  assert.equal(purchases[0].eventId, "won:l1");
+  assert.equal(purchases[0].leadId, "l1");
+  assert.equal(purchases[0].value, 600);
+  assert.equal(purchases[0].pixelId, "555666777");
+
+  // Reenvio não acontece: o guard de customer do convertWonLead segura.
+  await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { stage: "Follow-up" } });
+  await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { stage: "Ganho" } });
+  assert.equal(purchases.length, 1);
+
+  // Lead interno (teste da equipe) não suja o sinal — mas o cliente nasce.
+  await repo.create("leads", { id: "l2", saas: "leverads", name: "Bia", stage: "Novo lead", internal: true });
+  await app.inject({ method: "PATCH", url: "/api/leads/l2", payload: { stage: "Ganho", amount: 100 } });
+  assert.equal(purchases.length, 1);
+  assert.equal((await repo.list("customers")).length, 2);
+  await app.close();
+});

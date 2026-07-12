@@ -133,7 +133,31 @@ export function makeMetaCapi({
     });
   }
 
-  return { configured, buildUserData, sendEvent, sendLead };
+  // Evento "Purchase" quando o lead FECHA (estágio de kind ganho). Devolve pra
+  // Meta o sinal de fundo de funil com o VALOR do negócio — sem ele o algoritmo
+  // otimiza pra lead barato, não pra lead que compra. action_source
+  // system_generated: a conversão nasce no CRM, não numa página. eventId
+  // determinístico (won:{leadId}) deduplica reenvios na janela da Meta.
+  async function sendPurchase({
+    eventId,
+    leadId,
+    email,
+    phone,
+    value = 0,
+    currency = "BRL",
+    pixelId: pixelOverride,
+  }) {
+    return sendEvent({
+      eventName: "Purchase",
+      eventId,
+      actionSource: "system_generated",
+      userData: buildUserData({ email, phone, externalId: leadId }),
+      customData: { value: Math.round((Number(value) || 0) * 100) / 100, currency },
+      pixelId: pixelOverride,
+    });
+  }
+
+  return { configured, buildUserData, sendEvent, sendLead, sendPurchase };
 }
 
 // Singleton de produção (env). Testes usam makeMetaCapi com fetch mockado.
