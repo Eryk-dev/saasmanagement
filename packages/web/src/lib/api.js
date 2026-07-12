@@ -105,6 +105,29 @@ export const api = {
   aiCosts: (days) => req("GET", `/api/ai-costs${days ? `?days=${days}` : ""}`),
   // Custos operacionais do mês (ads + IA automáticos + lançamentos manuais).
   expensesSummary: (saas, month) => req("GET", `/api/expenses/summary/${saas}${month ? `?month=${month}` : ""}`),
+  // Mídia social: métricas do perfil, histórico e publicação orgânica (IG/FB).
+  socialSummary: (saas) => req("GET", `/api/social/summary?saas=${encodeURIComponent(saas)}`),
+  socialPosts: (saas) => req("GET", `/api/social/posts?saas=${encodeURIComponent(saas)}`),
+  socialPublish: (payload) => req("POST", "/api/social/publish", payload),
+  // Upload de mídia (PNG do editor / vídeo) → asset com URL pública que a Meta baixa.
+  socialUpload: async (blob, name, saas) => {
+    const fd = new FormData();
+    fd.append("saas", saas || "");
+    fd.append("file", blob, name);
+    const key = getKey();
+    const res = await fetch(`${BASE}/api/social/assets`, {
+      method: "POST",
+      headers: key ? { "x-api-key": key } : {},
+      body: fd,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      const err = new Error(`API POST /api/social/assets -> ${res.status} ${text}`);
+      err.status = res.status;
+      throw err;
+    }
+    return res.json();
+  },
   // CAC/LTV + série mensal (fase 4). days = janela do CAC; months = série.
   metrics: (saas, { days, months } = {}) => {
     const q = new URLSearchParams();

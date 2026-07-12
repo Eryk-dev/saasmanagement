@@ -11,6 +11,7 @@ import { PipelineScreen } from "./screens/pipeline.jsx";
 import { FormsScreen } from "./screens/forms.jsx";
 import { ProposalsScreen } from "./screens/proposals.jsx";
 import { CreativeScreen } from "./screens/creative.jsx";
+import { SocialScreen } from "./screens/social.jsx";
 import { CustomersScreen } from "./screens/customers.jsx";
 import { TasksScreen } from "./screens/tasks.jsx";
 import { SettingsScreen } from "./screens/settings.jsx";
@@ -121,6 +122,7 @@ function App() {
     customers:   ["Clientes"],
     metrics:     ["Publicidade"],
     expenses:    ["Custos"],
+    social:      ["Mídia social"],
     forms:       ["Ferramentas", "Formulários"],
     proposals:   ["Ferramentas", "Propostas"],
     creative:    ["Ferramentas", "Estáticos"],
@@ -178,6 +180,7 @@ function App() {
           {scr === "forms"       && <FormsScreen saasId={params.saas} />}
           {scr === "proposals"   && <ProposalsScreen saasId={params.saas} />}
           {scr === "creative"    && <CreativeScreen />}
+          {scr === "social"      && <SocialScreen />}
           {scr === "subscriptions" && <CustomersScreen initialTab="billing" />}
           {scr === "tasks"       && <TasksScreen />}
           {scr === "settings"    && <SettingsScreen saasId={params.saas} />}
@@ -244,6 +247,7 @@ function subtitleFor(screen, params) {
     forms:       "formulários de captação",
     proposals:   "templates por marca",
     creative:    "stories, feed e carrossel · PNG pronto pra postar",
+    social:      "métricas do perfil · criar post e publicar direto",
     subscriptions: "a receita do cliente deriva daqui",
     tasks:       "kanban do time · arraste para mover",
     settings:    "funil, campos e integrações",

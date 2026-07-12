@@ -15,7 +15,7 @@
 
 export const SCREEN_IDS = [
   "overview", "today", "pipeline", "customers", "metrics", "expenses",
-  "forms", "proposals", "creative", "tasks", "settings",
+  "social", "forms", "proposals", "creative", "tasks", "settings",
 ];
 
 export const sanitizeScreens = (x) =>
@@ -34,6 +34,7 @@ export function canScreen(user, screen) {
 // (bootstrap, rev/events, auth próprio, people, leaderboard) ficam liberadas pra
 // qualquer sessão — o bootstrap filtra o payload por conta própria (routes.js).
 const ROUTE_SCREENS = [
+  ["/api/social", ["social"]],
   ["/api/marketing", ["metrics"]],
   ["/api/metrics/", ["metrics"]],
   ["/api/ad_insights", ["metrics"]],

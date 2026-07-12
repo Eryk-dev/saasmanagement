@@ -847,11 +847,18 @@ const GROUPS = [
 const defaultsOf = (tpl) => Object.fromEntries(tpl.fields.map((f) => [f.k, f.def]));
 const photoSlotsOf = (tpl) => tpl.els.filter((e) => e.type === "photo");
 
-// ── Tela ─────────────────────────────────────────────────────────────────────
-function CreativeScreen() {
-  const [tplId, setTplId] = useS(TEMPLATES[0].id);
-  const tpl = TEMPLATES.find((t) => t.id === tplId) || TEMPLATES[0];
-  const [vals, setVals] = useS(() => defaultsOf(TEMPLATES[0]));
+// ── Editor ───────────────────────────────────────────────────────────────────
+// Reutilizável: a tela Estáticos usa completo; o "Criar post" da Mídia social
+// embeda filtrando `groups` pelo formato escolhido (story/post/carrossel) e
+// puxa os PNGs finais via apiRef.current.getBlobs() na hora de publicar.
+const ZOOMS = [1, 1.35, 1.75];
+
+function CreativeEditor({ groups = ["story", "post", "car"], zoomIndex = 1, apiRef }) {
+  const allowed = TEMPLATES.filter((t) => groups.includes(t.group));
+  const [tplId, setTplId] = useS(allowed[0]?.id);
+  const tpl = allowed.find((t) => t.id === tplId) || allowed[0] || TEMPLATES[0];
+  const [zoom, setZoom] = useS(Math.min(zoomIndex, ZOOMS.length - 1));
+  const [vals, setVals] = useS(() => defaultsOf(allowed[0] || TEMPLATES[0]));
   const [pos, setPos] = useS({});        // offsets de arrasto por elemento
   const [imgs, setImgs] = useS({});      // fotos carregadas por slot
   const [extras, setExtras] = useS([]);  // elementos avulsos
@@ -868,7 +875,7 @@ function CreativeScreen() {
   useE(() => { let ok = true; loadAssets().then(() => ok && setReady(true)); return () => { ok = false; }; }, []);
   useE(() => {
     setVals(defaultsOf(tpl)); setPos({}); setImgs({}); setExtras([]); setSel(null); setAddSlide(1);
-  }, [tplId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tpl.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Redesenha os canvases (resolução nativa; o CSS só encolhe a exibição).
   useE(() => {
@@ -975,7 +982,26 @@ function CreativeScreen() {
     }
   }
 
-  const previewW = tpl.group === "story" ? 300 : 340;
+  // PNGs finais (sem outline de seleção) — é o que o "Criar post" publica.
+  async function getBlobs() {
+    const out = [];
+    for (let i = 0; i < tpl.slides; i++) {
+      const c = refs.current[i];
+      if (!c) continue;
+      renderSlide(c.getContext("2d"), tpl, i, { vals, imgs }, pos, extras, null);
+      const blob = await new Promise((r) => c.toBlob(r, "image/png"));
+      renderSlide(c.getContext("2d"), tpl, i, { vals, imgs }, pos, extras, sel);
+      if (blob) out.push({ blob, name: `leverads-${tpl.id}-${i + 1}.png` });
+    }
+    return out;
+  }
+
+  // Quem embeda o editor (Mídia social) alcança o estado atual por aqui.
+  useE(() => {
+    if (apiRef) apiRef.current = { tpl, getBlobs, downloadAll };
+  });
+
+  const previewW = Math.round((tpl.group === "story" ? 300 : 340) * ZOOMS[zoom]);
   const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
   const fieldStyle = { width: "100%", padding: "6px 9px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "inherit" };
   const smallBtn = { height: 24, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11 };
@@ -993,30 +1019,15 @@ function CreativeScreen() {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead
-        title="Estáticos"
-        sub="criativos da marca pro Instagram · arraste os elementos no preview · baixe em PNG">
-        {moved && (
-          <button onClick={() => setPos({})} style={smallBtn} title="Voltar todos os elementos pra posição original do template">
-            ↺ resetar posições
-          </button>
-        )}
-        <button onClick={downloadAll}
-          title={tpl.slides > 1 ? "Baixar os 4 slides em PNG (na ordem do carrossel)" : "Baixar o PNG na resolução de post"}
-          style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12, fontWeight: 600 }}>
-          ↓ baixar {tpl.slides > 1 ? `${tpl.slides} PNGs` : "PNG"}
-        </button>
-      </PageHead>
-
       <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
 
       <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 0 }}>
         {/* Galeria de templates */}
         <div style={{ width: 216, flexShrink: 0, borderRight: "1px solid var(--line-1)", overflowY: "auto", padding: "12px 10px" }}>
-          {GROUPS.map(([gid, glabel]) => (
+          {GROUPS.filter(([gid]) => groups.includes(gid)).map(([gid, glabel]) => (
             <div key={gid} style={{ marginBottom: 14 }}>
               <div className="mono" style={{ ...kicker, padding: "0 6px", marginBottom: 6 }}>{glabel}</div>
-              {TEMPLATES.filter((t) => t.group === gid).map((t) => {
+              {allowed.filter((t) => t.group === gid).map((t) => {
                 const on = t.id === tplId;
                 return (
                   <button key={t.id} onClick={() => setTplId(t.id)}
@@ -1042,6 +1053,25 @@ function CreativeScreen() {
 
         {/* Preview */}
         <div style={{ flex: 1, minWidth: 0, overflow: "auto", padding: 18, background: "var(--bg-inset)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <span className="mono" style={kicker}>zoom</span>
+            {ZOOMS.map((z, i) => (
+              <button key={i} onClick={() => setZoom(i)}
+                style={{ ...smallBtn, fontWeight: zoom === i ? 700 : 400, borderColor: zoom === i ? "var(--accent-line)" : "var(--line-2)", color: zoom === i ? "var(--accent)" : "var(--fg-3)" }}>
+                {["P", "M", "G"][i]}
+              </button>
+            ))}
+            {moved && (
+              <button onClick={() => setPos({})} style={smallBtn} title="Voltar todos os elementos pra posição original do template">
+                ↺ resetar posições
+              </button>
+            )}
+            <button onClick={downloadAll}
+              title={tpl.slides > 1 ? "Baixar os 4 slides em PNG (na ordem do carrossel)" : "Baixar o PNG na resolução de post"}
+              style={{ marginLeft: "auto", height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12, fontWeight: 600 }}>
+              ↓ baixar {tpl.slides > 1 ? `${tpl.slides} PNGs` : "PNG"}
+            </button>
+          </div>
           {!ready && <div className="mono dim" style={{ fontSize: 12 }}>carregando fontes da marca…</div>}
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
             {Array.from({ length: tpl.slides }, (_, i) => (
@@ -1159,4 +1189,16 @@ function CreativeScreen() {
   );
 }
 
-export { CreativeScreen, TEMPLATES, renderSlide };
+// ── Tela Estáticos (o editor completo, standalone) ──────────────────────────
+function CreativeScreen() {
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <PageHead
+        title="Estáticos"
+        sub="criativos da marca pro Instagram · arraste os elementos no preview · baixe em PNG" />
+      <CreativeEditor />
+    </div>
+  );
+}
+
+export { CreativeScreen, CreativeEditor, TEMPLATES, renderSlide };
