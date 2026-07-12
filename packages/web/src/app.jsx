@@ -15,6 +15,7 @@ import { SettingsScreen } from "./screens/settings.jsx";
 import { LeadDetail } from "./screens/deal.jsx";
 import { DataContext, loadSeed } from "./data.jsx";
 import { useActiveSaas } from "./lib/workspace.js";
+import { canSeeScreen } from "./lib/users.js";
 import { EntityForm } from "./components/EntityForm.jsx";
 import { ConfirmDelete } from "./components/ConfirmDelete.jsx";
 import { useIsMobile } from "./lib/responsive.js";
@@ -124,23 +125,30 @@ function App() {
     settings:    ["Ajustes"],
   };
 
+  // Restrição de telas (user.screens): hash/navegação pra tela proibida cai na
+  // primeira permitida do NAV. "subscriptions" é alias da aba dentro de
+  // Clientes. O corte de verdade é no servidor (screens.js) — aqui é UX.
+  const allowedNav = NAV.filter((n) => canSeeScreen(n.id));
+  const neededScreen = screen === "subscriptions" ? "customers" : screen;
+  const scr = canSeeScreen(neededScreen) ? screen : (allowedNav[0]?.id || "pipeline");
+
   return (
     <DataContext.Provider value={dataCtx}>
     <div className="app-shell" style={{ display: "flex", overflow: "hidden", background: "var(--bg-0)" }}>
-      {!isMobile && <NavRail current={screen} onNav={(id) => nav(id)} collapsed={collapsed} />}
+      {!isMobile && <NavRail current={scr} onNav={(id) => nav(id)} collapsed={collapsed} />}
       {isMobile && menuOpen && (
         <div onClick={() => setMenuOpen(false)}
           style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", zIndex: 100, display: "flex" }}>
           <div onClick={(e) => e.stopPropagation()} style={{ height: "100%", display: "flex", boxShadow: "var(--shadow-pop)" }}>
-            <NavRail current={screen} onNav={(id) => { nav(id); setMenuOpen(false); }} collapsed={false} />
+            <NavRail current={scr} onNav={(id) => { nav(id); setMenuOpen(false); }} collapsed={false} />
           </div>
         </div>
       )}
 
       <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <TopBar
-          breadcrumb={crumbsFor[screen]}
-          subtitle={subtitleFor(screen, params)}
+          breadcrumb={crumbsFor[scr]}
+          subtitle={subtitleFor(scr, params)}
           leading={isMobile && (
             <button onClick={() => setMenuOpen(true)} style={chromeBtnStyleSmall} title="Abrir menu">
               <span className="mono" style={{ fontSize: 14 }}>☰</span>
@@ -157,16 +165,16 @@ function App() {
             inteiro "piscar" (scroll, foco e estado locais perdidos). As telas
             se ressincronizam pelo `version` do contexto, em re-render normal. */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-          {screen === "overview"    && <OverviewScreen onNav={nav} onOpenLead={openLead} />}
-          {screen === "pipeline"    && <PipelineScreen saasId={params.saas} onJump={jump} jumpFilter={params} onOpenLead={openLead} />}
-          {screen === "customers"   && <CustomersScreen />}
-          {screen === "metrics"     && <MetricsScreen />}
-          {screen === "expenses"    && <ExpensesScreen />}
-          {screen === "forms"       && <FormsScreen saasId={params.saas} />}
-          {screen === "proposals"   && <ProposalsScreen saasId={params.saas} />}
-          {screen === "subscriptions" && <CustomersScreen initialTab="billing" />}
-          {screen === "tasks"       && <TasksScreen />}
-          {screen === "settings"    && <SettingsScreen saasId={params.saas} />}
+          {scr === "overview"    && <OverviewScreen onNav={nav} onOpenLead={openLead} />}
+          {scr === "pipeline"    && <PipelineScreen saasId={params.saas} onJump={jump} jumpFilter={params} onOpenLead={openLead} />}
+          {scr === "customers"   && <CustomersScreen />}
+          {scr === "metrics"     && <MetricsScreen />}
+          {scr === "expenses"    && <ExpensesScreen />}
+          {scr === "forms"       && <FormsScreen saasId={params.saas} />}
+          {scr === "proposals"   && <ProposalsScreen saasId={params.saas} />}
+          {scr === "subscriptions" && <CustomersScreen initialTab="billing" />}
+          {scr === "tasks"       && <TasksScreen />}
+          {scr === "settings"    && <SettingsScreen saasId={params.saas} />}
         </div>
       </main>
 

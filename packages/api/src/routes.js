@@ -3,6 +3,7 @@
 
 import { randomUUID } from "node:crypto";
 import { repo as defaultRepo, COLLECTION_NAMES } from "./db.js";
+import { canScreen } from "./screens.js";
 import { PORTFOLIO_CONST } from "./seed-data.js";
 import { openapi, docsHtml } from "./openapi.js";
 import { runProposal, integrationStatus } from "./levercopy.js";
@@ -218,7 +219,11 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   app.get("/api/docs", async (_req, reply) => reply.type("text/html").send(docsHtml));
 
   // Everything the cockpit web app needs in one shot (mirrors window.SEED).
-  app.get("/api/bootstrap", async () => {
+  // Usuário com telas restritas (user.screens) recebe o payload FILTRADO:
+  // esconder o menu no SPA sem cortar os dados aqui não seria restrição —
+  // faturamento/clientes não podem chegar no navegador de quem não vê as telas.
+  app.get("/api/bootstrap", async (req) => {
+    const can = (screen) => canScreen(req.authUser, screen);
     const [products, customers, attention, leads, nps, lbMonth, lbAll, goals, portfolio, people] =
       await Promise.all([
         repo.list("products"),
@@ -232,17 +237,23 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         computePortfolio(repo),
         peopleObject(repo),
       ]);
+    // Sem nenhuma tela financeira, os números de receita saem até do catálogo
+    // de produtos (o funil/config continua — o pipeline precisa dele).
+    const seesFinance = can("overview") || can("customers") || can("metrics") || can("expenses");
+    const FINANCE_KEYS = ["arr", "mrr", "mrrSeries", "mrrDelta", "nnm", "tcv", "tcvDelta", "acv", "acvDelta", "customers", "customersDelta", "churnRate", "nrr", "nrrDelta", "grr", "healthSeries"];
+    let saas = rollupProducts(products, customers);
+    if (!seesFinance) saas = saas.map((s) => { const c = { ...s }; for (const k of FINANCE_KEYS) delete c[k]; return c; });
     return {
-      SAAS: rollupProducts(products, customers),
-      PORTFOLIO: portfolio,
-      ATTENTION: attention,
+      SAAS: saas,
+      PORTFOLIO: can("overview") ? portfolio : null,
+      ATTENTION: can("overview") ? attention : [],
       PEOPLE: people,
-      CUSTOMERS: customers,
-      LEADS: leads,
-      NPS: nps,
-      LEADERBOARD_MONTH: lbMonth,
-      LEADERBOARD_ALL: lbAll,
-      GOALS: goals,
+      CUSTOMERS: can("customers") ? customers : [],
+      LEADS: can("pipeline") ? leads : [],
+      NPS: can("customers") ? nps : [],
+      LEADERBOARD_MONTH: can("overview") ? lbMonth : [],
+      LEADERBOARD_ALL: can("overview") ? lbAll : [],
+      GOALS: can("overview") ? goals : [],
       // Estado de integrações que a UI precisa pra decidir o que renderizar
       // (ex.: mostrar o botão "Gerar proposta" nos leads de SaaS com provider).
       CONFIG: {

@@ -6,6 +6,7 @@
 // `users`/`sessions` ficam FORA do CRUD genérico (hash/token não vazam).
 
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { sanitizeScreens } from "./screens.js";
 
 const SESSION_TTL_MS = 7 * 24 * 3600 * 1000;
 
@@ -52,7 +53,14 @@ const sanitizeRoles = (x) => (Array.isArray(x) ? x.filter((r) => ROLE_TAGS.inclu
 // UniqueKids). Também não é ACL — o login continua global.
 const sanitizeSaas = (x) => String(x || "").trim().toLowerCase();
 
-const publicUser = (u) => ({ id: u.id, name: u.name, role: u.role || "admin", roles: Array.isArray(u.roles) ? u.roles : [], saas: u.saas || "" });
+const publicUser = (u) => ({
+  id: u.id, name: u.name, role: u.role || "admin",
+  roles: Array.isArray(u.roles) ? u.roles : [],
+  saas: u.saas || "",
+  // Telas permitidas (screens.js): [] = todas. O SPA usa pra montar o menu e o
+  // guard da API usa pra fechar as rotas correspondentes.
+  screens: Array.isArray(u.screens) ? u.screens : [],
+});
 
 // Token de sessão → usuário (null se inexistente/expirado).
 export async function sessionUser(repo, token) {
@@ -141,13 +149,14 @@ export function registerAuthRoutes(app, repo) {
   app.get("/api/auth/users", async () => (await repo.list("users")).map(publicUser));
 
   app.post("/api/auth/users", async (req, reply) => {
-    const { name, password, id, roles, saas } = req.body || {};
+    const { name, password, id, roles, saas, screens } = req.body || {};
     if (!name || !password) return reply.code(400).send({ error: "name e password obrigatórios" });
     const created = await repo.create("users", {
       ...(id ? { id: String(id).toLowerCase() } : {}),
       name, role: "admin",
       roles: sanitizeRoles(roles),
       ...(saas ? { saas: sanitizeSaas(saas) } : {}),
+      ...(screens !== undefined ? { screens: sanitizeScreens(screens) } : {}),
       passwordHash: hashPassword(password),
       createdAt: new Date().toISOString(),
     });
@@ -161,11 +170,12 @@ export function registerAuthRoutes(app, repo) {
   app.patch("/api/auth/users/:id", async (req, reply) => {
     const user = await repo.get("users", req.params.id);
     if (!user) return reply.code(404).send({ error: "Not found" });
-    const { name, roles, password, saas } = req.body || {};
+    const { name, roles, password, saas, screens } = req.body || {};
     const patch = {};
     if (typeof name === "string" && name.trim()) patch.name = name.trim();
     if (roles !== undefined) patch.roles = sanitizeRoles(roles);
     if (saas !== undefined) patch.saas = sanitizeSaas(saas); // "" volta a valer pra todos
+    if (screens !== undefined) patch.screens = sanitizeScreens(screens); // [] volta a ver tudo
 
     if (password !== undefined) {
       if (!password || String(password).length < 4) return reply.code(400).send({ error: "senha nova precisa de 4+ caracteres" });

@@ -58,3 +58,21 @@ export function userTone(id) {
 export function currentUser() {
   try { return JSON.parse(localStorage.getItem("cockpit_user") || "null"); } catch { return null; }
 }
+
+// ── Telas permitidas (user.screens) ─────────────────────────────────────────
+// null = sem restrição (lista vazia/ausente ou acesso por API key). Prefere o
+// registro fresco do bootstrap (SEED.USERS): mudança de permissão em Ajustes →
+// Equipe vale no próximo refresh, sem re-login. A API tem o guard de verdade
+// (screens.js do servidor) — aqui é só a montagem do menu/rota.
+export function allowedScreens() {
+  const me = currentUser();
+  if (!me) return null; // acesso por key: sem restrição
+  const fresh = userById(me.id) || me;
+  const s = Array.isArray(fresh.screens) ? fresh.screens : [];
+  return s.length ? new Set(s) : null;
+}
+
+export function canSeeScreen(id) {
+  const a = allowedScreens();
+  return !a || a.has(id);
+}

@@ -192,6 +192,26 @@ export async function ensureUserSaasScope(repo) {
   return changed;
 }
 
+// Telas permitidas por usuário (user.screens, ver screens.js): SDR e Ana só
+// operam o funil — Pipeline + Tarefas. Mesmo padrão one-shot dos seeds acima:
+// aplica só quando o campo ainda não existe (ajuste manual em Ajustes → Equipe
+// nunca é sobrescrito) e não cria usuário.
+const SCREENS_SEED = {
+  sdr: ["pipeline", "tasks"],
+  ana: ["pipeline", "tasks"],
+};
+
+export async function ensureUserScreens(repo) {
+  let changed = 0;
+  for (const [id, screens] of Object.entries(SCREENS_SEED)) {
+    const user = await repo.get("users", id);
+    if (!user || user.screens !== undefined) continue;
+    await repo.update("users", id, { screens });
+    changed++;
+  }
+  return changed;
+}
+
 // Orquestrador chamado no boot. Cada migração é isolada num try/catch pra que
 // uma falha não derrube o start da API.
 export async function runStartupMigrations(repo) {
@@ -230,5 +250,11 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] escopo de produto aplicado em ${n} usuário(s)`);
   } catch (err) {
     console.error("[migration] ensureUserSaasScope falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureUserScreens(repo);
+    if (n) console.log(`[migration] telas restritas aplicadas em ${n} usuário(s)`);
+  } catch (err) {
+    console.error("[migration] ensureUserScreens falhou:", err?.message || err);
   }
 }
