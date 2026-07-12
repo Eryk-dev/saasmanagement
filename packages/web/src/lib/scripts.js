@@ -5,7 +5,8 @@
 // do lead; token sem valor vira lacuna destacada ("perguntar na ligação") — a
 // lacuna É instrução: o que faltar no cadastro se descobre nesse contato.
 
-import { stageKind } from "./funnel.js";
+import { stageKind, openStages } from "./funnel.js";
+import { currentUser } from "./users.js";
 
 const firstName = (name) => String(name || "").trim().split(/\s+/)[0] || "";
 
@@ -30,7 +31,10 @@ export function scriptTokens(lead, saasCfg) {
     nicho: answerLabel(saasCfg, lead, "niche") || (lead?.niche || ""),
     contas: answerLabel(saasCfg, lead, "accounts"),
     anuncios: answerLabel(saasCfg, lead, "listings"),
+    equipe: answerLabel(saasCfg, lead, "staff"),
+    email: lead?.email || "",
     produto: saasCfg?.name || "",
+    eu: firstName(currentUser()?.name),
     call: callOk ? call.toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "",
     link_call: lead?.callUrl || "",
   };
@@ -44,7 +48,10 @@ const GAP_HINTS = {
   nicho: "perguntar o nicho",
   contas: "perguntar quantas contas",
   anuncios: "perguntar o volume de anúncios",
+  equipe: "perguntar o time de marketing",
+  email: "pedir o e-mail",
   produto: "produto",
+  eu: "seu nome",
   call: "marcar o horário",
   link_call: "gerar o link no lead",
 };
@@ -74,36 +81,44 @@ export function scriptSegments(text, tokens) {
 
 export const DEFAULT_SCRIPTS = {
   novo: {
-    titulo: "1º contato · novo lead",
-    resumo: "Ligação rápida de boas-vindas: a pessoa ACABOU de se cadastrar, então o interesse está quente. Tom leve, sorriso na voz, ritmo ágil. Você não vende a ferramenta aqui (a demonstração é da call), você confirma dados e agenda.",
-    objetivo: "Sair com a call agendada e o cadastro completo: nicho, contas, anúncios e nome da loja.",
+    titulo: "1º ato · novo lead (prioridade máxima)",
+    resumo: "O lead acabou de entrar: é o topo da fila, sempre (cadastro de fim de semana se trabalha na segunda, nos primeiros horários). A sessão é uma só: ligue 2 vezes; não atendeu, deixe o WhatsApp de apresentação. Tom leve, sorriso na voz. Registrou o toque, o card segue sozinho pra Qualificando e volta na sua fila amanhã.",
+    objetivo: "Falar com o lead agora (e emendar a qualificação) ou deixar a apresentação no WhatsApp pedindo o melhor horário.",
     passos: [
-      { t: "Abertura, confirmar o cadastro", fala: "Olá {{nome}}, bom dia! Tudo bom? Vi que você se cadastrou no nosso formulário pra conhecer nossa ferramenta de clone de anúncios, você confirma?" },
-      { t: "Confirmar o nicho", fala: "Vi aqui que você trabalha com {{nicho}}, legal! É seu foco principal hoje?" },
-      { t: "Contas nos marketplaces", fala: "E atualmente você opera quantas contas dentro dos marketplaces? Aqui no formulário você marcou {{contas}}, é isso?", dica: "Se mudou, corrija no cadastro: esse número mede o tamanho da dor." },
-      { t: "Anúncios na maior conta", fala: "E de volume, quantos anúncios você tem na sua maior conta? Você indicou {{anuncios}}." },
-      { t: "Nome da loja", fala: "Qual o nome da sua loja, da sua empresa? Vou dar uma olhada aqui enquanto a gente conversa.", dica: "Anote em Empresa. Abrir a loja na hora cria assunto (rapport) e arma o closer pra call." },
-      { t: "Agendar a call", fala: "Perfeito {{nome}}! Com esse volume faz muito sentido você ver a ferramenta rodando na prática, clonando anúncio de verdade. São uns 20 minutos. Fica melhor amanhã de manhã ou no fim da tarde?", dica: "Sempre 2 opções de horário, nunca pergunta aberta. Marcou? Registra em Call agendada e já gera o link da videochamada no lead." },
+      { t: "Ligar (2 tentativas)", fala: "Olá {{nome}}, bom dia! Tudo bom? Vi que você se cadastrou no nosso formulário pra conhecer nossa ferramenta de clone de anúncios, você confirma?", dica: "Não atendeu? Liga de novo em seguida. Caiu na caixa duas vezes, vai pro passo 3." },
+      { t: "Atendeu: emenda a qualificação", fala: "Que bom que te achei! Deixa eu confirmar rapidinho os dados do seu cadastro com você.", dica: "Segue direto o roteiro de Qualificando: nicho, contas, anúncios, empresa, time de marketing e e-mail. Saiu com call marcada, melhor ainda." },
+      { t: "Não atendeu: WhatsApp de apresentação", fala: "Olá {{nome}}, tudo bem? Aqui é {{eu}}, da plataforma {{produto}}. Recebemos o seu cadastro dizendo estar interessado no nosso serviço de clonagem de anúncios. Tem algum horário em que a gente possa te retornar pra conversar sobre?", dica: "Depois registra o toque: o card vai pra Qualificando e o GPS marca a retomada pra amanhã." },
     ],
   },
   contato: {
     titulo: "Tentativa de contato",
     resumo: "O lead ainda não atendeu. Alterne canal e horário a cada tentativa: ligação em horário comercial, WhatsApp fora dele. Mensagem curta, sempre terminando com pergunta.",
-    objetivo: "Conseguir a primeira conversa (daí o roteiro de 1º contato assume) ou esgotar a cadência com consciência limpa.",
+    objetivo: "Conseguir a primeira conversa (daí o roteiro de qualificação assume) ou esgotar a cadência com consciência limpa.",
     passos: [
       { t: "Ligação", fala: "Olá {{nome}}, tudo bom? Falo da {{produto}}. Você se cadastrou pra conhecer nossa ferramenta de clone de anúncios, consegue falar 3 minutinhos agora?" },
       { t: "WhatsApp, se não atender", fala: "Oi {{nome}}! Vi seu cadastro aqui na {{produto}} (a ferramenta que clona anúncios entre contas de marketplace). Te liguei mas não consegui. Qual o melhor horário pra gente trocar uma ideia rápida?", dica: "Registre cada tentativa no toque do card: o GPS agenda a próxima sozinho." },
     ],
   },
   qualificacao: {
-    titulo: "Qualificação",
-    resumo: "Conversa aberta: complete o que falta do cadastro e esquente o lead pra call. Você não demonstra a ferramenta, você mostra que entendeu a operação dele.",
-    objetivo: "Cadastro completo + call agendada com o closer.",
+    titulo: "Qualificando · sessões diárias",
+    resumo: "Retomada do dia: ligue 2 vezes; sem resposta, manda o WhatsApp da sessão. Atendeu? Roda a qualificação completa e sai com a call marcada. O processo inteiro são 3 sessões (1º ato + 2 retomadas); acabou a terceira sem retorno, o card vai pra Nutrição.",
+    objetivo: "Qualificação completa (formulário confirmado + empresa, time de marketing e e-mail) e call agendada com o closer.",
     passos: [
-      { t: "Retomar o contexto", fala: "Oi {{nome}}, tudo bom? Da última vez você me contou da sua operação de {{nicho}}. Te peguei num bom horário?" },
-      { t: "Completar os dados", fala: "Deixa eu confirmar o que tenho aqui: são {{contas}} nos marketplaces e uns {{anuncios}} anúncios na maior conta, é isso?" },
-      { t: "Gerar valor", fala: "É exatamente esse cenário que a ferramenta resolve: ela clona seus anúncios entre as contas em minutos, sem redigitar nada." },
-      { t: "Fechar a call", fala: "Vou te colocar com nosso especialista pra você ver isso rodando na sua operação. Fica melhor amanhã de manhã ou no fim da tarde?", dica: "2 opções de horário. Marcou? Call agendada + link da videochamada no lead." },
+      { t: "Atendeu: confirmar o formulário", fala: "Perfeito {{nome}}! Vi que você trabalha com {{nicho}}, opera {{contas}} nos marketplaces e tem uns {{anuncios}} anúncios na maior conta, confere?", dica: "Mudou algo? Corrige no cadastro na hora." },
+      { t: "Completar o cadastro", fala: "Me conta: qual o nome da sua empresa, quantas pessoas você tem no time de marketing e qual seu melhor e-mail? Te mando o convite da call por ele.", dica: "Grava empresa, equipe e e-mail no lead: o convite do Meet vai pro e-mail e o closer entra na call armado." },
+      { t: "Agendar a call", fala: "Fechado! Vou te colocar com nosso especialista pra você ver a ferramenta clonando anúncio de verdade na sua operação. Fica melhor amanhã de manhã ou no fim da tarde?", dica: "Sempre 2 opções de horário. Marcou? Registra em Call agendada e gera o link da videochamada." },
+      { t: "Sessão 2, sem resposta (WhatsApp)", fala: "Oi, tudo bem? Estou falando com {{nome_completo}}? Sou {{eu}}, da plataforma {{produto}}, sobre o seu cadastro de interesse na clonagem de anúncios." },
+      { t: "Sessão 3, última (WhatsApp)", fala: "Oi {{nome}}! A gente entende que às vezes o momento não é o ideal. Você gostaria de conhecer a plataforma {{produto}} ou podemos finalizar o seu atendimento por aqui?", dica: "Sem retorno até o fim do dia: mover o card pra Nutrição. O GPS devolve ele pra fila em 20 dias, num dia útil." },
+    ],
+  },
+  nutricao: {
+    titulo: "Nutrição · reativação (20 dias)",
+    resumo: "Lead que não respondeu ao primeiro ciclo. Passaram 20 dias: recomece como se fosse um lead novo, com leveza, sem cobrar o silêncio. Mesmo ritmo: 2 ligações + WhatsApp, até 3 sessões em dias seguidos.",
+    objetivo: "Reabrir a conversa e voltar pro fluxo de qualificação, ou encerrar com clareza.",
+    passos: [
+      { t: "Ligar (2 tentativas)", fala: "Olá {{nome}}, tudo bom? Aqui é {{eu}}, da {{produto}}. Faz um tempo que você se cadastrou pra conhecer nossa ferramenta de clone de anúncios e eu queria retomar com você." },
+      { t: "WhatsApp, se não atender", fala: "Oi {{nome}}! Há um tempo você demonstrou interesse na {{produto}} (clonagem de anúncios entre contas de marketplace). Muita coisa evoluiu por aqui desde então. Faz sentido a gente conversar 5 minutinhos essa semana?" },
+      { t: "Sessão 3, encerramento (WhatsApp)", fala: "Oi {{nome}}! Pra não te incomodar, vou encerrar seu atendimento por aqui. Quando fizer sentido clonar seus anúncios, é só responder esta conversa que eu te atendo na hora.", dica: "Sem retorno: mover pra Perdido (motivo: sem resposta). Respondeu? Volta pra Qualificando e segue o fluxo normal." },
     ],
   },
   call: {
@@ -183,10 +198,14 @@ function parseCustomScript(text) {
 }
 
 // Roteiro efetivo de um lead: override da etapa (Ajustes) > padrão do kind.
+// Fila SDR fora da régua (ex.: Nutrição, depois do Ganho) tem roteiro próprio
+// de reativação — o contato ali não é a 1ª tentativa, é retomada de silêncio.
 export function resolveScript(saasCfg, lead) {
   const stage = lead?.stage || saasCfg?.funnel?.[0]?.stage || "";
   const kind = stageKind(saasCfg, stage);
-  const base = DEFAULT_SCRIPTS[kind] || DEFAULT_SCRIPTS.outro;
+  const reactivation = (kind === "contato" || kind === "qualificacao") &&
+    lead?.stage && !openStages(saasCfg).includes(stage);
+  const base = reactivation ? DEFAULT_SCRIPTS.nutricao : (DEFAULT_SCRIPTS[kind] || DEFAULT_SCRIPTS.outro);
   const row = (saasCfg?.funnel || []).find((f) => f && f.stage === stage);
   if (row?.script && String(row.script).trim()) {
     return { ...base, custom: true, passos: parseCustomScript(row.script) };
@@ -195,12 +214,14 @@ export function resolveScript(saasCfg, lead) {
 }
 
 // Checklist de dados do lead pro painel do roteiro (o que confirmar na ligação).
-// Cobre as perguntas de qualificação do produto + empresa/loja.
+// Cobre as perguntas de qualificação do produto + empresa/loja + e-mail (o
+// convite da call do closer vai por ele).
 export function scriptChecklist(saasCfg, lead) {
   const items = [];
   for (const q of saasCfg?.leadQuestions || []) {
     items.push({ label: q.label, value: answerLabel(saasCfg, lead, q.key) });
   }
   items.push({ label: "Nome da loja / empresa", value: lead?.company || "" });
+  items.push({ label: "E-mail (convite da call)", value: lead?.email || "" });
   return items;
 }

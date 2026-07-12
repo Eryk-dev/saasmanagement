@@ -6,7 +6,7 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import {
   stageKind, phaseOf, PHASES, openStages, workableStages, isWonStage, cadenceOf,
-  nextTouch, nextTouchPill, lossReasonLabel,
+  nextTouch, nextTouchPill, lossReasonLabel, rollToBusinessDay,
 } from "../lib/funnel.js";
 import { usersByRole, userTone, displayName, currentUser } from "../lib/users.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
@@ -143,7 +143,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
       stageAttempts: (Number(l.stageAttempts) || 0) + 1,
       lastActivityAt: new Date(now).toISOString(),
       lastActivityType: "call",
-      ...(cad.retryDays ? { nextActionAt: new Date(now + cad.retryDays * 86400000).toISOString() } : {}),
+      ...(cad.retryDays ? { nextActionAt: rollToBusinessDay(new Date(now + cad.retryDays * 86400000)).toISOString() } : {}),
     } : l));
     api.logActivity({
       saas: lead.saas, lead: lead.id, type: "call",
