@@ -135,6 +135,43 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       return rows;
     },
 
+    // Insights por PLACEMENT (publisher_platform × platform_position), agregados
+    // no período (sem time_increment): onde o gasto acontece — Facebook/Instagram/
+    // Audience Network/Messenger e feed/stories/reels/etc. A UTM não carrega
+    // placement, então os leads aqui são os reportados pela Meta (metaLeads),
+    // não os do cockpit.
+    async placementInsights(adAccountId, { since, until }) {
+      if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
+      const params = new URLSearchParams({
+        level: "account",
+        breakdowns: "publisher_platform,platform_position",
+        time_range: JSON.stringify({ since, until }),
+        fields: "spend,impressions,clicks,inline_link_clicks,actions",
+        limit: "500",
+        access_token: accessToken,
+      });
+      let url = `${GRAPH}/${acct(adAccountId)}/insights?${params}`;
+      const rows = [];
+      let guard = 0; // paginação não pode virar loop infinito
+      while (url && guard++ < 50) {
+        const body = await get(url);
+        for (const r of body.data || []) {
+          const leadAction = (r.actions || []).find((a) => a.action_type === "lead");
+          rows.push({
+            platform: r.publisher_platform || "unknown",
+            position: r.platform_position || "unknown",
+            spend: Number(r.spend) || 0,
+            impressions: Number(r.impressions) || 0,
+            clicks: Number(r.clicks) || 0,
+            linkClicks: Number(r.inline_link_clicks) || 0,
+            metaLeads: Number(leadAction?.value) || 0,
+          });
+        }
+        url = body.paging?.next || null;
+      }
+      return rows;
+    },
+
     // Campanhas da conta com status e orçamento — a base do gerenciamento no
     // cockpit. `dailyBudget`/`lifetimeBudget` voltam em REAIS (a Graph usa centavos).
     async listCampaigns(adAccountId) {

@@ -585,3 +585,39 @@ test("adobjects: três níveis vivos, arquivados fora, falha parcial não derrub
   assert.ok(r3.errors.ads.includes("rate limit"));
   await app3.close();
 });
+
+// ── Placements (breakdown plataforma × posição) ──────────────────────────────
+
+test("placements: breakdown com CPL/CPM da Meta, ordenado por spend, com cache", async () => {
+  const page = { data: [
+    { publisher_platform: "audience_network", platform_position: "an_classic", spend: "60", impressions: "5000", clicks: "50", inline_link_clicks: "2", actions: [] },
+    { publisher_platform: "instagram", platform_position: "instagram_reels", spend: "120", impressions: "1000", clicks: "30", inline_link_clicks: "20", actions: [{ action_type: "lead", value: "4" }] },
+  ] };
+  let calls = 0;
+  const fetch = async () => { calls++; return { status: 200, text: async () => JSON.stringify(page) }; };
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", metaAdAccount: "act_123" });
+  const app = Fastify();
+  registerRoutes(app, repo, { meta: makeMeta({ fetch, accessToken: "t" }) });
+
+  const res = await app.inject({ url: "/api/marketing/leverads/placements?since=2026-06-01&until=2026-06-30" });
+  assert.equal(res.statusCode, 200);
+  const { placements, configured } = res.json();
+  assert.equal(configured, true);
+  assert.equal(placements.length, 2);
+  assert.deepEqual(placements.map((p) => p.platform), ["instagram", "audience_network"]); // por spend desc
+  assert.equal(placements[0].position, "instagram_reels");
+  assert.equal(placements[0].metaLeads, 4);
+  assert.equal(placements[0].cplMeta, 30); // 120 / 4
+  assert.equal(placements[0].cpm, 120);    // 120 / 1000 × 1000
+  assert.equal(placements[1].cplMeta, null); // sem lead não inventa CPL
+
+  await app.inject({ url: "/api/marketing/leverads/placements?since=2026-06-01&until=2026-06-30" });
+  assert.equal(calls, 1); // cache de 5 min segura a 2ª chamada do mesmo range
+
+  // produto sem conta Meta → vazio e configured: false, sem bater na Graph
+  await repo.create("products", { id: "outro", name: "Outro" });
+  const off = (await app.inject({ url: "/api/marketing/outro/placements" })).json();
+  assert.deepEqual(off, { placements: [], configured: false });
+  await app.close();
+});
