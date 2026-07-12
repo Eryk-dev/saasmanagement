@@ -5,6 +5,7 @@ import { chromeBtnStyleSmall } from "../lib/ui.js";
 import { EmptyState, PrimaryButton, RowActions } from "../atoms.jsx";
 import { inputStyle, labelStyle, sectionTitle, cardStyle, addBtnStyle, THEME_DEFAULTS, LabeledInput, ThemeEditor } from "../components/theme-inputs.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
+import { useAttribution } from "../lib/pains.js";
 // Form builder — formulários de captação por SaaS, estilo Typeform: uma pergunta
 // por vez, branching por opção, tema por marca. Lista → editor (com preview
 // server-side em iframe) → respostas. A página pública vive na API (/f/:id).
@@ -738,6 +739,9 @@ function FormsDashboard({ forms }) {
     api.formFunnel(form.id, range).then(setData).catch(() => setData({ error: true }));
   }, [form?.id, range.since, range.until]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Campanha nos eventos chega como id dinâmico da Meta — resolve pra nome.
+  const cat = useAttribution(form?.saas, !!(data && !data.error && data.origins?.length));
+
   if (!form) return null;
   const painMap = ((window.SEED?.SAAS || []).find((x) => x.id === form.saas) || {}).painMap || {};
   const rows = data && !data.error ? [
@@ -871,6 +875,34 @@ function FormsDashboard({ forms }) {
           </div>
           <div className="mono dim" style={{ fontSize: 10.5, marginTop: 6, lineHeight: 1.6 }}>
             regras da campeã: ≥100 visitas e ≥7 dias na líder · ≥95% de confiança na % de começar vs. a vice (z de 2 proporções) · sem regressão de envio nem de ganhos. Campeã eleita: promova a copy pro texto base e remova as variantes; teste novo = variante nova (numeração nunca repete).
+          </div>
+        </div>
+      )}
+
+      {data && !data.error && (data.origins || []).length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
+            Origens do tráfego · drop-off por campanha
+          </div>
+          <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "4px 12px 8px" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead><tr>{["Origem", "Campanha", "Visitas", "Começou", "% começar", "Enviou", "% envio"].map(thAB)}</tr></thead>
+              <tbody>
+                {data.origins.map((o, i) => (
+                  <tr key={i}>
+                    <td className="mono" style={{ ...tdAB, textAlign: "left", fontWeight: 600 }}>{o.source || "(sem source)"}</td>
+                    <td style={{ ...tdAB, textAlign: "left", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--fg-2)" }} title={cat?.campaigns?.[o.campaign]?.name || o.campaign}>
+                      {cat?.campaigns?.[o.campaign]?.name || o.campaign || "(sem campanha)"}
+                    </td>
+                    <td className="mono tnum" style={tdAB}>{o.views}</td>
+                    <td className="mono tnum" style={tdAB}>{o.starts}</td>
+                    <td className="mono tnum" style={{ ...tdAB, fontWeight: 600 }}>{o.views > 0 ? pct(o.starts, o.views) : ""}</td>
+                    <td className="mono tnum" style={tdAB}>{o.submits}</td>
+                    <td className="mono tnum" style={tdAB}>{o.views > 0 ? pct(o.submits, o.views) : ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

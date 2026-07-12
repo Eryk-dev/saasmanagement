@@ -264,3 +264,36 @@ test("GET /funnel?until= fecha o range (hoje/ontem/data custom)", async () => {
   assert.equal(f.views, 1); // só a sessão de 05/07 cai no range fechado
   await app.close();
 });
+
+test("utm nos eventos (slim) e funil com quebra origins por source|campaign", async () => {
+  const { app, repo } = await buildApp();
+  const utmA = { source: "meta", medium: "paid", campaign: "c1", content: "a1", fbclid: "x", referrer: "https://ig.com" };
+  // sessão s1: campanha c1, vai até o fim
+  await post(app, { session: "s1", event: "view", utm: utmA });
+  await post(app, { session: "s1", event: "start", utm: utmA });
+  await post(app, { session: "s1", event: "submit", utm: utmA });
+  // sessão s2: mesma campanha, abandona depois do view
+  await post(app, { session: "s2", event: "view", utm: utmA });
+  // sessão s3: orgânico (só source), abandona no start
+  await post(app, { session: "s3", event: "view", utm: { source: "instagram" } });
+  await post(app, { session: "s3", event: "start", utm: { source: "instagram" } });
+  // sessão s4: sem utm nenhuma — fora do origins
+  await post(app, { session: "s4", event: "view" });
+
+  // evento guarda a utm SLIM: referrer/click-ids ficam de fora (só atribuição)
+  const ev = (await repo.list("form_events")).find((e) => e.session === "s1" && e.event === "view");
+  assert.deepEqual(ev.utm, { source: "meta", medium: "paid", campaign: "c1", content: "a1" });
+  const clean = (await repo.list("form_events")).find((e) => e.session === "s4");
+  assert.equal(clean.utm, undefined);
+
+  const res = await app.inject({ url: "/api/forms/fo_test/funnel" });
+  const { origins } = res.json();
+  assert.equal(origins.length, 2);
+  const meta = origins.find((o) => o.source === "meta");
+  assert.equal(meta.campaign, "c1");
+  assert.deepEqual([meta.views, meta.starts, meta.submits], [2, 1, 1]);
+  const ig = origins.find((o) => o.source === "instagram");
+  assert.equal(ig.campaign, undefined);
+  assert.deepEqual([ig.views, ig.starts, ig.submits], [1, 1, 0]);
+  await app.close();
+});

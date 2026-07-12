@@ -20,13 +20,15 @@ const clientIp = (req) =>
 
 // UTM vinda da página pública: só chaves conhecidas, strings curtas. Vai no lead
 // (atribuição por campanha em /api/marketing) e na submission (auditoria).
-const UTM_KEYS = ["source", "medium", "campaign", "content", "term", "fbclid"];
+// Click-ids de cada plataforma (fbclid/gclid/ttclid) + referrer externo entram
+// no mesmo objeto — atribuição não fica restrita à Meta.
+const UTM_KEYS = ["source", "medium", "campaign", "content", "term", "fbclid", "gclid", "ttclid", "referrer"];
 function sanitizeUtm(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const out = {};
   for (const k of UTM_KEYS) {
     const v = raw[k];
-    if (typeof v === "string" && v.trim()) out[k] = v.trim().slice(0, 200);
+    if (typeof v === "string" && v.trim()) out[k] = v.trim().slice(0, k === "referrer" ? 300 : 200);
   }
   return Object.keys(out).length ? out : null;
 }
@@ -81,6 +83,15 @@ export function registerFormRoutes(app, repo, opts = {}) {
     const variant = String(body.variant || "").slice(0, 40); // versão da welcome que converteu
     const pain = String(body.pain || "").slice(0, 8);         // dor da welcome mostrada
     const internal = body.internal === true;                  // teste da equipe (não suja métrica nem CAPI)
+    // fbp/fbc dos cookies do Pixel + página de entrada persistem NO LEAD (antes
+    // iam só pro CAPI do Lead e eram descartados): o Purchase do ganho reusa o
+    // match, e o drawer mostra por onde a pessoa entrou. Sem cookie _fbc (Pixel
+    // bloqueado/atrasado), deriva do fbclid da URL no formato oficial da Meta —
+    // recupera a atribuição de clique que se perdia.
+    const fbp = String(body.fbp || "").slice(0, 120);
+    const fbc = String(body.fbc || "").slice(0, 400)
+      || (utm?.fbclid ? `fb.1.${Date.now()}.${utm.fbclid}` : "");
+    const sourceUrl = String(body.sourceUrl || "").slice(0, 500);
     // Desqualificado vai pro estágio de kind `desqualificado` do funil (perda
     // estruturada, com motivo); fallback legado "disqualified" quando o produto/
     // funil não existe. Lead qualificado nasce com o próximo toque do GPS marcado
@@ -93,6 +104,9 @@ export function registerFormRoutes(app, repo, opts = {}) {
       ...leadFromSubmission(form, answers),
       ...(disqualified ? { disqualified: true, stage: dqStage, lostReason: "sem_fit", lostNote: "Reprovado no funil do form" } : {}),
       ...(utm ? { utm } : {}),
+      ...(fbp ? { fbp } : {}),
+      ...(fbc ? { fbc } : {}),
+      ...(sourceUrl ? { sourceUrl } : {}),
       ...(variant ? { formVariant: variant } : {}),
       ...(nextAt ? { nextActionAt: nextAt } : {}),
       ...(internal ? { internal: true, source: `Form · ${form.name || form.id} · teste da equipe` } : {}),
@@ -131,12 +145,12 @@ export function registerFormRoutes(app, repo, opts = {}) {
       try {
         await metaCapi.sendLead({
           eventId: body.eventId || submission.id,
-          eventSourceUrl: body.sourceUrl || `${publicBase(req)}/f/${form.id}`,
+          eventSourceUrl: sourceUrl || `${publicBase(req)}/f/${form.id}`,
           leadId: lead.id,
           email: lead.email,
           phone: lead.phone,
-          fbp: body.fbp || undefined,
-          fbc: body.fbc || undefined,
+          fbp: fbp || undefined,
+          fbc: fbc || undefined,
           clientIp: clientIp(req),
           userAgent: String(req.headers["user-agent"] || "") || undefined,
           customData: { content_name: form.name },
@@ -182,6 +196,12 @@ export function registerFormRoutes(app, repo, opts = {}) {
     const key = String(body.key || "").slice(0, 80);
     const variant = String(body.variant || "").slice(0, 40); // teste A/B da welcome
     const pain = String(body.pain || "").slice(0, 8);         // dor do anúncio de origem
+    // Origem no evento (slim: só chaves de atribuição, sem referrer/click-ids) —
+    // é o que permite medir o drop-off POR CAMPANHA, não só por variante/dor.
+    const rawUtm = sanitizeUtm(body.utm);
+    const utm = rawUtm
+      ? Object.fromEntries(["source", "medium", "campaign", "content", "term"].filter((k) => rawUtm[k]).map((k) => [k, rawUtm[k]]))
+      : null;
     if (!EVENT_TYPES.has(event) || !session) return reply.code(400).send({ error: "Evento inválido" });
     if (event === "step" && !(form.questions || []).some((q) => q.key === key)) {
       return reply.code(400).send({ error: "Etapa desconhecida" });
@@ -197,6 +217,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
       key: event === "step" ? key : "",
       ...(variant ? { variant } : {}),
       ...(pain ? { pain } : {}),
+      ...(utm && Object.keys(utm).length ? { utm } : {}),
       createdAt: new Date().toISOString(),
       ua: String(req.headers["user-agent"] || "").slice(0, 300),
     });
@@ -242,11 +263,28 @@ export function registerFormRoutes(app, repo, opts = {}) {
         firstAt: times[0] || null, lastAt: times[times.length - 1] || null,
       };
     });
+    // Drop-off por ORIGEM (utm carimbada nos eventos): funil paralelo por
+    // source|campaign — responde "qual campanha traz gente que abandona no meio".
+    // Campaign chega como id dinâmico da Meta; o SPA resolve o nome pelo catálogo
+    // de atribuição (useAttribution).
+    const originKey = (e) => (e.utm && (e.utm.source || e.utm.campaign) ? `${e.utm.source || ""}|${e.utm.campaign || ""}` : "");
+    const originKeys = [...new Set(events.map(originKey).filter(Boolean))].sort();
+    const origins = originKeys.map((k) => {
+      const [source, campaign] = k.split("|");
+      const mine = (e) => originKey(e) === k;
+      const ou = (ev) => new Set(events.filter((e) => mine(e) && e.event === ev).map((e) => e.session)).size;
+      return {
+        ...(source ? { source } : {}), ...(campaign ? { campaign } : {}),
+        sessions: new Set(events.filter(mine).map((e) => e.session)).size,
+        views: ou("view"), starts: ou("start"), submits: ou("submit"),
+      };
+    }).sort((a, b) => b.views - a.views);
     return {
       views: uniq((e) => e.event === "view"),
       starts: uniq((e) => e.event === "start"),
       submits: uniq((e) => e.event === "submit"),
       ...(variants.length ? { variants } : {}),
+      ...(origins.length ? { origins } : {}),
       steps: steps.map((q) => ({
         key: q.key,
         label: q.label || q.key,

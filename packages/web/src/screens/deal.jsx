@@ -98,6 +98,8 @@ function LeadDetail({ lead: initial, onClose }) {
     ["Conjunto", cat?.adsets?.[utm.term]?.name || utm.term],
     ["Anúncio", cat?.ads?.[utm.content]?.name || utm.content],
     ["Origem", [utm.source, utm.medium].filter(Boolean).join(" / ") || null],
+    ["Veio de", utm.referrer || null],           // referrer externo (orgânico/bio)
+    ["Página de entrada", lead.sourceUrl || null],
   ].filter(([, v]) => v != null && v !== "");
 
   // Campos REAIS do lead — mostra só os preenchidos (sem placeholder/mock).

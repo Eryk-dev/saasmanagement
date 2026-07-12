@@ -514,6 +514,8 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
         leadId: lead.id,
         email: lead.email,
         phone: lead.phone,
+        fbp: lead.fbp || undefined, // cookies do Pixel persistidos no submit do
+        fbc: lead.fbc || undefined, // form — melhoram o match do Purchase
         value: Number(lead.amount) || 0,
         pixelId: product?.metaPixelId,
       });
