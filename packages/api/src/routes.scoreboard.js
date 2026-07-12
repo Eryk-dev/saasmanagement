@@ -124,6 +124,7 @@ export function registerScoreboardRoutes(app, repo) {
         withinSla: touchHours.filter((h) => h <= slaMs / HOUR).length,
         breached, // novos que estouraram o SLA e seguem sem toque
         showRate: resolved > 0 ? round2((shown / resolved) * 100) : null,
+        shown, // compareceram (numerador do show-rate; den = shown + noShow)
         noShow,
         wonFromCalls,
         callWinRate: callsBooked > 0 ? round2((wonFromCalls / callsBooked) * 100) : null,

@@ -67,7 +67,8 @@ test("SDR: show-rate (não compareceu) e calls→ganho sobre o cohort de calls",
   const s = sb.sdr.find((x) => x.user === "u_sdr");
   assert.equal(s.callsBooked, 5);
   assert.equal(s.noShow, 1);          // b3
-  assert.equal(s.showRate, 75);       // compareceram 3 (b1,b2,b4) / resolvidos 4 (b1,b2,b3,b4)
+  assert.equal(s.shown, 3);           // b1,b2,b4
+  assert.equal(s.showRate, 75);       // compareceram 3 / resolvidos 4 (b1,b2,b3,b4)
   assert.equal(s.wonFromCalls, 1);    // b1
   assert.equal(s.callWinRate, 20);    // 1 / 5
   await app.close();
