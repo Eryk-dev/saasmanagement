@@ -170,8 +170,14 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Meta CAPI: "Lead" server-side, deduplicado com o Pixel client-side da página
   // pública do form (/f/:id) via event_id compartilhado.
   const metaCapiClient = opts.metaCapi || defaultMetaCapi;
+  // IA (resumo de call + variante de welcome): OpenRouter ou Anthropic direto,
+  // detectado pela chave. Criado ANTES das rotas de form (suggest-welcome usa).
+  const anthropicClient = opts.anthropic || makeAnthropic({
+    apiKey: process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_API_KEY || "",
+    model: process.env.AI_MODEL || process.env.ANTHROPIC_MODEL || "",
+  });
   // Superfície pública do form builder (/public/forms, /f/:id, /embed.js).
-  registerFormRoutes(app, repo, { ...(opts.forms || {}), discord: discordClient, metaCapi: metaCapiClient });
+  registerFormRoutes(app, repo, { ...(opts.forms || {}), discord: discordClient, metaCapi: metaCapiClient, anthropic: anthropicClient });
   // Superfície pública do proposal builder (/p/:id, aceite, painel do closer).
   registerProposalRoutes(app, repo, { ...(opts.proposals || {}), discord: discordClient, metaCapi: metaCapiClient });
   // Billing (fase 5): mudança de plano c/ pró-rata, baixa de fatura, tick do motor.
@@ -190,10 +196,6 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerAuthRoutes(app, repo);
   // Google Meet: conectar conta (OAuth) + criar call na agenda do closer.
   // Claude resume as calls (transcrição → timeline) quando há ANTHROPIC_API_KEY.
-  const anthropicClient = opts.anthropic || makeAnthropic({
-    apiKey: process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_API_KEY || "",
-    model: process.env.AI_MODEL || process.env.ANTHROPIC_MODEL || "",
-  });
   const googleClient = registerGoogleRoutes(app, repo, { google: opts.google, anthropic: anthropicClient });
   // Poller de resumos (index.js) usa os MESMOS clients das rotas.
   if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, anthropic: anthropicClient });

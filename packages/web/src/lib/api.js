@@ -142,6 +142,8 @@ export const api = {
   },
   // Catálogo id → nome (campanha/conjunto/anúncio) pro bloco de atribuição.
   marketingAttribution: (saas) => req("GET", `/api/marketing/${saas}/attribution`),
+  // Variante de welcome por IA (insight "welcome fraca" → aplicar).
+  suggestWelcome: (formId, body = {}) => req("POST", `/api/forms/${formId}/suggest-welcome`, body),
   // Breakdown por placement (plataforma × posição), ao vivo da Meta.
   marketingPlacements: (saas, { since, until } = {}) => {
     const q = new URLSearchParams();

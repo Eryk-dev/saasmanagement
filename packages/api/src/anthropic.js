@@ -50,6 +50,22 @@ const SYSTEM = `Você é o analista comercial da LeverAds, SaaS que clona e sinc
 Você recebe a transcrição de uma call de vendas e extrai o que importa pro closer fazer o follow-up e fechar.
 Regras: escreva em português direto, sem formalidade e sem enrolação. NUNCA use travessão (—) em nenhum texto; use vírgula ou parênteses. Seja fiel à transcrição: não invente dor, objeção nem compromisso que não apareceu. Objeção sem resposta do closer é registrada como não resolvida. A mensagem de WhatsApp deve ser curta (2 a 4 frases), citar algo concreto da conversa e terminar com uma pergunta ou próximo passo claro.`;
 
+// Variante de welcome pro teste A/B do form (título/subtítulo/botão).
+const WELCOME_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["title", "subtitle", "button"],
+  properties: {
+    title: { type: "string", description: "Headline nova da tela de boas-vindas, forte e específica, até ~80 caracteres" },
+    subtitle: { type: "string", description: "Subtítulo de apoio, 1 a 2 frases curtas" },
+    button: { type: "string", description: "Texto do botão de começar, 2 a 4 palavras" },
+  },
+};
+
+const WELCOME_SYSTEM = `Você é o copywriter de resposta direta da LeverAds, SaaS que clona e sincroniza anúncios entre contas de Mercado Livre e Shopee (multi-contas, proteção contra banimento, economia de operação de anúncios).
+Sua tarefa: escrever UMA variante nova da tela de boas-vindas do formulário de diagnóstico, pra teste A/B contra a versão atual.
+Regras: português do Brasil, direto e específico, promessa crível (nada de clickbait ou número inventado). NUNCA use travessão (—) em nenhum texto; use vírgula ou parênteses. A variante precisa atacar um ângulo DIFERENTE das versões existentes, não parafrasear. Fale com dono de operação de marketplace (vendedor ML/Shopee).`;
+
 export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model = "" } = {}) {
   const configured = () => !!apiKey;
   const openrouter = apiKey.startsWith("sk-or-");
@@ -57,8 +73,9 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
 
   // Corpo/headers/parse de cada provedor. OpenRouter fala o formato da OpenAI
   // (chat/completions + response_format json_schema); Anthropic fala Messages
-  // API (output_config + thinking adaptativo).
-  function buildRequest(userContent) {
+  // API (output_config + thinking adaptativo). system/schema variam por tarefa
+  // (resumo de call, variante de welcome).
+  function buildRequest(userContent, { system, schema, schemaName }) {
     if (openrouter) {
       return {
         url: OPENROUTER_URL,
@@ -72,10 +89,10 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
           model: modelId,
           max_tokens: 16000,
           messages: [
-            { role: "system", content: `${SYSTEM}\nResponda SOMENTE com o JSON pedido, sem texto fora dele.` },
+            { role: "system", content: `${system}\nResponda SOMENTE com o JSON pedido, sem texto fora dele.` },
             { role: "user", content: userContent },
           ],
-          response_format: { type: "json_schema", json_schema: { name: "call_summary", strict: true, schema: SUMMARY_SCHEMA } },
+          response_format: { type: "json_schema", json_schema: { name: schemaName, strict: true, schema } },
         },
       };
     }
@@ -90,11 +107,29 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
         model: modelId,
         max_tokens: 16000,
         thinking: { type: "adaptive" },
-        system: SYSTEM,
-        output_config: { format: { type: "json_schema", schema: SUMMARY_SCHEMA } },
+        system,
+        output_config: { format: { type: "json_schema", schema } },
         messages: [{ role: "user", content: userContent }],
       },
     };
+  }
+
+  // Uma requisição JSON estruturada, do fetch ao parse — compartilhada pelas
+  // tarefas. Lança com mensagem legível em qualquer falha de provedor/formato.
+  async function requestJson(userContent, opts) {
+    const req = buildRequest(userContent, opts);
+    const res = await f(req.url, { method: "POST", headers: req.headers, body: JSON.stringify(req.body) });
+    const body = await res.json().catch(() => ({}));
+    if (res.status >= 400) {
+      const why = body.error?.message || body.error?.code || "falha na API";
+      throw new Error(`${openrouter ? "OpenRouter" : "Claude"} -> ${res.status}: ${why}`);
+    }
+    const raw = extractText(body);
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch {
+      throw new Error(`${openrouter ? "OpenRouter" : "Claude"}: resposta fora do formato esperado`);
+    }
+    return { parsed, usage: body.usage || {}, model: body.model || modelId };
   }
 
   function extractText(body) {
@@ -129,20 +164,28 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
       `Produto: ${productName}`,
     ].filter(Boolean).join("\n");
 
-    const req = buildRequest(`${context}\n\nTranscrição da call:\n\n${clipped}`);
-    const res = await f(req.url, { method: "POST", headers: req.headers, body: JSON.stringify(req.body) });
-    const body = await res.json().catch(() => ({}));
-    if (res.status >= 400) {
-      const why = body.error?.message || body.error?.code || "falha na API";
-      throw new Error(`${openrouter ? "OpenRouter" : "Claude"} -> ${res.status}: ${why}`);
-    }
-    const raw = extractText(body);
-    let parsed;
-    try { parsed = JSON.parse(raw); } catch {
-      throw new Error(`${openrouter ? "OpenRouter" : "Claude"}: resposta fora do formato esperado`);
-    }
-    return { summary: parsed, usage: body.usage || {}, model: body.model || modelId };
+    const r = await requestJson(`${context}\n\nTranscrição da call:\n\n${clipped}`, { system: SYSTEM, schema: SUMMARY_SCHEMA, schemaName: "call_summary" });
+    return { summary: r.parsed, usage: r.usage, model: r.model };
   }
 
-  return { configured, summarizeCall, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
+  // Uma variante NOVA de welcome (título/subtítulo/botão) pro teste A/B do
+  // form — usada pelo "aplicar" do insight de welcome fraca. Não grava nada:
+  // devolve a copy pro usuário editar antes de publicar.
+  async function suggestWelcome({ productName = "", pitch = "", welcome = {}, variants = [], startRate = null }) {
+    if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
+    const context = [
+      `Produto: ${productName || "LeverAds"}${pitch ? ` (${pitch})` : ""}`,
+      "Tela de boas-vindas ATUAL do formulário de diagnóstico:",
+      `• Título: ${welcome.title || "(vazio)"}`,
+      `• Subtítulo: ${welcome.subtitle || "(vazio)"}`,
+      `• Botão: ${welcome.button || "(vazio)"}`,
+      variants.length ? `Títulos já testados (NÃO repita esses ângulos):\n${variants.map((v) => `• ${v}`).join("\n")}` : "",
+      startRate != null ? `Hoje só ${startRate}% dos visitantes clicam em começar — a promessa atual não está segurando.` : "",
+      "Escreva UMA variante nova de título, subtítulo e botão pra rodar no teste A/B.",
+    ].filter(Boolean).join("\n");
+    const r = await requestJson(context, { system: WELCOME_SYSTEM, schema: WELCOME_SCHEMA, schemaName: "welcome_variant" });
+    return { suggestion: r.parsed, usage: r.usage, model: r.model };
+  }
+
+  return { configured, summarizeCall, suggestWelcome, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
 }

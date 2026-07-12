@@ -391,3 +391,36 @@ test("CAPI recebe o pixel do produto do form (multi-produto)", async () => {
   assert.equal(capi.calls[0].pixelId, "888999777666555");
   await app.close();
 });
+
+test("suggest-welcome: gera variante por IA com contexto do form; 503 sem chave", async () => {
+  const calls = [];
+  const anthropic = {
+    configured: () => true,
+    suggestWelcome: async (args) => { calls.push(args); return { suggestion: { title: "T nova", subtitle: "S", button: "Começar" } }; },
+  };
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds" });
+  await repo.create("forms", {
+    ...FORM,
+    welcome: { title: "Base", subtitle: "sub", button: "Ir", variantSeq: 2, variants: [{ id: "001", title: "V1" }], byPain: { A: { variants: [{ id: "A-001", title: "VA" }] } } },
+  });
+  const app = Fastify();
+  registerRoutes(app, repo, { anthropic });
+
+  const res = await app.inject({ method: "POST", url: "/api/forms/fo_test/suggest-welcome", payload: { startRate: 10 } });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.json(), { title: "T nova", subtitle: "S", button: "Começar" });
+  assert.equal(calls[0].welcome.title, "Base");
+  assert.deepEqual(calls[0].variants, ["V1", "VA"]); // títulos já testados (base + por dor)
+  assert.equal(calls[0].startRate, 10);
+  assert.equal(calls[0].productName, "LeverAds");
+
+  // sem chave de IA → 503 com mensagem acionável
+  const off = Fastify();
+  registerRoutes(off, repo, { anthropic: { configured: () => false } });
+  assert.equal((await off.inject({ method: "POST", url: "/api/forms/fo_test/suggest-welcome", payload: {} })).statusCode, 503);
+  // form inexistente → 404
+  assert.equal((await app.inject({ method: "POST", url: "/api/forms/nada/suggest-welcome", payload: {} })).statusCode, 404);
+  await app.close();
+  await off.close();
+});
