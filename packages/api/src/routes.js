@@ -27,6 +27,7 @@ import { currentRev, subscribe as subscribeChanges } from "./changes.js";
 import { isWon, firstStage } from "./stages.js";
 import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt, autoLeadOwner } from "./lead-flow.js";
 import { registerFunnelMetricsRoutes } from "./routes.funnel-metrics.js";
+import { registerScoreboardRoutes } from "./routes.scoreboard.js";
 
 // Auth interna fica FORA do CRUD genérico: passwordHash/token de sessão nunca
 // saem pela API. Gestão via rotas dedicadas (/api/auth/*).
@@ -192,6 +193,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Métricas reais de funil (conversão/tempo por estágio, motivos de perda, SLA)
   // a partir do histórico de transições da timeline.
   registerFunnelMetricsRoutes(app, repo);
+  // Placar por pessoa/papel (SDR/closer/CS) — o cockpit de gestão da Visão geral.
+  registerScoreboardRoutes(app, repo);
   // Usuários do time: login/logout/me + gestão mínima (rotas dedicadas).
   registerAuthRoutes(app, repo);
   // Google Meet: conectar conta (OAuth) + criar call na agenda do closer.
