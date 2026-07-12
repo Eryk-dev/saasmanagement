@@ -104,6 +104,7 @@ function MetricsScreen() {
   const [note, setNote] = useState(null);
 
   const [objects, setObjects] = useState(null); // { campaigns, adsets, ads } ao vivo (gerenciamento)
+  const [placements, setPlacements] = useState(null); // breakdown plataforma × posição (ao vivo)
   const [creative, setCreative] = useState(false); // painel de novo criativo
   // Troca de produto (workspace) fecha o painel de criativo e descarta o rascunho
   // de gasto manual — nada pode ser registrado no produto errado. (setManual é
@@ -120,11 +121,13 @@ function MetricsScreen() {
     if (!product) return;
     const ep = ++loadEpoch.current;
     const fresh = (set) => (v) => { if (ep === loadEpoch.current) set(v); };
-    if (reset) { setData(null); setObjects(null); setNote(null); }
+    if (reset) { setData(null); setObjects(null); setPlacements(null); setNote(null); }
     api.marketingMetrics(product.id, { since, until }).then(fresh(setData)).catch(() => fresh(setData)({ error: true }));
     api.metrics(product.id, { days: rangeDays, months: 12 }).then(fresh(setBiz)).catch(() => fresh(setBiz)(null));
     if (reset && metaOn && product.metaAdAccount) {
       api.adObjects(product.id).then(fresh(setObjects)).catch((e) => fresh(setObjects)({ error: e.message }));
+      // Placements têm cache de 5 min no servidor — recarregar só no reset basta.
+      api.marketingPlacements(product.id, { since, until }).then(fresh(setPlacements)).catch(() => fresh(setPlacements)(null));
     }
   };
   useEffect(() => load(true), [product?.id, since, until]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -148,6 +151,7 @@ function MetricsScreen() {
     return () => clearInterval(id);
   }, [product?.id, since, until, metaOn]); // eslint-disable-line react-hooks/exhaustive-deps
   const liveAt = data?.syncedAt ? new Date(data.syncedAt) : null;
+  const insights = data && !data.error ? buildInsights(data, placements) : [];
 
   // Toggle Off/On e orçamento em QUALQUER nível — sem confirmação, como no
   // Gerenciador: otimista aqui, reverte se a Meta recusar.
@@ -435,9 +439,28 @@ function MetricsScreen() {
           </Card>
         )}
 
+        {data && !data.error && insights.length > 0 && (
+          <Card title="Insights" hint="sugestões por regra (ROAS por dor, CPL por anúncio, placement) · a decisão continua sua">
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 16px 14px" }}>
+              {insights.map((it, i) => (
+                <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "10px 12px" }}>
+                  <span className="mono" style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: INSIGHT_TONES[it.tone], border: "1px solid currentColor", borderRadius: 999, padding: "2px 8px", flexShrink: 0, marginTop: 1 }}>{it.tag}</span>
+                  <span style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--fg-2)" }}>{it.text}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
         {data && !data.error && (data.pains || []).some((p) => p.code) && (
           <Card title="Por dor" hint="código [X] no nome do anúncio · qual roteiro traz lead que fecha, não só lead barato">
             <PainTable pains={data.pains} money={money} />
+          </Card>
+        )}
+
+        {(placements?.placements || []).length > 0 && (
+          <Card title="Onde o gasto acontece" hint="plataforma × posicionamento, ao vivo da Meta · leads/CPL aqui são na visão da Meta (UTM não carrega placement)">
+            <PlacementTable placements={placements.placements} money={money} />
           </Card>
         )}
 
@@ -849,6 +872,93 @@ const thStyle = {
   color: "var(--fg-3)", padding: "10px 14px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)",
   background: "var(--bg-inset)", whiteSpace: "nowrap", fontFamily: "var(--mono)", userSelect: "none",
 };
+
+// ── Insights de escala ───────────────────────────────────────────────────────
+// Sugestões por REGRA (explicáveis, sem IA): cruzam ROAS/receita por dor, CPL
+// por anúncio e o breakdown de placement. Cada item diz o porquê com os números;
+// a ação (pausar/orçamento) continua manual no card Anúncios.
+const INSIGHT_TONES = { escalar: "var(--pos)", cortar: "var(--neg)", atencao: "var(--warn)" };
+const PLATFORM_LABEL = { facebook: "Facebook", instagram: "Instagram", audience_network: "Audience Network", messenger: "Messenger" };
+const placementLabel = (r) => `${PLATFORM_LABEL[r.platform] || r.platform} · ${String(r.position || "").replaceAll("_", " ")}`;
+
+function buildInsights(data, placements) {
+  const out = [];
+  const x = (v) => String(v).replace(".", ",") + "x";
+  const pains = (data.pains || []).filter((p) => p.code);
+
+  // Melhor dor por ROAS → escalar (precisa de receita real, não só ganho).
+  const withRoas = pains.filter((p) => p.roas != null);
+  if (withRoas.length) {
+    const best = [...withRoas].sort((a, b) => b.roas - a.roas)[0];
+    out.push({ tone: "escalar", tag: "Escalar", text: `A dor [${best.code}] ${best.label} tem o melhor retorno do período: ROAS ${x(best.roas)} (${money(best.revenue)} de receita sobre ${money(best.spend)} investidos). Vale subir o orçamento dos conjuntos que rodam essa dor.` });
+  }
+  // Dor que gasta, gera lead e não fecha nenhum → problema de fundo de funil.
+  for (const p of pains.filter((p) => p.spend >= 100 && p.leads >= 3 && !p.won).slice(0, 2)) {
+    out.push({ tone: "atencao", tag: "Atenção", text: `A dor [${p.code}] ${p.label} investiu ${money(p.spend)} e trouxe ${p.leads} leads, mas nenhum fechou. Antes de escalar, revise a qualificação desse público ou o pitch da call.` });
+  }
+  // Anúncio queimando: gastou ≥ 3× o CPL médio da conta sem gerar nenhum lead.
+  const cplRef = data.totals?.cpl;
+  if (cplRef) {
+    for (const a of (data.ads || []).filter((a) => a.leads === 0 && a.spend >= 3 * cplRef)
+      .sort((a, b) => b.spend - a.spend).slice(0, 2)) {
+      out.push({ tone: "cortar", tag: "Cortar", text: `O anúncio “${a.name}” já gastou ${money(a.spend)} (3× o CPL médio de ${money(cplRef)}) sem gerar nenhum lead. Candidato a pausar no card Anúncios.` });
+    }
+  }
+  // Placements: fatia relevante do gasto sem nenhum lead na visão da Meta.
+  const rows = placements?.placements || [];
+  const totalSpend = rows.reduce((s, r) => s + r.spend, 0);
+  if (totalSpend > 0) {
+    for (const r of rows.filter((r) => r.spend / totalSpend >= 0.12 && r.metaLeads === 0).slice(0, 2)) {
+      out.push({ tone: "cortar", tag: "Cortar", text: `${placementLabel(r)} consome ${Math.round((r.spend / totalSpend) * 100)}% do investimento (${money(r.spend)}) sem nenhum lead na visão da Meta. Considere excluir esse posicionamento nos conjuntos.` });
+    }
+    // Diferença grande de CPL entre posicionamentos com gasto relevante.
+    const withLeads = rows.filter((r) => r.cplMeta != null && r.spend >= totalSpend * 0.08);
+    if (withLeads.length >= 2) {
+      const sorted = [...withLeads].sort((a, b) => a.cplMeta - b.cplMeta);
+      const best = sorted[0];
+      const worst = sorted[sorted.length - 1];
+      if (worst.cplMeta >= best.cplMeta * 2) {
+        out.push({ tone: "atencao", tag: "Atenção", text: `${placementLabel(best)} converte a ${money(best.cplMeta)} por lead vs ${money(worst.cplMeta)} em ${placementLabel(worst)} (visão da Meta). Se a diferença persistir, concentre o orçamento no posicionamento mais barato.` });
+      }
+    }
+  }
+  return out.slice(0, 6);
+}
+
+// Breakdown por placement: onde o dinheiro roda (plataforma × posição). Sem
+// cruzamento com lead do cockpit — UTM não carrega placement — então leads/CPL
+// são os reportados pela Meta.
+function PlacementTable({ placements, money }) {
+  const total = placements.reduce((s, r) => s + r.spend, 0);
+  const ths = ["Posicionamento", "Investimento", "% do gasto", "Impressões", "Cliques link", "Leads (Meta)", "CPL (Meta)", "CPM"];
+  return (
+    <div className="tbl-x" style={{ marginTop: 10 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            {ths.map((h, i) => (
+              <th key={h} className="mono" style={{ textAlign: i === 0 ? "left" : "right", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", padding: "10px 16px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {placements.map((r, i) => (
+            <tr key={i}>
+              <td style={{ padding: "11px 16px", fontSize: 13, fontWeight: 600, borderBottom: "1px solid var(--line-1)", whiteSpace: "nowrap" }}>{placementLabel(r)}</td>
+              <td className="tnum" style={tdNum}>{money(r.spend)}</td>
+              <td className="tnum" style={tdNum}>{total > 0 ? Math.round((r.spend / total) * 100) + "%" : ""}</td>
+              <td className="tnum" style={tdNum}>{window.fmt.int(r.impressions)}</td>
+              <td className="tnum" style={tdNum}>{window.fmt.int(r.linkClicks)}</td>
+              <td className="tnum" style={tdNum}>{window.fmt.int(r.metaLeads)}</td>
+              <td className="tnum" style={{ ...tdNum, fontWeight: 600 }}>{r.cplMeta != null ? money(r.cplMeta) : "sem lead"}</td>
+              <td className="tnum" style={tdNum}>{r.cpm != null ? money(r.cpm) : ""}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 // Quebra por dor: cada linha é um código "[X]" da nomenclatura dos anúncios.
 // O que decide escala é a última coluna (ROAS: receita dos ganhos ÷ investimento),

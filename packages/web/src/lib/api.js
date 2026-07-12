@@ -142,6 +142,13 @@ export const api = {
   },
   // Catálogo id → nome (campanha/conjunto/anúncio) pro bloco de atribuição.
   marketingAttribution: (saas) => req("GET", `/api/marketing/${saas}/attribution`),
+  // Breakdown por placement (plataforma × posição), ao vivo da Meta.
+  marketingPlacements: (saas, { since, until } = {}) => {
+    const q = new URLSearchParams();
+    if (since) q.set("since", since);
+    if (until) q.set("until", until);
+    return req("GET", `/api/marketing/${saas}/placements${q.toString() ? `?${q}` : ""}`);
+  },
   // Equipe: etiquetas de papel (sdr/closer/integrator), criação e reset de senha.
   updateUser: (id, patch) => req("PATCH", `/api/auth/users/${id}`, patch),
   createUser: ({ name, password, roles }) => req("POST", "/api/auth/users", { name, password, ...(roles ? { roles } : {}) }),

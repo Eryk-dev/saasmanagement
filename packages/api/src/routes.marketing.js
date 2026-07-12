@@ -489,6 +489,38 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     };
   });
 
+  // Placements AO VIVO (breakdown publisher_platform × platform_position): onde
+  // o gasto acontece — Facebook/Instagram/Audience Network e feed/stories/reels.
+  // Não persiste (breakdown multiplica linhas e não cruza com lead por UTM);
+  // cache curto por saas+range pra não bater na Graph a cada render.
+  const placementCache = new Map(); // `${saas}|${since}|${until}` -> { at, rows }
+  app.get("/api/marketing/:saas/placements", async (req, reply) => {
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "Not found" });
+    if (!meta.configured() || !product.metaAdAccount) return { placements: [], configured: false };
+    const { since, until } = rangeFromQuery(req.query || {});
+    const key = `${product.id}|${since}|${until}`;
+    let cached = placementCache.get(key);
+    if (!cached || Date.now() - cached.at >= 300_000) {
+      try {
+        cached = { at: Date.now(), rows: await meta.placementInsights(product.metaAdAccount, { since, until }) };
+        placementCache.set(key, cached);
+      } catch (err) {
+        req.log.warn({ err: err.message }, "Meta: placementInsights falhou");
+        return reply.code(502).send({ error: "Meta indisponível pros placements" });
+      }
+    }
+    const placements = cached.rows
+      .map((r) => ({
+        ...r,
+        spend: Math.round(r.spend * 100) / 100,
+        cplMeta: r.metaLeads > 0 ? Math.round((r.spend / r.metaLeads) * 100) / 100 : null,
+        cpm: r.impressions > 0 ? Math.round((r.spend / r.impressions) * 1000 * 100) / 100 : null,
+      }))
+      .sort((a, b) => b.spend - a.spend);
+    return { since, until, placements, configured: true };
+  });
+
   // Catálogo id → nome (campanha/conjunto/anúncio) a partir do ad_insights já
   // sincronizado — o drawer do lead resolve o UTM cru pra nomes legíveis sem
   // nenhuma chamada à Meta. Complemento: a listagem VIVA de anúncios da conta
