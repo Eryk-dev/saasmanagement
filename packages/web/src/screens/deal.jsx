@@ -284,9 +284,12 @@ function LeadDetail({ lead: initial, onClose }) {
                         const r = await api.createMeet(lead.id);
                         dirty.current = true;
                         setLead((prev) => ({ ...prev, callUrl: r.callUrl, meetEventId: r.eventId }));
+                        const cfg = r.meetConfig || {};
+                        const faltou = [!cfg.open && "entrada sem aprovação", !cfg.recording && "gravação automática", !cfg.transcription && "transcrição automática"].filter(Boolean);
+                        if (faltou.length) window.alert(`Meet criado ✓ Mas o plano da conta Google não aceitou: ${faltou.join(", ")}. Dá pra ativar manualmente dentro da chamada.`);
                       } catch (e) { window.alert(e.message || "Falha ao criar o Meet."); }
                     }}
-                    title="Cria o evento com Meet na agenda Google da conta conectada (convida o lead por e-mail quando houver)"
+                    title="Evento com Meet na agenda: convida o lead (se tiver e-mail) e os convidados extras; sala aberta com gravação e transcrição automáticas quando o plano permite"
                     style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 11.5, fontWeight: 600 }}>
                     🎥 criar Meet na agenda
                   </button>
@@ -299,6 +302,16 @@ function LeadDetail({ lead: initial, onClose }) {
               </>
             )}
           </div>
+          {window.SEED?.CONFIG?.google?.connected && (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span className="mono dim" style={rowLabel}>Convidados extras</span>
+              <input type="text" placeholder="emails separados por vírgula (além do lead)"
+                defaultValue={lead.meetGuests ?? ""}
+                onBlur={(e) => e.target.value !== (lead.meetGuests || "") && patch({ meetGuests: e.target.value })}
+                title="Entram como convidados do evento no Google Calendar quando o Meet é criado (o e-mail do lead já vai automático)"
+                style={{ flex: 1, height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, fontFamily: "var(--mono)" }} />
+            </div>
+          )}
           {(kind === "proposta" || kind === "followup") && (
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <span className="mono dim" style={rowLabel}>Proposta</span>
