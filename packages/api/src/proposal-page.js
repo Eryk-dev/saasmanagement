@@ -386,11 +386,12 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
      ancora no rodapé da célula: o card principal aparece embaixo e, quando a
      oferta 2 entra, ele sobe e ela assume o rodapé (a borda inferior não muda). */
   .has-offer2 { align-self: stretch; display: flex; flex-direction: column; justify-content: flex-end; }
-  .price-card.offer2 { display: none; margin-top: 16px; }
-  .offer2-on .price-card.offer2 { display: block; animation: offer2-in .5s var(--ease-out); }
+  .price-card.offer2, .price-card.offer3 { display: none; margin-top: 16px; }
+  .offer2-on .price-card.offer2, .offer3-on .price-card.offer3 { display: block; animation: offer2-in .5s var(--ease-out); }
   @keyframes offer2-in { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
-  .price-card.offer1 { transition: filter .5s var(--ease-out), opacity .5s var(--ease-out); }
-  .offer2-on .price-card.offer1 { filter: grayscale(1); opacity: .55; }
+  .price-card.offer1, .price-card.offer2 { transition: filter .5s var(--ease-out), opacity .5s var(--ease-out); }
+  .offer2-on .price-card.offer1,
+  .offer3-on .price-card.offer1, .offer3-on .price-card.offer2 { filter: grayscale(1); opacity: .55; }
   @media (prefers-reduced-motion: reduce) {
     .price-pending .price-reveal .price-card, .price-revealed .price-reveal .price-card, .price-veil,
     .price-pending .stage-item, .price-revealed .stage-item,
@@ -998,21 +999,23 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           '<div class="price-head"><div class="price-tag">' + fmt(o.planTag || '') + '</div>' +
             (o.planPill ? '<span class="pill accent">' + fmt(o.planPill) + '</span>' : '') + '</div>' +
           (o.priceFrom ? '<div class="price-from">de R$ ' + fmt(o.priceFrom) + '</div>' : '') +
-          '<div class="price-number">' + (o.pricePrefix ? '<span class="currency">' + fmt(o.pricePrefix) + '</span>' : '') + '<span class="currency">R$</span><span class="price-main"><span class="amount">' + fmt(o.price || '{{calc.preco}}') + '</span><span class="per">' + fmt(o.per || '/ mês') + '</span></span></div>' +
+          '<div class="price-number">' + (o.pricePrefix ? '<span class="currency">' + fmt(o.pricePrefix) + '</span>' : '') + (o.currency === false ? '' : '<span class="currency">R$</span>') + '<span class="price-main"><span class="amount">' + fmt(o.price || '{{calc.preco}}') + '</span><span class="per">' + fmt(o.per || '/ mês') + '</span></span></div>' +
           (o.sub ? '<div class="price-sub">' + fmt(o.sub) + '</div>' : '') +
           '<div class="price-cycles">' + (o.cyclesLabel ? fmt(o.cyclesLabel) + ' ' : '') + (o.cyclesFrom ? '<span class="cycles-from">' + fmt(o.cyclesFrom) + '</span> ' : '') + fmt(o.cycles != null ? o.cycles : '{{calc.precoCiclos}}') + '</div>' +
         '</div>';
       }
       var hasOffer2 = !!(s.offer2 && (s.offer2.price || s.offer2.planTag));
-      // Oferta 2 é secreta (só Shift+Espaço, no modo reveal): sem revealPrice
-      // ela fica no DOM mas nunca aparece — não nasce montada de propósito.
-      // O wrapper .price-reveal mantém os dois cards na MESMA célula do grid
-      // (empilhados); sem ele, o offer2 cairia na coluna dos benefícios.
-      var wrapCards = reveal || hasOffer2;
+      var hasOffer3 = !!(s.offer3 && (s.offer3.price || s.offer3.planTag));
+      // Ofertas 2 e 3 são secretas (Shift+Espaço em sequência, no modo reveal):
+      // sem revealPrice ficam no DOM mas nunca aparecem, de propósito.
+      // O wrapper .price-reveal mantém os cards na MESMA célula do grid
+      // (empilhados, ancorados no rodapé); sem ele cairiam na coluna dos benefícios.
+      var wrapCards = reveal || hasOffer2 || hasOffer3;
       pw.innerHTML =
-        (wrapCards ? '<div class="price-reveal' + (hasOffer2 ? ' has-offer2' : '') + '">' : '') +
-        priceCardHtml(s, hasOffer2 ? 'offer1' : '', !reveal) +
+        (wrapCards ? '<div class="price-reveal' + (hasOffer2 || hasOffer3 ? ' has-offer2' : '') + '">' : '') +
+        priceCardHtml(s, hasOffer2 || hasOffer3 ? 'offer1' : '', !reveal) +
         (hasOffer2 ? priceCardHtml(s.offer2, 'offer2', false) : '') +
+        (hasOffer3 ? priceCardHtml(s.offer3, 'offer3', false) : '') +
         (reveal ? '<div class="price-veil" aria-hidden="true"></div>' : '') +
         (wrapCards ? '</div>' : '') +
         '<div data-reveal>' +
@@ -1050,14 +1053,17 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         // clique/tap em qualquer ponto da seção. Sem botão visível de propósito.
         sec.addEventListener('click', advance);
         document.addEventListener('keydown', function (e) {
-          // Oferta 2 é SECRETA (ferramenta de negociação do closer): só entra
-          // com Shift+Espaço, nunca por clique/avanço normal, e não sai no print.
-          if (hasOffer2 && !sec.classList.contains('offer2-on') &&
-              !sec.classList.contains('price-pending') &&
+          // Ofertas 2 e 3 são SECRETAS (ferramentas de negociação do closer):
+          // cada Shift+Espaço revela a próxima da escada, nunca por clique ou
+          // avanço normal, e não saem no print.
+          if (!sec.classList.contains('price-pending') &&
               e.shiftKey && (e.key === ' ' || e.code === 'Space')) {
             if (!inView()) return;
+            var next = hasOffer2 && !sec.classList.contains('offer2-on') ? 'offer2-on'
+              : hasOffer3 && !sec.classList.contains('offer3-on') ? 'offer3-on' : null;
+            if (!next) return;
             e.preventDefault();
-            sec.classList.add('offer2-on');
+            sec.classList.add(next);
             fitSlides();
             return;
           }
