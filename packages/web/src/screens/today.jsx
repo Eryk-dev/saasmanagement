@@ -547,9 +547,12 @@ export function CallSummaryCard({ summary, phone }) {
         <div style={{ marginBottom: 6 }}>
           <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>Objeções</div>
           {summary.objecoes.map((o, i) => (
-            <div key={i} style={{ ...line, display: "flex", gap: 6, alignItems: "baseline" }}>
-              <span className="mono" style={{ color: o.resolvida ? "var(--pos)" : "var(--neg)", flexShrink: 0, fontSize: 10 }}>{o.resolvida ? "tratada" : "em aberto"}</span>
-              <span style={{ minWidth: 0 }}>{o.objecao}{o.comoFoiTratada ? ` · ${o.comoFoiTratada}` : ""}</span>
+            <div key={i} style={{ marginBottom: 4 }}>
+              <div style={{ ...line, display: "flex", gap: 6, alignItems: "baseline" }}>
+                <span className="mono" style={{ color: o.resolvida ? "var(--pos)" : "var(--neg)", flexShrink: 0, fontSize: 10 }}>{o.resolvida ? "tratada" : "em aberto"}</span>
+                <span style={{ fontWeight: 500, minWidth: 0 }}>{o.objecao}</span>
+              </div>
+              {o.comoFoiTratada && <div className="dim" style={{ fontSize: 11, lineHeight: 1.4, paddingLeft: 2 }}>{o.comoFoiTratada}</div>}
             </div>
           ))}
         </div>

@@ -93,6 +93,13 @@ function LeadDetail({ lead: initial, onClose }) {
     return cs ? { ...cs.meta.summary, recordingUrl: cs.meta.recordingUrl || "" } : null;
   }, [activities]);
 
+  // A timeline NÃO repete o resumo de call: ele já vira o card acima (bloco único
+  // do insight). Aqui ficam só os contatos e eventos, sem o blocão duplicado.
+  const timelineActs = React.useMemo(
+    () => (activities || []).filter((a) => !(a.type === "system" && a.meta?.event === "call_summary")),
+    [activities],
+  );
+
   const score = lead.score;
   const hasScore = score != null && score !== "";
   const hasIcp = lead.icp != null && lead.icp !== "";
@@ -363,19 +370,19 @@ function LeadDetail({ lead: initial, onClose }) {
                 )}
                 {lead.callUrl.includes("meet.google.com") && window.SEED?.CONFIG?.ai?.configured && (
                   <button className="mono" style={{ fontSize: 11, flexShrink: 0, color: "var(--accent)" }}
-                    title="Buscar a transcrição da call no Google e gerar o resumo estratégico na timeline (dores, objeções, follow-up)"
+                    title="Buscar a transcrição da call no Google e gerar o resumo estratégico (dores, objeções, follow-up)"
                     onClick={async (ev) => {
                       const btn = ev.currentTarget;
                       btn.disabled = true; btn.textContent = "resumindo…";
                       try {
                         let r = await api.callSummary(lead.id);
-                        if (!r.ok && r.reason === "already_done" && window.confirm("Essa call já tem resumo na timeline. Gerar de novo?")) {
+                        if (!r.ok && r.reason === "already_done" && window.confirm("Essa call já tem resumo. Gerar de novo?")) {
                           r = await api.callSummary(lead.id, true);
                         }
                         if (r.ok) {
                           refetchTimeline?.();
                           const f = r.summary?.followup;
-                          window.alert(`Resumo pronto na timeline ✓ Temperatura: ${r.summary?.temperatura || "?"}.${f?.quando ? " Próximo toque sugerido já foi agendado no GPS." : ""}`);
+                          window.alert(`Resumo pronto ✓ Temperatura: ${r.summary?.temperatura || "?"}.${f?.quando ? " Próximo toque sugerido já foi agendado no GPS." : ""}`);
                         } else if (r.reason === "transcript_not_ready") {
                           window.alert("A transcrição ainda não está pronta no Google. A call já terminou? Gravação e transcrição estavam ligadas? Tenta de novo em alguns minutos (o cockpit também tenta sozinho a cada 10 min).");
                         } else if (r.reason === "not_connected") {
@@ -507,13 +514,13 @@ function LeadDetail({ lead: initial, onClose }) {
             do lead). comments[] antigos aparecem mesclados como notas. */}
         <div style={{ ...box, display: "flex", flexDirection: "column", minHeight: 160 }}>
           <div className="mono" style={{ ...kicker, marginBottom: 10 }}>
-            Timeline {activities ? `· ${activities.length + (lead.comments?.length || 0)}` : ""}
+            Timeline {activities ? `· ${timelineActs.length + (lead.comments?.length || 0)}` : ""}
           </div>
           <ActivityComposer lead={lead} onLogged={refetchTimeline} />
           <div style={{ marginTop: 8 }}>
             {activities === null
               ? <div className="mono dim" style={{ fontSize: 11.5, padding: "10px 0" }}>carregando…</div>
-              : <ActivityList activities={activities} comments={lead.comments} />}
+              : <ActivityList activities={timelineActs} comments={lead.comments} />}
           </div>
         </div>
           </div>{/* fim coluna Insights */}
