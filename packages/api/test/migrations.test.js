@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
-  ensureIntegrationStage, migrateLeverAdsCrmFunnel, migrateLeverAdsSdrCadence, ensureFunnelKinds,
+  ensureIntegrationStage, migrateLeverAdsCrmFunnel, migrateLeverAdsSdrCadence, migrateNutricaoSevenDays, ensureFunnelKinds,
   ensureLossReasons, ensureNoShowReason, ensureSdrGoals, ensureCloserGoals, ensureSocialGoals, ensureUserRoles, ensureUserSaasScope, ensureUserScreens, DEFAULT_LOSS_REASONS,
 } from "../src/migrations.js";
 
@@ -324,7 +324,7 @@ test("migrateLeverAdsSdrCadence: remove Em contato (cards migram), cria Nutriç�
   assert.ok(!names.includes("Em contato"), "Em contato removido");
   const nut = p.funnel.find((f) => f.stage === "Nutrição");
   assert.equal(nut.kind, "contato");
-  assert.deepEqual(nut.cadence, { maxAttempts: 3, retryDays: 7, firstTouchHours: 480 });
+  assert.deepEqual(nut.cadence, { maxAttempts: 3, retryDays: 7, firstTouchHours: 168 });
   assert.equal(names.indexOf("Nutrição"), names.indexOf("Ganho") + 1, "Nutrição fica fora da régua, depois do Ganho");
   assert.deepEqual(p.funnel.find((f) => f.kind === "novo").cadence, { maxAttempts: 1, retryDays: 1, firstTouchHours: 2 });
   assert.deepEqual(p.funnel.find((f) => f.kind === "qualificacao").cadence, { maxAttempts: 2, retryDays: 1 });
@@ -371,6 +371,41 @@ test("migrateLeverAdsSdrCadence: cadência já editada pelo dono não é sobresc
   assert.deepEqual(p.funnel.find((f) => f.kind === "novo").cadence, { firstTouchHours: 4 });
   assert.deepEqual(p.funnel.find((f) => f.kind === "qualificacao").cadence, { maxAttempts: 7, retryDays: 2 });
   assert.ok(p.funnel.some((f) => f.stage === "Nutrição"), "Nutrição entra mesmo com cadências customizadas");
+});
+
+test("migrateNutricaoSevenDays: encurta a entrada da Nutrição de 480h pra 168h uma vez", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", {
+    id: "leverads", name: "LeverAds",
+    funnel: [
+      { stage: "Ganho", kind: "ganho", conv: 1 },
+      { stage: "Nutrição", kind: "contato", conv: 1, cadence: { maxAttempts: 3, retryDays: 7, firstTouchHours: 480 } },
+    ],
+  });
+
+  assert.equal(await migrateNutricaoSevenDays(repo), true);
+  const p = await repo.get("products", "leverads");
+  assert.deepEqual(p.funnel.find((f) => f.stage === "Nutrição").cadence, { maxAttempts: 3, retryDays: 7, firstTouchHours: 168 });
+  assert.ok(p.nutricao7dV1);
+
+  // One-shot: rodada seguinte não faz nada.
+  assert.equal(await migrateNutricaoSevenDays(repo), false);
+});
+
+test("migrateNutricaoSevenDays: entrada já ajustada pelo dono não é sobrescrita", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", {
+    id: "leverads", name: "LeverAds",
+    funnel: [
+      { stage: "Ganho", kind: "ganho", conv: 1 },
+      { stage: "Nutrição", kind: "contato", conv: 1, cadence: { maxAttempts: 3, retryDays: 7, firstTouchHours: 240 } },
+    ],
+  });
+
+  assert.equal(await migrateNutricaoSevenDays(repo), false, "não reescreve valor customizado");
+  const p = await repo.get("products", "leverads");
+  assert.deepEqual(p.funnel.find((f) => f.stage === "Nutrição").cadence, { maxAttempts: 3, retryDays: 7, firstTouchHours: 240 });
+  assert.ok(p.nutricao7dV1, "mesmo sem mudar a linha, marca como resolvido");
 });
 
 test("ensureUserScreens restringe sdr e ana à operação (today+pipeline+tasks) uma vez, sem sobrescrever ajuste manual", async () => {

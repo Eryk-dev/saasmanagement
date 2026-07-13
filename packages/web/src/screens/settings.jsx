@@ -857,7 +857,7 @@ function ScriptsSettings({ s }) {
                           <span className="mono dim" style={{ fontSize: 10 }}>cadência</span>
                           <CadBox val={cadVal(idx, "maxAttempts")} onChange={(x) => setCad(idx, "maxAttempts", x)} unit="toques" title="toques máximos nesta etapa" />
                           <CadBox val={cadVal(idx, "retryDays")} onChange={(x) => setCad(idx, "retryDays", x)} unit="dias" title="toque registrado → próximo em N dias úteis" />
-                          <CadBox val={cadVal(idx, "firstTouchHours")} onChange={(x) => setCad(idx, "firstTouchHours", x)} unit="h entrada" title="SLA/atraso do 1º contato em horas (ex.: Nutrição entra 480h = 20 dias depois)" />
+                          <CadBox val={cadVal(idx, "firstTouchHours")} onChange={(x) => setCad(idx, "firstTouchHours", x)} unit="h entrada" title="SLA/atraso do 1º contato em horas (ex.: Nutrição entra 168h = 7 dias depois)" />
                         </div>
                       ) : idx >= 0 ? (
                         <span className="mono dim" style={{ fontSize: 10 }}>cadência acima ↑</span>
