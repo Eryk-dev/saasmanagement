@@ -309,7 +309,7 @@ test("migrateLeverAdsSdrCadence: remove Em contato (cards migram), cria Nutriç�
   assert.ok(!names.includes("Em contato"), "Em contato removido");
   const nut = p.funnel.find((f) => f.stage === "Nutrição");
   assert.equal(nut.kind, "contato");
-  assert.deepEqual(nut.cadence, { maxAttempts: 3, retryDays: 1, firstTouchHours: 480 });
+  assert.deepEqual(nut.cadence, { maxAttempts: 3, retryDays: 7, firstTouchHours: 480 });
   assert.equal(names.indexOf("Nutrição"), names.indexOf("Ganho") + 1, "Nutrição fica fora da régua, depois do Ganho");
   assert.deepEqual(p.funnel.find((f) => f.kind === "novo").cadence, { maxAttempts: 1, retryDays: 1, firstTouchHours: 2 });
   assert.deepEqual(p.funnel.find((f) => f.kind === "qualificacao").cadence, { maxAttempts: 2, retryDays: 1 });
