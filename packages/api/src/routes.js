@@ -20,6 +20,7 @@ import { registerMarketingRoutes } from "./routes.marketing.js";
 import { registerSocialRoutes } from "./routes.social.js";
 import { registerOfferRoutes } from "./routes.offers.js";
 import { registerCampaignRoutes } from "./routes.disparos.js";
+import { registerPitchRoutes } from "./routes.pitch.js";
 import { registerMetasRoutes } from "./routes.metas.js";
 import { registerFlashcardRoutes } from "./routes.flashcards.js";
 import { registerGoogleRoutes } from "./routes.google.js";
@@ -211,6 +212,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // (Fase 1: só WhatsApp assistido + IA de copy. O envio nativo de e-mail pelo
   // Gmail entra na fase 2, quando o googleClient também é injetado aqui.)
   registerCampaignRoutes(app, repo, { anthropic: anthropicClient });
+  // Insight de pitch: melhora o roteiro de venda a partir dos resumos das calls.
+  registerPitchRoutes(app, repo, { anthropic: anthropicClient });
   // Metas de desempenho por vaga/pessoa (ferramenta; escreve na collection goals).
   registerMetasRoutes(app, repo);
   // Treinamentos: flashcards por vaga com repetição espaçada (FSRS) por pessoa.

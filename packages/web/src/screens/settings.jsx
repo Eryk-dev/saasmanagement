@@ -803,6 +803,8 @@ function ScriptsSettings({ s }) {
   const [funnelDraft, setFunnelDraft] = useStS(() => (s.funnel || []).map((f) => ({ ...f })));
   const [openKey, setOpenKey] = useStS(null);
   const [previewKey, setPreviewKey] = useStS(null); // roteiro aberto no popup de pré-visualização
+  const [aiBusy, setAiBusy] = useStS(null);         // chave sendo melhorada pela IA
+  const [aiInfo, setAiInfo] = useStS({});           // key -> { diagnostico, objecoes, base }
 
   // Roteiro pronto pro popup de pré-visualização: mostra o RASCUNHO em edição
   // (view = override ou padrão), assim dá pra ver a fala do jeitinho que vai
@@ -856,6 +858,38 @@ function ScriptsSettings({ s }) {
     const n = [...x.passos]; [n[i], n[j]] = [n[j], n[i]]; x.passos = n; return x;
   });
   const resetScript = (key) => setDrafts((d) => { const n = { ...d }; delete n[key]; return n; });
+
+  // "IA das calls": manda o roteiro atual + o padrão das últimas calls do
+  // produto pro servidor, recebe uma versão melhorada e joga no rascunho (o
+  // usuário revisa e salva com "Salvar e replicar"). Não grava sozinho.
+  async function improveWithCalls(key) {
+    const label = SCRIPT_CATALOG.find((c) => c.key === key)?.label || key;
+    const cur = view(key);
+    setAiBusy(key);
+    try {
+      const r = await api.improvePitch(s.id, {
+        scriptKey: key, scriptLabel: label,
+        currentScript: { resumo: cur.resumo, objetivo: cur.objetivo, passos: cur.passos },
+      });
+      const sg = r?.sugestao;
+      if (sg) {
+        setDrafts((d) => ({ ...d, [key]: {
+          resumo: String(sg.resumo || cur.resumo || ""),
+          objetivo: String(sg.objetivo || cur.objetivo || ""),
+          passos: (Array.isArray(sg.passos) && sg.passos.length)
+            ? sg.passos.map((p) => ({ t: String(p.t || ""), fala: String(p.fala || ""), dica: String(p.dica || "") }))
+            : cur.passos,
+        } }));
+        setAiInfo((m) => ({ ...m, [key]: { diagnostico: r.diagnostico || "", objecoes: r.objecoesRecorrentes || [], base: r.base || 0 } }));
+        setOpenKey(key);
+      }
+    } catch (e) {
+      alert(e?.status === 422
+        ? "Ainda não há calls resumidas por IA neste produto pra analisar. As calls agendadas pelo cockpit viram resumo automático quando o Meet gera a transcrição."
+        : `Não deu pra gerar a sugestão: ${e?.message || e}`);
+    }
+    setAiBusy(null);
+  }
 
   async function save() {
     // 1) overrides de roteiro (só as chaves editadas; passos vazios saem)
@@ -922,6 +956,13 @@ function ScriptsSettings({ s }) {
                       ) : (
                         <span className="mono dim" style={{ fontSize: 10 }}>{item.key === "confirmacao" ? "janelas fixas: 1h e 10min antes" : "sem cadência de estágio"}</span>
                       )}
+                      {item.phase === "Closer" && (
+                        <button type="button" onClick={() => improveWithCalls(item.key)} disabled={aiBusy === item.key} className="mono"
+                          title="Analisa os resumos das últimas calls e propõe uma versão melhor deste roteiro (você revisa e salva)"
+                          style={{ fontSize: 11, color: "var(--accent)", opacity: aiBusy === item.key ? 0.6 : 1 }}>
+                          {aiBusy === item.key ? "analisando calls…" : "✨ IA das calls"}
+                        </button>
+                      )}
                       <button type="button" onClick={() => setPreviewKey(item.key)} className="mono" style={{ fontSize: 11, color: "var(--fg-3)" }}
                         title="Ver como este roteiro aparece no popup das Minhas atividades (com dados de exemplo)">▶ pré-visualizar</button>
                       <button type="button" onClick={() => setOpenKey(open ? null : item.key)} className="mono" style={{ fontSize: 11, color: open ? "var(--accent)" : "var(--fg-3)" }}>{open ? "fechar" : "✎ editar"}</button>
@@ -929,6 +970,20 @@ function ScriptsSettings({ s }) {
                   </div>
                   {open && (
                     <div style={{ padding: "12px 14px 14px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+                      {aiInfo[item.key] && (
+                        <div style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", borderRadius: "var(--r-2)", padding: "9px 11px", marginBottom: 12 }}>
+                          <div className="mono" style={{ fontSize: 10, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>✨ Sugestão da IA · {aiInfo[item.key].base} calls analisadas</div>
+                          {aiInfo[item.key].diagnostico && <div style={{ fontSize: 12, lineHeight: 1.5, marginBottom: aiInfo[item.key].objecoes?.length ? 6 : 0 }}>{aiInfo[item.key].diagnostico}</div>}
+                          {aiInfo[item.key].objecoes?.length > 0 && (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                              {aiInfo[item.key].objecoes.map((o, oi) => (
+                                <div key={oi} style={{ fontSize: 11.5, lineHeight: 1.45 }}><b>{o.objecao}</b>{o.frequencia ? ` (${o.frequencia})` : ""}: {o.comoTratarNoPitch}</div>
+                              ))}
+                            </div>
+                          )}
+                          <div className="mono dim" style={{ fontSize: 10, marginTop: 6 }}>revise os campos abaixo e clique em “Salvar e replicar” pra aplicar</div>
+                        </div>
+                      )}
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
                         <div>
                           <label style={miniLabel}>Postura (como se comportar)</label>

@@ -111,6 +111,57 @@ const CAMPAIGN_COPY_SCHEMA = {
 const CAMPAIGN_SYSTEM = `Você é o copywriter de resposta direta da LeverAds, SaaS que clona e sincroniza anúncios entre contas de Mercado Livre e Shopee (multi-contas, mais exposição, menos retrabalho, proteção contra banimento).
 Sua tarefa: escrever a copy de um DISPARO (e-mail e/ou WhatsApp) pra uma lista de leads QUALIFICADOS (já conversaram com o time, conhecem a LeverAds). É reengajamento/nutrição, não primeiro contato frio.
 Regras: português do Brasil, direto, específico e crível (nada de número inventado nem promessa mágica). Fale com dono de operação de marketplace (vendedor ML/Shopee). NUNCA use travessão (—); use vírgula, parênteses ou ponto. Pode usar os tokens {{nome}}, {{empresa}} e {{nicho}} (o sistema troca pelos dados de cada lead) — sempre abra a mensagem com {{nome}}. Preencha SÓ os campos do canal pedido; deixe os outros como string vazia.`;
+// Melhoria de pitch a partir das calls: recebe o roteiro atual + o padrão das
+// últimas calls (objeções recorrentes, dores, temperatura) e devolve uma versão
+// melhor do roteiro (mesma estrutura editável: postura/objetivo/passos) + o
+// diagnóstico e como tratar cada objeção recorrente no pitch.
+const PITCH_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["diagnostico", "objecoesRecorrentes", "sugestao"],
+  properties: {
+    diagnostico: { type: "string", description: "2 a 4 frases: o que as calls mostram que o pitch atual não está resolvendo/aproveitando" },
+    objecoesRecorrentes: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["objecao", "frequencia", "comoTratarNoPitch"],
+        properties: {
+          objecao: { type: "string" },
+          frequencia: { type: "string", description: "quão frequente, ex.: '8 de 20 calls'" },
+          comoTratarNoPitch: { type: "string", description: "como o roteiro deve antecipar/tratar essa objeção" },
+        },
+      },
+    },
+    sugestao: {
+      type: "object",
+      additionalProperties: false,
+      required: ["resumo", "objetivo", "passos"],
+      properties: {
+        resumo: { type: "string", description: "Postura (como se comportar) da versão melhorada" },
+        objetivo: { type: "string", description: "Objetivo do contato" },
+        passos: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["t", "fala", "dica"],
+            properties: {
+              t: { type: "string", description: "título curto do passo" },
+              fala: { type: "string", description: "a fala pronta pro closer (pode ficar vazia em passo só de ação)" },
+              dica: { type: "string", description: "nota interna de apoio (não é falada); vazia se não precisar" },
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
+const PITCH_SYSTEM = `Você é o head comercial da LeverAds, SaaS que clona e sincroniza anúncios entre contas de Mercado Livre e Shopee (multi-contas, proteção contra banimento, economia de operação).
+Você recebe (1) o roteiro de vendas ATUAL de uma etapa e (2) o padrão do que aconteceu nas últimas calls reais (objeções recorrentes e como foram tratadas, dores mais citadas, temperatura). Sua tarefa: propor uma versão MELHOR do roteiro que antecipa e trata as objeções que mais aparecem, aproveita as dores mais frequentes e sobe a taxa de fechamento.
+Regras: seja fiel aos padrões REAIS das calls (não invente objeção nem dado que não apareceu). Mantenha os {{tokens}} que já existem no roteiro atual (ex.: {{nome}}, {{nicho}}, {{contas}}, {{anuncios}}, {{eu}}, {{produto}}, {{closer_responsavel}}, {{hora_call}}, {{link_call}}). NUNCA use travessão (—) em nenhum texto; use vírgula ou parênteses. Português direto, sem enrolação. Os "passos" são a fala pronta pro closer; a "dica" é nota interna. Mantenha o roteiro enxuto (só os passos necessários), não infle a quantidade de passos.`;
 
 export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model = "" } = {}) {
   const configured = () => !!apiKey;
@@ -273,5 +324,31 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
     return { subject: r.parsed.subject || "", body: r.parsed.body || "", whatsapp: r.parsed.whatsapp || "", usage: r.usage, model: r.model };
   }
 
-  return { configured, summarizeCall, suggestWelcome, suggestSocialCopy, suggestCampaignCopy, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
+  // Uma sugestão de roteiro melhorado a partir do pitch atual + digest das
+  // calls. Não grava nada: devolve diagnóstico + objeções recorrentes + o
+  // roteiro sugerido (mesma estrutura do editor de Scripts) pro time revisar.
+  async function improvePitch({ productName = "LeverAds", scriptLabel = "roteiro", currentScript = {}, calls = "" }) {
+    if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
+    const passos = (currentScript.passos || [])
+      .map((p, i) => `${i + 1}. ${p.t ? `${p.t}: ` : ""}${p.fala || ""}${p.dica ? ` [dica: ${p.dica}]` : ""}`)
+      .join("\n");
+    const context = [
+      `Produto: ${productName}`,
+      `Etapa do roteiro: ${scriptLabel}`,
+      "",
+      "ROTEIRO ATUAL",
+      `Postura: ${currentScript.resumo || "(vazio)"}`,
+      `Objetivo: ${currentScript.objetivo || "(vazio)"}`,
+      `Passo a passo:\n${passos || "(vazio)"}`,
+      "",
+      "PADRÃO DAS ÚLTIMAS CALLS",
+      calls || "(sem dados)",
+      "",
+      "Proponha a versão melhorada (postura, objetivo, passos), o diagnóstico e como tratar cada objeção recorrente no pitch.",
+    ].join("\n");
+    const r = await requestJson(context, { system: PITCH_SYSTEM, schema: PITCH_SCHEMA, schemaName: "pitch_improvement" });
+    return { suggestion: r.parsed, usage: r.usage, model: r.model };
+  }
+
+  return { configured, summarizeCall, suggestWelcome, suggestSocialCopy, suggestCampaignCopy, improvePitch, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
 }
