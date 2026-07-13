@@ -117,20 +117,25 @@ function buildQueue(leads, saasCfg, person) {
       continue;
     }
 
-    // Compromisso mais próximo do lead. Call/integração SÓ contam de hoje em
-    // diante E SÓ NA ETAPA correspondente: uma call/integração marcada num card
-    // que já AVANÇOU de etapa (ex.: foi pra Proposta/Follow-up) é histórico, não
-    // compromisso vivo — o servidor re-agenda o GPS (nextActionAt) mas nunca
-    // limpa o callAt, então sem esse filtro por etapa a reunião antiga ancorava
-    // o card na fila de hoje pra sempre (bug: "mudei a etapa e o card não saiu").
+    // "Quando" do card. Duas regras que se combinam:
+    //  (1) Compromisso (call/integração) só vale de HOJE em diante e SÓ NA ETAPA
+    //      correspondente: uma call marcada num card que já AVANÇOU de etapa
+    //      (ex.: foi pra Proposta) é histórico, não compromisso — o servidor
+    //      re-agenda o GPS mas nunca limpa o callAt, então sem o filtro por etapa
+    //      a call antiga ancorava o card na fila de hoje pra sempre.
+    //  (2) Havendo compromisso vivo NA etapa, é ele que conduz o card (mesmo pra
+    //      frente). O toque do GPS (nextActionAt) é confirmação/retry e NÃO
+    //      compete: senão um card com call daqui a 2 dias aparece "atrasado" hoje
+    //      por um toque vencido. O nextActionAt só entra quando não há call/
+    //      integração agendada nesta etapa.
     const cands = [];
     const push = (v, type, min = 0) => {
       const t = v ? new Date(v).getTime() : NaN;
       if (Number.isFinite(t) && t >= min) cands.push({ t, type });
     };
-    push(l.nextActionAt, "toque");
     if (kind === "call") push(l.callAt, "call", startToday.getTime());
-    if (kind === "integracao") push(l.integrationAt, "integração", startToday.getTime());
+    else if (kind === "integracao") push(l.integrationAt, "integração", startToday.getTime());
+    if (!cands.length) push(l.nextActionAt, "toque");
     cands.sort((a, b) => a.t - b.t);
     const due = cands[0] || null;
 
