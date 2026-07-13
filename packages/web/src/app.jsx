@@ -116,23 +116,23 @@ function App() {
 
   function openLead(l) { setLeadSel(l); }
 
-  // Breadcrumb per screen
+  // Breadcrumb per screen — segue os grupos do menu (Comercial/Marketing/Geral).
   const crumbsFor = {
     overview:    ["Visão geral"],
-    today:       ["Meu dia"],
-    pipeline:    ["Pipeline"],
-    customers:   ["Clientes"],
-    metrics:     ["Publicidade"],
-    expenses:    ["Custos"],
-    social:      ["Mídia social"],
-    forms:       ["Ferramentas", "Formulários"],
-    proposals:   ["Ferramentas", "Propostas"],
-    creative:    ["Ferramentas", "Estáticos"],
-    offers:      ["Ferramentas", "Pagamentos"],
-    metas:       ["Ferramentas", "Metas"],
-    subscriptions: ["Clientes", "Assinaturas"], // rota antiga → aba dentro de Clientes
-    tasks:       ["Ferramentas", "Tarefas"],
-    settings:    ["Ajustes"],
+    today:       ["Minhas atividades"],
+    pipeline:    ["Comercial", "Pipeline"],
+    customers:   ["Comercial", "Clientes"],
+    proposals:   ["Comercial", "Propostas"],
+    offers:      ["Comercial", "Link pagamento"],
+    social:      ["Marketing", "Redes sociais"],
+    metrics:     ["Marketing", "Publicidade"],
+    forms:       ["Marketing", "Formulários"],
+    creative:    ["Marketing", "Canvas"],
+    tasks:       ["Geral", "Tarefas"],
+    metas:       ["Geral", "Metas"],
+    expenses:    ["Geral", "Custos"],
+    settings:    ["Geral", "Configurações"],
+    subscriptions: ["Comercial", "Clientes", "Assinaturas"], // rota antiga → aba dentro de Clientes
   };
 
   // Restrição de telas (user.screens): hash/navegação pra tela proibida cai na

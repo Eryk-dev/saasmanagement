@@ -8,30 +8,34 @@ import { canSeeScreen } from "./lib/users.js";
 
 const { useState: useS, useEffect: useE, useRef: useR } = React;
 
-// 4 áreas principais respondem o dia a dia; Ferramentas guarda os builders e o
-// operacional. Telas antigas de portfólio/demo saem do nav (aposentadas na fase 2).
+// Menu organizado por área do negócio: topo sem rótulo (o dia a dia), depois
+// Comercial, Marketing e Geral. A ORDEM dos grupos segue a 1ª aparição no array.
 const NAV = [
-  { id: "overview",   label: "Visão geral", icon: "◈",  group: "main" },
-  { id: "today",      label: "Meu dia",     icon: "◷",  group: "main" },
-  { id: "pipeline",   label: "Pipeline",    icon: "≡",  group: "main" },
-  { id: "customers",  label: "Clientes",    icon: "○",  group: "main" },
-  { id: "metrics",    label: "Publicidade", icon: "∿",  group: "main" },
-  { id: "expenses",   label: "Custos",      icon: "◫",  group: "main" },
-  { id: "social",     label: "Mídia social", icon: "◍", group: "main" },
-  { id: "forms",      label: "Formulários", icon: "▤",  group: "tools" },
-  { id: "proposals",  label: "Propostas",   icon: "▥",  group: "tools" },
-  { id: "creative",   label: "Estáticos",   icon: "◨",  group: "tools" },
-  { id: "offers",     label: "Pagamentos",  icon: "◇",  group: "tools" },
-  { id: "metas",      label: "Metas",       icon: "◎",  group: "tools" },
-  { id: "tasks",      label: "Tarefas",     icon: "▣",  group: "tools" },
-  { id: "settings",   label: "Ajustes",     icon: "✦",  group: "system" },
+  { id: "overview",   label: "Visão geral",       icon: "◈",  group: "main" },
+  { id: "today",      label: "Minhas atividades", icon: "◷",  group: "main" },
+
+  { id: "pipeline",   label: "Pipeline",       icon: "≡",  group: "comercial" },
+  { id: "customers",  label: "Clientes",       icon: "○",  group: "comercial" },
+  { id: "proposals",  label: "Propostas",      icon: "▥",  group: "comercial" },
+  { id: "offers",     label: "Link pagamento", icon: "◇",  group: "comercial" },
+
+  { id: "social",     label: "Redes sociais",  icon: "◍",  group: "marketing" },
+  { id: "metrics",    label: "Publicidade",    icon: "∿",  group: "marketing" },
+  { id: "forms",      label: "Formulários",    icon: "▤",  group: "marketing" },
+  { id: "creative",   label: "Canvas",         icon: "◨",  group: "marketing" },
+
+  { id: "tasks",      label: "Tarefas",        icon: "▣",  group: "geral" },
+  { id: "metas",      label: "Metas",          icon: "◎",  group: "geral" },
+  { id: "expenses",   label: "Custos",         icon: "◫",  group: "geral" },
+  { id: "settings",   label: "Configurações",  icon: "✦",  group: "geral" },
 ];
 
 // Grupo "main" não leva rótulo (é a espinha do app); os demais levam.
 const GROUP_LABELS = {
   main: null,
-  tools: "ferramentas",
-  system: "config",
+  comercial: "comercial",
+  marketing: "marketing",
+  geral: "geral",
 };
 
 function NavRail({ current, onNav, collapsed }) {
