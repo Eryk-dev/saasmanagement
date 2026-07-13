@@ -118,15 +118,18 @@ function buildQueue(leads, saasCfg, person) {
     }
 
     // Compromisso mais próximo do lead. Call/integração SÓ contam de hoje em
-    // diante: data velha esquecida no card não é compromisso, é histórico — o
-    // agendamento vivo é o do GPS (nextActionAt).
+    // diante E SÓ NA ETAPA correspondente: uma call/integração marcada num card
+    // que já AVANÇOU de etapa (ex.: foi pra Proposta/Follow-up) é histórico, não
+    // compromisso vivo — o servidor re-agenda o GPS (nextActionAt) mas nunca
+    // limpa o callAt, então sem esse filtro por etapa a reunião antiga ancorava
+    // o card na fila de hoje pra sempre (bug: "mudei a etapa e o card não saiu").
     const cands = [];
     const push = (v, type, min = 0) => {
       const t = v ? new Date(v).getTime() : NaN;
       if (Number.isFinite(t) && t >= min) cands.push({ t, type });
     };
     push(l.nextActionAt, "toque");
-    push(l.callAt, "call", startToday.getTime());
+    if (kind === "call") push(l.callAt, "call", startToday.getTime());
     if (kind === "integracao") push(l.integrationAt, "integração", startToday.getTime());
     cands.sort((a, b) => a.t - b.t);
     const due = cands[0] || null;
