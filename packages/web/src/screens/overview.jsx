@@ -417,6 +417,14 @@ const PANELS = [
       { label: "NPS", render: (p) => <span className="tnum" title={p.npsCount ? `${p.npsCount} respostas` : "sem resposta ainda"}>{p.nps != null ? String(p.nps).replace(".", ",") : "—"}</span> },
     ],
   },
+  {
+    key: "social", title: "Mídia social", hint: "conteúdo e criativos · produção conectada em breve (alvo definido em Metas)",
+    cols: [
+      { label: "Posts", render: (p, ctx) => <MetaCell value={p.postsPerMonth} goal={scaleGoal(p.goals?.postsPerMonth, ctx.period)} /> },
+      { label: "Stories", render: (p, ctx) => <MetaCell value={p.storiesPerMonth} goal={scaleGoal(p.goals?.storiesPerMonth, ctx.period)} /> },
+      { label: "Ads", render: (p, ctx) => <MetaCell value={p.adsPerMonth} goal={scaleGoal(p.goals?.adsPerMonth, ctx.period)} /> },
+    ],
+  },
 ];
 
 // O placar do time segue o FILTRO ÚNICO do topo da página (period): todos os
