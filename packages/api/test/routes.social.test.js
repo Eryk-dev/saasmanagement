@@ -329,3 +329,33 @@ test("rotas: falha por rede não derruba a outra; publish sem asset é 400", asy
   const bad = await app.inject({ method: "POST", url: "/api/social/publish", payload: { saas: "leverads", assetIds: [] } });
   assert.equal(bad.statusCode, 400);
 });
+
+test("new-followers: soma a variação diária de follower_count (~24h) + username", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", metaIgUserId: "ig1", metaPageId: "pg1" });
+  const f = makeGraphFetch([
+    ["/ig1/insights", { data: [{ name: "follower_count", period: "day", values: [
+      { value: 3, end_time: "2026-07-13T07:00:00+0000" },
+      { value: 2, end_time: "2026-07-14T07:00:00+0000" },
+    ] }] }],
+    ["/ig1?", { username: "leverads.oficial", followers_count: 1200 }],
+  ]);
+  const social = makeSocial({ fetch: f, accessToken: "tok" });
+  const app = Fastify();
+  registerSocialRoutes(app, repo, { social });
+  const r = (await app.inject({ method: "GET", url: "/api/social/new-followers/leverads" })).json();
+  assert.equal(r.configured, true);
+  assert.equal(r.count, 5);              // 3 + 2 (o Instagram só dá a CONTAGEM, não os @)
+  assert.equal(r.username, "leverads.oficial");
+});
+
+test("new-followers: sem IG configurado = configured:false, count null", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "x", name: "X" }); // sem metaIgUserId/metaPageId
+  const social = makeSocial({ fetch: async () => ({ status: 200, text: async () => "{}" }), accessToken: "tok" });
+  const app = Fastify();
+  registerSocialRoutes(app, repo, { social });
+  const r = (await app.inject({ method: "GET", url: "/api/social/new-followers/x" })).json();
+  assert.equal(r.configured, false);
+  assert.equal(r.count, null);
+});

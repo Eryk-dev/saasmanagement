@@ -34,6 +34,10 @@ export function canScreen(user, screen) {
 // (bootstrap, rev/events, auth próprio, people, leaderboard) ficam liberadas pra
 // qualquer sessão — o bootstrap filtra o payload por conta própria (routes.js).
 const ROUTE_SCREENS = [
+  // Aviso de social selling do Meu dia (só a CONTAGEM de novos seguidores) — o
+  // SDR alcança pela fila (today) sem ter a tela de Mídia social. Precede
+  // /api/social (primeiro match vence).
+  ["/api/social/new-followers", ["today", "pipeline", "overview", "social"]],
   ["/api/social", ["social"]],
   ["/api/marketing", ["metrics"]],
   ["/api/metrics/", ["metrics"]],
