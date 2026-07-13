@@ -8,6 +8,7 @@ import { PORTFOLIO_CONST } from "./seed-data.js";
 import { openapi, docsHtml } from "./openapi.js";
 import { runProposal, integrationStatus } from "./levercopy.js";
 import { registerFormRoutes } from "./routes.forms.js";
+import { registerWebhookRoutes } from "./routes.webhooks.js";
 import { mergeLeadQuestions } from "./forms.js";
 import { registerProposalRoutes } from "./routes.proposals.js";
 import { runNativeProposal } from "./proposal.js";
@@ -207,6 +208,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   });
   // Superfície pública do form builder (/public/forms, /f/:id, /embed.js).
   registerFormRoutes(app, repo, { ...(opts.forms || {}), discord: discordClient, metaCapi: metaCapiClient, anthropic: anthropicClient });
+  // Webhooks de entrada (Shopify da UniqueKids → lead pra Ana). Rota aberta,
+  // autenticada por assinatura HMAC da Shopify (ver routes.webhooks.js).
+  registerWebhookRoutes(app, repo, { ...(opts.webhooks || {}) });
   // Superfície pública do proposal builder (/p/:id, aceite, painel do closer).
   registerProposalRoutes(app, repo, { ...(opts.proposals || {}), discord: discordClient, metaCapi: metaCapiClient });
   // Billing (fase 5): mudança de plano c/ pró-rata, baixa de fatura, tick do motor.
