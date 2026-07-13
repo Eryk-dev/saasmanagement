@@ -1362,9 +1362,6 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
   // validade), escolhe no popover e a página recalcula + auto-salva (PATCH).
   function mountInlineEdit() {
     var token = new URLSearchParams(location.search).get('k') || '';
-    document.body.classList.add('editing');
-    document.body.appendChild(el('div', 'edit-banner', '✏️ Modo closer · clique nos números p/ ajustar · salva sozinho'));
-
     var tag = el('div', 'save-tag', '');
     document.body.appendChild(tag);
     var saveTimer = null;
@@ -1428,30 +1425,11 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       return ctl;
     }
 
-    var pop = null;
-    function closePop() { if (pop) { pop.remove(); pop = null; } }
-    function openPop(span, field) {
-      closePop();
-      var ctl = control(field, function () { fillDynamic(); scheduleSave(); });
-      if (!ctl) return;
-      pop = el('div', 'edit-pop');
-      pop.appendChild(ctl);
-      document.body.appendChild(pop);
-      var r = span.getBoundingClientRect();
-      pop.style.top = (window.scrollY + r.bottom + 6) + 'px';
-      pop.style.left = (window.scrollX + Math.min(r.left, window.innerWidth - 200)) + 'px';
-      if (ctl.focus) ctl.focus();
-    }
-    document.addEventListener('click', function (e) {
-      if (pop && !pop.contains(e.target) && !(e.target.classList && e.target.classList.contains('pe'))) closePop();
-    });
-
-    document.querySelectorAll('[data-fill]').forEach(function (span) {
-      var field = EDIT_FIELD[span.getAttribute('data-fill')];
-      if (!field || span.classList.contains('pe')) return;
-      span.classList.add('pe');
-      span.addEventListener('click', function (e) { e.stopPropagation(); openPop(span, field); });
-    });
+    // Edição inline nos slides (canetas ✎ + popover) REMOVIDA de propósito: o link
+    // ?k é a apresentação do cliente, então os campos dos slides ficam LIMPOS (sem
+    // caneta, sem clique). A edição acontece só na tela de setup abaixo, que replica
+    // na apresentação ao vivo. Os data-fill de lead.*/answers.* seguem se
+    // atualizando por fillDynamic quando o closer edita no setup.
 
     // Painel de setup do closer: uma "tela zero" ANTES da capa (só no modo ?k) com
     // os campos da capa em formulário. Reusa control() (mesmo binding do popover),
@@ -1460,9 +1438,9 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     function buildSetup() {
       var sec = el('section', 'closer-setup');
       var w = el('div', 'wrap');
-      w.appendChild(el('span', 'hero-tag', 'Modo closer · só você vê'));
+      w.appendChild(el('span', 'hero-tag', 'Antes de começar'));
       w.appendChild(el('h2', 'setup-title', 'Confira os dados antes de apresentar'));
-      w.appendChild(el('p', 'setup-sub', 'Ajuste o que precisar. As mudanças entram na apresentação na hora e atualizam o lead.'));
+      w.appendChild(el('p', 'setup-sub', 'Ajuste o que precisar. As mudanças entram na apresentação na hora.'));
       var grid = el('div', 'setup-grid');
       // Campos condicionais ao produto: nicho/contas/anúncios só entram se o calc
       // tiver a config (outros SaaS sem esses mapas não mostram select vazio).
