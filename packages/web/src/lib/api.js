@@ -146,6 +146,26 @@ export const api = {
   trainingQueue: (saas) => req("GET", `/api/flashcards/${encodeURIComponent(saas)}/queue`),
   trainingReview: (saas, cardId, rating) => req("POST", `/api/flashcards/${encodeURIComponent(saas)}/review`, { cardId, rating }),
   trainingTeam: (saas) => req("GET", `/api/flashcards/${encodeURIComponent(saas)}/team`),
+  trainingStats: (saas) => req("GET", `/api/flashcards/${encodeURIComponent(saas)}/stats`),
+  // Imagem de flashcard (colada/enviada no editor) → asset servido em /public/training/:id.
+  trainingAsset: async (saas, blob, name = "card.png") => {
+    const fd = new FormData();
+    fd.append("file", blob, name);
+    const key = getKey();
+    const res = await fetch(`${BASE}/api/flashcards/${encodeURIComponent(saas)}/asset`, {
+      method: "POST",
+      headers: key ? { "x-api-key": key } : {},
+      body: fd,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      const err = new Error(`API POST asset -> ${res.status} ${text}`);
+      err.status = res.status;
+      throw err;
+    }
+    return res.json();
+  },
+  trainingAssetUrl: (id) => `${BASE}/public/training/${encodeURIComponent(id)}`,
   socialPublish: (payload) => req("POST", "/api/social/publish", payload),
   // Copy do post por IA: preenche os campos do template + legenda a partir da dor.
   socialAiCopy: (payload) => req("POST", "/api/social/ai-copy", payload),

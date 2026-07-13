@@ -47,4 +47,5 @@ export const COLLECTIONS = {
   training_attempts: [], // tentativas do treino digitado (legado) — histórico preservado
   training_states: [],   // estado FSRS por usuário×produto (agendamento individual dos cards)
   training_reviews: [],  // log append-only de cada revisão (rating) — dashboard + otimização FSRS
+  training_assets: [],   // imagens dos flashcards (base64, servidas em /public/training/:id)
 };

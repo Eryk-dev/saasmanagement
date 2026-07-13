@@ -47,14 +47,54 @@ const DEFAULTS = {
 const ROLES = new Set(Object.keys(ROLE_LABELS));
 const ROLE_ORDER = Object.keys(ROLE_LABELS);
 
+// Tipos de card: basic (frente/verso), cloze (deleções {{c1::...}} no texto —
+// cada índice vira um sub-card) e occlusion (imagem + retângulos tapados —
+// cada máscara vira um sub-card). Imagem opcional em basic/cloze.
+const CARD_TYPES = new Set(["basic", "cloze", "occlusion"]);
+
+function sanitizeMasks(masks) {
+  if (!Array.isArray(masks)) return [];
+  const clamp01 = (v) => Math.max(0, Math.min(1, Number(v) || 0));
+  return masks.slice(0, 30).map((m, i) => ({
+    id: /^m\d+$/.test(String(m?.id)) ? m.id : `m${i + 1}`,
+    x: clamp01(m?.x), y: clamp01(m?.y), w: clamp01(m?.w), h: clamp01(m?.h),
+  })).filter((m) => m.w > 0.005 && m.h > 0.005);
+}
+
 function sanitize(cards) {
   if (!Array.isArray(cards)) return null;
-  return cards.slice(0, 400).map((c, i) => ({
-    id: String(c?.id || `card_${i + 1}`).slice(0, 60),
-    role: ROLES.has(c?.role) ? c.role : "sdr",
-    front: String(c?.front || "").slice(0, 600),
-    back: String(c?.back || "").slice(0, 1200),
-  })).filter((c) => c.front.trim() || c.back.trim());
+  return cards.slice(0, 400).map((c, i) => {
+    const type = CARD_TYPES.has(c?.type) ? c.type : "basic";
+    return {
+      id: String(c?.id || `card_${i + 1}`).slice(0, 60),
+      role: ROLES.has(c?.role) ? c.role : "sdr",
+      type,
+      front: String(c?.front || "").slice(0, 600),
+      back: String(c?.back || "").slice(0, 1200),
+      image: String(c?.image || "").slice(0, 60),
+      ...(type === "occlusion" ? { masks: sanitizeMasks(c?.masks) } : {}),
+    };
+  }).filter((c) => (c.type === "occlusion" ? (c.image && c.masks.length) : (c.front.trim() || c.back.trim())));
+}
+
+// {{c1::texto}} ou {{c1::texto::dica}} — mesmo formato do Anki.
+const CLOZE_RE = /\{\{c(\d+)::(.*?)\}\}/gs;
+export function clozeIndexes(text) {
+  const ns = new Set();
+  for (const m of String(text || "").matchAll(CLOZE_RE)) ns.add(Number(m[1]));
+  return [...ns].sort((a, b) => a - b);
+}
+
+// Um card pode virar vários itens de estudo: cloze por índice, occlusion por
+// máscara. O estado FSRS (e a fila) é por ENTRY — `id`, `id::c1`, `id::m2`.
+function cardEntries(card) {
+  if (card.type === "cloze") {
+    const ns = clozeIndexes(card.front);
+    if (ns.length) return ns.map((n) => ({ entryId: `${card.id}::c${n}`, sub: `c${n}` }));
+  } else if (card.type === "occlusion") {
+    return (card.masks || []).map((m) => ({ entryId: `${card.id}::${m.id}`, sub: m.id }));
+  }
+  return [{ entryId: card.id, sub: null }];
 }
 
 // Ajustes do treino por produto. Só um por enquanto: quantos cards NOVOS por
@@ -86,15 +126,18 @@ function buildDeckQueue(cards, statesDoc, { now, newBudget }) {
   const end = dayEnd(now);
   const learning = [], review = [], fresh = [];
   for (const card of cards) {
-    const st = statesDoc.cards[card.id] || null;
-    if (!st || st.state === CARD_STATE.new) fresh.push({ card, st });
-    else if (st.state === CARD_STATE.review) { if (new Date(st.due) <= end) review.push({ card, st }); }
-    else if (new Date(st.due) <= end) learning.push({ card, st }); // learning/relearning
+    for (const { entryId, sub } of cardEntries(card)) {
+      const st = statesDoc.cards[entryId] || null;
+      const item = { card, entryId, sub, st };
+      if (!st || st.state === CARD_STATE.new) fresh.push(item);
+      else if (st.state === CARD_STATE.review) { if (new Date(st.due) <= end) review.push(item); }
+      else if (new Date(st.due) <= end) learning.push(item); // learning/relearning
+    }
   }
   const byDue = (a, b) => new Date(a.st.due) - new Date(b.st.due);
   learning.sort(byDue); review.sort(byDue);
   const newToday = fresh.slice(0, Math.max(0, newBudget));
-  const pack = ({ card, st }) => ({ ...card, srs: st, preview: previewIntervals(st, now) });
+  const pack = ({ card, entryId, sub, st }) => ({ ...card, entryId, sub, srs: st, preview: previewIntervals(st, now) });
   return {
     counts: { new: newToday.length, learning: learning.length, review: review.length },
     cards: [...learning.map(pack), ...review.map(pack), ...newToday.map(pack)],
@@ -119,11 +162,12 @@ export async function teamSnapshot(repo, saas, cardsBase, now = new Date()) {
   const rows = [];
   for (const u of users) {
     const roles = rolesForUser(u);
-    const deck = cardsBase.filter((c) => roles.includes(c.role));
+    // o baralho conta ENTRIES (cloze/occlusion viram vários itens de estudo)
+    const deck = cardsBase.filter((c) => roles.includes(c.role)).flatMap(cardEntries);
     const statesDoc = (await repo.get("training_states", stateDocId(saas, u.id))) || EMPTY_STATES(saas, u.id);
     let dueToday = 0, overdue = 0, seen = 0;
-    for (const card of deck) {
-      const st = statesDoc.cards[card.id];
+    for (const { entryId } of deck) {
+      const st = statesDoc.cards[entryId];
       if (!st || st.state === CARD_STATE.new) continue;
       seen++;
       const due = new Date(st.due);
@@ -182,7 +226,7 @@ export function registerFlashcardRoutes(app, repo) {
       const deck = buildDeckQueue(cards.filter((c) => c.role === role), statesDoc, {
         now, newBudget: settings.newPerDay - (doneByRole[role] || 0),
       });
-      decks.push({ role, label: ROLE_LABELS[role], total: cards.filter((c) => c.role === role).length, counts: deck.counts });
+      decks.push({ role, label: ROLE_LABELS[role], total: cards.filter((c) => c.role === role).flatMap(cardEntries).length, counts: deck.counts });
       queue[role] = deck.cards;
     }
     return { saas: product.id, today: dayKey(now), dayEnd: dayEnd(now).toISOString(), newPerDay: settings.newPerDay, decks, queue };
@@ -199,16 +243,21 @@ export function registerFlashcardRoutes(app, repo) {
     const rating = Number(req.body?.rating);
     if (![1, 2, 3, 4].includes(rating)) return reply.code(400).send({ error: "rating deve ser 1..4" });
     const { cards } = await baseDoc(product.id);
-    const card = cards.find((c) => c.id === String(req.body?.cardId || ""));
-    if (!card) return reply.code(404).send({ error: "card não encontrado na base" });
+    // `cardId` é o ENTRY id: `id` (basic), `id::c1` (cloze) ou `id::m2` (occlusion)
+    const entryId = String(req.body?.cardId || "");
+    const baseId = entryId.split("::")[0];
+    const card = cards.find((c) => c.id === baseId);
+    if (!card || !cardEntries(card).some((e) => e.entryId === entryId)) {
+      return reply.code(404).send({ error: "card não encontrado na base" });
+    }
 
     const now = new Date();
     const docId = stateDocId(product.id, user.id);
     const statesDoc = (await repo.get("training_states", docId)) || EMPTY_STATES(product.id, user.id);
-    const prev = statesDoc.cards[card.id] || null;
+    const prev = statesDoc.cards[entryId] || null;
     const wasNew = !prev || prev.state === CARD_STATE.new;
     const { card: next, log } = applyRating(prev, rating, now);
-    statesDoc.cards[card.id] = next;
+    statesDoc.cards[entryId] = next;
 
     if (wasNew) {
       const today = dayKey(now);
@@ -225,14 +274,74 @@ export function registerFlashcardRoutes(app, repo) {
     else await repo.create("training_states", statesDoc);
 
     // log da revisão (dashboard/otimização) — best-effort, nunca trava o estudo.
+    // id explícito: o gerador do repo colide quando 2 creates caem no mesmo ms
+    // (2 pessoas revisando juntas), e a colisão apagaria uma revisão em silêncio.
     try {
       await repo.create("training_reviews", {
-        saas: product.id, user: user.id, cardId: card.id, role: card.role,
+        id: `rv_${now.getTime().toString(36)}_${user.id}_${Math.random().toString(36).slice(2, 8)}`,
+        saas: product.id, user: user.id, cardId: entryId, role: card.role,
         rating, prevState: log.state, due: next.due, at: now.toISOString(),
       });
     } catch { /* fail-open */ }
 
-    return { cardId: card.id, srs: next, preview: previewIntervals(next, now) };
+    return { cardId: entryId, srs: next, preview: previewIntervals(next, now) };
+  });
+
+  // Imagem dos cards (colada/enviada no editor): base64 na collection (máx
+  // 3MB) e servida em /public/training/:id — rota ABERTA (a tag <img> não
+  // manda header; o id randômico é a chave, mesmo desenho de /public/social).
+  app.post("/api/flashcards/:saas/asset", async (req, reply) => {
+    const user = requireUser(req, reply);
+    if (!user) return;
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "produto não encontrado" });
+    const file = await req.file();
+    if (!file) return reply.code(400).send({ error: "envie uma imagem (multipart, campo file)" });
+    if (!/^image\//.test(file.mimetype || "")) return reply.code(400).send({ error: "só aceito imagem" });
+    const buf = await file.toBuffer();
+    if (buf.length > 3 * 1024 * 1024) return reply.code(413).send({ error: "imagem acima de 3MB — recorte ou comprima" });
+    const id = `ta_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    await repo.create("training_assets", {
+      id, saas: product.id, mime: file.mimetype, size: buf.length,
+      data: buf.toString("base64"), by: user.id, at: new Date().toISOString(),
+    });
+    return { id, url: `/public/training/${id}` };
+  });
+
+  app.get("/public/training/:id", async (req, reply) => {
+    const doc = await repo.get("training_assets", req.params.id);
+    if (!doc) return reply.code(404).send({ error: "imagem não encontrada" });
+    reply.header("cache-control", "public, max-age=86400, immutable");
+    return reply.type(doc.mime || "image/png").send(Buffer.from(doc.data || "", "base64"));
+  });
+
+  // Consistência do usuário logado: revisões por dia (~27 semanas, heatmap),
+  // sequência atual e a melhor de todos os tempos.
+  app.get("/api/flashcards/:saas/stats", async (req, reply) => {
+    const user = requireUser(req, reply);
+    if (!user) return;
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "produto não encontrado" });
+    const now = new Date();
+    const today = dayKey(now);
+    const mine = (await repo.list("training_reviews")).filter((r) => r.saas === product.id && r.user === user.id);
+    const counts = {};
+    for (const r of mine) {
+      const d = dayKey(new Date(r.at));
+      counts[d] = (counts[d] || 0) + 1;
+    }
+    const since = dayKey(new Date(now.getTime() - 27 * 7 * 864e5));
+    const days = Object.fromEntries(Object.entries(counts).filter(([d]) => d >= since).sort());
+    let streak = 0;
+    for (let d = new Date(now.getTime() - (counts[today] ? 0 : 864e5)); counts[dayKey(d)]; d = new Date(d.getTime() - 864e5)) streak++;
+    // melhor sequência: varre os dias com revisão em ordem, contando corridas.
+    let bestStreak = 0, run = 0, prev = null;
+    for (const d of Object.keys(counts).sort()) {
+      run = prev && (Date.parse(d) - Date.parse(prev) === 864e5) ? run + 1 : 1;
+      bestStreak = Math.max(bestStreak, run);
+      prev = d;
+    }
+    return { saas: product.id, today, streak, bestStreak, doneToday: counts[today] || 0, days };
   });
 
   // Dashboard da equipe: quem está em dia, quem acumulou, acerto e sequência.

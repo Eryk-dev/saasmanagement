@@ -6,6 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
+import multipart from "@fastify/multipart";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerFlashcardRoutes } = await import("../src/routes.flashcards.js");
@@ -23,6 +24,7 @@ async function buildApp() {
   await repo.create("products", { id: "outro", name: "Outro" });
   for (const u of Object.values(USERS)) await repo.create("users", u);
   const app = Fastify();
+  await app.register(multipart);
   // sessão fake: o makeAuthHook real põe req.authUser; aqui vem do header x-user.
   app.addHook("onRequest", async (req) => {
     const u = USERS[req.headers["x-user"]];
@@ -159,6 +161,74 @@ test("team: contadores por pessoa, respeitando escopo de produto do usuário", a
   const bob = t.users.find((u) => u.id === "bob");
   assert.equal(bob.doneToday, 0);
   assert.equal(bob.deckSize, 10);      // baralho closer
+});
+
+test("stats: revisões por dia, streak atual e melhor sequência do usuário logado", async () => {
+  const { app, repo } = await buildApp();
+  assert.equal((await app.inject({ method: "GET", url: "/api/flashcards/leverads/stats" })).statusCode, 401);
+
+  // histórico: hoje (via review real), ontem e anteontem + uma corrida antiga de 4 dias
+  await app.inject({ method: "POST", url: "/api/flashcards/leverads/review", headers: as("ana"), payload: { cardId: "sdr_1", rating: 3 } });
+  const day = (n) => new Date(Date.now() - n * 864e5).toISOString();
+  for (const [n, times] of [[1, 2], [2, 1], [10, 1], [11, 1], [12, 1], [13, 1]]) {
+    for (let i = 0; i < times; i++) {
+      // id explícito: o gerador do repo colide quando 2 creates caem no mesmo ms
+      await repo.create("training_reviews", { id: `rev_${n}_${i}`, saas: "leverads", user: "ana", cardId: "sdr_9", role: "sdr", rating: 3, at: day(n) });
+    }
+  }
+  // ruído: outro produto e outro usuário não contam
+  await repo.create("training_reviews", { id: "rev_outro", saas: "outro", user: "ana", cardId: "x", role: "sdr", rating: 1, at: day(0) });
+  await repo.create("training_reviews", { id: "rev_bob", saas: "leverads", user: "bob", cardId: "x", role: "sdr", rating: 1, at: day(0) });
+
+  const s = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/stats", headers: as("ana") })).json();
+  assert.equal(s.streak, 3);        // hoje + ontem + anteontem
+  assert.equal(s.bestStreak, 4);    // a corrida antiga de 4 dias ganha
+  assert.equal(s.doneToday, 1);
+  assert.equal(Object.values(s.days).reduce((a, b) => a + b, 0), 8); // 7 semeadas + 1 real, só as da ana no leverads
+});
+
+test("tipos: cloze expande por índice e occlusion por máscara, cada um com estado FSRS próprio", async () => {
+  const { app } = await buildApp();
+  await app.inject({ method: "PUT", url: "/api/flashcards/leverads", payload: { cards: [
+    { id: "cz", role: "sdr", type: "cloze", front: "A escada é {{c1::anual}} depois {{c2::semestral}}", back: "extra" },
+    { id: "oc", role: "sdr", type: "occlusion", image: "ta_x", masks: [{ id: "m1", x: 0.1, y: 0.1, w: 0.2, h: 0.1 }, { id: "m2", x: 0.5, y: 0.5, w: 0.2, h: 0.1 }] },
+    { id: "oc_sem_imagem", role: "sdr", type: "occlusion", image: "", masks: [] },  // descartado
+    { id: "b", role: "sdr", type: "tipo_zoado", front: "básico", back: "b" },        // type cai pra basic
+  ] } });
+  const q = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("ana") })).json();
+  assert.deepEqual(new Set(q.queue.sdr.map((c) => c.entryId)), new Set(["cz::c1", "cz::c2", "oc::m1", "oc::m2", "b"]));
+  assert.equal(q.decks[0].total, 5);
+
+  // revisa só o c1: gradua e some da fila; c2 segue novo e independente
+  const r = (await app.inject({ method: "POST", url: "/api/flashcards/leverads/review", headers: as("ana"), payload: { cardId: "cz::c1", rating: 4 } })).json();
+  assert.equal(r.cardId, "cz::c1");
+  const q2 = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("ana") })).json();
+  assert.ok(!q2.queue.sdr.some((c) => c.entryId === "cz::c1"));
+  assert.ok(q2.queue.sdr.some((c) => c.entryId === "cz::c2" && !c.srs));
+
+  // sub-card que não existe = 404
+  assert.equal((await app.inject({ method: "POST", url: "/api/flashcards/leverads/review", headers: as("ana"), payload: { cardId: "cz::c9", rating: 3 } })).statusCode, 404);
+});
+
+test("asset: upload multipart com sessão, servido público em /public/training/:id", async () => {
+  const { app } = await buildApp();
+  const boundary = "----cockpittest";
+  const bytes = Buffer.from("fake-png-bytes");
+  const payload = Buffer.concat([
+    Buffer.from(`--${boundary}\r\ncontent-disposition: form-data; name="file"; filename="x.png"\r\ncontent-type: image/png\r\n\r\n`),
+    bytes,
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+  const up = await app.inject({ method: "POST", url: "/api/flashcards/leverads/asset", headers: { ...as("ana"), "content-type": `multipart/form-data; boundary=${boundary}` }, payload });
+  assert.equal(up.statusCode, 200, up.body);
+  const { url } = up.json();
+  assert.match(url, /^\/public\/training\/ta_/);
+  const got = await app.inject({ method: "GET", url });
+  assert.equal(got.statusCode, 200);
+  assert.equal(got.headers["content-type"].split(";")[0], "image/png");
+  assert.equal(got.rawPayload.toString(), "fake-png-bytes");
+  // sem sessão = 401
+  assert.equal((await app.inject({ method: "POST", url: "/api/flashcards/leverads/asset", headers: { "content-type": `multipart/form-data; boundary=${boundary}` }, payload })).statusCode, 401);
 });
 
 test("card removido da base some da fila (estado individual fica órfão sem quebrar nada)", async () => {
