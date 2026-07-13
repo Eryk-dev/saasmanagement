@@ -26,7 +26,7 @@ test("GET: catálogo por vaga + metas atuais + time com papel de meta", async ()
   await repo.create("goals", { id: "g_won", saas: "leverads", scope: "user", key: "leo", metric: "won", target: 8, period: "month" });
 
   const r = (await app.inject({ method: "GET", url: "/api/metas/leverads" })).json();
-  assert.deepEqual(r.roles.map((x) => x.role), ["sdr", "closer", "integrator"]);
+  assert.deepEqual(r.roles.map((x) => x.role), ["sdr", "closer", "integrator", "social"]);
   const sdr = r.roles.find((x) => x.role === "sdr");
   assert.equal(sdr.metrics.find((m) => m.metric === "bookingRate").target, 35); // configurada
   assert.equal(sdr.metrics.find((m) => m.metric === "contactRate").target, null); // sem meta → null
