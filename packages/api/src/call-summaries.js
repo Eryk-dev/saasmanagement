@@ -44,14 +44,18 @@ export function makeCallSummarizer({ repo, google, anthropic, log = console }) {
     // hospeda a call é outra conta que não a conectada), cai no fallback do Drive:
     // lê o Doc de transcrição no Drive do organizador (a conta conectada).
     let t = await google.fetchTranscript(code);
+    let detail = "";
     if (!t && typeof google.fetchTranscriptFromDrive === "function") {
       try {
         t = await google.fetchTranscriptFromDrive({ eventId: lead.meetEventId, leadName: lead.name, since: lead.meetScheduledAt });
+        if (!t) detail = "drive: Doc de transcrição não encontrado (confira o título/horário da call ou a conta do Drive)";
       } catch (err) {
+        // 403 ACCESS_TOKEN_SCOPE_INSUFFICIENT aqui = reconectar o Google (escopo drive.readonly novo).
+        detail = `drive: ${String(err.message || err).slice(0, 160)}`;
         log.warn?.({ lead: lead.id, err: err.message }, "fallback de transcrição pelo Drive falhou");
       }
     }
-    if (!t) return { ok: false, reason: "transcript_not_ready" };
+    if (!t) return { ok: false, reason: "transcript_not_ready", ...(detail ? { detail } : {}) };
 
     const product = lead.saas ? await repo.get("products", lead.saas) : null;
     const brt = (d) => new Date(d).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
