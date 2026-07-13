@@ -18,6 +18,7 @@ import { CustomersScreen } from "./screens/customers.jsx";
 import { TasksScreen } from "./screens/tasks.jsx";
 import { SettingsScreen } from "./screens/settings.jsx";
 import { LeadDetail } from "./screens/deal.jsx";
+import { CommandSearch } from "./components/CommandSearch.jsx";
 import { DataContext, loadSeed } from "./data.jsx";
 import { useActiveSaas } from "./lib/workspace.js";
 import { canSeeScreen } from "./lib/users.js";
@@ -46,6 +47,7 @@ function App() {
   const [screen, setScreen] = useStA(() => screenFromHash());
   const [params, setParams] = useStA({});
   const [leadSel, setLeadSel] = useStA(null);
+  const [searchOpen, setSearchOpen] = useStA(false); // busca de leads (⌘K)
   const [collapsed, setCollapsed] = useStA(false);
   const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useStA(false); // drawer da nav no mobile
@@ -99,6 +101,18 @@ function App() {
     const onHash = () => setScreen(screenFromHash());
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  // ⌘K / Ctrl+K abre a busca de leads de qualquer tela.
+  useEA(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setSearchOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   function nav(id, p = {}) {
@@ -159,6 +173,7 @@ function App() {
         <TopBar
           breadcrumb={crumbsFor[scr]}
           subtitle={subtitleFor(scr, params)}
+          onSearch={() => setSearchOpen(true)}
           leading={isMobile && (
             <button onClick={() => setMenuOpen(true)} style={chromeBtnStyleSmall} title="Abrir menu">
               <span className="mono" style={{ fontSize: 14 }}>☰</span>
@@ -194,6 +209,13 @@ function App() {
       </main>
 
       {leadSel && <LeadDetail lead={leadSel} onClose={() => setLeadSel(null)} />}
+
+      <CommandSearch
+        open={searchOpen}
+        activeSaasId={activeProduct?.id}
+        onClose={() => setSearchOpen(false)}
+        onOpenLead={(l) => { setSearchOpen(false); openLead(l); }}
+      />
 
       {editor && (
         <EntityForm

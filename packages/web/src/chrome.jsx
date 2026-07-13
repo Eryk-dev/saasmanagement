@@ -218,7 +218,7 @@ function Logo() {
   );
 }
 
-function TopBar({ title, subtitle, leading, trailing, breadcrumb }) {
+function TopBar({ title, subtitle, leading, trailing, breadcrumb, onSearch }) {
   return (
     <header style={{
       height: 48,
@@ -249,16 +249,16 @@ function TopBar({ title, subtitle, leading, trailing, breadcrumb }) {
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         {trailing}
-        <span className="hide-mobile" style={{ display: "inline-flex" }}><CmdK /></span>
+        <span className="hide-mobile" style={{ display: "inline-flex" }}><CmdK onClick={onSearch} /></span>
         <UserMenu />
       </div>
     </header>
   );
 }
 
-function CmdK() {
+function CmdK({ onClick }) {
   return (
-    <button style={{
+    <button onClick={onClick} title="Buscar lead (⌘K / Ctrl+K)" style={{
       display: "inline-flex", alignItems: "center", gap: 8,
       height: 28, padding: "0 8px 0 10px",
       border: "1px solid var(--line-2)",
@@ -268,6 +268,7 @@ function CmdK() {
       fontSize: 13,
       whiteSpace: "nowrap",
       boxShadow: "var(--shadow-1)",
+      cursor: "pointer",
     }}>
       <span>Buscar…</span>
       <span className="kbd">⌘K</span>
