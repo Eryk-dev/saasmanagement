@@ -412,7 +412,9 @@ const PANELS = [
     cols: [
       { label: "Contas", render: (p) => <span className="tnum">{int(p.activeAccounts)}</span> },
       { label: "Novas", render: (p, ctx) => <MetaCell value={p.newAccounts} goal={scaleGoal(p.goals?.newAccounts, ctx.period)} /> },
+      { label: "Retenção", render: (p) => <RateCell pct={p.retentionRate} {...tiers(p.goals?.retentionRate, 95)} /> },
       { label: "Churn", render: (p) => <span className="tnum" style={{ color: p.churned > 0 ? "var(--neg)" : "var(--fg-3)" }}>{int(p.churned)}</span> },
+      { label: "NPS", render: (p) => <span className="tnum" title={p.npsCount ? `${p.npsCount} respostas` : "sem resposta ainda"}>{p.nps != null ? String(p.nps).replace(".", ",") : "—"}</span> },
     ],
   },
 ];
