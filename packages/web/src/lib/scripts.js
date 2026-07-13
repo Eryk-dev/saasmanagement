@@ -6,7 +6,11 @@
 // lacuna É instrução: o que faltar no cadastro se descobre nesse contato.
 
 import { stageKind, openStages } from "./funnel.js";
-import { currentUser } from "./users.js";
+import { currentUser, displayName } from "./users.js";
+
+// Etapa "No show" (cliente furou a call) — detectada pelo nome (kind é contato,
+// mas precisa de roteiro/grupo próprios, distintos da Nutrição).
+export const isNoShowStage = (stage) => /no.?show/i.test(String(stage || ""));
 
 const firstName = (name) => String(name || "").trim().split(/\s+/)[0] || "";
 
@@ -37,6 +41,8 @@ export function scriptTokens(lead, saasCfg) {
     produto: saasCfg?.name || "",
     eu: firstName(currentUser()?.name),
     call: callOk ? call.toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "",
+    hora_call: callOk ? call.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "",
+    closer_responsavel: lead?.closer ? displayName(lead.closer) : "",
     link_call: lead?.callUrl || "",
   };
 }
@@ -55,6 +61,8 @@ const GAP_HINTS = {
   produto: "produto",
   eu: "seu nome",
   call: "marcar o horário",
+  hora_call: "o horário da call",
+  closer_responsavel: "o closer da call",
   link_call: "gerar o link no lead",
 };
 
@@ -178,6 +186,41 @@ export const DEFAULT_SCRIPTS = {
       ...QUALIFY_STEPS,
     ],
   },
+
+  // Confirmação da call (tarefa do SDR antes do closer entrar): 1h antes confirma;
+  // respondeu, manda a de 10 min; sem resposta, LIGA 10 min antes. Tom incisivo:
+  // a call já está de pé (especialista reservado), o cliente só entra.
+  confirmacao: {
+    titulo: "Confirmação da call",
+    resumo: "Antes do especialista entrar, você garante a presença do cliente. 1h antes manda a confirmação; se ele responder, manda a de 10 min; sem resposta, LIGA 10 min antes. Sem abrir brecha pra cancelar: a call já está reservada, o cliente só entra.",
+    objetivo: "Garantir a presença na call e reduzir no-show.",
+    passos: [
+      { t: "1h antes: confirmação (WhatsApp)", fala: "Oi {{nome}}! Tudo bem? Aqui é {{eu}}, da {{produto}}. Tá tudo certo pra nossa call de hoje às {{hora_call}}. O especialista {{closer_responsavel}} já está se preparando pra te receber no link: {{link_call}}. Qualquer mudança de plano, pode me avisar aqui, ok? Te esperamos!" },
+      { t: "10 min antes: cliente respondeu (WhatsApp)", fala: "Maravilha! Obrigado pelo retorno. Em 10 minutos ele já vai estar te aguardando." },
+      { t: "10 min antes: sem resposta, LIGA", fala: "Oi {{nome}}, é {{eu}}, da {{produto}}. Nossa call é agora, o especialista já está na sala. Tô te mandando o link, entra que já vamos começar.", dica: "Não atendeu? Manda no WhatsApp: o especialista já está te esperando na sala, entra agora: {{link_call}}. Já começamos!" },
+    ],
+  },
+
+  // No show: cliente furou a call (o closer sinalizou). 2 remarcações, 1 dia útil
+  // entre elas; a 1ª cai 1h depois do no-show. Painel mostra só a tentativa do dia.
+  noshow1: {
+    titulo: "No show · 1ª remarcação",
+    resumo: "O cliente furou a call. Você reengaja pra remarcar sem dar brecha pra cancelar: o especialista já separou um novo horário, o cliente só escolhe. Liga 1 vez; não atendeu, manda o WhatsApp.",
+    objetivo: "Remarcar a call. Marcou? O card volta pra Call agendada com o novo horário e o closer.",
+    passos: [
+      { t: "Ligar (1 tentativa)", dica: "Não atendeu? Manda o WhatsApp abaixo e registra o toque (o GPS traz de volta em 1 dia útil pra 2ª tentativa)." },
+      { t: "Não atendeu: WhatsApp (remarcar)", fala: "Oi {{nome}}! Você não conseguiu entrar na call de hoje. O especialista já separou um novo horário exclusivo pra você: prefere amanhã de manhã ou no fim da tarde?", dica: "Marcou? Registra o novo horário em Call agendada e mova o card de volta pra lá (volta pro closer)." },
+    ],
+  },
+  noshow2: {
+    titulo: "No show · 2ª remarcação (última)",
+    resumo: "Segunda e última tentativa. Coloca a decisão na mão do cliente com firmeza: ou ele retoma, ou você encerra. Liga 1 vez; não atendeu, manda o WhatsApp.",
+    objetivo: "Última chance de remarcar; sem retorno, encerrar (Desqualificado).",
+    passos: [
+      { t: "Ligar (1 tentativa)", dica: "Não atendeu? Manda o WhatsApp abaixo." },
+      { t: "Não atendeu: WhatsApp (retoma ou encerra)", fala: "Oi {{nome}}! Ainda faz sentido pra você escalar sua operação usando nosso método? Assim eu consigo continuar com seu atendimento, ou até mesmo encerrar se agora não for a hora certa.", dica: "Sem resposta: mover pra Desqualificado (motivo: sem resposta). Respondeu com horário? Marca em Call agendada e move o card de volta." },
+    ],
+  },
   call: {
     titulo: "Call de fechamento",
     resumo: "Antes da call: olhe a loja do lead, o nicho e o volume dele (está tudo no card). Confirme presença 1h antes pelo WhatsApp. Na call, demonstre na operação DELE e ancore no case Unique (+105% de vendas).",
@@ -266,7 +309,8 @@ export function resolveScript(saasCfg, lead) {
     lead?.stage && !openStages(saasCfg).includes(stage);
   const attempts = Number(lead?.stageAttempts) || 0;
   let base;
-  if (reactivation) base = attempts >= 2 ? DEFAULT_SCRIPTS.nutricao3 : attempts === 1 ? DEFAULT_SCRIPTS.nutricao2 : DEFAULT_SCRIPTS.nutricao1;
+  if (isNoShowStage(stage)) base = attempts >= 1 ? DEFAULT_SCRIPTS.noshow2 : DEFAULT_SCRIPTS.noshow1;
+  else if (reactivation) base = attempts >= 2 ? DEFAULT_SCRIPTS.nutricao3 : attempts === 1 ? DEFAULT_SCRIPTS.nutricao2 : DEFAULT_SCRIPTS.nutricao1;
   else if (kind === "qualificacao") base = attempts >= 1 ? DEFAULT_SCRIPTS.qualificacao3 : DEFAULT_SCRIPTS.qualificacao2;
   else base = DEFAULT_SCRIPTS[kind] || DEFAULT_SCRIPTS.outro;
   const row = (saasCfg?.funnel || []).find((f) => f && f.stage === stage);

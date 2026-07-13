@@ -8,7 +8,7 @@ import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusine
 import { allUsers, currentUser, displayName, userById, usersByRole } from "../lib/users.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
-import { resolveScript, scriptTokens, scriptSegments, scriptChecklist } from "../lib/scripts.js";
+import { resolveScript, scriptTokens, scriptSegments, scriptChecklist, isNoShowStage, DEFAULT_SCRIPTS } from "../lib/scripts.js";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
 // "Amanhã" e "Próximos dias" (o que já está agendado, à vista), e "Sem data".
@@ -37,10 +37,10 @@ const ACTION_LABELS = {
 
 const TIER_ORDER = { alto: 3, medio: 2, baixo: 1, sem: 0 };
 
-// Ordem de atendimento dentro de cada dia (Leo, jul/2026): horário marcado é
-// inadiável; novos são prioridade máxima; depois retomadas de qualificação,
-// follow-ups, nutrição e o que ficou sem agenda.
-const GROUP_ORDER = ["appt", "novo", "qual", "closer", "nutri", "loose"];
+// Ordem de atendimento dentro de cada dia (Leo, jul/2026): confirmar call (o
+// mais time-sensitive) e horário marcado primeiro; novos e no-show (leads
+// quentes) na sequência; depois retomadas, follow-ups, nutrição e sem agenda.
+const GROUP_ORDER = ["confirm", "appt", "novo", "noshow", "qual", "closer", "nutri", "loose"];
 
 // Fase do processo → papel que trabalha nela. Card SEM responsável só entra na
 // fila de quem tem o papel da fase: SDR não vê follow-up/integração soltos
@@ -81,10 +81,16 @@ function buildQueue(leads, saasCfg, person) {
     if (l.stage && !workable.has(l.stage)) continue;
     const kind = stageKind(saasCfg, stage);
     const phase = phaseOf(kind);
+    // Confirmação de call: call marcada pra HOJE + você é o DONO (SDR) e não é o
+    // closer → a call vira uma tarefa de CONFIRMAÇÃO na SUA fila (o closer segue
+    // vendo a call na dele). Só na fila do próprio SDR, não no "time todo".
+    const callT = l.callAt ? new Date(l.callAt).getTime() : NaN;
+    const callToday = Number.isFinite(callT) && callT >= startToday.getTime() && callT <= endToday.getTime();
+    const isConfirm = kind === "call" && callToday && l.owner && l.owner !== l.closer && person && person === l.owner;
     // Responsável da vez: SDR (dono) na pré-venda; closer na fase de call/
     // follow-up (SÓ o campo closer: dono SDR antigo não puxa o card); e o
     // INTEGRADOR (campo próprio) na entrega — integração/CS são do Eryk.
-    const who = phase === "sdr" ? (l.owner || "") : phase === "entrega" ? (l.integrator || "") : (l.closer || "");
+    const who = isConfirm ? l.owner : phase === "sdr" ? (l.owner || "") : phase === "entrega" ? (l.integrator || "") : (l.closer || "");
     // Filtro de pessoa: card atribuído à pessoa sempre entra; card SEM dono só
     // entra pra quem tem o papel da fase (SDR não vê follow-up/integração).
     if (person) {
@@ -99,6 +105,12 @@ function buildQueue(leads, saasCfg, person) {
     // toque já tenha re-agendado o GPS (o item muda de bloco, o feito fica).
     if (TOUCH_TYPES.has(l.lastActivityType) && l.lastActivityAt &&
       new Date(l.lastActivityAt).toDateString() === new Date().toDateString()) doneToday++;
+
+    // Tarefa de confirmação: vence no horário da call, grupo "confirm" (topo).
+    if (isConfirm) {
+      g.hoje.push({ l, kind, phase, who, due: { t: callT, type: "call" }, done: false, stage, group: "confirm", confirm: true });
+      continue;
+    }
 
     // Compromisso mais próximo do lead. Call/integração SÓ contam de hoje em
     // diante: data velha esquecida no card não é compromisso, é histórico — o
@@ -122,6 +134,7 @@ function buildQueue(leads, saasCfg, person) {
     const group = !due
       ? (kind === "novo" ? "novo" : "loose")
       : due.type !== "toque" ? "appt"
+      : isNoShowStage(stage) ? "noshow"
       : kind === "novo" ? "novo"
       : !open.has(stage) ? "nutri"
       : phase === "sdr" ? "qual"
@@ -357,7 +370,7 @@ function QueueRow({ item, seq, block, saasCfg, stageMeta, onScript, onClaim }) {
   const cad = cadenceOf(saasCfg, stage);
   const attempts = Number(cad.maxAttempts) ? `${Math.min(Number(l.stageAttempts) || 0, Number(cad.maxAttempts))}/${cad.maxAttempts}` : null;
   const unowned = !who; // assumir só quando o card não tem responsável
-  const action = group === "nutri" ? "reativação" : (ACTION_LABELS[kind] || "contato");
+  const action = item.confirm ? "confirmar call" : group === "noshow" ? "remarcar" : group === "nutri" ? "reativação" : (ACTION_LABELS[kind] || "contato");
   const stageColor = stageMeta?.[stage]?.color || "var(--accent)";
 
   return (
@@ -476,7 +489,10 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onClose, onTouch, 
     setL((prev) => ({ ...prev, ...p }));
     onPatch && onPatch(item.l.id, p);
   }
-  const script = resolveScript(saasCfg, l);
+  // Item de confirmação de call usa o roteiro de confirmação; o resto, o roteiro
+  // do estágio (por tentativa). A confirmação não é movimento de etapa, então o
+  // bloco "Depois da ação" (destino) some pra esse item.
+  const script = item.confirm ? DEFAULT_SCRIPTS.confirmacao : resolveScript(saasCfg, l);
   const tokens = scriptTokens(l, saasCfg);
   const checklist = scriptChecklist(saasCfg, l);
   const wa = waLink(l.phone);
@@ -627,8 +643,9 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onClose, onTouch, 
             </div>
 
             {/* Destino do card fica AQUI, embaixo dos dados do cliente, pra
-                aproveitar o espaço vazio da coluna e encurtar o painel. */}
-            <DestinoSection saasCfg={saasCfg} lead={l} leads={leads} onMove={onMove} onTouch={onTouch} />
+                aproveitar o espaço vazio da coluna e encurtar o painel. Item de
+                confirmação não move etapa, então não mostra destino. */}
+            {!item.confirm && <DestinoSection saasCfg={saasCfg} lead={l} leads={leads} onMove={onMove} onTouch={onTouch} />}
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
@@ -702,7 +719,7 @@ const NEXT_KINDS = {
   novo:          ["retry", "call", "desqualificado"],
   contato:       ["retry", "call", "desqualificado"],   // Nutrição: reativar
   qualificacao:  ["retry", "call", "contato", "desqualificado"], // contato = Nutrição
-  call:          ["retry", "followup", "ganho", "desqualificado"],
+  call:          ["retry", "noshow", "followup", "ganho", "desqualificado"], // noshow = cliente furou
   followup:      ["retry", "integracao", "ganho", "desqualificado"],
   proposta:      ["retry", "followup", "ganho", "desqualificado"],
   integracao:    ["posvenda", "ganho"],
@@ -720,6 +737,13 @@ export function destinationsFor(saasCfg, lead) {
       const promote = curKind === "novo";
       const target = promote ? (stageByKind(saasCfg, "qualificacao") || curStage) : curStage;
       out.push({ retry: true, promote, stage: target, kind: promote ? "qualificacao" : curKind });
+      continue;
+    }
+    if (k === "noshow") {
+      // No-show é kind contato (colide com Nutrição no stageByKind) → resolve
+      // pela etapa nomeada "No show" do funil, se existir.
+      const st = (saasCfg?.funnel || []).find((f) => f && isNoShowStage(f.stage));
+      if (st && !seen.has(st.stage)) { seen.add(st.stage); out.push({ stage: st.stage, kind: "noshow" }); }
       continue;
     }
     const stage = stageByKind(saasCfg, k);
