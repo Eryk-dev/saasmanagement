@@ -86,6 +86,9 @@ export const api = {
   // body opcional: { guests: [emails] } ou { email } — convidados extras da call.
   createMeet: (leadId, body) => req("POST", `/api/leads/${leadId}/meet`, body),
   callSummary: (leadId, force = false) => req("POST", `/api/leads/${leadId}/call-summary`, { force }),
+  // Insight de pitch: analisa os resumos das calls do produto e sugere uma
+  // versão melhor de um roteiro. body: { scriptKey, scriptLabel, currentScript }.
+  improvePitch: (saas, body) => req("POST", `/api/pitch/${saas}/improve`, body),
   // Upload multipart (vídeo) — fetch cru: o browser define o boundary do form.
   uploadCreative: async (saas, formData) => {
     const headers = {};

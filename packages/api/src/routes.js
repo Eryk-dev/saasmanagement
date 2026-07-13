@@ -19,6 +19,7 @@ import { mp as defaultMpClient } from "./mp.js";
 import { registerMarketingRoutes } from "./routes.marketing.js";
 import { registerSocialRoutes } from "./routes.social.js";
 import { registerOfferRoutes } from "./routes.offers.js";
+import { registerPitchRoutes } from "./routes.pitch.js";
 import { registerMetasRoutes } from "./routes.metas.js";
 import { registerFlashcardRoutes } from "./routes.flashcards.js";
 import { registerGoogleRoutes } from "./routes.google.js";
@@ -200,6 +201,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerSocialRoutes(app, repo, { social: opts.social, meta: metaClient, anthropic: anthropicClient });
   // Links de pagamento das ofertas (ferramenta).
   registerOfferRoutes(app, repo);
+  // Insight de pitch: melhora o roteiro de venda a partir dos resumos das calls.
+  registerPitchRoutes(app, repo, { anthropic: anthropicClient });
   // Metas de desempenho por vaga/pessoa (ferramenta; escreve na collection goals).
   registerMetasRoutes(app, repo);
   // Treinamentos: flashcards por vaga com repetição espaçada (FSRS) por pessoa.
