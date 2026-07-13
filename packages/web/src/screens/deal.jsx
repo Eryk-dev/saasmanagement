@@ -1,6 +1,5 @@
 import React from "react";
 import { Avatar, RowActions } from "../atoms.jsx";
-import { BigNumber } from "../charts.jsx";
 import { ProposalActions } from "../components/ProposalActions.jsx";
 import { ActivityList, ActivityComposer } from "../components/timeline.jsx";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
@@ -92,9 +91,10 @@ function LeadDetail({ lead: initial, onClose }) {
   const cat = useAttribution(lead.saas, !!lead.utm);
   const utm = lead.utm || {};
   const pain = leadPain(lead, cat, saasCfg?.painMap);
+  const tier = leadTier(lead);
+  // De onde veio (Dor sobe pro destaque do Resumo; aqui fica a atribuição crua).
   const attribution = [
-    ["Dor (criativo)", pain ? `[${pain.code}] ${pain.label}` : null],
-    ["Variante da headline", lead.formVariant ? `versão ${lead.formVariant}` : null],
+    ["Variante da headline", lead.formHeadline || (lead.formVariant ? `versão ${lead.formVariant}` : null)],
     ["Campanha", cat?.campaigns?.[utm.campaign]?.name || utm.campaign],
     ["Conjunto", cat?.adsets?.[utm.term]?.name || utm.term],
     ["Anúncio", cat?.ads?.[utm.content]?.name || utm.content],
@@ -103,13 +103,18 @@ function LeadDetail({ lead: initial, onClose }) {
     ["Página de entrada", lead.sourceUrl || null],
   ].filter(([, v]) => v != null && v !== "");
 
-  // Campos REAIS do lead — mostra só os preenchidos (sem placeholder/mock).
-  const fields = [
-    ["Empresa", lead.company],
-    ["Faixa", lead.value],
+  // Resumo do cliente: os números e campos reais compilados num grid só (mesmo
+  // padrão da tela de atividade). Empresa fica no cabeçalho; só o preenchido entra.
+  const daysInStage = Math.max(0, Math.floor((Date.now() - new Date(lead.stageSince || lead.createdAt || Date.now()).getTime()) / 86400000));
+  const summaryFacts = [
+    ["Potencial", tier.key !== "sem" ? tier.label : null],
+    ["Valor", lead.amount ? window.fmt.money(lead.amount) : null],
+    ["Idade", leadAge(lead)],
+    ["Na etapa", `${daysInStage}d`],
+    ["Temperatura", hasScore ? `${leadScoreLabel(score)} · ${score}` : null],
+    ["ICP (fit)", icpPct],
     ["Prioridade", lead.priority],
-    ["Score", hasScore ? `${score} · ${leadScoreLabel(score)}` : null],
-    ["ICP", icpPct],
+    ["Faixa", lead.value],
     ["Origem", lead.source],
     ["Dono (SDR)", lead.owner ? displayName(lead.owner) : null],
     ["Closer", lead.closer ? displayName(lead.closer) : null],
@@ -133,10 +138,18 @@ function LeadDetail({ lead: initial, onClose }) {
     .filter(Boolean);
 
   const next = nextTouchPill(lead, { isOpen });
-  const sect = { padding: "14px 20px", borderBottom: "1px solid var(--line-1)" };
+  // Cartões (mesma linguagem da tela de atividade): caixa com rótulo mono.
+  const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "12px 14px", background: "var(--bg-inset)" };
   const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
-  const rowLabel = { fontSize: 11, width: 110, flexShrink: 0 };
-  const presetBtn = { height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 500 };
+  const rowLabel = { fontSize: 11, width: 104, flexShrink: 0 };
+  const presetBtn = { height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 500 };
+  // Linha chave→valor pra grids de fatos/atribuição/respostas.
+  const FactRow = ({ k, v }) => (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12, padding: "4px 0", borderBottom: "1px solid var(--line-1)" }}>
+      <span className="mono dim" style={{ flexShrink: 0, fontSize: 10.5 }}>{k}</span>
+      <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
+    </div>
+  );
 
   return (
     <div style={{
@@ -144,13 +157,12 @@ function LeadDetail({ lead: initial, onClose }) {
       display: "flex", justifyContent: "flex-end", zIndex: 60,
     }} onClick={close}>
       <div onClick={e => e.stopPropagation()} style={{
-        width: "min(520px, 100vw)", height: "100%", background: "var(--bg-1)",
+        width: "min(560px, 100vw)", height: "100%", background: "var(--bg-1)",
         borderLeft: "1px solid var(--line-2)",
         display: "flex", flexDirection: "column",
         boxShadow: "var(--shadow-pop)",
-        overflowY: "auto",
       }}>
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "start" }}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line-1)", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "start" }}>
           <div>
             <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.08em" }}>LEAD · {String(lead.id).toUpperCase()}</div>
             <div style={{ fontSize: 20, fontWeight: 500, marginTop: 4 }}>{lead.name}</div>
@@ -189,16 +201,24 @@ function LeadDetail({ lead: initial, onClose }) {
           </div>
         </div>
 
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line-1)", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-          <BigNumber value={window.fmt.money(lead.amount || 0)} label="Valor" size={28} />
-          <BigNumber value={leadAge(lead)} label="Idade" size={28} />
-          {(icpPct || hasScore)
-            ? <BigNumber value={icpPct || String(score)} label={icpPct ? "ICP" : "Score"} size={28} />
-            : <BigNumber value={`${Math.max(0, Math.floor((Date.now() - new Date(lead.stageSince || lead.createdAt || Date.now()).getTime()) / 86400000))}d`} label="Na etapa" size={28} />}
-        </div>
+        {/* Corpo rolável em cartões (mesma linguagem da tela de atividade). */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12, minHeight: 0 }}>
+          {/* Resumo do cliente: dor em destaque + os fatos compilados num grid. */}
+          <div style={box}>
+            <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Resumo do cliente</div>
+            {pain && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 9px", marginBottom: 8, borderRadius: "var(--r-2)", background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
+                <span className="mono" style={{ fontSize: 9.5, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", flexShrink: 0 }}>dor do anúncio</span>
+                <span style={{ fontSize: 12.5, fontWeight: 600, minWidth: 0 }}>[{pain.code}] {pain.label}</span>
+              </div>
+            )}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "0 16px" }}>
+              {summaryFacts.map(([k, v]) => <FactRow key={k} k={k} v={v} />)}
+            </div>
+          </div>
 
-        {/* GPS: etapa (gateada) + próximo toque + call agendada, sem sair do drawer. */}
-        <div style={{ ...sect, display: "flex", flexDirection: "column", gap: 10 }}>
+          {/* GPS: etapa (gateada) + próximo toque + call agendada, sem sair do drawer. */}
+        <div style={{ ...box, display: "flex", flexDirection: "column", gap: 10 }}>
           <div className="mono" style={{ ...kicker, display: "flex", alignItems: "center", gap: 8 }}>
             Próximo passo
             {next && <span className="mono" style={{ fontSize: 10, color: next.key === "late" ? "var(--neg)" : next.key === "none" ? "var(--warn)" : "var(--fg-3)", textTransform: "none", letterSpacing: 0 }}>{next.text}</span>}
@@ -365,50 +385,28 @@ function LeadDetail({ lead: initial, onClose }) {
           )}
         </div>
 
-        {fields.length > 0 && (
-          <div style={sect}>
-            <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Campos</div>
-            {fields.map(([k, v]) => (
-              <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid var(--line-1)", fontSize: 12, gap: 16 }}>
-                <span className="mono dim" style={{ flexShrink: 0 }}>{k}</span>
-                <span style={{ textAlign: "right" }}>{v}</span>
-              </div>
-            ))}
+        {answers.length > 0 && (
+          <div style={box}>
+            <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Respostas de qualificação</div>
+            {answers.map(([k, v]) => <FactRow key={k} k={k} v={v} />)}
           </div>
         )}
 
         {attribution.length > 0 && (
-          <div style={sect}>
-            <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Atribuição · de onde esse lead veio</div>
-            {attribution.map(([k, v]) => (
-              <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid var(--line-1)", fontSize: 12, gap: 16 }}>
-                <span className="mono dim" style={{ flexShrink: 0 }}>{k}</span>
-                <span style={{ textAlign: "right", overflowWrap: "anywhere" }}>{v}</span>
-              </div>
-            ))}
+          <div style={box}>
+            <div className="mono" style={{ ...kicker, marginBottom: 6 }}>De onde veio · atribuição do anúncio</div>
+            {attribution.map(([k, v]) => <FactRow key={k} k={k} v={v} />)}
           </div>
         )}
 
-        {answers.length > 0 && (
-          <div style={sect}>
-            <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Respostas de qualificação</div>
-            {answers.map(([k, v]) => (
-              <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid var(--line-1)", fontSize: 12, gap: 16 }}>
-                <span className="mono dim" style={{ flexShrink: 0 }}>{k}</span>
-                <span style={{ textAlign: "right" }}>{v}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div style={sect}>
+        <div style={box}>
           <div className="mono" style={{ ...kicker, marginBottom: 10 }}>Proposta</div>
           <ProposalActions l={lead} />
         </div>
 
         {/* Timeline: TODOS os pontos de contato + eventos automáticos (o histórico
             do lead). comments[] antigos aparecem mesclados como notas. */}
-        <div style={{ ...sect, display: "flex", flexDirection: "column", flex: "1 1 auto", minHeight: 140 }}>
+        <div style={{ ...box, display: "flex", flexDirection: "column", minHeight: 160 }}>
           <div className="mono" style={{ ...kicker, marginBottom: 10 }}>
             Timeline {activities ? `· ${activities.length + (lead.comments?.length || 0)}` : ""}
           </div>
@@ -419,8 +417,9 @@ function LeadDetail({ lead: initial, onClose }) {
               : <ActivityList activities={activities} comments={lead.comments} />}
           </div>
         </div>
+        </div>
 
-        <div style={{ marginTop: "auto", padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", gap: 8, background: "var(--bg-inset)", position: "sticky", bottom: 0 }}>
+        <div style={{ flexShrink: 0, padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", gap: 8, background: "var(--bg-inset)" }}>
           <button onClick={() => { close(); openForm("leads", lead); }} style={{ flex: 1, padding: "9px 12px", background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500 }}>Editar lead</button>
         </div>
 
