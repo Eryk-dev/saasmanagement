@@ -126,6 +126,16 @@ export function makeDiscord({ fetch: f = globalThis.fetch, webhookUrl = "" } = {
         color: COLORS.red,
       });
     },
+
+    // Lembrete diário dos treinamentos: pessoas com flashcards vencendo
+    // (`lines` montadas pelo job, que tem o repo).
+    trainingReminder({ lines = [] } = {}) {
+      return send({
+        title: `📚 Treinamento do dia: ${lines.length} pessoa(s) com cards pra revisar`,
+        description: lines.slice(0, 20).join("\n"),
+        color: COLORS.blue,
+      });
+    },
   };
 }
 

@@ -296,7 +296,7 @@ function subtitleFor(screen, params) {
     creative:    "stories, feed e carrossel · PNG pronto pra postar",
     offers:      "links de pagamento das ofertas · copie e envie",
     metas:       "metas por vaga e por pessoa · valem em todo campo de meta",
-    training:    "flashcards por vaga · estude e configure os cards",
+    training:    "flashcards estilo Anki (FSRS) · fila individual por pessoa",
     social:      "métricas do perfil · criar post e publicar direto",
     subscriptions: "a receita do cliente deriva daqui",
     tasks:       "kanban do time · arraste para mover",

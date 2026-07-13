@@ -1,6 +1,16 @@
-// Treinamentos — flashcards por vaga (SDR / closer / …) pra treinar o time.
-// Um doc por produto na collection `flashcards`; sem doc, cai nos defaults
-// abaixo. Editar salva pra TODO o time. Mesma forma de offers/metas.
+// Treinamentos — flashcards por vaga (SDR / closer / …) com repetição espaçada
+// FSRS POR PESSOA (o mesmo algoritmo do Anki moderno).
+//
+// Três camadas, três collections:
+//   `flashcards`        — a BASE oficial por produto (gestor edita pra todo o time,
+//                         mesma forma de offers/metas). Card: { id, role, front, back }.
+//   `training_states`   — o agendamento INDIVIDUAL: um doc por usuário×produto com o
+//                         estado FSRS de cada card (due, stability, difficulty, …).
+//                         Card novo na base nasce "novo" pra todos; card removido some.
+//   `training_reviews`  — log append-only de cada resposta (rating 1-4). É o dashboard
+//                         da equipe e a matéria-prima pra otimizar o FSRS depois.
+
+import { applyRating, previewIntervals, dayKey, dayEnd, CARD_STATE } from "./fsrs.js";
 
 // Cartão: { id, role, front (pergunta/gatilho), back (resposta/técnica) }.
 const ROLE_LABELS = { sdr: "SDR", closer: "Closer", integrator: "Integrador · CS", social: "Mídia social" };
@@ -35,6 +45,7 @@ const DEFAULTS = {
 };
 
 const ROLES = new Set(Object.keys(ROLE_LABELS));
+const ROLE_ORDER = Object.keys(ROLE_LABELS);
 
 function sanitize(cards) {
   if (!Array.isArray(cards)) return null;
@@ -46,43 +57,190 @@ function sanitize(cards) {
   })).filter((c) => c.front.trim() || c.back.trim());
 }
 
-export function registerFlashcardRoutes(app, repo, { anthropic = null } = {}) {
-  async function cardsFor(saas) {
+// Ajustes do treino por produto. Só um por enquanto: quantos cards NOVOS por
+// dia entram na fila de cada baralho (limite do Anki; revisões não têm teto).
+const DEFAULT_NEW_PER_DAY = 10;
+function sanitizeSettings(input, existing = {}) {
+  const out = { newPerDay: DEFAULT_NEW_PER_DAY, ...existing };
+  if (input && typeof input === "object" && input.newPerDay != null) {
+    const n = Math.round(Number(input.newPerDay));
+    if (Number.isFinite(n)) out.newPerDay = Math.min(200, Math.max(0, n));
+  }
+  return out;
+}
+
+// Vagas que o usuário treina: as etiquetas do cadastro (roles do funil). Sem
+// etiqueta (ex.: admin) = vê todos os baralhos.
+function rolesForUser(user) {
+  const tags = (user?.roles || []).filter((r) => ROLES.has(r));
+  return tags.length ? ROLE_ORDER.filter((r) => tags.includes(r)) : [...ROLE_ORDER];
+}
+
+const stateDocId = (saas, userId) => `${saas}__${userId}`;
+const EMPTY_STATES = (saas, userId) => ({ id: stateDocId(saas, userId), saas, user: userId, cards: {}, newDone: {} });
+
+// ── Fila do dia (o coração do Anki) ──────────────────────────────────────────
+// Por baralho (vaga): aprendendo (due até o fim do dia) → revisões vencidas →
+// novos até o limite diário. Cada card sai com o preview dos 4 intervalos.
+function buildDeckQueue(cards, statesDoc, { now, newBudget }) {
+  const end = dayEnd(now);
+  const learning = [], review = [], fresh = [];
+  for (const card of cards) {
+    const st = statesDoc.cards[card.id] || null;
+    if (!st || st.state === CARD_STATE.new) fresh.push({ card, st });
+    else if (st.state === CARD_STATE.review) { if (new Date(st.due) <= end) review.push({ card, st }); }
+    else if (new Date(st.due) <= end) learning.push({ card, st }); // learning/relearning
+  }
+  const byDue = (a, b) => new Date(a.st.due) - new Date(b.st.due);
+  learning.sort(byDue); review.sort(byDue);
+  const newToday = fresh.slice(0, Math.max(0, newBudget));
+  const pack = ({ card, st }) => ({ ...card, srs: st, preview: previewIntervals(st, now) });
+  return {
+    counts: { new: newToday.length, learning: learning.length, review: review.length },
+    cards: [...learning.map(pack), ...review.map(pack), ...newToday.map(pack)],
+  };
+}
+
+// Base oficial de um produto (doc salvo ou defaults) — usada pelas rotas e
+// pelo lembrete diário.
+export async function flashcardsBase(repo, saas) {
+  const doc = saas ? await repo.get("flashcards", saas) : null;
+  return doc?.cards || DEFAULTS[saas] || [];
+}
+
+// Retrato da equipe num produto (rota /team e lembrete diário do Discord).
+export async function teamSnapshot(repo, saas, cardsBase, now = new Date()) {
+  const end = dayEnd(now);
+  const today = dayKey(now);
+  const users = (await repo.list("users"))
+    .filter((u) => !u.saas || u.saas === saas) // respeita o escopo de produto do usuário
+    .map((u) => ({ id: u.id, name: u.name, roles: Array.isArray(u.roles) ? u.roles : [] }));
+  const reviews = (await repo.list("training_reviews")).filter((r) => r.saas === saas);
+  const rows = [];
+  for (const u of users) {
+    const roles = rolesForUser(u);
+    const deck = cardsBase.filter((c) => roles.includes(c.role));
+    const statesDoc = (await repo.get("training_states", stateDocId(saas, u.id))) || EMPTY_STATES(saas, u.id);
+    let dueToday = 0, overdue = 0, seen = 0;
+    for (const card of deck) {
+      const st = statesDoc.cards[card.id];
+      if (!st || st.state === CARD_STATE.new) continue;
+      seen++;
+      const due = new Date(st.due);
+      if (due <= end) { dueToday++; if (dayKey(due) < today) overdue++; }
+    }
+    const mine = reviews.filter((r) => r.user === u.id);
+    const doneToday = mine.filter((r) => dayKey(new Date(r.at)) === today).length;
+    const last7 = mine.filter((r) => now - new Date(r.at) <= 7 * 864e5);
+    const again7dPct = last7.length ? Math.round((last7.filter((r) => r.rating === 1).length / last7.length) * 100) : null;
+    const days = new Set(mine.map((r) => dayKey(new Date(r.at))));
+    let streak = 0;
+    for (let d = new Date(now.getTime() - (days.has(today) ? 0 : 864e5)); days.has(dayKey(d)); d = new Date(d.getTime() - 864e5)) streak++;
+    const lastAt = mine.reduce((m, r) => (r.at > m ? r.at : m), "");
+    rows.push({ ...u, deckSize: deck.length, seen, dueToday, overdue, doneToday, again7dPct, streak, lastReviewAt: lastAt || null });
+  }
+  return rows;
+}
+
+export function registerFlashcardRoutes(app, repo) {
+  async function baseDoc(saas) {
     const doc = saas ? await repo.get("flashcards", saas) : null;
-    return doc?.cards || DEFAULTS[saas] || [];
+    return {
+      cards: doc?.cards || DEFAULTS[saas] || [],
+      settings: sanitizeSettings(null, doc?.settings),
+    };
+  }
+
+  // Fila/revisão são POR PESSOA — exigem sessão de usuário (a key mestre de
+  // integração não tem "quem").
+  function requireUser(req, reply) {
+    if (req.authUser?.id) return req.authUser;
+    reply.code(401).send({ error: "treino é por pessoa — faça login no cockpit (sessão de usuário)" });
+    return null;
   }
 
   app.get("/api/flashcards/:saas", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "produto não encontrado" });
-    return { saas: product.id, roleLabels: ROLE_LABELS, aiConfigured: !!anthropic?.configured?.(), cards: await cardsFor(product.id) };
+    const { cards, settings } = await baseDoc(product.id);
+    return { saas: product.id, roleLabels: ROLE_LABELS, cards, settings };
   });
 
-  // Corrige a resposta DIGITADA do treinando contra o gabarito, via IA. Cada
-  // tentativa vira um registro em `training_attempts` (quem, card, nota) — é a
-  // base da métrica de treinamento por pessoa.
-  app.post("/api/flashcards/:saas/grade", async (req, reply) => {
-    if (!anthropic?.configured?.()) return reply.code(400).send({ error: "IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor" });
+  // A fila do dia do usuário logado: um baralho por vaga dele (sem etiqueta =
+  // todos), com contadores novo/aprendendo/revisar e os cards prontos pra sessão.
+  app.get("/api/flashcards/:saas/queue", async (req, reply) => {
+    const user = requireUser(req, reply);
+    if (!user) return;
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "produto não encontrado" });
-    const cardId = String(req.body?.cardId || "");
-    const answer = String(req.body?.answer || "").trim();
-    if (!answer) return reply.code(400).send({ error: "resposta vazia" });
-    const card = (await cardsFor(product.id)).find((c) => c.id === cardId);
-    if (!card) return reply.code(404).send({ error: "card não encontrado" });
-    try {
-      const g = await anthropic.gradeAnswer({ question: card.front, ideal: card.back, answer, role: card.role, productName: product.name });
-      // registra a tentativa pra métrica (best-effort — a nota importa mais).
-      try {
-        await repo.create("training_attempts", {
-          saas: product.id, user: req.authUser?.id || "", cardId: card.id, role: card.role,
-          score: g.score, verdict: g.verdict, at: new Date().toISOString(),
-        });
-      } catch { /* fail-open */ }
-      return { verdict: g.verdict, score: g.score, feedback: g.feedback, missing: g.missing, ideal: card.back };
-    } catch (e) {
-      return reply.code(502).send({ error: String(e.message || e).slice(0, 300) });
+    const now = new Date();
+    const { cards, settings } = await baseDoc(product.id);
+    const statesDoc = (await repo.get("training_states", stateDocId(product.id, user.id))) || EMPTY_STATES(product.id, user.id);
+    const doneByRole = statesDoc.newDone[dayKey(now)] || {};
+    const decks = [], queue = {};
+    for (const role of rolesForUser(user)) {
+      const deck = buildDeckQueue(cards.filter((c) => c.role === role), statesDoc, {
+        now, newBudget: settings.newPerDay - (doneByRole[role] || 0),
+      });
+      decks.push({ role, label: ROLE_LABELS[role], total: cards.filter((c) => c.role === role).length, counts: deck.counts });
+      queue[role] = deck.cards;
     }
+    return { saas: product.id, today: dayKey(now), dayEnd: dayEnd(now).toISOString(), newPerDay: settings.newPerDay, decks, queue };
+  });
+
+  // Uma resposta: aplica o rating (1 Errei · 2 Difícil · 3 Bom · 4 Fácil) no
+  // FSRS, persiste o estado do usuário e loga a revisão. Devolve o novo estado
+  // + preview (o front decide se o card volta ainda nesta sessão).
+  app.post("/api/flashcards/:saas/review", async (req, reply) => {
+    const user = requireUser(req, reply);
+    if (!user) return;
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "produto não encontrado" });
+    const rating = Number(req.body?.rating);
+    if (![1, 2, 3, 4].includes(rating)) return reply.code(400).send({ error: "rating deve ser 1..4" });
+    const { cards } = await baseDoc(product.id);
+    const card = cards.find((c) => c.id === String(req.body?.cardId || ""));
+    if (!card) return reply.code(404).send({ error: "card não encontrado na base" });
+
+    const now = new Date();
+    const docId = stateDocId(product.id, user.id);
+    const statesDoc = (await repo.get("training_states", docId)) || EMPTY_STATES(product.id, user.id);
+    const prev = statesDoc.cards[card.id] || null;
+    const wasNew = !prev || prev.state === CARD_STATE.new;
+    const { card: next, log } = applyRating(prev, rating, now);
+    statesDoc.cards[card.id] = next;
+
+    if (wasNew) {
+      const today = dayKey(now);
+      const day = { ...(statesDoc.newDone[today] || {}) };
+      day[card.role] = (day[card.role] || 0) + 1;
+      // só os últimos 14 dias interessam (o limite é diário)
+      statesDoc.newDone = Object.fromEntries(
+        Object.entries({ ...statesDoc.newDone, [today]: day }).sort().slice(-14)
+      );
+    }
+
+    const existing = await repo.get("training_states", docId);
+    if (existing) await repo.update("training_states", docId, { cards: statesDoc.cards, newDone: statesDoc.newDone });
+    else await repo.create("training_states", statesDoc);
+
+    // log da revisão (dashboard/otimização) — best-effort, nunca trava o estudo.
+    try {
+      await repo.create("training_reviews", {
+        saas: product.id, user: user.id, cardId: card.id, role: card.role,
+        rating, prevState: log.state, due: next.due, at: now.toISOString(),
+      });
+    } catch { /* fail-open */ }
+
+    return { cardId: card.id, srs: next, preview: previewIntervals(next, now) };
+  });
+
+  // Dashboard da equipe: quem está em dia, quem acumulou, acerto e sequência.
+  app.get("/api/flashcards/:saas/team", async (req, reply) => {
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "produto não encontrado" });
+    const { cards } = await baseDoc(product.id);
+    return { saas: product.id, today: dayKey(new Date()), roleLabels: ROLE_LABELS, users: await teamSnapshot(repo, product.id, cards) };
   });
 
   app.put("/api/flashcards/:saas", async (req, reply) => {
@@ -91,10 +249,11 @@ export function registerFlashcardRoutes(app, repo, { anthropic = null } = {}) {
     const cards = sanitize(req.body?.cards);
     if (!cards) return reply.code(400).send({ error: "cards deve ser uma lista" });
     const existing = await repo.get("flashcards", product.id);
+    const settings = sanitizeSettings(req.body?.settings, existing?.settings);
     const saved = existing
-      ? await repo.update("flashcards", product.id, { cards })
-      : await repo.create("flashcards", { id: product.id, cards });
-    return { saas: product.id, cards: saved.cards };
+      ? await repo.update("flashcards", product.id, { cards, settings })
+      : await repo.create("flashcards", { id: product.id, cards, settings });
+    return { saas: product.id, cards: saved.cards, settings: saved.settings };
   });
 }
 

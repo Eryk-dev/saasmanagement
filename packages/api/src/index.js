@@ -12,6 +12,7 @@ import { initDb, repo } from "./db.js";
 import { registerRoutes } from "./routes.js";
 import { startMarketingAutoSync } from "./routes.marketing.js";
 import { startCallSummaries } from "./call-summaries.js";
+import { startTrainingReminder } from "./training-reminder.js";
 import { ensureDefaultAdmins, makeAuthHook } from "./auth.js";
 import { makeScreenGuardHook } from "./screens.js";
 import { runStartupMigrations } from "./migrations.js";
@@ -73,6 +74,8 @@ try {
   startMarketingAutoSync(repo, { log: app.log });
   // Resumo automático de calls: só faz algo com ANTHROPIC_API_KEY + Google conectado.
   startCallSummaries(repo, { ...app.integrationClients, log: app.log });
+  // Lembrete diário de treinamento (flashcards vencendo) — no-op sem Discord.
+  startTrainingReminder(repo, { log: app.log });
 } catch (err) {
   app.log.error(err);
   process.exit(1);

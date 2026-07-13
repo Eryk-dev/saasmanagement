@@ -43,5 +43,7 @@ export const COLLECTIONS = {
   social_posts: [],  // histórico de publicações orgânicas feitas pelo cockpit
   offers: [],        // links de pagamento das ofertas por produto (ferramenta)
   flashcards: [],    // flashcards de treinamento por vaga (ferramenta)
-  training_attempts: [], // tentativas do treino (quem, card, nota) pra métrica
+  training_attempts: [], // tentativas do treino digitado (legado) — histórico preservado
+  training_states: [],   // estado FSRS por usuário×produto (agendamento individual dos cards)
+  training_reviews: [],  // log append-only de cada revisão (rating) — dashboard + otimização FSRS
 };
