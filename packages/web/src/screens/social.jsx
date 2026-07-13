@@ -159,7 +159,7 @@ function SocialScreen() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <PageHead
-        title="Mídia social"
+        title="Redes sociais"
         sub={sum?.account?.username ? `@${sum.account.username}${sum?.page?.name ? ` · ${sum.page.name}` : ""}` : "Instagram e página do Facebook do produto"}>
         <Segmented value={days} onChange={setDays} options={PERIODS} />
         <button onClick={() => setWizard(true)}

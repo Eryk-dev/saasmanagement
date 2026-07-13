@@ -237,7 +237,7 @@ function TodayScreen({ onOpenLead }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <PageHead
-        title="Meu dia"
+        title="Minhas atividades"
         sub={`${dateLabel} · ${q.hoje.length} pra hoje · ${q.amanha.length} pra amanhã`}>
         {q.doneToday > 0 && (
           <Pill tone={q.hoje.every((i) => i.done) ? "pos" : "mut"} title="leads tocados hoje nesta fila">

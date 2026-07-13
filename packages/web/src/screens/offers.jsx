@@ -80,7 +80,7 @@ function OffersScreen() {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead title="Pagamentos" sub="links de pagamento das ofertas · copie e envie pro cliente">
+      <PageHead title="Link pagamento" sub="links de pagamento das ofertas · copie e envie pro cliente">
         {dirty && (
           <>
             <button onClick={reset} disabled={saving} className="mono dim" style={{ fontSize: 11.5 }}>descartar</button>

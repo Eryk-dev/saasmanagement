@@ -1330,7 +1330,7 @@ function CreativeScreen() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <PageHead
-        title="Estáticos"
+        title="Canvas"
         sub="criativos da marca pro Instagram · arraste os elementos no preview · baixe em PNG" />
       <CreativeEditor />
     </div>
