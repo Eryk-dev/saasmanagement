@@ -655,8 +655,10 @@ function CallShortcuts({ l, item, wa, onPatch }) {
           <span style={rowLabel}>Proposta</span>
           {l.proposalUrl ? (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-              <a href={l.proposalUrl} target="_blank" rel="noopener noreferrer" style={{ ...chip, borderColor: "var(--accent-line)", color: "var(--accent)" }}>abrir proposta ↗</a>
-              {l.proposal_edit_url && <a href={l.proposal_edit_url} target="_blank" rel="noopener noreferrer" style={chip}>editar ↗</a>}
+              {/* "apresentar ao vivo" abre o link ?k (tela de setup + edição inline);
+                  "ver como cliente" é o link limpo que o cliente recebe. */}
+              <a href={l.proposal_edit_url || l.proposalUrl} target="_blank" rel="noopener noreferrer" style={{ ...chip, borderColor: "var(--accent-line)", color: "var(--accent)" }}>apresentar ao vivo ↗</a>
+              <a href={l.proposalUrl} target="_blank" rel="noopener noreferrer" style={chip}>ver como cliente ↗</a>
             </div>
           ) : (
             <button onClick={genProposal} disabled={busy === "prop"} style={{ ...chip, alignSelf: "flex-start", borderColor: "var(--accent-line)", color: "var(--accent)" }}>
