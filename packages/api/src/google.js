@@ -15,10 +15,12 @@ const SCOPE = [
   "https://www.googleapis.com/auth/meetings.space.created",
   "https://www.googleapis.com/auth/meetings.space.settings",
   "https://www.googleapis.com/auth/meetings.space.readonly", // ler gravações/transcrições pós-call
+  "https://www.googleapis.com/auth/gmail.send", // disparos: enviar e-mail pela conta conectada
   "openid",
   "email",
 ].join(" ");
 const MEET_URL = "https://meet.googleapis.com/v2";
+const GMAIL_URL = "https://gmail.googleapis.com/gmail/v1";
 
 export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientSecret = "", repo } = {}) {
   const configured = () => !!(clientId && clientSecret);
@@ -68,6 +70,10 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
       id: "google_oauth",
       refreshToken: b.refresh_token || prev?.refreshToken || "",
       account: acct || prev?.account || "",
+      // Escopos concedidos NESTA conexão (o Google devolve em `scope`): serve pra
+      // saber se o `gmail.send` foi autorizado sem tentar enviar. Reconexão sem o
+      // campo (versão antiga) mantém o que já havia.
+      scopes: b.scope || prev?.scopes || "",
       connectedAt: new Date().toISOString(),
     };
     if (prev) await repo.update("app_config", "google_oauth", rec);
@@ -246,5 +252,49 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
     };
   }
 
-  return { configured, connected, account, authUrl, exchangeCode, accessToken, createMeetEvent, configureSpace, fetchTranscript };
+  // Envio de e-mail pela conta conectada (Gmail API). `gmail.send` só; a conta
+  // do Workspace já autentica o domínio, então cai bem melhor que rascunho de
+  // Gmail pessoal. Monta o MIME RFC822, base64url, e posta em messages/send.
+  // `headers` extras (ex.: List-Unsubscribe) entram no cabeçalho.
+  async function sendGmail({ to, subject = "", text = "", html = "", fromName = "", headers = {} }) {
+    if (!to) throw new Error("sendGmail: destinatário (to) obrigatório");
+    const token = await accessToken();
+    const from = fromName ? `${encodeHeader(fromName)} <${await account()}>` : (await account());
+    const parts = [];
+    parts.push(`From: ${from}`);
+    parts.push(`To: ${to}`);
+    parts.push(`Subject: ${encodeHeader(subject)}`);
+    for (const [k, v] of Object.entries(headers)) if (v) parts.push(`${k}: ${v}`);
+    parts.push("MIME-Version: 1.0");
+    parts.push(`Content-Type: text/${html ? "html" : "plain"}; charset=UTF-8`);
+    parts.push("Content-Transfer-Encoding: base64");
+    parts.push("");
+    parts.push(Buffer.from(html || text, "utf8").toString("base64"));
+    const raw = Buffer.from(parts.join("\r\n"), "utf8").toString("base64url");
+    const res = await f(`${GMAIL_URL}/users/me/messages/send`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ raw }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.status >= 400 || body.error) {
+      throw new Error(`Gmail -> ${res.status}: ${body.error?.message || "falha ao enviar o e-mail"}`);
+    }
+    return { id: body.id, threadId: body.threadId };
+  }
+
+  // O escopo gmail.send foi concedido na conexão atual? (sem tentar enviar).
+  async function gmailReady() {
+    const s = await stored();
+    return !!(s?.refreshToken && String(s?.scopes || "").includes("gmail.send"));
+  }
+
+  return { configured, connected, account, authUrl, exchangeCode, accessToken, createMeetEvent, configureSpace, fetchTranscript, sendGmail, gmailReady };
+}
+
+// Cabeçalho de e-mail com não-ASCII (nome, assunto): codifica em MIME
+// "encoded-word" (RFC 2047) só quando precisa, senão devolve cru.
+function encodeHeader(s) {
+  const str = String(s || "");
+  return /^[\x20-\x7E]*$/.test(str) ? str : `=?UTF-8?B?${Buffer.from(str, "utf8").toString("base64")}?=`;
 }
