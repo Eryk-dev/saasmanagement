@@ -1,6 +1,7 @@
 import React from "react";
 import { PageHead, Pill, Segmented } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
+import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { CreativeEditor } from "./creative.jsx";
@@ -121,6 +122,15 @@ function SocialScreen() {
     api.socialAudience(product.id).then((a) => alive && setAudience(a)).catch(() => {});
     return () => { alive = false; };
   }, [product?.id]);
+
+  // Após publicar um post pelo wizard: recarrega summary + histórico (mesmo fetch
+  // dos efeitos acima). Substitui o antigo load() removido no refactor de período.
+  function reloadSocial() {
+    if (!product?.id) return;
+    Promise.all([api.socialSummary(product.id, days), api.socialPosts(product.id)])
+      .then(([s, p]) => { setSum(s); setPosts(p || []); })
+      .catch((e) => setErr(e.message));
+  }
 
   const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
   const tile = { flex: "1 1 150px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "12px 14px" };
@@ -306,13 +316,15 @@ function SocialScreen() {
       </div>
 
       {wizard && (
-        <PostWizard
-          saas={product?.id}
-          pains={sum?.pains || []}
-          aiConfigured={!!sum?.aiConfigured}
-          onClose={() => setWizard(false)}
-          onPublished={load}
-        />
+        <ErrorBoundary variant="modal" label="criar-post" onReset={() => setWizard(false)}>
+          <PostWizard
+            saas={product?.id}
+            pains={sum?.pains || []}
+            aiConfigured={!!sum?.aiConfigured}
+            onClose={() => setWizard(false)}
+            onPublished={reloadSocial}
+          />
+        </ErrorBoundary>
       )}
     </div>
   );

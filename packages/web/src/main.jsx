@@ -12,6 +12,7 @@ import { createRoot } from "react-dom/client";
 import { fmt } from "./lib/format.js";
 import { loadSeed } from "./data.jsx";
 import { api, setKey } from "./lib/api.js";
+import { ErrorBoundary } from "./components/error-boundary.jsx";
 
 const root = createRoot(document.getElementById("root"));
 
@@ -91,7 +92,9 @@ async function boot() {
   try {
     await loadSeed();
     const { App } = await import("./app.jsx");
-    root.render(<App />);
+    // Rede de segurança final: se algo na árvore quebrar sem ser contido por uma
+    // fronteira mais interna, mostra um cartão em vez da tela branca.
+    root.render(<ErrorBoundary label="app"><App /></ErrorBoundary>);
   } catch (err) {
     if (err && err.status === 401) { root.render(<Login />); return; }
     console.error(err);
