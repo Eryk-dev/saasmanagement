@@ -1388,11 +1388,18 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       var ctl, k, o, dp, vp;
       if (field === 'accounts') {
         ctl = document.createElement('select');
-        for (k in (CALC.seatsMap || {})) { o = document.createElement('option'); o.value = k; o.textContent = k + ' contas'; if (k === state.accounts) o.selected = true; ctl.appendChild(o); }
+        // Ordena as faixas pelo valor numérico (o jsonb do Postgres reordena as chaves).
+        var sm = CALC.seatsMap || {};
+        Object.keys(sm).sort(function (a, b) { return (Number(sm[a]) || 0) - (Number(sm[b]) || 0); }).forEach(function (kk) {
+          o = document.createElement('option'); o.value = kk; o.textContent = kk + ' contas'; if (kk === state.accounts) o.selected = true; ctl.appendChild(o);
+        });
         ctl.addEventListener('change', function () { state.accounts = ctl.value; state.seats = Number((CALC.seatsMap || {})[ctl.value]) || state.seats; done(); });
       } else if (field === 'volume') {
         ctl = document.createElement('select');
-        for (k in (CALC.volumeMid || {})) { o = document.createElement('option'); o.value = k; o.textContent = k; if (k === state.volume) o.selected = true; ctl.appendChild(o); }
+        var vm = CALC.volumeMid || {};
+        Object.keys(vm).sort(function (a, b) { return (Number(vm[a]) || 0) - (Number(vm[b]) || 0); }).forEach(function (kk) {
+          o = document.createElement('option'); o.value = kk; o.textContent = kk; if (kk === state.volume) o.selected = true; ctl.appendChild(o);
+        });
         ctl.addEventListener('change', function () { state.volume = ctl.value; done(); });
       } else if (field === 'cycle') {
         ctl = document.createElement('select');
@@ -1414,13 +1421,23 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         ctl = document.createElement('input'); ctl.type = 'text'; ctl.placeholder = 'Nome do cliente';
         ctl.value = DATA.lead.name || '';
         ctl.addEventListener('input', function () { DATA.lead.name = ctl.value; DATA.lead.firstName = ctl.value.trim().split(/\\s+/)[0] || ''; done(); });
-      } else if (field === 'niche') {
-        ctl = document.createElement('select');
-        var nm = (CALC.answerLabels || {}).niche || {}, cur = DATA.answers.niche || '', seen = {};
-        o = document.createElement('option'); o.value = ''; o.textContent = '—'; ctl.appendChild(o);
-        for (k in nm) { o = document.createElement('option'); o.value = k; o.textContent = nm[k]; if (k === cur) o.selected = true; seen[k] = 1; ctl.appendChild(o); }
-        if (cur && !seen[cur]) { o = document.createElement('option'); o.value = cur; o.textContent = cur; o.selected = true; ctl.appendChild(o); }
-        ctl.addEventListener('change', function () { DATA.answers.niche = ctl.value; done(); });
+      } else if (field === 'niche' || field === 'staff') {
+        // Campo DIGITÁVEL com sugestões (answerLabels): escolhe um conhecido no
+        // dropdown OU digita um valor novo. Guarda o texto; a exibição resolve
+        // pelo answerLabels quando é um valor conhecido, senão mostra como digitado.
+        var map = (CALC.answerLabels || {})[field] || {};
+        ctl = document.createElement('input'); ctl.type = 'text';
+        ctl.placeholder = field === 'staff' ? 'Funcionários' : 'Nicho';
+        var listId = 'dl-' + field;
+        ctl.setAttribute('list', listId);
+        var curv = DATA.answers[field] || '';
+        ctl.value = (map[curv] != null) ? map[curv] : curv;
+        if (!document.getElementById(listId)) {
+          dp = document.createElement('datalist'); dp.id = listId;
+          for (k in map) { o = document.createElement('option'); o.value = map[k]; dp.appendChild(o); }
+          document.body.appendChild(dp);
+        }
+        ctl.addEventListener('input', function () { DATA.answers[field] = ctl.value; done(); });
       }
       return ctl;
     }
@@ -1448,6 +1465,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       if (CALC.answerLabels && CALC.answerLabels.niche && Object.keys(CALC.answerLabels.niche).length) fields.push(['niche', 'Nicho']);
       if (CALC.seatsMap && Object.keys(CALC.seatsMap).length) fields.push(['accounts', 'Contas']);
       if (CALC.volumeMid && Object.keys(CALC.volumeMid).length) fields.push(['volume', 'Anúncios']);
+      if (CALC.answerLabels && CALC.answerLabels.staff && Object.keys(CALC.answerLabels.staff).length) fields.push(['staff', 'Equipe']);
       fields.forEach(function (f) {
         var ctl = control(f[0], function () { fillDynamic(); scheduleSave(); });
         if (!ctl) return;
