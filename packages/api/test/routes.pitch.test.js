@@ -39,7 +39,9 @@ test("GET /api/pitch/:saas/calls: agrega + calls recentes com nome do lead", asy
   const repo = makeMemRepo();
   await repo.create("products", { id: "leverads", name: "LeverAds" });
   await repo.create("leads", { id: "le1", saas: "leverads", name: "Tania", stage: "Follow-up" });
-  await repo.create("activities", { id: "a1", saas: "leverads", type: "system", at: "2026-07-13T18:00:00Z", lead: "le1", meta: { event: "call_summary", recordingUrl: "http://doc", summary: { temperatura: "quente", resumo: "topou seguir", dores: ["preço"], objecoes: [{ objecao: "caro", resolvida: false }] } } });
+  await repo.create("activities", { id: "a1", saas: "leverads", type: "system", at: "2026-07-13T18:00:00Z", lead: "le1", meta: { event: "call_summary", meetEventId: "ev1", recordingUrl: "http://doc", summary: { temperatura: "quente", resumo: "topou seguir", dores: ["preço"], objecoes: [{ objecao: "caro", resolvida: false }] } } });
+  // re-resumo da MESMA call (mesmo meetEventId, mais antigo) → não deve contar de novo
+  await repo.create("activities", { id: "a1b", saas: "leverads", type: "system", at: "2026-07-13T17:00:00Z", lead: "le1", meta: { event: "call_summary", meetEventId: "ev1", summary: { temperatura: "frio", dores: ["preço"], objecoes: [{ objecao: "caro", resolvida: true }] } } });
   await repo.create("activities", { id: "a2", saas: "outro", type: "system", meta: { event: "call_summary", summary: { temperatura: "frio" } } }); // ruído
 
   const app = Fastify();
@@ -47,7 +49,9 @@ test("GET /api/pitch/:saas/calls: agrega + calls recentes com nome do lead", asy
   const res = await app.inject({ method: "GET", url: "/api/pitch/leverads/calls" });
   assert.equal(res.statusCode, 200);
   const b = res.json();
-  assert.equal(b.count, 1);
+  assert.equal(b.count, 1); // dedup por meetEventId: a call da Tania conta uma vez
+  assert.equal(b.recent.length, 1);
+  assert.equal(b.recent[0].temperatura, "quente"); // manteve o resumo mais recente
   assert.deepEqual(b.temperatura, { quente: 1, morno: 0, frio: 0 });
   assert.equal(b.recent[0].leadName, "Tania");
   assert.equal(b.recent[0].recordingUrl, "http://doc");
