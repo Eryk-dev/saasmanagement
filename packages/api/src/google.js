@@ -361,8 +361,14 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
     if (!fileId) return null;
 
     // 3) Exporta o Doc como texto puro (o corpo é a transcrição fala a fala).
+    // Inclui id + corpo do erro no diagnóstico: 403 SERVICE_DISABLED = habilitar
+    // a Google Drive API no Cloud; insufficientFilePermissions = a conta não tem
+    // acesso ao conteúdo do arquivo.
     const exp = await f(`${DRIVE_URL}/files/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent("text/plain")}`, { headers: auth });
-    if (exp.status >= 400) throw new Error(`Drive export -> ${exp.status}`);
+    if (exp.status >= 400) {
+      const eb = await exp.text().catch(() => "");
+      throw new Error(`Drive export ${fileId} -> ${exp.status}: ${String(eb).replace(/\s+/g, " ").trim().slice(0, 220)}`);
+    }
     const text = String(await exp.text()).trim();
     if (!text) return null;
     return {
