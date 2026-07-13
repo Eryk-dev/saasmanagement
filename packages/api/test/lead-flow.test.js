@@ -13,7 +13,7 @@ const { rollToBusinessDay } = await import("../src/lead-flow.js");
 const FUNNEL = [
   { stage: "Novo lead", kind: "novo", conv: 1, cadence: { firstTouchHours: 2 } },
   { stage: "Em contato", kind: "contato", conv: 1, cadence: { maxAttempts: 5, retryDays: 1 } },
-  { stage: "Qualificando", kind: "qualificacao", conv: 1, cadence: { maxAttempts: 3, retryDays: 1 } },
+  { stage: "Qualificando", kind: "qualificacao", conv: 1, cadence: { maxAttempts: 2, retryDays: 1 } },
   { stage: "Follow-up", kind: "followup", conv: 0.5, cadence: { maxAttempts: 8, retryDays: 3 } },
   { stage: "Integração", kind: "integracao", conv: 1 },
   { stage: "Ganho", kind: "ganho", conv: 1 },
