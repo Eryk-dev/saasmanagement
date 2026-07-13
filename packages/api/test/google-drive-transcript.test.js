@@ -50,6 +50,33 @@ test("fetchTranscriptFromDrive: acha o Doc pelo título/horário e exporta como 
   assert.ok(search.includes("createdTime >"));            // janela a partir do horário da call
 });
 
+test("fetchTranscriptFromDrive: usa o anexo (Doc) do evento sem precisar buscar no Drive", async () => {
+  const repo = makeMemRepo();
+  await repo.create("app_config", { id: "google_oauth", refreshToken: "rt", account: "contato@uniquebox.com.br" });
+  const calls = [];
+  const f = async (url) => {
+    const u = String(url); calls.push(u);
+    const ok = (b) => ({ status: 200, json: async () => b, text: async () => JSON.stringify(b) });
+    if (u.includes("oauth2.googleapis.com/token")) return ok({ access_token: "at", expires_in: 3600 });
+    if (u.includes("/calendar/v3/") && u.includes("/events/")) {
+      return ok({ summary: "Call LeverAds · Tania", start: { dateTime: "2026-07-13T15:00:00-03:00" },
+        attachments: [
+          { fileId: "rec1", title: "Tania (Gravação)", mimeType: "video/mp4" },
+          { fileId: "att1", title: "Tania (Transcrição)", mimeType: "application/vnd.google-apps.document" },
+        ] });
+    }
+    if (u.includes("/drive/v3/files/att1/export")) return { status: 200, text: async () => "Leo: oi\nTania: oi, tudo bem" };
+    if (u.includes("/drive/v3/files")) throw new Error("não deveria buscar no Drive quando o evento tem anexo de transcrição");
+    return ok({});
+  };
+  const g = makeGoogle({ fetch: f, clientId: "c", clientSecret: "s", repo });
+
+  const t = await g.fetchTranscriptFromDrive({ eventId: "ev1", leadName: "Tania" });
+  assert.ok(t.text.includes("Tania"));
+  assert.ok(t.recordingUrl.includes("att1")); // pegou o anexo de transcrição, não a gravação
+  assert.ok(!calls.some((u) => u.includes("/drive/v3/files?")), "não caiu na busca (usou o anexo do evento)");
+});
+
 test("summarizer: Meet API vazia → usa o fallback do Drive e grava o call_summary", async () => {
   const repo = makeMemRepo();
   await repo.create("app_config", { id: "google_oauth", refreshToken: "rt", account: "contato@uniquebox.com.br" });
