@@ -15,7 +15,7 @@
 
 export const SCREEN_IDS = [
   "overview", "today", "pipeline", "customers", "metrics", "expenses",
-  "social", "forms", "proposals", "creative", "offers", "tasks", "settings",
+  "social", "forms", "proposals", "creative", "offers", "metas", "tasks", "settings",
 ];
 
 export const sanitizeScreens = (x) =>
@@ -55,6 +55,7 @@ const ROUTE_SCREENS = [
   ["/api/proposal_templates", ["proposals"]],
   ["/api/proposals", ["proposals"]],     // inclui /preview
   ["/api/offers", ["offers"]],           // links de pagamento das ofertas
+  ["/api/metas", ["metas"]],             // metas de desempenho por vaga/pessoa
   ["/api/tasks", ["tasks"]],
   ["/api/task_boards", ["tasks"]],
   ["/api/goals", ["overview"]],

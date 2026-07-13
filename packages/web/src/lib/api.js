@@ -128,6 +128,9 @@ export const api = {
   // Links de pagamento das ofertas (ferramenta) — leitura e edição pra todo o time.
   offers: (saas) => req("GET", `/api/offers/${encodeURIComponent(saas)}`),
   saveOffers: (saas, items) => req("PUT", `/api/offers/${encodeURIComponent(saas)}`, { items }),
+  // Metas de desempenho por vaga/pessoa (ferramenta; escreve na collection goals).
+  metas: (saas) => req("GET", `/api/metas/${encodeURIComponent(saas)}`),
+  saveMetas: (saas, goals) => req("PUT", `/api/metas/${encodeURIComponent(saas)}`, { goals }),
   socialPublish: (payload) => req("POST", "/api/social/publish", payload),
   // Copy do post por IA: preenche os campos do template + legenda a partir da dor.
   socialAiCopy: (payload) => req("POST", "/api/social/ai-copy", payload),
