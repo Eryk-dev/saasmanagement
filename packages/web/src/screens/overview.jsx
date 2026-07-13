@@ -153,6 +153,27 @@ function OverviewScreen({ onNav, onOpenLead }) {
 
   const today = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
 
+  // Total do TIME no período: soma o que já foi realizado das métricas que
+  // cobramos do SDR e do closer (+ a soma das metas individuais). Segue o
+  // mesmo período do topo (score é scoreByPeriod[period]).
+  const score = scoreByPeriod[period];
+  const teamAgg = (() => {
+    const sdrRows = score?.sdr || [], cloRows = score?.closer || [];
+    const sum = (rows, f) => rows.reduce((a, p) => a + (Number(f(p)) || 0), 0);
+    return {
+      hasAny: sdrRows.length + cloRows.length > 0,
+      contacted: sum(sdrRows, (p) => p.contacted),
+      callsBooked: sum(sdrRows, (p) => p.callsBooked),
+      callsMeta: sum(sdrRows, (p) => bookingGoal(p)?.target || 0),
+      proposals: sum(cloRows, (p) => p.proposals),
+      won: sum(cloRows, (p) => p.won),
+      wonMeta: sum(cloRows, (p) => scaleGoal(p.goals?.won, period)?.target || 0),
+      revenue: sum(cloRows, (p) => p.revenue),
+      revenueMeta: sum(cloRows, (p) => scaleGoal(p.goals?.revenue, period)?.target || 0),
+    };
+  })();
+  const ofMeta = (m) => (m > 0 ? `de ${m} · meta ${pShort}` : "somando o time");
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Visão geral" sub={today}>
@@ -178,7 +199,19 @@ function OverviewScreen({ onNav, onOpenLead }) {
             delta={biz?.window?.newCustomers != null ? `${biz.window.newCustomers} ${biz.window.newCustomers === 1 ? "cliente novo" : "clientes novos"}` : null} tone="flat" />
         </div>
 
-        {/* Desempenho do time — placar por papel (cada painel no seu período). */}
+        {/* Total do time no período: o realizado somado das métricas do SDR + closer. */}
+        {teamAgg.hasAny && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+            <StatTile label={`Contatados · time · ${pShort}`} value={String(teamAgg.contacted)} delta="somando o time" tone="flat" />
+            <StatTile label={`Calls agendadas · time · ${pShort}`} value={String(teamAgg.callsBooked)} delta={ofMeta(teamAgg.callsMeta)} tone="flat" />
+            <StatTile label={`Propostas · time · ${pShort}`} value={String(teamAgg.proposals)} delta="somando o time" tone="flat" />
+            <StatTile label={`Ganhos · time · ${pShort}`} value={String(teamAgg.won)} delta={ofMeta(teamAgg.wonMeta)} tone="flat" />
+            <StatTile label={`Receita · time · ${pShort}`} value={window.fmt.money(teamAgg.revenue)}
+              delta={teamAgg.revenueMeta > 0 ? `de ${window.fmt.money(teamAgg.revenueMeta)} · meta ${pShort}` : "somando o time"} tone="flat" />
+          </div>
+        )}
+
+        {/* Desempenho do time — placar por papel (segue o período do topo). */}
         <TeamPerformance score={scoreByPeriod[period]} period={period} onPerson={openPerson} product={product} />
 
         <div className="resp-cols" style={{ "--cols": "minmax(0,1fr) 340px", gap: 12, alignItems: "start" }}>
@@ -441,8 +474,11 @@ function TeamPerformance({ score, period, onPerson, product }) {
           const data = score;
           const rows = data?.[panel.key] || [];
           const ctx = { period, lossLabel };
-          const gridCols = `minmax(120px, 1.4fr) repeat(${panel.cols.length}, minmax(84px, 1fr))`;
-          const minW = 130 + panel.cols.length * 92;
+          // Larguras FIXAS (não fr) pra os painéis alinharem entre si: a coluna
+          // Pessoa e as de métrica começam no mesmo x em todos os papéis.
+          const PERSON_W = 160, COL_W = 116;
+          const gridCols = `${PERSON_W}px repeat(${panel.cols.length}, ${COL_W}px)`;
+          const minW = PERSON_W + panel.cols.length * COL_W;
           return (
             <div key={panel.key} style={{ marginTop: 10 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 8px", flexWrap: "wrap" }}>
