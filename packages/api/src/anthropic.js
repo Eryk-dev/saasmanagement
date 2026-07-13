@@ -94,6 +94,23 @@ const SOCIAL_SYSTEM = `Você é o social media e copywriter de resposta direta d
 Sua tarefa: escrever a copy de um post de rede social preenchendo os CAMPOS de um template pronto, a partir da DOR escolhida.
 Regras: português do Brasil, direto, específico e crível (nada de número inventado nem promessa mágica). Fale com dono de operação de marketplace (vendedor ML/Shopee). NUNCA use travessão (—); use vírgula, parênteses ou ponto. Respeite o PAPEL de cada campo (um "Kicker" é curto e em caixa, um "CTA" tem 2 a 4 palavras, um "Número" é uma métrica curta tipo +105% ou 2h) e o COMPRIMENTO do exemplo dado. Para destacar 1 a 3 palavras-chave, envolva em *asteriscos* (o template pinta em destaque). Preencha TODOS os campos pedidos, cada um com seu key. Não invente campos.`;
 
+// Copy de um DISPARO (e-mail e/ou WhatsApp) pra uma lista de leads qualificados.
+// Schema estável com os três campos; o prompt manda deixar vazio o canal que não
+// se aplica. Tokens {{nome}} {{empresa}} {{nicho}} são substituídos pelo cockpit.
+const CAMPAIGN_COPY_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["subject", "body", "whatsapp"],
+  properties: {
+    subject: { type: "string", description: "Assunto do e-mail: curto, específico, sem clickbait. Vazio se o canal não incluir e-mail." },
+    body: { type: "string", description: "Corpo do e-mail em texto puro (sem HTML): abre com {{nome}}, 2 a 5 parágrafos curtos, termina com um CTA claro. Vazio se o canal não incluir e-mail." },
+    whatsapp: { type: "string", description: "Mensagem de WhatsApp: curta (2 a 4 frases), pessoal, abre com {{nome}} e termina com uma pergunta ou próximo passo. Vazio se o canal não incluir WhatsApp." },
+  },
+};
+
+const CAMPAIGN_SYSTEM = `Você é o copywriter de resposta direta da LeverAds, SaaS que clona e sincroniza anúncios entre contas de Mercado Livre e Shopee (multi-contas, mais exposição, menos retrabalho, proteção contra banimento).
+Sua tarefa: escrever a copy de um DISPARO (e-mail e/ou WhatsApp) pra uma lista de leads QUALIFICADOS (já conversaram com o time, conhecem a LeverAds). É reengajamento/nutrição, não primeiro contato frio.
+Regras: português do Brasil, direto, específico e crível (nada de número inventado nem promessa mágica). Fale com dono de operação de marketplace (vendedor ML/Shopee). NUNCA use travessão (—); use vírgula, parênteses ou ponto. Pode usar os tokens {{nome}}, {{empresa}} e {{nicho}} (o sistema troca pelos dados de cada lead) — sempre abra a mensagem com {{nome}}. Preencha SÓ os campos do canal pedido; deixe os outros como string vazia.`;
 // Melhoria de pitch a partir das calls: recebe o roteiro atual + o padrão das
 // últimas calls (objeções recorrentes, dores, temperatura) e devolve uma versão
 // melhor do roteiro (mesma estrutura editável: postura/objetivo/passos) + o
@@ -288,6 +305,25 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
     return { fields: map, caption: r.parsed.caption || "", usage: r.usage, model: r.model };
   }
 
+  // Copy de um disparo: recebe o canal (email|whatsapp|ambos), o objetivo e uma
+  // descrição do público, devolve assunto/corpo do e-mail e/ou texto do WhatsApp.
+  // Não grava nada — o operador revisa antes de disparar.
+  async function suggestCampaignCopy({ channel = "whatsapp", objetivo = "", publico = "", productName = "" } = {}) {
+    if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
+    const wantsEmail = channel === "email" || channel === "ambos" || channel === "both";
+    const wantsWa = channel === "whatsapp" || channel === "ambos" || channel === "both";
+    const context = [
+      `Produto: ${productName || "LeverAds"}`,
+      publico ? `Público do disparo: ${publico}` : "Público: leads qualificados que esfriaram (nutrição/reativação).",
+      objetivo ? `Objetivo: ${objetivo}` : "Objetivo: reengajar o lead e agendar uma conversa.",
+      wantsEmail && wantsWa ? "Escreva o e-mail (subject + body) E a mensagem de WhatsApp."
+        : wantsEmail ? "Escreva SÓ o e-mail (subject + body); deixe whatsapp vazio."
+        : "Escreva SÓ a mensagem de WhatsApp; deixe subject e body vazios.",
+    ].filter(Boolean).join("\n");
+    const r = await requestJson(context, { system: CAMPAIGN_SYSTEM, schema: CAMPAIGN_COPY_SCHEMA, schemaName: "campaign_copy" });
+    return { subject: r.parsed.subject || "", body: r.parsed.body || "", whatsapp: r.parsed.whatsapp || "", usage: r.usage, model: r.model };
+  }
+
   // Uma sugestão de roteiro melhorado a partir do pitch atual + digest das
   // calls. Não grava nada: devolve diagnóstico + objeções recorrentes + o
   // roteiro sugerido (mesma estrutura do editor de Scripts) pro time revisar.
@@ -314,5 +350,5 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
     return { suggestion: r.parsed, usage: r.usage, model: r.model };
   }
 
-  return { configured, summarizeCall, suggestWelcome, suggestSocialCopy, improvePitch, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
+  return { configured, summarizeCall, suggestWelcome, suggestSocialCopy, suggestCampaignCopy, improvePitch, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
 }
