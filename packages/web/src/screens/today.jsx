@@ -731,7 +731,6 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
               {l.callConfirmed ? "✓ cliente confirmou" : "cliente confirmou"}
             </button>
           )}
-          <button onClick={onClose} className="mono dim" style={{ marginLeft: "auto", fontSize: 12 }}>fechar</button>
         </div>
       </div>
     </div>
