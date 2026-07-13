@@ -46,7 +46,7 @@ function sanitize(cards) {
   })).filter((c) => c.front.trim() || c.back.trim());
 }
 
-export function registerFlashcardRoutes(app, repo) {
+export function registerFlashcardRoutes(app, repo, { anthropic = null } = {}) {
   async function cardsFor(saas) {
     const doc = saas ? await repo.get("flashcards", saas) : null;
     return doc?.cards || DEFAULTS[saas] || [];
@@ -55,7 +55,34 @@ export function registerFlashcardRoutes(app, repo) {
   app.get("/api/flashcards/:saas", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "produto não encontrado" });
-    return { saas: product.id, roleLabels: ROLE_LABELS, cards: await cardsFor(product.id) };
+    return { saas: product.id, roleLabels: ROLE_LABELS, aiConfigured: !!anthropic?.configured?.(), cards: await cardsFor(product.id) };
+  });
+
+  // Corrige a resposta DIGITADA do treinando contra o gabarito, via IA. Cada
+  // tentativa vira um registro em `training_attempts` (quem, card, nota) — é a
+  // base da métrica de treinamento por pessoa.
+  app.post("/api/flashcards/:saas/grade", async (req, reply) => {
+    if (!anthropic?.configured?.()) return reply.code(400).send({ error: "IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor" });
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "produto não encontrado" });
+    const cardId = String(req.body?.cardId || "");
+    const answer = String(req.body?.answer || "").trim();
+    if (!answer) return reply.code(400).send({ error: "resposta vazia" });
+    const card = (await cardsFor(product.id)).find((c) => c.id === cardId);
+    if (!card) return reply.code(404).send({ error: "card não encontrado" });
+    try {
+      const g = await anthropic.gradeAnswer({ question: card.front, ideal: card.back, answer, role: card.role, productName: product.name });
+      // registra a tentativa pra métrica (best-effort — a nota importa mais).
+      try {
+        await repo.create("training_attempts", {
+          saas: product.id, user: req.authUser?.id || "", cardId: card.id, role: card.role,
+          score: g.score, verdict: g.verdict, at: new Date().toISOString(),
+        });
+      } catch { /* fail-open */ }
+      return { verdict: g.verdict, score: g.score, feedback: g.feedback, missing: g.missing, ideal: card.back };
+    } catch (e) {
+      return reply.code(502).send({ error: String(e.message || e).slice(0, 300) });
+    }
   });
 
   app.put("/api/flashcards/:saas", async (req, reply) => {

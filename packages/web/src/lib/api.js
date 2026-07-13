@@ -132,9 +132,10 @@ export const api = {
   // Metas de desempenho por vaga/pessoa (ferramenta; escreve na collection goals).
   metas: (saas) => req("GET", `/api/metas/${encodeURIComponent(saas)}`),
   saveMetas: (saas, goals) => req("PUT", `/api/metas/${encodeURIComponent(saas)}`, { goals }),
-  // Treinamentos: flashcards por vaga (ferramenta).
+  // Treinamentos: flashcards por vaga + correção da resposta digitada por IA.
   flashcards: (saas) => req("GET", `/api/flashcards/${encodeURIComponent(saas)}`),
   saveFlashcards: (saas, cards) => req("PUT", `/api/flashcards/${encodeURIComponent(saas)}`, { cards }),
+  gradeFlashcard: (saas, cardId, answer) => req("POST", `/api/flashcards/${encodeURIComponent(saas)}/grade`, { cardId, answer }),
   socialPublish: (payload) => req("POST", "/api/social/publish", payload),
   // Copy do post por IA: preenche os campos do template + legenda a partir da dor.
   socialAiCopy: (payload) => req("POST", "/api/social/ai-copy", payload),
