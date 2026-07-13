@@ -4,7 +4,7 @@ import { PageHead, Pill } from "../components/viz.jsx";
 import { waLink, leadTier, leadScoreLabel } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf } from "../lib/funnel.js";
+import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, orderNextSteps } from "../lib/funnel.js";
 import { allUsers, currentUser, displayName, userById, usersByRole } from "../lib/users.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
@@ -766,20 +766,22 @@ export function destinationsFor(saasCfg, lead) {
     if (k === "retry") {
       const promote = curKind === "novo";
       const target = promote ? (stageByKind(saasCfg, "qualificacao") || curStage) : curStage;
-      out.push({ retry: true, promote, stage: target, kind: promote ? "qualificacao" : curKind });
+      out.push({ retry: true, promote, stage: target, kind: promote ? "qualificacao" : curKind, nk: "retry" });
       continue;
     }
     if (k === "noshow") {
       // No-show é kind contato (colide com Nutrição no stageByKind) → resolve
       // pela etapa nomeada "No show" do funil, se existir.
       const st = (saasCfg?.funnel || []).find((f) => f && isNoShowStage(f.stage));
-      if (st && !seen.has(st.stage)) { seen.add(st.stage); out.push({ stage: st.stage, kind: "noshow" }); }
+      if (st && !seen.has(st.stage)) { seen.add(st.stage); out.push({ stage: st.stage, kind: "noshow", nk: "noshow" }); }
       continue;
     }
     const stage = stageByKind(saasCfg, k);
-    if (stage && !seen.has(stage)) { seen.add(stage); out.push({ stage, kind: stageKind(saasCfg, stage) }); }
+    if (stage && !seen.has(stage)) { seen.add(stage); out.push({ stage, kind: stageKind(saasCfg, stage), nk: k }); }
   }
-  return out;
+  // Prioridade configurável por produto (Ajustes → Próximos passos); vazio =
+  // ordem canônica do NEXT_KINDS da etapa.
+  return orderNextSteps(out, saasCfg?.nextStepOrder);
 }
 
 // Setup que cada destino pede antes de mover.
