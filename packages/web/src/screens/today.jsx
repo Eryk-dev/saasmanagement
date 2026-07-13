@@ -1,5 +1,6 @@
 import React from "react";
 import { Avatar, EmptyState } from "../atoms.jsx";
+import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { PageHead, Pill } from "../components/viz.jsx";
 import { waLink, leadTier, leadScoreLabel } from "../lib/ui.js";
 import { api } from "../lib/api.js";
@@ -339,18 +340,20 @@ function TodayScreen({ onOpenLead }) {
       </div>
 
       {scriptItem && (
-        <ScriptPanel
-          item={scriptItem}
-          saasCfg={saasCfg}
-          leads={leads}
-          onPatch={patchLead}
-          onMove={moveAndNext}
-          onMoveMeet={moveAndMeet}
-          onAfter={advanceScript}
-          onClose={() => setScriptItem(null)}
-          onTouch={() => { const nx = nextAfter(scriptItem); logTouch(scriptItem); setScriptItem(nx); }}
-          onOpenLead={() => { setScriptItem(null); onOpenLead && onOpenLead(scriptItem.l); }}
-        />
+        <ErrorBoundary variant="modal" label="roteiro" resetKey={scriptItem.l?.id} onReset={() => setScriptItem(null)}>
+          <ScriptPanel
+            item={scriptItem}
+            saasCfg={saasCfg}
+            leads={leads}
+            onPatch={patchLead}
+            onMove={moveAndNext}
+            onMoveMeet={moveAndMeet}
+            onAfter={advanceScript}
+            onClose={() => setScriptItem(null)}
+            onTouch={() => { const nx = nextAfter(scriptItem); logTouch(scriptItem); setScriptItem(nx); }}
+            onOpenLead={() => { setScriptItem(null); onOpenLead && onOpenLead(scriptItem.l); }}
+          />
+        </ErrorBoundary>
       )}
     </div>
   );
@@ -757,22 +760,21 @@ export function destinationsFor(saasCfg, lead) {
     if (k === "retry") {
       const promote = curKind === "novo";
       const target = promote ? (stageByKind(saasCfg, "qualificacao") || curStage) : curStage;
-      out.push({ retry: true, promote, stage: target, kind: promote ? "qualificacao" : curKind, nk: "retry" });
+      out.push({ retry: true, promote, stage: target, kind: promote ? "qualificacao" : curKind });
       continue;
     }
     if (k === "noshow") {
       // No-show é kind contato (colide com Nutrição no stageByKind) → resolve
       // pela etapa nomeada "No show" do funil, se existir.
       const st = (saasCfg?.funnel || []).find((f) => f && isNoShowStage(f.stage));
-      if (st && !seen.has(st.stage)) { seen.add(st.stage); out.push({ stage: st.stage, kind: "noshow", nk: "noshow" }); }
+      if (st && !seen.has(st.stage)) { seen.add(st.stage); out.push({ stage: st.stage, kind: "noshow" }); }
       continue;
     }
     const stage = stageByKind(saasCfg, k);
-    if (stage && !seen.has(stage)) { seen.add(stage); out.push({ stage, kind: stageKind(saasCfg, stage), nk: k }); }
+    if (stage && !seen.has(stage)) { seen.add(stage); out.push({ stage, kind: stageKind(saasCfg, stage) }); }
   }
-  // Prioridade configurável por produto (Ajustes → Próximos passos); vazio =
-  // ordem canônica do NEXT_KINDS da etapa.
-  return orderNextSteps(out, saasCfg?.nextStepOrder);
+  // A ordem já vem de nextKindsFor (default do kind ou override por roteiro).
+  return out;
 }
 
 // Setup que cada destino pede antes de mover.

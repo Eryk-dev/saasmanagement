@@ -20,6 +20,7 @@ import { TasksScreen } from "./screens/tasks.jsx";
 import { SettingsScreen } from "./screens/settings.jsx";
 import { LeadDetail } from "./screens/deal.jsx";
 import { CommandSearch } from "./components/CommandSearch.jsx";
+import { ErrorBoundary } from "./components/error-boundary.jsx";
 import { DataContext, loadSeed } from "./data.jsx";
 import { useActiveSaas } from "./lib/workspace.js";
 import { canSeeScreen } from "./lib/users.js";
@@ -191,6 +192,10 @@ function App() {
         {/* SEM key={dataVersion}: remontar a árvore a cada escrita fazia o app
             inteiro "piscar" (scroll, foco e estado locais perdidos). As telas
             se ressincronizam pelo `version` do contexto, em re-render normal. */}
+        {/* Fronteira por TELA: um crash de render (na tela ou num popup dela)
+            mostra um cartão e mantém a sidebar/topo vivos; troca de tela (resetKey)
+            limpa o erro sozinho. */}
+        <ErrorBoundary variant="screen" label={`tela:${scr}`} resetKey={scr}>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
           {scr === "overview"    && <OverviewScreen onNav={nav} onOpenLead={openLead} />}
           {scr === "today"       && <TodayScreen onOpenLead={openLead} />}
@@ -209,9 +214,16 @@ function App() {
           {scr === "tasks"       && <TasksScreen />}
           {scr === "settings"    && <SettingsScreen saasId={params.saas} />}
         </div>
+        </ErrorBoundary>
       </main>
 
-      {leadSel && <LeadDetail lead={leadSel} onClose={() => setLeadSel(null)} />}
+      {/* Modais globais: cada um numa fronteira própria — se o popup quebrar, o
+          cartão é dismissível (Fechar chama o onClose) e o resto do app segue. */}
+      {leadSel && (
+        <ErrorBoundary variant="modal" label="lead" resetKey={leadSel.id} onReset={() => setLeadSel(null)}>
+          <LeadDetail lead={leadSel} onClose={() => setLeadSel(null)} />
+        </ErrorBoundary>
+      )}
 
       <CommandSearch
         open={searchOpen}
@@ -221,20 +233,24 @@ function App() {
       />
 
       {editor && (
-        <EntityForm
-          entityKey={editor.entityKey}
-          record={editor.record}
-          onClose={() => setEditor(null)}
-          onSaved={async () => { setEditor(null); await refresh(); }}
-        />
+        <ErrorBoundary variant="modal" label="editor" resetKey={`${editor.entityKey}:${editor.record?.id || "new"}`} onReset={() => setEditor(null)}>
+          <EntityForm
+            entityKey={editor.entityKey}
+            record={editor.record}
+            onClose={() => setEditor(null)}
+            onSaved={async () => { setEditor(null); await refresh(); }}
+          />
+        </ErrorBoundary>
       )}
       {confirm && (
-        <ConfirmDelete
-          entityKey={confirm.entityKey}
-          record={confirm.record}
-          onClose={() => setConfirm(null)}
-          onDeleted={async () => { setConfirm(null); await refresh(); }}
-        />
+        <ErrorBoundary variant="modal" label="confirm-delete" resetKey={`${confirm.entityKey}:${confirm.record?.id || ""}`} onReset={() => setConfirm(null)}>
+          <ConfirmDelete
+            entityKey={confirm.entityKey}
+            record={confirm.record}
+            onClose={() => setConfirm(null)}
+            onDeleted={async () => { setConfirm(null); await refresh(); }}
+          />
+        </ErrorBoundary>
       )}
 
       <TweaksPanel title="Personalizar">
