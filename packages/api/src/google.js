@@ -31,6 +31,9 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
   const stored = async () => (repo ? repo.get("app_config", "google_oauth") : null);
   const connected = async () => !!(await stored())?.refreshToken;
   const account = async () => (await stored())?.account || "";
+  // Escopos concedidos na conexão atual (só preenchido em conexões novas). Serve
+  // pra saber se o drive.readonly (fallback de transcrição) já foi autorizado.
+  const grantedScopes = async () => (await stored())?.scopes || "";
 
   function authUrl(redirectUri, state) {
     const q = new URLSearchParams({
@@ -358,7 +361,7 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
     };
   }
 
-  return { configured, connected, account, authUrl, exchangeCode, accessToken, createMeetEvent, configureSpace, fetchTranscript, sendGmail, gmailReady, getCalendarEvent, fetchTranscriptFromDrive };
+  return { configured, connected, account, grantedScopes, authUrl, exchangeCode, accessToken, createMeetEvent, configureSpace, fetchTranscript, sendGmail, gmailReady, getCalendarEvent, fetchTranscriptFromDrive };
 }
 
 // Cabeçalho de e-mail com não-ASCII (nome, assunto): codifica em MIME

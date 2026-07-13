@@ -23,11 +23,17 @@ export function registerGoogleRoutes(app, repo, { google, anthropic } = {}) {
 
   const redirectUri = (req) => `${publicBase(req)}/api/google/callback`;
 
-  app.get("/api/google/status", async () => ({
-    configured: client.configured(),
-    connected: await client.connected(),
-    account: await client.account(),
-  }));
+  app.get("/api/google/status", async () => {
+    const scopes = client.grantedScopes ? await client.grantedScopes() : "";
+    return {
+      configured: client.configured(),
+      connected: await client.connected(),
+      account: await client.account(),
+      // true quando a conexão atual já concedeu o drive.readonly (fallback de
+      // transcrição pelo Drive). Só reflete conexões novas — reconectar atualiza.
+      driveReadonly: /drive\.readonly/.test(scopes),
+    };
+  });
 
   app.get("/api/google/auth-url", async (req, reply) => {
     if (!client.configured()) {
