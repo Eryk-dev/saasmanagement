@@ -826,8 +826,6 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
                 </div>
               </div>
 
-            <CallSummaryCard summary={callSummary} phone={l.phone} />
-
             {attribution.length > 0 && (
               <div style={box}>
                 <div className="mono" style={{ ...kicker, marginBottom: 6 }}>De onde veio · atribuição do anúncio</div>
@@ -882,6 +880,8 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
             <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Roteiro</div>
+            {/* Resumo da última call por IA em cima do roteiro do estágio. */}
+            <CallSummaryCard summary={callSummary} phone={l.phone} />
             {/* Call agendada: atalhos do closer no topo (link da call + mandar pro
                 cliente no Whats + proposta), antes do passo a passo. */}
             {item.kind === "call" && !preview && <CallShortcuts l={l} item={item} wa={wa} onPatch={patch} />}

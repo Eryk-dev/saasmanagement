@@ -272,10 +272,6 @@ function LeadDetail({ lead: initial, onClose }) {
             )}
           </div>
 
-          {/* Resumo da última call por IA (quando já existe): o que rolou +
-              objeções + WhatsApp pronto, igual ao popup das Minhas atividades. */}
-          <CallSummaryCard summary={callSummary} phone={lead.phone} />
-
           {/* Dados do 1º contato — editáveis: preenche/corrige o que faltar. */}
           <div style={box}>
             <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Dados do lead · edite pra completar</div>
@@ -486,6 +482,8 @@ function LeadDetail({ lead: initial, onClose }) {
           {/* Coluna direita: insights (roteiro) do estágio atual + histórico. */}
           <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
             <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Insights do estágio · {lead.stage || (saasCfg?.funnel?.[0]?.stage ?? "")}</div>
+            {/* Resumo da última call por IA em cima dos insights do estágio. */}
+            <CallSummaryCard summary={callSummary} phone={lead.phone} />
             <div style={{ ...box, background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
               <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 4 }}>Como se comportar</div>
               <div style={{ fontSize: 12, lineHeight: 1.45 }}>{script.resumo}</div>
