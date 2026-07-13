@@ -15,23 +15,33 @@ import { useActiveSaas } from "../lib/workspace.js";
 const { useState, useEffect, useMemo } = React;
 
 const DAY = 86_400_000;
-const dayKey = (iso) => String(iso || "").slice(0, 10);
 const shortDay = (d) => d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "");
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const pctStr = (n) => (n == null ? "" : String(n).replace(".", ",") + "%");
 
-// Janela do placar: semana (segunda→hoje, base da meta = semana passada
-// completa) ou mês (1º→hoje, base = mês passado). A janela ANTERIOR é sempre a
-// completa, que é estável — a atual ainda não fechou.
+// Janela do período (governa a Visão geral inteira): semana (segunda→hoje),
+// mês (1º→hoje) ou trimestre (início do trimestre→hoje). A janela ANTERIOR é
+// sempre a COMPLETA, que é estável (a atual ainda não fechou) — base da meta
+// dinâmica de calls do SDR.
 function scoreWindow(period, now = new Date()) {
   if (period === "week") {
     const day = (now.getDay() + 6) % 7; // 0 = segunda
     const monday = new Date(now); monday.setHours(0, 0, 0, 0); monday.setDate(now.getDate() - day);
     return { since: ymd(monday), prevSince: ymd(new Date(monday.getTime() - 7 * DAY)), prevUntil: ymd(new Date(monday.getTime() - DAY)) };
   }
-  const first = new Date(now.getFullYear(), now.getMonth(), 1);
-  return { since: ymd(first), prevSince: ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)), prevUntil: ymd(new Date(now.getFullYear(), now.getMonth(), 0)) };
+  if (period === "quarter") {
+    const qStart = Math.floor(now.getMonth() / 3) * 3; // 0,3,6,9
+    return {
+      since: ymd(new Date(now.getFullYear(), qStart, 1)),
+      prevSince: ymd(new Date(now.getFullYear(), qStart - 3, 1)),
+      prevUntil: ymd(new Date(now.getFullYear(), qStart, 0)),
+    };
+  }
+  return { since: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), prevSince: ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)), prevUntil: ymd(new Date(now.getFullYear(), now.getMonth(), 0)) };
 }
+const PERIOD_LABEL = { week: "esta semana", month: "este mês", quarter: "este trimestre" };
+const PERIOD_SHORT = { week: "semana", month: "mês", quarter: "trimestre" };
+const daysSince = (ymdStr) => Math.max(1, Math.round((Date.now() - new Date(`${ymdStr}T00:00:00`).getTime()) / DAY) + 1);
 
 function OverviewScreen({ onNav, onOpenLead }) {
   const { SAAS, LEADS, CUSTOMERS } = window.SEED;
@@ -42,10 +52,16 @@ function OverviewScreen({ onNav, onOpenLead }) {
   const [invoices, setInvoices] = useState([]);
   const [costs, setCosts] = useState(null); // custos do mês corrente (tela Custos)
   const [score, setScore] = useState(null); // placar por pessoa/papel
-  const [teamPeriod, setTeamPeriod] = useState(() => { try { return localStorage.getItem("cockpit_team_period") || "week"; } catch { return "week"; } });
-  const setTeamPeriodP = (p) => { setTeamPeriod(p); try { localStorage.setItem("cockpit_team_period", p); } catch { /* ignore */ } };
+  // Período governa a Visão geral INTEIRA (tiles de aquisição, gráfico e o
+  // placar do time). Snapshots financeiros (MRR, Clientes, Resultado do mês)
+  // seguem a cadência própria (ver labels).
+  const [period, setPeriod] = useState(() => { try { return localStorage.getItem("cockpit_ov_period") || "week"; } catch { return "week"; } });
+  const setPeriodP = (p) => { setPeriod(p); try { localStorage.setItem("cockpit_ov_period", p); } catch { /* ignore */ } };
+  const win = useMemo(() => scoreWindow(period), [period]);
+  const pLabel = PERIOD_LABEL[period];
+  const pShort = PERIOD_SHORT[period];
 
-  // Troca de PRODUTO zera os painéis; refresh por versão (SSE) só refaz o fetch.
+  // Troca de PRODUTO zera os painéis; refresh por versão (SSE) ou período refaz.
   const loadedFor = React.useRef(null);
   useEffect(() => {
     if (!product) return;
@@ -54,49 +70,51 @@ function OverviewScreen({ onNav, onOpenLead }) {
       setMarketing(null); setInvoices([]); setCosts(null); setScore(null);
     }
     let alive = true;
-    api.marketingMetrics(product.id).then((m) => alive && setMarketing(m)).catch(() => alive && setMarketing(null));
-    api.metrics(product.id, { days: 30 }).then((b) => alive && setBiz(b)).catch(() => alive && setBiz(null));
+    const until = ymd(new Date());
+    api.marketingMetrics(product.id, { since: win.since, until }).then((m) => alive && setMarketing(m)).catch(() => alive && setMarketing(null));
+    api.metrics(product.id, { days: daysSince(win.since) }).then((b) => alive && setBiz(b)).catch(() => alive && setBiz(null));
     api.list("invoices").then((rows) => alive && setInvoices(rows.filter((i) => i.saas === product.id))).catch(() => {});
     api.expensesSummary(product.id).then((c) => alive && setCosts(c)).catch(() => alive && setCosts(null));
-    api.scoreboard(product.id, scoreWindow(teamPeriod)).then((s) => alive && setScore(s)).catch(() => alive && setScore(null));
+    api.scoreboard(product.id, win).then((s) => alive && setScore(s)).catch(() => alive && setScore(null));
     return () => { alive = false; };
-  }, [product?.id, version, teamPeriod]);
+  }, [product?.id, version, period]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const leads = useMemo(() => (LEADS || []).filter((l) => l.saas === product?.id), [LEADS, product?.id]);
 
   const now = Date.now();
-  const in30 = (iso) => iso && now - new Date(iso).getTime() <= 30 * DAY;
-  const inPrev30 = (iso) => {
-    if (!iso) return false;
-    const age = now - new Date(iso).getTime();
-    return age > 30 * DAY && age <= 60 * DAY;
-  };
-  const leads30 = leads.filter((l) => in30(l.createdAt)).length;
-  const leadsPrev30 = leads.filter((l) => inPrev30(l.createdAt)).length;
-  const leadsDeltaPct = leadsPrev30 > 0 ? Math.round(((leads30 - leadsPrev30) / leadsPrev30) * 100) : null;
+  const dstr = (iso) => String(iso || "").slice(0, 10);
+  const untilStr = ymd(new Date());
+  const inPeriod = (iso) => { const d = dstr(iso); return d >= win.since && d <= untilStr; };
+  const inPrevPeriod = (iso) => { const d = dstr(iso); return d >= win.prevSince && d <= win.prevUntil; };
+  const leadsPeriod = leads.filter((l) => inPeriod(l.createdAt)).length;
+  const leadsPrev = leads.filter((l) => inPrevPeriod(l.createdAt)).length;
+  const leadsDeltaPct = leadsPrev > 0 ? Math.round(((leadsPeriod - leadsPrev) / leadsPrev) * 100) : null;
 
-  // Série leads/dia (30 dias) a partir de createdAt.
+  // Série leads/dia do período (semana ~7 pts, mês ~30, trimestre ~90).
   const series = useMemo(() => {
     const byDay = {};
-    for (const l of leads) if (in30(l.createdAt)) byDay[dayKey(l.createdAt)] = (byDay[dayKey(l.createdAt)] || 0) + 1;
+    for (const l of leads) { const d = dstr(l.createdAt); if (d >= win.since && d <= untilStr) byDay[d] = (byDay[d] || 0) + 1; }
+    const start = new Date(`${win.since}T00:00:00`);
+    const n = daysSince(win.since);
     const out = [];
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date(now - i * DAY);
-      out.push({ x: shortDay(d), v: byDay[dayKey(d.toISOString())] || 0 });
+    for (let i = 0; i < n; i++) {
+      const d = new Date(start.getTime() + i * DAY);
+      out.push({ x: shortDay(d), v: byDay[ymd(d)] || 0 });
     }
     return out;
-  }, [leads]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [leads, win.since]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Funil aberto (régua antes do ganho, pelos kinds — pós-venda/descarte fora).
+  // Funil aberto (snapshot atual do pipeline — não é fluxo, não segue o período).
   const funnelStages = useMemo(() => openStages(product), [product]);
   const firstStage = firstStageOf(product);
   const countByStage = (stage) => leads.filter((l) => l.stage === stage || (!l.stage && stage === firstStage)).length;
   const maxStage = Math.max(1, ...funnelStages.map(countByStage));
-  const thisMonth = (iso) => iso && dayKey(iso).slice(0, 7) === new Date(now).toISOString().slice(0, 7);
-  const wonLeadsMonth = leads.filter((l) => isWonStage(product, l.stage) && thisMonth(l.stageSince));
-  const wonMonth = wonLeadsMonth.length;
-  const wonValueMonth = wonLeadsMonth.reduce((a, l) => a + (l.amount || 0), 0);
-  // Resultado do mês = valor ganho no pipeline menos os custos operacionais.
+  // Ganho no PERÍODO (fluxo); Resultado usa o mês (custos são mensais).
+  const wonLeadsPeriod = leads.filter((l) => isWonStage(product, l.stage) && inPeriod(l.stageSince));
+  const wonPeriod = wonLeadsPeriod.length;
+  const thisMonth = (iso) => iso && dstr(iso).slice(0, 7) === new Date(now).toISOString().slice(0, 7);
+  const wonValueMonth = leads.filter((l) => isWonStage(product, l.stage) && thisMonth(l.stageSince)).reduce((a, l) => a + (l.amount || 0), 0);
+  // Resultado do mês = ganhos do mês menos os custos operacionais (mensais).
   const result = costs ? wonValueMonth - (costs.total || 0) : null;
 
   // Pendências: faturas abertas vencendo em 7d + marcos de pós-venda.
@@ -131,7 +149,10 @@ function OverviewScreen({ onNav, onOpenLead }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-      <PageHead title="Visão geral" sub={today} />
+      <PageHead title="Visão geral" sub={today}>
+        <Segmented value={period} onChange={setPeriodP}
+          options={[{ value: "week", label: "Semana" }, { value: "month", label: "Mês" }, { value: "quarter", label: "Trimestre" }]} />
+      </PageHead>
 
       <div style={{ padding: "20px var(--pad-x) 40px", display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
@@ -140,22 +161,22 @@ function OverviewScreen({ onNav, onOpenLead }) {
             tone={result == null ? "flat" : result >= 0 ? "up" : "down"} />
           <StatTile label="MRR" value={window.fmt.money(product.mrr || 0)} delta={activeCustomers ? "base de " + window.fmt.money(product.arr || 0) + " ARR" : "sem receita ainda"} tone="flat" />
           <StatTile label="Clientes ativos" value={String(activeCustomers)} />
-          <StatTile label="Leads · 30 dias" value={String(leads30)}
-            delta={leadsDeltaPct == null ? null : `${leadsDeltaPct >= 0 ? "↑" : "↓"} ${Math.abs(leadsDeltaPct)}% vs. 30d anteriores`}
+          <StatTile label={`Leads · ${pShort}`} value={String(leadsPeriod)}
+            delta={leadsDeltaPct == null ? `${leadsPrev} no ${pShort} anterior` : `${leadsDeltaPct >= 0 ? "↑" : "↓"} ${Math.abs(leadsDeltaPct)}% vs. ${pShort} anterior`}
             tone={leadsDeltaPct == null ? "flat" : leadsDeltaPct >= 0 ? "up" : "down"} />
-          <StatTile label="Custo por lead · 30d" value={cpl != null ? window.fmt.money(cpl) : "sem gasto"}
+          <StatTile label={`Custo por lead · ${pShort}`} value={cpl != null ? window.fmt.money(cpl) : "sem gasto"}
             delta={cpl != null ? window.fmt.money(marketing.totals.spend) + " investidos" : "conecte o Meta em Publicidade"} tone="flat" />
-          <StatTile label="ROAS · 30d" value={roas != null ? String(roas).replace(".", ",") + "x" : "sem receita"}
+          <StatTile label={`ROAS · ${pShort}`} value={roas != null ? String(roas).replace(".", ",") + "x" : "sem receita"}
             delta={roas != null ? "receita ÷ investimento" : "precisa de ganho atribuído"} tone={roas == null ? "flat" : roas >= 1 ? "up" : "down"} />
-          <StatTile label="Lead → cliente · 30d" value={biz?.window?.convRate != null ? pctStr(biz.window.convRate) : "sem dado"}
+          <StatTile label={`Lead → cliente · ${pShort}`} value={biz?.window?.convRate != null ? pctStr(biz.window.convRate) : "sem dado"}
             delta={biz?.window?.newCustomers != null ? `${biz.window.newCustomers} ${biz.window.newCustomers === 1 ? "cliente novo" : "clientes novos"}` : null} tone="flat" />
         </div>
 
         {/* Desempenho do time — placar por papel, cada pessoa vs. meta. */}
-        <TeamPerformance score={score} onPerson={openPerson} period={teamPeriod} onPeriod={setTeamPeriodP} />
+        <TeamPerformance score={score} onPerson={openPerson} period={period} />
 
         <div className="resp-cols" style={{ "--cols": "minmax(0,1fr) 340px", gap: 12, alignItems: "start" }}>
-          <Card title="Leads por dia" hint="últimos 30 dias · clique numa etapa pra abrir o pipeline">
+          <Card title="Leads por dia" hint={`${pLabel} · clique numa etapa pra abrir o pipeline`}>
             <LineChart data={series} fmtValue={(v) => String(Math.round(v))} />
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))", gap: 8, padding: "4px 16px 16px" }}>
               {funnelStages.map((s) => (
@@ -168,9 +189,9 @@ function OverviewScreen({ onNav, onOpenLead }) {
               ))}
               <button onClick={() => onNav && onNav("pipeline", { saas: product.id })}
                 style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "9px 11px", background: "var(--bg-inset)", textAlign: "left" }}>
-                <span className="tnum" style={{ display: "block", fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>{wonMonth}</span>
-                <span style={{ fontSize: 11, color: "var(--fg-3)", display: "block" }}>Ganho no mês</span>
-                <span style={{ display: "block", height: 3, borderRadius: 999, background: "var(--pos)", marginTop: 6, width: `${Math.min(100, Math.round((wonMonth / maxStage) * 100))}%` }} />
+                <span className="tnum" style={{ display: "block", fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>{wonPeriod}</span>
+                <span style={{ fontSize: 11, color: "var(--fg-3)", display: "block" }}>Ganho · {pShort}</span>
+                <span style={{ display: "block", height: 3, borderRadius: 999, background: "var(--pos)", marginTop: 6, width: `${Math.min(100, Math.round((wonPeriod / maxStage) * 100))}%` }} />
               </button>
             </div>
           </Card>
@@ -264,7 +285,7 @@ const bookingGoal = (p) => {
 
 // Meta absoluta (closer/CS) reescalada pro período da tela: meta mensal vista na
 // semana vira ~meta/4,3. Rates não escalam (uma taxa é uma taxa).
-const PERIOD_DAYS = { week: 7, month: 30.4 };
+const PERIOD_DAYS = { week: 7, month: 30.4, quarter: 91.3 };
 const scaleGoal = (goal, period) => {
   if (!goal || !(goal.target > 0)) return goal;
   const factor = PERIOD_DAYS[period] / PERIOD_DAYS[goal.period || "month"];
@@ -374,17 +395,13 @@ const PANELS = [
   },
 ];
 
-function TeamPerformance({ score, onPerson, period, onPeriod }) {
+function TeamPerformance({ score, onPerson, period }) {
   const anyRows = score && PANELS.some((p) => (score[p.key] || []).length > 0);
   const ctx = { period };
-  const label = period === "week" ? "esta semana" : "este mês";
-  const toggle = (
-    <Segmented value={period} onChange={onPeriod}
-      options={[{ value: "week", label: "Semana" }, { value: "month", label: "Mês" }]} />
-  );
+  const label = PERIOD_LABEL[period];
   return (
-    <Card title="Desempenho do time" action={toggle}
-      hint={`${label} · SDR: meta = leads da ${period === "week" ? "semana" : "mês"} anterior × taxa · clique num nome pra abrir o pipeline dele`}>
+    <Card title="Desempenho do time"
+      hint={`${label} · SDR: meta = leads do ${PERIOD_SHORT[period]} anterior × taxa · clique num nome pra abrir o pipeline dele`}>
       <div style={{ padding: "6px 8px 12px" }}>
         {score == null && <div className="mono dim" style={{ padding: "10px 8px", fontSize: 12 }}>carregando…</div>}
         {score && !anyRows && (
