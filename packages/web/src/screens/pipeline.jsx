@@ -708,6 +708,7 @@ function AgendaView({ leads, onOpenLead }) {
     try { localStorage.setItem("cockpit_agenda_touches", v ? "1" : "0"); } catch { /* ignore */ }
   };
   const H0 = 7, H1 = 21, hourH = 44;
+  const saasCfgOf = (l) => (window.SEED?.SAAS || []).find((x) => x.id === l.saas);
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const monday = new Date(today);
   monday.setDate(today.getDate() - ((today.getDay() + 6) % 7) + week * 7);
@@ -818,31 +819,46 @@ function AgendaView({ leads, onOpenLead }) {
                   const who = kind === "toque" ? (l.owner || l.closer) : kind === "integração" ? (l.integrator || l.closer) : l.closer;
                   const tone = toneOf(who);
                   const isTouch = kind === "toque";
+                  // Follow-up (lead em estágio de kind followup): ocupa só 20 min na
+                  // agenda e vem com fundo ESCURO + letra clara, pra destacar da call.
+                  const isFollowup = kind === "call" && stageKind(saasCfgOf(l), l.stage) === "followup";
                   const hour = Math.min(H1 - 1, Math.max(H0, t.getHours() + t.getMinutes() / 60));
                   const w = 100 / lanes;
+                  const timeStr = t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
                   return (
                     <div key={l.id + kind}
                       onClick={() => onOpenLead && onOpenLead(l)}
-                      title={`${t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · ${kind} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}`}
+                      title={`${timeStr} · ${isFollowup ? "follow-up" : kind} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}`}
                       style={{
                         position: "absolute", top: (hour - H0) * hourH + 1,
                         left: `calc(${lane * w}% + 2px)`, width: `calc(${w}% - 4px)`,
-                        height: isTouch ? 22 : hourH - 3, overflow: "hidden", cursor: "pointer",
-                        background: isTouch ? "transparent" : `color-mix(in srgb, ${tone} 14%, var(--bg-1))`,
-                        border: isTouch ? `1px dashed color-mix(in srgb, ${tone} 55%, var(--line-2))` : `1px solid color-mix(in srgb, ${tone} 45%, var(--line-1))`,
+                        height: isTouch ? 22 : isFollowup ? Math.round(hourH * 20 / 60) : hourH - 3, // follow-up = 20 min
+                        overflow: "hidden", cursor: "pointer",
+                        background: isTouch ? "transparent" : isFollowup ? `color-mix(in srgb, ${tone} 45%, var(--fg-1))` : `color-mix(in srgb, ${tone} 14%, var(--bg-1))`,
+                        border: isTouch ? `1px dashed color-mix(in srgb, ${tone} 55%, var(--line-2))` : `1px solid color-mix(in srgb, ${tone} ${isFollowup ? 60 : 45}%, var(--line-1))`,
                         borderLeft: isTouch ? `2px dashed ${tone}` : `3px solid ${tone}`,
-                        borderRadius: 5, padding: isTouch ? "1px 6px" : "3px 6px",
+                        borderRadius: 5, padding: isFollowup ? "0 6px" : isTouch ? "1px 6px" : "3px 6px",
                         opacity: isTouch ? 0.85 : 1,
+                        display: isFollowup ? "flex" : undefined, alignItems: isFollowup ? "center" : undefined,
                       }}>
-                      <div className="mono tnum" style={{ fontSize: 9.5, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {isTouch ? `○ ${l.name}` : `${t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}${who ? ` · ${displayName(who).split(" ")[0]}` : ""}${kind === "integração" ? " · int" : ""}`}
-                        {!isTouch && kind === "call" && l.callUrl && (
-                          <a href={l.callUrl} target="_blank" rel="noopener noreferrer" title="Entrar na videochamada"
-                            onClick={(e) => e.stopPropagation()} style={{ marginLeft: 4, textDecoration: "none" }}>🎥</a>
-                        )}
-                      </div>
-                      {!isTouch && <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</div>}
-                      {!isTouch && l.company && <div style={{ fontSize: 10, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.company}</div>}
+                      {isFollowup ? (
+                        <div className="mono" style={{ fontSize: 10, fontWeight: 600, color: "var(--bg-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {timeStr} · {l.name}
+                          {l.callUrl && <a href={l.callUrl} target="_blank" rel="noopener noreferrer" title="Entrar na videochamada" onClick={(e) => e.stopPropagation()} style={{ marginLeft: 4, textDecoration: "none" }}>🎥</a>}
+                        </div>
+                      ) : (
+                        <>
+                          <div className="mono tnum" style={{ fontSize: 9.5, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {isTouch ? `○ ${l.name}` : `${timeStr}${who ? ` · ${displayName(who).split(" ")[0]}` : ""}${kind === "integração" ? " · int" : ""}`}
+                            {!isTouch && kind === "call" && l.callUrl && (
+                              <a href={l.callUrl} target="_blank" rel="noopener noreferrer" title="Entrar na videochamada"
+                                onClick={(e) => e.stopPropagation()} style={{ marginLeft: 4, textDecoration: "none" }}>🎥</a>
+                            )}
+                          </div>
+                          {!isTouch && <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</div>}
+                          {!isTouch && l.company && <div style={{ fontSize: 10, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.company}</div>}
+                        </>
+                      )}
                     </div>
                   );
                 })}
