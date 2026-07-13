@@ -308,6 +308,7 @@ const ROLE_OPTS = [
   ["sdr", "SDR", "qualifica leads (fase pré-call)"],
   ["closer", "Closer", "conduz call/proposta/follow-up"],
   ["integrator", "Integração", "faz o setup pós-venda"],
+  ["social", "Mídia social", "cuida das redes sociais e do conteúdo"],
 ];
 
 function TeamSettings() {
@@ -360,7 +361,7 @@ function TeamSettings() {
     <div>
       <SettingHeader title="Equipe & papéis" sub="quem aparece nos pickers de SDR/closer/integração do pipeline · papel ≠ permissão (todos são admin na v1)" />
       <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
-        <div className="mono" style={{ display: "grid", gridTemplateColumns: "1fr repeat(3, 110px) 140px 120px", gap: 8, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
+        <div className="mono" style={{ display: "grid", gridTemplateColumns: "1fr repeat(4, 100px) 140px 120px", gap: 8, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
           <span>Usuário</span>
           {ROLE_OPTS.map(([k, l, hint]) => <span key={k} title={hint} style={{ textAlign: "center" }}>{l}</span>)}
           <span title="Vazio = aparece nos pickers de todos os produtos; preenchido = só no workspace daquele produto">Produto</span>
@@ -368,7 +369,7 @@ function TeamSettings() {
         </div>
         {users === null && <div className="mono dim" style={{ padding: "12px 14px", fontSize: 12 }}>carregando…</div>}
         {Array.isArray(users) && users.map((u) => (
-          <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1fr repeat(3, 110px) 140px 120px", gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
+          <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1fr repeat(4, 100px) 140px 120px", gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 500 }}>
               <Avatar id={u.id} name={u.name} size={22} /> {u.name || u.id}
               <span className="mono dim" style={{ fontSize: 10 }}>{u.id}</span>
@@ -401,91 +402,12 @@ function TeamSettings() {
         )}
         <span className="mono dim" style={{ fontSize: 11 }}>papéis salvam ao clicar · senha troca em Ajustes do usuário (ou peça pro admin resetar)</span>
       </div>
-
-      <GoalsEditor />
     </div>
   );
 }
 
-// Metas do time (por papel) — alimentam o progresso vs. meta da Visão geral.
-// Escopo por produto ativo (metas do LeverAds ≠ do UniqueKids). Grava role-scope
-// na coleção `goals`; o placar prefere meta por pessoa (user-scope) quando existir,
-// mas aqui é o alvo geral do papel, que já faz a barra aparecer pra todo mundo.
-// SDR por TAXA (se ajusta ao volume de leads); o alvo absoluto de calls sai de
-// leads × taxa de agendamento na Visão geral. Closer/CS seguem absolutos.
-const GOAL_METRICS = [
-  { role: "sdr", metric: "contactRate", label: "SDR · Reach — contatados (%)", suffix: "%" },
-  { role: "sdr", metric: "bookingRate", label: "SDR · Taxa de agendamento (%)", suffix: "%" },
-  { role: "sdr", metric: "showRate", label: "SDR · Comparecimento na call (%)", suffix: "%" },
-  { role: "sdr", metric: "callWinRate", label: "SDR · Calls → ganho (%)", suffix: "%" },
-  { role: "closer", metric: "won", label: "Closer · Ganhos / mês (quota)" },
-  { role: "closer", metric: "revenue", label: "Closer · Receita / mês (R$, quota)" },
-  { role: "closer", metric: "proposalWinRate", label: "Closer · Fechamento de proposta (%)", suffix: "%" },
-  { role: "closer", metric: "winRateCall", label: "Closer · Win rate geral (%)", suffix: "%" },
-  { role: "closer", metric: "ticket", label: "Closer · Ticket médio alvo (R$)" },
-  { role: "integrator", metric: "newAccounts", label: "CS · Contas novas / mês" },
-];
-
-function GoalsEditor() {
-  const [product] = useActiveSaas();
-  const [goals, setGoals] = useStS(null);
-  const [saving, setSaving] = useStS("");
-
-  const load = React.useCallback(() => {
-    if (!product) return;
-    api.list("goals")
-      .then((rows) => setGoals(rows.filter((g) => g.saas === product.id && g.scope === "role")))
-      .catch(() => setGoals([]));
-  }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  React.useEffect(() => { setGoals(null); load(); }, [product?.id, load]);
-
-  const goalOf = (role, metric) => (goals || []).find((g) => g.key === role && g.metric === metric);
-  const valueOf = (role, metric) => { const g = goalOf(role, metric); return g ? String(g.target) : ""; };
-
-  async function saveGoal(role, metric, raw) {
-    const target = Number(raw);
-    const existing = goalOf(role, metric);
-    const id = `${role}:${metric}`;
-    setSaving(id);
-    try {
-      if (!raw.trim() || !(target > 0)) {
-        // limpar a meta: apaga o registro (barra some, volta a mostrar só o número)
-        if (existing) { await api.remove("goals", existing.id); }
-      } else if (existing) {
-        await api.update("goals", existing.id, { target });
-      } else {
-        await api.create("goals", { saas: product.id, scope: "role", key: role, metric, target, period: "month" });
-      }
-      load();
-    } catch (e) { console.warn("meta não salva:", e.message); }
-    setSaving("");
-  }
-
-  if (!product) return null;
-  const field = { width: 90, height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, fontFamily: "var(--mono)", textAlign: "right" };
-
-  return (
-    <div style={{ marginTop: 22 }}>
-      <SettingHeader title="Metas do time" sub={`alvos por papel do ${product.name} · alimentam a barra de progresso na Visão geral · deixe vazio pra tirar a meta`} />
-      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "6px 4px" }}>
-        {goals === null && <div className="mono dim" style={{ padding: "12px 14px", fontSize: 12 }}>carregando…</div>}
-        {goals !== null && GOAL_METRICS.map(({ role, metric, label, suffix }) => (
-          <div key={`${role}:${metric}`} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 14px", borderBottom: "1px solid var(--line-1)", opacity: saving === `${role}:${metric}` ? 0.6 : 1 }}>
-            <span style={{ flex: 1, fontSize: 13 }}>{label}</span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <input type="number" min="0" defaultValue={valueOf(role, metric)} key={`${product.id}:${role}:${metric}:${valueOf(role, metric)}`}
-                placeholder="sem meta"
-                onBlur={(e) => { if (e.target.value !== valueOf(role, metric)) saveGoal(role, metric, e.target.value); }}
-                onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
-                style={field} />
-              {suffix && <span className="mono dim" style={{ fontSize: 12, width: 10 }}>{suffix}</span>}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+// Metas do time saíram daqui: viraram a ferramenta dedicada (tela Metas), que
+// cobre todas as métricas por vaga + ajuste por pessoa. Ver screens/metas.jsx.
 
 // Seletor compacto de telas permitidas: botão-resumo ("todas" / "N telas") com
 // popover de checkboxes (espelho do NAV). Nenhuma marcada = todas as telas. O

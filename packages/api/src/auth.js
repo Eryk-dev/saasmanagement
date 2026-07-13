@@ -46,7 +46,7 @@ export async function ensureDefaultAdmins(repo) {
 
 // `role` = auth (todos "admin" na v1). `roles` = etiquetas de capacidade do
 // funil (quem aparece nos pickers de SDR/closer/integrador) — NÃO é ACL.
-export const ROLE_TAGS = ["sdr", "closer", "integrator"];
+export const ROLE_TAGS = ["sdr", "closer", "integrator", "social"];
 const sanitizeRoles = (x) => (Array.isArray(x) ? x.filter((r) => ROLE_TAGS.includes(r)) : []);
 // `saas` = escopo de produto: vazio = time de TODOS os produtos; preenchido =
 // só aparece nos pickers do workspace daquele produto (ex.: Ana atende só a

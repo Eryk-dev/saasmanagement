@@ -36,6 +36,15 @@ export const META_CATALOG = [
       { metric: "activeAccounts", label: "Contas ativas", unit: "n", default: null },
     ],
   },
+  {
+    role: "social", label: "Mídia social", hint: "redes sociais e conteúdo",
+    metrics: [
+      { metric: "postsPerMonth", label: "Posts no mês", unit: "n", default: null },
+      { metric: "followerGrowth", label: "Novos seguidores no mês", unit: "n", default: null },
+      { metric: "engagementRate", label: "Taxa de engajamento", unit: "%", default: null },
+      { metric: "reachMonth", label: "Alcance no mês", unit: "n", default: null },
+    ],
+  },
 ];
 
 const ALL_METRICS = new Set(META_CATALOG.flatMap((r) => r.metrics.map((m) => m.metric)));
