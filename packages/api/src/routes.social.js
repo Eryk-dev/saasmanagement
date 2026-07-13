@@ -50,19 +50,38 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
     // Dores do produto (product.painMap = { código: rótulo }) — alimentam o
     // seletor de dor do "criar post". Rótulos únicos, sem os códigos vazios.
     const pains = [...new Set(Object.values(product.painMap || {}).filter((v) => v && String(v).trim()))].map((label) => ({ label }));
-    const out = { configured: true, igUserId, pageId, aiConfigured: !!anthropic?.configured?.(), pains, account: null, insights: null, media: [], page: null, errors: {} };
+    const out = { configured: true, igUserId, pageId, aiConfigured: !!anthropic?.configured?.(), pains, account: null, insights: null, followerGrowth: null, engagement: null, media: [], page: null, errors: {} };
     if (!igUserId && !pageId) {
       out.errors.setup = "sem Instagram/página: configure metaIgUserId/metaPageId no produto ou rode um anúncio na conta pra descoberta automática";
       return out;
     }
+    const since = dayStr(Date.now() - 29 * 86400e3), until = dayStr(Date.now());
     // Cada bloco falha sozinho (permissão faltando não derruba a tela inteira).
     if (igUserId) {
       await Promise.all([
         social.igAccount(igUserId).then((a) => { out.account = a; }).catch((e) => { out.errors.account = e.message; }),
         social.igMedia(igUserId, { limit: 12 }).then((m) => { out.media = m; }).catch((e) => { out.errors.media = e.message; }),
-        social.igInsights(igUserId, { since: dayStr(Date.now() - 29 * 86400e3), until: dayStr(Date.now()) })
-          .then((i) => { out.insights = i; }).catch((e) => { out.errors.insights = e.message; }),
+        social.igInsights(igUserId, { since, until }).then((i) => { out.insights = i; }).catch((e) => { out.errors.insights = e.message; }),
+        social.igFollowerGrowth(igUserId, { since, until }).then((g) => { out.followerGrowth = g; }).catch(() => {}),
       ]);
+      // Engajamento médio dos últimos posts (derivado, não custa outra chamada):
+      // média de curtidas/comentários e taxa sobre a base de seguidores — a
+      // "saúde" do conteúdo, que os números crus de seguidor não mostram.
+      const posts = out.media || [];
+      if (posts.length) {
+        const n = posts.length;
+        const likes = posts.reduce((s, m) => s + (m.likes || 0), 0);
+        const comments = posts.reduce((s, m) => s + (m.comments || 0), 0);
+        const followers = Number(out.account?.followers_count) || 0;
+        out.engagement = {
+          posts: n,
+          avgLikes: Math.round(likes / n),
+          avgComments: Math.round((comments / n) * 10) / 10,
+          // taxa = interações médias por post / seguidores (padrão de mercado)
+          rate: followers ? Math.round(((likes + comments) / n / followers) * 1000) / 10 : null,
+          top: [...posts].sort((a, b) => (b.likes + b.comments) - (a.likes + a.comments))[0] || null,
+        };
+      }
     }
     if (pageId) {
       await social.pageInfo(pageId).then((p) => { out.page = p; }).catch((e) => { out.errors.page = e.message; });

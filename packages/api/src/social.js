@@ -60,17 +60,37 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
     },
 
     // Insights do perfil no período — depende de permissão/volume da conta,
-    // quem chama trata erro como "sem dado" (fail-soft).
+    // quem chama trata erro como "sem dado" (fail-soft). As métricas da API v23
+    // se dividem em dois grupos por causa de compatibilidade:
+    //  - total_value: reach, profile_views, accounts_engaged, total_interactions,
+    //    website_clicks (cliques no link da bio)
+    //  - série "impressions" foi aposentada; usamos reach como alcance.
+    // reach pede metric_type=total_value; as demais também. Quando alguma métrica
+    // não existe pra conta, a Graph rejeita o lote inteiro — então pedimos em
+    // dois lotes e o que falhar volta vazio, sem derrubar o resto.
     async igInsights(igUserId, { since, until }) {
-      const body = await get(`${igUserId}/insights`, {
-        metric: "reach,profile_views,accounts_engaged",
-        period: "day",
-        metric_type: "total_value",
-        since, until,
-      });
       const out = {};
-      for (const m of body.data || []) out[m.name] = Number(m.total_value?.value) || 0;
+      const fetchBatch = async (metric) => {
+        try {
+          const body = await get(`${igUserId}/insights`, { metric, period: "day", metric_type: "total_value", since, until });
+          for (const m of body.data || []) out[m.name] = Number(m.total_value?.value) || 0;
+        } catch { /* métrica indisponível pra conta — segue sem ela */ }
+      };
+      // lote principal (quase sempre disponível) separado dos extras, pra um
+      // campo faltando não zerar os outros.
+      await fetchBatch("reach,profile_views,accounts_engaged");
+      await fetchBatch("total_interactions,website_clicks");
       return out;
+    },
+
+    // Crescimento de seguidores no período (métrica time_series, some sozinha
+    // se a conta é pequena demais pro Instagram liberar).
+    async igFollowerGrowth(igUserId, { since, until }) {
+      try {
+        const body = await get(`${igUserId}/insights`, { metric: "follower_count", period: "day", since, until });
+        const series = body.data?.[0]?.values || [];
+        return series.reduce((s, v) => s + (Number(v.value) || 0), 0);
+      } catch { return null; }
     },
 
     // Últimos posts do perfil com engajamento — o feed da tela. Carrossel
@@ -206,6 +226,7 @@ export const social = {
   configured: () => inst().configured(),
   igAccount: (id) => inst().igAccount(id),
   igInsights: (id, r) => inst().igInsights(id, r),
+  igFollowerGrowth: (id, r) => inst().igFollowerGrowth(id, r),
   igMedia: (id, o) => inst().igMedia(id, o),
   pageInfo: (id) => inst().pageInfo(id),
   pageToken: (id) => inst().pageToken(id),

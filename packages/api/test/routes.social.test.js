@@ -152,8 +152,9 @@ const fakeSocialOk = () => ({
   configured: () => true,
   calls: [],
   async igAccount() { return { username: "lever.ads", followers_count: 230 }; },
-  async igInsights() { return { reach: 1000 }; },
-  async igMedia() { return [{ id: "m1", likes: 10 }]; },
+  async igInsights() { return { reach: 1000, profile_views: 80, accounts_engaged: 120, total_interactions: 300, website_clicks: 15 }; },
+  async igFollowerGrowth() { return 12; },
+  async igMedia() { return [{ id: "m1", likes: 10, comments: 2, permalink: "https://insta/p/1", mediaUrl: "u1" }]; },
   async pageInfo() { return { name: "LeverAds", fan_count: 50 }; },
   async publishInstagram(ig, o) { this.calls.push(["ig", ig, o]); return { id: "ig9", permalink: "https://insta/p/9" }; },
   async publishFacebook(pg, o) { this.calls.push(["fb", pg, o]); return { id: "fb9", permalink: "" }; },
@@ -198,6 +199,30 @@ test("rotas: summary junta perfil+insights+página; publish resolve URL pública
   assert.equal(served.statusCode, 200);
   assert.equal(served.headers["content-type"], "image/png");
   assert.equal(served.body, "PNG!");
+});
+
+test("rotas: summary calcula engajamento médio, taxa e crescimento de seguidores", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", metaIgUserId: "ig1" });
+  const social = fakeSocialOk();
+  // 4 posts pra a média sair redonda; 400 seguidores
+  social.igAccount = async () => ({ username: "lever.ads", followers_count: 400 });
+  social.igMedia = async () => ([
+    { id: "a", likes: 30, comments: 2, permalink: "pa", mediaUrl: "ua" },
+    { id: "b", likes: 10, comments: 0, permalink: "pb", mediaUrl: "ub" },
+    { id: "c", likes: 20, comments: 6, permalink: "pc", mediaUrl: "uc" },
+    { id: "d", likes: 20, comments: 0, permalink: "pd", mediaUrl: "ud" },
+  ]);
+  const app = buildApp(repo, social);
+  const s = (await app.inject({ method: "GET", url: "/api/social/summary?saas=leverads" })).json();
+  assert.equal(s.followerGrowth, 12);
+  assert.equal(s.insights.website_clicks, 15);
+  assert.equal(s.engagement.posts, 4);
+  assert.equal(s.engagement.avgLikes, 20);   // (30+10+20+20)/4
+  assert.equal(s.engagement.avgComments, 2);  // (2+0+6+0)/4
+  // taxa = interações médias por post / seguidores = ((80+8)/4)/400 = 5.5%
+  assert.equal(s.engagement.rate, 5.5);
+  assert.equal(s.engagement.top.id, "a"); // 32 interações, o maior
 });
 
 test("rotas: summary expõe as dores do produto (painMap) e o estado da IA", async () => {
