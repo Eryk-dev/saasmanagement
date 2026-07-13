@@ -830,6 +830,7 @@ function DestinoSection({ saasCfg, lead, leads, onMove, onMoveMeet, onAfter, onT
   const [slot, setSlot] = useS(lead.callAt || "");
   const [dayIdx, setDayIdx] = useS(0);
   const [email, setEmail] = useS(lead.email || "");
+  const [emailTouched, setEmailTouched] = useS(false); // SDR digitou um e-mail próprio pro convite
   const [meetBusy, setMeetBusy] = useS(false);   // criando o Meet
   const [meetRes, setMeetRes] = useS(null);      // { callUrl, attendees }
   const [meetErr, setMeetErr] = useS(null);
@@ -837,8 +838,14 @@ function DestinoSection({ saasCfg, lead, leads, onMove, onMoveMeet, onAfter, onT
     setDest(null); setCloser(lead.closer || ""); setSlot(lead.callAt || ""); setDayIdx(0);
     setIntegrator(lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
     setAmount(lead.amount || ""); setReason(""); setNote("");
-    setEmail(lead.email || ""); setMeetBusy(false); setMeetRes(null); setMeetErr(null);
+    setEmail(lead.email || ""); setEmailTouched(false); setMeetBusy(false); setMeetRes(null); setMeetErr(null);
   }, [lead.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Auto-preenche o e-mail do convite com o do lead SEMPRE que ele estiver
+  // preenchido (ex.: o SDR acabou de preencher no checklist), até o SDR digitar
+  // um e-mail próprio no campo do convite (aí respeita o que ele escreveu).
+  useE(() => {
+    if (!emailTouched && lead.email) setEmail(lead.email);
+  }, [lead.email, emailTouched]);
 
   if (dests.length === 0) return null;
   const setup = dest ? setupType(dest.kind) : null;
@@ -983,7 +990,7 @@ function DestinoSection({ saasCfg, lead, leads, onMove, onMoveMeet, onAfter, onT
               {closer && slot && (
                 <div style={{ maxWidth: 340 }}>
                   <label style={label}>E-mail do lead (pro convite da call)</label>
-                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nome@email.com" style={fieldStyle} />
+                  <input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setEmailTouched(true); }} placeholder="nome@email.com" style={fieldStyle} />
                   {email && !validEmail(email) && <div className="mono" style={{ fontSize: 10, color: "var(--warn)", marginTop: 4 }}>e-mail inválido</div>}
                 </div>
               )}
