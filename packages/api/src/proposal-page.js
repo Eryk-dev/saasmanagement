@@ -561,8 +561,9 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .setup-title { font-size: clamp(30px, 4.4vw, 52px); font-weight: 600; letter-spacing: -.02em; line-height: 1.05; margin-top: 22px; }
   .setup-sub { color: var(--ink-3); font-size: 17px; line-height: 1.5; margin-top: 14px; max-width: 640px; }
   .setup-grid { display: grid; grid-template-columns: 1fr; gap: 18px; margin-top: 40px; }
-  @media (min-width: 640px) { .setup-grid { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 20px; align-items: end; } }
+  @media (min-width: 640px) { .setup-grid { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 20px; align-items: start; } }
   .setup-field { display: flex; flex-direction: column; gap: 8px; }
+  .setup-combo { display: flex; flex-direction: column; gap: 8px; }
   .setup-field > span { font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
   .setup-input { width: 100%; padding: 13px 15px; background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); color: var(--fg); font-family: var(--font-display); font-size: 16px; }
   .setup-input:focus { outline: none; border-color: var(--accent); box-shadow: var(--glow); }
@@ -1421,24 +1422,34 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         ctl = document.createElement('input'); ctl.type = 'text'; ctl.placeholder = 'Nome do cliente';
         ctl.value = DATA.lead.name || '';
         ctl.addEventListener('input', function () { DATA.lead.name = ctl.value; DATA.lead.firstName = ctl.value.trim().split(/\\s+/)[0] || ''; done(); });
-      } else if (field === 'niche' || field === 'staff') {
-        // Campo DIGITÁVEL com sugestões (answerLabels): escolhe um conhecido no
-        // dropdown OU digita um valor novo. Guarda o texto; a exibição resolve
-        // pelo answerLabels quando é um valor conhecido, senão mostra como digitado.
-        var map = (CALC.answerLabels || {})[field] || {};
-        ctl = document.createElement('input'); ctl.type = 'text';
-        ctl.placeholder = field === 'staff' ? 'Funcionários' : 'Nicho';
-        var listId = 'dl-' + field;
-        ctl.setAttribute('list', listId);
-        var curv = DATA.answers[field] || '';
-        ctl.value = (map[curv] != null) ? map[curv] : curv;
-        if (!document.getElementById(listId)) {
-          dp = document.createElement('datalist'); dp.id = listId;
-          for (k in map) { o = document.createElement('option'); o.value = map[k]; dp.appendChild(o); }
-          document.body.appendChild(dp);
-        }
-        ctl.addEventListener('input', function () { DATA.answers[field] = ctl.value; done(); });
+      } else if (field === 'staff') {
+        // Select simples (igual Contas), com as faixas de answerLabels.staff.
+        ctl = document.createElement('select');
+        var stm = (CALC.answerLabels || {}).staff || {}, curs = DATA.answers.staff || '', seens = {};
+        o = document.createElement('option'); o.value = ''; o.textContent = '—'; ctl.appendChild(o);
+        for (k in stm) { o = document.createElement('option'); o.value = k; o.textContent = stm[k]; if (k === curs) o.selected = true; seens[k] = 1; ctl.appendChild(o); }
+        if (curs && !seens[curs]) { o = document.createElement('option'); o.value = curs; o.textContent = curs; o.selected = true; ctl.appendChild(o); }
+        ctl.addEventListener('change', function () { DATA.answers.staff = ctl.value; done(); });
+      } else if (field === 'niche') {
+        // Select com os nichos padrão + opção "Digite…": ao escolher, aparece um
+        // input pra um nicho fora da lista (os padrão continuam no dropdown).
+        var nmap = (CALC.answerLabels || {}).niche || {}, ncur = DATA.answers.niche || '', nknown = nmap[ncur] != null;
+        var wrap = document.createElement('div'); wrap.className = 'setup-combo';
+        var sel = document.createElement('select'); sel.className = 'setup-input';
+        var inp = document.createElement('input'); inp.type = 'text'; inp.className = 'setup-input'; inp.placeholder = 'Digite o nicho'; inp.style.display = 'none';
+        for (k in nmap) { o = document.createElement('option'); o.value = k; o.textContent = nmap[k]; sel.appendChild(o); }
+        o = document.createElement('option'); o.value = '__c'; o.textContent = 'Digite…'; sel.appendChild(o);
+        if (nknown) { sel.value = ncur; }
+        else if (ncur) { sel.value = '__c'; inp.style.display = ''; inp.value = ncur; }
+        sel.addEventListener('change', function () {
+          if (sel.value === '__c') { inp.style.display = ''; inp.value = ''; inp.focus(); DATA.answers.niche = ''; done(); }
+          else { inp.style.display = 'none'; DATA.answers.niche = sel.value; done(); }
+        });
+        inp.addEventListener('input', function () { DATA.answers.niche = inp.value; done(); });
+        wrap.appendChild(sel); wrap.appendChild(inp);
+        ctl = wrap;
       }
+      if (ctl && (ctl.tagName === 'SELECT' || ctl.tagName === 'INPUT')) ctl.classList.add('setup-input');
       return ctl;
     }
 
@@ -1469,7 +1480,6 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       fields.forEach(function (f) {
         var ctl = control(f[0], function () { fillDynamic(); scheduleSave(); });
         if (!ctl) return;
-        ctl.classList.add('setup-input');
         var lab = el('label', 'setup-field');
         lab.appendChild(el('span', null, f[1]));
         lab.appendChild(ctl);
