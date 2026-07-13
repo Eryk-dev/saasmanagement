@@ -68,12 +68,25 @@ function SocialScreen() {
 
   const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
   const tile = { flex: "1 1 150px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "12px 14px" };
+  const ins = sum?.insights || {};
+  const eng = sum?.engagement;
+  const growth = sum?.followerGrowth;
 
-  const tiles = [
-    ["Seguidores · IG", sum?.account?.followers_count],
-    ["Posts no perfil", sum?.account?.media_count],
-    ["Alcance · 30d", sum?.insights?.reach],
+  // Fileira principal (números que importam de cara). Seguidores mostra o
+  // ganho líquido do período quando o Instagram libera a métrica.
+  const headline = [
+    ["Seguidores · IG", sum?.account?.followers_count, growth != null ? growth : undefined],
+    ["Alcance · 30d", ins.reach],
+    ["Contas engajadas · 30d", ins.accounts_engaged],
     ["Seguidores · página FB", sum?.page?.followers_count ?? sum?.page?.fan_count],
+  ];
+  // Fileira secundária (contexto do perfil e da atividade).
+  const secondary = [
+    ["Visitas ao perfil · 30d", ins.profile_views],
+    ["Cliques no site · 30d", ins.website_clicks],
+    ["Interações · 30d", ins.total_interactions],
+    ["Posts no perfil", sum?.account?.media_count],
+    ["Seguindo", sum?.account?.follows_count],
   ];
 
   return (
@@ -97,14 +110,66 @@ function SocialScreen() {
           <>
             {sum.errors?.setup && <div className="mono" style={{ fontSize: 11.5, color: "var(--warn)" }}>{sum.errors.setup}</div>}
 
+            {/* Fileira principal */}
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              {tiles.map(([label, v]) => (
+              {headline.map(([label, v, delta]) => (
                 <div key={label} style={tile}>
                   <div className="mono" style={kicker}>{label}</div>
-                  <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 24, fontWeight: 700, marginTop: 4 }}>{fmtNum(v)}</div>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4 }}>
+                    <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 24, fontWeight: 700 }}>{fmtNum(v)}</span>
+                    {delta !== undefined && delta !== null && (
+                      <span className="mono tnum" style={{ fontSize: 11.5, fontWeight: 600, color: delta > 0 ? "var(--pos)" : delta < 0 ? "var(--neg)" : "var(--fg-4)" }}>
+                        {delta > 0 ? "▲" : delta < 0 ? "▼" : ""}{delta > 0 ? "+" : ""}{fmtNum(delta)} · 30d
+                      </span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
+
+            {/* Fileira secundária, mais discreta */}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {secondary.map(([label, v]) => (
+                <div key={label} style={{ ...tile, flex: "1 1 120px", padding: "10px 12px", background: "var(--bg-inset)" }}>
+                  <div className="mono" style={{ ...kicker, fontSize: 9.5 }}>{label}</div>
+                  <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 19, fontWeight: 700, marginTop: 3 }}>{fmtNum(v)}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Faixa de engajamento dos últimos posts */}
+            {eng && (
+              <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "12px 14px" }}>
+                <div className="mono" style={{ ...kicker, marginBottom: 10 }}>Engajamento dos últimos {eng.posts} posts</div>
+                <div style={{ display: "flex", gap: 22, flexWrap: "wrap", alignItems: "center" }}>
+                  {[
+                    ["Média de curtidas", `♥ ${fmtNum(eng.avgLikes)}`],
+                    ["Média de comentários", `💬 ${String(eng.avgComments).replace(".", ",")}`],
+                    ["Taxa de engajamento", eng.rate != null ? `${String(eng.rate).replace(".", ",")}%` : "–"],
+                  ].map(([label, v]) => (
+                    <div key={label}>
+                      <div className="mono" style={{ ...kicker, fontSize: 9.5 }}>{label}</div>
+                      <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 20, fontWeight: 700, marginTop: 2 }}>{v}</div>
+                    </div>
+                  ))}
+                  {eng.top && (
+                    <a href={eng.top.permalink || "#"} target="_blank" rel="noopener noreferrer"
+                      style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "inherit" }}>
+                      <div>
+                        <div className="mono" style={{ ...kicker, fontSize: 9.5, textAlign: "right" }}>Post que mais engajou</div>
+                        <div className="mono" style={{ fontSize: 11, color: "var(--fg-2)", textAlign: "right", marginTop: 3 }}>
+                          ♥ {fmtNum(eng.top.likes)} · 💬 {fmtNum(eng.top.comments)}
+                        </div>
+                      </div>
+                      {eng.top.mediaUrl && (
+                        <img src={eng.top.mediaUrl} alt="" referrerPolicy="no-referrer"
+                          style={{ width: 44, height: 44, borderRadius: "var(--r-2)", objectFit: "cover", border: "1px solid var(--line-1)" }} />
+                      )}
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
 
             {sum.media?.length > 0 && (
               <div>
