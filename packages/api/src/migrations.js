@@ -318,6 +318,33 @@ export async function ensureCloserGoals(repo) {
   return created;
 }
 
+// Demanda de CONTEÚDO do Mídia social (fase de aprendizado: volume/consistência
+// antes de resultado): 30 posts (1/dia), 120 stories (4/dia), 48 ads (12/sem).
+// Semeadas como alvos definidos pra já aparecerem na tela de Metas; marcador
+// socialGoalsV1 respeita edição manual (o Leo lapida no futuro).
+const SOCIAL_CONTENT_GOALS = [
+  { metric: "postsPerMonth", target: 30 },
+  { metric: "storiesPerMonth", target: 120 },
+  { metric: "adsPerMonth", target: 48 },
+];
+
+export async function ensureSocialGoals(repo) {
+  let created = 0;
+  const goals = await repo.list("goals");
+  for (const product of await repo.list("products")) {
+    if (product.socialGoalsV1) continue;
+    for (const g of SOCIAL_CONTENT_GOALS) {
+      const exists = goals.some((x) => x.saas === product.id && x.scope === "role" && x.key === "social" && x.metric === g.metric);
+      if (!exists) {
+        await repo.create("goals", { id: `goal_${product.id}_social_${g.metric}`, saas: product.id, scope: "role", key: "social", metric: g.metric, target: g.target, period: "month" });
+        created++;
+      }
+    }
+    await repo.update("products", product.id, { socialGoalsV1: true });
+  }
+  return created;
+}
+
 // Etiquetas de capacidade do time (quem aparece nos pickers de SDR/closer/
 // integrador). Espelha o hardcode antigo do pipeline.jsx; não cria usuário novo.
 const ROLE_SEED = {
@@ -426,6 +453,12 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] ${n} meta(s) de closer (qualidade) semeada(s)`);
   } catch (err) {
     console.error("[migration] ensureCloserGoals falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureSocialGoals(repo);
+    if (n) console.log(`[migration] ${n} meta(s) de conteúdo do Mídia social semeada(s)`);
+  } catch (err) {
+    console.error("[migration] ensureSocialGoals falhou:", err?.message || err);
   }
   try {
     const n = await ensureUserRoles(repo);
