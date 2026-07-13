@@ -503,8 +503,11 @@ function pickerFor(s, stage) {
   const k = stageKind(s, stage);
   const p = phaseOf(k);
   if (p === "sdr") {
+    // solo: com o SDR dono já definido, só o chip dele fica no card (clique
+    // desmarca); a lista de opções só aparece quando o card não tem dono —
+    // igual ao closer/integrador. Sem isso, TODO SDR virava chip em todo card.
     const opts = usersByRole("sdr");
-    return opts.length ? { field: "owner", options: opts, hint: "SDR dono do lead" } : null;
+    return opts.length ? { field: "owner", options: opts, hint: "SDR dono do lead", solo: true } : null;
   }
   if (p === "closer") {
     // Definido o closer (quem fez/fará a call), só o nome dele fica no card.

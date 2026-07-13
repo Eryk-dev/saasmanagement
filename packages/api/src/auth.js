@@ -184,6 +184,25 @@ export function registerAuthRoutes(app, repo) {
     const updated = await repo.update("users", user.id, patch);
     return publicUser(updated);
   });
+
+  // Remover usuário do time. Guarda: não dá pra remover a si mesmo, nem alguém
+  // que ainda é responsável por leads (owner/closer/integrator) — evita card
+  // órfão no board. `?force=1` remove assim mesmo (o dono reatribui depois).
+  app.delete("/api/auth/users/:id", async (req, reply) => {
+    const id = req.params.id;
+    const user = await repo.get("users", id);
+    if (!user) return reply.code(404).send({ error: "Not found" });
+    if (req.authUser?.id === id) return reply.code(400).send({ error: "você não pode remover a si mesmo" });
+    const force = req.query.force === "1" || req.query.force === "true";
+    const owned = (await repo.list("leads")).filter((l) => l.owner === id || l.closer === id || l.integrator === id).length;
+    if (owned > 0 && !force) {
+      return reply.code(409).send({ error: `este usuário ainda é responsável por ${owned} lead(s) — reatribua antes de remover`, owned });
+    }
+    await repo.remove("users", id);
+    // Sessões órfãs do usuário removido (best-effort; a auth trata como deslogado).
+    try { for (const s of await repo.list("sessions")) if (s.user === id) await repo.remove("sessions", s.id); } catch { /* ignore */ }
+    return { ok: true, removed: id, owned };
+  });
 }
 
 function headerKey(req) {
