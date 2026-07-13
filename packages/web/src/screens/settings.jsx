@@ -418,8 +418,11 @@ const GOAL_METRICS = [
   { role: "sdr", metric: "bookingRate", label: "SDR · Taxa de agendamento (%)", suffix: "%" },
   { role: "sdr", metric: "showRate", label: "SDR · Comparecimento na call (%)", suffix: "%" },
   { role: "sdr", metric: "callWinRate", label: "SDR · Calls → ganho (%)", suffix: "%" },
-  { role: "closer", metric: "won", label: "Closer · Ganhos / mês" },
-  { role: "closer", metric: "revenue", label: "Closer · Receita / mês (R$)" },
+  { role: "closer", metric: "won", label: "Closer · Ganhos / mês (quota)" },
+  { role: "closer", metric: "revenue", label: "Closer · Receita / mês (R$, quota)" },
+  { role: "closer", metric: "proposalWinRate", label: "Closer · Fechamento de proposta (%)", suffix: "%" },
+  { role: "closer", metric: "winRateCall", label: "Closer · Win rate geral (%)", suffix: "%" },
+  { role: "closer", metric: "ticket", label: "Closer · Ticket médio alvo (R$)" },
   { role: "integrator", metric: "newAccounts", label: "CS · Contas novas / mês" },
 ];
 

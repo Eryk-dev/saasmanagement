@@ -51,15 +51,21 @@ function OverviewScreen({ onNav, onOpenLead }) {
   const [biz, setBiz] = useState(null); // CAC/conversão (30d) — mesmo endpoint da Publicidade
   const [invoices, setInvoices] = useState([]);
   const [costs, setCosts] = useState(null); // custos do mês corrente (tela Custos)
-  const [score, setScore] = useState(null); // placar por pessoa/papel
-  // Período governa a Visão geral INTEIRA (tiles de aquisição, gráfico e o
-  // placar do time). Snapshots financeiros (MRR, Clientes, Resultado do mês)
-  // seguem a cadência própria (ver labels).
+  const [scoreByPeriod, setScoreByPeriod] = useState({}); // { week: {...}, month: {...} } — placar por período
+  // Período do TOPO governa os tiles de aquisição e o gráfico. Snapshots
+  // financeiros (MRR, Clientes, Resultado do mês) seguem a cadência própria.
   const [period, setPeriod] = useState(() => { try { return localStorage.getItem("cockpit_ov_period") || "week"; } catch { return "week"; } });
   const setPeriodP = (p) => { setPeriod(p); try { localStorage.setItem("cockpit_ov_period", p); } catch { /* ignore */ } };
+  // Período POR PAPEL do placar do time (SDR semana, closer/CS mês por padrão).
+  const [panelPeriods, setPanelPeriods] = useState(() => {
+    const g = (k, d) => { try { return localStorage.getItem(`cockpit_pp_${k}`) || d; } catch { return d; } };
+    return { sdr: g("sdr", "week"), closer: g("closer", "month"), cs: g("cs", "month") };
+  });
+  const setPanelPeriod = (role, p) => { setPanelPeriods((prev) => ({ ...prev, [role]: p })); try { localStorage.setItem(`cockpit_pp_${role}`, p); } catch { /* ignore */ } };
   const win = useMemo(() => scoreWindow(period), [period]);
   const pLabel = PERIOD_LABEL[period];
   const pShort = PERIOD_SHORT[period];
+  const panelPeriodsKey = `${panelPeriods.sdr}|${panelPeriods.closer}|${panelPeriods.cs}`;
 
   // Troca de PRODUTO zera os painéis; refresh por versão (SSE) ou período refaz.
   const loadedFor = React.useRef(null);
@@ -67,7 +73,7 @@ function OverviewScreen({ onNav, onOpenLead }) {
     if (!product) return;
     if (loadedFor.current !== product.id) {
       loadedFor.current = product.id;
-      setMarketing(null); setInvoices([]); setCosts(null); setScore(null);
+      setMarketing(null); setInvoices([]); setCosts(null); setScoreByPeriod({});
     }
     let alive = true;
     const until = ymd(new Date());
@@ -75,9 +81,18 @@ function OverviewScreen({ onNav, onOpenLead }) {
     api.metrics(product.id, { days: daysSince(win.since) }).then((b) => alive && setBiz(b)).catch(() => alive && setBiz(null));
     api.list("invoices").then((rows) => alive && setInvoices(rows.filter((i) => i.saas === product.id))).catch(() => {});
     api.expensesSummary(product.id).then((c) => alive && setCosts(c)).catch(() => alive && setCosts(null));
-    api.scoreboard(product.id, win).then((s) => alive && setScore(s)).catch(() => alive && setScore(null));
     return () => { alive = false; };
   }, [product?.id, version, period]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Placar do time: um fetch por período DISTINTO entre os painéis (dedup).
+  useEffect(() => {
+    if (!product) return;
+    let alive = true;
+    for (const per of [...new Set(Object.values(panelPeriods))]) {
+      api.scoreboard(product.id, scoreWindow(per)).then((s) => alive && setScoreByPeriod((prev) => ({ ...prev, [per]: s }))).catch(() => {});
+    }
+    return () => { alive = false; };
+  }, [product?.id, version, panelPeriodsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const leads = useMemo(() => (LEADS || []).filter((l) => l.saas === product?.id), [LEADS, product?.id]);
 
@@ -172,8 +187,8 @@ function OverviewScreen({ onNav, onOpenLead }) {
             delta={biz?.window?.newCustomers != null ? `${biz.window.newCustomers} ${biz.window.newCustomers === 1 ? "cliente novo" : "clientes novos"}` : null} tone="flat" />
         </div>
 
-        {/* Desempenho do time — placar por papel, cada pessoa vs. meta. */}
-        <TeamPerformance score={score} onPerson={openPerson} period={period} />
+        {/* Desempenho do time — placar por papel (cada painel no seu período). */}
+        <TeamPerformance scoreByPeriod={scoreByPeriod} panelPeriods={panelPeriods} onPanelPeriod={setPanelPeriod} onPerson={openPerson} product={product} />
 
         <div className="resp-cols" style={{ "--cols": "minmax(0,1fr) 340px", gap: 12, alignItems: "start" }}>
           <Card title="Leads por dia" hint={`${pLabel} · clique numa etapa pra abrir o pipeline`}>
@@ -345,6 +360,19 @@ function SlaCell({ p }) {
   );
 }
 
+// Motivos de perda do closer: total + top motivos (tooltip com a lista toda).
+function LossCell({ p, lossLabel }) {
+  if (!p.lost) return <span className="dim" style={{ fontSize: 13 }}>—</span>;
+  const top = (p.lossReasons || []).slice(0, 2).map((r) => `${lossLabel(r.reason)} ${r.count}`).join(", ");
+  const full = (p.lossReasons || []).map((r) => `${lossLabel(r.reason)}: ${r.count}`).join("\n");
+  return (
+    <span title={full} style={{ fontSize: 12, minWidth: 120, display: "inline-block" }}>
+      <span className="tnum" style={{ fontWeight: 600, color: "var(--neg)" }}>{int(p.lost)}</span>
+      <span className="dim" style={{ fontSize: 10.5 }}> · {top}</span>
+    </span>
+  );
+}
+
 // Alerta do painel: total de leads novos sem 1º toque além do prazo.
 function SlaAlarm({ n }) {
   if (!n) return null;
@@ -378,11 +406,14 @@ const PANELS = [
   {
     key: "closer", title: "Closers", hint: "da call ao fechamento",
     cols: [
-      { label: "Calls", render: (p) => <span className="tnum">{int(p.calls)}</span> },
-      { label: "Propostas", render: (p) => <span className="tnum">{int(p.proposals)}</span> },
+      { label: "Propostas", render: (p) => <CountRate count={p.proposals} pct={p.proposalRate} {...tiers(p.goals?.proposalRate, 60)} /> },
+      { label: "Fecha. proposta", render: (p) => <RateCell pct={p.proposalWinRate} num={p.won} den={p.proposals} {...tiers(p.goals?.proposalWinRate, 30)} /> },
+      { label: "Win rate", render: (p) => <RateCell pct={p.winRateCall} num={p.won} den={p.calls} {...tiers(p.goals?.winRateCall, 25)} /> },
       { label: "Ganhos", render: (p, ctx) => <MetaCell value={p.won} goal={scaleGoal(p.goals?.won, ctx.period)} /> },
       { label: "Receita", render: (p, ctx) => <MetaCell value={p.revenue} goal={scaleGoal(p.goals?.revenue, ctx.period)} fmt={money} /> },
-      { label: "Fechamento", render: (p) => <span className="tnum">{pctStr(p.closeRate) || "—"}</span> },
+      { label: "Ticket médio", render: (p) => <MetaCell value={p.ticket || 0} goal={p.goals?.ticket} fmt={money} /> },
+      { label: "Ciclo", render: (p) => <span className="tnum" title="dias da criação ao ganho">{p.cycleDays != null ? `${String(p.cycleDays).replace(".", ",")}d` : "—"}</span> },
+      { label: "Motivos de perda", render: (p, ctx) => <LossCell p={p} lossLabel={ctx.lossLabel} /> },
     ],
   },
   {
@@ -395,49 +426,59 @@ const PANELS = [
   },
 ];
 
-function TeamPerformance({ score, onPerson, period }) {
-  const anyRows = score && PANELS.some((p) => (score[p.key] || []).length > 0);
-  const ctx = { period };
-  const label = PERIOD_LABEL[period];
+// Cada painel de papel tem SEU período (SDR semana, closer/CS mês por padrão) —
+// SDR e closer têm cadências diferentes. O toggle do topo da página rege os
+// tiles/gráfico; aqui cada bloco decide o seu.
+const PERIOD_OPTS = [{ value: "week", label: "Semana" }, { value: "month", label: "Mês" }, { value: "quarter", label: "Trimestre" }];
+
+function TeamPerformance({ scoreByPeriod, panelPeriods, onPanelPeriod, onPerson, product }) {
+  const lossLabel = React.useMemo(() => {
+    const m = Object.fromEntries((product?.lossReasons || []).map((r) => [r.id, r.label]));
+    return (id) => m[id] || (id === "nao_informado" ? "não informado" : id);
+  }, [product]);
   return (
-    <Card title="Desempenho do time"
-      hint={`${label} · SDR: meta = leads do ${PERIOD_SHORT[period]} anterior × taxa · clique num nome pra abrir o pipeline dele`}>
+    <Card title="Desempenho do time" hint="cada papel no seu período · SDR: meta = leads do período anterior × taxa · clique num nome pra abrir o pipeline">
       <div style={{ padding: "6px 8px 12px" }}>
-        {score == null && <div className="mono dim" style={{ padding: "10px 8px", fontSize: 12 }}>carregando…</div>}
-        {score && !anyRows && (
-          <div style={{ padding: "10px 8px", fontSize: 12.5, color: "var(--fg-4)" }}>
-            Sem atividade {label}. Assim que o time trabalhar leads e fechar negócios, o placar aparece aqui.
-          </div>
-        )}
-        {score && anyRows && PANELS.map((panel) => {
-          const rows = score[panel.key] || [];
-          if (!rows.length) return null;
+        {PANELS.map((panel) => {
+          const period = panelPeriods[panel.key] || "month";
+          const data = scoreByPeriod[period];
+          const rows = data?.[panel.key] || [];
+          const ctx = { period, lossLabel };
           const gridCols = `minmax(120px, 1.4fr) repeat(${panel.cols.length}, minmax(84px, 1fr))`;
+          const minW = 130 + panel.cols.length * 92;
           return (
-            <div key={panel.key} style={{ marginTop: 6 }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "8px 8px 4px" }}>
+            <div key={panel.key} style={{ marginTop: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 8px", flexWrap: "wrap" }}>
                 <span style={{ fontSize: 12.5, fontWeight: 700 }}>{panel.title}</span>
-                <span className="mono dim" style={{ fontSize: 10.5 }}>{panel.hint}</span>
+                <span className="mono dim" style={{ fontSize: 10.5 }}>{panel.hint} · {PERIOD_LABEL[period]}</span>
+                <span style={{ flex: 1 }} />
+                <Segmented value={period} onChange={(p) => onPanelPeriod(panel.key, p)} options={PERIOD_OPTS} />
               </div>
-              {panel.alarm && panel.alarm(rows)}
-              <div className="tbl-x">
-                <div style={{ minWidth: 520 }}>
-                  <div className="mono" style={{ display: "grid", gridTemplateColumns: gridCols, gap: 8, padding: "6px 10px", fontSize: 9.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", borderBottom: "1px solid var(--line-1)" }}>
-                    <span>Pessoa</span>
-                    {panel.cols.map((c) => <span key={c.label}>{c.label}</span>)}
-                  </div>
-                  {rows.map((p) => (
-                    <div key={p.user} style={{ display: "grid", gridTemplateColumns: gridCols, gap: 8, padding: "8px 10px", alignItems: "center", borderBottom: "1px solid var(--line-1)" }}>
-                      <button onClick={() => onPerson && onPerson(p.user)} title="abrir o pipeline dele"
-                        style={{ display: "flex", alignItems: "center", gap: 8, textAlign: "left", minWidth: 0 }}>
-                        <Avatar id={p.user} name={p.name} size={20} />
-                        <span style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
-                      </button>
-                      {panel.cols.map((c) => <div key={c.label}>{c.render(p, ctx)}</div>)}
+              {data == null && <div className="mono dim" style={{ padding: "8px", fontSize: 12 }}>carregando…</div>}
+              {data != null && !rows.length && (
+                <div style={{ padding: "8px", fontSize: 12.5, color: "var(--fg-4)" }}>Sem atividade {PERIOD_LABEL[period]}.</div>
+              )}
+              {rows.length > 0 && panel.alarm && panel.alarm(rows)}
+              {rows.length > 0 && (
+                <div className="tbl-x">
+                  <div style={{ minWidth: minW }}>
+                    <div className="mono" style={{ display: "grid", gridTemplateColumns: gridCols, gap: 8, padding: "6px 10px", fontSize: 9.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", borderBottom: "1px solid var(--line-1)" }}>
+                      <span>Pessoa</span>
+                      {panel.cols.map((c) => <span key={c.label}>{c.label}</span>)}
                     </div>
-                  ))}
+                    {rows.map((p) => (
+                      <div key={p.user} style={{ display: "grid", gridTemplateColumns: gridCols, gap: 8, padding: "8px 10px", alignItems: "center", borderBottom: "1px solid var(--line-1)" }}>
+                        <button onClick={() => onPerson && onPerson(p.user)} title="abrir o pipeline dele"
+                          style={{ display: "flex", alignItems: "center", gap: 8, textAlign: "left", minWidth: 0 }}>
+                          <Avatar id={p.user} name={p.name} size={20} />
+                          <span style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+                        </button>
+                        {panel.cols.map((c) => <div key={c.label}>{c.render(p, ctx)}</div>)}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           );
         })}
