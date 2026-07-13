@@ -50,7 +50,7 @@ export async function logActivity(repo, { saas = "", lead = "", type = "note", t
 // Próximo toque de um lead que ACABOU de entrar num estágio (create ou move):
 // firstTouchHours (SLA de 1º contato) vence; senão retryDays; senão sem prazo.
 // Fim de semana rola pra segunda (cadastro de sábado é prioridade de segunda cedo;
-// a Nutrição usa firstTouchHours: 480 = 20 dias e cai sempre em dia útil).
+// a Nutrição usa firstTouchHours: 168 = 7 dias e cai sempre em dia útil).
 export function initialNextActionAt(product, stage, now = new Date()) {
   const cad = cadenceOf(product, stage || firstStage(product));
   const ms = cad.firstTouchHours ? cad.firstTouchHours * HOUR : cad.retryDays ? cad.retryDays * DAY : 0;

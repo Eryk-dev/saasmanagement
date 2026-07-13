@@ -147,18 +147,18 @@ export const DEFAULT_SCRIPTS = {
     objetivo: "Última chance de falar e qualificar; sem retorno, encerrar o ciclo mandando o card pra Nutrição.",
     passos: [
       { t: "Ligar (2 tentativas)", dica: "Sem fala: liga e aguarda; não atendeu, liga de novo." },
-      { t: "Não atendeu: WhatsApp da 3ª tentativa (encerramento)", fala: "Oi {{nome}}! Tentei falar com você algumas vezes por aqui e não consegui. A gente entende que às vezes o momento não é o ideal. Você ainda quer conhecer a {{produto}} pra clonar seus anúncios entre as contas, ou posso encerrar seu atendimento por enquanto?", dica: "Sem retorno até o fim do dia: mover o card pra Nutrição (o GPS devolve em 20 dias, num dia útil)." },
+      { t: "Não atendeu: WhatsApp da 3ª tentativa (encerramento)", fala: "Oi {{nome}}! Tentei falar com você algumas vezes por aqui e não consegui. A gente entende que às vezes o momento não é o ideal. Você ainda quer conhecer a {{produto}} pra clonar seus anúncios entre as contas, ou posso encerrar seu atendimento por enquanto?", dica: "Sem retorno até o fim do dia: mover o card pra Nutrição (o GPS devolve em 7 dias, num dia útil)." },
       ...QUALIFY_STEPS,
     ],
   },
   // Nutrição = reativação de lead frio, 3 contatos com 7 dias úteis entre eles
-  // (entrada 20 dias). Cada contato traz um gancho DIFERENTE pra dar motivo de
+  // (entrada também 7 dias). Cada contato traz um gancho DIFERENTE pra dar motivo de
   // responder (prova → oferta sem risco → saída elegante). O painel mostra só o
   // contato do dia (resolveScript pelo nº de toques). Liga 1x; não atendeu, o
   // WhatsApp do contato. Atendeu? Emenda na qualificação (QUALIFY_STEPS).
   nutricao1: {
     titulo: "Nutrição · 1º contato (prova de resultado)",
-    resumo: "Lead frio, 20 dias depois. Sem cobrar o silêncio: reabre com um resultado concreto pra reacender a curiosidade. Liga 1 vez; não atendeu, manda o WhatsApp da prova. Atendeu? Retoma a qualificação.",
+    resumo: "Lead frio, 7 dias depois. Sem cobrar o silêncio: reabre com um resultado concreto pra reacender a curiosidade. Liga 1 vez; não atendeu, manda o WhatsApp da prova. Atendeu? Retoma a qualificação.",
     objetivo: "Reabrir a conversa com um gancho de valor e, se ele responder, voltar pro fluxo de qualificação.",
     passos: [
       { t: "Ligar (1 tentativa)", dica: "Sem fala: liga e aguarda; não atendeu, manda o WhatsApp abaixo e registra o toque (o GPS traz de volta em 7 dias úteis)." },
