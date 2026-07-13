@@ -520,6 +520,63 @@ export function clientSummary(saasCfg, lead, stage, cat) {
   return { pain: leadPain(lead, cat, saasCfg?.painMap), facts, attribution };
 }
 
+// Resumo da última call por IA (activity call_summary, gerado da transcrição do
+// Meet) mostrado no roteiro pra o closer trabalhar o follow-up com contexto: o
+// que rolou, objeções (tratadas/em aberto), combinados, próximo passo e a
+// mensagem de WhatsApp pronta pra enviar. Some quando não há resumo ainda.
+function CallSummaryCard({ summary, phone }) {
+  const [copied, setCopied] = useS(false);
+  if (!summary) return null;
+  const box = { border: "1px solid var(--accent-line)", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--accent-soft)" };
+  const kick = { fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" };
+  const tone = summary.temperatura === "quente" ? "neg" : summary.temperatura === "morno" ? "warn" : "mut";
+  const wa = phone ? waLink(phone) : null;
+  const msg = summary.followup?.whatsapp || "";
+  const waHref = wa ? (msg ? `${wa}?text=${encodeURIComponent(msg)}` : wa) : null;
+  const copy = async () => { try { await navigator.clipboard.writeText(msg); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* sem clipboard */ } };
+  const line = { fontSize: 12, lineHeight: 1.5, color: "var(--fg-1)" };
+  return (
+    <div style={box}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+        <span className="mono" style={{ ...kick, color: "var(--accent)" }}>Resumo da última call · IA</span>
+        <Pill tone={tone}>{summary.temperatura}</Pill>
+        {summary.recordingUrl && <a href={summary.recordingUrl} target="_blank" rel="noopener noreferrer" className="mono" style={{ fontSize: 10.5, color: "var(--accent)" }}>🎥 gravação</a>}
+      </div>
+      {summary.resumo && <div style={{ ...line, marginBottom: 6 }}>{summary.resumo}</div>}
+      {summary.objecoes?.length > 0 && (
+        <div style={{ marginBottom: 6 }}>
+          <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>Objeções</div>
+          {summary.objecoes.map((o, i) => (
+            <div key={i} style={{ ...line, display: "flex", gap: 6, alignItems: "baseline" }}>
+              <span className="mono" style={{ color: o.resolvida ? "var(--pos)" : "var(--neg)", flexShrink: 0, fontSize: 10 }}>{o.resolvida ? "tratada" : "em aberto"}</span>
+              <span style={{ minWidth: 0 }}>{o.objecao}{o.comoFoiTratada ? ` · ${o.comoFoiTratada}` : ""}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {summary.compromissos?.length > 0 && (
+        <div style={{ marginBottom: 6 }}>
+          <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>Combinados</div>
+          {summary.compromissos.map((c, i) => <div key={i} style={line}>• {c}</div>)}
+        </div>
+      )}
+      {summary.followup?.nota && (
+        <div style={{ ...line, marginBottom: msg ? 6 : 0 }}><span className="mono dim" style={{ ...kick, fontSize: 10 }}>Próximo passo</span> · {summary.followup.nota}</div>
+      )}
+      {msg && (
+        <div style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: "7px 9px" }}>
+          <div className="mono dim" style={{ ...kick, fontSize: 9.5, marginBottom: 3 }}>WhatsApp sugerido</div>
+          <div style={{ fontSize: 12, lineHeight: 1.5, whiteSpace: "pre-wrap", marginBottom: 6 }}>{msg}</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {waHref && <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", background: "#25D366", color: "#06120c", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>enviar no WhatsApp ↗</a>}
+            <button onClick={copy} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5 }}>{copied ? "copiado ✓" : "copiar"}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Atalhos da call — pro operador que abre o roteiro de uma call agendada: reúne
 // num lugar só o LINK da chamada (entrar · copiar · mandar pro cliente no
 // WhatsApp já com o link no texto) e a PROPOSTA (abrir/editar a existente ou
@@ -643,20 +700,28 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
   const cat = useAttribution(l.saas, !!l.utm);
   const { pain, facts, attribution } = clientSummary(saasCfg, l, item.stage, cat);
 
-  // Últimos contatos da timeline — contexto de quem já falou com esse lead.
+  // Últimos contatos da timeline + o último resumo de call por IA (activity
+  // system call_summary) — contexto de quem já falou com esse lead e o que
+  // saiu da última call, pra o closer conduzir o follow-up.
   const [acts, setActs] = useS(null);
+  const [callSummary, setCallSummary] = useS(null);
   useE(() => {
     // Pré-visualização usa um lead fictício: não busca timeline (nem bate na API).
     if (preview) { setActs([]); return; }
     let alive = true;
-    setActs(null);
+    setActs(null); setCallSummary(null);
     api.listActivities(l.id)
-      .then((a) => alive && setActs(
-        (a || []).filter((x) => x.type !== "system")
+      .then((a) => {
+        if (!alive) return;
+        const all = a || [];
+        setActs(all.filter((x) => x.type !== "system")
           .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0))
-          .slice(0, 4)
-      ))
-      .catch(() => alive && setActs([]));
+          .slice(0, 4));
+        const cs = all.filter((x) => x.meta?.event === "call_summary" && x.meta?.summary)
+          .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0))[0];
+        setCallSummary(cs ? { ...cs.meta.summary, recordingUrl: cs.meta.recordingUrl || "" } : null);
+      })
+      .catch(() => { if (alive) { setActs([]); setCallSummary(null); } });
     return () => { alive = false; };
   }, [l.id]);
 
@@ -756,6 +821,8 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
                 </div>
               </div>
 
+            <CallSummaryCard summary={callSummary} phone={l.phone} />
+
             {attribution.length > 0 && (
               <div style={box}>
                 <div className="mono" style={{ ...kicker, marginBottom: 6 }}>De onde veio · atribuição do anúncio</div>
@@ -800,7 +867,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
                 confirmação não move etapa, então não mostra destino. Em
                 pré-visualização o bloco vira só uma nota (as ações mexem em
                 lead/agenda de verdade, não fazem sentido numa simulação). */}
-            {!item.confirm && !preview && <DestinoSection saasCfg={saasCfg} lead={l} leads={leads} onMove={onMove} onMoveMeet={onMoveMeet} onAfter={onAfter} onTouch={onTouch} />}
+            {!item.confirm && !preview && <DestinoSection saasCfg={saasCfg} lead={l} leads={leads} callSummary={callSummary} onMove={onMove} onMoveMeet={onMoveMeet} onAfter={onAfter} onTouch={onTouch} />}
             {!item.confirm && preview && (
               <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.5, border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", padding: "9px 11px", background: "var(--bg-inset)" }}>
                 na fila real, aqui aparece o bloco <b>“Depois da ação”</b> (pra onde vai o card: próxima etapa, agenda da call, ganho/perda).
@@ -994,7 +1061,7 @@ function SlotGrid({ days, dayIdx, setDayIdx, slot, setSlot, busy }) {
   );
 }
 
-function DestinoSection({ saasCfg, lead, leads, onMove, onMoveMeet, onAfter, onTouch }) {
+function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet, onAfter, onTouch }) {
   const dests = destinationsFor(saasCfg, lead);
   const stageMeta = Object.fromEntries((saasCfg?.funnel || []).map((f) => [f.stage, f]));
   const closers = usersByRole("closer");
@@ -1026,6 +1093,24 @@ function DestinoSection({ saasCfg, lead, leads, onMove, onMoveMeet, onAfter, onT
   useE(() => {
     if (!emailTouched && lead.email) setEmail(lead.email);
   }, [lead.email, emailTouched]);
+
+  // Follow-up: pré-seleciona o horário que a IA sugeriu na última call
+  // (callSummary.followup.quando, hora de Brasília), quando cai num slot válido
+  // (dia útil à vista, dentro do expediente, no futuro e livre na agenda).
+  useE(() => {
+    if (!dest || setupType(dest.kind) !== "followup" || slot) return;
+    const m = String(callSummary?.followup?.quando || "").match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):/);
+    if (!m) return;
+    const hh = Number(m[2]);
+    if (hh < CALL_H0 || hh >= CALL_H1) return;
+    const dd = nextBusinessDays(6);
+    const idx = dd.findIndex((d) => cellKey(d).slice(0, 10) === m[1]);
+    if (idx < 0) return;
+    const cell = new Date(dd[idx]); cell.setHours(hh, 0, 0, 0);
+    if (cell.getTime() <= Date.now()) return;
+    if (closer && callBusyKeys(leads, closer, lead.id).has(cellKey(cell))) return;
+    setDayIdx(idx); setSlot(`${m[1]}T${m[2]}:00`);
+  }, [dest, callSummary]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (dests.length === 0) return null;
   const setup = dest ? setupType(dest.kind) : null;
@@ -1159,6 +1244,7 @@ function DestinoSection({ saasCfg, lead, leads, onMove, onMoveMeet, onAfter, onT
                 <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginBottom: 6 }}>
                   Quando fazer o follow-up · agenda de {displayName(closer)}
                 </div>
+                {callSummary?.followup?.nota && <div className="mono" style={{ fontSize: 10.5, color: "var(--accent)", marginBottom: 6 }}>✨ IA (última call): {callSummary.followup.nota}</div>}
                 <SlotGrid days={days} dayIdx={dayIdx} setDayIdx={setDayIdx} slot={slot} setSlot={setSlot} busy={busy} />
                 {slot && <div className="mono" style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 8 }}>Follow-up: {slotFmt(slot)} · {displayName(closer)}</div>}
                 <div className="mono dim" style={{ fontSize: 10, marginTop: 6 }}>entra na agenda nesse horário · não trava o slot pra novas calls de venda. Sem horário, retoma pela cadência.</div>
