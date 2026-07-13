@@ -713,6 +713,13 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
             card pra próxima coluna (bloco "Depois da ação"). Aqui ficam só os
             atalhos: WhatsApp e o card completo. */}
         <div style={{ marginTop: "auto", padding: "10px 18px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {/* WhatsApp em linha própria, esticado (igual ao do drawer/pop de contato). */}
+          {wa && (
+            <a href={wa} target="_blank" rel="noopener noreferrer" title={`WhatsApp · ${l.phone}`}
+              style={{ flex: "1 1 100%", textAlign: "center", padding: "10px 14px", borderRadius: "var(--r-2)", background: "#25D366", color: "#06120c", fontSize: 13.5, fontWeight: 700, textDecoration: "none" }}>
+              WhatsApp ↗
+            </a>
+          )}
           {/* Confirmação: o SDR marca quando o cliente responde à mensagem de 1h;
               o roteiro troca o passo de 10 min (positiva) sozinho. */}
           {item.confirm && (
@@ -723,12 +730,6 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
                 border: "1px solid " + (l.callConfirmed ? "var(--pos)" : "var(--line-2)") }}>
               {l.callConfirmed ? "✓ cliente confirmou" : "cliente confirmou"}
             </button>
-          )}
-          {wa && (
-            <a href={wa} target="_blank" rel="noopener noreferrer" title={`WhatsApp · ${l.phone}`}
-              style={{ padding: "8px 14px", borderRadius: "var(--r-2)", background: "#25D366", color: "#06120c", fontSize: 12.5, fontWeight: 700, textDecoration: "none" }}>
-              WhatsApp ↗
-            </a>
           )}
           <button onClick={onClose} className="mono dim" style={{ marginLeft: "auto", fontSize: 12 }}>fechar</button>
         </div>
