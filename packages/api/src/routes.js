@@ -24,6 +24,7 @@ import { registerPitchRoutes } from "./routes.pitch.js";
 import { registerMetasRoutes } from "./routes.metas.js";
 import { registerFlashcardRoutes } from "./routes.flashcards.js";
 import { registerGoogleRoutes } from "./routes.google.js";
+import { makeMailer } from "./mailer.js";
 import { makeAnthropic } from "./anthropic.js";
 import { registerMetricsRoutes } from "./routes.metrics.js";
 import { meta as defaultMetaClient } from "./meta.js";
@@ -208,10 +209,6 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerSocialRoutes(app, repo, { social: opts.social, meta: metaClient, anthropic: anthropicClient });
   // Links de pagamento das ofertas (ferramenta).
   registerOfferRoutes(app, repo);
-  // Disparos: campanhas de e-mail + WhatsApp pros leads qualificados (ferramenta).
-  // (Fase 1: só WhatsApp assistido + IA de copy. O envio nativo de e-mail pelo
-  // Gmail entra na fase 2, quando o googleClient também é injetado aqui.)
-  registerCampaignRoutes(app, repo, { anthropic: anthropicClient });
   // Insight de pitch: melhora o roteiro de venda a partir dos resumos das calls.
   registerPitchRoutes(app, repo, { anthropic: anthropicClient });
   // Metas de desempenho por vaga/pessoa (ferramenta; escreve na collection goals).
@@ -232,8 +229,14 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Google Meet: conectar conta (OAuth) + criar call na agenda do closer.
   // Claude resume as calls (transcrição → timeline) quando há ANTHROPIC_API_KEY.
   const googleClient = registerGoogleRoutes(app, repo, { google: opts.google, anthropic: anthropicClient });
+  // Mailer (e-mail dos disparos/sequências): hoje envia pela conta Google conectada.
+  const mailerClient = opts.mailer || makeMailer({ google: googleClient });
+  // Disparos: campanhas de e-mail + WhatsApp pros leads qualificados (ferramenta).
+  // Registrado DEPOIS do googleClient/mailer porque o envio nativo de e-mail
+  // (send-email) e o gate de gmail dependem deles.
+  registerCampaignRoutes(app, repo, { anthropic: anthropicClient, google: googleClient, mailer: mailerClient });
   // Poller de resumos (index.js) usa os MESMOS clients das rotas.
-  if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, anthropic: anthropicClient });
+  if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, anthropic: anthropicClient, mailer: mailerClient });
 
   // ── Tempo real ─────────────────────────────────────────────────────────
   // Toda escrita no repo (db.js) incrementa um contador global (changes.js).
@@ -306,7 +309,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         proposals: { nativeSaas: (await repo.list("proposal_templates")).filter((t) => t.status === "published").map((t) => t.saas) },
         mp: { configured: mpClient.configured() },
         meta: { configured: metaClient.configured() },
-        google: { configured: googleClient.configured(), connected: await googleClient.connected(), account: await googleClient.account() },
+        google: { configured: googleClient.configured(), connected: await googleClient.connected(), account: await googleClient.account(), gmail: await googleClient.gmailReady() },
         ai: { configured: anthropicClient.configured() },
         discord: { configured: discordClient.configured() },
       },

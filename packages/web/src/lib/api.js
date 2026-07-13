@@ -137,6 +137,10 @@ export const api = {
   // sugere a copy do disparo por IA.
   campaignMark: (id, body) => req("POST", `/api/campaigns/${encodeURIComponent(id)}/mark`, body),
   campaignAiCopy: (body) => req("POST", "/api/campaigns/ai-copy", body),
+  // Envio nativo de e-mail em massa pela conta Google conectada.
+  campaignSendEmail: (id, leadIds) => req("POST", `/api/campaigns/${encodeURIComponent(id)}/send-email`, { leadIds }),
+  // Métricas de conversão no funil por campanha do produto.
+  campaignMetrics: (saas) => req("GET", `/api/campaigns/metrics/${encodeURIComponent(saas)}`),
   // Metas de desempenho por vaga/pessoa (ferramenta; escreve na collection goals).
   metas: (saas) => req("GET", `/api/metas/${encodeURIComponent(saas)}`),
   saveMetas: (saas, goals) => req("PUT", `/api/metas/${encodeURIComponent(saas)}`, { goals }),

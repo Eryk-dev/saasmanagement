@@ -63,10 +63,13 @@ function DisparosScreen({ onOpenLead }) {
   const [activeField, setActiveField] = useS("wa"); // onde o chip de token insere
   const [saving, setSaving] = useS(false);
   const [aiBusy, setAiBusy] = useS(false);
+  const [emailBusy, setEmailBusy] = useS(false);
+  const [metrics, setMetrics] = useS([]); // [{ id, name, sent, advanced, booked, won }]
   const [note, setNote] = useS(null);   // { ok, text }
   const [err, setErr] = useS(null);
+  const gmailOn = !!window.SEED?.CONFIG?.google?.gmail; // escopo de envio concedido?
 
-  // Carrega as campanhas salvas do produto + arma o público padrão na 1ª vez.
+  // Carrega as campanhas salvas do produto + as métricas + arma o público padrão.
   useE(() => {
     if (!product?.id) return;
     setStagesSel(new Set(defaultStages));
@@ -74,8 +77,16 @@ function DisparosScreen({ onOpenLead }) {
     api.list("campaigns", { saas: product.id })
       .then((cs) => alive && setCampaigns(Array.isArray(cs) ? cs : []))
       .catch(() => alive && setCampaigns([]));
+    api.campaignMetrics(product.id)
+      .then((r) => alive && setMetrics(Array.isArray(r?.campaigns) ? r.campaigns : []))
+      .catch(() => alive && setMetrics([]));
     return () => { alive = false; };
   }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function refreshMetrics() {
+    if (!product?.id) return;
+    api.campaignMetrics(product.id).then((r) => setMetrics(Array.isArray(r?.campaigns) ? r.campaigns : [])).catch(() => {});
+  }
 
   const stagesKey = [...stagesSel].sort().join("|");
   const recipients = useM(() => leads.filter((l) => stagesSel.has(l.stage)), [leads, stagesKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -147,6 +158,24 @@ function DisparosScreen({ onOpenLead }) {
     } catch (e) { setErr(`não deu pra marcar o envio: ${e.message}`); }
   }
 
+  // Envio NATIVO de e-mail em massa (Gmail): manda pra todo lead selecionado com
+  // e-mail e ainda pendente. O servidor pula quem não tem e-mail / descadastrou.
+  async function sendEmails() {
+    const ids = chosen.filter((l) => l.email && !l.emailOptOut && !camp.sent?.[l.id]?.email).map((l) => l.id);
+    if (!ids.length) { setNote({ ok: false, text: "nenhum lead com e-mail pendente na seleção" }); return; }
+    if (!camp.email?.subject && !camp.email?.body) { setNote({ ok: false, text: "escreva o assunto/corpo do e-mail primeiro" }); return; }
+    setEmailBusy(true); setErr(null); setNote(null);
+    try {
+      const id = await ensureSaved();
+      const r = await api.campaignSendEmail(id, ids);
+      setCamp((c) => ({ ...c, id, status: "sending", sent: r.sent || c.sent }));
+      refreshCampaigns(); refreshMetrics();
+      const fail = (r.results || []).filter((x) => !x.ok).length;
+      setNote({ ok: r.ok > 0, text: `${r.ok} e-mail(s) enviado(s)${fail ? `, ${fail} pulado(s)` : ""}` });
+    } catch (e) { setErr(`falha no envio: ${e.message}`); }
+    setEmailBusy(false);
+  }
+
   async function genCopy() {
     setAiBusy(true); setErr(null);
     try {
@@ -178,6 +207,7 @@ function DisparosScreen({ onOpenLead }) {
   const withEmail = chosen.filter((l) => l.email).length;
   const sentWa = chosen.filter((l) => camp.sent?.[l.id]?.whatsapp).length;
   const sentEmail = chosen.filter((l) => camp.sent?.[l.id]?.email).length;
+  const pendingEmail = chosen.filter((l) => l.email && !l.emailOptOut && !camp.sent?.[l.id]?.email).length;
 
   const sampleLead = chosen[0] || recipients[0] || null;
   const sampleTokens = sampleLead ? scriptTokens(sampleLead, product) : null;
@@ -193,6 +223,7 @@ function DisparosScreen({ onOpenLead }) {
   const field = { width: "100%", padding: "8px 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 };
   const chipBtn = (on) => ({ display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 11px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"), background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)" });
   const sendChip = { display: "inline-flex", alignItems: "center", gap: 5, height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", fontSize: 11.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
+  const num = { fontSize: 12.5, textAlign: "right", fontVariantNumeric: "tabular-nums" };
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -340,7 +371,21 @@ function DisparosScreen({ onOpenLead }) {
             <div style={kicker}>Disparar · {chosen.length} selecionados</div>
             {camp.channels.whatsapp && <Pill tone={sentWa >= withWa && withWa > 0 ? "pos" : "mut"}>WhatsApp {sentWa}/{withWa}</Pill>}
             {camp.channels.email && <Pill tone={sentEmail >= withEmail && withEmail > 0 ? "pos" : "mut"}>e-mail {sentEmail}/{withEmail}</Pill>}
-            {camp.channels.email && <span className="mono dim" style={{ fontSize: 10.5 }}>e-mail abre rascunho no Gmail (envio em massa pela conta Google entra na fase 2)</span>}
+            {camp.channels.email && (
+              gmailOn ? (
+                <button onClick={sendEmails} disabled={emailBusy || pendingEmail === 0}
+                  title="Envia o e-mail pela conta Google conectada pra todos os selecionados com e-mail ainda pendente"
+                  style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600,
+                    background: emailBusy || pendingEmail === 0 ? "var(--bg-2)" : "var(--accent)",
+                    color: emailBusy || pendingEmail === 0 ? "var(--fg-4)" : "var(--accent-fg)",
+                    border: "1px solid " + (emailBusy || pendingEmail === 0 ? "var(--line-2)" : "var(--accent)"),
+                    cursor: emailBusy || pendingEmail === 0 ? "not-allowed" : "pointer" }}>
+                  {emailBusy ? "enviando…" : `✉ enviar ${pendingEmail} e-mail${pendingEmail === 1 ? "" : "s"}`}
+                </button>
+              ) : (
+                <span className="mono dim" style={{ fontSize: 10.5 }}>conecte o Google com permissão de e-mail (Ajustes → Integrações) pra enviar em massa · ou use "abrir Gmail" por lead</span>
+              )
+            )}
           </div>
 
           {chosen.length === 0 ? (
@@ -379,6 +424,39 @@ function DisparosScreen({ onOpenLead }) {
                   </div>
                 );
               })}
+            </div>
+          )}
+        </div>
+
+        {/* ── RESULTADOS · conversão no funil ───────────────────────────
+            O que deu certo: dos leads que receberam o disparo, quantos
+            avançaram de etapa / marcaram call / fecharam nos 30 dias seguintes
+            (atribuído pela timeline). Compara as campanhas pra achar o padrão. */}
+        <div style={box}>
+          <div style={{ ...kicker, marginBottom: 8 }}>Resultados · conversão no funil (30 dias após o disparo)</div>
+          {metrics.length === 0 ? (
+            <div className="mono dim" style={{ fontSize: 12 }}>nenhum disparo medido ainda · dispare e a conversão aparece aqui</div>
+          ) : (
+            <div className="tbl-x" style={{ overflowX: "auto" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(140px, 1fr) repeat(5, 82px)", gap: "5px 6px", minWidth: 520 }}>
+                {["campanha", "enviados", "avançou", "marcou call", "fechou", "conversão"].map((h, i) => (
+                  <span key={h} style={{ ...kicker, textAlign: i === 0 ? "left" : "right" }}>{h}</span>
+                ))}
+                {[...metrics].sort((a, b) => (b.won - a.won) || (b.advanced - a.advanced) || (b.sent - a.sent)).map((m) => {
+                  const rate = m.sent ? Math.round((m.won / m.sent) * 100) : 0;
+                  const on = m.id === camp.id;
+                  return (
+                    <React.Fragment key={m.id}>
+                      <span style={{ fontSize: 12.5, fontWeight: on ? 700 : 500, color: on ? "var(--accent)" : "var(--fg-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name || "sem nome"}</span>
+                      <span style={num}>{m.sent}</span>
+                      <span style={num}>{m.advanced}</span>
+                      <span style={num}>{m.booked}</span>
+                      <span style={{ ...num, fontWeight: 700, color: m.won ? "var(--pos)" : "var(--fg-3)" }}>{m.won}</span>
+                      <span style={{ ...num, color: rate >= 20 ? "var(--pos)" : "var(--fg-2)" }}>{rate}%</span>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
