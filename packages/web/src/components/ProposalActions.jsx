@@ -34,10 +34,13 @@ function ProposalActions({ l }) {
   }
 
   if (l.proposalUrl) {
+    // "apresentar ao vivo" = link de edição (?k), com a tela de setup do closer e
+    // os campos editáveis. "ver como cliente" = link limpo (o que vai pro cliente).
+    const liveUrl = l.proposal_edit_url || l.proposalUrl;
     return (
       <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-        <a href={l.proposalUrl} target="_blank" rel="noreferrer" style={linkBtnStyle}><span style={{ fontSize: 11 }}>proposta ↗</span></a>
-        {l.proposal_edit_url && <a href={l.proposal_edit_url} target="_blank" rel="noreferrer" style={{ ...chromeBtnStyleSmall, textDecoration: "none" }}><span style={{ fontSize: 11 }}>editar ↗</span></a>}
+        <a href={liveUrl} target="_blank" rel="noreferrer" style={linkBtnStyle}><span style={{ fontSize: 11 }}>apresentar ao vivo ↗</span></a>
+        <a href={l.proposalUrl} target="_blank" rel="noreferrer" style={{ ...chromeBtnStyleSmall, textDecoration: "none" }}><span style={{ fontSize: 11 }}>ver como cliente ↗</span></a>
         {isLevercopy && <button onClick={() => gen(true)} disabled={busy} style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>{busy ? "…" : "re-gerar"}</span></button>}
         {isLevercopy && err && <span className="mono" style={{ fontSize: 9, color: "var(--neg)" }}>re-geração falhou</span>}
       </span>
