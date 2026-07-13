@@ -683,7 +683,6 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onClose, onTouch, 
           <button onClick={onOpenLead} style={{ padding: "8px 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 }}>
             abrir lead
           </button>
-          <span className="mono dim" style={{ fontSize: 10.5, color: "var(--fg-4)" }}>escolha o destino do card em "Depois da ação"</span>
           <button onClick={onClose} className="mono dim" style={{ marginLeft: "auto", fontSize: 12 }}>fechar</button>
         </div>
       </div>
