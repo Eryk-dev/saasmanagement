@@ -244,14 +244,33 @@ export const DEFAULT_SCRIPTS = {
       { t: "Destravar", fala: "Me fala com sinceridade: o que falta pra gente começar? Se for investimento, me conta que eu vejo o que consigo por aqui." },
     ],
   },
-  followup: {
-    titulo: "Negociação · follow-up",
-    resumo: "Negociação aberta: cobre a decisão com leveza e feche cada contato com um compromisso datado. Sem próximo passo combinado, o lead esfria.",
-    objetivo: "Decisão (ganho, ou perdido honesto com motivo) ou próximo toque agendado com o lead.",
+  followup1: {
+    titulo: "Follow-up · 1º contato",
+    resumo: "Primeiro retorno depois da call. Negociação aberta: cobre a decisão com leveza e feche com um próximo passo DATADO. Sem compromisso combinado, o lead esfria.",
+    objetivo: "Puxar a decisão (ou a objeção real) e sair com um dia marcado pra bater o martelo.",
     passos: [
-      { t: "Cobrança leve", fala: "Oi {{nome}}, tudo bom? Você ficou de me dar um retorno sobre a {{produto}}. Como decidiu por aí?" },
-      { t: "Puxar a objeção real", fala: "Me fala com sinceridade o que está pegando: é o investimento, o momento, ou alguma dúvida sobre a ferramenta?" },
-      { t: "Compromisso", fala: "Fechado. Então me diz um dia bom essa semana pra gente bater o martelo, que eu já te chamo." },
+      { t: "Cobrança leve", fala: "Oi {{nome}}, tudo bom? Aqui é {{eu}}. Depois da nossa call você ficou de me dar um retorno sobre a {{produto}}. Conseguiu pensar por aí?" },
+      { t: "Puxar a objeção real", fala: "Me fala com sinceridade o que está pegando: é o investimento, o momento, ou ficou alguma dúvida sobre a ferramenta?" },
+      { t: "Compromisso datado", fala: "Fechado. Então me diz um dia bom ainda essa semana pra gente bater o martelo, que eu já deixo tudo pronto pra você começar.", dica: "Sai daqui com data. Sem retorno, o GPS traz de volta em 3 dias úteis pro 2º contato." },
+    ],
+  },
+  followup2: {
+    titulo: "Follow-up · 2º contato",
+    resumo: "3 dias depois, sem retorno. Reconhece o silêncio sem cobrar, ataca a objeção mais provável e reforça que o risco é baixo. Pede uma sinalização objetiva.",
+    objetivo: "Derrubar a objeção que travou a decisão e reabrir a conversa com um próximo passo.",
+    passos: [
+      { t: "Retomada sem peso", fala: "Oi {{nome}}! Sei que a correria aperta, então não quero te deixar sem um retorno meu sobre a {{produto}}." },
+      { t: "Quebra de objeção + prova", fala: "Uma dúvida comum aqui é o quanto dá de trabalho, mas no seu caso é o contrário: a gente clona seus melhores anúncios pra outras contas em minutos, e um cliente nosso subiu 105% as vendas fazendo exatamente isso. O risco pra você é baixo." },
+      { t: "Pedido objetivo", fala: "Faz sentido a gente retomar? Me responde só com um 'bora' que eu já te reservo um horário pra fechar, ou me diz o que ainda está te segurando.", dica: "Sem resposta, o GPS devolve em mais 3 dias úteis pro 3º contato (último)." },
+    ],
+  },
+  followup3: {
+    titulo: "Follow-up · 3º contato (último)",
+    resumo: "Última tentativa antes de encerrar. Saída elegante que pede um sim ou não claro, sem constranger. Sem resposta, o card vai pra Desqualificado.",
+    objetivo: "Fechar a decisão nos dois sentidos: retomar agora ou encerrar com respeito e liberar a fila.",
+    passos: [
+      { t: "Saída elegante", fala: "Oi {{nome}}, tudo certo? Vou parar de te chamar pra não virar chateação. Só me ajuda a entender: clonar seus anúncios entre contas ainda faz sentido pra sua operação agora?" },
+      { t: "Sim ou não claro", fala: "Se ainda fizer, eu retomo com prioridade e a gente fecha essa semana. Se não for a hora, sem problema nenhum, é só me falar que eu encerro seu atendimento por aqui e deixo a porta aberta pra quando quiser voltar.", dica: "Sem resposta depois deste contato, mova o card pra Desqualificado (motivo: sem retorno)." },
     ],
   },
   integracao: {
@@ -313,7 +332,28 @@ export function scriptKeyFor(saasCfg, lead) {
   if (isNoShowStage(stage)) return attempts >= 1 ? "noshow2" : "noshow1";
   if (reactivation) return attempts >= 2 ? "nutricao3" : attempts === 1 ? "nutricao2" : "nutricao1";
   if (kind === "qualificacao") return attempts >= 1 ? "qualificacao3" : "qualificacao2";
+  if (kind === "followup") return attempts >= 2 ? "followup3" : attempts === 1 ? "followup2" : "followup1";
   return DEFAULT_SCRIPTS[kind] ? kind : "outro";
+}
+
+// Aplica um override de product.scripts[chave] sobre o roteiro padrão. Aceita
+// dois formatos: OBJETO estruturado { resumo?, objetivo?, passos:[{t,fala,dica}] }
+// (editor da aba Scripts, substitui os campos presentes) ou STRING livre (legado
+// do funnel[].script, substitui só o passo a passo via parseCustomScript).
+// Retorna null quando não há override aplicável.
+export function applyScriptOverride(base, over) {
+  if (!over) return null;
+  if (typeof over === "string") {
+    return over.trim() ? { ...base, custom: true, passos: parseCustomScript(over) } : null;
+  }
+  if (typeof over === "object" && !Array.isArray(over)) {
+    const patch = {};
+    if (over.resumo != null && String(over.resumo).trim()) patch.resumo = over.resumo;
+    if (over.objetivo != null && String(over.objetivo).trim()) patch.objetivo = over.objetivo;
+    if (Array.isArray(over.passos) && over.passos.length) patch.passos = over.passos;
+    return Object.keys(patch).length ? { ...base, ...patch, custom: true } : null;
+  }
+  return null;
 }
 
 export function resolveScript(saasCfg, lead) {
@@ -321,11 +361,9 @@ export function resolveScript(saasCfg, lead) {
   const base = DEFAULT_SCRIPTS[key] || DEFAULT_SCRIPTS.outro;
   // Prioridade: override por chave editado em Ajustes → Scripts
   // (product.scripts[key]) > override legado por estágio (funnel[].script) >
-  // padrão do código. Ambos os overrides substituem só o passo a passo.
-  const over = saasCfg?.scripts?.[key];
-  if (over && String(over).trim()) {
-    return { ...base, custom: true, passos: parseCustomScript(over) };
-  }
+  // padrão do código.
+  const applied = applyScriptOverride(base, saasCfg?.scripts?.[key]);
+  if (applied) return applied;
   const stage = lead?.stage || saasCfg?.funnel?.[0]?.stage || "";
   const row = (saasCfg?.funnel || []).find((f) => f && f.stage === stage);
   if (row?.script && String(row.script).trim()) {
@@ -340,12 +378,9 @@ export function resolveScript(saasCfg, lead) {
 // ligar. O SDR marca "cliente confirmou" e o passo do meio troca sozinho.
 // Respeita override product.scripts.confirmacao quando saasCfg é passado.
 export function confirmationScript(lead, saasCfg) {
-  const over = saasCfg?.scripts?.confirmacao;
-  const base = over && String(over).trim()
-    ? { ...DEFAULT_SCRIPTS.confirmacao, custom: true, passos: parseCustomScript(over) }
-    : DEFAULT_SCRIPTS.confirmacao;
+  const base = applyScriptOverride(DEFAULT_SCRIPTS.confirmacao, saasCfg?.scripts?.confirmacao) || DEFAULT_SCRIPTS.confirmacao;
   const confirmed = !!lead?.callConfirmed;
-  const passos = base.passos.filter((_, i) => i === 0 || (confirmed ? i === 1 : i === 2));
+  const passos = (base.passos || []).filter((_, i) => i === 0 || (confirmed ? i === 1 : i === 2));
   return { ...base, passos };
 }
 
@@ -375,7 +410,9 @@ export const SCRIPT_CATALOG = [
   { key: "nutricao3",     label: "Nutrição · 3º contato (saída)", phase: "Reativação",      stageMatch: "nutri" },
   { key: "call",          label: "Call de fechamento",            phase: "Closer",          stageKind: "call" },
   { key: "proposta",      label: "Proposta enviada",              phase: "Closer",          stageKind: "proposta" },
-  { key: "followup",      label: "Follow-up",                     phase: "Closer",          stageKind: "followup" },
+  { key: "followup1",     label: "Follow-up · 1º contato",        phase: "Closer",          stageKind: "followup" },
+  { key: "followup2",     label: "Follow-up · 2º contato",        phase: "Closer",          stageKind: "followup" },
+  { key: "followup3",     label: "Follow-up · 3º contato (último)",phase: "Closer",         stageKind: "followup" },
   { key: "integracao",    label: "Integração",                    phase: "Entrega",         stageKind: "integracao" },
   { key: "posvenda",      label: "Pós-venda",                     phase: "Entrega",         stageKind: "posvenda" },
 ];
