@@ -302,17 +302,31 @@ function parseCustomScript(text) {
 // de reativação — o contato ali não é a 1ª tentativa, é retomada de silêncio.
 // Qualificando tem roteiro POR TENTATIVA: 0 toques na etapa = 2ª tentativa;
 // 1+ toques = 3ª (última). O painel mostra só a abordagem daquele dia.
-export function resolveScript(saasCfg, lead) {
+// Qual CHAVE de DEFAULT_SCRIPTS um lead resolve (sem aplicar override). É o que
+// liga o lead ao roteiro editável em Ajustes → Scripts (product.scripts[chave]).
+export function scriptKeyFor(saasCfg, lead) {
   const stage = lead?.stage || saasCfg?.funnel?.[0]?.stage || "";
   const kind = stageKind(saasCfg, stage);
   const reactivation = (kind === "contato" || kind === "qualificacao") &&
     lead?.stage && !openStages(saasCfg).includes(stage);
   const attempts = Number(lead?.stageAttempts) || 0;
-  let base;
-  if (isNoShowStage(stage)) base = attempts >= 1 ? DEFAULT_SCRIPTS.noshow2 : DEFAULT_SCRIPTS.noshow1;
-  else if (reactivation) base = attempts >= 2 ? DEFAULT_SCRIPTS.nutricao3 : attempts === 1 ? DEFAULT_SCRIPTS.nutricao2 : DEFAULT_SCRIPTS.nutricao1;
-  else if (kind === "qualificacao") base = attempts >= 1 ? DEFAULT_SCRIPTS.qualificacao3 : DEFAULT_SCRIPTS.qualificacao2;
-  else base = DEFAULT_SCRIPTS[kind] || DEFAULT_SCRIPTS.outro;
+  if (isNoShowStage(stage)) return attempts >= 1 ? "noshow2" : "noshow1";
+  if (reactivation) return attempts >= 2 ? "nutricao3" : attempts === 1 ? "nutricao2" : "nutricao1";
+  if (kind === "qualificacao") return attempts >= 1 ? "qualificacao3" : "qualificacao2";
+  return DEFAULT_SCRIPTS[kind] ? kind : "outro";
+}
+
+export function resolveScript(saasCfg, lead) {
+  const key = scriptKeyFor(saasCfg, lead);
+  const base = DEFAULT_SCRIPTS[key] || DEFAULT_SCRIPTS.outro;
+  // Prioridade: override por chave editado em Ajustes → Scripts
+  // (product.scripts[key]) > override legado por estágio (funnel[].script) >
+  // padrão do código. Ambos os overrides substituem só o passo a passo.
+  const over = saasCfg?.scripts?.[key];
+  if (over && String(over).trim()) {
+    return { ...base, custom: true, passos: parseCustomScript(over) };
+  }
+  const stage = lead?.stage || saasCfg?.funnel?.[0]?.stage || "";
   const row = (saasCfg?.funnel || []).find((f) => f && f.stage === stage);
   if (row?.script && String(row.script).trim()) {
     return { ...base, custom: true, passos: parseCustomScript(row.script) };
@@ -324,11 +338,56 @@ export function resolveScript(saasCfg, lead) {
 // passo de 1h antes + só a mensagem de 10 min certa (positiva se o cliente
 // confirmou; ligar se ainda não). Passos: [0]=1h, [1]=10min positiva, [2]=10min
 // ligar. O SDR marca "cliente confirmou" e o passo do meio troca sozinho.
-export function confirmationScript(lead) {
-  const base = DEFAULT_SCRIPTS.confirmacao;
+// Respeita override product.scripts.confirmacao quando saasCfg é passado.
+export function confirmationScript(lead, saasCfg) {
+  const over = saasCfg?.scripts?.confirmacao;
+  const base = over && String(over).trim()
+    ? { ...DEFAULT_SCRIPTS.confirmacao, custom: true, passos: parseCustomScript(over) }
+    : DEFAULT_SCRIPTS.confirmacao;
   const confirmed = !!lead?.callConfirmed;
   const passos = base.passos.filter((_, i) => i === 0 || (confirmed ? i === 1 : i === 2));
   return { ...base, passos };
+}
+
+// Passo a passo → texto editável (o formato que parseCustomScript lê de volta):
+// cada passo vira "Título:\n<fala>", separados por linha em branco. A dica
+// interna não entra (é nota de apoio, não faz parte da fala pro cliente).
+export function passosToText(passos) {
+  return (passos || [])
+    .map((p) => (p?.t ? p.t + ":\n" : "") + (p?.fala || ""))
+    .filter((s) => s && s.trim())
+    .join("\n\n");
+}
+
+// Catálogo dos roteiros pra tela de Ajustes → Scripts: cada item aponta a chave
+// de DEFAULT_SCRIPTS, um rótulo, a fase do processo e como achar a cadência do
+// estágio relacionado (por kind ou por nome da coluna). confirmacao não tem
+// cadência de estágio (as janelas 1h/10min são regra fixa).
+export const SCRIPT_CATALOG = [
+  { key: "novo",          label: "Novo lead · 1º ato",            phase: "Pré-venda (SDR)", stageKind: "novo" },
+  { key: "qualificacao2", label: "Qualificando · 2ª tentativa",   phase: "Pré-venda (SDR)", stageKind: "qualificacao" },
+  { key: "qualificacao3", label: "Qualificando · 3ª tentativa",   phase: "Pré-venda (SDR)", stageKind: "qualificacao" },
+  { key: "confirmacao",   label: "Confirmação da call",           phase: "Pré-venda (SDR)" },
+  { key: "noshow1",       label: "No show · 1ª remarcação",       phase: "Pré-venda (SDR)", stageMatch: "noshow" },
+  { key: "noshow2",       label: "No show · 2ª remarcação",       phase: "Pré-venda (SDR)", stageMatch: "noshow" },
+  { key: "nutricao1",     label: "Nutrição · 1º contato (prova)", phase: "Reativação",      stageMatch: "nutri" },
+  { key: "nutricao2",     label: "Nutrição · 2º contato (oferta)",phase: "Reativação",      stageMatch: "nutri" },
+  { key: "nutricao3",     label: "Nutrição · 3º contato (saída)", phase: "Reativação",      stageMatch: "nutri" },
+  { key: "call",          label: "Call de fechamento",            phase: "Closer",          stageKind: "call" },
+  { key: "proposta",      label: "Proposta enviada",              phase: "Closer",          stageKind: "proposta" },
+  { key: "followup",      label: "Follow-up",                     phase: "Closer",          stageKind: "followup" },
+  { key: "integracao",    label: "Integração",                    phase: "Entrega",         stageKind: "integracao" },
+  { key: "posvenda",      label: "Pós-venda",                     phase: "Entrega",         stageKind: "posvenda" },
+];
+
+// Acha a linha do funil que casa com um item do catálogo (pra ler/editar a
+// cadência daquele estágio). stageMatch usa nome (No show / Nutrição).
+export function catalogStageRow(saasCfg, item) {
+  const funnel = saasCfg?.funnel || [];
+  if (item.stageMatch === "noshow") return funnel.find((f) => isNoShowStage(f?.stage)) || null;
+  if (item.stageMatch === "nutri") return funnel.find((f) => /nutri/i.test(String(f?.stage || ""))) || null;
+  if (item.stageKind) return funnel.find((f) => f && f.kind === item.stageKind) || null;
+  return null;
 }
 
 // Checklist de dados do lead pro painel do roteiro, NA ORDEM DA CONVERSA que o
