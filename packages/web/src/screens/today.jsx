@@ -106,9 +106,13 @@ function buildQueue(leads, saasCfg, person) {
     if (TOUCH_TYPES.has(l.lastActivityType) && l.lastActivityAt &&
       new Date(l.lastActivityAt).toDateString() === new Date().toDateString()) doneToday++;
 
-    // Tarefa de confirmação: vence no horário da call, grupo "confirm" (topo).
+    // Tarefa de confirmação: NÃO vence no horário da call. Vira DUAS tarefas com
+    // o horário já descontado — 1h antes (manda a confirmação) e 10min antes
+    // (positiva ou liga). Assim o SDR sabe a hora exata de executar cada uma.
     if (isConfirm) {
-      g.hoje.push({ l, kind, phase, who, due: { t: callT, type: "call" }, done: false, stage, group: "confirm", confirm: true });
+      const M = 60 * 1000;
+      g.hoje.push({ l, kind, phase, who, due: { t: callT - 60 * M, type: "confirm" }, done: false, stage, group: "confirm", confirm: true, confirmWindow: "1h" });
+      g.hoje.push({ l, kind, phase, who, due: { t: callT - 10 * M, type: "confirm" }, done: false, stage, group: "confirm", confirm: true, confirmWindow: "10min" });
       continue;
     }
 
@@ -363,12 +367,20 @@ function QueueRow({ item, seq, block, saasCfg, stageMeta, onScript, onClaim }) {
   const { l, kind, due, done, stage, who, phase, group } = item;
   const tier = leadTier(l);
   const now = Date.now();
+  // Hora REAL da call (as tarefas de confirmação vencem antes dela).
+  const callHH = item.confirm && l.callAt ? new Date(l.callAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
 
   // Pill de horário. Hoje: atrasado (dias) · agora · HH:mm · novo (idade).
   // Amanhã: só a hora. Próximos dias: a data.
   const startToday = new Date().setHours(0, 0, 0, 0);
   let when;
-  if (due && block === "amanha") {
+  if (item.confirm && due) {
+    // Confirmação: mostra a hora JÁ descontada (1h/10min antes da call). Passou
+    // da hora = "agora" em vermelho pra virar prioridade.
+    when = due.t <= now
+      ? { text: "agora", tone: "neg" }
+      : { text: new Date(due.t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }), tone: "pos" };
+  } else if (due && block === "amanha") {
     when = { text: new Date(due.t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }), tone: "mut" };
   } else if (due && block === "proximos") {
     when = { text: new Date(due.t).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), tone: "mut" };
@@ -389,7 +401,9 @@ function QueueRow({ item, seq, block, saasCfg, stageMeta, onScript, onClaim }) {
   const cad = cadenceOf(saasCfg, stage);
   const attempts = Number(cad.maxAttempts) ? `${Math.min(Number(l.stageAttempts) || 0, Number(cad.maxAttempts))}/${cad.maxAttempts}` : null;
   const unowned = !who; // assumir só quando o card não tem responsável
-  const action = item.confirm ? "confirmar call" : group === "noshow" ? "remarcar" : group === "nutri" ? "reativação" : (ACTION_LABELS[kind] || "contato");
+  const action = item.confirm
+    ? (item.confirmWindow === "1h" ? "confirmar · 1h antes" : "confirmar · 10 min antes")
+    : group === "noshow" ? "remarcar" : group === "nutri" ? "reativação" : (ACTION_LABELS[kind] || "contato");
   const stageColor = stageMeta?.[stage]?.color || "var(--accent)";
 
   return (
@@ -431,6 +445,7 @@ function QueueRow({ item, seq, block, saasCfg, stageMeta, onScript, onClaim }) {
           {l.company && <span className="dim" style={{ fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.company}</span>}
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3, flexWrap: "wrap" }}>
+          {callHH && <Pill tone="pos" title="horário real da call — a tarefa vence antes">call {callHH}</Pill>}
           {chips.slice(0, 3).map((c, i) => <Pill key={i} tone="mut">{c}</Pill>)}
           {attempts && <Pill tone="mut" title="toques feitos nesta etapa">{attempts} toques</Pill>}
           {due?.type === "toque" && l.nextActionNote && <span className="dim" style={{ fontSize: 11 }}>{l.nextActionNote}</span>}
@@ -511,7 +526,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
   // Item de confirmação de call usa o roteiro de confirmação; o resto, o roteiro
   // do estágio (por tentativa). A confirmação não é movimento de etapa, então o
   // bloco "Depois da ação" (destino) some pra esse item.
-  const script = item.confirm ? confirmationScript(l, saasCfg) : resolveScript(saasCfg, l);
+  const script = item.confirm ? confirmationScript(l, saasCfg, item.confirmWindow) : resolveScript(saasCfg, l);
   const tokens = scriptTokens(l, saasCfg);
   const checklist = scriptChecklist(saasCfg, l);
   const wa = waLink(l.phone);

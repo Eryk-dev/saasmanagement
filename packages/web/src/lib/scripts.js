@@ -372,15 +372,21 @@ export function resolveScript(saasCfg, lead) {
   return base;
 }
 
-// Roteiro de confirmação da call, ADAPTADO pelo lead.callConfirmed: mostra o
-// passo de 1h antes + só a mensagem de 10 min certa (positiva se o cliente
-// confirmou; ligar se ainda não). Passos: [0]=1h, [1]=10min positiva, [2]=10min
-// ligar. O SDR marca "cliente confirmou" e o passo do meio troca sozinho.
-// Respeita override product.scripts.confirmacao quando saasCfg é passado.
-export function confirmationScript(lead, saasCfg) {
+// Roteiro de confirmação da call. Passos base: [0]=1h antes, [1]=10min positiva
+// (cliente confirmou), [2]=10min ligar (sem resposta). A tarefa de confirmação
+// na fila é DIVIDIDA em duas janelas (Meu dia): passar `window` mostra só a
+// mensagem daquela janela — "1h" = passo [0]; "10min" = [1] ou [2] conforme o
+// lead.callConfirmed (o SDR marca "cliente confirmou" e o passo troca). Sem
+// window (drawer antigo), mostra 1h + a de 10min certa. Respeita override
+// product.scripts.confirmacao quando saasCfg é passado.
+export function confirmationScript(lead, saasCfg, window) {
   const base = applyScriptOverride(DEFAULT_SCRIPTS.confirmacao, saasCfg?.scripts?.confirmacao) || DEFAULT_SCRIPTS.confirmacao;
   const confirmed = !!lead?.callConfirmed;
-  const passos = (base.passos || []).filter((_, i) => i === 0 || (confirmed ? i === 1 : i === 2));
+  const all = base.passos || [];
+  let passos;
+  if (window === "1h") passos = all.filter((_, i) => i === 0);
+  else if (window === "10min") passos = all.filter((_, i) => confirmed ? i === 1 : i === 2);
+  else passos = all.filter((_, i) => i === 0 || (confirmed ? i === 1 : i === 2));
   return { ...base, passos };
 }
 
