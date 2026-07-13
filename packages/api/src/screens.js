@@ -57,6 +57,9 @@ const ROUTE_SCREENS = [
   ["/api/proposals", ["proposals"]],     // inclui /preview
   ["/api/offers", ["offers"]],           // links de pagamento das ofertas
   ["/api/campaigns", ["disparos"]],      // disparos de e-mail + WhatsApp (mark, ai-copy e CRUD)
+  ["/api/sequences", ["disparos"]],      // sequências de nutrição (drip): CRUD + enroll/wa-sent/metrics/run
+  ["/api/sequence_enrollments", ["disparos"]], // progresso das sequências
+  ["/api/drip_templates", ["disparos"]], // biblioteca de conteúdo dos passos
   ["/api/pitch", ["calls", "settings"]], // análise de pitch (calls) + botão "IA das calls" em Ajustes → Scripts
 
   ["/api/metas", ["metas"]],             // metas de desempenho por vaga/pessoa

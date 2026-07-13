@@ -10,40 +10,13 @@
 //   POST /api/campaigns/ai-copy         — sugere a copy do disparo por IA.
 //   GET  /u/:token                      — descadastro público (opt-out de e-mail).
 // As rotas /api/campaigns/* entram no ROUTE_SCREENS (screens.js) sob "disparos".
-import { createHash } from "node:crypto";
 import { logActivity } from "./lead-flow.js";
 import { ladderOf, isWon, kindOf } from "./stages.js";
+import { unsubSig, unsubToken, baseUrl, leadTokens, interpolate, emailBodyWithUnsub } from "./disparos-util.js";
 
 const CHANNELS = new Set(["whatsapp", "email"]);
 const DAY = 86_400_000;
 const ATTR_WINDOW = 30 * DAY; // janela de atribuição do disparo → conversão
-
-// Token de descadastro: leadId + assinatura curta (não adivinhável, sem guardar
-// nada). Salt = a chave mestra (ou um default em dev).
-const UNSUB_SALT = process.env.COCKPIT_API_KEY || "cockpit-unsub-salt";
-const unsubSig = (leadId) => createHash("sha256").update(`${leadId}:${UNSUB_SALT}`).digest("hex").slice(0, 16);
-const unsubToken = (leadId) => `${leadId}.${unsubSig(leadId)}`;
-
-// Base pública pro link de descadastro (COCKPIT_PUBLIC_URL > host da request).
-// Inline pra não criar ciclo de import com routes.js (que importa este módulo).
-function publicBaseFrom(req) {
-  if (process.env.COCKPIT_PUBLIC_URL) return process.env.COCKPIT_PUBLIC_URL.replace(/\/+$/, "");
-  const host = req.headers["x-forwarded-host"] || req.headers["host"] || "localhost";
-  return `${/^(localhost|127\.)/.test(String(host)) ? "http" : "https"}://${host}`;
-}
-
-// Tokens do lead pra interpolar a mensagem ({{nome}} etc.). Espelho enxuto do
-// scriptTokens do SPA — só os campos que o compositor oferece.
-function leadTokens(lead) {
-  return {
-    nome: String(lead.name || "").trim().split(/\s+/)[0] || "",
-    empresa: lead.company || "",
-    nicho: lead.niche || "",
-    contas: lead.accounts || "",
-    anuncios: lead.listings || "",
-  };
-}
-const interpolate = (text, toks) => String(text || "").replace(/\{\{(\w+)\}\}/g, (_, k) => (toks[k] != null ? toks[k] : `{{${k}}}`));
 
 const unsubPage = (msg) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Descadastro</title><body style="font-family:system-ui,sans-serif;max-width:520px;margin:12vh auto;padding:0 24px;text-align:center;color:#111"><h2 style="font-weight:600">${msg}</h2><p style="color:#666">LeverAds</p></body>`;
 
@@ -98,7 +71,7 @@ export function registerCampaignRoutes(app, repo, { anthropic, mailer } = {}) {
     const bodyT = camp.email?.body || "";
     if (!subjectT && !bodyT) return reply.code(400).send({ error: "campanha sem assunto/corpo de e-mail" });
 
-    const base = publicBaseFrom(req);
+    const base = baseUrl(req);
     const sent = { ...(camp.sent || {}) };
     const results = [];
     let ok = 0;
@@ -110,7 +83,7 @@ export function registerCampaignRoutes(app, repo, { anthropic, mailer } = {}) {
       const toks = leadTokens(lead);
       const unsubUrl = `${base}/u/${unsubToken(lead.id)}`;
       const subject = interpolate(subjectT, toks);
-      const body = `${interpolate(bodyT, toks)}\n\n—\nPara não receber mais estes e-mails: ${unsubUrl}`;
+      const body = emailBodyWithUnsub(bodyT, toks, unsubUrl);
       try {
         await mailer.send({ to: lead.email, subject, text: body, headers: { "List-Unsubscribe": `<${unsubUrl}>` } });
         const at = new Date().toISOString();
