@@ -1,9 +1,13 @@
 import React from "react";
-import { PageHead, Pill } from "../components/viz.jsx";
+import { PageHead, Pill, Segmented } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { CreativeEditor } from "./creative.jsx";
+import {
+  SectionCard, BarList, SplitBar, AreaLine, HourBars, InsightsList,
+  fmtNum, countryLabel, genderLabel,
+} from "./social-metrics.jsx";
 
 // Mídia social — métricas do perfil (Instagram + página do Facebook) e o fluxo
 // de publicação orgânica direto do cockpit:
@@ -41,59 +45,123 @@ const DEFAULT_PAINS = [
   "Medo de perder a operação por erro manual",
 ];
 
-const fmtNum = (n) => {
-  if (n == null) return "–";
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1).replace(".", ",")} mi`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1).replace(".", ",")} mil`;
-  return String(n);
-};
+const PERIODS = [{ value: 7, label: "7 dias" }, { value: 30, label: "30 dias" }, { value: 90, label: "90 dias" }];
+
+// Ordena faixas etárias pelo início do intervalo ("18-24" → 18), não por valor.
+const ageStart = (k) => parseInt(String(k), 10) || 0;
+
+// Demografia + melhor horário (snapshot). Vira uma sequência de SectionCards
+// que entram na mesma grade dos outros gráficos. `audience` null = carregando.
+function AudienceCards({ audience }) {
+  if (!audience) {
+    return <SectionCard title="Audiência"><div className="mono dim" style={{ fontSize: 11, padding: "16px 0" }}>carregando demografia e horário…</div></SectionCard>;
+  }
+  const d = audience.demographics || {};
+  const online = audience.onlineFollowers;
+  const share = (arr) => { const t = arr.reduce((s, x) => s + x.value, 0) || 1; return (v) => Math.round((v / t) * 100); };
+  const nothing = !online && !(d.countries?.length || d.cities?.length || d.ages?.length || d.genders?.length);
+  if (nothing) {
+    return <SectionCard title="Audiência"><div className="mono dim" style={{ fontSize: 11, padding: "12px 0", lineHeight: 1.5 }}>o Instagram só libera demografia e horário com 100+ seguidores e volume mínimo. Aparece aqui quando a conta cruzar esse limite.</div></SectionCard>;
+  }
+  const cards = [];
+  if (online) {
+    cards.push(
+      <SectionCard key="hora" title="Melhor horário pra postar" note="seguidores online por hora">
+        <HourBars hours={online} bestHours={audience.bestHours || []} />
+        {audience.bestHours?.length > 0 && (
+          <div className="mono" style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 8 }}>
+            pico: {audience.bestHours.map((h) => `${String(h).padStart(2, "0")}h`).join(" · ")}
+          </div>
+        )}
+      </SectionCard>
+    );
+  }
+  if (d.countries?.length) {
+    const pct = share(d.countries);
+    cards.push(<SectionCard key="pais" title="Seguidores por país"><BarList items={d.countries.slice(0, 6).map((c) => ({ key: c.key, label: countryLabel(c.key), value: c.value, pct: pct(c.value) }))} labelW={130} /></SectionCard>);
+  }
+  if (d.cities?.length) {
+    cards.push(<SectionCard key="cidade" title="Seguidores por cidade"><BarList items={d.cities.slice(0, 6).map((c) => ({ key: c.key, label: c.key, value: c.value }))} labelW={150} /></SectionCard>);
+  }
+  if (d.ages?.length) {
+    const ages = [...d.ages].sort((a, b) => ageStart(a.key) - ageStart(b.key));
+    cards.push(<SectionCard key="idade" title="Faixa etária dos seguidores"><BarList items={ages.map((a) => ({ key: a.key, label: a.key, value: a.value }))} labelW={70} /></SectionCard>);
+  }
+  if (d.genders?.length) {
+    const pct = share(d.genders);
+    cards.push(<SectionCard key="genero" title="Gênero dos seguidores"><BarList items={d.genders.map((g) => ({ key: g.key, label: genderLabel(g.key), value: g.value, pct: pct(g.value) }))} labelW={110} /></SectionCard>);
+  }
+  return <>{cards}</>;
+}
 
 function SocialScreen() {
   const [product] = useActiveSaas();
   const [sum, setSum] = useS(null);
   const [posts, setPosts] = useS([]);
+  const [audience, setAudience] = useS(null);
+  const [days, setDays] = useS(30);
   const [err, setErr] = useS(null);
   const [wizard, setWizard] = useS(false);
 
-  async function load() {
+  // Summary + histórico dependem do período; audiência (demografia/horário) é
+  // snapshot, carrega uma vez por produto em paralelo.
+  useE(() => {
     if (!product?.id) return;
-    setErr(null);
-    try {
-      const [s, p] = await Promise.all([api.socialSummary(product.id), api.socialPosts(product.id)]);
-      setSum(s);
-      setPosts(p || []);
-    } catch (e) { setErr(e.message); }
-  }
-  useE(() => { setSum(null); setPosts([]); load(); }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    let alive = true;
+    setSum(null); setErr(null);
+    Promise.all([api.socialSummary(product.id, days), api.socialPosts(product.id)])
+      .then(([s, p]) => { if (alive) { setSum(s); setPosts(p || []); } })
+      .catch((e) => alive && setErr(e.message));
+    return () => { alive = false; };
+  }, [product?.id, days]);
+  useE(() => {
+    if (!product?.id) return;
+    let alive = true;
+    setAudience(null);
+    api.socialAudience(product.id).then((a) => alive && setAudience(a)).catch(() => {});
+    return () => { alive = false; };
+  }, [product?.id]);
 
   const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
   const tile = { flex: "1 1 150px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "12px 14px" };
   const ins = sum?.insights || {};
   const eng = sum?.engagement;
   const growth = sum?.followerGrowth;
+  const per = `${days}d`;
 
   // Fileira principal (números que importam de cara). Seguidores mostra o
   // ganho líquido do período quando o Instagram libera a métrica.
   const headline = [
     ["Seguidores · IG", sum?.account?.followers_count, growth != null ? growth : undefined],
-    ["Alcance · 30d", ins.reach],
-    ["Contas engajadas · 30d", ins.accounts_engaged],
+    [`Alcance · ${per}`, ins.reach],
+    [`Contas engajadas · ${per}`, ins.accounts_engaged],
     ["Seguidores · página FB", sum?.page?.followers_count ?? sum?.page?.fan_count],
   ];
   // Fileira secundária (contexto do perfil e da atividade).
   const secondary = [
-    ["Visitas ao perfil · 30d", ins.profile_views],
-    ["Cliques no site · 30d", ins.website_clicks],
-    ["Interações · 30d", ins.total_interactions],
+    [`Visitas ao perfil · ${per}`, ins.profile_views],
+    [`Cliques no site · ${per}`, ins.website_clicks],
+    [`Interações · ${per}`, ins.total_interactions],
+    [`Views · ${per}`, ins.views],
     ["Posts no perfil", sum?.account?.media_count],
-    ["Seguindo", sum?.account?.follows_count],
   ];
+
+  // Barras de engajamento médio por post (magnitude, hue único).
+  const engBars = eng ? [
+    { key: "l", label: "Curtidas", value: eng.avgLikes },
+    { key: "c", label: "Comentários", value: eng.avgComments },
+    { key: "s", label: "Salvamentos", value: eng.avgSaves },
+    { key: "sh", label: "Compart.", value: eng.avgShares },
+  ].filter((x) => x.value != null) : [];
+
+  const rb = sum?.reachBreakdown;
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <PageHead
         title="Mídia social"
         sub={sum?.account?.username ? `@${sum.account.username}${sum?.page?.name ? ` · ${sum.page.name}` : ""}` : "Instagram e página do Facebook do produto"}>
+        <Segmented value={days} onChange={setDays} options={PERIODS} />
         <button onClick={() => setWizard(true)}
           style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12, fontWeight: 600 }}>
           ＋ criar post
@@ -119,7 +187,7 @@ function SocialScreen() {
                     <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 24, fontWeight: 700 }}>{fmtNum(v)}</span>
                     {delta !== undefined && delta !== null && (
                       <span className="mono tnum" style={{ fontSize: 11.5, fontWeight: 600, color: delta > 0 ? "var(--pos)" : delta < 0 ? "var(--neg)" : "var(--fg-4)" }}>
-                        {delta > 0 ? "▲" : delta < 0 ? "▼" : ""}{delta > 0 ? "+" : ""}{fmtNum(delta)} · 30d
+                        {delta > 0 ? "▲" : delta < 0 ? "▼" : ""}{delta > 0 ? "+" : ""}{fmtNum(delta)} · {per}
                       </span>
                     )}
                   </div>
@@ -137,39 +205,50 @@ function SocialScreen() {
               ))}
             </div>
 
-            {/* Faixa de engajamento dos últimos posts */}
-            {eng && (
-              <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "12px 14px" }}>
-                <div className="mono" style={{ ...kicker, marginBottom: 10 }}>Engajamento dos últimos {eng.posts} posts</div>
-                <div style={{ display: "flex", gap: 22, flexWrap: "wrap", alignItems: "center" }}>
-                  {[
-                    ["Média de curtidas", `♥ ${fmtNum(eng.avgLikes)}`],
-                    ["Média de comentários", `💬 ${String(eng.avgComments).replace(".", ",")}`],
-                    ["Taxa de engajamento", eng.rate != null ? `${String(eng.rate).replace(".", ",")}%` : "–"],
-                  ].map(([label, v]) => (
-                    <div key={label}>
-                      <div className="mono" style={{ ...kicker, fontSize: 9.5 }}>{label}</div>
-                      <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 20, fontWeight: 700, marginTop: 2 }}>{v}</div>
-                    </div>
-                  ))}
-                  {eng.top && (
-                    <a href={eng.top.permalink || "#"} target="_blank" rel="noopener noreferrer"
-                      style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "inherit" }}>
-                      <div>
-                        <div className="mono" style={{ ...kicker, fontSize: 9.5, textAlign: "right" }}>Post que mais engajou</div>
-                        <div className="mono" style={{ fontSize: 11, color: "var(--fg-2)", textAlign: "right", marginTop: 3 }}>
-                          ♥ {fmtNum(eng.top.likes)} · 💬 {fmtNum(eng.top.comments)}
-                        </div>
-                      </div>
-                      {eng.top.mediaUrl && (
-                        <img src={eng.top.mediaUrl} alt="" referrerPolicy="no-referrer"
-                          style={{ width: 44, height: 44, borderRadius: "var(--r-2)", objectFit: "cover", border: "1px solid var(--line-1)" }} />
-                      )}
-                    </a>
+            {/* Recomendações pra crescer — lidera com o "o que fazer" */}
+            {sum.insightsText?.length > 0 && <InsightsList items={sum.insightsText} />}
+
+            {/* Grade de gráficos */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 12 }}>
+              {sum.followerSeries && (
+                <SectionCard title={`Crescimento de seguidores · ${per}`} note="acumulado no período"
+                  right={growth != null && <span className="tnum" style={{ fontSize: 13, fontWeight: 700, color: growth > 0 ? "var(--pos)" : growth < 0 ? "var(--neg)" : "var(--fg-3)" }}>{growth > 0 ? "+" : ""}{fmtNum(growth)}</span>}>
+                  <AreaLine series={sum.followerSeries} cumulative valueLabel="seguidores (acum.)" />
+                </SectionCard>
+              )}
+
+              {rb && (
+                <SectionCard title={`Alcance: seguidores × não-seguidores · ${per}`} note="quanto do alcance é gente nova">
+                  <SplitBar segments={[
+                    { label: "Não-seguidores", value: rb.nonFollower, color: "var(--accent)" },
+                    { label: "Seguidores", value: rb.follower, color: "color-mix(in srgb, var(--fg-4) 40%, var(--bg-3))" },
+                  ]} />
+                </SectionCard>
+              )}
+
+              {engBars.length > 0 && (
+                <SectionCard title={`Engajamento médio por post`} note={`${eng.posts} posts${eng.rate != null ? ` · taxa ${String(eng.rate).replace(".", ",")}%` : ""}`}>
+                  <BarList items={engBars} labelW={96} fmt={(v) => String(v).replace(".", ",")} />
+                  {eng.avgReach != null && (
+                    <div className="mono dim" style={{ fontSize: 10.5, marginTop: 10 }}>alcance médio por post: <b style={{ color: "var(--fg-2)" }}>{fmtNum(eng.avgReach)}</b></div>
                   )}
-                </div>
-              </div>
-            )}
+                </SectionCard>
+              )}
+
+              {sum.formats?.length > 0 && (
+                <SectionCard title="Alcance médio por formato" note="onde investir o esforço">
+                  <BarList items={sum.formats.map((f) => ({ key: f.label, label: f.label, value: f.avgReach, note: `${f.count} post${f.count > 1 ? "s" : ""}` }))} labelW={96} />
+                </SectionCard>
+              )}
+
+              {sum.reachSeries && (
+                <SectionCard title={`Alcance por dia · ${per}`}>
+                  <AreaLine series={sum.reachSeries} valueLabel="de alcance" />
+                </SectionCard>
+              )}
+
+              <AudienceCards audience={audience} />
+            </div>
 
             {sum.media?.length > 0 && (
               <div>
@@ -184,10 +263,14 @@ function SocialScreen() {
                         {m.mediaUrl && <img src={m.mediaUrl} alt="" loading="lazy" referrerPolicy="no-referrer"
                           style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
                       </div>
-                      <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", padding: "5px 8px", display: "flex", gap: 8 }}>
-                        <span>♥ {fmtNum(m.likes)}</span>
-                        <span>💬 {fmtNum(m.comments)}</span>
-                        <span style={{ marginLeft: "auto" }}>{m.type === "VIDEO" ? "▶" : ""}</span>
+                      <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", padding: "5px 8px 6px" }}>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <span>♥ {fmtNum(m.likes)}</span>
+                          <span>💬 {fmtNum(m.comments)}</span>
+                          {m.saved > 0 && <span title="salvamentos">🔖 {fmtNum(m.saved)}</span>}
+                          <span style={{ marginLeft: "auto" }}>{m.type === "VIDEO" ? "▶" : ""}</span>
+                        </div>
+                        {m.reach > 0 && <div style={{ color: "var(--fg-4)", marginTop: 2 }}>alcance {fmtNum(m.reach)}</div>}
                       </div>
                     </a>
                   ))}

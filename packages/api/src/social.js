@@ -11,6 +11,22 @@
 // (reels/story de vídeo) processa assíncrono: poll de status_code até FINISHED.
 
 const GRAPH = "https://graph.facebook.com/v23.0";
+const DAY = 86400000;
+
+// A API de insights por dia limita o intervalo a 30 dias por chamada; pra
+// janelas maiores (90d) quebramos em pedaços de ≤30 dias e agregamos.
+function dayChunks(since, until, maxDays = 30) {
+  const fmt = (t) => new Date(t).toISOString().slice(0, 10);
+  const out = [];
+  let s = new Date(since + "T12:00:00Z").getTime();
+  const u = new Date(until + "T12:00:00Z").getTime();
+  while (s <= u) {
+    const e = Math.min(u, s + (maxDays - 1) * DAY);
+    out.push({ since: fmt(s), until: fmt(e) });
+    s = e + DAY;
+  }
+  return out;
+}
 
 export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const configured = () => !!accessToken;
@@ -59,50 +75,74 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
       return get(String(igUserId), { fields: "username,name,followers_count,follows_count,media_count,profile_picture_url,biography" });
     },
 
-    // Insights do perfil no período — depende de permissão/volume da conta,
-    // quem chama trata erro como "sem dado" (fail-soft). As métricas da API v23
-    // se dividem em dois grupos por causa de compatibilidade:
-    //  - total_value: reach, profile_views, accounts_engaged, total_interactions,
-    //    website_clicks (cliques no link da bio)
-    //  - série "impressions" foi aposentada; usamos reach como alcance.
-    // reach pede metric_type=total_value; as demais também. Quando alguma métrica
-    // não existe pra conta, a Graph rejeita o lote inteiro — então pedimos em
-    // dois lotes e o que falhar volta vazio, sem derrubar o resto.
+    // Insights AGREGADOS do perfil no período. Cada lote é fail-soft (métrica
+    // que a conta não tem não zera as outras) e chunkado em ≤30 dias. Métricas
+    // aditivas (interações, cliques) somam certo; alcance/contas engajadas são
+    // únicos por janela, então a soma de janelas em 90d é uma aproximação.
     async igInsights(igUserId, { since, until }) {
       const out = {};
-      const fetchBatch = async (metric) => {
+      const add = (name, v) => { out[name] = (out[name] || 0) + v; };
+      const fetchBatch = async (metric, win) => {
         try {
-          const body = await get(`${igUserId}/insights`, { metric, period: "day", metric_type: "total_value", since, until });
-          for (const m of body.data || []) out[m.name] = Number(m.total_value?.value) || 0;
-        } catch { /* métrica indisponível pra conta — segue sem ela */ }
+          const body = await get(`${igUserId}/insights`, { metric, period: "day", metric_type: "total_value", since: win.since, until: win.until });
+          for (const m of body.data || []) add(m.name, Number(m.total_value?.value) || 0);
+        } catch { /* métrica indisponível — segue sem ela */ }
       };
-      // lote principal (quase sempre disponível) separado dos extras, pra um
-      // campo faltando não zerar os outros.
-      await fetchBatch("reach,profile_views,accounts_engaged");
-      await fetchBatch("total_interactions,website_clicks");
+      for (const win of dayChunks(since, until)) {
+        await fetchBatch("reach,profile_views,accounts_engaged,total_interactions", win);
+        await fetchBatch("likes,comments,shares,saves,views", win);
+        await fetchBatch("website_clicks,profile_links_taps", win);
+      }
       return out;
     },
 
-    // Crescimento de seguidores no período (métrica time_series, some sozinha
-    // se a conta é pequena demais pro Instagram liberar).
-    async igFollowerGrowth(igUserId, { since, until }) {
-      try {
-        const body = await get(`${igUserId}/insights`, { metric: "follower_count", period: "day", since, until });
-        const series = body.data?.[0]?.values || [];
-        return series.reduce((s, v) => s + (Number(v.value) || 0), 0);
-      } catch { return null; }
+    // Alcance separado entre SEGUIDORES e NÃO-SEGUIDORES (breakdown follow_type)
+    // — a métrica-chave de crescimento: quanto do alcance é gente nova. null se
+    // a conta não libera.
+    async igReachBreakdown(igUserId, { since, until }) {
+      let follower = 0, nonFollower = 0, any = false;
+      for (const win of dayChunks(since, until)) {
+        try {
+          const body = await get(`${igUserId}/insights`, { metric: "reach", period: "day", metric_type: "total_value", breakdown: "follow_type", since: win.since, until: win.until });
+          const results = body.data?.[0]?.total_value?.breakdowns?.[0]?.results || [];
+          for (const r of results) {
+            const key = String(r.dimension_values?.[0] || "").toUpperCase();
+            const v = Number(r.value) || 0;
+            if (key.includes("NON")) nonFollower += v; else follower += v;
+            any = true;
+          }
+        } catch { /* fail-soft */ }
+      }
+      return any ? { follower, nonFollower } : null;
     },
 
-    // Últimos posts do perfil com engajamento — o feed da tela. Carrossel
-    // (CAROUSEL_ALBUM) não tem media_url no nível de cima; a thumbnail vem do
-    // primeiro filho, por isso pedimos children{media_url}.
+    // Série diária de um insight (values[]) — pros gráficos de linha. `metric`
+    // = follower_count (variação líquida/dia) ou reach. null quando indisponível.
+    async igDailySeries(igUserId, metric, { since, until }) {
+      const series = [];
+      for (const win of dayChunks(since, until)) {
+        try {
+          const body = await get(`${igUserId}/insights`, { metric, period: "day", since: win.since, until: win.until });
+          for (const v of body.data?.[0]?.values || []) series.push({ date: String(v.end_time || "").slice(0, 10), value: Number(v.value) || 0 });
+        } catch { /* fail-soft */ }
+      }
+      return series.length ? series : null;
+    },
+
+    // Últimos posts com engajamento E insights por post (alcance/salvos/
+    // compartilhamentos/interações), pedidos de uma vez via insights aninhado no
+    // edge de mídia; se a Graph recusar o combo, cai pros campos básicos.
     async igMedia(igUserId, { limit = 12 } = {}) {
-      const body = await get(`${igUserId}/media`, {
-        fields: "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,children{media_url,thumbnail_url}",
-        limit: String(limit),
-      });
+      const base = "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,children{media_url,thumbnail_url}";
+      let data;
+      try {
+        data = (await get(`${igUserId}/media`, { fields: `${base},insights.metric(reach,saved,shares,total_interactions)`, limit: String(limit) })).data || [];
+      } catch {
+        data = (await get(`${igUserId}/media`, { fields: base, limit: String(limit) })).data || [];
+      }
       const child = (m) => m.children?.data?.[0];
-      return (body.data || []).map((m) => ({
+      const ins = (m, name) => Number((m.insights?.data || []).find((x) => x.name === name)?.values?.[0]?.value) || 0;
+      return data.map((m) => ({
         id: m.id,
         caption: m.caption || "",
         type: m.media_type,
@@ -113,7 +153,49 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
         at: m.timestamp || "",
         likes: Number(m.like_count) || 0,
         comments: Number(m.comments_count) || 0,
+        reach: ins(m, "reach"),
+        saved: ins(m, "saved"),
+        shares: ins(m, "shares"),
+        totalInteractions: ins(m, "total_interactions"),
       }));
+    },
+
+    // Demografia dos seguidores (snapshot lifetime): país, cidade, idade, gênero.
+    // Cada quebra é fail-soft; conta com <100 seguidores costuma vir vazia.
+    async igDemographics(igUserId) {
+      const out = { countries: [], cities: [], ages: [], genders: [] };
+      const one = async (breakdown, dest) => {
+        try {
+          const body = await get(`${igUserId}/insights`, { metric: "follower_demographics", period: "lifetime", metric_type: "total_value", breakdown });
+          const results = body.data?.[0]?.total_value?.breakdowns?.[0]?.results || [];
+          out[dest] = results
+            .map((r) => ({ key: String(r.dimension_values?.[0] ?? "?"), value: Number(r.value) || 0 }))
+            .sort((a, b) => b.value - a.value);
+        } catch { /* fail-soft */ }
+      };
+      await one("country", "countries");
+      await one("city", "cities");
+      await one("age", "ages");
+      await one("gender", "genders");
+      return out;
+    },
+
+    // Melhor horário pra postar: média de seguidores online por hora (0..23),
+    // agregada dos dias que a Graph devolve. null quando indisponível.
+    async igOnlineFollowers(igUserId) {
+      try {
+        const body = await get(`${igUserId}/insights`, { metric: "online_followers", period: "lifetime" });
+        const values = body.data?.[0]?.values || [];
+        const sum = new Array(24).fill(0), cnt = new Array(24).fill(0);
+        for (const v of values) {
+          for (const [h, c] of Object.entries(v.value || {})) {
+            const hi = Number(h);
+            if (hi >= 0 && hi < 24) { sum[hi] += Number(c) || 0; cnt[hi]++; }
+          }
+        }
+        const hours = sum.map((s, i) => (cnt[i] ? Math.round(s / cnt[i]) : 0));
+        return hours.some((h) => h > 0) ? hours : null;
+      } catch { return null; }
     },
 
     // Página do Facebook (nome, curtidas/seguidores, foto).
@@ -226,8 +308,11 @@ export const social = {
   configured: () => inst().configured(),
   igAccount: (id) => inst().igAccount(id),
   igInsights: (id, r) => inst().igInsights(id, r),
-  igFollowerGrowth: (id, r) => inst().igFollowerGrowth(id, r),
+  igReachBreakdown: (id, r) => inst().igReachBreakdown(id, r),
+  igDailySeries: (id, m, r) => inst().igDailySeries(id, m, r),
   igMedia: (id, o) => inst().igMedia(id, o),
+  igDemographics: (id) => inst().igDemographics(id),
+  igOnlineFollowers: (id) => inst().igOnlineFollowers(id),
   pageInfo: (id) => inst().pageInfo(id),
   pageToken: (id) => inst().pageToken(id),
   publishInstagram: (id, o) => inst().publishInstagram(id, o),
