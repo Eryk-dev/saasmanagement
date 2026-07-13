@@ -175,25 +175,15 @@ export const NEXT_STEP_LABELS = {
   ganho:          "Ganho",
   desqualificado: "Desqualificado",
 };
-// Rótulo da SITUAÇÃO (kind da etapa atual) — o cabeçalho de cada seção do editor.
-export const NEXT_STEP_SOURCE_LABELS = {
-  novo:         "Novo lead",
-  contato:      "Em contato / nutrição",
-  qualificacao: "Qualificação",
-  call:         "Call agendada",
-  followup:     "Follow-up",
-  proposta:     "Proposta",
-  integracao:   "Integração",
-  posvenda:     "Pós-venda (CS)",
-  outro:        "Outros estágios",
-};
-
-// Lista de destinos (kinds) da situação: override do produto vence o default.
-// Só aceita kinds conhecidos; array vazio é respeitado (o time zerou os botões).
-export function nextKindsFor(saasCfg, sourceKind) {
-  const over = saasCfg?.nextSteps?.[sourceKind];
-  const list = Array.isArray(over) ? over.filter((k) => NEXT_STEP_KINDS.includes(k)) : (NEXT_KINDS[sourceKind] || ["desqualificado"]);
-  return list;
+// Lista de destinos (kinds) daquele ROTEIRO: o override do produto é por CHAVE de
+// roteiro (product.nextSteps[scriptKey] — a mesma chave da aba Scripts, ex.
+// qualificacao2/qualificacao3/nutricao1), então cada tentativa/contato pode ter
+// um próximo passo diferente. Sem override cai no default do KIND da etapa
+// (NEXT_KINDS). Só aceita kinds conhecidos; array vazio é respeitado (zera os botões).
+export function nextKindsFor(saasCfg, scriptKey, fallbackKind) {
+  const over = saasCfg?.nextSteps?.[scriptKey];
+  if (Array.isArray(over)) return over.filter((k) => NEXT_STEP_KINDS.includes(k));
+  return NEXT_KINDS[fallbackKind] || NEXT_KINDS[scriptKey] || ["desqualificado"];
 }
 
 // O funil trabalha de segunda a sexta: agendamento otimista do GPS que cair em

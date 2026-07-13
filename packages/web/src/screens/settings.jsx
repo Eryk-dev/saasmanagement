@@ -4,7 +4,7 @@ import { EmptyState, PrimaryButton, RowActions, Avatar } from "../atoms.jsx";
 import { useData } from "../data.jsx";
 import { api } from "../lib/api.js";
 import { useIsMobile } from "../lib/responsive.js";
-import { KINDS, KIND_IDS, guessKind, lossReasonsOf, stageKind, stageByKind, NEXT_KINDS, NEXT_STEP_KINDS, NEXT_STEP_LABELS, NEXT_STEP_SOURCE_LABELS } from "../lib/funnel.js";
+import { KINDS, KIND_IDS, guessKind, lossReasonsOf, stageKind, stageByKind, NEXT_KINDS, NEXT_STEP_KINDS, NEXT_STEP_LABELS } from "../lib/funnel.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { DEFAULT_SCRIPTS, SCRIPT_CATALOG, catalogStageRow, isNoShowStage } from "../lib/scripts.js";
 import { NAV } from "../chrome.jsx";
@@ -304,10 +304,11 @@ function LossReasonsSettings({ s }) {
 }
 
 // ─────────────────────────────────────── Próximos passos (bloco "Depois da ação")
-// product.nextSteps[sourceKind] = [destKind,...] — POR SITUAÇÃO (kind da etapa em
-// que o lead está) define QUAIS botões "Depois da ação" aparecem na tela Meu dia
-// e em que ORDEM. Default = NEXT_KINDS. O today.jsx (destinationsFor) resolve cada
-// kind pra etapa real do funil, então só oferecemos destinos que existem no funil.
+// product.nextSteps[scriptKey] = [destKind,...] — POR ROTEIRO (a MESMA quebra da
+// aba Scripts: 1º ato, 2ª/3ª tentativa, 1º/2º/3º contato...), define QUAIS botões
+// "Depois da ação" aparecem na tela Meu dia e em que ORDEM. Assim cada tentativa
+// tem seu próximo passo. Default = NEXT_KINDS do kind da etapa. O today.jsx
+// (destinationsFor) resolve a chave via scriptKeyFor e cada destino pra etapa real.
 function NextStepsSettings({ s }) {
   const { refresh } = useData();
   const funnel = Array.isArray(s.funnel) ? s.funnel : [];
@@ -320,85 +321,88 @@ function NextStepsSettings({ s }) {
   };
   const avail = NEXT_STEP_KINDS.filter(resolvable);
 
-  // Situações presentes no funil (kinds com próximos passos), na ordem do funil.
-  const sourceKinds = (() => {
-    const seen = [];
-    for (const f of funnel) {
-      const k = stageKind(s, f.stage);
-      if (NEXT_KINDS[k] && !seen.includes(k)) seen.push(k);
-    }
-    return seen.length ? seen : Object.keys(NEXT_KINDS);
-  })();
-  const stagesOfKind = (k) => funnel.filter((f) => stageKind(s, f.stage) === k).map((f) => f.stage);
+  // Uma linha por VARIANTE de roteiro (igual à aba Scripts), menos a confirmação
+  // (não tem "Depois da ação") e as que não têm etapa no funil deste produto.
+  const items = SCRIPT_CATALOG
+    .filter((c) => c.key !== "confirmacao")
+    .map((c) => ({ ...c, row: catalogStageRow(s, c) }))
+    .filter((c) => c.row)
+    .map((c) => ({ ...c, kind: stageKind(s, c.row.stage) }));
 
-  // Estado por situação: lista COMPLETA de destinos disponíveis, ligados primeiro
-  // (na ordem salva) e desligados depois. Salvar = os ligados, nessa ordem.
-  const initFor = (k) => {
-    const chosen = (s.nextSteps?.[k] || NEXT_KINDS[k] || []).filter((d) => avail.includes(d));
+  // Estado por roteiro: destinos disponíveis, ligados primeiro (na ordem salva)
+  // e desligados depois. Sem override salvo, parte do default do kind da etapa.
+  const initFor = (item) => {
+    const chosen = (s.nextSteps?.[item.key] || NEXT_KINDS[item.kind] || []).filter((d) => avail.includes(d));
     const rest = avail.filter((d) => !chosen.includes(d));
     return [...chosen.map((d) => ({ kind: d, on: true })), ...rest.map((d) => ({ kind: d, on: false }))];
   };
-  const [rows, setRows] = useStS(() => Object.fromEntries(sourceKinds.map((k) => [k, initFor(k)])));
-  const [open, setOpen] = useStS(() => new Set(sourceKinds.slice(0, 1)));
+  const [rows, setRows] = useStS(() => Object.fromEntries(items.map((it) => [it.key, initFor(it)])));
+  const [open, setOpen] = useStS(() => new Set(items.slice(0, 1).map((it) => it.key)));
 
-  const move = (sk, i, dir) => setRows((r) => {
-    const arr = r[sk]; const j = i + dir;
+  const move = (key, i, dir) => setRows((r) => {
+    const arr = r[key]; const j = i + dir;
     if (j < 0 || j >= arr.length) return r;
     const next = [...arr]; [next[i], next[j]] = [next[j], next[i]];
-    return { ...r, [sk]: next };
+    return { ...r, [key]: next };
   });
-  const toggle = (sk, i) => setRows((r) => ({ ...r, [sk]: r[sk].map((x, j) => (j === i ? { ...x, on: !x.on } : x)) }));
-  const toggleOpen = (sk) => setOpen((o) => { const n = new Set(o); n.has(sk) ? n.delete(sk) : n.add(sk); return n; });
+  const toggle = (key, i) => setRows((r) => ({ ...r, [key]: r[key].map((x, j) => (j === i ? { ...x, on: !x.on } : x)) }));
+  const toggleOpen = (key) => setOpen((o) => { const n = new Set(o); n.has(key) ? n.delete(key) : n.add(key); return n; });
   const arrowStyle = (disabled) => ({ fontSize: 13, padding: "0 4px", color: "var(--fg-3)", opacity: disabled ? 0.25 : 1, fontFamily: "var(--mono)", cursor: disabled ? "default" : "pointer" });
 
   async function save() {
     const nextSteps = { ...(s.nextSteps || {}) };
-    for (const k of sourceKinds) nextSteps[k] = rows[k].filter((x) => x.on).map((x) => x.kind);
+    for (const it of items) nextSteps[it.key] = rows[it.key].filter((x) => x.on).map((x) => x.kind);
     await api.update("products", s.id, { nextSteps });
     await refresh();
   }
 
+  const phases = [...new Set(items.map((it) => it.phase))];
+
   return (
     <div>
-      <SettingHeader title="Próximos passos" sub="por situação (o tipo da etapa em que o lead está), escolha QUAIS botões “Depois da ação” aparecem na tela Meu dia e em que ordem · destinos sem etapa no funil não aparecem" />
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 520 }}>
-        {sourceKinds.map((sk) => {
-          const arr = rows[sk] || [];
-          const enabled = arr.filter((x) => x.on);
-          const isOpen = open.has(sk);
-          const stages = stagesOfKind(sk);
-          return (
-            <div key={sk} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", overflow: "hidden" }}>
-              <button type="button" onClick={() => toggleOpen(sk)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 14px", background: "var(--bg-inset)", textAlign: "left" }}>
-                <span className="mono dim" style={{ fontSize: 11, width: 12 }}>{isOpen ? "▾" : "▸"}</span>
-                <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--fg-1)" }}>{NEXT_STEP_SOURCE_LABELS[sk] || KINDS[sk]?.label || sk}</span>
-                {stages.length > 0 && <span className="mono dim" style={{ fontSize: 10 }}>{stages.join(" · ")}</span>}
-                <span className="mono dim" style={{ marginLeft: "auto", fontSize: 10.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 240 }}>
-                  {enabled.length ? enabled.map((x) => NEXT_STEP_LABELS[x.kind].replace(/ .*/, "")).join(" · ") : "nenhum botão"}
-                </span>
-              </button>
-              {isOpen && (
-                <div style={{ padding: "4px 14px" }}>
-                  {arr.map((x, i) => (
-                    <div key={x.kind} style={{ display: "flex", gap: 10, alignItems: "center", padding: "8px 0", borderBottom: i < arr.length - 1 ? "1px solid var(--line-1)" : "none", opacity: x.on ? 1 : 0.55 }}>
-                      <button type="button" onClick={() => toggle(sk, i)}
-                        title={x.on ? "aparece — clique pra esconder" : "escondido — clique pra mostrar"}
-                        style={{ width: 18, height: 18, flexShrink: 0, borderRadius: 4, border: "1px solid " + (x.on ? "var(--accent-line)" : "var(--line-strong)"), background: x.on ? "var(--accent)" : "transparent", color: "#fff", fontSize: 11, lineHeight: "16px", textAlign: "center" }}>
-                        {x.on ? "✓" : ""}
-                      </button>
-                      <span style={{ fontSize: 12.5, color: "var(--fg-1)", flex: 1 }}>{NEXT_STEP_LABELS[x.kind] || x.kind}</span>
-                      <span style={{ display: "flex" }}>
-                        <button type="button" onClick={() => move(sk, i, -1)} disabled={i === 0} style={arrowStyle(i === 0)}>↑</button>
-                        <button type="button" onClick={() => move(sk, i, 1)} disabled={i === arr.length - 1} style={arrowStyle(i === arr.length - 1)}>↓</button>
-                      </span>
+      <SettingHeader title="Próximos passos" sub="por roteiro (a mesma quebra da aba Scripts): escolha QUAIS botões “Depois da ação” aparecem na tela Meu dia e em que ordem · assim cada tentativa/contato pode ter um próximo passo diferente" />
+      {phases.map((phase) => (
+        <div key={phase} style={{ marginBottom: 20 }}>
+          <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>{phase}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 540 }}>
+            {items.filter((it) => it.phase === phase).map((it) => {
+              const arr = rows[it.key] || [];
+              const enabled = arr.filter((x) => x.on);
+              const isOpen = open.has(it.key);
+              return (
+                <div key={it.key} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", overflow: "hidden" }}>
+                  <button type="button" onClick={() => toggleOpen(it.key)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 14px", background: "var(--bg-inset)", textAlign: "left" }}>
+                    <span className="mono dim" style={{ fontSize: 11, width: 12 }}>{isOpen ? "▾" : "▸"}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--fg-1)" }}>{it.label}</span>
+                    <span className="mono dim" style={{ fontSize: 10 }}>{it.row.stage}</span>
+                    <span className="mono dim" style={{ marginLeft: "auto", fontSize: 10.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>
+                      {enabled.length ? enabled.map((x) => NEXT_STEP_LABELS[x.kind].replace(/ .*/, "")).join(" · ") : "nenhum botão"}
+                    </span>
+                  </button>
+                  {isOpen && (
+                    <div style={{ padding: "4px 14px" }}>
+                      {arr.map((x, i) => (
+                        <div key={x.kind} style={{ display: "flex", gap: 10, alignItems: "center", padding: "8px 0", borderBottom: i < arr.length - 1 ? "1px solid var(--line-1)" : "none", opacity: x.on ? 1 : 0.55 }}>
+                          <button type="button" onClick={() => toggle(it.key, i)}
+                            title={x.on ? "aparece — clique pra esconder" : "escondido — clique pra mostrar"}
+                            style={{ width: 18, height: 18, flexShrink: 0, borderRadius: 4, border: "1px solid " + (x.on ? "var(--accent-line)" : "var(--line-strong)"), background: x.on ? "var(--accent)" : "transparent", color: "#fff", fontSize: 11, lineHeight: "16px", textAlign: "center" }}>
+                            {x.on ? "✓" : ""}
+                          </button>
+                          <span style={{ fontSize: 12.5, color: "var(--fg-1)", flex: 1 }}>{NEXT_STEP_LABELS[x.kind] || x.kind}</span>
+                          <span style={{ display: "flex" }}>
+                            <button type="button" onClick={() => move(it.key, i, -1)} disabled={i === 0} style={arrowStyle(i === 0)}>↑</button>
+                            <button type="button" onClick={() => move(it.key, i, 1)} disabled={i === arr.length - 1} style={arrowStyle(i === arr.length - 1)}>↓</button>
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
       <SaveBar onSave={save} hint="“Retomar amanhã” registra a tentativa sem trocar de etapa · os demais movem o card pro tipo escolhido" />
     </div>
   );

@@ -8,7 +8,7 @@ import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusine
 import { allUsers, currentUser, displayName, userById, usersByRole } from "../lib/users.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
-import { resolveScript, scriptTokens, scriptSegments, scriptChecklist, isNoShowStage, confirmationScript } from "../lib/scripts.js";
+import { resolveScript, scriptTokens, scriptSegments, scriptChecklist, isNoShowStage, confirmationScript, scriptKeyFor } from "../lib/scripts.js";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
 // "Amanhã" e "Próximos dias" (o que já está agendado, à vista), e "Sem data".
@@ -750,9 +750,10 @@ export function destinationsFor(saasCfg, lead) {
   const curKind = stageKind(saasCfg, curStage);
   const out = [];
   const seen = new Set([curStage]);
-  // Quais destinos e em que ordem: default por situação (NEXT_KINDS), sobrescrito
-  // por produto em Ajustes → Próximos passos (saasCfg.nextSteps[curKind]).
-  for (const k of nextKindsFor(saasCfg, curKind)) {
+  // Quais destinos e em que ordem: default do kind (NEXT_KINDS), sobrescrito por
+  // produto em Ajustes → Próximos passos PELA CHAVE DE ROTEIRO (scriptKeyFor) —
+  // assim 2ª tentativa, 3ª tentativa, 1º/2º/3º contato têm passos independentes.
+  for (const k of nextKindsFor(saasCfg, scriptKeyFor(saasCfg, lead), curKind)) {
     if (k === "retry") {
       const promote = curKind === "novo";
       const target = promote ? (stageByKind(saasCfg, "qualificacao") || curStage) : curStage;
