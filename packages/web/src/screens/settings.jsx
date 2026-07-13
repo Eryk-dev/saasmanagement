@@ -30,7 +30,8 @@ function SettingsScreen({ saasId }) {
   const { SAAS } = window.SEED;
   const { openForm, openDelete } = useData();
   const [activeProduct] = useActiveSaas();
-  const [tab, setTab] = useStS(lastView.tab);
+  // "health"/"aha" foram removidas; se sobrou salvo na sessão, cai no funil.
+  const [tab, setTab] = useStS(lastView.tab === "health" || lastView.tab === "aha" ? "funnel" : lastView.tab);
   const isMobile = useIsMobile();
   lastView.tab = tab;
   const s = activeProduct;
@@ -41,15 +42,13 @@ function SettingsScreen({ saasId }) {
     ["scripts",     "Scripts"],
     ["team",        "Equipe"],
     ["fields",      "Campos custom"],
-    ["health",      "Pesos da saúde"],
-    ["aha",         "Definição do Aha"],
     ["integrations","Integrações"],
   ];
 
   if (!s) return (
     <EmptyState
       title="Nenhum SaaS para configurar"
-      hint="Crie um produto e ele aparece aqui para configurar funil, campos, pesos de saúde, Aha e integrações."
+      hint="Crie um produto e ele aparece aqui para configurar funil, campos e integrações."
       action={<PrimaryButton onClick={() => openForm("products")}>+ Criar SaaS</PrimaryButton>}
     />
   );
@@ -92,8 +91,6 @@ function SettingsScreen({ saasId }) {
           {tab === "scripts"      && <ScriptsSettings key={s.id} s={s} />}
           {tab === "team"         && <TeamSettings />}
           {tab === "fields"       && <FieldsSettings key={s.id} s={s} />}
-          {tab === "health"       && <HealthSettings key={s.id} s={s} />}
-          {tab === "aha"          && <AhaSettings key={s.id} s={s} />}
           {tab === "integrations" && <IntegrationsSettings key={s.id} s={s} />}
         </div>
       </div>
@@ -614,78 +611,6 @@ function FieldsSettings({ s }) {
             </div>
           </div>
         ))}
-      </div>
-      <SaveBar onSave={save} />
-    </div>
-  );
-}
-
-// ───────────────────────────────────────────────────────── Pesos da saúde
-const HEALTH_KEYS = [["funil", "Funil"], ["vendas", "Vendas"], ["cliente", "Cliente"], ["uso", "Uso"]];
-
-function HealthSettings({ s }) {
-  const { refresh } = useData();
-  const [w, setW] = useStS(() => {
-    const hw = s.healthWeights || {};
-    return Object.fromEntries(HEALTH_KEYS.map(([k]) => [k, Number.isFinite(Number(hw[k])) ? Number(hw[k]) : 25]));
-  });
-  const total = HEALTH_KEYS.reduce((a, [k]) => a + (Number(w[k]) || 0), 0);
-  const ok = total === 100;
-
-  async function save() {
-    await api.update("products", s.id, { healthWeights: w });
-    await refresh();
-  }
-
-  return (
-    <div>
-      <SettingHeader title="Composição da saúde" sub="média ponderada · 0–100 · a decomposição aparece em todo hover no app" />
-      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
-        {HEALTH_KEYS.map(([k, label]) => (
-          <div key={k} style={{ display: "grid", gridTemplateColumns: "120px 1fr 80px", gap: 14, padding: "14px 16px", borderBottom: "1px solid var(--line-1)", alignItems: "center" }}>
-            <span style={{ fontSize: 13 }}>{label}</span>
-            <input type="range" min="0" max="100" value={w[k]} onChange={(e) => setW(x => ({ ...x, [k]: Number(e.target.value) }))} style={{ width: "100%" }} />
-            <div style={{ position: "relative" }}>
-              <input type="number" min="0" max="100" value={w[k]} onChange={(e) => setW(x => ({ ...x, [k]: e.target.value === "" ? 0 : Number(e.target.value) }))} style={{ ...inputStyle, paddingRight: 20, textAlign: "right" }} />
-              <span className="mono dim" style={{ position: "absolute", right: 6, top: 6, fontSize: 11 }}>%</span>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="mono" style={{ fontSize: 11, marginTop: 10, color: ok ? "var(--fg-4)" : "var(--neg)" }}>
-        soma: {total}% {ok ? "" : "· os pesos devem somar 100%"}
-      </div>
-      <SaveBar onSave={save} disabled={!ok} />
-    </div>
-  );
-}
-
-// ───────────────────────────────────────────────────────── Definição do Aha
-function AhaSettings({ s }) {
-  const { refresh } = useData();
-  const [conds, setConds] = useStS(() => [...(s.aha?.conditions || [])]);
-
-  async function save() {
-    await api.update("products", s.id, { aha: { ...(s.aha || {}), conditions: conds.map(c => c.trim()).filter(Boolean) } });
-    await refresh();
-  }
-
-  return (
-    <div>
-      <SettingHeader title="Definição do Aha-Moment" sub="o evento único que prevê retenção. Alimenta ativação, time-to-value e alertas de onboarding." />
-      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "16px 18px" }}>
-        <div style={{ fontSize: 13, color: "var(--fg-2)", marginBottom: 10 }}>Um usuário atinge o Aha quando:</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {conds.map((c, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)" }}>
-              <span style={{ width: 14, height: 14, borderRadius: 3, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)", fontSize: 10, flexShrink: 0 }}>✓</span>
-              <input value={c} placeholder="Condição (ex.: conecta 1 fonte de anúncios)" onChange={(e) => setConds(x => x.map((y, j) => j === i ? e.target.value : y))} style={{ ...inputStyle, background: "transparent", border: "none", height: 22 }} />
-              <button type="button" onClick={() => setConds(x => x.filter((_, j) => j !== i))} className="mono dim" style={{ fontSize: 13 }}>✕</button>
-            </div>
-          ))}
-          <button type="button" onClick={() => setConds(x => [...x, ""])} style={{ alignSelf: "flex-start", padding: "4px 8px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--fg-2)" }}>+ condição</button>
-        </div>
-        <div className="mono dim" style={{ fontSize: 11, marginTop: 14 }}>ativação atual: <span style={{ color: "var(--fg-1)" }}>{window.fmt.pct(s.activation)}</span></div>
       </div>
       <SaveBar onSave={save} />
     </div>
