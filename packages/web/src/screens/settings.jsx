@@ -901,6 +901,9 @@ function ScriptsSettings({ s }) {
                         {custom && <button type="button" className="mono" onClick={() => resetScript(item.key)} style={{ fontSize: 10.5, color: "var(--neg)" }}>voltar ao padrão</button>}
                         <span className="mono dim" style={{ fontSize: 10.5 }}>{"tokens: {{nome}} {{eu}} {{produto}} {{nicho}} {{contas}} {{anuncios}} {{closer_responsavel}} {{hora_call}} {{link_call}}"}</span>
                       </div>
+                      <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line-1)" }}>
+                        <SaveBar onSave={save} label="Salvar e replicar" busyLabel="Replicando…" hint="salva e aplica na hora pra quem estiver usando o cockpit (tempo real)" />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -909,7 +912,7 @@ function ScriptsSettings({ s }) {
           </div>
         </div>
       ))}
-      <SaveBar onSave={save} hint="editar altera o roteiro pronto deste produto · a cadência é compartilhada com a aba Funil" />
+      <SaveBar onSave={save} label="Salvar e replicar" busyLabel="Replicando…" hint="salva tudo e aplica em tempo real pra quem estiver usando o cockpit · a cadência é compartilhada com a aba Funil" />
     </div>
   );
 }
