@@ -144,9 +144,11 @@ export const api = {
   flashcards: (saas) => req("GET", `/api/flashcards/${encodeURIComponent(saas)}`),
   saveFlashcards: (saas, cards, settings) => req("PUT", `/api/flashcards/${encodeURIComponent(saas)}`, settings ? { cards, settings } : { cards }),
   trainingQueue: (saas) => req("GET", `/api/flashcards/${encodeURIComponent(saas)}/queue`),
-  trainingReview: (saas, cardId, rating) => req("POST", `/api/flashcards/${encodeURIComponent(saas)}/review`, { cardId, rating }),
+  trainingReview: (saas, cardId, rating, ms) => req("POST", `/api/flashcards/${encodeURIComponent(saas)}/review`, { cardId, rating, ms }),
   trainingTeam: (saas) => req("GET", `/api/flashcards/${encodeURIComponent(saas)}/team`),
   trainingStats: (saas) => req("GET", `/api/flashcards/${encodeURIComponent(saas)}/stats`),
+  trainingExamStart: (saas, id) => req("POST", `/api/flashcards/${encodeURIComponent(saas)}/exam/${encodeURIComponent(id)}/start`, {}),
+  trainingExamSubmit: (saas, id, answers) => req("POST", `/api/flashcards/${encodeURIComponent(saas)}/exam/${encodeURIComponent(id)}/submit`, { answers }),
   // Imagem de flashcard (colada/enviada no editor) → asset servido em /public/training/:id.
   trainingAsset: async (saas, blob, name = "card.png") => {
     const fd = new FormData();

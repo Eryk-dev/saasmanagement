@@ -127,7 +127,7 @@ test("review: Bom em card novo vira aprendendo (minutos) e consome o budget de n
 
 test("estados são independentes por pessoa e cada revisão vira log em training_reviews", async () => {
   const { app, repo } = await buildApp();
-  await app.inject({ method: "POST", url: "/api/flashcards/leverads/review", headers: as("ana"), payload: { cardId: "sdr_1", rating: 1 } });
+  await app.inject({ method: "POST", url: "/api/flashcards/leverads/review", headers: as("ana"), payload: { cardId: "sdr_1", rating: 1, ms: 1234 } });
   await app.inject({ method: "POST", url: "/api/flashcards/leverads/review", headers: as("eryk"), payload: { cardId: "sdr_1", rating: 4 } });
 
   // mesmo card, agendas diferentes: pra ana voltou em minutos; pro eryk, dias
@@ -142,6 +142,7 @@ test("estados são independentes por pessoa e cada revisão vira log em training
   assert.deepEqual(new Set(log.map((r) => r.user)), new Set(["ana", "eryk"]));
   assert.equal(log[0].role, "sdr");
   assert.equal(log[0].prevState, 0); // era novo
+  assert.equal(log.find((r) => r.user === "ana").ms, 1234); // cronômetro anti-burla
 });
 
 test("team: contadores por pessoa, respeitando escopo de produto do usuário", async () => {
@@ -229,6 +230,92 @@ test("asset: upload multipart com sessão, servido público em /public/training/
   assert.equal(got.rawPayload.toString(), "fake-png-bytes");
   // sem sessão = 401
   assert.equal((await app.inject({ method: "POST", url: "/api/flashcards/leverads/asset", headers: { "content-type": `multipart/form-data; boundary=${boundary}` }, payload })).statusCode, 401);
+});
+
+test("team: true retention só conta cards que JÁ estavam em revisão; maduros e forecast vêm do estado", async () => {
+  const { app, repo } = await buildApp();
+  const day = (n) => new Date(Date.now() - n * 864e5).toISOString();
+  // 10 revisões de cards em revisão: 8 lembradas (rating≥2), 2 Errei → 80%
+  for (let i = 0; i < 10; i++) {
+    await repo.create("training_reviews", { id: `tr_${i}`, saas: "leverads", user: "ana", cardId: `sdr_${i}`, role: "sdr", rating: i < 2 ? 1 : 3, prevState: 2, at: day(2) });
+  }
+  // aprendizado (prevState=0) NÃO entra na retention; first-try 1/2 → 50%
+  await repo.create("training_reviews", { id: "tn_1", saas: "leverads", user: "ana", cardId: "x1", role: "sdr", rating: 3, prevState: 0, at: day(1) });
+  await repo.create("training_reviews", { id: "tn_2", saas: "leverads", user: "ana", cardId: "x2", role: "sdr", rating: 1, prevState: 0, at: day(1) });
+  // estado: sdr_1 maduro (ivl 30d) vencendo em ~2,5 dias (forecast); sdr_2 jovem e longe
+  await repo.create("training_states", { id: "leverads__ana", saas: "leverads", user: "ana", newDone: {}, cards: {
+    sdr_1: { state: 2, due: new Date(Date.now() + 2.5 * 864e5).toISOString(), scheduled_days: 30 },
+    sdr_2: { state: 2, due: new Date(Date.now() + 40 * 864e5).toISOString(), scheduled_days: 5 },
+  } });
+
+  const t = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/team" })).json();
+  const ana = t.users.find((u) => u.id === "ana");
+  assert.equal(ana.retention30d.pct, 80);
+  assert.equal(ana.retention30d.n, 10);
+  assert.equal(ana.firstTryPct, 50);
+  assert.equal(ana.mature, 1);
+  assert.equal(ana.young, 1);
+  assert.equal(ana.forecast.reduce((s, f) => s + f.n, 0), 1); // só o vencimento em ~2,5d
+  assert.equal(ana.retentionByRole[0].role, "sdr");
+  assert.equal(ana.retentionByRole[0].pct, 80);
+  assert.equal(ana.weekly.length, 8);
+  assert.equal(ana.weekly.at(-1).pct, 80); // a semana atual carrega as 10 revisões
+});
+
+test("prova de checkpoint: dispara ao graduar examEvery cards, corrige no servidor e reprova reseta os errados", async () => {
+  const { app, repo } = await buildApp();
+  const base = (await app.inject({ method: "GET", url: "/api/flashcards/leverads" })).json().cards;
+  // gestor configura: prova a cada 2 graduados, 3 questões, régua 70 (e clamps valem)
+  const put = (await app.inject({ method: "PUT", url: "/api/flashcards/leverads", payload: {
+    cards: base, settings: { examEvery: 2, examQuestions: 1, examPass: 30 },
+  } })).json();
+  assert.equal(put.settings.examEvery, 2);
+  assert.equal(put.settings.examQuestions, 3); // clamp mínimo
+  assert.equal(put.settings.examPass, 50);     // clamp mínimo
+
+  // Fácil gradua direto (novo → revisão): 1º graduado ainda não dispara
+  await app.inject({ method: "POST", url: "/api/flashcards/leverads/review", headers: as("ana"), payload: { cardId: "sdr_1", rating: 4 } });
+  let q = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("ana") })).json();
+  assert.equal(q.exam, null);
+  // 2º graduado dispara a prova
+  await app.inject({ method: "POST", url: "/api/flashcards/leverads/review", headers: as("ana"), payload: { cardId: "sdr_2", rating: 4 } });
+  q = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("ana") })).json();
+  assert.ok(q.exam?.id);
+  assert.equal(q.exam.count, 2);
+
+  // abrir gera questões SEM gabarito no payload (correção é do servidor)
+  const st = (await app.inject({ method: "POST", url: `/api/flashcards/leverads/exam/${q.exam.id}/start`, headers: as("ana") })).json();
+  assert.ok(st.questions.length >= 2);
+  assert.ok(st.questions.every((x) => x.kind === "mc" && x.options.length >= 2 && x.answerIdx === undefined));
+
+  // responde tudo ERRADO → reprova e os cards da prova voltam pra fila como novos
+  const doc = await repo.get("training_exams", q.exam.id);
+  const wrong = doc.questions.map((x) => ({ choice: (x.answerIdx + 1) % x.options.length }));
+  const sub = (await app.inject({ method: "POST", url: `/api/flashcards/leverads/exam/${q.exam.id}/submit`, headers: as("ana"), payload: { answers: wrong } })).json();
+  assert.equal(sub.score, 0);
+  assert.equal(sub.passed, false);
+  assert.ok(sub.resetCount >= 2);
+  q = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("ana") })).json();
+  assert.ok(q.queue.sdr.some((c) => c.entryId === "sdr_1" && !c.srs)); // voltou como novo
+  assert.equal(q.exam, null); // prova consumida
+
+  // segunda rodada: gradua de novo, acerta tudo → aprovado
+  await app.inject({ method: "POST", url: "/api/flashcards/leverads/review", headers: as("ana"), payload: { cardId: "sdr_1", rating: 4 } });
+  await app.inject({ method: "POST", url: "/api/flashcards/leverads/review", headers: as("ana"), payload: { cardId: "sdr_3", rating: 4 } });
+  q = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("ana") })).json();
+  await app.inject({ method: "POST", url: `/api/flashcards/leverads/exam/${q.exam.id}/start`, headers: as("ana") });
+  const doc2 = await repo.get("training_exams", q.exam.id);
+  const right = doc2.questions.map((x) => ({ choice: x.answerIdx }));
+  const sub2 = (await app.inject({ method: "POST", url: `/api/flashcards/leverads/exam/${q.exam.id}/submit`, headers: as("ana"), payload: { answers: right } })).json();
+  assert.equal(sub2.score, 100);
+  assert.equal(sub2.passed, true);
+
+  // gestor vê o histórico no team
+  const t = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/team" })).json();
+  const ana = t.users.find((u) => u.id === "ana");
+  assert.equal(ana.examsDone, 2);
+  assert.equal(ana.examsFailed, 1);
+  assert.deepEqual(ana.lastExam, { score: 100, status: "passed" });
 });
 
 test("card removido da base some da fila (estado individual fica órfão sem quebrar nada)", async () => {

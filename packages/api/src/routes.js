@@ -216,8 +216,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerPitchRoutes(app, repo, { anthropic: anthropicClient });
   // Metas de desempenho por vaga/pessoa (ferramenta; escreve na collection goals).
   registerMetasRoutes(app, repo);
-  // Treinamentos: flashcards por vaga com repetição espaçada (FSRS) por pessoa.
-  registerFlashcardRoutes(app, repo);
+  // Treinamentos: flashcards por vaga com repetição espaçada (FSRS) por pessoa
+  // + prova de checkpoint (a IA corrige as questões digitadas).
+  registerFlashcardRoutes(app, repo, { anthropic: anthropicClient });
   registerMetricsRoutes(app, repo);
   // Métricas reais de funil (conversão/tempo por estágio, motivos de perda, SLA)
   // a partir do histórico de transições da timeline.

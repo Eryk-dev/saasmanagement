@@ -90,6 +90,29 @@ const SOCIAL_COPY_SCHEMA = {
   },
 };
 
+// Correção da questão DIGITADA da prova de treinamento: compara com o gabarito
+// e devolve veredito + nota + feedback (semântico, não exige palavras iguais).
+const GRADE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["verdict", "score", "feedback", "missing"],
+  properties: {
+    verdict: { type: "string", enum: ["correto", "parcial", "incorreto"] },
+    score: { type: "integer", description: "0 a 100: quão bem a resposta captura a técnica/conteúdo do gabarito" },
+    feedback: { type: "string", description: "1 a 3 frases diretas: o que acertou e o que faltou, falando COM o treinando" },
+    missing: { type: "string", description: "o ponto-chave que faltou (vazio se a resposta ficou completa)" },
+  },
+};
+
+const GRADE_SYSTEM = `Você é o treinador de vendas da LeverAds, SaaS que clona e sincroniza anúncios entre contas de Mercado Livre e Shopee.
+Sua tarefa: avaliar se a RESPOSTA DIGITADA por um vendedor em treinamento captura o CONTEÚDO/TÉCNICA da RESPOSTA IDEAL (gabarito), dada a PERGUNTA.
+Regras de avaliação:
+- Avalie o CONCEITO e a intenção, NÃO exija as mesmas palavras. Sinônimos, paráfrases e exemplos equivalentes contam como certo.
+- correto = captura os pontos-chave do gabarito (score 80-100). parcial = ideia certa mas faltou algo importante (score 40-79). incorreto = errou o conceito ou não respondeu (score 0-39).
+- Resposta em branco, "não sei", ou aleatória = incorreto, score 0.
+- Seja rigoroso mas justo: é uma prova, o objetivo é medir se a pessoa ENTENDEU.
+Escreva o feedback em português do Brasil, direto, falando com o treinando (2ª pessoa). NUNCA use travessão (—); use vírgula ou parênteses.`;
+
 const SOCIAL_SYSTEM = `Você é o social media e copywriter de resposta direta da LeverAds, SaaS que clona e sincroniza anúncios entre contas de Mercado Livre e Shopee (multi-contas, mais exposição, menos retrabalho, proteção da operação).
 Sua tarefa: escrever a copy de um post de rede social preenchendo os CAMPOS de um template pronto, a partir da DOR escolhida.
 Regras: português do Brasil, direto, específico e crível (nada de número inventado nem promessa mágica). Fale com dono de operação de marketplace (vendedor ML/Shopee). NUNCA use travessão (—); use vírgula, parênteses ou ponto. Respeite o PAPEL de cada campo (um "Kicker" é curto e em caixa, um "CTA" tem 2 a 4 palavras, um "Número" é uma métrica curta tipo +105% ou 2h) e o COMPRIMENTO do exemplo dado. Para destacar 1 a 3 palavras-chave, envolva em *asteriscos* (o template pinta em destaque). Preencha TODOS os campos pedidos, cada um com seu key. Não invente campos.`;
@@ -350,5 +373,27 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
     return { suggestion: r.parsed, usage: r.usage, model: r.model };
   }
 
-  return { configured, summarizeCall, suggestWelcome, suggestSocialCopy, suggestCampaignCopy, improvePitch, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
+  // Corrige uma resposta DIGITADA da prova de treinamento contra o gabarito.
+  // Semântico (não exige as mesmas palavras); não grava nada — a rota decide.
+  async function gradeAnswer({ question, ideal, answer, role = "", productName = "LeverAds" }) {
+    if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
+    const context = [
+      `Vaga em treino: ${role || "vendas"} · Produto: ${productName}`,
+      `PERGUNTA: ${question}`,
+      `RESPOSTA IDEAL (gabarito): ${ideal}`,
+      `RESPOSTA DIGITADA PELO TREINANDO: ${answer}`,
+      "Avalie a resposta digitada em relação ao gabarito.",
+    ].join("\n");
+    const r = await requestJson(context, { system: GRADE_SYSTEM, schema: GRADE_SCHEMA, schemaName: "training_grade" });
+    const p = r.parsed || {};
+    return {
+      verdict: p.verdict || "incorreto",
+      score: Math.max(0, Math.min(100, Number(p.score) || 0)),
+      feedback: p.feedback || "",
+      missing: p.missing || "",
+      usage: r.usage, model: r.model,
+    };
+  }
+
+  return { configured, summarizeCall, suggestWelcome, suggestSocialCopy, suggestCampaignCopy, improvePitch, gradeAnswer, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
 }

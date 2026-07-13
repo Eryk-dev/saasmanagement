@@ -64,6 +64,7 @@ function Study({ saasId, mode, setMode }) {
   const [err, setErr] = useS(null);
   const [session, setSession] = useS(null); // role em sessão
   const [focus, setFocus] = useS(false);
+  const [exam, setExam] = useS(null); // prova aberta
 
   function load() {
     if (!saasId) return;
@@ -75,6 +76,7 @@ function Study({ saasId, mode, setMode }) {
   const body = () => {
     if (err) return <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>;
     if (!data) return <div className="mono dim" style={{ fontSize: 12 }}>montando sua fila…</div>;
+    if (exam) return <ExamScreen saasId={saasId} exam={exam} onDone={() => { setExam(null); load(); }} />;
     if (session) {
       const deck = data.decks.find((d) => d.role === session);
       return <Session saasId={saasId} label={deck?.label || session} dayEnd={data.dayEnd}
@@ -84,6 +86,18 @@ function Study({ saasId, mode, setMode }) {
     if (!data.decks.length) return <EmptyState title="Nenhum baralho pra você" hint="Peça pro gestor te dar uma vaga (SDR/closer/…) em Ajustes → Usuários." />;
     return (
       <>
+        {data.exam && (
+          <div style={{ display: "flex", alignItems: "center", gap: 12, border: "1px solid var(--accent-line)", background: "var(--accent-soft)", borderRadius: "var(--r-3)", padding: "12px 16px", maxWidth: 720 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--accent)" }}>Prova de checkpoint</div>
+              <div style={{ fontSize: 11.5, color: "var(--fg-2)" }}>você aprendeu {data.exam.count} cards desde a última — mostra que ficou de verdade</div>
+            </div>
+            <button onClick={() => setExam(data.exam)}
+              style={{ ...btn, background: "var(--accent)", color: "var(--accent-fg)", border: "1px solid var(--accent)", fontWeight: 600 }}>
+              Fazer prova →
+            </button>
+          </div>
+        )}
         <DeckList decks={data.decks} newPerDay={data.newPerDay}
           onStudy={(role, foco) => { setSession(role); setFocus(!!foco); }} />
         <ConsistencyCard saasId={saasId} />
@@ -149,12 +163,14 @@ function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus })
   const [err, setErr] = useS(null);
   const [tally, setTally] = useS({ 1: 0, 2: 0, 3: 0, 4: 0 });
   const card = queue[0];
+  const shownAt = useR(Date.now());
+  useE(() => { shownAt.current = Date.now(); }, [card?.entryId || card?.id]); // cronômetro do card
 
   async function rate(rating) {
     if (!card || busy) return;
     setBusy(true); setErr(null);
     try {
-      const r = await api.trainingReview(saasId, card.entryId || card.id, rating);
+      const r = await api.trainingReview(saasId, card.entryId || card.id, rating, Date.now() - shownAt.current);
       setTally((t) => ({ ...t, [rating]: t[rating] + 1 }));
       setQueue((q) => {
         const rest = q.slice(1);
@@ -331,6 +347,117 @@ function CardFace({ card, flipped, focus }) {
   </>);
 }
 
+// ── Prova de checkpoint ──────────────────────────────────────────────────────
+// Questões geradas dos cards que a pessoa acabou de graduar; correção 100% no
+// servidor (o gabarito nunca chega ao cliente antes de entregar).
+function ExamScreen({ saasId, exam, onDone }) {
+  const [data, setData] = useS(null);
+  const [answers, setAnswers] = useS([]);
+  const [result, setResult] = useS(null);
+  const [busy, setBusy] = useS(false);
+  const [err, setErr] = useS(null);
+
+  useE(() => {
+    let alive = true;
+    api.trainingExamStart(saasId, exam.id)
+      .then((d) => { if (alive) { setData(d); setAnswers(d.questions.map(() => ({}))); } })
+      .catch((e) => alive && setErr(e.message));
+    return () => { alive = false; };
+  }, [exam.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const complete = data && answers.every((a, i) => (data.questions[i].kind === "mc" ? Number.isInteger(a.choice) : (a.text || "").trim()));
+
+  async function submit() {
+    setBusy(true); setErr(null);
+    try { setResult(await api.trainingExamSubmit(saasId, exam.id, answers)); }
+    catch (e) { setErr(e.message); }
+    setBusy(false);
+  }
+
+  const qCard = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 };
+
+  if (err) return <div style={{ maxWidth: 720 }}><div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div><button onClick={onDone} style={{ ...btn, marginTop: 10 }}>← voltar</button></div>;
+  if (!data) return <div className="mono dim" style={{ fontSize: 12 }}>montando sua prova…</div>;
+
+  if (result) {
+    const tone = result.passed ? "var(--pos)" : "var(--neg)";
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 720 }}>
+        <div style={{ border: `1px solid ${tone}`, background: result.passed ? "var(--pos-soft)" : "var(--neg-soft)", borderRadius: "var(--r-3)", padding: "18px 20px" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+            <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 42, fontWeight: 700, color: tone }}>{result.score}</span>
+            <span style={{ fontSize: 15, fontWeight: 700, color: tone }}>{result.passed ? "aprovado" : "reprovado"}</span>
+            <span className="mono dim" style={{ fontSize: 11 }}>· nota mínima {result.passScore}</span>
+          </div>
+          {!result.passed && <div style={{ fontSize: 12.5, color: "var(--fg-1)", marginTop: 6 }}>{result.resetCount} card{result.resetCount === 1 ? "" : "s"} voltaram pra sua fila — reaprende e a próxima prova vem melhor.</div>}
+        </div>
+        {result.questions.map((q, i) => (
+          <div key={i} style={{ ...qCard, borderLeft: `3px solid ${q.correct ? "var(--pos)" : "var(--neg)"}` }}>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--fg-1)", whiteSpace: "pre-wrap" }}>{i + 1}. {q.prompt}</div>
+            {q.kind === "mc" ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                {q.options.map((op, j) => (
+                  <div key={j} style={{ fontSize: 12.5, padding: "6px 10px", borderRadius: "var(--r-2)", lineHeight: 1.45,
+                    border: `1px solid ${j === q.answerIdx ? "var(--pos)" : j === q.choice ? "var(--neg)" : "var(--line-1)"}`,
+                    background: j === q.answerIdx ? "var(--pos-soft)" : j === q.choice ? "var(--neg-soft)" : "transparent",
+                    color: "var(--fg-1)" }}>
+                    {op}{j === q.answerIdx ? " ✓" : j === q.choice ? " ✗ (sua escolha)" : ""}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 12.5, color: "var(--fg-2)" }}><b>Sua resposta:</b> {q.text || "—"}</div>
+                <div style={{ fontSize: 12.5, color: "var(--fg-2)" }}><b>Gabarito:</b> {q.ideal}</div>
+                {q.feedback && <div style={{ fontSize: 12, color: q.correct ? "var(--pos)" : "var(--neg)" }}>{q.feedback}</div>}
+              </>
+            )}
+          </div>
+        ))}
+        <button onClick={onDone} style={{ ...btn, alignSelf: "flex-start", background: "var(--accent)", color: "var(--accent-fg)", border: "1px solid var(--accent)", fontWeight: 600 }}>← voltar aos baralhos</button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 720 }}>
+      <div className="mono dim" style={{ fontSize: 11 }}>prova sobre {data.count} cards que você aprendeu · nota mínima {data.passScore} · sem consulta 😉</div>
+      {data.questions.map((q, i) => (
+        <div key={i} style={qCard}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--fg-1)", whiteSpace: "pre-wrap" }}>{i + 1}. {q.prompt}</div>
+          {q.kind === "mc" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {q.options.map((op, j) => {
+                const on = answers[i]?.choice === j;
+                return (
+                  <button key={j} onClick={() => setAnswers((p) => p.map((a, k) => (k === i ? { choice: j } : a)))}
+                    style={{ textAlign: "left", fontSize: 12.5, padding: "7px 10px", borderRadius: "var(--r-2)", cursor: "pointer", lineHeight: 1.45,
+                      border: `1px solid ${on ? "var(--accent)" : "var(--line-2)"}`,
+                      background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-1)", fontWeight: on ? 600 : 400 }}>
+                    {op}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <textarea rows={3} value={answers[i]?.text || ""} placeholder="responda com suas palavras — a IA corrige o conceito, não as palavras exatas"
+              onChange={(e) => setAnswers((p) => p.map((a, k) => (k === i ? { text: e.target.value } : a)))}
+              style={{ width: "100%", padding: "9px 11px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.5, resize: "vertical", fontFamily: "inherit" }} />
+          )}
+        </div>
+      ))}
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <button onClick={onDone} className="mono dim" style={{ fontSize: 12 }}>deixar pra depois</button>
+        <span style={{ flex: 1 }} />
+        <button onClick={submit} disabled={!complete || busy}
+          style={{ ...btn, height: 38, background: complete ? "var(--accent)" : "var(--bg-2)", color: complete ? "var(--accent-fg)" : "var(--fg-4)", border: `1px solid ${complete ? "var(--accent)" : "var(--line-2)"}`, fontWeight: 600 }}>
+          {busy ? "corrigindo…" : "entregar prova"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Consistência: streak + heatmap de revisões (estilo GitHub) ───────────────
 function ConsistencyCard({ saasId }) {
   const [s, setS] = useS(null);
@@ -460,7 +587,11 @@ function Edit({ saasId, mode, setMode }) {
   }
   function reset() { if (orig) { const o = JSON.parse(orig); setCards(o.cards); setSettings(o.settings || { newPerDay: 10 }); } }
   function patchCard(id, field, value) { setCards((p) => p.map((c) => (c.id === id ? { ...c, [field]: value } : c))); }
-  function addCard() { setCards((p) => [...(p || []), { id: uid(), role, front: "", back: "" }]); }
+  function addCard() {
+    const id = uid();
+    setCards((p) => [{ id, role, type: "basic", front: "", back: "" }, ...(p || [])]); // entra no topo
+    return id;
+  }
   function removeCard(id) { setCards((p) => p.filter((c) => c.id !== id)); }
 
   return (
@@ -505,6 +636,7 @@ function Edit({ saasId, mode, setMode }) {
                   style={{ width: 58, height: 26, padding: "0 8px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12 }} />
               </label>
             </div>
+            <ExamSettings settings={settings} setSettings={setSettings} />
             <EditCards cards={roleCards} saasId={saasId} onPatch={patchCard} onAdd={addCard} onRemove={removeCard} roleLabel={labels[role] || role} />
           </>
         )}
@@ -521,26 +653,105 @@ const CARD_TYPES = [
   { id: "occlusion", label: "oclusão" },
 ];
 
-function EditCards({ cards, saasId, onPatch, onAdd, onRemove, roleLabel }) {
+// Configuração da prova de checkpoint — do gestor, salva junto com a base.
+function ExamSettings({ settings, setSettings }) {
+  const on = (settings.examEvery ?? 30) > 0;
+  const num = (key, min, max, w = 50) => (
+    <input type="number" min={min} max={max} value={settings[key]}
+      onChange={(e) => setSettings((s) => ({ ...s, [key]: Math.max(min, Math.min(max, Math.round(Number(e.target.value) || 0))) }))}
+      style={{ width: w, height: 24, padding: "0 7px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12 }} />
+  );
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 820 }}>
-      <div className="mono dim" style={{ fontSize: 11 }}>{cards.length} card{cards.length === 1 ? "" : "s"} em {roleLabel} · básico (frente/verso) · cloze ({"{{c1::…}}"}) · oclusão de imagem · cole imagem com Ctrl+V em qualquer card</div>
-      {cards.map((c, i) => <CardEditor key={c.id} card={c} index={i} saasId={saasId} onPatch={onPatch} onRemove={onRemove} />)}
-      <button onClick={onAdd} style={{ alignSelf: "flex-start", height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px dashed var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12 }}>
-        ＋ adicionar card em {roleLabel}
-      </button>
-      <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.5 }}>a base é do TIME: card novo entra como "novo" pra todo mundo; card removido some pra todo mundo. O RITMO de cada pessoa (quando o card volta) é individual. Cloze e oclusão viram VÁRIOS sub-cards (um por deleção/máscara).</div>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "8px 12px", maxWidth: 920 }}>
+      <label className="mono" style={{ fontSize: 11, color: "var(--fg-2)", display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+        <input type="checkbox" checked={on}
+          onChange={(e) => setSettings((s) => ({ ...s, examEvery: e.target.checked ? 30 : 0 }))}
+          style={{ accentColor: "var(--accent)" }} />
+        <b>Prova de checkpoint</b>
+      </label>
+      {on ? (
+        <span className="mono dim" style={{ fontSize: 11, display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          a cada {num("examEvery", 1, 200)} cards aprendidos · {num("examQuestions", 3, 12, 44)} questões · nota mínima {num("examPass", 50, 100, 50)}%
+          <span title="múltipla escolha com distratores tirados dos gabaritos de outros cards; com IA configurada, 2 questões são digitadas e corrigidas semanticamente. Reprovou: os cards errados voltam pra fila.">ⓘ</span>
+        </span>
+      ) : (
+        <span className="mono dim" style={{ fontSize: 11 }}>desligada — ninguém recebe prova</span>
+      )}
     </div>
   );
 }
 
-function CardEditor({ card, index, saasId, onPatch, onRemove }) {
+// número de sub-cards e texto "limpo" (sem a sintaxe {{cN::}}) pra linha da lista
+const clozeIdxs = (text) => [...new Set([...String(text || "").matchAll(/\{\{c(\d+)::/g)].map((m) => Number(m[1])))].sort((a, b) => a - b);
+const stripCloze = (text) => String(text || "").replace(/\{\{c\d+::(.*?)(?:::.*?)?\}\}/gs, "$1");
+const subCountOf = (c) => (c.type === "cloze" ? clozeIdxs(c.front).length : c.type === "occlusion" ? (c.masks || []).length : 0);
+const TYPE_LABEL = { basic: "básico", cloze: "cloze", occlusion: "oclusão" };
+
+function EditCards({ cards, saasId, onPatch, onAdd, onRemove, roleLabel }) {
+  const [open, setOpen] = useS(null);
+  const [q, setQ] = useS("");
+  const norm = (s) => String(s || "").toLowerCase();
+  const shown = q.trim() ? cards.filter((c) => norm(`${c.front} ${c.back}`).includes(norm(q))) : cards;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 920 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <button onClick={() => setOpen(onAdd())}
+          style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--accent)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12, fontWeight: 600 }}>
+          ＋ novo card em {roleLabel}
+        </button>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`buscar nos ${cards.length} cards…`}
+          style={{ flex: 1, minWidth: 180, maxWidth: 320, height: 30, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 }} />
+        <span className="mono dim" style={{ fontSize: 10.5 }}>{q.trim() ? `${shown.length} de ${cards.length}` : `${cards.length} card${cards.length === 1 ? "" : "s"}`}</span>
+      </div>
+
+      {shown.length === 0 && <div className="mono dim" style={{ fontSize: 11.5, padding: "14px 0" }}>{q.trim() ? "nada com esse texto nesta vaga" : "nenhum card ainda — crie o primeiro"}</div>}
+      {shown.map((c, i) => {
+        const isOpen = open === c.id;
+        const subs = subCountOf(c);
+        const line = stripCloze(c.front).trim() || c.back?.trim() || "card vazio";
+        return (
+          <div key={c.id} style={{ border: `1px solid ${isOpen ? "var(--accent-line)" : "var(--line-1)"}`, borderRadius: "var(--r-3)", background: "var(--bg-1)", overflow: "hidden" }}>
+            <div onClick={() => setOpen(isOpen ? null : c.id)}
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", cursor: "pointer", background: isOpen ? "var(--accent-soft)" : "transparent" }}>
+              <span className="mono tnum" style={{ fontSize: 10.5, color: "var(--fg-4)", minWidth: 22 }}>#{i + 1}</span>
+              <span className="mono" style={{ fontSize: 9.5, color: "var(--fg-3)", border: "1px solid var(--line-2)", borderRadius: 9, padding: "1px 7px", whiteSpace: "nowrap" }}>{TYPE_LABEL[c.type] || "básico"}</span>
+              <span style={{ flex: 1, fontSize: 13, color: line === "card vazio" ? "var(--fg-4)" : "var(--fg-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{line}</span>
+              {subs > 0 && <span className="mono dim" style={{ fontSize: 10 }}>{subs} sub</span>}
+              {c.image && <span style={{ fontSize: 12 }} title="tem imagem">🖼</span>}
+              <span className="mono dim" style={{ fontSize: 11 }}>{isOpen ? "▾" : "▸"}</span>
+              <button onClick={(e) => { e.stopPropagation(); onRemove(c.id); }} title="remover card" className="mono dim" style={{ fontSize: 13 }}>✕</button>
+            </div>
+            {isOpen && (
+              <div style={{ borderTop: "1px solid var(--line-1)", padding: "12px 14px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14 }}>
+                <CardEditor card={c} saasId={saasId} onPatch={onPatch} />
+                <CardPreview card={c} />
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.5 }}>a base é do TIME: card novo entra como "novo" pra todo mundo; card removido some pra todo mundo. O RITMO de cada pessoa é individual. Cloze e oclusão viram vários sub-cards. Cole imagem com Ctrl+V dentro do card aberto.</div>
+    </div>
+  );
+}
+
+// Preview fiel: renderiza com o MESMO componente da sessão (CardFace).
+function CardPreview({ card }) {
+  const [flip, setFlip] = useS(false);
+  const sub = card.type === "cloze" ? `c${clozeIdxs(card.front)[0] || 1}`
+    : card.type === "occlusion" ? (card.masks?.[0]?.id || null) : null;
+  return (
+    <div onClick={() => setFlip((f) => !f)}
+      style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", boxShadow: "var(--shadow-2)", padding: "14px 16px", cursor: "pointer", display: "flex", flexDirection: "column", gap: 10, alignSelf: "start" }}>
+      <div className="mono" style={kicker}>preview · {flip ? "verso" : "frente"}{sub ? ` · ${sub}` : ""} · clique pra virar</div>
+      <CardFace card={{ ...card, sub }} flipped={flip} />
+    </div>
+  );
+}
+
+function CardEditor({ card, saasId, onPatch }) {
   const frontRef = useR(null);
   const type = card.type || "basic";
-  const masks = card.masks || [];
-  const subCount = type === "cloze"
-    ? new Set([...String(card.front || "").matchAll(/\{\{c(\d+)::/g)].map((m) => m[1])).size
-    : type === "occlusion" ? masks.length : 0;
 
   // Ctrl+V com imagem em qualquer campo do card anexa a imagem ao card.
   async function onPaste(e) {
@@ -559,27 +770,21 @@ function CardEditor({ card, index, saasId, onPatch, onRemove }) {
     if (!el) return;
     const front = card.front || "";
     const s = el.selectionStart ?? front.length, e = el.selectionEnd ?? front.length;
-    const n = Math.max(0, ...[...front.matchAll(/\{\{c(\d+)::/g)].map((m) => Number(m[1]))) + 1;
+    const n = Math.max(0, ...clozeIdxs(front)) + 1;
     const sel = front.slice(s, e) || "…";
     onPatch(card.id, "front", `${front.slice(0, s)}{{c${n}::${sel}}}${front.slice(e)}`);
   }
 
   return (
-    <div onPaste={onPaste} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "12px 14px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-        <span className="mono tnum" style={{ fontSize: 11, color: "var(--fg-4)" }}>#{index + 1}</span>
-        <div style={{ display: "flex", gap: 4 }}>
-          {CARD_TYPES.map((t) => (
-            <button key={t.id} onClick={() => onPatch(card.id, "type", t.id)} className="mono"
-              style={{ height: 22, padding: "0 9px", borderRadius: 11, fontSize: 10.5, cursor: "pointer",
-                border: `1px solid ${type === t.id ? "var(--accent-line)" : "var(--line-2)"}`,
-                background: type === t.id ? "var(--accent-soft)" : "transparent",
-                color: type === t.id ? "var(--accent)" : "var(--fg-3)" }}>{t.label}</button>
-          ))}
-        </div>
-        {subCount > 0 && <span className="mono dim" style={{ fontSize: 10.5 }}>{subCount} sub-card{subCount === 1 ? "" : "s"}</span>}
-        <span style={{ flex: 1 }} />
-        <button onClick={() => onRemove(card.id)} title="remover card" className="mono dim" style={{ fontSize: 13 }}>✕</button>
+    <div onPaste={onPaste} style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+      <div style={{ display: "flex", gap: 4 }}>
+        {CARD_TYPES.map((t) => (
+          <button key={t.id} onClick={() => onPatch(card.id, "type", t.id)} className="mono"
+            style={{ height: 22, padding: "0 9px", borderRadius: 11, fontSize: 10.5, cursor: "pointer",
+              border: `1px solid ${type === t.id ? "var(--accent-line)" : "var(--line-2)"}`,
+              background: type === t.id ? "var(--accent-soft)" : "transparent",
+              color: type === t.id ? "var(--accent)" : "var(--fg-3)" }}>{t.label}</button>
+        ))}
       </div>
 
       {type === "occlusion" ? (
@@ -685,10 +890,16 @@ function OcclusionEditor({ card, onPatch }) {
   );
 }
 
-// ── Equipe: quem está em dia ─────────────────────────────────────────────────
+// ── Equipe: o dash do gestor ─────────────────────────────────────────────────
+// Tabela com o essencial + clique na pessoa abre o raio-x: true retention
+// (memória real: acerto só em cards que JÁ estavam em revisão), aprendizado,
+// maturidade do baralho, carga futura e constância.
+const retColor = (pct) => (pct == null ? "var(--fg-4)" : pct >= 85 ? "var(--pos)" : pct >= 70 ? "var(--warn)" : "var(--neg)");
+
 function Team({ saasId, mode, setMode }) {
   const [data, setData] = useS(null);
   const [err, setErr] = useS(null);
+  const [sel, setSel] = useS(null);
 
   useE(() => {
     if (!saasId) return;
@@ -698,6 +909,7 @@ function Team({ saasId, mode, setMode }) {
   }, [saasId]);
 
   const users = (data?.users || []).filter((u) => u.deckSize > 0).sort((a, b) => (b.dueToday - a.dueToday) || (b.doneToday - a.doneToday));
+  const selected = users.find((u) => u.id === sel);
   const th = { textAlign: "left", padding: "8px 10px", ...kicker, fontFamily: "var(--mono)", whiteSpace: "nowrap" };
   const td = { padding: "9px 10px", fontSize: 12.5, color: "var(--fg-1)", borderTop: "1px solid var(--line-1)", whiteSpace: "nowrap" };
 
@@ -708,33 +920,156 @@ function Team({ saasId, mode, setMode }) {
         {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
         {!data && !err && <div className="mono dim" style={{ fontSize: 12 }}>carregando equipe…</div>}
         {data && (users.length === 0 ? <EmptyState title="Ninguém com baralho ainda" hint="Dê vagas (SDR/closer/…) pros usuários em Ajustes." /> : (
-          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", overflow: "auto", maxWidth: 920 }}>
-            <table style={{ borderCollapse: "collapse", width: "100%" }}>
-              <thead><tr>
-                <th style={th}>Pessoa</th><th style={th}>Pra hoje</th><th style={th}>Feitas hoje</th>
-                <th style={th}>Acerto 7d</th><th style={th}>Sequência</th><th style={th}>Viu do baralho</th><th style={th}>Último estudo</th>
-              </tr></thead>
-              <tbody>
-                {users.map((u) => (
-                  <tr key={u.id}>
-                    <td style={td}><b>{u.name}</b> <span className="mono dim" style={{ fontSize: 10.5 }}>{(u.roles || []).join(" · ")}</span></td>
-                    <td style={{ ...td, color: u.dueToday ? "var(--warn)" : "var(--pos)", fontWeight: 600 }} className="tnum">
-                      {u.dueToday ? `${u.dueToday}${u.overdue ? ` (${u.overdue} atrasados)` : ""}` : "em dia ✓"}
-                    </td>
-                    <td style={td} className="tnum">{u.doneToday}</td>
-                    <td style={td} className="tnum">{u.again7dPct == null ? "—" : `${100 - u.again7dPct}%`}</td>
-                    <td style={td} className="tnum">{u.streak ? `${u.streak}d 🔥` : "—"}</td>
-                    <td style={td} className="tnum">{u.seen}/{u.deckSize}</td>
-                    <td style={{ ...td, color: "var(--fg-3)" }} className="mono">{u.lastReviewAt ? new Date(u.lastReviewAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "nunca"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", overflow: "auto", maxWidth: 980 }}>
+              <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                <thead><tr>
+                  <th style={th}>Pessoa</th><th style={th}>Pra hoje</th><th style={th}>Feitas hoje</th>
+                  <th style={th} title="acerto nos cards que já estavam em revisão — memória real">Retenção 30d</th>
+                  <th style={th} title="cards com intervalo ≥ 21 dias — conhecimento consolidado">Maduros</th>
+                  <th style={th}>Sequência</th><th style={th}>Viu do baralho</th><th style={th}>Último estudo</th>
+                </tr></thead>
+                <tbody>
+                  {users.map((u) => (
+                    <tr key={u.id} onClick={() => setSel(u.id === sel ? null : u.id)}
+                      style={{ cursor: "pointer", background: u.id === sel ? "var(--accent-soft)" : "transparent" }}>
+                      <td style={td}><b>{u.name}</b> <span className="mono dim" style={{ fontSize: 10.5 }}>{(u.roles || []).join(" · ")}</span></td>
+                      <td style={{ ...td, color: u.dueToday ? "var(--warn)" : "var(--pos)", fontWeight: 600 }} className="tnum">
+                        {u.dueToday ? `${u.dueToday}${u.overdue ? ` (${u.overdue} atrasados)` : ""}` : "em dia ✓"}
+                      </td>
+                      <td style={td} className="tnum">{u.doneToday}</td>
+                      <td style={{ ...td, fontWeight: 700, color: retColor(u.retention30d?.pct) }} className="tnum">
+                        {u.retention30d?.pct == null ? "—" : `${u.retention30d.pct}%`}
+                        {u.retention30d?.n > 0 && <span className="mono dim" style={{ fontSize: 10, fontWeight: 400 }}> ({u.retention30d.n})</span>}
+                      </td>
+                      <td style={td} className="tnum">{u.mature}<span className="mono dim" style={{ fontSize: 10 }}>/{u.seen}</span></td>
+                      <td style={td} className="tnum">{u.streak ? `${u.streak}d 🔥` : "—"}</td>
+                      <td style={td} className="tnum">{u.seen}/{u.deckSize}</td>
+                      <td style={{ ...td, color: "var(--fg-3)" }} className="mono">{u.lastReviewAt ? new Date(u.lastReviewAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "nunca"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {selected ? <PersonDetail user={selected} today={data.today} /> :
+              <div className="mono dim" style={{ fontSize: 10.5 }}>clique numa pessoa pra abrir o raio-x · retenção 30d = acerto SÓ em cards que já estavam em revisão (true retention) · maduros = intervalo ≥ 21 dias</div>}
+          </>
         ))}
-        {data && <div className="mono dim" style={{ fontSize: 10.5 }}>acerto 7d = revisões da semana que NÃO caíram em "Errei" · sequência = dias seguidos estudando</div>}
       </div>
     </>
+  );
+}
+
+// Barras minúsculas com escala explícita (eixo 0..max) e tooltip nativo.
+function MiniBars({ bars, max, height = 56, width = 22 }) {
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: height + 16 }}>
+      {bars.map((b, i) => (
+        <div key={i} title={b.title} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+          <div style={{ width, height, display: "flex", alignItems: "flex-end", borderBottom: "1px solid var(--line-2)" }}>
+            {b.v == null
+              ? <div style={{ width: "100%", height: 1, background: "var(--line-2)" }} />
+              : <div style={{ width: "100%", height: `${Math.max(3, (b.v / max) * 100)}%`, background: "var(--accent)", borderRadius: "3px 3px 0 0" }} />}
+          </div>
+          <span className="mono" style={{ fontSize: 8.5, color: "var(--fg-4)", whiteSpace: "nowrap" }}>{b.label || ""}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PersonDetail({ user: u, today }) {
+  const tile = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "10px 12px", minWidth: 118 };
+  const big = (v, color) => <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, color: color || "var(--fg-1)" }}>{v}</div>;
+  const pct = (x) => (x == null ? "—" : `${x}%`);
+  const dow = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString("pt-BR", { weekday: "short", timeZone: "UTC" }).replace(".", "");
+  const dm = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" });
+  const weekly = u.weekly || [], forecast = u.forecast || [];
+  const forecastMax = Math.max(1, ...forecast.map((f) => f.n));
+  return (
+    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "16px 18px", maxWidth: 980, display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="mono" style={kicker}>Raio-x · {u.name}</div>
+
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <div style={tile} title="acerto em cards que já estavam em revisão — memória real">
+          {big(pct(u.retention30d?.pct), retColor(u.retention30d?.pct))}
+          <div className="mono dim" style={{ fontSize: 9.5 }}>retenção 30d · {u.retention30d?.n || 0} rev.</div>
+        </div>
+        <div style={tile}>
+          {big(pct(u.retention7d?.pct), retColor(u.retention7d?.pct))}
+          <div className="mono dim" style={{ fontSize: 9.5 }}>retenção 7d · {u.retention7d?.n || 0} rev.</div>
+        </div>
+        <div style={tile} title="cards novos que acertou logo de primeira (Bom/Fácil)">
+          {big(pct(u.firstTryPct))}
+          <div className="mono dim" style={{ fontSize: 9.5 }}>acerto de primeira 30d</div>
+        </div>
+        <div style={tile} title="cards com intervalo ≥ 21 dias — conhecimento consolidado">
+          {big(`${u.mature}`)}
+          <div className="mono dim" style={{ fontSize: 9.5 }}>maduros · {u.young} jovens</div>
+        </div>
+        <div style={tile}>
+          {big(u.reviewsPerDay30d)}
+          <div className="mono dim" style={{ fontSize: 9.5 }}>revisões/dia 30d</div>
+        </div>
+        <div style={tile}>
+          {big(`${u.activeDays30d}/30`)}
+          <div className="mono dim" style={{ fontSize: 9.5 }}>dias ativos</div>
+        </div>
+        {u.medianMs != null && (
+          <div style={tile} title="tempo entre ver a frente e responder (mediana 30d) · relâmpago = respostas em menos de 1,5s, sinal de clique sem ler">
+            {big(`${(u.medianMs / 1000).toFixed(1)}s`, u.rushPct > 20 ? "var(--neg)" : undefined)}
+            <div className="mono dim" style={{ fontSize: 9.5 }}>
+              tempo/card · <span style={{ color: u.rushPct > 20 ? "var(--neg)" : undefined }}>{u.rushPct}% relâmpago</span>
+            </div>
+          </div>
+        )}
+        {(u.examsDone > 0 || u.examPending) && (
+          <div style={tile} title="provas de checkpoint (a cada N cards aprendidos, configurável em Editar)">
+            {big(u.lastExam ? `${u.lastExam.score}%` : "—", u.lastExam ? (u.lastExam.status === "passed" ? "var(--pos)" : "var(--neg)") : undefined)}
+            <div className="mono dim" style={{ fontSize: 9.5 }}>
+              última prova · {u.examsDone} feita{u.examsDone === 1 ? "" : "s"}
+              {u.examsFailed ? ` · ${u.examsFailed} reprova${u.examsFailed === 1 ? "" : "s"}` : ""}
+              {u.examPending ? " · 1 pendente" : ""}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 28, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div>
+          <div className="mono" style={{ ...kicker, marginBottom: 8 }}>True retention por semana <span style={{ textTransform: "none" }}>(escala 0–100%)</span></div>
+          <MiniBars max={100} bars={weekly.map((w, i) => ({
+            v: w.pct, label: i === 0 || i === 7 ? dm(w.start) : "",
+            title: w.pct == null ? `sem revisões · semana de ${dm(w.start)}` : `${w.pct}% · ${w.n} revisões · semana de ${dm(w.start)}`,
+          }))} />
+        </div>
+        <div>
+          <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Vencendo nos próximos 7 dias</div>
+          <MiniBars max={forecastMax} bars={forecast.map((f) => ({
+            v: f.n, label: dow(f.day), title: `${f.n} card${f.n === 1 ? "" : "s"} · ${dm(f.day)}`,
+          }))} />
+        </div>
+        {u.retentionByRole?.length > 0 && (
+          <div>
+            <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Retenção por baralho (30d)</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {u.retentionByRole.map((r) => (
+                <div key={r.role} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                  <span style={{ minWidth: 110, color: "var(--fg-2)" }}>{r.label}</span>
+                  <b className="tnum" style={{ color: retColor(r.pct) }}>{pct(r.pct)}</b>
+                  <span className="mono dim" style={{ fontSize: 10 }}>{r.n} rev.</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Constância</div>
+        <Heatmap days={u.days || {}} today={today} />
+      </div>
+    </div>
   );
 }
 
