@@ -201,3 +201,23 @@ test("saas do usuário: escopo por produto (ex.: Ana só na UniqueKids), vazio =
   })).json();
   assert.equal(cleared.saas, "");
 });
+
+test("DELETE usuário: remove; bloqueia (409) quem é responsável por lead e força com ?force=1", async () => {
+  const repo = makeMemRepo();
+  const app = buildApp(repo);
+  const H = { "x-api-key": "test-key" };
+
+  // vestígio sem dado → remove direto
+  const v = (await app.inject({ method: "POST", url: "/api/auth/users", headers: H, payload: { name: "Vestigio", password: "1234" } })).json();
+  assert.equal((await app.inject({ method: "DELETE", url: `/api/auth/users/${v.id}`, headers: H })).statusCode, 200);
+  const after = (await app.inject({ method: "GET", url: "/api/auth/users", headers: H })).json();
+  assert.equal(after.some((u) => u.id === v.id), false);
+
+  // dono de lead → 409; com ?force=1 remove mesmo assim
+  const d = (await app.inject({ method: "POST", url: "/api/auth/users", headers: H, payload: { name: "Dono", password: "1234" } })).json();
+  await repo.create("leads", { id: "L1", saas: "x", owner: d.id, stage: "Novo" });
+  const blocked = await app.inject({ method: "DELETE", url: `/api/auth/users/${d.id}`, headers: H });
+  assert.equal(blocked.statusCode, 409);
+  assert.equal(blocked.json().owned, 1);
+  assert.equal((await app.inject({ method: "DELETE", url: `/api/auth/users/${d.id}?force=1`, headers: H })).statusCode, 200);
+});

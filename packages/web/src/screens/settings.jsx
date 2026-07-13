@@ -478,19 +478,37 @@ function TeamSettings() {
     } catch (e) { alert("não criou: " + e.message); }
   }
 
+  // Remover usuário. O servidor bloqueia (409) quem ainda é responsável por
+  // leads; aí perguntamos se quer forçar (o dono reatribui depois).
+  async function removeUser(u) {
+    if (!window.confirm(`Remover ${u.name || u.id} do time? (some dos pickers e do placar)`)) return;
+    setSaving(u.id);
+    try {
+      await api.removeUser(u.id);
+      setUsers((us) => us.filter((x) => x.id !== u.id));
+    } catch (e) {
+      if (e.status === 409 && window.confirm(`${e.message}.\n\nRemover mesmo assim? Os leads ficam sem esse responsável até você reatribuir.`)) {
+        try { await api.removeUser(u.id, true); setUsers((us) => us.filter((x) => x.id !== u.id)); }
+        catch (e2) { alert("não removeu: " + e2.message); }
+      } else if (e.status !== 409) { alert("não removeu: " + e.message); }
+    }
+    setSaving("");
+  }
+
   return (
     <div>
       <SettingHeader title="Equipe & papéis" sub="quem aparece nos pickers de SDR/closer/integração do pipeline · papel ≠ permissão (todos são admin na v1)" />
       <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
-        <div className="mono" style={{ display: "grid", gridTemplateColumns: "1fr repeat(4, 100px) 140px 120px", gap: 8, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
+        <div className="mono" style={{ display: "grid", gridTemplateColumns: "1fr repeat(4, 100px) 140px 120px 44px", gap: 8, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
           <span>Usuário</span>
           {ROLE_OPTS.map(([k, l, hint]) => <span key={k} title={hint} style={{ textAlign: "center" }}>{l}</span>)}
           <span title="Vazio = aparece nos pickers de todos os produtos; preenchido = só no workspace daquele produto">Produto</span>
           <span title="Quais telas o usuário vê (menu + rotas da API). Nenhuma marcada = todas">Telas</span>
+          <span />
         </div>
         {users === null && <div className="mono dim" style={{ padding: "12px 14px", fontSize: 12 }}>carregando…</div>}
         {Array.isArray(users) && users.map((u) => (
-          <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1fr repeat(4, 100px) 140px 120px", gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
+          <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1fr repeat(4, 100px) 140px 120px 44px", gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 500 }}>
               <Avatar id={u.id} name={u.name} size={22} /> {u.name || u.id}
               <span className="mono dim" style={{ fontSize: 10 }}>{u.id}</span>
@@ -505,6 +523,10 @@ function TeamSettings() {
               {SAAS.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
             </select>
             <ScreensPicker screens={u.screens || []} onChange={(screens) => setUserScreens(u, screens)} />
+            <button onClick={() => removeUser(u)} title={`Remover ${u.name || u.id} do time`}
+              style={{ justifySelf: "center", width: 26, height: 26, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-4)", fontSize: 13, cursor: "pointer" }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--neg)"; e.currentTarget.style.borderColor = "var(--neg)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--fg-4)"; e.currentTarget.style.borderColor = "var(--line-2)"; }}>✕</button>
           </div>
         ))}
       </div>
