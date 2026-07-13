@@ -320,6 +320,17 @@ export function resolveScript(saasCfg, lead) {
   return base;
 }
 
+// Roteiro de confirmação da call, ADAPTADO pelo lead.callConfirmed: mostra o
+// passo de 1h antes + só a mensagem de 10 min certa (positiva se o cliente
+// confirmou; ligar se ainda não). Passos: [0]=1h, [1]=10min positiva, [2]=10min
+// ligar. O SDR marca "cliente confirmou" e o passo do meio troca sozinho.
+export function confirmationScript(lead) {
+  const base = DEFAULT_SCRIPTS.confirmacao;
+  const confirmed = !!lead?.callConfirmed;
+  const passos = base.passos.filter((_, i) => i === 0 || (confirmed ? i === 1 : i === 2));
+  return { ...base, passos };
+}
+
 // Checklist de dados do lead pro painel do roteiro, NA ORDEM DA CONVERSA que o
 // Leo definiu: nicho → empresa → contas → anúncios → expansão → time de
 // marketing → e-mail por último (quando já está tudo confirmado). Cada item sai

@@ -8,7 +8,7 @@ import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusine
 import { allUsers, currentUser, displayName, userById, usersByRole } from "../lib/users.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
-import { resolveScript, scriptTokens, scriptSegments, scriptChecklist, isNoShowStage, DEFAULT_SCRIPTS } from "../lib/scripts.js";
+import { resolveScript, scriptTokens, scriptSegments, scriptChecklist, isNoShowStage, confirmationScript } from "../lib/scripts.js";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
 // "Amanhã" e "Próximos dias" (o que já está agendado, à vista), e "Sem data".
@@ -240,6 +240,23 @@ function TodayScreen({ onOpenLead }) {
     setScriptItem(nx);
   }
 
+  // Agenda a call E cria o Meet + convite numa tacada só: persiste o movimento
+  // (aguardando, pra o callAt/e-mail já estarem salvos), cria o Meet no Google
+  // (que manda o convite pro e-mail do lead sozinho) e devolve o resultado. NÃO
+  // avança a fila — o painel mostra a confirmação e o link; "próximo" é à parte.
+  async function moveAndMeet(patch, email) {
+    const cur = scriptItem;
+    if (!cur) throw new Error("sem item na fila");
+    const full = email ? { ...patch, email } : patch;
+    setLeads((prev) => prev.map((x) => x.id === cur.l.id
+      ? { ...x, ...full, stageSince: new Date().toISOString(), stageAttempts: 0 } : x));
+    await api.update("leads", cur.l.id, full);
+    const res = await api.createMeet(cur.l.id, email ? { email } : undefined);
+    setLeads((prev) => prev.map((x) => x.id === cur.l.id ? { ...x, callUrl: res.callUrl } : x));
+    return res;
+  }
+  const advanceScript = () => setScriptItem(nextAfter(scriptItem));
+
   const users = allUsers().filter((u) => !u.saas || u.saas === saasCfg?.id);
   const stageMeta = Object.fromEntries((saasCfg?.funnel || []).map((f) => [f.stage, f]));
   const dateLabel = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
@@ -328,6 +345,8 @@ function TodayScreen({ onOpenLead }) {
           leads={leads}
           onPatch={patchLead}
           onMove={moveAndNext}
+          onMoveMeet={moveAndMeet}
+          onAfter={advanceScript}
           onClose={() => setScriptItem(null)}
           onTouch={() => { const nx = nextAfter(scriptItem); logTouch(scriptItem); setScriptItem(nx); }}
           onOpenLead={() => { setScriptItem(null); onOpenLead && onOpenLead(scriptItem.l); }}
@@ -480,7 +499,7 @@ export function clientSummary(saasCfg, lead, stage, cat) {
 // conversa) e ROTEIRO à direita (postura, objetivo e o passo a passo com a
 // fala pronta). Em tela estreita as colunas empilham. "Toque e próximo"
 // mantém o operador em fluxo: registra e já abre o cliente seguinte.
-function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onClose, onTouch, onOpenLead }) {
+function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfter, onClose, onTouch, onOpenLead }) {
   // Cópia local do lead: a edição inline dos campos reflete na hora aqui (fala
   // interpolada + checklist) e persiste via onPatch (fila + API).
   const [l, setL] = useS(item.l);
@@ -492,7 +511,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onClose, onTouch, 
   // Item de confirmação de call usa o roteiro de confirmação; o resto, o roteiro
   // do estágio (por tentativa). A confirmação não é movimento de etapa, então o
   // bloco "Depois da ação" (destino) some pra esse item.
-  const script = item.confirm ? DEFAULT_SCRIPTS.confirmacao : resolveScript(saasCfg, l);
+  const script = item.confirm ? confirmationScript(l) : resolveScript(saasCfg, l);
   const tokens = scriptTokens(l, saasCfg);
   const checklist = scriptChecklist(saasCfg, l);
   const wa = waLink(l.phone);
@@ -645,7 +664,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onClose, onTouch, 
             {/* Destino do card fica AQUI, embaixo dos dados do cliente, pra
                 aproveitar o espaço vazio da coluna e encurtar o painel. Item de
                 confirmação não move etapa, então não mostra destino. */}
-            {!item.confirm && <DestinoSection saasCfg={saasCfg} lead={l} leads={leads} onMove={onMove} onTouch={onTouch} />}
+            {!item.confirm && <DestinoSection saasCfg={saasCfg} lead={l} leads={leads} onMove={onMove} onMoveMeet={onMoveMeet} onAfter={onAfter} onTouch={onTouch} />}
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
@@ -691,6 +710,17 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onClose, onTouch, 
             card pra próxima coluna (bloco "Depois da ação"). Aqui ficam só os
             atalhos: WhatsApp e o card completo. */}
         <div style={{ marginTop: "auto", padding: "10px 18px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {/* Confirmação: o SDR marca quando o cliente responde à mensagem de 1h;
+              o roteiro troca o passo de 10 min (positiva) sozinho. */}
+          {item.confirm && (
+            <button onClick={() => patch({ callConfirmed: !l.callConfirmed })}
+              title={l.callConfirmed ? "Cliente confirmou presença (clique pra desmarcar)" : "Marcar que o cliente confirmou a presença"}
+              style={{ padding: "8px 14px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
+                background: l.callConfirmed ? "var(--pos)" : "var(--bg-1)", color: l.callConfirmed ? "#06120c" : "var(--fg-2)",
+                border: "1px solid " + (l.callConfirmed ? "var(--pos)" : "var(--line-2)") }}>
+              {l.callConfirmed ? "✓ cliente confirmou" : "cliente confirmou"}
+            </button>
+          )}
           {wa && (
             <a href={wa} target="_blank" rel="noopener noreferrer"
               style={{ padding: "8px 14px", borderRadius: "var(--r-2)", border: "1px solid #25D36655", color: "#128c4b", fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}>
@@ -784,7 +814,7 @@ export function callBusyKeys(leads, closerId, selfId) {
   return busy;
 }
 
-function DestinoSection({ saasCfg, lead, leads, onMove, onTouch }) {
+function DestinoSection({ saasCfg, lead, leads, onMove, onMoveMeet, onAfter, onTouch }) {
   const dests = destinationsFor(saasCfg, lead);
   const stageMeta = Object.fromEntries((saasCfg?.funnel || []).map((f) => [f.stage, f]));
   const closers = usersByRole("closer");
@@ -799,10 +829,15 @@ function DestinoSection({ saasCfg, lead, leads, onMove, onTouch }) {
   const [note, setNote] = useS("");
   const [slot, setSlot] = useS(lead.callAt || "");
   const [dayIdx, setDayIdx] = useS(0);
+  const [email, setEmail] = useS(lead.email || "");
+  const [meetBusy, setMeetBusy] = useS(false);   // criando o Meet
+  const [meetRes, setMeetRes] = useS(null);      // { callUrl, attendees }
+  const [meetErr, setMeetErr] = useS(null);
   useE(() => {
     setDest(null); setCloser(lead.closer || ""); setSlot(lead.callAt || ""); setDayIdx(0);
     setIntegrator(lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
     setAmount(lead.amount || ""); setReason(""); setNote("");
+    setEmail(lead.email || ""); setMeetBusy(false); setMeetRes(null); setMeetErr(null);
   }, [lead.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (dests.length === 0) return null;
@@ -822,11 +857,29 @@ function DestinoSection({ saasCfg, lead, leads, onMove, onTouch }) {
   function confirm() {
     if (!ready) return;
     const patch = { stage: dest.stage };
-    if (setup === "call") { patch.closer = closer; patch.callAt = slot; }
+    if (setup === "call") { patch.closer = closer; patch.callAt = slot; if (email.trim()) patch.email = email.trim(); }
     else if (setup === "integrator") patch.integrator = integrator;
     else if (setup === "won") patch.amount = Number(amount);
     else if (setup === "loss") { patch.lostReason = reason; if (note.trim()) patch.lostNote = note.trim(); }
     onMove && onMove(patch);
+  }
+
+  const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || "").trim());
+  const meetReady = setup === "call" && !!closer && !!slot && validEmail(email) && !meetBusy;
+
+  // Botão único: agenda a call (closer + horário), cria o Meet e manda o convite
+  // pro e-mail do lead — tudo de uma vez. Fica pausado no sucesso pra mostrar o
+  // link; "próximo" avança a fila.
+  async function agendarComMeet() {
+    if (!meetReady || !onMoveMeet) return;
+    setMeetBusy(true); setMeetErr(null); setMeetRes(null);
+    try {
+      const res = await onMoveMeet({ stage: dest.stage, closer, callAt: slot }, email.trim());
+      setMeetRes(res || { ok: true });
+    } catch (e) {
+      setMeetErr(e?.message || "falha ao criar o Meet");
+    }
+    setMeetBusy(false);
   }
 
   const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
@@ -927,6 +980,13 @@ function DestinoSection({ saasCfg, lead, leads, onMove, onTouch }) {
               ) : (
                 <div className="mono dim" style={{ fontSize: 11 }}>escolha o closer pra ver os horários livres da agenda dele</div>
               )}
+              {closer && slot && (
+                <div style={{ maxWidth: 340 }}>
+                  <label style={label}>E-mail do lead (pro convite da call)</label>
+                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nome@email.com" style={fieldStyle} />
+                  {email && !validEmail(email) && <div className="mono" style={{ fontSize: 10, color: "var(--warn)", marginTop: 4 }}>e-mail inválido</div>}
+                </div>
+              )}
             </>
           )}
 
@@ -966,14 +1026,42 @@ function DestinoSection({ saasCfg, lead, leads, onMove, onTouch }) {
             </div>
           )}
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button onClick={confirm} disabled={!ready} style={{
-              height: 32, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
-              background: ready ? "var(--accent)" : "var(--bg-2)", color: ready ? "var(--accent-fg)" : "var(--fg-4)",
-              border: "1px solid " + (ready ? "var(--accent)" : "var(--line-2)"), cursor: ready ? "pointer" : "not-allowed",
-            }}>mover pra {dest.stage} →</button>
-            <button onClick={() => setDest(null)} className="mono dim" style={{ fontSize: 11.5 }}>cancelar</button>
-          </div>
+          {setup === "call" ? (
+            meetRes ? (
+              <div style={{ border: "1px solid var(--pos)", background: "var(--pos-soft)", borderRadius: "var(--r-2)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+                <div className="mono" style={{ fontSize: 12, color: "var(--pos)", fontWeight: 600 }}>✓ call agendada · Meet criado · convite enviado{validEmail(email) ? ` pra ${email.trim()}` : ""}</div>
+                {meetRes.callUrl && <a href={meetRes.callUrl} target="_blank" rel="noopener noreferrer" className="mono" style={{ fontSize: 11.5, color: "var(--accent)", wordBreak: "break-all" }}>{meetRes.callUrl}</a>}
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 2 }}>
+                  <button onClick={() => onAfter && onAfter()} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12.5, fontWeight: 600 }}>próximo →</button>
+                  <button onClick={() => setDest(null)} className="mono dim" style={{ fontSize: 11.5 }}>fechar</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <button onClick={agendarComMeet} disabled={!meetReady} style={{
+                    height: 32, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
+                    background: meetReady ? "var(--accent)" : "var(--bg-2)", color: meetReady ? "var(--accent-fg)" : "var(--fg-4)",
+                    border: "1px solid " + (meetReady ? "var(--accent)" : "var(--line-2)"), cursor: meetReady ? "pointer" : "not-allowed",
+                  }}>{meetBusy ? "criando Meet e enviando convite…" : "🎥 agendar + criar Meet + convite"}</button>
+                  <button onClick={confirm} disabled={!ready || meetBusy} className="mono"
+                    style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, opacity: ready && !meetBusy ? 1 : 0.5 }}>só agendar (sem convite)</button>
+                  <button onClick={() => setDest(null)} className="mono dim" style={{ fontSize: 11.5 }}>cancelar</button>
+                </div>
+                {meetErr && <div className="mono" style={{ fontSize: 11, color: "var(--neg)" }}>{meetErr} · a call já foi agendada; crie o Meet pela ficha do lead se precisar.</div>}
+                {closer && slot && !validEmail(email) && <div className="mono dim" style={{ fontSize: 10.5 }}>preencha o e-mail do lead pra mandar o convite (ou use "só agendar")</div>}
+              </div>
+            )
+          ) : (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <button onClick={confirm} disabled={!ready} style={{
+                height: 32, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
+                background: ready ? "var(--accent)" : "var(--bg-2)", color: ready ? "var(--accent-fg)" : "var(--fg-4)",
+                border: "1px solid " + (ready ? "var(--accent)" : "var(--line-2)"), cursor: ready ? "pointer" : "not-allowed",
+              }}>mover pra {dest.stage} →</button>
+              <button onClick={() => setDest(null)} className="mono dim" style={{ fontSize: 11.5 }}>cancelar</button>
+            </div>
+          )}
         </div>
       )}
     </div>
