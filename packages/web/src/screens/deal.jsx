@@ -1,11 +1,11 @@
 import React from "react";
-import { Avatar, RowActions } from "../atoms.jsx";
+import { Avatar } from "../atoms.jsx";
 import { ProposalActions } from "../components/ProposalActions.jsx";
 import { ActivityList, ActivityComposer } from "../components/timeline.jsx";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
-import { leadScoreLabel, leadAge, chromeBtnStyleSmall, waLink, leadTier } from "../lib/ui.js";
+import { leadScoreLabel, leadAge, waLink, leadTier } from "../lib/ui.js";
 import { stageKind, lossReasonLabel, nextTouchPill, workableStages } from "../lib/funnel.js";
-import { displayName } from "../lib/users.js";
+import { displayName, usersByRole } from "../lib/users.js";
 import { api } from "../lib/api.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 import { sourceLabel } from "../lib/sources.js";
@@ -37,11 +37,12 @@ const localToIso = (v) => {
 // pipeline (lib/pains.js) — cache por SaaS no módulo.
 
 function LeadDetail({ lead: initial, onClose }) {
-  const { openForm, openDelete, refresh, version } = useData();
+  const { refresh, version } = useData();
   // Cópia local: as ações rápidas (etapa, próximo contato) editam aqui e
   // persistem otimisticamente; o pipeline ressincroniza no fechar (refresh).
   const [lead, setLead] = React.useState(initial);
   const dirty = React.useRef(false);
+  const [editResumo, setEditResumo] = React.useState(false); // lápis do Resumo → edita inline
   const [pendingMove, setPendingMove] = React.useState(null); // { toStage, gate }
   // Timeline: fetch por lead (fora do bootstrap) + refetch quando o tempo real
   // avisa (version) — o drawer vive fora da árvore remontada do App.
@@ -139,6 +140,14 @@ function LeadDetail({ lead: initial, onClose }) {
       <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
     </div>
   );
+  // Linha rótulo→campo pra edição inline do Resumo.
+  const editInput = { flex: 1, minWidth: 0, height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 };
+  const EditRow = ({ label, children }) => (
+    <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <span className="mono dim" style={{ width: 92, flexShrink: 0, fontSize: 10.5 }}>{label}</span>
+      {children}
+    </label>
+  );
 
   // Insights do estágio (roteiro) + checklist editável dos dados do 1º contato —
   // mesma lógica da tela de atividade do Meu dia (lib/scripts.js).
@@ -189,19 +198,7 @@ function LeadDetail({ lead: initial, onClose }) {
               )}
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {wa && (
-              <a href={wa} target="_blank" rel="noopener noreferrer" title={`WhatsApp · ${lead.phone}`}
-                style={{ ...chromeBtnStyleSmall, color: "#25D366", borderColor: "#25D36655", textDecoration: "none" }}>
-                <span style={{ fontSize: 11 }}>WhatsApp ↗</span>
-              </a>
-            )}
-            <RowActions
-              onEdit={() => { close(); openForm("leads", lead); }}
-              onDelete={() => { close(); openDelete("leads", lead); }}
-            />
-            <button onClick={close} className="mono dim" style={{ fontSize: 16 }}>✕</button>
-          </div>
+          <button onClick={close} className="mono dim" style={{ fontSize: 16, flexShrink: 0 }}>✕</button>
         </div>
 
         {/* Corpo rolável: duas colunas (Cliente | Insights do estágio atual). */}
@@ -209,18 +206,53 @@ function LeadDetail({ lead: initial, onClose }) {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16, alignItems: "start" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
             <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Cliente</div>
-          {/* Resumo do cliente: dor em destaque + os fatos compilados num grid. */}
+          {/* Resumo do cliente: dor em destaque + os fatos compilados num grid.
+              O lápis abre a edição INLINE dos campos do lead (sem trocar de tela). */}
           <div style={box}>
-            <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Resumo do cliente</div>
+            <div className="mono" style={{ ...kicker, marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+              <span>Resumo do cliente</span>
+              <button onClick={() => setEditResumo((v) => !v)} title={editResumo ? "Concluir edição" : "Editar os dados do cliente aqui mesmo"}
+                style={{ marginLeft: "auto", height: 22, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid " + (editResumo ? "var(--accent)" : "var(--line-2)"), background: editResumo ? "var(--accent)" : "var(--bg-1)", color: editResumo ? "var(--accent-fg)" : "var(--fg-3)", fontSize: 11 }}>
+                {editResumo ? "✓ pronto" : "✎ editar"}
+              </button>
+            </div>
             {pain && (
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 9px", marginBottom: 8, borderRadius: "var(--r-2)", background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
                 <span className="mono" style={{ fontSize: 9.5, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", flexShrink: 0 }}>dor do anúncio</span>
                 <span style={{ fontSize: 12.5, fontWeight: 600, minWidth: 0 }}>[{pain.code}] {pain.label}</span>
               </div>
             )}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "0 16px" }}>
-              {summaryFacts.map(([k, v]) => <FactRow key={k} k={k} v={v} />)}
-            </div>
+            {editResumo ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                <EditRow label="Nome"><input defaultValue={lead.name || ""} onBlur={(e) => e.target.value !== (lead.name || "") && patch({ name: e.target.value })} style={editInput} /></EditRow>
+                <EditRow label="Empresa"><input defaultValue={lead.company || ""} onBlur={(e) => e.target.value !== (lead.company || "") && patch({ company: e.target.value })} style={editInput} /></EditRow>
+                <EditRow label="Prioridade">
+                  <select value={lead.priority || ""} onChange={(e) => patch({ priority: e.target.value })} style={editInput}>
+                    <option value="">—</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option>
+                  </select>
+                </EditRow>
+                <EditRow label="Valor (R$)"><input type="number" defaultValue={lead.amount ?? ""} onBlur={(e) => patch({ amount: e.target.value === "" ? "" : Number(e.target.value) })} style={editInput} /></EditRow>
+                <EditRow label="Faixa"><input defaultValue={lead.value || ""} onBlur={(e) => e.target.value !== (lead.value || "") && patch({ value: e.target.value })} style={editInput} /></EditRow>
+                <EditRow label="E-mail"><input defaultValue={lead.email || ""} onBlur={(e) => e.target.value !== (lead.email || "") && patch({ email: e.target.value })} style={editInput} /></EditRow>
+                <EditRow label="Telefone"><input defaultValue={lead.phone || ""} onBlur={(e) => e.target.value !== (lead.phone || "") && patch({ phone: e.target.value })} style={editInput} /></EditRow>
+                {[["Dono (SDR)", "owner", "sdr"], ["Closer", "closer", "closer"], ["Integrador", "integrator", "integrator"]].map(([label, field, role]) => {
+                  const opts = usersByRole(role);
+                  return (
+                    <EditRow key={field} label={label}>
+                      <select value={lead[field] || ""} onChange={(e) => patch({ [field]: e.target.value })} style={editInput}>
+                        <option value="">—</option>
+                        {opts.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
+                        {lead[field] && !opts.some((u) => u.id === lead[field]) && <option value={lead[field]}>{displayName(lead[field])}</option>}
+                      </select>
+                    </EditRow>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "0 16px" }}>
+                {summaryFacts.map(([k, v]) => <FactRow key={k} k={k} v={v} />)}
+              </div>
+            )}
           </div>
 
           {/* Dados do 1º contato — editáveis: preenche/corrige o que faltar. */}
@@ -475,7 +507,14 @@ function LeadDetail({ lead: initial, onClose }) {
         </div>
 
         <div style={{ flexShrink: 0, padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", gap: 8, background: "var(--bg-inset)" }}>
-          <button onClick={() => { close(); openForm("leads", lead); }} style={{ flex: 1, padding: "9px 12px", background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500 }}>Editar lead</button>
+          {wa ? (
+            <a href={wa} target="_blank" rel="noopener noreferrer" title={`WhatsApp · ${lead.phone}`}
+              style={{ flex: 1, textAlign: "center", padding: "10px 12px", background: "#25D366", color: "#06120c", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 700, textDecoration: "none" }}>
+              WhatsApp ↗
+            </a>
+          ) : (
+            <span className="mono dim" style={{ flex: 1, textAlign: "center", padding: "10px 12px", fontSize: 12 }}>sem telefone cadastrado</span>
+          )}
         </div>
 
         {pendingMove && (
