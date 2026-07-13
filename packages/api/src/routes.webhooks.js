@@ -38,15 +38,17 @@ export function verifyShopifyHmac(rawBody, sentHeader, secret) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-// Decide se um pedido entra no fluxo: item "tarefas diárias" OU total acima do
-// piso (R$ 299 por padrão, configurável). Retorna o motivo (pra origem do lead)
-// ou null quando não casa.
-export function orderTrigger(order, floor = 299) {
+// Decide se um pedido entra no fluxo. Regra (decisão do Leo): SÓ quando o pedido
+// tem um produto "tarefas diárias" no nome (qualquer variação: "Tarefas Diárias",
+// "Quadro Tarefas Diárias + Bônus", "... + Método R.O.T.I.N.A."...). O piso por
+// valor fica OPCIONAL: só entra como rede secundária se SHOPIFY_UNIQUEKIDS_MIN > 0.
+// Retorna o motivo (pra origem do lead) ou null quando não casa.
+export function orderTrigger(order, floor = 0) {
   const items = Array.isArray(order?.line_items) ? order.line_items : [];
   const matchProduct = items.some((it) => RE_TAREFAS.test(`${it?.title || ""} ${it?.name || ""}`));
-  const total = Number(order?.total_price ?? order?.current_total_price ?? 0) || 0;
   if (matchProduct) return "comprou tarefas diárias";
-  if (total > Number(floor)) return `compra de R$ ${total}`;
+  const total = Number(order?.total_price ?? order?.current_total_price ?? 0) || 0;
+  if (Number(floor) > 0 && total > Number(floor)) return `compra de R$ ${total}`;
   return null;
 }
 
@@ -78,7 +80,7 @@ export function registerWebhookRoutes(app, repo = defaultRepo, opts = {}) {
       if (topic && !topic.startsWith("orders/")) return reply.code(200).send("ignored");
       const order = req.body || {};
       // 3) Gatilho: "tarefas diárias" OU total acima do piso.
-      const floor = Number(process.env.SHOPIFY_UNIQUEKIDS_MIN || 299);
+      const floor = Number(process.env.SHOPIFY_UNIQUEKIDS_MIN || 0);
       const reason = orderTrigger(order, floor);
       if (!reason) return reply.code(200).send("no match");
       // 4) Idempotência: a Shopify reentrega; o mesmo pedido não cria lead 2x.
