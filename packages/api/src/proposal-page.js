@@ -556,6 +556,20 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .save-tag.show { opacity: 1; transform: translateY(0); }
   .save-tag.err { color: var(--error); border-color: var(--error); }
 
+  /* Tela de preparação do closer (antes da capa, só no modo ?k). */
+  .closer-setup { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; }
+  .setup-title { font-size: clamp(30px, 4.4vw, 52px); font-weight: 600; letter-spacing: -.02em; line-height: 1.05; margin-top: 22px; }
+  .setup-sub { color: var(--ink-3); font-size: 17px; line-height: 1.5; margin-top: 14px; max-width: 640px; }
+  .setup-grid { display: grid; grid-template-columns: 1fr; gap: 18px; margin-top: 40px; }
+  @media (min-width: 640px) { .setup-grid { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 20px; align-items: end; } }
+  .setup-field { display: flex; flex-direction: column; gap: 8px; }
+  .setup-field > span { font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+  .setup-input { width: 100%; padding: 13px 15px; background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); color: var(--fg); font-family: var(--font-display); font-size: 16px; }
+  .setup-input:focus { outline: none; border-color: var(--accent); box-shadow: var(--glow); }
+  .setup-go { margin-top: 40px; align-self: flex-start; padding: 15px 32px; border-radius: var(--radius); background: var(--accent); color: var(--accent-fg); font-weight: 600; font-size: 16px; transition: transform .15s var(--ease-out), filter .15s var(--ease-out); }
+  .setup-go:hover { transform: translateY(-2px); filter: brightness(1.05); }
+  @media print { .closer-setup { display: none !important; } }
+
   @media print {
     .nav, .edit-pop, .save-tag, .edit-banner, .accept-row, .slide-media video { display: none !important; }
     .pe { border-bottom: 0 !important; }
@@ -1438,6 +1452,44 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       span.classList.add('pe');
       span.addEventListener('click', function (e) { e.stopPropagation(); openPop(span, field); });
     });
+
+    // Painel de setup do closer: uma "tela zero" ANTES da capa (só no modo ?k) com
+    // os campos da capa em formulário. Reusa control() (mesmo binding do popover),
+    // então editar aqui replica na apresentação na hora (fillDynamic) e salva (+lead).
+    // Definido AQUI dentro pra enxergar control()/scheduleSave().
+    function buildSetup() {
+      var sec = el('section', 'closer-setup');
+      var w = el('div', 'wrap');
+      w.appendChild(el('span', 'hero-tag', 'Modo closer · só você vê'));
+      w.appendChild(el('h2', 'setup-title', 'Confira os dados antes de apresentar'));
+      w.appendChild(el('p', 'setup-sub', 'Ajuste o que precisar. As mudanças entram na apresentação na hora e atualizam o lead.'));
+      var grid = el('div', 'setup-grid');
+      // Campos condicionais ao produto: nicho/contas/anúncios só entram se o calc
+      // tiver a config (outros SaaS sem esses mapas não mostram select vazio).
+      var fields = [['name', 'Cliente'], ['company', 'Empresa']];
+      if (CALC.answerLabels && CALC.answerLabels.niche && Object.keys(CALC.answerLabels.niche).length) fields.push(['niche', 'Nicho']);
+      if (CALC.seatsMap && Object.keys(CALC.seatsMap).length) fields.push(['accounts', 'Contas']);
+      if (CALC.volumeMid && Object.keys(CALC.volumeMid).length) fields.push(['volume', 'Anúncios']);
+      fields.forEach(function (f) {
+        var ctl = control(f[0], function () { fillDynamic(); scheduleSave(); });
+        if (!ctl) return;
+        ctl.classList.add('setup-input');
+        var lab = el('label', 'setup-field');
+        lab.appendChild(el('span', null, f[1]));
+        lab.appendChild(ctl);
+        grid.appendChild(lab);
+      });
+      w.appendChild(grid);
+      var go = el('button', 'setup-go', 'Começar apresentação →');
+      go.onclick = function () {
+        var first = root.querySelector('header.hero, section:not(.closer-setup)');
+        if (first) first.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      };
+      w.appendChild(go);
+      sec.appendChild(w);
+      root.insertBefore(sec, root.firstChild);
+    }
+    buildSetup();
   }
 
   // Navegação por teclado: → / PageDown avança um slide, ← / PageUp volta.
