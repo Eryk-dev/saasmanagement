@@ -512,6 +512,100 @@ export function clientSummary(saasCfg, lead, stage, cat) {
   return { pain: leadPain(lead, cat, saasCfg?.painMap), facts, attribution };
 }
 
+// Atalhos da call — pro operador que abre o roteiro de uma call agendada: reúne
+// num lugar só o LINK da chamada (entrar · copiar · mandar pro cliente no
+// WhatsApp já com o link no texto) e a PROPOSTA (abrir/editar a existente ou
+// gerar na hora). Sem link ainda? cria o Meet (Google) ou a sala Jitsi, na
+// mesma regra do drawer. `wa` = base do WhatsApp do lead (waLink(l.phone));
+// `onPatch` grava no lead (sincroniza a fila e persiste). Proposta é só do
+// closer na call — na tarefa de confirmação do SDR ela some.
+function CallShortcuts({ l, item, wa, onPatch }) {
+  const [busy, setBusy] = useS("");   // "meet" | "prop" | ""
+  const [err, setErr] = useS("");
+  const firstName = l.name ? " " + String(l.name).trim().split(/\s+/)[0] : "";
+  const waForward = wa && l.callUrl
+    ? `${wa}?text=${encodeURIComponent(`Oi${firstName}! Aqui é da LeverAds. Nossa call vai ser por este link: ${l.callUrl}`)}`
+    : null;
+  // Elegibilidade da proposta: mesma regra do ProposalActions (template nativo
+  // publicado pro SaaS ou Levercopy ligado). Some na confirmação do SDR.
+  const cfg = window.SEED?.CONFIG?.levercopy;
+  const propEligible = !item.confirm && (
+    (window.SEED?.CONFIG?.proposals?.nativeSaas || []).includes(l.saas)
+    || (!!cfg?.enabled && l.saas === cfg.saas)
+  );
+  const googleOn = !!window.SEED?.CONFIG?.google?.connected;
+
+  async function makeLink() {
+    setBusy("meet"); setErr("");
+    try {
+      // O servidor já grava o callUrl no lead; o patch só espelha aqui e na fila.
+      if (googleOn) { const r = await api.createMeet(l.id); onPatch({ callUrl: r.callUrl, meetEventId: r.eventId }); }
+      else onPatch({ callUrl: `https://meet.jit.si/LeverAds-${Math.random().toString(36).slice(2, 10)}` });
+    } catch (e) { setErr(e?.message || "falha ao criar o link da call"); }
+    setBusy("");
+  }
+  async function genProposal() {
+    setBusy("prop"); setErr("");
+    try {
+      const r = await api.generateProposal(l.id, {});
+      if (!r || r.ok === false) setErr("não deu pra gerar a proposta");
+      else if (r.lead) onPatch({ proposalUrl: r.lead.proposalUrl, proposal_edit_url: r.lead.proposal_edit_url, proposta_id: r.lead.proposta_id });
+    } catch { setErr("não deu pra gerar a proposta"); }
+    setBusy("");
+  }
+
+  const chip = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
+  const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
+  const rowLabel = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-4)", letterSpacing: "0.04em", textTransform: "uppercase" };
+
+  return (
+    <div style={{ border: "1px solid var(--line-2)", background: "var(--bg-inset)", borderRadius: "var(--r-2)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 9 }}>
+      <div className="mono" style={{ ...kicker, color: "var(--accent)" }}>Atalhos da call</div>
+
+      {/* Link da chamada: entrar · copiar · mandar pro cliente no Whats. */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+        <span style={rowLabel}>Link da chamada</span>
+        {l.callUrl ? (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <a href={l.callUrl} target="_blank" rel="noopener noreferrer" style={chip} title={l.callUrl}>entrar na call ↗</a>
+            <button style={chip} title="Copiar o link da call"
+              onClick={() => { try { navigator.clipboard.writeText(l.callUrl); } catch { window.prompt("Link da call:", l.callUrl); } }}>copiar</button>
+            {waForward && (
+              <a href={waForward} target="_blank" rel="noopener noreferrer" style={{ ...chip, borderColor: "#25D366", color: "#128c4b" }}
+                title={`Mandar o link da call pro ${l.name || "cliente"} no WhatsApp`}>mandar link no Whats ↗</a>
+            )}
+            {!wa && <span className="mono dim" style={{ fontSize: 10 }}>sem telefone pra mandar no Whats</span>}
+          </div>
+        ) : (
+          <button onClick={makeLink} disabled={busy === "meet"} style={{ ...chip, alignSelf: "flex-start" }}
+            title={googleOn ? "Cria o evento com Meet na agenda e o link da call" : "Cria uma sala Jitsi instantânea pra call"}>
+            {busy === "meet" ? "criando…" : googleOn ? "🎥 criar link (Meet)" : "🎥 criar link da call"}
+          </button>
+        )}
+      </div>
+
+      {/* Proposta: abrir/editar a existente ou gerar na hora (só pro closer). */}
+      {(l.proposalUrl || propEligible) && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <span style={rowLabel}>Proposta</span>
+          {l.proposalUrl ? (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <a href={l.proposalUrl} target="_blank" rel="noopener noreferrer" style={{ ...chip, borderColor: "var(--accent-line)", color: "var(--accent)" }}>abrir proposta ↗</a>
+              {l.proposal_edit_url && <a href={l.proposal_edit_url} target="_blank" rel="noopener noreferrer" style={chip}>editar ↗</a>}
+            </div>
+          ) : (
+            <button onClick={genProposal} disabled={busy === "prop"} style={{ ...chip, alignSelf: "flex-start", borderColor: "var(--accent-line)", color: "var(--accent)" }}>
+              {busy === "prop" ? "gerando…" : "gerar proposta"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {err && <div className="mono" style={{ fontSize: 10.5, color: "var(--neg)" }}>{err}</div>}
+    </div>
+  );
+}
+
 // Painel do roteiro em DUAS COLUNAS lado a lado (sem abas): CLIENTE à esquerda
 // (resumo da situação + últimos contatos + dados EDITÁVEIS na ordem da
 // conversa) e ROTEIRO à direita (postura, objetivo e o passo a passo com a
@@ -690,6 +784,9 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
             <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Roteiro</div>
+            {/* Call agendada: atalhos do closer no topo (link da call + mandar pro
+                cliente no Whats + proposta), antes do passo a passo. */}
+            {item.kind === "call" && <CallShortcuts l={l} item={item} wa={wa} onPatch={patch} />}
             <div style={{ ...box, background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
               <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 4 }}>Como se comportar</div>
               <div style={{ fontSize: 12, lineHeight: 1.45 }}>{script.resumo}</div>
