@@ -4,9 +4,12 @@ import { EmptyState, PrimaryButton, RowActions, Avatar } from "../atoms.jsx";
 import { useData } from "../data.jsx";
 import { api } from "../lib/api.js";
 import { useIsMobile } from "../lib/responsive.js";
-import { KINDS, KIND_IDS, guessKind, lossReasonsOf, stageKind, stageByKind, NEXT_KINDS, NEXT_STEP_KINDS, NEXT_STEP_LABELS } from "../lib/funnel.js";
+import { KINDS, KIND_IDS, guessKind, lossReasonsOf, stageKind, stageByKind, phaseOf, NEXT_KINDS, NEXT_STEP_KINDS, NEXT_STEP_LABELS } from "../lib/funnel.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { DEFAULT_SCRIPTS, SCRIPT_CATALOG, catalogStageRow, isNoShowStage } from "../lib/scripts.js";
+import { usersByRole } from "../lib/users.js";
+import { ScriptPanel } from "./today.jsx";
+import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { NAV } from "../chrome.jsx";
 // SaaS Settings (fase 3) — funil, campos custom, pesos da saúde e Aha EDITÁVEIS
 // por SaaS (gravam no produto). Equipe (roles sdr/closer/integrator) é global.
@@ -749,6 +752,45 @@ function defScriptStruct(key) {
   };
 }
 
+// Lead fictício pra pré-visualizar um roteiro no popup das Minhas atividades:
+// preenche os campos que os {{tokens}} usam (nome, empresa, nicho, contas,
+// anúncios…) com dados de exemplo, puxando as opções reais do formulário do
+// produto quando existem. Id fixo e nunca persistido — é só visualização.
+function samplePreviewLead(s) {
+  const q = Object.fromEntries((s.leadQuestions || []).map((x) => [x.key, x]));
+  const opt = (key) => q[key]?.options?.[0]?.value ?? "";
+  const call = new Date(); call.setDate(call.getDate() + 1); call.setHours(10, 0, 0, 0);
+  return {
+    id: "__preview__", saas: s.id,
+    name: "Maria Souza", company: "Loja Encanto", phone: "5541999990000", email: "maria@lojaencanto.com.br",
+    niche: opt("niche") || "Casa & Decoração",
+    accounts: opt("accounts"), listings: opt("listings"), plan_expand: opt("plan_expand"), staff: opt("staff"),
+    score: 72, icp: 0.82, value: "", amount: 0, source: "Form", priority: "P1",
+    closer: usersByRole("closer")[0]?.id || "",
+    callAt: call.toISOString(), stageAttempts: 0,
+  };
+}
+
+// Etapa de exemplo pra cada roteiro do catálogo (define chip/kind/fase do popup):
+// a etapa real do funil quando existe, senão um nome que o guessKind reconhece.
+const PREVIEW_STAGE_FALLBACK = {
+  novo: "Novo lead", qualificacao2: "Qualificando", qualificacao3: "Qualificando",
+  confirmacao: "Call agendada", noshow1: "No show", noshow2: "No show",
+  nutricao1: "Nutrição", nutricao2: "Nutrição", nutricao3: "Nutrição",
+  call: "Call agendada", proposta: "Proposta",
+  followup1: "Follow-up", followup2: "Follow-up", followup3: "Follow-up",
+  integracao: "Integração", posvenda: "Pós-venda",
+};
+function buildPreviewItem(s, catItem) {
+  const stage = catItem.key === "confirmacao"
+    ? (stageByKind(s, "call") || PREVIEW_STAGE_FALLBACK.confirmacao)
+    : (catalogStageRow(s, catItem)?.stage
+       || (catItem.stageKind && stageByKind(s, catItem.stageKind))
+       || PREVIEW_STAGE_FALLBACK[catItem.key] || catItem.label);
+  const kind = stageKind(s, stage);
+  return { l: { ...samplePreviewLead(s), stage }, kind, phase: phaseOf(kind), stage, who: "", due: null, done: false, group: "novo", confirm: false };
+}
+
 function ScriptsSettings({ s }) {
   const { refresh } = useData();
   // drafts[key] = override estruturado { resumo, objetivo, passos } — existe só
@@ -760,6 +802,22 @@ function ScriptsSettings({ s }) {
   });
   const [funnelDraft, setFunnelDraft] = useStS(() => (s.funnel || []).map((f) => ({ ...f })));
   const [openKey, setOpenKey] = useStS(null);
+  const [previewKey, setPreviewKey] = useStS(null); // roteiro aberto no popup de pré-visualização
+
+  // Roteiro pronto pro popup de pré-visualização: mostra o RASCUNHO em edição
+  // (view = override ou padrão), assim dá pra ver a fala do jeitinho que vai
+  // ficar antes de salvar. Falls back pro padrão do código quando algo faltar.
+  const previewScriptFor = (key) => {
+    const base = DEFAULT_SCRIPTS[key] || DEFAULT_SCRIPTS.outro;
+    const v = view(key);
+    return {
+      ...base,
+      resumo: v.resumo || base.resumo,
+      objetivo: v.objetivo || base.objetivo,
+      passos: (v.passos && v.passos.length) ? v.passos : base.passos,
+      custom: isCustom(key),
+    };
+  };
 
   // índice no funnelDraft do estágio de um item do catálogo (cadência).
   const stageIdxOf = (item) => {
@@ -857,13 +915,15 @@ function ScriptsSettings({ s }) {
                           <span className="mono dim" style={{ fontSize: 10 }}>cadência</span>
                           <CadBox val={cadVal(idx, "maxAttempts")} onChange={(x) => setCad(idx, "maxAttempts", x)} unit="toques" title="toques máximos nesta etapa" />
                           <CadBox val={cadVal(idx, "retryDays")} onChange={(x) => setCad(idx, "retryDays", x)} unit="dias" title="toque registrado → próximo em N dias úteis" />
-                          <CadBox val={cadVal(idx, "firstTouchHours")} onChange={(x) => setCad(idx, "firstTouchHours", x)} unit="h entrada" title="SLA/atraso do 1º contato em horas (ex.: Nutrição entra 480h = 20 dias depois)" />
+                          <CadBox val={cadVal(idx, "firstTouchHours")} onChange={(x) => setCad(idx, "firstTouchHours", x)} unit="h entrada" title="SLA/atraso do 1º contato em horas (ex.: Nutrição entra 168h = 7 dias depois)" />
                         </div>
                       ) : idx >= 0 ? (
                         <span className="mono dim" style={{ fontSize: 10 }}>cadência acima ↑</span>
                       ) : (
                         <span className="mono dim" style={{ fontSize: 10 }}>{item.key === "confirmacao" ? "janelas fixas: 1h e 10min antes" : "sem cadência de estágio"}</span>
                       )}
+                      <button type="button" onClick={() => setPreviewKey(item.key)} className="mono" style={{ fontSize: 11, color: "var(--fg-3)" }}
+                        title="Ver como este roteiro aparece no popup das Minhas atividades (com dados de exemplo)">▶ pré-visualizar</button>
                       <button type="button" onClick={() => setOpenKey(open ? null : item.key)} className="mono" style={{ fontSize: 11, color: open ? "var(--accent)" : "var(--fg-3)" }}>{open ? "fechar" : "✎ editar"}</button>
                     </div>
                   </div>
@@ -912,6 +972,28 @@ function ScriptsSettings({ s }) {
         </div>
       ))}
       <SaveBar onSave={save} label="Salvar e replicar" busyLabel="Replicando…" hint="salva tudo e aplica em tempo real pra quem estiver usando o cockpit · a cadência é compartilhada com a aba Funil" />
+
+      {/* Pré-visualização: o MESMO popup das Minhas atividades, com um lead de
+          exemplo e o roteiro que está sendo editado (mostra o rascunho, sem
+          precisar salvar). Ações que gravam ficam desligadas no modo preview. */}
+      {previewKey && (
+        <ErrorBoundary variant="modal" label="pré-visualização" resetKey={previewKey} onReset={() => setPreviewKey(null)}>
+          <ScriptPanel
+            preview
+            previewScript={previewScriptFor(previewKey)}
+            item={buildPreviewItem(s, SCRIPT_CATALOG.find((c) => c.key === previewKey) || { key: previewKey })}
+            saasCfg={s}
+            leads={[]}
+            onPatch={() => {}}
+            onMove={() => {}}
+            onMoveMeet={async () => ({ ok: true })}
+            onAfter={() => {}}
+            onTouch={() => {}}
+            onOpenLead={() => {}}
+            onClose={() => setPreviewKey(null)}
+          />
+        </ErrorBoundary>
+      )}
     </div>
   );
 }

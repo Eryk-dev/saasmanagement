@@ -154,15 +154,15 @@ export async function migrateLeverAdsSdrCadence(repo) {
   }
 
   // 2. Nutrição: fila de reativação fora da régua (depois do Ganho). Entrada
-  // re-agenda o GPS pra +20 dias (480h, rola pra dia útil); dentro do ciclo,
-  // retomada diária, 3 sessões. kind explícito: a heurística por nome mandaria
-  // "nutri" pra perdido.
+  // re-agenda o GPS pra +7 dias (168h, rola pra dia útil); dentro do ciclo,
+  // retomada a cada 7 dias, 3 sessões — mesmo ritmo na entrada e entre toques.
+  // kind explícito: a heurística por nome mandaria "nutri" pra perdido.
   if (!funnel.some((f) => f.stage === "Nutrição")) {
     const ganhoIdx = funnel.findIndex((f) => f.kind === "ganho");
     if (ganhoIdx !== -1) {
       funnel.splice(ganhoIdx + 1, 0, {
         stage: "Nutrição", kind: "contato", conv: 1, color: "", staleDays: "",
-        cadence: { maxAttempts: 3, retryDays: 7, firstTouchHours: 480 },
+        cadence: { maxAttempts: 3, retryDays: 7, firstTouchHours: 168 },
       });
     }
   }
@@ -198,6 +198,33 @@ export async function migrateLeverAdsSdrCadence(repo) {
     sdrCadenceV1: true,
   });
   return { movedCards };
+}
+
+// ── Nutrição: entrada em 7 dias (jul/2026) ──────────────────────────────────
+// A Nutrição nascia devolvendo o card em +20 dias (firstTouchHours: 480). O Leo
+// encurtou pra 7 dias (168h) pra bater com o ritmo da fila (retryDays: 7 entre
+// cada toque) — 1º contato e retomadas no mesmo intervalo. Como a criação da
+// Nutrição (migrateLeverAdsSdrCadence) é one-shot e já rodou em produção, editar
+// só o seed não alcança os dados vivos; esta migração faz a correção no lugar.
+// One-shot com marcador nutricao7dV1; só reescreve a linha ainda no valor antigo
+// do seed (480), então cadência ajustada na mão pelo dono nunca é sobrescrita.
+export async function migrateNutricaoSevenDays(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || product.nutricao7dV1) return false;
+  if (!Array.isArray(product.funnel) || product.funnel.length === 0) return false;
+  let changed = false;
+  const funnel = product.funnel.map((f) => {
+    if (f && f.stage === "Nutrição" && f.cadence && Number(f.cadence.firstTouchHours) === 480) {
+      changed = true;
+      return { ...f, cadence: { ...f.cadence, firstTouchHours: 168 } };
+    }
+    return f;
+  });
+  await repo.update("products", "leverads", {
+    ...(changed ? { funnel: normalizeFunnel(funnel) } : {}),
+    nutricao7dV1: true,
+  });
+  return changed;
 }
 
 // Todo funil de todo produto ganha `kind` (heurística por nome quando ausente).
@@ -423,6 +450,12 @@ export async function runStartupMigrations(repo) {
     if (r) console.log(`[migration] cadência SDR aplicada no leverads (Em contato → Qualificando: ${r.movedCards} cards; Nutrição criada)`);
   } catch (err) {
     console.error("[migration] migrateLeverAdsSdrCadence falhou:", err?.message || err);
+  }
+  try {
+    const changed = await migrateNutricaoSevenDays(repo);
+    if (changed) console.log("[migration] Nutrição: entrada ajustada pra 7 dias (168h) no leverads");
+  } catch (err) {
+    console.error("[migration] migrateNutricaoSevenDays falhou:", err?.message || err);
   }
   try {
     const n = await ensureFunnelKinds(repo);
