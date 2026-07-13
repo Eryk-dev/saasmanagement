@@ -4,7 +4,7 @@ import { PageHead, Pill } from "../components/viz.jsx";
 import { waLink, leadTier, leadScoreLabel } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, orderNextSteps } from "../lib/funnel.js";
+import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor } from "../lib/funnel.js";
 import { allUsers, currentUser, displayName, userById, usersByRole } from "../lib/users.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
@@ -745,43 +745,31 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
 // "retry" = não atendeu / não fechou hoje: registra a tentativa e retoma amanhã
 // (fica na mesma coluna). Num lead NOVO a tentativa promove pra Qualificando
 // sozinha (server) — por isso o chip de retry do novo mostra "Qualificando".
-const NEXT_KINDS = {
-  novo:          ["retry", "call", "desqualificado"],
-  contato:       ["retry", "call", "desqualificado"],   // Nutrição: reativar
-  qualificacao:  ["retry", "call", "contato", "desqualificado"], // contato = Nutrição
-  call:          ["retry", "noshow", "followup", "ganho", "desqualificado"], // noshow = cliente furou
-  followup:      ["retry", "integracao", "ganho", "desqualificado"],
-  proposta:      ["retry", "followup", "ganho", "desqualificado"],
-  integracao:    ["posvenda", "ganho"],
-  posvenda:      ["ganho"],
-  outro:         ["retry", "desqualificado"],
-};
-
 export function destinationsFor(saasCfg, lead) {
   const curStage = lead.stage || firstStage(saasCfg);
   const curKind = stageKind(saasCfg, curStage);
   const out = [];
   const seen = new Set([curStage]);
-  for (const k of (NEXT_KINDS[curKind] || ["desqualificado"])) {
+  // Quais destinos e em que ordem: default por situação (NEXT_KINDS), sobrescrito
+  // por produto em Ajustes → Próximos passos (saasCfg.nextSteps[curKind]).
+  for (const k of nextKindsFor(saasCfg, curKind)) {
     if (k === "retry") {
       const promote = curKind === "novo";
       const target = promote ? (stageByKind(saasCfg, "qualificacao") || curStage) : curStage;
-      out.push({ retry: true, promote, stage: target, kind: promote ? "qualificacao" : curKind, nk: "retry" });
+      out.push({ retry: true, promote, stage: target, kind: promote ? "qualificacao" : curKind });
       continue;
     }
     if (k === "noshow") {
       // No-show é kind contato (colide com Nutrição no stageByKind) → resolve
       // pela etapa nomeada "No show" do funil, se existir.
       const st = (saasCfg?.funnel || []).find((f) => f && isNoShowStage(f.stage));
-      if (st && !seen.has(st.stage)) { seen.add(st.stage); out.push({ stage: st.stage, kind: "noshow", nk: "noshow" }); }
+      if (st && !seen.has(st.stage)) { seen.add(st.stage); out.push({ stage: st.stage, kind: "noshow" }); }
       continue;
     }
     const stage = stageByKind(saasCfg, k);
-    if (stage && !seen.has(stage)) { seen.add(stage); out.push({ stage, kind: stageKind(saasCfg, stage), nk: k }); }
+    if (stage && !seen.has(stage)) { seen.add(stage); out.push({ stage, kind: stageKind(saasCfg, stage) }); }
   }
-  // Prioridade configurável por produto (Ajustes → Próximos passos); vazio =
-  // ordem canônica do NEXT_KINDS da etapa.
-  return orderNextSteps(out, saasCfg?.nextStepOrder);
+  return out;
 }
 
 // Setup que cada destino pede antes de mover.
