@@ -107,61 +107,109 @@ function TrainingScreen() {
 }
 
 // ── Estudar ──────────────────────────────────────────────────────────────────
+// Flashcard é auto-avaliação: o treinando tenta responder, VIRA o card pra ver a
+// resposta certa e marca "acertei" ou "errei". O placar da sessão e o resumo
+// final (com os que errou pra revisar) é a validação do treino.
 function StudyMode({ cards, roleLabel }) {
-  const [order, setOrder] = useS(() => cards.map((_, i) => i));
+  const [order, setOrder] = useS(() => cards.map((_, i) => i)); // deck (índices em cards)
   const [pos, setPos] = useS(0);
   const [flipped, setFlipped] = useS(false);
-  const [marked, setMarked] = useS(() => new Set());
-  const [reviewOnly, setReviewOnly] = useS(false);
+  const [results, setResults] = useS({}); // cardId -> "right" | "wrong"
+  const [finished, setFinished] = useS(false);
 
-  // Deck efetivo: todos, ou só os marcados pra revisar.
-  const deckIdx = reviewOnly ? order.filter((i) => marked.has(cards[i]?.id)) : order;
-  const safePos = Math.min(pos, Math.max(0, deckIdx.length - 1));
-  const card = cards[deckIdx[safePos]];
+  const total = order.length;
+  const safePos = Math.min(pos, Math.max(0, total - 1));
+  const card = cards[order[safePos]];
+  const right = order.filter((i) => results[cards[i]?.id] === "right").length;
+  const wrong = order.filter((i) => results[cards[i]?.id] === "wrong").length;
 
-  useE(() => { setOrder(cards.map((_, i) => i)); setPos(0); setFlipped(false); }, [cards]);
-  useE(() => { setPos(0); setFlipped(false); }, [reviewOnly]);
+  function runWith(ord) { setOrder(ord); setPos(0); setFlipped(false); setResults({}); setFinished(false); }
+  useE(() => { runWith(cards.map((_, i) => i)); }, [cards]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function go(delta) { setFlipped(false); setPos((p) => Math.max(0, Math.min(p + delta, deckIdx.length - 1))); }
+  function grade(ok) {
+    if (!card) return;
+    setResults((r) => ({ ...r, [card.id]: ok ? "right" : "wrong" }));
+    setFlipped(false);
+    if (safePos >= total - 1) setFinished(true);
+    else setPos((p) => p + 1);
+  }
+  function prev() { setFlipped(false); setPos((p) => Math.max(0, p - 1)); }
   function shuffle() {
     const a = [...order];
     for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
-    setOrder(a); setPos(0); setFlipped(false);
+    runWith(a);
   }
-  function toggleMark() { if (!card) return; setMarked((m) => { const n = new Set(m); n.has(card.id) ? n.delete(card.id) : n.add(card.id); return n; }); }
+  function reviewWrong() {
+    const w = order.filter((i) => results[cards[i]?.id] === "wrong");
+    if (w.length) runWith(w);
+  }
 
   useE(() => {
     function onKey(e) {
-      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || finished) return;
       if (e.key === " " || e.key === "Enter") { e.preventDefault(); setFlipped((f) => !f); }
-      else if (e.key === "ArrowRight") { e.preventDefault(); go(1); }
-      else if (e.key === "ArrowLeft") { e.preventDefault(); go(-1); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); prev(); }
+      else if (flipped && (e.key === "1" || e.key.toLowerCase() === "j")) { e.preventDefault(); grade(false); }
+      else if (flipped && (e.key === "2" || e.key.toLowerCase() === "k")) { e.preventDefault(); grade(true); }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (cards.length === 0) return <EmptyState title="Sem flashcards nesta vaga" hint="Vá em Editar pra criar os primeiros cards." />;
-  if (deckIdx.length === 0) return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-start" }}>
-      <div className="mono dim" style={{ fontSize: 12 }}>nenhum card marcado pra revisar.</div>
-      <button onClick={() => setReviewOnly(false)} className="mono" style={{ fontSize: 12, color: "var(--accent)" }}>voltar pro baralho completo</button>
-    </div>
-  );
-
   const btn = { height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, cursor: "pointer" };
   const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
-  const isMarked = card && marked.has(card.id);
+
+  if (cards.length === 0) return <EmptyState title="Sem flashcards nesta vaga" hint="Vá em Editar pra criar os primeiros cards." />;
+
+  // Resumo da sessão — a validação: quantos acertou e o que revisar.
+  if (finished) {
+    const pct = total ? Math.round((right / total) * 100) : 0;
+    const tone = pct >= 80 ? "var(--pos)" : pct >= 50 ? "var(--warn)" : "var(--neg)";
+    const wrongCards = order.filter((i) => results[cards[i]?.id] === "wrong").map((i) => cards[i]);
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 720 }}>
+        <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "20px 22px" }}>
+          <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Resultado da sessão · {roleLabel}</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+            <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 42, fontWeight: 700, color: tone }}>{pct}%</span>
+            <span style={{ fontSize: 15, color: "var(--fg-2)" }}>{right} de {total} corretos</span>
+          </div>
+          <div style={{ display: "flex", height: 10, borderRadius: 5, overflow: "hidden", background: "var(--bg-3)", marginTop: 12, gap: 2 }}>
+            <div style={{ width: `${(right / total) * 100}%`, background: "var(--pos)" }} />
+            <div style={{ width: `${(wrong / total) * 100}%`, background: "var(--neg)" }} />
+          </div>
+          <div className="mono dim" style={{ fontSize: 11, marginTop: 8 }}>✓ {right} acertos · ✗ {wrong} erros</div>
+        </div>
+
+        {wrongCards.length > 0 && (
+          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 16px" }}>
+            <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Pra revisar ({wrongCards.length})</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {wrongCards.map((c) => <div key={c.id} style={{ fontSize: 12.5, color: "var(--fg-2)", paddingLeft: 12, borderLeft: "2px solid var(--neg)" }}>{c.front}</div>)}
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {wrongCards.length > 0 && (
+            <button onClick={reviewWrong} style={{ ...btn, background: "var(--accent)", color: "var(--accent-fg)", border: "1px solid var(--accent)", fontWeight: 600 }}>
+              revisar os {wrongCards.length} que errei →
+            </button>
+          )}
+          <button onClick={() => runWith(cards.map((_, i) => i))} style={btn}>↺ recomeçar</button>
+          <button onClick={shuffle} style={btn}>⤨ embaralhar e recomeçar</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 720 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <span className="mono tnum" style={{ fontSize: 12, color: "var(--fg-3)" }}>{safePos + 1} / {deckIdx.length}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <span className="mono tnum" style={{ fontSize: 12, color: "var(--fg-3)" }}>{safePos + 1} / {total}</span>
+        <span className="mono tnum" style={{ fontSize: 11.5 }}><span style={{ color: "var(--pos)" }}>✓ {right}</span> <span style={{ color: "var(--neg)", marginLeft: 6 }}>✗ {wrong}</span></span>
         <span style={{ flex: 1 }} />
         <button onClick={shuffle} style={btn}>⤨ embaralhar</button>
-        <button onClick={() => setReviewOnly((v) => !v)} style={{ ...btn, ...(reviewOnly ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}) }}>
-          {reviewOnly ? "vendo os marcados" : `revisar marcados (${marked.size})`}
-        </button>
       </div>
 
       {/* O card */}
@@ -174,26 +222,32 @@ function StudyMode({ cards, roleLabel }) {
           transition: "background 140ms ease, border-color 140ms ease",
         }}>
         <div className="mono" style={{ ...kicker, color: flipped ? "var(--accent)" : "var(--fg-4)" }}>
-          {roleLabel} · {flipped ? "verso · resposta" : "frente · pergunta"}
+          {roleLabel} · {flipped ? "verso · resposta certa" : "frente · pergunta"}
         </div>
         <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
           <div style={{ fontSize: flipped ? 17 : 22, fontWeight: flipped ? 500 : 700, lineHeight: 1.4, fontFamily: flipped ? "var(--sans)" : "var(--display)", color: "var(--fg-1)", whiteSpace: "pre-wrap" }}>
             {flipped ? (card.back || "(sem resposta cadastrada)") : card.front}
           </div>
         </div>
-        <div className="mono dim" style={{ fontSize: 10.5 }}>{flipped ? "clique pra voltar" : "clique pra ver a resposta"}</div>
+        <div className="mono dim" style={{ fontSize: 10.5 }}>{flipped ? "compare com a sua resposta e marque abaixo" : "responda de cabeça, depois clique pra conferir"}</div>
       </button>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <button onClick={() => go(-1)} disabled={safePos === 0} style={{ ...btn, opacity: safePos === 0 ? 0.5 : 1 }}>← anterior</button>
-        <button onClick={toggleMark} style={{ ...btn, ...(isMarked ? { borderColor: "var(--warn)", color: "var(--warn)", background: "var(--warn-soft)" } : {}) }}>
-          {isMarked ? "★ marcado pra revisar" : "☆ marcar pra revisar"}
-        </button>
-        <span style={{ flex: 1 }} />
-        <button onClick={() => go(1)} disabled={safePos >= deckIdx.length - 1}
-          style={{ ...btn, background: "var(--accent)", color: "var(--accent-fg)", border: "1px solid var(--accent)", fontWeight: 600, opacity: safePos >= deckIdx.length - 1 ? 0.5 : 1 }}>próximo →</button>
-      </div>
-      <div className="mono dim" style={{ fontSize: 10.5 }}>atalhos: Espaço vira · ← → navega</div>
+      {/* Auto-avaliação: só aparece depois de revelar a resposta */}
+      {flipped ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={prev} disabled={safePos === 0} style={{ ...btn, opacity: safePos === 0 ? 0.5 : 1 }}>← anterior</button>
+          <span style={{ flex: 1 }} />
+          <button onClick={() => grade(false)} style={{ ...btn, borderColor: "var(--neg)", color: "var(--neg)", background: "var(--neg-soft)", fontWeight: 600 }}>✗ errei</button>
+          <button onClick={() => grade(true)} style={{ ...btn, borderColor: "var(--pos)", color: "#fff", background: "var(--pos)", fontWeight: 600 }}>✓ acertei</button>
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button onClick={prev} disabled={safePos === 0} style={{ ...btn, opacity: safePos === 0 ? 0.5 : 1 }}>← anterior</button>
+          <span style={{ flex: 1 }} />
+          <button onClick={() => setFlipped(true)} style={{ ...btn, background: "var(--accent)", color: "var(--accent-fg)", border: "1px solid var(--accent)", fontWeight: 600 }}>ver resposta</button>
+        </div>
+      )}
+      <div className="mono dim" style={{ fontSize: 10.5 }}>atalhos: Espaço vira · 1 errei · 2 acertei · ← anterior</div>
     </div>
   );
 }

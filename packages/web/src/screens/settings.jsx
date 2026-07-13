@@ -6,7 +6,7 @@ import { api } from "../lib/api.js";
 import { useIsMobile } from "../lib/responsive.js";
 import { KINDS, KIND_IDS, guessKind, lossReasonsOf, stageKind, stageByKind, NEXT_KINDS, NEXT_STEP_KINDS, NEXT_STEP_LABELS, NEXT_STEP_SOURCE_LABELS } from "../lib/funnel.js";
 import { useActiveSaas } from "../lib/workspace.js";
-import { DEFAULT_SCRIPTS, SCRIPT_CATALOG, catalogStageRow, passosToText, isNoShowStage } from "../lib/scripts.js";
+import { DEFAULT_SCRIPTS, SCRIPT_CATALOG, catalogStageRow, isNoShowStage } from "../lib/scripts.js";
 import { NAV } from "../chrome.jsx";
 // SaaS Settings (fase 3) — funil, campos custom, pesos da saúde e Aha EDITÁVEIS
 // por SaaS (gravam no produto). Equipe (roles sdr/closer/integrator) é global.
@@ -799,35 +799,77 @@ function CadBox({ val, onChange, unit, title }) {
   );
 }
 
+// Estrutura editável de um roteiro a partir do padrão (DEFAULT_SCRIPTS).
+function defScriptStruct(key) {
+  const d = DEFAULT_SCRIPTS[key] || {};
+  return {
+    resumo: d.resumo || "",
+    objetivo: d.objetivo || "",
+    passos: (d.passos || []).map((p) => ({ t: p.t || "", fala: p.fala || "", dica: p.dica || "" })),
+  };
+}
+
 function ScriptsSettings({ s }) {
   const { refresh } = useData();
-  const [scripts, setScripts] = useStS(() => ({ ...(s.scripts || {}) }));
+  // drafts[key] = override estruturado { resumo, objetivo, passos } — existe só
+  // pras chaves que o usuário de fato editou (ou que já vinham personalizadas).
+  const [drafts, setDrafts] = useStS(() => {
+    const seed = {};
+    for (const [k, v] of Object.entries(s.scripts || {})) if (v && typeof v === "object" && Array.isArray(v.passos)) seed[k] = v;
+    return seed;
+  });
   const [funnelDraft, setFunnelDraft] = useStS(() => (s.funnel || []).map((f) => ({ ...f })));
   const [openKey, setOpenKey] = useStS(null);
 
-  // índice no funnelDraft do estágio de um item do catálogo (pra ler/editar a
-  // cadência). Vários roteiros dividem o mesmo estágio (2ª/3ª tentativa, etc.).
+  // índice no funnelDraft do estágio de um item do catálogo (cadência).
   const stageIdxOf = (item) => {
     const row = catalogStageRow(s, item);
     return row ? funnelDraft.findIndex((f) => f.stage === row.stage) : -1;
   };
-  // Só o 1º roteiro de cada estágio mostra os campos de cadência (evita repetir
-  // a mesma cadência 3x pra Nutrição/No show).
+  // Só o 1º roteiro de cada estágio mostra a cadência (evita repetir 3x).
   const cadenceOwner = {};
   for (const item of SCRIPT_CATALOG) {
     const idx = stageIdxOf(item);
     if (idx >= 0 && cadenceOwner[idx] == null) cadenceOwner[idx] = item.key;
   }
-
   const cadVal = (idx, k) => (idx >= 0 && funnelDraft[idx].cadence && funnelDraft[idx].cadence[k] != null ? funnelDraft[idx].cadence[k] : "");
   const setCad = (idx, k, v) => setFunnelDraft((rows) => rows.map((f, j) => j === idx
     ? { ...f, cadence: { ...(f.cadence || {}), [k]: v === "" ? undefined : Number(v) } } : f));
-  const setScript = (key, v) => setScripts((m) => ({ ...m, [key]: v }));
+
+  // Leitura/edição do roteiro: mostra o override se existir, senão o padrão.
+  const view = (key) => {
+    const o = drafts[key];
+    return (o && typeof o === "object" && Array.isArray(o.passos)) ? o : defScriptStruct(key);
+  };
+  const isCustom = (key) => drafts[key] != null;
+  // Materializa o draft (a partir do que está na tela) e aplica a mutação.
+  const mutate = (key, fn) => setDrafts((d) => {
+    const o = d[key];
+    const cur = (o && typeof o === "object" && Array.isArray(o.passos)) ? o : defScriptStruct(key);
+    const clone = { resumo: cur.resumo, objetivo: cur.objetivo, passos: cur.passos.map((p) => ({ ...p })) };
+    return { ...d, [key]: fn(clone) };
+  });
+  const setField = (key, field, val) => mutate(key, (x) => { x[field] = val; return x; });
+  const setPasso = (key, i, field, val) => mutate(key, (x) => { x.passos = x.passos.map((p, j) => j === i ? { ...p, [field]: val } : p); return x; });
+  const addPasso = (key) => mutate(key, (x) => { x.passos = [...x.passos, { t: "", fala: "", dica: "" }]; return x; });
+  const removePasso = (key, i) => mutate(key, (x) => { x.passos = x.passos.filter((_, j) => j !== i); return x; });
+  const movePasso = (key, i, dir) => mutate(key, (x) => {
+    const j = i + dir; if (j < 0 || j >= x.passos.length) return x;
+    const n = [...x.passos]; [n[i], n[j]] = [n[j], n[i]]; x.passos = n; return x;
+  });
+  const resetScript = (key) => setDrafts((d) => { const n = { ...d }; delete n[key]; return n; });
 
   async function save() {
-    // 1) overrides de roteiro (só os não-vazios; objeto completo substitui o campo)
+    // 1) overrides de roteiro (só as chaves editadas; passos vazios saem)
     const clean = {};
-    for (const [k, v] of Object.entries(scripts)) if (String(v || "").trim()) clean[k] = String(v).trim();
+    for (const [k, v] of Object.entries(drafts)) {
+      if (!v || typeof v !== "object") continue;
+      const passos = (v.passos || [])
+        .map((p) => ({ t: String(p.t || "").trim(), fala: String(p.fala || "").trim(), dica: String(p.dica || "").trim() }))
+        .filter((p) => p.t || p.fala)
+        .map((p) => { const o = { t: p.t, fala: p.fala }; if (p.dica) o.dica = p.dica; return o; });
+      clean[k] = { resumo: String(v.resumo || "").trim(), objetivo: String(v.objetivo || "").trim(), passos };
+    }
     await api.update("products", s.id, { scripts: clean });
     // 2) cadências — grava o funil inteiro sem renomear (só a cadência muda)
     const funnel = funnelDraft.map((f) => {
@@ -843,69 +885,80 @@ function ScriptsSettings({ s }) {
   }
 
   const phases = [...new Set(SCRIPT_CATALOG.map((c) => c.phase))];
+  const miniLabel = { display: "block", fontSize: 10, color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 };
+  const taStyle = { ...inputStyle, height: "auto", width: "100%", padding: "6px 8px", fontSize: 12.5, lineHeight: 1.5, fontFamily: "inherit", resize: "vertical" };
 
   return (
     <div>
-      <SettingHeader title="Scripts & cadências" sub="todos os roteiros do processo num lugar só · editar troca as falas do passo a passo (a postura, o objetivo e as dicas seguem do padrão) · a cadência é a mesma do Funil" />
+      <SettingHeader title="Scripts & cadências" sub="todos os roteiros do processo num lugar só · edite as falas direto no passo a passo (é o roteiro pronto, é só alterar) · a cadência é a mesma do Funil" />
       {phases.map((phase) => (
         <div key={phase} style={{ marginBottom: 22 }}>
           <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>{phase}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {SCRIPT_CATALOG.filter((c) => c.phase === phase).map((item) => {
-              const def = DEFAULT_SCRIPTS[item.key] || {};
               const idx = stageIdxOf(item);
               const showCad = idx >= 0 && cadenceOwner[idx] === item.key;
-              const overridden = String(scripts[item.key] || "").trim();
+              const custom = isCustom(item.key);
               const open = openKey === item.key;
+              const v = view(item.key);
               return (
                 <div key={item.key} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", overflow: "hidden" }}>
                   <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                     <div style={{ minWidth: 220, flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 600 }}>
                         {item.label}
-                        {overridden && <span className="mono" style={{ fontSize: 10, color: "var(--accent)", marginLeft: 8 }}>personalizado</span>}
+                        {custom && <span className="mono" style={{ fontSize: 10, color: "var(--accent)", marginLeft: 8 }}>editado</span>}
                       </div>
-                      <div className="mono dim" style={{ fontSize: 11, marginTop: 2 }}>{def.resumo ? def.resumo.slice(0, 120) + (def.resumo.length > 120 ? "…" : "") : ""}</div>
+                      <div className="mono dim" style={{ fontSize: 11, marginTop: 2 }}>{v.resumo ? v.resumo.slice(0, 120) + (v.resumo.length > 120 ? "…" : "") : ""}</div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                       {showCad ? (
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }} title="cadência de contato deste estágio (mesma do Funil)">
                           <span className="mono dim" style={{ fontSize: 10 }}>cadência</span>
-                          <CadBox val={cadVal(idx, "maxAttempts")} onChange={(v) => setCad(idx, "maxAttempts", v)} unit="toques" title="toques máximos nesta etapa" />
-                          <CadBox val={cadVal(idx, "retryDays")} onChange={(v) => setCad(idx, "retryDays", v)} unit="dias" title="toque registrado → próximo em N dias úteis" />
-                          <CadBox val={cadVal(idx, "firstTouchHours")} onChange={(v) => setCad(idx, "firstTouchHours", v)} unit="h entrada" title="SLA/atraso do 1º contato em horas (ex.: Nutrição entra 480h = 20 dias depois)" />
+                          <CadBox val={cadVal(idx, "maxAttempts")} onChange={(x) => setCad(idx, "maxAttempts", x)} unit="toques" title="toques máximos nesta etapa" />
+                          <CadBox val={cadVal(idx, "retryDays")} onChange={(x) => setCad(idx, "retryDays", x)} unit="dias" title="toque registrado → próximo em N dias úteis" />
+                          <CadBox val={cadVal(idx, "firstTouchHours")} onChange={(x) => setCad(idx, "firstTouchHours", x)} unit="h entrada" title="SLA/atraso do 1º contato em horas (ex.: Nutrição entra 480h = 20 dias depois)" />
                         </div>
                       ) : idx >= 0 ? (
                         <span className="mono dim" style={{ fontSize: 10 }}>cadência acima ↑</span>
                       ) : (
                         <span className="mono dim" style={{ fontSize: 10 }}>{item.key === "confirmacao" ? "janelas fixas: 1h e 10min antes" : "sem cadência de estágio"}</span>
                       )}
-                      <button type="button" onClick={() => setOpenKey(open ? null : item.key)} className="mono" style={{ fontSize: 11, color: open ? "var(--accent)" : "var(--fg-3)" }}>{open ? "fechar" : "✎ ver / editar"}</button>
+                      <button type="button" onClick={() => setOpenKey(open ? null : item.key)} className="mono" style={{ fontSize: 11, color: open ? "var(--accent)" : "var(--fg-3)" }}>{open ? "fechar" : "✎ editar"}</button>
                     </div>
                   </div>
                   {open && (
-                    <div style={{ padding: "0 14px 14px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
-                      <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "12px 0 6px" }}>
-                        Passo a passo {overridden ? "(padrão · referência)" : "(padrão atual)"}
+                    <div style={{ padding: "12px 14px 14px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                        <div>
+                          <label style={miniLabel}>Postura (como se comportar)</label>
+                          <textarea rows={3} value={v.resumo} onChange={(e) => setField(item.key, "resumo", e.target.value)} style={taStyle} />
+                        </div>
+                        <div>
+                          <label style={miniLabel}>Objetivo</label>
+                          <textarea rows={3} value={v.objetivo} onChange={(e) => setField(item.key, "objetivo", e.target.value)} style={taStyle} />
+                        </div>
                       </div>
-                      <ol style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
-                        {(def.passos || []).map((p, k) => (
-                          <li key={k} style={{ fontSize: 12.5, lineHeight: 1.5 }}>
-                            <span style={{ fontWeight: 600 }}>{p.t}</span>
-                            {p.fala && <div style={{ color: "var(--fg-2)" }}>“{p.fala}”</div>}
-                            {p.dica && <div className="mono dim" style={{ fontSize: 11 }}>{p.dica}</div>}
-                          </li>
+                      <label style={miniLabel}>Passo a passo · edite as falas direto</label>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {v.passos.map((p, k) => (
+                          <div key={k} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: 8 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
+                              <span className="mono dim" style={{ fontSize: 11, width: 16 }}>{k + 1}.</span>
+                              <input value={p.t} placeholder="Título do passo" onChange={(e) => setPasso(item.key, k, "t", e.target.value)} style={{ ...inputStyle, flex: 1, fontWeight: 600 }} />
+                              <button type="button" onClick={() => movePasso(item.key, k, -1)} disabled={k === 0} className="mono" style={{ fontSize: 12, color: "var(--fg-4)", opacity: k === 0 ? 0.3 : 1 }}>↑</button>
+                              <button type="button" onClick={() => movePasso(item.key, k, 1)} disabled={k === v.passos.length - 1} className="mono" style={{ fontSize: 12, color: "var(--fg-4)", opacity: k === v.passos.length - 1 ? 0.3 : 1 }}>↓</button>
+                              <button type="button" onClick={() => removePasso(item.key, k)} className="mono dim" style={{ fontSize: 13 }}>✕</button>
+                            </div>
+                            <textarea rows={2} value={p.fala} placeholder="Fala pro cliente (passo só de ação pode ficar sem)" onChange={(e) => setPasso(item.key, k, "fala", e.target.value)} style={{ ...taStyle, marginBottom: 5 }} />
+                            <input value={p.dica} placeholder="Dica interna (opcional, não é falada)" onChange={(e) => setPasso(item.key, k, "dica", e.target.value)} style={{ ...inputStyle, fontSize: 11.5, color: "var(--fg-3)" }} />
+                          </div>
                         ))}
-                      </ol>
-                      <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "14px 0 6px" }}>Roteiro personalizado (opcional)</div>
-                      <textarea rows={7}
-                        value={scripts[item.key] != null ? scripts[item.key] : ""}
-                        placeholder={"Vazio = usa o passo a passo padrão acima.\n\nBloco separado por linha em branco = um passo.\nLinha terminando em dois-pontos vira o título do passo.\n\n" + passosToText(def.passos).slice(0, 180) + (passosToText(def.passos).length > 180 ? "…" : "")}
-                        onChange={(e) => setScript(item.key, e.target.value)}
-                        style={{ ...inputStyle, height: "auto", width: "100%", padding: 8, fontSize: 12.5, lineHeight: 1.5, fontFamily: "inherit", resize: "vertical" }} />
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 5, flexWrap: "wrap" }}>
-                        <div className="mono dim" style={{ fontSize: 10.5 }}>{"tokens: {{nome}} {{eu}} {{produto}} {{nicho}} {{contas}} {{anuncios}} {{closer_responsavel}} {{hora_call}} {{link_call}}"}</div>
-                        {overridden && <button type="button" className="mono" onClick={() => setScript(item.key, "")} style={{ fontSize: 10.5, color: "var(--neg)" }}>voltar ao padrão</button>}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8, flexWrap: "wrap" }}>
+                        <button type="button" onClick={() => addPasso(item.key)} style={{ ...chromeBtnStyleSmall }}><span style={{ fontSize: 11 }}>+ passo</span></button>
+                        {custom && <button type="button" className="mono" onClick={() => resetScript(item.key)} style={{ fontSize: 10.5, color: "var(--neg)" }}>voltar ao padrão</button>}
+                        <span className="mono dim" style={{ fontSize: 10.5 }}>{"tokens: {{nome}} {{eu}} {{produto}} {{nicho}} {{contas}} {{anuncios}} {{closer_responsavel}} {{hora_call}} {{link_call}}"}</span>
                       </div>
                     </div>
                   )}
@@ -915,7 +968,7 @@ function ScriptsSettings({ s }) {
           </div>
         </div>
       ))}
-      <SaveBar onSave={save} hint="editar o roteiro troca só as falas · a cadência é compartilhada com a aba Funil" />
+      <SaveBar onSave={save} hint="editar altera o roteiro pronto deste produto · a cadência é compartilhada com a aba Funil" />
     </div>
   );
 }

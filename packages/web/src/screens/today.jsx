@@ -756,20 +756,22 @@ export function destinationsFor(saasCfg, lead) {
     if (k === "retry") {
       const promote = curKind === "novo";
       const target = promote ? (stageByKind(saasCfg, "qualificacao") || curStage) : curStage;
-      out.push({ retry: true, promote, stage: target, kind: promote ? "qualificacao" : curKind });
+      out.push({ retry: true, promote, stage: target, kind: promote ? "qualificacao" : curKind, nk: "retry" });
       continue;
     }
     if (k === "noshow") {
       // No-show é kind contato (colide com Nutrição no stageByKind) → resolve
       // pela etapa nomeada "No show" do funil, se existir.
       const st = (saasCfg?.funnel || []).find((f) => f && isNoShowStage(f.stage));
-      if (st && !seen.has(st.stage)) { seen.add(st.stage); out.push({ stage: st.stage, kind: "noshow" }); }
+      if (st && !seen.has(st.stage)) { seen.add(st.stage); out.push({ stage: st.stage, kind: "noshow", nk: "noshow" }); }
       continue;
     }
     const stage = stageByKind(saasCfg, k);
-    if (stage && !seen.has(stage)) { seen.add(stage); out.push({ stage, kind: stageKind(saasCfg, stage) }); }
+    if (stage && !seen.has(stage)) { seen.add(stage); out.push({ stage, kind: stageKind(saasCfg, stage), nk: k }); }
   }
-  return out;
+  // Prioridade configurável por produto (Ajustes → Próximos passos); vazio =
+  // ordem canônica do NEXT_KINDS da etapa.
+  return orderNextSteps(out, saasCfg?.nextStepOrder);
 }
 
 // Setup que cada destino pede antes de mover.
@@ -781,9 +783,9 @@ export function setupType(kind) {
   return "none";
 }
 
-// Agenda da call: horário comercial em blocos de 1h; a call OCUPA a hora do
+// Agenda da call: das 07h às 20h em blocos de 1h; a call OCUPA a hora do
 // closer (leads dele com callAt na mesma hora). Fim de semana fora (seg a sex).
-const CALL_H0 = 9, CALL_H1 = 18;
+const CALL_H0 = 7, CALL_H1 = 21; // slots 07:00…20:00 (bate com a agenda 7h-21h)
 function nextBusinessDays(n) {
   const out = []; const d = new Date(); d.setHours(0, 0, 0, 0);
   while (out.length < n) { const w = d.getDay(); if (w !== 0 && w !== 6) out.push(new Date(d)); d.setDate(d.getDate() + 1); }
@@ -793,11 +795,16 @@ const cellKey = (d) => { const p = (x) => String(x).padStart(2, "0"); return `${
 const slotVal = (day, hour) => { const p = (x) => String(x).padStart(2, "0"); return `${day.getFullYear()}-${p(day.getMonth() + 1)}-${p(day.getDate())}T${p(hour)}:00`; };
 
 // Horas já ocupadas na agenda de um closer: cada lead dele com callAt marca a
-// hora daquele slot (a call ocupa 1h). Ignora o próprio lead (reagendamento).
+// hora daquele slot (a call ocupa 1h). Ignora o próprio lead (reagendamento) e
+// os follow-ups — follow-up NÃO bloqueia horário: o SDR pode marcar a call de
+// venda por cima. Só call de venda conta como ocupada, pra não dar divergência.
 export function callBusyKeys(leads, closerId, selfId) {
   const busy = new Set();
+  const saasList = (typeof window !== "undefined" && window.SEED?.SAAS) || [];
   for (const o of leads || []) {
     if (!closerId || o.id === selfId || o.closer !== closerId || !o.callAt) continue;
+    const cfg = saasList.find((s) => s.id === o.saas);
+    if (stageKind(cfg, o.stage) === "followup") continue; // follow-up não ocupa a agenda
     const d = new Date(o.callAt);
     if (Number.isFinite(d.getTime())) busy.add(cellKey(d));
   }
