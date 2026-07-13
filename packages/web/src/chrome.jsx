@@ -18,6 +18,7 @@ const NAV = [
   { id: "customers",  label: "Clientes",       icon: "○",  group: "comercial" },
   { id: "proposals",  label: "Propostas",      icon: "▥",  group: "comercial" },
   { id: "offers",     label: "Link pagamento", icon: "◇",  group: "comercial" },
+  { id: "disparos",   label: "Disparos",       icon: "➤",  group: "comercial" },
 
   { id: "social",     label: "Redes sociais",  icon: "◍",  group: "marketing" },
   { id: "metrics",    label: "Publicidade",    icon: "∿",  group: "marketing" },

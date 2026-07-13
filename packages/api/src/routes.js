@@ -19,6 +19,7 @@ import { mp as defaultMpClient } from "./mp.js";
 import { registerMarketingRoutes } from "./routes.marketing.js";
 import { registerSocialRoutes } from "./routes.social.js";
 import { registerOfferRoutes } from "./routes.offers.js";
+import { registerCampaignRoutes } from "./routes.disparos.js";
 import { registerMetasRoutes } from "./routes.metas.js";
 import { registerFlashcardRoutes } from "./routes.flashcards.js";
 import { registerGoogleRoutes } from "./routes.google.js";
@@ -99,6 +100,11 @@ export const CREATE_DEFAULTS = {
   // `system` = evento automático (lead_created, proposal_viewed...). `at` = quando
   // aconteceu (backdate permitido); createdAt = quando entrou no sistema.
   activities: { saas: "", lead: "", type: "note", text: "", meta: {}, author: "", at: "" },
+  // Disparos (ferramenta): uma campanha por produto pra mandar e-mail + WhatsApp
+  // pros leads qualificados. `stages` = segmento (etapas do funil que entram);
+  // `sent` = progresso por lead ({leadId: {whatsapp, email}}, ISO), mesclado no
+  // servidor. channels/email/wa = o que foi composto.
+  campaigns: { name: "", saas: "", status: "draft", stages: [], channels: { email: false, whatsapp: true }, email: { subject: "", body: "" }, wa: { text: "" }, sent: {}, createdAt: "", createdBy: "" },
 };
 
 // Receita e nº de clientes são DERIVADOS da coleção `customers`, não dos campos
@@ -164,6 +170,7 @@ function listFilter(collection, q) {
   if (collection === "ad_insights") return (r) => (!q.saas || r.saas === q.saas) && (!q.campaign || r.campaignId === q.campaign);
   if (collection === "tasks") return (t) => (!q.saas || t.saas === q.saas) && (!q.assignee || (t.assignees || (t.assignee ? [t.assignee] : [])).includes(q.assignee)) && (!q.column || t.column === q.column);
   if (collection === "activities") return (a) => (!q.lead || a.lead === q.lead) && (!q.saas || a.saas === q.saas) && (!q.type || a.type === q.type) && (!q.since || String(a.at || "") >= q.since);
+  if (collection === "campaigns") return (c) => !q.saas || c.saas === q.saas;
   return null;
 }
 
@@ -200,6 +207,10 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerSocialRoutes(app, repo, { social: opts.social, meta: metaClient, anthropic: anthropicClient });
   // Links de pagamento das ofertas (ferramenta).
   registerOfferRoutes(app, repo);
+  // Disparos: campanhas de e-mail + WhatsApp pros leads qualificados (ferramenta).
+  // (Fase 1: só WhatsApp assistido + IA de copy. O envio nativo de e-mail pelo
+  // Gmail entra na fase 2, quando o googleClient também é injetado aqui.)
+  registerCampaignRoutes(app, repo, { anthropic: anthropicClient });
   // Metas de desempenho por vaga/pessoa (ferramenta; escreve na collection goals).
   registerMetasRoutes(app, repo);
   // Treinamentos: flashcards por vaga com repetição espaçada (FSRS) por pessoa.

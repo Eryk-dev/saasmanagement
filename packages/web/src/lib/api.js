@@ -129,6 +129,11 @@ export const api = {
   // Links de pagamento das ofertas (ferramenta) — leitura e edição pra todo o time.
   offers: (saas) => req("GET", `/api/offers/${encodeURIComponent(saas)}`),
   saveOffers: (saas, items) => req("PUT", `/api/offers/${encodeURIComponent(saas)}`, { items }),
+  // Disparos (ferramenta): CRUD da campanha via api.list/create/update("campaigns").
+  // `mark` grava um envio feito (fila assistida) + loga o toque na timeline; `aiCopy`
+  // sugere a copy do disparo por IA.
+  campaignMark: (id, body) => req("POST", `/api/campaigns/${encodeURIComponent(id)}/mark`, body),
+  campaignAiCopy: (body) => req("POST", "/api/campaigns/ai-copy", body),
   // Metas de desempenho por vaga/pessoa (ferramenta; escreve na collection goals).
   metas: (saas) => req("GET", `/api/metas/${encodeURIComponent(saas)}`),
   saveMetas: (saas, goals) => req("PUT", `/api/metas/${encodeURIComponent(saas)}`, { goals }),
