@@ -16,11 +16,13 @@ const SCOPE = [
   "https://www.googleapis.com/auth/meetings.space.settings",
   "https://www.googleapis.com/auth/meetings.space.readonly", // ler gravações/transcrições pós-call
   "https://www.googleapis.com/auth/gmail.send", // disparos: enviar e-mail pela conta conectada
+  "https://www.googleapis.com/auth/drive.readonly",          // ler o Doc de transcrição no Drive do organizador (fallback)
   "openid",
   "email",
 ].join(" ");
 const MEET_URL = "https://meet.googleapis.com/v2";
 const GMAIL_URL = "https://gmail.googleapis.com/gmail/v1";
+const DRIVE_URL = "https://www.googleapis.com/drive/v3";
 
 export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientSecret = "", repo } = {}) {
   const configured = () => !!(clientId && clientSecret);
@@ -289,7 +291,74 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
     return !!(s?.refreshToken && String(s?.scopes || "").includes("gmail.send"));
   }
 
-  return { configured, connected, account, authUrl, exchangeCode, accessToken, createMeetEvent, configureSpace, fetchTranscript, sendGmail, gmailReady };
+  // Evento do Calendar por id — título exato da call (pra casar o Doc) e anexos
+  // (o Meet às vezes cola o Doc de transcrição como anexo do evento). Best-effort.
+  async function getCalendarEvent(eventId, calendarId = process.env.GOOGLE_MEET_CALENDAR_ID || "primary") {
+    if (!eventId) return null;
+    const token = await accessToken();
+    const res = await f(`${CAL_URL}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.status >= 400 || body.error) return null;
+    return body;
+  }
+
+  // Fallback de transcrição pelo DRIVE: o Meet salva a transcrição como um Google
+  // Doc no Drive do ORGANIZADOR (a conta conectada). Quando a Meet API não devolve
+  // o conferenceRecord (ex.: quem hospeda a call é OUTRA conta que não a conectada),
+  // lê o Doc direto: acha pelo anexo do evento OU busca pelo título ("…Transcrição/
+  // Transcript") perto do horário da call e exporta como texto. Exige drive.readonly
+  // (reconectar o Google depois de subir este escopo). Retorna null se não achar.
+  async function fetchTranscriptFromDrive({ eventId = "", leadName = "", since = "" } = {}) {
+    const token = await accessToken();
+    const auth = { authorization: `Bearer ${token}` };
+    const ev = eventId ? await getCalendarEvent(eventId) : null;
+    const title = String(ev?.summary || leadName || "").trim();
+    const startIso = ev?.start?.dateTime || ev?.start?.date || since || "";
+
+    // 1) Anexo do evento cujo título parece transcrição (Doc).
+    let fileId = "";
+    for (const a of ev?.attachments || []) {
+      if (/ranscri/i.test(String(a.title || "")) && a.fileId) { fileId = a.fileId; break; }
+    }
+
+    // 2) Busca no Drive: Doc com "Transcri/Transcript" no título, criado a partir
+    //    de ~2h antes da call, casando pelo nome do lead (parte após o "·" do
+    //    título "Call LeverAds · <lead>"). Pega o mais recente que casar.
+    if (!fileId) {
+      const esc = (s) => String(s).replace(/'/g, "\\'");
+      const clauses = ["mimeType = 'application/vnd.google-apps.document'", "name contains 'ranscri'"];
+      const nameKey = (title.split("·").pop() || title).trim();
+      if (nameKey) clauses.push(`name contains '${esc(nameKey)}'`);
+      const floor = startIso ? new Date(new Date(startIso).getTime() - 2 * 3600_000) : null;
+      if (floor && Number.isFinite(floor.getTime())) clauses.push(`createdTime > '${floor.toISOString()}'`);
+      // encodeURIComponent (não URLSearchParams): espaço vira %20, não "+" — o
+      // parser do `q` do Drive trata "+" como literal e quebraria a query.
+      const qs = `q=${encodeURIComponent(clauses.join(" and "))}&orderBy=${encodeURIComponent("createdTime desc")}&pageSize=10&fields=${encodeURIComponent("files(id,name,createdTime)")}`;
+      const res = await f(`${DRIVE_URL}/files?${qs}`, { headers: auth });
+      const body = await res.json().catch(() => ({}));
+      if (res.status >= 400 || body.error) throw new Error(`Drive files -> ${res.status}: ${body.error?.message || "falha na busca"}`);
+      fileId = body.files?.[0]?.id || "";
+    }
+    if (!fileId) return null;
+
+    // 3) Exporta o Doc como texto puro (o corpo é a transcrição fala a fala).
+    const exp = await f(`${DRIVE_URL}/files/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent("text/plain")}`, { headers: auth });
+    if (exp.status >= 400) throw new Error(`Drive export -> ${exp.status}`);
+    const text = String(await exp.text()).trim();
+    if (!text) return null;
+    return {
+      text,
+      startTime: startIso,
+      endTime: "",
+      recordingUrl: `https://docs.google.com/document/d/${fileId}/view`,
+      conferenceRecord: "",
+      source: "drive",
+    };
+  }
+
+  return { configured, connected, account, authUrl, exchangeCode, accessToken, createMeetEvent, configureSpace, fetchTranscript, sendGmail, gmailReady, getCalendarEvent, fetchTranscriptFromDrive };
 }
 
 // Cabeçalho de e-mail com não-ASCII (nome, assunto): codifica em MIME
