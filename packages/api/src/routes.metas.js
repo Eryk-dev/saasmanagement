@@ -39,9 +39,14 @@ export const META_CATALOG = [
     ],
   },
   {
-    role: "social", label: "Mídia social", hint: "redes sociais e conteúdo",
+    role: "social", label: "Mídia social", hint: "redes sociais, conteúdo e criativos",
     metrics: [
-      { metric: "postsPerMonth", label: "Posts no mês", unit: "n", default: null },
+      // Fase de aprendizado: cobra VOLUME e consistência (o hábito de produzir)
+      // antes de perseguir resultado — o Leo lapida engajamento/alcance depois.
+      { metric: "postsPerMonth", label: "Posts no mês", unit: "n", default: 30 },        // 1/dia
+      { metric: "storiesPerMonth", label: "Stories no mês", unit: "n", default: 120 },   // 4/dia
+      { metric: "adsPerMonth", label: "Ads no mês", unit: "n", default: 48 },            // 12/semana
+      // Resultado (secundárias por ora, sem alvo — pra ajustar no futuro).
       { metric: "followerGrowth", label: "Novos seguidores no mês", unit: "n", default: null },
       { metric: "engagementRate", label: "Taxa de engajamento", unit: "%", default: null },
       { metric: "reachMonth", label: "Alcance no mês", unit: "n", default: null },

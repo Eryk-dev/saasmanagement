@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   ensureIntegrationStage, migrateLeverAdsCrmFunnel, migrateLeverAdsSdrCadence, ensureFunnelKinds,
-  ensureLossReasons, ensureNoShowReason, ensureSdrGoals, ensureCloserGoals, ensureUserRoles, ensureUserSaasScope, ensureUserScreens, DEFAULT_LOSS_REASONS,
+  ensureLossReasons, ensureNoShowReason, ensureSdrGoals, ensureCloserGoals, ensureSocialGoals, ensureUserRoles, ensureUserSaasScope, ensureUserScreens, DEFAULT_LOSS_REASONS,
 } from "../src/migrations.js";
 
 const FUNNEL = [
@@ -243,6 +243,21 @@ test("ensureCloserGoals semeia metas de qualidade só em funil com call, uma vez
   assert.equal(gl.find((g) => g.metric === "proposalWinRate").target, 30);
   assert.equal((await repo.list("goals")).filter((g) => g.saas === "semcall").length, 0);
   assert.equal(await ensureCloserGoals(repo), 0); // idempotente (marcador closerGoalsV1)
+});
+
+test("ensureSocialGoals semeia a demanda de conteúdo (30 posts, 120 stories, 48 ads), uma vez", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "lev" });
+  // meta já editada não é duplicada nem sobrescrita
+  await repo.create("goals", { id: "g0", saas: "lev", scope: "role", key: "social", metric: "postsPerMonth", target: 20, period: "month" });
+
+  assert.equal(await ensureSocialGoals(repo), 2); // stories + ads (posts já tinha)
+  const gl = (await repo.list("goals")).filter((g) => g.saas === "lev" && g.key === "social");
+  assert.deepEqual(gl.map((g) => g.metric).sort(), ["adsPerMonth", "postsPerMonth", "storiesPerMonth"]);
+  assert.equal(gl.find((g) => g.metric === "postsPerMonth").target, 20);   // preserva a manual
+  assert.equal(gl.find((g) => g.metric === "storiesPerMonth").target, 120);
+  assert.equal(gl.find((g) => g.metric === "adsPerMonth").target, 48);
+  assert.equal(await ensureSocialGoals(repo), 0); // idempotente (marcador socialGoalsV1)
 });
 
 test("ensureUserRoles espelha o time antigo e não inventa usuário", async () => {
