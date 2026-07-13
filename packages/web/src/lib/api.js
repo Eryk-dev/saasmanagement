@@ -143,6 +143,11 @@ export const api = {
   campaignSendEmail: (id, leadIds) => req("POST", `/api/campaigns/${encodeURIComponent(id)}/send-email`, { leadIds }),
   // Métricas de conversão no funil por campanha do produto.
   campaignMetrics: (saas) => req("GET", `/api/campaigns/metrics/${encodeURIComponent(saas)}`),
+  // Sequências (drip): CRUD via api.list/create/update("sequences"/"drip_templates").
+  sequenceEnroll: (id, leadIds) => req("POST", `/api/sequences/${encodeURIComponent(id)}/enroll`, { leadIds }),
+  sequenceWaSent: (enrollmentId) => req("POST", "/api/sequences/wa-sent", { enrollmentId }),
+  sequenceMetrics: (saas) => req("GET", `/api/sequences/metrics/${encodeURIComponent(saas)}`),
+  sequenceRun: () => req("POST", "/api/sequences/run", {}),
   // Metas de desempenho por vaga/pessoa (ferramenta; escreve na collection goals).
   metas: (saas) => req("GET", `/api/metas/${encodeURIComponent(saas)}`),
   saveMetas: (saas, goals) => req("PUT", `/api/metas/${encodeURIComponent(saas)}`, { goals }),

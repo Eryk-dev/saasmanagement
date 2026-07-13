@@ -67,6 +67,7 @@ function DisparosScreen({ onOpenLead }) {
   const [metrics, setMetrics] = useS([]); // [{ id, name, sent, advanced, booked, won }]
   const [note, setNote] = useS(null);   // { ok, text }
   const [err, setErr] = useS(null);
+  const [tab, setTab] = useS("disparos"); // disparos | sequencias | templates
   const gmailOn = !!window.SEED?.CONFIG?.google?.gmail; // escopo de envio concedido?
 
   // Carrega as campanhas salvas do produto + as métricas + arma o público padrão.
@@ -227,17 +228,34 @@ function DisparosScreen({ onOpenLead }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead title="Disparos" sub={`${recipients.length} no público · ${selected.size} selecionados`}>
-        <input value={camp.name} onChange={(e) => setCamp((c) => ({ ...c, name: e.target.value }))} placeholder="nome da campanha"
-          style={{ ...field, width: 200, height: 26, padding: "0 10px", fontSize: 12.5 }} />
-        <Pill tone={camp.status === "sending" ? "warn" : camp.id ? "pos" : "mut"}>{camp.status === "sending" ? "disparando" : camp.id ? "salva" : "rascunho"}</Pill>
-        <button onClick={save} disabled={saving}
-          style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12, fontWeight: 600 }}>
-          {saving ? "salvando…" : "salvar"}
-        </button>
-        <button onClick={newCampaign} className="mono dim" style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", fontSize: 12 }}>+ nova</button>
+      <PageHead title="Disparos" sub={tab === "disparos" ? `${recipients.length} no público · ${selected.size} selecionados` : tab === "sequencias" ? "sequências automáticas de nutrição (drip)" : "biblioteca de conteúdo reutilizável"}>
+        <span style={{ display: "inline-flex", gap: 4, marginRight: 4 }}>
+          {[["disparos", "Disparos"], ["sequencias", "Sequências"], ["templates", "Templates"]].map(([id, lbl]) => (
+            <button key={id} onClick={() => setTab(id)} style={{
+              height: 26, padding: "0 11px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, cursor: "pointer",
+              border: "1px solid " + (tab === id ? "var(--accent-line)" : "var(--line-2)"),
+              background: tab === id ? "var(--accent-soft)" : "var(--bg-1)", color: tab === id ? "var(--accent)" : "var(--fg-2)",
+            }}>{lbl}</button>
+          ))}
+        </span>
+        {tab === "disparos" && (
+          <>
+            <input value={camp.name} onChange={(e) => setCamp((c) => ({ ...c, name: e.target.value }))} placeholder="nome da campanha"
+              style={{ ...field, width: 180, height: 26, padding: "0 10px", fontSize: 12.5 }} />
+            <Pill tone={camp.status === "sending" ? "warn" : camp.id ? "pos" : "mut"}>{camp.status === "sending" ? "disparando" : camp.id ? "salva" : "rascunho"}</Pill>
+            <button onClick={save} disabled={saving}
+              style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12, fontWeight: 600 }}>
+              {saving ? "salvando…" : "salvar"}
+            </button>
+            <button onClick={newCampaign} className="mono dim" style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", fontSize: 12 }}>+ nova</button>
+          </>
+        )}
       </PageHead>
 
+      {tab === "sequencias" && <SequencesTab product={product} leads={leads} stageOptions={stageOptions} defaultStages={defaultStages} />}
+      {tab === "templates" && <TemplatesTab product={product} />}
+
+      {tab === "disparos" && (
       <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)", display: "flex", flexDirection: "column", gap: 14 }}>
         {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
         {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
@@ -457,6 +475,296 @@ function DisparosScreen({ onOpenLead }) {
                   );
                 })}
               </div>
+            </div>
+          )}
+        </div>
+      </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────── Sequências (drip) ──────────
+// Aba de sequências automáticas: cria/edita a sequência (gatilho por etapa +
+// passos por canal com delay), vê a conversão por sequência e trabalha a FILA
+// de WhatsApp assistido (os passos de WhatsApp param aqui até o operador mandar).
+const CH_LABEL = { email: "E-mail", whatsapp: "WhatsApp" };
+function blankSeq(saas, me) {
+  return { id: null, saas, name: "", status: "draft", trigger: { stages: [] }, exitOn: { won: true, booked: true, optOut: true },
+    steps: [{ channel: "email", delayDays: 0, subject: "", body: "" }], createdBy: me };
+}
+const interpolateSeq = (text, toks) => String(text || "").replace(/\{\{(\w+)\}\}/g, (_, k) => (toks && toks[k] != null ? toks[k] : `{{${k}}}`));
+
+function SequencesTab({ product, leads, stageOptions, defaultStages }) {
+  const { version } = useData();
+  const me = currentUser()?.id || "";
+  const [list, setList] = useS([]);
+  const [seq, setSeq] = useS(() => blankSeq(product?.id, me));
+  const [enrollments, setEnrollments] = useS([]);
+  const [metrics, setMetrics] = useS([]);
+  const [templates, setTemplates] = useS([]);
+  const [busy, setBusy] = useS(false);
+  const [note, setNote] = useS(null);
+
+  function reload() {
+    if (!product?.id) return;
+    api.list("sequences", { saas: product.id }).then((r) => setList(Array.isArray(r) ? r : [])).catch(() => setList([]));
+    api.list("sequence_enrollments", { saas: product.id, status: "waiting" }).then((r) => setEnrollments(Array.isArray(r) ? r : [])).catch(() => setEnrollments([]));
+    api.sequenceMetrics(product.id).then((r) => setMetrics(r?.sequences || [])).catch(() => setMetrics([]));
+    api.list("drip_templates", { saas: product.id }).then((r) => setTemplates(Array.isArray(r) ? r : [])).catch(() => setTemplates([]));
+  }
+  useE(() => { setSeq(blankSeq(product?.id, me)); reload(); }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useE(() => { reload(); }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const payload = () => ({
+    name: seq.name?.trim() || "Sequência sem nome", saas: product.id, status: seq.status || "draft",
+    trigger: { stages: seq.trigger?.stages || [] }, exitOn: seq.exitOn || {}, steps: seq.steps || [],
+    createdBy: seq.createdBy || me, createdAt: seq.createdAt || new Date().toISOString(),
+  });
+  async function save() {
+    if (!product?.id) return;
+    setBusy(true); setNote(null);
+    try {
+      if (seq.id) await api.update("sequences", seq.id, payload());
+      else { const c = await api.create("sequences", payload()); setSeq((s) => ({ ...s, id: c.id })); }
+      reload(); setNote({ ok: true, text: "sequência salva" });
+    } catch (e) { setNote({ ok: false, text: e.message }); }
+    setBusy(false);
+  }
+  async function removeSeq() {
+    if (!seq.id || !window.confirm("Apagar esta sequência? As inscrições param.")) return;
+    try { await api.remove("sequences", seq.id); setSeq(blankSeq(product?.id, me)); reload(); } catch (e) { setNote({ ok: false, text: e.message }); }
+  }
+  function loadSeq(s) {
+    setSeq({ id: s.id, saas: s.saas, name: s.name || "", status: s.status || "draft",
+      trigger: { stages: s.trigger?.stages || [] }, exitOn: { won: s.exitOn?.won !== false, booked: s.exitOn?.booked !== false, optOut: s.exitOn?.optOut !== false },
+      steps: (s.steps || []).map((st) => ({ ...st })), createdAt: s.createdAt, createdBy: s.createdBy });
+    setNote(null);
+  }
+  const setStep = (i, patch) => setSeq((s) => ({ ...s, steps: s.steps.map((st, j) => (j === i ? { ...st, ...patch } : st)) }));
+  const addStep = (channel) => setSeq((s) => ({ ...s, steps: [...s.steps, channel === "whatsapp" ? { channel: "whatsapp", delayDays: 3, text: "" } : { channel: "email", delayDays: 3, subject: "", body: "" }] }));
+  const removeStep = (i) => setSeq((s) => ({ ...s, steps: s.steps.filter((_, j) => j !== i) }));
+  const toggleTrigger = (st) => setSeq((s) => { const set = new Set(s.trigger?.stages || []); set.has(st) ? set.delete(st) : set.add(st); return { ...s, trigger: { stages: [...set] } }; });
+
+  const myMetrics = metrics.find((m) => m.id === seq.id);
+  const leadById = Object.fromEntries((leads || []).map((l) => [l.id, l]));
+
+  const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: 14 };
+  const kick = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
+  const field = { width: "100%", padding: "7px 9px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 };
+  const chip = (on) => ({ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", fontSize: 11.5, fontWeight: 600, cursor: "pointer", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"), background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)" });
+
+  if (!product) return null;
+
+  return (
+    <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)", display: "flex", flexDirection: "column", gap: 14 }}>
+      {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
+
+      {/* Sequências salvas */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        <span style={kick}>sequências</span>
+        {list.map((s) => (
+          <button key={s.id} onClick={() => loadSeq(s)} style={{ ...chip(seq.id === s.id), display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span style={{ width: 7, height: 7, borderRadius: 99, background: s.status === "active" ? "var(--pos)" : s.status === "paused" ? "var(--warn)" : "var(--fg-4)" }} />
+            {s.name || "sem nome"}
+          </button>
+        ))}
+        <button onClick={() => setSeq(blankSeq(product?.id, me))} className="mono dim" style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", fontSize: 12 }}>+ nova</button>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 14 }}>
+        {/* Editor da sequência */}
+        <div style={{ ...box, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input value={seq.name} onChange={(e) => setSeq((s) => ({ ...s, name: e.target.value }))} placeholder="nome da sequência" style={{ ...field, flex: 1 }} />
+            <select value={seq.status} onChange={(e) => setSeq((s) => ({ ...s, status: e.target.value }))} style={{ ...field, width: 120 }}>
+              <option value="draft">rascunho</option>
+              <option value="active">ativa</option>
+              <option value="paused">pausada</option>
+            </select>
+          </div>
+
+          <div>
+            <div style={kick}>Gatilho · entra quem está nestas etapas</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+              {(stageOptions || []).map((st) => <button key={st} onClick={() => toggleTrigger(st)} style={chip((seq.trigger?.stages || []).includes(st))}>{st}</button>)}
+            </div>
+            {(!seq.trigger?.stages || !seq.trigger.stages.length) && <div className="mono dim" style={{ fontSize: 10.5, marginTop: 4 }}>sem gatilho a sequência não inscreve ninguém (você ainda pode inscrever na mão)</div>}
+          </div>
+
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={kick}>Passos</div>
+              <span style={{ display: "inline-flex", gap: 6 }}>
+                <button onClick={() => addStep("email")} className="mono" style={{ ...chip(false), height: 24, fontSize: 11 }}>+ e-mail</button>
+                <button onClick={() => addStep("whatsapp")} className="mono" style={{ ...chip(false), height: 24, fontSize: 11 }}>+ WhatsApp</button>
+              </span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
+              {seq.steps.map((st, i) => (
+                <div key={i} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: 10, background: "var(--bg-inset)" }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                    <span className="mono" style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)" }}>{i + 1}. {CH_LABEL[st.channel]}</span>
+                    <span className="mono dim" style={{ fontSize: 10.5, marginLeft: "auto" }}>esperar</span>
+                    <input type="number" min="0" value={st.delayDays ?? 0} onChange={(e) => setStep(i, { delayDays: Number(e.target.value) })} style={{ ...field, width: 58, padding: "4px 6px" }} />
+                    <span className="mono dim" style={{ fontSize: 10.5 }}>dias</span>
+                    <button onClick={() => removeStep(i)} className="mono dim" title="remover passo" style={{ fontSize: 13, color: "var(--neg)" }}>✕</button>
+                  </div>
+                  {templates.filter((t) => t.channel === st.channel).length > 0 && (
+                    <select defaultValue="" onChange={(e) => { const t = templates.find((x) => x.id === e.target.value); if (t) setStep(i, st.channel === "email" ? { subject: t.subject || "", body: t.body || "" } : { text: t.text || "" }); e.target.value = ""; }}
+                      style={{ ...field, marginBottom: 6, fontSize: 11.5, color: "var(--fg-3)" }}>
+                      <option value="">usar template…</option>
+                      {templates.filter((t) => t.channel === st.channel).map((t) => <option key={t.id} value={t.id}>{t.name || "sem nome"}</option>)}
+                    </select>
+                  )}
+                  {st.channel === "email" ? (
+                    <>
+                      <input value={st.subject || ""} onChange={(e) => setStep(i, { subject: e.target.value })} placeholder="assunto · {{nome}}" style={{ ...field, marginBottom: 6 }} />
+                      <textarea value={st.body || ""} onChange={(e) => setStep(i, { body: e.target.value })} rows={3} placeholder="corpo do e-mail · {{nome}} {{empresa}}" style={{ ...field, resize: "vertical", fontFamily: "inherit" }} />
+                    </>
+                  ) : (
+                    <textarea value={st.text || ""} onChange={(e) => setStep(i, { text: e.target.value })} rows={3} placeholder="mensagem de WhatsApp · {{nome}} (o operador manda pela fila)" style={{ ...field, resize: "vertical", fontFamily: "inherit" }} />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={kick}>sai quando</span>
+            {[["won", "fechou"], ["booked", "marcou call"], ["optOut", "descadastrou"]].map(([k, lbl]) => (
+              <label key={k} style={{ display: "inline-flex", gap: 5, alignItems: "center", fontSize: 12 }}>
+                <input type="checkbox" checked={seq.exitOn?.[k] !== false} onChange={(e) => setSeq((s) => ({ ...s, exitOn: { ...s.exitOn, [k]: e.target.checked } }))} />
+                {lbl}
+              </label>
+            ))}
+          </div>
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={save} disabled={busy} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12.5, fontWeight: 600 }}>{busy ? "salvando…" : "salvar sequência"}</button>
+            {seq.id && <button onClick={removeSeq} className="mono dim" style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", fontSize: 12, color: "var(--neg)" }}>apagar</button>}
+            {seq.status !== "active" && seq.id && <span className="mono dim" style={{ fontSize: 10.5, alignSelf: "center" }}>ative a sequência pra ela começar a inscrever e disparar</span>}
+          </div>
+        </div>
+
+        {/* Métricas + fila de WhatsApp */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={box}>
+            <div style={{ ...kick, marginBottom: 8 }}>Resultados · conversão no funil</div>
+            {myMetrics ? (
+              <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+                {[["inscritos", myMetrics.enrolled], ["avançou", myMetrics.advanced], ["marcou call", myMetrics.booked], ["fechou", myMetrics.won]].map(([lbl, v]) => (
+                  <div key={lbl}><div className="tnum" style={{ fontSize: 20, fontWeight: 700, color: lbl === "fechou" && v ? "var(--pos)" : "var(--fg-1)" }}>{v}</div><div style={kick}>{lbl}</div></div>
+                ))}
+                <div style={{ marginLeft: "auto", alignSelf: "center", fontSize: 11, color: "var(--fg-3)" }} className="mono">
+                  {myMetrics.statusCounts?.active || 0} ativos · {myMetrics.statusCounts?.waiting || 0} no whats · {myMetrics.statusCounts?.done || 0} concluídos · {myMetrics.statusCounts?.exited || 0} saíram
+                </div>
+              </div>
+            ) : <div className="mono dim" style={{ fontSize: 12 }}>salve e ative a sequência pra ver a conversão</div>}
+          </div>
+
+          <div style={box}>
+            <div style={{ ...kick, marginBottom: 8 }}>Fila de WhatsApp · {enrollments.length} pra mandar hoje</div>
+            {enrollments.length === 0 ? (
+              <div className="mono dim" style={{ fontSize: 12 }}>nenhum passo de WhatsApp pendente · o motor coloca aqui quando chega a vez</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 360, overflow: "auto" }}>
+                {enrollments.map((en) => {
+                  const s = list.find((x) => x.id === en.sequence);
+                  const step = s?.steps?.[en.stepIndex];
+                  const lead = leadById[en.lead];
+                  const wa = lead && waLink(lead.phone);
+                  const txt = step?.text && lead ? interpolateSeq(step.text, scriptTokens(lead, product)) : "";
+                  const waUrl = wa && txt ? `${wa}?text=${encodeURIComponent(txt)}` : null;
+                  const mark = async () => { try { await api.sequenceWaSent(en.id); reload(); } catch (e) { setNote({ ok: false, text: e.message }); } };
+                  return (
+                    <div key={en.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)" }}>
+                      <span style={{ minWidth: 0, flex: 1, display: "flex", gap: 6, alignItems: "baseline" }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lead?.name || en.lead}</span>
+                        <span className="mono dim" style={{ fontSize: 10 }}>{s?.name || ""} · passo {en.stepIndex + 1}</span>
+                      </span>
+                      {waUrl
+                        ? <a href={waUrl} target="_blank" rel="noopener noreferrer" onClick={mark} style={{ display: "inline-flex", alignItems: "center", height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid #25D366", color: "#128c4b", fontSize: 11.5, fontWeight: 600, textDecoration: "none" }}>abrir Whats ↗</a>
+                        : <button onClick={mark} className="mono" style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", fontSize: 11.5 }}>{wa ? "marcar enviado" : "sem telefone · marcar"}</button>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────── Templates ──────────────────
+// Biblioteca de conteúdo reutilizável pros passos das sequências (e disparos).
+function TemplatesTab({ product }) {
+  const { version } = useData();
+  const [list, setList] = useS([]);
+  const [t, setT] = useS(() => ({ id: null, channel: "email", name: "", subject: "", body: "", text: "" }));
+  const [note, setNote] = useS(null);
+
+  function reload() { if (product?.id) api.list("drip_templates", { saas: product.id }).then((r) => setList(Array.isArray(r) ? r : [])).catch(() => setList([])); }
+  useE(() => { reload(); setT({ id: null, channel: "email", name: "", subject: "", body: "", text: "" }); }, [product?.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function save() {
+    setNote(null);
+    const doc = { name: t.name?.trim() || "Template", saas: product.id, channel: t.channel, subject: t.subject || "", body: t.body || "", text: t.text || "" };
+    try {
+      if (t.id) await api.update("drip_templates", t.id, doc);
+      else await api.create("drip_templates", doc);
+      setT({ id: null, channel: "email", name: "", subject: "", body: "", text: "" });
+      reload(); setNote({ ok: true, text: "template salvo" });
+    } catch (e) { setNote({ ok: false, text: e.message }); }
+  }
+  async function del(id) { if (window.confirm("Apagar template?")) { try { await api.remove("drip_templates", id); reload(); } catch (e) { setNote({ ok: false, text: e.message }); } } }
+
+  const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: 14 };
+  const kick = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
+  const field = { width: "100%", padding: "7px 9px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 };
+  if (!product) return null;
+
+  return (
+    <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)", display: "flex", flexDirection: "column", gap: 14 }}>
+      {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14 }}>
+        <div style={{ ...box, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={kick}>{t.id ? "editar template" : "novo template"}</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input value={t.name} onChange={(e) => setT((x) => ({ ...x, name: e.target.value }))} placeholder="nome" style={{ ...field, flex: 1 }} />
+            <select value={t.channel} onChange={(e) => setT((x) => ({ ...x, channel: e.target.value }))} style={{ ...field, width: 130 }}>
+              <option value="email">E-mail</option>
+              <option value="whatsapp">WhatsApp</option>
+            </select>
+          </div>
+          {t.channel === "email" ? (
+            <>
+              <input value={t.subject} onChange={(e) => setT((x) => ({ ...x, subject: e.target.value }))} placeholder="assunto · {{nome}}" style={field} />
+              <textarea value={t.body} onChange={(e) => setT((x) => ({ ...x, body: e.target.value }))} rows={5} placeholder="corpo · {{nome}} {{empresa}}" style={{ ...field, resize: "vertical", fontFamily: "inherit" }} />
+            </>
+          ) : (
+            <textarea value={t.text} onChange={(e) => setT((x) => ({ ...x, text: e.target.value }))} rows={4} placeholder="mensagem · {{nome}}" style={{ ...field, resize: "vertical", fontFamily: "inherit" }} />
+          )}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={save} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12.5, fontWeight: 600 }}>{t.id ? "salvar" : "criar template"}</button>
+            {t.id && <button onClick={() => setT({ id: null, channel: "email", name: "", subject: "", body: "", text: "" })} className="mono dim" style={{ fontSize: 12 }}>cancelar</button>}
+          </div>
+        </div>
+
+        <div style={{ ...box }}>
+          <div style={{ ...kick, marginBottom: 8 }}>Biblioteca · {list.length}</div>
+          {list.length === 0 ? <div className="mono dim" style={{ fontSize: 12 }}>nenhum template ainda</div> : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {list.map((x) => (
+                <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)" }}>
+                  <span className="mono" style={{ fontSize: 10, color: "var(--accent)", width: 58 }}>{CH_LABEL[x.channel] || x.channel}</span>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.name || "sem nome"}</span>
+                  <button onClick={() => setT({ id: x.id, channel: x.channel || "email", name: x.name || "", subject: x.subject || "", body: x.body || "", text: x.text || "" })} className="mono dim" style={{ fontSize: 11 }}>editar</button>
+                  <button onClick={() => del(x.id)} className="mono dim" style={{ fontSize: 11, color: "var(--neg)" }}>apagar</button>
+                </div>
+              ))}
             </div>
           )}
         </div>

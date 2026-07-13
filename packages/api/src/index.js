@@ -12,6 +12,7 @@ import { initDb, repo } from "./db.js";
 import { registerRoutes } from "./routes.js";
 import { startMarketingAutoSync } from "./routes.marketing.js";
 import { startCallSummaries } from "./call-summaries.js";
+import { startDripSequences } from "./drip-runner.js";
 import { startTrainingReminder } from "./training-reminder.js";
 import { ensureDefaultAdmins, makeAuthHook } from "./auth.js";
 import { makeScreenGuardHook } from "./screens.js";
@@ -74,6 +75,9 @@ try {
   startMarketingAutoSync(repo, { log: app.log });
   // Resumo automático de calls: só faz algo com ANTHROPIC_API_KEY + Google conectado.
   startCallSummaries(repo, { ...app.integrationClients, log: app.log });
+  // Sequências de nutrição (drip): auto-inscreve e avança os passos (e-mail pela
+  // conta Google; WhatsApp fica na fila assistida). No-op sem sequência ativa.
+  startDripSequences(repo, { ...app.integrationClients, log: app.log });
   // Lembrete diário de treinamento (flashcards vencendo) — no-op sem Discord.
   startTrainingReminder(repo, { log: app.log });
 } catch (err) {

@@ -20,6 +20,7 @@ import { registerMarketingRoutes } from "./routes.marketing.js";
 import { registerSocialRoutes } from "./routes.social.js";
 import { registerOfferRoutes } from "./routes.offers.js";
 import { registerCampaignRoutes } from "./routes.disparos.js";
+import { registerSequenceRoutes } from "./routes.sequences.js";
 import { registerPitchRoutes } from "./routes.pitch.js";
 import { registerMetasRoutes } from "./routes.metas.js";
 import { registerFlashcardRoutes } from "./routes.flashcards.js";
@@ -107,6 +108,15 @@ export const CREATE_DEFAULTS = {
   // `sent` = progresso por lead ({leadId: {whatsapp, email}}, ISO), mesclado no
   // servidor. channels/email/wa = o que foi composto.
   campaigns: { name: "", saas: "", status: "draft", stages: [], channels: { email: false, whatsapp: true }, email: { subject: "", body: "" }, wa: { text: "" }, sent: {}, createdAt: "", createdBy: "" },
+  // Sequência de nutrição (drip): `trigger.stages` = etapas que auto-inscrevem;
+  // `steps` = [{ channel:"email"|"whatsapp", delayDays, subject, body, text }];
+  // `exitOn` = condições de saída. status active/paused/draft (só active roda).
+  sequences: { name: "", saas: "", status: "draft", trigger: { stages: [] }, steps: [], exitOn: { won: true, booked: true, optOut: true }, createdAt: "", createdBy: "" },
+  // Progresso de UM lead numa sequência. status: active (rodando) / waiting
+  // (parado num passo de WhatsApp assistido até o operador mandar) / done / exited.
+  sequence_enrollments: { saas: "", sequence: "", lead: "", status: "active", stepIndex: 0, nextRunAt: "", pendingChannel: "", exitReason: "", enrolledAt: "", lastAt: "" },
+  // Conteúdo reutilizável dos passos (biblioteca). channel email/whatsapp.
+  drip_templates: { name: "", saas: "", channel: "email", subject: "", body: "", text: "" },
 };
 
 // Receita e nº de clientes são DERIVADOS da coleção `customers`, não dos campos
@@ -173,6 +183,9 @@ function listFilter(collection, q) {
   if (collection === "tasks") return (t) => (!q.saas || t.saas === q.saas) && (!q.assignee || (t.assignees || (t.assignee ? [t.assignee] : [])).includes(q.assignee)) && (!q.column || t.column === q.column);
   if (collection === "activities") return (a) => (!q.lead || a.lead === q.lead) && (!q.saas || a.saas === q.saas) && (!q.type || a.type === q.type) && (!q.since || String(a.at || "") >= q.since);
   if (collection === "campaigns") return (c) => !q.saas || c.saas === q.saas;
+  if (collection === "sequences") return (s) => !q.saas || s.saas === q.saas;
+  if (collection === "sequence_enrollments") return (e) => (!q.saas || e.saas === q.saas) && (!q.sequence || e.sequence === q.sequence) && (!q.status || e.status === q.status) && (!q.lead || e.lead === q.lead);
+  if (collection === "drip_templates") return (t) => (!q.saas || t.saas === q.saas) && (!q.channel || t.channel === q.channel);
   return null;
 }
 
@@ -235,6 +248,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Registrado DEPOIS do googleClient/mailer porque o envio nativo de e-mail
   // (send-email) e o gate de gmail dependem deles.
   registerCampaignRoutes(app, repo, { anthropic: anthropicClient, google: googleClient, mailer: mailerClient });
+  // Sequências de nutrição (drip): rotas de inscrição/avanço/métricas + tick manual.
+  registerSequenceRoutes(app, repo, { mailer: mailerClient });
   // Poller de resumos (index.js) usa os MESMOS clients das rotas.
   if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, anthropic: anthropicClient, mailer: mailerClient });
 

@@ -43,6 +43,9 @@ export const COLLECTIONS = {
   social_posts: [],  // histórico de publicações orgânicas feitas pelo cockpit
   offers: [],        // links de pagamento das ofertas por produto (ferramenta)
   campaigns: [],     // disparos (e-mail + WhatsApp) pros leads qualificados por produto (ferramenta)
+  sequences: [],     // sequências de nutrição (drip): passos por canal + gatilho por etapa
+  sequence_enrollments: [], // progresso de cada lead numa sequência (stepIndex, nextRunAt, status)
+  drip_templates: [], // conteúdo reutilizável (e-mail/WhatsApp) pros passos das sequências
   flashcards: [],    // flashcards de treinamento por vaga (ferramenta)
   training_attempts: [], // tentativas do treino digitado (legado) — histórico preservado
   training_states: [],   // estado FSRS por usuário×produto (agendamento individual dos cards)
