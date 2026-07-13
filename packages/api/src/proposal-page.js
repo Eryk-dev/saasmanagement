@@ -403,6 +403,42 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
     .price-pending .price-reveal .price-card, .price-pending .close-line, .price-pending .accept-row, .price-pending .plan-opts,
     .price-pending .stage-item { opacity: 1; transform: none; } }
 
+  /* ── Layout empilhado do pricing (slides com benefitGroups) ─────────────────
+     Grupos de benefícios em 3 blocos LADO A LADO; o preço vira uma faixa
+     horizontal separada embaixo. Some o vazio da grade 2-colunas. */
+  .price-stack { display: block; }
+  .price-stack .benefits-row { margin-bottom: 26px; }
+  .price-stack .benefits-title { margin-bottom: 18px; }
+  .benefit-cols { display: grid; grid-template-columns: 1fr; gap: 18px; }
+  @media (min-width: 900px) { .benefit-cols { grid-template-columns: repeat(3, 1fr); gap: 22px; align-items: start; } }
+  .benefit-col { background: #051C2C; color: #F3FBFF; border-radius: calc(var(--radius) + 10px); padding: 30px 28px;
+    --ink-2: color-mix(in oklab, #F3FBFF 78%, transparent); --ink-3: color-mix(in oklab, #F3FBFF 60%, transparent);
+    --accent-line: color-mix(in oklab, var(--accent) 30%, transparent); }
+  @media (min-width: 768px) { .benefit-col { padding: 34px 32px; } }
+  .benefit-col .bg-title { margin-top: 0; color: var(--accent); font-size: 12px; }
+  .benefit-col .price-list { gap: 13px; color: var(--ink-2); font-size: 16px; }
+  .benefit-col .benefit-synth { margin: 16px 0 0; }
+  /* Faixa de preço horizontal (bloco separado). Um card centralizado; com a
+     escada secreta, os cards ficam LADO A LADO — o anterior riscado e recuado. */
+  .price-band { position: relative; display: flex; flex-flow: row wrap; justify-content: center; align-items: stretch; gap: 22px; }
+  .price-band .price-card { flex: 0 1 460px; min-width: 280px; margin: 0; padding: 34px 34px; }
+  @media (min-width: 768px) { .price-band .price-card { padding: 40px 40px; } }
+  .price-band .price-number .amount { font-size: clamp(56px, 8vw, 108px); }
+  .price-band .price-card.offer2, .price-band .price-card.offer3 { display: none; }
+  .offer2-on .price-band .price-card.offer2, .offer3-on .price-band .price-card.offer3 { display: block; animation: offer-slide-in .5s var(--ease-out); }
+  @keyframes offer-slide-in { from { opacity: 0; transform: translateX(30px) scale(.96); } to { opacity: 1; transform: none; } }
+  .price-band .price-card.offer1, .price-band .price-card.offer2 { transition: filter .5s var(--ease-out), opacity .5s var(--ease-out), transform .5s var(--ease-out); }
+  /* Preço anterior: acinzentado, recuado e RISCADO (âncora de comparação). */
+  .offer2-on .price-band .price-card.offer1,
+  .offer3-on .price-band .price-card.offer1,
+  .offer3-on .price-band .price-card.offer2 { filter: grayscale(1); opacity: .5; transform: scale(.86); }
+  .offer2-on .price-band .price-card.offer1 .price-number,
+  .offer3-on .price-band .price-card.offer1 .price-number,
+  .offer3-on .price-band .price-card.offer2 .price-number { text-decoration: line-through; text-decoration-thickness: 3px; text-decoration-color: var(--accent); }
+  @media (prefers-reduced-motion: reduce) {
+    .offer2-on .price-band .price-card.offer2, .offer3-on .price-band .price-card.offer3 { animation: none; }
+    .price-band .price-card.offer1, .price-band .price-card.offer2 { transition: none; } }
+
   .closer-block { margin: 48px auto 0; max-width: 520px; padding: 24px; background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); display: flex; align-items: center; gap: 16px; text-align: left; }
   .light .closer-block { background: var(--bg); color: var(--fg); border-color: transparent; }
   .closer-avatar { width: 56px; height: 56px; border-radius: var(--r-full); background: linear-gradient(135deg, var(--accent), color-mix(in oklab, var(--accent) 40%, var(--bg))); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 600; color: var(--accent-fg); overflow: hidden; }
@@ -1011,27 +1047,55 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       // O wrapper .price-reveal mantém os cards na MESMA célula do grid
       // (empilhados, ancorados no rodapé); sem ele cairiam na coluna dos benefícios.
       var wrapCards = reveal || hasOffer2 || hasOffer3;
-      pw.innerHTML =
-        (wrapCards ? '<div class="price-reveal' + (hasOffer2 || hasOffer3 ? ' has-offer2' : '') + '">' : '') +
+      var offersHtml =
         priceCardHtml(s, hasOffer2 || hasOffer3 ? 'offer1' : '', !reveal) +
         (hasOffer2 ? priceCardHtml(s.offer2, 'offer2', false) : '') +
-        (hasOffer3 ? priceCardHtml(s.offer3, 'offer3', false) : '') +
-        (reveal ? '<div class="price-veil" aria-hidden="true"></div>' : '') +
-        (wrapCards ? '</div>' : '') +
-        '<div data-reveal>' +
-          '<div class="benefits-card">' + (s.featuresTitle ? '<div class="benefits-title">' + fmt(s.featuresTitle) + '</div>' : '') +
-            benefitsInner + '</div>' +
-          (hasGuarantee ? '<div class="guarantee" style="margin-top:16px"><div class="guarantee-head">' +
-            '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L4 6v6c0 5.5 3.5 9.5 8 10 4.5-.5 8-4.5 8-10V6l-8-4z" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
-            '<span>' + fmt(s.guaranteeHead || '') + '</span></div><h3>' + fmt(s.guaranteeTitle || '') + '</h3><p>' + fmt(s.guaranteeText || '') + '</p></div>' : '') +
-          (s.paybackNum ? '<div class="payback"><div class="mono">' + fmt(s.paybackLabel || '') + '</div><div class="pb-num">' + fmt(s.paybackNum) + '</div><div class="pb-cap">' + fmt(s.paybackCaption || '') + '</div></div>' : '') + '</div>';
+        (hasOffer3 ? priceCardHtml(s.offer3, 'offer3', false) : '');
+      var veilHtml = reveal ? '<div class="price-veil" aria-hidden="true"></div>' : '';
+      var guaranteeHtml = hasGuarantee ? '<div class="guarantee" style="margin-top:16px"><div class="guarantee-head">' +
+        '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L4 6v6c0 5.5 3.5 9.5 8 10 4.5-.5 8-4.5 8-10V6l-8-4z" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+        '<span>' + fmt(s.guaranteeHead || '') + '</span></div><h3>' + fmt(s.guaranteeTitle || '') + '</h3><p>' + fmt(s.guaranteeText || '') + '</p></div>' : '';
+      var paybackHtml = s.paybackNum ? '<div class="payback"><div class="mono">' + fmt(s.paybackLabel || '') + '</div><div class="pb-num">' + fmt(s.paybackNum) + '</div><div class="pb-cap">' + fmt(s.paybackCaption || '') + '</div></div>' : '';
+      if (groups) {
+        // Layout empilhado (só quando há benefitGroups, ex.: slide de Investimento):
+        // os 3 grupos viram blocos LADO A LADO e o preço desce pra uma faixa
+        // horizontal própria embaixo — some o vazio da antiga grade 2-colunas. A
+        // escada secreta (ofertas 2/3) entra AO LADO da principal, riscando-a:
+        // o preço anterior fica visível como âncora de comparação.
+        pw.className = 'price-wrap price-stack';
+        var colsHtml = groups.map(function (g) {
+          var items = visibleFeats(g.items);
+          if (!items.length) return '';
+          return '<div class="benefit-col">' +
+            (g.title ? '<div class="bg-title stage-item">' + fmt(g.title) + '</div>' : '') +
+            '<ul class="price-list">' + items.map(function (f) { return featLi(f, 'stage-item'); }).join('') + '</ul>' +
+            (g.synth ? '<div class="benefit-synth stage-item">' + fmt(g.synth) + '</div>' : '') +
+          '</div>';
+        }).join('');
+        pw.innerHTML =
+          '<div class="benefits-row" data-reveal>' +
+            (s.featuresTitle ? '<div class="benefits-title">' + fmt(s.featuresTitle) + '</div>' : '') +
+            '<div class="benefit-cols">' + colsHtml + '</div>' +
+          '</div>' +
+          '<div class="price-reveal price-band' + (hasOffer2 || hasOffer3 ? ' has-ladder' : '') + '">' + offersHtml + veilHtml + '</div>' +
+          (guaranteeHtml || paybackHtml ? '<div data-reveal style="margin-top:16px">' + guaranteeHtml + paybackHtml + '</div>' : '');
+      } else {
+        pw.innerHTML =
+          (wrapCards ? '<div class="price-reveal' + (hasOffer2 || hasOffer3 ? ' has-offer2' : '') + '">' : '') +
+          offersHtml + veilHtml +
+          (wrapCards ? '</div>' : '') +
+          '<div data-reveal>' +
+            '<div class="benefits-card">' + (s.featuresTitle ? '<div class="benefits-title">' + fmt(s.featuresTitle) + '</div>' : '') +
+              benefitsInner + '</div>' +
+            guaranteeHtml + paybackHtml + '</div>';
+      }
       w.appendChild(pw);
       if (reveal) {
         // Fila de passos: título+1º item juntos, depois um elemento por comando.
         var steps = [];
         if (groups) {
           var pendTitle = null;
-          pw.querySelectorAll('.benefits-card .stage-item').forEach(function (n) {
+          pw.querySelectorAll('.stage-item').forEach(function (n) {
             if (n.classList.contains('bg-title')) { pendTitle = n; return; }
             steps.push(pendTitle ? [pendTitle, n] : [n]);
             pendTitle = null;
