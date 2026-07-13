@@ -21,6 +21,7 @@ const NAV = [
   { id: "forms",      label: "Formulários", icon: "▤",  group: "tools" },
   { id: "proposals",  label: "Propostas",   icon: "▥",  group: "tools" },
   { id: "creative",   label: "Estáticos",   icon: "◨",  group: "tools" },
+  { id: "offers",     label: "Pagamentos",  icon: "◇",  group: "tools" },
   { id: "tasks",      label: "Tarefas",     icon: "▣",  group: "tools" },
   { id: "settings",   label: "Ajustes",     icon: "✦",  group: "system" },
 ];

@@ -125,6 +125,9 @@ export const api = {
   socialSummary: (saas, days) => req("GET", `/api/social/summary?saas=${encodeURIComponent(saas)}${days ? `&days=${days}` : ""}`),
   socialAudience: (saas) => req("GET", `/api/social/audience?saas=${encodeURIComponent(saas)}`),
   socialPosts: (saas) => req("GET", `/api/social/posts?saas=${encodeURIComponent(saas)}`),
+  // Links de pagamento das ofertas (ferramenta) — leitura e edição pra todo o time.
+  offers: (saas) => req("GET", `/api/offers/${encodeURIComponent(saas)}`),
+  saveOffers: (saas, items) => req("PUT", `/api/offers/${encodeURIComponent(saas)}`, { items }),
   socialPublish: (payload) => req("POST", "/api/social/publish", payload),
   // Copy do post por IA: preenche os campos do template + legenda a partir da dor.
   socialAiCopy: (payload) => req("POST", "/api/social/ai-copy", payload),
