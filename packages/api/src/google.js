@@ -91,9 +91,13 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
   // Evento no calendário PRIMÁRIO da conta conectada, com Meet anexado.
   // start/end no formato do Calendar ({ dateTime, timeZone? }) — quem chama
   // decide o fuso (callAt do lead é hora de Brasília, sem sufixo Z).
-  async function createMeetEvent({ summary, description = "", start, end, attendees = [] }) {
+  // calendarId = calendário onde o evento nasce (default "primary" da conta
+  // conectada). Apontar pra um calendário de outra identidade (ex.:
+  // contato@leverads.com.br) faz o convite sair COM essa identidade — só
+  // funciona se a conta conectada tiver acesso de escrita a esse calendário.
+  async function createMeetEvent({ summary, description = "", start, end, attendees = [], calendarId = "primary" }) {
     const token = await accessToken();
-    const res = await f(`${CAL_URL}/calendars/primary/events?conferenceDataVersion=1&sendUpdates=all`, {
+    const res = await f(`${CAL_URL}/calendars/${encodeURIComponent(calendarId)}/events?conferenceDataVersion=1&sendUpdates=all`, {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
       body: JSON.stringify({

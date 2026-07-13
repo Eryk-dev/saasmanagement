@@ -122,6 +122,42 @@ test("rotas: status/auth-url/callback com state + POST /leads/:id/meet grava cal
   await app.close();
 });
 
+test("createMeetEvent: cria o evento no calendarId indicado (controle do remetente do convite)", async () => {
+  const repo = makeMemRepo();
+  const calls = [];
+  const f = async (url, init = {}) => {
+    calls.push({ url: String(url), init });
+    const ok = (b) => ({ status: 200, json: async () => b });
+    if (String(url).includes("oauth2.googleapis.com/token")) return ok({ access_token: "at", refresh_token: "rt", expires_in: 3600, id_token: idToken() });
+    if (String(url).includes("/events?")) return ok({ id: "ev", hangoutLink: "https://meet.google.com/xyz", htmlLink: "" });
+    return ok({});
+  };
+  const g = makeGoogle({ fetch: f, clientId: "cid", clientSecret: "sec", repo });
+  await g.exchangeCode("c", "https://x/cb");
+  await g.createMeetEvent({ summary: "s", start: {}, end: {}, calendarId: "contato@leverads.com.br" });
+  const ev = calls.find((c) => c.url.includes("/events?"));
+  assert.match(ev.url, /\/calendars\/contato%40leverads\.com\.br\/events/); // e-mail encodado no path
+  // default segue primary
+  const calls2 = [];
+  const f2 = makeGoogleFetch(); const g2 = makeGoogle({ fetch: f2, clientId: "cid", clientSecret: "sec", repo: makeMemRepo() });
+  await g2.exchangeCode("c", "https://x/cb");
+  await g2.createMeetEvent({ summary: "s", start: {}, end: {} });
+  assert.ok(f2.calls.some((c) => c.url.includes("/calendars/primary/events")));
+});
+
+test("POST /meet: e-mail do body entra nos convidados", async () => {
+  const repo = makeMemRepo();
+  await repo.create("leads", { id: "le2", saas: "leverads", name: "Bia" });
+  const g = makeGoogle({ fetch: makeGoogleFetch(), clientId: "cid", clientSecret: "sec", repo });
+  const app = Fastify();
+  registerRoutes(app, repo, { google: g });
+  const state = new URL((await app.inject({ url: "/api/google/auth-url" })).json().url).searchParams.get("state");
+  await app.inject({ url: `/api/google/callback?code=c&state=${state}` });
+  const meet = (await app.inject({ method: "POST", url: "/api/leads/le2/meet", payload: { email: "bia@cliente.com" } })).json();
+  assert.ok(meet.attendees.includes("bia@cliente.com"));
+  await app.close();
+});
+
 test("sem GOOGLE_CLIENT_ID/SECRET: auth-url e meet respondem 503 com instrução", async () => {
   const repo = makeMemRepo();
   await repo.create("leads", { id: "le1", saas: "leverads", name: "Ana" });
