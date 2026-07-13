@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   ensureIntegrationStage, migrateLeverAdsCrmFunnel, migrateLeverAdsSdrCadence, ensureFunnelKinds,
-  ensureLossReasons, ensureNoShowReason, ensureSdrGoals, ensureUserRoles, ensureUserSaasScope, ensureUserScreens, DEFAULT_LOSS_REASONS,
+  ensureLossReasons, ensureNoShowReason, ensureSdrGoals, ensureCloserGoals, ensureUserRoles, ensureUserSaasScope, ensureUserScreens, DEFAULT_LOSS_REASONS,
 } from "../src/migrations.js";
 
 const FUNNEL = [
@@ -230,6 +230,19 @@ test("ensureSdrGoals semeia metas de taxa só em funil com call, uma vez, sem du
   assert.equal((await repo.list("goals")).filter((g) => g.saas === "semcall").length, 0); // sem call, nada
 
   assert.equal(await ensureSdrGoals(repo), 0); // idempotente (marcador sdrGoalsV1)
+});
+
+test("ensureCloserGoals semeia metas de qualidade só em funil com call, uma vez", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "lev", funnel: [{ stage: "Call agendada", kind: "call" }] });
+  await repo.create("products", { id: "semcall", funnel: [{ stage: "Novo", kind: "novo" }] });
+
+  assert.equal(await ensureCloserGoals(repo), 2); // proposalWinRate + winRateCall
+  const gl = (await repo.list("goals")).filter((g) => g.saas === "lev" && g.key === "closer");
+  assert.deepEqual(gl.map((g) => g.metric).sort(), ["proposalWinRate", "winRateCall"]);
+  assert.equal(gl.find((g) => g.metric === "proposalWinRate").target, 30);
+  assert.equal((await repo.list("goals")).filter((g) => g.saas === "semcall").length, 0);
+  assert.equal(await ensureCloserGoals(repo), 0); // idempotente (marcador closerGoalsV1)
 });
 
 test("ensureUserRoles espelha o time antigo e não inventa usuário", async () => {

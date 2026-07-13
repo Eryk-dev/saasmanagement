@@ -80,7 +80,7 @@ test("Closer: ganhos, receita, taxa de fechamento e ticket na janela", async () 
   const { app, repo } = await buildApp();
   await repo.create("leads", { id: "w1", saas: "leverads", closer: "u_clo", stage: "Ganho", amount: 600, createdAt: "2026-07-02T10:00:00.000Z", stageSince: "2026-07-08T10:00:00.000Z", callAt: "2026-07-05T10:00:00.000Z" });
   await repo.create("leads", { id: "w2", saas: "leverads", closer: "u_clo", stage: "Ganho", amount: 400, createdAt: "2026-07-03T10:00:00.000Z", stageSince: "2026-07-09T10:00:00.000Z" });
-  await repo.create("leads", { id: "x1", saas: "leverads", closer: "u_clo", stage: "Perdido", createdAt: "2026-07-01T10:00:00.000Z", stageSince: "2026-07-06T10:00:00.000Z" });
+  await repo.create("leads", { id: "x1", saas: "leverads", closer: "u_clo", stage: "Perdido", lostReason: "preco", createdAt: "2026-07-01T10:00:00.000Z", stageSince: "2026-07-06T10:00:00.000Z" });
   await repo.create("proposals", { id: "p1", saas: "leverads", lead: "w1", createdAt: "2026-07-05T10:00:00.000Z" });
 
   const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
@@ -92,6 +92,11 @@ test("Closer: ganhos, receita, taxa de fechamento e ticket na janela", async () 
   assert.equal(c.calls, 1);           // só w1 tem callAt na janela
   assert.equal(c.proposals, 1);
   assert.equal(c.cycleDays, 6);       // mediana: w1 6d, w2 6d
+  assert.equal(c.proposalWinRate, 200); // 2 ganhos / 1 proposta (dado do teste)
+  assert.equal(c.winRateCall, 200);   // 2 ganhos / 1 call
+  assert.equal(c.proposalRate, 100);  // 1 proposta / 1 call
+  assert.equal(c.lost, 1);
+  assert.deepEqual(c.lossReasons, [{ reason: "preco", count: 1 }]); // x1 perdido por preço
   await app.close();
 });
 

@@ -290,6 +290,34 @@ export async function ensureSdrGoals(repo) {
   return created;
 }
 
+// Metas de QUALIDADE do closer por benchmark (fechamento de proposta, win rate
+// geral). Receita/Ganhos são QUOTA absoluta e o Leo define na mão, então não
+// semeamos. Marcador closerGoalsV1 respeita edição manual.
+const CLOSER_BENCHMARK_GOALS = [
+  { metric: "proposalWinRate", target: 30 }, // proposta → ganho
+  { metric: "winRateCall", target: 25 },     // call → ganho
+];
+
+export async function ensureCloserGoals(repo) {
+  let created = 0;
+  const goals = await repo.list("goals");
+  for (const product of await repo.list("products")) {
+    if (product.closerGoalsV1) continue;
+    const hasCall = (product.funnel || []).some((f) => kindOf(product, f.stage) === "call");
+    if (hasCall) {
+      for (const g of CLOSER_BENCHMARK_GOALS) {
+        const exists = goals.some((x) => x.saas === product.id && x.scope === "role" && x.key === "closer" && x.metric === g.metric);
+        if (!exists) {
+          await repo.create("goals", { id: `goal_${product.id}_closer_${g.metric}`, saas: product.id, scope: "role", key: "closer", metric: g.metric, target: g.target, period: "month" });
+          created++;
+        }
+      }
+    }
+    await repo.update("products", product.id, { closerGoalsV1: true });
+  }
+  return created;
+}
+
 // Etiquetas de capacidade do time (quem aparece nos pickers de SDR/closer/
 // integrador). Espelha o hardcode antigo do pipeline.jsx; não cria usuário novo.
 const ROLE_SEED = {
@@ -392,6 +420,12 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] ${n} meta(s) de SDR (taxa) semeada(s)`);
   } catch (err) {
     console.error("[migration] ensureSdrGoals falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureCloserGoals(repo);
+    if (n) console.log(`[migration] ${n} meta(s) de closer (qualidade) semeada(s)`);
+  } catch (err) {
+    console.error("[migration] ensureCloserGoals falhou:", err?.message || err);
   }
   try {
     const n = await ensureUserRoles(repo);

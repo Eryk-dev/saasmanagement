@@ -158,14 +158,24 @@ export function registerScoreboardRoutes(app, repo) {
       const props = proposals.filter((p) => p.saas === product.id && leadById.get(p.lead)?.closer === uid && inWin(p.createdAt)).length;
       const cycle = won.map((l) => (new Date(l.stageSince) - new Date(l.createdAt)) / DAY).filter((d) => Number.isFinite(d) && d >= 0);
       const decided = won.length + lost.length;
+      // Motivos de perda desse closer no período (top-first), pra diagnóstico.
+      const reasonCount = {};
+      for (const l of lost) { const r = l.lostReason || "nao_informado"; reasonCount[r] = (reasonCount[r] || 0) + 1; }
+      const lossReasons = Object.entries(reasonCount).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
       return {
         user: uid, name: nameOf(uid),
         calls, proposals: props,
-        won: won.length, revenue: round2(revenue),
+        won: won.length, revenue: round2(revenue), lost: lost.length,
+        // Fechamento de proposta (proposta→ganho) e win rate geral (call→ganho):
+        // as duas taxas de habilidade do closer. closeRate = ganho/(ganho+perdido).
+        proposalRate: calls > 0 ? round2((props / calls) * 100) : null,       // proposta por call
+        proposalWinRate: props > 0 ? round2((won.length / props) * 100) : null, // fechamento de proposta
+        winRateCall: calls > 0 ? round2((won.length / calls) * 100) : null,     // win rate geral
         closeRate: decided > 0 ? round2((won.length / decided) * 100) : null,
         ticket: won.length > 0 ? round2(revenue / won.length) : null,
         cycleDays: median(cycle),
-        goals: goalMap(uid, "closer", ["won", "revenue", "calls", "proposals"]),
+        lossReasons,
+        goals: goalMap(uid, "closer", ["won", "revenue", "proposalWinRate", "winRateCall", "ticket"]),
       };
     }).filter((p) => p.calls > 0 || p.won > 0 || p.proposals > 0)
       .sort((a, b) => b.revenue - a.revenue);
