@@ -215,7 +215,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
         <PrimaryButton onClick={() => openForm("leads", { saas: activeSaas })}>+ novo lead</PrimaryButton>
       </PageHead>
 
-      <ForecastStrip s={s} leads={saasAll} />
+      {view !== "analise" && <ForecastStrip s={s} leads={saasAll} />}
 
       {/* Body */}
       {view === "kanban" && (
@@ -958,6 +958,212 @@ function LeadList({ leads }) {
 }
 
 // ─────────────────────────────────────────────── Análise (forecast + funil real)
+const paceCard = {
+  border: "1px solid var(--line-1)",
+  borderRadius: "var(--r-3)",
+  background: "var(--bg-1)",
+};
+
+const dailyFmt = (value) => value == null
+  ? "—"
+  : Number(value).toLocaleString("pt-BR", { minimumFractionDigits: value > 0 && value < 10 ? 1 : 0, maximumFractionDigits: 1 });
+const wholeFmt = (value) => value == null ? "—" : Math.round(value).toLocaleString("pt-BR");
+const rateFmt = (rate) => rate == null ? "—" : `${Math.round(rate * 100)}%`;
+
+function PaceMini({ label, value, sub, tone }) {
+  return (
+    <div style={{ minWidth: 0, padding: "11px 12px", borderRadius: "var(--r-2)", background: "var(--bg-2)", border: "1px solid var(--line-1)" }}>
+      <div className="mono" style={{ fontSize: 9.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-4)" }}>{label}</div>
+      <div className="tnum" style={{ marginTop: 4, fontFamily: "var(--display)", fontSize: 18, fontWeight: 700, color: tone || "var(--fg-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
+      <div style={{ marginTop: 2, fontSize: 10.5, lineHeight: 1.35, color: "var(--fg-3)" }}>{sub}</div>
+    </div>
+  );
+}
+
+function EquationStep({ value, label, money }) {
+  return (
+    <div style={{ minWidth: 92, flex: "1 1 92px", padding: "9px 10px", textAlign: "center", borderRadius: "var(--r-2)", background: "var(--bg-2)", border: "1px solid var(--line-1)" }}>
+      <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>{money ? window.fmt.money(value || 0) : wholeFmt(value)}</div>
+      <div className="mono" style={{ marginTop: 1, fontSize: 9.5, color: "var(--fg-4)", letterSpacing: "0.05em", textTransform: "uppercase" }}>{label}</div>
+    </div>
+  );
+}
+
+function EquationArrow({ label }) {
+  return (
+    <div style={{ flex: "0 0 auto", alignSelf: "center", textAlign: "center", color: "var(--fg-4)" }}>
+      <div className="mono" style={{ fontSize: 9.5 }}>{label}</div>
+      <div style={{ fontSize: 14, lineHeight: 1 }}>→</div>
+    </div>
+  );
+}
+
+function DailyRole({ step, role, action, primary, primaryLabel, secondary, secondaryLabel, note }) {
+  const target = primary?.perDay;
+  const actual = primary?.today || 0;
+  const pct = target > 0 ? Math.min(100, (actual / target) * 100) : primary?.remaining === 0 ? 100 : 0;
+  const done = target != null && (target === 0 || actual >= target);
+  return (
+    <div style={{ ...paceCard, minWidth: 0, padding: "13px 14px", boxShadow: "inset 0 2px 0 var(--accent)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        <span className="mono" style={{ fontSize: 9.5, color: "var(--accent)", letterSpacing: "0.08em" }}>{step}</span>
+        <span className="mono" style={{ fontSize: 10, color: "var(--fg-3)", letterSpacing: "0.07em", textTransform: "uppercase" }}>{role}</span>
+      </div>
+      <div style={{ marginTop: 7, fontSize: 12, color: "var(--fg-2)" }}>{action}</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 5, marginTop: 2 }}>
+        <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 27, fontWeight: 700, letterSpacing: "-0.02em" }}>{dailyFmt(target)}</span>
+        <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)" }}>{primaryLabel}/dia</span>
+      </div>
+      <div style={{ height: 5, marginTop: 9, borderRadius: 999, background: "var(--bg-3)", overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: done ? "var(--pos)" : "var(--accent)" }} />
+      </div>
+      <div className="mono" style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 5, fontSize: 9.5, color: "var(--fg-4)" }}>
+        <span>hoje {wholeFmt(actual)}</span>
+        <span>{wholeFmt(primary?.remaining)} até o fim do mês</span>
+      </div>
+      {secondary && (
+        <div style={{ marginTop: 10, paddingTop: 9, borderTop: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
+          <span style={{ color: "var(--fg-3)" }}>{secondaryLabel}</span>
+          <span className="tnum" style={{ fontWeight: 600 }}>{dailyFmt(secondary.perDay)}/dia · hoje {wholeFmt(secondary.today)}</span>
+        </div>
+      )}
+      {note && <div style={{ marginTop: 8, fontSize: 10.5, lineHeight: 1.35, color: "var(--fg-4)" }}>{note}</div>}
+    </div>
+  );
+}
+
+function RevenuePaceDashboard({ s }) {
+  const { version } = useData();
+  const [data, setData] = useStP(null);
+  const [err, setErr] = useStP(null);
+  useEfP(() => {
+    let alive = true;
+    setData(null); setErr(null);
+    api.pipelinePace(s.id).then((d) => alive && setData(d)).catch((e) => alive && setErr(e));
+    return () => { alive = false; };
+  }, [s.id, version]);
+
+  if (err) return <div style={{ ...paceCard, padding: 16 }}><div className="mono dim" style={{ fontSize: 12 }}>pace de caixa indisponível ({err.status || "erro"})</div></div>;
+  if (!data) return <div style={{ ...paceCard, padding: 16 }}><div className="mono dim" style={{ fontSize: 12 }}>calculando pace de caixa…</div></div>;
+
+  const { cash, context, conversions, plan } = data;
+  const statusMap = {
+    ahead: { label: "acima do pace", tone: "pos", color: "var(--pos)" },
+    attention: { label: "atenção ao pace", tone: "warn", color: "var(--warn)" },
+    behind: { label: "abaixo do pace", tone: "neg", color: "var(--neg)" },
+  };
+  const status = statusMap[cash.status] || statusMap.behind;
+  const actualWidth = Math.min(100, Math.max(0, cash.progress * 100));
+  const expectedLeft = Math.min(100, Math.max(0, cash.expectedProgress * 100));
+  const monthLabel = new Date(`${data.month}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  const sourceLabel = (rate) => rate.source === "history"
+    ? `30d · ${rate.numerator}/${rate.denominator}`
+    : rate.source === "goal" ? "meta configurada" : "benchmark";
+  const averageSource = {
+    initial_payments: "primeiras faturas pagas",
+    paid_invoices: "faturas pagas recentes",
+    won_tcv: "TCV dos ganhos recentes",
+    configured_ticket: "ticket configurado",
+  }[context.averageEntrySource] || "sem base de entrada";
+
+  return (
+    <>
+      <section style={{ ...paceCard, padding: "16px 18px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" }}>Pace de caixa · {monthLabel}</span>
+          <Pill tone={status.tone}>{status.label}</Pill>
+          <span style={{ flex: 1 }} />
+          <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)" }}>{cash.elapsedBusinessDays} de {cash.totalBusinessDays} dias úteis</span>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 18, marginTop: 14 }}>
+          <div style={{ minWidth: 0, padding: "2px 0" }}>
+            <div style={{ fontSize: 12, color: "var(--fg-3)" }}>Dinheiro recebido no mês</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 7, marginTop: 2, flexWrap: "wrap" }}>
+              <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: "clamp(32px, 4vw, 48px)", fontWeight: 700, letterSpacing: "-0.035em" }}>{window.fmt.money(cash.collected)}</span>
+              <span className="mono" style={{ fontSize: 12, color: "var(--fg-3)" }}>de {window.fmt.money(cash.target)}</span>
+            </div>
+            <div style={{ position: "relative", height: 12, marginTop: 14, borderRadius: 999, background: "var(--bg-3)" }}>
+              <div style={{ width: `${actualWidth}%`, height: "100%", borderRadius: 999, background: status.color, transition: "width 150ms ease" }} />
+              <span title={`esperado até hoje: ${window.fmt.money(cash.expectedToDate)}`} style={{ position: "absolute", left: `${expectedLeft}%`, top: -4, width: 2, height: 20, borderRadius: 2, background: "var(--fg-2)" }} />
+            </div>
+            <div className="mono" style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 6, fontSize: 9.5, color: "var(--fg-4)" }}>
+              <span>R$ 0</span>
+              <span>marcador = {window.fmt.money(cash.expectedToDate)} esperados hoje</span>
+              <span>{window.fmt.money(cash.target)}</span>
+            </div>
+            <div style={{ marginTop: 12, fontSize: 12, color: status.color, fontWeight: 600 }}>
+              {cash.deltaToPace >= 0 ? `${window.fmt.money(cash.deltaToPace)} acima` : `${window.fmt.money(Math.abs(cash.deltaToPace))} abaixo`} do ritmo esperado
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
+            <PaceMini label="Entrou hoje" value={window.fmt.money(cash.collectedToday)} sub="faturas baixadas hoje" tone={cash.collectedToday >= (cash.requiredDailyPace || Infinity) ? "var(--pos)" : undefined} />
+            <PaceMini label="Falta entrar" value={window.fmt.money(cash.gap)} sub={`${cash.remainingBusinessDays} dias úteis restantes`} tone={cash.gap > 0 ? "var(--warn)" : "var(--pos)"} />
+            <PaceMini label="Necessário por dia" value={cash.requiredDailyPace == null ? "—" : window.fmt.money(cash.requiredDailyPace)} sub="gap ÷ dias úteis restantes" />
+            <PaceMini label="Projeção do mês" value={window.fmt.money(cash.projected)} sub={`ritmo atual de ${window.fmt.money(cash.actualDailyPace)}/dia`} tone={cash.projected >= cash.target ? "var(--pos)" : "var(--neg)"} />
+            <PaceMini label="Recebíveis" value={window.fmt.money(cash.receivables)} sub={`${cash.receivableCount} em aberto · caixa + recebíveis ${window.fmt.money(cash.forecastWithReceivables)}`} />
+            <PaceMini label="TCV ganho · MRR" value={`${window.fmt.money(context.tcvMonth)} · ${window.fmt.money(context.mrr)}`} sub={`${context.wonMonth} ganhos · contexto, não caixa`} />
+          </div>
+        </div>
+      </section>
+
+      <section style={{ ...paceCard, padding: "15px 18px" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>
+          <h3 style={{ margin: 0, fontFamily: "var(--display)", fontSize: 15, fontWeight: 700 }}>Plano diário para fechar o gap</h3>
+          <span style={{ fontSize: 11.5, color: "var(--fg-3)" }}>cálculo de trás para frente a partir de {window.fmt.money(cash.gap)}</span>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "stretch", gap: 7, marginTop: 12, flexWrap: "wrap" }}>
+          <EquationStep value={plan.leads.remaining} label="leads" />
+          <EquationArrow label={`${rateFmt(conversions.contactRate.value)} contatados`} />
+          <EquationStep value={plan.contacts.remaining} label="contatos" />
+          <EquationArrow label={`${rateFmt(conversions.bookingRate.value)} agendam`} />
+          <EquationStep value={plan.callsBooked.remaining} label="calls agendadas" />
+          <EquationArrow label={`${rateFmt(conversions.showRate.value)} comparecem`} />
+          <EquationStep value={plan.calls.remaining} label="calls realizadas" />
+          <EquationArrow label={`${rateFmt(conversions.closeRate.value)} fecham`} />
+          <EquationStep value={plan.wins.remaining} label="ganhos" />
+          <EquationArrow label={`${context.averageEntry ? window.fmt.money(context.averageEntry) : "sem entrada"} cada`} />
+          <EquationStep value={cash.gap} label="caixa restante" money />
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(205px, 1fr))", gap: 9, marginTop: 12 }}>
+          <DailyRole step="01" role="Aquisição" action="Gerar demanda suficiente" primary={plan.leads} primaryLabel="leads" note="Entrada do funil: mídia, indicação, orgânico e outbound." />
+          <DailyRole step="02" role="SDR" action="Transformar demanda em agenda" primary={plan.contacts} primaryLabel="contatos" secondary={plan.callsBooked} secondaryLabel="Calls agendadas" note={`${rateFmt(conversions.contactRate.value)} dos leads precisam ser contatados.`} />
+          <DailyRole step="03" role="Closer" action="Converter calls em dinheiro" primary={plan.calls} primaryLabel="calls" secondary={plan.wins} secondaryLabel="Ganhos" note={`${plan.proposals.today} proposta(s) criada(s) hoje · entrada média ${context.averageEntry ? window.fmt.money(context.averageEntry) : "indisponível"}.`} />
+          <DailyRole step="04" role="CS" action="Absorver os novos clientes" primary={plan.onboardings} primaryLabel="integrações" note="Capacidade de entrega acompanha os ganhos previstos, sem contar TCV como caixa." />
+        </div>
+        {(context.averageEntrySource === "won_tcv" || context.averageEntrySource === "configured_ticket") && (
+          <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: "var(--r-2)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 11.5 }}>
+            A entrada média ainda é uma estimativa por {context.averageEntrySource === "won_tcv" ? "TCV ganho" : "ticket configurado"}. Baixe as faturas pagas para calibrar o plano pelo caixa real.
+          </div>
+        )}
+        {plan.blockedBy && (
+          <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: "var(--r-2)", background: "var(--neg-soft)", color: "var(--neg)", fontSize: 11.5 }}>
+            O desdobramento parou em {{ averageEntry: "entrada média", closeRate: "call → ganho", showRate: "comparecimento", bookingRate: "agendamento", contactRate: "contato" }[plan.blockedBy]}: a taxa atual é zero ou ainda não há base suficiente.
+          </div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))", gap: 1, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line-1)" }}>
+          <div style={{ padding: "5px 8px" }}>
+            <div className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)", textTransform: "uppercase" }}>Entrada média</div>
+            <div className="tnum" style={{ marginTop: 2, fontSize: 13, fontWeight: 600 }}>{context.averageEntry ? window.fmt.money(context.averageEntry) : "—"}</div>
+            <div style={{ fontSize: 9.5, color: "var(--fg-4)" }}>{averageSource}</div>
+          </div>
+          {[["Contato", conversions.contactRate], ["Agendamento", conversions.bookingRate], ["Comparecimento", conversions.showRate], ["Call → ganho", conversions.closeRate]].map(([label, rate]) => (
+            <div key={label} style={{ padding: "5px 8px" }}>
+              <div className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)", textTransform: "uppercase" }}>{label}</div>
+              <div className="tnum" style={{ marginTop: 2, fontSize: 13, fontWeight: 600 }}>{rateFmt(rate.value)}</div>
+              <div style={{ fontSize: 9.5, color: "var(--fg-4)" }}>{sourceLabel(rate)}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </>
+  );
+}
+
 function ForecastView({ s, leads }) {
   const buckets = s.funnel.map((f, i) => {
     const at = leads.filter(l => l.stage === f.stage);
@@ -1080,6 +1286,7 @@ function FunnelAnalytics({ s }) {
 function AnaliseView({ s, leads }) {
   return (
     <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)", display: "flex", flexDirection: "column", gap: 14 }}>
+      <RevenuePaceDashboard s={s} />
       <ForecastView s={s} leads={leads} />
       <FunnelAnalytics s={s} />
     </div>

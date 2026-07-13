@@ -40,6 +40,7 @@ const ROUTE_SCREENS = [
   ["/api/ad_insights", ["metrics"]],
   ["/api/ai-costs", ["expenses"]],
   ["/api/expenses", ["expenses"]], // CRUD genérico E /api/expenses/summary/:saas
+  ["/api/pipeline-pace/", ["pipeline"]], // pace de caixa e metas diárias da análise
   ["/api/funnel/", ["pipeline"]],  // análise do pipeline
   ["/api/leads", ["pipeline", "today"]],    // inclui /api/leads/:id/proposal (ação do closer)
   ["/api/activities", ["pipeline", "today"]],

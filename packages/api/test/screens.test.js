@@ -48,6 +48,7 @@ test("screenForRequest: mapa por prefixo + escritas administrativas", () => {
   assert.deepEqual(screenForRequest("GET", "/api/marketing/leverads"), ["metrics"]);
   assert.deepEqual(screenForRequest("POST", "/api/leads/l1/proposal"), ["pipeline", "today"]);
   assert.deepEqual(screenForRequest("POST", "/api/activities"), ["pipeline", "today"]);
+  assert.deepEqual(screenForRequest("GET", "/api/pipeline-pace/leverads"), ["pipeline"]);
   assert.deepEqual(screenForRequest("GET", "/api/customers"), ["customers"]);
   assert.equal(screenForRequest("GET", "/api/products"), null);           // catálogo é leitura livre
   assert.deepEqual(screenForRequest("PATCH", "/api/products/leverads"), ["settings"]);
@@ -72,6 +73,7 @@ test("usuário restrito (pipeline+tasks): funil libera, financeiro/clientes/ajus
   // O que a tela dele usa: liberado.
   assert.equal((await app.inject({ url: "/api/leads", headers: H })).statusCode, 200);
   assert.equal((await app.inject({ url: "/api/tasks", headers: H })).statusCode, 200);
+  assert.equal((await app.inject({ url: "/api/pipeline-pace/leverads", headers: H })).statusCode, 200);
   assert.equal((await app.inject({ method: "POST", url: "/api/leads", headers: H, payload: { name: "Lead X", saas: "leverads" } })).statusCode, 201);
   assert.equal((await app.inject({ url: "/api/products", headers: H })).statusCode, 200);
   assert.equal((await app.inject({ url: "/api/auth/users", headers: H })).statusCode, 200);
@@ -110,7 +112,7 @@ test("usuário só com Meu dia (today): leads e toques liberados, resto 403", as
   const seed = (await app.inject({ url: "/api/bootstrap", headers: H })).json();
   assert.equal(seed.LEADS.length, 1);
   // O que não é da tela continua fechado.
-  for (const url of ["/api/customers", "/api/expenses", "/api/funnel/leverads", "/api/tasks"]) {
+  for (const url of ["/api/customers", "/api/expenses", "/api/funnel/leverads", "/api/pipeline-pace/leverads", "/api/tasks"]) {
     assert.equal((await app.inject({ url, headers: H })).statusCode, 403, `esperava 403 em ${url}`);
   }
 });

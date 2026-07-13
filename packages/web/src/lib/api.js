@@ -193,6 +193,8 @@ export const api = {
     if (until) q.set("until", until);
     return req("GET", `/api/funnel/${saas}${q.toString() ? `?${q}` : ""}`);
   },
+  // Pace mensal de caixa: faturas pagas → meta diária por papel do funil.
+  pipelinePace: (saas) => req("GET", `/api/pipeline-pace/${encodeURIComponent(saas)}`),
   // Placar por pessoa/papel (SDR/closer/CS) — cockpit de gestão da Visão geral.
   scoreboard: (saas, { since, until, prevSince, prevUntil } = {}) => {
     const q = new URLSearchParams();

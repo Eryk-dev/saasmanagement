@@ -32,6 +32,7 @@ import { isWon, firstStage } from "./stages.js";
 import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt, autoLeadOwner } from "./lead-flow.js";
 import { registerFunnelMetricsRoutes } from "./routes.funnel-metrics.js";
 import { registerScoreboardRoutes } from "./routes.scoreboard.js";
+import { registerPipelinePaceRoutes } from "./routes.pipeline-pace.js";
 
 // Auth interna fica FORA do CRUD genérico: passwordHash/token de sessão nunca
 // saem pela API. Gestão via rotas dedicadas (/api/auth/*).
@@ -52,6 +53,7 @@ export const CREATE_DEFAULTS = {
     tcv: 0, tcvDelta: 0, pipelineCoverage: null, acv: 0, acvDelta: 0,
     winRate: 0, winRateDelta: 0, velocity: 100, velocityDelta: 0,
     funnel: [], activation: 0, activationDelta: 0, nps: 0, npsDelta: 0,
+    monthlyCashTarget: 120000,
     mrrSeries: [], healthSeries: [], customers: 0, customersDelta: 0,
     accent: 240, tag: "", plan: "", motion: "", ticketBand: "", cycleDays: 0,
     // Config por SaaS (fase 3): campos custom por entidade, pesos da saúde (em %,
@@ -206,6 +208,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Métricas reais de funil (conversão/tempo por estágio, motivos de perda, SLA)
   // a partir do histórico de transições da timeline.
   registerFunnelMetricsRoutes(app, repo);
+  // Pace de caixa do pipeline: recebido no mês → meta diária por papel.
+  registerPipelinePaceRoutes(app, repo, opts.pipelinePace);
   // Placar por pessoa/papel (SDR/closer/CS) — o cockpit de gestão da Visão geral.
   registerScoreboardRoutes(app, repo);
   // Usuários do time: login/logout/me + gestão mínima (rotas dedicadas).
