@@ -805,11 +805,16 @@ const cellKey = (d) => { const p = (x) => String(x).padStart(2, "0"); return `${
 const slotVal = (day, hour) => { const p = (x) => String(x).padStart(2, "0"); return `${day.getFullYear()}-${p(day.getMonth() + 1)}-${p(day.getDate())}T${p(hour)}:00`; };
 
 // Horas já ocupadas na agenda de um closer: cada lead dele com callAt marca a
-// hora daquele slot (a call ocupa 1h). Ignora o próprio lead (reagendamento).
+// hora daquele slot (a call ocupa 1h). Ignora o próprio lead (reagendamento) e
+// os follow-ups — follow-up NÃO bloqueia horário: o SDR pode marcar a call de
+// venda por cima. Só call de venda conta como ocupada, pra não dar divergência.
 export function callBusyKeys(leads, closerId, selfId) {
   const busy = new Set();
+  const saasList = (typeof window !== "undefined" && window.SEED?.SAAS) || [];
   for (const o of leads || []) {
     if (!closerId || o.id === selfId || o.closer !== closerId || !o.callAt) continue;
+    const cfg = saasList.find((s) => s.id === o.saas);
+    if (stageKind(cfg, o.stage) === "followup") continue; // follow-up não ocupa a agenda
     const d = new Date(o.callAt);
     if (Number.isFinite(d.getTime())) busy.add(cellKey(d));
   }
