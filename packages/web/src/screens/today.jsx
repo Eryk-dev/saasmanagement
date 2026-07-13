@@ -524,7 +524,7 @@ export function clientSummary(saasCfg, lead, stage, cat) {
 // Meet) mostrado no roteiro pra o closer trabalhar o follow-up com contexto: o
 // que rolou, objeções (tratadas/em aberto), combinados, próximo passo e a
 // mensagem de WhatsApp pronta pra enviar. Some quando não há resumo ainda.
-function CallSummaryCard({ summary, phone }) {
+export function CallSummaryCard({ summary, phone }) {
   const [copied, setCopied] = useS(false);
   if (!summary) return null;
   const box = { border: "1px solid var(--accent-line)", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--accent-soft)" };
