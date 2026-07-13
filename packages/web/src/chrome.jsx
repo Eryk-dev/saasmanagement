@@ -25,6 +25,7 @@ const NAV = [
   { id: "creative",   label: "Canvas",         icon: "◨",  group: "marketing" },
 
   { id: "tasks",      label: "Tarefas",        icon: "▣",  group: "geral" },
+  { id: "training",   label: "Treinamentos",   icon: "✎",  group: "geral" },
   { id: "metas",      label: "Metas",          icon: "◎",  group: "geral" },
   { id: "expenses",   label: "Custos",         icon: "◫",  group: "geral" },
   { id: "settings",   label: "Configurações",  icon: "✦",  group: "geral" },
