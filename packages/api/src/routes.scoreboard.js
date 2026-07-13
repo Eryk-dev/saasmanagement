@@ -43,7 +43,7 @@ export function registerScoreboardRoutes(app, repo) {
     const hasPrev = /^\d{4}-\d{2}-\d{2}$/.test(prevSince) && /^\d{4}-\d{2}-\d{2}$/.test(prevUntil);
     const inPrev = (iso) => iso && dayStr(iso) >= prevSince && dayStr(iso) <= prevUntil;
 
-    const [allLeads, allActs, allCustomers, proposals, subs, users, goalsAll] = await Promise.all([
+    const [allLeads, allActs, allCustomers, proposals, subs, users, goalsAll, npsAll] = await Promise.all([
       repo.list("leads"),
       repo.list("activities"),
       repo.list("customers"),
@@ -51,6 +51,7 @@ export function registerScoreboardRoutes(app, repo) {
       repo.list("subscriptions"),
       repo.list("users").catch(() => []),
       repo.list("goals"),
+      repo.list("nps").catch(() => []),
     ]);
     const leads = allLeads.filter((l) => l.saas === product.id);
     const leadById = new Map(leads.map((l) => [l.id, l]));
@@ -186,19 +187,28 @@ export function registerScoreboardRoutes(app, repo) {
 
     // ── CS / retenção (agrupado por customer.owner) ───────────────────────────
     const csIds = [...new Set([...withRole("integrator"), ...customers.map((c) => c.owner).filter(Boolean)])];
+    const npsSaas = npsAll.filter((n) => !n.saas || n.saas === product.id);
     const cs = csIds.map((uid) => {
       const mine = customers.filter((c) => c.owner === uid);
       const mineIds = new Set(mine.map((c) => c.id));
       const newAccounts = mine.filter((c) => inWin(c.startedAt)).length;
       // Churn magro: assinatura cancelada COM data na janela (billing ainda não
-      // grava evento de churn dedicado — cresce quando gravar).
+      // grava evento de churn dedicado — cresce quando gravar). Retenção = 100 −
+      // churn% sobre a base (ativas + churnadas); sem churn = 100% (honesto).
       const churned = subs.filter((s) => mineIds.has(s.customer) && s.status === "canceled" && inWin(s.canceledAt)).length;
+      const base = mine.length + churned;
+      const retentionRate = base > 0 ? round2(((base - churned) / base) * 100) : null;
+      // NPS médio das contas dele (coleção nps: { customer, score }). Sem dado → null.
+      const scores = npsSaas.filter((n) => mineIds.has(n.customer) && Number.isFinite(Number(n.score))).map((n) => Number(n.score));
+      const nps = scores.length ? round2(scores.reduce((a, s) => a + s, 0) / scores.length) : null;
       return {
         user: uid, name: nameOf(uid),
         activeAccounts: mine.length,
         newAccounts,
         churned,
-        goals: goalMap(uid, "integrator", ["newAccounts", "activeAccounts"]),
+        retentionRate,
+        nps, npsCount: scores.length,
+        goals: goalMap(uid, "integrator", ["newAccounts", "activeAccounts", "retentionRate", "nps"]),
       };
     }).filter((p) => p.activeAccounts > 0 || p.newAccounts > 0)
       .sort((a, b) => b.activeAccounts - a.activeAccounts);

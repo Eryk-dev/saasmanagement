@@ -144,6 +144,28 @@ test("CS: contas ativas e novas por owner do cliente", async () => {
   const cs = sb.cs.find((x) => x.user === "u_cs");
   assert.equal(cs.activeAccounts, 2);
   assert.equal(cs.newAccounts, 1); // só c1 começou na janela
+  assert.equal(cs.retentionRate, 100); // sem churn = 100%
+  assert.equal(cs.nps, null);           // sem resposta de NPS
+  await app.close();
+});
+
+test("CS: retenção cai com churn na janela e NPS médio das contas do owner", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("customers", { id: "c1", saas: "leverads", owner: "u_cs", startedAt: "2026-05-01T10:00:00.000Z" });
+  await repo.create("customers", { id: "c2", saas: "leverads", owner: "u_cs", startedAt: "2026-05-01T10:00:00.000Z" });
+  await repo.create("customers", { id: "c3", saas: "leverads", owner: "u_cs", startedAt: "2026-05-01T10:00:00.000Z" });
+  // 1 assinatura cancelada na janela → churn 1 sobre base 4 (3 ativas + 1)
+  await repo.create("subscriptions", { id: "s1", saas: "leverads", customer: "cx", status: "canceled", canceledAt: "2026-07-10T10:00:00.000Z" });
+  await repo.create("customers", { id: "cx", saas: "leverads", owner: "u_cs", startedAt: "2026-04-01T10:00:00.000Z" });
+  // NPS: duas respostas das contas dele (9 e 7 → média 8)
+  await repo.create("nps", { id: "n1", saas: "leverads", customer: "c1", score: 9 });
+  await repo.create("nps", { id: "n2", saas: "leverads", customer: "c2", score: 7 });
+
+  const cs = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json().cs.find((x) => x.user === "u_cs");
+  assert.equal(cs.churned, 1);
+  assert.equal(cs.retentionRate, 80); // (5 - 1) / 5 × 100
+  assert.equal(cs.nps, 8);
+  assert.equal(cs.npsCount, 2);
   await app.close();
 });
 

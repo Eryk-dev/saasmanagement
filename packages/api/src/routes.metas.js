@@ -32,6 +32,8 @@ export const META_CATALOG = [
   {
     role: "integrator", label: "Integrador · CS", hint: "integração e pós-venda",
     metrics: [
+      { metric: "retentionRate", label: "Retenção", unit: "%", default: 95 },
+      { metric: "nps", label: "NPS alvo", unit: "n", default: null },
       { metric: "newAccounts", label: "Contas novas no mês", unit: "n", default: null },
       { metric: "activeAccounts", label: "Contas ativas", unit: "n", default: null },
     ],
