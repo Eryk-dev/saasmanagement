@@ -316,33 +316,47 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
   async function fetchTranscriptFromDrive({ eventId = "", leadName = "", since = "" } = {}) {
     const token = await accessToken();
     const auth = { authorization: `Bearer ${token}` };
+    const DOC = "application/vnd.google-apps.document";
     const ev = eventId ? await getCalendarEvent(eventId) : null;
     const title = String(ev?.summary || leadName || "").trim();
     const startIso = ev?.start?.dateTime || ev?.start?.date || since || "";
 
-    // 1) Anexo do evento cujo título parece transcrição (Doc).
-    let fileId = "";
-    for (const a of ev?.attachments || []) {
-      if (/ranscri/i.test(String(a.title || "")) && a.fileId) { fileId = a.fileId; break; }
-    }
+    // 1) Anexo do evento (caminho mais confiável, amarrado à call certa, sem
+    //    depender do nome): o Meet cola o Doc de transcrição no próprio evento.
+    //    Prefere o anexo com "transcri" no título; senão, qualquer anexo que
+    //    seja Google Doc (a gravação é vídeo, então o Doc anexado é o texto).
+    const atts = (ev?.attachments || []).filter((a) => a && a.fileId);
+    let fileId = (atts.find((a) => /transcri/i.test(String(a.title || "")))
+      || atts.find((a) => a.mimeType === DOC))?.fileId || "";
 
-    // 2) Busca no Drive: Doc com "Transcri/Transcript" no título, criado a partir
-    //    de ~2h antes da call, casando pelo nome do lead (parte após o "·" do
-    //    título "Call LeverAds · <lead>"). Pega o mais recente que casar.
+    // 2) Busca no Drive como reforço: Docs de transcrição criados na JANELA da
+    //    call (de 3h antes até 24h depois). Tenta casar pelo nome do lead (parte
+    //    após o "·" do título "Call LeverAds · <lead>"); se não achar, pega
+    //    qualquer transcrição da janela (desempate: título com o nome do lead,
+    //    senão o mais recente). encodeURIComponent (não URLSearchParams): espaço
+    //    vira %20, não "+" — o parser do `q` do Drive trataria "+" como literal.
     if (!fileId) {
       const esc = (s) => String(s).replace(/'/g, "\\'");
-      const clauses = ["mimeType = 'application/vnd.google-apps.document'", "name contains 'ranscri'"];
+      const t0 = startIso ? new Date(startIso).getTime() : NaN;
+      const win = Number.isFinite(t0)
+        ? ` and createdTime > '${new Date(t0 - 3 * 3600_000).toISOString()}' and createdTime < '${new Date(t0 + 24 * 3600_000).toISOString()}'`
+        : "";
       const nameKey = (title.split("·").pop() || title).trim();
-      if (nameKey) clauses.push(`name contains '${esc(nameKey)}'`);
-      const floor = startIso ? new Date(new Date(startIso).getTime() - 2 * 3600_000) : null;
-      if (floor && Number.isFinite(floor.getTime())) clauses.push(`createdTime > '${floor.toISOString()}'`);
-      // encodeURIComponent (não URLSearchParams): espaço vira %20, não "+" — o
-      // parser do `q` do Drive trata "+" como literal e quebraria a query.
-      const qs = `q=${encodeURIComponent(clauses.join(" and "))}&orderBy=${encodeURIComponent("createdTime desc")}&pageSize=10&fields=${encodeURIComponent("files(id,name,createdTime)")}`;
-      const res = await f(`${DRIVE_URL}/files?${qs}`, { headers: auth });
-      const body = await res.json().catch(() => ({}));
-      if (res.status >= 400 || body.error) throw new Error(`Drive files -> ${res.status}: ${body.error?.message || "falha na busca"}`);
-      fileId = body.files?.[0]?.id || "";
+      const search = async (extra) => {
+        const q = `mimeType = '${DOC}' and name contains 'ranscri'${extra}${win}`;
+        const qs = `q=${encodeURIComponent(q)}&orderBy=${encodeURIComponent("createdTime desc")}&pageSize=20&fields=${encodeURIComponent("files(id,name,createdTime)")}`;
+        const res = await f(`${DRIVE_URL}/files?${qs}`, { headers: auth });
+        const body = await res.json().catch(() => ({}));
+        if (res.status >= 400 || body.error) throw new Error(`Drive files -> ${res.status}: ${body.error?.message || "falha na busca"}`);
+        return body.files || [];
+      };
+      let files = nameKey ? await search(` and name contains '${esc(nameKey)}'`) : [];
+      if (!files.length) files = await search("");
+      if (nameKey) {
+        const low = nameKey.toLowerCase();
+        files = [...files].sort((a, b) => Number(!!b.name?.toLowerCase().includes(low)) - Number(!!a.name?.toLowerCase().includes(low)));
+      }
+      fileId = files[0]?.id || "";
     }
     if (!fileId) return null;
 
