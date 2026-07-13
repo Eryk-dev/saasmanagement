@@ -401,43 +401,75 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
     .price-veil { display: none; }
     /* Oferta 2 secreta NÃO sai no print (só se o closer já tiver ativado). */
     .price-pending .price-reveal .price-card, .price-pending .close-line, .price-pending .accept-row, .price-pending .plan-opts,
-    .price-pending .stage-item { opacity: 1; transform: none; } }
+    .price-pending .stage-item, .price-pending .pb-stage { opacity: 1; transform: none; } }
 
   /* ── Layout empilhado do pricing (slides com benefitGroups) ─────────────────
-     Grupos de benefícios em 3 blocos LADO A LADO; o preço vira uma faixa
-     horizontal separada embaixo. Some o vazio da grade 2-colunas. */
+     (1) benefícios num ÚNICO bloco com os 3 grupos em colunas; (2) preço numa
+     faixa larga que o conteúdo preenche por inteiro; a escada secreta troca o
+     conteúdo DENTRO da mesma faixa (nunca cria card novo). */
   .price-stack { display: block; }
-  .price-stack .benefits-row { margin-bottom: 26px; }
-  .price-stack .benefits-title { margin-bottom: 18px; }
-  .benefit-cols { display: grid; grid-template-columns: 1fr; gap: 18px; }
-  @media (min-width: 900px) { .benefit-cols { grid-template-columns: repeat(3, 1fr); gap: 22px; align-items: start; } }
-  .benefit-col { background: #051C2C; color: #F3FBFF; border-radius: calc(var(--radius) + 10px); padding: 30px 28px;
+  .price-stack .benefits-single { margin-bottom: 24px; }
+  .price-stack .benefits-single .benefits-title { margin-bottom: 22px; }
+  .benefit-grid { display: grid; grid-template-columns: 1fr; gap: 26px; }
+  @media (min-width: 900px) { .benefit-grid { grid-template-columns: repeat(3, 1fr); gap: 0; } }
+  .benefit-group { padding: 4px 0; }
+  @media (min-width: 900px) {
+    .benefit-group { padding: 0 30px; }
+    .benefit-group:first-child { padding-left: 0; }
+    .benefit-group:last-child { padding-right: 0; }
+    .benefit-group + .benefit-group { border-left: 1px solid var(--line); } }
+  .benefit-group .bg-title { margin-top: 0; color: var(--accent); font-size: 12px; }
+  .benefit-group .price-list { gap: 13px; color: var(--ink-2); font-size: 16px; }
+  .benefit-group .benefit-synth { margin: 16px 0 0; }
+
+  /* Faixa de preço = UM bloco largo, escuro, de largura total. */
+  .price-band { position: relative; overflow: hidden; background: #051C2C; color: #F3FBFF;
+    border-radius: calc(var(--radius) + 10px); padding: 36px 44px;
     --ink-2: color-mix(in oklab, #F3FBFF 78%, transparent); --ink-3: color-mix(in oklab, #F3FBFF 60%, transparent);
-    --accent-line: color-mix(in oklab, var(--accent) 30%, transparent); }
-  @media (min-width: 768px) { .benefit-col { padding: 34px 32px; } }
-  .benefit-col .bg-title { margin-top: 0; color: var(--accent); font-size: 12px; }
-  .benefit-col .price-list { gap: 13px; color: var(--ink-2); font-size: 16px; }
-  .benefit-col .benefit-synth { margin: 16px 0 0; }
-  /* Faixa de preço horizontal (bloco separado). Um card centralizado; com a
-     escada secreta, os cards ficam LADO A LADO — o anterior riscado e recuado. */
-  .price-band { position: relative; display: flex; flex-flow: row wrap; justify-content: center; align-items: stretch; gap: 22px; }
-  .price-band .price-card { flex: 0 1 460px; min-width: 280px; margin: 0; padding: 34px 34px; }
-  @media (min-width: 768px) { .price-band .price-card { padding: 40px 40px; } }
-  .price-band .price-number .amount { font-size: clamp(56px, 8vw, 108px); }
-  .price-band .price-card.offer2, .price-band .price-card.offer3 { display: none; }
-  .offer2-on .price-band .price-card.offer2, .offer3-on .price-band .price-card.offer3 { display: block; animation: offer-slide-in .5s var(--ease-out); }
-  @keyframes offer-slide-in { from { opacity: 0; transform: translateX(30px) scale(.96); } to { opacity: 1; transform: none; } }
-  .price-band .price-card.offer1, .price-band .price-card.offer2 { transition: filter .5s var(--ease-out), opacity .5s var(--ease-out), transform .5s var(--ease-out); }
-  /* Preço anterior: acinzentado, recuado e RISCADO (âncora de comparação). */
-  .offer2-on .price-band .price-card.offer1,
-  .offer3-on .price-band .price-card.offer1,
-  .offer3-on .price-band .price-card.offer2 { filter: grayscale(1); opacity: .5; transform: scale(.86); }
-  .offer2-on .price-band .price-card.offer1 .price-number,
-  .offer3-on .price-band .price-card.offer1 .price-number,
-  .offer3-on .price-band .price-card.offer2 .price-number { text-decoration: line-through; text-decoration-thickness: 3px; text-decoration-color: var(--accent); }
-  @media (prefers-reduced-motion: reduce) {
-    .offer2-on .price-band .price-card.offer2, .offer3-on .price-band .price-card.offer3 { animation: none; }
-    .price-band .price-card.offer1, .price-band .price-card.offer2 { transition: none; } }
+    --line: color-mix(in oklab, #F3FBFF 12%, transparent); }
+  @media (min-width: 768px) { .price-band { padding: 40px 52px; } }
+  /* Palco onde os painéis de oferta se sobrepõem (só o ativo visível): o bloco
+     mantém o MESMO tamanho quando a escada troca de preço. */
+  .pb-stage { position: relative; min-height: 168px; transition: opacity .5s var(--ease-out); }
+  .price-pending .pb-stage { opacity: 0; }
+  .pb-offer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    opacity: 0; transform: translateX(34px); transition: opacity .55s var(--ease-out), transform .55s var(--ease-out); }
+  .pb-offer[data-o="1"] { opacity: 1; transform: none; }
+  /* Troca de degrau: o anterior desliza pra ESQUERDA e some, o novo entra pela direita. */
+  .offer2-on .pb-offer[data-o="1"], .offer3-on .pb-offer[data-o="1"] { opacity: 0; transform: translateX(-34px); }
+  .offer2-on .pb-offer[data-o="2"] { opacity: 1; transform: none; }
+  .offer3-on .pb-offer[data-o="2"] { opacity: 0; transform: translateX(-34px); }
+  .offer3-on .pb-offer[data-o="3"] { opacity: 1; transform: none; }
+  /* 3 zonas que preenchem a faixa de ponta a ponta: plano · preço (centro) · total. */
+  .pb-left { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; flex: 0 0 auto; }
+  .pb-left .price-tag { font-size: 15px; }
+  .pb-left .pill { position: static; }
+  .pb-center { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; gap: 12px;
+    padding: 0 40px; margin: 0 8px; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+  .pb-right { flex: 0 0 auto; text-align: right; }
+  .pb-right .price-cycles { margin: 0; font-size: 13.5px; }
+  .pb-price.price-number { margin: 0; justify-content: center; align-items: baseline; flex-wrap: nowrap; }
+  .pb-price .amount { font-size: clamp(64px, 8.4vw, 116px); }
+  .pb-price .currency { font-size: clamp(22px, 3vw, 34px); }
+  /* Preços anteriores: riscados, apagados, acima do novo (âncora de comparação). */
+  .pb-compare { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 20px; }
+  .pb-old { display: inline-flex; align-items: baseline; gap: 8px; opacity: .55; }
+  .pb-old-tag { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+  .pb-old-price { color: var(--ink-3); text-decoration: line-through; text-decoration-thickness: 2px; text-decoration-color: var(--accent); }
+  .pb-old-price .amount { font-family: var(--font-display); font-size: 26px; font-weight: 500; }
+  .pb-old-price .currency, .pb-old-price .per, .pb-old-price .price-main { font-size: 13px; }
+  @media (prefers-reduced-motion: reduce) { .pb-stage, .pb-offer { transition: none; } }
+  @media (max-width: 899px) {
+    .pb-offer { position: static; flex-direction: column; align-items: stretch; gap: 18px; transform: none; opacity: 1; }
+    .pb-offer[data-o="2"], .pb-offer[data-o="3"] { display: none; }
+    .offer2-on .pb-offer[data-o="1"], .offer3-on .pb-offer[data-o="1"] { display: none; }
+    .offer2-on .pb-offer[data-o="2"] { display: flex; }
+    .offer3-on .pb-offer[data-o="2"] { display: none; }
+    .offer3-on .pb-offer[data-o="3"] { display: flex; }
+    .pb-center { border: 0; padding: 0; margin: 0; align-items: flex-start; }
+    .pb-price.price-number { justify-content: flex-start; }
+    .pb-compare { justify-content: flex-start; }
+    .pb-right { text-align: left; } }
 
   .closer-block { margin: 48px auto 0; max-width: 520px; padding: 24px; background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); display: flex; align-items: center; gap: 16px; text-align: left; }
   .light .closer-block { background: var(--bg); color: var(--fg); border-color: transparent; }
@@ -1058,26 +1090,60 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       var paybackHtml = s.paybackNum ? '<div class="payback"><div class="mono">' + fmt(s.paybackLabel || '') + '</div><div class="pb-num">' + fmt(s.paybackNum) + '</div><div class="pb-cap">' + fmt(s.paybackCaption || '') + '</div></div>' : '';
       if (groups) {
         // Layout empilhado (só quando há benefitGroups, ex.: slide de Investimento):
-        // os 3 grupos viram blocos LADO A LADO e o preço desce pra uma faixa
-        // horizontal própria embaixo — some o vazio da antiga grade 2-colunas. A
-        // escada secreta (ofertas 2/3) entra AO LADO da principal, riscando-a:
-        // o preço anterior fica visível como âncora de comparação.
+        // (1) benefícios num ÚNICO bloco, com os 3 grupos em colunas separadas por
+        // divisória; (2) preço numa faixa horizontal LARGA que o conteúdo preenche
+        // por inteiro. A escada secreta (ofertas 2/3) NÃO cria card novo: troca o
+        // conteúdo DENTRO da mesma faixa — arrasta o preço anterior pro lado,
+        // riscado (âncora de comparação), e sobe o novo preço + o novo plano.
         pw.className = 'price-wrap price-stack';
         var colsHtml = groups.map(function (g) {
           var items = visibleFeats(g.items);
           if (!items.length) return '';
-          return '<div class="benefit-col">' +
+          return '<div class="benefit-group">' +
             (g.title ? '<div class="bg-title stage-item">' + fmt(g.title) + '</div>' : '') +
             '<ul class="price-list">' + items.map(function (f) { return featLi(f, 'stage-item'); }).join('') + '</ul>' +
             (g.synth ? '<div class="benefit-synth stage-item">' + fmt(g.synth) + '</div>' : '') +
           '</div>';
         }).join('');
+        // Um painel por oferta ocupando a faixa inteira; só o ativo aparece. O(s)
+        // preço(s) anterior(es) entram riscados ao lado do novo (comparação).
+        var offersArr = [s];
+        if (hasOffer2) offersArr.push(s.offer2);
+        if (hasOffer3) offersArr.push(s.offer3);
+        function priceLine(o) {
+          return (o.pricePrefix ? '<span class="currency">' + fmt(o.pricePrefix) + '</span>' : '') +
+            (o.currency === false ? '' : '<span class="currency">R$</span>') +
+            '<span class="price-main"><span class="amount">' + fmt(o.price || '{{calc.preco}}') + '</span><span class="per">' + fmt(o.per || '/ mês') + '</span></span>';
+        }
+        function cyclesLine(o) {
+          return (o.cyclesLabel ? fmt(o.cyclesLabel) + ' ' : '') + fmt(o.cycles != null ? o.cycles : '{{calc.precoCiclos}}');
+        }
+        var panelsHtml = offersArr.map(function (o, i) {
+          var prev = offersArr.slice(0, i).map(function (p) {
+            return '<div class="pb-old"><span class="pb-old-tag">' + fmt(p.planTag || '') + '</span><span class="pb-old-price">' + priceLine(p) + '</span></div>';
+          }).join('');
+          return '<div class="pb-offer" data-o="' + (i + 1) + '">' +
+            '<div class="pb-left">' +
+              '<div class="price-tag">' + fmt(o.planTag || '') + '</div>' +
+              (o.planPill ? '<span class="pill accent">' + fmt(o.planPill) + '</span>' : '') +
+            '</div>' +
+            '<div class="pb-center">' +
+              (prev ? '<div class="pb-compare">' + prev + '</div>' : '') +
+              '<div class="price-number pb-price">' + priceLine(o) + '</div>' +
+            '</div>' +
+            '<div class="pb-right">' +
+              '<div class="price-cycles">' + cyclesLine(o) + '</div>' +
+            '</div>' +
+          '</div>';
+        }).join('');
         pw.innerHTML =
-          '<div class="benefits-row" data-reveal>' +
+          '<div class="benefits-card benefits-single" data-reveal>' +
             (s.featuresTitle ? '<div class="benefits-title">' + fmt(s.featuresTitle) + '</div>' : '') +
-            '<div class="benefit-cols">' + colsHtml + '</div>' +
+            '<div class="benefit-grid">' + colsHtml + '</div>' +
           '</div>' +
-          '<div class="price-reveal price-band' + (hasOffer2 || hasOffer3 ? ' has-ladder' : '') + '">' + offersHtml + veilHtml + '</div>' +
+          '<div class="price-reveal price-band' + (hasOffer2 || hasOffer3 ? ' has-ladder' : '') + '">' +
+            '<div class="pb-stage">' + panelsHtml + '</div>' + veilHtml +
+          '</div>' +
           (guaranteeHtml || paybackHtml ? '<div data-reveal style="margin-top:16px">' + guaranteeHtml + paybackHtml + '</div>' : '');
       } else {
         pw.innerHTML =
