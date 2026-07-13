@@ -99,17 +99,28 @@ function SettingsScreen({ saasId }) {
 }
 
 // Barra de salvar compartilhada das abas (estado ocupado + erro + dica).
+// No sucesso: reseta o "Salvando…" e mostra "Salvo ✓" por alguns segundos (o
+// refresh não remonta a árvore, então SEM o reset o botão ficava preso).
 function SaveBar({ onSave, disabled, hint, busyLabel = "Salvando…", label = "Salvar" }) {
   const [busy, setBusy] = useStS(false);
   const [error, setError] = useStS(null);
+  const [done, setDone] = useStS(false);
+  const mounted = React.useRef(true);
+  React.useEffect(() => () => { mounted.current = false; }, []);
   async function go() {
-    setBusy(true); setError(null);
-    try { await onSave(); }
-    catch (e) { setBusy(false); setError(e.message || String(e)); }
+    setBusy(true); setError(null); setDone(false);
+    try {
+      await onSave();
+      if (!mounted.current) return;
+      setBusy(false); setDone(true);
+      setTimeout(() => { if (mounted.current) setDone(false); }, 2500);
+    } catch (e) {
+      if (mounted.current) { setBusy(false); setError(e.message || String(e)); }
+    }
   }
   return (
     <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
-      <PrimaryButton onClick={go} disabled={busy || disabled}>{busy ? busyLabel : label}</PrimaryButton>
+      <PrimaryButton onClick={go} disabled={busy || disabled}>{busy ? busyLabel : done ? "Salvo ✓" : label}</PrimaryButton>
       {hint && <span className="mono dim" style={{ fontSize: 11 }}>{hint}</span>}
       {error && <span className="mono" style={{ fontSize: 11, color: "var(--neg)" }}>{error}</span>}
     </div>
