@@ -619,7 +619,7 @@ function CallShortcuts({ l, item, wa, onPatch }) {
 // conversa) e ROTEIRO à direita (postura, objetivo e o passo a passo com a
 // fala pronta). Em tela estreita as colunas empilham. "Toque e próximo"
 // mantém o operador em fluxo: registra e já abre o cliente seguinte.
-function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfter, onClose, onTouch, onOpenLead }) {
+function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfter, onClose, onTouch, onOpenLead, preview = false, previewScript = null }) {
   // Cópia local do lead: a edição inline dos campos reflete na hora aqui (fala
   // interpolada + checklist) e persiste via onPatch (fila + API).
   const [l, setL] = useS(item.l);
@@ -630,8 +630,10 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
   }
   // Item de confirmação de call usa o roteiro de confirmação; o resto, o roteiro
   // do estágio (por tentativa). A confirmação não é movimento de etapa, então o
-  // bloco "Depois da ação" (destino) some pra esse item.
-  const script = item.confirm ? confirmationScript(l, saasCfg, item.confirmWindow) : resolveScript(saasCfg, l);
+  // bloco "Depois da ação" (destino) some pra esse item. Em pré-visualização
+  // (Ajustes → Scripts) o roteiro já vem pronto (previewScript) — mostra o
+  // rascunho que está sendo editado, sem depender de resolver por lead.
+  const script = previewScript || (item.confirm ? confirmationScript(l, saasCfg, item.confirmWindow) : resolveScript(saasCfg, l));
   const tokens = scriptTokens(l, saasCfg);
   const checklist = scriptChecklist(saasCfg, l);
   const wa = waLink(l.phone);
@@ -644,6 +646,8 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
   // Últimos contatos da timeline — contexto de quem já falou com esse lead.
   const [acts, setActs] = useS(null);
   useE(() => {
+    // Pré-visualização usa um lead fictício: não busca timeline (nem bate na API).
+    if (preview) { setActs([]); return; }
     let alive = true;
     setActs(null);
     api.listActivities(l.id)
@@ -686,8 +690,13 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
       }}>
         <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              {script.titulo}{script.custom ? " · personalizado" : ""}
+            <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 8 }}>
+              <span>{script.titulo}{script.custom ? " · personalizado" : ""}</span>
+              {preview && (
+                <span className="mono" style={{ fontSize: 9.5, color: "var(--accent)", background: "var(--accent-soft)", border: "1px solid var(--accent-line)", borderRadius: 999, padding: "1px 7px", letterSpacing: "0.04em" }}>
+                  pré-visualização · dados de exemplo
+                </span>
+              )}
             </div>
             <div style={{ fontSize: 16.5, fontWeight: 600, marginTop: 2, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {l.name}
@@ -700,9 +709,11 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
               )}
             </div>
           </div>
-          <button onClick={onOpenLead} style={{ padding: "6px 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12, flexShrink: 0 }}>
-            abrir lead
-          </button>
+          {!preview && (
+            <button onClick={onOpenLead} style={{ padding: "6px 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12, flexShrink: 0 }}>
+              abrir lead
+            </button>
+          )}
           <button onClick={onClose} className="mono dim" style={{ fontSize: 16, flexShrink: 0 }}>✕</button>
         </div>
 
@@ -786,15 +797,22 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
 
             {/* Destino do card fica AQUI, embaixo dos dados do cliente, pra
                 aproveitar o espaço vazio da coluna e encurtar o painel. Item de
-                confirmação não move etapa, então não mostra destino. */}
-            {!item.confirm && <DestinoSection saasCfg={saasCfg} lead={l} leads={leads} onMove={onMove} onMoveMeet={onMoveMeet} onAfter={onAfter} onTouch={onTouch} />}
+                confirmação não move etapa, então não mostra destino. Em
+                pré-visualização o bloco vira só uma nota (as ações mexem em
+                lead/agenda de verdade, não fazem sentido numa simulação). */}
+            {!item.confirm && !preview && <DestinoSection saasCfg={saasCfg} lead={l} leads={leads} onMove={onMove} onMoveMeet={onMoveMeet} onAfter={onAfter} onTouch={onTouch} />}
+            {!item.confirm && preview && (
+              <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.5, border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", padding: "9px 11px", background: "var(--bg-inset)" }}>
+                na fila real, aqui aparece o bloco <b>“Depois da ação”</b> (pra onde vai o card: próxima etapa, agenda da call, ganho/perda).
+              </div>
+            )}
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
             <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Roteiro</div>
             {/* Call agendada: atalhos do closer no topo (link da call + mandar pro
                 cliente no Whats + proposta), antes do passo a passo. */}
-            {item.kind === "call" && <CallShortcuts l={l} item={item} wa={wa} onPatch={patch} />}
+            {item.kind === "call" && !preview && <CallShortcuts l={l} item={item} wa={wa} onPatch={patch} />}
             <div style={{ ...box, background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
               <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 4 }}>Como se comportar</div>
               <div style={{ fontSize: 12, lineHeight: 1.45 }}>{script.resumo}</div>
@@ -1234,4 +1252,4 @@ function DestinoSection({ saasCfg, lead, leads, onMove, onMoveMeet, onAfter, onT
   );
 }
 
-export { TodayScreen };
+export { TodayScreen, ScriptPanel };
