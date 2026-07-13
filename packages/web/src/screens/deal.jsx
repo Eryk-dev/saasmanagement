@@ -10,6 +10,7 @@ import { api } from "../lib/api.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 import { sourceLabel } from "../lib/sources.js";
 import { resolveScript, scriptTokens, scriptSegments, scriptChecklist } from "../lib/scripts.js";
+import { CallSummaryCard } from "./today.jsx";
 import { useData } from "../data.jsx";
 // Lead detail drawer — slides over the pipeline when a card is opened.
 // (Funil unificado: o card do pipeline é um lead, então o detalhe é do lead.)
@@ -82,6 +83,15 @@ function LeadDetail({ lead: initial, onClose }) {
     // o toque pode ter re-agendado o GPS no servidor — ressincroniza o lead
     api.get("leads", lead.id).then((fresh) => setLead((prev) => ({ ...prev, ...fresh }))).catch(() => {});
   }
+
+  // Último resumo de call por IA (activity call_summary) pra mostrar o card rico
+  // na coluna Cliente — mesmo componente do popup das Minhas atividades.
+  const callSummary = React.useMemo(() => {
+    const cs = (activities || [])
+      .filter((x) => x.meta?.event === "call_summary" && x.meta?.summary)
+      .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0))[0];
+    return cs ? { ...cs.meta.summary, recordingUrl: cs.meta.recordingUrl || "" } : null;
+  }, [activities]);
 
   const score = lead.score;
   const hasScore = score != null && score !== "";
@@ -254,6 +264,10 @@ function LeadDetail({ lead: initial, onClose }) {
               </div>
             )}
           </div>
+
+          {/* Resumo da última call por IA (quando já existe): o que rolou +
+              objeções + WhatsApp pronto, igual ao popup das Minhas atividades. */}
+          <CallSummaryCard summary={callSummary} phone={lead.phone} />
 
           {/* Dados do 1º contato — editáveis: preenche/corrige o que faltar. */}
           <div style={box}>
