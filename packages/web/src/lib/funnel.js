@@ -142,6 +142,48 @@ export function lossReasonLabel(saasCfg, id) {
   return lossReasonsOf(saasCfg).find((r) => r.id === id)?.label || id;
 }
 
+// ── Ordem dos "próximos passos" (bloco "Depois da ação" da tela Meu dia) ──────
+// Os destinos que o NEXT_KINDS do today.jsx emite — inclui os pseudo-kinds
+// `retry` (Retomar amanhã) e `noshow` (cliente furou), que NÃO estão em KINDS.
+// A ordem é uma prioridade GLOBAL por produto (product.nextStepOrder): cada
+// etapa continua mostrando só o subconjunto válido dela, mas nesta ordem.
+export const NEXT_STEP_KINDS = ["retry", "call", "noshow", "contato", "followup", "integracao", "posvenda", "ganho", "desqualificado"];
+export const NEXT_STEP_LABELS = {
+  retry:          "Retomar amanhã / tentar de novo",
+  call:           "Agendar call",
+  noshow:         "No show (cliente furou)",
+  contato:        "Nutrição / voltar pro contato",
+  followup:       "Follow-up",
+  integracao:     "Integração (entrega)",
+  posvenda:       "Pós-venda (CS)",
+  ganho:          "Ganho",
+  desqualificado: "Desqualificado",
+};
+
+// Normaliza a lista salva: só kinds válidos, sem repetição, completando com os
+// que faltarem (na ordem canônica) — nenhum destino some se o catálogo crescer.
+export function normalizeNextStepOrder(order) {
+  const seen = new Set();
+  const out = [];
+  for (const k of Array.isArray(order) ? order : []) {
+    if (NEXT_STEP_KINDS.includes(k) && !seen.has(k)) { seen.add(k); out.push(k); }
+  }
+  for (const k of NEXT_STEP_KINDS) if (!seen.has(k)) out.push(k);
+  return out;
+}
+
+// Reordena os destinos resolvidos pela prioridade escolhida. Cada destino traz
+// `nk` = o kind de origem no NEXT_KINDS. Estável: empates (ou kinds fora da
+// lista) mantêm a ordem original do NEXT_KINDS da etapa.
+export function orderNextSteps(dests, order) {
+  if (!Array.isArray(order) || !order.length) return dests;
+  const rank = new Map(order.map((k, i) => [k, i]));
+  return dests
+    .map((d, i) => ({ d, i, r: rank.has(d.nk) ? rank.get(d.nk) : order.length + i }))
+    .sort((a, b) => a.r - b.r || a.i - b.i)
+    .map((x) => x.d);
+}
+
 // O funil trabalha de segunda a sexta: agendamento otimista do GPS que cair em
 // sáb/dom rola pra segunda 08:00 (espelho do rollToBusinessDay do servidor; aqui
 // no relógio local do navegador — o time opera em BRT).

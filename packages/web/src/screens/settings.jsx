@@ -4,7 +4,7 @@ import { EmptyState, PrimaryButton, RowActions, Avatar } from "../atoms.jsx";
 import { useData } from "../data.jsx";
 import { api } from "../lib/api.js";
 import { useIsMobile } from "../lib/responsive.js";
-import { KINDS, KIND_IDS, guessKind, lossReasonsOf } from "../lib/funnel.js";
+import { KINDS, KIND_IDS, guessKind, lossReasonsOf, NEXT_STEP_LABELS, normalizeNextStepOrder } from "../lib/funnel.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { DEFAULT_SCRIPTS, SCRIPT_CATALOG, catalogStageRow } from "../lib/scripts.js";
 import { NAV } from "../chrome.jsx";
@@ -37,6 +37,7 @@ function SettingsScreen({ saasId }) {
 
   const TABS = [
     ["funnel",      "Funil & estágios"],
+    ["nextsteps",   "Próximos passos"],
     ["scripts",     "Scripts"],
     ["team",        "Equipe"],
     ["fields",      "Campos custom"],
@@ -87,6 +88,7 @@ function SettingsScreen({ saasId }) {
               seedado do produto anterior sobrevive e o Salvar gravaria a config
               de um produto por cima do outro. */}
           {tab === "funnel"       && <FunnelSettings key={s.id} s={s} />}
+          {tab === "nextsteps"    && <NextStepsSettings key={s.id} s={s} />}
           {tab === "scripts"      && <ScriptsSettings key={s.id} s={s} />}
           {tab === "team"         && <TeamSettings />}
           {tab === "fields"       && <FieldsSettings key={s.id} s={s} />}
@@ -300,6 +302,48 @@ function LossReasonsSettings({ s }) {
         </button>
       </div>
       <SaveBar onSave={save} hint="“não informado” é automático quando alguém move sem escolher motivo (API/MCP)" />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────── Ordem dos próximos passos (Meu dia)
+// product.nextStepOrder — prioridade GLOBAL dos botões "Depois da ação" da tela
+// Meu dia (bloco DestinoSection). Cada etapa continua mostrando só os destinos
+// válidos dela (NEXT_KINDS do today.jsx); esta config só decide a ORDEM. Vazio =
+// ordem canônica. Salva um array de kinds no produto e o today.jsx reordena.
+function NextStepsSettings({ s }) {
+  const { refresh } = useData();
+  const [order, setOrder] = useStS(() => normalizeNextStepOrder(s.nextStepOrder));
+  const move = (i, dir) => setOrder((o) => {
+    const j = i + dir;
+    if (j < 0 || j >= o.length) return o;
+    const next = [...o];
+    [next[i], next[j]] = [next[j], next[i]];
+    return next;
+  });
+  const arrowStyle = (disabled) => ({ fontSize: 13, padding: "0 4px", color: "var(--fg-3)", opacity: disabled ? 0.3 : 1, fontFamily: "var(--mono)", cursor: disabled ? "default" : "pointer" });
+
+  async function save() {
+    await api.update("products", s.id, { nextStepOrder: order });
+    await refresh();
+  }
+
+  return (
+    <div>
+      <SettingHeader title="Ordem dos próximos passos" sub="prioridade dos botões “Depois da ação” na tela Meu dia · cada etapa mostra só os destinos válidos dela, mas nesta ordem" />
+      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "4px 14px", maxWidth: 460 }}>
+        {order.map((k, i) => (
+          <div key={k} style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 0", borderBottom: i < order.length - 1 ? "1px solid var(--line-1)" : "none" }}>
+            <span className="mono dim" style={{ fontSize: 11, width: 16, textAlign: "right" }}>{i + 1}</span>
+            <span style={{ display: "flex" }}>
+              <button type="button" onClick={() => move(i, -1)} disabled={i === 0} style={arrowStyle(i === 0)}>↑</button>
+              <button type="button" onClick={() => move(i, 1)} disabled={i === order.length - 1} style={arrowStyle(i === order.length - 1)}>↓</button>
+            </span>
+            <span style={{ fontSize: 12.5, color: "var(--fg-1)" }}>{NEXT_STEP_LABELS[k] || k}</span>
+          </div>
+        ))}
+      </div>
+      <SaveBar onSave={save} hint="vale pra todas as etapas do funil deste produto · destinos que a etapa não usa são ignorados" />
     </div>
   );
 }
