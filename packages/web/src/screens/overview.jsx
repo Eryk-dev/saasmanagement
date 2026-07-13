@@ -1,7 +1,7 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { PageHead, StatTile, Card, LineChart, Pill, Segmented } from "../components/viz.jsx";
+import { PageHead, StatTile, Card, LineChart, Pill } from "../components/viz.jsx";
 import { EmptyState, Avatar } from "../atoms.jsx";
 import { nextMilestone, dueLabel } from "../lib/milestones.js";
 import { openStages, isWonStage, firstStage as firstStageOf } from "../lib/funnel.js";
@@ -19,29 +19,42 @@ const shortDay = (d) => d.toLocaleDateString("pt-BR", { day: "2-digit", month: "
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const pctStr = (n) => (n == null ? "" : String(n).replace(".", ",") + "%");
 
-// Janela do período (governa a Visão geral inteira): semana (segunda→hoje),
-// mês (1º→hoje) ou trimestre (início do trimestre→hoje). A janela ANTERIOR é
-// sempre a COMPLETA, que é estável (a atual ainda não fechou) — base da meta
-// dinâmica de calls do SDR.
-function scoreWindow(period, now = new Date()) {
-  if (period === "week") {
-    const day = (now.getDay() + 6) % 7; // 0 = segunda
-    const monday = new Date(now); monday.setHours(0, 0, 0, 0); monday.setDate(now.getDate() - day);
-    return { since: ymd(monday), prevSince: ymd(new Date(monday.getTime() - 7 * DAY)), prevUntil: ymd(new Date(monday.getTime() - DAY)) };
+// Filtro de período da Visão geral: presets de N dias (+ hoje/ontem/custom). A
+// janela ANTERIOR é a mesma duração imediatamente antes — base da meta dinâmica
+// de calls do SDR (leads do período anterior × taxa).
+const PRESETS = [
+  { key: "today", label: "Hoje", days: 1, off: 0 },
+  { key: "yesterday", label: "Ontem", days: 1, off: 1 },
+  { key: "3d", label: "3 dias", days: 3, off: 0 },
+  { key: "7d", label: "7 dias", days: 7, off: 0 },
+  { key: "15d", label: "15 dias", days: 15, off: 0 },
+  { key: "30d", label: "30 dias", days: 30, off: 0 },
+  { key: "60d", label: "60 dias", days: 60, off: 0 },
+  { key: "90d", label: "90 dias", days: 90, off: 0 },
+];
+function periodWindow(period, custom, now = new Date()) {
+  if (period === "custom" && custom?.since && custom?.until) {
+    const s = new Date(`${custom.since}T00:00:00`), u = new Date(`${custom.until}T00:00:00`);
+    const days = Math.max(1, Math.round((u - s) / DAY) + 1);
+    const prevUntil = new Date(s.getTime() - DAY), prevSince = new Date(prevUntil.getTime() - (days - 1) * DAY);
+    const lbl = `${custom.since.slice(5)} a ${custom.until.slice(5)}`;
+    return { since: custom.since, until: custom.until, prevSince: ymd(prevSince), prevUntil: ymd(prevUntil), days, short: lbl, label: lbl };
   }
-  if (period === "quarter") {
-    const qStart = Math.floor(now.getMonth() / 3) * 3; // 0,3,6,9
-    return {
-      since: ymd(new Date(now.getFullYear(), qStart, 1)),
-      prevSince: ymd(new Date(now.getFullYear(), qStart - 3, 1)),
-      prevUntil: ymd(new Date(now.getFullYear(), qStart, 0)),
-    };
-  }
-  return { since: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), prevSince: ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)), prevUntil: ymd(new Date(now.getFullYear(), now.getMonth(), 0)) };
+  const p = PRESETS.find((x) => x.key === period) || PRESETS.find((x) => x.key === "30d");
+  const end0 = new Date(now); end0.setHours(0, 0, 0, 0);
+  const end = new Date(end0.getTime() - (p.off || 0) * DAY);
+  const since = new Date(end.getTime() - (p.days - 1) * DAY);
+  const prevUntil = new Date(since.getTime() - DAY), prevSince = new Date(prevUntil.getTime() - (p.days - 1) * DAY);
+  const short = p.key === "today" ? "hoje" : p.key === "yesterday" ? "ontem" : p.label.toLowerCase();
+  return { since: ymd(since), until: ymd(end), prevSince: ymd(prevSince), prevUntil: ymd(prevUntil), days: p.days, short, label: short };
 }
-const PERIOD_LABEL = { week: "esta semana", month: "este mês", quarter: "este trimestre" };
-const PERIOD_SHORT = { week: "semana", month: "mês", quarter: "trimestre" };
-const daysSince = (ymdStr) => Math.max(1, Math.round((Date.now() - new Date(`${ymdStr}T00:00:00`).getTime()) / DAY) + 1);
+const presetBtn = (active) => ({
+  height: 24, padding: "0 9px", borderRadius: "var(--r-2)", fontSize: 11, cursor: "pointer", whiteSpace: "nowrap",
+  border: "1px solid " + (active ? "var(--accent-line)" : "var(--line-1)"),
+  background: active ? "var(--accent-soft)" : "var(--bg-2)",
+  color: active ? "var(--accent)" : "var(--fg-3)",
+});
+const dateInp = { height: 24, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" };
 
 function OverviewScreen({ onNav, onOpenLead }) {
   const { SAAS, LEADS, CUSTOMERS } = window.SEED;
@@ -51,14 +64,16 @@ function OverviewScreen({ onNav, onOpenLead }) {
   const [biz, setBiz] = useState(null); // CAC/conversão (30d) — mesmo endpoint da Publicidade
   const [invoices, setInvoices] = useState([]);
   const [costs, setCosts] = useState(null); // custos do mês corrente (tela Custos)
-  const [scoreByPeriod, setScoreByPeriod] = useState({}); // { week: {...}, month: {...} } — placar por período
+  const [score, setScore] = useState(null); // placar do time da janela do topo
   // Período do TOPO governa os tiles de aquisição e o gráfico. Snapshots
   // financeiros (MRR, Clientes, Resultado do mês) seguem a cadência própria.
-  const [period, setPeriod] = useState(() => { try { return localStorage.getItem("cockpit_ov_period") || "week"; } catch { return "week"; } });
+  const [period, setPeriod] = useState(() => { try { return localStorage.getItem("cockpit_ov_period") || "30d"; } catch { return "30d"; } });
   const setPeriodP = (p) => { setPeriod(p); try { localStorage.setItem("cockpit_ov_period", p); } catch { /* ignore */ } };
-  const win = useMemo(() => scoreWindow(period), [period]);
-  const pLabel = PERIOD_LABEL[period];
-  const pShort = PERIOD_SHORT[period];
+  const [custom, setCustom] = useState(() => { try { return JSON.parse(localStorage.getItem("cockpit_ov_custom")) || { since: "", until: "" }; } catch { return { since: "", until: "" }; } });
+  const setCustomP = (c) => { setCustom(c); try { localStorage.setItem("cockpit_ov_custom", JSON.stringify(c)); } catch { /* ignore */ } };
+  const win = useMemo(() => periodWindow(period, custom), [period, custom.since, custom.until]);
+  const pLabel = win.label;
+  const pShort = win.short;
 
   // Troca de PRODUTO zera os painéis; refresh por versão (SSE) ou período refaz.
   const loadedFor = React.useRef(null);
@@ -66,49 +81,46 @@ function OverviewScreen({ onNav, onOpenLead }) {
     if (!product) return;
     if (loadedFor.current !== product.id) {
       loadedFor.current = product.id;
-      setMarketing(null); setInvoices([]); setCosts(null); setScoreByPeriod({});
+      setMarketing(null); setInvoices([]); setCosts(null); setScore(null);
     }
     let alive = true;
-    const until = ymd(new Date());
-    api.marketingMetrics(product.id, { since: win.since, until }).then((m) => alive && setMarketing(m)).catch(() => alive && setMarketing(null));
-    api.metrics(product.id, { days: daysSince(win.since) }).then((b) => alive && setBiz(b)).catch(() => alive && setBiz(null));
+    api.marketingMetrics(product.id, { since: win.since, until: win.until }).then((m) => alive && setMarketing(m)).catch(() => alive && setMarketing(null));
+    api.metrics(product.id, { days: win.days }).then((b) => alive && setBiz(b)).catch(() => alive && setBiz(null));
     api.list("invoices").then((rows) => alive && setInvoices(rows.filter((i) => i.saas === product.id))).catch(() => {});
     api.expensesSummary(product.id).then((c) => alive && setCosts(c)).catch(() => alive && setCosts(null));
     return () => { alive = false; };
-  }, [product?.id, version, period]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [product?.id, version, period, custom.since, custom.until]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Placar do time: um fetch pro período do topo (o filtro único rege tudo).
+  // Placar do time: um fetch pra janela do topo (o filtro único rege tudo).
   useEffect(() => {
     if (!product) return;
     let alive = true;
-    api.scoreboard(product.id, win).then((s) => alive && setScoreByPeriod((prev) => ({ ...prev, [period]: s }))).catch(() => {});
+    api.scoreboard(product.id, win).then((s) => alive && setScore(s)).catch(() => {});
     return () => { alive = false; };
-  }, [product?.id, version, period]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [product?.id, version, period, custom.since, custom.until]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const leads = useMemo(() => (LEADS || []).filter((l) => l.saas === product?.id), [LEADS, product?.id]);
 
   const now = Date.now();
   const dstr = (iso) => String(iso || "").slice(0, 10);
-  const untilStr = ymd(new Date());
-  const inPeriod = (iso) => { const d = dstr(iso); return d >= win.since && d <= untilStr; };
+  const inPeriod = (iso) => { const d = dstr(iso); return d >= win.since && d <= win.until; };
   const inPrevPeriod = (iso) => { const d = dstr(iso); return d >= win.prevSince && d <= win.prevUntil; };
   const leadsPeriod = leads.filter((l) => inPeriod(l.createdAt)).length;
   const leadsPrev = leads.filter((l) => inPrevPeriod(l.createdAt)).length;
   const leadsDeltaPct = leadsPrev > 0 ? Math.round(((leadsPeriod - leadsPrev) / leadsPrev) * 100) : null;
 
-  // Série leads/dia do período (semana ~7 pts, mês ~30, trimestre ~90).
+  // Série leads/dia da janela (1 ponto por dia entre since e until).
   const series = useMemo(() => {
     const byDay = {};
-    for (const l of leads) { const d = dstr(l.createdAt); if (d >= win.since && d <= untilStr) byDay[d] = (byDay[d] || 0) + 1; }
+    for (const l of leads) { const d = dstr(l.createdAt); if (d >= win.since && d <= win.until) byDay[d] = (byDay[d] || 0) + 1; }
     const start = new Date(`${win.since}T00:00:00`);
-    const n = daysSince(win.since);
     const out = [];
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < win.days; i++) {
       const d = new Date(start.getTime() + i * DAY);
       out.push({ x: shortDay(d), v: byDay[ymd(d)] || 0 });
     }
     return out;
-  }, [leads, win.since]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [leads, win.since, win.until, win.days]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Funil aberto (snapshot atual do pipeline — não é fluxo, não segue o período).
   const funnelStages = useMemo(() => openStages(product), [product]);
@@ -154,9 +166,8 @@ function OverviewScreen({ onNav, onOpenLead }) {
   const today = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
 
   // Total do TIME no período: soma o que já foi realizado das métricas que
-  // cobramos do SDR e do closer (+ a soma das metas individuais). Segue o
-  // mesmo período do topo (score é scoreByPeriod[period]).
-  const score = scoreByPeriod[period];
+  // cobramos do SDR e do closer (+ a soma das metas individuais). Segue a
+  // janela do topo.
   const teamAgg = (() => {
     const sdrRows = score?.sdr || [], cloRows = score?.closer || [];
     const sum = (rows, f) => rows.reduce((a, p) => a + (Number(f(p)) || 0), 0);
@@ -167,9 +178,9 @@ function OverviewScreen({ onNav, onOpenLead }) {
       callsMeta: sum(sdrRows, (p) => bookingGoal(p)?.target || 0),
       proposals: sum(cloRows, (p) => p.proposals),
       won: sum(cloRows, (p) => p.won),
-      wonMeta: sum(cloRows, (p) => scaleGoal(p.goals?.won, period)?.target || 0),
+      wonMeta: sum(cloRows, (p) => scaleGoal(p.goals?.won, win.days)?.target || 0),
       revenue: sum(cloRows, (p) => p.revenue),
-      revenueMeta: sum(cloRows, (p) => scaleGoal(p.goals?.revenue, period)?.target || 0),
+      revenueMeta: sum(cloRows, (p) => scaleGoal(p.goals?.revenue, win.days)?.target || 0),
     };
   })();
   const ofMeta = (m) => (m > 0 ? `de ${m} · meta ${pShort}` : "somando o time");
@@ -177,8 +188,19 @@ function OverviewScreen({ onNav, onOpenLead }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Visão geral" sub={today}>
-        <Segmented value={period} onChange={setPeriodP}
-          options={[{ value: "week", label: "Semana" }, { value: "month", label: "Mês" }, { value: "quarter", label: "Trimestre" }]} />
+        <div style={{ display: "flex", alignItems: "center", gap: 3, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {PRESETS.map((p) => (
+            <button key={p.key} onClick={() => setPeriodP(p.key)} className="mono" style={presetBtn(period === p.key)}>{p.label}</button>
+          ))}
+          <button onClick={() => setPeriodP("custom")} className="mono" style={presetBtn(period === "custom")}>Personalizado</button>
+          {period === "custom" && (
+            <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+              <input type="date" value={custom.since} onChange={(e) => setCustomP({ ...custom, since: e.target.value })} style={dateInp} />
+              <span className="mono dim" style={{ fontSize: 10 }}>até</span>
+              <input type="date" value={custom.until} onChange={(e) => setCustomP({ ...custom, until: e.target.value })} style={dateInp} />
+            </span>
+          )}
+        </div>
       </PageHead>
 
       <div style={{ padding: "20px var(--pad-x) 40px", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -212,7 +234,7 @@ function OverviewScreen({ onNav, onOpenLead }) {
         )}
 
         {/* Desempenho do time — placar por papel (segue o período do topo). */}
-        <TeamPerformance score={scoreByPeriod[period]} period={period} onPerson={openPerson} product={product} />
+        <TeamPerformance score={score} days={win.days} pLabel={pLabel} onPerson={openPerson} product={product} />
 
         <div className="resp-cols" style={{ "--cols": "minmax(0,1fr) 340px", gap: 12, alignItems: "start" }}>
           <Card title="Leads por dia" hint={`${pLabel} · clique numa etapa pra abrir o pipeline`}>
@@ -322,13 +344,14 @@ const bookingGoal = (p) => {
   return p.goals?.callsBooked;
 };
 
-// Meta absoluta (closer/CS) reescalada pro período da tela: meta mensal vista na
-// semana vira ~meta/4,3. Rates não escalam (uma taxa é uma taxa).
-const PERIOD_DAYS = { week: 7, month: 30.4, quarter: 91.3 };
-const scaleGoal = (goal, period) => {
+// Meta absoluta (closer/CS/social) reescalada pra QUANTIDADE DE DIAS da janela:
+// meta mensal vista em 7 dias vira ~meta×7/30,4. Rates não escalam (taxa é taxa).
+const scaleGoal = (goal, windowDays) => {
   if (!goal || !(goal.target > 0)) return goal;
-  const factor = PERIOD_DAYS[period] / PERIOD_DAYS[goal.period || "month"];
-  return factor === 1 ? goal : { ...goal, target: Math.max(1, Math.round(goal.target * factor)) };
+  const goalDays = goal.period === "week" ? 7 : 30.4;
+  const factor = (windowDays || 30.4) / goalDays;
+  const target = Math.max(1, Math.round(goal.target * factor));
+  return target === goal.target ? goal : { ...goal, target };
 };
 
 // Célula de taxa: número colorido por saúde + fração crua (num/den) + mini-barra.
@@ -433,8 +456,8 @@ const PANELS = [
       { label: "Propostas", render: (p) => <CountRate count={p.proposals} pct={p.proposalRate} {...tiers(p.goals?.proposalRate, 60)} /> },
       { label: "Fecha. proposta", render: (p) => <RateCell pct={p.proposalWinRate} num={p.won} den={p.proposals} {...tiers(p.goals?.proposalWinRate, 30)} /> },
       { label: "Win rate", render: (p) => <RateCell pct={p.winRateCall} num={p.won} den={p.calls} {...tiers(p.goals?.winRateCall, 25)} /> },
-      { label: "Ganhos", render: (p, ctx) => <MetaCell value={p.won} goal={scaleGoal(p.goals?.won, ctx.period)} /> },
-      { label: "Receita", render: (p, ctx) => <MetaCell value={p.revenue} goal={scaleGoal(p.goals?.revenue, ctx.period)} fmt={money} /> },
+      { label: "Ganhos", render: (p, ctx) => <MetaCell value={p.won} goal={scaleGoal(p.goals?.won, ctx.days)} /> },
+      { label: "Receita", render: (p, ctx) => <MetaCell value={p.revenue} goal={scaleGoal(p.goals?.revenue, ctx.days)} fmt={money} /> },
       { label: "Ticket médio", render: (p) => <MetaCell value={p.ticket || 0} goal={p.goals?.ticket} fmt={money} /> },
       { label: "Ciclo", render: (p) => <span className="tnum" title="dias da criação ao ganho">{p.cycleDays != null ? `${String(p.cycleDays).replace(".", ",")}d` : "—"}</span> },
       { label: "Motivos de perda", render: (p, ctx) => <LossCell p={p} lossLabel={ctx.lossLabel} /> },
@@ -444,7 +467,7 @@ const PANELS = [
     key: "cs", title: "CS / Retenção", hint: "pós-venda e carteira",
     cols: [
       { label: "Contas", render: (p) => <span className="tnum">{int(p.activeAccounts)}</span> },
-      { label: "Novas", render: (p, ctx) => <MetaCell value={p.newAccounts} goal={scaleGoal(p.goals?.newAccounts, ctx.period)} /> },
+      { label: "Novas", render: (p, ctx) => <MetaCell value={p.newAccounts} goal={scaleGoal(p.goals?.newAccounts, ctx.days)} /> },
       { label: "Retenção", render: (p) => <RateCell pct={p.retentionRate} {...tiers(p.goals?.retentionRate, 95)} /> },
       { label: "Churn", render: (p) => <span className="tnum" style={{ color: p.churned > 0 ? "var(--neg)" : "var(--fg-3)" }}>{int(p.churned)}</span> },
       { label: "NPS", render: (p) => <span className="tnum" title={p.npsCount ? `${p.npsCount} respostas` : "sem resposta ainda"}>{p.nps != null ? String(p.nps).replace(".", ",") : "—"}</span> },
@@ -453,16 +476,16 @@ const PANELS = [
   {
     key: "social", title: "Mídia social", hint: "conteúdo e criativos · produção conectada em breve (alvo definido em Metas)",
     cols: [
-      { label: "Posts", render: (p, ctx) => <MetaCell value={p.postsPerMonth} goal={scaleGoal(p.goals?.postsPerMonth, ctx.period)} /> },
-      { label: "Stories", render: (p, ctx) => <MetaCell value={p.storiesPerMonth} goal={scaleGoal(p.goals?.storiesPerMonth, ctx.period)} /> },
-      { label: "Ads", render: (p, ctx) => <MetaCell value={p.adsPerMonth} goal={scaleGoal(p.goals?.adsPerMonth, ctx.period)} /> },
+      { label: "Posts", render: (p, ctx) => <MetaCell value={p.postsPerMonth} goal={scaleGoal(p.goals?.postsPerMonth, ctx.days)} /> },
+      { label: "Stories", render: (p, ctx) => <MetaCell value={p.storiesPerMonth} goal={scaleGoal(p.goals?.storiesPerMonth, ctx.days)} /> },
+      { label: "Ads", render: (p, ctx) => <MetaCell value={p.adsPerMonth} goal={scaleGoal(p.goals?.adsPerMonth, ctx.days)} /> },
     ],
   },
 ];
 
 // O placar do time segue o FILTRO ÚNICO do topo da página (period): todos os
 // painéis (SDR/closer/CS) usam o mesmo período, sem toggle por bloco.
-function TeamPerformance({ score, period, onPerson, product }) {
+function TeamPerformance({ score, days, pLabel, onPerson, product }) {
   const lossLabel = React.useMemo(() => {
     const m = Object.fromEntries((product?.lossReasons || []).map((r) => [r.id, r.label]));
     return (id) => m[id] || (id === "nao_informado" ? "não informado" : id);
@@ -473,7 +496,7 @@ function TeamPerformance({ score, period, onPerson, product }) {
         {PANELS.map((panel) => {
           const data = score;
           const rows = data?.[panel.key] || [];
-          const ctx = { period, lossLabel };
+          const ctx = { days, lossLabel };
           // Larguras FIXAS (não fr) pra os painéis alinharem entre si: a coluna
           // Pessoa e as de métrica começam no mesmo x em todos os papéis.
           const PERSON_W = 160, COL_W = 116;
@@ -483,11 +506,11 @@ function TeamPerformance({ score, period, onPerson, product }) {
             <div key={panel.key} style={{ marginTop: 10 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 8px", flexWrap: "wrap" }}>
                 <span style={{ fontSize: 12.5, fontWeight: 700 }}>{panel.title}</span>
-                <span className="mono dim" style={{ fontSize: 10.5 }}>{panel.hint} · {PERIOD_LABEL[period]}</span>
+                <span className="mono dim" style={{ fontSize: 10.5 }}>{panel.hint} · {pLabel}</span>
               </div>
               {data == null && <div className="mono dim" style={{ padding: "8px", fontSize: 12 }}>carregando…</div>}
               {data != null && !rows.length && (
-                <div style={{ padding: "8px", fontSize: 12.5, color: "var(--fg-4)" }}>Sem atividade {PERIOD_LABEL[period]}.</div>
+                <div style={{ padding: "8px", fontSize: 12.5, color: "var(--fg-4)" }}>Sem atividade nesse período.</div>
               )}
               {rows.length > 0 && panel.alarm && panel.alarm(rows)}
               {rows.length > 0 && (
