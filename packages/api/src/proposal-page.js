@@ -455,7 +455,9 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .pb-compare { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 20px; }
   .pb-old { display: inline-flex; align-items: baseline; gap: 8px; opacity: .55; }
   .pb-old-tag { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
-  .pb-old-price { color: var(--ink-3); text-decoration: line-through; text-decoration-thickness: 2px; text-decoration-color: var(--accent); }
+  .pb-old-price { color: var(--ink-3); }
+  /* risca só o valor (amount + /mês); o prefixo "12x" fica intacto. */
+  .pb-old-price .price-main { text-decoration: line-through; text-decoration-thickness: 2px; text-decoration-color: var(--accent); }
   .pb-old-price .amount { font-family: var(--font-display); font-size: 26px; font-weight: 500; }
   .pb-old-price .currency, .pb-old-price .per, .pb-old-price .price-main { font-size: 13px; }
   @media (prefers-reduced-motion: reduce) { .pb-stage, .pb-offer { transition: none; } }
