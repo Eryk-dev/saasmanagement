@@ -40,7 +40,17 @@ export function makeCallSummarizer({ repo, google, anthropic, log = console }) {
       return { ok: false, reason: "already_done" };
     }
 
-    const t = await google.fetchTranscript(code);
+    // 1º a Meet API (conferenceRecords). Se ela não devolver (comum quando quem
+    // hospeda a call é outra conta que não a conectada), cai no fallback do Drive:
+    // lê o Doc de transcrição no Drive do organizador (a conta conectada).
+    let t = await google.fetchTranscript(code);
+    if (!t && typeof google.fetchTranscriptFromDrive === "function") {
+      try {
+        t = await google.fetchTranscriptFromDrive({ eventId: lead.meetEventId, leadName: lead.name, since: lead.meetScheduledAt });
+      } catch (err) {
+        log.warn?.({ lead: lead.id, err: err.message }, "fallback de transcrição pelo Drive falhou");
+      }
+    }
     if (!t) return { ok: false, reason: "transcript_not_ready" };
 
     const product = lead.saas ? await repo.get("products", lead.saas) : null;
