@@ -148,7 +148,11 @@ export function registerScoreboardRoutes(app, repo) {
       .sort((a, b) => b.callsBooked - a.callsBooked);
 
     // ── Closer (agrupado por closer) ──────────────────────────────────────────
-    const closerIds = [...new Set([...withRole("closer"), ...leads.map((l) => l.closer).filter(Boolean)])];
+    // Categoriza pelo PAPEL: quem é CS (integrator) e NÃO closer não entra no
+    // painel de closers só por ter caído no campo `closer` de um lead (ex.: o
+    // integrador que fechou/acompanhou um negócio pontual).
+    const csOnly = (uid) => { const r = users.find((u) => u.id === uid)?.roles || []; return r.includes("integrator") && !r.includes("closer"); };
+    const closerIds = [...new Set([...withRole("closer"), ...leads.map((l) => l.closer).filter(Boolean)])].filter((uid) => !csOnly(uid));
     const closer = closerIds.map((uid) => {
       const mine = leads.filter((l) => l.closer === uid);
       const calls = mine.filter((l) => inWin(l.callAt)).length;
