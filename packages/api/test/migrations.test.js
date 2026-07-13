@@ -312,7 +312,7 @@ test("migrateLeverAdsSdrCadence: remove Em contato (cards migram), cria Nutriç�
   assert.deepEqual(nut.cadence, { maxAttempts: 3, retryDays: 1, firstTouchHours: 480 });
   assert.equal(names.indexOf("Nutrição"), names.indexOf("Ganho") + 1, "Nutrição fica fora da régua, depois do Ganho");
   assert.deepEqual(p.funnel.find((f) => f.kind === "novo").cadence, { maxAttempts: 1, retryDays: 1, firstTouchHours: 2 });
-  assert.deepEqual(p.funnel.find((f) => f.kind === "qualificacao").cadence, { maxAttempts: 3, retryDays: 1 });
+  assert.deepEqual(p.funnel.find((f) => f.kind === "qualificacao").cadence, { maxAttempts: 2, retryDays: 1 });
   assert.equal((await repo.get("leads", "l1")).stage, "Qualificando");
   assert.equal((await repo.get("leads", "l1")).nextActionAt, "2026-07-13T12:00:00Z", "rename não recarimba o GPS");
   assert.equal((await repo.get("leads", "l3")).stage, "Em contato", "outro produto intacto");
@@ -338,7 +338,7 @@ test("migrateLeverAdsSdrCadence: reconhece a cadência antiga mesmo com chaves r
   });
   await migrateLeverAdsSdrCadence(repo);
   const p = await repo.get("products", "leverads");
-  assert.deepEqual(p.funnel.find((f) => f.kind === "qualificacao").cadence, { maxAttempts: 3, retryDays: 1 });
+  assert.deepEqual(p.funnel.find((f) => f.kind === "qualificacao").cadence, { maxAttempts: 2, retryDays: 1 });
 });
 
 test("migrateLeverAdsSdrCadence: cadência já editada pelo dono não é sobrescrita", async () => {

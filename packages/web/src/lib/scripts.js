@@ -81,6 +81,16 @@ export function scriptSegments(text, tokens) {
 // Cada roteiro: resumo (postura na abordagem), objetivo (com o que sair do
 // contato) e passos [{ t: título, fala, dica? }]. Copy sem travessão.
 
+// Passos de "atendeu → qualifica" — comuns às duas tentativas de Qualificando:
+// se o lead atende em qualquer dia, o objetivo é sempre confirmar os dados e
+// marcar a call. O que muda entre as tentativas é só a mensagem de WhatsApp.
+const QUALIFY_STEPS = [
+  { t: "Atendeu: identificação", fala: "Oi {{nome}}, tudo bom? Sou {{eu}}, da {{produto}}. A gente se falou sobre o seu interesse na clonagem de anúncios. Consegue falar rapidinho agora?" },
+  { t: "Rodar a sequência de dados", fala: "Deixa eu confirmar o que tenho: nicho de {{nicho}}, loja {{empresa}}, {{contas}} nos marketplaces e uns {{anuncios}} anúncios na maior conta, confere?", dica: "Siga a ordem dos campos ao lado e complete o que faltar: expansão ({{expansao}}) e time de marketing ({{equipe}}). O e-mail fica pro final, depois de marcar a call." },
+  { t: "Agendar a call", fala: "Fechado! Vou te colocar com nosso especialista pra você ver a ferramenta clonando anúncio de verdade na sua operação. Fica melhor amanhã de manhã ou no fim da tarde?", dica: "Sempre 2 opções de horário. Marcou? Registra em Call agendada e gera o link da videochamada." },
+  { t: "E-mail pra receber o convite", fala: "Perfeito! Pra fechar, me confirma seu melhor e-mail? Te mando o convite da nossa call por ele.", dica: "Preenche no campo ao lado; o convite do Meet vai automático pra ele." },
+];
+
 export const DEFAULT_SCRIPTS = {
   novo: {
     titulo: "1º ato · novo lead (prioridade máxima)",
@@ -110,16 +120,27 @@ export const DEFAULT_SCRIPTS = {
       { t: "WhatsApp, se não atender", fala: "Oi {{nome}}! Vi seu cadastro aqui na {{produto}} (a ferramenta que clona anúncios entre contas de marketplace). Te liguei mas não consegui. Qual o melhor horário pra gente trocar uma ideia rápida?", dica: "Registre cada tentativa no toque do card: o GPS agenda a próxima sozinho." },
     ],
   },
-  qualificacao: {
-    titulo: "Qualificando · sessões diárias",
-    resumo: "Retomada do dia: ligue 2 vezes; sem resposta, manda o WhatsApp da sessão. Atendeu? Roda a qualificação completa e sai com a call marcada. O processo inteiro são 3 sessões (1º ato + 2 retomadas); acabou a terceira sem retorno, o card vai pra Nutrição.",
-    objetivo: "Qualificação completa (formulário confirmado + empresa, time de marketing e e-mail) e call agendada com o closer.",
+  // Qualificando tem 2 tentativas (fecha as 3 abordagens do processo: 1 no Novo
+  // lead + 2 aqui). O painel resolve QUAL mostrar pelo nº de toques na etapa
+  // (resolveScript): 0 toques = 2ª tentativa; 1+ = 3ª (última).
+  qualificacao2: {
+    titulo: "Qualificando · 2ª tentativa",
+    resumo: "Primeira retomada. Já tentamos no cadastro (1º ato) e não deu. Liga 2 vezes; não atendeu, manda o WhatsApp confirmando que é a pessoa certa e reforçando o interesse. Atendeu? Roda a qualificação e sai com a call marcada.",
+    objetivo: "Falar com o lead (e qualificar + marcar call) ou deixar a mensagem certa pedindo o melhor horário.",
     passos: [
-      { t: "Atendeu: identificação", fala: "Oi {{nome}}, tudo bom? Sou {{eu}}, da {{produto}}. A gente se falou sobre o seu interesse na clonagem de anúncios. Consegue falar rapidinho agora?" },
-      { t: "Rodar a sequência de dados", fala: "Deixa eu confirmar o que tenho: nicho de {{nicho}}, loja {{empresa}}, {{contas}} nos marketplaces e uns {{anuncios}} anúncios na maior conta, confere?", dica: "Siga a ordem dos campos ao lado e complete o que faltar: expansão ({{expansao}}) e time de marketing ({{equipe}}). O e-mail fica pro final, depois de marcar a call." },
-      { t: "Agendar a call", fala: "Fechado! Vou te colocar com nosso especialista pra você ver a ferramenta clonando anúncio de verdade na sua operação. Fica melhor amanhã de manhã ou no fim da tarde?", dica: "Sempre 2 opções de horário. Marcou? Registra em Call agendada e gera o link da videochamada." },
-      { t: "Sessão 2, sem resposta (WhatsApp)", fala: "Oi, tudo bem? Estou falando com {{nome_completo}}? Sou {{eu}}, da plataforma {{produto}}, sobre o seu cadastro de interesse na clonagem de anúncios." },
-      { t: "Sessão 3, última (WhatsApp)", fala: "Oi {{nome}}! A gente entende que às vezes o momento não é o ideal. Você gostaria de conhecer a plataforma {{produto}} ou podemos finalizar o seu atendimento por aqui?", dica: "Sem retorno até o fim do dia: mover o card pra Nutrição. O GPS devolve ele pra fila em 20 dias, num dia útil." },
+      { t: "Ligar (2 tentativas)", dica: "Sem fala: liga e aguarda; não atendeu, liga de novo em seguida." },
+      { t: "Não atendeu: WhatsApp da 2ª tentativa", fala: "Oi, tudo bem? Estou falando com {{nome_completo}}? Sou {{eu}}, da plataforma {{produto}}. Você se cadastrou pra conhecer nossa ferramenta de clonagem de anúncios e ontem não consegui te encontrar. Qual o melhor horário pra gente conversar 5 minutinhos?", dica: "Depois registra o toque: o GPS traz o card de volta amanhã na 3ª (última) tentativa." },
+      ...QUALIFY_STEPS,
+    ],
+  },
+  qualificacao3: {
+    titulo: "Qualificando · 3ª tentativa (última)",
+    resumo: "Última tentativa antes da Nutrição. Liga 2 vezes; não atendeu, manda o WhatsApp de encerramento (uma saída elegante pedindo um sim ou não). Atendeu? Qualifica normalmente.",
+    objetivo: "Última chance de falar e qualificar; sem retorno, encerrar o ciclo mandando o card pra Nutrição.",
+    passos: [
+      { t: "Ligar (2 tentativas)", dica: "Sem fala: liga e aguarda; não atendeu, liga de novo." },
+      { t: "Não atendeu: WhatsApp da 3ª tentativa (encerramento)", fala: "Oi {{nome}}! Tentei falar com você algumas vezes por aqui e não consegui. A gente entende que às vezes o momento não é o ideal. Você ainda quer conhecer a {{produto}} pra clonar seus anúncios entre as contas, ou posso encerrar seu atendimento por enquanto?", dica: "Sem retorno até o fim do dia: mover o card pra Nutrição (o GPS devolve em 20 dias, num dia útil)." },
+      ...QUALIFY_STEPS,
     ],
   },
   nutricao: {
@@ -211,12 +232,17 @@ function parseCustomScript(text) {
 // Roteiro efetivo de um lead: override da etapa (Ajustes) > padrão do kind.
 // Fila SDR fora da régua (ex.: Nutrição, depois do Ganho) tem roteiro próprio
 // de reativação — o contato ali não é a 1ª tentativa, é retomada de silêncio.
+// Qualificando tem roteiro POR TENTATIVA: 0 toques na etapa = 2ª tentativa;
+// 1+ toques = 3ª (última). O painel mostra só a abordagem daquele dia.
 export function resolveScript(saasCfg, lead) {
   const stage = lead?.stage || saasCfg?.funnel?.[0]?.stage || "";
   const kind = stageKind(saasCfg, stage);
   const reactivation = (kind === "contato" || kind === "qualificacao") &&
     lead?.stage && !openStages(saasCfg).includes(stage);
-  const base = reactivation ? DEFAULT_SCRIPTS.nutricao : (DEFAULT_SCRIPTS[kind] || DEFAULT_SCRIPTS.outro);
+  let base;
+  if (reactivation) base = DEFAULT_SCRIPTS.nutricao;
+  else if (kind === "qualificacao") base = (Number(lead?.stageAttempts) || 0) >= 1 ? DEFAULT_SCRIPTS.qualificacao3 : DEFAULT_SCRIPTS.qualificacao2;
+  else base = DEFAULT_SCRIPTS[kind] || DEFAULT_SCRIPTS.outro;
   const row = (saasCfg?.funnel || []).find((f) => f && f.stage === stage);
   if (row?.script && String(row.script).trim()) {
     return { ...base, custom: true, passos: parseCustomScript(row.script) };

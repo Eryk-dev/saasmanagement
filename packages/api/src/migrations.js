@@ -174,7 +174,7 @@ export async function migrateLeverAdsSdrCadence(repo) {
     novo.cadence = { maxAttempts: 1, retryDays: 1, firstTouchHours: 2 };
   }
   if (qualificando && cadEq(qualificando, { maxAttempts: 5, retryDays: 1 })) {
-    qualificando.cadence = { maxAttempts: 3, retryDays: 1 };
+    qualificando.cadence = { maxAttempts: 2, retryDays: 1 };
   }
 
   // 4. Pergunta de qualificação que o SDR coleta na conversa: tamanho do time de
