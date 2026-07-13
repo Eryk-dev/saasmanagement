@@ -35,6 +35,13 @@ export function registerScoreboardRoutes(app, repo) {
     if (!product) return reply.code(404).send({ error: "Not found" });
     const { since, until } = rangeFromQuery(req.query || {});
     const inWin = (iso) => iso && dayStr(iso) >= since && dayStr(iso) <= until;
+    // Janela ANTERIOR (semana/mês passado) — base da meta dinâmica de calls do
+    // SDR: a meta da semana atual sai do volume de leads da semana passada
+    // (completa), que é estável (a semana atual ainda não fechou).
+    const prevSince = String(req.query?.prevSince || "");
+    const prevUntil = String(req.query?.prevUntil || "");
+    const hasPrev = /^\d{4}-\d{2}-\d{2}$/.test(prevSince) && /^\d{4}-\d{2}-\d{2}$/.test(prevUntil);
+    const inPrev = (iso) => iso && dayStr(iso) >= prevSince && dayStr(iso) <= prevUntil;
 
     const [allLeads, allActs, allCustomers, proposals, subs, users, goalsAll] = await Promise.all([
       repo.list("leads"),
@@ -115,10 +122,12 @@ export function registerScoreboardRoutes(app, repo) {
       }
       const resolved = shown + noShow;
       const leadsNew = cohort.length;
+      const leadsPrev = hasPrev ? mine.filter((l) => inPrev(l.createdAt)).length : null;
       const contacted = touchHours.length; // leads novos que ele JÁ tocou (1º contato feito)
       return {
         user: uid, name: nameOf(uid),
         leadsNew,
+        leadsPrev, // leads da janela anterior (base da meta dinâmica de calls)
         contacted,
         contactRate: leadsNew > 0 ? round2((contacted / leadsNew) * 100) : null,
         callsBooked,
