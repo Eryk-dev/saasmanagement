@@ -56,16 +56,9 @@ function OverviewScreen({ onNav, onOpenLead }) {
   // financeiros (MRR, Clientes, Resultado do mês) seguem a cadência própria.
   const [period, setPeriod] = useState(() => { try { return localStorage.getItem("cockpit_ov_period") || "week"; } catch { return "week"; } });
   const setPeriodP = (p) => { setPeriod(p); try { localStorage.setItem("cockpit_ov_period", p); } catch { /* ignore */ } };
-  // Período POR PAPEL do placar do time (SDR semana, closer/CS mês por padrão).
-  const [panelPeriods, setPanelPeriods] = useState(() => {
-    const g = (k, d) => { try { return localStorage.getItem(`cockpit_pp_${k}`) || d; } catch { return d; } };
-    return { sdr: g("sdr", "week"), closer: g("closer", "month"), cs: g("cs", "month") };
-  });
-  const setPanelPeriod = (role, p) => { setPanelPeriods((prev) => ({ ...prev, [role]: p })); try { localStorage.setItem(`cockpit_pp_${role}`, p); } catch { /* ignore */ } };
   const win = useMemo(() => scoreWindow(period), [period]);
   const pLabel = PERIOD_LABEL[period];
   const pShort = PERIOD_SHORT[period];
-  const panelPeriodsKey = `${panelPeriods.sdr}|${panelPeriods.closer}|${panelPeriods.cs}`;
 
   // Troca de PRODUTO zera os painéis; refresh por versão (SSE) ou período refaz.
   const loadedFor = React.useRef(null);
@@ -84,15 +77,13 @@ function OverviewScreen({ onNav, onOpenLead }) {
     return () => { alive = false; };
   }, [product?.id, version, period]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Placar do time: um fetch por período DISTINTO entre os painéis (dedup).
+  // Placar do time: um fetch pro período do topo (o filtro único rege tudo).
   useEffect(() => {
     if (!product) return;
     let alive = true;
-    for (const per of [...new Set(Object.values(panelPeriods))]) {
-      api.scoreboard(product.id, scoreWindow(per)).then((s) => alive && setScoreByPeriod((prev) => ({ ...prev, [per]: s }))).catch(() => {});
-    }
+    api.scoreboard(product.id, win).then((s) => alive && setScoreByPeriod((prev) => ({ ...prev, [period]: s }))).catch(() => {});
     return () => { alive = false; };
-  }, [product?.id, version, panelPeriodsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [product?.id, version, period]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const leads = useMemo(() => (LEADS || []).filter((l) => l.saas === product?.id), [LEADS, product?.id]);
 
@@ -188,7 +179,7 @@ function OverviewScreen({ onNav, onOpenLead }) {
         </div>
 
         {/* Desempenho do time — placar por papel (cada painel no seu período). */}
-        <TeamPerformance scoreByPeriod={scoreByPeriod} panelPeriods={panelPeriods} onPanelPeriod={setPanelPeriod} onPerson={openPerson} product={product} />
+        <TeamPerformance score={scoreByPeriod[period]} period={period} onPerson={openPerson} product={product} />
 
         <div className="resp-cols" style={{ "--cols": "minmax(0,1fr) 340px", gap: 12, alignItems: "start" }}>
           <Card title="Leads por dia" hint={`${pLabel} · clique numa etapa pra abrir o pipeline`}>
@@ -426,22 +417,18 @@ const PANELS = [
   },
 ];
 
-// Cada painel de papel tem SEU período (SDR semana, closer/CS mês por padrão) —
-// SDR e closer têm cadências diferentes. O toggle do topo da página rege os
-// tiles/gráfico; aqui cada bloco decide o seu.
-const PERIOD_OPTS = [{ value: "week", label: "Semana" }, { value: "month", label: "Mês" }, { value: "quarter", label: "Trimestre" }];
-
-function TeamPerformance({ scoreByPeriod, panelPeriods, onPanelPeriod, onPerson, product }) {
+// O placar do time segue o FILTRO ÚNICO do topo da página (period): todos os
+// painéis (SDR/closer/CS) usam o mesmo período, sem toggle por bloco.
+function TeamPerformance({ score, period, onPerson, product }) {
   const lossLabel = React.useMemo(() => {
     const m = Object.fromEntries((product?.lossReasons || []).map((r) => [r.id, r.label]));
     return (id) => m[id] || (id === "nao_informado" ? "não informado" : id);
   }, [product]);
   return (
-    <Card title="Desempenho do time" hint="cada papel no seu período · SDR: meta = leads do período anterior × taxa · clique num nome pra abrir o pipeline">
+    <Card title="Desempenho do time" hint="segue o período do topo da página · SDR: meta = leads do período anterior × taxa · clique num nome pra abrir o pipeline">
       <div style={{ padding: "6px 8px 12px" }}>
         {PANELS.map((panel) => {
-          const period = panelPeriods[panel.key] || "month";
-          const data = scoreByPeriod[period];
+          const data = score;
           const rows = data?.[panel.key] || [];
           const ctx = { period, lossLabel };
           const gridCols = `minmax(120px, 1.4fr) repeat(${panel.cols.length}, minmax(84px, 1fr))`;
@@ -451,8 +438,6 @@ function TeamPerformance({ scoreByPeriod, panelPeriods, onPanelPeriod, onPerson,
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 8px", flexWrap: "wrap" }}>
                 <span style={{ fontSize: 12.5, fontWeight: 700 }}>{panel.title}</span>
                 <span className="mono dim" style={{ fontSize: 10.5 }}>{panel.hint} · {PERIOD_LABEL[period]}</span>
-                <span style={{ flex: 1 }} />
-                <Segmented value={period} onChange={(p) => onPanelPeriod(panel.key, p)} options={PERIOD_OPTS} />
               </div>
               {data == null && <div className="mono dim" style={{ padding: "8px", fontSize: 12 }}>carregando…</div>}
               {data != null && !rows.length && (

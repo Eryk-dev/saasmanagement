@@ -100,6 +100,17 @@ test("Closer: ganhos, receita, taxa de fechamento e ticket na janela", async () 
   await app.close();
 });
 
+test("Closer: CS (integrator) que caiu no campo closer de um lead NÃO entra no painel de closers", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("leads", { id: "wc", saas: "leverads", closer: "u_clo", stage: "Ganho", amount: 5000, createdAt: now, stageSince: now });
+  // u_cs é integrator (CS) e aparece como closer num lead ganho — não deve virar closer
+  await repo.create("leads", { id: "wx", saas: "leverads", closer: "u_cs", stage: "Ganho", amount: 7000, createdAt: now, stageSince: now });
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  assert.ok(sb.closer.some((p) => p.user === "u_clo"));  // o closer de verdade aparece
+  assert.ok(!sb.closer.some((p) => p.user === "u_cs"));   // o CS não aparece como closer
+  await app.close();
+});
+
 test("meta por pessoa (user-scope) e por papel (role-scope) anexadas ao placar", async () => {
   const { app, repo } = await buildApp();
   await repo.create("leads", { id: "l1", saas: "leverads", owner: "u_sdr", stage: "Novo lead", createdAt: now });
