@@ -18,6 +18,7 @@ import { registerMpRoutes, mirrorSubscriptionToMp } from "./routes.mp.js";
 import { mp as defaultMpClient } from "./mp.js";
 import { registerMarketingRoutes } from "./routes.marketing.js";
 import { registerSocialRoutes } from "./routes.social.js";
+import { registerOfferRoutes } from "./routes.offers.js";
 import { registerGoogleRoutes } from "./routes.google.js";
 import { makeAnthropic } from "./anthropic.js";
 import { registerMetricsRoutes } from "./routes.metrics.js";
@@ -193,6 +194,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Mídia social: métricas do perfil + publicação orgânica (IG/página FB) +
   // copy do post por IA (mesma chave OpenRouter/Anthropic do resto).
   registerSocialRoutes(app, repo, { social: opts.social, meta: metaClient, anthropic: anthropicClient });
+  // Links de pagamento das ofertas (ferramenta).
+  registerOfferRoutes(app, repo);
   registerMetricsRoutes(app, repo);
   // Métricas reais de funil (conversão/tempo por estágio, motivos de perda, SLA)
   // a partir do histórico de transições da timeline.

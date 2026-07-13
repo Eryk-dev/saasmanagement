@@ -41,4 +41,5 @@ export const COLLECTIONS = {
   app_config: [], // chave-valor de integrações (ex.: google_oauth = refresh token da conta conectada)
   social_assets: [], // mídia pra publicação social (bytes base64, servida em /public/social/:id)
   social_posts: [],  // histórico de publicações orgânicas feitas pelo cockpit
+  offers: [],        // links de pagamento das ofertas por produto (ferramenta)
 };
