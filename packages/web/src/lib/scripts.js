@@ -143,14 +143,39 @@ export const DEFAULT_SCRIPTS = {
       ...QUALIFY_STEPS,
     ],
   },
-  nutricao: {
-    titulo: "Nutrição · reativação (20 dias)",
-    resumo: "Lead que não respondeu ao primeiro ciclo. Passaram 20 dias: recomece como se fosse um lead novo, com leveza, sem cobrar o silêncio. Mesmo ritmo: 2 ligações + WhatsApp, até 3 sessões em dias seguidos.",
-    objetivo: "Reabrir a conversa e voltar pro fluxo de qualificação, ou encerrar com clareza.",
+  // Nutrição = reativação de lead frio, 3 contatos com 7 dias úteis entre eles
+  // (entrada 20 dias). Cada contato traz um gancho DIFERENTE pra dar motivo de
+  // responder (prova → oferta sem risco → saída elegante). O painel mostra só o
+  // contato do dia (resolveScript pelo nº de toques). Liga 1x; não atendeu, o
+  // WhatsApp do contato. Atendeu? Emenda na qualificação (QUALIFY_STEPS).
+  nutricao1: {
+    titulo: "Nutrição · 1º contato (prova de resultado)",
+    resumo: "Lead frio, 20 dias depois. Sem cobrar o silêncio: reabre com um resultado concreto pra reacender a curiosidade. Liga 1 vez; não atendeu, manda o WhatsApp da prova. Atendeu? Retoma a qualificação.",
+    objetivo: "Reabrir a conversa com um gancho de valor e, se ele responder, voltar pro fluxo de qualificação.",
     passos: [
-      { t: "Ligar (2 tentativas)", fala: "Olá {{nome}}, tudo bom? Aqui é {{eu}}, da {{produto}}. Faz um tempo que você se cadastrou pra conhecer nossa ferramenta de clone de anúncios e eu queria retomar com você." },
-      { t: "WhatsApp, se não atender", fala: "Oi {{nome}}! Há um tempo você demonstrou interesse na {{produto}} (clonagem de anúncios entre contas de marketplace). Muita coisa evoluiu por aqui desde então. Faz sentido a gente conversar 5 minutinhos essa semana?" },
-      { t: "Sessão 3, encerramento (WhatsApp)", fala: "Oi {{nome}}! Pra não te incomodar, vou encerrar seu atendimento por aqui. Quando fizer sentido clonar seus anúncios, é só responder esta conversa que eu te atendo na hora.", dica: "Sem retorno: mover pra Desqualificado (motivo: sem resposta). Respondeu? Volta pra Qualificando e segue o fluxo normal." },
+      { t: "Ligar (1 tentativa)", dica: "Sem fala: liga e aguarda; não atendeu, manda o WhatsApp abaixo e registra o toque (o GPS traz de volta em 7 dias úteis)." },
+      { t: "Não atendeu: WhatsApp (prova de resultado)", fala: "Oi {{nome}}! Aqui é {{eu}}, da {{produto}}. Faz um tempo que você olhou a gente pra clonar seus anúncios entre contas. Só pra te dar um dado: um cliente nosso subiu 105% as vendas depois de espelhar os anúncios entre as contas. Posso te mostrar como isso ficaria na sua operação? Leva 5 minutinhos." },
+      ...QUALIFY_STEPS,
+    ],
+  },
+  nutricao2: {
+    titulo: "Nutrição · 2º contato (oferta sem risco)",
+    resumo: "Segundo toque, 7 dias depois. Agora derruba a barreira com o teste sem compromisso. Liga 1 vez; não atendeu, manda o WhatsApp da oferta. Atendeu? Retoma a qualificação.",
+    objetivo: "Tirar o risco da decisão (teste grátis) pra ele topar ver a ferramenta rodando.",
+    passos: [
+      { t: "Ligar (1 tentativa)", dica: "Sem fala: liga e aguarda; não atendeu, manda o WhatsApp abaixo e registra o toque." },
+      { t: "Não atendeu: WhatsApp (oferta sem risco)", fala: "Oi {{nome}}! Voltando aqui: a gente faz um teste sem compromisso, clona 10 dos seus melhores anúncios em menos de 1 minuto e você vê o resultado na sua própria conta antes de decidir qualquer coisa. Quer que eu prepare esse teste pra você essa semana?" },
+      ...QUALIFY_STEPS,
+    ],
+  },
+  nutricao3: {
+    titulo: "Nutrição · 3º contato (última, porta aberta)",
+    resumo: "Último toque do ciclo, 7 dias depois. Saída elegante com uma CTA de 1 palavra, fácil de responder. Liga 1 vez; não atendeu, manda o WhatsApp de encerramento. Atendeu? Retoma a qualificação.",
+    objetivo: "Última chance com fricção mínima; sem retorno, encerrar em Desqualificado.",
+    passos: [
+      { t: "Ligar (1 tentativa)", dica: "Sem fala: liga e aguarda; não atendeu, manda o WhatsApp abaixo." },
+      { t: "Não atendeu: WhatsApp (encerramento, porta aberta)", fala: "Oi {{nome}}! Vou parar de te escrever pra não incomodar. Mas se replicar anúncio na mão ainda consome o tempo do seu time, me responde só um 'quero ver' que eu te mostro a ferramenta rodando na sua conta. Se não fizer sentido agora, tudo certo, deixo a porta aberta pra quando precisar.", dica: "Sem resposta: mover pra Desqualificado (motivo: sem resposta). Respondeu? Volta pra Qualificando e segue o fluxo normal." },
+      ...QUALIFY_STEPS,
     ],
   },
   call: {
@@ -239,9 +264,10 @@ export function resolveScript(saasCfg, lead) {
   const kind = stageKind(saasCfg, stage);
   const reactivation = (kind === "contato" || kind === "qualificacao") &&
     lead?.stage && !openStages(saasCfg).includes(stage);
+  const attempts = Number(lead?.stageAttempts) || 0;
   let base;
-  if (reactivation) base = DEFAULT_SCRIPTS.nutricao;
-  else if (kind === "qualificacao") base = (Number(lead?.stageAttempts) || 0) >= 1 ? DEFAULT_SCRIPTS.qualificacao3 : DEFAULT_SCRIPTS.qualificacao2;
+  if (reactivation) base = attempts >= 2 ? DEFAULT_SCRIPTS.nutricao3 : attempts === 1 ? DEFAULT_SCRIPTS.nutricao2 : DEFAULT_SCRIPTS.nutricao1;
+  else if (kind === "qualificacao") base = attempts >= 1 ? DEFAULT_SCRIPTS.qualificacao3 : DEFAULT_SCRIPTS.qualificacao2;
   else base = DEFAULT_SCRIPTS[kind] || DEFAULT_SCRIPTS.outro;
   const row = (saasCfg?.funnel || []).find((f) => f && f.stage === stage);
   if (row?.script && String(row.script).trim()) {

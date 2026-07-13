@@ -162,7 +162,7 @@ export async function migrateLeverAdsSdrCadence(repo) {
     if (ganhoIdx !== -1) {
       funnel.splice(ganhoIdx + 1, 0, {
         stage: "Nutrição", kind: "contato", conv: 1, color: "", staleDays: "",
-        cadence: { maxAttempts: 3, retryDays: 1, firstTouchHours: 480 },
+        cadence: { maxAttempts: 3, retryDays: 7, firstTouchHours: 480 },
       });
     }
   }
