@@ -82,9 +82,19 @@ export function registerPitchRoutes(app, repo, { anthropic } = {}) {
   // produto + as calls recentes (com nome do lead). Read-only; alimenta a tela.
   app.get("/api/pitch/:saas/calls", async (req) => {
     const saas = req.params.saas;
-    const acts = (await repo.list("activities"))
+    const all = (await repo.list("activities"))
       .filter((a) => a && a.saas === saas && a.meta?.event === "call_summary" && a.meta?.summary)
       .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0));
+    // Uma linha por CALL: re-resumo (mesma call) não conta duas vezes. Dedup pelo
+    // meetEventId (senão pelo lead), mantendo o resumo mais recente (já ordenado).
+    const seen = new Set();
+    const acts = [];
+    for (const a of all) {
+      const key = a.meta?.meetEventId || a.lead || a.id;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      acts.push(a);
+    }
     const agg = aggregateCalls(acts.map((a) => a.meta.summary));
     const leadsById = new Map((await repo.list("leads")).map((l) => [l.id, l]));
     const recent = acts.slice(0, 25).map((a) => ({
