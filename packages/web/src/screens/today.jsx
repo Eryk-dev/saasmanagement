@@ -795,6 +795,7 @@ export function destinationsFor(saasCfg, lead) {
 // Setup que cada destino pede antes de mover.
 export function setupType(kind) {
   if (kind === "call") return "call";
+  if (kind === "followup") return "followup"; // follow-up também escolhe horário na agenda
   if (kind === "integracao" || kind === "posvenda") return "integrator";
   if (kind === "ganho") return "won";
   if (kind === "perdido" || kind === "desqualificado") return "loss";
@@ -827,6 +828,47 @@ export function callBusyKeys(leads, closerId, selfId) {
     if (Number.isFinite(d.getTime())) busy.add(cellKey(d));
   }
   return busy;
+}
+
+// Grade de agenda reutilizável: abas de dia (dias úteis) + slots de 1h. Marca
+// como ocupado (e desabilita) o que já está no `busy` do dono. Usada tanto pela
+// call quanto pelo follow-up — o valor escolhido volta em `slotVal` (YYYY-MM-DDTHH:00).
+function SlotGrid({ days, dayIdx, setDayIdx, slot, setSlot, busy }) {
+  return (
+    <>
+      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>
+        {days.map((d, i) => (
+          <button key={i} onClick={() => setDayIdx(i)} style={{
+            height: 30, padding: "0 10px", borderRadius: "var(--r-2)", fontSize: 11, fontFamily: "var(--mono)",
+            background: dayIdx === i ? "var(--accent)" : "var(--bg-1)",
+            color: dayIdx === i ? "var(--accent-fg)" : "var(--fg-3)",
+            border: "1px solid " + (dayIdx === i ? "var(--accent)" : "var(--line-2)"),
+          }}>{d.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" }).replace(/\./g, "")}</button>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))", gap: 6 }}>
+        {Array.from({ length: CALL_H1 - CALL_H0 }, (_, i) => CALL_H0 + i).map((h) => {
+          const cell = new Date(days[dayIdx]); cell.setHours(h, 0, 0, 0);
+          const occupied = busy.has(cellKey(cell));
+          const past = cell.getTime() < Date.now();
+          const val = slotVal(days[dayIdx], h);
+          const sel = slot === val;
+          const disabled = occupied || past;
+          return (
+            <button key={h} disabled={disabled} onClick={() => setSlot(val)} title={occupied ? "closer já tem call nesse horário" : past ? "horário já passou" : "marcar"}
+              style={{
+                height: 32, borderRadius: "var(--r-2)", fontSize: 11.5, fontFamily: "var(--mono)",
+                background: sel ? "var(--accent)" : occupied ? "var(--neg-soft)" : "var(--bg-1)",
+                color: sel ? "var(--accent-fg)" : occupied ? "var(--neg)" : past ? "var(--fg-4)" : "var(--fg-2)",
+                border: "1px solid " + (sel ? "var(--accent)" : occupied ? "color-mix(in srgb, var(--neg) 30%, var(--line-2))" : "var(--line-2)"),
+                opacity: past && !sel ? 0.45 : 1, cursor: disabled ? "not-allowed" : "pointer",
+                textDecoration: occupied ? "line-through" : "none",
+              }}>{String(h).padStart(2, "0")}:00</button>
+          );
+        })}
+      </div>
+    </>
+  );
 }
 
 function DestinoSection({ saasCfg, lead, leads, onMove, onMoveMeet, onAfter, onTouch }) {
@@ -867,10 +909,12 @@ function DestinoSection({ saasCfg, lead, leads, onMove, onMoveMeet, onAfter, onT
   const days = nextBusinessDays(6);
 
   // Horas ocupadas na agenda do closer (cada call = 1h; ignora o próprio lead).
-  const busy = setup === "call" && closer ? callBusyKeys(leads, closer, lead.id) : new Set();
+  // Vale pra call e pro follow-up: ambos marcam horário na agenda do closer.
+  const busy = (setup === "call" || setup === "followup") && closer ? callBusyKeys(leads, closer, lead.id) : new Set();
 
   const ready = !dest ? false
     : setup === "call" ? !!(closer && slot)
+    : setup === "followup" ? !!closer // horário é opcional: sem slot cai na cadência
     : setup === "integrator" ? !!integrator
     : setup === "won" ? Number(amount) > 0
     : setup === "loss" ? !!reason
@@ -880,6 +924,10 @@ function DestinoSection({ saasCfg, lead, leads, onMove, onMoveMeet, onAfter, onT
     if (!ready) return;
     const patch = { stage: dest.stage };
     if (setup === "call") { patch.closer = closer; patch.callAt = slot; if (email.trim()) patch.email = email.trim(); }
+    // Follow-up: mantém o closer e, se um horário foi escolhido, agenda nele —
+    // callAt (aparece na agenda, sem travar slots de venda) + nextActionAt (a
+    // fila do "meu dia" vence exatamente nesse horário, não na cadência padrão).
+    else if (setup === "followup") { patch.closer = closer; if (slot) { patch.callAt = slot; patch.nextActionAt = slot; } }
     else if (setup === "integrator") patch.integrator = integrator;
     else if (setup === "won") patch.amount = Number(amount);
     else if (setup === "loss") { patch.lostReason = reason; if (note.trim()) patch.lostNote = note.trim(); }
@@ -966,37 +1014,7 @@ function DestinoSection({ saasCfg, lead, leads, onMove, onMoveMeet, onAfter, onT
                   <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginBottom: 6 }}>
                     Horários livres na agenda de {displayName(closer)} · a call ocupa 1h
                   </div>
-                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>
-                    {days.map((d, i) => (
-                      <button key={i} onClick={() => setDayIdx(i)} style={{
-                        height: 30, padding: "0 10px", borderRadius: "var(--r-2)", fontSize: 11, fontFamily: "var(--mono)",
-                        background: dayIdx === i ? "var(--accent)" : "var(--bg-1)",
-                        color: dayIdx === i ? "var(--accent-fg)" : "var(--fg-3)",
-                        border: "1px solid " + (dayIdx === i ? "var(--accent)" : "var(--line-2)"),
-                      }}>{d.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" }).replace(/\./g, "")}</button>
-                    ))}
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))", gap: 6 }}>
-                    {Array.from({ length: CALL_H1 - CALL_H0 }, (_, i) => CALL_H0 + i).map((h) => {
-                      const cell = new Date(days[dayIdx]); cell.setHours(h, 0, 0, 0);
-                      const occupied = busy.has(cellKey(cell));
-                      const past = cell.getTime() < Date.now();
-                      const val = slotVal(days[dayIdx], h);
-                      const sel = slot === val;
-                      const disabled = occupied || past;
-                      return (
-                        <button key={h} disabled={disabled} onClick={() => setSlot(val)} title={occupied ? "closer já tem call nesse horário" : past ? "horário já passou" : "marcar"}
-                          style={{
-                            height: 32, borderRadius: "var(--r-2)", fontSize: 11.5, fontFamily: "var(--mono)",
-                            background: sel ? "var(--accent)" : occupied ? "var(--neg-soft)" : "var(--bg-1)",
-                            color: sel ? "var(--accent-fg)" : occupied ? "var(--neg)" : past ? "var(--fg-4)" : "var(--fg-2)",
-                            border: "1px solid " + (sel ? "var(--accent)" : occupied ? "color-mix(in srgb, var(--neg) 30%, var(--line-2))" : "var(--line-2)"),
-                            opacity: past && !sel ? 0.45 : 1, cursor: disabled ? "not-allowed" : "pointer",
-                            textDecoration: occupied ? "line-through" : "none",
-                          }}>{String(h).padStart(2, "0")}:00</button>
-                      );
-                    })}
-                  </div>
+                  <SlotGrid days={days} dayIdx={dayIdx} setDayIdx={setDayIdx} slot={slot} setSlot={setSlot} busy={busy} />
                   {slot && <div className="mono" style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 8 }}>Call: {slotFmt(slot)} · {displayName(closer)}</div>}
                 </div>
               ) : (
@@ -1010,6 +1028,27 @@ function DestinoSection({ saasCfg, lead, leads, onMove, onMoveMeet, onAfter, onT
                 </div>
               )}
             </>
+          )}
+
+          {setup === "followup" && (
+            closer ? (
+              <div>
+                <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginBottom: 6 }}>
+                  Quando fazer o follow-up · agenda de {displayName(closer)}
+                </div>
+                <SlotGrid days={days} dayIdx={dayIdx} setDayIdx={setDayIdx} slot={slot} setSlot={setSlot} busy={busy} />
+                {slot && <div className="mono" style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 8 }}>Follow-up: {slotFmt(slot)} · {displayName(closer)}</div>}
+                <div className="mono dim" style={{ fontSize: 10, marginTop: 6 }}>entra na agenda nesse horário · não trava o slot pra novas calls de venda. Sem horário, retoma pela cadência.</div>
+              </div>
+            ) : (
+              <div style={{ maxWidth: 280 }}>
+                <label style={label}>Responsável pelo follow-up *</label>
+                <select value={closer} onChange={(e) => { setCloser(e.target.value); setSlot(""); }} style={fieldStyle}>
+                  <option value="">— escolher —</option>
+                  {closers.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
+                </select>
+              </div>
+            )
           )}
 
           {setup === "integrator" && (
@@ -1080,7 +1119,7 @@ function DestinoSection({ saasCfg, lead, leads, onMove, onMoveMeet, onAfter, onT
                 height: 32, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
                 background: ready ? "var(--accent)" : "var(--bg-2)", color: ready ? "var(--accent-fg)" : "var(--fg-4)",
                 border: "1px solid " + (ready ? "var(--accent)" : "var(--line-2)"), cursor: ready ? "pointer" : "not-allowed",
-              }}>mover pra {dest.stage} →</button>
+              }}>{setup === "followup" && slot ? "agendar follow-up →" : `mover pra ${dest.stage} →`}</button>
               <button onClick={() => setDest(null)} className="mono dim" style={{ fontSize: 11.5 }}>cancelar</button>
             </div>
           )}
