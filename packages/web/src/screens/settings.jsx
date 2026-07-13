@@ -6,6 +6,7 @@ import { api } from "../lib/api.js";
 import { useIsMobile } from "../lib/responsive.js";
 import { KINDS, KIND_IDS, guessKind, lossReasonsOf } from "../lib/funnel.js";
 import { useActiveSaas } from "../lib/workspace.js";
+import { DEFAULT_SCRIPTS, SCRIPT_CATALOG, catalogStageRow, passosToText } from "../lib/scripts.js";
 import { NAV } from "../chrome.jsx";
 // SaaS Settings (fase 3) — funil, campos custom, pesos da saúde e Aha EDITÁVEIS
 // por SaaS (gravam no produto). Equipe (roles sdr/closer/integrator) é global.
@@ -36,6 +37,7 @@ function SettingsScreen({ saasId }) {
 
   const TABS = [
     ["funnel",      "Funil & estágios"],
+    ["scripts",     "Scripts"],
     ["team",        "Equipe"],
     ["fields",      "Campos custom"],
     ["health",      "Pesos da saúde"],
@@ -85,6 +87,7 @@ function SettingsScreen({ saasId }) {
               seedado do produto anterior sobrevive e o Salvar gravaria a config
               de um produto por cima do outro. */}
           {tab === "funnel"       && <FunnelSettings key={s.id} s={s} />}
+          {tab === "scripts"      && <ScriptsSettings key={s.id} s={s} />}
           {tab === "team"         && <TeamSettings />}
           {tab === "fields"       && <FieldsSettings key={s.id} s={s} />}
           {tab === "health"       && <HealthSettings key={s.id} s={s} />}
@@ -673,6 +676,143 @@ function IntegrationsSettings({ s }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────── Scripts & cadências
+// Todos os roteiros do processo (lib/scripts.js) num lugar só, com a cadência de
+// contato de cada estágio ao lado. Editar o roteiro grava um override em
+// product.scripts[chave] (substitui só o passo a passo; a postura/objetivo e as
+// dicas seguem do padrão). Editar a cadência grava no funil (mesmo endpoint do
+// Funil, sem renomear nada). Campo vazio volta pro padrão do código.
+function CadBox({ val, onChange, unit, title }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title={title}>
+      <input type="number" min="0" value={val} onChange={(e) => onChange(e.target.value)}
+        style={{ ...inputStyle, width: 40, padding: "0 4px", textAlign: "right", height: 24 }} />
+      <span className="mono dim" style={{ fontSize: 9.5 }}>{unit}</span>
+    </span>
+  );
+}
+
+function ScriptsSettings({ s }) {
+  const { refresh } = useData();
+  const [scripts, setScripts] = useStS(() => ({ ...(s.scripts || {}) }));
+  const [funnelDraft, setFunnelDraft] = useStS(() => (s.funnel || []).map((f) => ({ ...f })));
+  const [openKey, setOpenKey] = useStS(null);
+
+  // índice no funnelDraft do estágio de um item do catálogo (pra ler/editar a
+  // cadência). Vários roteiros dividem o mesmo estágio (2ª/3ª tentativa, etc.).
+  const stageIdxOf = (item) => {
+    const row = catalogStageRow(s, item);
+    return row ? funnelDraft.findIndex((f) => f.stage === row.stage) : -1;
+  };
+  // Só o 1º roteiro de cada estágio mostra os campos de cadência (evita repetir
+  // a mesma cadência 3x pra Nutrição/No show).
+  const cadenceOwner = {};
+  for (const item of SCRIPT_CATALOG) {
+    const idx = stageIdxOf(item);
+    if (idx >= 0 && cadenceOwner[idx] == null) cadenceOwner[idx] = item.key;
+  }
+
+  const cadVal = (idx, k) => (idx >= 0 && funnelDraft[idx].cadence && funnelDraft[idx].cadence[k] != null ? funnelDraft[idx].cadence[k] : "");
+  const setCad = (idx, k, v) => setFunnelDraft((rows) => rows.map((f, j) => j === idx
+    ? { ...f, cadence: { ...(f.cadence || {}), [k]: v === "" ? undefined : Number(v) } } : f));
+  const setScript = (key, v) => setScripts((m) => ({ ...m, [key]: v }));
+
+  async function save() {
+    // 1) overrides de roteiro (só os não-vazios; objeto completo substitui o campo)
+    const clean = {};
+    for (const [k, v] of Object.entries(scripts)) if (String(v || "").trim()) clean[k] = String(v).trim();
+    await api.update("products", s.id, { scripts: clean });
+    // 2) cadências — grava o funil inteiro sem renomear (só a cadência muda)
+    const funnel = funnelDraft.map((f) => {
+      const cadence = {};
+      for (const k of ["maxAttempts", "retryDays", "firstTouchHours"]) {
+        const n = Number(f.cadence?.[k]);
+        if (Number.isFinite(n) && n > 0) cadence[k] = n;
+      }
+      return { ...f, ...(Object.keys(cadence).length ? { cadence } : { cadence: undefined }) };
+    });
+    await api.saveFunnel(s.id, funnel, {});
+    await refresh();
+  }
+
+  const phases = [...new Set(SCRIPT_CATALOG.map((c) => c.phase))];
+
+  return (
+    <div>
+      <SettingHeader title="Scripts & cadências" sub="todos os roteiros do processo num lugar só · editar troca as falas do passo a passo (a postura, o objetivo e as dicas seguem do padrão) · a cadência é a mesma do Funil" />
+      {phases.map((phase) => (
+        <div key={phase} style={{ marginBottom: 22 }}>
+          <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>{phase}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {SCRIPT_CATALOG.filter((c) => c.phase === phase).map((item) => {
+              const def = DEFAULT_SCRIPTS[item.key] || {};
+              const idx = stageIdxOf(item);
+              const showCad = idx >= 0 && cadenceOwner[idx] === item.key;
+              const overridden = String(scripts[item.key] || "").trim();
+              const open = openKey === item.key;
+              return (
+                <div key={item.key} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", overflow: "hidden" }}>
+                  <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ minWidth: 220, flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>
+                        {item.label}
+                        {overridden && <span className="mono" style={{ fontSize: 10, color: "var(--accent)", marginLeft: 8 }}>personalizado</span>}
+                      </div>
+                      <div className="mono dim" style={{ fontSize: 11, marginTop: 2 }}>{def.resumo ? def.resumo.slice(0, 120) + (def.resumo.length > 120 ? "…" : "") : ""}</div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      {showCad ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }} title="cadência de contato deste estágio (mesma do Funil)">
+                          <span className="mono dim" style={{ fontSize: 10 }}>cadência</span>
+                          <CadBox val={cadVal(idx, "maxAttempts")} onChange={(v) => setCad(idx, "maxAttempts", v)} unit="toques" title="toques máximos nesta etapa" />
+                          <CadBox val={cadVal(idx, "retryDays")} onChange={(v) => setCad(idx, "retryDays", v)} unit="dias" title="toque registrado → próximo em N dias úteis" />
+                          <CadBox val={cadVal(idx, "firstTouchHours")} onChange={(v) => setCad(idx, "firstTouchHours", v)} unit="h entrada" title="SLA/atraso do 1º contato em horas (ex.: Nutrição entra 480h = 20 dias depois)" />
+                        </div>
+                      ) : idx >= 0 ? (
+                        <span className="mono dim" style={{ fontSize: 10 }}>cadência acima ↑</span>
+                      ) : (
+                        <span className="mono dim" style={{ fontSize: 10 }}>{item.key === "confirmacao" ? "janelas fixas: 1h e 10min antes" : "sem cadência de estágio"}</span>
+                      )}
+                      <button type="button" onClick={() => setOpenKey(open ? null : item.key)} className="mono" style={{ fontSize: 11, color: open ? "var(--accent)" : "var(--fg-3)" }}>{open ? "fechar" : "✎ ver / editar"}</button>
+                    </div>
+                  </div>
+                  {open && (
+                    <div style={{ padding: "0 14px 14px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+                      <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "12px 0 6px" }}>
+                        Passo a passo {overridden ? "(padrão · referência)" : "(padrão atual)"}
+                      </div>
+                      <ol style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
+                        {(def.passos || []).map((p, k) => (
+                          <li key={k} style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+                            <span style={{ fontWeight: 600 }}>{p.t}</span>
+                            {p.fala && <div style={{ color: "var(--fg-2)" }}>“{p.fala}”</div>}
+                            {p.dica && <div className="mono dim" style={{ fontSize: 11 }}>{p.dica}</div>}
+                          </li>
+                        ))}
+                      </ol>
+                      <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "14px 0 6px" }}>Roteiro personalizado (opcional)</div>
+                      <textarea rows={7}
+                        value={scripts[item.key] != null ? scripts[item.key] : ""}
+                        placeholder={"Vazio = usa o passo a passo padrão acima.\n\nBloco separado por linha em branco = um passo.\nLinha terminando em dois-pontos vira o título do passo.\n\n" + passosToText(def.passos).slice(0, 180) + (passosToText(def.passos).length > 180 ? "…" : "")}
+                        onChange={(e) => setScript(item.key, e.target.value)}
+                        style={{ ...inputStyle, height: "auto", width: "100%", padding: 8, fontSize: 12.5, lineHeight: 1.5, fontFamily: "inherit", resize: "vertical" }} />
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 5, flexWrap: "wrap" }}>
+                        <div className="mono dim" style={{ fontSize: 10.5 }}>{"tokens: {{nome}} {{eu}} {{produto}} {{nicho}} {{contas}} {{anuncios}} {{closer_responsavel}} {{hora_call}} {{link_call}}"}</div>
+                        {overridden && <button type="button" className="mono" onClick={() => setScript(item.key, "")} style={{ fontSize: 10.5, color: "var(--neg)" }}>voltar ao padrão</button>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      <SaveBar onSave={save} hint="editar o roteiro troca só as falas · a cadência é compartilhada com a aba Funil" />
     </div>
   );
 }

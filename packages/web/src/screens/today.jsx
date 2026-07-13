@@ -511,7 +511,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
   // Item de confirmação de call usa o roteiro de confirmação; o resto, o roteiro
   // do estágio (por tentativa). A confirmação não é movimento de etapa, então o
   // bloco "Depois da ação" (destino) some pra esse item.
-  const script = item.confirm ? confirmationScript(l) : resolveScript(saasCfg, l);
+  const script = item.confirm ? confirmationScript(l, saasCfg) : resolveScript(saasCfg, l);
   const tokens = scriptTokens(l, saasCfg);
   const checklist = scriptChecklist(saasCfg, l);
   const wa = waLink(l.phone);
