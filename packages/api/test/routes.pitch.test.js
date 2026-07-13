@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { registerPitchRoutes, buildCallsDigest } from "../src/routes.pitch.js";
+import { registerPitchRoutes, buildCallsDigest, aggregateCalls } from "../src/routes.pitch.js";
 import { makeAnthropic } from "../src/anthropic.js";
 
 test("buildCallsDigest: agrega objeções (normaliza case), dores e temperatura, sem travessão", () => {
@@ -20,6 +20,39 @@ test("buildCallsDigest: agrega objeções (normaliza case), dores e temperatura,
   assert.ok(digest.includes("mostrou ROI vs operador"));
   assert.ok(/medo de banimento · 2x/.test(digest));
   assert.ok(!digest.includes("—")); // regra de copy do Leo
+});
+
+test("aggregateCalls: contagens estruturadas (normaliza case)", () => {
+  const a = aggregateCalls([
+    { temperatura: "quente", dores: ["preço"], objecoes: [{ objecao: "Caro", resolvida: false }] },
+    { temperatura: "frio", dores: ["preço"], objecoes: [{ objecao: "caro", resolvida: true }] },
+  ]);
+  assert.equal(a.count, 2);
+  assert.deepEqual(a.temperatura, { quente: 1, morno: 0, frio: 1 });
+  assert.equal(a.objecoes[0].objecao, "Caro");
+  assert.equal(a.objecoes[0].total, 2);
+  assert.equal(a.objecoes[0].abertas, 1);
+  assert.equal(a.dores[0].total, 2);
+});
+
+test("GET /api/pitch/:saas/calls: agrega + calls recentes com nome do lead", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds" });
+  await repo.create("leads", { id: "le1", saas: "leverads", name: "Tania", stage: "Follow-up" });
+  await repo.create("activities", { id: "a1", saas: "leverads", type: "system", at: "2026-07-13T18:00:00Z", lead: "le1", meta: { event: "call_summary", recordingUrl: "http://doc", summary: { temperatura: "quente", resumo: "topou seguir", dores: ["preço"], objecoes: [{ objecao: "caro", resolvida: false }] } } });
+  await repo.create("activities", { id: "a2", saas: "outro", type: "system", meta: { event: "call_summary", summary: { temperatura: "frio" } } }); // ruído
+
+  const app = Fastify();
+  registerPitchRoutes(app, repo, { anthropic: { configured: () => true } });
+  const res = await app.inject({ method: "GET", url: "/api/pitch/leverads/calls" });
+  assert.equal(res.statusCode, 200);
+  const b = res.json();
+  assert.equal(b.count, 1);
+  assert.deepEqual(b.temperatura, { quente: 1, morno: 0, frio: 0 });
+  assert.equal(b.recent[0].leadName, "Tania");
+  assert.equal(b.recent[0].recordingUrl, "http://doc");
+  assert.equal(b.aiConfigured, true);
+  await app.close();
 });
 
 test("POST /api/pitch/:saas/improve: agrega as calls e devolve a sugestão", async () => {

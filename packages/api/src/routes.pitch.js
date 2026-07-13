@@ -44,7 +44,61 @@ export function buildCallsDigest(summaries) {
   return lines.join("\n");
 }
 
+// Agregação ESTRUTURADA dos resumos pra tela de Análise de pitch (contagens):
+// temperatura, objeções (total + quantas em aberto) e dores, ordenadas por
+// frequência. Mesma normalização do digest (case-insensitive, corta em 80).
+export function aggregateCalls(summaries) {
+  const objMap = new Map();
+  const doresMap = new Map();
+  const temp = { quente: 0, morno: 0, frio: 0 };
+  for (const s of summaries || []) {
+    if (s?.temperatura && temp[s.temperatura] != null) temp[s.temperatura]++;
+    for (const o of s?.objecoes || []) {
+      const k = String(o?.objecao || "").trim().toLowerCase().slice(0, 80);
+      if (!k) continue;
+      const e = objMap.get(k) || { objecao: o.objecao, total: 0, abertas: 0 };
+      e.total++;
+      if (!o.resolvida) e.abertas++;
+      objMap.set(k, e);
+    }
+    for (const d of s?.dores || []) {
+      const k = String(d || "").trim().toLowerCase().slice(0, 80);
+      if (!k) continue;
+      const e = doresMap.get(k) || { dor: d, total: 0 };
+      e.total++;
+      doresMap.set(k, e);
+    }
+  }
+  return {
+    count: (summaries || []).length,
+    temperatura: temp,
+    objecoes: [...objMap.values()].sort((a, b) => b.total - a.total),
+    dores: [...doresMap.values()].sort((a, b) => b.total - a.total),
+  };
+}
+
 export function registerPitchRoutes(app, repo, { anthropic } = {}) {
+  // Painel de Análise de pitch: estatísticas agregadas das calls resumidas do
+  // produto + as calls recentes (com nome do lead). Read-only; alimenta a tela.
+  app.get("/api/pitch/:saas/calls", async (req) => {
+    const saas = req.params.saas;
+    const acts = (await repo.list("activities"))
+      .filter((a) => a && a.saas === saas && a.meta?.event === "call_summary" && a.meta?.summary)
+      .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0));
+    const agg = aggregateCalls(acts.map((a) => a.meta.summary));
+    const leadsById = new Map((await repo.list("leads")).map((l) => [l.id, l]));
+    const recent = acts.slice(0, 25).map((a) => ({
+      leadId: a.lead,
+      leadName: leadsById.get(a.lead)?.name || "",
+      stage: leadsById.get(a.lead)?.stage || "",
+      at: a.at || "",
+      temperatura: a.meta.summary.temperatura || "",
+      resumo: a.meta.summary.resumo || "",
+      recordingUrl: a.meta.recordingUrl || "",
+    }));
+    return { ...agg, recent, aiConfigured: !!anthropic?.configured() };
+  });
+
   app.post("/api/pitch/:saas/improve", async (req, reply) => {
     if (!anthropic?.configured()) return reply.code(503).send({ error: "IA não configurada (OPENROUTER_API_KEY ou ANTHROPIC_API_KEY)" });
     const saas = req.params.saas;

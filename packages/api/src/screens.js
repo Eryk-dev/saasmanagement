@@ -15,7 +15,7 @@
 
 export const SCREEN_IDS = [
   "overview", "today", "pipeline", "customers", "metrics", "expenses",
-  "social", "forms", "proposals", "creative", "offers", "disparos", "metas", "training", "tasks", "settings",
+  "social", "forms", "proposals", "creative", "offers", "disparos", "calls", "metas", "training", "tasks", "settings",
 ];
 
 export const sanitizeScreens = (x) =>
@@ -57,6 +57,8 @@ const ROUTE_SCREENS = [
   ["/api/proposals", ["proposals"]],     // inclui /preview
   ["/api/offers", ["offers"]],           // links de pagamento das ofertas
   ["/api/campaigns", ["disparos"]],      // disparos de e-mail + WhatsApp (mark, ai-copy e CRUD)
+  ["/api/pitch", ["calls", "settings"]], // análise de pitch (calls) + botão "IA das calls" em Ajustes → Scripts
+
   ["/api/metas", ["metas"]],             // metas de desempenho por vaga/pessoa
   ["/api/flashcards", ["training"]],     // treinamentos (flashcards)
   ["/api/tasks", ["tasks"]],
