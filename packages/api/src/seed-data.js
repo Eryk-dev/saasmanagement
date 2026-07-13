@@ -43,4 +43,5 @@ export const COLLECTIONS = {
   social_posts: [],  // histórico de publicações orgânicas feitas pelo cockpit
   offers: [],        // links de pagamento das ofertas por produto (ferramenta)
   flashcards: [],    // flashcards de treinamento por vaga (ferramenta)
+  training_attempts: [], // tentativas do treino (quem, card, nota) pra métrica
 };

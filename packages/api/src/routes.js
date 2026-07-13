@@ -200,8 +200,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerOfferRoutes(app, repo);
   // Metas de desempenho por vaga/pessoa (ferramenta; escreve na collection goals).
   registerMetasRoutes(app, repo);
-  // Treinamentos: flashcards por vaga (ferramenta).
-  registerFlashcardRoutes(app, repo);
+  // Treinamentos: flashcards por vaga + correção da resposta digitada por IA.
+  registerFlashcardRoutes(app, repo, { anthropic: anthropicClient });
   registerMetricsRoutes(app, repo);
   // Métricas reais de funil (conversão/tempo por estágio, motivos de perda, SLA)
   // a partir do histórico de transições da timeline.

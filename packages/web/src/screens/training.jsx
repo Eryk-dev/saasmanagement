@@ -16,6 +16,7 @@ function TrainingScreen() {
   const [product] = useActiveSaas();
   const [cards, setCards] = useS(null);
   const [labels, setLabels] = useS({});
+  const [aiOn, setAiOn] = useS(false);
   const [orig, setOrig] = useS(null);
   const [role, setRole] = useS("sdr");
   const [mode, setMode] = useS("study"); // study | edit
@@ -29,7 +30,7 @@ function TrainingScreen() {
     setCards(null); setErr(null); setNote(null);
     api.flashcards(product.id).then((d) => {
       if (!alive) return;
-      setCards(d.cards || []); setLabels(d.roleLabels || {}); setOrig(JSON.stringify(d.cards || []));
+      setCards(d.cards || []); setLabels(d.roleLabels || {}); setAiOn(!!d.aiConfigured); setOrig(JSON.stringify(d.cards || []));
       const first = ROLE_ORDER.find((r) => (d.cards || []).some((c) => c.role === r));
       if (first) setRole(first);
     }).catch((e) => alive && setErr(e.message));
@@ -97,7 +98,7 @@ function TrainingScreen() {
             </div>
 
             {mode === "study"
-              ? <StudyMode key={role} cards={roleCards} roleLabel={labels[role] || role} />
+              ? <StudyMode key={role} cards={roleCards} roleLabel={labels[role] || role} saasId={product.id} aiOn={aiOn} />
               : <EditMode cards={roleCards} onPatch={patchCard} onAdd={addCard} onRemove={removeCard} roleLabel={labels[role] || role} />}
           </>
         )}
@@ -106,148 +107,171 @@ function TrainingScreen() {
   );
 }
 
-// ── Estudar ──────────────────────────────────────────────────────────────────
-// Flashcard é auto-avaliação: o treinando tenta responder, VIRA o card pra ver a
-// resposta certa e marca "acertei" ou "errei". O placar da sessão e o resumo
-// final (com os que errou pra revisar) é a validação do treino.
-function StudyMode({ cards, roleLabel }) {
+// ── Estudar (quiz digitado, correção por IA) ─────────────────────────────────
+// O treinando DIGITA a resposta; a IA compara com o gabarito e diz se está
+// correta/parcial/incorreta + nota + feedback. Tira a dependência da auto-
+// avaliação e cada tentativa é gravada (métrica de treino por pessoa).
+const VERDICT = {
+  correto:   { label: "Correto",   color: "var(--pos)",  bg: "var(--pos-soft)" },
+  parcial:   { label: "Parcial",   color: "var(--warn)", bg: "var(--warn-soft)" },
+  incorreto: { label: "Incorreto", color: "var(--neg)",  bg: "var(--neg-soft)" },
+};
+
+function StudyMode({ cards, roleLabel, saasId, aiOn }) {
   const [order, setOrder] = useS(() => cards.map((_, i) => i)); // deck (índices em cards)
   const [pos, setPos] = useS(0);
-  const [flipped, setFlipped] = useS(false);
-  const [results, setResults] = useS({}); // cardId -> "right" | "wrong"
+  const [answer, setAnswer] = useS("");
+  const [grading, setGrading] = useS(false);
+  const [result, setResult] = useS(null);      // grade do card atual { verdict, score, feedback, missing, ideal }
+  const [scores, setScores] = useS({});         // cardId -> { score, verdict }
   const [finished, setFinished] = useS(false);
+  const [err, setErr] = useS(null);
+  const inputRef = useR(null);
 
   const total = order.length;
   const safePos = Math.min(pos, Math.max(0, total - 1));
   const card = cards[order[safePos]];
-  const right = order.filter((i) => results[cards[i]?.id] === "right").length;
-  const wrong = order.filter((i) => results[cards[i]?.id] === "wrong").length;
 
-  function runWith(ord) { setOrder(ord); setPos(0); setFlipped(false); setResults({}); setFinished(false); }
+  function runWith(ord) { setOrder(ord); setPos(0); setAnswer(""); setResult(null); setScores({}); setFinished(false); setErr(null); }
   useE(() => { runWith(cards.map((_, i) => i)); }, [cards]); // eslint-disable-line react-hooks/exhaustive-deps
+  useE(() => { setResult(null); setErr(null); if (!finished) setTimeout(() => inputRef.current?.focus(), 20); }, [safePos, finished]);
 
-  function grade(ok) {
-    if (!card) return;
-    setResults((r) => ({ ...r, [card.id]: ok ? "right" : "wrong" }));
-    setFlipped(false);
+  async function corrigir() {
+    if (!card || !answer.trim() || grading) return;
+    setGrading(true); setErr(null);
+    try {
+      const g = await api.gradeFlashcard(saasId, card.id, answer.trim());
+      setResult(g);
+      setScores((s) => ({ ...s, [card.id]: { score: g.score, verdict: g.verdict } }));
+    } catch (e) {
+      setErr(e.message || "falha ao corrigir");
+    }
+    setGrading(false);
+  }
+  function next() {
+    setResult(null); setAnswer(""); setErr(null);
     if (safePos >= total - 1) setFinished(true);
     else setPos((p) => p + 1);
   }
-  function prev() { setFlipped(false); setPos((p) => Math.max(0, p - 1)); }
   function shuffle() {
     const a = [...order];
     for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
     runWith(a);
   }
-  function reviewWrong() {
-    const w = order.filter((i) => results[cards[i]?.id] === "wrong");
-    if (w.length) runWith(w);
-  }
-
-  useE(() => {
-    function onKey(e) {
-      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || finished) return;
-      if (e.key === " " || e.key === "Enter") { e.preventDefault(); setFlipped((f) => !f); }
-      else if (e.key === "ArrowLeft") { e.preventDefault(); prev(); }
-      else if (flipped && (e.key === "1" || e.key.toLowerCase() === "j")) { e.preventDefault(); grade(false); }
-      else if (flipped && (e.key === "2" || e.key.toLowerCase() === "k")) { e.preventDefault(); grade(true); }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }); // eslint-disable-line react-hooks/exhaustive-deps
 
   const btn = { height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, cursor: "pointer" };
   const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
+  const graded = Object.keys(scores).length;
+  const avg = graded ? Math.round(Object.values(scores).reduce((s, x) => s + x.score, 0) / graded) : 0;
 
   if (cards.length === 0) return <EmptyState title="Sem flashcards nesta vaga" hint="Vá em Editar pra criar os primeiros cards." />;
+  if (!aiOn) return (
+    <div style={{ border: "1px solid var(--warn)", background: "var(--warn-soft)", borderRadius: "var(--r-3)", padding: "16px 18px", maxWidth: 640 }}>
+      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--warn)", marginBottom: 4 }}>Correção automática indisponível</div>
+      <div style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5 }}>O treino digitado precisa da IA pra corrigir a resposta. Configure <span className="mono">OPENROUTER_API_KEY</span> (ou <span className="mono">ANTHROPIC_API_KEY</span>) no servidor. Enquanto isso, os cards podem ser lidos/editados na aba Editar.</div>
+    </div>
+  );
 
-  // Resumo da sessão — a validação: quantos acertou e o que revisar.
+  // Resumo da sessão — a validação: nota média e o que revisar.
   if (finished) {
-    const pct = total ? Math.round((right / total) * 100) : 0;
+    const pct = avg;
     const tone = pct >= 80 ? "var(--pos)" : pct >= 50 ? "var(--warn)" : "var(--neg)";
-    const wrongCards = order.filter((i) => results[cards[i]?.id] === "wrong").map((i) => cards[i]);
+    const weak = order.map((i) => cards[i]).filter((c) => c && scores[c.id] && scores[c.id].verdict !== "correto");
+    const counts = { correto: 0, parcial: 0, incorreto: 0 };
+    for (const v of Object.values(scores)) counts[v.verdict] = (counts[v.verdict] || 0) + 1;
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 720 }}>
         <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "20px 22px" }}>
-          <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Resultado da sessão · {roleLabel}</div>
+          <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Resultado do treino · {roleLabel}</div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-            <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 42, fontWeight: 700, color: tone }}>{pct}%</span>
-            <span style={{ fontSize: 15, color: "var(--fg-2)" }}>{right} de {total} corretos</span>
+            <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 42, fontWeight: 700, color: tone }}>{pct}</span>
+            <span style={{ fontSize: 15, color: "var(--fg-2)" }}>nota média em {graded} de {total} cards</span>
           </div>
-          <div style={{ display: "flex", height: 10, borderRadius: 5, overflow: "hidden", background: "var(--bg-3)", marginTop: 12, gap: 2 }}>
-            <div style={{ width: `${(right / total) * 100}%`, background: "var(--pos)" }} />
-            <div style={{ width: `${(wrong / total) * 100}%`, background: "var(--neg)" }} />
+          <div className="mono dim" style={{ fontSize: 11.5, marginTop: 8 }}>
+            <span style={{ color: "var(--pos)" }}>{counts.correto} corretos</span> · <span style={{ color: "var(--warn)" }}>{counts.parcial} parciais</span> · <span style={{ color: "var(--neg)" }}>{counts.incorreto} incorretos</span>
           </div>
-          <div className="mono dim" style={{ fontSize: 11, marginTop: 8 }}>✓ {right} acertos · ✗ {wrong} erros</div>
         </div>
-
-        {wrongCards.length > 0 && (
+        {weak.length > 0 && (
           <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 16px" }}>
-            <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Pra revisar ({wrongCards.length})</div>
+            <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Pra reforçar ({weak.length})</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {wrongCards.map((c) => <div key={c.id} style={{ fontSize: 12.5, color: "var(--fg-2)", paddingLeft: 12, borderLeft: "2px solid var(--neg)" }}>{c.front}</div>)}
+              {weak.map((c) => <div key={c.id} style={{ fontSize: 12.5, color: "var(--fg-2)", paddingLeft: 12, borderLeft: `2px solid ${VERDICT[scores[c.id].verdict]?.color || "var(--neg)"}` }}>{c.front}</div>)}
             </div>
           </div>
         )}
-
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {wrongCards.length > 0 && (
-            <button onClick={reviewWrong} style={{ ...btn, background: "var(--accent)", color: "var(--accent-fg)", border: "1px solid var(--accent)", fontWeight: 600 }}>
-              revisar os {wrongCards.length} que errei →
+          {weak.length > 0 && (
+            <button onClick={() => runWith(order.filter((i) => cards[i] && scores[cards[i].id] && scores[cards[i].id].verdict !== "correto"))}
+              style={{ ...btn, background: "var(--accent)", color: "var(--accent-fg)", border: "1px solid var(--accent)", fontWeight: 600 }}>
+              treinar de novo os {weak.length} fracos →
             </button>
           )}
           <button onClick={() => runWith(cards.map((_, i) => i))} style={btn}>↺ recomeçar</button>
-          <button onClick={shuffle} style={btn}>⤨ embaralhar e recomeçar</button>
+          <button onClick={shuffle} style={btn}>⤨ embaralhar</button>
         </div>
       </div>
     );
   }
 
+  const v = result ? VERDICT[result.verdict] || VERDICT.incorreto : null;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 720 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <span className="mono tnum" style={{ fontSize: 12, color: "var(--fg-3)" }}>{safePos + 1} / {total}</span>
-        <span className="mono tnum" style={{ fontSize: 11.5 }}><span style={{ color: "var(--pos)" }}>✓ {right}</span> <span style={{ color: "var(--neg)", marginLeft: 6 }}>✗ {wrong}</span></span>
+        {graded > 0 && <span className="mono tnum" style={{ fontSize: 11.5, color: "var(--fg-3)" }}>nota média {avg}</span>}
         <span style={{ flex: 1 }} />
         <button onClick={shuffle} style={btn}>⤨ embaralhar</button>
       </div>
 
-      {/* O card */}
-      <button onClick={() => setFlipped((f) => !f)} title="clique pra virar (Espaço)"
-        style={{
-          minHeight: 240, borderRadius: "var(--r-3)", textAlign: "left", cursor: "pointer",
-          border: "1px solid " + (flipped ? "var(--accent-line)" : "var(--line-2)"),
-          background: flipped ? "var(--accent-soft)" : "var(--bg-1)",
-          boxShadow: "var(--shadow-2)", padding: "22px 24px", display: "flex", flexDirection: "column", gap: 12,
-          transition: "background 140ms ease, border-color 140ms ease",
-        }}>
-        <div className="mono" style={{ ...kicker, color: flipped ? "var(--accent)" : "var(--fg-4)" }}>
-          {roleLabel} · {flipped ? "verso · resposta certa" : "frente · pergunta"}
-        </div>
-        <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
-          <div style={{ fontSize: flipped ? 17 : 22, fontWeight: flipped ? 500 : 700, lineHeight: 1.4, fontFamily: flipped ? "var(--sans)" : "var(--display)", color: "var(--fg-1)", whiteSpace: "pre-wrap" }}>
-            {flipped ? (card.back || "(sem resposta cadastrada)") : card.front}
-          </div>
-        </div>
-        <div className="mono dim" style={{ fontSize: 10.5 }}>{flipped ? "compare com a sua resposta e marque abaixo" : "responda de cabeça, depois clique pra conferir"}</div>
-      </button>
+      {/* Pergunta */}
+      <div style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", boxShadow: "var(--shadow-2)", padding: "20px 22px" }}>
+        <div className="mono" style={{ ...kicker, marginBottom: 10 }}>{roleLabel} · pergunta</div>
+        <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.4, fontFamily: "var(--display)", color: "var(--fg-1)", whiteSpace: "pre-wrap" }}>{card.front}</div>
+      </div>
 
-      {/* Auto-avaliação: só aparece depois de revelar a resposta */}
-      {flipped ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <button onClick={prev} disabled={safePos === 0} style={{ ...btn, opacity: safePos === 0 ? 0.5 : 1 }}>← anterior</button>
-          <span style={{ flex: 1 }} />
-          <button onClick={() => grade(false)} style={{ ...btn, borderColor: "var(--neg)", color: "var(--neg)", background: "var(--neg-soft)", fontWeight: 600 }}>✗ errei</button>
-          <button onClick={() => grade(true)} style={{ ...btn, borderColor: "var(--pos)", color: "#fff", background: "var(--pos)", fontWeight: 600 }}>✓ acertei</button>
-        </div>
+      {/* Resposta digitada + correção */}
+      {!result ? (
+        <>
+          <textarea ref={inputRef} value={answer} onChange={(e) => setAnswer(e.target.value)}
+            onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); corrigir(); } }}
+            rows={4} placeholder="Digite sua resposta com suas palavras… (⌘/Ctrl+Enter corrige)"
+            style={{ width: "100%", padding: "12px 14px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 14, lineHeight: 1.5, resize: "vertical", fontFamily: "inherit" }} />
+          {err && <div className="mono" style={{ fontSize: 11.5, color: "var(--neg)" }}>{err}</div>}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span className="mono dim" style={{ fontSize: 10.5 }}>a IA corrige comparando com o gabarito · sem colar do gabarito 😉</span>
+            <span style={{ flex: 1 }} />
+            <button onClick={corrigir} disabled={!answer.trim() || grading}
+              style={{ ...btn, background: answer.trim() && !grading ? "var(--accent)" : "var(--bg-2)", color: answer.trim() && !grading ? "var(--accent-fg)" : "var(--fg-4)", border: "1px solid " + (answer.trim() && !grading ? "var(--accent)" : "var(--line-2)"), fontWeight: 600 }}>
+              {grading ? "corrigindo…" : "corrigir resposta"}
+            </button>
+          </div>
+        </>
       ) : (
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={prev} disabled={safePos === 0} style={{ ...btn, opacity: safePos === 0 ? 0.5 : 1 }}>← anterior</button>
-          <span style={{ flex: 1 }} />
-          <button onClick={() => setFlipped(true)} style={{ ...btn, background: "var(--accent)", color: "var(--accent-fg)", border: "1px solid var(--accent)", fontWeight: 600 }}>ver resposta</button>
-        </div>
+        <>
+          {/* Veredito + nota + feedback */}
+          <div style={{ border: `1px solid ${v.color}`, background: v.bg, borderRadius: "var(--r-3)", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: v.color }}>{v.label}</span>
+              <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 24, fontWeight: 700, color: v.color }}>{result.score}</span>
+              <span className="mono dim" style={{ fontSize: 10.5 }}>/ 100</span>
+            </div>
+            {result.feedback && <div style={{ fontSize: 13, color: "var(--fg-1)", lineHeight: 1.5 }}>{result.feedback}</div>}
+            {result.missing && <div style={{ fontSize: 12, color: "var(--fg-2)" }}><b>Faltou:</b> {result.missing}</div>}
+          </div>
+          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "12px 14px" }}>
+            <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Resposta ideal (gabarito)</div>
+            <div style={{ fontSize: 13, color: "var(--fg-1)", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{result.ideal}</div>
+            <div className="mono dim" style={{ fontSize: 10.5, marginTop: 8 }}>sua resposta: {answer}</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ flex: 1 }} />
+            <button onClick={next} style={{ ...btn, background: "var(--accent)", color: "var(--accent-fg)", border: "1px solid var(--accent)", fontWeight: 600 }}>
+              {safePos >= total - 1 ? "ver resultado →" : "próximo →"}
+            </button>
+          </div>
+        </>
       )}
-      <div className="mono dim" style={{ fontSize: 10.5 }}>atalhos: Espaço vira · 1 errei · 2 acertei · ← anterior</div>
     </div>
   );
 }
