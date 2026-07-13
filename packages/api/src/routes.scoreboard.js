@@ -131,7 +131,9 @@ export function registerScoreboardRoutes(app, repo) {
         noShow,
         wonFromCalls,
         callWinRate: callsBooked > 0 ? round2((wonFromCalls / callsBooked) * 100) : null,
-        goals: goalMap(uid, "sdr", ["callsBooked", "bookingRate"]),
+        // Metas por TAXA (o alvo absoluto de calls sai de leads × bookingRate na
+        // UI); callsBooked absoluto fica de fallback se alguém preferir fixo.
+        goals: goalMap(uid, "sdr", ["contactRate", "bookingRate", "showRate", "callWinRate", "callsBooked"]),
       };
     }).filter((p) => p.leadsNew > 0 || p.callsBooked > 0)
       .sort((a, b) => b.callsBooked - a.callsBooked);

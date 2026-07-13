@@ -229,6 +229,22 @@ function MetaCell({ value, goal, fmt = int }) {
 //   calls → ganho        bom ≥25%  ok ≥10%
 const rateTone = (pct, good, ok) => (pct == null ? "var(--fg-3)" : pct >= good ? "var(--pos)" : pct >= ok ? "var(--warn)" : "var(--neg)");
 
+// Cortes de cor da taxa: a META (quando configurada em Ajustes → Equipe) vira o
+// "bom"; "ok" é 2/3 dela. Sem meta, cai no benchmark padrão do argumento.
+const tiers = (goal, fallbackGood) => {
+  const good = goal?.target > 0 ? goal.target : fallbackGood;
+  return { good, ok: Math.round(good * 0.66) };
+};
+
+// Meta de calls agendadas DERIVADA do volume: leads do mês × meta de taxa de
+// agendamento (o Leo quis "basear no número de leads que entra"). Sem meta de
+// taxa, cai numa meta absoluta de callsBooked se existir.
+const bookingGoal = (p) => {
+  const rate = p.goals?.bookingRate?.target;
+  if (rate > 0 && p.leadsNew > 0) return { target: Math.round((p.leadsNew * rate) / 100), period: "month" };
+  return p.goals?.callsBooked;
+};
+
 // Célula de taxa: número colorido por saúde + fração crua (num/den) + mini-barra.
 function RateCell({ pct, num, den, good, ok }) {
   if (pct == null) return <span className="dim" style={{ fontSize: 13 }}>—</span>;
@@ -299,16 +315,17 @@ const PANELS = [
     key: "sdr", title: "SDR", hint: "topo de funil: qualifica e agenda a call",
     alarm: (rows) => <SlaAlarm n={rows.reduce((a, p) => a + (p.breached || 0), 0)} />,
     cols: [
-      { label: "Contatados", render: (p) => <CountRate count={p.contacted} pct={p.contactRate} good={70} ok={50} /> },
-      { label: "Calls agendadas", render: (p) => <MetaCell value={p.callsBooked} goal={p.goals?.callsBooked} /> },
-      { label: "Taxa agend.", render: (p) => <RateCell pct={p.bookingRate} num={p.callsBooked} den={p.leadsNew} good={30} ok={15} /> },
+      { label: "Contatados", render: (p) => <CountRate count={p.contacted} pct={p.contactRate} {...tiers(p.goals?.contactRate, 70)} /> },
+      // Alvo de calls é DINÂMICO: leads do mês × meta de agendamento (ex.: 50 × 30% = 15).
+      { label: "Calls agendadas", render: (p) => <MetaCell value={p.callsBooked} goal={bookingGoal(p)} /> },
+      { label: "Taxa agend.", render: (p) => <RateCell pct={p.bookingRate} num={p.callsBooked} den={p.leadsNew} {...tiers(p.goals?.bookingRate, 30)} /> },
       { label: "SLA 1º toque", render: (p) => <SlaCell p={p} /> },
       { label: "% compareceram", render: (p) => (
         <span title={p.showRate != null ? `${p.noShow} não compareceram` : "sem call resolvida no período"}>
-          <RateCell pct={p.showRate} num={p.shown} den={p.showRate != null ? p.shown + p.noShow : null} good={70} ok={50} />
+          <RateCell pct={p.showRate} num={p.shown} den={p.showRate != null ? p.shown + p.noShow : null} {...tiers(p.goals?.showRate, 70)} />
         </span>
       ) },
-      { label: "Calls → ganho", render: (p) => <RateCell pct={p.callWinRate} num={p.wonFromCalls} den={p.callsBooked} good={25} ok={10} /> },
+      { label: "Calls → ganho", render: (p) => <RateCell pct={p.callWinRate} num={p.wonFromCalls} den={p.callsBooked} {...tiers(p.goals?.callWinRate, 25)} /> },
     ],
   },
   {

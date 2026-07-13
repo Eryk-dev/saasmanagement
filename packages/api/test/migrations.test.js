@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   ensureIntegrationStage, migrateLeverAdsCrmFunnel, migrateLeverAdsSdrCadence, ensureFunnelKinds,
-  ensureLossReasons, ensureNoShowReason, ensureUserRoles, ensureUserSaasScope, ensureUserScreens, DEFAULT_LOSS_REASONS,
+  ensureLossReasons, ensureNoShowReason, ensureSdrGoals, ensureUserRoles, ensureUserSaasScope, ensureUserScreens, DEFAULT_LOSS_REASONS,
 } from "../src/migrations.js";
 
 const FUNNEL = [
@@ -213,6 +213,23 @@ test("ensureNoShowReason anexa 'não compareceu' só em funil com call, uma vez"
   assert.equal((await repo.get("products", "jatem")).lossReasons.filter((r) => r.id === "nao_compareceu").length, 1); // não duplicou
 
   assert.equal(await ensureNoShowReason(repo), 0); // idempotente (marcador)
+});
+
+test("ensureSdrGoals semeia metas de taxa só em funil com call, uma vez, sem duplicar", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "lev", funnel: [{ stage: "Call agendada", kind: "call" }] });
+  await repo.create("products", { id: "semcall", funnel: [{ stage: "Novo", kind: "novo" }] });
+  // meta de contactRate já existente (edição manual) não é duplicada
+  await repo.create("goals", { id: "g0", saas: "lev", scope: "role", key: "sdr", metric: "contactRate", target: 90, period: "month" });
+
+  assert.equal(await ensureSdrGoals(repo), 3); // bookingRate/showRate/callWinRate (contactRate já tinha)
+  const gl = (await repo.list("goals")).filter((g) => g.saas === "lev" && g.key === "sdr");
+  assert.deepEqual(gl.map((g) => g.metric).sort(), ["bookingRate", "callWinRate", "contactRate", "showRate"]);
+  assert.equal(gl.find((g) => g.metric === "contactRate").target, 90); // preserva a manual
+  assert.equal(gl.find((g) => g.metric === "bookingRate").target, 30);
+  assert.equal((await repo.list("goals")).filter((g) => g.saas === "semcall").length, 0); // sem call, nada
+
+  assert.equal(await ensureSdrGoals(repo), 0); // idempotente (marcador sdrGoalsV1)
 });
 
 test("ensureUserRoles espelha o time antigo e não inventa usuário", async () => {

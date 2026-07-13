@@ -257,6 +257,39 @@ export async function ensureNoShowReason(repo) {
   return changed;
 }
 
+// Metas de SDR por TAXA (benchmark de SaaS inbound morno) — o alvo é a taxa,
+// que já se normaliza pelo volume de leads (o alvo absoluto de calls sai de
+// leads × taxa na UI). Semeadas como role-scope na coleção goals, uma vez por
+// produto com estágio de call (marcador sdrGoalsV1 respeita edição manual).
+const SDR_BENCHMARK_GOALS = [
+  { metric: "contactRate", target: 80 }, // reach: % dos leads novos contatados
+  { metric: "bookingRate", target: 30 }, // % dos leads que viram call agendada
+  { metric: "showRate", target: 75 },    // % das calls em que a pessoa compareceu
+  { metric: "callWinRate", target: 25 }, // % das calls que fecharam
+];
+
+export async function ensureSdrGoals(repo) {
+  let created = 0;
+  const goals = await repo.list("goals");
+  for (const product of await repo.list("products")) {
+    if (product.sdrGoalsV1) continue;
+    const hasCall = (product.funnel || []).some((f) => kindOf(product, f.stage) === "call");
+    if (hasCall) {
+      for (const g of SDR_BENCHMARK_GOALS) {
+        const exists = goals.some((x) => x.saas === product.id && x.scope === "role" && x.key === "sdr" && x.metric === g.metric);
+        if (!exists) {
+          // Id explícito: o gerador do repo é por timestamp e várias metas nascem
+          // no mesmo tick — colidiriam na PK (mesmo motivo de routes.forms.js).
+          await repo.create("goals", { id: `goal_${product.id}_sdr_${g.metric}`, saas: product.id, scope: "role", key: "sdr", metric: g.metric, target: g.target, period: "month" });
+          created++;
+        }
+      }
+    }
+    await repo.update("products", product.id, { sdrGoalsV1: true });
+  }
+  return created;
+}
+
 // Etiquetas de capacidade do time (quem aparece nos pickers de SDR/closer/
 // integrador). Espelha o hardcode antigo do pipeline.jsx; não cria usuário novo.
 const ROLE_SEED = {
@@ -353,6 +386,12 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] motivo "não compareceu" verificado em ${n} produto(s)`);
   } catch (err) {
     console.error("[migration] ensureNoShowReason falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureSdrGoals(repo);
+    if (n) console.log(`[migration] ${n} meta(s) de SDR (taxa) semeada(s)`);
+  } catch (err) {
+    console.error("[migration] ensureSdrGoals falhou:", err?.message || err);
   }
   try {
     const n = await ensureUserRoles(repo);
