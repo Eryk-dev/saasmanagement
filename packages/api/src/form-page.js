@@ -400,8 +400,16 @@ ${metaPixelHead(pixelId)}
   function validateQ(q, v) {
     if (q.required && isBlank(v)) return 'Essa pergunta é obrigatória';
     if (isBlank(v)) return '';
+    if (q.key === F.nameKey) {
+      var nm = String(v).trim();
+      if (nm.replace(/[^\\p{L}]/gu, '').length !== nm.length) return 'Use só letras, sem espaços ou símbolos';
+      if (nm.length < 3) return 'Digite pelo menos 3 letras';
+      if (nm.length > 15) return 'No máximo 15 letras';
+      if (/^(.)\\1*$/u.test(nm)) return 'Digite um nome de verdade';
+      return '';
+    }
+    if (q.type === 'phone' && String(v).replace(/[^0-9]/g, '').length !== 11) return 'Digite os 11 dígitos: DDD + celular';
     if (q.type === 'email' && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(String(v).trim())) return 'Digite um e-mail válido';
-    if (q.type === 'phone' && String(v).replace(/[^0-9]/g, '').length < 8) return 'Digite um telefone válido';
     if (q.type === 'number' && !isFinite(Number(v))) return 'Digite um número';
     return '';
   }
@@ -539,19 +547,31 @@ ${metaPixelHead(pixelId)}
       });
       return opts;
     }
+    var isName = q.key === F.nameKey;   // campo mapeado como nome: regra de nome
+    var isPhone = q.type === 'phone';    // WhatsApp: só dígitos, 11 no total
     var input;
     if (q.type === 'textarea') {
       input = el('textarea', 'text');
       input.rows = single ? 4 : 3;
     } else {
       input = el('input', 'text');
-      input.type = q.type === 'number' ? 'number' : q.type === 'email' ? 'email' : q.type === 'phone' ? 'tel' : 'text';
-      if (q.type === 'phone') input.inputMode = 'tel';
+      input.type = q.type === 'number' ? 'number' : q.type === 'email' ? 'email' : isPhone ? 'tel' : 'text';
+      if (isPhone) { input.inputMode = 'numeric'; input.maxLength = 11; }
+      if (isName) input.maxLength = 15;
     }
     input.dataset.qkey = q.key;
-    input.placeholder = q.placeholder || 'Digite sua resposta…';
+    input.placeholder = q.placeholder || (isPhone ? 'DDD + número (11 dígitos)' : isName ? 'Seu primeiro nome' : 'Digite sua resposta…');
     input.value = answers[q.key] != null ? answers[q.key] : '';
-    input.oninput = function () { answers[q.key] = input.value; errBox.textContent = ''; };
+    input.oninput = function () {
+      var v = input.value;
+      // Filtra ao digitar/colar: nome só letras (sem espaço, no máx. 15);
+      // WhatsApp só dígitos (no máx. 11). Reposiciona o valor limpo.
+      if (isName) v = v.replace(/[^\\p{L}]/gu, '').slice(0, 15);
+      else if (isPhone) v = v.replace(/[^0-9]/g, '').slice(0, 11);
+      if (v !== input.value) input.value = v;
+      answers[q.key] = input.value;
+      errBox.textContent = '';
+    };
     return input;
   }
 

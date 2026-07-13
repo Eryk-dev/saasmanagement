@@ -30,6 +30,9 @@ export function publicForm(form) {
     theme: form.theme || {},
     welcome: form.welcome || null,
     submitLabel: form.submitLabel || "", // CTA da última tela ("Receber meu diagnóstico")
+    // Qual pergunta é o NOME (mapping.name): a página aplica a regra de nome
+    // (só letras, sem espaço, 3-15, sem repetição) sem expor o mapping inteiro.
+    nameKey: (form.mapping && form.mapping.name) || "",
     questions: (form.questions || []).map((q) => ({
       key: q.key, label: q.label, type: q.type || "text", required: !!q.required,
       placeholder: q.placeholder || "", help: q.help || "", stack: !!q.stack,
@@ -130,6 +133,24 @@ const isBlank = (v) => v == null || (Array.isArray(v) ? v.length === 0 : String(
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_TEXT = 5000;
 
+// Regra do campo NOME (compartilhada com a página do form): só letras (com
+// acento), sem espaço/número/símbolo/emoji, de 3 a 15 letras e sem ser um único
+// caractere repetido ("aaaa"). Retorna a mensagem de erro ou "" quando válido.
+export function nameError(value) {
+  const s = String(value == null ? "" : value).trim();
+  if (s.replace(/[^\p{L}]/gu, "").length !== s.length) return "use só letras, sem espaços, números ou símbolos";
+  if (s.length < 3) return "o nome precisa de pelo menos 3 letras";
+  if (s.length > 15) return "o nome pode ter no máximo 15 letras";
+  if (/^(.)\1*$/u.test(s)) return "digite um nome de verdade";
+  return "";
+}
+
+// Regra do WhatsApp: só dígitos, exatamente 11 (2 do DDD + 9 do celular).
+export function phoneError(value) {
+  return String(value == null ? "" : value).replace(/\D/g, "").length === 11
+    ? "" : "o WhatsApp precisa dos 11 dígitos: DDD + celular";
+}
+
 // Valida `answers` contra a definição do form. Retorna lista de erros (vazia = ok).
 // Obrigatoriedade só vale pra perguntas no caminho percorrido (branching pode pular).
 export function validateAnswers(form, answers) {
@@ -139,6 +160,7 @@ export function validateAnswers(form, answers) {
   }
   const questions = form.questions || [];
   const byKey = new Map(questions.map((q) => [q.key, q]));
+  const nameKey = (form.mapping && form.mapping.name) || "";
 
   for (const [key, val] of Object.entries(answers)) {
     const q = byKey.get(key);
@@ -146,7 +168,13 @@ export function validateAnswers(form, answers) {
     const type = q.type || "text";
     if (type === "insight") { errors.push(`${key}: não aceita resposta`); continue; }
     if (isBlank(val)) continue;
-    if (type === "number") {
+    if (key === nameKey) {
+      const e = nameError(val);
+      if (e) errors.push(`${key}: ${e}`);
+    } else if (type === "phone") {
+      const e = phoneError(val);
+      if (e) errors.push(`${key}: ${e}`);
+    } else if (type === "number") {
       if (!Number.isFinite(Number(val))) errors.push(`${key}: número inválido`);
     } else if (type === "email") {
       if (typeof val !== "string" || !EMAIL_RE.test(val.trim())) errors.push(`${key}: e-mail inválido`);

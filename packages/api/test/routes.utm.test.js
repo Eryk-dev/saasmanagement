@@ -160,9 +160,9 @@ test("source fb/ig/an/msg normaliza pra meta + placement (duas grafias, uma orig
   // convenção nova do cockpit: utm_placement explícito passa direto
   await app.inject({
     method: "POST", url: "/public/forms/fo_utm/submissions",
-    payload: { answers: { nome: "Jo" }, utm: { source: "meta", placement: "ig", campaign: "c9" } },
+    payload: { answers: { nome: "Joao" }, utm: { source: "meta", placement: "ig", campaign: "c9" } },
   });
-  const jo = (await repo.list("leads")).find((l) => l.name === "Jo");
+  const jo = (await repo.list("leads")).find((l) => l.name === "Joao");
   assert.equal(jo.utm.source, "meta");
   assert.equal(jo.utm.placement, "ig");
   await app.close();

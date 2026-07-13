@@ -8,7 +8,8 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
-const { variantHeadline } = await import("../src/forms.js");
+const { variantHeadline, nameError, phoneError, publicForm, validateAnswers } = await import("../src/forms.js");
+const { formPageHtml } = await import("../src/form-page.js");
 
 // Form com branching: porte=small pula direto pro fim (faturamento nem aparece).
 const FORM = {
@@ -99,6 +100,62 @@ test("POST submission válida → 201, lead mapeado + submission vinculada", asy
   assert.equal(subs[0].form, "fo_test");
   assert.equal(subs[0].lead, lead.id);
   assert.deepEqual(subs[0].answers, ANSWERS_FULL);
+  await app.close();
+});
+
+test("nameError: só letras, sem espaço, 3-15, sem repetição de 1 caractere", () => {
+  for (const n of ["Rodrigo", "José", "João", "Ana", "Abcdefghijklmno"]) assert.equal(nameError(n), "", `${n} devia valer`);
+  for (const n of ["a", "ab", "aaa", "kkkkkk", "Rodrigo1", "Rod rigo", "Joao#", "Abcdefghijklmnop", "😀"]) assert.notEqual(nameError(n), "", `${n} devia falhar`);
+});
+
+test("phoneError: exige exatamente 11 dígitos (DDD + celular), ignora formatação", () => {
+  assert.equal(phoneError("41992516545"), "");
+  assert.equal(phoneError("(41) 99251-6545"), "");
+  for (const p of ["4192516545", "419925165455", "", "abc"]) assert.notEqual(phoneError(p), "", `${p} devia falhar`);
+});
+
+test("validateAnswers aplica regra de nome (mapping.name) e telefone (phone)", () => {
+  const form = { questions: [
+    { key: "nome", type: "text", required: true },
+    { key: "whatsapp", type: "phone", required: true },
+  ], mapping: { name: "nome", phone: "whatsapp" } };
+  assert.deepEqual(validateAnswers(form, { nome: "Rodrigo", whatsapp: "41992516545" }), []);
+  assert.ok(validateAnswers(form, { nome: "aa", whatsapp: "41992516545" }).some((e) => e.startsWith("nome:")));
+  assert.ok(validateAnswers(form, { nome: "aaaa", whatsapp: "41992516545" }).some((e) => e.startsWith("nome:")));
+  assert.ok(validateAnswers(form, { nome: "Rodrigo", whatsapp: "4199251" }).some((e) => e.startsWith("whatsapp:")));
+});
+
+test("publicForm expõe nameKey; a página inline traz os filtros e o script parseia", () => {
+  const form = { id: "f", name: "F", mapping: { name: "nome", phone: "whatsapp" }, questions: [
+    { key: "nome", type: "text", required: true }, { key: "whatsapp", type: "phone", required: true },
+  ] };
+  const pub = publicForm(form);
+  assert.equal(pub.nameKey, "nome");
+  assert.equal(pub.mapping, undefined); // mapping segue escondido
+
+  const html = formPageHtml(pub, {});
+  assert.ok(html.includes('"nameKey":"nome"'), "nameKey vai inline no __FORM__");
+  const app = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).reduce((a, b) => (b.length > a.length ? b : a), "");
+  assert.match(app, /\[\^\\p\{L\}\]\/gu/, "regex de nome renderizado");
+  assert.match(app, /replace\(\/\[\^0-9\]\/g, ''\)\.slice\(0, 11\)/, "filtro de telefone renderizado");
+  assert.doesNotThrow(() => new Function(app), "o script servido é JS válido");
+});
+
+test("POST submission barra nome/telefone inválidos (400) e aceita válidos (201)", async () => {
+  const repo = makeMemRepo();
+  await repo.create("forms", {
+    id: "fo_np", saas: "leverads", status: "published",
+    questions: [{ key: "nome", type: "text", required: true }, { key: "whatsapp", type: "phone", required: true }],
+    mapping: { name: "nome", phone: "whatsapp" }, thanks: {},
+  });
+  const app = Fastify();
+  registerRoutes(app, repo);
+
+  const bad = await app.inject({ method: "POST", url: "/public/forms/fo_np/submissions", payload: { answers: { nome: "aa", whatsapp: "419" } } });
+  assert.equal(bad.statusCode, 400);
+  const good = await app.inject({ method: "POST", url: "/public/forms/fo_np/submissions", payload: { answers: { nome: "Rodrigo", whatsapp: "41992516545" } } });
+  assert.equal(good.statusCode, 201);
+  assert.equal((await repo.list("leads"))[0].name, "Rodrigo");
   await app.close();
 });
 
@@ -213,16 +270,17 @@ test("honeypot preenchido → finge sucesso e não grava nada", async () => {
 
 test("rate-limit por IP: acima do limite → 429", async () => {
   const { app } = await buildApp({ forms: { rateLimit: 3 } });
+  const nomes = ["Lucas", "Bruno", "Carlos"];
   for (let i = 0; i < 3; i++) {
     const r = await app.inject({
       method: "POST", url: "/public/forms/fo_test/submissions",
-      payload: { answers: { nome: `L${i}`, email: "l@ex.com", porte: "small" } },
+      payload: { answers: { nome: nomes[i], email: "l@ex.com", porte: "small" } },
     });
     assert.equal(r.statusCode, 201);
   }
   const blocked = await app.inject({
     method: "POST", url: "/public/forms/fo_test/submissions",
-    payload: { answers: { nome: "L4", email: "l@ex.com", porte: "small" } },
+    payload: { answers: { nome: "Diego", email: "l@ex.com", porte: "small" } },
   });
   assert.equal(blocked.statusCode, 429);
   await app.close();
