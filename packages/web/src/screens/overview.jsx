@@ -1,7 +1,7 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { PageHead, StatTile, Card, LineChart, Pill } from "../components/viz.jsx";
+import { PageHead, StatTile, Card, LineChart, Pill, Segmented } from "../components/viz.jsx";
 import { EmptyState, Avatar } from "../atoms.jsx";
 import { nextMilestone, dueLabel } from "../lib/milestones.js";
 import { openStages, isWonStage, firstStage as firstStageOf } from "../lib/funnel.js";
@@ -17,8 +17,21 @@ const { useState, useEffect, useMemo } = React;
 const DAY = 86_400_000;
 const dayKey = (iso) => String(iso || "").slice(0, 10);
 const shortDay = (d) => d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "");
-const monthStart = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; };
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const pctStr = (n) => (n == null ? "" : String(n).replace(".", ",") + "%");
+
+// Janela do placar: semana (segunda→hoje, base da meta = semana passada
+// completa) ou mês (1º→hoje, base = mês passado). A janela ANTERIOR é sempre a
+// completa, que é estável — a atual ainda não fechou.
+function scoreWindow(period, now = new Date()) {
+  if (period === "week") {
+    const day = (now.getDay() + 6) % 7; // 0 = segunda
+    const monday = new Date(now); monday.setHours(0, 0, 0, 0); monday.setDate(now.getDate() - day);
+    return { since: ymd(monday), prevSince: ymd(new Date(monday.getTime() - 7 * DAY)), prevUntil: ymd(new Date(monday.getTime() - DAY)) };
+  }
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  return { since: ymd(first), prevSince: ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)), prevUntil: ymd(new Date(now.getFullYear(), now.getMonth(), 0)) };
+}
 
 function OverviewScreen({ onNav, onOpenLead }) {
   const { SAAS, LEADS, CUSTOMERS } = window.SEED;
@@ -28,7 +41,9 @@ function OverviewScreen({ onNav, onOpenLead }) {
   const [biz, setBiz] = useState(null); // CAC/conversão (30d) — mesmo endpoint da Publicidade
   const [invoices, setInvoices] = useState([]);
   const [costs, setCosts] = useState(null); // custos do mês corrente (tela Custos)
-  const [score, setScore] = useState(null); // placar por pessoa/papel (mês corrente)
+  const [score, setScore] = useState(null); // placar por pessoa/papel
+  const [teamPeriod, setTeamPeriod] = useState(() => { try { return localStorage.getItem("cockpit_team_period") || "week"; } catch { return "week"; } });
+  const setTeamPeriodP = (p) => { setTeamPeriod(p); try { localStorage.setItem("cockpit_team_period", p); } catch { /* ignore */ } };
 
   // Troca de PRODUTO zera os painéis; refresh por versão (SSE) só refaz o fetch.
   const loadedFor = React.useRef(null);
@@ -43,9 +58,9 @@ function OverviewScreen({ onNav, onOpenLead }) {
     api.metrics(product.id, { days: 30 }).then((b) => alive && setBiz(b)).catch(() => alive && setBiz(null));
     api.list("invoices").then((rows) => alive && setInvoices(rows.filter((i) => i.saas === product.id))).catch(() => {});
     api.expensesSummary(product.id).then((c) => alive && setCosts(c)).catch(() => alive && setCosts(null));
-    api.scoreboard(product.id, { since: monthStart() }).then((s) => alive && setScore(s)).catch(() => alive && setScore(null));
+    api.scoreboard(product.id, scoreWindow(teamPeriod)).then((s) => alive && setScore(s)).catch(() => alive && setScore(null));
     return () => { alive = false; };
-  }, [product?.id, version]);
+  }, [product?.id, version, teamPeriod]);
 
   const leads = useMemo(() => (LEADS || []).filter((l) => l.saas === product?.id), [LEADS, product?.id]);
 
@@ -136,8 +151,8 @@ function OverviewScreen({ onNav, onOpenLead }) {
             delta={biz?.window?.newCustomers != null ? `${biz.window.newCustomers} ${biz.window.newCustomers === 1 ? "cliente novo" : "clientes novos"}` : null} tone="flat" />
         </div>
 
-        {/* Desempenho do time — placar por papel, cada pessoa vs. meta (mês). */}
-        <TeamPerformance score={score} onPerson={openPerson} onNav={onNav} product={product} />
+        {/* Desempenho do time — placar por papel, cada pessoa vs. meta. */}
+        <TeamPerformance score={score} onPerson={openPerson} period={teamPeriod} onPeriod={setTeamPeriodP} />
 
         <div className="resp-cols" style={{ "--cols": "minmax(0,1fr) 340px", gap: 12, alignItems: "start" }}>
           <Card title="Leads por dia" hint="últimos 30 dias · clique numa etapa pra abrir o pipeline">
@@ -236,13 +251,24 @@ const tiers = (goal, fallbackGood) => {
   return { good, ok: Math.round(good * 0.66) };
 };
 
-// Meta de calls agendadas DERIVADA do volume: leads do mês × meta de taxa de
-// agendamento (o Leo quis "basear no número de leads que entra"). Sem meta de
-// taxa, cai numa meta absoluta de callsBooked se existir.
+// Meta de calls agendadas DERIVADA do volume: leads do período ANTERIOR (semana
+// passada completa) × meta de taxa de agendamento. Base estável — a semana atual
+// ainda não fechou. Sem período anterior (mês legado), cai nos leads atuais;
+// sem meta de taxa, cai numa meta absoluta de callsBooked.
 const bookingGoal = (p) => {
   const rate = p.goals?.bookingRate?.target;
-  if (rate > 0 && p.leadsNew > 0) return { target: Math.round((p.leadsNew * rate) / 100), period: "month" };
+  const base = p.leadsPrev != null ? p.leadsPrev : p.leadsNew;
+  if (rate > 0 && base > 0) return { target: Math.round((base * rate) / 100), period: "week" };
   return p.goals?.callsBooked;
+};
+
+// Meta absoluta (closer/CS) reescalada pro período da tela: meta mensal vista na
+// semana vira ~meta/4,3. Rates não escalam (uma taxa é uma taxa).
+const PERIOD_DAYS = { week: 7, month: 30.4 };
+const scaleGoal = (goal, period) => {
+  if (!goal || !(goal.target > 0)) return goal;
+  const factor = PERIOD_DAYS[period] / PERIOD_DAYS[goal.period || "month"];
+  return factor === 1 ? goal : { ...goal, target: Math.max(1, Math.round(goal.target * factor)) };
 };
 
 // Célula de taxa: número colorido por saúde + fração crua (num/den) + mini-barra.
@@ -316,7 +342,7 @@ const PANELS = [
     alarm: (rows) => <SlaAlarm n={rows.reduce((a, p) => a + (p.breached || 0), 0)} />,
     cols: [
       { label: "Contatados", render: (p) => <CountRate count={p.contacted} pct={p.contactRate} {...tiers(p.goals?.contactRate, 70)} /> },
-      // Alvo de calls é DINÂMICO: leads do mês × meta de agendamento (ex.: 50 × 30% = 15).
+      // Alvo de calls DINÂMICO: leads da semana passada × meta de agendamento.
       { label: "Calls agendadas", render: (p) => <MetaCell value={p.callsBooked} goal={bookingGoal(p)} /> },
       { label: "Taxa agend.", render: (p) => <RateCell pct={p.bookingRate} num={p.callsBooked} den={p.leadsNew} {...tiers(p.goals?.bookingRate, 30)} /> },
       { label: "SLA 1º toque", render: (p) => <SlaCell p={p} /> },
@@ -333,8 +359,8 @@ const PANELS = [
     cols: [
       { label: "Calls", render: (p) => <span className="tnum">{int(p.calls)}</span> },
       { label: "Propostas", render: (p) => <span className="tnum">{int(p.proposals)}</span> },
-      { label: "Ganhos", meta: true, render: (p) => <MetaCell value={p.won} goal={p.goals?.won} /> },
-      { label: "Receita", meta: true, render: (p) => <MetaCell value={p.revenue} goal={p.goals?.revenue} fmt={money} /> },
+      { label: "Ganhos", render: (p, ctx) => <MetaCell value={p.won} goal={scaleGoal(p.goals?.won, ctx.period)} /> },
+      { label: "Receita", render: (p, ctx) => <MetaCell value={p.revenue} goal={scaleGoal(p.goals?.revenue, ctx.period)} fmt={money} /> },
       { label: "Fechamento", render: (p) => <span className="tnum">{pctStr(p.closeRate) || "—"}</span> },
     ],
   },
@@ -342,21 +368,28 @@ const PANELS = [
     key: "cs", title: "CS / Retenção", hint: "pós-venda e carteira",
     cols: [
       { label: "Contas", render: (p) => <span className="tnum">{int(p.activeAccounts)}</span> },
-      { label: "Novas", meta: true, render: (p) => <MetaCell value={p.newAccounts} goal={p.goals?.newAccounts} /> },
+      { label: "Novas", render: (p, ctx) => <MetaCell value={p.newAccounts} goal={scaleGoal(p.goals?.newAccounts, ctx.period)} /> },
       { label: "Churn", render: (p) => <span className="tnum" style={{ color: p.churned > 0 ? "var(--neg)" : "var(--fg-3)" }}>{int(p.churned)}</span> },
     ],
   },
 ];
 
-function TeamPerformance({ score, onPerson, onNav }) {
+function TeamPerformance({ score, onPerson, period, onPeriod }) {
   const anyRows = score && PANELS.some((p) => (score[p.key] || []).length > 0);
+  const ctx = { period };
+  const label = period === "week" ? "esta semana" : "este mês";
+  const toggle = (
+    <Segmented value={period} onChange={onPeriod}
+      options={[{ value: "week", label: "Semana" }, { value: "month", label: "Mês" }]} />
+  );
   return (
-    <Card title="Desempenho do time" hint="este mês · progresso vs. meta (defina em Ajustes → Equipe) · clique num nome pra abrir o pipeline dele">
+    <Card title="Desempenho do time" action={toggle}
+      hint={`${label} · SDR: meta = leads da ${period === "week" ? "semana" : "mês"} anterior × taxa · clique num nome pra abrir o pipeline dele`}>
       <div style={{ padding: "6px 8px 12px" }}>
         {score == null && <div className="mono dim" style={{ padding: "10px 8px", fontSize: 12 }}>carregando…</div>}
         {score && !anyRows && (
           <div style={{ padding: "10px 8px", fontSize: 12.5, color: "var(--fg-4)" }}>
-            Sem atividade no mês ainda. Assim que o time trabalhar leads e fechar negócios, o placar aparece aqui.
+            Sem atividade {label}. Assim que o time trabalhar leads e fechar negócios, o placar aparece aqui.
           </div>
         )}
         {score && anyRows && PANELS.map((panel) => {
@@ -383,7 +416,7 @@ function TeamPerformance({ score, onPerson, onNav }) {
                         <Avatar id={p.user} name={p.name} size={20} />
                         <span style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
                       </button>
-                      {panel.cols.map((c) => <div key={c.label}>{c.render(p)}</div>)}
+                      {panel.cols.map((c) => <div key={c.label}>{c.render(p, ctx)}</div>)}
                     </div>
                   ))}
                 </div>

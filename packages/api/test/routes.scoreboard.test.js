@@ -131,6 +131,25 @@ test("CS: contas ativas e novas por owner do cliente", async () => {
   await app.close();
 });
 
+test("leadsPrev conta os leads da janela anterior (base da meta dinâmica)", async () => {
+  const { app, repo } = await buildApp();
+  // 3 leads do SDR na semana passada, 1 na atual
+  await repo.create("leads", { id: "p1", saas: "leverads", owner: "u_sdr", stage: "Novo lead", createdAt: "2026-06-25T10:00:00.000Z" });
+  await repo.create("leads", { id: "p2", saas: "leverads", owner: "u_sdr", stage: "Novo lead", createdAt: "2026-06-27T10:00:00.000Z" });
+  await repo.create("leads", { id: "p3", saas: "leverads", owner: "u_sdr", stage: "Novo lead", createdAt: "2026-06-30T10:00:00.000Z" });
+  await repo.create("leads", { id: "cur", saas: "leverads", owner: "u_sdr", stage: "Novo lead", createdAt: now });
+
+  const url = `/api/scoreboard/leverads?since=2026-07-01&until=2026-07-31&prevSince=2026-06-24&prevUntil=2026-06-30`;
+  const s = (await app.inject({ url })).json().sdr.find((x) => x.user === "u_sdr");
+  assert.equal(s.leadsNew, 1);    // só 'cur' na janela atual
+  assert.equal(s.leadsPrev, 3);   // p1,p2,p3 na janela anterior
+
+  // sem prevSince/prevUntil → leadsPrev null
+  const s2 = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json().sdr.find((x) => x.user === "u_sdr");
+  assert.equal(s2.leadsPrev, null);
+  await app.close();
+});
+
 test("404 pra produto inexistente", async () => {
   const { app } = await buildApp();
   assert.equal((await app.inject({ url: "/api/scoreboard/nada" })).statusCode, 404);
