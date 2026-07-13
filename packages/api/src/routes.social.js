@@ -98,6 +98,29 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
     return product;
   }
 
+  // Novos seguidores recentes (~24h) pro aviso de social selling do Meu dia.
+  // SÓ a contagem líquida: o Instagram/Meta NÃO expõe a lista nem o @ de quem
+  // seguiu (limite da plataforma). Enxuto e liberado pra fila do SDR (today) —
+  // ver ROUTE_SCREENS: /api/social/new-followers vem ANTES de /api/social.
+  app.get("/api/social/new-followers/:saas", async (req, reply) => {
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "produto não encontrado" });
+    if (!social.configured()) return { configured: false, count: null, username: "" };
+    const { igUserId } = await idsFor(product);
+    if (!igUserId) return { configured: false, count: null, username: "" };
+    // Janela de ~24h: o insight follower_count é diário; somamos os buckets de
+    // ontem+hoje (o de hoje costuma vir parcial/atrasado, então a soma cobre bem).
+    const range = { since: dayStr(Date.now() - 86400e3), until: dayStr(Date.now()) };
+    let count = null, username = "";
+    await Promise.all([
+      social.igAccount(igUserId).then((a) => { username = a?.username || ""; }).catch(() => {}),
+      social.igDailySeries(igUserId, "follower_count", range)
+        .then((s) => { if (Array.isArray(s)) count = s.reduce((acc, v) => acc + (Number(v.value) || 0), 0); })
+        .catch(() => {}),
+    ]);
+    return { configured: true, count, username };
+  });
+
   // ── Resumo da tela: perfil + insights + últimos posts + página ────────────
   app.get("/api/social/summary", async (req, reply) => {
     const product = await productOr404(req, reply);

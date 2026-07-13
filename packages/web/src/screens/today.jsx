@@ -176,6 +176,36 @@ function buildQueue(leads, saasCfg, person) {
   return { ...g, doneToday };
 }
 
+// Aviso de social selling: aparece quando o SDR zera a fila de HOJE. Manda ir
+// pro Instagram chamar os novos seguidores. Mostra a CONTAGEM de novos
+// seguidores (~24h); o @ de cada um o Instagram NÃO entrega por API (privacidade
+// da plataforma), então o botão abre o app pra a pessoa ver os @ e chamar.
+function SocialSellingNotice({ ig }) {
+  const username = ig?.username || "";
+  const count = ig?.count;
+  const igUrl = username ? `https://instagram.com/${username}` : "https://instagram.com";
+  return (
+    <div style={{ marginBottom: 12, border: "1px solid var(--accent-line)", background: "var(--accent-soft)", borderRadius: "var(--r-3)", padding: "14px 16px", display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+      <div style={{ fontSize: 24, lineHeight: 1, flexShrink: 0 }}>📸</div>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--fg-1)" }}>Zerou a fila de hoje! Bora fazer social selling.</div>
+        <div style={{ fontSize: 12.5, color: "var(--fg-2)", marginTop: 3, lineHeight: 1.45 }}>
+          {count == null
+            ? "Passa no Instagram e chama os novos seguidores no direct."
+            : count > 0
+              ? <>Você teve <strong style={{ color: "var(--accent)" }}>{count} novo{count === 1 ? "" : "s"} seguidor{count === 1 ? "" : "es"}</strong> nas últimas ~24h. Chama cada um no direct.</>
+              : "Sem novos seguidores nas últimas 24h, mas vale reativar quem já te segue."}
+          {" "}<span className="dim">O Instagram não lista quem seguiu por aqui, abra o app pra ver os @ e chamar.</span>
+        </div>
+      </div>
+      <a href={igUrl} target="_blank" rel="noopener noreferrer"
+        style={{ flexShrink: 0, height: 34, display: "inline-flex", alignItems: "center", padding: "0 16px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 13, fontWeight: 700, textDecoration: "none" }}>
+        abrir Instagram ↗
+      </a>
+    </div>
+  );
+}
+
 function TodayScreen({ onOpenLead }) {
   const { version } = useData();
   const [activeProduct] = useActiveSaas();
@@ -195,6 +225,7 @@ function TodayScreen({ onOpenLead }) {
     try { localStorage.setItem("cockpit_today_person", p); } catch { /* ignore */ }
   };
   const [scriptItem, setScriptItem] = useS(null); // item com o painel de roteiro aberto
+  const [igStats, setIgStats] = useS(null); // { configured, count, username } — aviso de social selling
 
   const q = useM(() => buildQueue(leads, saasCfg, person), [leads, saasCfg, person]);
   const total = q.hoje.length + q.amanha.length + q.proximos.length + q.semdata.length;
@@ -277,6 +308,17 @@ function TodayScreen({ onOpenLead }) {
   const headCell = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" };
   const blockTone = { accent: "var(--accent)", warn: "var(--warn)", mut: "var(--fg-3)" };
 
+  // Aviso de social selling: quando o SDR zera a fila de HOJE (nada pendente),
+  // manda ir pro Instagram chamar os novos seguidores. Só na fila de um SDR.
+  const viewedIsSdr = !!person && (userById(person)?.roles || []).includes("sdr");
+  const daySocialDone = viewedIsSdr && !firstPending;
+  useE(() => {
+    if (!daySocialDone || !saasCfg?.id) return;
+    let alive = true;
+    api.newFollowers(saasCfg.id).then((r) => alive && setIgStats(r)).catch(() => alive && setIgStats(null));
+    return () => { alive = false; };
+  }, [daySocialDone, saasCfg?.id]);
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <PageHead
@@ -305,6 +347,7 @@ function TodayScreen({ onOpenLead }) {
       </PageHead>
 
       <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)" }}>
+        {daySocialDone && <SocialSellingNotice ig={igStats} />}
         {total === 0 ? (
           <EmptyState
             title="Fila limpa"

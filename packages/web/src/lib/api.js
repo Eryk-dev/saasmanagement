@@ -129,6 +129,9 @@ export const api = {
   expensesSummary: (saas, month) => req("GET", `/api/expenses/summary/${saas}${month ? `?month=${month}` : ""}`),
   // Mídia social: métricas do perfil, histórico e publicação orgânica (IG/FB).
   socialSummary: (saas, days) => req("GET", `/api/social/summary?saas=${encodeURIComponent(saas)}${days ? `&days=${days}` : ""}`),
+  // Só a contagem líquida de novos seguidores (~24h) + o @ do perfil, pro aviso
+  // de social selling do Meu dia (o IG não expõe a lista de quem seguiu).
+  newFollowers: (saas) => req("GET", `/api/social/new-followers/${encodeURIComponent(saas)}`),
   socialAudience: (saas) => req("GET", `/api/social/audience?saas=${encodeURIComponent(saas)}`),
   socialPosts: (saas) => req("GET", `/api/social/posts?saas=${encodeURIComponent(saas)}`),
   // Links de pagamento das ofertas (ferramenta) — leitura e edição pra todo o time.
