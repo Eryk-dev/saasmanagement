@@ -1186,18 +1186,26 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         sec.addEventListener('click', advance);
         document.addEventListener('keydown', function (e) {
           // Ofertas 2 e 3 são SECRETAS (ferramentas de negociação do closer):
-          // cada Shift+Espaço revela a próxima da escada, nunca por clique ou
-          // avanço normal, e não saem no print.
-          if (!sec.classList.contains('price-pending') &&
-              e.shiftKey && (e.key === ' ' || e.code === 'Space')) {
-            if (!inView()) return;
-            var next = hasOffer2 && !sec.classList.contains('offer2-on') ? 'offer2-on'
-              : hasOffer3 && !sec.classList.contains('offer3-on') ? 'offer3-on' : null;
-            if (!next) return;
-            e.preventDefault();
-            sec.classList.add(next);
-            fitSlides();
-            return;
+          // Shift+1 revela a 2ª oferta, Shift+2 revela a 3ª — dá pra pular direto
+          // pra 3ª sem passar pela 2ª. Nunca por clique/avanço normal nem no print.
+          // Usa e.code (Shift+1 = "!" em e.key, mas a tecla física é Digit1).
+          if (!sec.classList.contains('price-pending') && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            var code = e.code;
+            if ((code === 'Digit1' || code === 'Numpad1') && hasOffer2) {
+              if (!inView()) return;
+              e.preventDefault();
+              sec.classList.remove('offer3-on');
+              sec.classList.add('offer2-on');
+              fitSlides();
+              return;
+            }
+            if ((code === 'Digit2' || code === 'Numpad2') && hasOffer3) {
+              if (!inView()) return;
+              e.preventDefault();
+              sec.classList.add('offer3-on');
+              fitSlides();
+              return;
+            }
           }
           if (!sec.classList.contains('price-pending')) return;
           var k = e.key;
