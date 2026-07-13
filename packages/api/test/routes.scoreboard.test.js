@@ -188,6 +188,28 @@ test("leadsPrev conta os leads da janela anterior (base da meta dinâmica)", asy
   await app.close();
 });
 
+test("CS: responsável do papel aparece mesmo sem conta (pra ver a meta)", async () => {
+  const { app } = await buildApp(); // u_cs é integrator, sem nenhuma conta
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  const cs = sb.cs.find((x) => x.user === "u_cs");
+  assert.ok(cs, "o CS aparece mesmo com 0 contas");
+  assert.equal(cs.activeAccounts, 0);
+  assert.equal(cs.retentionRate, null);
+  await app.close();
+});
+
+test("Mídia social: papel aparece com a demanda de conteúdo (produção 0 por ora)", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("users", { id: "u_soc", name: "Vini Vídeo", roles: ["social"] });
+  await repo.create("goals", { id: "gp", saas: "leverads", scope: "role", key: "social", metric: "postsPerMonth", target: 30, period: "month" });
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  const s = sb.social.find((x) => x.user === "u_soc");
+  assert.ok(s, "o responsável social aparece");
+  assert.equal(s.postsPerMonth, 0);        // produção não conectada ainda
+  assert.equal(s.goals.postsPerMonth.target, 30); // a meta (demanda) aparece
+  await app.close();
+});
+
 test("404 pra produto inexistente", async () => {
   const { app } = await buildApp();
   assert.equal((await app.inject({ url: "/api/scoreboard/nada" })).statusCode, 404);

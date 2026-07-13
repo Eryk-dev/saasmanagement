@@ -186,7 +186,8 @@ export function registerScoreboardRoutes(app, repo) {
       .sort((a, b) => b.revenue - a.revenue);
 
     // ── CS / retenção (agrupado por customer.owner) ───────────────────────────
-    const csIds = [...new Set([...withRole("integrator"), ...customers.map((c) => c.owner).filter(Boolean)])];
+    const csRole = new Set(withRole("integrator")); // membros do papel CS sempre aparecem (pra ver a meta)
+    const csIds = [...new Set([...csRole, ...customers.map((c) => c.owner).filter(Boolean)])];
     const npsSaas = npsAll.filter((n) => !n.saas || n.saas === product.id);
     const cs = csIds.map((uid) => {
       const mine = customers.filter((c) => c.owner === uid);
@@ -210,9 +211,20 @@ export function registerScoreboardRoutes(app, repo) {
         nps, npsCount: scores.length,
         goals: goalMap(uid, "integrator", ["newAccounts", "activeAccounts", "retentionRate", "nps"]),
       };
-    }).filter((p) => p.activeAccounts > 0 || p.newAccounts > 0)
+    }).filter((p) => p.activeAccounts > 0 || p.newAccounts > 0 || csRole.has(p.user)) // responsável aparece mesmo sem conta (pra ver a meta)
       .sort((a, b) => b.activeAccounts - a.activeAccounts);
 
-    return { saas: product.id, since, until, sdr, closer, cs };
+    // ── Mídia social (agregado por papel) ─────────────────────────────────────
+    // A DEMANDA de conteúdo (posts/stories/ads) já está nas metas; a PRODUÇÃO
+    // ainda não tem fonte de dados (posts/stories = tela de Mídia social; ads =
+    // fluxo de criar-anúncio), então produzido = 0 por ora — o painel mostra o
+    // alvo pra ele perseguir. Sempre exibe quem tem o papel social.
+    const social = withRole("social").map((uid) => ({
+      user: uid, name: nameOf(uid),
+      postsPerMonth: 0, storiesPerMonth: 0, adsPerMonth: 0, // produção não conectada ainda
+      goals: goalMap(uid, "social", ["postsPerMonth", "storiesPerMonth", "adsPerMonth"]),
+    }));
+
+    return { saas: product.id, since, until, sdr, closer, cs, social };
   });
 }
