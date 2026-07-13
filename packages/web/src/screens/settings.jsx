@@ -411,8 +411,13 @@ function TeamSettings() {
 // Escopo por produto ativo (metas do LeverAds ≠ do UniqueKids). Grava role-scope
 // na coleção `goals`; o placar prefere meta por pessoa (user-scope) quando existir,
 // mas aqui é o alvo geral do papel, que já faz a barra aparecer pra todo mundo.
+// SDR por TAXA (se ajusta ao volume de leads); o alvo absoluto de calls sai de
+// leads × taxa de agendamento na Visão geral. Closer/CS seguem absolutos.
 const GOAL_METRICS = [
-  { role: "sdr", metric: "callsBooked", label: "SDR · Calls agendadas / mês" },
+  { role: "sdr", metric: "contactRate", label: "SDR · Reach — contatados (%)", suffix: "%" },
+  { role: "sdr", metric: "bookingRate", label: "SDR · Taxa de agendamento (%)", suffix: "%" },
+  { role: "sdr", metric: "showRate", label: "SDR · Comparecimento na call (%)", suffix: "%" },
+  { role: "sdr", metric: "callWinRate", label: "SDR · Calls → ganho (%)", suffix: "%" },
   { role: "closer", metric: "won", label: "Closer · Ganhos / mês" },
   { role: "closer", metric: "revenue", label: "Closer · Receita / mês (R$)" },
   { role: "integrator", metric: "newAccounts", label: "CS · Contas novas / mês" },
@@ -461,14 +466,17 @@ function GoalsEditor() {
       <SettingHeader title="Metas do time" sub={`alvos por papel do ${product.name} · alimentam a barra de progresso na Visão geral · deixe vazio pra tirar a meta`} />
       <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "6px 4px" }}>
         {goals === null && <div className="mono dim" style={{ padding: "12px 14px", fontSize: 12 }}>carregando…</div>}
-        {goals !== null && GOAL_METRICS.map(({ role, metric, label }) => (
+        {goals !== null && GOAL_METRICS.map(({ role, metric, label, suffix }) => (
           <div key={`${role}:${metric}`} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 14px", borderBottom: "1px solid var(--line-1)", opacity: saving === `${role}:${metric}` ? 0.6 : 1 }}>
             <span style={{ flex: 1, fontSize: 13 }}>{label}</span>
-            <input type="number" min="0" defaultValue={valueOf(role, metric)} key={`${product.id}:${role}:${metric}:${valueOf(role, metric)}`}
-              placeholder="sem meta"
-              onBlur={(e) => { if (e.target.value !== valueOf(role, metric)) saveGoal(role, metric, e.target.value); }}
-              onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
-              style={field} />
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <input type="number" min="0" defaultValue={valueOf(role, metric)} key={`${product.id}:${role}:${metric}:${valueOf(role, metric)}`}
+                placeholder="sem meta"
+                onBlur={(e) => { if (e.target.value !== valueOf(role, metric)) saveGoal(role, metric, e.target.value); }}
+                onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+                style={field} />
+              {suffix && <span className="mono dim" style={{ fontSize: 12, width: 10 }}>{suffix}</span>}
+            </span>
           </div>
         ))}
       </div>

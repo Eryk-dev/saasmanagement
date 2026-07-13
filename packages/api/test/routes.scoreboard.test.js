@@ -109,6 +109,14 @@ test("meta por pessoa (user-scope) e por papel (role-scope) anexadas ao placar",
   assert.equal(c.goals.won.target, 12);   // user vence role
   const s = sb.sdr.find((x) => x.user === "u_sdr");
   assert.equal(s.goals.callsBooked.target, 40); // role aplica quando não há user
+
+  // metas de TAXA do SDR (role-scope) chegam anexadas por métrica
+  await repo.create("goals", { id: "g4", saas: "leverads", scope: "role", key: "sdr", metric: "bookingRate", target: 30, period: "month" });
+  await repo.create("goals", { id: "g5", saas: "leverads", scope: "role", key: "sdr", metric: "contactRate", target: 80, period: "month" });
+  const sb2 = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  const s2 = sb2.sdr.find((x) => x.user === "u_sdr");
+  assert.equal(s2.goals.bookingRate.target, 30);
+  assert.equal(s2.goals.contactRate.target, 80);
   await app.close();
 });
 
