@@ -152,9 +152,16 @@ const fakeSocialOk = () => ({
   configured: () => true,
   calls: [],
   async igAccount() { return { username: "lever.ads", followers_count: 230 }; },
-  async igInsights() { return { reach: 1000, profile_views: 80, accounts_engaged: 120, total_interactions: 300, website_clicks: 15 }; },
-  async igFollowerGrowth() { return 12; },
-  async igMedia() { return [{ id: "m1", likes: 10, comments: 2, permalink: "https://insta/p/1", mediaUrl: "u1" }]; },
+  async igInsights() { return { reach: 1000, profile_views: 80, accounts_engaged: 120, total_interactions: 300, website_clicks: 15, views: 2000, profile_links_taps: 40 }; },
+  async igReachBreakdown() { return { follower: 600, nonFollower: 400 }; },
+  async igDailySeries(id, metric) {
+    return metric === "follower_count"
+      ? [{ date: "2026-07-01", value: 5 }, { date: "2026-07-02", value: 7 }]
+      : [{ date: "2026-07-01", value: 400 }, { date: "2026-07-02", value: 600 }];
+  },
+  async igMedia() { return [{ id: "m1", type: "IMAGE", likes: 10, comments: 2, permalink: "https://insta/p/1", mediaUrl: "u1", reach: 800, saved: 4, shares: 1, totalInteractions: 16 }]; },
+  async igDemographics() { return { countries: [{ key: "BR", value: 200 }], cities: [], ages: [], genders: [{ key: "F", value: 120 }, { key: "M", value: 80 }] }; },
+  async igOnlineFollowers() { return new Array(24).fill(0).map((_, h) => (h === 19 ? 100 : 10)); },
   async pageInfo() { return { name: "LeverAds", fan_count: 50 }; },
   async publishInstagram(ig, o) { this.calls.push(["ig", ig, o]); return { id: "ig9", permalink: "https://insta/p/9" }; },
   async publishFacebook(pg, o) { this.calls.push(["fb", pg, o]); return { id: "fb9", permalink: "" }; },
@@ -223,6 +230,46 @@ test("rotas: summary calcula engajamento médio, taxa e crescimento de seguidore
   // taxa = interações médias por post / seguidores = ((80+8)/4)/400 = 5.5%
   assert.equal(s.engagement.rate, 5.5);
   assert.equal(s.engagement.top.id, "a"); // 32 interações, o maior
+});
+
+test("rotas: summary traz alcance por follow_type, séries, formatos e insights de crescimento", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", metaIgUserId: "ig1" });
+  const social = fakeSocialOk();
+  social.igMedia = async () => ([
+    { id: "r1", type: "VIDEO", likes: 40, comments: 5, reach: 3000, saved: 8, shares: 4, totalInteractions: 57, permalink: "pr" },
+    { id: "f1", type: "IMAGE", likes: 12, comments: 1, reach: 500, saved: 1, shares: 0, totalInteractions: 14, permalink: "pf" },
+  ]);
+  const app = buildApp(repo, social);
+  const s = (await app.inject({ method: "GET", url: "/api/social/summary?saas=leverads&days=90" })).json();
+  assert.equal(s.days, 90);
+  assert.deepEqual(s.reachBreakdown, { follower: 600, nonFollower: 400 });
+  assert.equal(s.followerGrowth, 12); // 5 + 7
+  assert.equal(s.followerSeries.length, 2);
+  assert.ok(s.reachSeries.length >= 2);
+  // formato ordenado por alcance médio: Reels (3000) antes de Foto (500)
+  assert.equal(s.formats[0].label, "Reels/Vídeo");
+  assert.equal(s.formats[0].avgReach, 3000);
+  assert.equal(s.engagement.avgSaves, 4.5);
+  assert.equal(s.engagement.avgReach, 1750);
+  // insights derivados: reels alcança mais que foto + 40% de não-seguidores
+  assert.ok(s.insightsText.some((i) => /Reels/.test(i.text)));
+  assert.ok(s.insightsText.some((i) => /não-seguidores/i.test(i.text)));
+});
+
+test("rotas: days inválido cai em 30; audience traz demografia e melhor horário", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", metaIgUserId: "ig1" });
+  const app = buildApp(repo, fakeSocialOk());
+  const s = (await app.inject({ method: "GET", url: "/api/social/summary?saas=leverads&days=999" })).json();
+  assert.equal(s.days, 30);
+
+  const a = (await app.inject({ method: "GET", url: "/api/social/audience?saas=leverads" })).json();
+  assert.equal(a.configured, true);
+  assert.equal(a.demographics.countries[0].key, "BR");
+  assert.equal(a.onlineFollowers.length, 24);
+  assert.equal(a.bestHours.length, 3);
+  assert.ok(a.bestHours.includes(19)); // a hora de maior pico no fake
 });
 
 test("rotas: summary expõe as dores do produto (painMap) e o estado da IA", async () => {
