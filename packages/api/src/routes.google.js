@@ -88,7 +88,7 @@ export function registerGoogleRoutes(app, repo, { google, anthropic } = {}) {
     // Convidados: e-mail do LEAD (quando cadastrado) + extras do body
     // (body.guests) + extras salvos no lead (meetGuests, string com vírgulas).
     const emailOk = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || "").trim());
-    const extraFromBody = Array.isArray(req.body?.guests) ? req.body.guests : [];
+    const extraFromBody = [...(Array.isArray(req.body?.guests) ? req.body.guests : []), req.body?.email].filter(Boolean);
     const extraFromLead = String(lead.meetGuests || "").split(/[,;\s]+/);
     const attendees = [...new Set([lead.email, ...extraFromBody, ...extraFromLead]
       .map((e) => String(e || "").trim().toLowerCase())
@@ -102,6 +102,10 @@ export function registerGoogleRoutes(app, repo, { google, anthropic } = {}) {
         description: [`Lead: ${lead.name}`, lead.phone ? `WhatsApp: ${lead.phone}` : "", lead.company ? `Empresa: ${lead.company}` : ""].filter(Boolean).join("\n"),
         start, end,
         attendees,
+        // Calendário do convite: default primary; GOOGLE_MEET_CALENDAR_ID aponta
+        // pra identidade do remetente (ex.: contato@leverads.com.br) se a conta
+        // conectada tiver acesso.
+        calendarId: process.env.GOOGLE_MEET_CALENDAR_ID || "primary",
       });
       // Sala aberta (sem "pedir pra entrar") + gravação/transcrição automáticas —
       // best-effort: o que o plano da conta não suportar volta como false.
