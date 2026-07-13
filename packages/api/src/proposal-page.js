@@ -456,10 +456,12 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .pb-old { display: inline-flex; align-items: baseline; gap: 8px; opacity: .55; }
   .pb-old-tag { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
   .pb-old-price { color: var(--ink-3); }
-  /* risca só o valor (amount + /mês); o prefixo "12x" fica intacto. */
-  .pb-old-price .price-main { text-decoration: line-through; text-decoration-thickness: 2px; text-decoration-color: var(--accent); }
   .pb-old-price .amount { font-family: var(--font-display); font-size: 26px; font-weight: 500; }
   .pb-old-price .currency, .pb-old-price .per, .pb-old-price .price-main { font-size: 13px; }
+  /* Oferta secreta anterior só entra na comparação se tiver sido ativada: pulou
+     direto pra 3ª (só offer3-on)? a 2ª não aparece. */
+  .pb-old.off-need-2 { display: none; }
+  .offer2-on .pb-old.off-need-2 { display: inline-flex; }
   @media (prefers-reduced-motion: reduce) { .pb-stage, .pb-offer { transition: none; } }
   @media (max-width: 899px) {
     .pb-offer { position: static; flex-direction: column; align-items: stretch; gap: 18px; transform: none; opacity: 1; }
@@ -1138,8 +1140,12 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           return (o.cyclesLabel ? fmt(o.cyclesLabel) + ' ' : '') + fmt(o.cycles != null ? o.cycles : '{{calc.precoCiclos}}');
         }
         var panelsHtml = offersArr.map(function (o, i) {
-          var prev = offersArr.slice(0, i).map(function (p) {
-            return '<div class="pb-old"><span class="pb-old-tag">' + fmt(p.planTag || '') + '</span><span class="pb-old-price">' + priceLine(p) + '</span></div>';
+          // Âncoras de comparação: as ofertas anteriores. A oferta 1 (base) sempre
+          // aparece; as secretas (2/3) só entram na comparação se tiverem sido
+          // ativadas — se o closer pula direto pra 3ª, a 2ª não aparece (off-need).
+          var prev = offersArr.slice(0, i).map(function (p, j) {
+            var needCls = j >= 1 ? ' off-need-' + (j + 1) : '';
+            return '<div class="pb-old' + needCls + '"><span class="pb-old-tag">' + fmt(p.planTag || '') + '</span><span class="pb-old-price">' + priceLine(p) + '</span></div>';
           }).join('');
           return '<div class="pb-offer" data-o="' + (i + 1) + '">' +
             '<div class="pb-left">' +
