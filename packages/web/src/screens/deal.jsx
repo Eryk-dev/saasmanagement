@@ -9,6 +9,7 @@ import { displayName } from "../lib/users.js";
 import { api } from "../lib/api.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 import { sourceLabel } from "../lib/sources.js";
+import { resolveScript, scriptTokens, scriptSegments, scriptChecklist } from "../lib/scripts.js";
 import { useData } from "../data.jsx";
 // Lead detail drawer — slides over the pipeline when a card is opened.
 // (Funil unificado: o card do pipeline é um lead, então o detalhe é do lead.)
@@ -125,25 +126,13 @@ function LeadDetail({ lead: initial, onClose }) {
     ["Perda", lead.lostReason ? `${lossReasonLabel(saasCfg, lead.lostReason)}${lead.lostNote ? ` · ${lead.lostNote}` : ""}` : null],
   ].filter(([, v]) => v != null && v !== "");
 
-  // Respostas das perguntas de qualificação do pipeline (mostra só as preenchidas,
-  // convertendo valor → rótulo amigável; arrays viram lista).
-  const answers = (saasCfg?.leadQuestions || [])
-    .map((q) => {
-      let v = lead[q.key];
-      if (v == null || v === "" || (Array.isArray(v) && v.length === 0)) return null;
-      const lut = Object.fromEntries((q.options || []).map((o) => [o.value, o.label]));
-      v = Array.isArray(v) ? v.map((x) => lut[x] || x).join(", ") : (lut[v] || v);
-      return [q.label, v];
-    })
-    .filter(Boolean);
-
   const next = nextTouchPill(lead, { isOpen });
   // Cartões (mesma linguagem da tela de atividade): caixa com rótulo mono.
   const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "12px 14px", background: "var(--bg-inset)" };
   const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
   const rowLabel = { fontSize: 11, width: 104, flexShrink: 0 };
   const presetBtn = { height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 500 };
-  // Linha chave→valor pra grids de fatos/atribuição/respostas.
+  // Linha chave→valor pra grids de fatos/atribuição.
   const FactRow = ({ k, v }) => (
     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12, padding: "4px 0", borderBottom: "1px solid var(--line-1)" }}>
       <span className="mono dim" style={{ flexShrink: 0, fontSize: 10.5 }}>{k}</span>
@@ -151,14 +140,28 @@ function LeadDetail({ lead: initial, onClose }) {
     </div>
   );
 
+  // Insights do estágio (roteiro) + checklist editável dos dados do 1º contato —
+  // mesma lógica da tela de atividade do Meu dia (lib/scripts.js).
+  const script = resolveScript(saasCfg, lead);
+  const scriptTk = scriptTokens(lead, saasCfg);
+  const checklist = scriptChecklist(saasCfg, lead);
+  const renderFala = (text) => scriptSegments(text, scriptTk).map((s, i) => {
+    if (s.text != null) return <React.Fragment key={i}>{s.text}</React.Fragment>;
+    if (s.value != null) return <strong key={i} style={{ color: "var(--accent)", fontWeight: 600 }}>{s.value}</strong>;
+    return (
+      <span key={i} className="mono" title="dado não preenchido no lead: descubra nesta conversa"
+        style={{ background: "var(--warn-soft)", color: "var(--warn)", borderRadius: 4, padding: "0 5px", fontSize: "0.85em", whiteSpace: "nowrap" }}>{s.gap}</span>
+    );
+  });
+
   return (
     <div style={{
-      position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)",
-      display: "flex", justifyContent: "flex-end", zIndex: 60,
+      position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.45)",
+      display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: 12,
     }} onClick={close}>
       <div onClick={e => e.stopPropagation()} style={{
-        width: "min(560px, 100vw)", height: "100%", background: "var(--bg-1)",
-        borderLeft: "1px solid var(--line-2)",
+        width: "min(1120px, 100%)", maxHeight: "min(92vh, 100%)", background: "var(--bg-1)",
+        border: "1px solid var(--line-2)", borderRadius: "var(--r-3)",
         display: "flex", flexDirection: "column",
         boxShadow: "var(--shadow-pop)",
       }}>
@@ -201,8 +204,11 @@ function LeadDetail({ lead: initial, onClose }) {
           </div>
         </div>
 
-        {/* Corpo rolável em cartões (mesma linguagem da tela de atividade). */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12, minHeight: 0 }}>
+        {/* Corpo rolável: duas colunas (Cliente | Insights do estágio atual). */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", minHeight: 0 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16, alignItems: "start" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+            <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Cliente</div>
           {/* Resumo do cliente: dor em destaque + os fatos compilados num grid. */}
           <div style={box}>
             <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Resumo do cliente</div>
@@ -214,6 +220,32 @@ function LeadDetail({ lead: initial, onClose }) {
             )}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "0 16px" }}>
               {summaryFacts.map(([k, v]) => <FactRow key={k} k={k} v={v} />)}
+            </div>
+          </div>
+
+          {/* Dados do 1º contato — editáveis: preenche/corrige o que faltar. */}
+          <div style={box}>
+            <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Dados do lead · edite pra completar</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {checklist.map((c) => (
+                <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "5px 9px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.value ? "var(--bg-1)" : "var(--warn-soft)" }}>
+                  <span style={{ color: c.value ? "var(--pos)" : "var(--warn)", flexShrink: 0, fontSize: 12 }}>{c.value ? "✓" : "○"}</span>
+                  <span className="dim" style={{ flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.35 }}>{c.label}</span>
+                  {c.type === "select" ? (
+                    <select value={c.raw || ""} onChange={(e) => patch({ [c.key]: e.target.value })}
+                      style={{ flexShrink: 0, maxWidth: "48%", height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12, fontWeight: 500 }}>
+                      <option value="">selecionar…</option>
+                      {c.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      {c.raw && !c.options.some((o) => o.value === c.raw) && <option value={c.raw}>{c.raw}</option>}
+                    </select>
+                  ) : (
+                    <input key={lead.id + c.key} type="text" defaultValue={c.raw || ""} placeholder="preencher…"
+                      onBlur={(e) => { if (e.target.value !== (c.raw || "")) patch({ [c.key]: e.target.value }); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                      style={{ flexShrink: 0, width: "48%", height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontWeight: 500 }} />
+                  )}
+                </div>
+              ))}
             </div>
           </div>
 
@@ -385,13 +417,6 @@ function LeadDetail({ lead: initial, onClose }) {
           )}
         </div>
 
-        {answers.length > 0 && (
-          <div style={box}>
-            <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Respostas de qualificação</div>
-            {answers.map(([k, v]) => <FactRow key={k} k={k} v={v} />)}
-          </div>
-        )}
-
         {attribution.length > 0 && (
           <div style={box}>
             <div className="mono" style={{ ...kicker, marginBottom: 6 }}>De onde veio · atribuição do anúncio</div>
@@ -403,6 +428,34 @@ function LeadDetail({ lead: initial, onClose }) {
           <div className="mono" style={{ ...kicker, marginBottom: 10 }}>Proposta</div>
           <ProposalActions l={lead} />
         </div>
+          </div>
+
+          {/* Coluna direita: insights (roteiro) do estágio atual + histórico. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+            <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Insights do estágio · {lead.stage || (saasCfg?.funnel?.[0]?.stage ?? "")}</div>
+            <div style={{ ...box, background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
+              <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 4 }}>Como se comportar</div>
+              <div style={{ fontSize: 12, lineHeight: 1.45 }}>{script.resumo}</div>
+            </div>
+            <div style={box}>
+              <div className="mono" style={{ ...kicker, marginBottom: 4 }}>Objetivo do contato</div>
+              <div style={{ fontSize: 12, lineHeight: 1.45, fontWeight: 500 }}>{script.objetivo}</div>
+            </div>
+            <div style={box}>
+              <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Passo a passo</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                {script.passos.map((p, i) => (
+                  <div key={i} style={{ display: "flex", gap: 10 }}>
+                    <span className="mono tnum" style={{ width: 20, height: 20, borderRadius: 999, flexShrink: 0, marginTop: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "var(--bg-inset)", border: "1px solid var(--line-2)", fontSize: 10.5, fontWeight: 700, color: "var(--fg-3)" }}>{i + 1}</span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      {p.t && <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 1 }}>{p.t}</div>}
+                      {p.fala && <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--fg-1)", borderLeft: "3px solid var(--accent-line)", paddingLeft: 10, whiteSpace: "pre-wrap" }}>{renderFala(p.fala)}</div>}
+                      {p.dica && <div className="dim" style={{ fontSize: 10.5, marginTop: 2, paddingLeft: 13 }}>{renderFala(p.dica)}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
 
         {/* Timeline: TODOS os pontos de contato + eventos automáticos (o histórico
             do lead). comments[] antigos aparecem mesclados como notas. */}
@@ -417,6 +470,8 @@ function LeadDetail({ lead: initial, onClose }) {
               : <ActivityList activities={activities} comments={lead.comments} />}
           </div>
         </div>
+          </div>{/* fim coluna Insights */}
+        </div>{/* fim grid duas colunas */}
         </div>
 
         <div style={{ flexShrink: 0, padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", gap: 8, background: "var(--bg-inset)" }}>
