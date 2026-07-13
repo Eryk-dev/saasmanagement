@@ -229,6 +229,32 @@ test("PATCH: faixa de contas é autoritativa — deriva seats do topo (seatsMap)
   await app.close();
 });
 
+test("PATCH: campos da capa (empresa/nome/nicho) gravam no snapshot E no lead", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("leads", { ...LEAD });
+  await app.inject({ method: "POST", url: "/api/leads/le_p1/proposal" });
+  const { proposta_id } = await repo.get("leads", "le_p1");
+  const { editKey } = await repo.get("proposals", proposta_id);
+
+  const ok = await app.inject({
+    method: "PATCH", url: `/public/proposals/${proposta_id}`,
+    payload: { k: editKey, company: "Nova Loja", name: "João Pedro Silva", niche: "casa" },
+  });
+  assert.equal(ok.statusCode, 200);
+  // snapshot da proposta
+  const p = await repo.get("proposals", proposta_id);
+  assert.equal(p.data.lead.company, "Nova Loja");
+  assert.equal(p.data.lead.name, "João Pedro Silva");
+  assert.equal(p.data.lead.firstName, "João"); // firstName re-derivado do nome
+  assert.equal(p.data.answers.niche, "casa");
+  // writeback no lead do pipeline
+  const lead = await repo.get("leads", "le_p1");
+  assert.equal(lead.company, "Nova Loja");
+  assert.equal(lead.name, "João Pedro Silva");
+  assert.equal(lead.niche, "casa");
+  await app.close();
+});
+
 test("aceite: marca proposta + lead e move o estágio configurado", async () => {
   const { app, repo } = await buildApp();
   await repo.create("leads", { ...LEAD });

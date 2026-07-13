@@ -111,7 +111,32 @@ export function registerProposalRoutes(app, repo, opts = {}) {
       state.accounts = body.accounts;
       state.seats = Number(seatsMap[body.accounts]);
     }
-    const updated = await repo.update("proposals", p.id, { state });
+
+    // Campos de texto da capa (editados inline no modo closer): gravam no SNAPSHOT
+    // da proposta e — porque o dado do lead costuma estar errado/incompleto — no
+    // LEAD do pipeline também. Só o que muda entra no patch do lead (writeback).
+    const data = { lead: { ...(p.data?.lead || {}) }, answers: { ...(p.data?.answers || {}) } };
+    let dataChanged = false;
+    const leadPatch = {};
+    if (typeof body.company === "string" && body.company !== data.lead.company) {
+      data.lead.company = body.company; leadPatch.company = body.company; dataChanged = true;
+    }
+    if (typeof body.name === "string" && body.name !== data.lead.name) {
+      data.lead.name = body.name;
+      data.lead.firstName = body.name.trim().split(/\s+/)[0] || "";
+      leadPatch.name = body.name; dataChanged = true;
+    }
+    if (typeof body.niche === "string" && body.niche !== data.answers.niche) {
+      data.answers.niche = body.niche; leadPatch.niche = body.niche; dataChanged = true;
+    }
+
+    const patch = { state };
+    if (dataChanged) patch.data = data;
+    const updated = await repo.update("proposals", p.id, patch);
+    // Writeback best-effort no lead (nunca derruba o save da proposta).
+    if (Object.keys(leadPatch).length && p.lead) {
+      try { await repo.update("leads", p.lead, leadPatch); } catch { /* fail-open */ }
+    }
     return { ok: true, state: updated.state };
   });
 

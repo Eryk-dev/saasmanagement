@@ -589,6 +589,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
   var P = window.__PROPOSAL__ || {};
   var SLIDES = P.slides || [];
   var DATA = P.data || { lead: {}, answers: {} };
+  DATA.lead = DATA.lead || {}; DATA.answers = DATA.answers || {};
   var CALC = P.calc || {};
   var state = P.state || {};
   var CYCLE_NAME = { monthly: 'Mensal', quarterly: 'Trimestral', semiannual: 'Semestral', annual: 'Anual' };
@@ -604,7 +605,9 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     'state.accounts': 'accounts', 'calc.assentos': 'accounts',
     'state.volume': 'volume', 'calc.volume': 'volume',
     'calc.preco': 'price', 'state.validUntil': 'valid',
-    'calc.plano': 'cycle', 'calc.ciclo': 'cycle'
+    'calc.plano': 'cycle', 'calc.ciclo': 'cycle',
+    'lead.company': 'company', 'lead.name': 'name', 'lead.firstName': 'name',
+    'answers.niche': 'niche'
   };
 
   function brl(n) { return 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -690,14 +693,19 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     if (path.indexOf('calc.') === 0 || path.indexOf('state.') === 0) return '<span data-fill="' + path + '"></span>';
     if (CALC.seatsKey && path === 'answers.' + CALC.seatsKey) return '<span data-fill="state.accounts"></span>';
     if (CALC.volumeKey && path === 'answers.' + CALC.volumeKey) return '<span data-fill="state.volume"></span>';
+    // No modo closer (editable) lead.* e answers.* também viram spans dinâmicos
+    // (clicáveis pra editar in-place e re-preenchidos por fillDynamic); fora dele
+    // resolvem estático como antes (a view do lead fica idêntica).
     // answers.* podem ter rótulo humano em calc.answerLabels[key] (ex.: niche
     // "autopecas" → "Autopeças"); cai no valor cru quando não há mapa.
     if (path.indexOf('answers.') === 0) {
+      if (P.editable) return '<span data-fill="' + path + '"></span>';
       var akey = path.slice(8);
       var raw = getPath(DATA, path);
       var map = (CALC.answerLabels || {})[akey];
       return esc(String(map && map[raw] != null ? map[raw] : raw));
     }
+    if (path.indexOf('lead.') === 0 && P.editable) return '<span data-fill="' + path + '"></span>';
     return esc(String(getPath(DATA, path)));
   }
   // Interpolação: {{calc.x}}/{{state.x}} viram spans dinâmicos (recalculados pelo
@@ -708,10 +716,19 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     out = out.replace(/\\*([^*]+)\\*/g, '<em>$1</em>');
     return out;
   }
+  // answers com rótulo humano (answerLabels) pra preencher os spans do modo closer.
+  function answersDisplay() {
+    var a = DATA.answers || {}, out = {}, k;
+    for (k in a) {
+      var map = (CALC.answerLabels || {})[k];
+      out[k] = (map && map[a[k]] != null) ? map[a[k]] : a[k];
+    }
+    return out;
+  }
   function fillDynamic() {
     renderPlanOptions();
     var calc = compute();
-    var D = { calc: calc, state: state };
+    var D = { calc: calc, state: state, lead: DATA.lead || {}, answers: answersDisplay() };
     document.querySelectorAll('[data-fill]').forEach(function (el) {
       el.textContent = String(getPath(D, el.getAttribute('data-fill')));
     });
@@ -1336,7 +1353,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       flash('salvando…', '');
       fetch('/public/proposals/' + encodeURIComponent(P.id), {
         method: 'PATCH', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ k: token, accounts: state.accounts, volume: state.volume, cycle: state.cycle, customPriceCents: state.customPriceCents, validUntil: state.validUntil, frozen: true })
+        body: JSON.stringify({ k: token, accounts: state.accounts, volume: state.volume, cycle: state.cycle, customPriceCents: state.customPriceCents, validUntil: state.validUntil, frozen: true, company: DATA.lead.company, name: DATA.lead.name, niche: DATA.answers.niche })
       }).then(function (r) { if (!r.ok) throw new Error('falha'); return r.json(); })
         .then(function () { flash('salvo ✓', 'ok'); setTimeout(function () { tag.className = 'save-tag'; }, 1600); })
         .catch(function () { flash('✕ erro ao salvar', 'err'); });
@@ -1372,6 +1389,21 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         ctl = document.createElement('input'); ctl.type = 'date';
         if (state.validUntil && /^\\d{2}\\/\\d{2}\\/\\d{4}$/.test(state.validUntil)) { dp = state.validUntil.split('/'); ctl.value = dp[2] + '-' + dp[1] + '-' + dp[0]; }
         ctl.addEventListener('change', function () { if (ctl.value) { vp = ctl.value.split('-'); state.validUntil = vp[2] + '/' + vp[1] + '/' + vp[0]; done(); } });
+      } else if (field === 'company') {
+        ctl = document.createElement('input'); ctl.type = 'text'; ctl.placeholder = 'Empresa';
+        ctl.value = DATA.lead.company || '';
+        ctl.addEventListener('input', function () { DATA.lead.company = ctl.value; done(); });
+      } else if (field === 'name') {
+        ctl = document.createElement('input'); ctl.type = 'text'; ctl.placeholder = 'Nome do cliente';
+        ctl.value = DATA.lead.name || '';
+        ctl.addEventListener('input', function () { DATA.lead.name = ctl.value; DATA.lead.firstName = ctl.value.trim().split(/\\s+/)[0] || ''; done(); });
+      } else if (field === 'niche') {
+        ctl = document.createElement('select');
+        var nm = (CALC.answerLabels || {}).niche || {}, cur = DATA.answers.niche || '', seen = {};
+        o = document.createElement('option'); o.value = ''; o.textContent = '—'; ctl.appendChild(o);
+        for (k in nm) { o = document.createElement('option'); o.value = k; o.textContent = nm[k]; if (k === cur) o.selected = true; seen[k] = 1; ctl.appendChild(o); }
+        if (cur && !seen[cur]) { o = document.createElement('option'); o.value = cur; o.textContent = cur; o.selected = true; ctl.appendChild(o); }
+        ctl.addEventListener('change', function () { DATA.answers.niche = ctl.value; done(); });
       }
       return ctl;
     }
