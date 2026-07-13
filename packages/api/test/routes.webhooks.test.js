@@ -69,7 +69,7 @@ test("cria lead da Ana quando compra 'tarefas diárias'", async () => {
   await app.close();
 });
 
-test("cria lead quando o total passa do piso (sem o produto)", async () => {
+test("product-only: pedido caro SEM 'tarefas diárias' NÃO cria lead", async () => {
   const { app, repo } = await build();
   const res = await post(app, {
     id: 1002, email: "outra@exemplo.com",
@@ -78,13 +78,24 @@ test("cria lead quando o total passa do piso (sem o produto)", async () => {
     line_items: [{ title: "Outro produto qualquer" }],
   });
   assert.equal(res.statusCode, 200);
-  const leads = await repo.list("leads");
-  assert.equal(leads.length, 1);
-  assert.match(leads[0].source, /R\$ 349\.9/);
+  assert.equal((await repo.list("leads")).length, 0);
   await app.close();
 });
 
-test("não cria lead abaixo do piso e sem o produto", async () => {
+test("pega todas as variações do nome 'tarefas diárias'", async () => {
+  const { app, repo } = await build();
+  for (const [i, title] of [
+    "Quadro Tarefas Diárias + Bônus",
+    "Tarefas Diárias + Método R.O.T.I.N.A. 3.0",
+    "Tarefas diárias + Pote da conquista",
+  ].entries()) {
+    await post(app, { id: 2000 + i, total_price: "150.00", line_items: [{ title }] });
+  }
+  assert.equal((await repo.list("leads")).length, 3);
+  await app.close();
+});
+
+test("sem produto e sem piso configurado: não cria lead", async () => {
   const { app, repo } = await build();
   const res = await post(app, {
     id: 1003, total_price: "97.00",
