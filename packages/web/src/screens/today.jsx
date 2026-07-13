@@ -793,9 +793,9 @@ export function setupType(kind) {
   return "none";
 }
 
-// Agenda da call: horário comercial em blocos de 1h; a call OCUPA a hora do
+// Agenda da call: das 07h às 20h em blocos de 1h; a call OCUPA a hora do
 // closer (leads dele com callAt na mesma hora). Fim de semana fora (seg a sex).
-const CALL_H0 = 9, CALL_H1 = 18;
+const CALL_H0 = 7, CALL_H1 = 21; // slots 07:00…20:00 (bate com a agenda 7h-21h)
 function nextBusinessDays(n) {
   const out = []; const d = new Date(); d.setHours(0, 0, 0, 0);
   while (out.length < n) { const w = d.getDay(); if (w !== 0 && w !== 6) out.push(new Date(d)); d.setDate(d.getDate() + 1); }
