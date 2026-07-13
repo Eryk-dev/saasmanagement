@@ -390,6 +390,71 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       return { id: String(body.id), name, status };
     },
 
+    // Duplica um CONJUNTO de anúncios (deep_copy leva os anúncios dentro), na
+    // mesma campanha do original e PAUSADO. É a base do "clonar e trocar o
+    // vídeo": público, orçamento, posicionamento, otimização e copy vêm de
+    // brinde do conjunto de origem. Retorna { adsetId, adIds } dos cópias.
+    async copyAdSet(adsetId, { campaignId, statusOption = "PAUSED", deepCopy = true } = {}) {
+      if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
+      const params = { deep_copy: deepCopy ? "true" : "false", status_option: statusOption };
+      if (campaignId) params.campaign_id = String(campaignId);
+      const body = await post(`${adsetId}/copies`, params);
+      const copied = String(body.copied_adset_id || body.id || "");
+      if (!copied) throw new Error("Meta: cópia do conjunto não retornou id");
+      const adIds = (body.ad_object_ids || [])
+        .filter((x) => String(x.ad_object_type || "").toUpperCase() === "AD")
+        .map((x) => String(x.copied_id))
+        .filter(Boolean);
+      return { adsetId: copied, adIds };
+    },
+
+    // Renomeia qualquer nó (conjunto ou anúncio) — POST {name}.
+    async renameObject(objectId, name) {
+      if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
+      await post(String(objectId), { name });
+      return { id: String(objectId), name };
+    },
+
+    // object_story_spec + url_tags do criativo de um anúncio — o que a gente
+    // PRESERVA ao trocar só o vídeo (página, Instagram, copy, título, CTA, link,
+    // e as UTMs de atribuição).
+    async getAdCreativeSpec(adId) {
+      if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
+      const params = new URLSearchParams({ fields: "creative{object_story_spec,url_tags}", access_token: accessToken });
+      const body = await get(`${GRAPH}/${adId}?${params}`);
+      const c = body.creative || {};
+      return { spec: c.object_story_spec || null, urlTags: c.url_tags || "" };
+    },
+
+    // Cria um criativo NOVO a partir do object_story_spec de origem, trocando só
+    // o vídeo (video_id + thumbnail) e mantendo todo o resto do spec.
+    async createVideoCreativeFromSpec(adAccountId, { name, sourceSpec, videoId, imageUrl, urlTags }) {
+      if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
+      const spec = sourceSpec ? JSON.parse(JSON.stringify(sourceSpec)) : null;
+      if (!spec || !spec.video_data) {
+        throw new Error("o anúncio de origem não é um anúncio de vídeo simples (sem object_story_spec.video_data) — troca de vídeo não se aplica");
+      }
+      spec.video_data.video_id = String(videoId);
+      if (imageUrl) spec.video_data.image_url = imageUrl;
+      const body = await post(`${acct(adAccountId)}/adcreatives`, {
+        name,
+        object_story_spec: JSON.stringify(spec),
+        ...(urlTags ? { url_tags: urlTags } : {}),
+      });
+      return String(body.id);
+    },
+
+    // Atualiza um anúncio: nome e/ou criativo (troca a arte sem recriar o ad).
+    async updateAd(adId, { name, creativeId } = {}) {
+      if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
+      const params = {};
+      if (name) params.name = name;
+      if (creativeId) params.creative = JSON.stringify({ creative_id: String(creativeId) });
+      if (!Object.keys(params).length) return { id: String(adId) };
+      await post(String(adId), params);
+      return { id: String(adId), name };
+    },
+
     // Pausar/reativar QUALQUER nível (campanha, conjunto ou anúncio) — o nó da
     // Graph aceita o mesmo POST {status}. Só os dois estados que operamos daqui.
     async setObjectStatus(objectId, status) {
@@ -428,6 +493,11 @@ export const meta = {
   videoThumbnail: (id, o) => inst().videoThumbnail(id, o),
   createAdCreative: (a, o) => inst().createAdCreative(a, o),
   createAd: (a, o) => inst().createAd(a, o),
+  copyAdSet: (id, o) => inst().copyAdSet(id, o),
+  renameObject: (id, n) => inst().renameObject(id, n),
+  getAdCreativeSpec: (id) => inst().getAdCreativeSpec(id),
+  createVideoCreativeFromSpec: (a, o) => inst().createVideoCreativeFromSpec(a, o),
+  updateAd: (id, o) => inst().updateAd(id, o),
   setObjectStatus: (id, s) => inst().setObjectStatus(id, s),
   setObjectBudget: (id, v) => inst().setObjectBudget(id, v),
 };

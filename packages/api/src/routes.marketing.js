@@ -38,6 +38,14 @@ export function painCode(adName) {
   return m ? m[1].toUpperCase() : null;
 }
 
+// Número do nome do arquivo: tira a extensão (senão o "4" de ".mp4" conta) e
+// pega a MAIOR sequência de dígitos (o id do vídeo, não um "v2" solto no meio).
+export function fileNumber(filename) {
+  const base = String(filename || "").replace(/\.[^.]+$/, "");
+  const runs = base.match(/\d+/g) || [];
+  return runs.sort((a, b) => b.length - a.length || 0)[0] || "";
+}
+
 function rangeFromQuery(q, now = new Date()) {
   const until = q.until || dayStr(now);
   const since = q.since || dayStr(new Date(now.getTime() - 29 * DAY_MS));
@@ -312,6 +320,66 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       return { ok: true, adId: ad.id, creativeId, videoId, name, status: ad.status };
     } catch (err) {
       req.log.warn({ err: err.message }, "Meta: criação de criativo falhou");
+      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+    }
+  });
+
+  // Criar anúncio CLONANDO um conjunto: o fluxo do Leo. A dor aponta a campanha,
+  // duplicamos o conjunto de ORIGEM (deep copy leva público, orçamento,
+  // posicionamento, copy e o anúncio junto), renomeamos pra "<número do arquivo>
+  // [dor]" e trocamos SÓ o vídeo do anúncio duplicado, mantendo todo o resto.
+  // Nasce PAUSADO — revisão humana no Gerenciador antes de gastar.
+  app.post("/api/marketing/:saas/ad-from-video", async (req, reply) => {
+    if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "Not found" });
+    if (!product.metaAdAccount) return reply.code(400).send({ error: "conta de anúncio não configurada (Ajustes → Integrações)" });
+
+    const data = await req.file();
+    if (!data) return reply.code(400).send({ error: "envie o arquivo de vídeo no campo 'video'" });
+    const field = (k) => { const v = data.fields?.[k]; const one = Array.isArray(v) ? v[0] : v; return String(one?.value ?? "").trim(); };
+    const code = painCode(`[${field("painCode")}]`); // normaliza (maiúscula/limite)
+    const painLabel = field("painLabel");
+    const sourceAdsetId = field("sourceAdsetId");
+    const numberOverride = field("number");
+    if (!code) return reply.code(400).send({ error: "informe a dor do anúncio (painCode)" });
+    if (!sourceAdsetId) return reply.code(400).send({ error: "escolha o conjunto de origem pra clonar (sourceAdsetId)" });
+
+    // Nome final = número do arquivo + " [dor]" (ex.: 1303 [B]). O conjunto E o
+    // anúncio ficam com esse nome. Tira a extensão antes (senão o "4" de ".mp4"
+    // vira número) e pega a MAIOR sequência de dígitos (o id, não um "v2" solto).
+    const number = numberOverride || fileNumber(data.filename);
+    if (!number) return reply.code(400).send({ error: "não achei número no nome do arquivo (ex.: 1303.mp4) — renomeie o vídeo ou informe o número" });
+    const finalName = `${number} [${code}]`;
+
+    try {
+      const buffer = await data.toBuffer();
+      // 1. sobe o vídeo novo + a thumbnail (a Meta exige uma).
+      const videoId = await meta.uploadVideo(product.metaAdAccount, { buffer, filename: data.filename, title: finalName });
+      const imageUrl = await meta.videoThumbnail(videoId);
+      // 2. duplica o conjunto de origem (deep copy leva o anúncio), pausado.
+      const copy = await meta.copyAdSet(sourceAdsetId, { statusOption: "PAUSED" });
+      if (!copy.adIds.length) return reply.code(422).send({ error: "o conjunto de origem não tem anúncio pra clonar — escolha um conjunto que já tenha um anúncio de vídeo" });
+      // 3. renomeia o conjunto clonado.
+      await meta.renameObject(copy.adsetId, finalName);
+      // 4. troca o vídeo em cada anúncio clonado preservando o spec (copy, título,
+      //    CTA, link, página, IG e as UTMs de atribuição).
+      const ads = [];
+      for (const adId of copy.adIds) {
+        const { spec, urlTags } = await meta.getAdCreativeSpec(adId);
+        const creativeId = await meta.createVideoCreativeFromSpec(product.metaAdAccount, {
+          name: finalName, sourceSpec: spec, videoId, imageUrl, urlTags: urlTags || CREATIVE_URL_TAGS,
+        });
+        await meta.updateAd(adId, { name: finalName, creativeId });
+        ads.push({ id: adId, name: finalName });
+      }
+      // 5. dor nova aprendida entra no mapa do produto.
+      if (code && painLabel && (product.painMap || {})[code] !== painLabel) {
+        await repo.update("products", product.id, { painMap: { ...(product.painMap || {}), [code]: painLabel } });
+      }
+      return { ok: true, adsetId: copy.adsetId, adsetName: finalName, ads, number, code, status: "PAUSED" };
+    } catch (err) {
+      req.log.warn({ err: err.message }, "Meta: ad-from-video falhou");
       return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
     }
   });

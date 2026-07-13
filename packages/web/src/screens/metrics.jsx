@@ -14,6 +14,14 @@ import { stageKind } from "../lib/funnel.js";
 
 const { useState, useEffect } = React;
 
+// Número do nome do arquivo (sem extensão, maior sequência de dígitos) — espelha
+// o fileNumber do servidor pra o preview do nome final bater.
+function fileNumberOf(filename) {
+  const base = String(filename || "").replace(/\.[^.]+$/, "");
+  const runs = base.match(/\d+/g) || [];
+  return runs.sort((a, b) => b.length - a.length || 0)[0] || "";
+}
+
 const DAY = 86_400_000;
 // Dia LOCAL do navegador (Brasil), não UTC — às 21h de Brasília o toISOString
 // já vira o dia seguinte e o filtro "hoje" apontava pra um dia sem dados.
@@ -108,10 +116,11 @@ function MetricsScreen() {
   const [objects, setObjects] = useState(null); // { campaigns, adsets, ads } ao vivo (gerenciamento)
   const [placements, setPlacements] = useState(null); // breakdown plataforma × posição (ao vivo)
   const [creative, setCreative] = useState(false); // painel de novo criativo
-  // Troca de produto (workspace) fecha o painel de criativo e descarta o rascunho
-  // de gasto manual — nada pode ser registrado no produto errado. (setManual é
-  // declarado abaixo; o efeito roda pós-render, então a captura é segura.)
-  useEffect(() => { setCreative(false); setManual(null); setNote(null); }, [product?.id]); // eslint-disable-line no-use-before-define
+  const [cloneAd, setCloneAd] = useState(false);    // painel de "criar anúncio" (clonar + trocar vídeo)
+  // Troca de produto (workspace) fecha os painéis e descarta o rascunho de gasto
+  // manual — nada pode ser registrado no produto errado. (setManual é declarado
+  // abaixo; o efeito roda pós-render, então a captura é segura.)
+  useEffect(() => { setCreative(false); setCloneAd(false); setManual(null); setNote(null); }, [product?.id]); // eslint-disable-line no-use-before-define
 
   // reset=true (troca de range/produto): zera a tela e recarrega TUDO, inclusive
   // a lista viva de campanhas. Silencioso (SSE/tick): só métricas + CAC — nada
@@ -292,9 +301,16 @@ function MetricsScreen() {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Publicidade" sub={`aquisição, funil e campanhas · ${product.name}`}>
         {metaOn && product.metaAdAccount && (
-          <button onClick={() => setCreative((v) => !v)}
+          <button onClick={() => { setCloneAd((v) => !v); setCreative(false); }}
             style={{ padding: "6px 12px", borderRadius: "var(--r-1)", fontSize: 12.5, fontWeight: 600, background: "var(--accent)", color: "var(--accent-fg)" }}>
-            + criativo
+            + criar anúncio
+          </button>
+        )}
+        {metaOn && product.metaAdAccount && (
+          <button onClick={() => { setCreative((v) => !v); setCloneAd(false); }}
+            style={{ padding: "6px 12px", borderRadius: "var(--r-1)", fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)" }}
+            title="Criar um anúncio do zero (escolhe copy, CTA e link)">
+            + criativo do zero
           </button>
         )}
         <button onClick={() => setManual(manual ? null : { date: new Date().toISOString().slice(0, 10), name: "", spend: "" })}
@@ -329,6 +345,13 @@ function MetricsScreen() {
       <div style={{ padding: "20px var(--pad-x) 40px", display: "flex", flexDirection: "column", gap: 12 }}>
         {note && (
           <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>
+        )}
+
+        {cloneAd && (
+          <CloneAdPanel key={"clone-" + product.id} product={product} campaigns={objects && !objects.error ? objects.campaigns : []}
+            onDone={(msg) => { setNote({ ok: true, text: msg }); setCloneAd(false); load(); }}
+            onError={(msg) => setNote({ ok: false, text: msg })}
+            onClose={() => setCloneAd(false)} />
         )}
 
         {creative && (
@@ -1043,6 +1066,146 @@ function PainTable({ pains, money }) {
 // Painel de novo criativo: vídeo do videomaker + dor + copy → anúncio PAUSADO
 // no conjunto escolhido, nome "[A] variação" e UTMs da convenção. A revisão e a
 // ativação seguem no Gerenciador da Meta.
+// Criar anúncio CLONANDO um conjunto (o fluxo do Leo): escolhe a dor → a
+// campanha [dor] é resolvida sozinha → escolhe o conjunto de origem pra clonar
+// → sobe o vídeo. O servidor duplica o conjunto (leva público/orçamento/copy/
+// anúncio), renomeia pra "<número do arquivo> [dor]" e troca só o vídeo. Pausado.
+function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
+  const [defaults, setDefaults] = useState(null); // { painMap }
+  const [pain, setPain] = useState("");           // código escolhido ou "_new"
+  const [newPain, setNewPain] = useState({ code: "", label: "" });
+  const [campaignId, setCampaignId] = useState("");
+  const [adsets, setAdsets] = useState(null);
+  const [sourceAdsetId, setSourceAdsetId] = useState("");
+  const [file, setFile] = useState(null);
+  const [numOverride, setNumOverride] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.creativeDefaults(product.id).then(setDefaults).catch(() => setDefaults({ painMap: {} }));
+  }, [product.id]);
+
+  const painMap = defaults?.painMap || {};
+  const painCodeSel = pain === "_new" ? newPain.code.trim().toUpperCase() : pain;
+  const painLabelSel = pain === "_new" ? newPain.label.trim() : painMap[pain] || "";
+  const activeCamps = campaigns.filter((c) => c.effectiveStatus !== "ARCHIVED" && c.effectiveStatus !== "DELETED");
+  // Campanhas cujo nome carrega o código da dor ([B]) — o alvo natural.
+  const matches = painCodeSel ? activeCamps.filter((c) => painCodeOf(c.name) === painCodeSel) : [];
+
+  // Ao escolher a dor, resolve a campanha sozinho quando há exatamente uma [dor].
+  useEffect(() => {
+    if (matches.length === 1) setCampaignId(matches[0].id);
+    else if (matches.length === 0) setCampaignId("");
+  }, [painCodeSel]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Conjuntos da campanha resolvida — o usuário escolhe qual clonar.
+  useEffect(() => {
+    if (!campaignId) { setAdsets(null); setSourceAdsetId(""); return; }
+    setAdsets(null); setSourceAdsetId("");
+    api.metaAdsets(campaignId)
+      .then((r) => { setAdsets(r.adsets); if (r.adsets.length === 1) setSourceAdsetId(r.adsets[0].id); })
+      .catch((e) => { setAdsets([]); onError(e.message || "Falha ao listar conjuntos."); });
+  }, [campaignId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const detectedNumber = numOverride.trim() || (file ? fileNumberOf(file.name) : "");
+  const finalName = painCodeSel && detectedNumber ? `${detectedNumber} [${painCodeSel}]` : "";
+  const valid = painCodeSel && (pain !== "_new" || painLabelSel) && campaignId && sourceAdsetId && file && detectedNumber && !busy;
+
+  async function submit() {
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("painCode", painCodeSel);
+      if (painLabelSel) fd.append("painLabel", painLabelSel);
+      fd.append("sourceAdsetId", sourceAdsetId);
+      if (numOverride.trim()) fd.append("number", numOverride.trim());
+      fd.append("video", file, file.name);
+      const r = await api.adFromVideo(product.id, fd);
+      onDone(`Anúncio "${r.adsetName}" criado PAUSADO (conjunto clonado + vídeo trocado) — revise e ative no Gerenciador.`);
+    } catch (e) {
+      onError(e.message || "Falha ao criar o anúncio.");
+    }
+    setBusy(false);
+  }
+
+  const lbl = { display: "flex", flexDirection: "column", gap: 4 };
+  const cap = { fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" };
+  const inp = { height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
+
+  return (
+    <Card title="Criar anúncio" hint="clona o conjunto da dor e troca só o vídeo · nasce pausado com o nome «número [dor]»">
+      <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
+          <label style={lbl}>
+            <span className="mono" style={cap}>1 · Vídeo</span>
+            <input type="file" accept="video/*" onChange={(e) => setFile(e.target.files?.[0] || null)}
+              style={{ ...inp, paddingTop: 4, height: 30 }} />
+          </label>
+          <label style={lbl}>
+            <span className="mono" style={cap}>2 · Dor do anúncio</span>
+            <select value={pain} onChange={(e) => setPain(e.target.value)} style={inp}>
+              <option value="">Selecione…</option>
+              {Object.entries(painMap).map(([c, l]) => <option key={c} value={c}>[{c}] {l}</option>)}
+              <option value="_new">+ nova dor…</option>
+            </select>
+          </label>
+          <label style={lbl}>
+            <span className="mono" style={cap}>Número (do arquivo)</span>
+            <input type="text" placeholder={file ? (fileNumberOf(file.name) || "sem número no nome") : "sobe o vídeo"}
+              value={numOverride} onChange={(e) => setNumOverride(e.target.value.replace(/[^\w-]/g, ""))}
+              style={{ ...inp, fontFamily: "var(--mono)" }} />
+          </label>
+        </div>
+
+        {pain === "_new" && (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <label style={lbl}>
+              <span className="mono" style={cap}>Código (1-3 letras)</span>
+              <input type="text" maxLength={3} placeholder="C" value={newPain.code}
+                onChange={(e) => setNewPain({ ...newPain, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") })}
+                style={{ ...inp, width: 80, fontFamily: "var(--mono)", textTransform: "uppercase" }} />
+            </label>
+            <label style={{ ...lbl, flex: 1, minWidth: 220 }}>
+              <span className="mono" style={cap}>Nome da dor</span>
+              <input type="text" placeholder="ex.: Medo de banimento da conta" value={newPain.label}
+                onChange={(e) => setNewPain({ ...newPain, label: e.target.value })} style={inp} />
+            </label>
+          </div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+          <label style={lbl}>
+            <span className="mono" style={cap}>3 · Campanha {matches.length === 1 ? "(resolvida pela dor)" : matches.length > 1 ? "(várias [" + painCodeSel + "], escolha)" : ""}</span>
+            <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)} style={inp}>
+              <option value="">{painCodeSel ? (matches.length ? "Selecione…" : `nenhuma campanha [${painCodeSel}] — escolha`) : "escolha a dor antes"}</option>
+              {activeCamps.map((c) => <option key={c.id} value={c.id}>{painCodeOf(c.name) === painCodeSel ? "● " : ""}{c.name}</option>)}
+            </select>
+          </label>
+          <label style={lbl}>
+            <span className="mono" style={cap}>4 · Conjunto de origem (será clonado)</span>
+            <select value={sourceAdsetId} onChange={(e) => setSourceAdsetId(e.target.value)} disabled={!campaignId} style={inp}>
+              <option value="">{!campaignId ? "escolha a campanha" : adsets == null ? "carregando…" : "Selecione…"}</option>
+              {(adsets || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </label>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <button onClick={submit} disabled={!valid}
+            style={{ height: 32, padding: "0 16px", borderRadius: "var(--r-1)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 13, fontWeight: 600, opacity: !valid ? 0.55 : 1 }}>
+            {busy ? "Subindo vídeo e clonando… (pode levar uns minutos)" : "Criar anúncio pausado"}
+          </button>
+          <button onClick={onClose} disabled={busy} style={{ height: 32, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>cancelar</button>
+          {finalName && <span className="mono dim" style={{ fontSize: 11.5 }}>nome final do conjunto e do anúncio: <b style={{ color: "var(--fg-2)" }}>{finalName}</b></span>}
+        </div>
+        <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.5 }}>
+          clona o conjunto escolhido (mantém público, orçamento, posicionamento, copy e CTA), troca só o vídeo pelo que você subiu e renomeia conjunto e anúncio pra «número [dor]». Nada gasta até você ativar no Gerenciador.
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
   const [defaults, setDefaults] = useState(null); // { pageId, link, painMap }
   const [campaignId, setCampaignId] = useState("");
