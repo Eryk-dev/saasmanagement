@@ -20,6 +20,7 @@ import { registerMarketingRoutes } from "./routes.marketing.js";
 import { registerSocialRoutes } from "./routes.social.js";
 import { registerOfferRoutes } from "./routes.offers.js";
 import { registerMetasRoutes } from "./routes.metas.js";
+import { registerFlashcardRoutes } from "./routes.flashcards.js";
 import { registerGoogleRoutes } from "./routes.google.js";
 import { makeAnthropic } from "./anthropic.js";
 import { registerMetricsRoutes } from "./routes.metrics.js";
@@ -199,6 +200,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerOfferRoutes(app, repo);
   // Metas de desempenho por vaga/pessoa (ferramenta; escreve na collection goals).
   registerMetasRoutes(app, repo);
+  // Treinamentos: flashcards por vaga (ferramenta).
+  registerFlashcardRoutes(app, repo);
   registerMetricsRoutes(app, repo);
   // Métricas reais de funil (conversão/tempo por estágio, motivos de perda, SLA)
   // a partir do histórico de transições da timeline.

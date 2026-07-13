@@ -14,6 +14,7 @@ import { CreativeScreen } from "./screens/creative.jsx";
 import { SocialScreen } from "./screens/social.jsx";
 import { OffersScreen } from "./screens/offers.jsx";
 import { MetasScreen } from "./screens/metas.jsx";
+import { TrainingScreen } from "./screens/training.jsx";
 import { CustomersScreen } from "./screens/customers.jsx";
 import { TasksScreen } from "./screens/tasks.jsx";
 import { SettingsScreen } from "./screens/settings.jsx";
@@ -144,6 +145,7 @@ function App() {
     creative:    ["Marketing", "Canvas"],
     tasks:       ["Geral", "Tarefas"],
     metas:       ["Geral", "Metas"],
+    training:    ["Geral", "Treinamentos"],
     expenses:    ["Geral", "Custos"],
     settings:    ["Geral", "Configurações"],
     subscriptions: ["Comercial", "Clientes", "Assinaturas"], // rota antiga → aba dentro de Clientes
@@ -202,6 +204,7 @@ function App() {
           {scr === "social"      && <SocialScreen />}
           {scr === "offers"      && <OffersScreen />}
           {scr === "metas"       && <MetasScreen />}
+          {scr === "training"    && <TrainingScreen />}
           {scr === "subscriptions" && <CustomersScreen initialTab="billing" />}
           {scr === "tasks"       && <TasksScreen />}
           {scr === "settings"    && <SettingsScreen saasId={params.saas} />}
@@ -277,6 +280,7 @@ function subtitleFor(screen, params) {
     creative:    "stories, feed e carrossel · PNG pronto pra postar",
     offers:      "links de pagamento das ofertas · copie e envie",
     metas:       "metas por vaga e por pessoa · valem em todo campo de meta",
+    training:    "flashcards por vaga · estude e configure os cards",
     social:      "métricas do perfil · criar post e publicar direto",
     subscriptions: "a receita do cliente deriva daqui",
     tasks:       "kanban do time · arraste para mover",
