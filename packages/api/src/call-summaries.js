@@ -7,6 +7,20 @@ import { logActivity } from "./lead-flow.js";
 
 const CLOSED_STAGE = /perdid|ganh|fechad|won|lost|cliente/i;
 
+// Dois tipos de call por lead, cada um com seu Meet e dedup próprios (a call de
+// integração NÃO sobrescreve a de venda): campos do lead, marcador de dedup e o
+// método de IA que resume. `call` = venda; `integracao` = onboarding pós-venda.
+const MEET_KINDS = {
+  call: {
+    urlField: "callUrl", eventField: "meetEventId", schedField: "meetScheduledAt",
+    dedupField: "callSummaryFor", stampField: "callSummaryAt", ai: "summarizeCall",
+  },
+  integracao: {
+    urlField: "integrationCallUrl", eventField: "integrationMeetEventId", schedField: "integrationScheduledAt",
+    dedupField: "integrationSummaryFor", stampField: "integrationSummaryAt", ai: "summarizeIntegration",
+  },
+};
+
 // Texto da timeline (plain, multiline, sem travessão — regra do Leo).
 export function formatSummaryText(s) {
   const lines = [
@@ -25,18 +39,37 @@ export function formatSummaryText(s) {
   return lines.join("\n");
 }
 
+// Texto da timeline da call de INTEGRAÇÃO (onboarding).
+export function formatIntegrationText(s) {
+  const lines = [
+    `Resumo da integração (IA) · cliente ${s.sentimento}${s.sentimentoPorque ? ` (${s.sentimentoPorque})` : ""}`,
+    "",
+    s.resumo,
+  ];
+  if (s.configurado?.length) lines.push("", "Configurado:", ...s.configurado.map((c) => `• ${c}`));
+  if (s.pendencias?.length) {
+    lines.push("", "Pendências:");
+    for (const p of s.pendencias) lines.push(`• ${p.item} (${p.responsavel})`);
+  }
+  if (s.proximosPassos?.length) lines.push("", "Próximos passos:", ...s.proximosPassos.map((p) => `• ${p}`));
+  if (s.followup?.nota) lines.push("", `Acompanhamento: ${s.followup.nota}`);
+  if (s.followup?.whatsapp) lines.push("", `WhatsApp sugerido: "${s.followup.whatsapp}"`);
+  return lines.join("\n");
+}
+
 export function makeCallSummarizer({ repo, google, anthropic, log = console }) {
   // Resume a última call do lead. Devolve { ok, reason?, summary? } — reasons
   // são estáveis pro drawer traduzir: not_configured, not_connected, no_meet,
   // transcript_not_ready, already_done.
-  async function summarizeLead(leadId, { force = false } = {}) {
+  async function summarizeLead(leadId, { force = false, kind = "call" } = {}) {
     if (!anthropic.configured()) return { ok: false, reason: "not_configured" };
     if (!(await google.connected())) return { ok: false, reason: "not_connected" };
+    const cfg = MEET_KINDS[kind] || MEET_KINDS.call;
     const lead = await repo.get("leads", leadId);
     if (!lead) return { ok: false, reason: "not_found" };
-    const code = (String(lead.callUrl || "").match(/meet\.google\.com\/([a-z0-9-]+)/i) || [])[1];
+    const code = (String(lead[cfg.urlField] || "").match(/meet\.google\.com\/([a-z0-9-]+)/i) || [])[1];
     if (!code) return { ok: false, reason: "no_meet" };
-    if (!force && lead.callSummaryFor && lead.callSummaryFor === lead.meetEventId) {
+    if (!force && lead[cfg.dedupField] && lead[cfg.dedupField] === lead[cfg.eventField]) {
       return { ok: false, reason: "already_done" };
     }
 
@@ -47,19 +80,19 @@ export function makeCallSummarizer({ repo, google, anthropic, log = console }) {
     let detail = "";
     if (!t && typeof google.fetchTranscriptFromDrive === "function") {
       try {
-        t = await google.fetchTranscriptFromDrive({ eventId: lead.meetEventId, leadName: lead.name, since: lead.meetScheduledAt });
+        t = await google.fetchTranscriptFromDrive({ eventId: lead[cfg.eventField], leadName: lead.name, since: lead[cfg.schedField] });
         if (!t) detail = "drive: Doc de transcrição não encontrado (confira o título/horário da call ou a conta do Drive)";
       } catch (err) {
         // 403 ACCESS_TOKEN_SCOPE_INSUFFICIENT aqui = reconectar o Google (escopo drive.readonly novo).
         detail = `drive: ${String(err.message || err).slice(0, 160)}`;
-        log.warn?.({ lead: lead.id, err: err.message }, "fallback de transcrição pelo Drive falhou");
+        log.warn?.({ lead: lead.id, kind, err: err.message }, "fallback de transcrição pelo Drive falhou");
       }
     }
     if (!t) return { ok: false, reason: "transcript_not_ready", ...(detail ? { detail } : {}) };
 
     const product = lead.saas ? await repo.get("products", lead.saas) : null;
     const brt = (d) => new Date(d).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-    const { summary } = await anthropic.summarizeCall({
+    const { summary } = await anthropic[cfg.ai]({
       transcript: t.text,
       lead: { name: lead.name, company: lead.company, niche: lead.niche, stage: lead.stage },
       productName: product?.name || "LeverAds",
@@ -71,21 +104,22 @@ export function makeCallSummarizer({ repo, google, anthropic, log = console }) {
       saas: lead.saas || "",
       lead: lead.id,
       type: "system",
-      text: formatSummaryText(summary),
+      text: kind === "integracao" ? formatIntegrationText(summary) : formatSummaryText(summary),
       meta: {
         event: "call_summary",
+        kind, // "call" (venda) | "integracao" (onboarding) — o card e a análise de pitch se orientam por isso
         recordingUrl: t.recordingUrl || "",
-        meetEventId: lead.meetEventId || "",
-        temperatura: summary.temperatura,
+        meetEventId: lead[cfg.eventField] || "",
+        temperatura: summary.temperatura || summary.sentimento || "",
         summary,
       },
       author: "cockpit",
       at: t.endTime || undefined,
     });
 
-    // Follow-up sugerido entra como próximo toque do GPS (só em lead aberto e
-    // com horário no futuro; "quando" vem em hora de Brasília, sem fuso).
-    const patch = { callSummaryFor: lead.meetEventId || code, callSummaryAt: new Date().toISOString() };
+    // Follow-up/acompanhamento sugerido entra como próximo toque do GPS (só em
+    // lead aberto e com horário no futuro; "quando" vem em hora de Brasília).
+    const patch = { [cfg.dedupField]: lead[cfg.eventField] || code, [cfg.stampField]: new Date().toISOString() };
     const q = summary.followup?.quando || "";
     if (q && !CLOSED_STAGE.test(String(lead.stage || ""))) {
       const at = new Date(/[Zz]|[+-]\d{2}:\d{2}$/.test(q) ? q : `${q.length === 16 ? `${q}:00` : q}-03:00`);
@@ -95,32 +129,35 @@ export function makeCallSummarizer({ repo, google, anthropic, log = console }) {
       }
     }
     await repo.update("leads", lead.id, patch);
-    return { ok: true, summary, recordingUrl: t.recordingUrl || "" };
+    return { ok: true, kind, summary, recordingUrl: t.recordingUrl || "" };
   }
 
-  // Um passe do poller: calls do Meet cujo horário já passou (com folga de
-  // 50 min pra call acontecer) e que ainda não foram resumidas.
+  // Um passe do poller: TODAS as calls (venda + integração) cujo horário já
+  // passou (folga de 50 min pra acontecer) e que ainda não foram resumidas.
   async function tick() {
     if (!anthropic.configured() || !(await google.connected())) return { scanned: 0, summarized: 0 };
     const now = Date.now();
-    const leads = (await repo.list("leads")).filter((l) => {
-      if (!String(l.callUrl || "").includes("meet.google.com")) return false;
-      if (l.callSummaryFor && l.callSummaryFor === l.meetEventId) return false;
-      const base = l.meetScheduledAt || "";
-      const at = base ? new Date(base).getTime() : NaN;
-      if (!Number.isFinite(at)) return false;
-      return at + 50 * 60_000 < now && at > now - 7 * 86_400_000; // janela: terminou há pouco, até 7 dias
-    });
-    let done = 0;
-    for (const l of leads) {
-      try {
-        const r = await summarizeLead(l.id);
-        if (r.ok) { done++; log.info?.({ lead: l.id }, "call resumida"); }
-      } catch (err) {
-        log.warn?.({ lead: l.id, err: err.message }, "resumo de call falhou (re-tenta no próximo ciclo)");
+    const jobs = [];
+    for (const l of await repo.list("leads")) {
+      for (const kind of Object.keys(MEET_KINDS)) {
+        const cfg = MEET_KINDS[kind];
+        if (!String(l[cfg.urlField] || "").includes("meet.google.com")) continue;
+        if (l[cfg.dedupField] && l[cfg.dedupField] === l[cfg.eventField]) continue;
+        const at = l[cfg.schedField] ? new Date(l[cfg.schedField]).getTime() : NaN;
+        if (!Number.isFinite(at)) continue;
+        if (at + 50 * 60_000 < now && at > now - 7 * 86_400_000) jobs.push({ id: l.id, kind }); // terminou há pouco, até 7 dias
       }
     }
-    return { scanned: leads.length, summarized: done };
+    let done = 0;
+    for (const j of jobs) {
+      try {
+        const r = await summarizeLead(j.id, { kind: j.kind });
+        if (r.ok) { done++; log.info?.({ lead: j.id, kind: j.kind }, "call resumida"); }
+      } catch (err) {
+        log.warn?.({ lead: j.id, kind: j.kind, err: err.message }, "resumo de call falhou (re-tenta no próximo ciclo)");
+      }
+    }
+    return { scanned: jobs.length, summarized: done };
   }
 
   return { summarizeLead, tick };

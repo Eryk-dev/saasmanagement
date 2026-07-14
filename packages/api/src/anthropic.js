@@ -50,6 +50,48 @@ const SYSTEM = `Você é o analista comercial da LeverAds, SaaS que clona e sinc
 Você recebe a transcrição de uma call de vendas e extrai o que importa pro closer fazer o follow-up e fechar.
 Regras: escreva em português direto, sem formalidade e sem enrolação. NUNCA use travessão (—) em nenhum texto; use vírgula ou parênteses. Seja fiel à transcrição: não invente dor, objeção nem compromisso que não apareceu. Objeção sem resposta do closer é registrada como não resolvida. A mensagem de WhatsApp deve ser curta (2 a 4 frases), citar algo concreto da conversa e terminar com uma pergunta ou próximo passo claro.`;
 
+// Resumo da call de INTEGRAÇÃO (onboarding/setup pós-venda) — foco em sucesso do
+// cliente, não em venda: o que foi configurado, dúvidas, pendências, próximos
+// passos e como o cliente saiu (satisfeito / neutro / em risco).
+const INTEGRATION_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["resumo", "sentimento", "sentimentoPorque", "configurado", "pendencias", "proximosPassos", "followup"],
+  properties: {
+    resumo: { type: "string", description: "O que rolou na call de integração, em 3 a 5 frases diretas" },
+    sentimento: { type: "string", enum: ["satisfeito", "neutro", "em risco"], description: "Como o cliente saiu da call" },
+    sentimentoPorque: { type: "string", description: "1 frase explicando o sentimento" },
+    configurado: { type: "array", items: { type: "string" }, description: "O que foi configurado, entregue ou ensinado na call" },
+    pendencias: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["item", "responsavel"],
+        properties: {
+          item: { type: "string", description: "o que ficou pendente" },
+          responsavel: { type: "string", description: "quem resolve: 'cliente' ou 'equipe'" },
+        },
+      },
+      description: "O que ficou pendente e de quem",
+    },
+    proximosPassos: { type: "array", items: { type: "string" }, description: "Próximos passos do onboarding, na ordem" },
+    followup: {
+      type: "object",
+      additionalProperties: false,
+      required: ["quando", "nota", "whatsapp"],
+      properties: {
+        quando: { type: "string", description: "Quando fazer o próximo contato de acompanhamento, formato YYYY-MM-DDTHH:mm em hora de Brasília (vazio se não der pra inferir)" },
+        nota: { type: "string", description: "O que fazer/checar nesse acompanhamento, 1 frase" },
+        whatsapp: { type: "string", description: "Mensagem de WhatsApp pronta de acompanhamento pós-integração, tom próximo e prestativo" },
+      },
+    },
+  },
+};
+
+const INTEGRATION_SYSTEM = `Você é o analista de Sucesso do Cliente. Você recebe a transcrição de uma call de INTEGRAÇÃO (onboarding/setup pós-venda, o cliente já comprou) e extrai o que importa pra equipe garantir que ele comece bem e não vire risco de churn.
+Regras: escreva em português direto, sem enrolação. NUNCA use travessão (—) em nenhum texto; use vírgula ou parênteses. Seja fiel à transcrição: não invente configuração, pendência nem combinado que não apareceu. Marque o sentimento como "em risco" quando o cliente sai confuso, frustrado, sem entender o produto ou com pendência crítica sem solução. Em cada pendência diga quem resolve (cliente ou equipe). A mensagem de WhatsApp é de acompanhamento (checar se ficou tudo certo, oferecer ajuda), curta (2 a 4 frases), citando algo concreto da call.`;
+
 // Variante de welcome pro teste A/B do form (título/subtítulo/botão).
 const WELCOME_SCHEMA = {
   type: "object",
@@ -288,6 +330,23 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
     return { summary: r.parsed, usage: r.usage, model: r.model };
   }
 
+  // Uma call de INTEGRAÇÃO → resumo de onboarding (mesma assinatura da de venda).
+  async function summarizeIntegration({ transcript, lead = {}, productName = "produto", callDate = "", today = "" }) {
+    if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
+    const MAX = 180_000;
+    const text = String(transcript || "");
+    const clipped = text.length > MAX ? `[início da call omitido]\n${text.slice(-MAX)}` : text;
+    const context = [
+      `Cliente: ${lead.name || "?"}${lead.company ? ` (${lead.company})` : ""}`,
+      lead.niche ? `Nicho: ${lead.niche}` : "",
+      `Produto contratado: ${productName}`,
+      callDate ? `Data da integração: ${callDate}` : "",
+      today ? `Hoje é: ${today} (use pra sugerir o "quando" do acompanhamento)` : "",
+    ].filter(Boolean).join("\n");
+    const r = await requestJson(`${context}\n\nTranscrição da call de integração:\n\n${clipped}`, { system: INTEGRATION_SYSTEM, schema: INTEGRATION_SCHEMA, schemaName: "integration_summary" });
+    return { summary: r.parsed, usage: r.usage, model: r.model };
+  }
+
   // Uma variante NOVA de welcome (título/subtítulo/botão) pro teste A/B do
   // form — usada pelo "aplicar" do insight de welcome fraca. Não grava nada:
   // devolve a copy pro usuário editar antes de publicar.
@@ -395,5 +454,5 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
     };
   }
 
-  return { configured, summarizeCall, suggestWelcome, suggestSocialCopy, suggestCampaignCopy, improvePitch, gradeAnswer, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
+  return { configured, summarizeCall, summarizeIntegration, suggestWelcome, suggestSocialCopy, suggestCampaignCopy, improvePitch, gradeAnswer, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
 }

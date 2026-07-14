@@ -118,12 +118,17 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     if (!lead) return reply.code(404).send({ error: "Not found" });
     const product = lead.saas ? await repo.get("products", lead.saas) : null;
 
-    // callAt vem do input datetime-local (sem fuso) e SIGNIFICA hora de
+    // Tipo de call: "call" (venda, usa lead.callAt) ou "integracao" (onboarding,
+    // usa lead.integrationAt e grava campos PRÓPRIOS pra não sobrescrever a venda).
+    const kind = req.body?.kind === "integracao" ? "integracao" : "call";
+    const whenRaw = kind === "integracao" ? lead.integrationAt : lead.callAt;
+
+    // whenRaw vem do input datetime-local (sem fuso) e SIGNIFICA hora de
     // Brasília — o Calendar recebe o horário cru + timeZone, sem conversão.
     const TZ = "America/Sao_Paulo";
     let start, end;
-    if (lead.callAt) {
-      const s = new Date(lead.callAt + (lead.callAt.length === 16 ? ":00" : ""));
+    if (whenRaw) {
+      const s = new Date(whenRaw + (whenRaw.length === 16 ? ":00" : ""));
       const e = new Date(s.getTime() + 45 * 60_000);
       const naive = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:00`;
       start = { dateTime: naive(s), timeZone: TZ };
@@ -147,7 +152,7 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
 
     try {
       const { meetUrl, eventId, htmlLink } = await client.createMeetEvent({
-        summary: `Call ${product?.name || "LeverAds"} · ${lead.name}${lead.company ? ` (${lead.company})` : ""}`,
+        summary: `${kind === "integracao" ? "Integração" : "Call"} ${product?.name || "LeverAds"} · ${lead.name}${lead.company ? ` (${lead.company})` : ""}`,
         description: [`Lead: ${lead.name}`, lead.phone ? `WhatsApp: ${lead.phone}` : "", lead.company ? `Empresa: ${lead.company}` : ""].filter(Boolean).join("\n"),
         start, end,
         attendees,
@@ -164,22 +169,27 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
         try { meetConfig = await client.configureSpace(code); }
         catch (err) { req.log.warn({ err: err.message }, "Google: configuração da sala falhou (Meet criado mesmo assim)"); }
       }
-      // Horário REAL da call em ISO UTC (callAt é hora de Brasília sem fuso) —
+      // Horário REAL da call em ISO UTC (whenRaw é hora de Brasília sem fuso) —
       // é a referência do poller que resume a call depois que ela termina.
-      const meetScheduledAt = lead.callAt
-        ? new Date(`${lead.callAt}${lead.callAt.length === 16 ? ":00" : ""}-03:00`).toISOString()
+      const scheduledAt = whenRaw
+        ? new Date(`${whenRaw}${whenRaw.length === 16 ? ":00" : ""}-03:00`).toISOString()
         : new Date(Date.now() + 30 * 60_000).toISOString();
-      await repo.update("leads", lead.id, { callUrl: meetUrl, meetEventId: eventId, meetScheduledAt, ...(guestsToSave ? { meetGuests: guestsToSave } : {}) });
-      // Espelha na agenda pessoal do closer, já com o link do Meet no evento.
-      try { await syncPersonalCalendar(repo, gu, { ...lead, callUrl: meetUrl }); } catch { /* fail-open */ }
+      // Grava no conjunto de campos do TIPO (integração NÃO pisa na call de venda).
+      const patch = kind === "integracao"
+        ? { integrationCallUrl: meetUrl, integrationMeetEventId: eventId, integrationScheduledAt: scheduledAt }
+        : { callUrl: meetUrl, meetEventId: eventId, meetScheduledAt: scheduledAt };
+      if (guestsToSave) patch.meetGuests = guestsToSave;
+      await repo.update("leads", lead.id, patch);
+      // Espelha na agenda pessoal (closer da call / integrador da integração), já com o link do Meet.
+      try { await syncPersonalCalendar(repo, gu, { ...lead, ...patch }); } catch { /* fail-open */ }
       try {
         await logActivity(repo, {
           saas: lead.saas || "", lead: lead.id, type: "system",
-          meta: { event: "meet_created", url: meetUrl, calendarEvent: htmlLink, attendees, meetConfig },
+          meta: { event: "meet_created", kind, url: meetUrl, calendarEvent: htmlLink, attendees, meetConfig },
           author: "cockpit",
         });
       } catch { /* fail-open */ }
-      return { ok: true, callUrl: meetUrl, eventId, htmlLink, attendees, meetConfig };
+      return { ok: true, kind, callUrl: meetUrl, eventId, htmlLink, attendees, meetConfig };
     } catch (err) {
       req.log.warn({ err: err.message, lead: lead.id }, "Google: criação do Meet falhou");
       return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
@@ -191,7 +201,7 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
   app.post("/api/leads/:id/call-summary", async (req, reply) => {
     if (!summarizer) return reply.code(503).send({ error: "IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor" });
     try {
-      const r = await summarizer.summarizeLead(req.params.id, { force: !!req.body?.force });
+      const r = await summarizer.summarizeLead(req.params.id, { force: !!req.body?.force, kind: req.body?.kind === "integracao" ? "integracao" : "call" });
       if (!r.ok && r.reason === "not_found") return reply.code(404).send({ error: "Not found" });
       return r;
     } catch (err) {

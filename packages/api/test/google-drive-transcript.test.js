@@ -77,6 +77,34 @@ test("fetchTranscriptFromDrive: usa o anexo (Doc) do evento sem precisar buscar 
   assert.ok(!calls.some((u) => u.includes("/drive/v3/files?")), "não caiu na busca (usou o anexo do evento)");
 });
 
+test("summarizer: kind=integracao usa os campos da integração + summarizeIntegration, sem tocar a venda", async () => {
+  const repo = makeMemRepo();
+  await repo.create("app_config", { id: "google_oauth", refreshToken: "rt", account: "contato@uniquebox.com.br" });
+  await repo.create("products", { id: "uniquekids", name: "UniqueKids", funnel: [] });
+  await repo.create("leads", {
+    id: "le1", saas: "uniquekids", name: "Maria", stage: "Integração",
+    callUrl: "https://meet.google.com/aaa-aaaa-aaa", meetEventId: "evVenda", meetScheduledAt: "2026-07-10T18:00:00.000Z", callSummaryFor: "evVenda",
+    integrationCallUrl: "https://meet.google.com/vam-otkm-zum", integrationMeetEventId: "evInteg", integrationScheduledAt: "2026-07-13T18:00:00.000Z",
+  });
+
+  const google = makeGoogle({ fetch: googleFetch(), clientId: "c", clientSecret: "s", repo }); // conferenceRecords vazio → Drive fallback
+  const integ = { resumo: "Setup feito", sentimento: "satisfeito", sentimentoPorque: "entendeu tudo", configurado: ["Conta criada"], pendencias: [{ item: "Enviar foto", responsavel: "cliente" }], proximosPassos: ["Acompanhar em 7 dias"], followup: { quando: "", nota: "checar uso", whatsapp: "Oi Maria, deu tudo certo?" } };
+  const anthropic = makeAnthropic({ fetch: async () => ({ status: 200, json: async () => ({ model: "m", content: [{ type: "text", text: JSON.stringify(integ) }] }) }), apiKey: "sk-test" });
+  const w = makeCallSummarizer({ repo, google, anthropic, log: { info() {}, warn() {} } });
+
+  const r = await w.summarizeLead("le1", { kind: "integracao" });
+  assert.equal(r.ok, true);
+  assert.equal(r.kind, "integracao");
+  const act = (await repo.list("activities")).find((a) => a.meta?.event === "call_summary");
+  assert.ok(act, "activity call_summary criada");
+  assert.equal(act.meta.kind, "integracao");
+  assert.ok(act.text.includes("Resumo da integração"));
+  assert.ok(act.text.includes("Configurado"));
+  const lead = await repo.get("leads", "le1");
+  assert.equal(lead.integrationSummaryFor, "evInteg"); // marcou o dedup da integração
+  assert.equal(lead.callSummaryFor, "evVenda");        // NÃO mexeu na call de venda
+});
+
 test("summarizer: Meet API vazia → usa o fallback do Drive e grava o call_summary", async () => {
   const repo = makeMemRepo();
   await repo.create("app_config", { id: "google_oauth", refreshToken: "rt", account: "contato@uniquebox.com.br" });
