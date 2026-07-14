@@ -60,6 +60,9 @@ const publicUser = (u) => ({
   // Telas permitidas (screens.js): [] = todas. O SPA usa pra montar o menu e o
   // guard da API usa pra fechar as rotas correspondentes.
   screens: Array.isArray(u.screens) ? u.screens : [],
+  // Status da conta Google PESSOAL (só flags — o refresh token NUNCA sai daqui).
+  googleConnected: !!u.google?.refreshToken,
+  googleAccount: u.google?.account || "",
 });
 
 // Token de sessão → usuário (null se inexistente/expirado).

@@ -83,6 +83,11 @@ export const api = {
   creativeDefaults: (saas) => req("GET", `/api/marketing/${saas}/creative-defaults`),
   // Google Meet: URL de consentimento (Ajustes) + criar a call do lead na agenda.
   googleAuthUrl: () => req("GET", "/api/google/auth-url"),
+  // Conexão Google PESSOAL (por usuário): status, link de consentimento e desconectar.
+  // Cada pessoa conecta a própria conta pra receber calls/integrações na agenda.
+  googleUserStatus: () => req("GET", "/api/google/user/status"),
+  googleUserAuthUrl: () => req("GET", "/api/google/user/auth-url"),
+  googleUserDisconnect: () => req("POST", "/api/google/user/disconnect"),
   // body opcional: { guests: [emails] } ou { email } — convidados extras da call.
   createMeet: (leadId, body) => req("POST", `/api/leads/${leadId}/meet`, body),
   callSummary: (leadId, force = false) => req("POST", `/api/leads/${leadId}/call-summary`, { force }),

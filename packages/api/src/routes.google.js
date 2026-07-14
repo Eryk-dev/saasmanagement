@@ -4,22 +4,31 @@
 // grava o link em lead.callUrl (o mesmo campo do drawer/Agenda).
 import { randomUUID } from "node:crypto";
 import { makeGoogle } from "./google.js";
+import { makeGoogleUser, syncPersonalCalendar } from "./google-user.js";
 import { publicBase } from "./routes.js";
 import { logActivity } from "./lead-flow.js";
 import { makeCallSummarizer } from "./call-summaries.js";
 
-export function registerGoogleRoutes(app, repo, { google, anthropic } = {}) {
+export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic } = {}) {
   const client = google || makeGoogle({
+    clientId: process.env.GOOGLE_CLIENT_ID || "",
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+    repo,
+  });
+  // Cliente POR USUÁRIO (mesmo app OAuth, token em cada users.google): cada
+  // pessoa conecta a própria conta pra receber a réplica das calls/integrações.
+  const gu = googleUser || makeGoogleUser({
     clientId: process.env.GOOGLE_CLIENT_ID || "",
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
     repo,
   });
   const summarizer = anthropic ? makeCallSummarizer({ repo, google: client, anthropic, log: app.log }) : null;
 
-  // Anti-CSRF do callback (rota aberta): só aceita state emitido por aqui,
-  // com validade curta. Memória do processo basta (fluxo de segundos).
-  const states = new Map(); // state -> expiraEm
-  const sweep = () => { const now = Date.now(); for (const [k, exp] of states) if (exp < now) states.delete(k); };
+  // Anti-CSRF do callback (rota aberta): só aceita state emitido por aqui, com
+  // validade curta. O valor guarda { exp, userId }: userId preenchido = conexão
+  // PESSOAL (token vai pro usuário); null = conexão da conta única do time.
+  const states = new Map(); // state -> { exp, userId }
+  const sweep = () => { const now = Date.now(); for (const [k, v] of states) if (v.exp < now) states.delete(k); };
 
   const redirectUri = (req) => `${publicBase(req)}/api/google/callback`;
 
@@ -41,8 +50,36 @@ export function registerGoogleRoutes(app, repo, { google, anthropic } = {}) {
     }
     sweep();
     const state = randomUUID();
-    states.set(state, Date.now() + 10 * 60_000);
+    states.set(state, { exp: Date.now() + 10 * 60_000, userId: null });
     return { url: client.authUrl(redirectUri(req), state) };
+  });
+
+  // ── Conexão PESSOAL do Google (por usuário logado) ──────────────────────────
+  // Status da conta Google do usuário logado (fresh — o SPA consulta depois de
+  // conectar). Exige sessão (req.authUser); key mestra não tem usuário.
+  app.get("/api/google/user/status", async (req, reply) => {
+    const uid = req.authUser?.id;
+    if (!uid) return reply.code(401).send({ error: "Entre com seu usuário pra conectar o Google pessoal" });
+    return { configured: gu.configured(), connected: await gu.connectedFor(uid), account: await gu.accountFor(uid) };
+  });
+
+  // Link de consentimento que amarra o token ao usuário logado (via state).
+  app.get("/api/google/user/auth-url", async (req, reply) => {
+    const uid = req.authUser?.id;
+    if (!uid) return reply.code(401).send({ error: "Entre com seu usuário pra conectar o Google pessoal" });
+    if (!gu.configured()) return reply.code(503).send({ error: "Google não configurado no servidor (GOOGLE_CLIENT_ID/SECRET)" });
+    sweep();
+    const state = randomUUID();
+    states.set(state, { exp: Date.now() + 10 * 60_000, userId: uid });
+    return { url: gu.authUrl(redirectUri(req), state) };
+  });
+
+  // Desconectar minha conta Google pessoal.
+  app.post("/api/google/user/disconnect", async (req, reply) => {
+    const uid = req.authUser?.id;
+    if (!uid) return reply.code(401).send({ error: "Sessão necessária" });
+    await gu.disconnect(uid);
+    return { ok: true };
   });
 
   // Callback do consentimento (ABERTA — o navegador chega sem a key; o state
@@ -54,10 +91,16 @@ export function registerGoogleRoutes(app, repo, { google, anthropic } = {}) {
     );
     sweep();
     if (error) return page("Conexão cancelada", `O Google retornou: ${String(error).slice(0, 120)}. Volte ao cockpit e tente de novo.`);
-    if (!state || !states.has(String(state))) { reply.code(400); return page("Link expirado", "Este link de conexão não é mais válido. Volte ao cockpit (Ajustes → Integrações) e clique em Conectar Google de novo."); }
+    const entry = state ? states.get(String(state)) : null;
+    if (!entry) { reply.code(400); return page("Link expirado", "Este link de conexão não é mais válido. Volte ao cockpit (Ajustes → Integrações) e clique em Conectar Google de novo."); }
     states.delete(String(state));
     if (!code) return page("Faltou o código", "O Google não enviou o código de autorização. Tente conectar de novo.");
     try {
+      if (entry.userId) {
+        // Conexão PESSOAL: token vai pro usuário que abriu o link.
+        const r = await gu.exchangeCodeForUser(String(code), redirectUri(req), entry.userId);
+        return page("Sua conta Google conectada ✓", `Conta <b>${r.account || "conectada"}</b>. Suas calls e integrações agendadas vão aparecer na sua agenda do Google. Pode fechar esta aba e voltar pro cockpit.`);
+      }
       const rec = await client.exchangeCode(String(code), redirectUri(req));
       return page("Google conectado ✓", `Conta <b>${rec.account || "conectada"}</b> pronta pra criar calls com Meet. Pode fechar esta aba e voltar pro cockpit.`);
     } catch (err) {
@@ -127,6 +170,8 @@ export function registerGoogleRoutes(app, repo, { google, anthropic } = {}) {
         ? new Date(`${lead.callAt}${lead.callAt.length === 16 ? ":00" : ""}-03:00`).toISOString()
         : new Date(Date.now() + 30 * 60_000).toISOString();
       await repo.update("leads", lead.id, { callUrl: meetUrl, meetEventId: eventId, meetScheduledAt, ...(guestsToSave ? { meetGuests: guestsToSave } : {}) });
+      // Espelha na agenda pessoal do closer, já com o link do Meet no evento.
+      try { await syncPersonalCalendar(repo, gu, { ...lead, callUrl: meetUrl }); } catch { /* fail-open */ }
       try {
         await logActivity(repo, {
           saas: lead.saas || "", lead: lead.id, type: "system",
@@ -155,5 +200,5 @@ export function registerGoogleRoutes(app, repo, { google, anthropic } = {}) {
     }
   });
 
-  return client;
+  return { client, googleUser: gu };
 }
