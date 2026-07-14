@@ -14,6 +14,7 @@ import { CreativeScreen } from "./screens/creative.jsx";
 import { SocialScreen } from "./screens/social.jsx";
 import { OffersScreen } from "./screens/offers.jsx";
 import { DisparosScreen } from "./screens/disparos.jsx";
+import { WhatsappInboxScreen } from "./screens/whatsapp.jsx";
 import { CallsScreen } from "./screens/calls.jsx";
 import { MetasScreen } from "./screens/metas.jsx";
 import { TrainingScreen } from "./screens/training.jsx";
@@ -213,6 +214,7 @@ function App() {
           {scr === "social"      && <SocialScreen />}
           {scr === "offers"      && <OffersScreen />}
           {scr === "disparos"    && <DisparosScreen onOpenLead={openLead} />}
+          {scr === "whatsapp"    && <WhatsappInboxScreen onOpenLead={openLead} />}
           {scr === "calls"       && <CallsScreen onOpenLead={openLead} />}
           {scr === "metas"       && <MetasScreen />}
           {scr === "training"    && <TrainingScreen />}

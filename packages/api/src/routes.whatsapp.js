@@ -1,11 +1,10 @@
-// WhatsApp no cockpit (Cloud API): webhook (verificação + recebimento) e envio.
-// As mensagens (entrada e saída) viram activities `whatsapp` na timeline do lead
-// (meta.direction in|out, waMessageId, status) — o drawer renderiza como chat.
-// Mensagem de número sem lead cai em `wa_messages` (fila do inbox global, Fase 2).
-import { makeWhatsapp, digits } from "./whatsapp.js";
-import { logActivity } from "./lead-flow.js";
+// WhatsApp no cockpit (Cloud API): webhook (verificação + recebimento), inbox de
+// conversas (tela dedicada) e envio. As mensagens vivem em wa_threads/wa_messages
+// (ver wa-store.js) — canônico pro inbox e pro chat do drawer.
+import { makeWhatsapp } from "./whatsapp.js";
+import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId } from "./wa-store.js";
 
-// Placeholder de texto pra tipos que a Fase 1 ainda não renderiza (mídia/áudio).
+// Texto legível pra tipos que a Fase 1 ainda não renderiza (mídia/áudio).
 function bodyOf(m) {
   if (m.text?.body) return m.text.body;
   if (m.type === "image") return "📷 imagem";
@@ -19,37 +18,21 @@ function bodyOf(m) {
   return `[${m.type || "mensagem"}]`;
 }
 
-async function findLeadByPhone(repo, phone) {
-  const d = digits(phone);
-  if (!d) return null;
-  const leads = await repo.list("leads");
-  return leads.find((l) => l.phone && digits(l.phone) === d) || null;
+// Envia texto e grava a mensagem out (+ atualiza o thread). Lança em erro da Meta
+// (o handler HTTP traduz a janela de 24h). `phone` = destino em qualquer formato.
+async function sendAndRecord(repo, wa, { phone, text, author }) {
+  const { messageId } = await wa.sendText(phone, text);
+  await recordMessage(repo, { id: messageId, phone, direction: "out", text, status: "sent", author });
+  return messageId;
 }
 
-// Recebe uma mensagem: casa com o lead (por telefone) e loga na timeline;
-// sem lead, guarda em wa_messages. Dedup por waMessageId. Best-effort.
-async function handleIncoming(repo, m, value) {
-  const from = m.from;
-  const waId = m.id;
-  const text = bodyOf(m);
-  const at = m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : new Date().toISOString();
-  const lead = await findLeadByPhone(repo, from);
-  if (lead) {
-    const acts = await repo.list("activities");
-    if (acts.some((a) => a.lead === lead.id && a.meta?.waMessageId === waId)) return; // dedup (Meta re-entrega)
-    await logActivity(repo, { saas: lead.saas || "", lead: lead.id, type: "whatsapp", text, at, author: "lead", meta: { direction: "in", waMessageId: waId, from } });
-    await repo.update("leads", lead.id, { lastActivityAt: at, lastActivityType: "whatsapp" });
-  } else if (!(await repo.get("wa_messages", waId))) {
-    await repo.create("wa_messages", { id: waId, from, text, at, direction: "in", name: value.contacts?.[0]?.profile?.name || "" });
-  }
-}
-
-// Status de mensagem enviada (sent/delivered/read/failed) → atualiza a activity.
-async function handleStatus(repo, st) {
-  if (!st.id) return;
-  const acts = await repo.list("activities");
-  const a = acts.find((x) => x.meta?.waMessageId === st.id);
-  if (a) await repo.update("activities", a.id, { meta: { ...(a.meta || {}), status: st.status, ...(st.status === "failed" && st.errors?.[0] ? { error: st.errors[0].title || st.errors[0].message } : {}) } });
+function outsideWindow(err) { return err.code === 131047 || err.code === 470; }
+function sendErrorReply(reply, err) {
+  return reply.code(outsideWindow(err) ? 409 : 502).send({
+    error: outsideWindow(err)
+      ? "Fora da janela de 24h: a Meta só deixa reabrir a conversa com um template aprovado (Fase 2)."
+      : String(err.message || err).slice(0, 300),
+  });
 }
 
 export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
@@ -59,8 +42,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
     verifyToken: process.env.WHATSAPP_VERIFY_TOKEN || "",
   });
 
-  // Webhook — rota ABERTA (a Meta chama sem key; está sob /api/webhooks/, já em
-  // OPEN_PREFIXES). GET = verificação do webhook; POST = eventos.
+  // ── Webhook (rota ABERTA: a Meta chama sem key; sob /api/webhooks/) ──────────
   app.get("/api/webhooks/whatsapp", async (req, reply) => {
     const q = req.query || {};
     const ch = wa.verifyWebhook(q["hub.mode"], q["hub.verify_token"], q["hub.challenge"]);
@@ -73,36 +55,62 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
       for (const e of req.body?.entry || []) {
         for (const ch of e.changes || []) {
           const v = ch.value || {};
-          for (const m of v.messages || []) await handleIncoming(repo, m, v);
-          for (const st of v.statuses || []) await handleStatus(repo, st);
+          const contactName = v.contacts?.[0]?.profile?.name || "";
+          for (const m of v.messages || []) {
+            await recordMessage(repo, {
+              id: m.id, phone: m.from, direction: "in", text: bodyOf(m),
+              at: m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : undefined,
+              from: m.from, status: "received", contactName,
+            });
+          }
+          for (const st of v.statuses || []) {
+            await updateStatus(repo, st.id, st.status, st.errors?.[0]?.title || "");
+          }
         }
       }
     } catch (err) { req.log?.warn?.({ err: err.message }, "whatsapp webhook falhou"); }
     return reply.code(200).send({ ok: true }); // sempre 200: erro não faz a Meta re-tentar em loop
   });
 
-  // Enviar mensagem pro lead (SDR no drawer). Loga como activity `whatsapp` out.
+  // ── Inbox (tela dedicada) ───────────────────────────────────────────────────
+  app.get("/api/whatsapp/threads", async () => ({ threads: await listThreads(repo) }));
+
+  app.get("/api/whatsapp/threads/:id", async (req) => ({
+    messages: await listMessages(repo, req.params.id),
+  }));
+
+  app.post("/api/whatsapp/threads/:id/read", async (req) => {
+    const lastIn = await markThreadRead(repo, req.params.id);
+    if (lastIn && wa.configured()) wa.markRead(lastIn).catch(() => {});
+    return { ok: true };
+  });
+
+  // Enviar pela conversa (inbox) — id é o número em dígitos, funciona com ou sem lead.
+  app.post("/api/whatsapp/threads/:id/send", async (req, reply) => {
+    if (!wa.configured()) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
+    const phone = threadId(req.params.id);
+    const text = String(req.body?.text || "").trim();
+    if (!phone) return reply.code(400).send({ error: "número inválido" });
+    if (!text) return reply.code(400).send({ error: "mensagem vazia" });
+    try {
+      const messageId = await sendAndRecord(repo, wa, { phone, text, author: req.authUser?.id || "cockpit" });
+      return { ok: true, messageId };
+    } catch (err) { return sendErrorReply(reply, err); }
+  });
+
+  // Enviar pelo drawer do lead (resolve o telefone do lead).
   app.post("/api/leads/:id/whatsapp", async (req, reply) => {
     if (!wa.configured()) return reply.code(503).send({ error: "WhatsApp não configurado no servidor (WHATSAPP_TOKEN/PHONE_NUMBER_ID)" });
     const lead = await repo.get("leads", req.params.id);
     if (!lead) return reply.code(404).send({ error: "Not found" });
-    const to = lead.phone || req.body?.to || "";
+    const phone = lead.phone || req.body?.to || "";
     const text = String(req.body?.text || "").trim();
-    if (!to) return reply.code(400).send({ error: "lead sem telefone" });
+    if (!phone) return reply.code(400).send({ error: "lead sem telefone" });
     if (!text) return reply.code(400).send({ error: "mensagem vazia" });
     try {
-      const { messageId } = await wa.sendText(to, text);
-      const act = await logActivity(repo, {
-        saas: lead.saas || "", lead: lead.id, type: "whatsapp", text, author: req.authUser?.id || "cockpit",
-        meta: { direction: "out", waMessageId: messageId, status: "sent" },
-      });
-      await repo.update("leads", lead.id, { lastActivityAt: new Date().toISOString(), lastActivityType: "whatsapp" });
-      return { ok: true, activity: act, messageId };
-    } catch (err) {
-      // 131047/470 = fora da janela de 24h (precisa de template aprovado — Fase 2).
-      const outside = err.code === 131047 || err.code === 470;
-      return reply.code(502).send({ error: outside ? "Fora da janela de 24h: a Meta só deixa reabrir a conversa com um template aprovado (Fase 2)." : String(err.message || err).slice(0, 300) });
-    }
+      const messageId = await sendAndRecord(repo, wa, { phone, text, author: req.authUser?.id || "cockpit" });
+      return { ok: true, messageId };
+    } catch (err) { return sendErrorReply(reply, err); }
   });
 
   return wa;
