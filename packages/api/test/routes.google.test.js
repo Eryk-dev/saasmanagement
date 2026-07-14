@@ -89,7 +89,7 @@ test("rotas: status/auth-url/callback com state + POST /leads/:id/meet grava cal
 
   // ainda não conectado
   let st = (await app.inject({ url: "/api/google/status" })).json();
-  assert.deepEqual(st, { configured: true, connected: false, account: "" });
+  assert.deepEqual(st, { configured: true, connected: false, account: "", driveReadonly: false });
   assert.equal((await app.inject({ method: "POST", url: "/api/leads/le1/meet" })).statusCode, 503);
 
   // auth-url emite state; callback com state desconhecido é 400

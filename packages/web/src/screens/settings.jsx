@@ -660,6 +660,63 @@ function FieldsSettings({ s }) {
 // ───────────────────────────────────────────────────────── Integrações
 // Status real — nada fake. Tokens vivem no env do servidor; o que é POR SAAS
 // (conta de anúncio da Meta) é editado aqui e gravado no produto.
+// Conexão Google PESSOAL: cada usuário conecta a PRÓPRIA conta pra que suas
+// calls (como closer) e integrações (como integrador) apareçam na agenda dele.
+// Convive com a conta única do time (Google Meet, acima) — é aditivo.
+function MyGoogleCalendarCard() {
+  const [st, setSt] = useStS(null); // { configured, connected, account }
+  const [busy, setBusy] = useStS(false);
+  const load = React.useCallback(async () => {
+    try { setSt(await api.googleUserStatus()); }
+    catch { setSt({ configured: false, connected: false, account: "" }); }
+  }, []);
+  React.useEffect(() => { load(); }, [load]);
+
+  async function connect() {
+    try {
+      const r = await api.googleUserAuthUrl();
+      window.open(r.url, "_blank", "noopener,width=520,height=680");
+      // A conexão acontece na aba nova; ao voltar o foco pro cockpit, re-checa.
+      const iv = setInterval(load, 2500);
+      const stop = () => { clearInterval(iv); load(); window.removeEventListener("focus", stop); };
+      window.addEventListener("focus", stop);
+      setTimeout(() => clearInterval(iv), 120_000);
+    } catch (e) { window.alert(e.message || "Google não configurado no servidor."); }
+  }
+  async function disconnect() {
+    if (!window.confirm("Desconectar sua conta Google? Suas calls e integrações deixam de aparecer na sua agenda.")) return;
+    setBusy(true);
+    try { await api.googleUserDisconnect(); await load(); } finally { setBusy(false); }
+  }
+
+  const connected = !!st?.connected;
+  const configured = !!st?.configured;
+  return (
+    <div style={{ padding: "14px 16px", border: connected ? "1px solid var(--line-1)" : "1px dashed var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 500 }}>Minha agenda Google</div>
+        <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>
+          suas calls (como closer) e integrações (como integrador) agendadas aparecem na SUA agenda pessoal do Google
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        {connected && <span className="chip pos" style={{ height: 22 }}>conectada · {st.account || "sua conta"}</span>}
+        {!connected && !configured && st && <span className="chip" style={{ height: 22 }}>indisponível no servidor</span>}
+        {configured && (
+          <button onClick={connect} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}>
+            <span style={{ fontSize: 11 }}>{connected ? "reconectar" : "Conectar minha conta"}</span>
+          </button>
+        )}
+        {connected && (
+          <button onClick={disconnect} disabled={busy} style={chromeBtnStyleSmall}>
+            <span style={{ fontSize: 11 }}>{busy ? "…" : "desconectar"}</span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function IntegrationsSettings({ s }) {
   const { refresh } = useData();
   const mpOn = !!window.SEED?.CONFIG?.mp?.configured;
@@ -732,6 +789,8 @@ function IntegrationsSettings({ s }) {
           )}
         </div>
       </div>
+
+      <MyGoogleCalendarCard />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
         {items.map(i => (

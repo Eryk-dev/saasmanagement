@@ -26,6 +26,7 @@ import { registerPitchRoutes } from "./routes.pitch.js";
 import { registerMetasRoutes } from "./routes.metas.js";
 import { registerFlashcardRoutes } from "./routes.flashcards.js";
 import { registerGoogleRoutes } from "./routes.google.js";
+import { syncPersonalCalendar } from "./google-user.js";
 import { makeMailer } from "./mailer.js";
 import { makeAnthropic } from "./anthropic.js";
 import { registerMetricsRoutes } from "./routes.metrics.js";
@@ -245,7 +246,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerAuthRoutes(app, repo);
   // Google Meet: conectar conta (OAuth) + criar call na agenda do closer.
   // Claude resume as calls (transcrição → timeline) quando há ANTHROPIC_API_KEY.
-  const googleClient = registerGoogleRoutes(app, repo, { google: opts.google, anthropic: anthropicClient });
+  const { client: googleClient, googleUser } = registerGoogleRoutes(app, repo, { google: opts.google, googleUser: opts.googleUser, anthropic: anthropicClient });
   // Mailer (e-mail dos disparos/sequências): hoje envia pela conta Google conectada.
   const mailerClient = opts.mailer || makeMailer({ google: googleClient });
   // Disparos: campanhas de e-mail + WhatsApp pros leads qualificados (ferramenta).
@@ -469,6 +470,12 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // pro lead de origem. Idempotente e best-effort: nunca quebra o PATCH.
     if (collection === "leads" && typeof req.body.stage === "string") {
       try { await convertWonLead(repo, updated, { metaCapi: metaCapiClient }); } catch { /* fail-open */ }
+    }
+    // Call/integração agendada, reagendada ou reatribuída → espelha na agenda
+    // PESSOAL do responsável (closer na call, integrator na integração) que
+    // conectou a própria conta Google. Best-effort: nunca quebra o PATCH.
+    if (collection === "leads" && ("callAt" in req.body || "closer" in req.body || "integrationAt" in req.body || "integrator" in req.body)) {
+      try { await syncPersonalCalendar(repo, googleUser, updated); } catch { /* fail-open */ }
     }
     if (collection === "subscriptions") {
       await syncCustomerArr(repo, updated.customer);
