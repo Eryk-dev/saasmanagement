@@ -83,7 +83,7 @@ export function registerPitchRoutes(app, repo, { anthropic } = {}) {
   app.get("/api/pitch/:saas/calls", async (req) => {
     const saas = req.params.saas;
     const all = (await repo.list("activities"))
-      .filter((a) => a && a.saas === saas && a.meta?.event === "call_summary" && a.meta?.summary)
+      .filter((a) => a && a.saas === saas && a.meta?.event === "call_summary" && a.meta?.summary && a.meta?.kind !== "integracao")
       .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0));
     // Uma linha por CALL: re-resumo (mesma call) não conta duas vezes. Dedup pelo
     // meetEventId (senão pelo lead), mantendo o resumo mais recente (já ordenado).
@@ -121,7 +121,7 @@ export function registerPitchRoutes(app, repo, { anthropic } = {}) {
 
     // Resumos de call do produto, mais recentes primeiro (janela de 60).
     const acts = (await repo.list("activities"))
-      .filter((a) => a && a.saas === saas && a.meta?.event === "call_summary" && a.meta?.summary)
+      .filter((a) => a && a.saas === saas && a.meta?.event === "call_summary" && a.meta?.summary && a.meta?.kind !== "integracao")
       .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0))
       .slice(0, 60);
     if (!acts.length) return reply.code(422).send({ error: "Ainda não há calls resumidas por IA neste produto pra analisar." });
