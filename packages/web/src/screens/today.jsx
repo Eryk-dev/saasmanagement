@@ -339,7 +339,10 @@ function TodayScreen({ onOpenLead }) {
                     </div>
                   )}
                   {rows.map((item, i) => (
-                    <QueueRow key={item.l.id} item={item} seq={i + 1} block={key} saasCfg={saasCfg} stageMeta={stageMeta}
+                    // Chave ÚNICA: uma call de confirmação vira DUAS tarefas (1h/10min)
+                    // do MESMO lead — sem o sufixo da janela as duas teriam key igual
+                    // (item.l.id) e o React duplicava/embaralhava as linhas.
+                    <QueueRow key={item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id} item={item} seq={i + 1} block={key} saasCfg={saasCfg} stageMeta={stageMeta}
                       onScript={() => setScriptItem(item)}
                       onClaim={() => claim(item)}
                     />
