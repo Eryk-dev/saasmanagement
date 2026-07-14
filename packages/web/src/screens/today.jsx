@@ -2,6 +2,7 @@ import React from "react";
 import { Avatar, EmptyState } from "../atoms.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { PageHead, Pill } from "../components/viz.jsx";
+import { ActivityComposer } from "../components/timeline.jsx";
 import { waLink, leadTier, leadScoreLabel } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
@@ -792,6 +793,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
   // saiu da última call, pra o closer conduzir o follow-up.
   const [acts, setActs] = useS(null);
   const [callSummary, setCallSummary] = useS(null);
+  const [actsReload, setActsReload] = useS(0); // bump refaz o fetch após anotar
   useE(() => {
     // Pré-visualização usa um lead fictício: não busca timeline (nem bate na API).
     if (preview) { setActs([]); return; }
@@ -810,7 +812,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
       })
       .catch(() => { if (alive) { setActs([]); setCallSummary(null); } });
     return () => { alive = false; };
-  }, [l.id]);
+  }, [l.id, actsReload]);
 
   const renderFala = (text) => scriptSegments(text, tokens).map((s, i) => {
     if (s.text != null) return <React.Fragment key={i}>{s.text}</React.Fragment>;
@@ -892,6 +894,15 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
                     </div>
                   ))}
                 </div>
+                {/* Observações · registrar contato: mesmo composer do drawer do
+                    pipeline (grava na coleção activities). Como é o MESMO dado, a
+                    anotação feita aqui aparece lá e vice-versa. Some no preview. */}
+                {!preview && (
+                  <div style={{ marginTop: 10 }}>
+                    <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>Observações · registrar contato</div>
+                    <ActivityComposer lead={l} onLogged={() => setActsReload((n) => n + 1)} />
+                  </div>
+                )}
                 <div style={{ marginTop: 8 }}>
                   <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 3 }}>Últimos contatos</div>
                   {acts === null && <div className="mono dim" style={{ fontSize: 11 }}>carregando…</div>}
