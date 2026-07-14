@@ -1076,6 +1076,18 @@ export function callBusyKeys(leads, closerId, selfId) {
   return busy;
 }
 
+// Horas ocupadas na agenda de um integrador: cada lead dele com integrationAt
+// marca a hora (a integração ocupa 1h). Ignora o próprio lead (reagendamento).
+export function integBusyKeys(leads, integratorId, selfId) {
+  const busy = new Set();
+  for (const o of leads || []) {
+    if (!integratorId || o.id === selfId || o.integrator !== integratorId || !o.integrationAt) continue;
+    const d = new Date(o.integrationAt);
+    if (Number.isFinite(d.getTime())) busy.add(cellKey(d));
+  }
+  return busy;
+}
+
 // Grade de agenda reutilizável: abas de dia (dias úteis) + slots de 1h. Marca
 // como ocupado (e desabilita) o que já está no `busy` do dono. Usada tanto pela
 // call quanto pelo follow-up — o valor escolhido volta em `slotVal` (YYYY-MM-DDTHH:00).
@@ -1191,7 +1203,21 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
 
   // Horas ocupadas na agenda do closer (cada call = 1h; ignora o próprio lead).
   // Vale pra call e pro follow-up: ambos marcam horário na agenda do closer.
-  const busy = (setup === "call" || setup === "followup") && closer ? callBusyKeys(leads, closer, lead.id) : new Set();
+  const busy = (setup === "call" || setup === "followup") && closer ? callBusyKeys(leads, closer, lead.id)
+    : setup === "integrator" && integrator ? integBusyKeys(leads, integrator, lead.id)
+    : new Set();
+
+  // Escolher um destino inicializa a agenda com o horário que já existe no lead
+  // (call/follow-up = callAt; integração = integrationAt), pra permitir reagendar.
+  const chooseDest = (d) => {
+    const next = dest?.stage === d.stage ? null : d;
+    setDest(next);
+    if (!next) return;
+    const st = setupType(next.kind);
+    const at = st === "integrator" ? (lead.integrationAt || "") : (st === "call" || st === "followup") ? (lead.callAt || "") : "";
+    setSlot(at);
+    setDay(at ? parseYMD(at.slice(0, 10)) : nextBusinessDays(1)[0]);
+  };
 
   const ready = !dest ? false
     : setup === "call" ? !!(closer && slot)
@@ -1209,7 +1235,10 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     // callAt (aparece na agenda, sem travar slots de venda) + nextActionAt (a
     // fila do "meu dia" vence exatamente nesse horário, não na cadência padrão).
     else if (setup === "followup") { patch.closer = closer; if (slot) { patch.callAt = slot; patch.nextActionAt = slot; } }
-    else if (setup === "integrator") patch.integrator = integrator;
+    // Integração: define o integrador e, se um horário foi escolhido na agenda,
+    // agenda a integração nele (integrationAt aparece na Agenda e replica na
+    // agenda pessoal do integrador que conectou o Google).
+    else if (setup === "integrator") { patch.integrator = integrator; if (slot) patch.integrationAt = slot; }
     else if (setup === "won") patch.amount = Number(amount);
     else if (setup === "loss") { patch.lostReason = reason; if (note.trim()) patch.lostNote = note.trim(); }
     onMove && onMove(patch);
@@ -1264,7 +1293,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
           const on = dest?.stage === d.stage;
           const color = stageMeta[d.stage]?.color || "var(--accent)";
           return (
-            <button key={d.stage} onClick={() => setDest(on ? null : d)} style={{
+            <button key={d.stage} onClick={() => chooseDest(d)} style={{
               display: "inline-flex", alignItems: "center", gap: 7, height: 30, padding: "0 12px", borderRadius: "var(--r-2)",
               background: on ? "var(--accent-soft)" : "var(--bg-1)",
               border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"),
@@ -1333,16 +1362,31 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
             )
           )}
 
-          {setup === "integrator" && (
-            <div style={{ maxWidth: 280 }}>
-              <label style={label}>Responsável pela {dest.kind === "integracao" ? "integração" : "entrega/CS"} *</label>
-              <select value={integrator} onChange={(e) => setIntegrator(e.target.value)} style={fieldStyle}>
-                <option value="">— escolher integrador —</option>
-                {integrators.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
-              </select>
-              {lead.closer && <div className="mono dim" style={{ fontSize: 10.5, marginTop: 5 }}>closer da venda: {displayName(lead.closer)} (fica registrado)</div>}
-            </div>
-          )}
+          {setup === "integrator" && (() => {
+            const integLabel = dest.kind === "integracao" ? "integração" : "entrega/CS";
+            return (
+              <div>
+                <div style={{ maxWidth: 280 }}>
+                  <label style={label}>Responsável pela {integLabel} *</label>
+                  <select value={integrator} onChange={(e) => { setIntegrator(e.target.value); setSlot(""); }} style={fieldStyle}>
+                    <option value="">— escolher integrador —</option>
+                    {integrators.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
+                  </select>
+                  {lead.closer && <div className="mono dim" style={{ fontSize: 10.5, marginTop: 5 }}>closer da venda: {displayName(lead.closer)} (fica registrado)</div>}
+                </div>
+                {integrator && (
+                  <div style={{ marginTop: 14 }}>
+                    <div className="mono" style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
+                      Quando fazer a {integLabel} · agenda de {displayName(integrator)}
+                    </div>
+                    <SlotGrid days={days} day={day} setDay={setDay} slot={slot} setSlot={setSlot} busy={busy} />
+                    {slot && <div className="mono" style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 8 }}>{integLabel[0].toUpperCase() + integLabel.slice(1)}: {slotFmt(slot)} · {displayName(integrator)}</div>}
+                    <div className="mono dim" style={{ fontSize: 10, marginTop: 6 }}>entra na agenda nesse horário e replica na agenda pessoal do integrador (se ele conectou o Google). Sem horário, só move pra {integLabel}.</div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {setup === "won" && (
             <div style={{ maxWidth: 220 }}>
