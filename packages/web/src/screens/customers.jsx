@@ -5,6 +5,7 @@ import { PageHead, Card, Pill } from "../components/viz.jsx";
 import { EmptyState, PrimaryButton, RowActions } from "../atoms.jsx";
 import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/milestones.js";
 import { ActivityList } from "../components/timeline.jsx";
+import { CallSummaryCard } from "./today.jsx";
 import { SubscriptionsScreen } from "./subscriptions.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 // Clientes — a base ativa do produto (estilo Attio: tabela + painel de detalhe
@@ -263,16 +264,23 @@ function CustomerHistory({ customer }) {
     api.listActivities(customer.leadId).then((a) => alive && setActs(a)).catch(() => alive && setActs([]));
     return () => { alive = false; };
   }, [customer?.leadId]);
+  // Último resumo (integração ou venda) em card rico, fora da timeline abaixo.
+  const callSummary = React.useMemo(() => {
+    const cs = (acts || []).filter((x) => x.meta?.event === "call_summary" && x.meta?.summary).sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0))[0];
+    return cs ? { ...cs.meta.summary, recordingUrl: cs.meta.recordingUrl || "", kind: cs.meta.kind || "call" } : null;
+  }, [acts]);
   if (!customer?.leadId || (acts !== null && acts.length === 0)) return null;
   const shown = expanded ? acts : (acts || []).slice(0, 10);
+  const timelineActs = shown.filter((a) => !(a.type === "system" && a.meta?.event === "call_summary"));
   return (
     <div style={{ padding: "12px 16px" }}>
+      {callSummary && <div style={{ marginBottom: 12 }}><CallSummaryCard summary={callSummary} phone={customer.phone || ""} /></div>}
       <div className="mono" style={{ fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
         Histórico do funil
       </div>
       {acts === null
         ? <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>carregando…</div>
-        : <ActivityList activities={shown} compact />}
+        : <ActivityList activities={timelineActs} compact />}
       {acts && acts.length > 10 && !expanded && (
         <button onClick={() => setExpanded(true)} className="mono" style={{ fontSize: 11, color: "var(--accent)", padding: "6px 0" }}>
           ver tudo ({acts.length})

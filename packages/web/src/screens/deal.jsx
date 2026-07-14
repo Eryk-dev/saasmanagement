@@ -91,7 +91,7 @@ function LeadDetail({ lead: initial, onClose }) {
     const cs = (activities || [])
       .filter((x) => x.meta?.event === "call_summary" && x.meta?.summary)
       .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0))[0];
-    return cs ? { ...cs.meta.summary, recordingUrl: cs.meta.recordingUrl || "" } : null;
+    return cs ? { ...cs.meta.summary, recordingUrl: cs.meta.recordingUrl || "", kind: cs.meta.kind || "call" } : null;
   }, [activities]);
 
   // A timeline NÃO repete o resumo de call: ele já vira o card acima (bloco único
@@ -459,11 +459,64 @@ function LeadDetail({ lead: initial, onClose }) {
             </div>
           )}
           {kind === "integracao" && (
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span className="mono dim" style={rowLabel}>Integração</span>
-              <input type="datetime-local" value={lead.integrationAt || ""} onChange={(e) => patch({ integrationAt: e.target.value })}
-                style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
-            </div>
+            <>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span className="mono dim" style={rowLabel}>Integração</span>
+                <input type="datetime-local" value={lead.integrationAt || ""} onChange={(e) => patch({ integrationAt: e.target.value })}
+                  style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
+              </div>
+              {/* Call de vídeo da integração: Meet PRÓPRIO (não o da venda) no
+                  horário da integração; depois vira resumo de onboarding. */}
+              <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0 }}>
+                <span className="mono dim" style={rowLabel}>Vídeo integração</span>
+                {lead.integrationCallUrl ? (
+                  <>
+                    <a href={lead.integrationCallUrl} target="_blank" rel="noopener noreferrer" className="mono"
+                      style={{ fontSize: 11, color: "var(--accent)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }} title={lead.integrationCallUrl}>
+                      {lead.integrationCallUrl.replace("https://", "")}
+                    </a>
+                    <button className="mono dim" style={{ fontSize: 11, flexShrink: 0 }} title="Copiar link"
+                      onClick={() => { try { navigator.clipboard.writeText(lead.integrationCallUrl); } catch { window.prompt("Link da integração:", lead.integrationCallUrl); } }}>copiar</button>
+                    {wa && (
+                      <a className="mono" style={{ fontSize: 11, color: "#128c4b", textDecoration: "none", flexShrink: 0 }}
+                        href={`${wa}?text=${encodeURIComponent(`Oi${lead.name ? " " + String(lead.name).trim().split(/\s+/)[0] : ""}! Aqui é da ${saasCfg?.name || "equipe"}. Nossa call de integração vai ser por este link: ${lead.integrationCallUrl}`)}`}
+                        target="_blank" rel="noopener noreferrer" title="Enviar o link pro cliente no WhatsApp">mandar no Whats ↗</a>
+                    )}
+                    {lead.integrationCallUrl.includes("meet.google.com") && window.SEED?.CONFIG?.ai?.configured && (
+                      <button className="mono" style={{ fontSize: 11, flexShrink: 0, color: "var(--accent)" }}
+                        title="Buscar a transcrição da integração no Google e gerar o resumo de onboarding"
+                        onClick={async (ev) => {
+                          const btn = ev.currentTarget; btn.disabled = true; btn.textContent = "resumindo…";
+                          try {
+                            let r = await api.callSummary(lead.id, false, "integracao");
+                            if (!r.ok && r.reason === "already_done" && window.confirm("Essa integração já tem resumo. Gerar de novo?")) r = await api.callSummary(lead.id, true, "integracao");
+                            if (r.ok) { refetchTimeline?.(); window.alert(`Resumo da integração pronto ✓ Cliente: ${r.summary?.sentimento || "?"}.`); }
+                            else if (r.reason === "transcript_not_ready") window.alert("A transcrição ainda não está pronta no Google. A call já terminou? Transcrição estava ligada? Tenta de novo em alguns minutos (o cockpit também tenta sozinho a cada 10 min).");
+                            else if (r.reason) window.alert(`Não deu: ${r.reason}`);
+                          } catch (e) { window.alert(e.message || "Falha ao resumir a integração."); }
+                          finally { btn.disabled = false; btn.textContent = "✨ resumir integração"; }
+                        }}>✨ resumir integração</button>
+                    )}
+                  </>
+                ) : (
+                  window.SEED?.CONFIG?.google?.connected && (
+                    <button
+                      onClick={async () => {
+                        if (!lead.integrationAt) { window.alert("Marque a data e hora da integração primeiro (campo acima)."); return; }
+                        try {
+                          const r = await api.createMeet(lead.id, { kind: "integracao" });
+                          dirty.current = true;
+                          setLead((prev) => ({ ...prev, integrationCallUrl: r.callUrl, integrationMeetEventId: r.eventId }));
+                        } catch (e) { window.alert(e.message || "Falha ao criar o Meet da integração."); }
+                      }}
+                      title="Cria um Meet na agenda no horário da integração, com gravação e transcrição automáticas (resumo de onboarding depois)"
+                      style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 11.5, fontWeight: 600 }}>
+                      🎥 criar Meet da integração
+                    </button>
+                  )
+                )}
+              </div>
+            </>
           )}
         </div>
 
