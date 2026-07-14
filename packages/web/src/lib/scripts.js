@@ -443,6 +443,11 @@ const CHECKLIST_ORDER = ["niche", "company", "accounts", "listings", "plan_expan
 export function scriptChecklist(saasCfg, lead) {
   const qs = saasCfg?.leadQuestions || [];
   const byKey = Object.fromEntries(qs.map((q) => [q.key, q]));
+  // "Nome da loja / empresa" é campo de venda B2B (LeverAds vende pra lojista, o
+  // SDR pergunta na ligação). Só entra quando o produto usa o formulário estilo
+  // LeverAds (tem nicho/contas/anúncios...); produto B2C (ex.: UniqueKids, que
+  // vende pra mãe) não mostra esse campo no checklist do roteiro.
+  const wantsCompany = ["niche", "accounts", "listings", "plan_expand", "staff"].some((k) => byKey[k]);
   const fromQuestion = (q) => ({
     key: q.key, label: q.label,
     type: (q.options || []).length ? "select" : "text",
@@ -455,7 +460,7 @@ export function scriptChecklist(saasCfg, lead) {
   for (const k of CHECKLIST_ORDER) {
     seen.add(k);
     if (k === "company") {
-      items.push({ key: "company", label: "Nome da loja / empresa", type: "text", options: [], value: lead?.company || "", raw: lead?.company || "" });
+      if (wantsCompany) items.push({ key: "company", label: "Nome da loja / empresa", type: "text", options: [], value: lead?.company || "", raw: lead?.company || "" });
     } else if (byKey[k]) {
       items.push(fromQuestion(byKey[k]));
     }
