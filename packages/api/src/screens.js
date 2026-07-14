@@ -15,7 +15,7 @@
 
 export const SCREEN_IDS = [
   "overview", "today", "pipeline", "customers", "metrics", "expenses",
-  "social", "forms", "proposals", "creative", "offers", "disparos", "calls", "metas", "training", "tasks", "settings",
+  "social", "forms", "proposals", "creative", "offers", "disparos", "whatsapp", "calls", "metas", "training", "tasks", "settings",
 ];
 
 export const sanitizeScreens = (x) =>
@@ -64,6 +64,7 @@ const ROUTE_SCREENS = [
   ["/api/sequences", ["disparos"]],      // sequências de nutrição (drip): CRUD + enroll/wa-sent/metrics/run
   ["/api/sequence_enrollments", ["disparos"]], // progresso das sequências
   ["/api/drip_templates", ["disparos"]], // biblioteca de conteúdo dos passos
+  ["/api/whatsapp", ["whatsapp"]],       // inbox de conversas (threads/messages/send/read); webhook /api/webhooks/whatsapp fica aberto
   ["/api/pitch", ["calls", "settings"]], // análise de pitch (calls) + botão "IA das calls" em Ajustes → Scripts
 
   ["/api/metas", ["metas"]],             // metas de desempenho por vaga/pessoa

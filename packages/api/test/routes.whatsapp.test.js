@@ -1,7 +1,7 @@
 // WhatsApp Cloud API — client (sendText/verifyWebhook/digits + erro de 24h) e
-// rotas (verificação do webhook, recebimento → activity no lead casado por
-// telefone, dedup, status, número sem lead → wa_messages, envio pelo drawer).
-// Tudo offline com fetch/cliente mockado.
+// rotas do inbox (webhook, recebimento → thread+message casados por telefone,
+// dedup, status, número sem lead vira thread órfã, listar/abrir/marcar lida,
+// enviar pela conversa e pelo lead). Tudo offline com fetch/cliente mockado.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -32,7 +32,6 @@ test("client: sendText posta no número certo com bearer e verifyWebhook confere
   const f = okFetch();
   const wa = makeWhatsapp({ fetch: f, token: "tok", phoneNumberId: "PN1", verifyToken: "vt" });
   assert.equal(wa.configured(), true);
-
   const { messageId } = await wa.sendText("41992516545", "oi");
   assert.equal(messageId, "wamid.OUT1");
   const c = f.calls[0];
@@ -40,7 +39,6 @@ test("client: sendText posta no número certo com bearer e verifyWebhook confere
   assert.equal(c.init.headers.authorization, "Bearer tok");
   assert.equal(c.payload.to, "5541992516545");
   assert.equal(c.payload.text.body, "oi");
-
   assert.equal(wa.verifyWebhook("subscribe", "vt", "CHAL"), "CHAL");
   assert.equal(wa.verifyWebhook("subscribe", "errado", "CHAL"), null);
 });
@@ -52,15 +50,15 @@ test("client: erro da Meta (fora das 24h) propaga status/code", async () => {
 });
 
 // Cliente fake pras rotas (sem rede): registra o que foi enviado.
-function fakeWa() {
-  const sent = [];
+function fakeWa(opts = {}) {
+  const sent = [], read = [];
   return {
-    sent,
-    configured: () => true,
+    sent, read,
+    configured: () => opts.configured !== false,
     verifyWebhook: (mode, tok, ch) => (mode === "subscribe" && tok === "vt" ? String(ch) : null),
-    async sendText(to, text) { sent.push({ to, text }); return { messageId: "wamid.SENT" }; },
+    async sendText(to, text) { if (opts.throw) throw Object.assign(new Error("re-engagement"), { code: 131047 }); sent.push({ to, text }); return { messageId: "wamid.SENT" + sent.length }; },
     async sendTemplate() { return { messageId: "wamid.T" }; },
-    async markRead() {},
+    async markRead(id) { read.push(id); },
   };
 }
 
@@ -70,6 +68,10 @@ async function appWith(repo, wa) {
   await app.ready();
   return app;
 }
+
+const inMsg = (from, id, body, ts = "1720000000") => ({
+  entry: [{ changes: [{ value: { contacts: [{ profile: { name: "Cliente" } }], messages: [{ from, id, timestamp: ts, type: "text", text: { body } }] } }] }],
+});
 
 test("webhook GET: verifica com o token e devolve o challenge; erra → 403", async () => {
   const app = await appWith(makeMemRepo(), fakeWa());
@@ -81,76 +83,99 @@ test("webhook GET: verifica com o token e devolve o challenge; erra → 403", as
   await app.close();
 });
 
-test("webhook POST: mensagem recebida vira activity no lead casado por telefone (dedup)", async () => {
+test("webhook POST: recebida vira thread+message, casa o lead por telefone, dedup e não-lido", async () => {
   const repo = makeMemRepo();
-  await repo.create("leads", { id: "ld1", saas: "leverads", phone: "41992516545", stage: "novo" });
+  await repo.create("leads", { id: "ld1", saas: "leverads", phone: "41992516545", name: "Fulano", stage: "novo" });
   const app = await appWith(repo, fakeWa());
 
-  const payload = {
-    entry: [{ changes: [{ value: {
-      contacts: [{ profile: { name: "Cliente" } }],
-      messages: [{ from: "5541992516545", id: "wamid.IN1", timestamp: "1720000000", type: "text", text: { body: "quero saber mais" } }],
-    } }] }],
-  };
-  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload });
-  // reentrega (Meta re-tenta) não duplica
-  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload });
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inMsg("5541992516545", "wamid.IN1", "quero saber mais") });
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inMsg("5541992516545", "wamid.IN1", "quero saber mais") }); // reentrega
 
-  const acts = (await repo.list("activities")).filter((a) => a.type === "whatsapp");
-  assert.equal(acts.length, 1);
-  assert.equal(acts[0].lead, "ld1");
-  assert.equal(acts[0].meta.direction, "in");
-  assert.equal(acts[0].meta.waMessageId, "wamid.IN1");
-  assert.equal(acts[0].text, "quero saber mais");
-  const lead = await repo.get("leads", "ld1");
-  assert.equal(lead.lastActivityType, "whatsapp");
+  const msgs = await repo.list("wa_messages");
+  assert.equal(msgs.length, 1);
+  assert.equal(msgs[0].direction, "in");
+  assert.equal(msgs[0].leadId, "ld1");
+  const thr = await repo.get("wa_threads", "5541992516545");
+  assert.equal(thr.unread, 1);
+  assert.equal(thr.leadId, "ld1");
+  assert.equal(thr.lastText, "quero saber mais");
+
+  // listThreads enriquece com nome do lead
+  const list = (await (await app.inject({ method: "GET", url: "/api/whatsapp/threads" })).json()).threads;
+  assert.equal(list.length, 1);
+  assert.equal(list[0].name, "Fulano");
+  assert.equal(list[0].unread, 1);
   await app.close();
 });
 
-test("webhook POST: número sem lead cai em wa_messages; status atualiza a activity enviada", async () => {
+test("webhook POST: número sem lead vira thread órfã; status atualiza a mensagem enviada", async () => {
   const repo = makeMemRepo();
-  await repo.create("leads", { id: "ld1", saas: "leverads", phone: "41000000000" });
-  await repo.create("activities", { id: "ac_x", lead: "ld1", type: "whatsapp", text: "ping", meta: { direction: "out", waMessageId: "wamid.OUT9", status: "sent" } });
   const app = await appWith(repo, fakeWa());
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inMsg("5599999999999", "wamid.INX", "sou novo") });
+  const thr = await repo.get("wa_threads", "5599999999999");
+  assert.equal(thr.leadId, null);
+  assert.equal(thr.unread, 1);
 
-  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: {
-    entry: [{ changes: [{ value: { messages: [{ from: "5599999999999", id: "wamid.INX", timestamp: "1720000000", type: "text", text: { body: "sou novo" } }] } }] }],
-  } });
-  const orphan = await repo.get("wa_messages", "wamid.INX");
-  assert.equal(orphan.text, "sou novo");
-  assert.equal(orphan.from, "5599999999999");
-
-  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: {
-    entry: [{ changes: [{ value: { statuses: [{ id: "wamid.OUT9", status: "read" }] } }] }],
-  } });
-  const act = await repo.get("activities", "ac_x");
-  assert.equal(act.meta.status, "read");
+  // manda uma saída e depois um status read pra ela
+  await repo.create("wa_messages", { id: "wamid.OUT9", thread: "5599999999999", direction: "out", text: "ping", status: "sent" });
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: { entry: [{ changes: [{ value: { statuses: [{ id: "wamid.OUT9", status: "read" }] } }] }] } });
+  assert.equal((await repo.get("wa_messages", "wamid.OUT9")).status, "read");
   await app.close();
 });
 
-test("POST /api/leads/:id/whatsapp: envia, loga activity out e devolve messageId", async () => {
+test("GET thread + marcar lida zera o não-lido e dá o visto na Cloud API", async () => {
+  const repo = makeMemRepo();
+  const wa = fakeWa();
+  const app = await appWith(repo, wa);
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inMsg("5541988887777", "wamid.INa", "oi") });
+
+  const opened = await (await app.inject({ method: "GET", url: "/api/whatsapp/threads/5541988887777" })).json();
+  assert.equal(opened.messages.length, 1);
+  assert.equal(opened.messages[0].text, "oi");
+
+  await app.inject({ method: "POST", url: "/api/whatsapp/threads/5541988887777/read" });
+  assert.equal((await repo.get("wa_threads", "5541988887777")).unread, 0);
+  assert.deepEqual(wa.read, ["wamid.INa"]);
+  await app.close();
+});
+
+test("POST /threads/:id/send: envia pela conversa e grava a saída", async () => {
+  const repo = makeMemRepo();
+  const wa = fakeWa();
+  const app = await appWith(repo, wa);
+  const res = await app.inject({ method: "POST", url: "/api/whatsapp/threads/5541988887777/send", payload: { text: "bom dia!" } });
+  assert.equal(res.statusCode, 200);
+  assert.equal(wa.sent[0].to, "5541988887777");
+  const msgs = await repo.list("wa_messages");
+  assert.equal(msgs[0].direction, "out");
+  assert.equal(msgs[0].text, "bom dia!");
+  const thr = await repo.get("wa_threads", "5541988887777");
+  assert.equal(thr.lastDir, "out");
+  await app.close();
+});
+
+test("POST /leads/:id/whatsapp: envia, grava out com leadId; sem telefone → 400; inexistente → 404", async () => {
   const repo = makeMemRepo();
   await repo.create("leads", { id: "ld1", saas: "leverads", phone: "41992516545" });
+  await repo.create("leads", { id: "no-phone", saas: "leverads" });
   const wa = fakeWa();
   const app = await appWith(repo, wa);
 
-  const res = await app.inject({ method: "POST", url: "/api/leads/ld1/whatsapp", payload: { text: "bom dia!" } });
+  const res = await app.inject({ method: "POST", url: "/api/leads/ld1/whatsapp", payload: { text: "oi lead" } });
   assert.equal(res.statusCode, 200);
-  const out = res.json();
-  assert.equal(out.messageId, "wamid.SENT");
-  assert.equal(wa.sent[0].to, "41992516545");
-  const acts = (await repo.list("activities")).filter((a) => a.type === "whatsapp");
-  assert.equal(acts.length, 1);
-  assert.equal(acts[0].meta.direction, "out");
-  assert.equal(acts[0].text, "bom dia!");
+  const msgs = (await repo.list("wa_messages")).filter((m) => m.direction === "out");
+  assert.equal(msgs[0].leadId, "ld1");
+  assert.ok(res.json().messageId);
+
+  assert.equal((await app.inject({ method: "POST", url: "/api/leads/no-phone/whatsapp", payload: { text: "x" } })).statusCode, 400);
+  assert.equal((await app.inject({ method: "POST", url: "/api/leads/nope/whatsapp", payload: { text: "x" } })).statusCode, 404);
   await app.close();
 });
 
-test("POST /api/leads/:id/whatsapp: lead sem telefone → 400; lead inexistente → 404", async () => {
+test("envio fora da janela de 24h → 409 (precisa de template)", async () => {
   const repo = makeMemRepo();
-  await repo.create("leads", { id: "no-phone", saas: "leverads" });
-  const app = await appWith(repo, fakeWa());
-  assert.equal((await app.inject({ method: "POST", url: "/api/leads/no-phone/whatsapp", payload: { text: "x" } })).statusCode, 400);
-  assert.equal((await app.inject({ method: "POST", url: "/api/leads/nope/whatsapp", payload: { text: "x" } })).statusCode, 404);
+  const app = await appWith(repo, fakeWa({ throw: true }));
+  const res = await app.inject({ method: "POST", url: "/api/whatsapp/threads/5541988887777/send", payload: { text: "oi" } });
+  assert.equal(res.statusCode, 409);
   await app.close();
 });

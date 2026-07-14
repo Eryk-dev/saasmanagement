@@ -51,9 +51,16 @@ export function leadAge(lead) {
 // dígitos; número local brasileiro (≤11 dígitos, com DDD) recebe o DDI 55.
 // Retorna null quando não há dígitos — a UI esconde o atalho nesse caso.
 export function waLink(phone) {
-  if (!phone) return null;
+  const d = waDigits(phone);
+  return d ? `https://wa.me/${d}` : null;
+}
+
+// Só os dígitos do número (E.164 sem +), mesma normalização do backend
+// (digits em whatsapp.js): número local BR (≤11 dígitos) ganha o DDI 55.
+// É a chave da conversa no inbox (id do thread).
+export function waDigits(phone) {
+  if (!phone) return "";
   let d = String(phone).replace(/\D/g, "");
-  if (!d) return null;
-  if (d.length <= 11) d = "55" + d;
-  return `https://wa.me/${d}`;
+  if (d && d.length <= 11 && !d.startsWith("55")) d = "55" + d;
+  return d;
 }

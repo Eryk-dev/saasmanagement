@@ -509,9 +509,9 @@ function LeadDetail({ lead: initial, onClose }) {
               </div>
             </div>
 
-        {/* Chat de WhatsApp (Cloud API): o SDR conversa com o cliente aqui e
-            "liga" (deep-link) sem sair do cockpit. */}
-        <WhatsappChat lead={lead} activities={activities} onSent={refetchTimeline} />
+        {/* Chat de WhatsApp (Cloud API): atalho contextual da conversa (a mesma
+            da tela #whatsapp). "Ligar" abre a conversa no app. */}
+        <WhatsappChat lead={lead} />
 
         {/* Timeline: TODOS os pontos de contato + eventos automáticos (o histórico
             do lead). comments[] antigos aparecem mesclados como notas. */}

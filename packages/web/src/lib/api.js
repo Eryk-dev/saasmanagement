@@ -90,8 +90,14 @@ export const api = {
   googleUserDisconnect: () => req("POST", "/api/google/user/disconnect"),
   // body opcional: { guests: [emails] } ou { email } — convidados extras da call.
   createMeet: (leadId, body) => req("POST", `/api/leads/${leadId}/meet`, body),
-  // WhatsApp (Cloud API): envia mensagem pro lead (vira activity `whatsapp` out).
+  // WhatsApp (Cloud API): envia mensagem pelo drawer do lead.
   sendWhatsapp: (leadId, text) => req("POST", `/api/leads/${leadId}/whatsapp`, { text }),
+  // Inbox de WhatsApp: lista de conversas, mensagens de uma conversa, marcar
+  // lida e enviar pela conversa (id = número em dígitos, com ou sem lead).
+  waThreads: () => req("GET", "/api/whatsapp/threads"),
+  waThread: (id) => req("GET", `/api/whatsapp/threads/${id}`),
+  waThreadRead: (id) => req("POST", `/api/whatsapp/threads/${id}/read`, {}),
+  waThreadSend: (id, text) => req("POST", `/api/whatsapp/threads/${id}/send`, { text }),
   callSummary: (leadId, force = false) => req("POST", `/api/leads/${leadId}/call-summary`, { force }),
   // Insight de pitch: analisa os resumos das calls do produto e sugere uma
   // versão melhor de um roteiro. body: { scriptKey, scriptLabel, currentScript }.
