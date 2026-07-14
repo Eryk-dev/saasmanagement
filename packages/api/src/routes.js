@@ -27,6 +27,7 @@ import { registerMetasRoutes } from "./routes.metas.js";
 import { registerFlashcardRoutes } from "./routes.flashcards.js";
 import { registerGoogleRoutes } from "./routes.google.js";
 import { syncPersonalCalendar } from "./google-user.js";
+import { registerWhatsappRoutes } from "./routes.whatsapp.js";
 import { makeMailer } from "./mailer.js";
 import { makeAnthropic } from "./anthropic.js";
 import { registerMetricsRoutes } from "./routes.metrics.js";
@@ -255,6 +256,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerCampaignRoutes(app, repo, { anthropic: anthropicClient, google: googleClient, mailer: mailerClient });
   // Sequências de nutrição (drip): rotas de inscrição/avanço/métricas + tick manual.
   registerSequenceRoutes(app, repo, { mailer: mailerClient });
+  // WhatsApp (Cloud API): webhook (recebe) + envio pelo drawer do lead. O SDR
+  // conversa com o cliente direto no cockpit; as mensagens viram timeline.
+  const whatsappClient = registerWhatsappRoutes(app, repo, { whatsapp: opts.whatsapp });
   // Poller de resumos (index.js) usa os MESMOS clients das rotas.
   if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, anthropic: anthropicClient, mailer: mailerClient });
 
@@ -332,6 +336,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         google: { configured: googleClient.configured(), connected: await googleClient.connected(), account: await googleClient.account(), gmail: await googleClient.gmailReady() },
         ai: { configured: anthropicClient.configured() },
         discord: { configured: discordClient.configured() },
+        whatsapp: { configured: whatsappClient.configured() },
       },
     };
   });
