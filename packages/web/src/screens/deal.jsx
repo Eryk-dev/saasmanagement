@@ -2,6 +2,7 @@ import React from "react";
 import { Avatar } from "../atoms.jsx";
 import { ProposalActions } from "../components/ProposalActions.jsx";
 import { ActivityList, ActivityComposer } from "../components/timeline.jsx";
+import { WhatsappChat } from "../components/whatsapp-chat.jsx";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 import { leadScoreLabel, leadAge, waLink, leadTier } from "../lib/ui.js";
 import { stageKind, lossReasonLabel, nextTouchPill, workableStages } from "../lib/funnel.js";
@@ -507,6 +508,10 @@ function LeadDetail({ lead: initial, onClose }) {
                 ))}
               </div>
             </div>
+
+        {/* Chat de WhatsApp (Cloud API): o SDR conversa com o cliente aqui e
+            "liga" (deep-link) sem sair do cockpit. */}
+        <WhatsappChat lead={lead} activities={activities} onSent={refetchTimeline} />
 
         {/* Timeline: TODOS os pontos de contato + eventos automáticos (o histórico
             do lead). comments[] antigos aparecem mesclados como notas. */}
