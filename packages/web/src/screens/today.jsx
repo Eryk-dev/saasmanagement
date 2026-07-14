@@ -575,7 +575,13 @@ export function CallSummaryCard({ summary, phone }) {
   if (!summary) return null;
   const box = { border: "1px solid var(--accent-line)", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--accent-soft)" };
   const kick = { fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" };
-  const tone = summary.temperatura === "quente" ? "neg" : summary.temperatura === "morno" ? "warn" : "mut";
+  // Integração (onboarding) tem estrutura própria: sentimento no lugar da
+  // temperatura, configurado/pendências/próximos passos no lugar de objeções.
+  const integ = summary.kind === "integracao" || !!summary.sentimento;
+  const badge = integ ? summary.sentimento : summary.temperatura;
+  const tone = integ
+    ? (summary.sentimento === "satisfeito" ? "pos" : summary.sentimento === "em risco" ? "neg" : "warn")
+    : (summary.temperatura === "quente" ? "neg" : summary.temperatura === "morno" ? "warn" : "mut");
   const wa = phone ? waLink(phone) : null;
   const msg = summary.followup?.whatsapp || "";
   const waHref = wa ? (msg ? `${wa}?text=${encodeURIComponent(msg)}` : wa) : null;
@@ -584,33 +590,63 @@ export function CallSummaryCard({ summary, phone }) {
   return (
     <div style={box}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-        <span className="mono" style={{ ...kick, color: "var(--accent)" }}>Resumo da última call · IA</span>
-        <Pill tone={tone}>{summary.temperatura}</Pill>
+        <span className="mono" style={{ ...kick, color: "var(--accent)" }}>{integ ? "Resumo da integração · IA" : "Resumo da última call · IA"}</span>
+        {badge && <Pill tone={tone}>{badge}</Pill>}
         {summary.recordingUrl && <a href={summary.recordingUrl} target="_blank" rel="noopener noreferrer" className="mono" style={{ fontSize: 10.5, color: "var(--accent)" }}>🎥 gravação</a>}
       </div>
       {summary.resumo && <div style={{ ...line, marginBottom: 6 }}>{summary.resumo}</div>}
-      {summary.objecoes?.length > 0 && (
-        <div style={{ marginBottom: 6 }}>
-          <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>Objeções</div>
-          {summary.objecoes.map((o, i) => (
-            <div key={i} style={{ marginBottom: 4 }}>
-              <div style={{ ...line, display: "flex", gap: 6, alignItems: "baseline" }}>
-                <span className="mono" style={{ color: o.resolvida ? "var(--pos)" : "var(--neg)", flexShrink: 0, fontSize: 10 }}>{o.resolvida ? "tratada" : "em aberto"}</span>
-                <span style={{ fontWeight: 500, minWidth: 0 }}>{o.objecao}</span>
-              </div>
-              {o.comoFoiTratada && <div className="dim" style={{ fontSize: 11, lineHeight: 1.4, paddingLeft: 2 }}>{o.comoFoiTratada}</div>}
+      {integ ? (
+        <>
+          {summary.configurado?.length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>Configurado</div>
+              {summary.configurado.map((c, i) => <div key={i} style={line}>• {c}</div>)}
             </div>
-          ))}
-        </div>
-      )}
-      {summary.compromissos?.length > 0 && (
-        <div style={{ marginBottom: 6 }}>
-          <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>Combinados</div>
-          {summary.compromissos.map((c, i) => <div key={i} style={line}>• {c}</div>)}
-        </div>
+          )}
+          {summary.pendencias?.length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>Pendências</div>
+              {summary.pendencias.map((p, i) => (
+                <div key={i} style={{ ...line, display: "flex", gap: 6, alignItems: "baseline" }}>
+                  <span className="mono" style={{ color: "var(--warn)", flexShrink: 0, fontSize: 10 }}>{p.responsavel || "?"}</span>
+                  <span style={{ minWidth: 0 }}>{p.item}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {summary.proximosPassos?.length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>Próximos passos</div>
+              {summary.proximosPassos.map((p, i) => <div key={i} style={line}>• {p}</div>)}
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          {summary.objecoes?.length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>Objeções</div>
+              {summary.objecoes.map((o, i) => (
+                <div key={i} style={{ marginBottom: 4 }}>
+                  <div style={{ ...line, display: "flex", gap: 6, alignItems: "baseline" }}>
+                    <span className="mono" style={{ color: o.resolvida ? "var(--pos)" : "var(--neg)", flexShrink: 0, fontSize: 10 }}>{o.resolvida ? "tratada" : "em aberto"}</span>
+                    <span style={{ fontWeight: 500, minWidth: 0 }}>{o.objecao}</span>
+                  </div>
+                  {o.comoFoiTratada && <div className="dim" style={{ fontSize: 11, lineHeight: 1.4, paddingLeft: 2 }}>{o.comoFoiTratada}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+          {summary.compromissos?.length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>Combinados</div>
+              {summary.compromissos.map((c, i) => <div key={i} style={line}>• {c}</div>)}
+            </div>
+          )}
+        </>
       )}
       {summary.followup?.nota && (
-        <div style={{ ...line, marginBottom: msg ? 6 : 0 }}><span className="mono dim" style={{ ...kick, fontSize: 10 }}>Próximo passo</span> · {summary.followup.nota}</div>
+        <div style={{ ...line, marginBottom: msg ? 6 : 0 }}><span className="mono dim" style={{ ...kick, fontSize: 10 }}>{integ ? "Acompanhamento" : "Próximo passo"}</span> · {summary.followup.nota}</div>
       )}
       {msg && (
         <div style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: "7px 9px" }}>
@@ -770,7 +806,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
           .slice(0, 4));
         const cs = all.filter((x) => x.meta?.event === "call_summary" && x.meta?.summary)
           .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0))[0];
-        setCallSummary(cs ? { ...cs.meta.summary, recordingUrl: cs.meta.recordingUrl || "" } : null);
+        setCallSummary(cs ? { ...cs.meta.summary, recordingUrl: cs.meta.recordingUrl || "", kind: cs.meta.kind || "call" } : null);
       })
       .catch(() => { if (alive) { setActs([]); setCallSummary(null); } });
     return () => { alive = false; };
