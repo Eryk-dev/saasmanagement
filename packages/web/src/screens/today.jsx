@@ -1053,6 +1053,11 @@ function nextBusinessDays(n) {
 }
 const cellKey = (d) => { const p = (x) => String(x).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}`; };
 const slotVal = (day, hour) => { const p = (x) => String(x).padStart(2, "0"); return `${day.getFullYear()}-${p(day.getMonth() + 1)}-${p(day.getDate())}T${p(hour)}:00`; };
+// YYYY-MM-DD local (pro <input type="date"> e comparação de dia); parseYMD volta
+// pra Date em hora LOCAL (new Date("YYYY-MM-DD") seria UTC → dia anterior no BRT).
+const ymd = (d) => { const p = (x) => String(x).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
+const sameYMD = (a, b) => ymd(a) === ymd(b);
+const parseYMD = (s) => { const [y, m, dd] = String(s).split("-").map(Number); const d = new Date(); d.setFullYear(y, (m || 1) - 1, dd || 1); d.setHours(0, 0, 0, 0); return d; };
 
 // Horas já ocupadas na agenda de um closer: cada lead dele com callAt marca a
 // hora daquele slot (a call ocupa 1h). Ignora o próprio lead (reagendamento) e
@@ -1074,25 +1079,42 @@ export function callBusyKeys(leads, closerId, selfId) {
 // Grade de agenda reutilizável: abas de dia (dias úteis) + slots de 1h. Marca
 // como ocupado (e desabilita) o que já está no `busy` do dono. Usada tanto pela
 // call quanto pelo follow-up — o valor escolhido volta em `slotVal` (YYYY-MM-DDTHH:00).
-function SlotGrid({ days, dayIdx, setDayIdx, slot, setSlot, busy }) {
+function SlotGrid({ days, day, setDay, slot, setSlot, busy }) {
+  const custom = !days.some((d) => sameYMD(d, day)); // dia escolhido no calendário (fora dos chips)
+  // Trocar de dia limpa o horário se ele era de OUTRO dia (senão o resumo mostraria
+  // um slot que não bate com a grade visível).
+  const pickDay = (d) => { setDay(d); if (slot && slot.slice(0, 10) !== ymd(d)) setSlot(""); };
   return (
     <>
-      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>
-        {days.map((d, i) => (
-          <button key={i} onClick={() => setDayIdx(i)} style={{
-            height: 30, padding: "0 10px", borderRadius: "var(--r-2)", fontSize: 11, fontFamily: "var(--mono)",
-            background: dayIdx === i ? "var(--accent)" : "var(--bg-1)",
-            color: dayIdx === i ? "var(--accent-fg)" : "var(--fg-3)",
-            border: "1px solid " + (dayIdx === i ? "var(--accent)" : "var(--line-2)"),
-          }}>{d.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" }).replace(/\./g, "")}</button>
-        ))}
+      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8, alignItems: "center" }}>
+        {days.map((d, i) => {
+          const on = sameYMD(d, day);
+          return (
+            <button key={i} onClick={() => pickDay(d)} style={{
+              height: 30, padding: "0 10px", borderRadius: "var(--r-2)", fontSize: 11, fontFamily: "var(--mono)",
+              background: on ? "var(--accent)" : "var(--bg-1)",
+              color: on ? "var(--accent-fg)" : "var(--fg-3)",
+              border: "1px solid " + (on ? "var(--accent)" : "var(--line-2)"),
+            }}>{d.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" }).replace(/\./g, "")}</button>
+          );
+        })}
+        {/* Calendário aberto: escolher qualquer dia/mês (não trava em dia útil). */}
+        <label title="escolher qualquer dia no calendário" style={{
+          display: "inline-flex", alignItems: "center", height: 30, padding: "0 8px", borderRadius: "var(--r-2)", cursor: "pointer",
+          background: custom ? "var(--accent)" : "var(--bg-1)",
+          color: custom ? "var(--accent-fg)" : "var(--fg-3)",
+          border: "1px " + (custom ? "solid var(--accent)" : "dashed var(--line-2)"),
+        }}>
+          <input type="date" min={ymd(new Date())} value={ymd(day)} onChange={(e) => { if (e.target.value) pickDay(parseYMD(e.target.value)); }}
+            style={{ border: 0, background: "transparent", fontSize: 11, fontFamily: "var(--mono)", color: "inherit", padding: 0, outline: "none", colorScheme: "light dark" }} />
+        </label>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))", gap: 6 }}>
         {Array.from({ length: CALL_H1 - CALL_H0 }, (_, i) => CALL_H0 + i).map((h) => {
-          const cell = new Date(days[dayIdx]); cell.setHours(h, 0, 0, 0);
+          const cell = new Date(day); cell.setHours(h, 0, 0, 0);
           const occupied = busy.has(cellKey(cell));
           const past = cell.getTime() < Date.now();
-          const val = slotVal(days[dayIdx], h);
+          const val = slotVal(day, h);
           const sel = slot === val;
           const disabled = occupied || past;
           return (
@@ -1126,14 +1148,14 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const [reason, setReason] = useS("");
   const [note, setNote] = useS("");
   const [slot, setSlot] = useS(lead.callAt || "");
-  const [dayIdx, setDayIdx] = useS(0);
+  const [day, setDay] = useS(() => nextBusinessDays(1)[0]); // dia da grade (qualquer dia via calendário)
   const [email, setEmail] = useS(lead.email || "");
   const [emailTouched, setEmailTouched] = useS(false); // SDR digitou um e-mail próprio pro convite
   const [meetBusy, setMeetBusy] = useS(false);   // criando o Meet
   const [meetRes, setMeetRes] = useS(null);      // { callUrl, attendees }
   const [meetErr, setMeetErr] = useS(null);
   useE(() => {
-    setDest(null); setCloser(lead.closer || ""); setSlot(lead.callAt || ""); setDayIdx(0);
+    setDest(null); setCloser(lead.closer || ""); setSlot(lead.callAt || ""); setDay(nextBusinessDays(1)[0]);
     setIntegrator(lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
     setAmount(lead.amount || ""); setReason(""); setNote("");
     setEmail(lead.email || ""); setEmailTouched(false); setMeetBusy(false); setMeetRes(null); setMeetErr(null);
@@ -1160,7 +1182,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     const cell = new Date(dd[idx]); cell.setHours(hh, 0, 0, 0);
     if (cell.getTime() <= Date.now()) return;
     if (closer && callBusyKeys(leads, closer, lead.id).has(cellKey(cell))) return;
-    setDayIdx(idx); setSlot(`${m[1]}T${m[2]}:00`);
+    setDay(dd[idx]); setSlot(`${m[1]}T${m[2]}:00`);
   }, [dest, callSummary]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (dests.length === 0) return null;
@@ -1273,7 +1295,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                   <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginBottom: 6 }}>
                     Horários livres na agenda de {displayName(closer)} · a call ocupa 1h
                   </div>
-                  <SlotGrid days={days} dayIdx={dayIdx} setDayIdx={setDayIdx} slot={slot} setSlot={setSlot} busy={busy} />
+                  <SlotGrid days={days} day={day} setDay={setDay} slot={slot} setSlot={setSlot} busy={busy} />
                   {slot && <div className="mono" style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 8 }}>Call: {slotFmt(slot)} · {displayName(closer)}</div>}
                 </div>
               ) : (
@@ -1296,7 +1318,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                   Quando fazer o follow-up · agenda de {displayName(closer)}
                 </div>
                 {callSummary?.followup?.nota && <div className="mono" style={{ fontSize: 10.5, color: "var(--accent)", marginBottom: 6 }}>✨ IA (última call): {callSummary.followup.nota}</div>}
-                <SlotGrid days={days} dayIdx={dayIdx} setDayIdx={setDayIdx} slot={slot} setSlot={setSlot} busy={busy} />
+                <SlotGrid days={days} day={day} setDay={setDay} slot={slot} setSlot={setSlot} busy={busy} />
                 {slot && <div className="mono" style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 8 }}>Follow-up: {slotFmt(slot)} · {displayName(closer)}</div>}
                 <div className="mono dim" style={{ fontSize: 10, marginTop: 6 }}>entra na agenda nesse horário · não trava o slot pra novas calls de venda. Sem horário, retoma pela cadência.</div>
               </div>
