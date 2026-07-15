@@ -111,6 +111,10 @@ export const CREATE_DEFAULTS = {
   // `system` = evento automático (lead_created, proposal_viewed...). `at` = quando
   // aconteceu (backdate permitido); createdAt = quando entrou no sistema.
   activities: { saas: "", lead: "", type: "note", text: "", meta: {}, author: "", at: "" },
+  // Bloqueio de agenda (tela Agenda): trava horário do dono (user) contra marcação
+  // de call/integração. recur "once" usa `date` (YYYY-MM-DD); "weekly" usa `weekday`
+  // (0=dom…6=sáb). allDay=true trava o dia todo; senão o intervalo [fromHour, toHour).
+  agenda_blocks: { saas: "", user: "", recur: "once", date: "", weekday: 0, allDay: false, fromHour: 0, toHour: 0, reason: "", createdAt: "" },
   // Mapa mental / estratégia: nodes = [{ id, x, y, text, color, parent }] (árvore),
   // links = [{ from, to }] (conexões livres). name = título do mapa.
   mindmaps: { name: "Novo mapa", saas: "", nodes: [], links: [], createdAt: "" },
@@ -306,7 +310,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // faturamento/clientes não podem chegar no navegador de quem não vê as telas.
   app.get("/api/bootstrap", async (req) => {
     const can = (screen) => canScreen(req.authUser, screen);
-    const [products, customers, attention, leads, nps, lbMonth, lbAll, goals, portfolio, people] =
+    const [products, customers, attention, leads, nps, lbMonth, lbAll, goals, portfolio, people, agendaBlocks] =
       await Promise.all([
         repo.list("products"),
         repo.list("customers"),
@@ -318,6 +322,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         repo.list("goals"),
         computePortfolio(repo),
         peopleObject(repo),
+        repo.list("agenda_blocks"),
       ]);
     // Sem nenhuma tela financeira, os números de receita saem até do catálogo
     // de produtos (o funil/config continua — o pipeline precisa dele).
@@ -332,6 +337,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       PEOPLE: people,
       CUSTOMERS: can("customers") ? customers : [],
       LEADS: can("pipeline") || can("today") || can("analise") ? leads : [], // Meu dia e Análise do pipeline = views dos mesmos leads
+      AGENDA_BLOCKS: agendaBlocks, // bloqueios de horário por pessoa (tela Agenda) — alimentam a "agenda ocupada" ao marcar call/integração
+
       NPS: can("customers") ? nps : [],
       LEADERBOARD_MONTH: can("overview") ? lbMonth : [],
       LEADERBOARD_ALL: can("overview") ? lbAll : [],

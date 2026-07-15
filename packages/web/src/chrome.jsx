@@ -19,6 +19,7 @@ const NAV = [
   { id: "customers",  label: "Clientes",       icon: "○",  group: "comercial" },
   { id: "proposals",  label: "Propostas",      icon: "▥",  group: "comercial" },
   { id: "offers",     label: "Link pagamento", icon: "◇",  group: "comercial" },
+  { id: "agenda",     label: "Agenda",         icon: "▦",  group: "comercial" },
   // Inbox de WhatsApp escondido do menu por ora (Leo não vai usar). Tela e rotas
   // seguem no código; pra reativar, basta devolver esta entrada:
   // { id: "whatsapp",   label: "WhatsApp",       icon: "✆",  group: "comercial" },
