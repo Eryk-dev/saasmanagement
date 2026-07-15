@@ -1582,9 +1582,9 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
   try { tape = JSON.parse(localStorage.getItem('cockpit_calc_tape') || '[]') || []; } catch (e) { tape = []; }
   var nf = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 6 });
   var fmtNum = function (n) { return (typeof n === 'number' && isFinite(n)) ? nf.format(n) : String(n); };
-  var pretty = function (s) { return String(s).replace(/\*/g, ' × ').replace(/\//g, ' ÷ ').replace(/-/g, ' − ').replace(/\+/g, ' + '); };
+  var pretty = function (s) { return String(s).split('*').join(' × ').split('/').join(' ÷ ').split('-').join(' − ').split('+').join(' + '); };
   function evalExpr(s) {
-    var clean = String(s).replace(/,/g, '.').replace(/[^0-9.+\-*/() ]/g, '');
+    var clean = String(s).replace(/,/g, '.').replace(/[^0-9.+*/() -]/g, '');
     if (!clean.trim()) return null;
     try { var v = Function('"use strict"; return (' + clean + ')')(); return (typeof v === 'number' && isFinite(v)) ? v : null; } catch (e) { return null; }
   }
