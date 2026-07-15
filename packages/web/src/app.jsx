@@ -18,6 +18,7 @@ import { WhatsappInboxScreen } from "./screens/whatsapp.jsx";
 import { CallsScreen } from "./screens/calls.jsx";
 import { IntegrationsScreen } from "./screens/integrations.jsx";
 import { AnaliseScreen } from "./screens/analise.jsx";
+import { AquisicaoScreen } from "./screens/aquisicao.jsx";
 import { FuncionariosScreen } from "./screens/funcionarios.jsx";
 import { MetasScreen } from "./screens/metas.jsx";
 import { TrainingScreen } from "./screens/training.jsx";
@@ -152,9 +153,10 @@ function App() {
     forms:       ["Marketing", "Formulários"],
     creative:    ["Marketing", "Canvas"],
     disparos:    ["Marketing", "Disparos"],
-    calls:       ["Análises", "Análise de pitch"],
-    integrations: ["Análises", "Análise de integração"],
-    analise:     ["Análises", "Análise do pipeline"],
+    aquisicao:   ["Análises", "Aquisição"],
+    calls:       ["Análises", "Pitch"],
+    integrations: ["Análises", "Integração"],
+    analise:     ["Análises", "Pipeline"],
     funcionarios: ["Análises", "Funcionários"],
     tasks:       ["Geral", "Tarefas"],
     mindmaps:    ["Geral", "Mapas mentais"],
@@ -225,6 +227,7 @@ function App() {
           {scr === "whatsapp"    && <WhatsappInboxScreen onOpenLead={openLead} />}
           {scr === "calls"       && <CallsScreen onOpenLead={openLead} />}
           {scr === "integrations" && <IntegrationsScreen onOpenLead={openLead} />}
+          {scr === "aquisicao"   && <AquisicaoScreen />}
           {scr === "analise"     && <AnaliseScreen />}
           {scr === "funcionarios" && <FuncionariosScreen onNav={nav} />}
           {scr === "metas"       && <MetasScreen />}
@@ -316,6 +319,7 @@ function subtitleFor(screen, params) {
     creative:    "stories, feed e carrossel · PNG pronto pra postar",
     offers:      "links de pagamento das ofertas · copie e envie",
     disparos:    "campanhas de e-mail e WhatsApp pros leads qualificados",
+    aquisicao:   "investimento em anúncios + conversão dos formulários · o funil de aquisição",
     calls:       "objeções, dores e temperatura das calls · insights de pitch",
     integrations: "sentimento dos clientes e pendências recorrentes do onboarding",
     analise:     "pace de caixa · forecast · funil do produto ativo",

@@ -45,7 +45,7 @@ test("sanitizeScreens: só ids conhecidos passam; não-array vira []", () => {
 
 test("screenForRequest: mapa por prefixo + escritas administrativas", () => {
   assert.deepEqual(screenForRequest("GET", "/api/expenses/summary/leverads"), ["expenses"]);
-  assert.deepEqual(screenForRequest("GET", "/api/marketing/leverads"), ["metrics"]);
+  assert.deepEqual(screenForRequest("GET", "/api/marketing/leverads"), ["metrics", "aquisicao"]);
   assert.deepEqual(screenForRequest("POST", "/api/leads/l1/proposal"), ["pipeline", "today"]);
   assert.deepEqual(screenForRequest("POST", "/api/activities"), ["pipeline", "today"]);
   assert.deepEqual(screenForRequest("GET", "/api/pipeline-pace/leverads"), ["pipeline", "analise"]);
