@@ -12,24 +12,27 @@ const { useState: useS, useEffect: useE, useRef: useR } = React;
 // Comercial, Marketing e Geral. A ORDEM dos grupos segue a 1ª aparição no array.
 const NAV = [
   { id: "overview",   label: "Visão geral",       icon: "◈",  group: "main" },
+  { id: "training",   label: "Treinamentos",      icon: "✎",  group: "main" },
   { id: "today",      label: "Minhas atividades", icon: "◷",  group: "main" },
 
   { id: "pipeline",   label: "Pipeline",       icon: "≡",  group: "comercial" },
   { id: "customers",  label: "Clientes",       icon: "○",  group: "comercial" },
   { id: "proposals",  label: "Propostas",      icon: "▥",  group: "comercial" },
   { id: "offers",     label: "Link pagamento", icon: "◇",  group: "comercial" },
-  { id: "disparos",   label: "Disparos",       icon: "➤",  group: "comercial" },
   { id: "whatsapp",   label: "WhatsApp",       icon: "✆",  group: "comercial" },
-  { id: "calls",      label: "Análise de pitch", icon: "◐", group: "comercial" },
-  { id: "integrations", label: "Análise de integração", icon: "◑", group: "comercial" },
 
   { id: "social",     label: "Redes sociais",  icon: "◍",  group: "marketing" },
   { id: "metrics",    label: "Publicidade",    icon: "∿",  group: "marketing" },
   { id: "forms",      label: "Formulários",    icon: "▤",  group: "marketing" },
   { id: "creative",   label: "Canvas",         icon: "◨",  group: "marketing" },
+  { id: "disparos",   label: "Disparos",       icon: "➤",  group: "marketing" },
+
+  { id: "calls",         label: "Análise de pitch",      icon: "◐", group: "analises" },
+  { id: "integrations",  label: "Análise de integração", icon: "◑", group: "analises" },
+  { id: "analise",       label: "Análise do pipeline",   icon: "◒", group: "analises" },
+  { id: "funcionarios",  label: "Funcionários",          icon: "◓", group: "analises" },
 
   { id: "tasks",      label: "Tarefas",        icon: "▣",  group: "geral" },
-  { id: "training",   label: "Treinamentos",   icon: "✎",  group: "geral" },
   { id: "metas",      label: "Metas",          icon: "◎",  group: "geral" },
   { id: "expenses",   label: "Custos",         icon: "◫",  group: "geral" },
   { id: "settings",   label: "Configurações",  icon: "✦",  group: "geral" },
@@ -40,6 +43,7 @@ const GROUP_LABELS = {
   main: null,
   comercial: "comercial",
   marketing: "marketing",
+  analises: "análises",
   geral: "geral",
 };
 

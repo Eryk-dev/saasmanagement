@@ -15,7 +15,7 @@
 
 export const SCREEN_IDS = [
   "overview", "today", "pipeline", "customers", "metrics", "expenses",
-  "social", "forms", "proposals", "creative", "offers", "disparos", "whatsapp", "calls", "integrations", "metas", "training", "tasks", "settings",
+  "social", "forms", "proposals", "creative", "offers", "disparos", "whatsapp", "calls", "integrations", "analise", "funcionarios", "metas", "training", "tasks", "settings",
 ];
 
 export const sanitizeScreens = (x) =>
@@ -44,8 +44,8 @@ const ROUTE_SCREENS = [
   ["/api/ad_insights", ["metrics"]],
   ["/api/ai-costs", ["expenses"]],
   ["/api/expenses", ["expenses"]], // CRUD genérico E /api/expenses/summary/:saas
-  ["/api/pipeline-pace/", ["pipeline"]], // pace de caixa e metas diárias da análise
-  ["/api/funnel/", ["pipeline"]],  // análise do pipeline
+  ["/api/pipeline-pace/", ["pipeline", "analise"]], // pace de caixa e metas diárias (Pipeline + tela Análise)
+  ["/api/funnel/", ["pipeline", "analise"]],  // análise do pipeline (Pipeline + tela Análise)
   ["/api/leads", ["pipeline", "today"]],    // inclui /api/leads/:id/proposal (ação do closer)
   ["/api/activities", ["pipeline", "today"]],
   ["/api/customers", ["customers"]],
@@ -75,7 +75,7 @@ const ROUTE_SCREENS = [
   ["/api/goals", ["overview"]],
   ["/api/portfolio", ["overview"]],
   ["/api/leaderboard", ["overview"]],
-  ["/api/scoreboard", ["overview"]], // placar de gestão por pessoa/papel
+  ["/api/scoreboard", ["overview", "funcionarios"]], // placar por pessoa/papel (Visão geral + tela Funcionários)
 ];
 
 // Escritas administrativas: leitura fica aberta (o app inteiro precisa do

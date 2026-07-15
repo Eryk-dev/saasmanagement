@@ -48,7 +48,9 @@ test("screenForRequest: mapa por prefixo + escritas administrativas", () => {
   assert.deepEqual(screenForRequest("GET", "/api/marketing/leverads"), ["metrics"]);
   assert.deepEqual(screenForRequest("POST", "/api/leads/l1/proposal"), ["pipeline", "today"]);
   assert.deepEqual(screenForRequest("POST", "/api/activities"), ["pipeline", "today"]);
-  assert.deepEqual(screenForRequest("GET", "/api/pipeline-pace/leverads"), ["pipeline"]);
+  assert.deepEqual(screenForRequest("GET", "/api/pipeline-pace/leverads"), ["pipeline", "analise"]);
+  assert.deepEqual(screenForRequest("GET", "/api/funnel/leverads"), ["pipeline", "analise"]);
+  assert.deepEqual(screenForRequest("GET", "/api/scoreboard/leverads"), ["overview", "funcionarios"]);
   assert.deepEqual(screenForRequest("GET", "/api/customers"), ["customers"]);
   assert.equal(screenForRequest("GET", "/api/products"), null);           // catálogo é leitura livre
   assert.deepEqual(screenForRequest("PATCH", "/api/products/leverads"), ["settings"]);

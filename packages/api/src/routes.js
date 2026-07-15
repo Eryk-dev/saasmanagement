@@ -324,7 +324,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       ATTENTION: can("overview") ? attention : [],
       PEOPLE: people,
       CUSTOMERS: can("customers") ? customers : [],
-      LEADS: can("pipeline") || can("today") ? leads : [], // Meu dia = view dos mesmos leads
+      LEADS: can("pipeline") || can("today") || can("analise") ? leads : [], // Meu dia e Análise do pipeline = views dos mesmos leads
       NPS: can("customers") ? nps : [],
       LEADERBOARD_MONTH: can("overview") ? lbMonth : [],
       LEADERBOARD_ALL: can("overview") ? lbAll : [],
