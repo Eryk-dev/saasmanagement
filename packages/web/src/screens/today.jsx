@@ -851,6 +851,14 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
       </span>
     );
   });
+  // Texto puro da fala (tokens já resolvidos) pra copiar e colar no WhatsApp.
+  const falaText = (text) => scriptSegments(text, tokens).map((s) => (s.text != null ? s.text : s.value != null ? s.value : s.gap || "")).join("");
+  const [copiedStep, setCopiedStep] = useS(null);
+  const copyFala = async (text, i) => {
+    const t = falaText(text);
+    try { await navigator.clipboard.writeText(t); setCopiedStep(i); setTimeout(() => setCopiedStep((c) => (c === i ? null : c)), 1500); }
+    catch { window.prompt("Copie a mensagem:", t); }
+  };
 
   const fmtWhen = (iso) => {
     const d = new Date(iso);
@@ -1028,8 +1036,15 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
                       {p.t && <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 1 }}>{p.t}</div>}
                       {/* Passo sem fala é ação pura (ex.: "ligar 2 vezes"): só a dica. */}
                       {p.fala && (
-                        <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--fg-1)", borderLeft: "3px solid var(--accent-line)", paddingLeft: 10, whiteSpace: "pre-wrap" }}>
-                          {renderFala(p.fala)}
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+                          <div style={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 1.5, color: "var(--fg-1)", borderLeft: "3px solid var(--accent-line)", paddingLeft: 10, whiteSpace: "pre-wrap" }}>
+                            {renderFala(p.fala)}
+                          </div>
+                          <button onClick={() => copyFala(p.fala, i)} title="Copiar a mensagem (com os dados preenchidos) pra colar no WhatsApp"
+                            style={{ flexShrink: 0, height: 24, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid " + (copiedStep === i ? "var(--pos)" : "var(--line-2)"),
+                              background: "var(--bg-2)", color: copiedStep === i ? "var(--pos)" : "var(--fg-3)", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                            {copiedStep === i ? "copiado ✓" : "⧉ copiar"}
+                          </button>
                         </div>
                       )}
                       {p.dica && <div className="dim" style={{ fontSize: 10.5, marginTop: 2, paddingLeft: 13 }}>{renderFala(p.dica)}</div>}
