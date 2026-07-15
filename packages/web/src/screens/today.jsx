@@ -3,7 +3,7 @@ import { Avatar, EmptyState } from "../atoms.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { PageHead, Pill } from "../components/viz.jsx";
 import { ActivityComposer } from "../components/timeline.jsx";
-import { waLink, leadTier, leadScoreLabel } from "../lib/ui.js";
+import { waLink, leadTier, leadScoreLabel, cockpitProposalUrl } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor } from "../lib/funnel.js";
@@ -743,8 +743,8 @@ function CallShortcuts({ l, item, wa, onPatch }) {
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
               {/* "apresentar ao vivo" abre o link ?k (tela de setup + edição inline);
                   "ver como cliente" é o link limpo que o cliente recebe. */}
-              <a href={l.proposal_edit_url || l.proposalUrl} target="_blank" rel="noopener noreferrer" style={{ ...chip, borderColor: "var(--accent-line)", color: "var(--accent)" }}>apresentar ao vivo ↗</a>
-              <a href={l.proposalUrl} target="_blank" rel="noopener noreferrer" style={chip}>ver como cliente ↗</a>
+              <a href={l.proposal_edit_url || cockpitProposalUrl(l.proposalUrl)} target="_blank" rel="noopener noreferrer" style={{ ...chip, borderColor: "var(--accent-line)", color: "var(--accent)" }}>apresentar ao vivo ↗</a>
+              <a href={cockpitProposalUrl(l.proposalUrl)} target="_blank" rel="noopener noreferrer" style={chip}>ver como cliente ↗</a>
             </div>
           ) : (
             <button onClick={genProposal} disabled={busy === "prop"} style={{ ...chip, alignSelf: "flex-start", borderColor: "var(--accent-line)", color: "var(--accent)" }}>

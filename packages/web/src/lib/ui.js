@@ -50,6 +50,11 @@ export function leadAge(lead) {
 // Link de conversa no WhatsApp a partir de um telefone livre. Sanitiza pra só
 // dígitos; número local brasileiro (≤11 dígitos, com DDD) recebe o DDI 55.
 // Retorna null quando não há dígitos — a UI esconde o atalho nesse caso.
+// Link da proposta aberto DE DENTRO do cockpit (o time conferindo/apresentando):
+// marca ?from=cockpit pra o servidor NÃO contar como "o cliente abriu". Os links
+// têm rel="noreferrer", então o referer não serve; o parâmetro é a marca segura.
+export const cockpitProposalUrl = (url) => (url ? `${url}${String(url).includes("?") ? "&" : "?"}from=cockpit` : url);
+
 export function waLink(phone) {
   const d = waDigits(phone);
   return d ? `https://wa.me/${d}` : null;

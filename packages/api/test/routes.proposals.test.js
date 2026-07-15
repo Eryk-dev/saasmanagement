@@ -182,6 +182,32 @@ test("GET /p/:id — HTML sem editKey, view conta; com ?k certo → editable e n
   await app.close();
 });
 
+test("GET /p/:id — abertura do TIME (?from=cockpit) não conta como cliente; abertura do cliente registra quem/dispositivo", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("leads", { ...LEAD });
+  await app.inject({ method: "POST", url: "/api/leads/le_p1/proposal" });
+  const { proposta_id } = await repo.get("leads", "le_p1");
+
+  // Time abrindo de dentro do cockpit: entra no viewLog como "time", NÃO conta view nem loga proposal_viewed.
+  await app.inject({ method: "GET", url: `/p/${proposta_id}?from=cockpit`, headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0) Chrome/120" } });
+  let p = await repo.get("proposals", proposta_id);
+  assert.equal(Number(p.views) || 0, 0, "abertura do time não conta");
+  assert.equal((p.viewLog || []).at(-1).viewer, "time");
+  let acts = (await repo.list("activities")).filter((a) => a.meta?.event === "proposal_viewed");
+  assert.equal(acts.length, 0, "abertura do time não loga proposal_viewed");
+
+  // Cliente abrindo do celular: conta, loga proposal_viewed com viewer=cliente + device.
+  await app.inject({ method: "GET", url: `/p/${proposta_id}`, headers: { "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17) Safari" } });
+  p = await repo.get("proposals", proposta_id);
+  assert.equal(p.views, 1);
+  assert.equal((p.viewLog || []).at(-1).viewer, "cliente");
+  acts = (await repo.list("activities")).filter((a) => a.meta?.event === "proposal_viewed");
+  assert.equal(acts.length, 1);
+  assert.equal(acts[0].meta.viewer, "cliente");
+  assert.match(acts[0].meta.device, /celular/);
+  await app.close();
+});
+
 test("PATCH /public/proposals/:id — k errado 401; k certo atualiza só o estado", async () => {
   const { app, repo } = await buildApp();
   await repo.create("leads", { ...LEAD });

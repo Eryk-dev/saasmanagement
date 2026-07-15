@@ -529,7 +529,7 @@ function LeadDetail({ lead: initial, onClose }) {
 
         <div style={box}>
           <div className="mono" style={{ ...kicker, marginBottom: 10 }}>Proposta</div>
-          <ProposalActions l={lead} />
+          <ProposalActions l={lead} showViews />
         </div>
           </div>
 

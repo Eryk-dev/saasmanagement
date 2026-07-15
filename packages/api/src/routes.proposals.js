@@ -45,6 +45,17 @@ export function registerProposalRoutes(app, repo, opts = {}) {
   });
   const clientIp = (req) =>
     String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.ip || "?";
+  // Dispositivo aproximado a partir do user-agent (sem lib): celular/computador +
+  // sistema + navegador. Só pra dar contexto de QUEM abriu (não identifica pessoa).
+  const deviceFromUA = (ua) => {
+    if (!ua) return "desconhecido";
+    const mobile = /Mobile|Android|iPhone|iPad|iPod/i.test(ua);
+    const os = /iPhone|iPad|iPod/i.test(ua) ? "iPhone/iPad" : /Android/i.test(ua) ? "Android"
+      : /Windows/i.test(ua) ? "Windows" : /Mac OS X|Macintosh/i.test(ua) ? "Mac" : /Linux/i.test(ua) ? "Linux" : "";
+    const browser = /Edg\//i.test(ua) ? "Edge" : /OPR\/|Opera/i.test(ua) ? "Opera" : /Chrome\//i.test(ua) ? "Chrome"
+      : /Firefox\//i.test(ua) ? "Firefox" : /Safari\//i.test(ua) ? "Safari" : "";
+    return [mobile ? "celular" : "computador", os, browser].filter(Boolean).join(" · ");
+  };
 
   // Preview do TEMPLATE em aba própria (dados de exemplo, nada persiste).
   // Funciona pra rascunho também — é ferramenta do dono, id é opaco.
@@ -63,26 +74,38 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     }
     const editable = !!req.query.k && req.query.k === p.editKey;
     if (!editable) {
-      const firstView = !(Number(p.views) > 0);
-      // best-effort: contagem de view nunca quebra a página
-      try {
-        await repo.update("proposals", p.id, {
-          views: (Number(p.views) || 0) + 1,
-          lastViewedAt: new Date().toISOString(),
-        });
-      } catch { /* ignore */ }
-      // Timeline + aviso no Discord só na PRIMEIRA visualização (re-aberturas
-      // não spamam); closer abrindo com ?k não passa por aqui.
-      if (firstView) {
+      // QUEM abriu: link aberto de DENTRO do cockpit (?from=cockpit ou referer do
+      // cockpit) é do TIME (SDR/closer conferindo), não é o cliente. Aberturas do
+      // time NÃO contam como "cliente abriu", não alertam e não consomem a 1ª view.
+      const ref = String(req.headers["referer"] || "");
+      const internal = req.query.from === "cockpit" || /levermoney\.com\.br|localhost/i.test(ref);
+      const viewer = internal ? "time" : "cliente";
+      const device = deviceFromUA(String(req.headers["user-agent"] || ""));
+      const ip = clientIp(req);
+      const at = new Date().toISOString();
+      // Log de aberturas na PRÓPRIA proposta (todas, com quem/dispositivo), capado.
+      const viewLog = [...(Array.isArray(p.viewLog) ? p.viewLog : []), { at, viewer, device, ip }].slice(-30);
+
+      if (internal) {
+        try { await repo.update("proposals", p.id, { viewLog }); } catch { /* ignore */ }
+      } else {
+        const firstView = !(Number(p.views) > 0);
         try {
-          await logActivity(repo, {
-            saas: p.saas || "", lead: p.lead || "", type: "system",
-            meta: { event: "proposal_viewed", proposal: p.id }, author: "lead",
-          });
-        } catch { /* timeline é best-effort */ }
-        if (discord?.configured()) {
-          const lead = p.lead ? await repo.get("leads", p.lead) : null;
-          await discord.proposalViewed({ proposal: p, lead: lead || {} });
+          await repo.update("proposals", p.id, { views: (Number(p.views) || 0) + 1, lastViewedAt: at, viewLog });
+        } catch { /* ignore */ }
+        // Timeline + Discord só na PRIMEIRA visualização do CLIENTE (re-aberturas
+        // não spamam); closer abrindo com ?k ou ?from=cockpit não passa por aqui.
+        if (firstView) {
+          try {
+            await logActivity(repo, {
+              saas: p.saas || "", lead: p.lead || "", type: "system",
+              meta: { event: "proposal_viewed", proposal: p.id, viewer, device, ip }, author: "lead",
+            });
+          } catch { /* timeline é best-effort */ }
+          if (discord?.configured()) {
+            const lead = p.lead ? await repo.get("leads", p.lead) : null;
+            await discord.proposalViewed({ proposal: p, lead: lead || {} });
+          }
         }
       }
     }
