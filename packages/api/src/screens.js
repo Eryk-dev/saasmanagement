@@ -15,7 +15,7 @@
 
 export const SCREEN_IDS = [
   "overview", "today", "pipeline", "customers", "metrics", "expenses",
-  "social", "forms", "proposals", "creative", "offers", "disparos", "whatsapp", "calls", "integrations", "analise", "funcionarios", "metas", "training", "tasks", "mindmaps", "settings",
+  "social", "forms", "proposals", "creative", "offers", "disparos", "whatsapp", "calls", "integrations", "aquisicao", "analise", "funcionarios", "metas", "training", "tasks", "mindmaps", "settings",
 ];
 
 export const sanitizeScreens = (x) =>
@@ -39,8 +39,8 @@ const ROUTE_SCREENS = [
   // /api/social (primeiro match vence).
   ["/api/social/new-followers", ["today", "pipeline", "overview", "social"]],
   ["/api/social", ["social"]],
-  ["/api/marketing", ["metrics"]],
-  ["/api/metrics/", ["metrics"]],
+  ["/api/marketing", ["metrics", "aquisicao"]],
+  ["/api/metrics/", ["metrics", "aquisicao"]],
   ["/api/ad_insights", ["metrics"]],
   ["/api/ai-costs", ["expenses"]],
   ["/api/expenses", ["expenses"]], // CRUD genérico E /api/expenses/summary/:saas
@@ -54,7 +54,7 @@ const ROUTE_SCREENS = [
   ["/api/plans", ["customers"]],
   ["/api/nps", ["customers"]],
   ["/api/billing/", ["customers"]],
-  ["/api/forms", ["forms"]],             // inclui /:id/funnel e /preview
+  ["/api/forms", ["forms", "aquisicao"]], // inclui /:id/funnel e /preview (Aquisição usa o funil do form)
   ["/api/form_submissions", ["forms"]],
   ["/api/form_events", ["forms"]],
   ["/api/proposal_templates", ["proposals"]],

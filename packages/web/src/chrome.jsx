@@ -27,10 +27,11 @@ const NAV = [
   { id: "creative",   label: "Canvas",         icon: "◨",  group: "marketing" },
   { id: "disparos",   label: "Disparos",       icon: "➤",  group: "marketing" },
 
-  { id: "calls",         label: "Análise de pitch",      icon: "◐", group: "analises" },
-  { id: "integrations",  label: "Análise de integração", icon: "◑", group: "analises" },
-  { id: "analise",       label: "Análise do pipeline",   icon: "◒", group: "analises" },
-  { id: "funcionarios",  label: "Funcionários",          icon: "◓", group: "analises" },
+  { id: "aquisicao",     label: "Aquisição",  icon: "◔", group: "analises" },
+  { id: "calls",         label: "Pitch",      icon: "◐", group: "analises" },
+  { id: "integrations",  label: "Integração", icon: "◑", group: "analises" },
+  { id: "analise",       label: "Pipeline",   icon: "◒", group: "analises" },
+  { id: "funcionarios",  label: "Funcionários", icon: "◓", group: "analises" },
 
   { id: "tasks",      label: "Tarefas",        icon: "▣",  group: "geral" },
   { id: "mindmaps",   label: "Mapas mentais",  icon: "⌬",  group: "geral" },
