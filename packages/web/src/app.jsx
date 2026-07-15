@@ -17,6 +17,8 @@ import { DisparosScreen } from "./screens/disparos.jsx";
 import { WhatsappInboxScreen } from "./screens/whatsapp.jsx";
 import { CallsScreen } from "./screens/calls.jsx";
 import { IntegrationsScreen } from "./screens/integrations.jsx";
+import { AnaliseScreen } from "./screens/analise.jsx";
+import { FuncionariosScreen } from "./screens/funcionarios.jsx";
 import { MetasScreen } from "./screens/metas.jsx";
 import { TrainingScreen } from "./screens/training.jsx";
 import { CustomersScreen } from "./screens/customers.jsx";
@@ -144,16 +146,18 @@ function App() {
     customers:   ["Comercial", "Clientes"],
     proposals:   ["Comercial", "Propostas"],
     offers:      ["Comercial", "Link pagamento"],
-    disparos:    ["Comercial", "Disparos"],
-    calls:       ["Comercial", "Análise de pitch"],
-    integrations: ["Comercial", "Análise de integração"],
     social:      ["Marketing", "Redes sociais"],
     metrics:     ["Marketing", "Publicidade"],
     forms:       ["Marketing", "Formulários"],
     creative:    ["Marketing", "Canvas"],
+    disparos:    ["Marketing", "Disparos"],
+    calls:       ["Análises", "Análise de pitch"],
+    integrations: ["Análises", "Análise de integração"],
+    analise:     ["Análises", "Análise do pipeline"],
+    funcionarios: ["Análises", "Funcionários"],
     tasks:       ["Geral", "Tarefas"],
     metas:       ["Geral", "Metas"],
-    training:    ["Geral", "Treinamentos"],
+    training:    ["Treinamentos"],
     expenses:    ["Geral", "Custos"],
     settings:    ["Geral", "Configurações"],
     subscriptions: ["Comercial", "Clientes", "Assinaturas"], // rota antiga → aba dentro de Clientes
@@ -219,6 +223,8 @@ function App() {
           {scr === "whatsapp"    && <WhatsappInboxScreen onOpenLead={openLead} />}
           {scr === "calls"       && <CallsScreen onOpenLead={openLead} />}
           {scr === "integrations" && <IntegrationsScreen onOpenLead={openLead} />}
+          {scr === "analise"     && <AnaliseScreen />}
+          {scr === "funcionarios" && <FuncionariosScreen onNav={nav} />}
           {scr === "metas"       && <MetasScreen />}
           {scr === "training"    && <TrainingScreen />}
           {scr === "subscriptions" && <CustomersScreen initialTab="billing" />}
@@ -309,6 +315,8 @@ function subtitleFor(screen, params) {
     disparos:    "campanhas de e-mail e WhatsApp pros leads qualificados",
     calls:       "objeções, dores e temperatura das calls · insights de pitch",
     integrations: "sentimento dos clientes e pendências recorrentes do onboarding",
+    analise:     "pace de caixa · forecast · funil do produto ativo",
+    funcionarios: "desempenho por pessoa · placar por papel (SDR · closer · CS)",
     metas:       "metas por vaga e por pessoa · valem em todo campo de meta",
     training:    "flashcards estilo Anki (FSRS) · fila individual por pessoa",
     social:      "métricas do perfil · criar post e publicar direto",

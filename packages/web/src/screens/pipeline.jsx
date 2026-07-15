@@ -31,15 +31,15 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   const activeSaas = activeProduct?.id;
   useEfP(() => { pinActiveSaas(saasId); }, [saasId]);
   // Aba ativa persistida (localStorage): sobrevive ao refresh da página e à
-  // remontagem da tela quando o tempo real recarrega o SEED. "forecast" é o
-  // nome antigo da aba Análise — alias pra não perder a preferência salva.
+  // remontagem da tela quando o tempo real recarrega o SEED. A antiga aba
+  // "Análise" (e o alias "forecast") virou a TELA "Análise do pipeline" (menu
+  // Análises); preferência salva nesses valores cai no Kanban.
   // "all" (Todos os pipelines) foi aposentada com o workspace por produto:
   // cada marca tem o cockpit inteiro só dela, nada de empilhar produtos.
-  const VIEWS = ["kanban", "list", "agenda", "analise"];
+  const VIEWS = ["kanban", "list", "agenda"];
   const [view, setViewState] = useStP(() => {
     try {
       const v = localStorage.getItem("cockpit_pipeline_view");
-      if (v === "forecast") return "analise";
       return VIEWS.includes(v) ? v : "kanban";
     } catch { return "kanban"; }
   });
@@ -215,7 +215,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
         <PrimaryButton onClick={() => openForm("leads", { saas: activeSaas })}>+ novo lead</PrimaryButton>
       </PageHead>
 
-      {view !== "analise" && <ForecastStrip s={s} leads={saasAll} />}
+      <ForecastStrip s={s} leads={saasAll} />
 
       {/* Body */}
       {view === "kanban" && (
@@ -235,7 +235,6 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
       )}
       {view === "list" && <LeadList leads={saasLeads} />}
       {view === "agenda" && <AgendaView leads={saasAll} onOpenLead={onOpenLead} />}
-      {view === "analise" && <AnaliseView s={s} leads={saasAll} />}
 
       {pendingMove && (
         <MoveLeadModal
@@ -256,7 +255,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
 }
 
 function ViewToggle({ view, onChange }) {
-  const views = [["kanban","Kanban"],["list","Lista"],["agenda","Agenda"],["analise","Análise"]];
+  const views = [["kanban","Kanban"],["list","Lista"],["agenda","Agenda"]];
   return (
     <div style={{ display: "flex", gap: 2 }}>
       {views.map(([k, label]) => (
@@ -1296,4 +1295,4 @@ function AnaliseView({ s, leads }) {
   );
 }
 
-export { PipelineScreen };
+export { PipelineScreen, AnaliseView };
