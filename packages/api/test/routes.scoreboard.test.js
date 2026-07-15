@@ -38,12 +38,14 @@ test("SDR: leads novos, calls agendadas (transição pra kind call) e SLA de 1º
   await repo.create("leads", { id: "l2", saas: "leverads", owner: "u_sdr", stage: "Novo lead", createdAt: now });
   await repo.create("activities", { id: "a1", saas: "leverads", lead: "l1", type: "call", author: "u_sdr", at: "2026-07-10T13:00:00.000Z" }); // toque 1h depois
   await repo.create("activities", { id: "a2", saas: "leverads", lead: "l1", type: "stage", author: "u_sdr", at: "2026-07-10T13:05:00.000Z", meta: { from: "Qualificando", to: "Call agendada" } });
+  await repo.create("activities", { id: "a3", saas: "leverads", lead: "l1", type: "call", author: "u_sdr", at: "2026-07-10T14:00:00.000Z", meta: { reschedule: false, event: "reschedule" } }); // cliente pediu pra remarcar
 
   const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
   const s = sb.sdr.find((x) => x.user === "u_sdr");
   assert.equal(s.name, "Sara SDR");
   assert.equal(s.leadsNew, 2);
   assert.equal(s.contacted, 1);            // l1 teve toque/stage DO SDR no período (atividade do dia)
+  assert.equal(s.reschedules, 1);          // 1 remarcação na confirmação (evento, credita contato)
   assert.equal(s.callsBooked, 1);          // 1 transição pra Call agendada
   assert.equal(s.bookingRate, 100);        // calls ÷ contatados = 1/1
   assert.equal(s.firstTouchMedianH, 1);    // l1 tocado 1h depois

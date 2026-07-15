@@ -779,6 +779,25 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
     setL((prev) => ({ ...prev, ...p }));
     onPatch && onPatch(item.l.id, p);
   }
+  // Remarcação na confirmação: o cliente pediu pra mudar de horário. O SDR escolhe
+  // um novo slot na agenda do closer; salvamos o novo callAt E registramos um TOQUE
+  // (meta.event="reschedule") — assim conta como "contatado" no placar do SDR e
+  // entra na timeline. Não é no-show e não muda de etapa: o card segue em Call
+  // agendada, só com horário novo (reschedule:false → não bumpa tentativa nem GPS).
+  const [resched, setResched] = useS(false);
+  const [rDay, setRDay] = useS(() => nextBusinessDays(1)[0]);
+  const [rSlot, setRSlot] = useS("");
+  useE(() => { setResched(false); setRSlot(""); }, [item.l.id]);
+  function doReschedule() {
+    if (!rSlot) return;
+    patch({ callAt: rSlot, callConfirmed: false });
+    api.logActivity({
+      saas: l.saas, lead: l.id, type: "call", text: "remarcou a call na confirmação",
+      author: currentUser()?.id || "", meta: { reschedule: false, event: "reschedule" },
+    }).catch((err) => console.warn("remarcação não registrada:", err.message));
+    setResched(false);
+    onClose && onClose();
+  }
   // Item de confirmação de call usa o roteiro de confirmação; o resto, o roteiro
   // do estágio (por tentativa). A confirmação não é movimento de etapa, então o
   // bloco "Depois da ação" (destino) some pra esse item. Em pré-visualização
@@ -1042,6 +1061,37 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
                 border: "1px solid " + (l.callConfirmed ? "var(--pos)" : "var(--line-2)") }}>
               {l.callConfirmed ? "✓ cliente confirmou" : "cliente confirmou"}
             </button>
+          )}
+          {/* Cliente pediu pra remarcar na confirmação: escolhe novo horário na
+              agenda do closer. Salva o novo callAt E vira um toque (credita o SDR). */}
+          {item.confirm && !preview && (
+            <button onClick={() => setResched((v) => !v)}
+              title="Cliente pediu pra remarcar: escolher novo horário (conta como contato no seu placar)"
+              style={{ padding: "8px 14px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
+                background: resched ? "var(--accent-soft)" : "var(--bg-1)", color: resched ? "var(--accent)" : "var(--fg-2)",
+                border: "1px solid " + (resched ? "var(--accent-line)" : "var(--line-2)") }}>
+              ↻ remarcar
+            </button>
+          )}
+          {item.confirm && !preview && resched && (
+            <div style={{ flex: "1 1 100%", marginTop: 4, padding: 12, borderRadius: "var(--r-2)", background: "var(--bg-1)", border: "1px solid var(--line-2)" }}>
+              <div style={{ fontSize: 12, color: "var(--fg-3)", marginBottom: 8 }}>
+                Novo horário da call{l.closer ? "" : " · defina o closer no card antes"} — vira um toque no lead (conta no placar do SDR).
+              </div>
+              <SlotGrid days={nextBusinessDays(6)} day={rDay} setDay={setRDay} slot={rSlot} setSlot={setRSlot} busy={callBusyKeys(leads, l.closer, l.id)} />
+              <div style={{ display: "flex", gap: 8, marginTop: 10, justifyContent: "flex-end" }}>
+                <button onClick={() => setResched(false)}
+                  style={{ padding: "8px 12px", borderRadius: "var(--r-2)", fontSize: 12.5, background: "transparent", color: "var(--fg-3)", border: "1px solid var(--line-2)" }}>
+                  cancelar
+                </button>
+                <button onClick={doReschedule} disabled={!rSlot}
+                  style={{ padding: "8px 14px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 700,
+                    background: rSlot ? "var(--accent)" : "var(--bg-2)", color: rSlot ? "var(--accent-fg)" : "var(--fg-4)",
+                    border: "1px solid " + (rSlot ? "var(--accent)" : "var(--line-2)"), cursor: rSlot ? "pointer" : "not-allowed" }}>
+                  salvar novo horário
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </div>
