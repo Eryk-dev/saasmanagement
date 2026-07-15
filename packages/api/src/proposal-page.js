@@ -588,6 +588,34 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   body.js-ready [data-reveal] { transition: opacity .7s var(--ease-out), transform .7s var(--ease-out); }
   [data-reveal].in { opacity: 1; transform: translateY(0); }
   @media (prefers-reduced-motion: reduce) { body.js-ready [data-reveal]:not(.in) { opacity: 1; transform: none; } [data-reveal] { transition: none !important; } }
+
+  /* Calculadora SECRETA do closer (Shift+C): overlay flutuante com histórico de
+     resultados (tape). Some no print e não faz parte do deck — só quem sabe o
+     atalho abre. */
+  .calc-secret { position: fixed; right: 20px; bottom: 20px; width: 290px; max-width: calc(100vw - 32px); z-index: 9999;
+    background: var(--raised); border: 1px solid var(--line); border-radius: calc(var(--radius) + 6px);
+    box-shadow: 0 24px 70px rgba(0,0,0,.4); font-family: var(--font-display); display: none; overflow: hidden; }
+  .calc-secret.on { display: block; }
+  .calc-secret-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line);
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+  .calc-secret-head .t { flex: 1; }
+  .calc-secret-head button { cursor: pointer; background: none; border: 0; color: var(--ink-3); font-family: var(--font-mono); font-size: 10.5px; padding: 2px 4px; }
+  .calc-secret-head button:hover { color: var(--fg); }
+  .calc-secret-tape { max-height: 132px; overflow-y: auto; padding: 8px 12px; border-bottom: 1px solid var(--line);
+    display: flex; flex-direction: column; gap: 3px; font-family: var(--font-mono); font-size: 12px; }
+  .calc-secret-tape:empty { display: none; }
+  .calc-secret-tape .row { display: flex; justify-content: space-between; gap: 10px; }
+  .calc-secret-tape .row .e { color: var(--ink-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .calc-secret-tape .row .r { color: var(--fg); font-weight: 600; flex-shrink: 0; }
+  .calc-secret-display { padding: 12px 14px; text-align: right; }
+  .calc-secret-expr { font-family: var(--font-mono); font-size: 12px; color: var(--ink-4); min-height: 15px; overflow-wrap: anywhere; }
+  .calc-secret-out { font-family: var(--font-display); font-weight: 600; font-size: 30px; line-height: 1.1; letter-spacing: -.02em; overflow-wrap: anywhere; }
+  .calc-secret-keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); }
+  .calc-secret-keys button { border: 0; padding: 13px 0; font-family: var(--font-display); font-size: 17px; background: var(--raised); color: var(--fg); cursor: pointer; }
+  .calc-secret-keys button:hover { background: var(--bg); }
+  .calc-secret-keys button.op { color: var(--accent); }
+  .calc-secret-keys button.eq { background: var(--accent); color: var(--accent-fg); }
+  @media print { .calc-secret { display: none !important; } }
 </style>
 </head>
 <body${previewBanner ? ' class="editing"' : ""}>
@@ -1529,6 +1557,79 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
   document.getElementById('nav-date').textContent = new Date().toLocaleDateString('pt-BR');
   render();
   if (P.editable) mountInlineEdit();
+})();
+// Calculadora SECRETA do closer (Shift+C): calculadora livre com histórico de
+// resultados (tape), guardado no navegador. Independente do resto do deck.
+(function secretCalc() {
+  var box = document.createElement('div');
+  box.className = 'calc-secret';
+  box.innerHTML =
+    '<div class="calc-secret-head"><span class="t">calculadora</span><button data-a="wipe" title="limpar histórico">limpar</button><button data-a="hide" title="fechar (Esc)">✕</button></div>' +
+    '<div class="calc-secret-tape"></div>' +
+    '<div class="calc-secret-display"><div class="calc-secret-expr"></div><div class="calc-secret-out">0</div></div>' +
+    '<div class="calc-secret-keys">' +
+      '<button data-a="clear" class="op">C</button><button data-a="back" class="op">⌫</button><button data-k="(" class="op">(</button><button data-k=")" class="op">)</button>' +
+      '<button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button><button data-k="/" class="op">÷</button>' +
+      '<button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button><button data-k="*" class="op">×</button>' +
+      '<button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button><button data-k="-" class="op">−</button>' +
+      '<button data-k="0">0</button><button data-k=".">.</button><button data-a="eq" class="eq">=</button><button data-k="+" class="op">+</button>' +
+    '</div>';
+  document.body.appendChild(box);
+  var tapeEl = box.querySelector('.calc-secret-tape');
+  var exprEl = box.querySelector('.calc-secret-expr');
+  var outEl = box.querySelector('.calc-secret-out');
+  var expr = '', tape = [];
+  try { tape = JSON.parse(localStorage.getItem('cockpit_calc_tape') || '[]') || []; } catch (e) { tape = []; }
+  var nf = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 6 });
+  var fmtNum = function (n) { return (typeof n === 'number' && isFinite(n)) ? nf.format(n) : String(n); };
+  var pretty = function (s) { return String(s).replace(/\*/g, ' × ').replace(/\//g, ' ÷ ').replace(/-/g, ' − ').replace(/\+/g, ' + '); };
+  function evalExpr(s) {
+    var clean = String(s).replace(/,/g, '.').replace(/[^0-9.+\-*/() ]/g, '');
+    if (!clean.trim()) return null;
+    try { var v = Function('"use strict"; return (' + clean + ')')(); return (typeof v === 'number' && isFinite(v)) ? v : null; } catch (e) { return null; }
+  }
+  function renderTape() {
+    tapeEl.innerHTML = tape.slice(-40).map(function (r) {
+      return '<div class="row"><span class="e">' + pretty(r.e) + '</span><span class="r">' + r.r + '</span></div>';
+    }).join('');
+    tapeEl.scrollTop = tapeEl.scrollHeight; // mais recente embaixo, à vista
+  }
+  function render() {
+    exprEl.textContent = pretty(expr);
+    var live = evalExpr(expr);
+    outEl.textContent = (live != null ? fmtNum(live) : (expr ? '…' : '0'));
+  }
+  var push = function (k) { expr += k; render(); };
+  var back = function () { expr = expr.slice(0, -1); render(); };
+  var clearAll = function () { expr = ''; render(); };
+  function equals() {
+    var v = evalExpr(expr); if (v == null) return;
+    tape.push({ e: expr, r: fmtNum(v) }); if (tape.length > 60) tape = tape.slice(-60);
+    try { localStorage.setItem('cockpit_calc_tape', JSON.stringify(tape)); } catch (e) { /* quota/incógnito */ }
+    expr = String(v); renderTape(); render();
+  }
+  function wipe() { tape = []; try { localStorage.removeItem('cockpit_calc_tape'); } catch (e) { /* ignore */ } renderTape(); }
+  box.querySelectorAll('button[data-k]').forEach(function (b) { b.addEventListener('click', function () { push(b.getAttribute('data-k')); }); });
+  box.querySelector('[data-a="clear"]').addEventListener('click', clearAll);
+  box.querySelector('[data-a="back"]').addEventListener('click', back);
+  box.querySelector('[data-a="eq"]').addEventListener('click', equals);
+  box.querySelector('[data-a="wipe"]').addEventListener('click', wipe);
+  box.querySelector('[data-a="hide"]').addEventListener('click', function () { box.classList.remove('on'); });
+  function toggle() { box.classList.toggle('on'); if (box.classList.contains('on')) render(); }
+  // Capture: pega a tecla ANTES do handler de navegação de slide, pra digitar
+  // conta não passar o slide. Shift+C (tecla física) abre/fecha de qualquer lugar.
+  document.addEventListener('keydown', function (e) {
+    if (e.shiftKey && e.code === 'KeyC' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); toggle(); return; }
+    if (!box.classList.contains('on')) return;
+    var k = e.key;
+    if (k === 'Escape') { e.preventDefault(); box.classList.remove('on'); return; }
+    if (/^[0-9]$/.test(k)) { e.preventDefault(); e.stopPropagation(); push(k); return; }
+    if (k === '.' || k === ',') { e.preventDefault(); e.stopPropagation(); push('.'); return; }
+    if (k === '+' || k === '-' || k === '*' || k === '/' || k === '(' || k === ')') { e.preventDefault(); e.stopPropagation(); push(k); return; }
+    if (k === 'Enter' || k === '=') { e.preventDefault(); e.stopPropagation(); equals(); return; }
+    if (k === 'Backspace') { e.preventDefault(); e.stopPropagation(); back(); return; }
+  }, true);
+  renderTape(); render();
 })();
 </script>
 </body>
