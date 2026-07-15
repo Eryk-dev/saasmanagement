@@ -7,6 +7,7 @@ import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-mov
 import { leadScoreLabel, leadAge, waLink, leadTier } from "../lib/ui.js";
 import { stageKind, lossReasonLabel, nextTouchPill, workableStages } from "../lib/funnel.js";
 import { displayName, usersByRole } from "../lib/users.js";
+import { paymentLabel } from "../lib/payments.js";
 import { api } from "../lib/api.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 import { sourceLabel } from "../lib/sources.js";
@@ -129,6 +130,7 @@ function LeadDetail({ lead: initial, onClose }) {
   const summaryFacts = [
     ["Potencial", tier.key !== "sem" ? tier.label : null],
     ["Valor", lead.amount ? window.fmt.money(lead.amount) : null],
+    ["Pagamento", lead.paymentMethod ? paymentLabel(lead.paymentMethod) : null],
     ["Idade", leadAge(lead)],
     ["Na etapa", `${daysInStage}d`],
     ["Temperatura", hasScore ? `${leadScoreLabel(score)} · ${score}` : null],
