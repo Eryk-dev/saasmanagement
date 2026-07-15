@@ -580,6 +580,7 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
     plan: "",
     arr: 0,
     leadId: lead.id,
+    ...(lead.paymentMethod ? { paymentMethod: lead.paymentMethod } : {}), // modo como fechou (PIX/boleto/cartão 12x)
     startedAt: new Date().toISOString(),
   });
   await repo.update("leads", lead.id, { customerId: customer.id });

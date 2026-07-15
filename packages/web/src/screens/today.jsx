@@ -11,6 +11,7 @@ import { allUsers, currentUser, displayName, userById, usersByRole } from "../li
 import { useActiveSaas } from "../lib/workspace.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 import { resolveScript, scriptTokens, scriptSegments, scriptChecklist, isNoShowStage, confirmationScript, scriptKeyFor } from "../lib/scripts.js";
+import { PAYMENT_METHODS, paymentLabel } from "../lib/payments.js";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
 // "Amanhã" e "Próximos dias" (o que já está agendado, à vista), e "Sem data".
@@ -559,6 +560,7 @@ export function clientSummary(saasCfg, lead, stage, cat) {
     ["Etapa", `${stage}${daysInStage != null ? ` · ${daysInStage}d nela` : ""}`],
     ["Toques na etapa", Number(cad.maxAttempts) ? `${Number(lead.stageAttempts) || 0} de ${cad.maxAttempts}` : (Number(lead.stageAttempts) || 0) || null],
     ["Valor", lead.amount ? money(lead.amount) : null],
+    ["Pagamento", lead.paymentMethod ? paymentLabel(lead.paymentMethod) : null],
     ["Origem", lead.source],
     ["SDR / closer", [lead.owner && displayName(lead.owner), lead.closer && displayName(lead.closer)].filter(Boolean).join(" / ") || null],
     ["Próximo passo (nota)", lead.nextActionNote],
@@ -1260,6 +1262,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const [closer, setCloser] = useS(lead.closer || "");
   const [integrator, setIntegrator] = useS(lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
   const [amount, setAmount] = useS(lead.amount || "");
+  const [payment, setPayment] = useS(lead.paymentMethod || "");
   const [reason, setReason] = useS("");
   const [note, setNote] = useS("");
   const [slot, setSlot] = useS(lead.callAt || "");
@@ -1272,7 +1275,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   useE(() => {
     setDest(null); setCloser(lead.closer || ""); setSlot(lead.callAt || ""); setDay(nextBusinessDays(1)[0]);
     setIntegrator(lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
-    setAmount(lead.amount || ""); setReason(""); setNote("");
+    setAmount(lead.amount || ""); setPayment(lead.paymentMethod || ""); setReason(""); setNote("");
     setEmail(lead.email || ""); setEmailTouched(false); setMeetBusy(false); setMeetRes(null); setMeetErr(null);
   }, [lead.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // Auto-preenche o e-mail do convite com o do lead SEMPRE que ele estiver
@@ -1325,8 +1328,8 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const ready = !dest ? false
     : setup === "call" ? !!(closer && slot)
     : setup === "followup" ? !!closer // horário é opcional: sem slot cai na cadência
-    : setup === "integrator" ? !!(integrator && (dest.kind !== "integracao" || Number(amount) > 0))
-    : setup === "won" ? Number(amount) > 0
+    : setup === "integrator" ? !!(integrator && (dest.kind !== "integracao" || (Number(amount) > 0 && !!payment)))
+    : setup === "won" ? (Number(amount) > 0 && !!payment)
     : setup === "loss" ? !!reason
     : true;
 
@@ -1341,8 +1344,8 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     // Integração: define o integrador e, se um horário foi escolhido na agenda,
     // agenda a integração nele (integrationAt aparece na Agenda e replica na
     // agenda pessoal do integrador que conectou o Google).
-    else if (setup === "integrator") { patch.integrator = integrator; if (slot) patch.integrationAt = slot; if (dest.kind === "integracao" && Number(amount) > 0) patch.amount = Number(amount); }
-    else if (setup === "won") patch.amount = Number(amount);
+    else if (setup === "integrator") { patch.integrator = integrator; if (slot) patch.integrationAt = slot; if (dest.kind === "integracao" && Number(amount) > 0) { patch.amount = Number(amount); patch.paymentMethod = payment; } }
+    else if (setup === "won") { patch.amount = Number(amount); patch.paymentMethod = payment; }
     else if (setup === "loss") { patch.lostReason = reason; if (note.trim()) patch.lostNote = note.trim(); }
     onMove && onMove(patch);
   }
@@ -1483,6 +1486,13 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                     <input type="number" min="0" step="0.01" value={amount} placeholder="ex.: 7188"
                       onChange={(e) => setAmount(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") confirm(); }} style={fieldStyle} />
                     <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>fechou! esse é o valor do negócio (vira a receita do closer)</div>
+                    <div style={{ marginTop: 12 }}>
+                      <label style={label}>Modo de pagamento *</label>
+                      <select value={payment} onChange={(e) => setPayment(e.target.value)} style={fieldStyle}>
+                        <option value="">— como o cliente fechou —</option>
+                        {PAYMENT_METHODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                      </select>
+                    </div>
                   </div>
                 )}
                 {integrator && (
@@ -1505,6 +1515,13 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
               <input type="number" min="0" step="0.01" value={amount} placeholder="ex.: 7188"
                 onChange={(e) => setAmount(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") confirm(); }} style={fieldStyle} />
               <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>vira a receita no marketing e a conversão enviada pra Meta</div>
+              <div style={{ marginTop: 12 }}>
+                <label style={label}>Modo de pagamento *</label>
+                <select value={payment} onChange={(e) => setPayment(e.target.value)} style={fieldStyle}>
+                  <option value="">— como o cliente fechou —</option>
+                  {PAYMENT_METHODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                </select>
+              </div>
             </div>
           )}
 

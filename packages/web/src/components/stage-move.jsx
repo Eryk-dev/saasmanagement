@@ -2,6 +2,7 @@ import React from "react";
 import { PrimaryButton } from "../atoms.jsx";
 import { stageKind, phaseOf, isLossKind, isWonKind, lossReasonsOf } from "../lib/funnel.js";
 import { usersByRole, currentUser } from "../lib/users.js";
+import { PAYMENT_METHODS } from "../lib/payments.js";
 import { api } from "../lib/api.js";
 
 // Gate de movimento de estágio — os três momentos do processo que exigem input:
@@ -40,8 +41,9 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   const [note, setNote] = React.useState("");
   const [callAt, setCallAt] = React.useState("");
   const [amount, setAmount] = React.useState("");
+  const [payment, setPayment] = React.useState(lead.paymentMethod || "");
   const askCall = !isLost && !isWonGate && gate.toKind === "call";
-  const ready = isLost ? !!reason : isWonGate ? Number(amount) > 0 : !!closer;
+  const ready = isLost ? !!reason : isWonGate ? (Number(amount) > 0 && !!payment) : !!closer;
 
   function confirm() {
     if (!ready) return;
@@ -51,6 +53,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
       if (note.trim()) patch.lostNote = note.trim();
     } else if (isWonGate) {
       patch.amount = Number(amount);
+      patch.paymentMethod = payment;
     } else {
       patch.closer = closer;
       if (callAt) patch.callAt = callAt;
@@ -83,6 +86,12 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
             <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
               vira a receita da campanha no relatório de marketing e o valor da conversão enviada pra Meta
             </div>
+            <div style={{ height: 12 }} />
+            <label style={label}>Modo de pagamento *</label>
+            <select value={payment} onChange={(e) => setPayment(e.target.value)} style={field}>
+              <option value="">— como o cliente fechou —</option>
+              {PAYMENT_METHODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
           </>
         ) : isLost ? (
           <>
