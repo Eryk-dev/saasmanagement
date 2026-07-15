@@ -42,6 +42,9 @@ export function aggregateIntegrations(summaries) {
 export function registerIntegrationRoutes(app, repo) {
   app.get("/api/integrations/:saas/summary", async (req) => {
     const saas = req.params.saas;
+    // Filtro por integrador: ausente = TODOS; presente (mesmo "") = só as
+    // integrações daquele integrador ("" = sem integrador atribuído).
+    const integFilter = req.query.integrator != null ? String(req.query.integrator) : null;
     const all = (await repo.list("activities"))
       .filter((a) => a && a.saas === saas && a.meta?.event === "call_summary" && a.meta?.summary && a.meta?.kind === "integracao")
       .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0));
@@ -54,17 +57,25 @@ export function registerIntegrationRoutes(app, repo) {
       seen.add(key);
       acts.push(a);
     }
-    const agg = aggregateIntegrations(acts.map((a) => a.meta.summary));
+    // Integrador responsável = integrator do lead (o call_summary não guarda quem
+    // conduziu; o campo do lead é o melhor sinal, igual ao closer no pitch).
     const leadsById = new Map((await repo.list("leads")).map((l) => [l.id, l]));
-    const recent = acts.slice(0, 25).map((a) => ({
+    const integOf = (a) => leadsById.get(a.lead)?.integrator || "";
+    const imap = new Map();
+    for (const a of acts) { const g = integOf(a); imap.set(g, (imap.get(g) || 0) + 1); }
+    const integradores = [...imap.entries()].map(([id, count]) => ({ id, count })).sort((a, b) => b.count - a.count);
+    const scoped = integFilter == null ? acts : acts.filter((a) => integOf(a) === integFilter);
+    const agg = aggregateIntegrations(scoped.map((a) => a.meta.summary));
+    const recent = scoped.slice(0, 25).map((a) => ({
       leadId: a.lead,
       leadName: leadsById.get(a.lead)?.name || "",
       company: leadsById.get(a.lead)?.company || "",
+      integrator: integOf(a),
       at: a.at || "",
       sentimento: a.meta.summary.sentimento || "",
       resumo: a.meta.summary.resumo || "",
       recordingUrl: a.meta.recordingUrl || "",
     }));
-    return { ...agg, recent };
+    return { ...agg, recent, integradores, integrator: integFilter };
   });
 }

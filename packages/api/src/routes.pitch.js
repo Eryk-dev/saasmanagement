@@ -82,6 +82,9 @@ export function registerPitchRoutes(app, repo, { anthropic } = {}) {
   // produto + as calls recentes (com nome do lead). Read-only; alimenta a tela.
   app.get("/api/pitch/:saas/calls", async (req) => {
     const saas = req.params.saas;
+    // Filtro por closer: ausente = TODOS; presente (mesmo "") = só as calls
+    // daquele closer ("" = calls sem closer atribuído).
+    const closerFilter = req.query.closer != null ? String(req.query.closer) : null;
     const all = (await repo.list("activities"))
       .filter((a) => a && a.saas === saas && a.meta?.event === "call_summary" && a.meta?.summary && a.meta?.kind !== "integracao")
       .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0));
@@ -95,18 +98,28 @@ export function registerPitchRoutes(app, repo, { anthropic } = {}) {
       seen.add(key);
       acts.push(a);
     }
-    const agg = aggregateCalls(acts.map((a) => a.meta.summary));
+    // Closer responsável pela call = closer do lead (o call_summary é gravado por
+    // "cockpit", não guarda quem conduziu; o campo do lead é o melhor sinal).
     const leadsById = new Map((await repo.list("leads")).map((l) => [l.id, l]));
-    const recent = acts.slice(0, 25).map((a) => ({
+    const closerOf = (a) => leadsById.get(a.lead)?.closer || "";
+    // Lista de closers com contagem, sobre TODAS as calls (pré-filtro) — alimenta
+    // o seletor e não muda quando um closer é selecionado.
+    const cmap = new Map();
+    for (const a of acts) { const c = closerOf(a); cmap.set(c, (cmap.get(c) || 0) + 1); }
+    const closers = [...cmap.entries()].map(([id, count]) => ({ id, count })).sort((a, b) => b.count - a.count);
+    const scoped = closerFilter == null ? acts : acts.filter((a) => closerOf(a) === closerFilter);
+    const agg = aggregateCalls(scoped.map((a) => a.meta.summary));
+    const recent = scoped.slice(0, 25).map((a) => ({
       leadId: a.lead,
       leadName: leadsById.get(a.lead)?.name || "",
       stage: leadsById.get(a.lead)?.stage || "",
+      closer: closerOf(a),
       at: a.at || "",
       temperatura: a.meta.summary.temperatura || "",
       resumo: a.meta.summary.resumo || "",
       recordingUrl: a.meta.recordingUrl || "",
     }));
-    return { ...agg, recent, aiConfigured: !!anthropic?.configured() };
+    return { ...agg, recent, closers, closer: closerFilter, aiConfigured: !!anthropic?.configured() };
   });
 
   app.post("/api/pitch/:saas/improve", async (req, reply) => {
@@ -118,13 +131,19 @@ export function registerPitchRoutes(app, repo, { anthropic } = {}) {
     const body = req.body && typeof req.body === "object" ? req.body : {};
     const currentScript = body.currentScript && typeof body.currentScript === "object" ? body.currentScript : {};
     const scriptLabel = String(body.scriptLabel || body.scriptKey || "roteiro");
+    const closerFilter = body.closer != null ? String(body.closer) : null; // null = todos os closers
 
-    // Resumos de call do produto, mais recentes primeiro (janela de 60).
-    const acts = (await repo.list("activities"))
+    // Resumos de call do produto, mais recentes primeiro. Quando um closer é
+    // escolhido, o diagnóstico olha só as calls dele (mesma atribuição do painel).
+    let acts = (await repo.list("activities"))
       .filter((a) => a && a.saas === saas && a.meta?.event === "call_summary" && a.meta?.summary && a.meta?.kind !== "integracao")
-      .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0))
-      .slice(0, 60);
-    if (!acts.length) return reply.code(422).send({ error: "Ainda não há calls resumidas por IA neste produto pra analisar." });
+      .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0));
+    if (closerFilter != null) {
+      const leadsById = new Map((await repo.list("leads")).map((l) => [l.id, l]));
+      acts = acts.filter((a) => (leadsById.get(a.lead)?.closer || "") === closerFilter);
+    }
+    acts = acts.slice(0, 60);
+    if (!acts.length) return reply.code(422).send({ error: closerFilter != null ? "Esse closer ainda não tem calls resumidas por IA pra analisar." : "Ainda não há calls resumidas por IA neste produto pra analisar." });
 
     const digest = buildCallsDigest(acts.map((a) => a.meta.summary));
     try {

@@ -3,6 +3,8 @@ import { PageHead, Card, Pill, StatTile } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
+import { displayName } from "../lib/users.js";
+import { PersonFilter } from "./calls.jsx";
 
 // Análise de integração (CS/onboarding) — agrega os resumos das calls de
 // integração do produto: sentimento do cliente (com "em risco" pra pegar churn
@@ -29,14 +31,23 @@ function IntegrationsScreen({ onOpenLead }) {
   const [product] = useActiveSaas();
   const [data, setData] = useS(null);
   const [err, setErr] = useS(null);
+  const [integrator, setIntegrator] = useS(undefined); // undefined = todos os integradores
+  const [integradores, setIntegradores] = useS([]); // lista persistente pro seletor
+
+  // Troca de produto zera o filtro de integrador.
+  useE(() => { setIntegrator(undefined); setIntegradores([]); }, [product?.id]);
 
   useE(() => {
     if (!product?.id) return;
     let alive = true;
     setData(null); setErr(null);
-    api.integrationAnalysis(product.id).then((d) => alive && setData(d)).catch((e) => alive && setErr(e.message));
+    api.integrationAnalysis(product.id, integrator).then((d) => {
+      if (!alive) return;
+      setData(d);
+      if (Array.isArray(d.integradores)) setIntegradores(d.integradores);
+    }).catch((e) => alive && setErr(e.message));
     return () => { alive = false; };
-  }, [product?.id]);
+  }, [product?.id, integrator]);
 
   function openRecent(leadId) {
     const full = (window.SEED?.LEADS || []).find((l) => l.id === leadId);
@@ -50,9 +61,16 @@ function IntegrationsScreen({ onOpenLead }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <PageHead title="Análise de integração"
-        sub={data ? `${data.count} ${data.count === 1 ? "integração resumida" : "integrações resumidas"}` : "onboarding resumido por IA"} />
+        sub={(data ? `${data.count} ${data.count === 1 ? "integração resumida" : "integrações resumidas"}` : "onboarding resumido por IA") + (integrator != null ? ` · ${integrator ? displayName(integrator) : "sem integrador"}` : "")} />
 
       <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)", display: "flex", flexDirection: "column", gap: 14 }}>
+        {integradores.length >= 2 ? (
+          <PersonFilter people={integradores} value={integrator} onChange={setIntegrator} />
+        ) : integradores.length === 1 && data?.count > 0 ? (
+          <div className="mono dim" style={{ fontSize: 11 }}>
+            separado por integrador · {integradores[0].id ? `todas as integrações são de ${displayName(integradores[0].id)}` : "nenhuma integração tem integrador atribuído ainda"}
+          </div>
+        ) : null}
         {err && <div className="mono" style={{ color: "var(--neg)" }}>{err}</div>}
         {!data && !err && <div className="mono dim">carregando…</div>}
 
@@ -106,6 +124,7 @@ function IntegrationsScreen({ onOpenLead }) {
                     onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
                     <span style={{ fontSize: 13, fontWeight: 600, flexShrink: 0, minWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.leadName || c.company || "cliente"}</span>
                     <Pill tone={SENT_TONE[c.sentimento] || "mut"}>{c.sentimento || "—"}</Pill>
+                    {integrator == null && c.integrator && <Pill tone="mut">{displayName(c.integrator)}</Pill>}
                     <span className="dim" style={{ fontSize: 12, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.resumo}</span>
                   </div>
                 ))}
