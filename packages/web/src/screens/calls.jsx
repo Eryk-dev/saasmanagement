@@ -3,6 +3,7 @@ import { PageHead, Card, Pill, StatTile } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
+import { displayName } from "../lib/users.js";
 import { DEFAULT_SCRIPTS, applyScriptOverride } from "../lib/scripts.js";
 
 // Análise de pitch — agrega os resumos de call por IA (activity call_summary) do
@@ -11,6 +12,33 @@ import { DEFAULT_SCRIPTS, applyScriptOverride } from "../lib/scripts.js";
 // pitch (e o diagnóstico da IA aponta o que ajustar no roteiro da call).
 const { useState: useS, useEffect: useE } = React;
 const TEMP_TONE = { quente: "neg", morno: "warn", frio: "mut" };
+
+// Seletor "separado por pessoa" (closer no pitch, integrador na integração):
+// pílulas Todos + uma por pessoa com a contagem de calls. value undefined = Todos;
+// "" = sem responsável. Só aparece quando há o que separar (2+ opções).
+export function PersonFilter({ people, value, onChange, allLabel = "Todos" }) {
+  const total = (people || []).reduce((s, p) => s + (p.count || 0), 0);
+  const opts = [{ id: undefined, count: total, label: allLabel }].concat(
+    (people || []).map((p) => ({ id: p.id, count: p.count, label: p.id ? displayName(p.id) : "sem responsável" })),
+  );
+  return (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+      <span className="mono dim" style={{ fontSize: 11, marginRight: 2 }}>separado por:</span>
+      {opts.map((o) => {
+        const on = value === o.id;
+        return (
+          <button key={o.id ?? "__all__"} onClick={() => onChange(o.id)} className="mono"
+            style={{ height: 28, padding: "0 12px", borderRadius: 999, fontSize: 12, cursor: "pointer",
+              border: "1px solid " + (on ? "var(--accent)" : "var(--line-2)"),
+              background: on ? "var(--accent-soft, var(--bg-3))" : "transparent",
+              color: on ? "var(--fg-1)" : "var(--fg-3)", fontWeight: on ? 600 : 400 }}>
+            {o.label} <span style={{ opacity: 0.6 }}>· {o.count}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 // Barra horizontal simples (frequência relativa) — evita puxar chart pesado.
 function Bar({ label, value, max, sub, tone }) {
@@ -33,14 +61,23 @@ function CallsScreen({ onOpenLead }) {
   const [data, setData] = useS(null);
   const [err, setErr] = useS(null);
   const [ai, setAi] = useS(null); // null | "loading" | { diagnostico, objecoes } | { error }
+  const [closer, setCloser] = useS(undefined); // undefined = todos os closers
+  const [closers, setClosers] = useS([]); // lista persistente pro seletor (não some no loading)
+
+  // Troca de produto zera o filtro de closer.
+  useE(() => { setCloser(undefined); setClosers([]); }, [product?.id]);
 
   useE(() => {
     if (!product?.id) return;
     let alive = true;
     setData(null); setErr(null); setAi(null);
-    api.pitchCalls(product.id).then((d) => alive && setData(d)).catch((e) => alive && setErr(e.message));
+    api.pitchCalls(product.id, closer).then((d) => {
+      if (!alive) return;
+      setData(d);
+      if (Array.isArray(d.closers)) setClosers(d.closers); // lista completa (não muda com o filtro)
+    }).catch((e) => alive && setErr(e.message));
     return () => { alive = false; };
-  }, [product?.id]);
+  }, [product?.id, closer]);
 
   // Diagnóstico da IA: usa o roteiro ATUAL da call (default + override do produto)
   // + o padrão das calls. Mostramos só o diagnóstico e como tratar as objeções;
@@ -53,6 +90,7 @@ function CallsScreen({ onOpenLead }) {
       const r = await api.improvePitch(product.id, {
         scriptKey: "call", scriptLabel: "Call de fechamento",
         currentScript: { resumo: cur.resumo, objetivo: cur.objetivo, passos: cur.passos },
+        closer, // undefined = todos; senão diagnóstico só das calls desse closer
       });
       setAi({ diagnostico: r.diagnostico || "", objecoes: r.objecoesRecorrentes || [] });
     } catch (e) {
@@ -72,9 +110,16 @@ function CallsScreen({ onOpenLead }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <PageHead title="Análise de pitch"
-        sub={data ? `${data.count} ${data.count === 1 ? "call resumida" : "calls resumidas"}` : "calls resumidas por IA"} />
+        sub={(data ? `${data.count} ${data.count === 1 ? "call resumida" : "calls resumidas"}` : "calls resumidas por IA") + (closer != null ? ` · ${closer ? displayName(closer) : "sem closer"}` : "")} />
 
       <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)", display: "flex", flexDirection: "column", gap: 14 }}>
+        {closers.length >= 2 ? (
+          <PersonFilter people={closers} value={closer} onChange={setCloser} />
+        ) : closers.length === 1 && data?.count > 0 ? (
+          <div className="mono dim" style={{ fontSize: 11 }}>
+            separado por closer · {closers[0].id ? `todas as calls são de ${displayName(closers[0].id)}` : "nenhuma call tem closer atribuído ainda"}
+          </div>
+        ) : null}
         {err && <div className="mono" style={{ color: "var(--neg)" }}>{err}</div>}
         {!data && !err && <div className="mono dim">carregando…</div>}
 
@@ -155,6 +200,7 @@ function CallsScreen({ onOpenLead }) {
                     onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
                     <span style={{ fontSize: 13, fontWeight: 600, flexShrink: 0, minWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.leadName || "lead"}</span>
                     <Pill tone={TEMP_TONE[c.temperatura] || "mut"}>{c.temperatura || "—"}</Pill>
+                    {closer == null && c.closer && <Pill tone="mut">{displayName(c.closer)}</Pill>}
                     <span className="dim" style={{ fontSize: 12, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.resumo}</span>
                   </div>
                 ))}

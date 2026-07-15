@@ -106,9 +106,11 @@ export const api = {
   // versão melhor de um roteiro. body: { scriptKey, scriptLabel, currentScript }.
   improvePitch: (saas, body) => req("POST", `/api/pitch/${saas}/improve`, body),
   // Análise de pitch: estatísticas agregadas das calls resumidas + calls recentes.
-  pitchCalls: (saas) => req("GET", `/api/pitch/${saas}/calls`),
+  // closer opcional (undefined = todos; "" = sem closer) separa a análise por closer.
+  pitchCalls: (saas, closer) => req("GET", `/api/pitch/${saas}/calls${closer != null ? `?closer=${encodeURIComponent(closer)}` : ""}`),
   // Análise de integração: sentimento, pendências recorrentes e integrações recentes.
-  integrationAnalysis: (saas) => req("GET", `/api/integrations/${saas}/summary`),
+  // integrator opcional (undefined = todos; "" = sem integrador) separa por integrador.
+  integrationAnalysis: (saas, integrator) => req("GET", `/api/integrations/${saas}/summary${integrator != null ? `?integrator=${encodeURIComponent(integrator)}` : ""}`),
   // Upload multipart (vídeo) — fetch cru: o browser define o boundary do form.
   uploadCreative: async (saas, formData) => {
     const headers = {};
