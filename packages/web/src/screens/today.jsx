@@ -83,19 +83,25 @@ function buildQueue(leads, saasCfg, person) {
     if (l.stage && !workable.has(l.stage)) continue;
     const kind = stageKind(saasCfg, stage);
     const phase = phaseOf(kind);
-    // Confirmação de call: call marcada pra HOJE + você é o DONO (SDR) e não é o
-    // closer → a call vira uma tarefa de CONFIRMAÇÃO na SUA fila (o closer segue
-    // vendo a call na dele). Só na fila do próprio SDR, não no "time todo".
+    // Confirmação de call: call marcada pra HOJE conduzida pelo closer (dono !=
+    // closer) → vira uma tarefa de CONFIRMAÇÃO na fila do SDR (o closer segue
+    // vendo a call na dele). Vai pro DONO quando há dono; SEM dono cai pra quem
+    // tiver o papel de SDR (mesmo fallback do resto da fila) — senão uma call de
+    // lead antigo/importado sem owner some sem NINGUÉM pra confirmar. Só na fila
+    // de um SDR, não no "time todo".
     const callT = l.callAt ? new Date(l.callAt).getTime() : NaN;
     const callToday = Number.isFinite(callT) && callT >= startToday.getTime() && callT <= endToday.getTime();
-    const isConfirm = kind === "call" && callToday && l.owner && l.owner !== l.closer && person && person === l.owner;
+    const isConfirm = kind === "call" && callToday && l.owner !== l.closer && person &&
+      (l.owner ? person === l.owner : personRoles.has(PHASE_ROLE.sdr));
     // Responsável da vez: SDR (dono) na pré-venda; closer na fase de call/
     // follow-up (SÓ o campo closer: dono SDR antigo não puxa o card); e o
     // INTEGRADOR (campo próprio) na entrega — integração/CS são do Eryk.
     const who = isConfirm ? l.owner : phase === "sdr" ? (l.owner || "") : phase === "entrega" ? (l.integrator || "") : (l.closer || "");
     // Filtro de pessoa: card atribuído à pessoa sempre entra; card SEM dono só
-    // entra pra quem tem o papel da fase (SDR não vê follow-up/integração).
-    if (person) {
+    // entra pra quem tem o papel da fase (SDR não vê follow-up/integração). A
+    // confirmação já foi filtrada por pessoa acima (isConfirm), então não passa
+    // por aqui — senão a call sem dono cairia no papel de closer e sumiria.
+    if (person && !isConfirm) {
       if (who) { if (who !== person) continue; }
       else {
         const need = PHASE_ROLE[phase];
