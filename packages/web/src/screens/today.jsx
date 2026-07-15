@@ -1164,10 +1164,40 @@ const ymd = (d) => { const p = (x) => String(x).padStart(2, "0"); return `${d.ge
 const sameYMD = (a, b) => ymd(a) === ymd(b);
 const parseYMD = (s) => { const [y, m, dd] = String(s).split("-").map(Number); const d = new Date(); d.setFullYear(y, (m || 1) - 1, dd || 1); d.setHours(0, 0, 0, 0); return d; };
 
+// Um bloqueio de agenda (agenda_blocks) casa com o slot (cellKey "YYYY-MM-DD-HH")
+// do dono? recur "weekly" bate pelo dia da semana; "once" pela data. allDay pega o
+// dia todo; senão a hora tem que cair no intervalo [fromHour, toHour).
+function matchBlock(blocks, key) {
+  const dateStr = key.slice(0, 10);        // YYYY-MM-DD
+  const hour = Number(key.slice(11, 13));  // HH
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const weekday = new Date(y, m - 1, d).getDay();
+  return blocks.find((b) => {
+    const hourHit = b.allDay || (hour >= Number(b.fromHour) && hour < Number(b.toHour));
+    if (!hourHit) return false;
+    return b.recur === "weekly" ? Number(b.weekday) === weekday : b.date === dateStr;
+  });
+}
+// "Agenda ocupada" do dono: calls/integrações já marcadas (keys concretas) MAIS os
+// bloqueios manuais da tela Agenda. Devolve o mesmo contrato que a SlotGrid usa
+// (.has), com .info(key) extra pro tooltip (motivo do bloqueio).
+export function busyView(concreteKeys, userId) {
+  const blocks = ((typeof window !== "undefined" && window.SEED?.AGENDA_BLOCKS) || []).filter((b) => b.user === userId);
+  return {
+    has: (key) => concreteKeys.has(key) || !!matchBlock(blocks, key),
+    info: (key) => {
+      if (concreteKeys.has(key)) return { kind: "call" };
+      const b = matchBlock(blocks, key);
+      return b ? { kind: "block", reason: b.reason || "" } : null;
+    },
+  };
+}
+
 // Horas já ocupadas na agenda de um closer: cada lead dele com callAt marca a
 // hora daquele slot (a call ocupa 1h). Ignora o próprio lead (reagendamento) e
 // os follow-ups — follow-up NÃO bloqueia horário: o SDR pode marcar a call de
 // venda por cima. Só call de venda conta como ocupada, pra não dar divergência.
+// Soma os bloqueios manuais do closer (busyView).
 export function callBusyKeys(leads, closerId, selfId) {
   const busy = new Set();
   const saasList = (typeof window !== "undefined" && window.SEED?.SAAS) || [];
@@ -1178,11 +1208,12 @@ export function callBusyKeys(leads, closerId, selfId) {
     const d = new Date(o.callAt);
     if (Number.isFinite(d.getTime())) busy.add(cellKey(d));
   }
-  return busy;
+  return busyView(busy, closerId);
 }
 
 // Horas ocupadas na agenda de um integrador: cada lead dele com integrationAt
 // marca a hora (a integração ocupa 1h). Ignora o próprio lead (reagendamento).
+// Soma os bloqueios manuais do integrador (busyView).
 export function integBusyKeys(leads, integratorId, selfId) {
   const busy = new Set();
   for (const o of leads || []) {
@@ -1190,7 +1221,7 @@ export function integBusyKeys(leads, integratorId, selfId) {
     const d = new Date(o.integrationAt);
     if (Number.isFinite(d.getTime())) busy.add(cellKey(d));
   }
-  return busy;
+  return busyView(busy, integratorId);
 }
 
 // Grade de agenda reutilizável: abas de dia (dias úteis) + slots de 1h. Marca
@@ -1229,21 +1260,25 @@ function SlotGrid({ days, day, setDay, slot, setSlot, busy }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))", gap: 6 }}>
         {Array.from({ length: CALL_H1 - CALL_H0 }, (_, i) => CALL_H0 + i).map((h) => {
           const cell = new Date(day); cell.setHours(h, 0, 0, 0);
-          const occupied = busy.has(cellKey(cell));
+          const key = cellKey(cell);
+          const occupied = busy.has(key);
+          const bInfo = occupied && busy.info ? busy.info(key) : null;
+          const blocked = bInfo?.kind === "block"; // bloqueio manual (agenda) ≠ call já marcada
           const past = cell.getTime() < Date.now();
           const val = slotVal(day, h);
           const sel = slot === val;
           const disabled = occupied || past;
+          const title = blocked ? ("agenda bloqueada" + (bInfo.reason ? `: ${bInfo.reason}` : "")) : occupied ? "closer já tem call nesse horário" : past ? "horário já passou" : "marcar";
           return (
-            <button key={h} disabled={disabled} onClick={() => setSlot(val)} title={occupied ? "closer já tem call nesse horário" : past ? "horário já passou" : "marcar"}
+            <button key={h} disabled={disabled} onClick={() => setSlot(val)} title={title}
               style={{
                 height: 32, borderRadius: "var(--r-2)", fontSize: 11.5, fontFamily: "var(--mono)",
                 background: sel ? "var(--accent)" : occupied ? "var(--neg-soft)" : "var(--bg-1)",
                 color: sel ? "var(--accent-fg)" : occupied ? "var(--neg)" : past ? "var(--fg-4)" : "var(--fg-2)",
                 border: "1px solid " + (sel ? "var(--accent)" : occupied ? "color-mix(in srgb, var(--neg) 30%, var(--line-2))" : "var(--line-2)"),
                 opacity: past && !sel ? 0.45 : 1, cursor: disabled ? "not-allowed" : "pointer",
-                textDecoration: occupied ? "line-through" : "none",
-              }}>{String(h).padStart(2, "0")}:00</button>
+                textDecoration: occupied && !blocked ? "line-through" : "none",
+              }}>{blocked ? "🔒 " : ""}{String(h).padStart(2, "0")}:00</button>
           );
         })}
       </div>
