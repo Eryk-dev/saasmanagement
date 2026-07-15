@@ -29,7 +29,6 @@ import { registerFlashcardRoutes } from "./routes.flashcards.js";
 import { registerGoogleRoutes } from "./routes.google.js";
 import { syncPersonalCalendar } from "./google-user.js";
 import { registerWhatsappRoutes } from "./routes.whatsapp.js";
-import { registerWaCallingRoutes } from "./routes.wa-calling.js";
 import { makeMailer } from "./mailer.js";
 import { getWaHealth, waHealthSummary } from "./wa-health.js";
 import { makeAnthropic } from "./anthropic.js";
@@ -270,8 +269,6 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // WhatsApp (Cloud API): webhook (recebe) + envio pelo drawer do lead. O SDR
   // conversa com o cliente direto no cockpit; as mensagens viram timeline.
   const whatsappClient = registerWhatsappRoutes(app, repo, { whatsapp: opts.whatsapp });
-  // Chamada de voz do WhatsApp (M1: habilitar/status via API; voz WebRTC vem depois).
-  registerWaCallingRoutes(app, repo, { waCalling: opts.waCalling });
   // Poller de resumos (index.js) usa os MESMOS clients das rotas.
   if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, anthropic: anthropicClient, mailer: mailerClient });
 

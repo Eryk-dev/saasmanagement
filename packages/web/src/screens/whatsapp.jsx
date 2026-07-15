@@ -6,7 +6,6 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { waLink } from "../lib/ui.js";
-import { WaCallingSetup } from "../components/wa-calling-setup.jsx";
 
 // Inbox de WhatsApp: um WhatsApp Web dentro do cockpit. Lista de conversas à
 // esquerda (não-lidas primeiro na cara, ordenadas por recência) + conversa
@@ -107,9 +106,7 @@ export function WhatsappInboxScreen({ onOpenLead }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-      <PageHead title="WhatsApp" sub={configured ? (totalUnread ? `${totalUnread} não lida${totalUnread > 1 ? "s" : ""}` : "conversas com os leads") : "não configurado no servidor"}>
-        <WaCallingSetup />
-      </PageHead>
+      <PageHead title="WhatsApp" sub={configured ? (totalUnread ? `${totalUnread} não lida${totalUnread > 1 ? "s" : ""}` : "conversas com os leads") : "não configurado no servidor"} />
 
       <WaHealthBanner />
 
