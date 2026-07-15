@@ -41,6 +41,8 @@ export const COLLECTIONS = {
   app_config: [], // chave-valor de integrações (ex.: google_oauth = refresh token da conta conectada)
   social_assets: [], // mídia pra publicação social (bytes base64, servida em /public/social/:id)
   social_posts: [],  // histórico de publicações orgânicas feitas pelo cockpit
+  wa_threads: [],    // inbox de WhatsApp: índice de conversas, 1 por número (wa-store.js)
+  wa_messages: [],   // inbox de WhatsApp: TODAS as mensagens in/out (wa-store.js)
   offers: [],        // links de pagamento das ofertas por produto (ferramenta)
   campaigns: [],     // disparos (e-mail + WhatsApp) pros leads qualificados por produto (ferramenta)
   sequences: [],     // sequências de nutrição (drip): passos por canal + gatilho por etapa
