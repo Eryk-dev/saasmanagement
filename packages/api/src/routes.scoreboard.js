@@ -124,15 +124,27 @@ export function registerScoreboardRoutes(app, repo) {
       const resolved = shown + noShow;
       const leadsNew = cohort.length;
       const leadsPrev = hasPrev ? mine.filter((l) => inPrev(l.createdAt)).length : null;
-      const contacted = touchHours.length; // leads novos que ele JÁ tocou (1º contato feito)
+      // Contatados = TRABALHO DO DIA: leads que o SDR trabalhou no Meu dia no
+      // período — registrou um toque OU atualizou o status (mudou de etapa). Vale
+      // pra QUALQUER lead dele (não só a safra que entrou hoje), porque o fluxo é
+      // fila rolante. Só a ação DELE conta (author = uid), não o move do closer
+      // num lead que por acaso é dele. Distinto por lead.
+      const contactedIds = new Set();
+      for (const l of mine) {
+        for (const a of actsByLead.get(l.id) || []) {
+          if (inWin(a.at) && a.author === uid && (TOUCH_TYPES.has(a.type) || a.type === "stage")) { contactedIds.add(l.id); break; }
+        }
+      }
+      const contacted = contactedIds.size;
       return {
         user: uid, name: nameOf(uid),
         leadsNew,
         leadsPrev, // leads da janela anterior (base da meta dinâmica de calls)
         contacted,
-        contactRate: leadsNew > 0 ? round2((contacted / leadsNew) * 100) : null,
         callsBooked,
-        bookingRate: leadsNew > 0 ? round2((callsBooked / leadsNew) * 100) : null,
+        // Taxa de agendamento = conversão do dia: das pessoas que ele contatou,
+        // quantas viraram call (calls agendadas ÷ contatados).
+        bookingRate: contacted > 0 ? round2((callsBooked / contacted) * 100) : null,
         firstTouchMedianH: median(touchHours),
         withinSla: touchHours.filter((h) => h <= slaMs / HOUR).length,
         breached, // novos que estouraram o SLA e seguem sem toque
@@ -145,7 +157,7 @@ export function registerScoreboardRoutes(app, repo) {
         // UI); callsBooked absoluto fica de fallback se alguém preferir fixo.
         goals: goalMap(uid, "sdr", ["contactRate", "bookingRate", "showRate", "callWinRate", "callsBooked"]),
       };
-    }).filter((p) => p.leadsNew > 0 || p.callsBooked > 0)
+    }).filter((p) => p.leadsNew > 0 || p.callsBooked > 0 || p.contacted > 0)
       .sort((a, b) => b.callsBooked - a.callsBooked);
 
     // ── Closer (agrupado por closer) ──────────────────────────────────────────

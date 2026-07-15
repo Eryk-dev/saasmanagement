@@ -437,10 +437,13 @@ const PANELS = [
     key: "sdr", title: "SDR", hint: "topo de funil: qualifica e agenda a call",
     alarm: (rows) => <SlaAlarm n={rows.reduce((a, p) => a + (p.breached || 0), 0)} />,
     cols: [
-      { label: "Contatados", render: (p) => <CountRate count={p.contacted} pct={p.contactRate} {...tiers(p.goals?.contactRate, 70)} /> },
+      // Contatados = leads que o SDR trabalhou no dia (toque ou mudança de status
+      // no Meu dia). É volume de atividade — sem taxa aqui; a conversão vai na
+      // coluna "Taxa agend." (calls ÷ contatados).
+      { label: "Contatados", render: (p) => <CountRate count={p.contacted} /> },
       // Alvo de calls DINÂMICO: leads da semana passada × meta de agendamento.
       { label: "Calls agendadas", render: (p) => <MetaCell value={p.callsBooked} goal={bookingGoal(p)} /> },
-      { label: "Taxa agend.", render: (p) => <RateCell pct={p.bookingRate} num={p.callsBooked} den={p.leadsNew} {...tiers(p.goals?.bookingRate, 30)} /> },
+      { label: "Taxa agend.", render: (p) => <RateCell pct={p.bookingRate} num={p.callsBooked} den={p.contacted} {...tiers(p.goals?.bookingRate, 30)} /> },
       { label: "SLA 1º toque", render: (p) => <SlaCell p={p} /> },
       { label: "% compareceram", render: (p) => (
         <span title={p.showRate != null ? `${p.noShow} não compareceram` : "sem call resolvida no período"}>
