@@ -33,6 +33,7 @@ const NAV = [
   { id: "funcionarios",  label: "Funcionários",          icon: "◓", group: "analises" },
 
   { id: "tasks",      label: "Tarefas",        icon: "▣",  group: "geral" },
+  { id: "mindmaps",   label: "Mapas mentais",  icon: "⌬",  group: "geral" },
   { id: "metas",      label: "Metas",          icon: "◎",  group: "geral" },
   { id: "expenses",   label: "Custos",         icon: "◫",  group: "geral" },
   { id: "settings",   label: "Configurações",  icon: "✦",  group: "geral" },
