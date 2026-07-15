@@ -16,6 +16,7 @@ import { OffersScreen } from "./screens/offers.jsx";
 import { DisparosScreen } from "./screens/disparos.jsx";
 import { WhatsappInboxScreen } from "./screens/whatsapp.jsx";
 import { CallsScreen } from "./screens/calls.jsx";
+import { IntegrationsScreen } from "./screens/integrations.jsx";
 import { MetasScreen } from "./screens/metas.jsx";
 import { TrainingScreen } from "./screens/training.jsx";
 import { CustomersScreen } from "./screens/customers.jsx";
@@ -145,6 +146,7 @@ function App() {
     offers:      ["Comercial", "Link pagamento"],
     disparos:    ["Comercial", "Disparos"],
     calls:       ["Comercial", "Análise de pitch"],
+    integrations: ["Comercial", "Análise de integração"],
     social:      ["Marketing", "Redes sociais"],
     metrics:     ["Marketing", "Publicidade"],
     forms:       ["Marketing", "Formulários"],
@@ -216,6 +218,7 @@ function App() {
           {scr === "disparos"    && <DisparosScreen onOpenLead={openLead} />}
           {scr === "whatsapp"    && <WhatsappInboxScreen onOpenLead={openLead} />}
           {scr === "calls"       && <CallsScreen onOpenLead={openLead} />}
+          {scr === "integrations" && <IntegrationsScreen onOpenLead={openLead} />}
           {scr === "metas"       && <MetasScreen />}
           {scr === "training"    && <TrainingScreen />}
           {scr === "subscriptions" && <CustomersScreen initialTab="billing" />}
@@ -305,6 +308,7 @@ function subtitleFor(screen, params) {
     offers:      "links de pagamento das ofertas · copie e envie",
     disparos:    "campanhas de e-mail e WhatsApp pros leads qualificados",
     calls:       "objeções, dores e temperatura das calls · insights de pitch",
+    integrations: "sentimento dos clientes e pendências recorrentes do onboarding",
     metas:       "metas por vaga e por pessoa · valem em todo campo de meta",
     training:    "flashcards estilo Anki (FSRS) · fila individual por pessoa",
     social:      "métricas do perfil · criar post e publicar direto",

@@ -21,6 +21,7 @@ const NAV = [
   { id: "disparos",   label: "Disparos",       icon: "➤",  group: "comercial" },
   { id: "whatsapp",   label: "WhatsApp",       icon: "✆",  group: "comercial" },
   { id: "calls",      label: "Análise de pitch", icon: "◐", group: "comercial" },
+  { id: "integrations", label: "Análise de integração", icon: "◑", group: "comercial" },
 
   { id: "social",     label: "Redes sociais",  icon: "◍",  group: "marketing" },
   { id: "metrics",    label: "Publicidade",    icon: "∿",  group: "marketing" },

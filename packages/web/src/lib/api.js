@@ -104,6 +104,8 @@ export const api = {
   improvePitch: (saas, body) => req("POST", `/api/pitch/${saas}/improve`, body),
   // Análise de pitch: estatísticas agregadas das calls resumidas + calls recentes.
   pitchCalls: (saas) => req("GET", `/api/pitch/${saas}/calls`),
+  // Análise de integração: sentimento, pendências recorrentes e integrações recentes.
+  integrationAnalysis: (saas) => req("GET", `/api/integrations/${saas}/summary`),
   // Upload multipart (vídeo) — fetch cru: o browser define o boundary do form.
   uploadCreative: async (saas, formData) => {
     const headers = {};
