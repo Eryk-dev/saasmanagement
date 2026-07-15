@@ -8,6 +8,7 @@ import { waLink } from "../lib/ui.js";
 import { currentUser } from "../lib/users.js";
 import { stageKind, workableStages } from "../lib/funnel.js";
 import { scriptTokens } from "../lib/scripts.js";
+import { WaHealthBanner } from "./whatsapp.jsx";
 
 // Disparos — campanhas de e-mail + WhatsApp pros leads QUALIFICADOS (nutrição /
 // reativação em massa). O operador: (1) escolhe o PÚBLICO por etapa do funil,
@@ -204,7 +205,7 @@ function DisparosScreen({ onOpenLead }) {
     ? recipients.filter((l) => `${l.name || ""} ${l.company || ""}`.toLowerCase().includes(search.trim().toLowerCase()))
     : recipients;
   const chosen = recipients.filter((l) => selected.has(l.id));
-  const withWa = chosen.filter((l) => waLink(l.phone)).length;
+  const withWa = chosen.filter((l) => waLink(l.phone) && !l.whatsappInvalid && !l.whatsappOptOut).length;
   const withEmail = chosen.filter((l) => l.email).length;
   const sentWa = chosen.filter((l) => camp.sent?.[l.id]?.whatsapp).length;
   const sentEmail = chosen.filter((l) => camp.sent?.[l.id]?.email).length;
@@ -257,6 +258,7 @@ function DisparosScreen({ onOpenLead }) {
 
       {tab === "disparos" && (
       <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)", display: "flex", flexDirection: "column", gap: 14 }}>
+        <WaHealthBanner style={{ margin: 0 }} />
         {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
         {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
 
@@ -424,7 +426,9 @@ function DisparosScreen({ onOpenLead }) {
                       {l.company && <span className="dim" style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.company}</span>}
                     </span>
                     {camp.channels.whatsapp && (
-                      waUrl ? (
+                      l.whatsappInvalid ? <span className="mono" style={{ fontSize: 10.5, color: "var(--neg)" }} title={l.whatsappInvalidReason || "o WhatsApp não entregou antes"}>número inválido</span>
+                      : l.whatsappOptOut ? <span className="mono dim" style={{ fontSize: 10.5 }} title="pediu pra parar de receber no WhatsApp">descadastrou Whats</span>
+                      : waUrl ? (
                         <a href={waUrl} target="_blank" rel="noopener noreferrer" onClick={() => mark(l, "whatsapp")}
                           style={{ ...sendChip, borderColor: s.whatsapp ? "var(--pos)" : "#25D366", color: s.whatsapp ? "var(--pos)" : "#128c4b" }}>
                           {s.whatsapp ? "✓ Whats" : "abrir Whats ↗"}

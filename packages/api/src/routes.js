@@ -30,6 +30,7 @@ import { registerGoogleRoutes } from "./routes.google.js";
 import { syncPersonalCalendar } from "./google-user.js";
 import { registerWhatsappRoutes } from "./routes.whatsapp.js";
 import { makeMailer } from "./mailer.js";
+import { getWaHealth, waHealthSummary } from "./wa-health.js";
 import { makeAnthropic } from "./anthropic.js";
 import { registerMetricsRoutes } from "./routes.metrics.js";
 import { meta as defaultMetaClient } from "./meta.js";
@@ -339,7 +340,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         google: { configured: googleClient.configured(), connected: await googleClient.connected(), account: await googleClient.account(), gmail: await googleClient.gmailReady() },
         ai: { configured: anthropicClient.configured() },
         discord: { configured: discordClient.configured() },
-        whatsapp: { configured: whatsappClient.configured() },
+        whatsapp: { configured: whatsappClient.configured(), health: waHealthSummary(await getWaHealth(repo)) },
       },
     };
   });

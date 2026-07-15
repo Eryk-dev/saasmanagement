@@ -179,3 +179,50 @@ test("envio fora da janela de 24h → 409 (precisa de template)", async () => {
   assert.equal(res.statusCode, 409);
   await app.close();
 });
+
+test("webhook: status failed com código de não-entregável marca o número inválido", async () => {
+  const repo = makeMemRepo();
+  await repo.create("leads", { id: "ld1", saas: "leverads", phone: "5541992516545" });
+  await repo.create("wa_messages", { id: "wamid.OUT1", thread: "5541992516545", leadId: "ld1", direction: "out", status: "sent" });
+  const app = await appWith(repo, fakeWa());
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: { entry: [{ changes: [{ field: "messages", value: { statuses: [{ id: "wamid.OUT1", status: "failed", errors: [{ code: 131026, title: "Message undeliverable" }] }] } }] }] } });
+  const lead = await repo.get("leads", "ld1");
+  assert.equal(lead.whatsappInvalid, true);
+  assert.match(lead.whatsappInvalidReason, /undeliverable/i);
+  await app.close();
+});
+
+test("webhook: status failed por RE-ENGAJAMENTO (131047) NÃO marca inválido (número é válido)", async () => {
+  const repo = makeMemRepo();
+  await repo.create("leads", { id: "ld1", saas: "leverads", phone: "5541992516545" });
+  await repo.create("wa_messages", { id: "wamid.OUT2", thread: "5541992516545", leadId: "ld1", direction: "out", status: "sent" });
+  const app = await appWith(repo, fakeWa());
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: { entry: [{ changes: [{ field: "messages", value: { statuses: [{ id: "wamid.OUT2", status: "failed", errors: [{ code: 131047, title: "Re-engagement message" }] }] } }] }] } });
+  assert.ok(!(await repo.get("leads", "ld1")).whatsappInvalid);
+  await app.close();
+});
+
+test("webhook: user_preferences marketing stop/resume descadastra e reinscreve o lead", async () => {
+  const repo = makeMemRepo();
+  await repo.create("leads", { id: "ld1", saas: "leverads", phone: "5541992516545" });
+  const app = await appWith(repo, fakeWa());
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: { entry: [{ changes: [{ field: "user_preferences", value: { user_preferences: [{ wa_id: "5541992516545", category: "marketing", value: "stop" }] } }] }] } });
+  assert.equal((await repo.get("leads", "ld1")).whatsappOptOut, true);
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: { entry: [{ changes: [{ field: "user_preferences", value: { user_preferences: [{ wa_id: "5541992516545", category: "marketing", value: "resume" }] } }] }] } });
+  assert.equal((await repo.get("leads", "ld1")).whatsappOptOut, false);
+  await app.close();
+});
+
+test("webhook: número FLAGGED + template RED viram saúde 'danger'", async () => {
+  const repo = makeMemRepo();
+  const app = await appWith(repo, fakeWa());
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: { entry: [{ changes: [{ field: "phone_number_quality_update", value: { display_phone_number: "+55 41 99251-6545", event: "FLAGGED", current_limit: "TIER_1K" } }] }] } });
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: { entry: [{ changes: [{ field: "message_template_quality_update", value: { message_template_name: "nutricao1", new_quality_score: "RED" } }] }] } });
+  const { getWaHealth, waHealthSummary } = await import("../src/wa-health.js");
+  const s = waHealthSummary(await getWaHealth(repo));
+  assert.equal(s.level, "danger");
+  assert.equal(s.number.event, "FLAGGED");
+  assert.ok(s.messages.some((m) => /SINALIZADO/.test(m)));
+  assert.ok(s.messages.some((m) => /VERMELHA/.test(m)));
+  await app.close();
+});

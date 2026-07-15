@@ -562,6 +562,19 @@ function LeadDetail({ lead: initial, onClose }) {
               </div>
             </div>
 
+        {/* Aviso de número inválido / descadastro (dos webhooks do WhatsApp): o
+            operador vê antes de tentar mandar, e os disparos já pulam sozinhos. */}
+        {(lead.whatsappInvalid || lead.whatsappOptOut) && (
+          <div className="mono" style={{ margin: "0 0 8px", padding: "7px 10px", borderRadius: "var(--r-2)", fontSize: 11.5,
+            border: "1px solid " + (lead.whatsappInvalid ? "var(--neg)" : "var(--line-2)"),
+            background: lead.whatsappInvalid ? "var(--neg-soft)" : "var(--bg-inset)",
+            color: lead.whatsappInvalid ? "var(--neg)" : "var(--fg-3)" }}>
+            {lead.whatsappInvalid
+              ? `número inválido no WhatsApp${lead.whatsappInvalidReason ? ` (${lead.whatsappInvalidReason})` : ""} · os disparos pulam esse número`
+              : "descadastrou do WhatsApp (parar promoções) · fora dos disparos"}
+          </div>
+        )}
+
         {/* Chat de WhatsApp (Cloud API): atalho contextual da conversa (a mesma
             da tela #whatsapp). "Ligar" abre a conversa no app. */}
         <WhatsappChat lead={lead} />

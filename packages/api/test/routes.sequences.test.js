@@ -119,3 +119,13 @@ test("enroll: inscreve na mão e pula quem já está inscrito", async () => {
   const r2 = await app.inject({ method: "POST", url: "/api/sequences/seq1/enroll", payload: { leadIds: ["A"] } });
   assert.equal(r2.json().enrolled, 0, "não duplica");
 });
+
+test("drip: passo de WhatsApp é PULADO se o lead descadastrou (não vai pra fila)", async () => {
+  const { repo, runner } = await setup();
+  await repo.update("leads", "A", { whatsappOptOut: true });
+  await runner.tick();            // passo 0 (email) → passo 1
+  const r2 = await runner.tick(); // passo 1 (whatsapp) → PULA (opt-out) → done
+  assert.equal(r2.waiting, 0, "não coloca na fila de WhatsApp");
+  const en = await enrollmentOf(repo, "seq1", "A");
+  assert.equal(en.status, "done");
+});
