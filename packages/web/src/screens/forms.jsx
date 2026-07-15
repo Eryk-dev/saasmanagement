@@ -169,7 +169,7 @@ function newForm(saasId) {
     theme: { ...THEME_DEFAULTS },
     welcome: null,
     questions: [{ key: "nome", label: "Qual é o seu nome?", type: "text", required: true, placeholder: "", help: "", options: [] }],
-    thanks: { title: "Recebido! Obrigado.", subtitle: "", redirectUrl: "", whatsapp: "", whatsappMsg: "" },
+    thanks: { title: "Recebido! Obrigado.", subtitle: "", redirectUrl: "", whatsapp: "", whatsappMsg: "", whatsappPrefill: "", whatsappAuto: false },
     reject: { title: "", subtitle: "" },
     mapping: { name: "nome" },
   };
@@ -313,6 +313,14 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
             <LabeledInput label="Redirecionar para (URL, opcional)" value={draft.thanks?.redirectUrl || ""} onChange={(v) => set({ thanks: { ...draft.thanks, redirectUrl: v } })} placeholder="https://…" />
             <LabeledInput label="WhatsApp do time (opcional)" value={draft.thanks?.whatsapp || ""} onChange={(v) => set({ thanks: { ...draft.thanks, whatsapp: v } })} placeholder="(11) 99999-9999" />
             <LabeledInput label="Texto acima do botão WhatsApp" value={draft.thanks?.whatsappMsg || ""} onChange={(v) => set({ thanks: { ...draft.thanks, whatsappMsg: v } })} placeholder="Caso tenha ficado com alguma dúvida, você pode falar com nosso time agora." />
+            <LabeledInput label="Mensagem que o LEAD envia no WhatsApp (opcional)" value={draft.thanks?.whatsappPrefill || ""} onChange={(v) => set({ thanks: { ...draft.thanks, whatsappPrefill: v } })} placeholder="Oi, me chamo {{nome}} e quero saber mais. Resumo: nicho - {{niche}}, contas - {{accounts}}." />
+            <div className="mono dim" style={{ fontSize: 11, margin: "-4px 0 8px", lineHeight: 1.5 }}>
+              Vai pré-preenchida no WhatsApp do lead pro número acima, então o time recebe o contato já com o resumo. Campos disponíveis: {(draft.questions || []).filter((q) => q.key).map((q) => "{{" + q.key + "}}").join("  ") || "(nenhum ainda)"}
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", opacity: draft.thanks?.whatsappPrefill ? 1 : 0.5 }}>
+              <input type="checkbox" checked={!!draft.thanks?.whatsappAuto} onChange={(e) => set({ thanks: { ...draft.thanks, whatsappAuto: e.target.checked } })} />
+              Abrir o WhatsApp automaticamente ao finalizar (encaminha o lead pro chat com a mensagem pronta)
+            </label>
           </div>
 
           <div style={sectionTitle}>Tela final (não qualificado)</div>

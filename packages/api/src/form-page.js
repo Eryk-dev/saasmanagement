@@ -426,6 +426,28 @@ ${metaPixelHead(pixelId)}
   function pad(n) { return String(n).padStart(2, '0'); }
   // Telefone livre -> dígitos do wa.me. Número local BR (<=11 díg, com DDD) ganha o DDI 55.
   function waDigits(p) { if (!p) return ''; var d = String(p).replace(/\\D/g, ''); if (!d) return ''; if (d.length <= 11) d = '55' + d; return d; }
+  // Rótulo legível de uma resposta: opção de select vira o texto que a pessoa viu;
+  // texto/número ficam como estão; multiselect junta com vírgula.
+  function answerLabel(q, val) {
+    if (val == null || val === '') return '';
+    if ((q.type === 'select' || q.type === 'multiselect') && q.options) {
+      return [].concat(val).map(function (v) {
+        var hit = q.options.filter(function (o) { return o.value === v; })[0];
+        return hit ? hit.label : v;
+      }).join(', ');
+    }
+    return String(val);
+  }
+  // Interpola {{chave}} na mensagem do WhatsApp com o que o lead respondeu. SEM
+  // regex de propósito: este arquivo é template literal e o escape do \\ atrapalha.
+  function interpWa(tpl) {
+    var out = String(tpl || '');
+    (F.questions || []).forEach(function (q) {
+      var token = '{{' + q.key + '}}';
+      if (out.indexOf(token) !== -1) out = out.split(token).join(answerLabel(q, answers[q.key]));
+    });
+    return out;
+  }
 
   function topBar(showBack, showPill) {
     var top = el('div', 'top');
@@ -702,9 +724,16 @@ ${metaPixelHead(pixelId)}
       if (!r.ok) return r.json().then(function (b) { throw new Error((b && b.error) || ('Erro ' + r.status)); });
       track('submit');
       mode = 'done'; cur = -1; render();
-      // Redirect só na tela positiva — desqualificado não vai pro destino de sucesso.
-      var url = !rejected && F.thanks && F.thanks.redirectUrl;
-      if (url) setTimeout(function () { window.top.location.href = url; }, 1600);
+      // Encaminhamento só na tela positiva (desqualificado não vai). O WhatsApp
+      // com o resumo do lead tem prioridade sobre o redirect de URL.
+      var tk = (!rejected && F.thanks) || null;
+      var waNum = tk ? waDigits(tk.whatsapp) : '';
+      var waText = waNum && tk.whatsappPrefill ? interpWa(tk.whatsappPrefill) : '';
+      if (waText && tk.whatsappAuto) {
+        setTimeout(function () { window.top.location.href = 'https://wa.me/' + waNum + '?text=' + encodeURIComponent(waText); }, 1200);
+      } else if (tk && tk.redirectUrl) {
+        setTimeout(function () { window.top.location.href = tk.redirectUrl; }, 1600);
+      }
     }).catch(function (e) {
       for (var i = 0; i < btns.length; i++) { btns[i].disabled = false; btns[i].textContent = (F.submitLabel || 'Enviar') + ' →'; }
       var errBox = document.getElementById('err');
@@ -730,12 +759,17 @@ ${metaPixelHead(pixelId)}
     // CTA WhatsApp opcional: "fale com o time agora". Mostra quando o form tem número.
     var waNum = waDigits(t.whatsapp);
     if (waNum) {
-      var waMsg = t.whatsappMsg || 'Caso tenha ficado com alguma dúvida, você pode falar com nosso time agora.';
+      // Mensagem que o LEAD manda pro time (resumo da operação dele), pré-preenchida
+      // no wa.me. Sem template configurado, mantém o botão "falar com o time" antigo.
+      var waText = (!rejected && t.whatsappPrefill) ? interpWa(t.whatsappPrefill) : '';
+      var waMsg = t.whatsappMsg || (waText
+        ? 'Toque pra falar com o nosso time no WhatsApp, já com o resumo do seu perfil.'
+        : 'Caso tenha ficado com alguma dúvida, você pode falar com nosso time agora.');
       wrap.appendChild(el('div', 'sub', fmt(waMsg)));
       var wa = el('a', 'wa-cta',
         '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm0 18.05h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.18 8.18 0 0 1-1.26-4.36c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.82 2.42a8.19 8.19 0 0 1 2.41 5.82c0 4.54-3.69 8.23-8.21 8.23zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.12-.16.25-.64.81-.79.98-.14.16-.29.18-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.5.11-.11.25-.29.37-.43.13-.14.17-.25.25-.41.08-.16.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.4-.42-.56-.43-.14-.01-.31-.01-.47-.01-.16 0-.43.06-.65.31-.22.25-.86.84-.86 2.05 0 1.21.88 2.38 1 2.54.12.16 1.73 2.64 4.2 3.7.59.25 1.04.4 1.4.52.59.19 1.12.16 1.54.1.47-.07 1.47-.6 1.67-1.18.21-.58.21-1.07.15-1.18-.06-.11-.22-.17-.47-.29z"/></svg>'
-        + ' Falar no WhatsApp');
-      wa.href = 'https://wa.me/' + waNum;
+        + (waText ? ' Continuar no WhatsApp' : ' Falar no WhatsApp'));
+      wa.href = 'https://wa.me/' + waNum + (waText ? '?text=' + encodeURIComponent(waText) : '');
       wa.target = '_blank';
       wa.rel = 'noopener noreferrer';
       wrap.appendChild(wa);
