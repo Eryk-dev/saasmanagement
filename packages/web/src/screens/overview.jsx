@@ -448,6 +448,7 @@ const PANELS = [
           <RateCell pct={p.showRate} num={p.shown} den={p.showRate != null ? p.shown + p.noShow : null} {...tiers(p.goals?.showRate, 70)} />
         </span>
       ) },
+      { label: "Remarcações", render: (p) => <span className="tnum" title="calls remarcadas na confirmação (o cliente pediu pra mudar; conta como contato)" style={{ color: int(p.reschedules) > 0 ? "var(--warn)" : "var(--fg-3)" }}>{int(p.reschedules)}</span> },
       { label: "Calls → ganho", render: (p) => <RateCell pct={p.callWinRate} num={p.wonFromCalls} den={p.callsBooked} {...tiers(p.goals?.callWinRate, 25)} /> },
     ],
   },

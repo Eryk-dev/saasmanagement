@@ -129,10 +129,16 @@ export function registerScoreboardRoutes(app, repo) {
       // pra QUALQUER lead dele (não só a safra que entrou hoje), porque o fluxo é
       // fila rolante. Só a ação DELE conta (author = uid), não o move do closer
       // num lead que por acaso é dele. Distinto por lead.
+      // Remarcações = calls que o cliente pediu pra mudar de horário na confirmação
+      // e o SDR remarcou (toque com meta.event="reschedule"). Conta EVENTOS (um lead
+      // pode remarcar mais de uma vez), e o próprio toque já credita "contatado".
       const contactedIds = new Set();
+      let reschedules = 0;
       for (const l of mine) {
         for (const a of actsByLead.get(l.id) || []) {
-          if (inWin(a.at) && a.author === uid && (TOUCH_TYPES.has(a.type) || a.type === "stage")) { contactedIds.add(l.id); break; }
+          if (!inWin(a.at) || a.author !== uid) continue;
+          if (a.meta?.event === "reschedule") reschedules++;
+          if (TOUCH_TYPES.has(a.type) || a.type === "stage") contactedIds.add(l.id);
         }
       }
       const contacted = contactedIds.size;
@@ -141,6 +147,7 @@ export function registerScoreboardRoutes(app, repo) {
         leadsNew,
         leadsPrev, // leads da janela anterior (base da meta dinâmica de calls)
         contacted,
+        reschedules,
         callsBooked,
         // Taxa de agendamento = conversão do dia: das pessoas que ele contatou,
         // quantas viraram call (calls agendadas ÷ contatados).
