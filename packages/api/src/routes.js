@@ -45,7 +45,10 @@ import { registerPipelinePaceRoutes } from "./routes.pipeline-pace.js";
 
 // Auth interna fica FORA do CRUD genérico: passwordHash/token de sessão nunca
 // saem pela API. Gestão via rotas dedicadas (/api/auth/*).
-const PRIVATE = new Set(["users", "sessions"]);
+// wa_threads/wa_messages ficam FORA do CRUD genérico: o inbox usa as rotas
+// dedicadas (/api/whatsapp/*, gateadas), então o texto das conversas não vaza
+// pra qualquer usuário autenticado via /api/wa_messages.
+const PRIVATE = new Set(["users", "sessions", "wa_threads", "wa_messages"]);
 const isExposed = (c) => COLLECTION_NAMES.includes(c) && !PRIVATE.has(c);
 
 // Collections external SaaS are allowed to write to via REST/MCP.
