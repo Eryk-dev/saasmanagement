@@ -166,35 +166,59 @@ export function registerScoreboardRoutes(app, repo) {
     // integrador que fechou/acompanhou um negócio pontual).
     const csOnly = (uid) => { const r = users.find((u) => u.id === uid)?.roles || []; return r.includes("integrator") && !r.includes("closer"); };
     const closerIds = [...new Set([...withRole("closer"), ...leads.map((l) => l.closer).filter(Boolean)])].filter((uid) => !csOnly(uid));
+    const FWD = new Set(["proposta", "followup", "integracao", "ganho"]); // avançou = a call aconteceu
     const closer = closerIds.map((uid) => {
       const mine = leads.filter((l) => l.closer === uid);
-      const calls = mine.filter((l) => inWin(l.callAt)).length;
-      const won = mine.filter((l) => isWon(product, l.stage) && inWin(l.stageSince));
+      // Calls agendadas (pela data da call) e quantas ACONTECERAM (compareceram):
+      // avançou pra frente OU perdeu por outro motivo; no-show não conta.
+      const callLeads = mine.filter((l) => inWin(l.callAt));
+      const calls = callLeads.length;
+      let callsShown = 0;
+      for (const l of callLeads) {
+        if (isLoss(product, l.stage) && l.lostReason === "nao_compareceu") continue;
+        const advanced = isWon(product, l.stage) || FWD.has(kindOf(product, l.stage))
+          || (actsByLead.get(l.id) || []).some((a) => a.type === "stage" && FWD.has(kindOf(product, a.meta?.to)));
+        if (advanced || isLoss(product, l.stage)) callsShown++;
+      }
+      // GANHO do closer = fechamento = handoff pra INTEGRAÇÃO (ou direto Ganho).
+      // Conta a TRANSIÇÃO (stage activity) pra kind integracao/ganho na janela —
+      // pega o momento do fechamento mesmo que o card já tenha andado depois. O
+      // valor do negócio é lançado NESSA passagem (ver stage-move/DestinoSection).
+      const winAt = new Map();
+      for (const l of mine) {
+        for (const a of actsByLead.get(l.id) || []) {
+          if (a.type === "stage" && inWin(a.at) && !winAt.has(l.id)) {
+            const k = kindOf(product, a.meta?.to);
+            if (k === "integracao" || k === "ganho") winAt.set(l.id, a.at);
+          }
+        }
+      }
+      const wonLeads = [...winAt.keys()].map((id) => leadById.get(id)).filter(Boolean);
+      const wonN = wonLeads.length;
+      const revenue = wonLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0);
+      // Ciclo CALL → GANHO: dias da call marcada até o fechamento (integração).
+      const cycle = wonLeads.map((l) => (l.callAt ? (new Date(winAt.get(l.id)) - new Date(l.callAt)) / DAY : null))
+        .filter((d) => Number.isFinite(d) && d >= 0);
       const lost = mine.filter((l) => isLoss(product, l.stage) && inWin(l.stageSince));
-      const revenue = won.reduce((a, l) => a + (Number(l.amount) || 0), 0);
-      const props = proposals.filter((p) => p.saas === product.id && leadById.get(p.lead)?.closer === uid && inWin(p.createdAt)).length;
-      const cycle = won.map((l) => (new Date(l.stageSince) - new Date(l.createdAt)) / DAY).filter((d) => Number.isFinite(d) && d >= 0);
-      const decided = won.length + lost.length;
-      // Motivos de perda desse closer no período (top-first), pra diagnóstico.
       const reasonCount = {};
       for (const l of lost) { const r = l.lostReason || "nao_informado"; reasonCount[r] = (reasonCount[r] || 0) + 1; }
       const lossReasons = Object.entries(reasonCount).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
       return {
         user: uid, name: nameOf(uid),
-        calls, proposals: props,
-        won: won.length, revenue: round2(revenue), lost: lost.length,
-        // Fechamento de proposta (proposta→ganho) e win rate geral (call→ganho):
-        // as duas taxas de habilidade do closer. closeRate = ganho/(ganho+perdido).
-        proposalRate: calls > 0 ? round2((props / calls) * 100) : null,       // proposta por call
-        proposalWinRate: props > 0 ? round2((won.length / props) * 100) : null, // fechamento de proposta
-        winRateCall: calls > 0 ? round2((won.length / calls) * 100) : null,     // win rate geral
-        closeRate: decided > 0 ? round2((won.length / decided) * 100) : null,
-        ticket: won.length > 0 ? round2(revenue / won.length) : null,
+        calls, callsShown,
+        won: wonN, revenue: round2(revenue), lost: lost.length,
+        // Conversão na call = ganhos ÷ calls que ACONTECERAM (habilidade de fechar,
+        // limpa de no-show). Win rate = ganhos ÷ calls AGENDADAS (inclui no-show):
+        // o gap entre as duas denuncia perda por não-comparecimento.
+        conversaoCall: callsShown > 0 ? round2((wonN / callsShown) * 100) : null,
+        winRateCall: calls > 0 ? round2((wonN / calls) * 100) : null,
+        revenuePerCall: calls > 0 ? round2(revenue / calls) : null,
+        ticket: wonN > 0 ? round2(revenue / wonN) : null,
         cycleDays: median(cycle),
         lossReasons,
-        goals: goalMap(uid, "closer", ["won", "revenue", "proposalWinRate", "winRateCall", "ticket"]),
+        goals: goalMap(uid, "closer", ["won", "revenue", "conversaoCall", "winRateCall", "ticket"]),
       };
-    }).filter((p) => p.calls > 0 || p.won > 0 || p.proposals > 0)
+    }).filter((p) => p.calls > 0 || p.won > 0)
       .sort((a, b) => b.revenue - a.revenue);
 
     // ── CS / retenção (agrupado por customer.owner) ───────────────────────────

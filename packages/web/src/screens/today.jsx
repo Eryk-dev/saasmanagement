@@ -1269,7 +1269,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const ready = !dest ? false
     : setup === "call" ? !!(closer && slot)
     : setup === "followup" ? !!closer // horário é opcional: sem slot cai na cadência
-    : setup === "integrator" ? !!integrator
+    : setup === "integrator" ? !!(integrator && (dest.kind !== "integracao" || Number(amount) > 0))
     : setup === "won" ? Number(amount) > 0
     : setup === "loss" ? !!reason
     : true;
@@ -1285,7 +1285,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     // Integração: define o integrador e, se um horário foi escolhido na agenda,
     // agenda a integração nele (integrationAt aparece na Agenda e replica na
     // agenda pessoal do integrador que conectou o Google).
-    else if (setup === "integrator") { patch.integrator = integrator; if (slot) patch.integrationAt = slot; }
+    else if (setup === "integrator") { patch.integrator = integrator; if (slot) patch.integrationAt = slot; if (dest.kind === "integracao" && Number(amount) > 0) patch.amount = Number(amount); }
     else if (setup === "won") patch.amount = Number(amount);
     else if (setup === "loss") { patch.lostReason = reason; if (note.trim()) patch.lostNote = note.trim(); }
     onMove && onMove(patch);
@@ -1421,6 +1421,14 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                   </select>
                   {lead.closer && <div className="mono dim" style={{ fontSize: 10.5, marginTop: 5 }}>closer da venda: {displayName(lead.closer)} (fica registrado)</div>}
                 </div>
+                {dest.kind === "integracao" && (
+                  <div style={{ maxWidth: 220, marginTop: 12 }}>
+                    <label style={label}>Valor do negócio (R$) *</label>
+                    <input type="number" min="0" step="0.01" value={amount} placeholder="ex.: 7188"
+                      onChange={(e) => setAmount(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") confirm(); }} style={fieldStyle} />
+                    <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>fechou! esse é o valor do negócio (vira a receita do closer)</div>
+                  </div>
+                )}
                 {integrator && (
                   <div style={{ marginTop: 14 }}>
                     <div className="mono" style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
