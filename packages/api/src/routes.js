@@ -112,6 +112,9 @@ export const CREATE_DEFAULTS = {
   // `system` = evento automático (lead_created, proposal_viewed...). `at` = quando
   // aconteceu (backdate permitido); createdAt = quando entrou no sistema.
   activities: { saas: "", lead: "", type: "note", text: "", meta: {}, author: "", at: "" },
+  // Mapa mental / estratégia: nodes = [{ id, x, y, text, color, parent }] (árvore),
+  // links = [{ from, to }] (conexões livres). name = título do mapa.
+  mindmaps: { name: "Novo mapa", saas: "", nodes: [], links: [], createdAt: "" },
   // Disparos (ferramenta): uma campanha por produto pra mandar e-mail + WhatsApp
   // pros leads qualificados. `stages` = segmento (etapas do funil que entram);
   // `sent` = progresso por lead ({leadId: {whatsapp, email}}, ISO), mesclado no

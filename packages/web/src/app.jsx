@@ -23,6 +23,7 @@ import { MetasScreen } from "./screens/metas.jsx";
 import { TrainingScreen } from "./screens/training.jsx";
 import { CustomersScreen } from "./screens/customers.jsx";
 import { TasksScreen } from "./screens/tasks.jsx";
+import { MindmapsScreen } from "./screens/mindmaps.jsx";
 import { SettingsScreen } from "./screens/settings.jsx";
 import { LeadDetail } from "./screens/deal.jsx";
 import { CommandSearch } from "./components/CommandSearch.jsx";
@@ -156,6 +157,7 @@ function App() {
     analise:     ["Análises", "Análise do pipeline"],
     funcionarios: ["Análises", "Funcionários"],
     tasks:       ["Geral", "Tarefas"],
+    mindmaps:    ["Geral", "Mapas mentais"],
     metas:       ["Geral", "Metas"],
     training:    ["Treinamentos"],
     expenses:    ["Geral", "Custos"],
@@ -229,6 +231,7 @@ function App() {
           {scr === "training"    && <TrainingScreen />}
           {scr === "subscriptions" && <CustomersScreen initialTab="billing" />}
           {scr === "tasks"       && <TasksScreen />}
+          {scr === "mindmaps"    && <MindmapsScreen />}
           {scr === "settings"    && <SettingsScreen saasId={params.saas} />}
         </div>
         </ErrorBoundary>

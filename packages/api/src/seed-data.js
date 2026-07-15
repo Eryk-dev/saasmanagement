@@ -38,6 +38,7 @@ export const COLLECTIONS = {
   tasks: [],
   task_boards: [],
   activities: [],
+  mindmaps: [], // mapas mentais / estratégia (tela Mapas mentais): { name, nodes[], links[] }
   app_config: [], // chave-valor de integrações (ex.: google_oauth = refresh token da conta conectada)
   social_assets: [], // mídia pra publicação social (bytes base64, servida em /public/social/:id)
   social_posts: [],  // histórico de publicações orgânicas feitas pelo cockpit

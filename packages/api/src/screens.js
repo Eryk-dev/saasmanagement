@@ -15,7 +15,7 @@
 
 export const SCREEN_IDS = [
   "overview", "today", "pipeline", "customers", "metrics", "expenses",
-  "social", "forms", "proposals", "creative", "offers", "disparos", "whatsapp", "calls", "integrations", "analise", "funcionarios", "metas", "training", "tasks", "settings",
+  "social", "forms", "proposals", "creative", "offers", "disparos", "whatsapp", "calls", "integrations", "analise", "funcionarios", "metas", "training", "tasks", "mindmaps", "settings",
 ];
 
 export const sanitizeScreens = (x) =>
@@ -72,6 +72,7 @@ const ROUTE_SCREENS = [
   ["/api/flashcards", ["training"]],     // treinamentos (flashcards)
   ["/api/tasks", ["tasks"]],
   ["/api/task_boards", ["tasks"]],
+  ["/api/mindmaps", ["mindmaps"]],       // mapas mentais / estratégia
   ["/api/goals", ["overview"]],
   ["/api/portfolio", ["overview"]],
   ["/api/leaderboard", ["overview"]],
