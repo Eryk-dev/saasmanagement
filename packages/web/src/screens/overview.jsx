@@ -176,7 +176,6 @@ function OverviewScreen({ onNav, onOpenLead }) {
       contacted: sum(sdrRows, (p) => p.contacted),
       callsBooked: sum(sdrRows, (p) => p.callsBooked),
       callsMeta: sum(sdrRows, (p) => bookingGoal(p)?.target || 0),
-      proposals: sum(cloRows, (p) => p.proposals),
       won: sum(cloRows, (p) => p.won),
       wonMeta: sum(cloRows, (p) => scaleGoal(p.goals?.won, win.days)?.target || 0),
       revenue: sum(cloRows, (p) => p.revenue),
@@ -226,7 +225,6 @@ function OverviewScreen({ onNav, onOpenLead }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
             <StatTile label={`Contatados · time · ${pShort}`} value={String(teamAgg.contacted)} delta="somando o time" tone="flat" />
             <StatTile label={`Calls agendadas · time · ${pShort}`} value={String(teamAgg.callsBooked)} delta={ofMeta(teamAgg.callsMeta)} tone="flat" />
-            <StatTile label={`Propostas · time · ${pShort}`} value={String(teamAgg.proposals)} delta="somando o time" tone="flat" />
             <StatTile label={`Ganhos · time · ${pShort}`} value={String(teamAgg.won)} delta={ofMeta(teamAgg.wonMeta)} tone="flat" />
             <StatTile label={`Receita · time · ${pShort}`} value={window.fmt.money(teamAgg.revenue)}
               delta={teamAgg.revenueMeta > 0 ? `de ${window.fmt.money(teamAgg.revenueMeta)} · meta ${pShort}` : "somando o time"} tone="flat" />
@@ -456,13 +454,17 @@ const PANELS = [
   {
     key: "closer", title: "Closers", hint: "da call ao fechamento",
     cols: [
-      { label: "Propostas", render: (p) => <CountRate count={p.proposals} pct={p.proposalRate} {...tiers(p.goals?.proposalRate, 60)} /> },
-      { label: "Fecha. proposta", render: (p) => <RateCell pct={p.proposalWinRate} num={p.won} den={p.proposals} {...tiers(p.goals?.proposalWinRate, 30)} /> },
+      // Calls: aconteceram / agendadas — o gap escancara o no-show.
+      { label: "Calls", render: (p) => <span className="tnum" title="compareceram / agendadas"><b>{int(p.callsShown)}</b><span className="dim"> / {int(p.calls)}</span></span> },
+      // Métrica agressiva: das calls que aconteceram, quantas fechou.
+      { label: "Conversão na call", render: (p) => <RateCell pct={p.conversaoCall} num={p.won} den={p.callsShown} {...tiers(p.goals?.conversaoCall, 40)} /> },
+      // Win rate = sobre TODAS as calls agendadas (inclui no-show); gap vs conversão = perda por não-comparecimento.
       { label: "Win rate", render: (p) => <RateCell pct={p.winRateCall} num={p.won} den={p.calls} {...tiers(p.goals?.winRateCall, 25)} /> },
       { label: "Ganhos", render: (p, ctx) => <MetaCell value={p.won} goal={scaleGoal(p.goals?.won, ctx.days)} /> },
       { label: "Receita", render: (p, ctx) => <MetaCell value={p.revenue} goal={scaleGoal(p.goals?.revenue, ctx.days)} fmt={money} /> },
       { label: "Ticket médio", render: (p) => <MetaCell value={p.ticket || 0} goal={p.goals?.ticket} fmt={money} /> },
-      { label: "Ciclo", render: (p) => <span className="tnum" title="dias da criação ao ganho">{p.cycleDays != null ? `${String(p.cycleDays).replace(".", ",")}d` : "—"}</span> },
+      { label: "Receita/call", render: (p) => <span className="tnum" title="receita ÷ calls agendadas">{money(p.revenuePerCall || 0)}</span> },
+      { label: "Ciclo", render: (p) => <span className="tnum" title="dias da call ao ganho">{p.cycleDays != null ? `${String(p.cycleDays).replace(".", ",")}d` : "—"}</span> },
       { label: "Motivos de perda", render: (p, ctx) => <LossCell p={p} lossLabel={ctx.lossLabel} /> },
     ],
   },

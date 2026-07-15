@@ -75,33 +75,39 @@ test("SDR: show-rate (não compareceu) e calls→ganho sobre o cohort de calls",
   await app.close();
 });
 
-test("Closer: ganhos, receita, taxa de fechamento e ticket na janela", async () => {
+test("Closer: conversão na call, ganhos (handoff), receita, ciclo call→ganho", async () => {
   const { app, repo } = await buildApp();
-  await repo.create("leads", { id: "w1", saas: "leverads", closer: "u_clo", stage: "Ganho", amount: 600, createdAt: "2026-07-02T10:00:00.000Z", stageSince: "2026-07-08T10:00:00.000Z", callAt: "2026-07-05T10:00:00.000Z" });
-  await repo.create("leads", { id: "w2", saas: "leverads", closer: "u_clo", stage: "Ganho", amount: 400, createdAt: "2026-07-03T10:00:00.000Z", stageSince: "2026-07-09T10:00:00.000Z" });
-  await repo.create("leads", { id: "x1", saas: "leverads", closer: "u_clo", stage: "Perdido", lostReason: "preco", createdAt: "2026-07-01T10:00:00.000Z", stageSince: "2026-07-06T10:00:00.000Z" });
-  await repo.create("proposals", { id: "p1", saas: "leverads", lead: "w1", createdAt: "2026-07-05T10:00:00.000Z" });
+  // Fechamento = TRANSIÇÃO pra Ganho/Integração (stage activity); o valor entra nessa passagem.
+  const mkWin = async (id, amount, callAt, winAt) => {
+    await repo.create("leads", { id, saas: "leverads", closer: "u_clo", stage: "Ganho", amount, createdAt: "2026-07-02T10:00:00.000Z", stageSince: winAt, callAt });
+    await repo.create("activities", { id: `st_${id}`, saas: "leverads", lead: id, type: "stage", at: winAt, meta: { from: "Follow-up", to: "Ganho" } });
+  };
+  await mkWin("w1", 600, "2026-07-05T10:00:00.000Z", "2026-07-08T10:00:00.000Z"); // call 05 → ganho 08 = 3d
+  await mkWin("w2", 400, "2026-07-06T10:00:00.000Z", "2026-07-09T10:00:00.000Z"); // call 06 → ganho 09 = 3d
+  // call que ACONTECEU mas perdeu por preço (compareceu, não fechou)
+  await repo.create("leads", { id: "x1", saas: "leverads", closer: "u_clo", stage: "Perdido", lostReason: "preco", createdAt: "2026-07-01T10:00:00.000Z", stageSince: "2026-07-06T10:00:00.000Z", callAt: "2026-07-04T10:00:00.000Z" });
+  // NO-SHOW: call agendada mas não compareceu (fora de callsShown)
+  await repo.create("leads", { id: "x2", saas: "leverads", closer: "u_clo", stage: "Perdido", lostReason: "nao_compareceu", createdAt: "2026-07-01T10:00:00.000Z", stageSince: "2026-07-07T10:00:00.000Z", callAt: "2026-07-07T10:00:00.000Z" });
 
   const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
   const c = sb.closer.find((x) => x.user === "u_clo");
-  assert.equal(c.won, 2);
+  assert.equal(c.calls, 4);             // w1,w2,x1,x2 têm callAt na janela
+  assert.equal(c.callsShown, 3);        // w1,w2,x1 aconteceram; x2 é no-show
+  assert.equal(c.won, 2);               // w1,w2 transicionaram pra Ganho na janela
   assert.equal(c.revenue, 1000);
-  assert.equal(c.closeRate, 66.67);   // 2 ganhos / (2 + 1 perdido)
-  assert.equal(c.ticket, 500);        // 1000 / 2
-  assert.equal(c.calls, 1);           // só w1 tem callAt na janela
-  assert.equal(c.proposals, 1);
-  assert.equal(c.cycleDays, 6);       // mediana: w1 6d, w2 6d
-  assert.equal(c.proposalWinRate, 200); // 2 ganhos / 1 proposta (dado do teste)
-  assert.equal(c.winRateCall, 200);   // 2 ganhos / 1 call
-  assert.equal(c.proposalRate, 100);  // 1 proposta / 1 call
-  assert.equal(c.lost, 1);
-  assert.deepEqual(c.lossReasons, [{ reason: "preco", count: 1 }]); // x1 perdido por preço
+  assert.equal(c.ticket, 500);          // 1000/2
+  assert.equal(c.conversaoCall, 66.67); // 2 ganhos ÷ 3 compareceram
+  assert.equal(c.winRateCall, 50);      // 2 ÷ 4 agendadas
+  assert.equal(c.revenuePerCall, 250);  // 1000 ÷ 4
+  assert.equal(c.cycleDays, 3);         // mediana call→ganho: 3d, 3d
+  assert.equal(c.lost, 2);              // x1, x2
   await app.close();
 });
 
 test("Closer: CS (integrator) que caiu no campo closer de um lead NÃO entra no painel de closers", async () => {
   const { app, repo } = await buildApp();
   await repo.create("leads", { id: "wc", saas: "leverads", closer: "u_clo", stage: "Ganho", amount: 5000, createdAt: now, stageSince: now });
+  await repo.create("activities", { id: "st_wc", saas: "leverads", lead: "wc", type: "stage", at: now, meta: { from: "Follow-up", to: "Ganho" } });
   // u_cs é integrator (CS) e aparece como closer num lead ganho — não deve virar closer
   await repo.create("leads", { id: "wx", saas: "leverads", closer: "u_cs", stage: "Ganho", amount: 7000, createdAt: now, stageSince: now });
   const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
@@ -118,6 +124,7 @@ test("meta por pessoa (user-scope) e por papel (role-scope) anexadas ao placar",
   await repo.create("goals", { id: "g2", saas: "leverads", scope: "user", key: "u_clo", metric: "won", target: 12, period: "month" });
   await repo.create("goals", { id: "g3", saas: "leverads", scope: "role", key: "sdr", metric: "callsBooked", target: 40, period: "month" });
   await repo.create("leads", { id: "w1", saas: "leverads", closer: "u_clo", stage: "Ganho", amount: 500, createdAt: now, stageSince: now });
+  await repo.create("activities", { id: "st_gw1", saas: "leverads", lead: "w1", type: "stage", at: now, meta: { from: "Follow-up", to: "Ganho" } });
 
   const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
   const c = sb.closer.find((x) => x.user === "u_clo");
