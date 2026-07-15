@@ -87,7 +87,13 @@ export function makeDripRunner({ repo, mailer, log = console } = {}) {
         if (!step) { await repo.update("sequence_enrollments", en.id, { status: "done", lastAt: nowIso }); done++; continue; }
 
         // WhatsApp é assistido: para no passo e espera o operador (fila da tela).
+        // Número inválido (não entregou antes) ou descadastrado do WhatsApp = pula
+        // o passo (avança), não põe na fila pra o operador perder tempo.
         if (step.channel === "whatsapp") {
+          if (lead.whatsappInvalid || lead.whatsappOptOut) {
+            await advanceEnrollment(repo, seq, en, now);
+            continue;
+          }
           await repo.update("sequence_enrollments", en.id, { status: "waiting", pendingChannel: "whatsapp", lastAt: nowIso });
           waiting++;
           continue;

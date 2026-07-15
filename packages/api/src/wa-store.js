@@ -53,11 +53,46 @@ export async function recordMessage(repo, { id, phone, direction, text = "", at,
   return msgId;
 }
 
-// Atualiza status (sent/delivered/read/failed) de uma mensagem enviada.
-export async function updateStatus(repo, waMessageId, status, error = "") {
+// Códigos de erro da Meta que significam "não dá pra entregar / número não está
+// no WhatsApp" — sinal seguro pra marcar o número como inválido e limpar a base.
+// 131047/470 são RE-ENGAJAMENTO (fora da janela de 24h): o número é VÁLIDO, só
+// precisa de template, então NÃO entram aqui.
+const INVALID_FAIL_CODES = new Set([131026, 131021, 131000]);
+
+// Atualiza status (sent/delivered/read/failed) de uma mensagem enviada. `err`
+// pode ser string (título) ou o objeto de erro da Meta ({ code, title }). Quando
+// falha com código de "não entregável", marca o LEAD como whatsappInvalid (o
+// disparo/drip param de tentar esse número e a base fica limpa).
+export async function updateStatus(repo, waMessageId, status, err = "") {
   if (!waMessageId) return;
   const m = await repo.get("wa_messages", waMessageId);
-  if (m) await repo.update("wa_messages", waMessageId, { status, ...(error ? { error } : {}) });
+  if (!m) return;
+  const title = typeof err === "string" ? err : (err?.title || err?.message || "");
+  const code = typeof err === "object" && err ? Number(err.code) : NaN;
+  await repo.update("wa_messages", waMessageId, { status, ...(title ? { error: title } : {}) });
+  if (status === "failed" && Number.isFinite(code) && INVALID_FAIL_CODES.has(code) && m.leadId) {
+    const lead = await repo.get("leads", m.leadId);
+    if (lead && !lead.whatsappInvalid) {
+      await repo.update("leads", m.leadId, {
+        whatsappInvalid: true,
+        whatsappInvalidReason: title || `código ${code}`,
+        whatsappInvalidAt: new Date().toISOString(),
+      });
+    }
+  }
+}
+
+// Opt-out / opt-in de MARKETING no WhatsApp (webhook user_preferences, o "parar
+// promoções" nativo). Suprime o lead dos disparos/drip, igual descadastro de
+// e-mail. Resolve o lead pelo número. Retorna o leadId afetado (ou null).
+export async function setLeadWhatsappOptOut(repo, phone, optOut) {
+  const lead = await findLeadByPhone(repo, phone);
+  if (!lead) return null;
+  await repo.update("leads", lead.id, {
+    whatsappOptOut: !!optOut,
+    ...(optOut ? { whatsappOptOutAt: new Date().toISOString() } : {}),
+  });
+  return lead.id;
 }
 
 // Lista as conversas (mais recente primeiro), enriquecidas com nome do lead.

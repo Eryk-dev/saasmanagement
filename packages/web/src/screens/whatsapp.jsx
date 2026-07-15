@@ -33,6 +33,25 @@ function when(iso) {
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "");
 }
 
+// Banner de saúde do WhatsApp (lê CONFIG.whatsapp.health do bootstrap, alimentado
+// pelos webhooks de qualidade/status/conta). "danger" = segure os disparos;
+// "warn" = fique de olho. Reusado pelo inbox e pela tela de Disparos.
+export function WaHealthBanner({ style }) {
+  const h = window.SEED?.CONFIG?.whatsapp?.health;
+  if (!h || h.level === "ok" || !(h.messages || []).length) return null;
+  const danger = h.level === "danger";
+  return (
+    <div style={{ margin: "12px var(--pad-x) 0", padding: "10px 14px", borderRadius: "var(--r-2)",
+      border: "1px solid " + (danger ? "var(--neg)" : "var(--warn)"),
+      background: danger ? "var(--neg-soft)" : "var(--warn-soft)", ...style }}>
+      <div className="mono" style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, color: danger ? "var(--neg)" : "var(--warn)" }}>
+        {danger ? "⚠ Saúde do WhatsApp em risco" : "Saúde do WhatsApp · atenção"}
+      </div>
+      {(h.messages || []).map((m, i) => <div key={i} style={{ fontSize: 12.5, color: "var(--fg-1)", lineHeight: 1.4 }}>· {m}</div>)}
+    </div>
+  );
+}
+
 export function WhatsappInboxScreen({ onOpenLead }) {
   const { version } = useData();
   const [product] = useActiveSaas();
@@ -88,6 +107,8 @@ export function WhatsappInboxScreen({ onOpenLead }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       <PageHead title="WhatsApp" sub={configured ? (totalUnread ? `${totalUnread} não lida${totalUnread > 1 ? "s" : ""}` : "conversas com os leads") : "não configurado no servidor"} />
+
+      <WaHealthBanner />
 
       {!configured && (
         <div style={{ margin: "12px var(--pad-x) 0", padding: "10px 14px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", fontSize: 12.5, color: "var(--fg-2)" }}>

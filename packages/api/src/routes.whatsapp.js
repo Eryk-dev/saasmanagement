@@ -2,7 +2,8 @@
 // conversas (tela dedicada) e envio. As mensagens vivem em wa_threads/wa_messages
 // (ver wa-store.js) — canônico pro inbox e pro chat do drawer.
 import { makeWhatsapp } from "./whatsapp.js";
-import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId } from "./wa-store.js";
+import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId, setLeadWhatsappOptOut } from "./wa-store.js";
+import { applyHealthEvent, getWaHealth, waHealthSummary } from "./wa-health.js";
 
 // Texto legível pra tipos que a Fase 1 ainda não renderiza (mídia/áudio).
 function bodyOf(m) {
@@ -55,16 +56,31 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
       for (const e of req.body?.entry || []) {
         for (const ch of e.changes || []) {
           const v = ch.value || {};
-          const contactName = v.contacts?.[0]?.profile?.name || "";
-          for (const m of v.messages || []) {
-            await recordMessage(repo, {
-              id: m.id, phone: m.from, direction: "in", text: bodyOf(m),
-              at: m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : undefined,
-              from: m.from, status: "received", contactName,
-            });
-          }
-          for (const st of v.statuses || []) {
-            await updateStatus(repo, st.id, st.status, st.errors?.[0]?.title || "");
+          const field = ch.field || "";
+          // Mensagens + status (field "messages"). O status "failed" com código de
+          // não-entregável marca o número como inválido (dentro do updateStatus).
+          if (v.messages || v.statuses || field === "messages") {
+            const contactName = v.contacts?.[0]?.profile?.name || "";
+            for (const m of v.messages || []) {
+              await recordMessage(repo, {
+                id: m.id, phone: m.from, direction: "in", text: bodyOf(m),
+                at: m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : undefined,
+                from: m.from, status: "received", contactName,
+              });
+            }
+            for (const st of v.statuses || []) {
+              await updateStatus(repo, st.id, st.status, st.errors?.[0] || "");
+            }
+          } else if (field === "user_preferences") {
+            // Opt-out/opt-in de marketing nativo ("parar promoções") → suprime o
+            // lead dos disparos/drip. Só a categoria marketing importa.
+            for (const p of v.user_preferences || []) {
+              if (String(p.category || "").toLowerCase() !== "marketing") continue;
+              await setLeadWhatsappOptOut(repo, p.wa_id || p.wa_id_hash || "", String(p.value || "").toLowerCase() === "stop");
+            }
+          } else if (field.startsWith("phone_number_quality") || field.startsWith("message_template_") || field.startsWith("account_")) {
+            // Saúde do número / templates / conta → snapshot pra proteger o número.
+            await applyHealthEvent(repo, field, v);
           }
         }
       }
