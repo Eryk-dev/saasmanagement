@@ -167,7 +167,9 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
     font-family: var(--font-mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
     background: var(--raised); color: var(--ink-2); border: 1px solid var(--line); }
   .pill.accent { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line); }
-  .pill-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 32px; }
+  /* Centralizada e estreitada de propósito: com as 5 pílulas do como_funciona a
+     faixa de 760px quebra em 2 linhas (3 na primeira, 2 na segunda), centradas. */
+  .pill-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 32px auto 0; max-width: 760px; justify-content: center; }
   .pill-row .pill::before { content: '✓'; color: var(--accent); font-weight: 700; }
 
   .receipt-wrap { display: grid; grid-template-columns: 1fr; gap: 48px; align-items: start; }
