@@ -173,7 +173,7 @@ function SocialScreen() {
         sub={sum?.account?.username ? `@${sum.account.username}${sum?.page?.name ? ` · ${sum.page.name}` : ""}` : "Instagram e página do Facebook do produto"}>
         <Segmented value={days} onChange={setDays} options={PERIODS} />
         <button onClick={() => setWizard(true)}
-          style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12, fontWeight: 600 }}>
+          style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600 }}>
           ＋ criar post
         </button>
       </PageHead>
@@ -437,7 +437,7 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
     color: "var(--fg-1)",
   });
   const btn = { height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 };
-  const primary = { ...btn, background: "var(--accent)", color: "var(--accent-fg)", border: "1px solid var(--accent)", fontWeight: 600 };
+  const primary = { ...btn, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", border: "1px solid var(--btn-bg, var(--accent))", fontWeight: 600 };
 
   const stepLabel = ["", "formato", kind === "video" ? "vídeo" : "arte", "publicar"][step];
 

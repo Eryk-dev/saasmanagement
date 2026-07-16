@@ -184,7 +184,7 @@ export function ActivityComposer({ lead, onLogged }) {
         ))}
         <button disabled={busy} onClick={() => log()} style={{
           marginLeft: "auto", height: 24, padding: "0 12px", borderRadius: 4, fontSize: 11.5, fontWeight: 600,
-          background: "var(--accent)", color: "var(--accent-fg, #fff)", border: "none", cursor: "pointer", opacity: busy ? 0.6 : 1,
+          background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg, #fff))", border: "none", cursor: "pointer", opacity: busy ? 0.6 : 1,
         }}>registrar</button>
       </div>
     </div>

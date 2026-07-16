@@ -84,7 +84,7 @@ export function MindmapsScreen() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <PageHead title="Mapas mentais" sub="pense em nós · ramifique ideias e conecte estratégias">
-        <button onClick={newMap} style={{ height: 28, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12.5, fontWeight: 600 }}>+ novo mapa</button>
+        <button onClick={newMap} style={{ height: 28, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12.5, fontWeight: 600 }}>+ novo mapa</button>
       </PageHead>
 
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>

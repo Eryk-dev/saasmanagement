@@ -80,7 +80,7 @@ function Login() {
           onChange={(e) => setPassword(e.target.value)} style={inputStyle}
         />
         {error && <div className="mono" style={{ fontSize: 11, color: "var(--neg)", textAlign: "center" }}>{error}</div>}
-        <button type="submit" disabled={busy} style={{ height: 34, background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
+        <button type="submit" disabled={busy} style={{ height: 34, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
           {busy ? "Entrando…" : "Entrar"}
         </button>
       </form>

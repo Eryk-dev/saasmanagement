@@ -85,7 +85,7 @@ function OffersScreen() {
           <>
             <button onClick={reset} disabled={saving} className="mono dim" style={{ fontSize: 11.5 }}>descartar</button>
             <button onClick={save} disabled={saving}
-              style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12, fontWeight: 600, opacity: saving ? 0.6 : 1 }}>
+              style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600, opacity: saving ? 0.6 : 1 }}>
               {saving ? "salvando…" : "salvar links"}
             </button>
           </>
@@ -128,7 +128,7 @@ function OffersScreen() {
 
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button onClick={() => copy(o.link, o.key || i)} disabled={!hasLink}
-                      style={{ ...btn, background: copied === (o.key || i) ? "var(--pos-soft)" : "var(--accent)", color: copied === (o.key || i) ? "var(--pos)" : "var(--accent-fg)", border: "1px solid transparent", fontWeight: 600, opacity: hasLink ? 1 : 0.5 }}>
+                      style={{ ...btn, background: copied === (o.key || i) ? "var(--pos-soft)" : "var(--btn-bg, var(--accent))", color: copied === (o.key || i) ? "var(--pos)" : "var(--btn-fg, var(--accent-fg))", border: "1px solid transparent", fontWeight: 600, opacity: hasLink ? 1 : 0.5 }}>
                       {copied === (o.key || i) ? "✓ copiado" : "⧉ copiar"}
                     </button>
                     <a href={hasLink ? o.link : undefined} target="_blank" rel="noopener noreferrer"

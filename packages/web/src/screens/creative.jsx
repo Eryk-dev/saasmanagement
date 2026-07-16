@@ -1204,7 +1204,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
             )}
             <button onClick={downloadAll}
               title={tpl.slides > 1 ? "Baixar os 4 slides em PNG (na ordem do carrossel)" : "Baixar o PNG na resolução de post"}
-              style={{ marginLeft: "auto", height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12, fontWeight: 600 }}>
+              style={{ marginLeft: "auto", height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600 }}>
               ↓ baixar {tpl.slides > 1 ? `${tpl.slides} PNGs` : "PNG"}
             </button>
           </div>

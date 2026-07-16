@@ -207,7 +207,7 @@ function SocialSellingNotice({ ig }) {
         </div>
       </div>
       <a href={igUrl} target="_blank" rel="noopener noreferrer"
-        style={{ flexShrink: 0, height: 34, display: "inline-flex", alignItems: "center", padding: "0 16px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 13, fontWeight: 700, textDecoration: "none" }}>
+        style={{ flexShrink: 0, height: 34, display: "inline-flex", alignItems: "center", padding: "0 16px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 700, textDecoration: "none" }}>
         abrir Instagram ↗
       </a>
     </div>
@@ -340,7 +340,7 @@ function TodayScreen({ onOpenLead }) {
         {firstPending && (
           <button onClick={() => setScriptItem(firstPending)}
             title="Abrir o roteiro do 1º item pendente de hoje e seguir a fila em sequência"
-            style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12, fontWeight: 600 }}>
+            style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600 }}>
             ▶ começar a fila
           </button>
         )}
@@ -526,7 +526,7 @@ function QueueRow({ item, seq, block, saasCfg, stageMeta, onScript, onClaim }) {
           </button>
         )}
         <button onClick={onScript} title="Começar essa atividade: roteiro, dados e pra onde vai o card"
-          style={{ height: 24, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 11.5, fontWeight: 600 }}>
+          style={{ height: 24, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 11.5, fontWeight: 600 }}>
           Começar
         </button>
       </span>
@@ -1103,8 +1103,8 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
                 </button>
                 <button onClick={doReschedule} disabled={!rSlot}
                   style={{ padding: "8px 14px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 700,
-                    background: rSlot ? "var(--accent)" : "var(--bg-2)", color: rSlot ? "var(--accent-fg)" : "var(--fg-4)",
-                    border: "1px solid " + (rSlot ? "var(--accent)" : "var(--line-2)"), cursor: rSlot ? "pointer" : "not-allowed" }}>
+                    background: rSlot ? "var(--btn-bg, var(--accent))" : "var(--bg-2)", color: rSlot ? "var(--btn-fg, var(--accent-fg))" : "var(--fg-4)",
+                    border: "1px solid " + (rSlot ? "var(--btn-bg, var(--accent))" : "var(--line-2)"), cursor: rSlot ? "pointer" : "not-allowed" }}>
                   salvar novo horário
                 </button>
               </div>
@@ -1597,7 +1597,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                 <div className="mono" style={{ fontSize: 12, color: "var(--pos)", fontWeight: 600 }}>✓ call agendada · Meet criado · convite enviado{validEmail(email) ? ` pra ${email.trim()}` : ""}</div>
                 {meetRes.callUrl && <a href={meetRes.callUrl} target="_blank" rel="noopener noreferrer" className="mono" style={{ fontSize: 11.5, color: "var(--accent)", wordBreak: "break-all" }}>{meetRes.callUrl}</a>}
                 <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 2 }}>
-                  <button onClick={() => onAfter && onAfter()} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12.5, fontWeight: 600 }}>próximo →</button>
+                  <button onClick={() => onAfter && onAfter()} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12.5, fontWeight: 600 }}>próximo →</button>
                   <button onClick={() => setDest(null)} className="mono dim" style={{ fontSize: 11.5 }}>fechar</button>
                 </div>
               </div>
@@ -1606,8 +1606,8 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   <button onClick={agendarComMeet} disabled={!meetReady} style={{
                     height: 32, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
-                    background: meetReady ? "var(--accent)" : "var(--bg-2)", color: meetReady ? "var(--accent-fg)" : "var(--fg-4)",
-                    border: "1px solid " + (meetReady ? "var(--accent)" : "var(--line-2)"), cursor: meetReady ? "pointer" : "not-allowed",
+                    background: meetReady ? "var(--btn-bg, var(--accent))" : "var(--bg-2)", color: meetReady ? "var(--btn-fg, var(--accent-fg))" : "var(--fg-4)",
+                    border: "1px solid " + (meetReady ? "var(--btn-bg, var(--accent))" : "var(--line-2)"), cursor: meetReady ? "pointer" : "not-allowed",
                   }}>{meetBusy ? "criando Meet e enviando convite…" : "🎥 agendar + criar Meet + convite"}</button>
                   <button onClick={confirm} disabled={!ready || meetBusy} className="mono"
                     style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, opacity: ready && !meetBusy ? 1 : 0.5 }}>só agendar (sem convite)</button>
@@ -1621,8 +1621,8 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <button onClick={confirm} disabled={!ready} style={{
                 height: 32, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
-                background: ready ? "var(--accent)" : "var(--bg-2)", color: ready ? "var(--accent-fg)" : "var(--fg-4)",
-                border: "1px solid " + (ready ? "var(--accent)" : "var(--line-2)"), cursor: ready ? "pointer" : "not-allowed",
+                background: ready ? "var(--btn-bg, var(--accent))" : "var(--bg-2)", color: ready ? "var(--btn-fg, var(--accent-fg))" : "var(--fg-4)",
+                border: "1px solid " + (ready ? "var(--btn-bg, var(--accent))" : "var(--line-2)"), cursor: ready ? "pointer" : "not-allowed",
               }}>{setup === "followup" && slot ? "agendar follow-up →" : `mover pra ${dest.stage} →`}</button>
               <button onClick={() => setDest(null)} className="mono dim" style={{ fontSize: 11.5 }}>cancelar</button>
             </div>
