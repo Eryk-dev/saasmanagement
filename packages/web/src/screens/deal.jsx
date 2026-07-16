@@ -428,7 +428,7 @@ function LeadDetail({ lead: initial, onClose }) {
                       } catch (e) { window.alert(e.message || "Falha ao criar o Meet."); }
                     }}
                     title="Evento com Meet na agenda: convida o lead (se tiver e-mail) e os convidados extras; sala aberta com gravação e transcrição automáticas quando o plano permite"
-                    style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 11.5, fontWeight: 600 }}>
+                    style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 11.5, fontWeight: 600 }}>
                     🎥 criar Meet na agenda
                   </button>
                 )}
@@ -513,7 +513,7 @@ function LeadDetail({ lead: initial, onClose }) {
                         } catch (e) { window.alert(e.message || "Falha ao criar o Meet da integração."); }
                       }}
                       title="Cria um Meet na agenda no horário da integração, com gravação e transcrição automáticas (resumo de onboarding depois)"
-                      style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 11.5, fontWeight: 600 }}>
+                      style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 11.5, fontWeight: 600 }}>
                       🎥 criar Meet da integração
                     </button>
                   )

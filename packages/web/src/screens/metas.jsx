@@ -101,7 +101,7 @@ function MetasScreen() {
           <>
             <button onClick={reset} disabled={saving} className="mono dim" style={{ fontSize: 11.5 }}>descartar</button>
             <button onClick={save} disabled={saving}
-              style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12, fontWeight: 600, opacity: saving ? 0.6 : 1 }}>
+              style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600, opacity: saving ? 0.6 : 1 }}>
               {saving ? "salvando…" : "salvar metas"}
             </button>
           </>

@@ -168,7 +168,7 @@ function CallsScreen({ onOpenLead }) {
                 <div>
                   <button onClick={diagnosticar} disabled={ai === "loading" || data.aiConfigured === false}
                     title={data.aiConfigured === false ? "IA não configurada no servidor" : "Analisa as calls e aponta o que ajustar no pitch"}
-                    style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12.5, fontWeight: 600, opacity: (ai === "loading" || data.aiConfigured === false) ? 0.6 : 1 }}>
+                    style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12.5, fontWeight: 600, opacity: (ai === "loading" || data.aiConfigured === false) ? 0.6 : 1 }}>
                     {ai === "loading" ? "analisando…" : "✨ gerar diagnóstico"}
                   </button>
                 </div>

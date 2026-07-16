@@ -37,6 +37,11 @@
   --accent-line: oklch(0.515 0.078 var(--accent-h) / 0.38);
   --accent-fg: #ffffff;
 
+  /* Botão primário do DS: NAVY no claro (teal é seleção, não ação) */
+  --btn-bg: #0c1d2b;
+  --btn-bg-hover: #1b3140;
+  --btn-fg: #ffffff;
+
   --pos: #177a4c;
   --pos-soft: rgba(23,122,76,0.11);
   --neg: #b42318;
@@ -98,6 +103,11 @@ body[data-theme="dark"] {
   --accent-soft: oklch(0.775 0.10 var(--accent-h) / 0.13);
   --accent-line: oklch(0.775 0.10 var(--accent-h) / 0.38);
   --accent-fg: #0c1d2b;
+
+  /* Botão primário no escuro INVERTE (claro sobre escuro), como no DS */
+  --btn-bg: #edf2f5;
+  --btn-bg-hover: #ffffff;
+  --btn-fg: #0c1d2b;
 
   --pos: #4fbe84;
   --pos-soft: rgba(79,190,132,0.14);

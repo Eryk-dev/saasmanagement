@@ -319,7 +319,7 @@ function ChangeModal({ sub, plans, customerName, onClose, onDone }) {
         </div>
         {error && <div className="mono" style={{ fontSize: 11, color: "var(--neg)" }}>{error}</div>}
         <div style={{ display: "flex", gap: 8 }}>
-          <button type="submit" disabled={busy} style={{ flex: 1, padding: "9px 12px", background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
+          <button type="submit" disabled={busy} style={{ flex: 1, padding: "9px 12px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
             {busy ? "Aplicando…" : "Aplicar mudança"}
           </button>
           <button type="button" onClick={onClose} style={{ padding: "9px 16px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>

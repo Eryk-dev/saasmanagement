@@ -155,7 +155,7 @@ function ExpensesScreen() {
               <input type="checkbox" checked={!!form.recurring} onChange={(e) => setForm({ ...form, recurring: e.target.checked })} />
               recorrente todo mês
             </label>
-            <button onClick={addExpense} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-1)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 13, fontWeight: 600 }}>
+            <button onClick={addExpense} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-1)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600 }}>
               + registrar
             </button>
           </div>

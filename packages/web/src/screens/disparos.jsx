@@ -245,7 +245,7 @@ function DisparosScreen({ onOpenLead }) {
               style={{ ...field, width: 180, height: 26, padding: "0 10px", fontSize: 12.5 }} />
             <Pill tone={camp.status === "sending" ? "warn" : camp.id ? "pos" : "mut"}>{camp.status === "sending" ? "disparando" : camp.id ? "salva" : "rascunho"}</Pill>
             <button onClick={save} disabled={saving}
-              style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12, fontWeight: 600 }}>
+              style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600 }}>
               {saving ? "salvando…" : "salvar"}
             </button>
             <button onClick={newCampaign} className="mono dim" style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", fontSize: 12 }}>+ nova</button>
@@ -396,9 +396,9 @@ function DisparosScreen({ onOpenLead }) {
                 <button onClick={sendEmails} disabled={emailBusy || pendingEmail === 0}
                   title="Envia o e-mail pela conta Google conectada pra todos os selecionados com e-mail ainda pendente"
                   style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600,
-                    background: emailBusy || pendingEmail === 0 ? "var(--bg-2)" : "var(--accent)",
-                    color: emailBusy || pendingEmail === 0 ? "var(--fg-4)" : "var(--accent-fg)",
-                    border: "1px solid " + (emailBusy || pendingEmail === 0 ? "var(--line-2)" : "var(--accent)"),
+                    background: emailBusy || pendingEmail === 0 ? "var(--bg-2)" : "var(--btn-bg, var(--accent))",
+                    color: emailBusy || pendingEmail === 0 ? "var(--fg-4)" : "var(--btn-fg, var(--accent-fg))",
+                    border: "1px solid " + (emailBusy || pendingEmail === 0 ? "var(--line-2)" : "var(--btn-bg, var(--accent))"),
                     cursor: emailBusy || pendingEmail === 0 ? "not-allowed" : "pointer" }}>
                   {emailBusy ? "enviando…" : `✉ enviar ${pendingEmail} e-mail${pendingEmail === 1 ? "" : "s"}`}
                 </button>
@@ -645,7 +645,7 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
           </div>
 
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={save} disabled={busy} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12.5, fontWeight: 600 }}>{busy ? "salvando…" : "salvar sequência"}</button>
+            <button onClick={save} disabled={busy} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12.5, fontWeight: 600 }}>{busy ? "salvando…" : "salvar sequência"}</button>
             {seq.id && <button onClick={removeSeq} className="mono dim" style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", fontSize: 12, color: "var(--neg)" }}>apagar</button>}
             {seq.status !== "active" && seq.id && <span className="mono dim" style={{ fontSize: 10.5, alignSelf: "center" }}>ative a sequência pra ela começar a inscrever e disparar</span>}
           </div>
@@ -752,7 +752,7 @@ function TemplatesTab({ product }) {
             <textarea value={t.text} onChange={(e) => setT((x) => ({ ...x, text: e.target.value }))} rows={4} placeholder="mensagem · {{nome}}" style={{ ...field, resize: "vertical", fontFamily: "inherit" }} />
           )}
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={save} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12.5, fontWeight: 600 }}>{t.id ? "salvar" : "criar template"}</button>
+            <button onClick={save} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12.5, fontWeight: 600 }}>{t.id ? "salvar" : "criar template"}</button>
             {t.id && <button onClick={() => setT({ id: null, channel: "email", name: "", subject: "", body: "", text: "" })} className="mono dim" style={{ fontSize: 12 }}>cancelar</button>}
           </div>
         </div>

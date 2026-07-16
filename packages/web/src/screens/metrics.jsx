@@ -302,7 +302,7 @@ function MetricsScreen() {
       <PageHead title="Publicidade" sub={`aquisição, funil e campanhas · ${product.name}`}>
         {metaOn && product.metaAdAccount && (
           <button onClick={() => { setCloneAd((v) => !v); setCreative(false); }}
-            style={{ padding: "6px 12px", borderRadius: "var(--r-1)", fontSize: 12.5, fontWeight: 600, background: "var(--accent)", color: "var(--accent-fg)" }}>
+            style={{ padding: "6px 12px", borderRadius: "var(--r-1)", fontSize: 12.5, fontWeight: 600, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))" }}>
             + criar anúncio
           </button>
         )}
@@ -379,7 +379,7 @@ function MetricsScreen() {
                 <input type="number" min="0" step="0.01" placeholder="0,00" value={manual.spend} onChange={(e) => setManual({ ...manual, spend: e.target.value })}
                   style={{ width: 120, height: 30, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)", textAlign: "right" }} />
               </label>
-              <button onClick={saveManual} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-1)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 13, fontWeight: 600 }}>Registrar</button>
+              <button onClick={saveManual} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-1)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600 }}>Registrar</button>
               <button onClick={() => setManual(null)} style={{ height: 30, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>cancelar</button>
             </div>
           </Card>
@@ -397,7 +397,7 @@ function MetricsScreen() {
                 </div>
               </div>
               {metaOn && (
-                <button onClick={sync} disabled={syncing} style={{ padding: "8px 14px", borderRadius: "var(--r-1)", fontSize: 13, fontWeight: 600, background: "var(--accent)", color: "var(--accent-fg)", opacity: syncing ? 0.6 : 1 }}>
+                <button onClick={sync} disabled={syncing} style={{ padding: "8px 14px", borderRadius: "var(--r-1)", fontSize: 13, fontWeight: 600, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", opacity: syncing ? 0.6 : 1 }}>
                   {syncing ? "Sincronizando…" : "Sincronizar agora"}
                 </button>
               )}
@@ -609,8 +609,8 @@ function BudgetCell({ o, onCommit, sub = "diário" }) {
     <button onClick={onClick} title={title} style={{
       width: 22, height: 22, borderRadius: 5, fontSize: 12, fontWeight: 700, flexShrink: 0,
       border: "1px solid " + (tone === "ok" ? "var(--accent-line)" : "var(--line-2)"),
-      background: tone === "ok" ? "var(--accent)" : "var(--bg-2)",
-      color: tone === "ok" ? "var(--accent-fg)" : "var(--fg-3)",
+      background: tone === "ok" ? "var(--btn-bg, var(--accent))" : "var(--bg-2)",
+      color: tone === "ok" ? "var(--btn-fg, var(--accent-fg))" : "var(--fg-3)",
     }}>{label}</button>
   );
   return (
@@ -1192,7 +1192,7 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <button onClick={submit} disabled={!valid}
-            style={{ height: 32, padding: "0 16px", borderRadius: "var(--r-1)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 13, fontWeight: 600, opacity: !valid ? 0.55 : 1 }}>
+            style={{ height: 32, padding: "0 16px", borderRadius: "var(--r-1)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600, opacity: !valid ? 0.55 : 1 }}>
             {busy ? "Subindo vídeo e clonando… (pode levar uns minutos)" : "Criar anúncio pausado"}
           </button>
           <button onClick={onClose} disabled={busy} style={{ height: 32, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>cancelar</button>
@@ -1349,7 +1349,7 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
 
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button onClick={submit} disabled={!valid || busy}
-            style={{ height: 32, padding: "0 16px", borderRadius: "var(--r-1)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 13, fontWeight: 600, opacity: !valid || busy ? 0.55 : 1 }}>
+            style={{ height: 32, padding: "0 16px", borderRadius: "var(--r-1)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600, opacity: !valid || busy ? 0.55 : 1 }}>
             {busy ? "Enviando vídeo… (pode levar uns minutos)" : "Criar anúncio pausado"}
           </button>
           <button onClick={onClose} disabled={busy} style={{ height: 32, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>cancelar</button>

@@ -44,6 +44,40 @@ const NAV = [
   { id: "settings",   label: "Configurações",  icon: "✦",  group: "geral" },
 ];
 
+// Ícones SVG do NAV (traço 1.8, currentColor) — substituem os caracteres
+// unicode, cujo peso variava com a fonte do sistema. Chaveados pelo id do item.
+const NavSvg = ({ children }) => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
+);
+const ICONS = {
+  overview: <NavSvg><rect x="3" y="3" width="7" height="9" rx="1.5" /><rect x="14" y="3" width="7" height="5" rx="1.5" /><rect x="14" y="12" width="7" height="9" rx="1.5" /><rect x="3" y="16" width="7" height="5" rx="1.5" /></NavSvg>,
+  training: <NavSvg><path d="M2.5 5h6a3 3 0 0 1 3 3v12a2.5 2.5 0 0 0-2.5-2h-6.5z" /><path d="M21.5 5h-6a3 3 0 0 0-3 3v12a2.5 2.5 0 0 1 2.5-2h6.5z" /></NavSvg>,
+  today: <NavSvg><circle cx="12" cy="12" r="8.7" /><path d="M12 7.2V12l3.2 2" /></NavSvg>,
+  pipeline: <NavSvg><rect x="3" y="4" width="4.6" height="11" rx="1.4" /><rect x="9.7" y="4" width="4.6" height="16" rx="1.4" /><rect x="16.4" y="4" width="4.6" height="8" rx="1.4" /></NavSvg>,
+  customers: <NavSvg><circle cx="9" cy="8" r="3.4" /><path d="M2.7 19.5a6.4 6.4 0 0 1 12.6 0" /><path d="M15.8 4.9a3.4 3.4 0 0 1 0 6.2" /><path d="M17.4 14.3a6.4 6.4 0 0 1 3.9 5.2" /></NavSvg>,
+  consultas: <NavSvg><rect x="3.4" y="4.6" width="17.2" height="16.4" rx="2" /><path d="M3.4 9.6h17.2" /><path d="M8.2 2.6v4M15.8 2.6v4" /><path d="M8.8 15.2l2.2 2.2 4.2-4.6" /></NavSvg>,
+  proposals: <NavSvg><path d="M13.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z" /><path d="M13.5 3v5.5H19" /><path d="M9 13.5h6M9 17h6" /></NavSvg>,
+  offers: <NavSvg><rect x="2.6" y="5" width="18.8" height="14" rx="2" /><path d="M2.6 10h18.8" /><path d="M6.2 15h4" /></NavSvg>,
+  agenda: <NavSvg><rect x="3.4" y="4.6" width="17.2" height="16.4" rx="2" /><path d="M3.4 9.6h17.2" /><path d="M8.2 2.6v4M15.8 2.6v4" /></NavSvg>,
+  whatsapp: <NavSvg><path d="M5.2 3.2h3.6l1.6 4.3-2.2 1.9a12.6 12.6 0 0 0 6.4 6.4l1.9-2.2 4.3 1.6v3.6a2 2 0 0 1-2.1 2A16.3 16.3 0 0 1 3.2 5.3a2 2 0 0 1 2-2.1z" /></NavSvg>,
+  social: <NavSvg><circle cx="6" cy="12" r="2.7" /><circle cx="17.6" cy="5.6" r="2.7" /><circle cx="17.6" cy="18.4" r="2.7" /><path d="M8.5 10.8l6.7-3.9M8.5 13.2l6.7 3.9" /></NavSvg>,
+  metrics: <NavSvg><path d="M3 17.6l5.8-5.9 3.9 3.9L20.5 7.5" /><path d="M14.8 7.2h5.7V13" /></NavSvg>,
+  forms: <NavSvg><rect x="4.6" y="4.2" width="14.8" height="17" rx="2" /><path d="M9.2 2.6h5.6v3.2H9.2z" /><path d="M9 11.4h6M9 15.2h6" /></NavSvg>,
+  creative: <NavSvg><path d="M12 3a9 9 0 1 0 0 18c1.5 0 2.3-.9 2.3-1.9 0-1.6-1.3-1.9-1.3-3 0-1.3 1.1-2 2.5-2h2a4 4 0 0 0 3.2-6.4A9 9 0 0 0 12 3z" /><circle cx="8" cy="9" r="0.4" /><circle cx="13.5" cy="7" r="0.4" /><circle cx="6.8" cy="14" r="0.4" /></NavSvg>,
+  disparos: <NavSvg><path d="M21.3 2.7L11 13" /><path d="M21.3 2.7l-6.5 18.2-3.8-7.9-7.9-3.8z" /></NavSvg>,
+  aquisicao: <NavSvg><path d="M3.2 4h17.6l-6.8 8.2v6.3l-4 2.3v-8.6z" /></NavSvg>,
+  calls: <NavSvg><rect x="9" y="2.6" width="6" height="11" rx="3" /><path d="M5.6 11a6.4 6.4 0 0 0 12.8 0" /><path d="M12 17.4V21" /></NavSvg>,
+  integrations: <NavSvg><path d="M10 13.4a4 4 0 0 0 6 .4l2.9-2.9a4 4 0 0 0-5.7-5.7l-1.5 1.5" /><path d="M14 10.6a4 4 0 0 0-6-.4l-2.9 2.9a4 4 0 0 0 5.7 5.7l1.5-1.5" /></NavSvg>,
+  analise: <NavSvg><path d="M5.4 20v-8" /><path d="M12 20V4.6" /><path d="M18.6 20v-5" /></NavSvg>,
+  funcionarios: <NavSvg><rect x="6" y="3" width="12" height="18" rx="2" /><circle cx="12" cy="10" r="2.1" /><path d="M8.9 16.4a3.4 3.4 0 0 1 6.2 0" /><path d="M10.2 3.4h3.6" /></NavSvg>,
+  tasks: <NavSvg><rect x="3.6" y="3.6" width="16.8" height="16.8" rx="2.4" /><path d="M8.4 12.4l2.6 2.6 4.9-5.5" /></NavSvg>,
+  mindmaps: <NavSvg><circle cx="12" cy="5.2" r="2.4" /><circle cx="5.4" cy="18.2" r="2.4" /><circle cx="18.6" cy="18.2" r="2.4" /><path d="M12 7.6v3.6M12 11.2l-5.2 5M12 11.2l5.2 5" /></NavSvg>,
+  metas: <NavSvg><circle cx="12" cy="12" r="8.6" /><circle cx="12" cy="12" r="4.9" /><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" /></NavSvg>,
+  expenses: <NavSvg><rect x="2.8" y="5.4" width="18.4" height="13.6" rx="2" /><path d="M21.2 10.2h-4.7a1.9 1.9 0 0 0 0 3.8h4.7" /></NavSvg>,
+  settings: <NavSvg><path d="M4 6.4h8.6M16.9 6.4H20M4 12h2.8M11.1 12H20M4 17.6h8.6M16.9 17.6H20" /><circle cx="14.8" cy="6.4" r="2" /><circle cx="9" cy="12" r="2" /><circle cx="14.8" cy="17.6" r="2" /></NavSvg>,
+};
+
 // Grupo "main" não leva rótulo (é a espinha do app); os demais levam.
 const GROUP_LABELS = {
   main: null,
@@ -115,7 +149,7 @@ function NavRail({ current, onNav, collapsed }) {
                     marginBottom: 1,
                     textAlign: "left",
                   }}>
-                  <span style={{ fontSize: 13, width: 16, textAlign: "center", color: active ? "var(--accent)" : "var(--fg-4)" }}>{item.icon}</span>
+                  <span style={{ width: 16, height: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: active ? "var(--accent)" : "var(--fg-4)" }}>{ICONS[item.id] || item.icon}</span>
                   {!collapsed && <span>{item.label}</span>}
                 </button>
               );
@@ -399,7 +433,7 @@ function PasswordModal({ onClose }) {
         </label>
         {msg && <div className="mono" style={{ fontSize: 11, color: msg.ok ? "var(--pos)" : "var(--neg)" }}>{msg.text}</div>}
         <div style={{ display: "flex", gap: 8 }}>
-          <button type="submit" disabled={busy || next.length < 4} style={{ flex: 1, padding: "8px 12px", background: "var(--accent)", color: "var(--accent-fg)", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy || next.length < 4 ? 0.6 : 1 }}>
+          <button type="submit" disabled={busy || next.length < 4} style={{ flex: 1, padding: "8px 12px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy || next.length < 4 ? 0.6 : 1 }}>
             {busy ? "Salvando…" : "Salvar"}
           </button>
           <button type="button" onClick={onClose} style={{ padding: "8px 14px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>

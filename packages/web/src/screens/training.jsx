@@ -93,7 +93,7 @@ function Study({ saasId, mode, setMode }) {
               <div style={{ fontSize: 11.5, color: "var(--fg-2)" }}>você aprendeu {data.exam.count} cards desde a última — mostra que ficou de verdade</div>
             </div>
             <button onClick={() => setExam(data.exam)}
-              style={{ ...btn, background: "var(--accent)", color: "var(--accent-fg)", border: "1px solid var(--accent)", fontWeight: 600 }}>
+              style={{ ...btn, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", border: "1px solid var(--btn-bg, var(--accent))", fontWeight: 600 }}>
               Fazer prova →
             </button>
           </div>
@@ -137,7 +137,7 @@ function DeckList({ decks, newPerDay, onStudy }) {
                 <button onClick={() => onStudy(d.role, true)} title="modo foco: tela cheia + áudio ambiente"
                   style={{ ...btn, fontFamily: "var(--mono)", fontSize: 12 }}>◐ foco</button>
                 <button onClick={() => onStudy(d.role, false)}
-                  style={{ ...btn, background: "var(--accent)", color: "var(--accent-fg)", border: "1px solid var(--accent)", fontWeight: 600 }}>
+                  style={{ ...btn, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", border: "1px solid var(--btn-bg, var(--accent))", fontWeight: 600 }}>
                   Estudar →
                 </button>
               </div>
@@ -254,7 +254,7 @@ function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus })
 
         {!flipped ? (
           <button onClick={() => setFlipped(true)}
-            style={{ ...btn, height: focus ? 48 : 40, background: "var(--accent)", color: "var(--accent-fg)", border: "1px solid var(--accent)", fontWeight: 600, fontSize: focus ? 14.5 : 13.5 }}>
+            style={{ ...btn, height: focus ? 48 : 40, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", border: "1px solid var(--btn-bg, var(--accent))", fontWeight: 600, fontSize: focus ? 14.5 : 13.5 }}>
             Mostrar resposta <span style={{ opacity: 0.7, fontWeight: 400 }}>(espaço)</span>
           </button>
         ) : (
@@ -414,7 +414,7 @@ function ExamScreen({ saasId, exam, onDone }) {
             )}
           </div>
         ))}
-        <button onClick={onDone} style={{ ...btn, alignSelf: "flex-start", background: "var(--accent)", color: "var(--accent-fg)", border: "1px solid var(--accent)", fontWeight: 600 }}>← voltar aos baralhos</button>
+        <button onClick={onDone} style={{ ...btn, alignSelf: "flex-start", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", border: "1px solid var(--btn-bg, var(--accent))", fontWeight: 600 }}>← voltar aos baralhos</button>
       </div>
     );
   }
@@ -450,7 +450,7 @@ function ExamScreen({ saasId, exam, onDone }) {
         <button onClick={onDone} className="mono dim" style={{ fontSize: 12 }}>deixar pra depois</button>
         <span style={{ flex: 1 }} />
         <button onClick={submit} disabled={!complete || busy}
-          style={{ ...btn, height: 38, background: complete ? "var(--accent)" : "var(--bg-2)", color: complete ? "var(--accent-fg)" : "var(--fg-4)", border: `1px solid ${complete ? "var(--accent)" : "var(--line-2)"}`, fontWeight: 600 }}>
+          style={{ ...btn, height: 38, background: complete ? "var(--btn-bg, var(--accent))" : "var(--bg-2)", color: complete ? "var(--btn-fg, var(--accent-fg))" : "var(--fg-4)", border: `1px solid ${complete ? "var(--btn-bg, var(--accent))" : "var(--line-2)"}`, fontWeight: 600 }}>
           {busy ? "corrigindo…" : "entregar prova"}
         </button>
       </div>
@@ -601,7 +601,7 @@ function Edit({ saasId, mode, setMode }) {
           <>
             <button onClick={reset} disabled={saving} className="mono dim" style={{ fontSize: 11.5 }}>descartar</button>
             <button onClick={save} disabled={saving}
-              style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12, fontWeight: 600, opacity: saving ? 0.6 : 1 }}>
+              style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600, opacity: saving ? 0.6 : 1 }}>
               {saving ? "salvando…" : "salvar"}
             </button>
           </>
@@ -696,7 +696,7 @@ function EditCards({ cards, saasId, onPatch, onAdd, onRemove, roleLabel }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 920 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <button onClick={() => setOpen(onAdd())}
-          style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--accent)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12, fontWeight: 600 }}>
+          style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--btn-bg, var(--accent))", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600 }}>
           ＋ novo card em {roleLabel}
         </button>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`buscar nos ${cards.length} cards…`}

@@ -281,8 +281,9 @@ function PrimaryButton({ onClick, children, disabled }) {
     <button onClick={onClick} disabled={disabled} style={{
       display: "inline-flex", alignItems: "center", gap: 6,
       height: 30, padding: "0 14px",
-      background: "var(--accent)", color: "var(--accent-fg)",
-      borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500,
+      background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))",
+      boxShadow: "var(--shadow-1)",
+      borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 600,
       opacity: disabled ? 0.5 : 1,
     }}>{children}</button>
   );
