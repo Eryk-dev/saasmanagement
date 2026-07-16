@@ -72,13 +72,13 @@ function NavRail({ current, onNav, collapsed }) {
       width: w,
       flexShrink: 0,
       borderRight: "1px solid var(--line-1)",
-      background: "var(--bg-0)",
+      background: "var(--bg-rail, var(--bg-0))",
       display: "flex",
       flexDirection: "column",
       transition: "width 180ms ease",
       overflow: "hidden",
     }}>
-      <div style={{ padding: "0 14px", display: "flex", alignItems: "center", gap: 10, height: 54 }}>
+      <div style={{ padding: "0 14px", display: "flex", alignItems: "center", gap: 10, height: 56 }}>
         <brand.Icon />
         {!collapsed && (
           <div style={{ lineHeight: 1.1, minWidth: 0 }}>
@@ -235,10 +235,10 @@ function Logo() {
 function TopBar({ title, subtitle, leading, trailing, breadcrumb, onSearch }) {
   return (
     <header style={{
-      height: 48,
+      height: 56,
       flexShrink: 0,
       borderBottom: "1px solid var(--line-1)",
-      background: "var(--bg-0)",
+      background: "var(--bg-topbar, var(--bg-0))",
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
