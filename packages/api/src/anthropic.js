@@ -228,6 +228,25 @@ const PITCH_SYSTEM = `Você é o head comercial da LeverAds, SaaS que clona e si
 Você recebe (1) o roteiro de vendas ATUAL de uma etapa e (2) o padrão do que aconteceu nas últimas calls reais (objeções recorrentes e como foram tratadas, dores mais citadas, temperatura). Sua tarefa: propor uma versão MELHOR do roteiro que antecipa e trata as objeções que mais aparecem, aproveita as dores mais frequentes e sobe a taxa de fechamento.
 Regras: seja fiel aos padrões REAIS das calls (não invente objeção nem dado que não apareceu). Mantenha os {{tokens}} que já existem no roteiro atual (ex.: {{nome}}, {{nicho}}, {{contas}}, {{anuncios}}, {{eu}}, {{produto}}, {{closer_responsavel}}, {{hora_call}}, {{link_call}}). NUNCA use travessão (—) em nenhum texto; use vírgula ou parênteses. Português direto, sem enrolação. Os "passos" são a fala pronta pro closer; a "dica" é nota interna. Mantenha o roteiro enxuto (só os passos necessários), não infle a quantidade de passos.`;
 
+// UniqueKids · Protocolo de Rotina — sugestão de solução pra Ana (psicopedagoga)
+// orientar a call, a partir do desafio da família + método R.O.T.I.N.A.
+const ROUTINE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["sugestao"],
+  properties: {
+    sugestao: { type: "string", description: "Sugestão pronta pra Ana orientar a call: em poucas linhas, qual pilar do R.O.T.I.N.A o desafio vive, como ler o nó, e UM primeiro passo aplicável (quick win) pra família. Nota interna, não é fala pra ler decorada." },
+  },
+};
+
+const ROUTINE_SYSTEM = `Você é a Ana, psicopedagoga por trás do Protocolo de Rotina da UniqueKids. Você atende famílias (quase sempre a mãe) que sofrem com a rotina dos filhos. Seu método é o R.O.T.I.N.A, e a ferramenta central é um quadro visual que a família já tem em casa:
+· RO (Regularidade + Organização): o chão firme pra criança pisar. Sono, tempo de telas e gestão das crises/birras, com os blocos da rotina estruturados pra realidade daquela família.
+· TI (Tempo de qualidade + Interações positivas): presença real, sem briga. Comunicação assertiva e higiene digital; trocar as regras repetitivas por perguntas que ativam o cérebro da criança.
+· NA (Nutrição emocional + Autonomia): cuidar de quem cuida. Olhar as emoções da família e cultivar autonomia no cotidiano, focando no que é inegociável pro futuro da criança.
+
+Tarefa: você recebe os dados de UM lead (idade da criança, o maior desafio da rotina, um exemplo concreto desse desafio contado pela família, se há TDAH/TEA e o que já tentaram). Gere uma SUGESTÃO curta pra orientar a Ana na call daquele caso específico: (1) em qual pilar do R.O.T.I.N.A esse desafio mora, (2) uma leitura clara do nó (por que trava, sem culpar a mãe), (3) UM primeiro passo aplicável (quick win) que a família consegue fazer já essa semana, ancorado no quadro visual quando fizer sentido. Se houver TDAH/TEA, calibre o passo pra criança neurodivergente.
+Regras: é uma NOTA INTERNA pra Ana se orientar, não uma fala pra ler decorada. Tom de mãe pra mãe, acolhedor e prático, sem jargão despejado. Curto (3 a 6 linhas), concreto, aplicável. NUNCA use travessão (—); use vírgula, parênteses ou dois-pontos. Não invente diagnóstico clínico nem promessa de cura. Se o desafio vier vago, faça a melhor leitura possível e sugira o que confirmar na conversa.`;
+
 export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model = "" } = {}) {
   const configured = () => !!apiKey;
   const openrouter = apiKey.startsWith("sk-or-");
@@ -432,6 +451,24 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
     return { suggestion: r.parsed, usage: r.usage, model: r.model };
   }
 
+  // Sugestão de solução (UniqueKids · método R.O.T.I.N.A) pra orientar a Ana na
+  // call, a partir do desafio da família. Não grava nada — a rota decide.
+  async function routineSuggestion({ productName = "UniqueKids", idade = "", desafio = "", exemplo = "", neuro = "", tentou = "" }) {
+    if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
+    const context = [
+      `Produto: ${productName}`,
+      idade ? `Idade da criança: ${idade}` : "",
+      `Maior desafio da rotina: ${desafio || "(não informado)"}`,
+      exemplo ? `Exemplo concreto do desafio (contado pela família): ${exemplo}` : "Exemplo concreto: (a família ainda não detalhou)",
+      neuro ? `TDAH/TEA: ${neuro}` : "",
+      tentou ? `O que a família já tentou: ${tentou}` : "",
+      "",
+      "Gere a sugestão pra Ana resolver ESSE desafio específico usando o R.O.T.I.N.A.",
+    ].filter(Boolean).join("\n");
+    const r = await requestJson(context, { system: ROUTINE_SYSTEM, schema: ROUTINE_SCHEMA, schemaName: "routine_suggestion" });
+    return { sugestao: r.parsed?.sugestao || "", usage: r.usage, model: r.model };
+  }
+
   // Corrige uma resposta DIGITADA da prova de treinamento contra o gabarito.
   // Semântico (não exige as mesmas palavras); não grava nada — a rota decide.
   async function gradeAnswer({ question, ideal, answer, role = "", productName = "LeverAds" }) {
@@ -454,5 +491,5 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
     };
   }
 
-  return { configured, summarizeCall, summarizeIntegration, suggestWelcome, suggestSocialCopy, suggestCampaignCopy, improvePitch, gradeAnswer, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
+  return { configured, summarizeCall, summarizeIntegration, suggestWelcome, suggestSocialCopy, suggestCampaignCopy, improvePitch, routineSuggestion, gradeAnswer, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
 }

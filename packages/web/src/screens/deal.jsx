@@ -3,6 +3,7 @@ import { Avatar } from "../atoms.jsx";
 import { ProposalActions } from "../components/ProposalActions.jsx";
 import { ActivityList, ActivityComposer } from "../components/timeline.jsx";
 import { WhatsappChat } from "../components/whatsapp-chat.jsx";
+import { RoutineSuggestion } from "../components/routine-suggestion.jsx";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 import { leadScoreLabel, leadAge, waLink, leadTier } from "../lib/ui.js";
 import { stageKind, lossReasonLabel, nextTouchPill, workableStages } from "../lib/funnel.js";
@@ -563,6 +564,10 @@ function LeadDetail({ lead: initial, onClose }) {
                 ))}
               </div>
             </div>
+
+            {/* UniqueKids: sugestão de solução da rotina (IA · método R.O.T.I.N.A),
+                gerada do desafio + exemplo e editável pela Ana. Só aparece quando há desafio. */}
+            {(lead.desafio || lead.desafio_exemplo) && <RoutineSuggestion lead={lead} patch={patch} />}
 
         {/* Aviso de número inválido / descadastro (dos webhooks do WhatsApp): o
             operador vê antes de tentar mandar, e os disparos já pulam sozinhos. */}
