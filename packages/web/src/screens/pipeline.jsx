@@ -355,7 +355,9 @@ function ForecastStrip({ s, leads }) {
   const tcv = open.reduce((a, l) => a + (l.amount || 0), 0);
   const weighted = open.reduce((a, l) => {
     const stageIdx = s.funnel.findIndex(f => f.stage === l.stage);
-    const probability = stageIdx >= 0 ? s.funnel.slice(stageIdx).reduce((p, f, i) => p * (i === 0 ? 1 : f.conv), 1) : 0;
+    // Etapa sem `conv` preenchido conta como neutra (1) — sem isto o produto vira NaN
+    // e a faixa mostra "R$NaN" (funil criado via PUT /funnel pode não ter conv).
+    const probability = stageIdx >= 0 ? s.funnel.slice(stageIdx).reduce((p, f, i) => p * (i === 0 ? 1 : (Number.isFinite(Number(f.conv)) && f.conv !== "" && f.conv != null ? Number(f.conv) : 1)), 1) : 0;
     return a + (l.amount || 0) * probability;
   }, 0);
   const month = new Date().toISOString().slice(0, 7);
@@ -1170,7 +1172,7 @@ function ForecastView({ s, leads }) {
   const buckets = s.funnel.map((f, i) => {
     const at = leads.filter(l => l.stage === f.stage);
     const tcv = at.reduce((a, l) => a + (l.amount || 0), 0);
-    const prob = s.funnel.slice(i).reduce((p, x, j) => p * (j === 0 ? 1 : x.conv), 1);
+    const prob = s.funnel.slice(i).reduce((p, x, j) => p * (j === 0 ? 1 : (Number.isFinite(Number(x.conv)) && x.conv !== "" && x.conv != null ? Number(x.conv) : 1)), 1);
     return { stage: f.stage, tcv, prob, weighted: tcv * prob, count: at.length };
   });
   const max = Math.max(1, ...buckets.map(b => b.tcv));

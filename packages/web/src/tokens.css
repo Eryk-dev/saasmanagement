@@ -1,109 +1,122 @@
-/* Cockpit — design tokens v5 "Claro"
-   Tema claro como padrão (aprovado no protótipo de jul/2026): superfícies
-   brancas com canvas cinza leve, tinta escura de alto contraste, acento teal
-   da marca Lever e tipografia própria (Schibsted Grotesk pra display, Instrument
-   Sans no corpo, Spline Sans Mono nos dados). O dark permanece como variante.
-   Os NOMES das vars são estáveis — as telas estilizam inline em cima delas. */
+/* Cockpit — design tokens v6 "Lever Premium"
+   Retematização sobre o design system Lever Premium (jul/2026): superfícies
+   paper (#F7F8FA/#FFF), tinta navy (#0C1D2B), teal da marca usado com
+   parcimônia (#0F766E), sombras quase invisíveis, Instrument Sans em toda a
+   UI e JetBrains Mono só em dados/IDs. O dark segue o DS (paper #0B141D,
+   brand #3ECCBF). Os NOMES das vars são estáveis — as telas estilizam inline
+   em cima delas; o accent continua derivando de --accent-h (o workspace
+   UniqueKids troca o hue em runtime). */
 
 :root {
-  --accent-h: 183;   /* teal Lever ≈ #0c8f83 */
+  --accent-h: 183;   /* teal Lever Premium ≈ #0F766E */
 
   /* ── CLARO (padrão) ──────────────────────────────────────── */
-  --bg-0: #f7f8f9;        /* canvas do app + sidebar */
-  --bg-1: #ffffff;        /* painéis / cards */
-  --bg-2: #eef0f3;        /* wells / cabeçalhos de tabela */
-  --bg-3: #e7eaee;        /* controles elevados (botão secundário) */
-  --bg-inset: #f2f4f6;    /* mais fundo */
-  --hover: rgba(13,22,38,0.05);
-  --hover-strong: rgba(13,22,38,0.09);
+  --bg-0: #f7f8fa;        /* paper: canvas do app */
+  --bg-1: #ffffff;        /* paper-card: painéis / cards */
+  --bg-2: #eef1f3;        /* paper-tinted: wells / trilhos / thead */
+  --bg-3: #e7ebee;        /* controles elevados (botão secundário) */
+  --bg-inset: #f4f6f8;    /* mais fundo */
+  --bg-rail: #ffffff;     /* sidebar (chrome com superfície própria) */
+  --bg-topbar: #ffffff;   /* topbar idem */
+  --hover: rgba(12,29,43,0.045);
+  --hover-strong: rgba(12,29,43,0.08);
 
-  --line-1: #e2e5e9;      /* divisores */
-  --line-2: #cdd2d9;      /* bordas de controle */
-  --line-strong: #b3bac3;
+  --line-1: #e4e8eb;      /* divisores */
+  --line-2: #cbd4da;      /* bordas de controle */
+  --line-strong: #aeb9c2;
 
-  --fg-1: #0e1218;        /* primário */
-  --fg-2: #2c3442;        /* secundário */
-  --fg-3: #4f5a68;        /* terciário / rótulos */
-  --fg-4: #77818f;        /* apagado */
-  --fg-5: #98a1ad;        /* mínimo */
+  --fg-1: #0c1d2b;        /* ink: primário (e navy dos botões do DS) */
+  --fg-2: #3d4f5c;        /* ink-soft */
+  --fg-3: #5a6b77;        /* ink-muted */
+  --fg-4: #8b99a4;        /* ink-faint */
+  --fg-5: #98a5af;        /* ink-disabled */
 
-  --accent: oklch(0.545 0.105 var(--accent-h));
-  --accent-hover: oklch(0.495 0.105 var(--accent-h));
-  --accent-soft: oklch(0.545 0.105 var(--accent-h) / 0.11);
-  --accent-line: oklch(0.545 0.105 var(--accent-h) / 0.45);
+  --accent: oklch(0.515 0.078 var(--accent-h));        /* ≈ #0F766E no hue 183 */
+  --accent-hover: oklch(0.445 0.075 var(--accent-h));  /* ≈ brand-deep #0B5D57 */
+  --accent-soft: oklch(0.515 0.078 var(--accent-h) / 0.10);
+  --accent-line: oklch(0.515 0.078 var(--accent-h) / 0.38);
   --accent-fg: #ffffff;
 
-  --pos: #0d7350;
-  --pos-soft: rgba(13,115,80,0.12);
-  --neg: #c23a35;
-  --neg-soft: rgba(194,58,53,0.12);
-  --warn: #9d6210;
-  --warn-soft: rgba(157,98,16,0.13);
-  --info: #1d6fc4;
-  --info-soft: rgba(29,111,196,0.12);
+  --pos: #177a4c;
+  --pos-soft: rgba(23,122,76,0.11);
+  --neg: #b42318;
+  --neg-soft: rgba(180,35,24,0.10);
+  --warn: #a16207;
+  --warn-soft: rgba(161,98,7,0.12);
+  --warn-line: rgba(161,98,7,0.38);
+  --info: #175cd3;
+  --info-soft: rgba(23,92,211,0.10);
+  --wa-out: #d6f5cf;      /* bolha de saída do WhatsApp */
 
   /* Séries de gráfico (validadas p/ contraste e daltonismo no claro) */
   --chart-1: #0f9d90;
   --chart-2: #5b6bd6;
 
-  /* Tipo */
+  /* Tipo — Instrument Sans em TODA a UI (o DS não usa display própria);
+     JetBrains Mono só em IDs/SKU/dados */
   --sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --display: "Schibsted Grotesk", var(--sans);
-  --mono: "Spline Sans Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --display: "Instrument Sans", var(--sans);
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-  /* Raios */
-  --r-1: 6px;
+  /* Raios (DS: card 12 · interno 10 · controle 8 · badge 5) */
+  --r-1: 5px;
   --r-2: 8px;
   --r-3: 10px;
   --r-4: 12px;
 
-  /* Sombras */
-  --shadow-1: 0 1px 1px 0 rgba(16,24,40,0.04);
-  --shadow-card: 0 1px 2px 0 rgba(16,24,40,0.04), 0 4px 12px -6px rgba(16,24,40,0.05);
-  --shadow-pop: 0 12px 32px -10px rgba(16,24,40,0.18), 0 2px 8px -2px rgba(16,24,40,0.10);
+  /* Sombras quase invisíveis (DS: nunca glow) */
+  --shadow-1: 0 1px 2px 0 rgba(16,24,40,0.06);
+  --shadow-2: 0 4px 12px -4px rgba(16,24,40,0.10);
+  --shadow-card: 0 1px 2px 0 rgba(16,24,40,0.03);
+  --shadow-pop: 0 8px 24px -6px rgba(16,24,40,0.14), 0 2px 6px -2px rgba(16,24,40,0.08);
 }
 
-/* ── ESCURO (variante) ──────────────────────────────────────── */
+/* ── ESCURO (variante, tokens do DS) ─────────────────────────── */
 body[data-theme="dark"] {
-  --bg-0: #0f1115;
-  --bg-1: #14171c;
-  --bg-2: #1a1e25;
-  --bg-3: #222630;
-  --bg-inset: #0b0d10;
-  --hover: rgba(160,170,190,0.10);
-  --hover-strong: rgba(160,170,190,0.16);
+  --bg-0: #0b141d;
+  --bg-1: #101e29;
+  --bg-2: #1d2b36;
+  --bg-3: #24333f;
+  --bg-inset: #0e1922;
+  --bg-rail: #101e29;
+  --bg-topbar: #101e29;
+  --hover: rgba(237,242,245,0.07);
+  --hover-strong: rgba(237,242,245,0.12);
 
-  --line-1: #23272f;
-  --line-2: #313641;
-  --line-strong: #414754;
+  --line-1: #1d2b36;
+  --line-2: #263643;
+  --line-strong: #334653;
 
-  --fg-1: #e9ecf1;
-  --fg-2: #c3c9d4;
-  --fg-3: #97a0ae;
-  --fg-4: #737d8b;
-  --fg-5: #59626f;
+  --fg-1: #edf2f5;
+  --fg-2: #b9c7d1;
+  --fg-3: #8ca0ad;
+  --fg-4: #5e7280;
+  --fg-5: #4c5e6b;
 
-  --accent: oklch(0.72 0.115 var(--accent-h));
-  --accent-hover: oklch(0.77 0.115 var(--accent-h));
-  --accent-soft: oklch(0.72 0.115 var(--accent-h) / 0.14);
-  --accent-line: oklch(0.72 0.115 var(--accent-h) / 0.40);
-  --accent-fg: #0b2f2c;
+  --accent: oklch(0.775 0.10 var(--accent-h));        /* ≈ #3ECCBF no hue 183 */
+  --accent-hover: oklch(0.825 0.10 var(--accent-h));
+  --accent-soft: oklch(0.775 0.10 var(--accent-h) / 0.13);
+  --accent-line: oklch(0.775 0.10 var(--accent-h) / 0.38);
+  --accent-fg: #0c1d2b;
 
-  --pos: #4cb782;
-  --pos-soft: rgba(76,183,130,0.15);
-  --neg: #e5615c;
-  --neg-soft: rgba(229,97,92,0.14);
-  --warn: #e0b04e;
-  --warn-soft: rgba(224,176,78,0.14);
-  --info: #4ea7fc;
-  --info-soft: rgba(78,167,252,0.14);
+  --pos: #4fbe84;
+  --pos-soft: rgba(79,190,132,0.14);
+  --neg: #e2695a;
+  --neg-soft: rgba(226,105,90,0.13);
+  --warn: #d6a249;
+  --warn-soft: rgba(214,162,73,0.14);
+  --warn-line: rgba(214,162,73,0.40);
+  --info: #7ea9e8;
+  --info-soft: rgba(126,169,232,0.13);
+  --wa-out: #0c2318;
 
-  --chart-1: #2aa79e;
+  --chart-1: #3ab5ab;
   --chart-2: #6f7fe8;
 
-  --shadow-1: 0 1px 1px 0 rgba(0,0,0,0.15);
+  --shadow-1: 0 1px 2px 0 rgba(0,0,0,0.18);
+  --shadow-2: 0 4px 12px -4px rgba(0,0,0,0.28);
   --shadow-card: 0 1px 2px 0 rgba(0,0,0,0.10);
-  --shadow-pop: 0 7px 32px 0 rgba(0,0,0,0.35), 0 1px 2px 0 rgba(0,0,0,0.2);
+  --shadow-pop: 0 8px 28px 0 rgba(0,0,0,0.35), 0 1px 2px 0 rgba(0,0,0,0.2);
 }
 
 * { box-sizing: border-box; }
