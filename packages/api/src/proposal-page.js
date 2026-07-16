@@ -428,6 +428,9 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
     --ink-2: color-mix(in oklab, #F3FBFF 78%, transparent); --ink-3: color-mix(in oklab, #F3FBFF 60%, transparent);
     --line: color-mix(in oklab, #F3FBFF 12%, transparent); }
   @media (min-width: 768px) { .price-band { padding: 40px 52px; } }
+  /* Slide de pricing em seção escura (ritmo claro/escuro): a faixa navy some no
+     fundo navy — um contorno claro devolve o formato do bloco. */
+  .sec-dark .price-band { border: 1px solid color-mix(in oklab, #F3FBFF 16%, transparent); }
   /* Palco onde os painéis de oferta se sobrepõem (só o ativo visível): o bloco
      mantém o MESMO tamanho quando a escada troca de preço. */
   .pb-stage { position: relative; min-height: 168px; transition: opacity .5s var(--ease-out); }
