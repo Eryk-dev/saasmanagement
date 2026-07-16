@@ -107,6 +107,12 @@ export async function initDb() {
 }
 
 // ── Repository ────────────────────────────────────────────────────────────
+// Id gerado: prefixo + timestamp base36 + contador de desempate (2 chars). O
+// contador elimina colisão em burst (2 creates no MESMO ms davam PK duplicada —
+// era o motivo de activities/form_events precisarem de UUID próprio).
+let idSeq = 0;
+const genId = (name) => `${name.slice(0, 2)}_${Date.now().toString(36)}${(idSeq = (idSeq + 1) % 1296).toString(36).padStart(2, "0")}`;
+
 export const repo = {
   async list(name) {
     // ORDER BY id: sem ele a ordem é a do heap do Postgres, que muda quando uma
@@ -121,7 +127,7 @@ export const repo = {
     return rows.length ? rows[0].json : null;
   },
   async create(name, obj) {
-    const id = obj.id != null ? String(obj.id) : `${name.slice(0, 2)}_${Date.now().toString(36)}${Math.floor(performance.now() % 1000)}`;
+    const id = obj.id != null ? String(obj.id) : genId(name);
     const record = { ...obj, id };
     await getPool().query(`INSERT INTO ${tbl(name)} (id, json) VALUES ($1, $2::jsonb)`, [id, JSON.stringify(record)]);
     bump(name);

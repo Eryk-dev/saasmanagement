@@ -15,7 +15,7 @@
 
 export const SCREEN_IDS = [
   "overview", "today", "pipeline", "customers", "metrics", "expenses",
-  "social", "forms", "proposals", "creative", "offers", "disparos", "whatsapp", "agenda", "calls", "integrations", "aquisicao", "analise", "funcionarios", "metas", "training", "tasks", "mindmaps", "settings",
+  "social", "forms", "proposals", "creative", "offers", "disparos", "whatsapp", "agenda", "consultas", "calls", "integrations", "aquisicao", "analise", "funcionarios", "metas", "training", "tasks", "mindmaps", "settings",
 ];
 
 export const sanitizeScreens = (x) =>
@@ -68,6 +68,8 @@ const ROUTE_SCREENS = [
   // Bloqueios de agenda: a tela Agenda gerencia; quem marca call (pipeline/Meu dia)
   // precisa LER pra grade de horários respeitar os bloqueios.
   ["/api/agenda_blocks", ["agenda", "pipeline", "today", "overview"]],
+  ["/api/consultations", ["consultas"]], // consultas 1:1 (mentoria UniqueKids): agenda + ações (meet/summary)
+  ["/api/deliverables", ["consultas"]],  // Manual da Família (entregável) + compose por IA
   ["/api/pitch", ["calls", "settings"]], // análise de pitch (calls) + botão "IA das calls" em Ajustes → Scripts
   ["/api/integrations", ["integrations"]], // análise de integração (CS/onboarding)
 

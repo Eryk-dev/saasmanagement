@@ -16,6 +16,7 @@ import { OffersScreen } from "./screens/offers.jsx";
 import { DisparosScreen } from "./screens/disparos.jsx";
 import { WhatsappInboxScreen } from "./screens/whatsapp.jsx";
 import { AgendaScreen } from "./screens/agenda.jsx";
+import { ConsultasScreen } from "./screens/consultas.jsx";
 import { CallsScreen } from "./screens/calls.jsx";
 import { IntegrationsScreen } from "./screens/integrations.jsx";
 import { AnaliseScreen } from "./screens/analise.jsx";
@@ -150,6 +151,7 @@ function App() {
     proposals:   ["Comercial", "Propostas"],
     offers:      ["Comercial", "Link pagamento"],
     agenda:      ["Comercial", "Agenda"],
+    consultas:   ["Comercial", "Consultas"],
     social:      ["Marketing", "Redes sociais"],
     metrics:     ["Marketing", "Publicidade"],
     forms:       ["Marketing", "Formulários"],
@@ -226,6 +228,7 @@ function App() {
           {scr === "social"      && <SocialScreen />}
           {scr === "offers"      && <OffersScreen />}
           {scr === "agenda"      && <AgendaScreen />}
+          {scr === "consultas"   && <ConsultasScreen />}
           {scr === "disparos"    && <DisparosScreen onOpenLead={openLead} />}
           {scr === "whatsapp"    && <WhatsappInboxScreen onOpenLead={openLead} />}
           {scr === "calls"       && <CallsScreen onOpenLead={openLead} />}

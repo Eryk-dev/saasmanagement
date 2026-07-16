@@ -3,6 +3,7 @@
 // stores plain JSON records, same id generation, returns clones.
 export function makeMemRepo() {
   const store = new Map(); // name -> Map(id -> record)
+  let seq = 0;             // desempate de ids criados no mesmo ms (espelha db.js)
   const col = (name) => {
     if (!store.has(name)) store.set(name, new Map());
     return store.get(name);
@@ -17,7 +18,8 @@ export function makeMemRepo() {
       return r ? { ...r } : null;
     },
     async create(name, obj) {
-      const id = obj.id != null ? String(obj.id) : `${name.slice(0, 2)}_${Date.now().toString(36)}${Math.floor(performance.now() % 1000)}`;
+      // Espelha o genId do db.js: timestamp + contador de desempate (sem colisão em burst).
+      const id = obj.id != null ? String(obj.id) : `${name.slice(0, 2)}_${Date.now().toString(36)}${(seq = (seq + 1) % 1296).toString(36).padStart(2, "0")}`;
       const record = { ...obj, id };
       col(name).set(id, record);
       return { ...record };

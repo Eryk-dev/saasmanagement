@@ -24,6 +24,9 @@ import { registerCampaignRoutes } from "./routes.disparos.js";
 import { registerSequenceRoutes } from "./routes.sequences.js";
 import { registerPitchRoutes } from "./routes.pitch.js";
 import { registerRoutineRoutes } from "./routes.routine.js";
+import { registerConsultationRoutes } from "./routes.consultations.js";
+import { syncConsultationCalendar } from "./consultations.js";
+import { newManual, sameFamily } from "./deliverables.js";
 import { registerIntegrationRoutes } from "./routes.integrations.js";
 import { registerMetasRoutes } from "./routes.metas.js";
 import { registerFlashcardRoutes } from "./routes.flashcards.js";
@@ -133,6 +136,13 @@ export const CREATE_DEFAULTS = {
   sequence_enrollments: { saas: "", sequence: "", lead: "", status: "active", stepIndex: 0, nextRunAt: "", pendingChannel: "", exitReason: "", enrolledAt: "", lastAt: "" },
   // Conteúdo reutilizável dos passos (biblioteca). channel email/whatsapp.
   drip_templates: { name: "", saas: "", channel: "email", subject: "", body: "", text: "" },
+  // Consulta 1:1 da mentoria (UniqueKids, 8 encontros). `at` = hora de Brasília
+  // sem fuso (datetime-local); `owner` = responsável (Ana), dona do espelho na
+  // agenda Google pessoal (calEvent*); Meet do time carrega a transcrição → summary (IA).
+  consultations: { saas: "", customerId: "", leadId: "", clientName: "", childName: "", phone: "", n: 1, at: "", durationMin: 60, status: "scheduled", notes: "", owner: "", meetUrl: "", meetEventId: "", meetScheduledAt: "", calEventId: "", calEventUser: "", summary: null, summaryDoneFor: "", summaryAt: "", transcriptUrl: "", createdAt: "" },
+  // Manual da Família (entregável final da mentoria): sections = snapshot do
+  // template (deliverables.js) modulado pelas consultas; página pública /m/:id.
+  deliverables: { saas: "", customerId: "", leadId: "", clientName: "", childName: "", status: "building", deliveredAt: "", sections: [], createdAt: "" },
 };
 
 // Receita e nº de clientes são DERIVADOS da coleção `customers`, não dos campos
@@ -265,6 +275,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Google Meet: conectar conta (OAuth) + criar call na agenda do closer.
   // Claude resume as calls (transcrição → timeline) quando há ANTHROPIC_API_KEY.
   const { client: googleClient, googleUser } = registerGoogleRoutes(app, repo, { google: opts.google, googleUser: opts.googleUser, anthropic: anthropicClient });
+  // Consultas 1:1 + Manual da Família (UniqueKids): Meet da consulta, resumo IA,
+  // compor manual e página pública /m/:id. Depois do Google (usa os 2 clients).
+  registerConsultationRoutes(app, repo, { google: googleClient, googleUser, anthropic: anthropicClient });
   // Mailer (e-mail dos disparos/sequências): hoje envia pela conta Google conectada.
   const mailerClient = opts.mailer || makeMailer({ google: googleClient });
   // Disparos: campanhas de e-mail + WhatsApp pros leads qualificados (ferramenta).
@@ -394,7 +407,13 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     if (!req.body || typeof req.body !== "object") return reply.code(400).send({ error: "JSON body required" });
     const now = new Date().toISOString();
     const stamp = {};
-    if ((collection === "leads" || collection === "tasks") && !req.body.createdAt) stamp.createdAt = now;
+    if ((collection === "leads" || collection === "tasks" || collection === "consultations" || collection === "deliverables") && !req.body.createdAt) stamp.createdAt = now;
+    // Consulta nasce com a responsável = quem marcou (a Ana marca as próprias).
+    if (collection === "consultations" && !req.body.owner && req.authUser?.id) stamp.owner = req.authUser.id;
+    // Manual criado sem seções ganha o template (as 6 seções da apresentação).
+    if (collection === "deliverables" && !(Array.isArray(req.body.sections) && req.body.sections.length)) {
+      stamp.sections = newManual({}).sections;
+    }
     // stageSince = quando o card entrou no estágio atual (base do contador "dias na
     // coluna"). No create, é agora; depois, recarimbado a cada mudança de estágio.
     if ((collection === "leads" || collection === "deals") && !req.body.stageSince) stamp.stageSince = now;
@@ -463,6 +482,21 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       const product = created.saas ? await repo.get("products", created.saas) : null;
       await discordClient.leadNew({ lead: created, productName: product?.name });
     }
+    // Consulta marcada → espelha na agenda Google pessoal da responsável e
+    // garante o Manual da Família do cliente (1 por cliente; a 1ª consulta cria).
+    if (collection === "consultations") {
+      try { await syncConsultationCalendar(repo, googleUser, created); } catch { /* fail-open */ }
+      try {
+        const manuals = await repo.list("deliverables");
+        const has = manuals.some((m) => sameFamily(m, created));
+        if (!has && created.clientName) {
+          await repo.create("deliverables", newManual({
+            saas: created.saas || "uniquekids", customerId: created.customerId || "",
+            leadId: created.leadId || "", clientName: created.clientName, childName: created.childName || "",
+          }));
+        }
+      } catch { /* fail-open */ }
+    }
     return reply.code(201).send(created);
   });
 
@@ -502,6 +536,11 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     if (collection === "leads" && ("callAt" in req.body || "closer" in req.body || "integrationAt" in req.body || "integrator" in req.body)) {
       try { await syncPersonalCalendar(repo, googleUser, updated); } catch { /* fail-open */ }
     }
+    // Consulta remarcada, cancelada ou reatribuída → re-espelha na agenda
+    // pessoal da responsável (mesmo evento; cancelar apaga). Best-effort.
+    if (collection === "consultations" && ("at" in req.body || "status" in req.body || "owner" in req.body || "durationMin" in req.body || "n" in req.body || "clientName" in req.body)) {
+      try { await syncConsultationCalendar(repo, googleUser, updated); } catch { /* fail-open */ }
+    }
     if (collection === "subscriptions") {
       await syncCustomerArr(repo, updated.customer);
       if (before && before.customer && before.customer !== updated.customer) await syncCustomerArr(repo, before.customer);
@@ -515,9 +554,14 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     const { collection, id } = req.params;
     if (!WRITABLE.has(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
     const subCustomer = collection === "subscriptions" ? (await repo.get(collection, id))?.customer : null;
+    // Consulta apagada → tira o evento da agenda pessoal da responsável.
+    const gone = collection === "consultations" ? await repo.get(collection, id) : null;
     const ok = await repo.remove(collection, id);
     if (!ok) return reply.code(404).send({ error: "Not found" });
     if (subCustomer) await syncCustomerArr(repo, subCustomer);
+    if (gone?.calEventId && gone?.calEventUser) {
+      try { await googleUser.deleteEvent(gone.calEventUser, gone.calEventId); } catch { /* fail-open */ }
+    }
     return { ok: true, id };
   });
 

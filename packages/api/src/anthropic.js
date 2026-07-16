@@ -247,6 +247,53 @@ const ROUTINE_SYSTEM = `Você é a Ana, psicopedagoga por trás do Protocolo de 
 Tarefa: você recebe os dados de UM lead (idade da criança, o maior desafio da rotina, um exemplo concreto desse desafio contado pela família, se há TDAH/TEA e o que já tentaram). Gere uma SUGESTÃO curta pra orientar a Ana na call daquele caso específico: (1) em qual pilar do R.O.T.I.N.A esse desafio mora, (2) uma leitura clara do nó (por que trava, sem culpar a mãe), (3) UM primeiro passo aplicável (quick win) que a família consegue fazer já essa semana, ancorado no quadro visual quando fizer sentido. Se houver TDAH/TEA, calibre o passo pra criança neurodivergente.
 Regras: é uma NOTA INTERNA pra Ana se orientar, não uma fala pra ler decorada. Tom de mãe pra mãe, acolhedor e prático, sem jargão despejado. Curto (3 a 6 linhas), concreto, aplicável. NUNCA use travessão (—); use vírgula, parênteses ou dois-pontos. Não invente diagnóstico clínico nem promessa de cura. Se o desafio vier vago, faça a melhor leitura possível e sugira o que confirmar na conversa.`;
 
+// UniqueKids · resumo de UMA consulta da mentoria (8 encontros) a partir da
+// transcrição do Meet — registro estruturado pra Ana e insumo do Manual da Família.
+const CONSULT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["resumo", "evolucao", "temas", "combinados", "tarefas", "sinais", "proxima"],
+  properties: {
+    resumo: { type: "string", description: "2 a 4 frases: o que essa consulta trabalhou e o estado da família" },
+    evolucao: { type: "string", description: "o que mudou desde o último encontro (vitórias e recaídas); vazio na consulta 1" },
+    temas: { type: "array", items: { type: "string" }, description: "temas trabalhados (sono, telas, birras, autonomia, quadro...)" },
+    combinados: { type: "array", items: { type: "string" }, description: "o que ficou combinado com a família" },
+    tarefas: { type: "array", items: { type: "string" }, description: "tarefas de casa pra família até a próxima consulta" },
+    sinais: { type: "string", description: "sinais de atenção (sobrecarga, resistência, contexto clínico citado); vazio se nenhum" },
+    proxima: { type: "string", description: "foco sugerido pra próxima consulta" },
+  },
+};
+
+const CONSULT_SYSTEM = `Você registra as consultas da mentoria R.O.T.I.N.A da UniqueKids: a psicopedagoga Ana Dubena acompanha uma família (quase sempre a mãe) em 8 encontros 1:1 pra transformar a rotina do filho, usando o método R.O.T.I.N.A (RO: Regularidade+Organização, sono/telas/birras com o quadro visual; TI: Tempo de qualidade+Interações positivas, comunicação que ativa o cérebro; NA: Nutrição emocional+Autonomia, cuidar de quem cuida).
+Você recebe a transcrição de UMA consulta e devolve o registro estruturado. Seja fiel ao que foi DITO (não invente combinado nem tarefa que não apareceu). Escreva em português direto, tom acolhedor e concreto. NUNCA use travessão (—); use vírgula, parênteses ou dois-pontos. Não faça diagnóstico clínico: se a família citar TDAH/TEA ou acompanhamento médico, registre em "sinais" como contexto, sem opinar.`;
+
+// UniqueKids · compõe o Manual da Família (entregável final): propõe o conteúdo
+// das seções a partir do material acumulado das consultas.
+const MANUAL_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["sections"],
+  properties: {
+    sections: {
+      type: "array",
+      description: "APENAS as seções com material suficiente pra escrever ou melhorar",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["key", "content"],
+        properties: {
+          key: { type: "string", description: "key exata da seção recebida" },
+          content: { type: "string", description: "o conteúdo completo da seção, pronto pra família ler" },
+        },
+      },
+    },
+  },
+};
+
+const MANUAL_SYSTEM = `Você escreve o Manual da Família: o entregável final da mentoria R.O.T.I.N.A da UniqueKids (8 encontros 1:1 com a psicopedagoga Ana Dubena). É o documento que fica com a família no fim da jornada, com tudo o que foi construído pra rotina do filho DELES. Método R.O.T.I.N.A: RO (Regularidade+Organização: sono, telas e birras com os blocos da rotina no quadro visual Tarefas Diárias), TI (Tempo de qualidade+Interações positivas: comunicação que ativa o cérebro, perguntas em vez de ordens), NA (Nutrição emocional+Autonomia: cuidar de quem cuida, autonomia no cotidiano).
+Você recebe as seções do manual (key, título, orientação do que vai em cada uma e o conteúdo atual) e o MATERIAL das consultas (resumos e notas da Ana). Proponha o conteúdo das seções que têm material suficiente; pule as que ainda não têm (não devolva a key). Se a seção já tem conteúdo escrito, PRESERVE o que é bom e integre o novo (você devolve a versão completa).
+Regras: escreva PRA FAMÍLIA (segunda pessoa, "vocês"), tom acolhedor e prático, de mãe pra mãe. Seja ESPECÍFICO dessa família: use os nomes, a idade, os combinados e as falas REAIS que apareceram nas consultas; nada de texto genérico de apostila. Não invente nada que não esteja no material. Formato: parágrafos curtos; listas com "• " quando ajudar; *destaque* pra frases-chave (vira negrito). NUNCA use travessão (—); use vírgula, parênteses ou dois-pontos. Sem promessa de cura e sem diagnóstico clínico.`;
+
 export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model = "" } = {}) {
   const configured = () => !!apiKey;
   const openrouter = apiKey.startsWith("sk-or-");
@@ -469,6 +516,47 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
     return { sugestao: r.parsed?.sugestao || "", usage: r.usage, model: r.model };
   }
 
+  // Uma consulta da mentoria (UniqueKids) → registro estruturado. Transcrição
+  // grande é cortada em ~180k chars (mantém o FINAL, onde vivem os combinados).
+  async function summarizeConsultation({ transcript, clientName = "?", childName = "", n = 0, productName = "UniqueKids", callDate = "" }) {
+    if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
+    const MAX = 180_000;
+    const text = String(transcript || "");
+    const clipped = text.length > MAX ? `[início da consulta omitido]\n${text.slice(-MAX)}` : text;
+    const context = [
+      `Família: ${clientName}${childName ? ` (criança: ${childName})` : ""}`,
+      n ? `Consulta nº ${n} de 8` : "",
+      callDate ? `Data: ${callDate}` : "",
+      `Produto: ${productName}`,
+    ].filter(Boolean).join("\n");
+    const r = await requestJson(`${context}\n\nTranscrição da consulta:\n\n${clipped}`, { system: CONSULT_SYSTEM, schema: CONSULT_SCHEMA, schemaName: "consultation_summary" });
+    return { summary: r.parsed, usage: r.usage, model: r.model };
+  }
+
+  // Compõe o Manual da Família a partir do material das consultas. Devolve só as
+  // seções que a IA conseguiu escrever ({ key, content }); a rota mescla.
+  async function composeDeliverables({ clientName = "?", childName = "", sections = [], material = "" }) {
+    if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
+    const secText = sections.map((s) => [
+      `[${s.key}] ${s.title}`,
+      `O que vai aqui: ${s.hint || ""}`,
+      `Conteúdo atual: ${String(s.content || "").trim() || "(vazio)"}`,
+    ].join("\n")).join("\n\n");
+    const context = [
+      `Família: ${clientName}${childName ? ` (criança: ${childName})` : ""}`,
+      "",
+      "SEÇÕES DO MANUAL",
+      secText,
+      "",
+      "MATERIAL DAS CONSULTAS (resumos + notas da Ana, em ordem)",
+      material || "(vazio)",
+      "",
+      "Escreva o conteúdo das seções que já têm material suficiente.",
+    ].join("\n");
+    const r = await requestJson(context, { system: MANUAL_SYSTEM, schema: MANUAL_SCHEMA, schemaName: "family_manual" });
+    return { sections: r.parsed?.sections || [], usage: r.usage, model: r.model };
+  }
+
   // Corrige uma resposta DIGITADA da prova de treinamento contra o gabarito.
   // Semântico (não exige as mesmas palavras); não grava nada — a rota decide.
   async function gradeAnswer({ question, ideal, answer, role = "", productName = "LeverAds" }) {
@@ -491,5 +579,5 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
     };
   }
 
-  return { configured, summarizeCall, summarizeIntegration, suggestWelcome, suggestSocialCopy, suggestCampaignCopy, improvePitch, routineSuggestion, gradeAnswer, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
+  return { configured, summarizeCall, summarizeIntegration, summarizeConsultation, composeDeliverables, suggestWelcome, suggestSocialCopy, suggestCampaignCopy, improvePitch, routineSuggestion, gradeAnswer, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
 }
