@@ -104,6 +104,11 @@ export const api = {
   improvePitch: (saas, body) => req("POST", `/api/pitch/${saas}/improve`, body),
   // UniqueKids: gera a sugestão de solução da rotina (IA, método R.O.T.I.N.A).
   routineSuggestion: (leadId) => req("POST", `/api/leads/${leadId}/routine-suggestion`, {}),
+  // Consultas 1:1 (mentoria UniqueKids): Meet da consulta (transcrição automática),
+  // resumo manual por IA e compor o Manual da Família a partir das consultas.
+  consultationMeet: (id) => req("POST", `/api/consultations/${id}/meet`, {}),
+  consultationSummary: (id, force = false) => req("POST", `/api/consultations/${id}/summary`, { force }),
+  composeManual: (id) => req("POST", `/api/deliverables/${id}/compose`, {}),
   // Análise de pitch: estatísticas agregadas das calls resumidas + calls recentes.
   // closer opcional (undefined = todos; "" = sem closer) separa a análise por closer.
   pitchCalls: (saas, closer) => req("GET", `/api/pitch/${saas}/calls${closer != null ? `?closer=${encodeURIComponent(closer)}` : ""}`),

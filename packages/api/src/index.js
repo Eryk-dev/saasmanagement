@@ -12,6 +12,7 @@ import { initDb, repo } from "./db.js";
 import { registerRoutes } from "./routes.js";
 import { startMarketingAutoSync } from "./routes.marketing.js";
 import { startCallSummaries } from "./call-summaries.js";
+import { startConsultationSummaries } from "./consultations.js";
 import { startDripSequences } from "./drip-runner.js";
 import { startTrainingReminder } from "./training-reminder.js";
 import { ensureDefaultAdmins, makeAuthHook } from "./auth.js";
@@ -28,7 +29,7 @@ const OPEN_PATHS = new Set(["/api/health", "/embed.js", "/favicon.ico", "/api/au
 // Superfície pública do form builder (página + envio anônimo) e do proposal
 // builder (página /p/:id, aceite, painel do closer via editKey). Endurecimento
 // (rate-limit, honeypot, token) vive em routes.forms.js / routes.proposals.js.
-const OPEN_PREFIXES = ["/f/", "/public/forms/", "/p/", "/public/proposals/", "/public/mp/", "/public/social/", "/public/training/", "/u/", "/api/webhooks/"];
+const OPEN_PREFIXES = ["/f/", "/public/forms/", "/p/", "/public/proposals/", "/public/mp/", "/public/social/", "/public/training/", "/u/", "/m/", "/api/webhooks/"];
 
 // Read the key from either header style: `x-api-key: <key>` or `Authorization: Bearer <key>`.
 // Exceção: /api/events (SSE) — EventSource não manda headers, então a key/token
@@ -75,6 +76,8 @@ try {
   startMarketingAutoSync(repo, { log: app.log });
   // Resumo automático de calls: só faz algo com ANTHROPIC_API_KEY + Google conectado.
   startCallSummaries(repo, { ...app.integrationClients, log: app.log });
+  // Resumo automático das consultas 1:1 (UniqueKids): mesmo circuito, poller próprio.
+  startConsultationSummaries(repo, { ...app.integrationClients, log: app.log });
   // Sequências de nutrição (drip): auto-inscreve e avança os passos (e-mail pela
   // conta Google; WhatsApp fica na fila assistida). No-op sem sequência ativa.
   startDripSequences(repo, { ...app.integrationClients, log: app.log });

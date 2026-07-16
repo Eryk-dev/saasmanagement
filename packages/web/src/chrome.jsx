@@ -17,6 +17,7 @@ const NAV = [
 
   { id: "pipeline",   label: "Pipeline",       icon: "≡",  group: "comercial" },
   { id: "customers",  label: "Clientes",       icon: "○",  group: "comercial" },
+  { id: "consultas",  label: "Consultas",      icon: "❋",  group: "comercial" },
   { id: "proposals",  label: "Propostas",      icon: "▥",  group: "comercial" },
   { id: "offers",     label: "Link pagamento", icon: "◇",  group: "comercial" },
   { id: "agenda",     label: "Agenda",         icon: "▦",  group: "comercial" },
