@@ -70,7 +70,7 @@ const BRAND_ICON_H = 160;
 // Link do Google Fonts pra família primária do tema + JetBrains Mono (pills,
 // labels). Família desconhecida só falha o link — fallback system-ui assume.
 const fontHref = (font) => {
-  const fam = String(font || "").split(",")[0].trim().replace(/^['"]|['"]$/g, "") || "Space Grotesk";
+  const fam = String(font || "").split(",")[0].trim().replace(/^['"]|['"]$/g, "") || "Instrument Sans";
   const enc = encodeURIComponent(fam).replace(/%20/g, "+");
   return `https://fonts.googleapis.com/css2?family=${enc}:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap`;
 };
@@ -82,7 +82,7 @@ export function formPageHtml(form, { embed = false, preview = false, pixelId = "
   const fg = t.fg || "#f2f3f5";
   const accent = t.accent || "#6c5ce7";
   const accentFg = t.accentFg || "#ffffff";
-  const font = t.font || "'Space Grotesk', system-ui, -apple-system, sans-serif";
+  const font = t.font || "'Instrument Sans', system-ui, -apple-system, sans-serif";
   const radius = t.radius != null ? Number(t.radius) : 14;
   const logoH = Math.min(240, Math.max(12, Number(t.logoHeight) || 40));
   // Logo do form: se o tema define logoUrl próprio, usa-o no tamanho do tema.

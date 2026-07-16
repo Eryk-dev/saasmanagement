@@ -1,16 +1,15 @@
 import React from "react";
-import { TrendBadge, EmptyState, PrimaryButton } from "../atoms.jsx";
-import { PageHead, Pill } from "../components/viz.jsx";
-import { leadScoreTone, leadAge, waLink, leadTier } from "../lib/ui.js";
+import { Avatar, EmptyState, PrimaryButton } from "../atoms.jsx";
+import { Card, FilterTab, Pill, Segmented, StatTile } from "../components/viz.jsx";
+import { leadScoreTone, leadAge } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import {
-  stageKind, phaseOf, PHASES, openStages, workableStages, isWonStage, cadenceOf,
-  nextTouch, nextTouchPill, lossReasonLabel, rollToBusinessDay,
+  stageKind, phaseOf, openStages, workableStages, isWonStage,
+  nextTouch, nextTouchPill, lossReasonLabel,
 } from "../lib/funnel.js";
 import { usersByRole, userTone, displayName, currentUser } from "../lib/users.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
-import { useAttribution, leadPain } from "../lib/pains.js";
 import { useActiveSaas, pinActiveSaas } from "../lib/workspace.js";
 // Pipeline — Kanban + List + Agenda + Análise. Drag-and-drop between columns.
 // Funil unificado: os LEADS são os cards do pipeline (window.SEED.LEADS). Cada
@@ -53,10 +52,9 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   useEfP(() => { setLeads(window.SEED.LEADS.map((l) => ({ ...l }))); }, [version]);
   const [highlight, setHighlight] = useStP(jumpFilter?.stage || null);
   const [selected, setSelected] = useStP(new Set());
-  const [pri, setPri] = useStP("all");
   // Fase do processo (fatia as colunas visíveis — a "view" de cada papel) +
   // pessoa (dono/closer). Fase persiste: o CS abre direto na view dele.
-  const PHASES_OPTS = ["all", "sdr", "closer", "cs"];
+  const PHASES_OPTS = ["all", "sdr", "closer"];
   const [phase, setPhaseState] = useStP(() => {
     try { const v = localStorage.getItem("cockpit_pipeline_phase"); return PHASES_OPTS.includes(v) ? v : "all"; } catch { return "all"; }
   });
@@ -71,15 +69,6 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     setPersonState(p);
     try { localStorage.setItem("cockpit_pipeline_person", p); } catch { /* ignore */ }
   };
-  // Desqualificado é o "cemitério" (leads pra reaproveitar depois): fica OCULTO
-  // por padrão pra não poluir o fluxo; um botão revela a coluna. Persistido.
-  const [showDiscarded, setShowDiscardedState] = useStP(() => {
-    try { return localStorage.getItem("cockpit_pipeline_discarded") === "1"; } catch { return false; }
-  });
-  const setShowDiscarded = (v) => {
-    setShowDiscardedState(v);
-    try { localStorage.setItem("cockpit_pipeline_discarded", v ? "1" : "0"); } catch { /* ignore */ }
-  };
   // Gate de movimento pendente (handoff / motivo de perda).
   const [pendingMove, setPendingMove] = useStP(null); // { lead, toStage, gate, saasCfg }
 
@@ -93,10 +82,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     return who ? l.owner === who || l.closer === who : true;
   };
 
-  // Priority filter is global (kanban + list + all). Análise deliberately uses the
-  // full product pipeline so the $ totals don't shrink when narrowing by priority.
-  const priLeads = (pri === "all" ? leads : leads.filter(l => l.priority === pri)).filter(personMatch);
-  const saasLeads = priLeads.filter(l => l.saas === activeSaas);
+  const saasLeads = leads.filter(l => l.saas === activeSaas).filter(personMatch);
   const saasAll = leads.filter(l => l.saas === activeSaas);
 
   // Group active-product leads by stage
@@ -108,8 +94,8 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   // (integração/acompanhamento + Ganho).
   const visibleStages = useMP(() => {
     const base = stagesForPhase(s, stages, phase);
-    return showDiscarded ? base : base.filter((st) => stageKind(s, st) !== "desqualificado");
-  }, [stages.join("|"), phase, activeSaas, showDiscarded]);
+    return base.filter((st) => !["ganho", "perdido", "desqualificado"].includes(stageKind(s, st)));
+  }, [stages.join("|"), phase, activeSaas]);
   const byStage = useMP(() => {
     const m = {}; stages.forEach(st => m[st] = []);
     saasLeads.forEach(l => {
@@ -117,7 +103,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
       m[st].push(l);
     });
     return m;
-  }, [leads, activeSaas, pri, person, stages.join("|")]);
+  }, [leads, activeSaas, person, stages.join("|")]);
 
   // Movimento otimista: o servidor recarimba stageSince, zera o contador de
   // tentativas, preenche motivo/GPS (applyStageMove) — o local espelha o básico.
@@ -138,32 +124,6 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     api.update("leads", leadId, { stage }).catch(err => console.warn("lead move not persisted:", err.message));
   }
 
-  // Edição inline de campos do card (ex.: responsável). Otimista.
-  function patchLead(leadId, patch) {
-    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, ...patch } : l));
-    api.update("leads", leadId, patch).catch(err => console.warn("lead patch not persisted:", err.message));
-  }
-
-  // Toque registrado direto no card (dots de cadência): vira activity na
-  // timeline; o servidor conta a tentativa e re-agenda o próximo passo sozinho
-  // (onActivityCreated). O local espelha pra resposta visual imediata.
-  function logTouch(lead, stage) {
-    const cad = cadenceOf(saasCfgOf(lead), stage);
-    const now = Date.now();
-    setLeads(prev => prev.map(l => l.id === lead.id ? {
-      ...l,
-      stageAttempts: (Number(l.stageAttempts) || 0) + 1,
-      lastActivityAt: new Date(now).toISOString(),
-      lastActivityType: "call",
-      ...(cad.retryDays ? { nextActionAt: rollToBusinessDay(new Date(now + cad.retryDays * 86400000)).toISOString() } : {}),
-    } : l));
-    api.logActivity({
-      saas: lead.saas, lead: lead.id, type: "call",
-      text: "tentativa de contato (card)",
-      author: me,
-    }).catch(err => console.warn("toque não registrado:", err.message));
-  }
-
   if (!s) return (
     <EmptyState
       title="Nenhum pipeline"
@@ -176,48 +136,37 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   const open = openStages(s);
   const openLeads = saasAll.filter(l => open.includes(l.stage));
   const newWeek = saasAll.filter(l => l.createdAt && Date.now() - new Date(l.createdAt).getTime() <= 7 * 86400000).length;
+  const phaseCounts = {
+    sdr: saasAll.filter((l) => phaseOf(stageKind(s, l.stage)) === "sdr").length,
+    closer: saasAll.filter((l) => ["closer", "entrega"].includes(phaseOf(stageKind(s, l.stage)))).length,
+  };
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead title="Pipeline" sub={`${openLeads.length} ${openLeads.length === 1 ? "lead aberto" : "leads abertos"} · ${newWeek} ${newWeek === 1 ? "novo" : "novos"} esta semana`}>
-        <span title="Classificação do lead: soma de contas operadas + anúncios publicados"
-          className="hide-mobile" style={{ display: "inline-flex", alignItems: "center", gap: 6, marginRight: 4 }}>
-          {[["A", "#16a34a", "#fff"], ["B", "#eab308", "#463500"], ["C", "#9aa2ad", "#fff"]].map(([g, tone, fg]) => (
-            <span key={g} className="tnum" style={{
-              width: 18, height: 18, borderRadius: 5, display: "inline-flex", alignItems: "center", justifyContent: "center",
-              background: tone, color: fg, fontFamily: "var(--display)", fontSize: 11, fontWeight: 700,
-            }}>{g}</span>
-          ))}
-          <span style={{ fontSize: 11.5, color: "var(--fg-3)" }}>contas + anúncios</span>
-        </span>
-        <ViewToggle view={view} onChange={setView} />
-        {view === "kanban" && <PhaseFilter phase={phase} onChange={setPhase} />}
-        {view === "kanban" && (phase === "all" || phase === "sdr") && (() => {
-          const n = saasAll.filter((l) => stageKind(s, l.stage) === "desqualificado").length;
-          return (
-            <button onClick={() => setShowDiscarded(!showDiscarded)}
-              title={showDiscarded ? "Ocultar o cemitério de desqualificados" : "Mostrar os desqualificados (leads pra reaproveitar depois)"}
-              style={{
-                height: 24, padding: "0 10px", borderRadius: 4, fontSize: 11, fontFamily: "var(--mono)",
-                border: "1px solid " + (showDiscarded ? "var(--accent-line)" : "var(--line-1)"),
-                background: showDiscarded ? "var(--accent-soft)" : "var(--bg-2)",
-                color: showDiscarded ? "var(--accent)" : "var(--fg-3)",
-              }}>
-              {showDiscarded ? "ocultar descartados" : `⚰ descartados ${n}`}
-            </button>
-          );
-        })()}
-        <PriorityFilter pri={pri} onChange={setPri} />
-        <PersonFilter person={person} onChange={setPerson} me={me} />
-        {selected.size > 0 && (
-          <span className="mono" style={{ fontSize: 11, color: "var(--accent)" }}>{selected.size} selecionados</span>
+    <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+      <div style={{ padding: "28px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16, minHeight: "100%" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 260 }}>
+            <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em" }}>Pipeline</h1>
+            <div style={{ marginTop: 4, fontSize: 14.5, color: "var(--fg-3)" }}>
+              {openLeads.length} {openLeads.length === 1 ? "lead aberto" : "leads abertos"} · {newWeek} {newWeek === 1 ? "novo" : "novos"} esta semana · arraste para mover
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 6, flexWrap: "wrap" }}>
+            <ViewToggle view={view} onChange={setView} />
+            <PrimaryButton onClick={() => openForm("leads", { saas: activeSaas })}>+ novo lead</PrimaryButton>
+          </div>
+        </div>
+
+        {view === "kanban" && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 12, color: "var(--fg-4)" }}>fase:</span>
+            <PhaseFilter phase={phase} counts={phaseCounts} onChange={setPhase} />
+            <span style={{ width: 1, height: 18, background: "var(--line-1)", margin: "0 4px" }} />
+            <span style={{ fontSize: 12, color: "var(--fg-4)" }}>pessoa:</span>
+            <PersonFilter person={person} leads={saasAll} onChange={setPerson} me={me} />
+          </div>
         )}
-        <PrimaryButton onClick={() => openForm("leads", { saas: activeSaas })}>+ novo lead</PrimaryButton>
-      </PageHead>
 
-      <ForecastStrip s={s} leads={saasAll} />
-
-      {/* Body */}
       {view === "kanban" && (
         <KanbanBoard
           s={s}
@@ -226,11 +175,11 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           byStage={byStage}
           highlight={highlight}
           onMove={requestMove}
-          onPatch={patchLead}
-          onLogTouch={logTouch}
           selected={selected}
           setSelected={setSelected}
           onOpenLead={onOpenLead}
+          wonLeads={saasAll.filter((l) => isWonStage(s, l.stage))}
+          showWon={phase !== "sdr"}
         />
       )}
       {view === "list" && <LeadList leads={saasLeads} />}
@@ -250,25 +199,17 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           }}
         />
       )}
+      </div>
     </div>
   );
 }
 
 function ViewToggle({ view, onChange }) {
-  const views = [["kanban","Kanban"],["list","Lista"],["agenda","Agenda"]];
-  return (
-    <div style={{ display: "flex", gap: 2 }}>
-      {views.map(([k, label]) => (
-        <button key={k} onClick={() => onChange(k)} style={{
-          padding: "4px 10px", borderRadius: 4,
-          background: view === k ? "var(--bg-3)" : "transparent",
-          color: view === k ? "var(--fg-1)" : "var(--fg-3)",
-          fontSize: 12,
-          border: "1px solid " + (view === k ? "var(--line-2)" : "transparent"),
-        }}>{label}</button>
-      ))}
-    </div>
-  );
+  return <Segmented value={view} onChange={onChange} options={[
+    { value: "kanban", label: "Kanban" },
+    { value: "list", label: "Lista" },
+    { value: "agenda", label: "Agenda" },
+  ]} />;
 }
 
 // Recorte do board por fase do processo — a "view" de cada papel do time:
@@ -288,125 +229,54 @@ function stagesForPhase(s, stages, phase) {
 
 // Fatia o board pela fase do processo (SDR = pré-venda; Closer = call em
 // diante; CS = pós-venda).
-function PhaseFilter({ phase, onChange }) {
-  const opts = [["all", "Todas"], ["sdr", "SDR"], ["closer", "Closer"], ["cs", "CS"]];
+function PhaseFilter({ phase, counts, onChange }) {
+  const opts = [["all", "Todas"], ["sdr", "SDR"], ["closer", "Closer"]];
   return (
-    <div style={{ display: "flex", gap: 2, padding: 2, background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)" }}>
+    <div style={{ display: "contents" }}>
       {opts.map(([k, label]) => (
-        <button key={k} onClick={() => onChange(k)} style={{
-          padding: "3px 9px", borderRadius: 4, fontSize: 11, fontFamily: "var(--mono)",
-          background: phase === k ? "var(--bg-0)" : "transparent",
-          color: phase === k ? "var(--fg-1)" : "var(--fg-3)",
-          border: "1px solid " + (phase === k ? "var(--line-2)" : "transparent"),
-        }}>{label}</button>
-      ))}
-    </div>
-  );
-}
-
-// Filtro de prioridade — dobrado para dentro do pipeline (era a antiga tela Leads).
-function PriorityFilter({ pri, onChange }) {
-  const opts = [["all","Todos"],["P0","P0"],["P1","P1"],["P2","P2"]];
-  return (
-    <div style={{ display: "flex", gap: 4 }}>
-      {opts.map(([k, label]) => (
-        <button key={k} onClick={() => onChange(k)} style={{
-          height: 24, padding: "0 9px", borderRadius: 4,
-          border: "1px solid " + (pri === k ? "var(--accent-line)" : "var(--line-1)"),
-          background: pri === k ? "var(--accent-soft)" : "var(--bg-2)",
-          color: pri === k ? "var(--accent)" : "var(--fg-3)",
-          fontSize: 11, fontFamily: "var(--mono)",
-        }}>{label}</button>
+        <FilterTab key={k} active={phase === k} count={k === "all" ? undefined : counts[k]} onClick={() => onChange(k)}>{label}</FilterTab>
       ))}
     </div>
   );
 }
 
 // Filtro por pessoa: "meus" (dono OU closer = usuário logado) ou alguém do time.
-function PersonFilter({ person, onChange, me }) {
+function PersonFilter({ person, leads, onChange, me }) {
   const users = window.SEED?.USERS || [];
+  const selected = person === "me" ? me : person;
+  const chip = (active) => ({
+    height: 34, padding: "0 13px", borderRadius: 999, fontSize: 13, fontWeight: active ? 600 : 500,
+    border: `1px solid ${active ? "var(--line-2)" : "var(--line-1)"}`,
+    background: active ? "var(--bg-1)" : "transparent",
+    color: active ? "var(--fg-1)" : "var(--fg-3)", boxShadow: active ? "var(--shadow-1)" : "none",
+  });
   return (
-    <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-      <button onClick={() => onChange(person === "me" ? "" : "me")} disabled={!me}
-        title={me ? "só leads onde sou dono ou closer" : "faça login pra filtrar os seus"}
-        style={{
-          height: 24, padding: "0 9px", borderRadius: 4, fontSize: 11, fontFamily: "var(--mono)",
-          border: "1px solid " + (person === "me" ? "var(--accent-line)" : "var(--line-1)"),
-          background: person === "me" ? "var(--accent-soft)" : "var(--bg-2)",
-          color: person === "me" ? "var(--accent)" : "var(--fg-3)",
-          opacity: me ? 1 : 0.5,
-        }}>meus</button>
-      {users.length > 0 && (
-        <select value={person === "me" ? "" : person} onChange={(e) => onChange(e.target.value)}
-          style={{ height: 24, padding: "0 6px", borderRadius: 4, fontSize: 11, background: "var(--bg-2)", border: "1px solid var(--line-1)", color: person && person !== "me" ? "var(--fg-1)" : "var(--fg-3)" }}>
-          <option value="">time todo</option>
-          {users.map(u => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
-        </select>
-      )}
-    </div>
-  );
-}
-
-// Só números reais aqui: TCV aberto (régua antes do ganho), previsão
-// ponderada pela conversão do funil e fechado no mês (kind ganho + stageSince).
-function ForecastStrip({ s, leads }) {
-  const openSet = new Set(openStages(s));
-  const open = leads.filter(l => openSet.has(l.stage));
-  const tcv = open.reduce((a, l) => a + (l.amount || 0), 0);
-  const weighted = open.reduce((a, l) => {
-    const stageIdx = s.funnel.findIndex(f => f.stage === l.stage);
-    // Etapa sem `conv` preenchido conta como neutra (1) — sem isto o produto vira NaN
-    // e a faixa mostra "R$NaN" (funil criado via PUT /funnel pode não ter conv).
-    const probability = stageIdx >= 0 ? s.funnel.slice(stageIdx).reduce((p, f, i) => p * (i === 0 ? 1 : (Number.isFinite(Number(f.conv)) && f.conv !== "" && f.conv != null ? Number(f.conv) : 1)), 1) : 0;
-    return a + (l.amount || 0) * probability;
-  }, 0);
-  const month = new Date().toISOString().slice(0, 7);
-  const wonLeads = leads.filter(l => isWonStage(s, l.stage) && String(l.stageSince || "").slice(0, 7) === month);
-  const won = wonLeads.reduce((a, l) => a + (l.amount || 0), 0);
-  return (
-    <div style={{ padding: "12px var(--pad-x)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 16, alignItems: "center" }}>
-      <ForecastCell label="Valor aberto" v={window.fmt.money(tcv)} sub={`${open.length} leads em jogo`} />
-      <ForecastCell label="Previsão ponderada" v={window.fmt.money(weighted)} sub="probabilidade × valor" />
-      <ForecastCell label="Ganho no mês" v={window.fmt.money(won)} sub={`${wonLeads.length} ${wonLeads.length === 1 ? "fechado" : "fechados"}`} />
-    </div>
-  );
-}
-
-function ForecastCell({ label, v, sub }) {
-  return (
-    <div>
-      <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</div>
-      <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700, marginTop: 2 }}>{v}</div>
-      {sub && <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)" }}>{sub}</div>}
+    <div style={{ display: "contents" }}>
+      <button onClick={() => onChange("")} style={chip(!selected)}>Todos</button>
+      {users.map((u) => {
+        const count = leads.filter((l) => [l.owner, l.closer, l.integrator].includes(u.id)).length;
+        return (
+          <button key={u.id} onClick={() => onChange(u.id)} style={chip(selected === u.id)}>
+            {u.name || u.id}{count > 0 && <span className="tnum" style={{ marginLeft: 7, fontSize: 12, color: "var(--fg-4)" }}>{count}</span>}
+          </button>
+        );
+      })}
     </div>
   );
 }
 
 // ─────────────────────────────────────────────── Kanban
-// Kicker de fase (SDR / CLOSER / ENTREGA / FIM) mostrado na 1ª coluna de cada
-// grupo — a separação visual do processo.
-function phaseKicker(s, stages, i) {
-  const p = phaseOf(stageKind(s, stages[i]));
-  if (!p) return null;
-  const prev = i > 0 ? phaseOf(stageKind(s, stages[i - 1])) : null;
-  return p !== prev ? PHASES[p]?.label || null : null;
-}
-
-function KanbanBoard({ s, stages, stageMeta = {}, byStage, highlight, onMove, onPatch, onLogTouch, selected, setSelected, onOpenLead }) {
+function KanbanBoard({ s, stages, stageMeta = {}, byStage, highlight, onMove, selected, setSelected, onOpenLead, wonLeads, showWon }) {
   const [dragging, setDragging] = useStP(null);
   return (
-    <div style={{ flex: 1, overflowX: "auto", padding: 14, display: "grid", gridAutoFlow: "column", gridAutoColumns: "minmax(260px, 1fr)", gap: 10, alignItems: "start" }}>
-      {stages.map((st, i) => (
+    <div style={{ flex: 1, overflowX: "auto", paddingBottom: 8, display: "flex", gap: 12, alignItems: "flex-start" }}>
+      {stages.map((st) => (
         <KanbanColumn key={st}
           s={s}
           stage={st}
           meta={stageMeta[st]}
           cards={byStage[st] || []}
           highlight={highlight === st}
-          phaseStart={phaseKicker(s, stages, i)}
-          onMove={onMove}
-          onPatch={onPatch}
-          onLogTouch={onLogTouch}
           onDropCard={(id) => { onMove(id, st); setDragging(null); }}
           dragging={dragging}
           setDragging={setDragging}
@@ -415,6 +285,22 @@ function KanbanBoard({ s, stages, stageMeta = {}, byStage, highlight, onMove, on
           onOpenLead={onOpenLead}
         />
       ))}
+      {showWon && <WonSummary leads={wonLeads} />}
+    </div>
+  );
+}
+
+function WonSummary({ leads }) {
+  const now = new Date();
+  const month = now.toISOString().slice(0, 7);
+  const monthLeads = leads.filter((l) => String(l.stageSince || l.updatedAt || "").slice(0, 7) === month);
+  const total = monthLeads.reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
+  const label = now.toLocaleDateString("pt-BR", { month: "long" });
+  return (
+    <div style={{ width: 220, flexShrink: 0, border: "1px dashed var(--line-2)", borderRadius: "var(--r-4)", padding: 16, textAlign: "center" }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--pos)" }}>Ganho · {label}</div>
+      <div className="tnum" style={{ fontSize: 24, fontWeight: 700, marginTop: 6 }}>{monthLeads.length}</div>
+      <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 2 }}>{window.fmt.money(total)} fechados</div>
     </div>
   );
 }
@@ -430,8 +316,9 @@ function daysInStage(card) {
   return Math.max(0, Math.floor(ms / 86400000));
 }
 
-function KanbanColumn({ s, stage, meta, cards, highlight, phaseStart, onMove, onPatch, onLogTouch, onDropCard, dragging, setDragging, selected, setSelected, compact, onOpenLead }) {
+function KanbanColumn({ s, stage, meta, cards, highlight, onDropCard, dragging, setDragging, selected, setSelected, onOpenLead }) {
   const [over, setOver] = useStP(false);
+  const [expanded, setExpanded] = useStP(false);
   const total = cards.reduce((a, l) => a + (l.amount || 0), 0);
   // Card "parado": dias na coluna ≥ staleDays de Ajustes; sem config, 5 dias.
   const staleLimit = meta?.staleDays == null || meta?.staleDays === "" ? 5 : Number(meta.staleDays);
@@ -446,253 +333,102 @@ function KanbanColumn({ s, stage, meta, cards, highlight, phaseStart, onMove, on
     return Number.isFinite(t) ? t : 0;
   };
   const ordered = [...cards].sort((a, b) => cardTs(b) - cardTs(a));
+  const shown = expanded ? ordered : ordered.slice(0, 3);
+  const hidden = ordered.length - shown.length;
   return (
     <div
       onDragOver={(e) => { e.preventDefault(); setOver(true); }}
       onDragLeave={() => setOver(false)}
       onDrop={(e) => { e.preventDefault(); setOver(false); if (dragging) onDropCard(dragging); }}
       style={{
-        background: "var(--bg-inset)",
-        border: "1px solid " + (highlight ? "var(--accent-line)" : over ? "var(--accent-line)" : "var(--line-1)"),
-        borderTop: phaseStart ? "3px solid var(--line-strong)" : undefined,
-        borderRadius: "var(--r-3)",
-        padding: 8,
-        minHeight: compact ? 120 : 240,
-        display: "flex", flexDirection: "column", gap: 6,
-        boxShadow: highlight ? "0 0 0 1px var(--accent-line)" : "none",
+        width: 264, flexShrink: 0,
+        background: over ? "var(--accent-soft)" : "var(--bg-2)",
+        borderRadius: "var(--r-4)", padding: 10,
+        boxShadow: highlight ? "0 0 0 2px var(--accent-line)" : "none",
+        transition: "var(--transition-ui)",
       }}>
-      {phaseStart && (
-        <div className="mono" style={{ fontSize: 9, letterSpacing: "0.14em", color: "var(--fg-4)", padding: "0 4px", textTransform: "uppercase" }}>
-          {phaseStart}
-        </div>
-      )}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "2px 4px 8px" }}>
-        <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "var(--display)", display: "flex", alignItems: "center", gap: 7 }}>
-          {meta?.color && <span style={{ width: 8, height: 8, borderRadius: 2, background: meta.color, flexShrink: 0 }} />}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "6px 8px 10px" }}>
+        <div style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
           {stage}
-          <span className="mono" style={{ fontSize: 11, fontWeight: 400, color: "var(--fg-3)" }}>{cards.length}</span>
+          <span className="mono tnum" style={{ fontSize: 11.5, fontWeight: 400, color: "var(--fg-4)" }}>{cards.length}</span>
         </div>
-        <span className="mono tnum" style={{ fontSize: 11, color: "var(--fg-3)" }}>{window.fmt.money(total)}</span>
+        <span className="tnum" style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap" }}>{window.fmt.money(total)}</span>
       </div>
-      {ordered.map(l => (
-        <LeadCard
-          key={l.id} d={l}
-          s={s}
-          stale={isStale(l)}
-          currentStage={stage}
-          onMove={onMove}
-          onPatch={onPatch}
-          onLogTouch={onLogTouch}
-          onDragStart={() => setDragging(l.id)}
-          selected={selected.has(l.id)}
-          onSelect={() => {
-            const next = new Set(selected); next.has(l.id) ? next.delete(l.id) : next.add(l.id); setSelected(next);
-          }}
-          onOpen={() => onOpenLead && onOpenLead(l)}
-        />
-      ))}
-      {cards.length === 0 && <div className="mono dim" style={{ fontSize: 11, textAlign: "center", padding: "20px 0" }}>vazio</div>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {shown.map(l => (
+          <LeadCard
+            key={l.id} d={l}
+            s={s}
+            stale={isStale(l)}
+            currentStage={stage}
+            onDragStart={() => setDragging(l.id)}
+            selected={selected.has(l.id)}
+            onSelect={() => {
+              const next = new Set(selected); next.has(l.id) ? next.delete(l.id) : next.add(l.id); setSelected(next);
+            }}
+            onOpen={() => onOpenLead && onOpenLead(l)}
+          />
+        ))}
+        {hidden > 0 && (
+          <button onClick={() => setExpanded(true)} style={{ textAlign: "center", fontSize: 12, color: "var(--fg-4)", padding: "6px 0 2px" }}>+ {hidden} leads</button>
+        )}
+        {expanded && ordered.length > 3 && (
+          <button onClick={() => setExpanded(false)} style={{ textAlign: "center", fontSize: 12, color: "var(--fg-4)", padding: "2px 0" }}>mostrar menos</button>
+        )}
+        {cards.length === 0 && <div style={{ fontSize: 12, textAlign: "center", color: "var(--fg-4)", padding: "18px 0" }}>vazio</div>}
+      </div>
     </div>
   );
 }
 
-// Picker de responsável por fase: SDR (dono) na pré-venda; closer da call em
-// diante (campo closer); integrador na ENTREGA e no GANHO (campo integrator,
-// separado: o closer que fez a call fica preservado e aparece ao lado). Lê o
-// time real (users + roles, Ajustes → Equipe).
-function pickerFor(s, stage) {
-  const k = stageKind(s, stage);
-  const p = phaseOf(k);
-  if (p === "sdr") {
-    // solo: com o SDR dono já definido, só o chip dele fica no card (clique
-    // desmarca); a lista de opções só aparece quando o card não tem dono —
-    // igual ao closer/integrador. Sem isso, TODO SDR virava chip em todo card.
-    const opts = usersByRole("sdr");
-    return opts.length ? { field: "owner", options: opts, hint: "SDR dono do lead", solo: true } : null;
-  }
-  if (p === "closer") {
-    // Definido o closer (quem fez/fará a call), só o nome dele fica no card.
-    const opts = usersByRole("closer");
-    return opts.length ? { field: "closer", options: opts, hint: "closer responsável", solo: true } : null;
-  }
-  if (p === "entrega" || k === "ganho") { // integração + acompanhamento + pós-venda do ganho
-    const opts = usersByRole("integrator");
-    const hint = k === "integracao" ? "quem faz a integração" : k === "ganho" ? "responsável do pós-venda" : "responsável do CS";
-    return opts.length ? { field: "integrator", options: opts, hint, solo: true, showCloser: true } : null;
-  }
-  return null;
-}
-
-function TeamPicker({ d, field, options, hint, solo, onPatch }) {
-  // solo: com responsável definido, só o chip dele aparece (clique desmarca).
-  // Valor fora das opções (dado legado) ainda vira chip, pra dar como desmarcar.
-  let shown = options;
-  if (solo && d[field]) {
-    const hit = options.find((u) => u.id === d[field]);
-    shown = [hit || { id: d[field], name: displayName(d[field]) }];
-  }
-  return (
-    <span style={{ display: "inline-flex", gap: 3, marginLeft: "auto", flexShrink: 0 }}>
-      {shown.map(u => {
-        const on = d[field] === u.id;
-        const tone = `oklch(0.55 0.13 ${userTone(u.id)})`;
-        const short = (u.name || u.id).split(" ")[0].slice(0, 4);
-        return (
-          <button key={u.id} draggable={false}
-            onClick={(e) => { e.stopPropagation(); onPatch && onPatch(d.id, { [field]: on ? "" : u.id }); }}
-            title={on ? `${hint}: ${u.name || u.id} (clique pra desmarcar)` : `Marcar ${u.name || u.id} · ${hint}`}
-            style={{
-              height: 18, padding: "0 7px", borderRadius: 9,
-              fontSize: 10, fontWeight: 700, fontFamily: "var(--mono)",
-              background: on ? tone : "var(--bg-1)",
-              color: on ? "#fff" : "var(--fg-3)",
-              border: "1px solid " + (on ? tone : "var(--line-2)"),
-              cursor: "pointer",
-            }}>{short}</button>
-        );
-      })}
-    </span>
-  );
-}
-
-// Chip informativo do closer que fechou (colunas de entrega/ganho): o dono da
-// venda continua à vista mesmo com a responsabilidade na mão do integrador.
-function CloserChip({ id }) {
-  if (!id) return null;
-  const tone = `oklch(0.55 0.13 ${userTone(id)})`;
-  return (
-    <span className="mono" title={`closer que fechou: ${displayName(id)}`} style={{
-      height: 18, padding: "0 7px", borderRadius: 9, display: "inline-flex", alignItems: "center",
-      fontSize: 10, fontWeight: 700, flexShrink: 0,
-      background: `color-mix(in srgb, ${tone} 16%, var(--bg-1))`,
-      color: tone, border: `1px dashed color-mix(in srgb, ${tone} 55%, var(--line-2))`,
-    }}>{displayName(id).split(" ")[0].slice(0, 4)}</span>
-  );
-}
-
-// Dots de cadência do estágio (funnel[].cadence de Ajustes): cada dot = um toque
-// feito nesta etapa (lead.stageAttempts, mantido pelo servidor a partir da
-// timeline). Clicar registra o toque (activity) — e o GPS re-agenda sozinho.
-function AttemptSlots({ d, s, stage, onLogTouch }) {
-  const cad = cadenceOf(s, stage);
-  const total = Number(cad.maxAttempts) || 0;
-  if (!total) return null;
-  const legacy = Array.isArray(d.attempts) ? d.attempts.length : 0;
-  const count = Math.min(total, Math.max(Number(d.stageAttempts) || 0, legacy));
-  const exhausted = count >= total;
-  // Trava de cadência: com retryDays, 1 toque por janela — o último toque de
-  // hoje trava novo clique (o de amanhã o GPS cobra via nextActionAt).
-  const today = new Date().toDateString();
-  const touchedToday = ["whatsapp", "call", "email", "meeting"].includes(d.lastActivityType) &&
-    d.lastActivityAt && new Date(d.lastActivityAt).toDateString() === today;
-  const legacyToday = Array.isArray(d.attempts) && d.attempts.some(a => new Date(a).toDateString() === today);
-  const dailyLock = (Number(cad.retryDays) || 0) >= 1 && (touchedToday || legacyToday);
-  const locked = exhausted || dailyLock;
-  const mark = (e) => {
-    e.stopPropagation();
-    if (locked) return;
-    onLogTouch && onLogTouch(d, stage);
-  };
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-      {Array.from({ length: total }, (_, i) => {
-        const filled = i < count;
-        return (
-          <span key={i}
-            onClick={filled ? (e) => e.stopPropagation() : mark}
-            draggable={false}
-            title={filled
-              ? `toque ${i + 1}/${total} registrado`
-              : dailyLock ? "toque de hoje já registrado — próximo no prazo da cadência"
-              : `registrar toque ${i + 1}/${total} (vira contato na timeline)`}
-            style={{
-              width: 11, height: 11, borderRadius: 3, flexShrink: 0,
-              background: filled ? (exhausted ? "var(--neg)" : "var(--warn)") : "var(--bg-1)",
-              border: "1px solid " + (filled ? "transparent" : locked ? "var(--line-1)" : "var(--line-2)"),
-              cursor: filled ? "default" : locked ? "not-allowed" : "pointer",
-            }} />
-        );
-      })}
-      {exhausted && <Pill tone="neg">esgotado</Pill>}
-    </div>
-  );
-}
-
-// Cartão compacto (padrão Pipedrive): nome, pills de tempo na etapa + próximo
-// contato + novo, e valor. O fundo inteiro é tingido pela cor do potencial
-// (contas + anúncios). TODA a edição vive no drawer do lead.
-function LeadCard({ d, s, stale, currentStage, onDragStart, selected, onSelect, onOpen, onPatch, onLogTouch }) {
-  const tier = leadTier(d);
+function LeadCard({ d, s, stale, currentStage, onDragStart, selected, onSelect, onOpen }) {
   const days = daysInStage(d);
-  const wa = waLink(d.phone);
-  const isNew = d.createdAt && Date.now() - new Date(d.createdAt).getTime() <= 2 * 86400000;
   const saasCfg = s || (window.SEED?.SAAS || []).find((x) => x.id === d.saas);
-  // Pill de próximo toque em todo estágio trabalhável (inclui Nutrição pós-régua).
-  const isOpenStage = workableStages(saasCfg).includes(currentStage);
-  const next = nextTouchPill(d, { isOpen: isOpenStage });
   const kind = stageKind(saasCfg, currentStage);
-  const lost = (kind === "perdido" || kind === "desqualificado") && d.lostReason;
-  const tinted = tier.key !== "sem";
-  const picker = pickerFor(saasCfg, currentStage);
-  // Dor do criativo que trouxe o lead (utm.content → nome do anúncio → "[X]").
-  const cat = useAttribution(d.saas, !!d.utm?.content);
-  const pain = leadPain(d, cat, saasCfg?.painMap);
+  const phase = phaseOf(kind);
+  const next = nextTouchPill(d, { isOpen: workableStages(saasCfg).includes(currentStage) });
+  const ownerId = phase === "entrega" ? (d.integrator || d.closer || d.owner) : (d.closer || d.owner);
+  const showAvatar = phase !== "sdr" && ownerId;
+  const attempts = Number(d.stageAttempts) || (Array.isArray(d.attempts) ? d.attempts.length : 0);
+  const descriptor = ["contato", "qualificacao"].includes(kind) && attempts > 0
+    ? `${attempts}ª tentativa`
+    : (d.source || d.utm?.source || "");
+  const details = [d.company, descriptor].filter(Boolean).join(" · ");
+  const age = (() => {
+    const ts = d.stageSince || d.createdAt;
+    if (!ts) return "";
+    const hours = Math.max(0, Math.floor((Date.now() - new Date(ts).getTime()) / 3600000));
+    if (!Number.isFinite(hours)) return "";
+    return hours < 24 ? `há ${Math.max(1, hours)}h` : `${days}d na etapa`;
+  })();
+  const nextLabel = next?.text?.replace(/^[◆●]\s*/, "") || "";
 
   return (
     <div
       draggable
       onDragStart={onDragStart}
       onClick={(e) => { if (e.shiftKey) onSelect(); else onOpen && onOpen(); }}
-      title={`${tier.label} (contas + anúncios)`}
       style={{
-        background: tinted ? `color-mix(in srgb, ${tier.tone} 16%, var(--bg-1))` : "var(--bg-1)",
-        border: "1px solid " + (selected ? "var(--accent-line)" : tinted ? `color-mix(in srgb, ${tier.tone} 55%, var(--line-1))` : "var(--line-1)"),
-        borderLeft: `4px solid ${tier.tone}`,
-        borderRadius: "var(--r-2)",
-        padding: "9px 11px",
-        cursor: "grab",
-        boxShadow: "var(--shadow-1)",
+        background: "var(--bg-1)", border: `1px solid ${selected ? "var(--accent-line)" : "var(--line-1)"}`,
+        borderRadius: "var(--r-3)", padding: "12px 14px", cursor: "grab", boxShadow: "var(--shadow-card)",
       }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-          {tier.grade && (
-            <span className="tnum" style={{
-              width: 19, height: 19, borderRadius: 5, flexShrink: 0,
-              display: "inline-flex", alignItems: "center", justifyContent: "center",
-              background: tier.tone, color: tier.badgeFg,
-              fontFamily: "var(--display)", fontSize: 11.5, fontWeight: 700,
-            }}>{tier.grade}</span>
-          )}
-          <span style={{ minWidth: 0 }}>
-            <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
-            {d.company && (
-              <span style={{ display: "block", fontSize: 11, color: "var(--fg-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.company}</span>
-            )}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</div>
+          <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {details}{details && age ? " · " : ""}<span style={{ color: stale ? "var(--neg)" : undefined, fontWeight: stale ? 600 : undefined }}>{age}</span>
+          </div>
+        </div>
+        {showAvatar && <Avatar id={ownerId} name={displayName(ownerId)} size={24} />}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+        <span className="tnum" style={{ fontSize: 12.5, fontWeight: 600 }}>{window.fmt.money(d.amount || 0)}</span>
+        {nextLabel && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, marginLeft: "auto", fontSize: 11.5, color: next?.tone || "var(--fg-3)", fontWeight: 500, whiteSpace: "nowrap" }}>
+            <span style={{ width: 6, height: 6, borderRadius: 999, background: "currentColor", flexShrink: 0 }} />{nextLabel}
           </span>
-        </span>
-        {wa && (
-          <a href={wa} target="_blank" rel="noopener noreferrer" title={`Abrir WhatsApp · ${d.phone}`}
-            draggable={false} onClick={(e) => e.stopPropagation()}
-            className="mono" style={{ fontSize: 10.5, color: "#128c4b", textDecoration: "none", flexShrink: 0 }}>
-            Wpp ↗
-          </a>
         )}
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 8, flexWrap: "wrap" }}>
-        {isNew && <Pill tone="accent">novo</Pill>}
-        {days != null && <Pill tone={stale ? "warn" : "mut"} title="tempo nesta etapa">{days}d</Pill>}
-        {next && <Pill tone={next.key === "late" ? "neg" : next.key === "today" ? "pos" : next.key === "none" ? "warn" : "mut"}>{next.text}</Pill>}
-        {pain && <Pill tone="mut" title={`Dor: ${pain.label}`}>dor {pain.code}</Pill>}
-        {lost && <Pill tone="mut" title={d.lostNote || ""}>{lossReasonLabel(saasCfg, d.lostReason)}</Pill>}
-        <span className="mono tnum" style={{ fontSize: 11.5, fontWeight: 500, color: "var(--fg-2)", marginLeft: "auto" }}>{window.fmt.money(d.amount || 0)}</span>
-      </div>
-      {(Number(cadenceOf(saasCfg, currentStage).maxAttempts) > 0 || picker) && (
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7 }}>
-          <AttemptSlots d={d} s={saasCfg} stage={currentStage} onLogTouch={onLogTouch} />
-          {picker?.showCloser && <span style={{ marginLeft: "auto", display: "inline-flex" }}><CloserChip id={d.closer} /></span>}
-          {picker && <TeamPicker d={d} field={picker.field} options={picker.options} hint={picker.hint} solo={picker.solo} onPatch={onPatch} />}
-        </div>
-      )}
     </div>
   );
 }
@@ -756,7 +492,7 @@ function AgendaView({ leads, onOpenLead }) {
   const calls = events.filter(e => e.kind !== "toque").length;
 
   return (
-    <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)" }}>
+    <div style={{ flex: 1, minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
         <button style={navBtn} onClick={() => setWeek(w => w - 1)}>‹</button>
         <button style={navBtn} onClick={() => setWeek(0)}>hoje</button>
@@ -906,7 +642,7 @@ function LeadList({ leads }) {
   const cols = "1.6fr 1fr 0.6fr 0.6fr 0.6fr 0.6fr 0.8fr";
 
   return (
-    <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)" }}>
+    <div style={{ flex: 1, minWidth: 0 }}>
       <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
         <div className="mono" style={{
           display: "grid", gridTemplateColumns: cols,
@@ -1036,7 +772,83 @@ function DailyRole({ step, role, action, primary, primaryLabel, secondary, secon
   );
 }
 
-function RevenuePaceDashboard({ s }) {
+function analysisBuckets(s, leads) {
+  const visible = new Set(openStages(s));
+  return s.funnel.filter((f) => visible.has(f.stage)).map((f, i, stages) => {
+    const at = leads.filter((l) => l.stage === f.stage);
+    const tcv = at.reduce((sum, lead) => sum + (Number(lead.amount) || 0), 0);
+    const sourceIndex = s.funnel.findIndex((stage) => stage.stage === f.stage);
+    const prob = s.funnel.slice(sourceIndex).reduce((value, stage, offset) => {
+      if (offset === 0) return value;
+      const conversion = Number(stage.conv);
+      return value * (Number.isFinite(conversion) && stage.conv !== "" && stage.conv != null ? conversion : 1);
+    }, 1);
+    return { stage: f.stage, tcv, prob, weighted: tcv * prob, count: at.length, index: i, total: stages.length };
+  });
+}
+
+function PaceChart({ data, s, leads }) {
+  const [year, month] = data.month.split("-").map(Number);
+  const totalDays = new Date(year, month, 0).getDate();
+  const currentDay = data.today.startsWith(data.month) ? Number(data.today.slice(8, 10)) : totalDays;
+  const byDay = Array.from({ length: currentDay }, () => 0);
+  for (const lead of leads) {
+    if (!isWonStage(s, lead.stage) || !String(lead.stageSince || "").startsWith(data.month)) continue;
+    const day = Number(String(lead.stageSince).slice(8, 10));
+    if (day >= 1 && day <= currentDay) byDay[day - 1] += Number(lead.amount) || 0;
+  }
+  const cumulative = [];
+  byDay.reduce((sum, amount, index) => (cumulative[index] = sum + amount), 0);
+  if (cumulative.length && cumulative[cumulative.length - 1] === 0 && data.context.tcvMonth > 0) cumulative[cumulative.length - 1] = data.context.tcvMonth;
+  const target = Number(data.cash.target) || 0;
+  const max = Math.max(1, target, data.context.tcvMonth || 0);
+  const x = (day) => 46 + ((day - 1) / Math.max(1, totalDays - 1)) * 662;
+  const y = (value) => 140 - (value / max) * 114;
+  const points = cumulative.map((value, index) => `${x(index + 1).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
+  const lastValue = cumulative[cumulative.length - 1] || data.context.tcvMonth || 0;
+  const lastX = x(Math.max(1, currentDay));
+  const lastY = y(lastValue);
+  const monthLabel = new Date(year, month - 1, 1).toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
+  return (
+    <svg viewBox="0 0 720 170" width="100%" height="170" preserveAspectRatio="none" style={{ display: "block" }}>
+      {[max, max / 2, 0].map((value) => <line key={value} x1="46" y1={y(value)} x2="708" y2={y(value)} stroke="var(--line-faint)" strokeWidth="1" />)}
+      <text x="38" y={y(max) + 4} textAnchor="end" style={{ fontFamily: "var(--mono)", fontSize: 10, fill: "var(--fg-4)" }}>{Math.round(max / 1000)} mil</text>
+      <text x="38" y="144" textAnchor="end" style={{ fontFamily: "var(--mono)", fontSize: 10, fill: "var(--fg-4)" }}>0</text>
+      <line x1={x(1)} y1={y(0)} x2={x(totalDays)} y2={y(target)} stroke="var(--line-strong)" strokeWidth="1.5" strokeDasharray="5 4" />
+      {points && <polyline points={points} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
+      <circle cx={lastX} cy={lastY} r="3.5" fill="var(--accent)" />
+      <text x={Math.min(640, lastX + 8)} y={Math.max(14, lastY - 6)} style={{ fontFamily: "var(--display)", fontSize: 11.5, fontWeight: 600, fill: "var(--fg-1)" }}>{window.fmt.money(lastValue)}</text>
+      <text x="640" y={Math.max(16, y(target) + 14)} style={{ fontFamily: "var(--mono)", fontSize: 10, fill: "var(--fg-4)" }}>meta</text>
+      <text x="46" y="162" style={{ fontFamily: "var(--mono)", fontSize: 10, fill: "var(--fg-4)" }}>01 {monthLabel}</text>
+      <text x="708" y="162" textAnchor="end" style={{ fontFamily: "var(--mono)", fontSize: 10, fill: "var(--fg-4)" }}>{totalDays} {monthLabel}</text>
+    </svg>
+  );
+}
+
+function AnalysisPaceSummary({ data, s, leads }) {
+  const buckets = analysisBuckets(s, leads);
+  const forecast = buckets.reduce((sum, bucket) => sum + bucket.weighted, 0);
+  const closed = Number(data.context.tcvMonth) || 0;
+  const pace = data.cash.elapsedBusinessDays > 0 ? (closed / data.cash.elapsedBusinessDays) * data.cash.totalBusinessDays : 0;
+  const target = Number(data.cash.target) || 0;
+  const paceVsTarget = target > 0 ? Math.round(((pace / target) - 1) * 100) : null;
+  const monthLabel = new Date(`${data.month}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long" });
+  return (
+    <>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
+        <StatTile label="Fechado no mês" value={window.fmt.money(closed)} delta={`${data.context.wonMonth} ganhos até dia ${Number(data.today.slice(8, 10))}`} />
+        <StatTile label="Pace projetado" value={window.fmt.money(pace)} delta={`ritmo atual até ${data.cash.totalBusinessDays} dias úteis`} />
+        <StatTile label="Meta do mês" value={window.fmt.money(target)} delta={paceVsTarget == null ? "meta não configurada" : `pace ${Math.abs(paceVsTarget)}% ${paceVsTarget >= 0 ? "acima" : "abaixo"} da meta`} />
+        <StatTile label="Forecast ponderado" value={window.fmt.money(forecast)} delta="pipeline aberto × probabilidade" />
+      </div>
+      <Card title={`Pace de caixa · ${monthLabel}`} hint="fechado vs. meta, dia a dia">
+        <div style={{ padding: "8px 16px 12px" }}><PaceChart data={data} s={s} leads={leads} /></div>
+      </Card>
+    </>
+  );
+}
+
+function RevenuePaceDashboard({ s, leads }) {
   const { version } = useData();
   const [data, setData] = useStP(null);
   const [err, setErr] = useStP(null);
@@ -1049,6 +861,8 @@ function RevenuePaceDashboard({ s }) {
 
   if (err) return <div style={{ ...paceCard, padding: 16 }}><div className="mono dim" style={{ fontSize: 12 }}>pace de caixa indisponível ({err.status || "erro"})</div></div>;
   if (!data) return <div style={{ ...paceCard, padding: 16 }}><div className="mono dim" style={{ fontSize: 12 }}>calculando pace de caixa…</div></div>;
+
+  return <AnalysisPaceSummary data={data} s={s} leads={leads} />;
 
   const { cash, context, conversions, plan } = data;
   const statusMap = {
@@ -1169,29 +983,35 @@ function RevenuePaceDashboard({ s }) {
 }
 
 function ForecastView({ s, leads }) {
-  const buckets = s.funnel.map((f, i) => {
-    const at = leads.filter(l => l.stage === f.stage);
-    const tcv = at.reduce((a, l) => a + (l.amount || 0), 0);
-    const prob = s.funnel.slice(i).reduce((p, x, j) => p * (j === 0 ? 1 : (Number.isFinite(Number(x.conv)) && x.conv !== "" && x.conv != null ? Number(x.conv) : 1)), 1);
-    return { stage: f.stage, tcv, prob, weighted: tcv * prob, count: at.length };
-  });
-  const max = Math.max(1, ...buckets.map(b => b.tcv));
+  const buckets = analysisBuckets(s, leads);
+  const totals = buckets.reduce((sum, bucket) => ({ count: sum.count + bucket.count, tcv: sum.tcv + bucket.tcv, weighted: sum.weighted + bucket.weighted }), { count: 0, tcv: 0, weighted: 0 });
+  const cols = "1.2fr .6fr .9fr .7fr .9fr";
   return (
-    <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "14px 18px", background: "var(--bg-1)" }}>
-      <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>Previsão por estágio · ponderada pela conversão histórica</div>
-      {buckets.map(b => (
-        <div key={b.stage} style={{ display: "grid", gridTemplateColumns: "120px 1fr 90px 90px 60px", gap: 10, alignItems: "center", padding: "10px 0", borderTop: "1px solid var(--line-1)" }}>
-          <span className="mono" style={{ fontSize: 12, color: "var(--fg-2)" }}>{b.stage}</span>
-          <div style={{ height: 14, background: "var(--bg-3)", borderRadius: 3, position: "relative" }}>
-            <div style={{ position: "absolute", inset: 0, width: `${(b.tcv/max)*100}%`, background: "var(--accent)", opacity: 0.25, borderRadius: 3 }} />
-            <div style={{ position: "absolute", inset: 0, width: `${(b.weighted/max)*100}%`, background: "var(--accent)", borderRadius: 3 }} />
+    <section style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "20px 24px 14px", flexWrap: "wrap" }}>
+        <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em" }}>Forecast por etapa</h3>
+        <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>pipeline aberto × probabilidade histórica de fechar</span>
+      </div>
+      <div className="tbl-x">
+        <div style={{ minWidth: 700 }}>
+          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+            <span>Etapa</span><span style={{ textAlign: "right" }}>Leads</span><span style={{ textAlign: "right" }}>Valor aberto</span><span style={{ textAlign: "right" }}>Prob.</span><span style={{ textAlign: "right" }}>Ponderado</span>
           </div>
-          <span className="mono tnum" style={{ fontSize: 12, textAlign: "right" }}>{window.fmt.money(b.tcv)}</span>
-          <span className="mono tnum" style={{ fontSize: 12, textAlign: "right", color: "var(--accent)" }}>{window.fmt.money(b.weighted)}</span>
-          <span className="mono dim tnum" style={{ fontSize: 11, textAlign: "right" }}>{(b.prob*100).toFixed(0)}%</span>
+          {buckets.map((bucket) => (
+            <div key={bucket.stage} style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "12px 24px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5 }}>
+              <span style={{ fontWeight: 600 }}>{bucket.stage}</span>
+              <span className="tnum" style={{ textAlign: "right" }}>{bucket.count}</span>
+              <span className="tnum" style={{ textAlign: "right" }}>{window.fmt.money(bucket.tcv)}</span>
+              <span className="tnum" style={{ textAlign: "right", color: "var(--fg-3)" }}>{Math.round(bucket.prob * 100)}%</span>
+              <span className="tnum" style={{ textAlign: "right", fontWeight: 600 }}>{window.fmt.money(bucket.weighted)}</span>
+            </div>
+          ))}
+          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "12px 24px", alignItems: "center", borderTop: "1px solid var(--line-1)", fontSize: 13.5, background: "var(--bg-inset)" }}>
+            <span style={{ fontWeight: 700 }}>Total ponderado</span><span className="tnum" style={{ textAlign: "right" }}>{totals.count}</span><span className="tnum" style={{ textAlign: "right" }}>{window.fmt.money(totals.tcv)}</span><span /><span className="tnum" style={{ textAlign: "right", fontWeight: 700 }}>{window.fmt.money(totals.weighted)}</span>
+          </div>
         </div>
-      ))}
-    </div>
+      </div>
+    </section>
   );
 }
 
@@ -1289,10 +1109,9 @@ function FunnelAnalytics({ s }) {
 
 function AnaliseView({ s, leads }) {
   return (
-    <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)", display: "flex", flexDirection: "column", gap: 14 }}>
-      <RevenuePaceDashboard s={s} />
+    <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+      <RevenuePaceDashboard s={s} leads={leads} />
       <ForecastView s={s} leads={leads} />
-      <FunnelAnalytics s={s} />
     </div>
   );
 }

@@ -3,11 +3,14 @@
 
 export const chromeBtnStyleSmall = {
   display: "inline-flex", alignItems: "center", gap: 6,
-  height: 24, padding: "0 8px",
-  border: "1px solid var(--line-1)",
-  background: "var(--bg-2)",
+  height: 30, padding: "0 10px",
+  border: "1px solid var(--line-2)",
+  background: "var(--bg-1)",
   borderRadius: "var(--r-2)",
   color: "var(--fg-2)",
+  fontSize: 13,
+  fontWeight: 500,
+  boxShadow: "var(--shadow-1)",
 };
 
 // Potencial do lead em 3 níveis: soma de pontos de CONTAS (quanto mais contas,

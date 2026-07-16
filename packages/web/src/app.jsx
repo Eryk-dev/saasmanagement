@@ -60,7 +60,6 @@ function App() {
   const [params, setParams] = useStA({});
   const [leadSel, setLeadSel] = useStA(null);
   const [searchOpen, setSearchOpen] = useStA(false); // busca de leads (⌘K)
-  const [collapsed, setCollapsed] = useStA(false);
   const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useStA(false); // drawer da nav no mobile
 
@@ -84,7 +83,17 @@ function App() {
     // cara do produto); produto sem accent cadastrado cai na preferência do usuário.
     const hue = Number(activeProduct?.accent) || t.accentHue;
     document.documentElement.style.setProperty("--accent-h", String(hue));
-  }, [t.theme, t.density, t.typeSystem, t.accentHue, activeProduct?.accent]);
+    const accentVars = ["--accent", "--accent-hover", "--accent-soft", "--accent-line"];
+    if (activeProduct?.id === "leverads") {
+      const dark = t.theme === "dark";
+      const values = dark
+        ? ["#3ECCBF", "#5BD9CE", "rgba(62, 204, 191, 0.1)", "rgba(62, 204, 191, 0.38)"]
+        : ["#0F766E", "#0B5D57", "#E9F5F3", "rgba(15, 118, 110, 0.38)"];
+      accentVars.forEach((name, i) => document.body.style.setProperty(name, values[i]));
+    } else {
+      accentVars.forEach((name) => document.body.style.removeProperty(name));
+    }
+  }, [t.theme, t.density, t.typeSystem, t.accentHue, activeProduct?.id, activeProduct?.accent]);
 
   // Tempo real: qualquer escrita na API (deste ou de outro usuário) emite um
   // tick no /api/events; recarregamos o SEED com debounce. O primeiro evento é
@@ -160,7 +169,7 @@ function App() {
     aquisicao:   ["Análises", "Aquisição"],
     calls:       ["Análises", "Pitch"],
     integrations: ["Análises", "Integração"],
-    analise:     ["Análises", "Pipeline"],
+    analise:     ["Análises", "Análise do pipeline"],
     funcionarios: ["Análises", "Funcionários"],
     tasks:       ["Geral", "Tarefas"],
     mindmaps:    ["Geral", "Mapas mentais"],
@@ -174,14 +183,14 @@ function App() {
   // Restrição de telas (user.screens): hash/navegação pra tela proibida cai na
   // primeira permitida do NAV. "subscriptions" é alias da aba dentro de
   // Clientes. O corte de verdade é no servidor (screens.js) — aqui é UX.
-  const allowedNav = NAV.filter((n) => canSeeScreen(n.id));
+  const allowedNav = NAV.filter((n) => !n.hidden && canSeeScreen(n.id));
   const neededScreen = screen === "subscriptions" ? "customers" : screen;
   const scr = canSeeScreen(neededScreen) ? screen : (allowedNav[0]?.id || "pipeline");
 
   return (
     <DataContext.Provider value={dataCtx}>
     <div className="app-shell" style={{ display: "flex", overflow: "hidden", background: "var(--bg-0)" }}>
-      {!isMobile && <NavRail current={scr} onNav={(id) => nav(id)} collapsed={collapsed} />}
+      {!isMobile && <NavRail current={scr} onNav={(id) => nav(id)} collapsed={false} />}
       {isMobile && menuOpen && (
         <div onClick={() => setMenuOpen(false)}
           style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", zIndex: 100, display: "flex" }}>
@@ -194,16 +203,10 @@ function App() {
       <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <TopBar
           breadcrumb={crumbsFor[scr]}
-          subtitle={subtitleFor(scr, params)}
           onSearch={() => setSearchOpen(true)}
           leading={isMobile && (
             <button onClick={() => setMenuOpen(true)} style={chromeBtnStyleSmall} title="Abrir menu">
               <span className="mono" style={{ fontSize: 14 }}>☰</span>
-            </button>
-          )}
-          trailing={!isMobile && (
-            <button onClick={() => setCollapsed(c => !c)} style={chromeBtnStyleSmall} title="Alternar barra lateral">
-              <span className="mono" style={{ fontSize: 12 }}>{collapsed ? "▶" : "◀"}</span>
             </button>
           )}
         />
@@ -310,34 +313,6 @@ function App() {
 function screenFromHash() {
   const h = (typeof location !== "undefined" ? location.hash : "").replace(/^#\/?/, "");
   return NAV.some(n => n.id === h) ? h : "overview";
-}
-
-function subtitleFor(screen, params) {
-  const map = {
-    overview:    "",
-    today:       "hoje em ordem de execução · amanhã e próximos dias à vista",
-    pipeline:    `${params.stage ? "estágio: " + params.stage + " · " : ""}arraste para mover`,
-    customers:   "",
-    metrics:     "",
-    expenses:    "",
-    forms:       "formulários de captação",
-    proposals:   "templates por marca",
-    creative:    "stories, feed e carrossel · PNG pronto pra postar",
-    offers:      "links de pagamento das ofertas · copie e envie",
-    disparos:    "campanhas de e-mail e WhatsApp pros leads qualificados",
-    aquisicao:   "investimento em anúncios + conversão dos formulários · o funil de aquisição",
-    calls:       "objeções, dores e temperatura das calls · insights de pitch",
-    integrations: "sentimento dos clientes e pendências recorrentes do onboarding",
-    analise:     "pace de caixa · forecast · funil do produto ativo",
-    funcionarios: "desempenho por pessoa · placar por papel (SDR · closer · CS)",
-    metas:       "metas por vaga e por pessoa · valem em todo campo de meta",
-    training:    "flashcards estilo Anki (FSRS) · fila individual por pessoa",
-    social:      "métricas do perfil · criar post e publicar direto",
-    subscriptions: "a receita do cliente deriva daqui",
-    tasks:       "kanban do time · arraste para mover",
-    settings:    "funil, campos e integrações",
-  };
-  return map[screen] || "";
 }
 
 export { App };

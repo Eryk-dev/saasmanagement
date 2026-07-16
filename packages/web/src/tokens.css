@@ -1,4 +1,4 @@
-/* Cockpit — design tokens v6 "Lever Premium"
+/* Cockpit — design tokens v7 "Lever Premium"
    Retematização sobre o design system Lever Premium (jul/2026): superfícies
    paper (#F7F8FA/#FFF), tinta navy (#0C1D2B), teal da marca usado com
    parcimônia (#0F766E), sombras quase invisíveis, Instrument Sans em toda a
@@ -14,8 +14,8 @@
   --bg-0: #f7f8fa;        /* paper: canvas do app */
   --bg-1: #ffffff;        /* paper-card: painéis / cards */
   --bg-2: #eef1f3;        /* paper-tinted: wells / trilhos / thead */
-  --bg-3: #e7ebee;        /* controles elevados (botão secundário) */
-  --bg-inset: #f4f6f8;    /* mais fundo */
+  --bg-3: #e7ebee;        /* controle legado elevado / trilhos */
+  --bg-inset: #fbfcfd;    /* paper-subtle */
   --bg-rail: #ffffff;     /* sidebar (chrome com superfície própria) */
   --bg-topbar: #ffffff;   /* topbar idem */
   --hover: rgba(12,29,43,0.045);
@@ -45,12 +45,12 @@
   --pos: #177a4c;
   --pos-soft: rgba(23,122,76,0.11);
   --neg: #b42318;
-  --neg-soft: rgba(180,35,24,0.10);
+  --neg-soft: #fdf3f2;
   --warn: #a16207;
-  --warn-soft: rgba(161,98,7,0.12);
+  --warn-soft: #fbf4e6;
   --warn-line: rgba(161,98,7,0.38);
   --info: #175cd3;
-  --info-soft: rgba(23,92,211,0.10);
+  --info-soft: #edf3fc;
   --wa-out: #d6f5cf;      /* bolha de saída do WhatsApp */
 
   /* Séries de gráfico (validadas p/ contraste e daltonismo no claro) */
@@ -70,7 +70,10 @@
   --r-4: 12px;
 
   /* Sombras quase invisíveis (DS: nunca glow) */
-  --shadow-1: 0 1px 2px 0 rgba(16,24,40,0.06);
+  --shadow-1: 0 1px 2px 0 rgba(16,24,40,0.03);
+  --shadow-btn: 0 1px 2px rgba(16,24,40,0.10);
+  --shadow-segment: 0 1px 2px rgba(16,24,40,0.08);
+  --shadow-knob: 0 1px 2px rgba(16,24,40,0.15);
   --shadow-2: 0 4px 12px -4px rgba(16,24,40,0.10);
   --shadow-card: 0 1px 2px 0 rgba(16,24,40,0.03);
   --shadow-pop: 0 8px 24px -6px rgba(16,24,40,0.14), 0 2px 6px -2px rgba(16,24,40,0.08);
@@ -82,7 +85,7 @@ body[data-theme="dark"] {
   --bg-1: #101e29;
   --bg-2: #1d2b36;
   --bg-3: #24333f;
-  --bg-inset: #0e1922;
+  --bg-inset: #0b141d;
   --bg-rail: #101e29;
   --bg-topbar: #101e29;
   --hover: rgba(237,242,245,0.07);
@@ -100,7 +103,7 @@ body[data-theme="dark"] {
 
   --accent: oklch(0.775 0.10 var(--accent-h));        /* ≈ #3ECCBF no hue 183 */
   --accent-hover: oklch(0.825 0.10 var(--accent-h));
-  --accent-soft: oklch(0.775 0.10 var(--accent-h) / 0.13);
+  --accent-soft: oklch(0.775 0.10 var(--accent-h) / 0.10);
   --accent-line: oklch(0.775 0.10 var(--accent-h) / 0.38);
   --accent-fg: #0c1d2b;
 
@@ -112,21 +115,61 @@ body[data-theme="dark"] {
   --pos: #4fbe84;
   --pos-soft: rgba(79,190,132,0.14);
   --neg: #e2695a;
-  --neg-soft: rgba(226,105,90,0.13);
+  --neg-soft: rgba(226,105,90,0.12);
   --warn: #d6a249;
   --warn-soft: rgba(214,162,73,0.14);
   --warn-line: rgba(214,162,73,0.40);
   --info: #7ea9e8;
-  --info-soft: rgba(126,169,232,0.13);
+  --info-soft: rgba(126,169,232,0.12);
   --wa-out: #0c2318;
 
   --chart-1: #3ab5ab;
   --chart-2: #6f7fe8;
 
-  --shadow-1: 0 1px 2px 0 rgba(0,0,0,0.18);
+  --shadow-1: 0 1px 2px 0 rgba(0,0,0,0.10);
+  --shadow-btn: 0 1px 2px rgba(0,0,0,0.20);
   --shadow-2: 0 4px 12px -4px rgba(0,0,0,0.28);
   --shadow-card: 0 1px 2px 0 rgba(0,0,0,0.10);
   --shadow-pop: 0 8px 28px 0 rgba(0,0,0,0.35), 0 1px 2px 0 rgba(0,0,0,0.2);
+}
+
+/* Nomes canônicos do handoff Lever Premium. O app legado continua usando os
+   aliases --bg-* e --fg-*; componentes novos podem consumir o DS literalmente. */
+:root {
+  --paper: var(--bg-0);
+  --paper-card: var(--bg-1);
+  --paper-tinted: var(--bg-2);
+  --paper-subtle: var(--bg-inset);
+
+  --ink: var(--fg-1);
+  --ink-soft: var(--fg-2);
+  --ink-muted: var(--fg-3);
+  --ink-faint: var(--fg-4);
+  --ink-disabled: var(--fg-5);
+
+  --line: var(--line-1);
+  --line-strong: var(--line-2);
+  --line-faint: var(--bg-2);
+
+  --brand: var(--accent);
+  --brand-deep: var(--accent-hover);
+  --brand-soft: var(--accent-soft);
+  --success: var(--pos);
+  --warning: var(--warn);
+  --danger: var(--neg);
+
+  --btn-primary-bg: var(--btn-bg);
+  --btn-primary-bg-hover: var(--btn-bg-hover);
+  --btn-primary-text: var(--btn-fg);
+
+  --font-sans: var(--sans);
+  --font-mono: var(--mono);
+  --radius-card: var(--r-4);
+  --radius-inner: var(--r-3);
+  --radius-control: var(--r-2);
+  --radius-badge: var(--r-1);
+  --radius-pill: 999px;
+  --transition-ui: background 0.12s, border-color 0.12s, color 0.12s;
 }
 
 * { box-sizing: border-box; }
@@ -145,6 +188,10 @@ html, body {
 #root { position: relative; z-index: 1; }
 
 button { font-family: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; letter-spacing: inherit; }
+input, select, textarea { font-family: var(--sans); }
+
+:focus-visible { outline: 2px solid var(--fg-1); outline-offset: 2px; }
+::selection { background: var(--accent-soft); }
 
 body[data-density="compact"] { font-size: 13.5px; }
 body[data-density="regular"] { font-size: 14px; }
@@ -153,7 +200,11 @@ body[data-density="regular"] { font-size: 14px; }
 .num-display { font-family: var(--display); }
 
 /* ── Atom utilities ─────────────────────────────────────────── */
-.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+/* O app legado usava `.mono` também em rótulos e mensagens. No handoff Lever
+   Premium esses textos são Instrument Sans; JetBrains Mono fica só nos usos
+   técnicos marcados por `.tnum`, `.code` ou elementos semânticos de código. */
+.mono { font-family: var(--sans); font-variant-numeric: tabular-nums; }
+.mono.tnum, .mono.code, .code, code, pre, kbd { font-family: var(--mono); }
 .serif { font-family: var(--display); font-weight: 600; letter-spacing: -0.018em; }
 .tnum { font-variant-numeric: tabular-nums; }
 .muted { color: var(--fg-3); }
@@ -164,7 +215,7 @@ body[data-density="regular"] { font-size: 14px; }
 /* Eyebrow label */
 .bkt {
   display: inline-block;
-  font-family: var(--mono);
+  font-family: var(--sans);
   font-size: 10.5px;
   font-weight: 500;
   letter-spacing: 0.07em;
@@ -188,21 +239,30 @@ body[data-density="regular"] { font-size: 14px; }
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 21px;
-  padding: 0 9px;
-  border-radius: 999px;
-  font-size: 11.5px;
-  font-weight: 500;
+  min-height: 20px;
+  padding: 2px 8px;
+  border-radius: var(--r-1);
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0;
   background: var(--bg-2);
-  border: 1px solid var(--line-1);
+  border: 0;
   color: var(--fg-2);
 }
-.chip.pos { color: var(--pos); border-color: color-mix(in srgb, var(--pos) 35%, transparent); background: var(--pos-soft); }
-.chip.neg { color: var(--neg); border-color: color-mix(in srgb, var(--neg) 35%, transparent); background: var(--neg-soft); }
-.chip.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); background: var(--warn-soft); }
-.chip.info { color: var(--info); border-color: color-mix(in srgb, var(--info) 35%, transparent); background: var(--info-soft); }
-.chip.accent { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
+.chip.pos, .chip.neg, .chip.warn, .chip.info { padding: 0; background: transparent; }
+.chip.pos { color: var(--pos); }
+.chip.neg { color: var(--neg); }
+.chip.warn { color: var(--warn); }
+.chip.info { color: var(--info); }
+.chip.pos::before, .chip.neg::before, .chip.warn::before, .chip.info::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.chip.accent { color: var(--accent); background: var(--accent-soft); }
 
 .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .led { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
@@ -220,7 +280,7 @@ body[data-density="regular"] { font-size: 14px; }
 /* ── Responsivo ─────────────────────────────────────────────── */
 /* Padding horizontal padrão das telas — encolhe no mobile. As telas usam
    var(--pad-x) nos paddings inline no lugar do 24px fixo. */
-:root { --pad-x: 24px; }
+:root { --pad-x: 28px; --page-head-top: 28px; }
 
 /* Altura do shell: dvh evita o pulo da barra de endereço no mobile. */
 .app-shell { height: 100vh; height: 100dvh; }
@@ -233,13 +293,14 @@ body[data-density="regular"] { font-size: 14px; }
 .tbl-x { overflow-x: auto; }
 .tbl-x > * { min-width: 720px; }
 .tbl-x table { min-width: 680px; }
+.tbl-x > .mono:first-child, .tbl-x th { font-family: var(--sans); }
 
 /* Editor com preview lado a lado (forms/propostas): empilha no mobile,
    preview embaixo com altura própria. */
 .editor-split { display: grid; grid-template-columns: var(--cols, 1fr); }
 
 @media (max-width: 900px) {
-  :root { --pad-x: 14px; }
+  :root { --pad-x: 14px; --page-head-top: 20px; }
   .resp-cols { grid-template-columns: 1fr; }
   .editor-split { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1.15fr) minmax(0, 1fr); }
   .hide-mobile { display: none !important; }

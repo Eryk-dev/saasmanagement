@@ -23,16 +23,16 @@ export function PersonFilter({ people, value, onChange, allLabel = "Todos" }) {
   );
   return (
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-      <span className="mono dim" style={{ fontSize: 11, marginRight: 2 }}>separado por:</span>
+      <span className="dim" style={{ fontSize: 12, marginRight: 2 }}>separado por:</span>
       {opts.map((o) => {
         const on = value === o.id;
         return (
-          <button key={o.id ?? "__all__"} onClick={() => onChange(o.id)} className="mono"
-            style={{ height: 28, padding: "0 12px", borderRadius: 999, fontSize: 12, cursor: "pointer",
-              border: "1px solid " + (on ? "var(--accent)" : "var(--line-2)"),
-              background: on ? "var(--accent-soft, var(--bg-3))" : "transparent",
-              color: on ? "var(--fg-1)" : "var(--fg-3)", fontWeight: on ? 600 : 400 }}>
-            {o.label} <span style={{ opacity: 0.6 }}>· {o.count}</span>
+          <button key={o.id ?? "__all__"} onClick={() => onChange(o.id)}
+            style={{ height: 34, padding: "0 13px", borderRadius: "var(--r-2)", fontSize: 12.5, cursor: "pointer",
+              border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"),
+              background: on ? "var(--accent-soft)" : "var(--bg-1)",
+              color: on ? "var(--accent)" : "var(--fg-3)", fontWeight: 600 }}>
+            {o.label} <span className="tnum" style={{ opacity: 0.65 }}>· {o.count}</span>
           </button>
         );
       })}
@@ -45,9 +45,9 @@ function Bar({ label, value, max, sub, tone }) {
   const pct = max > 0 ? Math.max(4, Math.round((value / max) * 100)) : 0;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12.5 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 13 }}>
         <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
-        <span className="mono" style={{ flexShrink: 0, color: "var(--fg-3)", fontSize: 11 }}>{sub}</span>
+        <span className="tnum" style={{ flexShrink: 0, color: "var(--fg-3)", fontSize: 12 }}>{sub}</span>
       </div>
       <div style={{ height: 7, borderRadius: 4, background: "var(--bg-inset)", overflow: "hidden" }}>
         <div style={{ width: `${pct}%`, height: "100%", background: tone || "var(--accent)" }} />
@@ -110,9 +110,9 @@ function CallsScreen({ onOpenLead }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <PageHead title="Análise de pitch"
-        sub={(data ? `${data.count} ${data.count === 1 ? "call resumida" : "calls resumidas"}` : "calls resumidas por IA") + (closer != null ? ` · ${closer ? displayName(closer) : "sem closer"}` : "")} />
+        sub={(data ? `${data.count} ${data.count === 1 ? "call resumida" : "calls resumidas"}` : "calls resumidas") + " por IA · objeções, dores e temperatura" + (closer != null ? ` · ${closer ? displayName(closer) : "sem closer"}` : "")} />
 
-      <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         {closers.length >= 2 ? (
           <PersonFilter people={closers} value={closer} onChange={setCloser} />
         ) : closers.length === 1 && data?.count > 0 ? (
@@ -136,16 +136,16 @@ function CallsScreen({ onOpenLead }) {
               </div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
               <StatTile label="Calls" value={String(data.count)} />
               <StatTile label="Quentes" value={String(temp.quente)} tone="pos" />
               <StatTile label="Mornas" value={String(temp.morno)} tone="flat" />
               <StatTile label="Frias" value={String(temp.frio)} tone="flat" />
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
               <Card title="Objeções recorrentes" hint="o que mais trava as calls (× vezes · em aberto)">
-                <div style={{ display: "flex", flexDirection: "column", gap: 11, padding: "12px 16px 14px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "16px 24px 22px" }}>
                   {data.objecoes.length === 0 && <div className="mono dim" style={{ fontSize: 12 }}>nenhuma objeção registrada ainda</div>}
                   {data.objecoes.slice(0, 12).map((o, i) => (
                     <Bar key={i} label={o.objecao} value={o.total} max={maxObj}
@@ -154,7 +154,7 @@ function CallsScreen({ onOpenLead }) {
                 </div>
               </Card>
               <Card title="Dores mais citadas" hint="o que os leads mais trazem">
-                <div style={{ display: "flex", flexDirection: "column", gap: 11, padding: "12px 16px 14px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "16px 24px 22px" }}>
                   {data.dores.length === 0 && <div className="mono dim" style={{ fontSize: 12 }}>nenhuma dor registrada ainda</div>}
                   {data.dores.slice(0, 12).map((d, i) => (
                     <Bar key={i} label={d.dor} value={d.total} max={maxDor} sub={`${d.total}×`} />
@@ -164,7 +164,7 @@ function CallsScreen({ onOpenLead }) {
             </div>
 
             <Card title="Diagnóstico do pitch (IA)" hint="a IA lê as calls e diz o que ajustar no roteiro da call">
-              <div style={{ padding: "12px 16px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ padding: "16px 24px 22px", display: "flex", flexDirection: "column", gap: 12 }}>
                 <div>
                   <button onClick={diagnosticar} disabled={ai === "loading" || data.aiConfigured === false}
                     title={data.aiConfigured === false ? "IA não configurada no servidor" : "Analisa as calls e aponta o que ajustar no pitch"}
@@ -195,13 +195,13 @@ function CallsScreen({ onOpenLead }) {
               <div>
                 {data.recent.map((c, i) => (
                   <div key={i} onClick={() => openRecent(c.leadId)}
-                    style={{ display: "flex", gap: 10, alignItems: "baseline", padding: "9px 16px", borderTop: i ? "1px solid var(--line-1)" : "none", cursor: "pointer" }}
+                    style={{ display: "flex", gap: 12, alignItems: "center", padding: "12px 24px", borderTop: "1px solid var(--line-faint)", cursor: "pointer" }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, flexShrink: 0, minWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.leadName || "lead"}</span>
+                    <span style={{ fontSize: 13.5, fontWeight: 600, flexShrink: 0, width: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.leadName || "lead"}</span>
                     <Pill tone={TEMP_TONE[c.temperatura] || "mut"}>{c.temperatura || "—"}</Pill>
                     {closer == null && c.closer && <Pill tone="mut">{displayName(c.closer)}</Pill>}
-                    <span className="dim" style={{ fontSize: 12, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.resumo}</span>
+                    <span className="dim" style={{ fontSize: 12.5, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.resumo}</span>
                   </div>
                 ))}
               </div>

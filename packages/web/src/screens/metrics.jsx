@@ -1,8 +1,7 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { PageHead, Segmented, StatTile, Card, LineChart } from "../components/viz.jsx";
-import { InsightsCard } from "../components/insights.jsx";
+import { PageHead, Segmented, FilterTab, StatTile, Card } from "../components/viz.jsx";
 import { painCodeOf } from "../lib/pains.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { EmptyState } from "../atoms.jsx";
@@ -29,7 +28,6 @@ const dayStr = (t) => {
   const d = new Date(t);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
-const shortDay = (iso) => new Date(iso + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "");
 
 // Dinheiro COM CENTAVOS (pedido do Leo, padrão do Gerenciador da Meta) — vale
 // pra tiles, tabelas e cards da tela; só os eixos dos gráficos ficam compactos.
@@ -37,12 +35,9 @@ const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" 
 const money = (v) => BRL.format(Number(v) || 0);
 
 const PERIODS = [
-  { value: "1", label: "hoje" },
-  { value: "yesterday", label: "ontem" },
-  { value: "3", label: "3 dias" },
   { value: "7", label: "7 dias" },
   { value: "30", label: "30 dias" },
-  { value: "life", label: "lifetime" },
+  { value: "90", label: "90 dias" },
 ];
 // A Meta só devolve insights de até ~37 meses; o sync respeita esse teto.
 const META_LOOKBACK_DAYS = 1125;
@@ -294,95 +289,25 @@ function MetricsScreen() {
   const MILESTONE_KINDS = new Set(["call", "proposta", "integracao", "ganho"]);
   const milestones = perStage.filter((s, i) => i === 0 || MILESTONE_KINDS.has(stageKind(product, s.stage)));
 
-  const spendSeries = (data?.series || []).map((d) => ({ x: shortDay(d.date), v: d.spend }));
-  const leadSeries = (data?.series || []).map((d) => ({ x: shortDay(d.date), v: d.leads }));
+  const totalMilestoneLeads = milestones[0]?.count || 0;
+  const metricMaps = data && !data.error ? {
+    campaigns: Object.fromEntries((data.campaigns || []).map((g) => [String(g.id), g])),
+    adsets: Object.fromEntries((data.adsets || []).map((g) => [String(g.id), g])),
+    ads: Object.fromEntries((data.ads || []).map((g) => [String(g.id), g])),
+  } : null;
+  const compactObjects = objects && !objects.error ? objects : data && !data.error ? {
+    campaigns: data.campaigns || [], adsets: data.adsets || [], ads: data.ads || [],
+  } : null;
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-      <PageHead title="Publicidade" sub={`aquisição, funil e campanhas · ${product.name}`}>
-        {metaOn && product.metaAdAccount && (
-          <button onClick={() => { setCloneAd((v) => !v); setCreative(false); }}
-            style={{ padding: "6px 12px", borderRadius: "var(--r-1)", fontSize: 12.5, fontWeight: 600, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))" }}>
-            + criar anúncio
-          </button>
-        )}
-        {metaOn && product.metaAdAccount && (
-          <button onClick={() => { setCreative((v) => !v); setCloneAd(false); }}
-            style={{ padding: "6px 12px", borderRadius: "var(--r-1)", fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)" }}
-            title="Criar um anúncio do zero (escolhe copy, CTA e link)">
-            + criativo do zero
-          </button>
-        )}
-        <button onClick={() => setManual(manual ? null : { date: new Date().toISOString().slice(0, 10), name: "", spend: "" })}
-          style={{ padding: "6px 12px", borderRadius: "var(--r-1)", fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)" }}>
-          + gasto manual
-        </button>
-        {metaOn && (
-          <button onClick={sync} disabled={syncing} style={{ padding: "6px 12px", borderRadius: "var(--r-1)", fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", opacity: syncing ? 0.6 : 1 }}
-            title="Sincroniza o período filtrado agora (além do automático de 1 em 1 minuto)">
-            {syncing ? "Sincronizando…" : "↻ sincronizar Meta"}
-          </button>
-        )}
-        {liveAt && (
-          <span className="mono" title="Sync automático no servidor a cada ~3 min (último horário mostrado); leads chegam na hora via tempo real"
-            style={{ fontSize: 10.5, color: "var(--pos)", display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--pos)" }} />
-            ao vivo · {liveAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-          </span>
-        )}
-        <Segmented value={range.preset} options={PERIODS} onChange={(v) => setRange({ preset: v })} />
-        <div style={{ display: "flex", gap: 4, alignItems: "center" }} title="Intervalo específico (de/até no mesmo dia filtra um dia só)">
-          <input type="date" value={since} max={until}
-            onChange={(e) => e.target.value && setRange({ preset: "custom", since: e.target.value, until })}
-            style={{ height: 28, padding: "0 6px", borderRadius: "var(--r-1)", border: range.preset === "custom" ? "1px solid var(--accent)" : "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, fontFamily: "var(--mono)" }} />
-          <span className="mono dim" style={{ fontSize: 10 }}>até</span>
-          <input type="date" value={until} max={dayStr(Date.now())}
-            onChange={(e) => e.target.value && setRange({ preset: "custom", since, until: e.target.value })}
-            style={{ height: 28, padding: "0 6px", borderRadius: "var(--r-1)", border: range.preset === "custom" ? "1px solid var(--accent)" : "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, fontFamily: "var(--mono)" }} />
-        </div>
+      <PageHead title="Publicidade" sub={<span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>aquisição, funil e campanhas · <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--fg-2)", fontSize: 12.5, fontWeight: 500 }}><span style={{ width: 6, height: 6, borderRadius: 99, background: metaOn && product.metaAdAccount ? "var(--pos)" : "var(--fg-4)" }} />{metaOn && product.metaAdAccount ? "Meta conectada" : "Meta não conectada"}</span></span>}>
+        {PERIODS.map((period) => <FilterTab key={period.value} active={range.preset === period.value} onClick={() => setRange({ preset: period.value })}>{period.label}</FilterTab>)}
       </PageHead>
 
-      <div style={{ padding: "20px var(--pad-x) 40px", display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         {note && (
           <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>
-        )}
-
-        {cloneAd && (
-          <CloneAdPanel key={"clone-" + product.id} product={product} campaigns={objects && !objects.error ? objects.campaigns : []}
-            onDone={(msg) => { setNote({ ok: true, text: msg }); setCloneAd(false); load(); }}
-            onError={(msg) => setNote({ ok: false, text: msg })}
-            onClose={() => setCloneAd(false)} />
-        )}
-
-        {creative && (
-          <NewCreativePanel key={product.id} product={product} campaigns={objects && !objects.error ? objects.campaigns : []}
-            onDone={(msg) => { setNote({ ok: true, text: msg }); setCreative(false); load(); }}
-            onError={(msg) => setNote({ ok: false, text: msg })}
-            onClose={() => setCreative(false)} />
-        )}
-
-        {manual && (
-          <Card>
-            <div style={{ padding: "14px 16px", display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>Data</span>
-                <input type="date" value={manual.date} onChange={(e) => setManual({ ...manual, date: e.target.value })}
-                  style={{ height: 30, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)" }} />
-              </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 180 }}>
-                <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>Campanha (opcional)</span>
-                <input type="text" placeholder="Entrada manual" value={manual.name} onChange={(e) => setManual({ ...manual, name: e.target.value })}
-                  style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 }} />
-              </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>Gasto (R$)</span>
-                <input type="number" min="0" step="0.01" placeholder="0,00" value={manual.spend} onChange={(e) => setManual({ ...manual, spend: e.target.value })}
-                  style={{ width: 120, height: 30, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)", textAlign: "right" }} />
-              </label>
-              <button onClick={saveManual} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-1)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600 }}>Registrar</button>
-              <button onClick={() => setManual(null)} style={{ height: 30, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>cancelar</button>
-            </div>
-          </Card>
         )}
 
         {data && !data.error && !data.synced && (
@@ -396,131 +321,48 @@ function MetricsScreen() {
                     : "Conecte a Meta (variável META_ACCESS_TOKEN na API + conta de anúncio em Ajustes) ou aguarde a entrada manual de gasto, que chega na fase de marketing."}
                 </div>
               </div>
-              {metaOn && (
-                <button onClick={sync} disabled={syncing} style={{ padding: "8px 14px", borderRadius: "var(--r-1)", fontSize: 13, fontWeight: 600, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", opacity: syncing ? 0.6 : 1 }}>
-                  {syncing ? "Sincronizando…" : "Sincronizar agora"}
-                </button>
-              )}
             </div>
           </Card>
         )}
 
-        {/* Uma fileira só — leads e custo por lead moram no card de custo por
-            etapa (marco de entrada do funil). */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
           <StatTile label="Investimento" value={t ? money(t.spend) : "…"} delta={t?.ctr != null ? `CTR ${String(t.ctr).replace(".", ",")}%` : null} />
           <StatTile label="Visitas no form" value={t?.formViews != null ? window.fmt.int(t.formViews) : "…"}
-            delta={t?.formViews > 0 ? `${t.formStarts} começaram (${((t.formStarts / t.formViews) * 100).toFixed(1).replace(".", ",")}%)` : "sem visitas no período"} />
+            delta={t?.formViews > 0 ? `conversão do form ${((t.formStarts / t.formViews) * 100).toFixed(1).replace(".", ",")}%` : "sem visitas no período"} />
           <StatTile label="Lead → cliente" value={biz?.window?.convRate != null ? `${String(biz.window.convRate).replace(".", ",")}%` : "sem dado"}
-            delta="conversão no período" />
-          <StatTile label={`CAC · ${rangeDays}d`} value={biz?.window?.cac != null ? money(biz.window.cac) : "sem dado"}
-            delta={biz?.window?.newCustomers != null ? `${biz.window.newCustomers} ${biz.window.newCustomers === 1 ? "cliente novo" : "clientes novos"}` : null} />
+            delta={biz?.window?.newCustomers != null ? `${biz.window.newCustomers} ${biz.window.newCustomers === 1 ? "cliente novo" : "clientes novos"}` : "conversão no período"} />
+          <StatTile label={`CAC · ${rangeDays}d`} value={biz?.window?.cac != null ? money(biz.window.cac) : "sem dado"} delta="investimento ÷ clientes" />
           <StatTile label="LTV estimado" value={biz?.ltv?.value != null ? money(biz.ltv.value) : "sem dado"}
-            delta={biz?.ltv?.ticket != null ? `ticket ${money(biz.ltv.ticket)} × ${biz.ltv.months}m` : "precisa de assinaturas ativas"} />
+            delta={biz?.ltv?.ticket != null ? "ticket × tempo de casa" : "precisa de assinaturas ativas"} />
           <StatTile label="LTV / CAC" value={biz?.ltv?.ltvCac != null ? window.fmt.ratio(biz.ltv.ltvCac) : "sem dado"}
             delta={biz?.ltv?.ltvCac != null ? (biz.ltv.ltvCac >= 3 ? "saudável acima de 3x" : "abaixo do saudável (3x)") : null}
             tone={biz?.ltv?.ltvCac != null ? (biz.ltv.ltvCac >= 3 ? "up" : "down") : "flat"} />
         </div>
 
-        <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: 12 }}>
-          <Card title="Investimento por dia" hint="Meta Ads">
-            <LineChart data={spendSeries} color="var(--chart-1)" fmtValue={(v) => window.fmt.money(v)} />
-          </Card>
-          <Card title="Leads por dia" hint="criados no cockpit">
-            <LineChart data={leadSeries} color="var(--chart-2)" fmtValue={(v) => String(Math.round(v))} />
-          </Card>
-        </div>
+        <Card title="Custo por etapa do funil" hint="investimento ÷ leads que chegaram em cada marco · % = quantos chegaram até ali">
+          <div style={{ padding: "16px 24px 22px", display: "flex", flexDirection: "column", gap: 10 }}>
+            {milestones.map((s, i) => {
+              const conv = i === 0 ? (totalMilestoneLeads ? 100 : 0) : totalMilestoneLeads ? Math.round((s.count / totalMilestoneLeads) * 1000) / 10 : 0;
+              const won = stageKind(product, s.stage) === "ganho";
+              return (
+                <div key={s.stage} style={{ display: "grid", gridTemplateColumns: "150px 1fr 92px 60px", gap: 12, alignItems: "center" }}>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.stage}</span>
+                  <div style={{ height: 20, borderRadius: 6, background: "var(--bg-2)", overflow: "hidden" }}><div style={{ height: "100%", width: `${Math.max(conv ? 3 : 0, conv)}%`, background: won ? "var(--pos)" : "var(--accent)", borderRadius: 6 }} /></div>
+                  <span className="tnum" style={{ textAlign: "right", fontSize: 13.5, fontWeight: 700 }}>{s.costPer != null ? money(s.costPer) : "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right", fontSize: 12, color: "var(--fg-3)" }}>{String(conv).replace(".", ",")}%</span>
+                </div>
+              );
+            })}
+            {!milestones.length && <span style={{ color: "var(--fg-4)", fontSize: 13 }}>sem dados do funil no período</span>}
+          </div>
+        </Card>
 
-        {milestones.length > 0 && t?.spend > 0 && (
-          <Card title="Custo por etapa do funil" hint="investimento dividido pelos leads que chegaram em cada marco · % = quantos dos leads do período chegaram até ali">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, padding: "12px 16px 16px" }}>
-              {milestones.map((s, i) => {
-                // Conversão sobre o TOTAL de leads (marco de entrada), não sobre
-                // o marco anterior — "quantos % dos leads viram call/ganho".
-                const total = milestones[0]?.count || 0;
-                const conv = i > 0 && total > 0 ? Math.round((s.count / total) * 1000) / 10 : null;
-                return (
-                  <div key={s.stage} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "9px 11px", background: "var(--bg-inset)" }}>
-                    <span style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 6 }}>
-                      <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>
-                        {s.costPer != null ? money(s.costPer) : "sem lead"}
-                      </span>
-                      {conv != null && (
-                        <span className="mono" title={`${s.count} de ${total} leads chegaram em ${s.stage}`}
-                          style={{ fontSize: 11, fontWeight: 600, color: "var(--fg-3)" }}>
-                          {String(conv).replace(".", ",")}%
-                        </span>
-                      )}
-                    </span>
-                    <span style={{ fontSize: 11.5, color: "var(--fg-3)", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {s.stage} · {s.count}
-                    </span>
-                    {i === 0 && t?.metaLeads > 0 && (
-                      <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", display: "block", marginTop: 2 }}
-                        title={t?.cplMeta != null ? `CPL na visão da Meta: ${money(t.cplMeta)}` : undefined}>
-                        {t.metaLeads} na visão da Meta{t?.cplMeta != null ? ` · ${money(t.cplMeta)}` : ""}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-        )}
+        <Card title="Por dor" hint="código [X] no nome do anúncio · qual roteiro traz lead que fecha, não só lead barato" style={{ overflow: "hidden" }}>
+          <PainTable pains={(data && !data.error ? data.pains : []) || []} money={money} />
+        </Card>
 
-        {data && !data.error && (
-          <InsightsCard scope={`ads:${product.id}`} items={insights} onApplied={reloadObjects}
-            hint="sugestões por regra (ROAS por dor, CPL por anúncio, placement) · aplicar mostra os passos exatos e pede confirmação · ✕ dispensa por 7 dias" />
-        )}
-
-        {data && !data.error && (data.pains || []).some((p) => p.code) && (
-          <Card title="Por dor" hint="código [X] no nome do anúncio · qual roteiro traz lead que fecha, não só lead barato">
-            <PainTable pains={data.pains} money={money} />
-          </Card>
-        )}
-
-        {(placements?.placements || []).length > 0 && (
-          <Card title="Onde o gasto acontece" hint="plataforma × posicionamento, ao vivo da Meta · leads/CPL aqui são na visão da Meta (UTM não carrega placement)">
-            <PlacementTable placements={placements.placements} money={money} />
-          </Card>
-        )}
-
-        {/* Sem Meta conectada, a visão por campanha vem só do ad_insights (gasto manual/histórico). */}
-        {data && !data.error && data.campaigns?.length > 0 && !(metaOn && product.metaAdAccount) && (
-          <Card title="Por campanha" hint="expanda pra ver conjuntos e anúncios · atribuição por UTM (campaign/term/content = id ou nome)">
-            <CampaignDrilldown data={data} money={money} />
-          </Card>
-        )}
-
-        {metaOn && product.metaAdAccount && (
-          <Card title="Anúncios" hint="estilo Gerenciador: abas por nível, toggle pra pausar, clique no nome pra descer de nível · métricas do período filtrado">
-            {objects == null && <div style={{ padding: "12px 16px", fontSize: 12.5, color: "var(--fg-4)" }}>carregando conta de anúncios…</div>}
-            {objects?.error && <div className="mono" style={{ padding: "12px 16px", fontSize: 12, color: "var(--neg)" }}>{objects.error}</div>}
-            {objects?.errors && (
-              <div className="mono" style={{ padding: "8px 16px 0", fontSize: 11, color: "var(--warn)" }}>
-                a Meta falhou ao listar: {Object.keys(objects.errors).map((k) => ({ campaigns: "campanhas", adsets: "conjuntos", ads: "anúncios" })[k] || k).join(", ")} · tente recarregar
-              </div>
-            )}
-            {objects && !objects.error && (
-              <AdsManager objects={objects} money={money} busyIds={busyIds}
-                metrics={data && !data.error ? {
-                  campaigns: Object.fromEntries((data.campaigns || []).map((g) => [String(g.id), g])),
-                  adsets: Object.fromEntries((data.adsets || []).map((g) => [String(g.id), g])),
-                  ads: Object.fromEntries((data.ads || []).map((g) => [String(g.id), g])),
-                } : null}
-                onToggle={toggleObject} onBudget={commitBudget} />
-            )}
-          </Card>
-        )}
-
-        <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 14px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-2)", fontSize: 12.5, flexWrap: "wrap" }}>
-          <span>Premissa do LTV enquanto não há histórico de churn: permanência média de</span>
-          <input type="number" min="1" defaultValue={biz?.ltv?.months ?? 12} key={biz?.ltv?.months}
-            onBlur={(e) => saveLtvMonths(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
-            style={{ width: 56, height: 24, padding: "0 6px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontFamily: "var(--mono)", textAlign: "right" }} />
-          <span>meses. O CAC usa clientes convertidos do pipeline (lead em Ganho vira cliente automaticamente).</span>
-        </div>
+        <CompactAdsCard objects={compactObjects} metrics={metricMaps} money={money} busyIds={busyIds}
+          onToggle={objects && !objects.error ? toggleObject : null} error={objects?.error} />
       </div>
     </div>
   );
@@ -561,22 +403,68 @@ const METRIC_COLS = [
 
 // Toggle Off/On no padrão do Gerenciador — controla o status PRÓPRIO da linha
 // (a coluna Veiculação mostra o efetivo, com pausa herdada).
-function Toggle({ on, label, busy, onChange }) {
+function Toggle({ on, label, busy, disabled = false, onChange }) {
   const action = busy ? "enviando pra Meta" : on ? "pausar" : "ativar";
   return (
-    <button onClick={onChange} disabled={busy} role="switch" aria-checked={on} aria-busy={busy || undefined}
+    <button onClick={onChange} disabled={busy || disabled} role="switch" aria-checked={on} aria-busy={busy || undefined}
       title={`${action} ${busy ? "" : label}`.trim()} aria-label={`${action} ${label}`} style={{
-        width: 34, height: 19, borderRadius: 999, padding: 2, flexShrink: 0,
+        width: 38, height: 22, borderRadius: 999, padding: 2, flexShrink: 0,
         background: on ? "var(--accent)" : "var(--bg-3)",
         border: "1px solid " + (on ? "var(--accent)" : "var(--line-2)"),
         display: "inline-flex", alignItems: "center",
         justifyContent: on ? "flex-end" : "flex-start",
         transition: "background 120ms ease",
-        opacity: busy ? 0.55 : 1,
-        cursor: busy ? "wait" : "pointer",
+        opacity: busy ? 0.55 : disabled ? 0.7 : 1,
+        cursor: busy ? "wait" : disabled ? "default" : "pointer",
       }}>
-      <span style={{ width: 13, height: 13, borderRadius: 999, background: "#fff", boxShadow: "0 1px 2px oklch(0 0 0 / 0.3)" }} />
+      <span style={{ width: 16, height: 16, borderRadius: 999, background: "#fff", boxShadow: "0 1px 2px oklch(0 0 0 / 0.3)" }} />
     </button>
+  );
+}
+
+function CompactAdsCard({ objects, metrics, money, busyIds, onToggle, error }) {
+  const [level, setLevel] = useState("campaigns");
+  const levels = [
+    { value: "campaigns", label: "Campanhas", singular: "Campanha" },
+    { value: "adsets", label: "Conjuntos", singular: "Conjunto" },
+    { value: "ads", label: "Anúncios", singular: "Anúncio" },
+  ];
+  const current = levels.find((item) => item.value === level);
+  const rows = objects?.[level] || [];
+  const delivery = (object) => {
+    const status = object.effectiveStatus || object.status;
+    return DELIVERY[status] || { label: status ? String(status).toLowerCase().replaceAll("_", " ") : "sem status", tone: "var(--fg-4)" };
+  };
+
+  return (
+    <Card title="Anúncios" hint="estilo Gerenciador · toggle pausa na Meta"
+      action={<Segmented value={level} onChange={setLevel} options={levels.map(({ value, label }) => ({ value, label }))} />}
+      style={{ overflow: "hidden" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "46px 1.8fr .7fr .8fr .6fr .7fr", gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+        <span /><span>{current.singular}</span><span>Status</span><span style={{ textAlign: "right" }}>Investido</span><span style={{ textAlign: "right" }}>Leads</span><span style={{ textAlign: "right" }}>CPL</span>
+      </div>
+      {error && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--neg)", fontSize: 12.5 }}>{error}</div>}
+      {!objects && !error && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--fg-4)", fontSize: 12.5 }}>carregando conta de anúncios…</div>}
+      {objects && !rows.length && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--fg-4)", fontSize: 12.5 }}>nenhum item neste nível</div>}
+      {rows.map((object) => {
+        const m = metrics?.[level]?.[String(object.id)] || object;
+        const state = delivery(object);
+        const leads = Number(m?.leads) || 0;
+        const spend = Number(m?.spend) || 0;
+        const cpl = m?.cpl != null ? m.cpl : leads ? spend / leads : null;
+        const active = object.status ? object.status !== "PAUSED" : state.label !== "pausado";
+        return (
+          <div key={object.id} style={{ display: "grid", gridTemplateColumns: "46px 1.8fr .7fr .8fr .6fr .7fr", gap: 12, padding: "12px 24px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5, opacity: active ? 1 : .7 }}>
+            <Toggle on={active} label={object.name || object.id} busy={busyIds?.has(object.id)} disabled={!onToggle || !object.status} onChange={() => onToggle?.(level, object)} />
+            <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{object.name || object.id}</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--fg-2)" }}><span style={{ width: 7, height: 7, borderRadius: 99, background: state.tone }} />{state.label}</span>
+            <span className="tnum" style={{ textAlign: "right" }}>{money(spend)}</span>
+            <span className="tnum" style={{ textAlign: "right" }}>{window.fmt.int(leads)}</span>
+            <span className="tnum" style={{ textAlign: "right" }}>{cpl != null ? money(cpl) : "—"}</span>
+          </div>
+        );
+      })}
+    </Card>
   );
 }
 
@@ -1029,36 +917,23 @@ function PlacementTable({ placements, money }) {
 // O que decide escala é a última coluna (ROAS: receita dos ganhos ÷ investimento),
 // não o CPL.
 function PainTable({ pains, money }) {
-  const ths = ["Dor", "Anúncios", "Investimento", "Leads (UTM)", "CPL real", "Ganhos", "Custo por ganho", "Receita", "ROAS"];
+  const cols = "1.6fr .8fr .6fr .7fr .6fr .6fr";
   return (
-    <div className="tbl-x" style={{ marginTop: 10 }}>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr>
-            {ths.map((h, i) => (
-              <th key={h} className="mono" style={{ textAlign: i === 0 ? "left" : "right", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", padding: "10px 16px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {pains.map((p) => (
-            <tr key={p.code || "_sem"} style={{ opacity: p.code ? 1 : 0.55 }}>
-              <td style={{ padding: "11px 16px", fontSize: 13, fontWeight: 600, borderBottom: "1px solid var(--line-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 300 }}>
-                {p.code && <span className="mono" style={{ marginRight: 8, fontSize: 11, color: "var(--accent)", border: "1px solid var(--line-2)", borderRadius: 5, padding: "1px 6px" }}>{p.code}</span>}
-                {p.label}
-              </td>
-              <td className="tnum" style={tdNum}>{p.adsCount}</td>
-              <td className="tnum" style={tdNum}>{money(p.spend)}</td>
-              <td className="tnum" style={tdNum}>{window.fmt.int(p.leads)}</td>
-              <td className="tnum" style={tdNum}>{p.cpl != null ? money(p.cpl) : "sem lead"}</td>
-              <td className="tnum" style={tdNum}>{window.fmt.int(p.won)}</td>
-              <td className="tnum" style={tdNum}>{p.costPerWin != null ? money(p.costPerWin) : "sem ganho"}</td>
-              <td className="tnum" style={tdNum}>{money(p.revenue || 0)}</td>
-              <td className="tnum" style={{ ...tdNum, fontWeight: 600 }}>{p.roas != null ? String(p.roas).replace(".", ",") + "x" : "sem receita"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div style={{ marginTop: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+        <span>Dor</span><span style={{ textAlign: "right" }}>Investido</span><span style={{ textAlign: "right" }}>Leads</span><span style={{ textAlign: "right" }}>CPL</span><span style={{ textAlign: "right" }}>Ganhos</span><span style={{ textAlign: "right" }}>ROAS</span>
+      </div>
+      {pains.filter((p) => p.code).map((p) => (
+        <div key={p.code} style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "12px 24px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5 }}>
+          <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><span className="mono code" style={{ marginRight: 7, fontSize: 12, color: "var(--fg-4)" }}>[{String(p.code).replace(/^\[|\]$/g, "")}]</span>{p.label}</span>
+          <span className="tnum" style={{ textAlign: "right" }}>{money(p.spend)}</span>
+          <span className="tnum" style={{ textAlign: "right" }}>{window.fmt.int(p.leads)}</span>
+          <span className="tnum" style={{ textAlign: "right" }}>{p.cpl != null ? money(p.cpl) : "—"}</span>
+          <span className="tnum" style={{ textAlign: "right", fontWeight: 600 }}>{window.fmt.int(p.won)}</span>
+          <span className="tnum" style={{ textAlign: "right", fontWeight: 600, color: p.roas == null ? "var(--fg-4)" : p.roas >= 3 ? "var(--pos)" : "var(--warn)" }}>{p.roas != null ? String(p.roas).replace(".", ",") + "x" : "—"}</span>
+        </div>
+      ))}
+      {!pains.some((p) => p.code) && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--fg-4)", fontSize: 12.5 }}>nenhuma dor atribuída no período</div>}
     </div>
   );
 }

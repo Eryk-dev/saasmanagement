@@ -1,7 +1,7 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { PageHead, StatTile, Card, LineChart, Pill } from "../components/viz.jsx";
+import { PageHead, FilterTab, StatTile, Card, LineChart } from "../components/viz.jsx";
 import { EmptyState, Avatar } from "../atoms.jsx";
 import { nextMilestone, dueLabel } from "../lib/milestones.js";
 import { openStages, isWonStage, firstStage as firstStageOf } from "../lib/funnel.js";
@@ -48,13 +48,7 @@ function periodWindow(period, custom, now = new Date()) {
   const short = p.key === "today" ? "hoje" : p.key === "yesterday" ? "ontem" : p.label.toLowerCase();
   return { since: ymd(since), until: ymd(end), prevSince: ymd(prevSince), prevUntil: ymd(prevUntil), days: p.days, short, label: short };
 }
-const presetBtn = (active) => ({
-  height: 24, padding: "0 9px", borderRadius: "var(--r-2)", fontSize: 11, cursor: "pointer", whiteSpace: "nowrap",
-  border: "1px solid " + (active ? "var(--accent-line)" : "var(--line-1)"),
-  background: active ? "var(--accent-soft)" : "var(--bg-2)",
-  color: active ? "var(--accent)" : "var(--fg-3)",
-});
-const dateInp = { height: 24, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" };
+const dateInp = { height: 32, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontFamily: "var(--mono)" };
 
 function OverviewScreen({ onNav, onOpenLead }) {
   const { SAAS, LEADS, CUSTOMERS } = window.SEED;
@@ -164,34 +158,16 @@ function OverviewScreen({ onNav, onOpenLead }) {
   };
 
   const today = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
-
-  // Total do TIME no período: soma o que já foi realizado das métricas que
-  // cobramos do SDR e do closer (+ a soma das metas individuais). Segue a
-  // janela do topo.
-  const teamAgg = (() => {
-    const sdrRows = score?.sdr || [], cloRows = score?.closer || [];
-    const sum = (rows, f) => rows.reduce((a, p) => a + (Number(f(p)) || 0), 0);
-    return {
-      hasAny: sdrRows.length + cloRows.length > 0,
-      contacted: sum(sdrRows, (p) => p.contacted),
-      callsBooked: sum(sdrRows, (p) => p.callsBooked),
-      callsMeta: sum(sdrRows, (p) => bookingGoal(p)?.target || 0),
-      won: sum(cloRows, (p) => p.won),
-      wonMeta: sum(cloRows, (p) => scaleGoal(p.goals?.won, win.days)?.target || 0),
-      revenue: sum(cloRows, (p) => p.revenue),
-      revenueMeta: sum(cloRows, (p) => scaleGoal(p.goals?.revenue, win.days)?.target || 0),
-    };
-  })();
-  const ofMeta = (m) => (m > 0 ? `de ${m} · meta ${pShort}` : "somando o time");
+  const slaBreached = (score?.sdr || []).reduce((sum, p) => sum + (Number(p.breached) || 0), 0);
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Visão geral" sub={today}>
         <div style={{ display: "flex", alignItems: "center", gap: 3, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          {PRESETS.map((p) => (
-            <button key={p.key} onClick={() => setPeriodP(p.key)} className="mono" style={presetBtn(period === p.key)}>{p.label}</button>
+          {PRESETS.filter((p) => !["3d", "60d"].includes(p.key)).map((p) => (
+            <FilterTab key={p.key} active={period === p.key} onClick={() => setPeriodP(p.key)}>{p.label}</FilterTab>
           ))}
-          <button onClick={() => setPeriodP("custom")} className="mono" style={presetBtn(period === "custom")}>Personalizado</button>
+          <FilterTab active={period === "custom"} onClick={() => setPeriodP("custom")}>Personalizado</FilterTab>
           {period === "custom" && (
             <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
               <input type="date" value={custom.since} onChange={(e) => setCustomP({ ...custom, since: e.target.value })} style={dateInp} />
@@ -202,8 +178,8 @@ function OverviewScreen({ onNav, onOpenLead }) {
         </div>
       </PageHead>
 
-      <div style={{ padding: "20px var(--pad-x) 40px", display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
+      <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
           <StatTile label="Resultado do mês" value={result != null ? window.fmt.money(result) : "…"}
             delta={costs ? `${window.fmt.money(wonValueMonth)} ganhos · ${window.fmt.money(costs.total || 0)} custos` : "ganhos menos custos"}
             tone={result == null ? "flat" : result >= 0 ? "up" : "down"} />
@@ -220,73 +196,74 @@ function OverviewScreen({ onNav, onOpenLead }) {
             delta={biz?.window?.newCustomers != null ? `${biz.window.newCustomers} ${biz.window.newCustomers === 1 ? "cliente novo" : "clientes novos"}` : null} tone="flat" />
         </div>
 
-        {/* Total do time no período: o realizado somado das métricas do SDR + closer. */}
-        {teamAgg.hasAny && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
-            <StatTile label={`Contatados · time · ${pShort}`} value={String(teamAgg.contacted)} delta="somando o time" tone="flat" />
-            <StatTile label={`Calls agendadas · time · ${pShort}`} value={String(teamAgg.callsBooked)} delta={ofMeta(teamAgg.callsMeta)} tone="flat" />
-            <StatTile label={`Ganhos · time · ${pShort}`} value={String(teamAgg.won)} delta={ofMeta(teamAgg.wonMeta)} tone="flat" />
-            <StatTile label={`Receita · time · ${pShort}`} value={window.fmt.money(teamAgg.revenue)}
-              delta={teamAgg.revenueMeta > 0 ? `de ${window.fmt.money(teamAgg.revenueMeta)} · meta ${pShort}` : "somando o time"} tone="flat" />
-          </div>
-        )}
-
-        {/* Desempenho do time — placar por papel (segue o período do topo). */}
-        <TeamPerformance score={score} days={win.days} pLabel={pLabel} onPerson={openPerson} product={product} />
-
-        <div className="resp-cols" style={{ "--cols": "minmax(0,1fr) 340px", gap: 12, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 16, alignItems: "start" }}>
           <Card title="Leads por dia" hint={`${pLabel} · clique numa etapa pra abrir o pipeline`}>
             <LineChart data={series} fmtValue={(v) => String(Math.round(v))} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))", gap: 8, padding: "4px 16px 16px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(104px, 1fr))", gap: 8, padding: "12px 20px 20px" }}>
               {funnelStages.map((s) => (
                 <button key={s} onClick={() => onNav && onNav("pipeline", { saas: product.id, stage: s })}
-                  style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "9px 11px", background: "var(--bg-inset)", textAlign: "left" }}>
+                  style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "10px 12px", background: "var(--bg-inset)", textAlign: "left" }}>
                   <span className="tnum" style={{ display: "block", fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>{countByStage(s)}</span>
-                  <span style={{ fontSize: 11, color: "var(--fg-3)", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s}</span>
-                  <span style={{ display: "block", height: 3, borderRadius: 999, background: "var(--accent)", opacity: 0.85, marginTop: 6, width: `${Math.round((countByStage(s) / maxStage) * 100)}%` }} />
+                  <span style={{ fontSize: 11.5, color: "var(--fg-3)", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s}</span>
+                  <span style={{ display: "block", height: 3, borderRadius: 999, background: "var(--accent)", opacity: 0.85, marginTop: 7, width: `${Math.round((countByStage(s) / maxStage) * 100)}%` }} />
                 </button>
               ))}
               <button onClick={() => onNav && onNav("pipeline", { saas: product.id })}
-                style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "9px 11px", background: "var(--bg-inset)", textAlign: "left" }}>
+                style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "10px 12px", background: "var(--bg-inset)", textAlign: "left" }}>
                 <span className="tnum" style={{ display: "block", fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>{wonPeriod}</span>
-                <span style={{ fontSize: 11, color: "var(--fg-3)", display: "block" }}>Ganho · {pShort}</span>
-                <span style={{ display: "block", height: 3, borderRadius: 999, background: "var(--pos)", marginTop: 6, width: `${Math.min(100, Math.round((wonPeriod / maxStage) * 100))}%` }} />
+                <span style={{ fontSize: 11.5, color: "var(--fg-3)", display: "block" }}>Ganho · {pShort}</span>
+                <span style={{ display: "block", height: 3, borderRadius: 999, background: "var(--pos)", marginTop: 7, width: `${Math.min(100, Math.round((wonPeriod / maxStage) * 100))}%` }} />
               </button>
             </div>
           </Card>
 
-          <Card title="Precisa de atenção" hint="pós-venda e cobrança">
-            <div style={{ padding: "8px 16px 14px" }}>
-              {dueInvoices.length === 0 && dueMilestones.length === 0 && (
+          <Card title="Precisa de atenção" hint="riscos primeiro · cada item tem ação">
+            <div style={{ padding: "10px 24px 18px" }}>
+              {slaBreached === 0 && dueInvoices.length === 0 && dueMilestones.length === 0 && (
                 <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Tudo em dia por aqui.</div>
+              )}
+              {slaBreached > 0 && (
+                <button onClick={() => onNav && onNav("pipeline", { saas: product.id })} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "11px 0", borderBottom: "1px solid var(--line-faint)", textAlign: "left" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>{slaBreached} {slaBreached === 1 ? "lead fora" : "leads fora"} do SLA de 1º toque</div>
+                    <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 2 }}>Novo lead · nunca contatados além do prazo</div>
+                  </div>
+                  <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--accent)", whiteSpace: "nowrap" }}>abrir pipeline</span>
+                </button>
               )}
               {dueMilestones.map(({ customer, m }) => (
                 <button key={customer.id + m.key} onClick={() => onNav && onNav("customers")}
-                  style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "6px 0", textAlign: "left" }}>
+                  style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "11px 0", borderBottom: "1px solid var(--line-faint)", textAlign: "left" }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{m.label}</div>
-                    <div style={{ fontSize: 12, color: "var(--fg-3)" }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>{m.label}</div>
+                    <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 2 }}>
                       {customer.name} · {m.status === "late" ? "venceu" : "vence"} {dueLabel(m.dueAt)}
                     </div>
                   </div>
-                  <Pill tone={m.status === "late" ? "neg" : "warn"}>ver</Pill>
+                  <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--accent)", whiteSpace: "nowrap" }}>agendar</span>
                 </button>
               ))}
               {dueInvoices.map((i) => (
                 <button key={i.id} onClick={() => onNav && onNav("subscriptions", { saas: product.id })}
-                  style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "6px 0", textAlign: "left" }}>
+                  style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "11px 0", borderBottom: "1px solid var(--line-faint)", textAlign: "left" }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{i.status === "overdue" ? "Fatura vencida" : "Fatura vencendo"}</div>
-                    <div style={{ fontSize: 12, color: "var(--fg-3)" }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>{i.status === "overdue" ? "Fatura vencida" : "Fatura vencendo"} · {window.fmt.money(i.amount || 0)}</div>
+                    <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 2 }}>
                       {window.fmt.money(i.amount || 0)} · vence {new Date(i.dueDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "")}
                     </div>
                   </div>
-                  <Pill tone={i.status === "overdue" ? "neg" : "warn"}>ver</Pill>
+                  <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--accent)", whiteSpace: "nowrap" }}>{i.status === "overdue" ? "cobrar" : "ver fatura"}</span>
                 </button>
               ))}
+              <div style={{ marginTop: 10, paddingTop: 12, borderTop: "1px solid var(--line-faint)", display: "flex", gap: 14 }}>
+                <button onClick={() => onNav && onNav("customers")} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>Ver clientes →</button>
+                <button onClick={() => onNav && onNav("subscriptions", { saas: product.id })} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>Ver assinaturas →</button>
+              </div>
             </div>
           </Card>
         </div>
+
+        <TeamPerformance score={score} days={win.days} pLabel={pLabel} onPerson={openPerson} product={product} />
       </div>
     </div>
   );
@@ -497,41 +474,40 @@ function TeamPerformance({ score, days, pLabel, onPerson, product }) {
     return (id) => m[id] || (id === "nao_informado" ? "não informado" : id);
   }, [product]);
   return (
-    <Card title="Desempenho do time" hint="segue o período do topo da página · SDR: meta = leads do período anterior × taxa · clique num nome pra abrir o pipeline">
-      <div style={{ padding: "6px 8px 12px" }}>
+    <Card title="Desempenho do time" hint="segue o período do topo · clique num nome pra abrir o pipeline">
+      <div style={{ padding: "8px 24px 24px", display: "flex", flexDirection: "column", gap: 18 }}>
         {PANELS.map((panel) => {
           const data = score;
           const rows = data?.[panel.key] || [];
           const ctx = { days, lossLabel };
           // Larguras FIXAS (não fr) pra os painéis alinharem entre si: a coluna
           // Pessoa e as de métrica começam no mesmo x em todos os papéis.
-          const PERSON_W = 160, COL_W = 116;
+          const PERSON_W = 170, COL_W = 126;
           const gridCols = `${PERSON_W}px repeat(${panel.cols.length}, ${COL_W}px)`;
           const minW = PERSON_W + panel.cols.length * COL_W;
           return (
-            <div key={panel.key} style={{ marginTop: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 8px", flexWrap: "wrap" }}>
-                <span style={{ fontSize: 12.5, fontWeight: 700 }}>{panel.title}</span>
-                <span className="mono dim" style={{ fontSize: 10.5 }}>{panel.hint} · {pLabel}</span>
+            <div key={panel.key}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "10px 0 8px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>{panel.title}</span>
+                <span style={{ fontSize: 12, color: "var(--fg-4)" }}>{panel.hint} · {pLabel}</span>
               </div>
               {data == null && <div className="mono dim" style={{ padding: "8px", fontSize: 12 }}>carregando…</div>}
               {data != null && !rows.length && (
                 <div style={{ padding: "8px", fontSize: 12.5, color: "var(--fg-4)" }}>Sem atividade nesse período.</div>
               )}
-              {rows.length > 0 && panel.alarm && panel.alarm(rows)}
               {rows.length > 0 && (
                 <div className="tbl-x">
                   <div style={{ minWidth: minW }}>
-                    <div className="mono" style={{ display: "grid", gridTemplateColumns: gridCols, gap: 8, padding: "6px 10px", fontSize: 9.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", borderBottom: "1px solid var(--line-1)" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: 10, padding: "8px 12px", fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", borderBottom: "1px solid var(--line-1)" }}>
                       <span>Pessoa</span>
                       {panel.cols.map((c) => <span key={c.label}>{c.label}</span>)}
                     </div>
                     {rows.map((p) => (
-                      <div key={p.user} style={{ display: "grid", gridTemplateColumns: gridCols, gap: 8, padding: "8px 10px", alignItems: "center", borderBottom: "1px solid var(--line-1)" }}>
+                      <div key={p.user} style={{ display: "grid", gridTemplateColumns: gridCols, gap: 10, padding: "13px 12px", alignItems: "center", borderBottom: "1px solid var(--line-faint)" }}>
                         <button onClick={() => onPerson && onPerson(p.user)} title="abrir o pipeline dele"
                           style={{ display: "flex", alignItems: "center", gap: 8, textAlign: "left", minWidth: 0 }}>
-                          <Avatar id={p.user} name={p.name} size={20} />
-                          <span style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+                          <Avatar id={p.user} name={p.name} size={30} />
+                          <span style={{ fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
                         </button>
                         {panel.cols.map((c) => <div key={c.label}>{c.render(p, ctx)}</div>)}
                       </div>
@@ -547,4 +523,4 @@ function TeamPerformance({ score, days, pLabel, onPerson, product }) {
   );
 }
 
-export { OverviewScreen, TeamPerformance, periodWindow, PRESETS, presetBtn };
+export { OverviewScreen, TeamPerformance, periodWindow, PRESETS };

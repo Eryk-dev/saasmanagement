@@ -1,9 +1,8 @@
 import React from "react";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
-import { EmptyState, PrimaryButton, RowActions, Avatar } from "../atoms.jsx";
+import { EmptyState, PrimaryButton, Avatar } from "../atoms.jsx";
 import { useData } from "../data.jsx";
 import { api } from "../lib/api.js";
-import { useIsMobile } from "../lib/responsive.js";
 import { KINDS, KIND_IDS, guessKind, lossReasonsOf, stageKind, stageByKind, phaseOf, NEXT_KINDS, NEXT_STEP_KINDS, NEXT_STEP_LABELS } from "../lib/funnel.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { DEFAULT_SCRIPTS, SCRIPT_CATALOG, catalogStageRow, isNoShowStage } from "../lib/scripts.js";
@@ -11,6 +10,7 @@ import { usersByRole } from "../lib/users.js";
 import { ScriptPanel } from "./today.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { NAV } from "../chrome.jsx";
+import { FilterTab, PageHead } from "../components/viz.jsx";
 // SaaS Settings (fase 3) — funil, campos custom, pesos da saúde e Aha EDITÁVEIS
 // por SaaS (gravam no produto). Equipe (roles sdr/closer/integrator) é global.
 
@@ -22,8 +22,8 @@ const { useState: useStS } = React;
 const lastView = { tab: "funnel" };
 
 const inputStyle = {
-  width: "100%", height: 28, padding: "0 8px",
-  background: "var(--bg-2)", border: "1px solid var(--line-1)",
+  width: "100%", height: 32, padding: "0 9px",
+  background: "var(--bg-1)", border: "1px solid var(--line-2)",
   borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12, fontFamily: "var(--sans)",
 };
 const slug = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
@@ -31,11 +31,10 @@ const slug = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
 
 function SettingsScreen({ saasId }) {
   const { SAAS } = window.SEED;
-  const { openForm, openDelete } = useData();
+  const { openForm } = useData();
   const [activeProduct] = useActiveSaas();
   // "health"/"aha" foram removidas; se sobrou salvo na sessão, cai no funil.
   const [tab, setTab] = useStS(lastView.tab === "health" || lastView.tab === "aha" ? "funnel" : lastView.tab);
-  const isMobile = useIsMobile();
   lastView.tab = tab;
   const s = activeProduct;
 
@@ -44,7 +43,7 @@ function SettingsScreen({ saasId }) {
     ["nextsteps",   "Próximos passos"],
     ["scripts",     "Scripts"],
     ["team",        "Equipe"],
-    ["fields",      "Campos custom"],
+    ["fields",      "Campos"],
     ["integrations","Integrações"],
   ];
 
@@ -57,35 +56,21 @@ function SettingsScreen({ saasId }) {
   );
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <div style={{ padding: "12px var(--pad-x)", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <span style={{ fontSize: 13.5, fontWeight: 600 }}>{s?.name}</span>
-        </div>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, maxWidth: 1080, width: "100%" }}>
+      <PageHead title="Configurações" sub={`funil, campos e integrações · ${s?.name}`}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <RowActions onEdit={() => openForm("products", s)} onDelete={() => openDelete("products", s)} />
-          <button onClick={() => openForm("products")} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}>
-            <span style={{ fontSize: 11 }}>+ novo SaaS</span>
-          </button>
+          <button onClick={() => window.location.reload()} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>descartar</button>
+          <button onClick={() => document.querySelectorAll("[data-settings-save]").forEach((button) => button.click())} style={{ height: 32, padding: "0 15px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600 }}>salvar alterações</button>
         </div>
-      </div>
+      </PageHead>
 
-      <div style={{ flex: 1, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "200px 1fr", gridTemplateRows: isMobile ? "auto minmax(0, 1fr)" : undefined, minHeight: 0 }}>
-        <nav style={isMobile
-          ? { display: "flex", gap: 4, overflowX: "auto", borderBottom: "1px solid var(--line-1)", padding: "8px 12px", background: "var(--bg-1)" }
-          : { borderRight: "1px solid var(--line-1)", padding: 12, background: "var(--bg-1)" }}>
+      <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+        <nav style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
           {TABS.map(([k,l]) => (
-            <button key={k} onClick={() => setTab(k)} style={{
-              display: "block", width: isMobile ? "auto" : "100%", padding: "8px 10px",
-              borderRadius: "var(--r-2)", marginBottom: isMobile ? 0 : 2,
-              whiteSpace: "nowrap", flexShrink: 0,
-              background: tab === k ? "var(--bg-3)" : "transparent",
-              color: tab === k ? "var(--fg-1)" : "var(--fg-3)",
-              fontSize: 12, textAlign: "left",
-            }}>{l}</button>
+            <FilterTab key={k} active={tab === k} onClick={() => setTab(k)}>{l}</FilterTab>
           ))}
         </nav>
-        <div style={{ overflow: "auto", padding: "20px var(--pad-x)" }}>
+        <div>
           {/* key={s.id}: troca de workspace REMONTA o editor — sem isso o rascunho
               seedado do produto anterior sobrevive e o Salvar gravaria a config
               de um produto por cima do outro. */}
@@ -122,11 +107,10 @@ function SaveBar({ onSave, disabled, hint, busyLabel = "Salvando…", label = "S
     }
   }
   return (
-    <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
-      <PrimaryButton onClick={go} disabled={busy || disabled}>{busy ? busyLabel : done ? "Salvo ✓" : label}</PrimaryButton>
-      {hint && <span className="mono dim" style={{ fontSize: 11 }}>{hint}</span>}
-      {error && <span className="mono" style={{ fontSize: 11, color: "var(--neg)" }}>{error}</span>}
-    </div>
+    <>
+      <button data-settings-save onClick={go} disabled={busy || disabled} aria-label={label} style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clipPath: "inset(50%)" }}>{busy ? busyLabel : done ? "Salvo ✓" : label}</button>
+      {error && <span style={{ display: "block", marginTop: 10, fontSize: 12, color: "var(--neg)" }}>{error}</span>}
+    </>
   );
 }
 
@@ -138,7 +122,6 @@ function FunnelSettings({ s }) {
   const { refresh } = useData();
   const [rows, setRows] = useStS(() => (s.funnel || []).map(f => ({ ...f, _orig: f.stage })));
   const [migrated, setMigrated] = useStS(null);
-  const [scriptOpen, setScriptOpen] = useStS(null); // índice da linha com o editor de roteiro aberto
 
   const update = (i, patch) => setRows(r => r.map((x, j) => j === i ? { ...x, ...patch } : x));
   const remove = (i) => setRows(r => r.filter((_, j) => j !== i));
@@ -186,96 +169,50 @@ function FunnelSettings({ s }) {
   }
 
   const wonCount = rows.filter(r => r.kind === "ganho").length;
-  const cadInput = (i, f, k, ph, title) => (
+  const cadInput = (i, f, k, ph, title, width = 36) => (
     <input type="number" min="0" value={cad(f, k)} placeholder={ph} title={title}
       onChange={(e) => setCad(i, k, e.target.value)}
-      style={{ ...inputStyle, width: 42, padding: "0 4px", textAlign: "right" }} />
+      style={{ ...inputStyle, width, height: 32, padding: "0 5px", textAlign: "right" }} />
   );
 
   return (
-    <div>
-      <SettingHeader title="Estágios do funil" sub="renomear migra os cards junto · TIPO define o comportamento (fase SDR/Closer, ganho/perda, gates) · cadência alimenta os dots e o GPS" />
-      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
-        <div className="mono" style={{ display: "grid", gridTemplateColumns: "52px 1fr 128px 62px 76px 100px 176px 56px", gap: 8, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
-          <span></span><span>Estágio</span><span>Tipo</span><span>Cor</span><span>Conv.</span><span>Auto-regra</span><span title="toques máx. · re-toque (dias) · SLA 1º toque (horas)">Cadência (n · d · h)</span><span></span>
-        </div>
-        {rows.map((f, i) => (
-          <React.Fragment key={i}>
-          <div style={{ display: "grid", gridTemplateColumns: "52px 1fr 128px 62px 76px 100px 176px 56px", gap: 8, padding: "8px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center" }}>
-            <span style={{ display: "flex" }}>
-              <button type="button" onClick={() => move(i, -1)} disabled={i === 0} style={arrowStyle(i === 0)}>↑</button>
-              <button type="button" onClick={() => move(i, 1)} disabled={i === rows.length - 1} style={arrowStyle(i === rows.length - 1)}>↓</button>
-            </span>
-            <input value={f.stage || ""} placeholder="Nome do estágio" onChange={(e) => update(i, { stage: e.target.value })} style={inputStyle} />
-            <select value={KIND_IDS.includes(f.kind) ? f.kind : guessKind(f.stage, i)}
-              onChange={(e) => update(i, { kind: e.target.value })}
-              title="Semântica do estágio — o app decide comportamento por aqui, não pelo nome"
-              style={{ ...inputStyle, padding: "0 4px" }}>
-              {KIND_IDS.map((k) => <option key={k} value={k}>{KINDS[k].label}</option>)}
-            </select>
-            <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <input type="color" value={f.color || "#6366f1"} onChange={(e) => update(i, { color: e.target.value })} style={{ width: 26, height: 22, padding: 0, border: "1px solid var(--line-2)", borderRadius: 4, background: "transparent", opacity: f.color ? 1 : 0.35 }} title={f.color || "cor do produto"} />
-              {f.color && <button type="button" className="mono dim" onClick={() => update(i, { color: "" })} title="usar a cor do produto" style={{ fontSize: 11 }}>✕</button>}
-            </span>
-            {i === 0 ? (
-              <span className="mono dim" style={{ fontSize: 10, textAlign: "center" }}>entrada</span>
-            ) : (
-              <div style={{ position: "relative" }}>
-                <input type="number" step="any" value={f.conv === "" || f.conv == null ? "" : Math.round(Number(f.conv) * 100)} placeholder="conv"
-                  onChange={(e) => update(i, { conv: e.target.value === "" ? "" : Number(e.target.value) / 100 })}
-                  style={{ ...inputStyle, paddingRight: 18, textAlign: "right" }} />
-                <span className="mono dim" style={{ position: "absolute", right: 6, top: 6, fontSize: 11 }}>%</span>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
+        <div style={{ padding: "24px 28px 0" }}><SettingHeader number="01" title="Etapas do funil" sub="a ordem define a régua de progresso" /></div>
+        <div style={{ padding: "16px 28px 20px" }}>
+          <div className="tbl-x">
+            <div style={{ minWidth: 690 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "32px 1.4fr 1fr 1.2fr 40px", gap: 12, padding: "8px 0", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderBottom: "1px solid var(--line-1)" }}>
+                <span /><span>Etapa</span><span>Tipo</span><span>Cadência</span><span />
               </div>
-            )}
-            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <span className="mono dim" style={{ fontSize: 10 }}>parado →</span>
-              <input type="number" min="0" value={f.staleDays ?? ""} placeholder="—"
-                onChange={(e) => update(i, { staleDays: e.target.value === "" ? "" : Number(e.target.value) })}
-                style={{ ...inputStyle, width: 44, textAlign: "right" }} />
-              <span className="mono dim" style={{ fontSize: 10 }}>d</span>
+              {rows.map((f, i) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "32px 1.4fr 1fr 1.2fr 40px", gap: 12, padding: "10px 0", alignItems: "center", borderBottom: i < rows.length - 1 ? "1px solid var(--line-faint)" : "none" }}>
+                  <span style={{ display: "flex", flexDirection: "column", alignItems: "center", lineHeight: 1 }} title="mover etapa">
+                    <button type="button" onClick={() => move(i, -1)} disabled={i === 0} style={arrowStyle(i === 0)}>↑</button>
+                    <button type="button" onClick={() => move(i, 1)} disabled={i === rows.length - 1} style={arrowStyle(i === rows.length - 1)}>↓</button>
+                  </span>
+                  <input value={f.stage || ""} placeholder="Nome da etapa" onChange={(e) => update(i, { stage: e.target.value })} style={{ ...inputStyle, height: 34, padding: "0 2px", borderColor: "transparent", background: "transparent", fontSize: 13.5, fontWeight: 600 }} />
+                  <select value={KIND_IDS.includes(f.kind) ? f.kind : guessKind(f.stage, i)} onChange={(e) => update(i, { kind: e.target.value })} style={{ ...inputStyle, height: 32, fontSize: 12, background: "var(--bg-2)", borderColor: "transparent" }}>
+                    {KIND_IDS.map((k) => <option key={k} value={k}>{KINDS[k].label}</option>)}
+                  </select>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, color: "var(--fg-3)", whiteSpace: "nowrap" }}>
+                    {i === 0 ? <><span>1º toque em até</span>{cadInput(i, f, "firstTouchHours", "—", "SLA do 1º contato em horas")}<span>h</span></> : <>{cadInput(i, f, "maxAttempts", "—", "toques máximos")}<span>tentativas</span>{cad(f, "retryDays") !== "" && <><span>· retry</span>{cadInput(i, f, "retryDays", "—", "retry em dias")}<span>d</span></>}</>}
+                  </div>
+                  <button type="button" onClick={() => remove(i)} style={{ color: "var(--fg-4)", fontSize: 13 }}>✕</button>
+                </div>
+              ))}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              {cadInput(i, f, "maxAttempts", "n", "toques máximos nesta etapa (dots do card)")}
-              {cadInput(i, f, "retryDays", "d", "toque registrado → próximo em N dias (GPS)")}
-              {cadInput(i, f, "firstTouchHours", "h", "SLA do 1º contato em horas (estágio de entrada)")}
-            </div>
-            <span style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-              <button type="button" onClick={() => setScriptOpen(scriptOpen === i ? null : i)}
-                title={String(f.script || "").trim() ? "Roteiro personalizado desta etapa (tela Meu dia)" : "Escrever o roteiro desta etapa (tela Meu dia); vazio usa o padrão do tipo"}
-                className="mono" style={{ fontSize: 12, color: String(f.script || "").trim() ? "var(--accent)" : "var(--fg-4)" }}>✎</button>
-              <button type="button" onClick={() => remove(i)} className="mono dim" style={{ fontSize: 13 }}>✕</button>
-            </span>
           </div>
-          {scriptOpen === i && (
-            <div style={{ padding: "10px 14px 12px 66px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
-              <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>
-                Roteiro da etapa · aparece no botão Roteiro da tela Meu dia
-              </div>
-              <textarea value={f.script || ""} rows={6}
-                placeholder={"Bloco separado por linha em branco = um passo.\nLinha terminando em dois-pontos vira o título do passo.\n\nAbertura:\nOlá {{nome}}, tudo bom? Vi que você trabalha com {{nicho}}..."}
-                onChange={(e) => update(i, { script: e.target.value })}
-                style={{ ...inputStyle, height: "auto", width: "100%", padding: 8, fontSize: 12.5, lineHeight: 1.5, fontFamily: "inherit", resize: "vertical" }} />
-              <div className="mono dim" style={{ fontSize: 10.5, marginTop: 5 }}>
-                {"tokens: {{nome}} {{nome_completo}} {{empresa}} {{nicho}} {{contas}} {{anuncios}} {{produto}} {{call}} {{link_call}} · vazio volta pro roteiro padrão do tipo"}
-              </div>
-            </div>
-          )}
-          </React.Fragment>
-        ))}
-      </div>
-      <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10 }}>
-        <button type="button" onClick={() => setRows(r => [...r, { stage: "", kind: "outro", conv: 1, _orig: null }])} style={{ ...chromeBtnStyleSmall }}>
-          <span style={{ fontSize: 11 }}>+ adicionar estágio</span>
-        </button>
-        {wonCount !== 1 && (
-          <span className="mono" style={{ fontSize: 11, color: "var(--warn)" }}>
-            {wonCount === 0 ? "nenhum estágio com tipo “ganho” — leads nunca viram cliente" : "mais de um estágio “ganho” — o 1º vale como fechamento"}
-          </span>
-        )}
-      </div>
-      <SaveBar onSave={save} hint={migrated != null ? `salvo · ${migrated} card(s) migrados de estágio` : "remover um estágio NÃO move os cards dele (caem no 1º estágio na visualização)"} />
+          <div style={{ paddingTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
+            <button type="button" onClick={() => setRows((current) => [...current, { stage: "", kind: "outro", conv: 1, _orig: null }])} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", fontSize: 12.5, fontWeight: 600 }}>+ etapa</button>
+            {wonCount !== 1 && <span style={{ fontSize: 12, color: "var(--warn)" }}>{wonCount === 0 ? "adicione um estágio do tipo ganho" : "mantenha apenas um estágio do tipo ganho"}</span>}
+          </div>
+          <SaveBar onSave={save} hint={migrated != null ? `salvo · ${migrated} card(s) migrados` : ""} />
+        </div>
+      </section>
 
       <LossReasonsSettings s={s} />
+      <AutomaticConversionSettings />
     </div>
   );
 }
@@ -296,24 +233,45 @@ function LossReasonsSettings({ s }) {
   }
 
   return (
-    <div style={{ marginTop: 26 }}>
-      <SettingHeader title="Motivos de perda" sub="opções do modal ao mover pra Perdido/Desqualificado · alimentam o relatório de perdas na Análise do pipeline" />
-      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "6px 14px" }}>
+    <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
+      <div style={{ padding: "24px 28px 0" }}><SettingHeader number="02" title="Motivos de perda" sub="aparecem ao marcar Perdido/Desqualificado" /></div>
+      <div style={{ padding: "16px 28px 24px", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         {rows.map((r, i) => (
-          <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 0", borderBottom: i < rows.length - 1 ? "1px solid var(--line-1)" : "none" }}>
-            <span className="mono dim" style={{ fontSize: 10, width: 120, overflow: "hidden", textOverflow: "ellipsis" }}>{r.id || "novo"}</span>
-            <input value={r.label || ""} placeholder="Rótulo do motivo" onChange={(e) => setRows((rs) => rs.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} style={inputStyle} />
-            <button type="button" onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))} className="mono dim" style={{ fontSize: 13 }}>✕</button>
+          <span key={i} style={{ display: "inline-flex", alignItems: "center", height: 34, border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: "0 8px 0 12px" }}>
+            <input value={r.label || ""} placeholder="Novo motivo" onChange={(e) => setRows((current) => current.map((item, index) => index === i ? { ...item, label: e.target.value } : item))} style={{ width: Math.max(64, String(r.label || "Novo motivo").length * 7.5), border: 0, background: "transparent", fontSize: 12.5, fontWeight: 600, color: "var(--fg-2)" }} />
+            <button type="button" onClick={() => setRows((current) => current.filter((_, index) => index !== i))} style={{ color: "var(--fg-4)", fontSize: 11, padding: "0 2px" }}>✕</button>
+          </span>
+        ))}
+        <button type="button" onClick={() => setRows((current) => [...current, { id: "", label: "" }])} style={{ height: 32, padding: "0 6px", color: "var(--accent)", fontSize: 12.5, fontWeight: 600 }}>+ motivo</button>
+        <SaveBar onSave={save} />
+      </div>
+    </section>
+  );
+}
+
+function AutomaticConversionSettings() {
+  const Toggle = ({ on }) => (
+    <span style={{ width: 38, height: 22, borderRadius: 999, background: on ? "var(--accent)" : "var(--bg-3)", position: "relative", flexShrink: 0 }}>
+      <span style={{ position: "absolute", top: 3, left: on ? 19 : 3, width: 16, height: 16, borderRadius: 999, background: "white", boxShadow: "var(--shadow-1)" }} />
+    </span>
+  );
+  const items = [
+    [true, "Criar cliente ao marcar Ganho", "o lead vira cliente com “cliente desde” carimbado e a régua de marcos ativa"],
+    [true, "Criar assinatura junto", "usa o valor do lead como preço do ciclo · o MRR do produto deriva daqui"],
+    [false, "Exigir API key nas escritas", "leitura fica aberta pra UI · defina COCKPIT_API_KEY no servidor"],
+  ];
+  return (
+    <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
+      <div style={{ padding: "24px 28px 0" }}><SettingHeader number="03" title="Conversão automática" sub="quando o lead vira cliente" /></div>
+      <div style={{ padding: "16px 28px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+        {items.map(([on, title, description]) => (
+          <div key={title} style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+            <Toggle on={on} />
+            <div><div style={{ fontSize: 14, fontWeight: 600 }}>{title}</div><div style={{ fontSize: 13, color: "var(--fg-3)", marginTop: 2 }}>{description}</div></div>
           </div>
         ))}
       </div>
-      <div style={{ marginTop: 10 }}>
-        <button type="button" onClick={() => setRows((rs) => [...rs, { id: "", label: "" }])} style={{ ...chromeBtnStyleSmall }}>
-          <span style={{ fontSize: 11 }}>+ adicionar motivo</span>
-        </button>
-      </div>
-      <SaveBar onSave={save} hint="“não informado” é automático quando alguém move sem escolher motivo (API/MCP)" />
-    </div>
+    </section>
   );
 }
 
@@ -511,7 +469,7 @@ function TeamSettings() {
           <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1fr repeat(4, 100px) 140px 120px 44px", gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 500 }}>
               <Avatar id={u.id} name={u.name} size={22} /> {u.name || u.id}
-              <span className="mono dim" style={{ fontSize: 10 }}>{u.id}</span>
+              <span className="mono dim code" style={{ fontSize: 10 }}>{u.id}</span>
             </span>
             {ROLE_OPTS.map(([k]) => (
               <span key={k} style={{ textAlign: "center" }}>
@@ -1080,7 +1038,7 @@ function ScriptsSettings({ s }) {
                         {v.passos.map((p, k) => (
                           <div key={k} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: 8 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
-                              <span className="mono dim" style={{ fontSize: 11, width: 16 }}>{k + 1}.</span>
+                              <span className="mono dim tnum" style={{ fontSize: 11, width: 16 }}>{k + 1}.</span>
                               <input value={p.t} placeholder="Título do passo" onChange={(e) => setPasso(item.key, k, "t", e.target.value)} style={{ ...inputStyle, flex: 1, fontWeight: 600 }} />
                               <button type="button" onClick={() => movePasso(item.key, k, -1)} disabled={k === 0} className="mono" style={{ fontSize: 12, color: "var(--fg-4)", opacity: k === 0 ? 0.3 : 1 }}>↑</button>
                               <button type="button" onClick={() => movePasso(item.key, k, 1)} disabled={k === v.passos.length - 1} className="mono" style={{ fontSize: 12, color: "var(--fg-4)", opacity: k === v.passos.length - 1 ? 0.3 : 1 }}>↓</button>
@@ -1134,11 +1092,12 @@ function ScriptsSettings({ s }) {
   );
 }
 
-function SettingHeader({ title, sub }) {
+function SettingHeader({ number, title, sub }) {
   return (
-    <div style={{ marginBottom: 14 }}>
-      <h2 style={{ margin: 0, fontSize: 16, fontWeight: 500 }}>{title}</h2>
-      <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>{sub}</div>
+    <div style={{ marginBottom: number ? 0 : 14, display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+      {number && <span className="mono" style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)" }}>{number}</span>}
+      <h2 style={{ margin: 0, fontSize: number ? 15.5 : 16, fontWeight: 600, letterSpacing: "-.01em" }}>{title}</h2>
+      {sub && <div className="dim" style={{ fontSize: number ? 12.5 : 12, color: "var(--fg-4)" }}>{sub}</div>}
     </div>
   );
 }

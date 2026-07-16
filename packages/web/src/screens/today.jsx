@@ -1,7 +1,7 @@
 import React from "react";
-import { Avatar, EmptyState } from "../atoms.jsx";
+import { EmptyState } from "../atoms.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
-import { PageHead, Pill } from "../components/viz.jsx";
+import { Pill } from "../components/viz.jsx";
 import { ActivityComposer } from "../components/timeline.jsx";
 import { waLink, leadTier, leadScoreLabel, cockpitProposalUrl } from "../lib/ui.js";
 import { api } from "../lib/api.js";
@@ -49,19 +49,6 @@ const GROUP_ORDER = ["confirm", "appt", "novo", "noshow", "qual", "closer", "nut
 // fila de quem tem o papel da fase: SDR não vê follow-up/integração soltos
 // (exclusivos de closer/integrador) e closer não herda a fila de novos.
 const PHASE_ROLE = { sdr: "sdr", closer: "closer", entrega: "integrator" };
-
-// Blocos por dia. "Hoje" SEMPRE aparece (vazio ganha a mensagem de descanso);
-// os demais só quando têm itens.
-const DAY_BLOCKS = [
-  ["hoje", "Hoje", "accent"],
-  ["amanha", "Amanhã", "warn"],
-  ["proximos", "Próximos dias", "mut"],
-  ["semdata", "Sem data · agendar ou descartar", "mut"],
-];
-
-// Grade compartilhada entre cabeçalho e linhas — é o que mantém as colunas
-// alinhadas (dentro de .tbl-x, com rolagem horizontal no mobile).
-const GRID = { display: "grid", gridTemplateColumns: "30px 100px 140px 110px minmax(240px, 1fr) max-content", gap: 10, alignItems: "center" };
 
 // Monta a fila: um item por lead trabalhável, no bloco do dia certo e
 // classificado no grupo de prioridade (que define a ordem dentro do bloco).
@@ -310,11 +297,14 @@ function TodayScreen({ onOpenLead }) {
   const advanceScript = () => setScriptItem(nextAfter(scriptItem));
 
   const users = allUsers().filter((u) => !u.saas || u.saas === saasCfg?.id);
-  const stageMeta = Object.fromEntries((saasCfg?.funnel || []).map((f) => [f.stage, f]));
-  const dateLabel = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
   const firstPending = q.hoje.find((i) => !i.done);
-  const headCell = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" };
-  const blockTone = { accent: "var(--accent)", warn: "var(--warn)", mut: "var(--fg-3)" };
+  const pendingToday = q.hoje.filter((i) => !i.done);
+  const doneTodayRows = q.hoje.filter((i) => i.done);
+  const futureRows = [...q.proximos, ...q.semdata];
+  const queueCounts = Object.fromEntries(users.map((u) => [u.id, buildQueue(leads, saasCfg, u.id).hoje.filter((i) => !i.done).length]));
+  const contactedGoal = Math.max(q.doneToday + pendingToday.length, q.doneToday, 1);
+  const callsToday = q.hoje.filter((i) => i.kind === "call" && !i.confirm);
+  const callsDone = callsToday.filter((i) => i.done).length;
 
   // Aviso de social selling: quando o SDR zera a fila de HOJE (nada pendente),
   // manda ir pro Instagram chamar os novos seguidores. Só na fila de um SDR.
@@ -328,33 +318,29 @@ function TodayScreen({ onOpenLead }) {
   }, [daySocialDone, saasCfg?.id]);
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead
-        title="Minhas atividades"
-        sub={`${dateLabel} · ${q.hoje.length} pra hoje · ${q.amanha.length} pra amanhã`}>
-        {q.doneToday > 0 && (
-          <Pill tone={q.hoje.every((i) => i.done) ? "pos" : "mut"} title="leads tocados hoje nesta fila">
-            {q.doneToday} {q.doneToday === 1 ? "feita hoje" : "feitas hoje"}
-          </Pill>
-        )}
-        {firstPending && (
-          <button onClick={() => setScriptItem(firstPending)}
-            title="Abrir o roteiro do 1º item pendente de hoje e seguir a fila em sequência"
-            style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600 }}>
-            ▶ começar a fila
-          </button>
-        )}
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>fila de</span>
-          <select value={person} onChange={(e) => setPerson(e.target.value)}
-            style={{ height: 26, padding: "0 8px", borderRadius: "var(--r-2)", fontSize: 12, background: "var(--bg-2)", border: "1px solid var(--line-1)", color: "var(--fg-1)" }}>
-            <option value="">time todo</option>
-            {users.map((u) => <option key={u.id} value={u.id}>{u.id === me ? `${u.name || u.id} (eu)` : (u.name || u.id)}</option>)}
-          </select>
-        </span>
-      </PageHead>
+    <div style={{ flex: 1, overflow: "auto" }}>
+      <div style={{ padding: "28px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 260 }}>
+            <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em" }}>Minhas atividades</h1>
+            <div style={{ marginTop: 4, fontSize: 14.5, color: "var(--fg-3)" }}>hoje em ordem de execução · amanhã e próximos dias à vista</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 6, flexWrap: "wrap" }}>
+            {users.map((u) => {
+              const active = person === u.id;
+              return (
+                <button key={u.id} onClick={() => setPerson(u.id)} style={{
+                  height: 34, display: "inline-flex", alignItems: "center", gap: 7, padding: "0 13px", borderRadius: 999,
+                  border: `1px solid ${active ? "var(--line-2)" : "var(--line-1)"}`, background: active ? "var(--bg-1)" : "transparent",
+                  color: active ? "var(--fg-1)" : "var(--fg-3)", boxShadow: active ? "var(--shadow-1)" : "none", fontSize: 13, fontWeight: active ? 600 : 500,
+                }}>
+                  {u.name || u.id}<span className="tnum" style={{ fontSize: 12, color: "var(--fg-4)" }}>{queueCounts[u.id] || 0}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-      <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)" }}>
         {daySocialDone && <SocialSellingNotice ig={igStats} />}
         {total === 0 ? (
           <EmptyState
@@ -362,45 +348,36 @@ function TodayScreen({ onOpenLead }) {
             hint={person ? "Nenhuma ação pendente nessa fila. Confira o pipeline ou puxe leads novos." : "Nenhuma ação pendente."}
           />
         ) : (
-          <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
-            <div className="mono" style={{ ...GRID, padding: "9px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
-              <span style={headCell}>#</span>
-              <span style={headCell}>Quando</span>
-              <span style={headCell}>Etapa</span>
-              <span style={headCell}>Ação</span>
-              <span style={headCell}>Lead · qualificação</span>
-              <span />
-            </div>
-            {DAY_BLOCKS.map(([key, label, tone]) => {
-              const rows = q[key];
-              if (key !== "hoje" && rows.length === 0) return null;
-              return (
-                <React.Fragment key={key}>
-                  <div className="mono" style={{
-                    padding: "8px 14px", fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase",
-                    color: blockTone[tone], background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)",
-                  }}>
-                    {label} · {rows.length}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 16, alignItems: "start" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+              <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "20px 24px 14px" }}>
+                  <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em" }}>Hoje</h3>
+                  <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{pendingToday.length} pendentes · em ordem de execução</span>
+                </div>
+                {pendingToday.length === 0 && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", fontSize: 13, color: "var(--fg-3)" }}>Fila de hoje concluída.</div>}
+                {pendingToday.map((item, index) => (
+                  <QueueRow key={item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id} item={item} block="hoje" featured={index === 0}
+                    onScript={() => setScriptItem(item)} onClaim={() => claim(item)} />
+                ))}
+              </section>
+
+              {doneTodayRows.length > 0 && (
+                <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "20px 24px 14px" }}>
+                    <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em" }}>Feitas hoje</h3>
+                    <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{doneTodayRows.length} concluídas</span>
                   </div>
-                  {rows.length === 0 && (
-                    <div className="mono dim" style={{ padding: "14px", fontSize: 12, borderBottom: "1px solid var(--line-1)" }}>
-                      {q.amanha.length > 0
-                        ? "não tem atividade pra hoje · a fila de amanhã já está montada logo abaixo"
-                        : "não tem atividade pra hoje"}
-                    </div>
-                  )}
-                  {rows.map((item, i) => (
-                    // Chave ÚNICA: uma call de confirmação vira DUAS tarefas (1h/10min)
-                    // do MESMO lead — sem o sufixo da janela as duas teriam key igual
-                    // (item.l.id) e o React duplicava/embaralhava as linhas.
-                    <QueueRow key={item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id} item={item} seq={i + 1} block={key} saasCfg={saasCfg} stageMeta={stageMeta}
-                      onScript={() => setScriptItem(item)}
-                      onClaim={() => claim(item)}
-                    />
-                  ))}
-                </React.Fragment>
-              );
-            })}
+                  {doneTodayRows.map((item) => <DoneActivityRow key={item.l.id} item={item} onClick={() => setScriptItem(item)} />)}
+                </section>
+              )}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, alignItems: "start" }}>
+              <CompactSchedule title="Amanhã" rows={q.amanha} onOpen={setScriptItem} />
+              <DayScore contacted={q.doneToday} contactedGoal={contactedGoal} calls={callsDone} callsGoal={Math.max(callsToday.length, 1)} />
+              {futureRows.length > 0 && <CompactSchedule title="Próximos dias" rows={futureRows} onOpen={setScriptItem} />}
+            </div>
           </div>
         )}
       </div>
@@ -428,12 +405,9 @@ function TodayScreen({ onOpenLead }) {
 // Uma linha da fila: sequência, quando, etapa (coluna do funil), ação a fazer,
 // lead com a qualificação compilada e as ações. Clique no corpo abre o ROTEIRO
 // (o painel de execução), não o card de status; o drawer fica no "abrir lead".
-function QueueRow({ item, seq, block, saasCfg, stageMeta, onScript, onClaim }) {
-  const { l, kind, due, done, stage, who, phase, group } = item;
-  const tier = leadTier(l);
+function QueueRow({ item, block, featured, onScript, onClaim }) {
+  const { l, kind, due, stage, who, group } = item;
   const now = Date.now();
-  // Hora REAL da call (as tarefas de confirmação vencem antes dela).
-  const callHH = item.confirm && l.callAt ? new Date(l.callAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
 
   // Pill de horário. Hoje: atrasado (dias) · agora · HH:mm · novo (idade).
   // Amanhã: só a hora. Próximos dias: a data.
@@ -461,76 +435,104 @@ function QueueRow({ item, seq, block, saasCfg, stageMeta, onScript, onClaim }) {
     when = { text: ageH == null ? "novo" : ageH < 24 ? `há ${ageH}h` : `há ${Math.floor(ageH / 24)}d`, tone: "warn" };
   } else when = { text: "sem data", tone: "mut" };
 
-  // Qualificação compilada: nicho · contas · anúncios (o resumo da situação).
-  const chips = scriptChecklist(saasCfg, l).filter((c) => c.value).map((c) => c.value);
-  const cad = cadenceOf(saasCfg, stage);
-  const attempts = Number(cad.maxAttempts) ? `${Math.min(Number(l.stageAttempts) || 0, Number(cad.maxAttempts))}/${cad.maxAttempts}` : null;
   const unowned = !who; // assumir só quando o card não tem responsável
   const action = item.confirm
     ? (item.confirmWindow === "1h" ? "confirmar · 1h antes" : "confirmar · 10 min antes")
     : group === "noshow" ? "remarcar" : group === "nutri" ? "reativação" : (ACTION_LABELS[kind] || "contato");
-  const stageColor = stageMeta?.[stage]?.color || "var(--accent)";
+  const whatsapp = waLink(l.phone);
+  const meet = (kind === "call" || kind === "integracao") && l.callUrl;
+  const attemptNumber = Number(l.stageAttempts) || 0;
+  const actionDetail = l.nextActionNote || (item.confirm && l.callAt
+    ? `call às ${new Date(l.callAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+    : due?.type === "call" ? "call confirmada · Meet criado pela agenda"
+    : kind === "novo" ? `1º toque${l.source ? ` · ${l.source}` : ""}`
+    : action);
 
   return (
     <div onClick={onScript} title="Abrir o roteiro desta atividade" style={{
-      ...GRID,
-      padding: "9px 14px", borderBottom: "1px solid var(--line-1)", cursor: "pointer",
-      opacity: done ? 0.55 : 1, background: "transparent",
-    }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-      <span className="mono tnum" style={{
-        width: 26, height: 26, borderRadius: "var(--r-1)",
-        display: "inline-flex", alignItems: "center", justifyContent: "center",
-        background: done ? "var(--pos-soft)" : "var(--bg-inset)", border: "1px solid var(--line-1)",
-        color: done ? "var(--pos)" : "var(--fg-3)", fontSize: 11.5, fontWeight: 700,
-      }}>{done ? "✓" : seq}</span>
-
-      <span><Pill tone={when.tone}>{when.text}</Pill></span>
-
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-        <span style={{ width: 8, height: 8, borderRadius: 2, background: stageColor, flexShrink: 0 }} />
-        <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--fg-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stage}</span>
-      </span>
-
-      <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", textTransform: "uppercase", letterSpacing: "0.04em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        {action}
-      </span>
-
-      <span style={{ minWidth: 0 }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-          {tier.grade && (
-            <span className="tnum" title={`${tier.label} (contas + anúncios)`} style={{
-              width: 18, height: 18, borderRadius: 5, flexShrink: 0,
-              display: "inline-flex", alignItems: "center", justifyContent: "center",
-              background: tier.tone, color: tier.badgeFg, fontFamily: "var(--display)", fontSize: 11, fontWeight: 700,
-            }}>{tier.grade}</span>
-          )}
-          <span style={{ fontSize: 13.5, fontWeight: 600, textDecoration: done ? "line-through" : "none", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</span>
-          {l.company && <span className="dim" style={{ fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.company}</span>}
-        </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3, flexWrap: "wrap" }}>
-          {callHH && <Pill tone="pos" title="horário real da call — a tarefa vence antes">call {callHH}</Pill>}
-          {chips.slice(0, 3).map((c, i) => <Pill key={i} tone="mut">{c}</Pill>)}
-          {attempts && <Pill tone="mut" title="toques feitos nesta etapa">{attempts} toques</Pill>}
-          {due?.type === "toque" && l.nextActionNote && <span className="dim" style={{ fontSize: 11 }}>{l.nextActionNote}</span>}
-        </span>
-      </span>
-
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>
-        {who && <span title={displayName(who)}><Avatar id={who} name={displayName(who)} size={20} /></span>}
-        {unowned && (
-          <button onClick={onClaim} title="Assumir esse card (você vira o responsável)"
-            style={{ height: 24, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px dashed var(--line-2)", background: "var(--bg-2)", color: "var(--fg-3)", fontSize: 11 }}>
-            assumir
-          </button>
-        )}
-        <button onClick={onScript} title="Começar essa atividade: roteiro, dados e pra onde vai o card"
-          style={{ height: 24, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 11.5, fontWeight: 600 }}>
-          Começar
-        </button>
-      </span>
+      display: "flex", alignItems: "center", gap: 14, padding: featured ? "16px 24px" : "14px 24px",
+      borderTop: "1px solid var(--line-faint)", background: featured ? "var(--accent-soft)" : "transparent", cursor: "pointer", flexWrap: "wrap",
+    }}>
+      <span className="mono tnum" style={{ fontSize: 12.5, color: when.tone === "neg" ? "var(--neg)" : when.tone === "warn" ? "var(--warn)" : when.tone === "pos" ? "var(--pos)" : "var(--fg-4)", width: 44, flexShrink: 0 }}>{when.text}</span>
+      <div style={{ flex: 1, minWidth: 240 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>{l.name}</span>
+          {l.company && <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{l.company}</span>}
+          <span style={{ minHeight: 20, display: "inline-flex", alignItems: "center", padding: "0 8px", borderRadius: "var(--r-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 500 }}>
+            {stage}{attemptNumber > 0 ? ` · ${attemptNumber}ª tentativa` : ""}
+          </span>
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 3 }}>{actionDetail}</div>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+        {unowned && <button onClick={onClaim} style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px dashed var(--line-2)", color: "var(--fg-3)", fontSize: 12 }}>assumir</button>}
+        {meet ? (
+          <a href={meet} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", color: "var(--fg-2)", fontSize: 12.5, textDecoration: "none" }}>Abrir Meet</a>
+        ) : whatsapp ? (
+          <a href={whatsapp} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: `1px solid ${featured ? "var(--btn-bg)" : "var(--line-2)"}`, background: featured ? "var(--btn-bg)" : "var(--bg-1)", color: featured ? "var(--btn-fg)" : "var(--fg-2)", fontSize: 12.5, fontWeight: featured ? 600 : 500, textDecoration: "none" }}>WhatsApp</a>
+        ) : null}
+        {(featured || (!meet && !whatsapp)) && <button onClick={onScript} style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5 }}>Roteiro</button>}
+      </div>
     </div>
+  );
+}
+
+function DoneActivityRow({ item, onClick }) {
+  const { l } = item;
+  const time = l.lastActivityAt ? new Date(l.lastActivityAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
+  return (
+    <button onClick={onClick} style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "12px 24px", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
+      <span style={{ color: "var(--pos)", fontSize: 13, width: 44, flexShrink: 0 }}>✓</span>
+      <span style={{ fontSize: 13.5, color: "var(--fg-3)", textDecoration: "line-through", flex: 1 }}>{l.name}{l.company ? ` · ${l.company}` : ""} — {ACTION_LABELS[item.kind] || "atividade concluída"}</span>
+      <span className="mono tnum" style={{ fontSize: 12, color: "var(--fg-4)" }}>{time}</span>
+    </button>
+  );
+}
+
+function CompactSchedule({ title, rows, onOpen }) {
+  const timeOf = (item) => {
+    if (!item.due) return "sem data";
+    return title === "Amanhã"
+      ? new Date(item.due.t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+      : new Date(item.due.t).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  };
+  return (
+    <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
+      <div style={{ padding: "20px 24px 12px" }}><h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em" }}>{title}</h3></div>
+      <div style={{ padding: "0 24px 8px" }}>
+        {rows.length === 0 && <div style={{ borderTop: "1px solid var(--line-faint)", padding: "12px 0 14px", fontSize: 12.5, color: "var(--fg-4)" }}>nenhuma atividade</div>}
+        {rows.slice(0, 5).map((item) => (
+          <button key={item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id} onClick={() => onOpen(item)} style={{ width: "100%", display: "flex", gap: 10, alignItems: "baseline", padding: "10px 0", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
+            <span className="mono tnum" style={{ fontSize: 12, color: "var(--fg-4)", flexShrink: 0 }}>{timeOf(item)}</span>
+            <span style={{ minWidth: 0 }}>
+              <span style={{ display: "block", fontSize: 13.5, fontWeight: 600 }}>{item.l.name}</span>
+              <span style={{ display: "block", fontSize: 12, color: "var(--fg-3)" }}>{ACTION_LABELS[item.kind] || "contato"}{item.l.company ? ` · ${item.l.company}` : ""}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DayScore({ contacted, contactedGoal, calls, callsGoal }) {
+  const progress = (label, value, goal) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <span style={{ fontSize: 13.5, color: "var(--fg-2)" }}>{label}</span>
+        <span className="tnum" style={{ fontSize: 14, fontWeight: 600 }}>{value} <span style={{ fontWeight: 400, fontSize: 12, color: "var(--fg-4)" }}>/ {goal}</span></span>
+      </div>
+      <div style={{ height: 5, borderRadius: 999, background: "var(--bg-2)", overflow: "hidden" }}><div style={{ height: "100%", width: `${Math.min(100, Math.round((value / Math.max(goal, 1)) * 100))}%`, background: "var(--accent)", borderRadius: 999 }} /></div>
+    </div>
+  );
+  return (
+    <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px 24px" }}>
+      <div style={{ fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--fg-4)" }}>Placar do dia</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
+        {progress("Contatados", contacted, contactedGoal)}
+        {progress("Calls agendadas", calls, callsGoal)}
+      </div>
+    </section>
   );
 }
 

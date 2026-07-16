@@ -1,8 +1,8 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { PageHead, Card, Pill } from "../components/viz.jsx";
-import { EmptyState, PrimaryButton, RowActions } from "../atoms.jsx";
+import { PageHead, Card, Pill, Segmented } from "../components/viz.jsx";
+import { EmptyState, PrimaryButton } from "../atoms.jsx";
 import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/milestones.js";
 import { ActivityList } from "../components/timeline.jsx";
 import { CallSummaryCard } from "./today.jsx";
@@ -26,14 +26,15 @@ const SUB_STATUS = {
 };
 
 function CustomersScreen({ initialTab = "base" }) {
-  const { SAAS, CUSTOMERS } = window.SEED;
-  const { version, openForm, openDelete, refresh } = useData();
-  const [product, setActiveSaas] = useActiveSaas();
+  const { CUSTOMERS, LEADS } = window.SEED;
+  const { version, openForm, refresh } = useData();
+  const [product] = useActiveSaas();
   const [tab, setTab] = useState(initialTab); // base | billing
   const [subs, setSubs] = useState([]);
   const [plans, setPlans] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [sel, setSel] = useState(null);
+  const [showAll, setShowAll] = useState(false);
   // Conclusão de marco: otimista no objeto do SEED (a tela lê dele) + PATCH.
   const [, force] = useState(0);
   function completeMilestone(customer, key) {
@@ -61,31 +62,28 @@ function CustomersScreen({ initialTab = "base" }) {
   const planLabel = (s) => plans.find((p) => p.id === s.plan)?.name || CYCLE_LABEL[s.cycle] || s.cycle || "plano";
   const totalMrr = customers.reduce((a, c) => a + (c.arr || 0), 0) / 12;
   const money = window.fmt.money;
+  const shownCustomers = showAll ? customers : customers.slice(0, 6);
+  const lastContact = (c) => {
+    const lead = (LEADS || []).find((l) => l.id === c.leadId);
+    const at = lead?.lastActivityAt || c.lastContactAt;
+    if (!at) return "—";
+    const days = Math.max(0, Math.floor((Date.now() - new Date(at).getTime()) / 86400000));
+    return days === 0 ? "hoje" : days === 1 ? "há 1 dia" : `há ${days} dias`;
+  };
 
   if (!product) return <EmptyState title="Nenhum produto cadastrado" hint="Crie o produto em Ajustes." />;
-
-  const TabBtn = ({ k, label }) => (
-    <button onClick={() => setTab(k)} style={{
-      padding: "5px 12px", borderRadius: 5,
-      background: tab === k ? "var(--bg-3)" : "transparent",
-      color: tab === k ? "var(--fg-1)" : "var(--fg-3)",
-      fontSize: 12.5, fontWeight: tab === k ? 600 : 500,
-      border: "1px solid " + (tab === k ? "var(--line-2)" : "transparent"),
-    }}>{label}</button>
-  );
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Clientes" sub={`${customers.length} ${customers.length === 1 ? "ativo" : "ativos"} · MRR ${money(totalMrr)}`}>
-        <TabBtn k="base" label="Clientes" />
-        <TabBtn k="billing" label="Assinaturas" />
+        <Segmented value={tab} onChange={setTab} options={[{ value: "base", label: "Clientes" }, { value: "billing", label: "Assinaturas" }]} />
         {tab === "base" && <PrimaryButton onClick={() => openForm("customers", { saas: product.id })}>+ novo cliente</PrimaryButton>}
       </PageHead>
 
       {tab === "billing" && <SubscriptionsScreen saasId={product.id} />}
 
       {tab === "base" && (
-      <div style={{ padding: "20px var(--pad-x) 40px" }}>
+      <div style={{ padding: "16px var(--pad-x) 56px" }}>
         {customers.length === 0 ? (
           <EmptyState
             title="Nenhum cliente ainda"
@@ -93,19 +91,19 @@ function CustomersScreen({ initialTab = "base" }) {
             action={<PrimaryButton onClick={() => openForm("customers", { saas: product.id })}>+ Cadastrar cliente</PrimaryButton>}
           />
         ) : (
-          <div className="resp-cols" style={{ "--cols": "minmax(0,1fr) 340px", gap: 12, alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 16, alignItems: "start" }}>
             <Card style={{ overflow: "hidden" }}>
               <div className="tbl-x">
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <table style={{ width: "100%", minWidth: 880, borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
-                    {["Cliente", "Plano", "MRR", "Tempo de casa", "Próximo marco", "Assinatura"].map((h, i) => (
-                      <th key={h} className="mono" style={{ textAlign: i === 2 ? "right" : "left", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
+                    {["Cliente", "Plano", "MRR", "Tempo de casa", "Último contato", "Próximo marco", "Assinatura"].map((h, i) => (
+                      <th key={h} style={{ textAlign: i === 2 ? "right" : "left", fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", padding: "12px 20px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {customers.map((c) => {
+                  {shownCustomers.map((c) => {
                     const sub = mainSub(c);
                     const st = sub ? SUB_STATUS[sub.status] || { label: sub.status, tone: "mut" } : null;
                     const isSel = selected && selected.id === c.id;
@@ -114,22 +112,23 @@ function CustomersScreen({ initialTab = "base" }) {
                       <tr key={c.id} onClick={() => setSel(c.id)} style={{ cursor: "pointer", background: isSel ? "var(--accent-soft)" : "transparent" }}
                         onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = "var(--hover)"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.background = isSel ? "var(--accent-soft)" : "transparent"; }}>
-                        <td style={{ padding: "11px 14px", fontSize: 13.5, fontWeight: 600, borderBottom: "1px solid var(--line-1)" }}>{c.name}</td>
-                        <td style={{ padding: "11px 14px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-1)" }}>
+                        <td style={{ padding: "14px 20px", fontSize: 13.5, fontWeight: 600, borderBottom: "1px solid var(--line-faint)" }}>{c.name}</td>
+                        <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
                           {sub ? planLabel(sub) : c.plan || "sem plano"}
                         </td>
-                        <td className="tnum mono" style={{ padding: "11px 14px", fontSize: 13, textAlign: "right", borderBottom: "1px solid var(--line-1)" }}>
+                        <td className="tnum" style={{ padding: "14px 20px", fontSize: 13, textAlign: "right", borderBottom: "1px solid var(--line-faint)" }}>
                           {money((c.arr || 0) / 12)}
                         </td>
-                        <td style={{ padding: "11px 14px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-1)" }}>
+                        <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
                           {tenureLabel(c) || <span style={{ color: "var(--fg-4)" }}>defina o início</span>}
                         </td>
-                        <td style={{ padding: "11px 14px", borderBottom: "1px solid var(--line-1)" }}>
+                        <td className="tnum" style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-3)", borderBottom: "1px solid var(--line-faint)" }}>{lastContact(c)}</td>
+                        <td style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)" }}>
                           {nm
                             ? <Pill tone={nm.status === "late" ? "neg" : nm.status === "soon" ? "warn" : "mut"}>{nm.label} · {dueLabel(nm.dueAt)}</Pill>
                             : c.startedAt ? <Pill tone="pos">régua completa</Pill> : <Pill tone="mut">sem início</Pill>}
                         </td>
-                        <td style={{ padding: "11px 14px", borderBottom: "1px solid var(--line-1)" }}>
+                        <td style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)" }}>
                           {st ? <Pill tone={st.tone}>{st.label}</Pill> : <Pill tone="mut">sem assinatura</Pill>}
                         </td>
                       </tr>
@@ -138,19 +137,23 @@ function CustomersScreen({ initialTab = "base" }) {
                 </tbody>
               </table>
               </div>
+              <div style={{ padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>mostrando {shownCustomers.length} de {customers.length}</span>
+                {customers.length > 6 && <button onClick={() => setShowAll((v) => !v)} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>{showAll ? "Mostrar 6" : "Ver todos"}</button>}
+              </div>
             </Card>
 
             {selected && (
               <Card style={{ position: "sticky", top: 16 }}>
-                <div style={{ padding: "14px 16px 12px", borderBottom: "1px solid var(--line-1)" }}>
+                <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid var(--line-faint)" }}>
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700 }}>{selected.name}</div>
-                      <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 2 }}>
+                      <div style={{ fontFamily: "var(--display)", fontSize: 17, fontWeight: 700 }}>{selected.name}</div>
+                      <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 3 }}>
                         {money((selected.arr || 0) / 12)}/mês · {money(selected.arr || 0)}/ano{selected.email ? ` · ${selected.email}` : ""}
                       </div>
                     </div>
-                    <RowActions onEdit={() => openForm("customers", selected)} onDelete={() => openDelete("customers", selected)} />
+                    <button onClick={() => openForm("customers", selected)} style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5 }}>Editar</button>
                   </div>
                   {(selected.flags || []).length > 0 && (
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 9 }}>
@@ -159,7 +162,7 @@ function CustomersScreen({ initialTab = "base" }) {
                   )}
                 </div>
 
-                <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--line-1)" }}>
+                <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--line-faint)" }}>
                   <div className="mono" style={{ fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>Linha do tempo</div>
                   {!selected.startedAt && (
                     <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
@@ -203,7 +206,7 @@ function CustomersScreen({ initialTab = "base" }) {
                   )}
                 </div>
 
-                <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--line-1)" }}>
+                <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--line-faint)" }}>
                   <div className="mono" style={{ fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>Assinaturas</div>
                   {subsOf(selected).length === 0 && (
                     <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Nenhuma assinatura. Crie na aba Assinaturas aqui em cima.</div>
@@ -222,7 +225,7 @@ function CustomersScreen({ initialTab = "base" }) {
                   })}
                 </div>
 
-                <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--line-1)" }}>
+                <div style={{ padding: "16px 24px 20px", borderBottom: "1px solid var(--line-faint)" }}>
                   <div className="mono" style={{ fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>Últimas faturas</div>
                   {invoices.filter((i) => i.customer === selected.id).slice(0, 4).map((i) => (
                     <div key={i.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", fontSize: 13 }}>

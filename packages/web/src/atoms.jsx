@@ -2,8 +2,6 @@ import React from "react";
 // Shared atomic components — pure visuals, no business logic.
 // Exposed on window for cross-script use.
 
-const { useMemo } = React;
-
 // ───────────────────────────────────────────────────── Health Arc (half-gauge)
 // Selected by the user — the "option 4" half-arc with score inside.
 function HealthArc({ value = 0, size = 72, strokeWidth = 7, label, sublabel, delta, hover }) {
@@ -138,21 +136,14 @@ function SeverityDot({ s }) {
 function Avatar({ id, name, size = 22 }) {
   const initials = (name || id || "?")
     .split(" ").map(s => s[0]).join("").slice(0, 2).toUpperCase();
-  // Deterministic hue from id
-  const hue = useMemo(() => {
-    let h = 0;
-    for (const c of (id || name || "?")) h = (h * 31 + c.charCodeAt(0)) % 360;
-    return h;
-  }, [id, name]);
   return (
     <span
-      className="mono tnum"
       style={{
         display: "inline-flex", alignItems: "center", justifyContent: "center",
         width: size, height: size, borderRadius: 999,
-        fontSize: size * 0.42, fontWeight: 500,
-        background: `oklch(0.30 0.04 ${hue})`,
-        color: `oklch(0.92 0.05 ${hue})`,
+        fontSize: size * 0.4, fontWeight: 600,
+        background: "var(--bg-2)",
+        color: "var(--fg-2)",
         border: "1px solid var(--line-1)",
       }}
       title={name || id}
@@ -183,7 +174,7 @@ function FunnelHeatmap({ stages, dense }) {
             opacity: s.heat,
           }} />
           <div style={{ position: "relative" }}>
-            <div className="mono" style={{ fontSize: 10, color: "var(--fg-3)" }}>{String(i+1).padStart(2,"0")} {s.k}</div>
+            <div className="mono tnum" style={{ fontSize: 10, color: "var(--fg-3)" }}>{String(i+1).padStart(2,"0")} {s.k}</div>
             <div className="mono tnum" style={{ fontSize: dense ? 14 : 18, marginTop: 2 }}>{s.count}</div>
             {!dense && s.note && <div className="mono dim" style={{ fontSize: 10, marginTop: 2 }}>{s.note}</div>}
           </div>
@@ -254,7 +245,7 @@ function EmptyState({ title, hint, action }) {
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 40, minHeight: 0 }}>
       <div style={{ textAlign: "center", maxWidth: 460 }}>
         <div style={{ fontSize: 15, fontWeight: 600, color: "var(--fg-1)" }}>{title}</div>
-        {hint && <div className="mono dim" style={{ fontSize: 12, marginTop: 8, lineHeight: 1.6 }}>{hint}</div>}
+        {hint && <div className="dim" style={{ fontSize: 12.5, marginTop: 8, lineHeight: 1.55 }}>{hint}</div>}
         {action && <div style={{ marginTop: 16, display: "flex", justifyContent: "center" }}>{action}</div>}
       </div>
     </div>
@@ -264,7 +255,7 @@ function EmptyState({ title, hint, action }) {
 // Inline edit/delete actions for list rows and cards. Stops click propagation so
 // it works inside clickable rows.
 function RowActions({ onEdit, onDelete }) {
-  const btn = { width: 24, height: 24, display: "inline-flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--line-1)", background: "var(--bg-2)", borderRadius: "var(--r-2)", fontSize: 12, color: "var(--fg-3)" };
+  const btn = { width: 30, height: 30, display: "inline-flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--line-2)", background: "var(--bg-1)", borderRadius: "var(--r-2)", fontSize: 12, color: "var(--fg-3)", boxShadow: "var(--shadow-1)" };
   const stop = (fn) => (e) => { e.stopPropagation(); fn && fn(); };
   return (
     <span style={{ display: "inline-flex", gap: 4 }}>
@@ -280,11 +271,12 @@ function PrimaryButton({ onClick, children, disabled }) {
   return (
     <button onClick={onClick} disabled={disabled} style={{
       display: "inline-flex", alignItems: "center", gap: 6,
-      height: 30, padding: "0 14px",
+      height: 32, padding: "0 15px",
       background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))",
-      boxShadow: "var(--shadow-1)",
+      boxShadow: "var(--shadow-btn)",
       borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 600,
       opacity: disabled ? 0.5 : 1,
+      transition: "var(--transition-ui)",
     }}>{children}</button>
   );
 }

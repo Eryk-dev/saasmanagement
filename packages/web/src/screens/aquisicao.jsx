@@ -1,10 +1,10 @@
 import React from "react";
-import { PageHead, StatTile, Card, LineChart } from "../components/viz.jsx";
+import { PageHead, FilterTab, StatTile, Card, LineChart } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
-import { periodWindow, PRESETS, presetBtn } from "./overview.jsx";
+import { periodWindow, PRESETS } from "./overview.jsx";
 
 // Aquisição — os NÚMEROS QUE IMPORTAM de Publicidade + Formulários num lugar só:
 // o funil de aquisição (investido → impressões → cliques → visitas no form →
@@ -59,19 +59,19 @@ function AquisicaoScreen() {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-      <PageHead title="Aquisição" sub="investimento em anúncios + conversão dos formulários">
+      <PageHead title="Aquisição" sub="investimento em anúncios + conversão dos formulários · o funil de aquisição">
         <div style={{ display: "flex", alignItems: "center", gap: 3, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          {PRESETS.map((p) => <button key={p.key} onClick={() => setP(p.key)} className="mono" style={presetBtn(period === p.key)}>{p.label}</button>)}
+          {PRESETS.filter((p) => ["7d", "15d", "30d", "90d"].includes(p.key)).map((p) => <FilterTab key={p.key} active={period === p.key} onClick={() => setP(p.key)}>{p.label}</FilterTab>)}
         </div>
       </PageHead>
 
-      <div style={{ padding: "14px var(--pad-x) 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         {loading ? (
           <div className="mono dim" style={{ fontSize: 12, padding: "20px 0" }}>carregando…</div>
         ) : (
           <>
             {/* Os números que importam */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
               <StatTile label="Investido" value={money(t.spend)} delta={t.ctr != null ? `CTR ${dec(t.ctr)}%` : "sem anúncio no período"} />
               <StatTile label="Leads" value={intBR(t.leads)} delta={t.formViews ? `${fmtPct(pct(t.leads, t.formViews))} das visitas` : "no período"} />
               <StatTile label="Custo por lead" value={t.cpl != null ? money(t.cpl) : "—"} delta={t.cplMeta != null ? `Meta: ${money(t.cplMeta)}` : null} />
@@ -82,29 +82,29 @@ function AquisicaoScreen() {
 
             {/* Funil de aquisição: anúncio → formulário → lead → ganho */}
             <Card title="Funil de aquisição" hint="do anúncio ao ganho · o % é a conversão do passo anterior">
-              <div style={{ padding: "6px 14px 14px", display: "flex", flexDirection: "column", gap: 7 }}>
+              <div style={{ padding: "16px 24px 22px", display: "flex", flexDirection: "column", gap: 10 }}>
                 {funnel.map((s, i) => {
                   const prev = i > 0 ? funnel[i - 1].value : null;
                   const conv = prev != null ? pct(s.value, prev) : null;
                   return (
-                    <div key={s.label} style={{ display: "grid", gridTemplateColumns: "150px 1fr 90px 66px", gap: 10, alignItems: "center" }}>
-                      <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--fg-2)" }}>{s.label}</span>
-                      <div style={{ height: 22, borderRadius: "var(--r-1)", background: "var(--bg-inset)", overflow: "hidden" }}>
+                    <div key={s.label} style={{ display: "grid", gridTemplateColumns: "150px 1fr 92px 60px", gap: 12, alignItems: "center" }}>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg-2)" }}>{s.label}</span>
+                      <div style={{ height: 20, borderRadius: 6, background: "var(--bg-2)", overflow: "hidden" }}>
                         <div style={{ height: "100%", width: `${Math.max(2, Math.round((s.value / fmax) * 100))}%`, background: "var(--accent)", opacity: 0.85, borderRadius: "var(--r-1)" }} />
                       </div>
                       <span className="tnum" style={{ textAlign: "right", fontSize: 13.5, fontWeight: 700 }}>{intBR(s.value)}</span>
-                      <span className="mono" style={{ textAlign: "right", fontSize: 11, color: conv != null && conv < 100 ? "var(--fg-3)" : "var(--fg-4)" }}>{conv != null ? fmtPct(conv) : ""}</span>
+                      <span className="tnum" style={{ textAlign: "right", fontSize: 12, color: conv != null && conv < 100 ? "var(--fg-3)" : "var(--fg-4)" }}>{conv != null ? fmtPct(conv) : ""}</span>
                     </div>
                   );
                 })}
-                <div className="mono dim" style={{ fontSize: 10.5, marginTop: 4 }}>
+                <div className="dim" style={{ fontSize: 12, marginTop: 6 }}>
                   visitas/leads incluem tráfego orgânico também (não só anúncio) · CTR = cliques ÷ impressões · conversão do form = leads ÷ visitas ({fmtPct(pct(t.leads, t.formViews)) || "—"})
                 </div>
               </div>
             </Card>
 
             {/* Ritmo diário */}
-            <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
+            <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
               <Card title="Investido por dia" hint={mkt?.syncedAt ? "sincronizado da Meta" : "sem gasto sincronizado"}>
                 <LineChart data={spendSeries} fmtValue={(v) => money(v)} />
               </Card>

@@ -17,7 +17,8 @@ const NAV = [
 
   { id: "pipeline",   label: "Pipeline",       icon: "≡",  group: "comercial" },
   { id: "customers",  label: "Clientes",       icon: "○",  group: "comercial" },
-  { id: "consultas",  label: "Consultas",      icon: "❋",  group: "comercial" },
+  // Recurso legado mantido por URL, mas fora da navegação do handoff.
+  { id: "consultas",  label: "Consultas",      icon: "❋",  group: "comercial", hidden: true },
   { id: "proposals",  label: "Propostas",      icon: "▥",  group: "comercial" },
   { id: "offers",     label: "Link pagamento", icon: "◇",  group: "comercial" },
   { id: "agenda",     label: "Agenda",         icon: "▦",  group: "comercial" },
@@ -34,7 +35,7 @@ const NAV = [
   { id: "aquisicao",     label: "Aquisição",  icon: "◔", group: "analises" },
   { id: "calls",         label: "Pitch",      icon: "◐", group: "analises" },
   { id: "integrations",  label: "Integração", icon: "◑", group: "analises" },
-  { id: "analise",       label: "Pipeline",   icon: "◒", group: "analises" },
+  { id: "analise",       label: "Análise do pipeline", icon: "◒", group: "analises" },
   { id: "funcionarios",  label: "Funcionários", icon: "◓", group: "analises" },
 
   { id: "tasks",      label: "Tarefas",        icon: "▣",  group: "geral" },
@@ -88,7 +89,7 @@ const GROUP_LABELS = {
 };
 
 function NavRail({ current, onNav, collapsed }) {
-  const w = collapsed ? 52 : 220;
+  const w = collapsed ? 56 : 228;
   const [product] = useActiveSaas();
   const brand = BRANDS[product?.id] || { label: product?.name || "Cockpit", Icon: GenericMark };
   // Aba do navegador acompanha a marca do workspace ativo.
@@ -96,7 +97,7 @@ function NavRail({ current, onNav, collapsed }) {
   // Build grouped list — só as telas permitidas pro usuário (user.screens);
   // grupo sem tela permitida some inteiro. A API tem o guard de verdade.
   const groups = [];
-  NAV.filter((item) => canSeeScreen(item.id)).forEach(item => {
+  NAV.filter((item) => !item.hidden && canSeeScreen(item.id)).forEach(item => {
     let g = groups.find(x => x.key === item.group);
     if (!g) { g = { key: item.group, items: [] }; groups.push(g); }
     g.items.push(item);
@@ -113,20 +114,20 @@ function NavRail({ current, onNav, collapsed }) {
       transition: "width 180ms ease",
       overflow: "hidden",
     }}>
-      <div style={{ padding: "0 14px", display: "flex", alignItems: "center", gap: 10, height: 56 }}>
+      <div style={{ padding: "0 16px", display: "flex", alignItems: "center", gap: 10, height: 58, flexShrink: 0, borderBottom: "1px solid var(--line-faint)" }}>
         <brand.Icon />
         {!collapsed && (
           <div style={{ lineHeight: 1.1, minWidth: 0 }}>
-            <div style={{ fontFamily: "var(--display)", fontSize: 14.5, fontWeight: 700, color: "var(--fg-1)", letterSpacing: "-0.01em" }}>{brand.label}</div>
+            <div style={{ fontFamily: "var(--display)", fontSize: 15, fontWeight: 700, color: "var(--fg-1)", letterSpacing: "-0.01em" }}>{brand.label}</div>
           </div>
         )}
       </div>
 
-      <div style={{ flex: 1, padding: "6px 8px", overflowY: "auto", overflowX: "hidden" }}>
+      <div style={{ flex: 1, padding: 10, overflowY: "auto", overflowX: "hidden", display: "flex", flexDirection: "column", gap: 4 }}>
         {groups.map(g => (
-          <div key={g.key} style={{ marginBottom: 12 }}>
+          <div key={g.key} style={{ marginBottom: 10 }}>
             {!collapsed && GROUP_LABELS[g.key] && (
-              <div className="mono" style={{ fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-4)", padding: "8px 10px 6px" }}>
+              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-4)", padding: "10px 10px 6px" }}>
                 {GROUP_LABELS[g.key]}
               </div>
             )}
@@ -141,7 +142,7 @@ function NavRail({ current, onNav, collapsed }) {
                   style={{
                     display: "flex", alignItems: "center", gap: 9,
                     width: "100%", padding: "7px 10px",
-                    borderRadius: "var(--r-1)",
+                    borderRadius: "var(--r-2)",
                     background: active ? "var(--accent-soft)" : "transparent",
                     color: active ? "var(--fg-1)" : "var(--fg-2)",
                     fontSize: 13.5,
@@ -158,7 +159,7 @@ function NavRail({ current, onNav, collapsed }) {
         ))}
       </div>
 
-      <div style={{ padding: "10px 12px", borderTop: "1px solid var(--line-1)" }}>
+      <div style={{ padding: 12, borderTop: "1px solid var(--line-1)" }}>
         {!collapsed && <WorkspaceSwitcher />}
       </div>
     </nav>
@@ -186,18 +187,18 @@ function WorkspaceSwitcher() {
         title={single ? undefined : "Trocar de produto"}
         style={{
           display: "flex", alignItems: "center", gap: 8, width: "100%",
-          padding: "7px 10px", border: "1px solid " + (open ? "var(--accent-line)" : "var(--line-1)"),
-          borderRadius: "var(--r-2)", background: "var(--bg-1)",
+          padding: "8px 10px", border: "1px solid " + (open ? "var(--accent-line)" : "var(--line-1)"),
+          borderRadius: "var(--r-3)", background: "var(--bg-inset)",
           cursor: single ? "default" : "pointer",
         }}>
         <span className="dot" style={{ color: "var(--accent)", width: 7, height: 7, flexShrink: 0 }} />
         <span style={{ fontSize: 12.5, color: "var(--fg-2)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{product.name}</span>
         {!single && (
           <span style={{
-            marginLeft: "auto", flexShrink: 0, minWidth: 16, height: 16, padding: "0 4px",
+            marginLeft: "auto", flexShrink: 0, minWidth: 18, height: 18, padding: "0 5px",
             display: "inline-flex", alignItems: "center", justifyContent: "center",
-            borderRadius: 99, background: "var(--accent-soft)", color: "var(--accent)",
-            fontSize: 10, fontWeight: 700, fontFamily: "var(--mono)",
+            borderRadius: 999, background: "var(--accent-soft)", color: "var(--accent)",
+            fontSize: 11, fontWeight: 600, fontFamily: "var(--mono)",
           }}>{saas.length}</span>
         )}
         {!single && <span className="dim" style={{ fontSize: 9, flexShrink: 0 }}>{open ? "▾" : "▴"}</span>}
@@ -238,7 +239,7 @@ const BRANDS = {
 // triângulo verde — as formas geométricas do logo, sem o wordmark.
 function UniqueKidsMark() {
   return (
-    <svg width="30" height="30" viewBox="0 0 30 30" style={{ flexShrink: 0 }} aria-label="UniqueKids">
+    <svg width="28" height="28" viewBox="0 0 30 30" style={{ flexShrink: 0 }} aria-label="UniqueKids">
       <rect x="3" y="12" width="12.5" height="12.5" rx="3.5" fill="#FFD71E" transform="rotate(-9 9 18)" />
       <circle cx="20.5" cy="9.5" r="5" fill="#EF5D2B" />
       <path d="M18 17.5 L26.5 15 L24.5 23.5 Z" fill="#00B800" />
@@ -249,7 +250,7 @@ function UniqueKidsMark() {
 function GenericMark() {
   return (
     <span style={{
-      width: 30, height: 30, borderRadius: "var(--r-1)", flexShrink: 0,
+      width: 28, height: 28, borderRadius: "var(--r-1)", flexShrink: 0,
       display: "inline-flex", alignItems: "center", justifyContent: "center",
       background: "var(--accent-soft)", border: "1px solid var(--accent-line)",
       color: "var(--accent)", fontSize: 14, fontWeight: 700, fontFamily: "var(--display)",
@@ -260,24 +261,24 @@ function GenericMark() {
 // Ícone oficial da LeverAds (mesmo asset do copylever: lever/logo-icon-color.svg).
 function Logo() {
   return (
-    <svg width="30" height="30" viewBox="0 0 1453.13 1493.95" style={{ flexShrink: 0 }} aria-label="LeverAds">
-      <path fill="#051C2C" d="M519.22,843.75l-45.1,15.11c53.94,77.43,143.68,128.2,245.06,128.2,4.38,0,8.76-.08,13.07-.3l-14.13-45.02c-80.76-.3-152.75-38.68-198.9-97.98ZM719.19,390.03c-164.61,0-298.55,133.94-298.55,298.55,0,29.46,4.31,58.02,12.31,84.91l39.13-29.31c-4-17.9-6.12-36.49-6.12-55.6,0-139.6,113.62-253.22,253.22-253.22s253.15,113.62,253.15,253.22c0,99.49-57.71,185.84-141.42,227.16v49.63c109.39-44.27,186.74-151.69,186.74-276.79,0-164.61-133.86-298.55-298.47-298.55Z" />
+    <svg width="28" height="28" viewBox="0 0 1453.13 1493.95" style={{ flexShrink: 0 }} aria-label="LeverAds">
+      <path fill="var(--fg-1)" d="M519.22,843.75l-45.1,15.11c53.94,77.43,143.68,128.2,245.06,128.2,4.38,0,8.76-.08,13.07-.3l-14.13-45.02c-80.76-.3-152.75-38.68-198.9-97.98ZM719.19,390.03c-164.61,0-298.55,133.94-298.55,298.55,0,29.46,4.31,58.02,12.31,84.91l39.13-29.31c-4-17.9-6.12-36.49-6.12-55.6,0-139.6,113.62-253.22,253.22-253.22s253.15,113.62,253.15,253.22c0,99.49-57.71,185.84-141.42,227.16v49.63c109.39-44.27,186.74-151.69,186.74-276.79,0-164.61-133.86-298.55-298.47-298.55Z" />
       <polygon fill="#23D8D3" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53" />
     </svg>
   );
 }
 
-function TopBar({ title, subtitle, leading, trailing, breadcrumb, onSearch }) {
+function TopBar({ title, leading, breadcrumb, onSearch }) {
   return (
     <header style={{
-      height: 56,
+      height: 58,
       flexShrink: 0,
       borderBottom: "1px solid var(--line-1)",
       background: "var(--bg-topbar, var(--bg-0))",
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
-      padding: "0 16px",
+      padding: "0 min(24px, var(--pad-x))",
       gap: 12,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
@@ -288,16 +289,14 @@ function TopBar({ title, subtitle, leading, trailing, breadcrumb, onSearch }) {
             return (
               <React.Fragment key={i}>
                 {i > 0 && <span style={{ color: "var(--line-strong)", fontSize: 13 }}>/</span>}
-                <span style={{ fontSize: 13.5, fontWeight: last ? 510 : 450, color: last ? "var(--fg-1)" : "var(--fg-4)", whiteSpace: "nowrap" }}>{b}</span>
+                <span style={{ fontSize: 13, fontWeight: last ? 600 : 450, color: last ? "var(--fg-1)" : "var(--fg-4)", whiteSpace: "nowrap" }}>{b}</span>
               </React.Fragment>
             );
           })}
           {!breadcrumb && title && <h1 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{title}</h1>}
         </div>
-        {subtitle && <span className="hide-mobile" style={{ fontSize: 12, color: "var(--fg-5)", whiteSpace: "nowrap" }}>{subtitle}</span>}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        {trailing}
         <span className="hide-mobile" style={{ display: "inline-flex" }}><CmdK onClick={onSearch} /></span>
         <UserMenu />
       </div>
@@ -309,18 +308,17 @@ function CmdK({ onClick }) {
   return (
     <button onClick={onClick} title="Buscar lead (⌘K / Ctrl+K)" style={{
       display: "inline-flex", alignItems: "center", gap: 8,
-      height: 28, padding: "0 8px 0 10px",
-      border: "1px solid var(--line-2)",
-      background: "var(--bg-3)",
-      borderRadius: "var(--r-1)",
+      height: 32, minWidth: 184, padding: "0 8px 0 11px",
+      border: "1px solid var(--line-1)",
+      background: "var(--bg-inset)",
+      borderRadius: "var(--r-2)",
       color: "var(--fg-4)",
       fontSize: 13,
       whiteSpace: "nowrap",
-      boxShadow: "var(--shadow-1)",
       cursor: "pointer",
     }}>
-      <span>Buscar…</span>
-      <span className="kbd">⌘K</span>
+      <span>Buscar lead…</span>
+      <span className="kbd" style={{ marginLeft: "auto" }}>⌘K</span>
     </button>
   );
 }
@@ -353,14 +351,12 @@ function UserMenu() {
         onClick={() => setOpen(o => !o)}
         style={{
           display: "inline-flex", alignItems: "center", gap: 8,
-          height: 28, padding: "0 8px 0 4px",
-          border: "1px solid " + (open ? "var(--accent-line)" : "var(--line-2)"),
-          background: "var(--bg-3)",
-          borderRadius: "var(--r-1)",
-          boxShadow: "var(--shadow-1)",
+          height: 34, padding: "0 4px",
+          borderRadius: "var(--r-2)",
+          background: open ? "var(--hover)" : "transparent",
         }}>
         <UserDot name={name} />
-        <span className="hide-mobile" style={{ fontSize: 13, color: "var(--fg-2)", fontWeight: 450 }}>{name}</span>
+        <span className="hide-mobile" style={{ fontSize: 13, color: "var(--fg-2)", fontWeight: 500 }}>{name}</span>
         <span className="dim" style={{ fontSize: 10 }}>{open ? "▴" : "▾"}</span>
       </button>
       {open && (
@@ -446,11 +442,10 @@ function PasswordModal({ onClose }) {
 function UserDot({ name }) {
   return (
     <span style={{
-      width: 24, height: 24, borderRadius: "var(--r-1)",
+      width: 30, height: 30, borderRadius: 999,
       display: "inline-flex", alignItems: "center", justifyContent: "center",
-      background: "oklch(from var(--accent) l c h / 0.16)",
-      border: "1px solid var(--accent)",
-      color: "var(--accent)",
+      background: "var(--fg-1)",
+      color: "var(--bg-1)",
       fontSize: 12,
       fontWeight: 600,
     }}>{(name || "?")[0].toUpperCase()}</span>

@@ -1,10 +1,10 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { chromeBtnStyleSmall } from "../lib/ui.js";
-import { EmptyState, PrimaryButton, RowActions } from "../atoms.jsx";
+import { EmptyState, PrimaryButton } from "../atoms.jsx";
 import { inputStyle, labelStyle, sectionTitle, cardStyle, addBtnStyle, THEME_DEFAULTS, LabeledInput, LabeledTextarea, ThemeEditor } from "../components/theme-inputs.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
+import { PageHead, Segmented } from "../components/viz.jsx";
 // Proposal builder — propostas comerciais por marca, no MESMO modelo do form
 // builder: template = lista de SLIDES estruturados + tema + calculadora; cada
 // lead ganha uma instância (snapshot) servida em /p/:id com trava magnética.
@@ -119,7 +119,7 @@ const publicBase = () => import.meta.env.VITE_API_BASE || window.location.origin
 
 function ProposalsScreen({ saasId }) {
   const { SAAS } = window.SEED;
-  const { version, openDelete } = useData();
+  const { version } = useData();
   // Produto do WORKSPACE (seletor no pé da sidebar) — sem abas próprias.
   const [activeProduct] = useActiveSaas();
   const active = activeProduct?.id;
@@ -127,7 +127,6 @@ function ProposalsScreen({ saasId }) {
   const [templates, setTemplates] = useState([]);
   const [proposals, setProposals] = useState([]);
   const [editing, setEditing] = useState(null); // { template } | null
-  const [toast, setToast] = useState(null);
 
   const load = useCallback(async () => {
     if (!active) return;
@@ -145,16 +144,6 @@ function ProposalsScreen({ saasId }) {
   // workspace novo.
   useEffect(() => { setEditing(null); setTemplates([]); setProposals([]); }, [active]);
 
-  function flash(msg) { setToast(msg); setTimeout(() => setToast(null), 1800); }
-  async function copy(text, msg) {
-    try { await navigator.clipboard.writeText(text); flash(msg); }
-    catch { window.prompt("Copie:", text); }
-  }
-  async function togglePublish(t) {
-    await api.update("proposal_templates", t.id, { status: t.status === "published" ? "draft" : "published" });
-    await load();
-  }
-
   if (!SAAS.length) return <EmptyState title="Nenhum SaaS ainda" hint="Crie um produto em Ajustes — templates de proposta pertencem a um SaaS." />;
 
   if (editing) return (
@@ -165,85 +154,119 @@ function ProposalsScreen({ saasId }) {
     />
   );
 
-  const fmtDate = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
+  const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "") : "—");
+  const templateById = new Map(templates.map((t) => [t.id, t]));
+  const recentCutoff = Date.now() - 30 * 86400000;
+  const outlineButton = {
+    height: 30, padding: "0 12px", border: "1px solid var(--line-2)",
+    borderRadius: "var(--r-2)", background: "var(--bg-1)", color: "var(--fg-2)",
+    fontSize: 12.5, fontWeight: 600, boxShadow: "var(--shadow-1)",
+    display: "inline-flex", alignItems: "center", textDecoration: "none",
+  };
+  const duplicate = (template) => {
+    const next = structuredClone(template);
+    delete next.id;
+    delete next.createdAt;
+    delete next.updatedAt;
+    next.name = `${next.name || "Template"} · cópia`;
+    next.status = "draft";
+    setEditing({ template: next });
+  };
+
+  const recentTable = !proposals.length ? (
+    <div style={{ padding: "30px 24px", color: "var(--fg-4)", fontSize: 13 }}>
+      Nenhuma proposta gerada ainda.
+    </div>
+  ) : (
+    <div className="tbl-x">
+      <div style={{ minWidth: 760 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1.3fr .8fr .9fr .6fr", gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+          <span>Lead</span><span>Template</span><span>Gerada em</span><span>Status</span><span />
+        </div>
+        {proposals.slice(0, tab === "geradas" ? proposals.length : 6).map((p) => {
+          const template = templateById.get(p.template);
+          const status = p.accepted
+            ? { label: "fechou", cls: "chip pos" }
+            : Number(p.views || 0) > 0
+              ? { label: "aberta pelo lead", cls: "chip pos" }
+              : { label: "enviada", cls: "chip warn" };
+          const leadName = p.data?.lead?.name || p.lead || "Lead";
+          const company = p.data?.lead?.company;
+          return (
+            <div key={p.id} style={{ display: "grid", gridTemplateColumns: "1.3fr 1.3fr .8fr .9fr .6fr", gap: 12, padding: "13px 24px", alignItems: "center", borderTop: "1px solid var(--line-faint)" }}>
+              <span style={{ fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{leadName}{company ? ` · ${company}` : ""}</span>
+              <span style={{ fontSize: 13, color: "var(--fg-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{template?.name || p.name || "Proposta"}</span>
+              <span className="tnum" style={{ fontSize: 13, color: "var(--fg-3)" }}>{fmtDate(p.createdAt)}</span>
+              <span><span className={status.cls}>{status.label}</span></span>
+              <span style={{ textAlign: "right" }}><a href={`${publicBase()}/p/${p.id}`} target="_blank" rel="noreferrer" style={{ fontSize: 13, fontWeight: 600 }}>abrir ↗</a></span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <div style={{ padding: "12px var(--pad-x)", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-        <span style={{ fontSize: 13.5, fontWeight: 600 }}>{activeProduct?.name}</span>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          {[["templates", "Templates"], ["geradas", `Geradas (${proposals.length})`]].map(([k, l]) => (
-            <button key={k} onClick={() => setTab(k)} style={{
-              height: 26, padding: "0 10px", borderRadius: "var(--r-2)",
-              border: "1px solid " + (tab === k ? "var(--line-strong)" : "var(--line-1)"),
-              background: tab === k ? "var(--bg-3)" : "var(--bg-2)",
-              color: tab === k ? "var(--fg-1)" : "var(--fg-3)", fontSize: 12,
-            }}>{l}</button>
-          ))}
+      <PageHead title="Propostas" sub="templates por marca · a proposta é gerada a partir do lead">
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <Segmented value={tab} onChange={setTab} options={[
+            { value: "templates", label: "Templates" },
+            { value: "geradas", label: "Geradas" },
+          ]} />
           <PrimaryButton onClick={() => setEditing({ template: null })}>+ novo template</PrimaryButton>
         </div>
-      </div>
+      </PageHead>
 
-      <div style={{ flex: 1, overflow: "auto", padding: "20px var(--pad-x)" }}>
+      <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         {tab === "templates" && (!templates.length ? (
-          <EmptyState
-            title="Nenhum template neste SaaS"
-            hint="O template define os slides, o tema da marca e a calculadora. Cada lead ganha uma proposta própria em /p/:id, com trava magnética entre os slides."
-            action={<PrimaryButton onClick={() => setEditing({ template: null })}>+ Criar template</PrimaryButton>}
-          />
+          <div style={{ minHeight: 230, background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
+            <EmptyState title="Nenhum template neste SaaS" hint="Crie o template base usado para gerar propostas a partir dos leads." action={<PrimaryButton onClick={() => setEditing({ template: null })}>+ criar template</PrimaryButton>} />
+          </div>
         ) : (
-          <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
-            <div className="mono" style={{ display: "grid", gridTemplateColumns: "1fr 110px 90px 290px", padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
-              <span>Template</span><span>Status</span><span>Slides</span><span style={{ textAlign: "right" }}>Ações</span>
-            </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
             {templates.map((t) => {
               const pub = t.status === "published";
+              const linked = proposals.filter((p) => p.template === t.id);
+              const generated = linked.filter((p) => !p.createdAt || new Date(p.createdAt).getTime() >= recentCutoff).length;
+              const opened = linked.filter((p) => Number(p.views || 0) > 0).length;
+              const closed = linked.filter((p) => p.accepted).length;
               return (
-                <div key={t.id} style={{ display: "grid", gridTemplateColumns: "1fr 110px 90px 290px", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", fontSize: 13 }}>
-                  <span style={{ fontWeight: 500 }}>{t.name || t.id}</span>
-                  <span><span className={"chip " + (pub ? "pos" : "")} style={{ height: 20 }}>{pub ? "publicado" : "rascunho"}</span></span>
-                  <span className="mono tnum dim">{(t.slides || []).length}</span>
-                  <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
-                    <a href={`${publicBase()}/p/t/${t.id}`} target="_blank" rel="noreferrer" style={{ ...chromeBtnStyleSmall, textDecoration: "none" }}><span style={{ fontSize: 11 }}>preview ↗</span></a>
-                    <button onClick={() => togglePublish(t)} style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>{pub ? "despublicar" : "publicar"}</span></button>
-                    <RowActions onEdit={() => setEditing({ template: t })} onDelete={() => openDelete("proposal_templates", t)} />
-                  </span>
-                </div>
+                <section key={t.id} style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: 24 }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em" }}>{t.name || t.id}</div>
+                      <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 4 }}>{t.description || `${(t.slides || []).length} slides · ${pub ? "publicado" : "rascunho"}`}</div>
+                    </div>
+                    <span className={pub ? "chip accent" : "chip"}>{pub ? "base" : "variação"}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 16, margin: "18px 0", padding: "14px 16px", background: "var(--bg-inset)", border: "1px solid var(--line-faint)", borderRadius: "var(--r-3)" }}>
+                    {[[generated, "geradas · 30d"], [opened, "abertas pelo lead"], [closed, closed === 1 ? "fechou" : "fecharam"]].map(([value, label], index) => (
+                      <div key={label} style={{ minWidth: 0 }}>
+                        <div className="tnum" style={{ fontSize: 18, fontWeight: 700, color: index === 2 ? "var(--pos)" : "var(--fg-1)" }}>{value}</div>
+                        <div style={{ fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap" }}>{label}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <button onClick={() => setEditing({ template: t })} style={outlineButton}>Editar</button>
+                    <a href={`${publicBase()}/p/t/${t.id}`} target="_blank" rel="noreferrer" style={outlineButton}>Pré-visualizar</a>
+                    <button onClick={() => duplicate(t)} style={{ height: 30, padding: "0 8px", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>Duplicar</button>
+                  </div>
+                </section>
               );
             })}
           </div>
         ))}
 
-        {tab === "geradas" && (!proposals.length ? (
-          <EmptyState title="Nenhuma proposta gerada" hint="Propostas nascem do pipeline: lead novo (ou botão gerar proposta) cria uma instância do template publicado deste SaaS." />
-        ) : (
-          <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
-            <div className="mono" style={{ display: "grid", gridTemplateColumns: "130px 1fr 70px 90px 230px", padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
-              <span>Criada</span><span>Lead</span><span>Views</span><span>Status</span><span style={{ textAlign: "right" }}>Ações</span>
-            </div>
-            {proposals.map((p) => (
-              <div key={p.id} style={{ display: "grid", gridTemplateColumns: "130px 1fr 70px 90px 230px", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", fontSize: 13 }}>
-                <span className="mono dim" style={{ fontSize: 11 }}>{fmtDate(p.createdAt)}</span>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.data?.lead?.name || p.lead}{p.data?.lead?.company ? ` · ${p.data.lead.company}` : ""}</span>
-                <span className="mono tnum dim">{p.views || 0}</span>
-                <span>{p.accepted ? <span className="chip pos" style={{ height: 20 }}>aceita</span> : p.state?.frozen ? <span className="chip" style={{ height: 20 }}>congelada</span> : <span className="mono dim" style={{ fontSize: 11 }}>—</span>}</span>
-                <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
-                  <a href={`${publicBase()}/p/${p.id}`} target="_blank" rel="noreferrer" style={{ ...chromeBtnStyleSmall, textDecoration: "none" }}><span style={{ fontSize: 11 }}>ver ↗</span></a>
-                  <button onClick={() => copy(`${publicBase()}/p/${p.id}`, "Link copiado")} style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>link</span></button>
-                  <button onClick={() => copy(`${publicBase()}/p/${p.id}?k=${p.editKey}`, "Link do closer copiado")} style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>closer</span></button>
-                  <RowActions onDelete={() => openDelete("proposals", p)} />
-                </span>
-              </div>
-            ))}
+        <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "20px 24px 14px", flexWrap: "wrap" }}>
+            <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em" }}>Geradas recentemente</h3>
+            <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>o link entra no lead como “proposta ↗”</span>
           </div>
-        ))}
+          {recentTable}
+        </section>
       </div>
-
-      {toast && (
-        <div className="mono" style={{ position: "fixed", bottom: 22, left: "50%", transform: "translateX(-50%)", background: "var(--bg-3)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", padding: "8px 14px", fontSize: 12, boxShadow: "var(--shadow-pop)", zIndex: 90 }}>
-          {toast}
-        </div>
-      )}
     </div>
   );
 }
@@ -352,7 +375,7 @@ function TemplateEditor({ template, saasId, onDone, onCancel }) {
         <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span className="mono dim" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" }}>Preview ao vivo (dados de exemplo)</span>
           {isEdit && (
-            <a href={`${publicBase()}/p/t/${template.id}`} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 11, color: "var(--accent)" }}>
+            <a href={`${publicBase()}/p/t/${template.id}`} target="_blank" rel="noreferrer" className="mono code" style={{ fontSize: 11, color: "var(--accent)" }}>
               abrir preview ↗
             </a>
           )}
@@ -398,7 +421,7 @@ function SlideCard({ slide, index, total, onChange, onRemove, onMove, arrowStyle
   return (
     <div style={cardStyle}>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span className="mono dim" style={{ fontSize: 11, width: 18 }}>{String(index + 1).padStart(2, "0")}</span>
+        <span className="mono dim tnum" style={{ fontSize: 11, width: 18 }}>{String(index + 1).padStart(2, "0")}</span>
         <button type="button" onClick={() => setOpen(!open)} style={{ flex: 1, textAlign: "left", display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <span className="chip" style={{ height: 20, flexShrink: 0 }}>{typeName}</span>
           <span style={{ fontSize: 12.5, color: "var(--fg-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>

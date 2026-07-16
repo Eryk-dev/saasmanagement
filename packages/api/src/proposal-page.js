@@ -17,7 +17,7 @@ const escJson = (obj) => JSON.stringify(obj).replace(/</g, "\\u003c");
 const escAttr = (s) => String(s).replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
 const fontHref = (font) => {
-  const fam = String(font || "").split(",")[0].trim().replace(/^['"]|['"]$/g, "") || "Space Grotesk";
+  const fam = String(font || "").split(",")[0].trim().replace(/^['"]|['"]$/g, "") || "Instrument Sans";
   const enc = encodeURIComponent(fam).replace(/%20/g, "+");
   return `https://fonts.googleapis.com/css2?family=${enc}:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap`;
 };
@@ -28,7 +28,7 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   const fg = t.fg || "#f2f3f5";
   const accent = t.accent || "#6c5ce7";
   const accentFg = t.accentFg || "#ffffff";
-  const font = t.font || "'Space Grotesk', system-ui, sans-serif";
+  const font = t.font || "'Instrument Sans', system-ui, sans-serif";
   const radius = t.radius != null ? Number(t.radius) : 14;
   // Teto alto (igual ao form) pra a logo poder crescer; a nav cresce junto (navH).
   const logoH = Math.min(240, Math.max(12, Number(t.logoHeight) || 24));

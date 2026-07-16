@@ -1,7 +1,7 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { PageHead, StatTile, Card, Pill } from "../components/viz.jsx";
+import { PageHead, StatTile, Card, Pill, FilterTab } from "../components/viz.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { EmptyState } from "../atoms.jsx";
 // Custos operacionais — o ledger mensal do produto. Publicidade (ad_insights)
@@ -37,7 +37,7 @@ const brl = (n) => `R$ ${(Number(n) || 0).toFixed(2).replace(".", ",")}`;
 function ExpensesScreen() {
   const { SAAS } = window.SEED;
   const { version } = useData();
-  const [product, setActiveSaas] = useActiveSaas();
+  const [product] = useActiveSaas();
   const [month, setMonth] = useState(monthKey(new Date()));
   const [data, setData] = useState(null);
   // unit "brl" = valor fixo em R$; "pct" = percentual sobre os GANHOS do mês no
@@ -97,22 +97,22 @@ function ExpensesScreen() {
 
   if (!product) return <EmptyState title="Nenhum produto cadastrado" hint="Crie o produto em Ajustes." />;
 
-  const inputStyle = { height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
+  const inputStyle = { height: 38, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
+  const shortMonth = (mk) => new Date(`${mk}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-      <PageHead title="Custos operacionais" sub={monthLabel(month)}>
-        <select value={month} onChange={(e) => setMonth(e.target.value)}
-          style={{ ...inputStyle, fontFamily: "var(--mono)", fontSize: 12.5 }}>
-          {lastMonths(12).map((mk) => <option key={mk} value={mk}>{mk}</option>)}
-        </select>
+      <PageHead title="Custos operacionais" sub={`${monthLabel(month)} · o total alimenta o “Resultado do mês” da Visão geral`}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          {[...lastMonths(3)].reverse().map((mk) => <FilterTab key={mk} active={month === mk} onClick={() => setMonth(mk)}>{shortMonth(mk)}</FilterTab>)}
+        </div>
       </PageHead>
 
-      <div style={{ padding: "20px var(--pad-x) 40px", display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
         {data?.error && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>Falha ao carregar os custos.</div>}
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
           <StatTile label="Total do mês" value={data ? brl(data.total) : "…"} delta="publicidade + IA + manuais" />
           <StatTile label="Publicidade" value={data ? brl(data.ads) : "…"} delta="automático · Meta e entradas manuais de anúncio" />
           <StatTile label="IA" value={data ? (data.ai != null ? brl(data.ai) : "sem dado no mês") : "…"}
@@ -121,27 +121,27 @@ function ExpensesScreen() {
         </div>
 
         <Card title="Lançamentos do mês" hint="custos fixos, ferramentas, pessoal e outros">
-          <div style={{ display: "flex", gap: 8, alignItems: "flex-end", padding: "12px 16px", borderBottom: "1px solid var(--line-1)", flexWrap: "wrap" }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>Categoria</span>
-              <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} style={inputStyle}>
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-end", padding: "14px 24px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", flexWrap: "wrap" }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Categoria</span>
+              <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} style={{ ...inputStyle, width: 140 }}>
                 {CATEGORIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 180 }}>
-              <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>Descrição</span>
+            <label style={{ display: "flex", flexDirection: "column", gap: 5, flex: 1, minWidth: 180 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Descrição</span>
               <input type="text" placeholder="Servidor, contador, assinatura…" value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 onKeyDown={(e) => { if (e.key === "Enter") addExpense(); }}
                 style={inputStyle} />
             </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>{form.unit === "pct" ? "Percentual (%)" : "Valor (R$)"}</span>
+            <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)" }}>{form.unit === "pct" ? "Percentual (%)" : "Valor (R$)"}</span>
               <div style={{ display: "flex", gap: 4 }}>
                 <input type="number" min="0" step="0.01" placeholder={form.unit === "pct" ? "12" : "0,00"} value={form.amount}
                   onChange={(e) => setForm({ ...form, amount: e.target.value })}
                   onKeyDown={(e) => { if (e.key === "Enter") addExpense(); }}
-                  style={{ ...inputStyle, width: 100, fontFamily: "var(--mono)", textAlign: "right" }} />
+                  style={{ ...inputStyle, width: 110, fontFamily: "var(--mono)", textAlign: "right" }} />
                 <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}
                   title="R$ = valor fixo · % = percentual sobre os ganhos do mês no pipeline (checkout, imposto)"
                   style={{ ...inputStyle, width: 58, fontFamily: "var(--mono)", padding: "0 4px" }}>
@@ -150,25 +150,25 @@ function ExpensesScreen() {
                 </select>
               </div>
             </label>
-            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, fontSize: 12.5, color: "var(--fg-2)", whiteSpace: "nowrap" }}
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 8, height: 38, fontSize: 13, color: "var(--fg-2)", whiteSpace: "nowrap" }}
               title="Vale deste mês em diante, todo mês, até você encerrar">
               <input type="checkbox" checked={!!form.recurring} onChange={(e) => setForm({ ...form, recurring: e.target.checked })} />
               recorrente todo mês
             </label>
-            <button onClick={addExpense} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-1)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600 }}>
+            <button onClick={addExpense} style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600 }}>
               + registrar
             </button>
           </div>
 
           {data && !data.error && data.manual.length === 0 && (
-            <div style={{ padding: "14px 16px", fontSize: 12.5, color: "var(--fg-4)" }}>
+            <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", fontSize: 12.5, color: "var(--fg-4)" }}>
               Nenhum lançamento manual em {monthLabel(month)}. Publicidade e IA já entram sozinhos no total.
             </div>
           )}
           {data && !data.error && data.manual.length > 0 && (
             <div>
               {data.manual.map((e) => (
-                <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 16px", borderBottom: "1px solid var(--line-1)" }}>
+                <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 24px", borderTop: "1px solid var(--line-faint)" }}>
                   <Pill tone="mut">{CAT_LABEL[e.category] || e.category}</Pill>
                   <span style={{ flex: 1, fontSize: 13, fontWeight: 500, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
                   {Number(e.pct) > 0 && (
@@ -181,10 +181,10 @@ function ExpensesScreen() {
                       {e.endMonth ? `recorrente até ${e.endMonth}` : `recorrente · desde ${e.month}`}
                     </Pill>
                   )}
-                  <span className="tnum mono" style={{ fontSize: 13, fontWeight: 500 }}>{brl(e.amount)}</span>
+                  <span className="tnum" style={{ fontSize: 13.5, fontWeight: 600 }}>{brl(e.amount)}</span>
                   {e.recurring && !e.endMonth && (
-                    <button onClick={() => endRecurring(e)} className="mono" title="Parar de contar a partir do mês seguinte"
-                      style={{ fontSize: 11, color: "var(--fg-3)", border: "1px solid var(--line-2)", borderRadius: 999, padding: "2px 9px" }}>
+                    <button onClick={() => endRecurring(e)} title="Parar de contar a partir do mês seguinte"
+                      style={{ fontSize: 12.5, fontWeight: 600, color: "var(--accent)", padding: "2px 4px" }}>
                       encerrar
                     </button>
                   )}
@@ -195,9 +195,6 @@ function ExpensesScreen() {
           )}
         </Card>
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "10px 14px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-2)", fontSize: 12.5 }}>
-          O total deste mês alimenta o "Resultado do mês" na Visão geral (valor ganho no pipeline menos estes custos).
-        </div>
       </div>
     </div>
   );

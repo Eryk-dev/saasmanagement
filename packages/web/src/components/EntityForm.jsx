@@ -331,7 +331,7 @@ function FunnelEditor({ stages, onChange }) {
         const pct = st.conv === "" || st.conv == null ? "" : Math.round(Number(st.conv) * 100);
         return (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span className="mono dim" style={{ fontSize: 11, width: 18 }}>{String(i + 1).padStart(2, "0")}</span>
+            <span className="mono dim tnum" style={{ fontSize: 11, width: 18 }}>{String(i + 1).padStart(2, "0")}</span>
             <input
               value={st.stage || ""} placeholder="Nome do estágio"
               onChange={(e) => update(i, { stage: e.target.value })}
@@ -392,7 +392,7 @@ function QuestionsEditor({ questions, onChange, lockKeys }) {
         return (
           <div key={i} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: 10, display: "flex", flexDirection: "column", gap: 6, background: "var(--bg-2)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span className="mono dim" style={{ fontSize: 11, width: 18 }}>{String(i + 1).padStart(2, "0")}</span>
+              <span className="mono dim tnum" style={{ fontSize: 11, width: 18 }}>{String(i + 1).padStart(2, "0")}</span>
               <input value={q.key || ""} placeholder="chave" disabled={lockKeys} onChange={(e) => update(i, { key: e.target.value })} title={lockKeys ? "Chave travada neste pipeline (contrato da proposta)" : "Chave enviada ao gerador de proposta"} style={{ ...inputStyle, width: 110, opacity: lockKeys ? 0.6 : 1 }} />
               <input value={q.label || ""} placeholder="Pergunta" onChange={(e) => update(i, { label: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
               <div style={{ display: "flex" }}>

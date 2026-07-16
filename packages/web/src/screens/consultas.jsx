@@ -145,7 +145,7 @@ export function ConsultasScreen() {
         </div>
       </PageHead>
 
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px var(--pad-x) var(--pad-x)" }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "16px var(--pad-x) 56px" }}>
         {tab === "agenda" ? (
           <AgendaTab
             days={days} byCell={byCell} journeys={journeys} consultas={consultas}
@@ -204,7 +204,7 @@ function AgendaTab({ days, byCell, journeys, consultas, onShiftWeek, onToday, on
           ))}
           {Array.from({ length: H1 - H0 }, (_, i) => H0 + i).map((h) => (
             <React.Fragment key={h}>
-              <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", textAlign: "right", padding: "2px 8px 0 0", height: 34, borderTop: "1px solid var(--line-1)" }}>{pad(h)}h</div>
+              <div className="mono tnum" style={{ fontSize: 10, color: "var(--fg-4)", textAlign: "right", padding: "2px 8px 0 0", height: 34, borderTop: "1px solid var(--line-1)" }}>{pad(h)}h</div>
               {days.map((d) => {
                 const cell = byCell.get(`${ymd(d)}-${pad(h)}`) || [];
                 return (

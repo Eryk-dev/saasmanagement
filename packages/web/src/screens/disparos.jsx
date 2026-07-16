@@ -1,5 +1,5 @@
 import React from "react";
-import { PageHead, Pill } from "../components/viz.jsx";
+import { PageHead, Pill, Segmented } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
@@ -220,6 +220,110 @@ function DisparosScreen({ onOpenLead }) {
     else setCamp((c) => ({ ...c, wa: { text: (c.wa.text || "") + t } }));
   };
 
+  const channel = camp.channels.email ? "email" : "wa";
+  const setChannel = (value) => setCamp((current) => ({
+    ...current,
+    channels: { email: value === "email", whatsapp: value === "wa" },
+    ...(value === "email" && !current.email.subject && current.name ? { email: { ...current.email, subject: current.name } } : {}),
+  }));
+  const relativeTouch = (lead) => {
+    const at = lead.stageSince || lead.updatedAt || lead.createdAt;
+    if (!at) return "—";
+    const days = Math.max(0, Math.floor((Date.now() - new Date(at).getTime()) / 86400e3));
+    if (days === 0) return "hoje";
+    if (days === 1) return "ontem";
+    return `há ${days} dias`;
+  };
+  const stageCount = (stage) => leads.filter((lead) => lead.stage === stage).length;
+  const messageReady = channel === "email" ? !!camp.email.body : !!camp.wa.text;
+  async function sendPrimary() {
+    if (!chosen.length || !messageReady) return;
+    if (channel === "email" && gmailOn) {
+      await sendEmails();
+      return;
+    }
+    const lead = channel === "wa"
+      ? chosen.find((item) => waLink(item.phone) && !item.whatsappInvalid && !item.whatsappOptOut)
+      : chosen.find((item) => item.email && !item.emailOptOut);
+    if (!lead) { setNote({ ok: false, text: channel === "wa" ? "nenhum selecionado tem WhatsApp válido" : "nenhum selecionado tem e-mail válido" }); return; }
+    const tokens = scriptTokens(lead, product);
+    const url = channel === "wa"
+      ? `${waLink(lead.phone)}?text=${encodeURIComponent(interpolate(camp.wa.text, tokens))}`
+      : gmailCompose(lead.email, interpolate(camp.email.subject || camp.name, tokens), interpolate(camp.email.body, tokens));
+    window.open(url, "_blank", "noopener,noreferrer");
+    await mark(lead, channel === "wa" ? "whatsapp" : "email");
+    setNote({ ok: true, text: `${lead.name || "Lead"} aberto para envio · continue pelos selecionados` });
+  }
+
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <PageHead title="Disparos" sub={tab === "disparos" ? `${recipients.length} no público · ${selected.size} selecionados · campanhas de e-mail e WhatsApp` : tab === "sequencias" ? "sequências automáticas de nutrição (drip)" : "biblioteca de conteúdo reutilizável"}>
+        <Segmented value={tab} onChange={setTab} options={[{ value: "disparos", label: "Disparos" }, { value: "sequencias", label: "Sequências" }, { value: "templates", label: "Templates" }]} />
+      </PageHead>
+
+      {tab === "sequencias" && <SequencesTab product={product} leads={leads} stageOptions={stageOptions} defaultStages={defaultStages} />}
+      {tab === "templates" && <TemplatesTab product={product} />}
+
+      {tab === "disparos" && (
+        <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+          {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
+          {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 12, color: "var(--fg-4)" }}>público por etapa:</span>
+            {stageOptions.map((stage) => {
+              const active = stagesSel.has(stage);
+              return <button key={stage} onClick={() => toggleStage(stage)} style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 34, padding: "0 12px", borderRadius: 999, border: `1px solid ${active ? "var(--btn-bg)" : "var(--line-2)"}`, background: active ? "var(--btn-bg)" : "var(--bg-1)", color: active ? "var(--btn-fg)" : "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>{stage}<span className="tnum" style={{ fontSize: 11.5, opacity: .65 }}>{stageCount(stage)}</span></button>;
+            })}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 16, alignItems: "start" }}>
+            <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden", minWidth: 0 }}>
+              <div style={{ overflowX: "auto" }}><div style={{ minWidth: 620 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "40px 1.3fr 1.1fr .9fr .9fr", gap: 12, padding: "12px 20px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", alignItems: "center" }}>
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll} style={{ width: 18, height: 18, accentColor: "var(--accent)" }} /><span>Lead</span><span>Empresa</span><span>Etapa</span><span>Último toque</span>
+                </div>
+                {shown.slice(0, 5).map((lead) => (
+                  <div key={lead.id} style={{ display: "grid", gridTemplateColumns: "40px 1.3fr 1.1fr .9fr .9fr", gap: 12, padding: "13px 20px", alignItems: "center", borderBottom: "1px solid var(--line-faint)" }}>
+                    <input type="checkbox" checked={selected.has(lead.id)} onChange={() => toggleLead(lead.id)} style={{ width: 18, height: 18, accentColor: "var(--accent)" }} />
+                    <button onClick={() => onOpenLead?.(lead)} style={{ textAlign: "left", fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lead.name || "sem nome"}</button>
+                    <span style={{ fontSize: 13, color: "var(--fg-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lead.company || "—"}</span>
+                    <span><Pill tone="mut">{lead.stage}</Pill></span>
+                    <span className="tnum" style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{relativeTouch(lead)}</span>
+                  </div>
+                ))}
+                {!shown.length && <div style={{ padding: "18px 20px", color: "var(--fg-4)", fontSize: 13 }}>nenhum lead neste público</div>}
+              </div></div>
+              <div style={{ padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <button onClick={toggleAll} style={{ color: "var(--fg-1)", fontSize: 12.5, fontWeight: 600 }}>{allSelected ? "Limpar seleção" : `Selecionar todos (${recipients.length})`}</button>
+                <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>mostrando {Math.min(5, shown.length)} de {shown.length}</span>
+              </div>
+            </section>
+
+            <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Nova campanha</div>
+              <Segmented value={channel} onChange={setChannel} options={[{ value: "wa", label: "WhatsApp" }, { value: "email", label: "E-mail" }]} />
+              <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                <span style={{ fontSize: 12, color: "var(--fg-3)" }}>Template</span>
+                <input list="campaign-options" value={camp.name} onChange={(event) => setCamp((current) => ({ ...current, name: event.target.value, email: channel === "email" ? { ...current.email, subject: event.target.value } : current.email }))} placeholder="Retomada · diagnóstico pendente" style={{ width: "100%", height: 38, padding: "0 11px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 }} />
+                <datalist id="campaign-options">{campaigns.map((campaign) => <option key={campaign.id} value={campaign.name || "sem nome"} />)}</datalist>
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                <span style={{ fontSize: 12, color: "var(--fg-3)" }}>Mensagem</span>
+                <textarea rows={4} value={channel === "email" ? camp.email.body : camp.wa.text} onChange={(event) => setCamp((current) => channel === "email" ? { ...current, email: { ...current.email, body: event.target.value } } : { ...current, wa: { text: event.target.value } })} placeholder="Oi {{nome}}! Seu diagnóstico da {{empresa}} ficou pronto — posso te mandar o resumo aqui mesmo?" style={{ width: "100%", minHeight: 96, padding: "9px 11px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.5, resize: "vertical", fontFamily: "inherit" }} />
+              </label>
+              <div style={{ fontSize: 12, color: "var(--fg-4)", lineHeight: 1.5 }}>variáveis: nome, empresa, etapa · o envio respeita a janela de 24h do WhatsApp</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={sendPrimary} disabled={!chosen.length || !messageReady || emailBusy} style={{ height: 40, padding: "0 16px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13, fontWeight: 600, opacity: !chosen.length || !messageReady || emailBusy ? .5 : 1 }}>{emailBusy ? "Enviando…" : `Enviar pra ${chosen.length} leads`}</button>
+                <button onClick={() => setTab("sequencias")} style={{ height: 40, padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600 }}>Agendar</button>
+              </div>
+            </section>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: 14 };
   const kicker = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
   const field = { width: "100%", padding: "8px 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 };
@@ -257,7 +361,7 @@ function DisparosScreen({ onOpenLead }) {
       {tab === "templates" && <TemplatesTab product={product} />}
 
       {tab === "disparos" && (
-      <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         <WaHealthBanner style={{ margin: 0 }} />
         {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
         {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
@@ -561,7 +665,7 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
   if (!product) return null;
 
   return (
-    <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)", display: "flex", flexDirection: "column", gap: 14 }}>
+    <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
       {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
 
       {/* Sequências salvas */}
@@ -731,7 +835,7 @@ function TemplatesTab({ product }) {
   if (!product) return null;
 
   return (
-    <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)", display: "flex", flexDirection: "column", gap: 14 }}>
+    <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
       {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14 }}>
         <div style={{ ...box, display: "flex", flexDirection: "column", gap: 8 }}>

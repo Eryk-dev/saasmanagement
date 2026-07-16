@@ -1,5 +1,4 @@
 import React from "react";
-import { PageHead } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -67,11 +66,6 @@ export function MindmapsScreen() {
       setRenaming(created.id);
     } catch (e) { console.warn("mapa não criado:", e.message); }
   }
-  async function delMap(id) {
-    if (!window.confirm("Apagar este mapa?")) return;
-    try { await api.remove("mindmaps", id); } catch { /* ignore */ }
-    setMaps((m) => { const rest = (m || []).filter((x) => x.id !== id); if (activeId === id) setActiveId(rest[0]?.id || null); return rest; });
-  }
   async function renameMap(id, name) {
     setMaps((m) => (m || []).map((x) => x.id === id ? { ...x, name } : x));
     setRenaming(null);
@@ -82,31 +76,29 @@ export function MindmapsScreen() {
   const active = (maps || []).find((m) => m.id === activeId) || null;
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead title="Mapas mentais" sub="pense em nós · ramifique ideias e conecte estratégias">
-        <button onClick={newMap} style={{ height: 28, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12.5, fontWeight: 600 }}>+ novo mapa</button>
-      </PageHead>
-
-      <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+    <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
         {/* Sidebar: lista de mapas */}
-        <div style={{ width: 208, flexShrink: 0, borderRight: "1px solid var(--line-1)", overflow: "auto", padding: 8, background: "var(--bg-1)" }}>
+        <div style={{ width: 230, flexShrink: 0, borderRight: "1px solid var(--line-1)", overflow: "auto", padding: "16px 12px", background: "var(--bg-1)", display: "flex", flexDirection: "column", gap: 2 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 8px 12px" }}>
+            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Mapas</span>
+            <button onClick={newMap} style={{ height: 24, padding: "0 4px", color: "var(--accent)", fontSize: 12.5, fontWeight: 600 }}>+ novo</button>
+          </div>
           {maps === null && <div className="mono dim" style={{ fontSize: 11, padding: 10 }}>carregando…</div>}
-          {maps !== null && maps.length === 0 && <div className="mono dim" style={{ fontSize: 11, padding: 10, lineHeight: 1.5 }}>nenhum mapa ainda · crie o primeiro em "+ novo mapa"</div>}
+          {maps !== null && maps.length === 0 && <div className="dim" style={{ fontSize: 12, padding: 10, lineHeight: 1.5 }}>nenhum mapa ainda · crie o primeiro em “+ novo”</div>}
           {(maps || []).map((m) => (
             <div key={m.id} onClick={() => setActiveId(m.id)} onDoubleClick={() => setRenaming(m.id)}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 9px", borderRadius: "var(--r-2)", cursor: "pointer", marginBottom: 2,
-                background: m.id === activeId ? "var(--accent-soft)" : "transparent", border: "1px solid " + (m.id === activeId ? "var(--accent-line)" : "transparent") }}>
-              <span style={{ fontSize: 12, flexShrink: 0, color: "var(--fg-4)" }}>⌬</span>
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: "var(--r-2)", cursor: "pointer",
+                background: m.id === activeId ? "var(--accent-soft)" : "transparent" }}>
+              <span style={{ fontSize: 12, flexShrink: 0, color: m.id === activeId ? "var(--accent)" : "var(--fg-4)" }}>⌬</span>
               {renaming === m.id ? (
                 <input autoFocus defaultValue={m.name} onClick={(e) => e.stopPropagation()}
                   onBlur={(e) => renameMap(m.id, e.target.value.trim() || "Sem título")}
                   onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") setRenaming(null); }}
                   style={{ flex: 1, minWidth: 0, height: 22, fontSize: 12.5, background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: 4, color: "var(--fg-1)", padding: "0 6px" }} />
               ) : (
-                <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: m.id === activeId ? 600 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: m.id === activeId ? "var(--accent)" : "var(--fg-2)" }}>{m.name || "Sem título"}</span>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: m.id === activeId ? 600 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: m.id === activeId ? "var(--fg-1)" : "var(--fg-2)" }}>{m.name || "Sem título"}</span>
               )}
-              <span className="mono dim" style={{ fontSize: 9.5, flexShrink: 0 }}>{(m.nodes || []).length}</span>
-              <button onClick={(e) => { e.stopPropagation(); delMap(m.id); }} className="mono dim" title="apagar mapa" style={{ fontSize: 12, flexShrink: 0, opacity: 0.6 }}>✕</button>
+              <span className="mono tnum dim" style={{ fontSize: 10.5, flexShrink: 0 }}>{(m.nodes || []).length}</span>
             </div>
           ))}
         </div>
@@ -115,9 +107,8 @@ export function MindmapsScreen() {
         <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
           {active
             ? <MapEditor key={active.id} map={active} onSaved={onMapSaved} />
-            : <EmptyState title="Nenhum mapa aberto" hint={maps && maps.length ? "Escolha um mapa na lista." : "Crie um mapa em '+ novo mapa' pra começar."} />}
+            : <EmptyState title="Nenhum mapa aberto" hint={maps && maps.length ? "Escolha um mapa na lista." : "Crie um mapa em “+ novo” pra começar."} />}
         </div>
-      </div>
     </div>
   );
 }
@@ -277,16 +268,14 @@ function MapEditor({ map, onSaved }) {
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
       {/* Toolbar flutuante */}
-      <div style={{ position: "absolute", top: 10, left: 10, zIndex: 5, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: 6, boxShadow: "var(--shadow-1)" }}>
+      <div style={{ position: "absolute", top: 14, left: 14, zIndex: 5, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "6px 8px", boxShadow: "var(--shadow-card)" }}>
         <button style={btn()} title="Novo nó (ou dê 2 cliques no fundo)" onClick={() => addNodeAt(wrapRef.current.getBoundingClientRect().left + 260, wrapRef.current.getBoundingClientRect().top + 160)}>+ nó</button>
         <button style={btn(sel ? {} : { opacity: 0.4, cursor: "default" })} title="Adicionar filho (Tab)" onClick={() => sel && addChild(sel)}>+ filho</button>
         <button style={btn(linkFrom ? { background: "var(--accent-soft)", borderColor: "var(--accent-line)", color: "var(--accent)" } : (sel ? {} : { opacity: 0.4, cursor: "default" }))}
           title="Conectar a outro nó (clique aqui e depois no destino)" onClick={() => { if (sel) setLinkFrom((f) => f ? null : sel); }}>{linkFrom ? "conectando…" : "↔ conectar"}</button>
         <span style={{ width: 1, height: 20, background: "var(--line-1)", margin: "0 2px" }} />
-        <button style={btn()} title="Organizar em árvore" onClick={autoOrganize}>⌥ organizar</button>
-        <button style={btn()} title="Enquadrar tudo" onClick={fitView}>⤢ enquadrar</button>
-        <button style={btn()} title="Aproximar" onClick={() => setView((v) => ({ ...v, z: Math.min(2.4, v.z * 1.15) }))}>+</button>
-        <button style={btn()} title="Afastar" onClick={() => setView((v) => ({ ...v, z: Math.max(0.3, v.z * 0.87) }))}>−</button>
+        <button style={btn()} title="Organizar em árvore" onClick={autoOrganize}>organizar</button>
+        <button style={btn()} title="Enquadrar tudo" onClick={fitView}>enquadrar</button>
         {selNode && (
           <>
             <span style={{ width: 1, height: 20, background: "var(--line-1)", margin: "0 2px" }} />
@@ -350,6 +339,7 @@ function MapEditor({ map, onSaved }) {
             dê 2 cliques em qualquer lugar pra criar o 1º nó<br />arraste pra mover · roda do mouse pra zoom · Tab cria filho
           </div>
         )}
+        <div style={{ position: "absolute", left: 14, bottom: 14, fontSize: 12, color: "var(--fg-4)", pointerEvents: "none" }}>2 cliques cria nó · Tab cria filho · roda do mouse dá zoom</div>
       </div>
     </div>
   );

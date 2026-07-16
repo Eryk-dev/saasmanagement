@@ -1,6 +1,6 @@
 import React from "react";
 import { PageHead } from "../components/viz.jsx";
-import { EmptyState } from "../atoms.jsx";
+import { EmptyState, PrimaryButton } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
 
@@ -74,53 +74,58 @@ function OffersScreen() {
     copyTimer.current = setTimeout(() => setCopied(""), 1600);
   }
 
-  const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
-  const inp = { width: "100%", height: 30, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
-  const btn = { height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12, fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" };
+  const kicker = { fontSize: 11, fontWeight: 600, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" };
+  const inp = { width: "100%", height: 38, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
+  const btn = { height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", boxShadow: "var(--shadow-1)" };
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <PageHead title="Link pagamento" sub="links de pagamento das ofertas · copie e envie pro cliente">
-        {dirty && (
-          <>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {dirty && (
+            <>
             <button onClick={reset} disabled={saving} className="mono dim" style={{ fontSize: 11.5 }}>descartar</button>
             <button onClick={save} disabled={saving}
-              style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600, opacity: saving ? 0.6 : 1 }}>
+              style={{ height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, opacity: saving ? 0.6 : 1 }}>
               {saving ? "salvando…" : "salvar links"}
             </button>
-          </>
-        )}
+            </>
+          )}
+          <PrimaryButton onClick={addOffer}>+ adicionar oferta</PrimaryButton>
+        </div>
       </PageHead>
 
-      <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
         {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
         {!items && !err && <div className="mono dim" style={{ fontSize: 12 }}>carregando ofertas…</div>}
 
         {items && items.length === 0 && (
-          <EmptyState title="Nenhuma oferta ainda" hint="Adicione a primeira oferta com o link de pagamento." />
+          <div style={{ minHeight: 240, background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
+            <EmptyState title="Nenhuma oferta ainda" hint="Adicione a primeira oferta com o link de pagamento." action={<PrimaryButton onClick={addOffer}>+ adicionar oferta</PrimaryButton>} />
+          </div>
         )}
 
         {items && items.length > 0 && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 14 }}>
             {items.map((o, i) => {
               const hasLink = /^https?:\/\//i.test(o.link || "");
               return (
-                <div key={i} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+                <div key={i} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <input value={o.label} onChange={(e) => patch(i, "label", e.target.value)}
                         placeholder="Nome da oferta"
-                        style={{ ...inp, height: 28, border: "1px solid transparent", background: "transparent", padding: "0 2px", fontSize: 15, fontWeight: 700, fontFamily: "var(--display)" }} />
+                        style={{ ...inp, height: 24, border: "1px solid transparent", background: "transparent", padding: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em", fontFamily: "var(--display)" }} />
                       <input value={o.price} onChange={(e) => patch(i, "price", e.target.value)}
                         placeholder="preço (ex.: 12x 599 · 7.188 no ano)"
-                        className="mono" style={{ ...inp, height: 24, border: "1px solid transparent", background: "transparent", padding: "0 2px", fontSize: 11.5, color: "var(--accent)" }} />
+                        className="tnum" style={{ ...inp, height: 22, border: "1px solid transparent", background: "transparent", padding: 0, fontSize: 12.5, color: "var(--accent)" }} />
                     </div>
-                    <button onClick={() => removeOffer(i)} title="Remover oferta" className="mono dim" style={{ fontSize: 13, flexShrink: 0, padding: 2 }}>✕</button>
+                    <button onClick={() => removeOffer(i)} title="Remover oferta" className="dim" style={{ fontSize: 13, flexShrink: 0, padding: 2 }}>✕</button>
                   </div>
 
                   <div>
-                    <span className="mono" style={{ ...kicker, display: "block", marginBottom: 4 }}>Link de pagamento</span>
+                    <span style={{ ...kicker, display: "block", marginBottom: 8 }}>Link de pagamento</span>
                     <input value={o.link} onChange={(e) => patch(i, "link", e.target.value)}
                       placeholder="https://mpago.la/…"
                       className="mono" style={{ ...inp, fontSize: 12 }} />
@@ -128,13 +133,13 @@ function OffersScreen() {
 
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button onClick={() => copy(o.link, o.key || i)} disabled={!hasLink}
-                      style={{ ...btn, background: copied === (o.key || i) ? "var(--pos-soft)" : "var(--btn-bg, var(--accent))", color: copied === (o.key || i) ? "var(--pos)" : "var(--btn-fg, var(--accent-fg))", border: "1px solid transparent", fontWeight: 600, opacity: hasLink ? 1 : 0.5 }}>
-                      {copied === (o.key || i) ? "✓ copiado" : "⧉ copiar"}
+                      style={{ ...btn, background: copied === (o.key || i) ? "var(--pos-soft)" : "var(--btn-bg)", color: copied === (o.key || i) ? "var(--pos)" : "var(--btn-fg)", borderColor: "transparent", opacity: hasLink ? 1 : 0.5 }}>
+                      {copied === (o.key || i) ? "✓ copiado" : "Copiar"}
                     </button>
                     <a href={hasLink ? o.link : undefined} target="_blank" rel="noopener noreferrer"
-                      style={{ ...btn, textDecoration: "none", opacity: hasLink ? 1 : 0.4, pointerEvents: hasLink ? "auto" : "none" }}>↗ abrir</a>
+                      style={{ ...btn, textDecoration: "none", opacity: hasLink ? 1 : 0.4, pointerEvents: hasLink ? "auto" : "none" }}>Abrir ↗</a>
                     <a href={hasLink ? waShare(o, product?.name) : undefined} target="_blank" rel="noopener noreferrer"
-                      style={{ ...btn, textDecoration: "none", color: "#128c4b", borderColor: "#25D36655", opacity: hasLink ? 1 : 0.4, pointerEvents: hasLink ? "auto" : "none" }}>WhatsApp ↗</a>
+                      style={{ ...btn, textDecoration: "none", opacity: hasLink ? 1 : 0.4, pointerEvents: hasLink ? "auto" : "none" }}>WhatsApp ↗</a>
                   </div>
                 </div>
               );
@@ -142,14 +147,8 @@ function OffersScreen() {
           </div>
         )}
 
-        {items && (
-          <div>
-            <button onClick={addOffer} style={{ ...btn, borderStyle: "dashed" }}>＋ adicionar oferta</button>
-          </div>
-        )}
-
-        <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.5, marginTop: 4 }}>
-          os links ficam salvos no servidor: qualquer um do time vê sempre o link atual. "copiar" cola o link; "WhatsApp" abre com a mensagem pronta pra escolher o contato.
+        <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
+          os links ficam salvos no servidor: qualquer um do time vê sempre o link atual. “Copiar” cola o link; “WhatsApp” abre com a mensagem pronta.
         </div>
       </div>
     </div>

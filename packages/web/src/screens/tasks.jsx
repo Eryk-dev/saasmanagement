@@ -5,6 +5,7 @@ import { chromeBtnStyleSmall } from "../lib/ui.js";
 import { Avatar, EmptyState, PrimaryButton } from "../atoms.jsx";
 import { inputStyle, labelStyle } from "../components/theme-inputs.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
+import { PageHead } from "../components/viz.jsx";
 // Tarefas — kanban interno do time (estilo Trello). Cards = collection `tasks`
 // (CRUD genérico); colunas = 1 registro em `task_boards` (criado ao editar — sem
 // board salvo, vale DEFAULT_COLUMNS). Coluna tem KEY estável: renomear não órfã
@@ -129,16 +130,16 @@ function TasksScreen() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       {/* Toolbar — filtros + nova tarefa */}
-      <div style={{ padding: "12px var(--pad-x)", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, background: "var(--bg-0)" }}>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <select value={fAssignee} onChange={(e) => setFAssignee(e.target.value)} style={{ ...inputStyle, width: "auto", height: 26, fontSize: 12 }}>
-            <option value="all">todos responsáveis</option>
-            {teamUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-          </select>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar…" style={{ ...inputStyle, width: 160, height: 26, fontSize: 12 }} />
+      <PageHead title="Tarefas" sub="kanban do time · arraste para mover">
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {[{ id: "all", name: "Todos" }, ...teamUsers].map((u) => {
+            const active = fAssignee === u.id;
+            return <button key={u.id} onClick={() => setFAssignee(u.id)} style={{ height: 34, padding: "0 13px", borderRadius: "var(--r-2)", border: `1px solid ${active ? "var(--accent-line)" : "var(--line-2)"}`, background: active ? "var(--accent-soft)" : "var(--bg-1)", color: active ? "var(--accent)" : "var(--fg-3)", fontSize: 12.5, fontWeight: 600 }}>{u.name}</button>;
+          })}
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar…" style={{ ...inputStyle, width: 160, height: 38, fontSize: 13 }} />
+          <PrimaryButton onClick={() => setModal({ task: null, column: columns[0].key })}>+ tarefa</PrimaryButton>
         </div>
-        <PrimaryButton onClick={() => setModal({ task: null, column: columns[0].key })}>+ tarefa</PrimaryButton>
-      </div>
+      </PageHead>
 
       {/* Board */}
       {tasks.length === 0 ? (
@@ -148,30 +149,33 @@ function TasksScreen() {
           action={<PrimaryButton onClick={() => setModal({ task: null, column: columns[0].key })}>+ Criar tarefa</PrimaryButton>}
         />
       ) : (
-        <div style={{ flex: 1, overflowX: "auto", padding: 14, display: "grid", gridAutoFlow: "column", gridAutoColumns: "minmax(260px, 1fr)", gap: 10, alignItems: "start" }}>
-          {columns.map((col, i) => (
-            <TaskColumn key={col.key}
-              col={col} idx={i} count={columns.length}
-              cards={byColumn[col.key] || []}
-              users={teamUsers}
-              dragging={dragging} setDragging={setDragging}
-              onDrop={(beforeId) => { if (dragging) moveTask(dragging, col.key, beforeId); setDragging(null); }}
-              onOpen={(t) => setModal({ task: t, column: col.key })}
-              onAdd={() => setModal({ task: null, column: col.key })}
-              onRename={(name) => saveColumns(columns.map((c) => c.key === col.key ? { ...c, name } : c))}
-              onColor={(color) => saveColumns(columns.map((c) => c.key === col.key ? { ...c, color } : c))}
-              onMove={(dir) => {
-                const next = [...columns];
-                [next[i], next[i + dir]] = [next[i + dir], next[i]];
-                saveColumns(next);
-              }}
-              onRemove={() => saveColumns(columns.filter((c) => c.key !== col.key))}
-            />
-          ))}
-          <button onClick={() => saveColumns([...columns, { key: `c_${Date.now().toString(36)}`, name: "Nova coluna", color: "" }])}
-            style={{ ...chromeBtnStyleSmall, height: 36, border: "1px dashed var(--line-2)", background: "transparent", color: "var(--fg-4)" }}>
-            <span style={{ fontSize: 12 }}>+ coluna</span>
-          </button>
+        <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${columns.length}, minmax(260px, 1fr))`, minWidth: columns.length * 272, gap: 12, alignItems: "start" }}>
+            {columns.map((col, i) => (
+              <TaskColumn key={col.key}
+                col={col} idx={i} count={columns.length}
+                cards={byColumn[col.key] || []}
+                users={teamUsers}
+                dragging={dragging} setDragging={setDragging}
+                onDrop={(beforeId) => { if (dragging) moveTask(dragging, col.key, beforeId); setDragging(null); }}
+                onOpen={(t) => setModal({ task: t, column: col.key })}
+                onRename={(name) => saveColumns(columns.map((c) => c.key === col.key ? { ...c, name } : c))}
+                onColor={(color) => saveColumns(columns.map((c) => c.key === col.key ? { ...c, color } : c))}
+                onMove={(dir) => {
+                  const next = [...columns];
+                  [next[i], next[i + dir]] = [next[i + dir], next[i]];
+                  saveColumns(next);
+                }}
+                onRemove={() => saveColumns(columns.filter((c) => c.key !== col.key))}
+              />
+            ))}
+          </div>
+          <div>
+            <button onClick={() => saveColumns([...columns, { key: `c_${Date.now().toString(36)}`, name: "Nova coluna", color: "" }])}
+              style={{ ...chromeBtnStyleSmall, height: 32, padding: "0 13px", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", boxShadow: "var(--shadow-1)" }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600 }}>+ coluna</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -194,7 +198,7 @@ function TasksScreen() {
 
 
 // ─────────────────────────────────────────────── Coluna
-function TaskColumn({ col, idx, count, cards, users, dragging, setDragging, onDrop, onOpen, onAdd, onRename, onColor, onMove, onRemove }) {
+function TaskColumn({ col, idx, count, cards, users, dragging, setDragging, onDrop, onOpen, onRename, onColor, onMove, onRemove }) {
   const [over, setOver] = useState(false);
   const [menu, setMenu] = useState(false);
   return (
@@ -203,17 +207,17 @@ function TaskColumn({ col, idx, count, cards, users, dragging, setDragging, onDr
       onDragLeave={() => setOver(false)}
       onDrop={(e) => { e.preventDefault(); setOver(false); onDrop(null); }}
       style={{
-        background: "var(--bg-1)",
-        border: "1px solid " + (over ? "var(--accent-line)" : "var(--line-1)"),
-        borderRadius: "var(--r-3)",
+        background: "var(--bg-2)",
+        border: "1px solid " + (over ? "var(--accent-line)" : "transparent"),
+        borderRadius: "var(--r-4)",
         padding: 10, minHeight: 240,
-        display: "flex", flexDirection: "column", gap: 6,
+        display: "flex", flexDirection: "column", gap: 8,
       }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 4px 6px", borderBottom: "1px solid var(--line-1)", position: "relative" }}>
-        <div style={{ fontSize: 12, fontWeight: 500, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "6px 8px 2px", position: "relative" }}>
+        <div style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
           {col.color && <span style={{ width: 8, height: 8, borderRadius: 2, background: col.color, flexShrink: 0 }} />}
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{col.name}</span>
-          <span className="mono dim" style={{ fontSize: 10 }}>{cards.length}</span>
+          <span className="mono tnum dim" style={{ fontSize: 11.5 }}>{cards.length}</span>
         </div>
         <button onClick={() => setMenu((m) => !m)} className="mono dim" style={{ fontSize: 12, padding: "0 4px" }}>⋯</button>
         {menu && (
@@ -224,17 +228,13 @@ function TaskColumn({ col, idx, count, cards, users, dragging, setDragging, onDr
       </div>
       {cards.map((t) => (
         <TaskCard key={t.id} t={t} users={users}
+          completed={col.key === "done" || /conclu/i.test(col.name)}
           onDragStart={() => setDragging(t.id)}
           onDropBefore={() => onDrop(t.id)}
           onOpen={() => onOpen(t)}
         />
       ))}
       {cards.length === 0 && <div className="mono dim" style={{ fontSize: 11, textAlign: "center", padding: "20px 0" }}>vazio</div>}
-      <button onClick={onAdd} className="mono dim" style={{ fontSize: 11, textAlign: "left", padding: "6px 4px", borderRadius: "var(--r-1)" }}
-        onMouseEnter={(e) => e.currentTarget.style.background = "var(--hover)"}
-        onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}>
-        + adicionar
-      </button>
     </div>
   );
 }
@@ -286,9 +286,7 @@ function ColumnMenu({ col, idx, count, hasCards, onRename, onColor, onMove, onRe
 }
 
 // ─────────────────────────────────────────────── Card
-function TaskCard({ t, users, onDragStart, onDropBefore, onOpen }) {
-  const { SAAS } = window.SEED;
-  const s = SAAS.find((x) => x.id === t.saas);
+function TaskCard({ t, users, completed, onDragStart, onDropBefore, onOpen }) {
   const assignees = assigneesOf(t).map((id) => users.find((u) => u.id === id)).filter(Boolean);
   const overdue = t.dueDate && t.dueDate < today();
   return (
@@ -299,52 +297,47 @@ function TaskCard({ t, users, onDragStart, onDropBefore, onOpen }) {
       onDrop={(e) => { e.preventDefault(); e.stopPropagation(); onDropBefore(); }}
       onClick={onOpen}
       style={{
-        background: "var(--bg-2)",
+        background: "var(--bg-1)",
         border: "1px solid var(--line-1)",
-        borderRadius: "var(--r-2)",
-        padding: "8px 10px",
+        borderRadius: "var(--r-3)",
+        boxShadow: "var(--shadow-card)",
+        padding: "12px 14px",
         cursor: "grab",
+        opacity: completed ? .75 : 1,
       }}>
-      <div style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.35 }}>{t.title}</div>
-      {(t.labels || []).length > 0 && (
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 5 }}>
-          {t.labels.map((l) => <LabelChip key={l} label={l} />)}
-        </div>
-      )}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6, gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--fg-3)", minWidth: 0 }}>
+      <div style={{ fontSize: 13.5, fontWeight: completed ? 500 : 600, lineHeight: 1.35, color: completed ? "var(--fg-3)" : "var(--fg-1)", textDecoration: completed ? "line-through" : "none" }}>{t.title}</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: "var(--fg-3)", minWidth: 0 }}>
           {assignees.length > 0 && (
             <span style={{ display: "inline-flex" }}>
               {assignees.map((u, i) => (
                 <span key={u.id} style={{ marginLeft: i ? -5 : 0, display: "inline-flex" }}>
-                  <Avatar id={u.id} name={u.name} size={16} />
+                  <Avatar id={u.id} name={u.name} size={22} />
                 </span>
               ))}
             </span>
           )}
-          {t.dueDate && <span className="mono" style={{ color: overdue ? "var(--neg)" : "var(--fg-3)" }}>{fmtDue(t.dueDate)}</span>}
-          {t.priority && <span className="mono" style={{ color: priTone(t.priority) }}>· {t.priority}</span>}
-          {(t.comments || []).length > 0 && <span className="mono dim">❞ {t.comments.length}</span>}
+          {completed ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "var(--pos)", fontWeight: 600 }}><span style={{ width: 6, height: 6, borderRadius: 999, background: "currentColor" }} />feita{t.dueDate ? ` ${fmtDue(t.dueDate)}` : ""}</span>
+          ) : (
+            <>
+              {t.dueDate && <span className="mono tnum" style={{ color: overdue ? "var(--neg)" : "var(--fg-3)" }}>{fmtDue(t.dueDate)}</span>}
+              {t.priority && <span className="mono" style={{ color: priTone(t.priority) }}>· {t.priority}</span>}
+            </>
+          )}
         </div>
-        {s && (
-          <span className="mono dim" style={{ fontSize: 10, display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-            <span style={{ width: 6, height: 6, borderRadius: 2, background: window.productTone(s) }} />
-            {s.name}
-          </span>
-        )}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
+          {(t.comments || []).length > 0 && <span className="mono dim" style={{ fontSize: 11 }}>❞ {t.comments.length}</span>}
+          {(t.labels || []).slice(0, 1).map((label) => <LabelChip key={label} label={label} />)}
+        </span>
       </div>
     </div>
   );
 }
 
 function LabelChip({ label }) {
-  let h = 0;
-  for (const c of label) h = (h * 31 + c.charCodeAt(0)) % 360;
   return (
-    <span className="mono" style={{
-      fontSize: 9, padding: "1px 6px", borderRadius: 999,
-      background: `oklch(0.30 0.05 ${h})`, color: `oklch(0.88 0.06 ${h})`,
-    }}>{label}</span>
+    <span className="chip" style={{ minHeight: 20, fontSize: 11 }}>{label}</span>
   );
 }
 

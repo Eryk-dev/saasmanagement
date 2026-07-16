@@ -1,11 +1,11 @@
 import React from "react";
-import { PageHead } from "../components/viz.jsx";
+import { PageHead, Segmented } from "../components/viz.jsx";
 
 // Estáticos — editor de criativos da marca pro Instagram, direto no cockpit.
 // 18 templates fixos (6 stories 1080×1920 · 6 posts de feed 1080×1350 · 6
 // carrosséis de 4 slides 1080×1350) com a identidade LeverAds das superfícies
-// públicas (proposta/form): navy #051C2C em gradiente, teal #23D8D3, Space
-// Grotesk + JetBrains Mono.
+// públicas (proposta/form): navy #051C2C em gradiente, teal #23D8D3,
+// Instrument Sans + JetBrains Mono, como no handoff Lever Premium.
 //
 // Cada template é uma LISTA DE ELEMENTOS (logo, texto, foto, pílula, painel…)
 // com posição default; o preview é interativo: arraste qualquer elemento pra
@@ -30,9 +30,9 @@ const B = {
   teal: "#23D8D3",        // teal do logo — brilha no navy
   tealDeep: "#0C8F83",    // teal legível sobre fundo claro
 };
-const FD = "'Space Grotesk'";
+const FD = "'Instrument Sans'";
 const FM = "'JetBrains Mono'";
-const FONTS_HREF = "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap";
+const FONTS_HREF = "https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap";
 
 // Paleta resolvida por modo do fundo (escuro = navy, claro = gelo).
 function pal(mode) {
@@ -982,11 +982,12 @@ const photoSlotsOf = (tpl) => tpl.els.filter((e) => e.type === "photo");
 // puxa os PNGs finais via apiRef.current.getBlobs() na hora de publicar.
 const ZOOMS = [1, 1.35, 1.75];
 
-function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomIndex = 1, apiRef }) {
+function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomIndex = 1, apiRef, standalone = false }) {
   const allowed = TEMPLATES.filter((t) => groups.includes(t.group));
   const [tplId, setTplId] = useS(allowed[0]?.id);
   const tpl = allowed.find((t) => t.id === tplId) || allowed[0] || TEMPLATES[0];
   const [zoom, setZoom] = useS(Math.min(zoomIndex, ZOOMS.length - 1));
+  const [activeSlide, setActiveSlide] = useS(0);
   const [vals, setVals] = useS(() => defaultsOf(allowed[0] || TEMPLATES[0]));
   const [pos, setPos] = useS({});        // offsets de arrasto por elemento
   const [imgs, setImgs] = useS({});      // fotos carregadas por slot
@@ -1003,7 +1004,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
 
   useE(() => { let ok = true; loadAssets().then(() => ok && setReady(true)); return () => { ok = false; }; }, []);
   useE(() => {
-    setVals(defaultsOf(tpl)); setPos({}); setImgs({}); setExtras([]); setSel(null); setAddSlide(1);
+    setVals(defaultsOf(tpl)); setPos({}); setImgs({}); setExtras([]); setSel(null); setAddSlide(1); setActiveSlide(0);
   }, [tpl.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Redesenha os canvases (resolução nativa; o CSS só encolhe a exibição).
@@ -1152,6 +1153,71 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
   }
   const photoSlots = photoSlotsOf(tpl);
   const moved = Object.keys(pos).length > 0;
+
+  if (standalone) {
+    const format = tpl.group === "car" ? "carrossel" : tpl.group === "post" ? "feed" : "story";
+    const formatOptions = [
+      { value: "story", label: "Story", group: "story" },
+      { value: "feed", label: "Feed", group: "post" },
+      { value: "carrossel", label: "Carrossel", group: "car" },
+    ];
+    const setFormat = (value) => {
+      const group = formatOptions.find((option) => option.value === value)?.group;
+      const next = allowed.find((template) => template.group === group);
+      if (next) setTplId(next.id);
+    };
+    const visibleTemplates = allowed.filter((template) => template.group === (formatOptions.find((option) => option.value === format)?.group));
+
+    return (
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
+        <PageHead title="Canvas" sub="stories, feed e carrossel · PNG pronto pra postar">
+          <Segmented value={format} onChange={setFormat} options={formatOptions.map(({ value, label }) => ({ value, label }))} />
+          <button onClick={downloadAll} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600 }}>Baixar PNG</button>
+          <button onClick={() => { window.location.hash = "social"; }} style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13, fontWeight: 600 }}>Publicar</button>
+        </PageHead>
+
+        <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 16, alignItems: "start" }}>
+            <div style={{ background: "var(--bg-2)", borderRadius: "var(--r-4)", padding: 32, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 480 }}>
+              {!ready && <div className="mono dim" style={{ fontSize: 12 }}>carregando fontes da marca…</div>}
+              {Array.from({ length: tpl.slides }, (_, i) => (
+                <canvas key={tpl.id + i} ref={(el) => { refs.current[i] = el; }}
+                  onPointerDown={(event) => onDown(event, i)} onPointerMove={(event) => onMove(event, i)} onPointerUp={onUp}
+                  style={{ display: i === activeSlide ? "block" : "none", width: 420, maxWidth: "100%", height: "auto", borderRadius: 4, boxShadow: "var(--shadow-card)", background: B.navy, cursor: "grab", touchAction: "none" }} />
+              ))}
+              {tpl.slides > 1 && <div style={{ display: "flex", gap: 5, marginTop: 12 }}>{Array.from({ length: tpl.slides }, (_, i) => <button key={i} onClick={() => setActiveSlide(i)} aria-label={`slide ${i + 1}`} style={{ width: 8, height: 8, borderRadius: 99, background: i === activeSlide ? "var(--accent)" : "var(--line-2)" }} />)}</div>}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px 24px" }}>
+                <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Conteúdo</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 14 }}>
+                  {tpl.fields.map((field) => (
+                    <label key={field.k} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      <span style={{ fontSize: 12, color: "var(--fg-3)" }}>{field.label}</span>
+                      {field.type === "textarea" ? <textarea rows={2} value={vals[field.k] ?? ""} onChange={(event) => setVals((current) => ({ ...current, [field.k]: event.target.value }))} style={{ ...fieldStyle, minHeight: 64, padding: "9px 11px", resize: "vertical" }} /> : <input value={vals[field.k] ?? ""} onChange={(event) => setVals((current) => ({ ...current, [field.k]: event.target.value }))} style={{ ...fieldStyle, height: 38, padding: "0 11px" }} />}
+                    </label>
+                  ))}
+                  {photoSlots.map((slot) => <div key={slot.id} style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ flex: 1, fontSize: 12, color: "var(--fg-3)" }}>Foto {slot.slide ? `· slide ${slot.slide}` : ""}</span><button onClick={() => openPhoto(slot.id)} style={{ ...smallBtn, height: 30 }}>{imgs[slot.id] ? "Trocar foto" : "Escolher foto"}</button></div>)}
+                </div>
+              </section>
+
+              <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px 24px" }}>
+                <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Templates</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 14 }}>
+                  {visibleTemplates.map((template) => {
+                    const active = template.id === tpl.id;
+                    return <button key={template.id} onClick={() => setTplId(template.id)} style={{ aspectRatio: "1", background: active ? B.navy : "var(--bg-2)", borderRadius: 6, border: active ? "2px solid var(--accent)" : "1px solid var(--line-1)", display: "flex", alignItems: "center", justifyContent: "center", padding: 8 }}><span style={{ color: active ? B.teal : "var(--fg-3)", fontSize: 10, fontWeight: 700, textAlign: "center" }}>{template.name}</span></button>;
+                  })}
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -1327,14 +1393,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
 
 // ── Tela Estáticos (o editor completo, standalone) ──────────────────────────
 function CreativeScreen() {
-  return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead
-        title="Canvas"
-        sub="criativos da marca pro Instagram · arraste os elementos no preview · baixe em PNG" />
-      <CreativeEditor />
-    </div>
-  );
+  return <CreativeEditor standalone />;
 }
 
 export { CreativeScreen, CreativeEditor, TEMPLATES, renderSlide };

@@ -1,5 +1,5 @@
 import React from "react";
-import { PageHead, Segmented } from "../components/viz.jsx";
+import { Segmented } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -33,6 +33,7 @@ const RATINGS = [
 
 const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
 const btn = { height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, cursor: "pointer" };
+const page = { flex: 1, overflow: "auto", padding: "28px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16, minHeight: 0 };
 
 function TrainingScreen() {
   const [product] = useActiveSaas();
@@ -51,10 +52,16 @@ const MODES = [{ value: "study", label: "Estudar" }, { value: "edit", label: "Ed
 
 function Head({ mode, setMode, children }) {
   return (
-    <PageHead title="Treinamentos" sub="flashcards com repetição espaçada (FSRS) · sua fila é só sua">
-      {children}
-      <Segmented value={mode} onChange={setMode} options={MODES} />
-    </PageHead>
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap", flexShrink: 0 }}>
+      <div style={{ flex: 1, minWidth: 260 }}>
+        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em" }}>Treinamentos</h1>
+        <div style={{ marginTop: 4, fontSize: 14.5, color: "var(--fg-3)" }}>flashcards com repetição espaçada (FSRS) · sua fila é só sua</div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 6, flexWrap: "wrap" }}>
+        {children}
+        <Segmented value={mode} onChange={setMode} options={MODES} />
+      </div>
+    </div>
   );
 }
 
@@ -98,56 +105,96 @@ function Study({ saasId, mode, setMode }) {
             </button>
           </div>
         )}
-        <DeckList decks={data.decks} newPerDay={data.newPerDay}
+        <DeckList decks={data.decks}
           onStudy={(role, foco) => { setSession(role); setFocus(!!foco); }} />
-        <ConsistencyCard saasId={saasId} />
+        <SessionPreview decks={data.decks} queue={data.queue}
+          onStudy={(role) => { setSession(role); setFocus(false); }} />
       </>
     );
   };
 
   return (
-    <>
+    <div style={page}>
       <Head mode={mode} setMode={setMode} />
-      <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)", display: "flex", flexDirection: "column", gap: 14, minHeight: 0 }}>
-        {body()}
-      </div>
-    </>
+      {body()}
+    </div>
   );
 }
 
-function DeckList({ decks, newPerDay, onStudy }) {
+function DeckList({ decks, onStudy }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 720 }}>
-      {decks.map((d) => {
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14 }}>
+      {decks.map((d, index) => {
         const total = d.counts.new + d.counts.learning + d.counts.review;
         return (
-          <div key={d.role} style={{ display: "flex", alignItems: "center", gap: 14, border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 18px" }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--fg-1)" }}>{d.label}</div>
-              <div className="mono dim" style={{ fontSize: 10.5, marginTop: 2 }}>{d.total} card{d.total === 1 ? "" : "s"} no baralho</div>
+          <div key={d.role} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: 24 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em" }}>{d.label}</div>
+                <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 3 }}>{d.total} card{d.total === 1 ? "" : "s"} · vaga {d.role}</div>
+              </div>
+              {index === 0 && (
+                <span style={{ height: 22, display: "inline-flex", alignItems: "center", padding: "0 9px", borderRadius: "var(--r-1)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 11.5, fontWeight: 600 }}>sua vaga</span>
+              )}
             </div>
-            {COUNT.map((c) => (
-              <div key={c.key} style={{ textAlign: "center", minWidth: 64 }}>
-                <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 20, fontWeight: 700, color: d.counts[c.key] ? c.color : "var(--fg-4)" }}>{d.counts[c.key]}</div>
-                <div className="mono" style={{ ...kicker }}>{c.label}</div>
-              </div>
-            ))}
+            <div style={{ display: "flex", gap: 18, margin: "18px 0" }}>
+              {[
+                { key: "new", label: "novos", color: "var(--info)" },
+                { key: "learning", label: "aprendendo", color: "var(--warn)" },
+                { key: "review", label: "revisar hoje", color: "var(--pos)" },
+              ].map((c) => (
+                <div key={c.key}>
+                  <div className="tnum" style={{ fontSize: 20, fontWeight: 700, color: d.counts[c.key] ? c.color : "var(--fg-5)" }}>{d.counts[c.key]}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{c.label}</div>
+                </div>
+              ))}
+            </div>
             {total > 0 ? (
-              <div style={{ display: "flex", gap: 6 }}>
-                <button onClick={() => onStudy(d.role, true)} title="modo foco: tela cheia + áudio ambiente"
-                  style={{ ...btn, fontFamily: "var(--mono)", fontSize: 12 }}>◐ foco</button>
-                <button onClick={() => onStudy(d.role, false)}
-                  style={{ ...btn, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", border: "1px solid var(--btn-bg, var(--accent))", fontWeight: 600 }}>
-                  Estudar →
-                </button>
-              </div>
+              <button onClick={() => onStudy(d.role, false)} style={{
+                height: 40, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 600,
+                background: index === 0 ? "var(--btn-bg)" : "var(--bg-1)", color: index === 0 ? "var(--btn-fg)" : "var(--fg-1)",
+                border: `1px solid ${index === 0 ? "var(--btn-bg)" : "var(--line-2)"}`, boxShadow: index === 0 ? "var(--shadow-btn)" : "none",
+              }}>Estudar →</button>
             ) : (
-              <span className="mono" style={{ fontSize: 11.5, color: "var(--pos)" }}>✓ em dia</span>
+              <div style={{ fontSize: 13, color: "var(--fg-3)", lineHeight: 1.5 }}>Fila de hoje zerada — o FSRS traz cada card de volta na hora certa. Volte amanhã.</div>
             )}
           </div>
         );
       })}
-      <div className="mono dim" style={{ fontSize: 10.5 }}>até {newPerDay} cards novos por baralho por dia · o que você erra volta mais cedo, o que acerta espaça · muda o limite em Editar</div>
+    </div>
+  );
+}
+
+function SessionPreview({ decks, queue, onStudy }) {
+  const deck = decks.find((d) => (queue[d.role] || []).length > 0);
+  if (!deck) return null;
+  const cards = queue[deck.role] || [];
+  const card = cards[0];
+  const isCloze = card.type === "cloze";
+  const question = isCloze ? renderCloze(card.front, card.sub, false) : card.front;
+  const answer = isCloze ? <>{renderCloze(card.front, card.sub, true)}{card.back?.trim() && <> — {card.back}</>}</> : card.back;
+  const labels = ["De novo", "Difícil", "Bom", "Fácil"];
+  const fallback = ["1 min", "8 min", "1 dia", "4 dias"];
+  return (
+    <div style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: 28, maxWidth: 720, alignSelf: "center", width: "100%" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--fg-4)" }}>Prévia da sessão</span>
+        <span className="mono tnum" style={{ marginLeft: "auto", fontSize: 12, color: "var(--fg-4)" }}>card 1 / {cards.length}</span>
+      </div>
+      <div style={{ fontSize: 12.5, color: "var(--fg-4)", marginBottom: 8 }}>{deck.label}</div>
+      <div style={{ fontSize: 18, fontWeight: 600, lineHeight: 1.45, letterSpacing: "-0.01em", whiteSpace: "pre-wrap" }}>{question}</div>
+      {card.image && card.type !== "occlusion" && <img src={api.trainingAssetUrl(card.image)} alt="" style={{ maxWidth: "100%", maxHeight: 220, marginTop: 16, borderRadius: "var(--r-2)" }} />}
+      <div style={{ borderTop: "1px solid var(--line-faint)", margin: "20px 0 16px" }} />
+      <div style={{ fontSize: 14, color: "var(--fg-2)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{answer || "Resposta disponível ao iniciar a sessão."}</div>
+      <div style={{ display: "flex", gap: 8, marginTop: 22, flexWrap: "wrap" }}>
+        {labels.map((label, index) => (
+          <button key={label} onClick={() => onStudy(deck.role)} style={{
+            height: 32, padding: "0 14px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: index === 2 ? 600 : 500,
+            background: index === 2 ? "var(--btn-bg)" : "var(--bg-1)", color: index === 2 ? "var(--btn-fg)" : "var(--fg-2)",
+            border: `1px solid ${index === 2 ? "var(--btn-bg)" : "var(--line-2)"}`,
+          }}>{label} · {card.preview?.[index + 1] || fallback[index]}</button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -595,7 +642,7 @@ function Edit({ saasId, mode, setMode }) {
   function removeCard(id) { setCards((p) => p.filter((c) => c.id !== id)); }
 
   return (
-    <>
+    <div style={page}>
       <Head mode={mode} setMode={setMode}>
         {dirty && (
           <>
@@ -607,41 +654,39 @@ function Edit({ saasId, mode, setMode }) {
           </>
         )}
       </Head>
-      <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)", display: "flex", flexDirection: "column", gap: 14, minHeight: 0 }}>
-        {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
-        {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
-        {!cards && !err && <div className="mono dim" style={{ fontSize: 12 }}>carregando flashcards…</div>}
-        {cards && (
-          <>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-              {roleTabs.map((r) => {
-                const on = r === role;
-                const n = cards.filter((c) => c.role === r).length;
-                return (
-                  <button key={r} onClick={() => setRole(r)} style={{
-                    display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: "0 12px", borderRadius: "var(--r-2)",
-                    background: on ? "var(--accent-soft)" : "var(--bg-1)", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"),
-                    color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: on ? 600 : 500,
-                  }}>
-                    {labels[r] || r}
-                    <span className="mono dim" style={{ fontSize: 10.5 }}>{n}</span>
-                  </button>
-                );
-              })}
-              <span style={{ flex: 1 }} />
-              <label className="mono dim" style={{ fontSize: 11, display: "inline-flex", alignItems: "center", gap: 6 }}>
-                novos/dia
-                <input type="number" min={0} max={200} value={settings.newPerDay}
-                  onChange={(e) => setSettings((s) => ({ ...s, newPerDay: Math.max(0, Math.min(200, Math.round(Number(e.target.value) || 0))) }))}
-                  style={{ width: 58, height: 26, padding: "0 8px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12 }} />
-              </label>
-            </div>
-            <ExamSettings settings={settings} setSettings={setSettings} />
-            <EditCards cards={roleCards} saasId={saasId} onPatch={patchCard} onAdd={addCard} onRemove={removeCard} roleLabel={labels[role] || role} />
-          </>
-        )}
-      </div>
-    </>
+      {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
+      {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
+      {!cards && !err && <div className="mono dim" style={{ fontSize: 12 }}>carregando flashcards…</div>}
+      {cards && (
+        <>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            {roleTabs.map((r) => {
+              const on = r === role;
+              const n = cards.filter((c) => c.role === r).length;
+              return (
+                <button key={r} onClick={() => setRole(r)} style={{
+                  display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: "0 12px", borderRadius: "var(--r-2)",
+                  background: on ? "var(--accent-soft)" : "var(--bg-1)", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"),
+                  color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: on ? 600 : 500,
+                }}>
+                  {labels[r] || r}
+                  <span className="mono dim" style={{ fontSize: 10.5 }}>{n}</span>
+                </button>
+              );
+            })}
+            <span style={{ flex: 1 }} />
+            <label className="mono dim" style={{ fontSize: 11, display: "inline-flex", alignItems: "center", gap: 6 }}>
+              novos/dia
+              <input type="number" min={0} max={200} value={settings.newPerDay}
+                onChange={(e) => setSettings((s) => ({ ...s, newPerDay: Math.max(0, Math.min(200, Math.round(Number(e.target.value) || 0))) }))}
+                style={{ width: 58, height: 26, padding: "0 8px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12 }} />
+            </label>
+          </div>
+          <ExamSettings settings={settings} setSettings={setSettings} />
+          <EditCards cards={roleCards} saasId={saasId} onPatch={patchCard} onAdd={addCard} onRemove={removeCard} roleLabel={labels[role] || role} />
+        </>
+      )}
+    </div>
   );
 }
 
@@ -878,7 +923,7 @@ function OcclusionEditor({ card, onPatch }) {
           <div key={m.id} onMouseDown={(e) => e.stopPropagation()} onClick={() => onPatch(card.id, "masks", masks.filter((x) => x.id !== m.id))}
             title={`${m.id} — clique pra apagar`}
             style={{ position: "absolute", left: pct(m.x), top: pct(m.y), width: pct(m.w), height: pct(m.h), background: "color-mix(in oklab, var(--accent) 75%, transparent)", border: "2px solid var(--accent)", borderRadius: 4, boxSizing: "border-box", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span className="mono" style={{ fontSize: 9.5, color: "var(--accent-fg)", fontWeight: 700 }}>{m.id}</span>
+            <span className="mono code" style={{ fontSize: 9.5, color: "var(--accent-fg)", fontWeight: 700 }}>{m.id}</span>
           </div>
         ))}
         {draft && (
@@ -914,49 +959,47 @@ function Team({ saasId, mode, setMode }) {
   const td = { padding: "9px 10px", fontSize: 12.5, color: "var(--fg-1)", borderTop: "1px solid var(--line-1)", whiteSpace: "nowrap" };
 
   return (
-    <>
+    <div style={page}>
       <Head mode={mode} setMode={setMode} />
-      <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)", display: "flex", flexDirection: "column", gap: 14, minHeight: 0 }}>
-        {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
-        {!data && !err && <div className="mono dim" style={{ fontSize: 12 }}>carregando equipe…</div>}
-        {data && (users.length === 0 ? <EmptyState title="Ninguém com baralho ainda" hint="Dê vagas (SDR/closer/…) pros usuários em Ajustes." /> : (
-          <>
-            <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", overflow: "auto", maxWidth: 980 }}>
-              <table style={{ borderCollapse: "collapse", width: "100%" }}>
-                <thead><tr>
-                  <th style={th}>Pessoa</th><th style={th}>Pra hoje</th><th style={th}>Feitas hoje</th>
-                  <th style={th} title="acerto nos cards que já estavam em revisão — memória real">Retenção 30d</th>
-                  <th style={th} title="cards com intervalo ≥ 21 dias — conhecimento consolidado">Maduros</th>
-                  <th style={th}>Sequência</th><th style={th}>Viu do baralho</th><th style={th}>Último estudo</th>
-                </tr></thead>
-                <tbody>
-                  {users.map((u) => (
-                    <tr key={u.id} onClick={() => setSel(u.id === sel ? null : u.id)}
-                      style={{ cursor: "pointer", background: u.id === sel ? "var(--accent-soft)" : "transparent" }}>
-                      <td style={td}><b>{u.name}</b> <span className="mono dim" style={{ fontSize: 10.5 }}>{(u.roles || []).join(" · ")}</span></td>
-                      <td style={{ ...td, color: u.dueToday ? "var(--warn)" : "var(--pos)", fontWeight: 600 }} className="tnum">
-                        {u.dueToday ? `${u.dueToday}${u.overdue ? ` (${u.overdue} atrasados)` : ""}` : "em dia ✓"}
-                      </td>
-                      <td style={td} className="tnum">{u.doneToday}</td>
-                      <td style={{ ...td, fontWeight: 700, color: retColor(u.retention30d?.pct) }} className="tnum">
-                        {u.retention30d?.pct == null ? "—" : `${u.retention30d.pct}%`}
-                        {u.retention30d?.n > 0 && <span className="mono dim" style={{ fontSize: 10, fontWeight: 400 }}> ({u.retention30d.n})</span>}
-                      </td>
-                      <td style={td} className="tnum">{u.mature}<span className="mono dim" style={{ fontSize: 10 }}>/{u.seen}</span></td>
-                      <td style={td} className="tnum">{u.streak ? `${u.streak}d 🔥` : "—"}</td>
-                      <td style={td} className="tnum">{u.seen}/{u.deckSize}</td>
-                      <td style={{ ...td, color: "var(--fg-3)" }} className="mono">{u.lastReviewAt ? new Date(u.lastReviewAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "nunca"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {selected ? <PersonDetail user={selected} today={data.today} /> :
-              <div className="mono dim" style={{ fontSize: 10.5 }}>clique numa pessoa pra abrir o raio-x · retenção 30d = acerto SÓ em cards que já estavam em revisão (true retention) · maduros = intervalo ≥ 21 dias</div>}
-          </>
-        ))}
-      </div>
-    </>
+      {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
+      {!data && !err && <div className="mono dim" style={{ fontSize: 12 }}>carregando equipe…</div>}
+      {data && (users.length === 0 ? <EmptyState title="Ninguém com baralho ainda" hint="Dê vagas (SDR/closer/…) pros usuários em Ajustes." /> : (
+        <>
+          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", overflow: "auto", maxWidth: 980 }}>
+            <table style={{ borderCollapse: "collapse", width: "100%" }}>
+              <thead><tr>
+                <th style={th}>Pessoa</th><th style={th}>Pra hoje</th><th style={th}>Feitas hoje</th>
+                <th style={th} title="acerto nos cards que já estavam em revisão — memória real">Retenção 30d</th>
+                <th style={th} title="cards com intervalo ≥ 21 dias — conhecimento consolidado">Maduros</th>
+                <th style={th}>Sequência</th><th style={th}>Viu do baralho</th><th style={th}>Último estudo</th>
+              </tr></thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.id} onClick={() => setSel(u.id === sel ? null : u.id)}
+                    style={{ cursor: "pointer", background: u.id === sel ? "var(--accent-soft)" : "transparent" }}>
+                    <td style={td}><b>{u.name}</b> <span className="mono dim" style={{ fontSize: 10.5 }}>{(u.roles || []).join(" · ")}</span></td>
+                    <td style={{ ...td, color: u.dueToday ? "var(--warn)" : "var(--pos)", fontWeight: 600 }} className="tnum">
+                      {u.dueToday ? `${u.dueToday}${u.overdue ? ` (${u.overdue} atrasados)` : ""}` : "em dia ✓"}
+                    </td>
+                    <td style={td} className="tnum">{u.doneToday}</td>
+                    <td style={{ ...td, fontWeight: 700, color: retColor(u.retention30d?.pct) }} className="tnum">
+                      {u.retention30d?.pct == null ? "—" : `${u.retention30d.pct}%`}
+                      {u.retention30d?.n > 0 && <span className="mono dim" style={{ fontSize: 10, fontWeight: 400 }}> ({u.retention30d.n})</span>}
+                    </td>
+                    <td style={td} className="tnum">{u.mature}<span className="mono dim" style={{ fontSize: 10 }}>/{u.seen}</span></td>
+                    <td style={td} className="tnum">{u.streak ? `${u.streak}d 🔥` : "—"}</td>
+                    <td style={td} className="tnum">{u.seen}/{u.deckSize}</td>
+                    <td style={{ ...td, color: "var(--fg-3)" }} className="mono">{u.lastReviewAt ? new Date(u.lastReviewAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "nunca"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {selected ? <PersonDetail user={selected} today={data.today} /> :
+            <div className="mono dim" style={{ fontSize: 10.5 }}>clique numa pessoa pra abrir o raio-x · retenção 30d = acerto SÓ em cards que já estavam em revisão (true retention) · maduros = intervalo ≥ 21 dias</div>}
+        </>
+      ))}
+    </div>
   );
 }
 

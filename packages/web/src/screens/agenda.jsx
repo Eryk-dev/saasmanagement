@@ -2,6 +2,7 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { usersByRole, currentUser, displayName } from "../lib/users.js";
+import { PageHead, Segmented } from "../components/viz.jsx";
 
 // Tela Agenda — o closer (ou o CS) trava horários pra compromissos externos, pra
 // que NÃO caia call/integração em cima. Os bloqueios entram na mesma "agenda
@@ -71,11 +72,6 @@ export function AgendaScreen() {
       return b.recur === "weekly" ? Number(b.weekday) === wd : b.date === ds;
     });
   }
-  function allDayBlocks(day) {
-    const ds = ymd(day), wd = day.getDay();
-    return myBlocks.filter((b) => b.allDay && (b.recur === "weekly" ? Number(b.weekday) === wd : b.date === ds));
-  }
-
   function addBlock(obj) {
     const tmp = { ...obj, id: `tmp_${Date.now()}_${Math.round(Math.random() * 1e6)}` };
     setBlocks((prev) => [...prev, tmp]);
@@ -100,75 +96,49 @@ export function AgendaScreen() {
       ? { saas: "", user, recur: "weekly", weekday: day.getDay(), allDay: false, fromHour: h, toHour: h + 1, reason: reason.trim() }
       : { saas: "", user, recur: "once", date: ds, allDay: false, fromHour: h, toHour: h + 1, reason: reason.trim() });
   }
-  function toggleDay(day) {
-    const existing = allDayBlocks(day);
-    if (existing.length) return removeBlocks(existing);
-    const ds = ymd(day);
-    addBlock(recur === "weekly"
-      ? { saas: "", user, recur: "weekly", weekday: day.getDay(), allDay: true, fromHour: 0, toHour: 0, reason: reason.trim() }
-      : { saas: "", user, recur: "once", date: ds, allDay: true, fromHour: 0, toHour: 0, reason: reason.trim() });
-  }
-
   const weekLabel = `${days[0].toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} – ${days[4].toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`;
   const shiftWeek = (n) => setWeekRef((r) => { const x = new Date(r); x.setDate(x.getDate() + n * 7); return x; });
-  const chip = (on) => ({ padding: "6px 12px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
-    background: on ? "var(--accent)" : "var(--bg-1)", color: on ? "var(--accent-fg)" : "var(--fg-2)", border: "1px solid " + (on ? "var(--accent)" : "var(--line-2)") });
+  const personChip = (on) => ({ height: 34, padding: "0 13px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+    background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)") });
 
   return (
-    <div style={{ padding: "18px 22px", maxWidth: 1040 }}>
-      <div style={{ marginBottom: 6 }}>
-        <h1 style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, color: "var(--fg-1)", margin: 0 }}>Agenda</h1>
-        <p style={{ fontSize: 13, color: "var(--fg-3)", margin: "4px 0 0" }}>
-          Trave horários pra compromissos externos — nenhuma call ou integração é marcada num horário travado.
-        </p>
-      </div>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <PageHead title="Agenda" sub="trave horários pra compromissos externos — nenhuma call cai num horário travado" />
+      <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", maxWidth: 1080, width: "100%", display: "flex", flexDirection: "column", gap: 16 }}>
 
       {/* Controles: pessoa · motivo · pontual/recorrente · semana */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", margin: "14px 0 6px" }}>
-        <select value={user} onChange={(e) => setUser(e.target.value)}
-          style={{ height: 34, padding: "0 10px", borderRadius: "var(--r-2)", background: "var(--bg-1)", color: "var(--fg-1)", border: "1px solid var(--line-2)", fontSize: 13 }}>
-          {people.length === 0 && <option value="">sem closers/CS</option>}
-          {people.map((p) => <option key={p.id} value={p.id}>{displayName(p.id)}</option>)}
-        </select>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        {people.length === 0 && <span className="dim" style={{ fontSize: 12.5 }}>sem closers/CS</span>}
+        {people.map((p) => <button key={p.id} onClick={() => setUser(p.id)} style={personChip(user === p.id)}>{displayName(p.id)}</button>)}
+
+        <span style={{ width: 1, height: 18, background: "var(--line-1)", margin: "0 4px" }} />
 
         <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="motivo (opcional): reunião, folga…"
-          style={{ height: 34, flex: "1 1 200px", minWidth: 160, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--bg-1)", color: "var(--fg-1)", border: "1px solid var(--line-2)", fontSize: 13 }} />
+          style={{ height: 38, width: 240, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--bg-1)", color: "var(--fg-1)", border: "1px solid var(--line-2)", fontSize: 13 }} />
 
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }} title="Pontual = só nessa data. Recorrente = todo aquele dia da semana.">
-          <button onClick={() => setRecur("once")} style={chip(recur === "once")}>só esse dia</button>
-          <button onClick={() => setRecur("weekly")} style={chip(recur === "weekly")}>↻ toda semana</button>
+        <div title="Pontual = só nessa data. Recorrente = todo aquele dia da semana.">
+          <Segmented value={recur} onChange={setRecur} options={[{ value: "once", label: "só esse dia" }, { value: "weekly", label: "↻ toda semana" }]} />
         </div>
-      </div>
 
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+        <span style={{ flex: 1 }} />
         <button onClick={() => shiftWeek(-1)} style={navBtn}>‹</button>
         <button onClick={() => setWeekRef(new Date())} style={{ ...navBtn, width: "auto", padding: "0 12px", fontSize: 12.5 }}>hoje</button>
         <button onClick={() => shiftWeek(1)} style={navBtn}>›</button>
-        <span className="mono" style={{ fontSize: 12.5, color: "var(--fg-3)", marginLeft: 4 }}>{weekLabel}</span>
-        <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--fg-4)" }}>
-          clique num horário livre pra travar · clique num 🔒 pra liberar
-        </span>
+        <span className="mono tnum" style={{ fontSize: 12.5, color: "var(--fg-3)", marginLeft: 4 }}>{weekLabel}</span>
       </div>
 
       {/* Grade: coluna de horas + 5 dias úteis */}
-      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", overflow: "hidden" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "52px repeat(5, 1fr)" }}>
+      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", overflow: "hidden", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "56px repeat(5, 1fr)" }}>
           {/* header */}
           <div style={{ background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }} />
           {days.map((d, i) => {
             const isToday = ymd(d) === ymd(new Date());
-            const dayBlocked = allDayBlocks(d).length > 0;
             return (
-              <div key={i} style={{ padding: "8px 6px", textAlign: "center", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)", borderLeft: "1px solid var(--line-1)" }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: isToday ? "var(--accent)" : "var(--fg-2)" }}>
+              <div key={i} style={{ padding: "10px 8px", textAlign: "center", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)", borderLeft: "1px solid var(--line-faint)" }}>
+                <div style={{ fontSize: 12.5, fontWeight: isToday ? 700 : 600, color: isToday ? "var(--accent)" : "var(--fg-2)" }}>
                   {WD[d.getDay()]} {d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
                 </div>
-                <button onClick={() => toggleDay(d)} title={dayBlocked ? "liberar o dia inteiro" : "travar o dia inteiro"}
-                  style={{ marginTop: 4, fontSize: 10.5, fontWeight: 600, padding: "2px 8px", borderRadius: 999, cursor: "pointer",
-                    background: dayBlocked ? "var(--neg-soft)" : "transparent", color: dayBlocked ? "var(--neg)" : "var(--fg-4)",
-                    border: "1px solid " + (dayBlocked ? "color-mix(in srgb, var(--neg) 30%, var(--line-2))" : "var(--line-2)") }}>
-                  {dayBlocked ? "🔒 dia todo" : "dia inteiro"}
-                </button>
               </div>
             );
           })}
@@ -176,7 +146,7 @@ export function AgendaScreen() {
           {/* linhas de hora */}
           {Array.from({ length: H1 - H0 }, (_, i) => H0 + i).map((h) => (
             <React.Fragment key={h}>
-              <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", textAlign: "right", padding: "0 8px", height: 30, display: "flex", alignItems: "center", justifyContent: "flex-end", borderBottom: "1px solid var(--line-1)" }}>
+              <div className="mono tnum" style={{ fontSize: 11, color: "var(--fg-4)", textAlign: "right", padding: "0 10px", height: 34, display: "flex", alignItems: "center", justifyContent: "flex-end", borderBottom: "1px solid var(--line-faint)" }}>
                 {pad(h)}:00
               </div>
               {days.map((d, di) => {
@@ -189,17 +159,17 @@ export function AgendaScreen() {
                 const past = cell.getTime() < Date.now();
                 const rsn = blocked ? (cov.find((b) => b.reason)?.reason || "") : "";
                 const clickable = !call;
-                let bg = "var(--bg-0)", color = "var(--fg-3)", label = "";
-                if (call) { bg = "color-mix(in srgb, var(--accent) 12%, var(--bg-0))"; color = "var(--accent)"; label = call.kind === "integ" ? "◑ integr." : "● call"; }
-                else if (blocked) { bg = "var(--neg-soft)"; color = "var(--neg)"; label = (weekly ? "🔒↻" : "🔒") + (rsn ? " " + rsn : ""); }
+                let bg = "var(--bg-1)", color = "var(--fg-3)", label = "";
+                if (call) { bg = "var(--accent-soft)"; color = "var(--accent)"; label = call.kind === "integ" ? "● integração" : "● call"; }
+                else if (blocked) { bg = "var(--neg-soft)"; color = "var(--neg)"; label = `bloqueado${weekly ? " ↻" : ""}${rsn ? ` · ${rsn}` : ""}`; }
                 return (
                   <div key={di}
                     onClick={clickable ? () => toggleCell(d, h) : undefined}
                     title={call ? `${call.name} (já marcado)` : blocked ? `bloqueado${rsn ? ": " + rsn : ""}${weekly ? " · toda semana" : ""} — clique pra liberar` : past ? "horário já passou" : "clique pra travar"}
                     style={{
-                      height: 30, borderBottom: "1px solid var(--line-1)", borderLeft: "1px solid var(--line-1)",
-                      display: "flex", alignItems: "center", padding: "0 8px", gap: 4,
-                      fontSize: 11, fontWeight: blocked || call ? 600 : 400, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                      height: 34, borderBottom: "1px solid var(--line-faint)", borderLeft: "1px solid var(--line-faint)",
+                      display: "flex", alignItems: "center", padding: "0 10px", gap: 4,
+                      fontSize: 11.5, fontWeight: blocked || call ? 600 : 400, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                       background: bg, color, cursor: clickable ? "pointer" : "default",
                       opacity: past && !blocked && !call ? 0.5 : 1,
                     }}
@@ -215,13 +185,14 @@ export function AgendaScreen() {
       </div>
 
       {/* Legenda + resumo */}
-      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center", marginTop: 12, fontSize: 12, color: "var(--fg-4)" }}>
-        <span><span style={{ color: "var(--accent)" }}>● call</span> = já marcada (não dá pra travar por cima)</span>
-        <span><span style={{ color: "var(--neg)" }}>🔒</span> = bloqueado · <span style={{ color: "var(--neg)" }}>🔒↻</span> = recorrente</span>
+      <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center", fontSize: 12.5, color: "var(--fg-3)" }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--accent)" }} />call já marcada (não dá pra travar por cima)</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--neg)" }} />bloqueado · ↻ = recorrente</span>
         <span style={{ marginLeft: "auto" }}>{myBlocks.length} bloqueio{myBlocks.length === 1 ? "" : "s"} de {displayName(user) || "—"}</span>
+      </div>
       </div>
     </div>
   );
 }
 
-const navBtn = { width: 32, height: 30, borderRadius: "var(--r-2)", background: "var(--bg-1)", color: "var(--fg-2)", border: "1px solid var(--line-2)", fontSize: 14, cursor: "pointer" };
+const navBtn = { minWidth: 32, height: 32, borderRadius: "var(--r-2)", background: "var(--bg-1)", color: "var(--fg-2)", border: "1px solid var(--line-2)", boxShadow: "var(--shadow-1)", fontSize: 14, cursor: "pointer" };

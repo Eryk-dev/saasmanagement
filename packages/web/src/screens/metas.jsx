@@ -89,26 +89,21 @@ function MetasScreen() {
     setRoleVals(JSON.parse(orig.roleVals)); setOverrides(JSON.parse(orig.overrides));
   }
 
-  const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
-  const unitLabel = { "%": "%", "R$": "R$", n: "" };
-  const inp = { height: 30, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
+  const kicker = { fontSize: 11, fontWeight: 600, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" };
+  const inp = { height: 38, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
   const nameOf = (id) => data?.users?.find((u) => u.id === id)?.name || id;
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, maxWidth: 1080, width: "100%" }}>
       <PageHead title="Metas" sub="metas por vaga e por pessoa · valem em todo campo que mostra meta">
-        {dirty && (
-          <>
-            <button onClick={reset} disabled={saving} className="mono dim" style={{ fontSize: 11.5 }}>descartar</button>
-            <button onClick={save} disabled={saving}
-              style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600, opacity: saving ? 0.6 : 1 }}>
-              {saving ? "salvando…" : "salvar metas"}
-            </button>
-          </>
-        )}
+        <button onClick={reset} disabled={saving || !dirty} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, opacity: dirty ? 1 : .55 }}>descartar</button>
+        <button onClick={save} disabled={saving || !dirty}
+          style={{ height: 32, padding: "0 15px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600, opacity: saving || !dirty ? 0.55 : 1 }}>
+          {saving ? "salvando…" : "salvar metas"}
+        </button>
       </PageHead>
 
-      <div style={{ flex: 1, overflow: "auto", padding: "14px var(--pad-x)", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
         {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
         {!data && !err && <div className="mono dim" style={{ fontSize: 12 }}>carregando metas…</div>}
@@ -116,25 +111,25 @@ function MetasScreen() {
         {data && (
           <>
             {/* Metas por vaga */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14 }}>
               {data.roles.map((r) => (
-                <div key={r.role} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 16px" }}>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 10 }}>
-                    <span style={{ fontFamily: "var(--display)", fontSize: 15, fontWeight: 700 }}>{r.label}</span>
-                    <span className="mono dim" style={{ fontSize: 10.5 }}>{r.hint}</span>
+                <div key={r.role} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: 24 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 16 }}>
+                    <span style={{ fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em" }}>{r.label}</span>
+                    <span className="dim" style={{ fontSize: 12 }}>{r.hint}</span>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {r.metrics.map((m) => (
-                      <label key={m.metric} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ flex: 1, fontSize: 12.5, color: "var(--fg-2)" }}>{m.label}</span>
+                      <label key={m.metric} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ flex: 1, fontSize: 13.5, color: "var(--fg-2)" }}>{m.label}</span>
                         <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                          {m.unit === "R$" && <span className="mono dim" style={{ fontSize: 11 }}>R$</span>}
+                          {m.unit === "R$" && <span className="mono dim" style={{ fontSize: 12 }}>R$</span>}
                           <input type="number" min="0" step={m.unit === "%" ? "1" : "0.01"} inputMode="decimal"
                             value={roleVals[rk(r.role, m.metric)] ?? ""}
                             onChange={(e) => setRole(r.role, m.metric, e.target.value)}
                             placeholder={m.default != null ? `padrão ${m.default}` : "—"}
-                            className="tnum" style={{ ...inp, width: 78, textAlign: "right" }} />
-                          {m.unit === "%" && <span className="mono dim" style={{ fontSize: 11 }}>%</span>}
+                            className="tnum" style={{ ...inp, width: m.unit === "R$" ? 90 : 76, textAlign: "right" }} />
+                          <span className="mono dim" style={{ fontSize: 12, width: 26 }}>{m.unit === "%" ? "%" : ""}</span>
                         </div>
                       </label>
                     ))}
@@ -144,11 +139,11 @@ function MetasScreen() {
             </div>
 
             {/* Ajuste por pessoa (override) */}
-            <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 16px" }}>
-              <div className="mono" style={{ ...kicker, marginBottom: 4 }}>Ajuste por pessoa (opcional)</div>
-              <div className="mono dim" style={{ fontSize: 10.5, marginBottom: 10 }}>uma meta por pessoa VENCE a meta da vaga dela — pra dar um alvo diferente a alguém específico.</div>
-              {overrides.length === 0 && <div className="mono dim" style={{ fontSize: 11.5, marginBottom: 8 }}>nenhum ajuste · todo mundo segue a meta da vaga</div>}
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: 24 }}>
+              <div style={kicker}>Ajuste por pessoa (opcional)</div>
+              <div className="dim" style={{ fontSize: 12.5, margin: "8px 0 14px" }}>uma meta por pessoa vence a meta da vaga dela — pra dar um alvo diferente a alguém específico.</div>
+              {overrides.length === 0 && <div className="dim" style={{ fontSize: 12.5, marginBottom: 10 }}>nenhum ajuste · todo mundo segue a meta da vaga</div>}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {overrides.map((o, i) => {
                   const info = metricInfo[o.metric] || {};
                   return (
@@ -167,20 +162,20 @@ function MetasScreen() {
                           className="tnum" style={{ ...inp, width: 78, textAlign: "right" }} />
                         {info.unit === "%" && <span className="mono dim" style={{ fontSize: 11 }}>%</span>}
                       </div>
-                      <button onClick={() => rmOv(i)} title="Remover ajuste" className="mono dim" style={{ fontSize: 13, padding: 2 }}>✕</button>
+                      <button onClick={() => rmOv(i)} title="Remover ajuste" style={{ color: "var(--accent)", fontSize: 12.5, fontWeight: 600, padding: "0 4px" }}>remover</button>
                     </div>
                   );
                 })}
               </div>
               {data.users?.length > 0 && (
-                <button onClick={addOverride} style={{ marginTop: 10, height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px dashed var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12 }}>
-                  ＋ ajuste por pessoa
+                <button onClick={addOverride} style={{ marginTop: 14, height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>
+                  + ajuste por pessoa
                 </button>
               )}
             </div>
 
-            <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.5 }}>
-              campo vazio usa o benchmark padrão (mostrado no placeholder). As metas ficam salvas no produto <b style={{ color: "var(--fg-2)" }}>{product?.name}</b> e alimentam o placar de Desempenho do time e todo campo que compara com meta. A cadência de tentativas por etapa fica em Ajustes · Funil.
+            <div className="dim" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+              campo vazio usa o benchmark padrão. As metas alimentam o placar de Desempenho do time e todo campo que compara com meta.
             </div>
           </>
         )}

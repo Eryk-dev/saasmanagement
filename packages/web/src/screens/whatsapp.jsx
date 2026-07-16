@@ -116,7 +116,7 @@ export function WhatsappInboxScreen({ onOpenLead }) {
         </div>
       )}
 
-      <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 12, padding: "12px var(--pad-x) var(--pad-x)" }}>
+      <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 16, padding: "16px var(--pad-x) 56px" }}>
         {/* Lista de conversas */}
         <div style={{ ...box, width: 340, flexShrink: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
           <div style={{ padding: 10, borderBottom: "1px solid var(--line-1)" }}>
