@@ -23,6 +23,7 @@ import { registerOfferRoutes } from "./routes.offers.js";
 import { registerCampaignRoutes } from "./routes.disparos.js";
 import { registerSequenceRoutes } from "./routes.sequences.js";
 import { registerPitchRoutes } from "./routes.pitch.js";
+import { registerRoutineRoutes } from "./routes.routine.js";
 import { registerIntegrationRoutes } from "./routes.integrations.js";
 import { registerMetasRoutes } from "./routes.metas.js";
 import { registerFlashcardRoutes } from "./routes.flashcards.js";
@@ -242,6 +243,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerOfferRoutes(app, repo);
   // Insight de pitch: melhora o roteiro de venda a partir dos resumos das calls.
   registerPitchRoutes(app, repo, { anthropic: anthropicClient });
+  // UniqueKids · sugestão de solução da rotina por IA (método R.O.T.I.N.A) no lead.
+  registerRoutineRoutes(app, repo, { anthropic: anthropicClient });
   // Análise de integração (CS/onboarding): sentimento + pendências recorrentes.
   registerIntegrationRoutes(app, repo);
   // Metas de desempenho por vaga/pessoa (ferramenta; escreve na collection goals).

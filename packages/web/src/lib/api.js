@@ -102,6 +102,8 @@ export const api = {
   // Insight de pitch: analisa os resumos das calls do produto e sugere uma
   // versão melhor de um roteiro. body: { scriptKey, scriptLabel, currentScript }.
   improvePitch: (saas, body) => req("POST", `/api/pitch/${saas}/improve`, body),
+  // UniqueKids: gera a sugestão de solução da rotina (IA, método R.O.T.I.N.A).
+  routineSuggestion: (leadId) => req("POST", `/api/leads/${leadId}/routine-suggestion`, {}),
   // Análise de pitch: estatísticas agregadas das calls resumidas + calls recentes.
   // closer opcional (undefined = todos; "" = sem closer) separa a análise por closer.
   pitchCalls: (saas, closer) => req("GET", `/api/pitch/${saas}/calls${closer != null ? `?closer=${encodeURIComponent(closer)}` : ""}`),
