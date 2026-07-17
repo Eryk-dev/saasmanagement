@@ -1,5 +1,6 @@
 import React from "react";
 import { StatTile, FilterTab, Card } from "../components/viz.jsx";
+import { paymentUpfront } from "../lib/payments.js";
 
 // Análise da base de clientes — números do período sobre a coleção customers:
 // total faturado (valor dos contratos fechados), clientes novos, ticket médio,
@@ -16,6 +17,33 @@ function contractValue(c) {
   const t = String(c.plan || "").toLowerCase();
   const factor = t.includes("mensal") ? 12 : t.includes("semestral") ? 2 : 1;
   return (Number(c.arr) || 0) / factor;
+}
+
+// Em quantas parcelas mensais o contrato entra quando o pagamento é
+// faturado/parcelado (à vista não parcela nada).
+function contractMonths(plan) {
+  const t = String(plan || "").toLowerCase();
+  if (t.includes("semestral")) return 6;
+  if (t.includes("anual")) return 12;
+  return 1; // mensal, serviço único, sem plano: uma entrada só
+}
+
+// Divide o contrato entre caixa (já recebido) e dinheiro futuro (parcelas a
+// receber). À vista/cartão 12x = tudo caixa no fechamento. Faturado/parcelado =
+// uma parcela por mês desde startedAt (a 1ª no fechamento); cliente churnado
+// para de pagar (as parcelas restantes não viram futuro).
+function cashSplit(c, now) {
+  const total = contractValue(c);
+  if (paymentUpfront(c.paymentMethod)) return { cash: total, future: 0 };
+  const months = contractMonths(c.plan);
+  if (months <= 1) return { cash: total, future: 0 };
+  const start = c.startedAt ? new Date(c.startedAt).getTime() : now;
+  const churnT = c.endedAt ? new Date(c.endedAt).getTime() : null;
+  const stop = churnT != null ? Math.min(churnT, now) : now;
+  const paid = Math.min(months, Math.max(0, Math.floor((stop - start) / (30 * DAY)) + 1));
+  const cash = (total / months) * paid;
+  const future = churnT != null && churnT <= now ? 0 : total - cash;
+  return { cash, future };
 }
 
 function planBucket(plan) {
@@ -69,6 +97,13 @@ export function CustomersAnalysis({ customers }) {
     // incluindo cadastros antigos sem startedAt).
     const cohort = customers.filter((c) => (c.startedAt ? inPeriod(c.startedAt) : fromT == null));
     const faturado = cohort.reduce((a, c) => a + contractValue(c), 0);
+    // Caixa × dinheiro futuro dos contratos do período (parcelados entram mês a mês).
+    let caixa = 0, futuro = 0;
+    for (const c of cohort) {
+      const s = cashSplit(c, now);
+      caixa += s.cash;
+      futuro += s.future;
+    }
     const withMrr = cohort.filter((c) => (Number(c.arr) || 0) > 0);
     const mrrMedio = withMrr.length ? withMrr.reduce((a, c) => a + (Number(c.arr) || 0) / 12, 0) / withMrr.length : 0;
     const ticket = cohort.length ? faturado / cohort.length : 0;
@@ -100,7 +135,7 @@ export function CustomersAnalysis({ customers }) {
     const lifeMonths = churnMonthly > 0 ? 1 / churnMonthly : null;
     const ltv = lifeMonths != null && mrrMedio > 0 ? mrrMedio * lifeMonths : null;
 
-    return { cohort, faturado, mrrMedio, ticket, planos, churned, baseStart, churnPct, lifeMonths, ltv };
+    return { cohort, faturado, caixa, futuro, mrrMedio, ticket, planos, churned, baseStart, churnPct, lifeMonths, ltv };
   }, [customers, shortcut, custom, fromInput, toInput]);
 
   const pct = (v) => `${Math.round(v * 100)}%`;
@@ -128,9 +163,11 @@ export function CustomersAnalysis({ customers }) {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-        <StatTile label="Total faturado" value={money(m.faturado)} delta="contratos fechados no período" />
+        <StatTile label="Total contratado" value={money(m.faturado)} delta="contratos fechados no período" />
+        <StatTile label="Caixa" value={money(m.caixa)} delta="já recebido (à vista + parcelas vencidas)" />
+        <StatTile label="Dinheiro futuro" value={money(m.futuro)} delta="parcelas a receber dos faturados/parcelados" />
         <StatTile label="Clientes novos" value={String(m.cohort.length)} delta="entraram no período" />
-        <StatTile label="Ticket médio" value={money(m.ticket)} delta="faturado ÷ clientes novos" />
+        <StatTile label="Ticket médio" value={money(m.ticket)} delta="contratado ÷ clientes novos" />
         <StatTile label="Preço mensal médio" value={money(m.mrrMedio)} delta="média do mensal (ARR ÷ 12)" />
         <StatTile label="Churn" tone={m.churned.length > 0 ? "down" : "flat"}
           value={m.churnPct == null ? "—" : pct(m.churnPct)}

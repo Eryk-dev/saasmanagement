@@ -11,6 +11,7 @@
 
 // ── dynamic option helpers ──────────────────────────────────────────────────
 import { getActiveSaasId } from "./workspace.js";
+import { PAYMENT_METHODS } from "./payments.js";
 // Select "Produto" escopado ao WORKSPACE: só o produto ativo (e o do próprio
 // registro, por segurança ao editar) — a outra marca não vaza no formulário.
 const saasOptions = (values) => {
@@ -140,11 +141,9 @@ export const ENTITIES = {
         { value: "Serviço único", label: "Serviço único" },
         { value: "Mensal", label: "Mensal (legado)" },
       ], help: "com assinatura ativa, a lista mostra o plano da assinatura" },
-      { key: "paymentMethod", label: "Meio de pagamento", type: "select", blankLabel: "—", options: [
-        { value: "pix", label: "PIX" },
-        { value: "boleto", label: "Boleto" },
-        { value: "cartao12x", label: "Cartão 12x" },
-      ], help: "como o cliente paga; vem preenchido do fechamento" },
+      { key: "paymentMethod", label: "Meio de pagamento", type: "select", blankLabel: "—",
+        options: () => PAYMENT_METHODS.map((p) => ({ value: p.id, label: p.label })),
+        help: "à vista/cartão = valor total no caixa; faturado/parcelado = entra por mês" },
       { key: "arr", label: "Valor anual (ARR)", type: "money", help: "a lista mostra o MRR (ARR ÷ 12); com assinatura ativa é recalculado sozinho" },
       { key: "startedAt", label: "Cliente desde", type: "date", help: "base da linha do tempo de marcos" },
       { key: "endedAt", label: "Churn (saída)", type: "date", help: "deixe vazio enquanto o cliente estiver ativo; alimenta churn e LTV da Análise" },
