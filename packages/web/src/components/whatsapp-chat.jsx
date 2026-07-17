@@ -4,17 +4,20 @@ import { waLink, waDigits } from "../lib/ui.js";
 import { useData } from "../data.jsx";
 import { WaBubbles, WaComposer } from "./wa-thread.jsx";
 
-// Chat de WhatsApp dentro do drawer do lead (mesma conversa da tela de Inbox).
-// Lê do wa-store (GET /api/whatsapp/threads/:numero) e envia pelo lead. Pra
-// gerenciar o fluxo todo o SDR usa a tela #whatsapp; aqui é o atalho contextual
-// de quando já se está olhando o lead. "Ligar" abre a conversa no app.
+// Chat de WhatsApp dentro do drawer do lead E do popup do cliente (mesma
+// conversa da tela de Inbox). Lê do wa-store (GET /api/whatsapp/threads/:numero)
+// e envia pelo lead quando ele tem telefone; sem lead (cliente manual), envia
+// direto pela conversa (POST /threads/:numero/send, que funciona sem lead).
+// Pra gerenciar o fluxo todo o SDR usa a tela #whatsapp; aqui é o atalho
+// contextual. "Ligar" abre a conversa no app.
 
-export function WhatsappChat({ lead }) {
+export function WhatsappChat({ lead, phone: phoneProp }) {
   const { version } = useData();
   const [msgs, setMsgs] = React.useState(null);
   const configured = !!window.SEED?.CONFIG?.whatsapp?.configured;
-  const wa = waLink(lead.phone);
-  const tid = waDigits(lead.phone);
+  const phone = lead?.phone || phoneProp || "";
+  const wa = waLink(phone);
+  const tid = waDigits(phone);
 
   React.useEffect(() => {
     if (!tid) { setMsgs([]); return; }
@@ -34,7 +37,7 @@ export function WhatsappChat({ lead }) {
     <div style={{ ...box, display: "flex", flexDirection: "column", minHeight: 200, maxHeight: 460 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <span className="mono" style={{ fontSize: 10.5, letterSpacing: 1, textTransform: "uppercase", color: "var(--fg-4)" }}>WhatsApp</span>
-        <span className="mono dim" style={{ fontSize: 10.5 }}>{lead.phone || "sem telefone"}</span>
+        <span className="mono dim" style={{ fontSize: 10.5 }}>{phone || "sem telefone"}</span>
         {wa && (
           <a href={wa} target="_blank" rel="noopener noreferrer" title="Ligar / abrir no WhatsApp"
             style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5, height: 26, padding: "0 10px", borderRadius: 6, background: "#25D366", color: "#06120c", fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
@@ -51,8 +54,8 @@ export function WhatsappChat({ lead }) {
 
       {configured ? (
         <div style={{ marginTop: 8 }}>
-          <WaComposer disabled={!lead.phone} placeholder={lead.phone ? undefined : "lead sem telefone"}
-            onSend={(t) => api.sendWhatsapp(lead.id, t).then(refetch)} />
+          <WaComposer disabled={!phone} placeholder={phone ? undefined : "sem telefone"}
+            onSend={(t) => (lead?.phone ? api.sendWhatsapp(lead.id, t) : api.waThreadSend(tid, t)).then(refetch)} />
           <div className="mono dim" style={{ fontSize: 9.5, marginTop: 5 }}>
             fora de 24h desde a última resposta do cliente, a Meta exige um template aprovado
           </div>
