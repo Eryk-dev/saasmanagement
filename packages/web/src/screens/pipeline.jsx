@@ -714,12 +714,16 @@ function EquationArrow({ label }) {
 
 // Probabilidade de um lead na etapa virar ganho, compondo as taxas reais dos
 // últimos 30 dias (contato → agendamento → comparecimento → fechamento).
+// O fechamento usa a taxa EFETIVA (calibrada pela ponta a ponta real quando a
+// amostra deixa, vide routes.pipeline-pace.js) — sem isso o produto das taxas
+// truncadas de janela subestimava o funil em 2-3x.
 // Etapas de entrega (integração/pós-venda) contam como certas; kind fora do
 // funil comercial retorna null (cai na conversão configurada do funil).
 function winProbByKind(kind, conversions) {
   if (!conversions) return null;
   const contact = conversions.contactRate.value, book = conversions.bookingRate.value;
-  const show = conversions.showRate.value, close = conversions.closeRate.value;
+  const show = conversions.showRate.value;
+  const close = conversions.closeRateEffective?.value ?? conversions.closeRate.value;
   switch (kind) {
     case "novo": return contact * book * show * close;
     case "contato":
@@ -757,7 +761,10 @@ function analysisBuckets(s, leads, conversions) {
 function goalMath(data, s, leads) {
   const conv = data.conversions;
   const rContact = conv.contactRate.value, rBook = conv.bookingRate.value;
-  const rShow = conv.showRate.value, rClose = conv.closeRate.value;
+  const rShow = conv.showRate.value;
+  // Fechamento efetivo: calibrado pela ponta a ponta (ganhos÷leads 30d) quando
+  // a amostra deixa — a cadeia toda passa a fechar no que a história mostra.
+  const rClose = conv.closeRateEffective?.value ?? conv.closeRate.value;
   const target = Number(data.cash.target) || 0;
   const closed = Number(data.context.tcvMonth) || 0;
   const gap = Math.max(0, target - closed);
@@ -944,7 +951,7 @@ function GoalReversePlan({ data, s, leads }) {
           <EquationStep value={g.bookings} label="calls agendadas" />
           <EquationArrow label={`${rateFmt(conversions.showRate.value)} comparecem`} />
           <EquationStep value={g.calls} label="calls feitas" />
-          <EquationArrow label={`${rateFmt(conversions.closeRate.value)} fecham`} />
+          <EquationArrow label={`${rateFmt(conversions.closeRateEffective?.value ?? conversions.closeRate.value)} fecham`} />
           <EquationStep value={g.wins} label="ganhos" />
           <EquationArrow label={`${g.ticket ? money(g.ticket) : "sem ticket"} cada`} />
           <EquationStep value={g.gap} label="falta pra meta" money />
@@ -971,6 +978,13 @@ function GoalReversePlan({ data, s, leads }) {
             <> Ao CPL real de {money(g.cpl)}, esses leads pedem <strong>~{money(g.investNew)} de investimento</strong> ({money(perDay(g.investNew) || 0)}/dia útil).</>
           )}
           {g.cpl == null && g.newLeads > 0 && " Sem spend registrado nos últimos 30 dias, não dá pra estimar o investimento (sincronize a Publicidade)."}
+          {conversions.closeRateEffective?.source === "calibrated" && conversions.leadToWin && (
+            <span style={{ display: "block", marginTop: 6, color: "var(--fg-3)" }}>
+              A cadeia usa fechamento efetivo de {rateFmt(conversions.closeRateEffective.value)}, calibrado pra bater com a ponta a ponta real
+              ({conversions.leadToWin.numerator} ganhos de {conversions.leadToWin.denominator} leads em 30d, {rateFmt(conversions.leadToWin.value)}).
+              O {rateFmt(conversions.closeRate.value)} medido só na janela subestima, porque call recente ainda não teve tempo de fechar.
+            </span>
+          )}
         </div>
 
         {g.blockedBy && (
@@ -992,7 +1006,8 @@ function GoalReversePlan({ data, s, leads }) {
               {g.cpl != null ? `real 30d · ${money(data.marketing.spend30)} / ${data.marketing.leads30} leads` : "sem spend no período"}
             </div>
           </div>
-          {[["Contato", conversions.contactRate], ["Agendamento", conversions.bookingRate], ["Comparecimento", conversions.showRate], ["Call → ganho", conversions.closeRate]].map(([label, rate]) => (
+          {[["Contato", conversions.contactRate], ["Agendamento", conversions.bookingRate], ["Comparecimento", conversions.showRate], ["Call → ganho", conversions.closeRate],
+            ...(conversions.leadToWin ? [["Lead → ganho", conversions.leadToWin]] : [])].map(([label, rate]) => (
             <div key={label}>
               <div className="mono" style={noteLabel}>{label}</div>
               <div className="tnum" style={{ marginTop: 2, fontSize: 13, fontWeight: 600 }}>{rateFmt(rate.value)}</div>

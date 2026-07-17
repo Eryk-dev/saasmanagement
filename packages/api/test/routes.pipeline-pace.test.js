@@ -134,8 +134,54 @@ test("sem histórico usa metas configuradas e depois os benchmarks", async () =>
     bookingRate: [0.4, "goal"],
     showRate: [0.8, "goal"],
     closeRate: [0.2, "goal"],
+    // sem leads na janela: ponta a ponta cai no produto da cadeia (benchmark)
+    // e o fechamento efetivo repete o configurado.
+    leadToWin: [0.0576, "benchmark"],
+    closeRateEffective: [0.2, "goal"],
   });
   assert.equal(r.plan.wins.remaining, 12);
+
+  await app.close();
+});
+
+test("ponta a ponta real calibra o fechamento e o plano fecha consistente", async () => {
+  const { app, repo } = await build();
+  // 25 leads criados na janela (amostra ≥20 libera a calibração), 2 ganhos de
+  // R$ 4.000: ponta a ponta 2/25 = 8%. As taxas de etapa truncadas dariam
+  // 0,4×0,5×0,75×0,2 = 3% — sem calibração o plano pediria ~2,7x mais leads.
+  for (let i = 1; i <= 25; i++) {
+    await repo.create("leads", { id: `l${i}`, saas: "leverads", stage: "Novo lead", createdAt: "2026-07-01T12:00:00.000Z" });
+  }
+  await repo.update("leads", "l1", { stage: "Ganho", amount: 4000, stageSince: "2026-07-10T12:00:00.000Z", callAt: "2026-07-08T15:00:00.000Z" });
+  await repo.update("leads", "l2", { stage: "Ganho", amount: 4000, stageSince: "2026-07-11T12:00:00.000Z", callAt: "2026-07-09T15:00:00.000Z" });
+  await repo.update("leads", "l3", { stage: "Perdido", lostReason: "nao_compareceu", callAt: "2026-07-08T16:00:00.000Z" });
+  await repo.update("leads", "l4", { stage: "Perdido", lostReason: "sem_fit", callAt: "2026-07-09T16:00:00.000Z" });
+  await repo.update("leads", "l5", { stage: "Call agendada", callAt: "2026-07-12T15:00:00.000Z" });
+  // 10 tocados (contato 10/25 = 40%), 5 agendados entre eles (50%)
+  for (let i = 1; i <= 10; i++) {
+    await repo.create("activities", { id: `t${i}`, saas: "leverads", lead: `l${i}`, type: "whatsapp", at: "2026-07-03T13:00:00.000Z" });
+  }
+  for (let i = 1; i <= 5; i++) {
+    await repo.create("activities", { id: `bk${i}`, saas: "leverads", lead: `l${i}`, type: "stage", meta: { from: "Novo lead", to: "Call agendada" }, at: "2026-07-05T14:00:00.000Z" });
+  }
+  // 5 calls antigas (fora da coorte) poluem o denominador do fechamento de
+  // janela — exatamente o caso que a calibração corrige.
+  for (let i = 26; i <= 30; i++) {
+    await repo.create("leads", { id: `l${i}`, saas: "leverads", stage: "Proposta", createdAt: "2026-05-01T12:00:00.000Z", callAt: "2026-07-07T15:00:00.000Z" });
+  }
+
+  const r = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
+  assert.deepEqual(r.conversions.leadToWin, { value: 0.08, source: "history", numerator: 2, denominator: 25 });
+  assert.equal(r.conversions.closeRate.value, 0.2); // 2 ganhos / 10 calls na janela (truncada)
+  // efetivo = ponta a ponta ÷ (contato × agendamento × comparecimento) = 0,08 / 0,15
+  assert.deepEqual(r.conversions.closeRateEffective, { value: 0.5333, source: "calibrated" });
+  // gap 120k / ticket 4k = 30 ganhos → calls usam o fechamento EFETIVO e a
+  // cadeia toda fecha na ponta a ponta (≈ 30 / 0,08 leads).
+  assert.equal(r.plan.wins.remaining, 30);
+  assert.equal(r.plan.calls.remaining, 57);       // 30 / 0,5333
+  assert.equal(r.plan.callsBooked.remaining, 76); // 57 / 0,75
+  assert.equal(r.plan.contacts.remaining, 152);   // 76 / 0,5
+  assert.equal(r.plan.leads.remaining, 380);      // 152 / 0,4 (≈ 30 / 0,08)
 
   await app.close();
 });
