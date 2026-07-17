@@ -112,56 +112,6 @@ function CustomersScreen({ initialTab = "base" }) {
           />
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, alignItems: "start" }}>
-            <Card style={{ overflow: "hidden" }}>
-              <div className="tbl-x">
-              <table style={{ width: "100%", minWidth: 880, borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    {["Cliente", "Plano", "MRR", "Tempo de casa", "Último contato", "Próximo marco", "Assinatura"].map((h, i) => (
-                      <th key={h} style={{ textAlign: i === 2 ? "right" : "left", fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", padding: "12px 20px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {shownCustomers.map((c) => {
-                    const sub = mainSub(c);
-                    const st = sub ? SUB_STATUS[sub.status] || { label: sub.status, tone: "mut" } : null;
-                    const nm = nextMilestone(withCycle(c), product);
-                    return (
-                      <tr key={c.id} onClick={() => setSel(c.id)} style={{ cursor: "pointer" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-                        <td style={{ padding: "14px 20px", fontSize: 13.5, fontWeight: 600, borderBottom: "1px solid var(--line-faint)" }}>{c.name}</td>
-                        <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
-                          {sub ? planLabel(sub) : c.plan || "sem plano"}
-                        </td>
-                        <td className="tnum" style={{ padding: "14px 20px", fontSize: 13, textAlign: "right", borderBottom: "1px solid var(--line-faint)" }}>
-                          {money((c.arr || 0) / 12)}
-                        </td>
-                        <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
-                          {tenureLabel(c) || <span style={{ color: "var(--fg-4)" }}>defina o início</span>}
-                        </td>
-                        <td className="tnum" style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-3)", borderBottom: "1px solid var(--line-faint)" }}>{lastContact(c)}</td>
-                        <td style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)" }}>
-                          {nm
-                            ? <Pill tone={nm.status === "late" ? "neg" : nm.status === "soon" ? "warn" : "mut"}>{nm.label} · {dueLabel(nm.dueAt)}</Pill>
-                            : c.startedAt ? <Pill tone="pos">régua completa</Pill> : <Pill tone="mut">sem início</Pill>}
-                        </td>
-                        <td style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)" }}>
-                          {st ? <Pill tone={st.tone}>{st.label}</Pill> : <Pill tone="mut">sem assinatura</Pill>}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              </div>
-              <div style={{ padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>mostrando {shownCustomers.length} de {customers.length}</span>
-                {customers.length > 50 && <button onClick={() => setShowAll((v) => !v)} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>{showAll ? "Mostrar 50" : "Ver todos"}</button>}
-              </div>
-            </Card>
-
             <Card title="Próximas ações" hint="régua de retenção, vencidas primeiro">
               <div style={{ padding: "12px 0 8px" }}>
                 {nextActions.length === 0 && (
@@ -209,6 +159,56 @@ function CustomersScreen({ initialTab = "base" }) {
                     ))}
                   </div>
                 )}
+              </div>
+            </Card>
+
+            <Card style={{ overflow: "hidden" }}>
+              <div className="tbl-x">
+              <table style={{ width: "100%", minWidth: 880, borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    {["Cliente", "Plano", "MRR", "Tempo de casa", "Último contato", "Próximo marco", "Assinatura"].map((h, i) => (
+                      <th key={h} style={{ textAlign: i === 2 ? "right" : "left", fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", padding: "12px 20px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {shownCustomers.map((c) => {
+                    const sub = mainSub(c);
+                    const st = sub ? SUB_STATUS[sub.status] || { label: sub.status, tone: "mut" } : null;
+                    const nm = nextMilestone(withCycle(c), product);
+                    return (
+                      <tr key={c.id} onClick={() => setSel(c.id)} style={{ cursor: "pointer" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                        <td style={{ padding: "14px 20px", fontSize: 13.5, fontWeight: 600, borderBottom: "1px solid var(--line-faint)" }}>{c.name}</td>
+                        <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
+                          {sub ? planLabel(sub) : c.plan || "sem plano"}
+                        </td>
+                        <td className="tnum" style={{ padding: "14px 20px", fontSize: 13, textAlign: "right", borderBottom: "1px solid var(--line-faint)" }}>
+                          {money((c.arr || 0) / 12)}
+                        </td>
+                        <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
+                          {tenureLabel(c) || <span style={{ color: "var(--fg-4)" }}>defina o início</span>}
+                        </td>
+                        <td className="tnum" style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-3)", borderBottom: "1px solid var(--line-faint)" }}>{lastContact(c)}</td>
+                        <td style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)" }}>
+                          {nm
+                            ? <Pill tone={nm.status === "late" ? "neg" : nm.status === "soon" ? "warn" : "mut"}>{nm.label} · {dueLabel(nm.dueAt)}</Pill>
+                            : c.startedAt ? <Pill tone="pos">régua completa</Pill> : <Pill tone="mut">sem início</Pill>}
+                        </td>
+                        <td style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)" }}>
+                          {st ? <Pill tone={st.tone}>{st.label}</Pill> : <Pill tone="mut">sem assinatura</Pill>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              </div>
+              <div style={{ padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>mostrando {shownCustomers.length} de {customers.length}</span>
+                {customers.length > 50 && <button onClick={() => setShowAll((v) => !v)} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>{showAll ? "Mostrar 50" : "Ver todos"}</button>}
               </div>
             </Card>
           </div>
