@@ -1,7 +1,7 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { chromeBtnStyleSmall } from "../lib/ui.js";
+import { chromeBtnStyleSmall, GRADE_STYLE } from "../lib/ui.js";
 import { EmptyState, PrimaryButton } from "../atoms.jsx";
 import { inputStyle, labelStyle, sectionTitle, cardStyle, addBtnStyle, THEME_DEFAULTS, LabeledInput, ThemeEditor } from "../components/theme-inputs.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -112,8 +112,8 @@ function FormsScreen({ saasId }) {
             action={<PrimaryButton onClick={() => setView({ mode: "edit", form: null })}>+ Criar form</PrimaryButton>}
           />
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: 14 }}>
-            {forms.map((f) => {
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: 14, alignItems: "start" }}>
+            {[...forms].sort((a, b) => (b.status === "published" ? 1 : 0) - (a.status === "published" ? 1 : 0)).map((f) => {
               const pub = f.status === "published";
               const stat = stats[f.id];
               const visits = Number(stat?.views) || 0;
@@ -142,7 +142,9 @@ function FormsScreen({ saasId }) {
               };
               const painMap = (SAAS.find((x) => x.id === f.saas) || {}).painMap || {};
               return (
-                <div key={f.id} style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: 24 }}>
+                // Publicado ocupa a LARGURA TODA (a tabela do teste A/B precisa de
+                // área); rascunho/backup vira um bloco compacto abaixo, sem esticar.
+                <div key={f.id} style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: pub ? 24 : "16px 20px 18px", ...(pub ? { gridColumn: "1 / -1" } : {}) }}>
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
@@ -171,48 +173,76 @@ function FormsScreen({ saasId }) {
                             <span style={{ flex: 1 }} />
                             <button onClick={() => setView({ mode: "subs", form: f })} style={{ fontSize: 11.5, fontWeight: 600, color: "var(--accent)" }}>análise completa →</button>
                           </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                            {abGroups.map((g) => {
-                              const groupMax = Math.max(1, ...g.rows.map((v) => (v.views ? (v.starts / v.views) * 100 : 0)));
-                              return (
-                                <div key={g.pain || "base"} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                                  {abGroups.length > 1 && (
-                                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--fg-4)" }}>
-                                      <span className="mono code" style={{ fontSize: 10.5, fontWeight: 700, color: "var(--accent)" }}>{g.pain ? `[${g.pain}]` : "BASE"}</span>
-                                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.pain ? (painMap[g.pain] || `dor ${g.pain}`) : "sem dor (tráfego direto)"}</span>
-                                    </div>
-                                  )}
-                                  {g.rows.map((v) => {
-                                    const startRate = v.views ? (v.starts / v.views) * 100 : 0;
-                                    const verdict = abVerdicts[`${v.pain || ""}|${v.id}`];
-                                    return (
-                                      <div key={v.id} style={{ minWidth: 0 }}>
-                                        <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
-                                          <span className="mono code" style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: "var(--fg-4)" }}>{v.id}</span>
-                                          <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: "var(--fg-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={variantTitle(v)}>“{variantTitle(v)}”</span>
-                                          {verdict?.label && <span className="mono" style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 600, color: verdict.tone }}>{verdict.label}</span>}
-                                        </div>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
-                                          <div style={{ flex: 1, height: 12, background: "var(--bg-2)", borderRadius: 4, overflow: "hidden" }}>
-                                            <div style={{ width: `${Math.max(3, (startRate / groupMax) * 100)}%`, height: "100%", background: verdict?.label ? "var(--accent)" : "var(--fg-3)", borderRadius: 4 }} />
-                                          </div>
-                                          <span className="tnum" style={{ flexShrink: 0, fontSize: 12, color: "var(--fg-4)" }}>
-                                            <span style={{ fontWeight: 600, color: "var(--fg-1)" }}>{pct(v.starts, v.views)}</span> começar · {pct(v.submits, v.views)} envio · {v.submits} {v.submits === 1 ? "lead" : "leads"}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              );
-                            })}
+                          {/* Tabela por variante: funil (visitas → começar → lead), potencial
+                              dos leads que chegaram (cliente A/B/C, régua do leadTier) e o
+                              fechamento (ganhos + receita) — o card mostra a mesma leitura
+                              de marketing da análise completa, sem trocar de tela. */}
+                          <div className="tbl-x" style={{ border: "1px solid var(--line-faint)", borderRadius: "var(--r-3)", background: "var(--bg-inset)", overflow: "auto" }}>
+                            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 820 }}>
+                              <thead>
+                                <tr>
+                                  {[
+                                    ["Headline", "left", "texto da welcome que o lead viu"],
+                                    ["Visitas", "right", "sessões únicas que viram a variante"],
+                                    ["Começaram", "right", "clicaram em começar · % das visitas"],
+                                    ["Leads", "right", "finalizaram o form · % das visitas"],
+                                    ["A", "right", "clientes potencial A que chegaram"],
+                                    ["B", "right", "clientes potencial B que chegaram"],
+                                    ["C", "right", "clientes potencial C que chegaram"],
+                                    ["Fecharam", "right", "viraram contrato (Ganho) · % dos leads"],
+                                    ["Receita", "right", "soma do valor dos contratos fechados"],
+                                  ].map(([h, align, tip]) => (
+                                    <th key={h} className="mono" title={tip} style={{ textAlign: align, fontSize: 10, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: h === "A" ? GRADE_STYLE.A.ink : h === "B" ? GRADE_STYLE.B.ink : h === "C" ? GRADE_STYLE.C.ink : "var(--fg-4)", padding: "8px 10px", borderBottom: "1px solid var(--line-1)" }}>{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {abGroups.map((g) => (
+                                  <React.Fragment key={g.pain || "base"}>
+                                    {abGroups.length > 1 && (
+                                      <tr>
+                                        <td colSpan={9} style={{ padding: "9px 10px 3px", fontSize: 11.5, color: "var(--fg-4)" }}>
+                                          <span className="mono code" style={{ fontSize: 10.5, fontWeight: 700, color: "var(--accent)" }}>{g.pain ? `[${g.pain}]` : "BASE"}</span>
+                                          {" "}{g.pain ? (painMap[g.pain] || `dor ${g.pain}`) : "sem dor (tráfego direto)"}
+                                        </td>
+                                      </tr>
+                                    )}
+                                    {g.rows.map((v) => {
+                                      const verdict = abVerdicts[`${v.pain || ""}|${v.id}`];
+                                      const gr = v.grades || {};
+                                      const td = { padding: "8px 10px", fontSize: 12.5, textAlign: "right", borderTop: "1px solid var(--line-faint)", whiteSpace: "nowrap" };
+                                      const dim = { color: "var(--fg-4)", fontSize: 11 };
+                                      return (
+                                        <tr key={v.id}>
+                                          <td style={{ ...td, textAlign: "left", whiteSpace: "normal", minWidth: 220, maxWidth: 380 }}>
+                                            <div style={{ display: "flex", alignItems: "baseline", gap: 7, minWidth: 0 }}>
+                                              <span className="mono code" style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: "var(--fg-4)" }}>{v.id}</span>
+                                              <span style={{ flex: 1, minWidth: 0, color: "var(--fg-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={variantTitle(v)}>“{variantTitle(v)}”</span>
+                                            </div>
+                                            {verdict?.label && <div className="mono" style={{ fontSize: 10, fontWeight: 600, color: verdict.tone, marginTop: 2 }}>{verdict.label}</div>}
+                                          </td>
+                                          <td className="mono tnum" style={td}>{window.fmt.int(v.views)}</td>
+                                          <td className="mono tnum" style={td}><span style={{ fontWeight: 600 }}>{window.fmt.int(v.starts)}</span> <span style={dim}>· {pct(v.starts, v.views)}</span></td>
+                                          <td className="mono tnum" style={td}><span style={{ fontWeight: 600 }}>{window.fmt.int(v.leads ?? v.submits)}</span> <span style={dim}>· {pct(v.submits, v.views)}</span></td>
+                                          <td className="mono tnum" style={{ ...td, fontWeight: 700, color: gr.A ? GRADE_STYLE.A.ink : "var(--fg-4)" }}>{gr.A || 0}</td>
+                                          <td className="mono tnum" style={{ ...td, fontWeight: 700, color: gr.B ? GRADE_STYLE.B.ink : "var(--fg-4)" }}>{gr.B || 0}</td>
+                                          <td className="mono tnum" style={{ ...td, fontWeight: 700, color: gr.C ? GRADE_STYLE.C.ink : "var(--fg-4)" }}>{gr.C || 0}</td>
+                                          <td className="mono tnum" style={td}><span style={{ fontWeight: 600, color: v.won ? "var(--pos)" : "var(--fg-4)" }}>{v.won || 0}</span> <span style={dim}>· {pct(v.won || 0, v.leads || 0)}</span></td>
+                                          <td className="mono tnum" style={{ ...td, color: v.revenue ? "var(--fg-1)" : "var(--fg-4)" }}>{v.revenue ? window.fmt.money(v.revenue) : "—"}</td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </React.Fragment>
+                                ))}
+                              </tbody>
+                            </table>
                           </div>
                         </div>
                       )}
                     </>
                   ) : (
-                    <div style={{ marginTop: 18, padding: 16, background: "var(--bg-inset)", border: "1px dashed var(--line-2)", borderRadius: "var(--r-3)", fontSize: 13, color: "var(--fg-3)", lineHeight: 1.55 }}>
-                      {(f.questions || []).length} perguntas · ainda sem visitas — publique para começar a captar leads.
+                    <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--fg-4)" }}>
+                      {(f.questions || []).length} perguntas · rascunho guardado, publique para começar a captar leads.
                     </div>
                   )}
                 </div>
@@ -1149,11 +1179,12 @@ function FormsDashboard({ forms }) {
                   </div>
                   <div className="tbl-x">
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr>{["Variante", "Título mostrado", "Visitas", "Começou", "% começar", "Enviou", "% envio", "Ganhos", "% fechou"].map(thAB)}</tr></thead>
+                      <thead><tr>{["Variante", "Título mostrado", "Visitas", "Começou", "% começar", "Enviou", "% envio", "A", "B", "C", "Ganhos", "% fechou", "Receita"].map(thAB)}</tr></thead>
                       <tbody>
                         {g.rows.map((v) => {
                           const verdict = verdicts[`${v.pain || ""}|${v.id}`];
                           const isLeader = !!verdict?.label;
+                          const gr = v.grades || {};
                           return (
                             <tr key={v.id}>
                               <td className="mono code" style={{ ...tdAB, textAlign: "left", fontWeight: 700, color: isLeader ? "var(--fg-1)" : "var(--fg-2)" }}>{v.id}</td>
@@ -1163,8 +1194,12 @@ function FormsDashboard({ forms }) {
                               <td className="mono tnum" style={{ ...tdAB, fontWeight: 600 }}>{v.views > 0 ? pct(v.starts, v.views) : ""}</td>
                               <td className="mono tnum" style={tdAB}>{v.submits}</td>
                               <td className="mono tnum" style={tdAB}>{v.views > 0 ? pct(v.submits, v.views) : ""}</td>
+                              <td className="mono tnum" style={{ ...tdAB, fontWeight: 700, color: gr.A ? GRADE_STYLE.A.ink : "var(--fg-4)" }}>{gr.A || 0}</td>
+                              <td className="mono tnum" style={{ ...tdAB, fontWeight: 700, color: gr.B ? GRADE_STYLE.B.ink : "var(--fg-4)" }}>{gr.B || 0}</td>
+                              <td className="mono tnum" style={{ ...tdAB, fontWeight: 700, color: gr.C ? GRADE_STYLE.C.ink : "var(--fg-4)" }}>{gr.C || 0}</td>
                               <td className="mono tnum" style={tdAB}>{v.won || 0}</td>
                               <td className="mono tnum" style={tdAB}>{v.leads > 0 ? pct(v.won, v.leads) : ""}</td>
+                              <td className="mono tnum" style={tdAB}>{v.revenue ? window.fmt.money(v.revenue) : "—"}</td>
                             </tr>
                           );
                         })}

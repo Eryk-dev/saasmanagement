@@ -8,7 +8,7 @@
 
 import { randomUUID } from "node:crypto";
 import { publicForm, validateAnswers, leadFromSubmission, submissionTerminal, makeRateLimiter, buildSteps, variantHeadline } from "./forms.js";
-import { painCode } from "./routes.marketing.js";
+import { painCode, leadGrade } from "./routes.marketing.js";
 import { isWon } from "./stages.js";
 import { formPageHtml, EMBED_JS } from "./form-page.js";
 import { CREATE_DEFAULTS, dispatchProposal, publicBase } from "./routes.js";
@@ -302,13 +302,20 @@ export function registerFormRoutes(app, repo, opts = {}) {
       const mine = (e) => (e.variant || "") === vid && (e.pain || "") === pain;
       const vu = (ev) => new Set(events.filter((e) => mine(e) && e.event === ev).map((e) => e.session)).size;
       const vSubs = subs.filter((x) => String(x.variant || "") === vid && String(x.pain || "") === pain);
-      const won = vSubs.filter((x) => isWon(product, leadsById.get(x.lead)?.stage)).length;
+      const vLeads = vSubs.map((x) => leadsById.get(x.lead)).filter(Boolean);
+      // Potencial dos leads que a variante trouxe (cliente A/B/C, régua do
+      // leadGrade) + fechamento: quantos ganharam e a receita (amount) deles —
+      // a headline campeã é a que traz cliente grande e contrato, não clique.
+      const grades = { A: 0, B: 0, C: 0 };
+      for (const l of vLeads) { const g = leadGrade(l); if (g) grades[g] += 1; }
+      const wonLeads = vLeads.filter((l) => isWon(product, l.stage));
+      const revenue = wonLeads.reduce((s, l) => s + (Number(l.amount) || 0), 0);
       const times = events.filter(mine).map((e) => String(e.createdAt || "")).filter(Boolean).sort();
       return {
         id: vid, ...(pain ? { pain } : {}),
         sessions: new Set(events.filter(mine).map((e) => e.session)).size,
         views: vu("view"), starts: vu("start"), submits: vu("submit"),
-        leads: vSubs.length, won,
+        leads: vSubs.length, won: wonLeads.length, grades, revenue,
         firstAt: times[0] || null, lastAt: times[times.length - 1] || null,
       };
     });

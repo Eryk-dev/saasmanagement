@@ -102,9 +102,11 @@ test("PATCH de estágio: activity stage {from,to}, stageAttempts zera, GPS re-ag
   assert.equal(lead.stage, "Follow-up");
   assert.equal(lead.stageAttempts, 0);
   assert.ok(lead.stageSince);
-  // retryDays: 3 do Follow-up
-  const delta = new Date(lead.nextActionAt).getTime() - Date.now();
-  assert.ok(delta > 2.9 * 86_400_000 && delta < 3.1 * 86_400_000, `nextActionAt fora dos 3d: ${lead.nextActionAt}`);
+  // retryDays: 3 do Follow-up — mesma régua do produto: +3d rolando fim de
+  // semana pra segunda 08:00 (senão o teste quebra toda quinta/sexta).
+  const expected = rollToBusinessDay(new Date(Date.now() + 3 * 86_400_000)).getTime();
+  const delta = Math.abs(new Date(lead.nextActionAt).getTime() - expected);
+  assert.ok(delta < 60_000, `nextActionAt fora do +3d útil: ${lead.nextActionAt}`);
 
   const acts = await activitiesOf(repo, "l1", "stage");
   assert.equal(acts.length, 1);
