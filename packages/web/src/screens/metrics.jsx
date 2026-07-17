@@ -40,6 +40,16 @@ const PERIODS = [
   { value: "30", label: "30 dias" },
   { value: "90", label: "90 dias" },
 ];
+// Atalhos do filtro de data PRÓPRIO do card Anúncios (o filtro do topo segue
+// mandando no resto da tela). Valores no formato que o rangeOf entende.
+const ADS_PERIODS = [
+  { value: "1", label: "hoje" },
+  { value: "yesterday", label: "ontem" },
+  { value: "3", label: "3 dias" },
+  { value: "7", label: "7 dias" },
+  { value: "30", label: "30 dias" },
+  { value: "custom", label: "personalizado" },
+];
 // A Meta só devolve insights de até ~37 meses; o sync respeita esse teto.
 const META_LOOKBACK_DAYS = 1125;
 
@@ -138,11 +148,28 @@ function MetricsScreen() {
     }
   };
   useEffect(() => load(true), [product?.id, since, until]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Métricas SÓ do card Anúncios, no range do filtro próprio dele — mesma
+  // rota (ad_insights por id), busca separada pra não mexer no resto da tela.
+  const [adsRange, setAdsRange] = useState({ preset: "30" });
+  const { since: adsSince, until: adsUntil } = rangeOf(adsRange);
+  const [adsData, setAdsData] = useState(null);
+  const adsEpoch = React.useRef(0);
+  const loadAds = (reset = false) => {
+    if (!product) return;
+    const ep = ++adsEpoch.current;
+    if (reset) setAdsData(null);
+    api.marketingMetrics(product.id, { since: adsSince, until: adsUntil })
+      .then((v) => { if (ep === adsEpoch.current) setAdsData(v); })
+      .catch(() => { if (ep === adsEpoch.current) setAdsData((prev) => prev || { error: true }); });
+  };
+  useEffect(() => loadAds(true), [product?.id, adsSince, adsUntil]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Mudança vinda do tempo real (SSE: lead criado/movido, sync do servidor)
   // recarrega SEM piscar — os números acompanham o pipeline na hora.
   const firstVersion = React.useRef(version);
   useEffect(() => {
-    if (version !== firstVersion.current) load(false);
+    if (version !== firstVersion.current) { load(false); loadAds(false); }
   }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // O sync da Meta roda no SERVIDOR (1 execução pro time, a cada ~3 min); aqui
@@ -291,13 +318,15 @@ function MetricsScreen() {
   const milestones = perStage.filter((s, i) => i === 0 || MILESTONE_KINDS.has(stageKind(product, s.stage)));
 
   const totalMilestoneLeads = milestones[0]?.count || 0;
-  const metricMaps = data && !data.error ? {
-    campaigns: Object.fromEntries((data.campaigns || []).map((g) => [String(g.id), g])),
-    adsets: Object.fromEntries((data.adsets || []).map((g) => [String(g.id), g])),
-    ads: Object.fromEntries((data.ads || []).map((g) => [String(g.id), g])),
+  // O card Anúncios lê as métricas do RANGE PRÓPRIO dele (adsData); o resto da
+  // tela segue no range do filtro do topo (data).
+  const metricMaps = adsData && !adsData.error ? {
+    campaigns: Object.fromEntries((adsData.campaigns || []).map((g) => [String(g.id), g])),
+    adsets: Object.fromEntries((adsData.adsets || []).map((g) => [String(g.id), g])),
+    ads: Object.fromEntries((adsData.ads || []).map((g) => [String(g.id), g])),
   } : null;
-  const compactObjects = objects && !objects.error ? objects : data && !data.error ? {
-    campaigns: data.campaigns || [], adsets: data.adsets || [], ads: data.ads || [],
+  const compactObjects = objects && !objects.error ? objects : adsData && !adsData.error ? {
+    campaigns: adsData.campaigns || [], adsets: adsData.adsets || [], ads: adsData.ads || [],
   } : null;
 
   return (
@@ -363,6 +392,7 @@ function MetricsScreen() {
         </Card>
 
         <CompactAdsCard objects={compactObjects} metrics={metricMaps} money={money} busyIds={busyIds}
+          range={adsRange} onRange={setAdsRange}
           onToggle={objects && !objects.error ? toggleObject : null}
           onBudget={objects && !objects.error ? commitBudget : null} error={objects?.error} />
       </div>
@@ -416,6 +446,8 @@ const adsColsDefault = () => new Set(ADS_COLS.filter((c) => c.on).map((c) => c.k
 const adsOrderDefault = () => ADS_COLS.map((c) => c.key).filter((k) => k !== "status");
 // Altura da tabela: mostra até 10 linhas; o resto fica atrás do "ver mais".
 const ADS_MAX_ROWS = 10;
+// Inputs de/até do "personalizado" do card Anúncios.
+const dateInputStyle = { height: 30, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 };
 
 // Botão "Colunas" + popover de checkboxes (o "Personalizar colunas" do
 // Gerenciador). Posição FIXA calculada do botão — escapa do overflow:hidden
@@ -486,7 +518,7 @@ function Toggle({ on, label, busy, disabled = false, onChange }) {
   );
 }
 
-function CompactAdsCard({ objects, metrics, money, busyIds, onToggle, onBudget, error }) {
+function CompactAdsCard({ objects, metrics, money, busyIds, range, onRange, onToggle, onBudget, error }) {
   const [level, setLevel] = useState("campaigns");
   // Seleção estilo Gerenciador: checkbox nas linhas — campanhas marcadas
   // filtram a aba Conjuntos, conjuntos marcados filtram a de Anúncios. Clicar
@@ -699,6 +731,20 @@ function CompactAdsCard({ objects, metrics, money, busyIds, onToggle, onBudget, 
     <Card title="Anúncios" hint="estilo Gerenciador · seleção filtra os níveis de baixo · colunas no botão"
       action={
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {range && onRange && (
+            <>
+              <Segmented value={range.preset} onChange={(v) => onRange({ ...range, preset: v })} options={ADS_PERIODS} />
+              {range.preset === "custom" && (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <input type="date" value={range.since || dayStr(Date.now())} max={dayStr(Date.now())}
+                    onChange={(e) => e.target.value && onRange({ ...range, since: e.target.value })} style={dateInputStyle} />
+                  <span style={{ color: "var(--fg-4)", fontSize: 12 }}>até</span>
+                  <input type="date" value={range.until || dayStr(Date.now())} max={dayStr(Date.now())}
+                    onChange={(e) => e.target.value && onRange({ ...range, until: e.target.value })} style={dateInputStyle} />
+                </span>
+              )}
+            </>
+          )}
           <Segmented value={statusFilter} onChange={setStatusFilter}
             options={[{ value: "active", label: "ativas" }, { value: "paused", label: "pausadas" }, { value: "all", label: "todas" }]} />
           <Segmented value={level} onChange={changeLevel} options={levels.map(({ value, label }) => ({ value, label }))} />
