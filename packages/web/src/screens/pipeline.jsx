@@ -1,6 +1,6 @@
 import React from "react";
 import { Avatar, EmptyState, PrimaryButton } from "../atoms.jsx";
-import { Card, FilterTab, Pill, Segmented, StatTile } from "../components/viz.jsx";
+import { Card, FilterTab, Segmented, StatTile } from "../components/viz.jsx";
 import { leadScoreTone, leadAge } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
@@ -712,53 +712,90 @@ function EquationArrow({ label }) {
   );
 }
 
-function DailyRole({ step, role, action, primary, primaryLabel, secondary, secondaryLabel, note }) {
-  const target = primary?.perDay;
-  const actual = primary?.today || 0;
-  const pct = target > 0 ? Math.min(100, (actual / target) * 100) : primary?.remaining === 0 ? 100 : 0;
-  const done = target != null && (target === 0 || actual >= target);
-  return (
-    <div style={{ ...paceCard, minWidth: 0, padding: "13px 14px", boxShadow: "inset 0 2px 0 var(--accent)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-        <span className="mono" style={{ fontSize: 9.5, color: "var(--accent)", letterSpacing: "0.08em" }}>{step}</span>
-        <span className="mono" style={{ fontSize: 10, color: "var(--fg-3)", letterSpacing: "0.07em", textTransform: "uppercase" }}>{role}</span>
-      </div>
-      <div style={{ marginTop: 7, fontSize: 12, color: "var(--fg-2)" }}>{action}</div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 5, marginTop: 2 }}>
-        <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 27, fontWeight: 700, letterSpacing: "-0.02em" }}>{dailyFmt(target)}</span>
-        <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)" }}>{primaryLabel}/dia</span>
-      </div>
-      <div style={{ height: 5, marginTop: 9, borderRadius: 999, background: "var(--bg-3)", overflow: "hidden" }}>
-        <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: done ? "var(--pos)" : "var(--accent)" }} />
-      </div>
-      <div className="mono" style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 5, fontSize: 9.5, color: "var(--fg-4)" }}>
-        <span>hoje {wholeFmt(actual)}</span>
-        <span>{wholeFmt(primary?.remaining)} até o fim do mês</span>
-      </div>
-      {secondary && (
-        <div style={{ marginTop: 10, paddingTop: 9, borderTop: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
-          <span style={{ color: "var(--fg-3)" }}>{secondaryLabel}</span>
-          <span className="tnum" style={{ fontWeight: 600 }}>{dailyFmt(secondary.perDay)}/dia · hoje {wholeFmt(secondary.today)}</span>
-        </div>
-      )}
-      {note && <div style={{ marginTop: 8, fontSize: 10.5, lineHeight: 1.35, color: "var(--fg-4)" }}>{note}</div>}
-    </div>
-  );
+// Probabilidade de um lead na etapa virar ganho, compondo as taxas reais dos
+// últimos 30 dias (contato → agendamento → comparecimento → fechamento).
+// Etapas de entrega (integração/pós-venda) contam como certas; kind fora do
+// funil comercial retorna null (cai na conversão configurada do funil).
+function winProbByKind(kind, conversions) {
+  if (!conversions) return null;
+  const contact = conversions.contactRate.value, book = conversions.bookingRate.value;
+  const show = conversions.showRate.value, close = conversions.closeRate.value;
+  switch (kind) {
+    case "novo": return contact * book * show * close;
+    case "contato":
+    case "qualificacao": return book * show * close;
+    case "call": return show * close;
+    case "proposta":
+    case "followup": return close;
+    case "integracao":
+    case "posvenda": return 1;
+    default: return null;
+  }
 }
 
-function analysisBuckets(s, leads) {
+function analysisBuckets(s, leads, conversions) {
   const visible = new Set(openStages(s));
   return s.funnel.filter((f) => visible.has(f.stage)).map((f, i, stages) => {
     const at = leads.filter((l) => l.stage === f.stage);
     const tcv = at.reduce((sum, lead) => sum + (Number(lead.amount) || 0), 0);
+    const histProb = winProbByKind(stageKind(s, f.stage), conversions);
     const sourceIndex = s.funnel.findIndex((stage) => stage.stage === f.stage);
-    const prob = s.funnel.slice(sourceIndex).reduce((value, stage, offset) => {
+    const confProb = s.funnel.slice(sourceIndex).reduce((value, stage, offset) => {
       if (offset === 0) return value;
       const conversion = Number(stage.conv);
       return value * (Number.isFinite(conversion) && stage.conv !== "" && stage.conv != null ? conversion : 1);
     }, 1);
+    const prob = histProb ?? confProb;
     return { stage: f.stage, tcv, prob, weighted: tcv * prob, count: at.length, index: i, total: stages.length };
   });
+}
+
+// Engenharia reversa da meta: desdobra o gap (meta − fechado no mês, TCV) em
+// ganhos → calls → agendamentos → contatos → leads pelas taxas reais, e estima
+// quanto disso a esteira aberta já deve entregar (etapas comerciais, sem
+// entrega). newLeads = leads que ainda precisam ENTRAR além da esteira.
+function goalMath(data, s, leads) {
+  const conv = data.conversions;
+  const rContact = conv.contactRate.value, rBook = conv.bookingRate.value;
+  const rShow = conv.showRate.value, rClose = conv.closeRate.value;
+  const target = Number(data.cash.target) || 0;
+  const closed = Number(data.context.tcvMonth) || 0;
+  const gap = Math.max(0, target - closed);
+  const ticket = data.context.averageEntry;
+  const need = (n, r) => n === 0 ? 0 : n != null && r > 0 ? Math.ceil(n / r) : null;
+  const wins = gap === 0 ? 0 : ticket > 0 ? Math.ceil(gap / ticket) : null;
+  const calls = need(wins, rClose);
+  const bookings = need(calls, rShow);
+  const contacts = need(bookings, rBook);
+  const leadsNeeded = need(contacts, rContact);
+
+  const open = new Set(openStages(s));
+  let pipeWins = 0, pipeValue = 0, pipeCount = 0;
+  for (const l of leads) {
+    if (!open.has(l.stage)) continue;
+    const kind = stageKind(s, l.stage);
+    if (kind === "integracao" || kind === "posvenda") continue;
+    const p = winProbByKind(kind, conv);
+    if (p == null) continue;
+    pipeCount++; pipeWins += p; pipeValue += (Number(l.amount) || 0) * p;
+  }
+  const fullProb = rContact * rBook * rShow * rClose;
+  const missingWins = wins == null ? null : Math.max(0, wins - Math.floor(pipeWins));
+  const newLeads = missingWins == null ? null
+    : missingWins === 0 ? 0
+    : fullProb > 0 ? Math.ceil(missingWins / fullProb) : null;
+  const blockedBy = gap === 0 ? null
+    : ticket == null || ticket <= 0 ? "ticket médio"
+    : rClose <= 0 ? "taxa de fechamento"
+    : rShow <= 0 ? "comparecimento"
+    : rBook <= 0 ? "agendamento"
+    : rContact <= 0 ? "contato"
+    : null;
+  return {
+    gap, target, closed, ticket, wins, calls, bookings, contacts, leadsNeeded,
+    pipeWins, pipeValue, pipeCount, missingWins, newLeads, blockedBy,
+    daysLeft: data.cash.remainingBusinessDays,
+  };
 }
 
 function PaceChart({ data, s, leads }) {
@@ -800,20 +837,26 @@ function PaceChart({ data, s, leads }) {
 }
 
 function AnalysisPaceSummary({ data, s, leads }) {
-  const buckets = analysisBuckets(s, leads);
+  const buckets = analysisBuckets(s, leads, data.conversions);
   const forecast = buckets.reduce((sum, bucket) => sum + bucket.weighted, 0);
+  const g = goalMath(data, s, leads);
   const closed = Number(data.context.tcvMonth) || 0;
   const pace = data.cash.elapsedBusinessDays > 0 ? (closed / data.cash.elapsedBusinessDays) * data.cash.totalBusinessDays : 0;
   const target = Number(data.cash.target) || 0;
   const paceVsTarget = target > 0 ? Math.round(((pace / target) - 1) * 100) : null;
   const monthLabel = new Date(`${data.month}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long" });
+  const leadsDelta = g.gap === 0 ? "meta do mês batida"
+    : g.newLeads == null ? `desdobramento travado em ${g.blockedBy}`
+    : g.newLeads === 0 ? "a esteira aberta já cobre o gap"
+    : `~${dailyFmt(g.daysLeft > 0 ? g.newLeads / g.daysLeft : null)}/dia útil, além da esteira`;
   return (
     <>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
         <StatTile label="Fechado no mês" value={window.fmt.money(closed)} delta={`${data.context.wonMonth} ganhos até dia ${Number(data.today.slice(8, 10))}`} />
         <StatTile label="Pace projetado" value={window.fmt.money(pace)} delta={`ritmo atual até ${data.cash.totalBusinessDays} dias úteis`} />
         <StatTile label="Meta do mês" value={window.fmt.money(target)} delta={paceVsTarget == null ? "meta não configurada" : `pace ${Math.abs(paceVsTarget)}% ${paceVsTarget >= 0 ? "acima" : "abaixo"} da meta`} />
-        <StatTile label="Forecast ponderado" value={window.fmt.money(forecast)} delta="pipeline aberto × probabilidade" />
+        <StatTile label="Leads novos pra meta" value={g.gap === 0 ? "0" : wholeFmt(g.newLeads)} delta={leadsDelta} tone={g.gap === 0 || g.newLeads === 0 ? "pos" : "flat"} />
+        <StatTile label="Forecast ponderado" value={window.fmt.money(forecast)} delta="pipeline aberto × probabilidade real (30d)" />
       </div>
       <Card title={`Pace de caixa · ${monthLabel}`} hint="fechado vs. meta, dia a dia">
         <div style={{ padding: "8px 16px 12px" }}><PaceChart data={data} s={s} leads={leads} /></div>
@@ -822,149 +865,102 @@ function AnalysisPaceSummary({ data, s, leads }) {
   );
 }
 
-function RevenuePaceDashboard({ s, leads }) {
-  const { version } = useData();
-  const [data, setData] = useStP(null);
-  const [err, setErr] = useStP(null);
-  useEfP(() => {
-    let alive = true;
-    setData(null); setErr(null);
-    api.pipelinePace(s.id).then((d) => alive && setData(d)).catch((e) => alive && setErr(e));
-    return () => { alive = false; };
-  }, [s.id, version]);
-
-  if (err) return <div style={{ ...paceCard, padding: 16 }}><div className="mono dim" style={{ fontSize: 12 }}>pace de caixa indisponível ({err.status || "erro"})</div></div>;
-  if (!data) return <div style={{ ...paceCard, padding: 16 }}><div className="mono dim" style={{ fontSize: 12 }}>calculando pace de caixa…</div></div>;
-
-  return <AnalysisPaceSummary data={data} s={s} leads={leads} />;
-
-  const { cash, context, conversions, plan } = data;
-  const statusMap = {
-    ahead: { label: "acima do pace", tone: "pos", color: "var(--pos)" },
-    attention: { label: "atenção ao pace", tone: "warn", color: "var(--warn)" },
-    behind: { label: "abaixo do pace", tone: "neg", color: "var(--neg)" },
-  };
-  const status = statusMap[cash.status] || statusMap.behind;
-  const actualWidth = Math.min(100, Math.max(0, cash.progress * 100));
-  const expectedLeft = Math.min(100, Math.max(0, cash.expectedProgress * 100));
-  const monthLabel = new Date(`${data.month}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+// Card da engenharia reversa: cadeia leads → contatos → calls → ganhos → gap,
+// ritmo diário pro que resta do mês e cobertura da esteira aberta.
+function GoalReversePlan({ data, s, leads }) {
+  const g = goalMath(data, s, leads);
+  const conversions = data.conversions;
+  const plan = data.plan || {};
+  const money = window.fmt.money;
+  const perDay = (n) => (n == null || g.daysLeft <= 0 ? null : n / g.daysLeft);
   const sourceLabel = (rate) => rate.source === "history"
-    ? `30d · ${rate.numerator}/${rate.denominator}`
+    ? `real 30d · ${rate.numerator}/${rate.denominator}`
     : rate.source === "goal" ? "meta configurada" : "benchmark";
-  const averageSource = {
+  const ticketSource = {
     initial_payments: "primeiras faturas pagas",
     paid_invoices: "faturas pagas recentes",
-    won_tcv: "TCV dos ganhos recentes",
+    won_tcv: "média dos ganhos (90d)",
     configured_ticket: "ticket configurado",
-  }[context.averageEntrySource] || "sem base de entrada";
+  }[data.context.averageEntrySource] || "sem base de ticket";
+  const noteLabel = { fontSize: 9.5, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" };
+
+  if (g.gap === 0) {
+    return (
+      <Card title="Engenharia reversa da meta" hint="meta do mês batida">
+        <div style={{ padding: "14px 24px 20px", fontSize: 13.5, color: "var(--fg-2)" }}>
+          Fechado {money(g.closed)} de {money(g.target)}. Tudo que a esteira render agora é gordura no mês.
+        </div>
+      </Card>
+    );
+  }
 
   return (
-    <>
-      <section style={{ ...paceCard, padding: "16px 18px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" }}>Pace de caixa · {monthLabel}</span>
-          <Pill tone={status.tone}>{status.label}</Pill>
-          <span style={{ flex: 1 }} />
-          <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)" }}>{cash.elapsedBusinessDays} de {cash.totalBusinessDays} dias úteis</span>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 18, marginTop: 14 }}>
-          <div style={{ minWidth: 0, padding: "2px 0" }}>
-            <div style={{ fontSize: 12, color: "var(--fg-3)" }}>Dinheiro recebido no mês</div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 7, marginTop: 2, flexWrap: "wrap" }}>
-              <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: "clamp(32px, 4vw, 48px)", fontWeight: 700, letterSpacing: "-0.035em" }}>{window.fmt.money(cash.collected)}</span>
-              <span className="mono" style={{ fontSize: 12, color: "var(--fg-3)" }}>de {window.fmt.money(cash.target)}</span>
-            </div>
-            <div style={{ position: "relative", height: 12, marginTop: 14, borderRadius: 999, background: "var(--bg-3)" }}>
-              <div style={{ width: `${actualWidth}%`, height: "100%", borderRadius: 999, background: status.color, transition: "width 150ms ease" }} />
-              <span title={`esperado até hoje: ${window.fmt.money(cash.expectedToDate)}`} style={{ position: "absolute", left: `${expectedLeft}%`, top: -4, width: 2, height: 20, borderRadius: 2, background: "var(--fg-2)" }} />
-            </div>
-            <div className="mono" style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 6, fontSize: 9.5, color: "var(--fg-4)" }}>
-              <span>R$ 0</span>
-              <span>marcador = {window.fmt.money(cash.expectedToDate)} esperados hoje</span>
-              <span>{window.fmt.money(cash.target)}</span>
-            </div>
-            <div style={{ marginTop: 12, fontSize: 12, color: status.color, fontWeight: 600 }}>
-              {cash.deltaToPace >= 0 ? `${window.fmt.money(cash.deltaToPace)} acima` : `${window.fmt.money(Math.abs(cash.deltaToPace))} abaixo`} do ritmo esperado
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
-            <PaceMini label="Entrou hoje" value={window.fmt.money(cash.collectedToday)} sub="faturas baixadas hoje" tone={cash.collectedToday >= (cash.requiredDailyPace || Infinity) ? "var(--pos)" : undefined} />
-            <PaceMini label="Falta entrar" value={window.fmt.money(cash.gap)} sub={`${cash.remainingBusinessDays} dias úteis restantes`} tone={cash.gap > 0 ? "var(--warn)" : "var(--pos)"} />
-            <PaceMini label="Necessário por dia" value={cash.requiredDailyPace == null ? "—" : window.fmt.money(cash.requiredDailyPace)} sub="gap ÷ dias úteis restantes" />
-            <PaceMini label="Projeção do mês" value={window.fmt.money(cash.projected)} sub={`ritmo atual de ${window.fmt.money(cash.actualDailyPace)}/dia`} tone={cash.projected >= cash.target ? "var(--pos)" : "var(--neg)"} />
-            <PaceMini label="Recebíveis" value={window.fmt.money(cash.receivables)} sub={`${cash.receivableCount} em aberto · caixa + recebíveis ${window.fmt.money(cash.forecastWithReceivables)}`} />
-            <PaceMini label="TCV ganho · MRR" value={`${window.fmt.money(context.tcvMonth)} · ${window.fmt.money(context.mrr)}`} sub={`${context.wonMonth} ganhos · contexto, não caixa`} />
-          </div>
-        </div>
-      </section>
-
-      <section style={{ ...paceCard, padding: "15px 18px" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>
-          <h3 style={{ margin: 0, fontFamily: "var(--display)", fontSize: 15, fontWeight: 700 }}>Plano diário para fechar o gap</h3>
-          <span style={{ fontSize: 11.5, color: "var(--fg-3)" }}>cálculo de trás para frente a partir de {window.fmt.money(cash.gap)}</span>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "stretch", gap: 7, marginTop: 12, flexWrap: "wrap" }}>
-          <EquationStep value={plan.leads.remaining} label="leads" />
+    <Card title="Engenharia reversa da meta" hint={`de trás pra frente: o que precisa acontecer pra fechar ${money(g.gap)} até o fim do mês`}>
+      <div style={{ padding: "16px 24px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "stretch", gap: 7, flexWrap: "wrap" }}>
+          <EquationStep value={g.leadsNeeded} label="leads" />
           <EquationArrow label={`${rateFmt(conversions.contactRate.value)} contatados`} />
-          <EquationStep value={plan.contacts.remaining} label="contatos" />
+          <EquationStep value={g.contacts} label="contatos" />
           <EquationArrow label={`${rateFmt(conversions.bookingRate.value)} agendam`} />
-          <EquationStep value={plan.callsBooked.remaining} label="calls agendadas" />
+          <EquationStep value={g.bookings} label="calls agendadas" />
           <EquationArrow label={`${rateFmt(conversions.showRate.value)} comparecem`} />
-          <EquationStep value={plan.calls.remaining} label="calls realizadas" />
+          <EquationStep value={g.calls} label="calls feitas" />
           <EquationArrow label={`${rateFmt(conversions.closeRate.value)} fecham`} />
-          <EquationStep value={plan.wins.remaining} label="ganhos" />
-          <EquationArrow label={`${context.averageEntry ? window.fmt.money(context.averageEntry) : "sem entrada"} cada`} />
-          <EquationStep value={cash.gap} label="caixa restante" money />
+          <EquationStep value={g.wins} label="ganhos" />
+          <EquationArrow label={`${g.ticket ? money(g.ticket) : "sem ticket"} cada`} />
+          <EquationStep value={g.gap} label="falta pra meta" money />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(205px, 1fr))", gap: 9, marginTop: 12 }}>
-          <DailyRole step="01" role="Aquisição" action="Gerar demanda suficiente" primary={plan.leads} primaryLabel="leads" note="Entrada do funil: mídia, indicação, orgânico e outbound." />
-          <DailyRole step="02" role="SDR" action="Transformar demanda em agenda" primary={plan.contacts} primaryLabel="contatos" secondary={plan.callsBooked} secondaryLabel="Calls agendadas" note={`${rateFmt(conversions.contactRate.value)} dos leads precisam ser contatados.`} />
-          <DailyRole step="03" role="Closer" action="Converter calls em dinheiro" primary={plan.calls} primaryLabel="calls" secondary={plan.wins} secondaryLabel="Ganhos" note={`${plan.proposals.today} proposta(s) criada(s) hoje · entrada média ${context.averageEntry ? window.fmt.money(context.averageEntry) : "indisponível"}.`} />
-          <DailyRole step="04" role="CS" action="Absorver os novos clientes" primary={plan.onboardings} primaryLabel="integrações" note="Capacidade de entrega acompanha os ganhos previstos, sem contar TCV como caixa." />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
+          <PaceMini label="Leads/dia útil" value={dailyFmt(perDay(g.leadsNeeded))} sub={`hoje ${wholeFmt(plan.leads?.today)} · ${g.daysLeft} dias úteis restantes`} />
+          <PaceMini label="Contatos/dia útil" value={dailyFmt(perDay(g.contacts))} sub={`hoje ${wholeFmt(plan.contacts?.today)} leads tocados`} />
+          <PaceMini label="Calls/dia útil" value={dailyFmt(perDay(g.calls))} sub={`hoje ${wholeFmt(plan.calls?.today)} na agenda`} />
+          <PaceMini label="Ganhos/dia útil" value={dailyFmt(perDay(g.wins))} sub={`hoje ${wholeFmt(plan.wins?.today)} · ticket ${g.ticket ? money(g.ticket) : "indisponível"}`} />
         </div>
-        {(context.averageEntrySource === "won_tcv" || context.averageEntrySource === "configured_ticket") && (
-          <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: "var(--r-2)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 11.5 }}>
-            A entrada média ainda é uma estimativa por {context.averageEntrySource === "won_tcv" ? "TCV ganho" : "ticket configurado"}. Baixe as faturas pagas para calibrar o plano pelo caixa real.
-          </div>
-        )}
-        {plan.blockedBy && (
-          <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: "var(--r-2)", background: "var(--neg-soft)", color: "var(--neg)", fontSize: 11.5 }}>
-            O desdobramento parou em {{ averageEntry: "entrada média", closeRate: "call → ganho", showRate: "comparecimento", bookingRate: "agendamento", contactRate: "contato" }[plan.blockedBy]}: a taxa atual é zero ou ainda não há base suficiente.
+
+        <div style={{ padding: "10px 14px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-faint)", fontSize: 12.5, lineHeight: 1.55, color: "var(--fg-2)" }}>
+          A esteira aberta ({g.pipeCount} leads trabalháveis) deve render <strong>~{wholeFmt(g.pipeWins)} ganhos</strong> ({money(g.pipeValue)} ponderado) nessas taxas.
+          {g.newLeads === 0
+            ? " Isso já cobre o gap: o jogo é converter o que está dentro, sem depender de lead novo."
+            : g.newLeads == null
+              ? " Não dá pra estimar os leads novos necessários (tem taxa zerada na cadeia)."
+              : ` Descontando isso, precisam entrar ~${wholeFmt(g.newLeads)} leads novos até o fim do mês (${dailyFmt(perDay(g.newLeads))}/dia útil).`}
+        </div>
+
+        {g.blockedBy && (
+          <div style={{ padding: "8px 12px", borderRadius: "var(--r-2)", background: "var(--neg-soft)", color: "var(--neg)", fontSize: 12 }}>
+            O desdobramento parou em {g.blockedBy}: a base atual é zero ou insuficiente pra calcular.
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))", gap: 1, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line-1)" }}>
-          <div style={{ padding: "5px 8px" }}>
-            <div className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)", textTransform: "uppercase" }}>Entrada média</div>
-            <div className="tnum" style={{ marginTop: 2, fontSize: 13, fontWeight: 600 }}>{context.averageEntry ? window.fmt.money(context.averageEntry) : "—"}</div>
-            <div style={{ fontSize: 9.5, color: "var(--fg-4)" }}>{averageSource}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, paddingTop: 14, borderTop: "1px solid var(--line-faint)" }}>
+          <div>
+            <div className="mono" style={noteLabel}>Ticket médio</div>
+            <div className="tnum" style={{ marginTop: 2, fontSize: 13, fontWeight: 600 }}>{g.ticket ? money(g.ticket) : "—"}</div>
+            <div style={{ fontSize: 10, color: "var(--fg-4)" }}>{ticketSource}</div>
           </div>
           {[["Contato", conversions.contactRate], ["Agendamento", conversions.bookingRate], ["Comparecimento", conversions.showRate], ["Call → ganho", conversions.closeRate]].map(([label, rate]) => (
-            <div key={label} style={{ padding: "5px 8px" }}>
-              <div className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)", textTransform: "uppercase" }}>{label}</div>
+            <div key={label}>
+              <div className="mono" style={noteLabel}>{label}</div>
               <div className="tnum" style={{ marginTop: 2, fontSize: 13, fontWeight: 600 }}>{rateFmt(rate.value)}</div>
-              <div style={{ fontSize: 9.5, color: "var(--fg-4)" }}>{sourceLabel(rate)}</div>
+              <div style={{ fontSize: 10, color: "var(--fg-4)" }}>{sourceLabel(rate)}</div>
             </div>
           ))}
         </div>
-      </section>
-    </>
+      </div>
+    </Card>
   );
 }
 
-function ForecastView({ s, leads }) {
-  const buckets = analysisBuckets(s, leads);
+function ForecastView({ s, leads, conversions }) {
+  const buckets = analysisBuckets(s, leads, conversions);
   const totals = buckets.reduce((sum, bucket) => ({ count: sum.count + bucket.count, tcv: sum.tcv + bucket.tcv, weighted: sum.weighted + bucket.weighted }), { count: 0, tcv: 0, weighted: 0 });
   const cols = "1.2fr .6fr .9fr .7fr .9fr";
   return (
     <section style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "20px 24px 14px", flexWrap: "wrap" }}>
         <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em" }}>Forecast por etapa</h3>
-        <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>pipeline aberto × probabilidade histórica de fechar</span>
+        <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>pipeline aberto × probabilidade real de virar ganho (taxas 30d)</span>
       </div>
       <div className="tbl-x">
         <div style={{ minWidth: 700 }}>
@@ -1082,10 +1078,26 @@ function FunnelAnalytics({ s }) {
 }
 
 function AnaliseView({ s, leads }) {
+  const { version } = useData();
+  const [data, setData] = useStP(null);
+  const [err, setErr] = useStP(null);
+  useEfP(() => {
+    let alive = true;
+    setData(null); setErr(null);
+    api.pipelinePace(s.id).then((d) => alive && setData(d)).catch((e) => alive && setErr(e));
+    return () => { alive = false; };
+  }, [s.id, version]);
   return (
     <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-      <RevenuePaceDashboard s={s} leads={leads} />
-      <ForecastView s={s} leads={leads} />
+      {err && <div style={{ ...paceCard, padding: 16 }}><div className="mono dim" style={{ fontSize: 12 }}>análise indisponível ({err.status || "erro"})</div></div>}
+      {!err && !data && <div style={{ ...paceCard, padding: 16 }}><div className="mono dim" style={{ fontSize: 12 }}>calculando análise…</div></div>}
+      {!err && data && (
+        <>
+          <AnalysisPaceSummary data={data} s={s} leads={leads} />
+          <GoalReversePlan data={data} s={s} leads={leads} />
+          <ForecastView s={s} leads={leads} conversions={data.conversions} />
+        </>
+      )}
     </div>
   );
 }
