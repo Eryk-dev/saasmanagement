@@ -410,26 +410,28 @@ function QueueRow({ item, block, featured, onScript, onClaim }) {
   const now = Date.now();
 
   // Pill de horário. Hoje: atrasado (dias) · agora · HH:mm · novo (idade).
-  // Amanhã: só a hora. Próximos dias: a data.
+  // Amanhã: só a hora. Próximos dias: a data. Quando vira "agora", a hora
+  // agendada continua visível em cima do rótulo (when.above).
+  const hhmm = (t) => new Date(t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   const startToday = new Date().setHours(0, 0, 0, 0);
   let when;
   if (item.confirm && due) {
     // Confirmação: mostra a hora JÁ descontada (1h/10min antes da call). Passou
     // da hora = "agora" em vermelho pra virar prioridade.
     when = due.t <= now
-      ? { text: "agora", tone: "neg" }
-      : { text: new Date(due.t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }), tone: "pos" };
+      ? { above: hhmm(due.t), text: "agora", tone: "neg" }
+      : { text: hhmm(due.t), tone: "pos" };
   } else if (due && block === "amanha") {
-    when = { text: new Date(due.t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }), tone: "mut" };
+    when = { text: hhmm(due.t), tone: "mut" };
   } else if (due && block === "proximos") {
     when = { text: new Date(due.t).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), tone: "mut" };
   } else if (due && due.t < startToday) {
     const daysLate = Math.max(1, Math.ceil((startToday - due.t) / DAY));
     when = { text: `atrasado ${daysLate}d`, tone: "neg" };
   } else if (due && due.t <= now) {
-    when = { text: due.type === "call" ? "call agora" : "agora", tone: "neg" };
+    when = { above: hhmm(due.t), text: due.type === "call" ? "call agora" : "agora", tone: "neg" };
   } else if (due) {
-    when = { text: new Date(due.t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }), tone: due.type === "call" ? "pos" : "mut" };
+    when = { text: hhmm(due.t), tone: due.type === "call" ? "pos" : "mut" };
   } else if (kind === "novo") {
     const ageH = l.createdAt ? Math.max(0, Math.floor((now - new Date(l.createdAt).getTime()) / 3600000)) : null;
     when = { text: ageH == null ? "novo" : ageH < 24 ? `há ${ageH}h` : `há ${Math.floor(ageH / 24)}d`, tone: "warn" };
@@ -453,14 +455,20 @@ function QueueRow({ item, block, featured, onScript, onClaim }) {
       display: "flex", alignItems: "center", gap: 14, padding: featured ? "16px 24px" : "14px 24px",
       borderTop: "1px solid var(--line-faint)", background: featured ? "var(--accent-soft)" : "transparent", cursor: "pointer", flexWrap: "wrap",
     }}>
-      <span className="mono tnum" style={{ fontSize: 12.5, color: when.tone === "neg" ? "var(--neg)" : when.tone === "warn" ? "var(--warn)" : when.tone === "pos" ? "var(--pos)" : "var(--fg-4)", width: 44, flexShrink: 0 }}>{when.text}</span>
+      <span className="mono tnum" style={{ fontSize: 12.5, width: 44, flexShrink: 0, display: "flex", flexDirection: "column", gap: 1 }}>
+        {when.above && <span style={{ fontSize: 11, color: "var(--fg-4)" }}>{when.above}</span>}
+        <span style={{ color: when.tone === "neg" ? "var(--neg)" : when.tone === "warn" ? "var(--warn)" : when.tone === "pos" ? "var(--pos)" : "var(--fg-4)" }}>{when.text}</span>
+      </span>
+      {/* Status do lead como coluna própria (alinhada, igual o horário); a
+          tentativa vai numa linha menor embaixo da pill. */}
+      <span style={{ width: 118, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+        <span title={stage} style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: "20px", padding: "0 8px", borderRadius: "var(--r-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 500 }}>{stage}</span>
+        {attemptNumber > 0 && <span className="mono tnum" style={{ fontSize: 10.5, color: "var(--fg-4)", paddingLeft: 2 }}>{attemptNumber}ª tentativa</span>}
+      </span>
       <div style={{ flex: 1, minWidth: 240 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 14, fontWeight: 600 }}>{l.name}</span>
           {l.company && <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{l.company}</span>}
-          <span style={{ minHeight: 20, display: "inline-flex", alignItems: "center", padding: "0 8px", borderRadius: "var(--r-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 500 }}>
-            {stage}{attemptNumber > 0 ? ` · ${attemptNumber}ª tentativa` : ""}
-          </span>
         </div>
         <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 3 }}>{actionDetail}</div>
       </div>
