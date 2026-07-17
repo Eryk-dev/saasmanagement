@@ -231,7 +231,7 @@ function WorkspaceSwitcher() {
 // Marcas conhecidas do portfólio — logo + nome oficiais na sidebar. Produto
 // sem marca registrada aqui cai no mark genérico com o nome do cadastro.
 const BRANDS = {
-  leverads: { label: "Gerenciador: LeverAds", Icon: Logo },
+  leverads: { label: "LeverAds", Icon: Logo },
   uniquekids: { label: "UniqueKids", Icon: UniqueKidsMark },
 };
 
