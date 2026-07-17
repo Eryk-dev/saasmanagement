@@ -76,6 +76,59 @@ test("igMedia: usa insights aninhado por post (reach/saved/shares)", async () =>
   assert.match(f.calls[0].params.fields, /insights\.metric\(/);
 });
 
+test("igMedia: vídeo ganha views/tempo médio/skip 3s em chamada própria; foto não", async () => {
+  const f = fakeFetch([
+    [{ path: "/media" }, {
+      data: [
+        { id: "v1", media_type: "VIDEO", media_url: "https://cdn/v1.mp4", thumbnail_url: "https://cdn/v1.jpg", like_count: 3, comments_count: 1 },
+        { id: "i1", media_type: "IMAGE", media_url: "https://cdn/i1.jpg", like_count: 8, comments_count: 0 },
+      ],
+    }],
+    [{ path: "/v1/insights", metric: "views,ig_reels_avg_watch_time,reels_skip_rate" }, {
+      data: [
+        { name: "views", values: [{ value: 640 }] },
+        { name: "ig_reels_avg_watch_time", values: [{ value: 8200 }] },
+        { name: "reels_skip_rate", values: [{ value: 28.5 }] },
+      ],
+    }],
+  ]);
+  const s = makeSocial({ fetch: f, accessToken: "t" });
+  const media = await s.igMedia("ig1");
+  const vid = media.find((m) => m.id === "v1"), img = media.find((m) => m.id === "i1");
+  assert.equal(vid.views, 640);
+  assert.equal(vid.avgWatchMs, 8200);
+  assert.equal(vid.skipRate, 28.5);
+  assert.equal(vid.videoUrl, "https://cdn/v1.mp4"); // pro front ler a duração
+  assert.equal(vid.mediaUrl, "https://cdn/v1.jpg"); // thumb continua sendo a capa
+  assert.equal(img.views, null);
+  assert.equal(img.skipRate, null);
+  assert.equal(img.videoUrl, "");
+  // a foto NÃO gera chamada de insights de vídeo
+  assert.equal(f.calls.filter((c) => c.path.includes("/i1/insights")).length, 0);
+});
+
+test("igMedia: se o skip 3s não existir pra mídia, cai pro conjunto sem ele", async () => {
+  const f = async (url) => {
+    const u = new URL(String(url));
+    const p = Object.fromEntries(u.searchParams);
+    if (u.pathname.includes("/media")) {
+      return { status: 200, text: async () => JSON.stringify({ data: [{ id: "v1", media_type: "VIDEO", media_url: "u", like_count: 1, comments_count: 0 }] }) };
+    }
+    if (p.metric?.includes("reels_skip_rate")) {
+      return { status: 400, text: async () => JSON.stringify({ error: { message: "metric inválida" } }) };
+    }
+    return { status: 200, text: async () => JSON.stringify({ data: [
+      { name: "views", values: [{ value: 90 }] },
+      { name: "ig_reels_avg_watch_time", values: [{ value: 4000 }] },
+    ] }) };
+  };
+  const s = makeSocial({ fetch: f, accessToken: "t" });
+  const media = await s.igMedia("ig1");
+  assert.equal(media[0].views, 90);
+  assert.equal(media[0].avgWatchMs, 4000);
+  assert.equal(media[0].skipRate, null); // sem skip, mas não zerou o resto
+});
+
 test("igMedia: se o combo com insights falhar, cai pros campos básicos", async () => {
   let n = 0;
   const f = async (url) => {
