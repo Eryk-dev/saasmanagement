@@ -132,9 +132,22 @@ export const ENTITIES = {
       { key: "name", label: "Conta", type: "text", required: true },
       { key: "saas", label: "Produto", type: "select", options: saasOptions, required: true },
       { key: "email", label: "E-mail", type: "text", help: "payer do Mercado Pago nas assinaturas" },
-      { key: "plan", label: "Plano", type: "text", help: "texto livre; com assinatura ativa, a lista mostra o plano da assinatura" },
+      // Plano guarda o RÓTULO (mesmo valor que o convertWonLead grava do gate);
+      // "Mensal" fica como legado pra edição de clientes antigos.
+      { key: "plan", label: "Plano", type: "select", blankLabel: "—", options: [
+        { value: "Anual", label: "Anual" },
+        { value: "Semestral", label: "Semestral" },
+        { value: "Serviço único", label: "Serviço único" },
+        { value: "Mensal", label: "Mensal (legado)" },
+      ], help: "com assinatura ativa, a lista mostra o plano da assinatura" },
+      { key: "paymentMethod", label: "Meio de pagamento", type: "select", blankLabel: "—", options: [
+        { value: "pix", label: "PIX" },
+        { value: "boleto", label: "Boleto" },
+        { value: "cartao12x", label: "Cartão 12x" },
+      ], help: "como o cliente paga; vem preenchido do fechamento" },
       { key: "arr", label: "Valor anual (ARR)", type: "money", help: "a lista mostra o MRR (ARR ÷ 12); com assinatura ativa é recalculado sozinho" },
       { key: "startedAt", label: "Cliente desde", type: "date", help: "base da linha do tempo de marcos" },
+      { key: "endedAt", label: "Churn (saída)", type: "date", help: "deixe vazio enquanto o cliente estiver ativo; alimenta churn e LTV da Análise" },
       { key: "csm", label: "CSM", type: "select", options: peopleOptions, blankLabel: "—" },
       { key: "flags", label: "Flags", type: "tags", help: "separadas por vírgula" },
     ],

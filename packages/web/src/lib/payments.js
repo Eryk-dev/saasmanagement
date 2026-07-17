@@ -11,9 +11,12 @@ export const paymentLabel = (id) => PAYMENT_METHODS.find((p) => p.id === id)?.la
 
 // Plano com que o negócio fechou — também assinalado no gate de fechamento e
 // carregado pro customer no convertWonLead (vira a coluna Plano e a base do arr).
+// A oferta atual é só Anual/Semestral/Serviço único; "mensal" fica fora do gate
+// mas segue reconhecido em dados antigos (closedPlanLabel e o fator anual da API).
 export const CLOSED_PLANS = [
   { id: "anual", label: "Anual" },
   { id: "semestral", label: "Semestral" },
-  { id: "mensal", label: "Mensal" },
-  { id: "unico", label: "Pagamento único" },
+  { id: "unico", label: "Serviço único" },
 ];
+
+export const closedPlanLabel = (id) => CLOSED_PLANS.find((p) => p.id === id)?.label || (id === "mensal" ? "Mensal" : "");
