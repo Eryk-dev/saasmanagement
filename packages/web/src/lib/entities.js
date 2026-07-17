@@ -36,12 +36,6 @@ const stageOptions = (v) => {
   const s = (window.SEED?.SAAS || []).find((x) => x.id === v.saas);
   return (s?.funnel || []).map((f) => ({ value: f.stage, label: f.stage }));
 };
-const lossReasonOptions = (v) => {
-  const s = (window.SEED?.SAAS || []).find((x) => x.id === v.saas);
-  const list = Array.isArray(s?.lossReasons) && s.lossReasons.length ? s.lossReasons : [];
-  return list.map((r) => ({ value: r.id, label: r.label }));
-};
-
 // Perguntas de qualificação específicas do pipeline selecionado, viradas em campos
 // extras do formulário de lead. Mesmo padrão dinâmico de stageOptions (lê window.SEED
 // em tempo de render). Renderizadas/validadas/enviadas pela EntityForm como campos comuns.
@@ -146,6 +140,11 @@ export const ENTITIES = {
     ],
   },
 
+  // Só usado no CADASTRO (pipeline "+ novo lead"; edição vive no drawer do deal),
+  // então a lista tem apenas o que existe NA ENTRADA do funil: contato, responsáveis,
+  // origem/estágio e o GPS. O que nasce depois fica fora: valor+pagamento entram no
+  // fechamento, motivo de perda no diálogo de mover pra Perdido, URL da proposta é
+  // gerada pelo fluxo de proposta; faixa/prioridade/motivo eram do seed CRM antigo.
   leads: {
     collection: "leads",
     singular: "Lead",
@@ -156,19 +155,12 @@ export const ENTITIES = {
       { key: "company", label: "Empresa", type: "text" },
       { key: "email", label: "E-mail", type: "text" },
       { key: "phone", label: "Telefone", type: "text" },
-      { key: "value", label: "Faixa", type: "text", placeholder: "Ent / Mid / SMB" },
-      { key: "amount", label: "Valor", type: "money" },
       { key: "owner", label: "Dono (SDR)", type: "select", options: usersWithRole("sdr"), blankLabel: "—" },
       { key: "closer", label: "Closer", type: "select", options: usersWithRole("closer"), blankLabel: "—" },
-      { key: "priority", label: "Prioridade", type: "select", options: [{ value: "P0", label: "P0" }, { value: "P1", label: "P1" }, { value: "P2", label: "P2" }], default: "P2" },
       { key: "source", label: "Origem", type: "text", placeholder: "Form · /pricing" },
       { key: "stage", label: "Estágio", type: "select", options: stageOptions, blankLabel: "(primeiro estágio)" },
-      { key: "nextActionAt", label: "Próximo toque", type: "datetime", help: "o GPS re-agenda sozinho a cada toque registrado" },
+      { key: "nextActionAt", label: "Próximo toque", type: "datetime", help: "vazio = o GPS marca sozinho pela cadência do estágio de entrada" },
       { key: "nextActionNote", label: "O que fazer no toque", type: "text" },
-      { key: "lostReason", label: "Motivo de perda", type: "select", options: lossReasonOptions, blankLabel: "—", help: "obrigatório ao mover pra Perdido/Desqualificado" },
-      { key: "lostNote", label: "Detalhe da perda", type: "text" },
-      { key: "reason", label: "Motivo", type: "textarea", full: true },
-      { key: "proposalUrl", label: "URL da proposta", type: "text", full: true },
     ],
   },
 
