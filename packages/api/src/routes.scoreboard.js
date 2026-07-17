@@ -168,11 +168,14 @@ export function registerScoreboardRoutes(app, repo) {
       .sort((a, b) => b.callsBooked - a.callsBooked);
 
     // ── Closer (agrupado por closer) ──────────────────────────────────────────
-    // Categoriza pelo PAPEL: quem é CS (integrator) e NÃO closer não entra no
-    // painel de closers só por ter caído no campo `closer` de um lead (ex.: o
-    // integrador que fechou/acompanhou um negócio pontual).
-    const csOnly = (uid) => { const r = users.find((u) => u.id === uid)?.roles || []; return r.includes("integrator") && !r.includes("closer"); };
-    const closerIds = [...new Set([...withRole("closer"), ...leads.map((l) => l.closer).filter(Boolean)])].filter((uid) => !csOnly(uid));
+    // Quem está no campo `closer` de um lead conta — inclusive o CS/integrador
+    // que fechou um negócio (o papel não censura o placar; o fechamento dele
+    // aparece aqui E as contas dele seguem no painel de CS). O filtro final
+    // (calls > 0 || won > 0) já esconde quem não tem movimento.
+    const closerIds = [...new Set([...withRole("closer"), ...leads.map((l) => l.closer).filter(Boolean)])];
+    // Início do cliente vinculado (leadId) — fallback do momento do fechamento
+    // pra lead ganho sem stageSince (fechados antes do log de atividades).
+    const customerStartByLead = new Map(customers.filter((c) => c.leadId && c.startedAt).map((c) => [c.leadId, c.startedAt]));
     const FWD = new Set(["proposta", "followup", "integracao", "ganho"]); // avançou = a call aconteceu
     const closer = closerIds.map((uid) => {
       const mine = leads.filter((l) => l.closer === uid);
@@ -199,6 +202,24 @@ export function registerScoreboardRoutes(app, repo) {
             if (k === "integracao" || k === "ganho") winAt.set(l.id, a.at);
           }
         }
+      }
+      // Fallback pros fechamentos de antes do log de atividades (jul/2026):
+      // lead PARADO em ganho/integração sem NENHUMA transição registrada conta
+      // pelo stageSince (ou pelo início do cliente vinculado). Com transição
+      // registrada fora da janela, o fechamento pertence à outra janela — não
+      // entra aqui.
+      for (const l of mine) {
+        if (winAt.has(l.id)) continue;
+        const k = kindOf(product, l.stage);
+        if (k !== "integracao" && k !== "ganho") continue;
+        const hasWonAct = (actsByLead.get(l.id) || []).some((a) => {
+          if (a.type !== "stage") return false;
+          const ak = kindOf(product, a.meta?.to);
+          return ak === "integracao" || ak === "ganho";
+        });
+        if (hasWonAct) continue;
+        const at = l.stageSince || customerStartByLead.get(l.id) || "";
+        if (inWin(at)) winAt.set(l.id, at);
       }
       const wonLeads = [...winAt.keys()].map((id) => leadById.get(id)).filter(Boolean);
       const wonN = wonLeads.length;

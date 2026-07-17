@@ -106,15 +106,28 @@ test("Closer: conversão na call, ganhos (handoff), receita, ciclo call→ganho"
   await app.close();
 });
 
-test("Closer: CS (integrator) que caiu no campo closer de um lead NÃO entra no painel de closers", async () => {
+test("Closer: CS que fechou conta no painel; ganho sem atividade cai no stageSince/cliente", async () => {
   const { app, repo } = await buildApp();
   await repo.create("leads", { id: "wc", saas: "leverads", closer: "u_clo", stage: "Ganho", amount: 5000, createdAt: now, stageSince: now });
   await repo.create("activities", { id: "st_wc", saas: "leverads", lead: "wc", type: "stage", at: now, meta: { from: "Follow-up", to: "Ganho" } });
-  // u_cs é integrator (CS) e aparece como closer num lead ganho — não deve virar closer
+  // u_cs é integrator (CS) e fechou um lead — o papel não censura o placar; o
+  // ganho dele conta. E o lead NÃO tem atividade de estágio (fechado antes do
+  // log): o fallback usa o stageSince.
   await repo.create("leads", { id: "wx", saas: "leverads", closer: "u_cs", stage: "Ganho", amount: 7000, createdAt: now, stageSince: now });
+  // Lead ganho SEM stageSince e sem atividade: cai no startedAt do cliente vinculado.
+  await repo.create("leads", { id: "wy", saas: "leverads", closer: "u_clo", stage: "Ganho", amount: 3000, createdAt: now });
+  await repo.create("customers", { id: "cy", saas: "leverads", name: "Y", leadId: "wy", startedAt: "2026-07-09" });
+  // Lead ganho com transição registrada FORA da janela: pertence à outra janela.
+  await repo.create("leads", { id: "wz", saas: "leverads", closer: "u_clo", stage: "Ganho", amount: 900, createdAt: "2026-06-01T10:00:00.000Z", stageSince: now });
+  await repo.create("activities", { id: "st_wz", saas: "leverads", lead: "wz", type: "stage", at: "2026-06-02T10:00:00.000Z", meta: { from: "Follow-up", to: "Ganho" } });
+
   const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
-  assert.ok(sb.closer.some((p) => p.user === "u_clo"));  // o closer de verdade aparece
-  assert.ok(!sb.closer.some((p) => p.user === "u_cs"));   // o CS não aparece como closer
+  const cs = sb.closer.find((p) => p.user === "u_cs");
+  assert.equal(cs.won, 1);
+  assert.equal(cs.revenue, 7000);
+  const clo = sb.closer.find((p) => p.user === "u_clo");
+  assert.equal(clo.won, 2);              // wc (atividade) + wy (fallback via cliente); wz fica de fora
+  assert.equal(clo.revenue, 8000);
   await app.close();
 });
 

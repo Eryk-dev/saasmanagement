@@ -629,6 +629,12 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
   const customers = await repo.list("customers");
   if (customers.some((c) => c.leadId === lead.id)) return null;
   if (lead.customerId && customers.some((c) => c.id === lead.customerId)) return null;
+  // CS automático: com UM integrador no escopo do produto, ele nasce como owner
+  // do cliente — é por customer.owner que o placar de CS agrupa (sem owner o
+  // trabalho de pós-venda não conta pra ninguém). Ambíguo (0 ou 2+) fica vazio.
+  const csCandidates = (await repo.list("users").catch(() => []))
+    .filter((u) => (u.roles || []).includes("integrator") && (!u.saas || u.saas === lead.saas));
+  const csOwner = csCandidates.length === 1 ? csCandidates[0].id : "";
   const customer = await repo.create("customers", {
     ...(CREATE_DEFAULTS.customers || {}),
     name: lead.company || lead.name || "Cliente",
@@ -639,6 +645,7 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
     plan: CLOSED_PLAN_LABEL[lead.planClosed] || "",
     arr: Math.round((Number(lead.amount) || 0) * (CLOSED_PLAN_ANNUAL_FACTOR[lead.planClosed] || 1)),
     leadId: lead.id,
+    ...(csOwner ? { owner: csOwner } : {}),
     ...(lead.paymentMethod ? { paymentMethod: lead.paymentMethod } : {}), // modo como fechou (PIX/boleto/cartão 12x)
     startedAt: new Date().toISOString(),
   });
