@@ -120,9 +120,27 @@ function FormsScreen({ saasId }) {
               const starts = Number(stat?.starts) || 0;
               const leads = Number(stat?.submits) || 0;
               const pct = (a, b) => b > 0 ? `${((a / b) * 100).toFixed(1).replace(".", ",")}%` : "0%";
-              const variants = (stat?.variants || []).filter((v) => v.views > 0).slice(0, 2);
-              const variantMax = Math.max(1, ...variants.map((v) => v.views ? (v.submits / v.views) * 100 : 0));
-              const variantTitle = (v) => (f.welcome?.variants || []).find((x) => String(x.id) === String(v.id))?.title || `Variante ${v.id}`;
+              // Teste A/B visível no card: headline REAL de cada variante (base e
+              // por dor, com herança de campo vazio), agrupado por dor e com o
+              // veredito do campeão — mesmo critério da análise completa.
+              const abVariants = (stat?.variants || []).filter((v) => v.views > 0);
+              const abVerdicts = championVerdicts(abVariants);
+              const abGroups = [];
+              for (const v of abVariants) {
+                const key = v.pain || "";
+                let g = abGroups.find((x) => x.pain === key);
+                if (!g) { g = { pain: key, rows: [] }; abGroups.push(g); }
+                g.rows.push(v);
+              }
+              abGroups.sort((a, b) => (a.pain === "" ? -1 : b.pain === "" ? 1 : a.pain.localeCompare(b.pain)));
+              for (const g of abGroups) g.rows.sort((a, b) => (b.views ? b.starts / b.views : 0) - (a.views ? a.starts / a.views : 0));
+              const vDefs = [...(f.welcome?.variants || []), ...Object.values(f.welcome?.byPain || {}).flatMap((p) => p.variants || [])];
+              const variantTitle = (v) => {
+                const def = vDefs.find((x) => String(x.id) === String(v.id));
+                if (!def) return `Variante ${v.id} (encerrada)`;
+                return def.title || f.welcome?.byPain?.[v.pain]?.title || f.welcome?.title || `Variante ${v.id}`;
+              };
+              const painMap = (SAAS.find((x) => x.id === f.saas) || {}).painMap || {};
               return (
                 <div key={f.id} style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: 24 }}>
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
@@ -146,13 +164,47 @@ function FormsScreen({ saasId }) {
                         {[[window.fmt.int(visits), "visitas · 30d"], [window.fmt.int(starts), `começaram · ${pct(starts, visits)}`], [window.fmt.int(leads), `leads · ${pct(leads, starts)}`]].map(([value, label]) => <div key={label}><div className="tnum" style={{ fontSize: 18, fontWeight: 700 }}>{value}</div><div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{label}</div></div>)}
                         <button onClick={() => setView({ mode: "subs", form: f })} style={{ textAlign: "left" }}><div className="tnum" style={{ fontSize: 18, fontWeight: 700, color: "var(--pos)" }}>{pct(leads, visits)}</div><div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>conversão total</div></button>
                       </div>
-                      {variants.length > 1 && (
+                      {abVariants.length > 1 && (
                         <div style={{ marginTop: 16 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", marginBottom: 8 }}>Teste A/B · headline</div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                            {variants.map((v, i) => {
-                              const rate = v.views ? (v.submits / v.views) * 100 : 0;
-                              return <div key={v.id} style={{ display: "flex", alignItems: "center", gap: 10 }}><span style={{ width: 150, fontSize: 12.5, color: "var(--fg-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String.fromCharCode(65 + i)} · “{variantTitle(v)}”</span><div style={{ flex: 1, height: 14, background: "var(--bg-2)", borderRadius: 4, overflow: "hidden" }}><div style={{ width: `${Math.max(3, (rate / variantMax) * 100)}%`, height: "100%", background: i === 0 ? "var(--accent)" : "var(--fg-3)", borderRadius: 4 }} /></div><span className="tnum" style={{ width: 90, textAlign: "right", fontSize: 12.5, fontWeight: 600 }}>{rate.toFixed(1).replace(".", ",")}% <span style={{ color: "var(--fg-4)", fontWeight: 400 }}>· {v.submits}</span></span></div>;
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
+                            <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Teste A/B · headline</span>
+                            <span style={{ flex: 1 }} />
+                            <button onClick={() => setView({ mode: "subs", form: f })} style={{ fontSize: 11.5, fontWeight: 600, color: "var(--accent)" }}>análise completa →</button>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                            {abGroups.map((g) => {
+                              const groupMax = Math.max(1, ...g.rows.map((v) => (v.views ? (v.starts / v.views) * 100 : 0)));
+                              return (
+                                <div key={g.pain || "base"} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                  {abGroups.length > 1 && (
+                                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--fg-4)" }}>
+                                      <span className="mono code" style={{ fontSize: 10.5, fontWeight: 700, color: "var(--accent)" }}>{g.pain ? `[${g.pain}]` : "BASE"}</span>
+                                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.pain ? (painMap[g.pain] || `dor ${g.pain}`) : "sem dor (tráfego direto)"}</span>
+                                    </div>
+                                  )}
+                                  {g.rows.map((v) => {
+                                    const startRate = v.views ? (v.starts / v.views) * 100 : 0;
+                                    const verdict = abVerdicts[`${v.pain || ""}|${v.id}`];
+                                    return (
+                                      <div key={v.id} style={{ minWidth: 0 }}>
+                                        <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
+                                          <span className="mono code" style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: "var(--fg-4)" }}>{v.id}</span>
+                                          <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: "var(--fg-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={variantTitle(v)}>“{variantTitle(v)}”</span>
+                                          {verdict?.label && <span className="mono" style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 600, color: verdict.tone }}>{verdict.label}</span>}
+                                        </div>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+                                          <div style={{ flex: 1, height: 12, background: "var(--bg-2)", borderRadius: 4, overflow: "hidden" }}>
+                                            <div style={{ width: `${Math.max(3, (startRate / groupMax) * 100)}%`, height: "100%", background: verdict?.label ? "var(--accent)" : "var(--fg-3)", borderRadius: 4 }} />
+                                          </div>
+                                          <span className="tnum" style={{ flexShrink: 0, fontSize: 12, color: "var(--fg-4)" }}>
+                                            <span style={{ fontWeight: 600, color: "var(--fg-1)" }}>{pct(v.starts, v.views)}</span> começar · {pct(v.submits, v.views)} envio · {v.submits} {v.submits === 1 ? "lead" : "leads"}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
                             })}
                           </div>
                         </div>
