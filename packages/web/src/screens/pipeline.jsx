@@ -784,6 +784,10 @@ function goalMath(data, s, leads) {
   const newLeads = missingWins == null ? null
     : missingWins === 0 ? 0
     : fullProb > 0 ? Math.ceil(missingWins / fullProb) : null;
+  // Investimento: CPL real dos últimos 30d (spend ÷ leads criados, da API).
+  const cpl = Number(data.marketing?.cpl) > 0 ? Number(data.marketing.cpl) : null;
+  const investNeeded = cpl != null && leadsNeeded != null ? leadsNeeded * cpl : null;
+  const investNew = cpl != null && newLeads != null ? newLeads * cpl : null;
   const blockedBy = gap === 0 ? null
     : ticket == null || ticket <= 0 ? "ticket médio"
     : rClose <= 0 ? "taxa de fechamento"
@@ -794,11 +798,28 @@ function goalMath(data, s, leads) {
   return {
     gap, target, closed, ticket, wins, calls, bookings, contacts, leadsNeeded,
     pipeWins, pipeValue, pipeCount, missingWins, newLeads, blockedBy,
+    cpl, investNeeded, investNew,
     daysLeft: data.cash.remainingBusinessDays,
   };
 }
 
 function PaceChart({ data, s, leads }) {
+  // Desenha em pixels reais do container (ResizeObserver): o antigo
+  // preserveAspectRatio="none" esticava texto e linha em tela larga e cortava
+  // o rótulo do eixo ("120 mil" virava "20 mil").
+  const wrapRef = React.useRef(null);
+  const [w, setW] = useStP(720);
+  useEfP(() => {
+    const el = wrapRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const cw = entries[0]?.contentRect?.width;
+      if (cw) setW(Math.max(360, Math.round(cw)));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const [year, month] = data.month.split("-").map(Number);
   const totalDays = new Date(year, month, 0).getDate();
   const currentDay = data.today.startsWith(data.month) ? Number(data.today.slice(8, 10)) : totalDays;
@@ -813,26 +834,38 @@ function PaceChart({ data, s, leads }) {
   if (cumulative.length && cumulative[cumulative.length - 1] === 0 && data.context.tcvMonth > 0) cumulative[cumulative.length - 1] = data.context.tcvMonth;
   const target = Number(data.cash.target) || 0;
   const max = Math.max(1, target, data.context.tcvMonth || 0);
-  const x = (day) => 46 + ((day - 1) / Math.max(1, totalDays - 1)) * 662;
-  const y = (value) => 140 - (value / max) * 114;
+  const H = 190, padL = 64, padR = 16, yTop = 22, yZero = 152;
+  const x = (day) => padL + ((day - 1) / Math.max(1, totalDays - 1)) * (w - padL - padR);
+  const y = (value) => yZero - (value / max) * (yZero - yTop);
   const points = cumulative.map((value, index) => `${x(index + 1).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
   const lastValue = cumulative[cumulative.length - 1] || data.context.tcvMonth || 0;
   const lastX = x(Math.max(1, currentDay));
   const lastY = y(lastValue);
   const monthLabel = new Date(year, month - 1, 1).toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
+  const kFmt = (v) => (v >= 1000 ? `${Math.round(v / 1000)} mil` : String(Math.round(v)));
+  const axis = { fontFamily: "var(--mono)", fontSize: 10, fill: "var(--fg-4)" };
   return (
-    <svg viewBox="0 0 720 170" width="100%" height="170" preserveAspectRatio="none" style={{ display: "block" }}>
-      {[max, max / 2, 0].map((value) => <line key={value} x1="46" y1={y(value)} x2="708" y2={y(value)} stroke="var(--line-faint)" strokeWidth="1" />)}
-      <text x="38" y={y(max) + 4} textAnchor="end" style={{ fontFamily: "var(--mono)", fontSize: 10, fill: "var(--fg-4)" }}>{Math.round(max / 1000)} mil</text>
-      <text x="38" y="144" textAnchor="end" style={{ fontFamily: "var(--mono)", fontSize: 10, fill: "var(--fg-4)" }}>0</text>
-      <line x1={x(1)} y1={y(0)} x2={x(totalDays)} y2={y(target)} stroke="var(--line-strong)" strokeWidth="1.5" strokeDasharray="5 4" />
-      {points && <polyline points={points} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
-      <circle cx={lastX} cy={lastY} r="3.5" fill="var(--accent)" />
-      <text x={Math.min(640, lastX + 8)} y={Math.max(14, lastY - 6)} style={{ fontFamily: "var(--display)", fontSize: 11.5, fontWeight: 600, fill: "var(--fg-1)" }}>{window.fmt.money(lastValue)}</text>
-      <text x="640" y={Math.max(16, y(target) + 14)} style={{ fontFamily: "var(--mono)", fontSize: 10, fill: "var(--fg-4)" }}>meta</text>
-      <text x="46" y="162" style={{ fontFamily: "var(--mono)", fontSize: 10, fill: "var(--fg-4)" }}>01 {monthLabel}</text>
-      <text x="708" y="162" textAnchor="end" style={{ fontFamily: "var(--mono)", fontSize: 10, fill: "var(--fg-4)" }}>{totalDays} {monthLabel}</text>
-    </svg>
+    <div ref={wrapRef} style={{ width: "100%" }}>
+      <svg width={w} height={H} style={{ display: "block" }}>
+        {[max, max / 2, 0].map((value) => (
+          <React.Fragment key={value}>
+            <line x1={padL} y1={y(value)} x2={w - padR} y2={y(value)} stroke="var(--line-faint)" strokeWidth="1" />
+            <text x={padL - 10} y={y(value) + 3.5} textAnchor="end" style={axis}>{kFmt(value)}</text>
+          </React.Fragment>
+        ))}
+        <line x1={x(1)} y1={y(0)} x2={x(totalDays)} y2={y(target)} stroke="var(--line-strong)" strokeWidth="1.5" strokeDasharray="5 4" />
+        <text x={w - padR - 4} y={Math.max(12, y(target) - 8)} textAnchor="end" style={axis}>meta {window.fmt.money(target)}</text>
+        {points && <polyline points={points} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
+        <circle cx={lastX} cy={lastY} r="3.5" fill="var(--accent)" />
+        <text
+          x={Math.min(lastX + 10, w - padR - 4)}
+          y={Math.min(yZero - 4, Math.max(14, lastY - 8))}
+          textAnchor={lastX + 90 > w - padR ? "end" : "start"}
+          style={{ fontFamily: "var(--display)", fontSize: 12, fontWeight: 600, fill: "var(--fg-1)" }}>{window.fmt.money(lastValue)}</text>
+        <text x={padL} y={H - 8} style={axis}>01 {monthLabel}</text>
+        <text x={w - padR} y={H - 8} textAnchor="end" style={axis}>{totalDays} {monthLabel}</text>
+      </svg>
+    </div>
   );
 }
 
@@ -898,6 +931,12 @@ function GoalReversePlan({ data, s, leads }) {
     <Card title="Engenharia reversa da meta" hint={`de trás pra frente: o que precisa acontecer pra fechar ${money(g.gap)} até o fim do mês`}>
       <div style={{ padding: "16px 24px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "stretch", gap: 7, flexWrap: "wrap" }}>
+          {g.investNeeded != null && (
+            <>
+              <EquationStep value={g.investNeeded} label="investimento" money />
+              <EquationArrow label={`CPL ${money(g.cpl)}`} />
+            </>
+          )}
           <EquationStep value={g.leadsNeeded} label="leads" />
           <EquationArrow label={`${rateFmt(conversions.contactRate.value)} contatados`} />
           <EquationStep value={g.contacts} label="contatos" />
@@ -916,6 +955,9 @@ function GoalReversePlan({ data, s, leads }) {
           <PaceMini label="Contatos/dia útil" value={dailyFmt(perDay(g.contacts))} sub={`hoje ${wholeFmt(plan.contacts?.today)} leads tocados`} />
           <PaceMini label="Calls/dia útil" value={dailyFmt(perDay(g.calls))} sub={`hoje ${wholeFmt(plan.calls?.today)} na agenda`} />
           <PaceMini label="Ganhos/dia útil" value={dailyFmt(perDay(g.wins))} sub={`hoje ${wholeFmt(plan.wins?.today)} · ticket ${g.ticket ? money(g.ticket) : "indisponível"}`} />
+          {g.investNew != null && g.newLeads > 0 && (
+            <PaceMini label="Mídia/dia útil" value={money(perDay(g.investNew) || 0)} sub={`${money(g.investNew)} pros ${wholeFmt(g.newLeads)} leads novos`} />
+          )}
         </div>
 
         <div style={{ padding: "10px 14px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-faint)", fontSize: 12.5, lineHeight: 1.55, color: "var(--fg-2)" }}>
@@ -925,6 +967,10 @@ function GoalReversePlan({ data, s, leads }) {
             : g.newLeads == null
               ? " Não dá pra estimar os leads novos necessários (tem taxa zerada na cadeia)."
               : ` Descontando isso, precisam entrar ~${wholeFmt(g.newLeads)} leads novos até o fim do mês (${dailyFmt(perDay(g.newLeads))}/dia útil).`}
+          {g.investNew != null && g.newLeads > 0 && (
+            <> Ao CPL real de {money(g.cpl)}, esses leads pedem <strong>~{money(g.investNew)} de investimento</strong> ({money(perDay(g.investNew) || 0)}/dia útil).</>
+          )}
+          {g.cpl == null && g.newLeads > 0 && " Sem spend registrado nos últimos 30 dias, não dá pra estimar o investimento (sincronize a Publicidade)."}
         </div>
 
         {g.blockedBy && (
@@ -938,6 +984,13 @@ function GoalReversePlan({ data, s, leads }) {
             <div className="mono" style={noteLabel}>Ticket médio</div>
             <div className="tnum" style={{ marginTop: 2, fontSize: 13, fontWeight: 600 }}>{g.ticket ? money(g.ticket) : "—"}</div>
             <div style={{ fontSize: 10, color: "var(--fg-4)" }}>{ticketSource}</div>
+          </div>
+          <div>
+            <div className="mono" style={noteLabel}>CPL</div>
+            <div className="tnum" style={{ marginTop: 2, fontSize: 13, fontWeight: 600 }}>{g.cpl != null ? money(g.cpl) : "—"}</div>
+            <div style={{ fontSize: 10, color: "var(--fg-4)" }}>
+              {g.cpl != null ? `real 30d · ${money(data.marketing.spend30)} / ${data.marketing.leads30} leads` : "sem spend no período"}
+            </div>
           </div>
           {[["Contato", conversions.contactRate], ["Agendamento", conversions.bookingRate], ["Comparecimento", conversions.showRate], ["Call → ganho", conversions.closeRate]].map(([label, rate]) => (
             <div key={label}>
