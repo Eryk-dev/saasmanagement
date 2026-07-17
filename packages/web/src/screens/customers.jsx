@@ -8,6 +8,7 @@ import { ActivityList } from "../components/timeline.jsx";
 import { CallSummaryCard } from "./today.jsx";
 import { SubscriptionsScreen } from "./subscriptions.jsx";
 import { CustomersAnalysis } from "./customers-analysis.jsx";
+import { EntityForm } from "../components/EntityForm.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { leadTier, waLink } from "../lib/ui.js";
 import { displayName } from "../lib/users.js";
@@ -106,12 +107,11 @@ function CustomersScreen({ initialTab = "base" }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Clientes" sub={`${activeCustomers.length} ${activeCustomers.length === 1 ? "ativo" : "ativos"} · MRR ${money(totalMrr)}`}>
-        <Segmented value={tab} onChange={setTab} options={[{ value: "base", label: "Clientes" }, { value: "analysis", label: "Análise" }, { value: "billing", label: "Assinaturas" }]} />
+        <Segmented value={tab} onChange={setTab} options={[{ value: "base", label: "Clientes" }, { value: "billing", label: "Assinaturas" }]} />
         {tab === "base" && <PrimaryButton onClick={() => openForm("customers", { saas: product.id })}>+ novo cliente</PrimaryButton>}
       </PageHead>
 
       {tab === "billing" && <SubscriptionsScreen saasId={product.id} />}
-      {tab === "analysis" && <CustomersAnalysis customers={customers} />}
 
       {tab === "base" && (
       <div style={{ padding: "16px var(--pad-x) 56px" }}>
@@ -123,6 +123,8 @@ function CustomersScreen({ initialTab = "base" }) {
           />
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, alignItems: "start" }}>
+            <CustomersAnalysis customers={customers} />
+
             <Card title="Próximas ações" hint="régua de retenção, vencidas primeiro">
               <div style={{ padding: "12px 0 8px" }}>
                 {nextActions.length === 0 && (
@@ -130,7 +132,7 @@ function CustomersScreen({ initialTab = "base" }) {
                     Nenhuma ação pendente. A régua de retenção está em dia.
                   </div>
                 )}
-                {(showAllActions ? nextActions : nextActions.slice(0, 5)).map(({ customer: c, milestone: m }, i, shown) => (
+                {(showAllActions ? nextActions : nextActions.slice(0, 2)).map(({ customer: c, milestone: m }, i, shown) => (
                   <div key={c.id} onClick={() => setSel(c.id)}
                     style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 24px", cursor: "pointer", borderBottom: i === shown.length - 1 ? "none" : "1px solid var(--line-faint)" }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
@@ -152,10 +154,10 @@ function CustomersScreen({ initialTab = "base" }) {
                     </button>
                   </div>
                 ))}
-                {nextActions.length > 5 && (
+                {nextActions.length > 2 && (
                   <div style={{ padding: "12px 24px 8px", borderTop: "1px solid var(--line-1)" }}>
                     <button onClick={() => setShowAllActions((v) => !v)} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>
-                      {showAllActions ? "ver menos" : `ver mais (${nextActions.length - 5})`}
+                      {showAllActions ? "ver menos" : `ver mais (${nextActions.length - 2})`}
                     </button>
                   </div>
                 )}
@@ -237,7 +239,6 @@ function CustomersScreen({ initialTab = "base" }) {
           planLabel={planLabel}
           lastContact={lastContact}
           onComplete={completeMilestone}
-          onEdit={() => openForm("customers", selected)}
           onClose={() => setSel(null)}
         />
       )}
@@ -292,12 +293,16 @@ function CustomerFacts({ customer, lead, product }) {
 
 // Popup do cliente: resumo (números + assinatura + faturas) e o histórico de
 // ações de retenção (régua de marcos com concluir + funil de origem).
-function CustomerModal({ customer, lead, product, subs, invoices, planLabel, lastContact, onComplete, onEdit, onClose }) {
+// "Editar" NÃO abre outro popup: troca o corpo pelo form (EntityForm bare)
+// dentro deste mesmo modal; salvar/cancelar voltam pra visão de resumo.
+function CustomerModal({ customer, lead, product, subs, invoices, planLabel, lastContact, onComplete, onClose }) {
+  const { refresh } = useData();
+  const [editing, setEditing] = useState(false);
   React.useEffect(() => {
-    const h = (e) => { if (e.key === "Escape") onClose(); };
+    const h = (e) => { if (e.key === "Escape") (editing ? setEditing(false) : onClose()); };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [onClose]);
+  }, [onClose, editing]);
   const money = window.fmt.money;
   const mainSub = subs.find((s) => s.status === "active" || s.status === "past_due") || subs[0] || null;
   const st = mainSub ? SUB_STATUS[mainSub.status] || { label: mainSub.status, tone: "mut" } : null;
@@ -319,7 +324,9 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
                 {money((customer.arr || 0) / 12)}/mês · {money(customer.arr || 0)}/ano{customer.email ? ` · ${customer.email}` : ""}
               </div>
             </div>
-            <button onClick={onEdit} style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, flexShrink: 0 }}>Editar</button>
+            {!editing && (
+              <button onClick={() => setEditing(true)} style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, flexShrink: 0 }}>Editar</button>
+            )}
             <button onClick={onClose} aria-label="Fechar" style={{ height: 30, width: 30, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 14, flexShrink: 0 }}>✕</button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 10, marginTop: 14 }}>
@@ -337,6 +344,17 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
           )}
         </div>
 
+        {editing && (
+          <EntityForm
+            entityKey="customers"
+            record={customer}
+            bare
+            onClose={() => setEditing(false)}
+            onSaved={async () => { await refresh(); setEditing(false); }}
+          />
+        )}
+
+        {!editing && (<>
         <CustomerFacts customer={customer} lead={lead} product={product} />
 
         <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--line-faint)" }}>
@@ -423,6 +441,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         </div>
 
         <CustomerHistory customer={customer} />
+        </>)}
       </div>
     </div>
   );

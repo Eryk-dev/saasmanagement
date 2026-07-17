@@ -111,8 +111,10 @@ export function CustomersAnalysis({ customers }) {
   const planosTotal = m.cohort.length || 1;
   const planRows = PLAN_ORDER.filter((b) => m.planos.get(b)).map((b) => ({ bucket: b, count: m.planos.get(b) }));
 
+  // Embutida no topo da aba Clientes (acima das Próximas ações) — o padding de
+  // página é do container; aqui só o empilhamento interno.
   return (
-    <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
         {SHORTCUTS.map((s) => (
           <FilterTab key={s.key} active={shortcut === s.key} onClick={() => setShortcut(s.key)}>{s.label}</FilterTab>

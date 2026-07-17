@@ -130,7 +130,9 @@ function toPayload(fields, values) {
   return out;
 }
 
-function EntityForm({ entityKey, record, onClose, onSaved }) {
+// `bare`: renderiza só o form (campos + rodapé), sem o overlay/drawer próprio —
+// pra embutir dentro de outro popup (ex.: edição inline no popup do cliente).
+function EntityForm({ entityKey, record, onClose, onSaved, bare = false }) {
   const cfg = ENTITIES[entityKey];
   const isEdit = !!(record && record.id);
   const [values, setValues] = useState(() => toInputs(effectiveFields(cfg, record || {}), record));
@@ -185,6 +187,34 @@ function EntityForm({ entityKey, record, onClose, onSaved }) {
     }
   }
 
+  const fieldsGrid = (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+      {effectiveFields(cfg, values).map((f) => (
+        <Field key={f.key} f={f} value={values[f.key]} values={values} recordId={record?.id} onChange={(val) => set(f.key, val)} />
+      ))}
+    </div>
+  );
+  const footer = (
+    <div style={{ padding: "12px 20px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+      {error && <div className="mono" style={{ fontSize: 11, color: "var(--neg)", marginBottom: 8 }}>{error}</div>}
+      <div style={{ display: "flex", gap: 8 }}>
+        <button type="submit" disabled={busy} style={{ flex: 1, padding: "9px 12px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
+          {generating ? "Gerando proposta…" : busy ? "Salvando…" : isEdit ? "Salvar" : "Criar"}
+        </button>
+        <button type="button" onClick={onClose} style={{ padding: "9px 16px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>
+      </div>
+    </div>
+  );
+
+  if (bare) {
+    return (
+      <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div style={{ padding: "16px 20px" }}>{fieldsGrid}</div>
+        {footer}
+      </form>
+    );
+  }
+
   return (
     <div
       style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", display: "flex", justifyContent: "flex-end", zIndex: 70 }}
@@ -203,23 +233,9 @@ function EntityForm({ entityKey, record, onClose, onSaved }) {
           <button type="button" onClick={onClose} className="mono dim" style={{ fontSize: 16 }}>✕</button>
         </div>
 
-        <div style={{ flex: 1, overflow: "auto", padding: "16px 20px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-            {effectiveFields(cfg, values).map((f) => (
-              <Field key={f.key} f={f} value={values[f.key]} values={values} recordId={record?.id} onChange={(val) => set(f.key, val)} />
-            ))}
-          </div>
-        </div>
+        <div style={{ flex: 1, overflow: "auto", padding: "16px 20px" }}>{fieldsGrid}</div>
 
-        <div style={{ padding: "12px 20px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
-          {error && <div className="mono" style={{ fontSize: 11, color: "var(--neg)", marginBottom: 8 }}>{error}</div>}
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="submit" disabled={busy} style={{ flex: 1, padding: "9px 12px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
-              {generating ? "Gerando proposta…" : busy ? "Salvando…" : isEdit ? "Salvar" : "Criar"}
-            </button>
-            <button type="button" onClick={onClose} style={{ padding: "9px 16px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>
-          </div>
-        </div>
+        {footer}
       </form>
     </div>
   );
