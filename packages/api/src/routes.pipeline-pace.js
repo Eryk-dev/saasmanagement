@@ -76,13 +76,14 @@ function planMetric(remaining, days, today) {
 }
 
 export async function computePipelinePace(repo, product, now = new Date()) {
-  const [allInvoices, allLeads, allActivities, allCustomers, allProposals, allGoals] = await Promise.all([
+  const [allInvoices, allLeads, allActivities, allCustomers, allProposals, allGoals, allInsights] = await Promise.all([
     repo.list("invoices"),
     repo.list("leads"),
     repo.list("activities"),
     repo.list("customers"),
     repo.list("proposals"),
     repo.list("goals"),
+    repo.list("ad_insights"),
   ]);
   const today = dayKey(now);
   const month = today.slice(0, 7);
@@ -203,6 +204,15 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   const todayContacts = new Set(todayActivities.filter((a) => TOUCH_TYPES.has(a.type)).map((a) => a.lead)).size;
   const todayWon = leads.filter((l) => isWon(product, l.stage) && dayKey(l.stageSince) === today).length;
 
+  // CPL real dos últimos 30 dias (mesma régua do /api/marketing): spend do
+  // ad_insights ÷ leads criados no período (sem internos). Alimenta o cálculo
+  // de investimento necessário pra bater a meta na Análise.
+  const spend30 = round2(allInsights
+    .filter((r) => r.saas === product.id && r.date >= since30 && r.date <= today)
+    .reduce((a, r) => a + (Number(r.spend) || 0), 0));
+  const leads30 = leads.filter((l) => !l.internal && inRange(l.createdAt, since30)).length;
+  const cpl = spend30 > 0 && leads30 > 0 ? round2(spend30 / leads30) : null;
+
   const tcvMonthLeads = leads.filter((l) => isWon(product, l.stage) && inMonth(l.stageSince));
   const tcvMonth = round2(tcvMonthLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0));
   const mrr = round2(customers.reduce((a, c) => a + (Number(c.arr) || 0), 0) / 12);
@@ -238,6 +248,7 @@ export async function computePipelinePace(repo, product, now = new Date()) {
       averageEntry,
       averageEntrySource,
     },
+    marketing: { spend30, leads30, cpl },
     conversions,
     plan: {
       blockedBy,
