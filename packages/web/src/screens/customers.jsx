@@ -75,16 +75,20 @@ function CustomersScreen({ initialTab = "base" }) {
     return days === 0 ? "hoje" : days === 1 ? "há 1 dia" : `há ${days} dias`;
   };
 
+  // O marco de renovação depende do ciclo do contrato: injeta o ciclo da
+  // assinatura ativa no cliente antes de calcular a régua.
+  const withCycle = (c) => ({ ...c, contractCycle: mainSub(c)?.cycle });
+
   // Bloco "Próximas ações": o próximo marco em aberto de cada cliente,
   // vencidos primeiro, depois por data. Clientes sem startedAt ficam num
   // rodapé próprio (a régua ainda não começou).
   const nextActions = useMemo(() => {
     const order = { late: 0, soon: 1, next: 2 };
     return customers
-      .map((c) => ({ customer: c, milestone: nextMilestone(c, product) }))
+      .map((c) => ({ customer: c, milestone: nextMilestone(withCycle(c), product) }))
       .filter((x) => x.milestone)
       .sort((a, b) => (order[a.milestone.status] - order[b.milestone.status]) || (new Date(a.milestone.dueAt) - new Date(b.milestone.dueAt)));
-  }, [customers, product, tick, version]);
+  }, [customers, subs, product, tick, version]);
   const noRuler = useMemo(() => customers.filter((c) => !c.startedAt), [customers]);
 
   if (!product) return <EmptyState title="Nenhum produto cadastrado" hint="Crie o produto em Ajustes." />;
@@ -122,7 +126,7 @@ function CustomersScreen({ initialTab = "base" }) {
                   {shownCustomers.map((c) => {
                     const sub = mainSub(c);
                     const st = sub ? SUB_STATUS[sub.status] || { label: sub.status, tone: "mut" } : null;
-                    const nm = nextMilestone(c, product);
+                    const nm = nextMilestone(withCycle(c), product);
                     return (
                       <tr key={c.id} onClick={() => setSel(c.id)} style={{ cursor: "pointer" }}
                         onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
@@ -280,7 +284,7 @@ function CustomerModal({ customer, product, subs, invoices, planLabel, lastConta
           <div className="mono" style={SECTION_LABEL}>Ações de retenção</div>
           {!customer.startedAt && (
             <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
-              Defina "Cliente desde" (editar cliente) pra ativar a régua de marcos: onboarding, check-in de mês 1, revisão de mês 3 e upsell de mês 6.
+              Defina "Cliente desde" (editar cliente) pra ativar a régua de marcos: onboarding, check-in de mês 1, revisão de mês 3, upsell de mês 6 e contato de renovação (2 meses antes do fim do contrato).
             </div>
           )}
           {customer.startedAt && (
@@ -288,7 +292,7 @@ function CustomerModal({ customer, product, subs, invoices, planLabel, lastConta
               <div style={{ fontSize: 12, color: "var(--fg-3)", marginBottom: 10 }}>
                 cliente desde {new Date(customer.startedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(".", "")} · {tenureLabel(customer)}
               </div>
-              {milestonesFor(customer, product).map((m, i, arr) => (
+              {milestonesFor({ ...customer, contractCycle: mainSub?.cycle }, product).map((m, i, arr) => (
                 <div key={m.key} style={{ display: "flex", gap: 12, position: "relative", paddingBottom: i === arr.length - 1 ? 0 : 16 }}>
                   {i < arr.length - 1 && <span style={{ position: "absolute", left: 7, top: 18, bottom: 0, width: 2, background: "var(--line-1)" }} />}
                   <span style={{

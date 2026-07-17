@@ -16,6 +16,29 @@ export function milestoneTemplate(product) {
   return Array.isArray(custom) && custom.length ? custom : DEFAULT_MILESTONES;
 }
 
+// Duração do contrato em dias: ciclo da assinatura ativa (`contractCycle`,
+// injetado por quem tem as subs na mão) ou o texto livre de customer.plan;
+// sem nenhum sinal, assume contrato anual (o padrão da casa).
+const CYCLE_DAYS = { monthly: 30, quarterly: 91, semiannual: 182, annual: 365 };
+const PLAN_HINTS = [["mensal", 30], ["trimestral", 91], ["semestral", 182], ["anual", 365]];
+export const RENEWAL_LEAD_DAYS = 60; // contato de renovação 2 meses antes do fim
+
+function contractDays(customer) {
+  const byCycle = CYCLE_DAYS[customer?.contractCycle];
+  if (byCycle) return byCycle;
+  const plan = String(customer?.plan || "").toLowerCase();
+  for (const [hint, days] of PLAN_HINTS) if (plan.includes(hint)) return days;
+  return 365;
+}
+
+// Marco dinâmico: contato de renovação 2 meses antes do contrato acabar.
+// Contrato mais curto que a antecedência (mensal) não tem régua de renovação.
+function renewalMilestone(customer) {
+  const days = contractDays(customer);
+  if (days <= RENEWAL_LEAD_DAYS) return null;
+  return { key: "renovacao", label: "Contato de renovação", dueDays: days - RENEWAL_LEAD_DAYS, hint: "2 meses antes do fim do contrato" };
+}
+
 // Linha do tempo do cliente: cada marco com dueAt e status
 //   done (concluído) · late (venceu sem concluir) · soon (vence em ≤7 dias) · next
 export function milestonesFor(customer, product, now = Date.now()) {
@@ -23,12 +46,17 @@ export function milestonesFor(customer, product, now = Date.now()) {
   const start = new Date(customer.startedAt).getTime();
   if (!Number.isFinite(start)) return [];
   const done = customer.milestonesDone || {};
-  return milestoneTemplate(product).map((m) => {
-    const dueAt = start + Number(m.dueDays || 0) * DAY;
-    const doneAt = done[m.key] || null;
-    const status = doneAt ? "done" : dueAt <= now ? "late" : dueAt - now <= 7 * DAY ? "soon" : "next";
-    return { ...m, dueAt: new Date(dueAt).toISOString(), doneAt, status };
-  });
+  const base = milestoneTemplate(product);
+  const renewal = renewalMilestone(customer);
+  const template = renewal && !base.some((m) => m.key === renewal.key) ? [...base, renewal] : base;
+  return template
+    .map((m) => {
+      const dueAt = start + Number(m.dueDays || 0) * DAY;
+      const doneAt = done[m.key] || null;
+      const status = doneAt ? "done" : dueAt <= now ? "late" : dueAt - now <= 7 * DAY ? "soon" : "next";
+      return { ...m, dueAt: new Date(dueAt).toISOString(), doneAt, status };
+    })
+    .sort((a, b) => (a.dueDays || 0) - (b.dueDays || 0)); // renovação de semestral cai antes do upsell
 }
 
 // Próximo marco em aberto (o que a linha "Próximo marco" e a Visão geral mostram).
