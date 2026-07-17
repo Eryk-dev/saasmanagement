@@ -81,7 +81,7 @@ function FuncionariosScreen({ onNav }) {
   };
   for (const role of ["sdr", "closer", "cs", "social"]) for (const row of score?.[role] || []) merge(role, row);
 
-  const roleLabel = (p) => p.sdr && p.closer ? "SDR + closer" : p.closer ? "closer" : p.sdr ? "SDR" : p.cs ? "CS / integrador" : "mídia social";
+  const roleLabel = (p) => p.sdr && p.closer ? "SDR + closer" : p.closer && p.cs ? "CS + closer" : p.closer ? "closer" : p.sdr ? "SDR" : p.cs ? "CS / integrador" : "mídia social";
   const bookingTarget = (p) => {
     const rate = p.sdr?.goals?.bookingRate?.target;
     const base = p.sdr?.leadsPrev ?? p.sdr?.leadsNew;
@@ -93,6 +93,14 @@ function FuncionariosScreen({ onNav }) {
       { label: "Calls agendadas", value: p.sdr.callsBooked, target: bookingTarget(p), fmt: asInt },
       { label: "Receita", value: p.closer.revenue, target: scaledGoal(p.closer.goals?.revenue, win.days), fmt: asMoney },
       { label: "Conversão na call", value: p.closer.conversaoCall, target: p.closer.goals?.conversaoCall?.target, good: 40, fmt: asRate, rate: true },
+    ];
+    // CS que também fecha (integrador com ganho no campo closer): mostra o
+    // fechamento E a carteira, senão um dos dois lados some do card.
+    if (p.closer && p.cs) return [
+      { label: "Ganhos", value: p.closer.won, target: scaledGoal(p.closer.goals?.won, win.days), fmt: asInt },
+      { label: "Receita", value: p.closer.revenue, target: scaledGoal(p.closer.goals?.revenue, win.days), fmt: asMoney },
+      { label: "Contas ativas", value: p.cs.activeAccounts, fmt: asInt },
+      { label: "Retenção", value: p.cs.retentionRate, target: p.cs.goals?.retentionRate?.target, good: 95, fmt: asRate, rate: true },
     ];
     if (p.closer) return [
       { label: "Ganhos", value: p.closer.won, target: scaledGoal(p.closer.goals?.won, win.days), fmt: asInt },

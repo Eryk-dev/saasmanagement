@@ -323,11 +323,14 @@ test("lead ganho manda Purchase pro CAPI com o valor do negócio, uma vez só", 
 
 test("plano mensal anualiza o arr no fechamento; backfill puxa arr de cliente antigo", async () => {
   const { app, repo } = await buildApp();
+  // Um único integrador no escopo → nasce como owner do cliente (placar de CS).
+  await repo.create("users", { id: "eryk_t", name: "Eryk", roles: ["integrator"] });
   await repo.create("leads", { id: "lm", saas: "leverads", name: "Dyno", stage: "Novo lead" });
   await app.inject({ method: "PATCH", url: "/api/leads/lm", payload: { stage: "Ganho", amount: 599, planClosed: "mensal" } });
   const dyno = (await repo.list("customers")).find((c) => c.leadId === "lm");
   assert.equal(dyno.arr, 7188); // 599/mês × 12 — a tabela mostra MRR = arr/12
   assert.equal(dyno.plan, "Mensal");
+  assert.equal(dyno.owner, "eryk_t"); // CS automático (integrador único)
 
   // Cliente antigo (convertido antes do fix, arr 0, sem assinatura): o backfill
   // puxa o valor do fechamento. Cliente com assinatura NÃO é tocado (o arr dele
