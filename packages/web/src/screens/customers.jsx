@@ -38,6 +38,7 @@ function CustomersScreen({ initialTab = "base" }) {
   const [invoices, setInvoices] = useState([]);
   const [sel, setSel] = useState(null); // id do cliente aberto no popup
   const [showAll, setShowAll] = useState(false);
+  const [showAllActions, setShowAllActions] = useState(false);
   // Conclusão de marco: otimista no objeto do SEED (a tela lê dele) + PATCH.
   const [tick, setTick] = useState(0);
   function completeMilestone(customer, key) {
@@ -65,7 +66,7 @@ function CustomersScreen({ initialTab = "base" }) {
   const planLabel = (s) => plans.find((p) => p.id === s.plan)?.name || CYCLE_LABEL[s.cycle] || s.cycle || "plano";
   const totalMrr = customers.reduce((a, c) => a + (c.arr || 0), 0) / 12;
   const money = window.fmt.money;
-  const shownCustomers = showAll ? customers : customers.slice(0, 6);
+  const shownCustomers = showAll ? customers : customers.slice(0, 50);
   const lastContact = (c) => {
     const lead = (LEADS || []).find((l) => l.id === c.leadId);
     const at = lead?.lastActivityAt || c.lastContactAt;
@@ -106,7 +107,7 @@ function CustomersScreen({ initialTab = "base" }) {
             action={<PrimaryButton onClick={() => openForm("customers", { saas: product.id })}>+ Cadastrar cliente</PrimaryButton>}
           />
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 16, alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, alignItems: "start" }}>
             <Card style={{ overflow: "hidden" }}>
               <div className="tbl-x">
               <table style={{ width: "100%", minWidth: 880, borderCollapse: "collapse" }}>
@@ -153,7 +154,7 @@ function CustomersScreen({ initialTab = "base" }) {
               </div>
               <div style={{ padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>mostrando {shownCustomers.length} de {customers.length}</span>
-                {customers.length > 6 && <button onClick={() => setShowAll((v) => !v)} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>{showAll ? "Mostrar 6" : "Ver todos"}</button>}
+                {customers.length > 50 && <button onClick={() => setShowAll((v) => !v)} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>{showAll ? "Mostrar 50" : "Ver todos"}</button>}
               </div>
             </Card>
 
@@ -164,9 +165,9 @@ function CustomersScreen({ initialTab = "base" }) {
                     Nenhuma ação pendente. A régua de retenção está em dia.
                   </div>
                 )}
-                {nextActions.map(({ customer: c, milestone: m }, i) => (
+                {(showAllActions ? nextActions : nextActions.slice(0, 5)).map(({ customer: c, milestone: m }, i, shown) => (
                   <div key={c.id} onClick={() => setSel(c.id)}
-                    style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 24px", cursor: "pointer", borderBottom: i === nextActions.length - 1 ? "none" : "1px solid var(--line-faint)" }}
+                    style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 24px", cursor: "pointer", borderBottom: i === shown.length - 1 ? "none" : "1px solid var(--line-faint)" }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
                     <span style={{
@@ -186,6 +187,13 @@ function CustomersScreen({ initialTab = "base" }) {
                     </button>
                   </div>
                 ))}
+                {nextActions.length > 5 && (
+                  <div style={{ padding: "12px 24px 8px", borderTop: "1px solid var(--line-1)" }}>
+                    <button onClick={() => setShowAllActions((v) => !v)} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>
+                      {showAllActions ? "ver menos" : `ver mais (${nextActions.length - 5})`}
+                    </button>
+                  </div>
+                )}
                 {noRuler.length > 0 && (
                   <div style={{ padding: "14px 24px 8px", borderTop: nextActions.length ? "1px solid var(--line-1)" : "none" }}>
                     <div className="mono" style={SECTION_LABEL}>Sem régua ativa</div>
