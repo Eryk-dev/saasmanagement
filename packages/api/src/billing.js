@@ -65,6 +65,47 @@ export async function initSubscription(repo, sub, now = new Date()) {
   return updated;
 }
 
+// Assinatura nascida do FECHAMENTO (convertWonLead) ou do backfill: o plano
+// fechado + meio de pagamento viram ciclo e preço. Faturado/parcelado (boleto,
+// pix_parcelado) = ciclo MENSAL com o valor da parcela; à vista/cartão 12x =
+// ciclo do plano com o valor cheio (a adquirente antecipa). Serviço único não é
+// recorrência → null. O período corrente é ancorado em startAt e avançado até
+// conter `now` (backfill não gera fatura retroativa) e a fatura inicial nasce
+// PAGA (o fechamento É o 1º recebimento); as próximas nascem no runBilling.
+// A conta fecha com o arr carimbado no convertWonLead: annualized(price, cycle)
+// = amount × CLOSED_PLAN_ANNUAL_FACTOR, então o syncCustomerArr não muda nada.
+const PLAN_MONTHS = { anual: 12, semestral: 6, mensal: 1 };
+const PLAN_CYCLE = { anual: "annual", semestral: "semiannual", mensal: "monthly" };
+const MONTHLY_PAYMENT = new Set(["boleto", "pix_parcelado"]);
+
+export async function createClosedSubscription(repo, { customerId, saas, planClosed, amount, paymentMethod, startAt }, now = new Date()) {
+  const months = PLAN_MONTHS[planClosed];
+  const value = Number(amount) || 0;
+  if (!customerId || !months || value <= 0) return null;
+  const monthly = MONTHLY_PAYMENT.has(String(paymentMethod || ""));
+  const cycle = monthly ? "monthly" : PLAN_CYCLE[planClosed];
+  const price = monthly ? Math.round((value / months) * 100) / 100 : value;
+  let periodStart = startAt || now.toISOString();
+  let periodEnd = addMonths(periodStart, CYCLE_MONTHS[cycle] || 1);
+  let guard = 0; // startAt antigo: pula ciclos até o período conter agora
+  while (new Date(periodEnd) <= now && guard++ < 600) {
+    periodStart = periodEnd;
+    periodEnd = addMonths(periodStart, CYCLE_MONTHS[cycle] || 1);
+  }
+  const sub = await repo.create("subscriptions", {
+    status: "active", cycle, price, plan: "", pendingChange: null,
+    customer: customerId, saas: saas || "", periodStart, periodEnd,
+  });
+  await repo.create("invoices", {
+    subscription: sub.id, customer: customerId, saas: saas || "",
+    amount: price, kind: "renewal", status: "paid",
+    dueDate: periodStart, periodStart, periodEnd,
+    paidAt: periodStart, createdAt: now.toISOString(),
+  });
+  await syncCustomerArr(repo, customerId);
+  return sub;
+}
+
 // Decide o tipo de mudança e o valor pró-rata (port de prorata.compute_change).
 export function computeChange(sub, { price, cycle, plan } = {}, now = new Date()) {
   const oldPrice = Number(sub.price) || 0;

@@ -13,7 +13,7 @@ import { mergeLeadQuestions } from "./forms.js";
 import { registerProposalRoutes } from "./routes.proposals.js";
 import { runNativeProposal } from "./proposal.js";
 import { registerBillingRoutes } from "./routes.billing.js";
-import { initSubscription, syncCustomerArr } from "./billing.js";
+import { initSubscription, syncCustomerArr, createClosedSubscription } from "./billing.js";
 import { registerAuthRoutes } from "./auth.js";
 import { registerMpRoutes, mirrorSubscriptionToMp } from "./routes.mp.js";
 import { mp as defaultMpClient } from "./mp.js";
@@ -650,6 +650,14 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
     startedAt: new Date().toISOString(),
   });
   await repo.update("leads", lead.id, { customerId: customer.id });
+  // Assinatura ativa nasce junto do cliente (plano fechado + meio de pagamento
+  // → ciclo/preço; fatura inicial paga). Best-effort: o cliente já existe.
+  try {
+    await createClosedSubscription(repo, {
+      customerId: customer.id, saas: lead.saas,
+      planClosed: lead.planClosed, amount: lead.amount, paymentMethod: lead.paymentMethod,
+    });
+  } catch { /* assinatura é best-effort */ }
   try {
     await logActivity(repo, {
       saas: lead.saas, lead: lead.id, type: "system",
