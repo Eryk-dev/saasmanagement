@@ -236,5 +236,6 @@ export function nextTouchPill(lead, { isOpen = true } = {}) {
   if (sameDay) return { key: "today", text: `${glyph} hoje ${hm}`, tone: t.at < now ? "var(--neg)" : "var(--warn)", type: t.type, at: t.at };
   const days = Math.ceil((t.at - now) / 86_400_000);
   const label = days === 1 ? "amanhã" : d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-  return { key: "future", text: `${glyph} ${label}`, tone: "var(--fg-3)", type: t.type, at: t.at };
+  // Hora do evento também no futuro (padrão do "hoje HH:MM"); 00:00 = sem hora.
+  return { key: "future", text: `${glyph} ${label}${hm === "00:00" ? "" : ` ${hm}`}`, tone: "var(--fg-3)", type: t.type, at: t.at };
 }
