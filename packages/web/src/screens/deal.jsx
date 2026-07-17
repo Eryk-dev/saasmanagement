@@ -339,7 +339,14 @@ function LeadDetail({ lead: initial, onClose }) {
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <span className="mono dim" style={rowLabel}>Call agendada</span>
-            <input type="datetime-local" value={lead.callAt || ""} onChange={(e) => patch({ callAt: e.target.value })}
+            {/* Em etapa de follow-up a fila do Meu dia vence pelo nextActionAt,
+                então marcar a call aqui SINCRONIZA o próximo toque no mesmo
+                horário (igual o roteiro faz) — senão o card fica com a call
+                num dia e a fila cobrando em outro. */}
+            <input type="datetime-local" value={lead.callAt || ""}
+              onChange={(e) => patch(kind === "followup" && e.target.value
+                ? { callAt: e.target.value, nextActionAt: localToIso(e.target.value) }
+                : { callAt: e.target.value })}
               style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
             {lead.callAt && (
               <button onClick={() => patch({ callAt: "" })} className="mono dim" style={{ fontSize: 11 }} title="Limpar call">limpar</button>
