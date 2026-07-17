@@ -386,22 +386,79 @@ const DELIVERY = {
   WITH_ISSUES: { label: "com problemas", tone: "var(--neg)" },
   DISAPPROVED: { label: "reprovado", tone: "var(--neg)" },
 };
-const METRIC_COLS = [
-  { key: "spend", label: "Investimento", kind: "money" },
-  { key: "leads", label: "Leads", kind: "int" },
-  { key: "cpl", label: "CPL", kind: "money", empty: "sem lead", hint: "investimento ÷ leads reais do cockpit (UTM)" },
-  { key: "ctr", label: "CTR", kind: "pct", hint: "cliques no link ÷ impressões (link CTR)" },
-  { key: "cpm", label: "CPM", kind: "money", hint: "custo por mil impressões" },
-  { key: "costPerLinkClick", label: "R$ / clique link", kind: "money" },
-  { key: "video3s", label: "Vídeo 3s", kind: "int" },
-  { key: "videoP25", label: "Vídeo 25%", kind: "int" },
-  { key: "videoP50", label: "Vídeo 50%", kind: "int" },
-  { key: "videoP95", label: "Vídeo 95%", kind: "int" },
-  { key: "won", label: "Ganhos", kind: "int" },
-  { key: "costPerWin", label: "R$ / ganho", kind: "money", empty: "sem ganho", hint: "coorte: investimento ÷ leads do período que fecharam" },
-  { key: "revenue", label: "Receita", kind: "money", hint: "soma do valor dos negócios ganhos atribuídos (UTM)" },
-  { key: "roas", label: "ROAS", kind: "x", empty: "sem receita", bold: true, hint: "receita dos ganhos ÷ investimento" },
+// Colunas do card Anúncios — modeláveis: o botão "Colunas" liga/desliga cada
+// uma (persistido no navegador, chave cockpit_ads_cols). `on` marca o conjunto
+// padrão; a ordem aqui é a ordem na tela; width é a trilha do grid.
+const ADS_COLS = [
+  { key: "status", label: "Status", width: "115px", left: true, on: true },
+  { key: "budget", label: "Orçamento/dia", width: "150px", on: true, hint: "orçamento diário · editar e confirmar ✓ replica no Gerenciador" },
+  { key: "spend", label: "Investido", width: "95px", on: true },
+  { key: "leads", label: "Leads", width: "55px", on: true },
+  { key: "abc", label: "Clientes ABC", width: "150px", on: true, hint: "clientes A/B/C atribuídos (UTM) · custo por cada" },
+  { key: "cpl", label: "CPL", width: "80px", on: true, hint: "investimento ÷ leads reais do cockpit (UTM)" },
+  { key: "ctr", label: "CTR link", width: "70px", on: true, hint: "cliques no link ÷ impressões" },
+  { key: "cpc", label: "CPC link", width: "85px", on: true, hint: "investido ÷ cliques no link" },
+  { key: "won", label: "Conversões", width: "85px", on: true, hint: "conversões: leads atribuídos (UTM) que viraram ganho" },
+  { key: "revenue", label: "Valor conv.", width: "95px", on: true, hint: "valor convertido: soma do valor dos negócios ganhos" },
+  { key: "play3s", label: "3s play", width: "70px", on: true, hint: "reproduções de 3s ÷ impressões" },
+  { key: "impressions", label: "Impressões", width: "95px", on: false },
+  { key: "linkClicks", label: "Cliques link", width: "90px", on: false, hint: "cliques no link (inline link clicks)" },
+  { key: "cpm", label: "CPM", width: "80px", on: false, hint: "custo por mil impressões" },
+  { key: "costPerWin", label: "R$ / conversão", width: "105px", on: false, hint: "investimento ÷ conversões do período" },
+  { key: "roas", label: "ROAS", width: "70px", on: false, hint: "receita dos ganhos ÷ investimento" },
+  { key: "videoP25", label: "Vídeo 25%", width: "85px", on: false, hint: "espectadores que passaram de 25% do vídeo" },
+  { key: "videoP50", label: "Vídeo 50%", width: "85px", on: false, hint: "espectadores que passaram da metade do vídeo" },
+  { key: "videoP95", label: "Vídeo 95%", width: "85px", on: false, hint: "espectadores que chegaram a 95% do vídeo" },
 ];
+const adsColsDefault = () => new Set(ADS_COLS.filter((c) => c.on).map((c) => c.key));
+
+// Botão "Colunas" + popover de checkboxes (o "Personalizar colunas" do
+// Gerenciador). Posição FIXA calculada do botão — escapa do overflow:hidden
+// do card; o overlay fecha no clique fora.
+function ColumnPicker({ visible, onToggle, onReset }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
+  const btnRef = React.useRef(null);
+  const toggleOpen = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right) });
+    }
+    setOpen((v) => !v);
+  };
+  return (
+    <span style={{ position: "relative", display: "inline-flex" }}>
+      <button ref={btnRef} onClick={toggleOpen} title="escolher as colunas da tabela" style={{
+        display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px",
+        borderRadius: "var(--r-2)", border: "1px solid var(--line-2)",
+        background: open ? "var(--bg-2)" : "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 500,
+      }}>
+        Colunas <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)" }}>{visible.size}</span>
+      </button>
+      {open && pos && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 60 }} />
+          <div style={{
+            position: "fixed", top: pos.top, right: pos.right, zIndex: 61, width: 232,
+            maxHeight: "min(420px, 70vh)", overflowY: "auto", background: "var(--bg-1)",
+            border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 6,
+          }}>
+            {ADS_COLS.map((c) => (
+              <label key={c.key} title={c.hint} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 6, fontSize: 12.5, color: "var(--fg-1)", cursor: "pointer" }}>
+                <input type="checkbox" checked={visible.has(c.key)} onChange={() => onToggle(c.key)}
+                  style={{ width: 14, height: 14, accentColor: "var(--accent)", cursor: "pointer", flexShrink: 0 }} />
+                {c.label}
+              </label>
+            ))}
+            <button onClick={onReset} style={{ width: "100%", marginTop: 4, padding: "7px 8px", borderRadius: 6, fontSize: 12, color: "var(--fg-3)", background: "var(--bg-2)" }}>
+              restaurar padrão
+            </button>
+          </div>
+        </>
+      )}
+    </span>
+  );
+}
 
 // Toggle Off/On no padrão do Gerenciador — controla o status PRÓPRIO da linha
 // (a coluna Veiculação mostra o efetivo, com pausa herdada).
@@ -426,119 +483,237 @@ function Toggle({ on, label, busy, disabled = false, onChange }) {
 
 function CompactAdsCard({ objects, metrics, money, busyIds, onToggle, onBudget, error }) {
   const [level, setLevel] = useState("campaigns");
-  // Drill-down do Gerenciador: clicar no NOME da campanha/conjunto vira filtro
-  // (chip com ✕) e pula pro nível de baixo — Conjuntos/Anúncios passam a mostrar
-  // só os filhos da seleção até o chip ser limpo.
-  const [selCampaign, setSelCampaign] = useState(null); // { id, name } | null
-  const [selAdset, setSelAdset] = useState(null);
+  // Seleção estilo Gerenciador: checkbox nas linhas — campanhas marcadas
+  // filtram a aba Conjuntos, conjuntos marcados filtram a de Anúncios. Clicar
+  // no NOME é o atalho que seleciona SÓ aquela linha e desce um nível. Trocar
+  // de aba NÃO limpa a seleção (igual ao Gerenciador) — limpar é no chip ✕,
+  // desmarcando o checkbox ou pelo "todos" do cabeçalho.
+  const [selCampaigns, setSelCampaigns] = useState(() => new Set());
+  const [selAdsets, setSelAdsets] = useState(() => new Set());
+  // Filtro de veiculação com "ativas" pré-selecionado — julga pelo status
+  // EFETIVO (pausa herdada do pai conta como pausada); item sem estado vivo
+  // (fallback só com métricas históricas) não some da lista.
+  const [statusFilter, setStatusFilter] = useState("active");
+  // Colunas modeláveis: a escolha vive no navegador; chave desconhecida de
+  // versão antiga é descartada (se não sobrar nada, volta pro padrão).
+  const [visCols, setVisCols] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("cockpit_ads_cols") || "null");
+      if (Array.isArray(saved)) {
+        const known = saved.filter((k) => ADS_COLS.some((c) => c.key === k));
+        if (known.length) return new Set(known);
+      }
+    } catch { /* padrão */ }
+    return adsColsDefault();
+  });
+  const toggleCol = (key) => setVisCols((prev) => {
+    const n = new Set(prev);
+    n.has(key) ? n.delete(key) : n.add(key);
+    try { localStorage.setItem("cockpit_ads_cols", JSON.stringify(ADS_COLS.map((c) => c.key).filter((k) => n.has(k)))); } catch { /* fica só na sessão */ }
+    return n;
+  });
+  const resetCols = () => {
+    try { localStorage.removeItem("cockpit_ads_cols"); } catch { /* ignore */ }
+    setVisCols(adsColsDefault());
+  };
+
   const levels = [
     { value: "campaigns", label: "Campanhas", singular: "Campanha" },
     { value: "adsets", label: "Conjuntos", singular: "Conjunto" },
     { value: "ads", label: "Anúncios", singular: "Anúncio" },
   ];
   const current = levels.find((item) => item.value === level);
+
+  const matchStatus = (o) => {
+    if (statusFilter === "all") return true;
+    const eff = o.effectiveStatus || o.status;
+    if (!eff) return true; // sem estado vivo (só métricas) — não esconde
+    return statusFilter === "active" ? eff === "ACTIVE" : eff !== "ACTIVE";
+  };
   const all = objects?.[level] || [];
-  const rows = level === "campaigns" ? all
-    : level === "adsets" ? all.filter((s) => !selCampaign || String(s.campaignId) === selCampaign.id)
-    : all.filter((a) => (!selCampaign || String(a.campaignId) === selCampaign.id) && (!selAdset || String(a.adsetId) === selAdset.id));
+  const base = level === "campaigns" ? all
+    : level === "adsets" ? all.filter((s) => !selCampaigns.size || selCampaigns.has(String(s.campaignId)))
+    : all.filter((a) => (!selCampaigns.size || selCampaigns.has(String(a.campaignId))) && (!selAdsets.size || selAdsets.has(String(a.adsetId))));
+  const rows = base.filter(matchStatus);
+
+  // Poda conjuntos selecionados que saíram do recorte quando a seleção de
+  // campanhas muda (senão a aba Anúncios filtraria por um conjunto invisível).
+  const pruneAdsets = (camps) => setSelAdsets((prev) => (camps.size
+    ? new Set([...prev].filter((sid) => {
+        const st = (objects?.adsets || []).find((x) => String(x.id) === sid);
+        return st && camps.has(String(st.campaignId));
+      }))
+    : prev));
+  const toggleSel = (o) => {
+    const key = String(o.id);
+    if (level === "campaigns") {
+      setSelCampaigns((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); pruneAdsets(n); return n; });
+    } else if (level === "adsets") {
+      setSelAdsets((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+    }
+  };
+  const selSet = level === "campaigns" ? selCampaigns : level === "adsets" ? selAdsets : null;
+  const allChecked = !!selSet && rows.length > 0 && rows.every((o) => selSet.has(String(o.id)));
+  const toggleSelAll = () => {
+    const ids = rows.map((o) => String(o.id));
+    if (level === "campaigns") {
+      setSelCampaigns((prev) => { const n = new Set(prev); ids.forEach((id) => (allChecked ? n.delete(id) : n.add(id))); pruneAdsets(n); return n; });
+    } else if (level === "adsets") {
+      setSelAdsets((prev) => { const n = new Set(prev); ids.forEach((id) => (allChecked ? n.delete(id) : n.add(id))); return n; });
+    }
+  };
+  const drill = (o) => {
+    if (level === "campaigns") { const n = new Set([String(o.id)]); setSelCampaigns(n); pruneAdsets(n); setLevel("adsets"); }
+    else if (level === "adsets") { setSelAdsets(new Set([String(o.id)])); setLevel("ads"); }
+  };
+
   const delivery = (object) => {
     const status = object.effectiveStatus || object.status;
     return DELIVERY[status] || { label: status ? String(status).toLowerCase().replaceAll("_", " ") : "sem status", tone: "var(--fg-4)" };
   };
-  const drill = (object) => {
-    if (level === "campaigns") { setSelCampaign({ id: String(object.id), name: object.name || object.id }); setSelAdset(null); setLevel("adsets"); }
-    else if (level === "adsets") { setSelAdset({ id: String(object.id), name: object.name || object.id }); setLevel("ads"); }
-  };
+  const nameOf = (lv, id) => ((objects?.[lv] || []).find((x) => String(x.id) === String(id))?.name) || id;
   const chip = (label, onClear) => (
     <span className="mono" style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 4px 0 10px", borderRadius: 999, fontSize: 11, border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)" }}>
       {label}
-      <button onClick={onClear} title="limpar filtro" style={{ fontSize: 12, padding: "0 6px", color: "var(--accent)" }}>✕</button>
+      <button onClick={onClear} title="limpar seleção" style={{ fontSize: 12, padding: "0 6px", color: "var(--accent)" }}>✕</button>
     </span>
   );
   const pct = (v) => (v != null ? String(v).replace(".", ",") + "%" : "—");
-  // Colunas fixas (a mesma régua no cabeçalho e nas linhas); o card rola na
-  // horizontal por arrasto (DragScroll) — largura mínima segura o alinhamento.
-  const cols = "46px minmax(190px,1.6fr) 105px 150px 95px 50px 150px 80px 70px 85px 85px 95px 70px";
-  const minW = 1460;
-  const head = { textAlign: "right" };
+  const right = { textAlign: "right" };
+
+  // Régua do grid: checkbox + toggle + nome flexível + colunas VISÍVEIS (a
+  // mesma no cabeçalho e nas linhas); o card rola na horizontal por arrasto
+  // (DragScroll) — a largura mínima acompanha as colunas ligadas.
+  const visible = ADS_COLS.filter((c) => visCols.has(c.key));
+  const cols = "28px 46px minmax(190px,1.6fr) " + visible.map((c) => c.width).join(" ");
+  const minW = 28 + 46 + 190 + visible.reduce((a, c) => a + parseInt(c.width, 10), 0) + 12 * (visible.length + 2) + 48;
+  const checkboxStyle = { width: 14, height: 14, accentColor: "var(--accent)", cursor: "pointer" };
+
+  // Célula de cada coluna — todas leem `m` (métricas do período por id) e o
+  // objeto vivo; "—" = ainda sem dado sincronizado naquele range, não é zero.
+  const cell = (col, object, m, state) => {
+    const leads = Number(m?.leads) || 0;
+    const spend = Number(m?.spend) || 0;
+    switch (col.key) {
+      case "status": return (
+        <span key={col.key} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--fg-2)" }}>
+          <span style={{ width: 7, height: 7, borderRadius: 99, background: state.tone }} />{state.label}
+        </span>
+      );
+      case "budget":
+        if (object.dailyBudget != null && onBudget) return <BudgetCell key={col.key} o={object} onCommit={(v) => onBudget(level, object, v)} />;
+        if (object.lifetimeBudget != null) return (
+          <span key={col.key} style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+            <span className="mono" style={{ fontSize: 12.5 }}>{money(object.lifetimeBudget)}</span>
+            <span className="mono" style={{ fontSize: 9, color: "var(--fg-4)" }}>total</span>
+          </span>
+        );
+        return (
+          <span key={col.key} className="mono" style={{ textAlign: "right", fontSize: 10.5, color: "var(--fg-4)" }}
+            title={level === "campaigns" ? "orçamento definido nos conjuntos (ABO)" : "orçamento definido na campanha (CBO)"}>
+            {object.status && level === "campaigns" ? "no conjunto" : object.status && level === "adsets" ? "na campanha" : ""}
+          </span>
+        );
+      case "spend": return <span key={col.key} className="tnum" style={right}>{money(spend)}</span>;
+      case "leads": return <span key={col.key} className="tnum" style={right}>{window.fmt.int(leads)}</span>;
+      case "abc": return (
+        // uma linha por grade que o anúncio trouxe: "2 A · R$ 43,00 cada"
+        <span key={col.key} className="tnum" style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1, fontSize: 11.5 }}>
+          {m?.abc && GRADES.some((g) => m.abc[g] > 0)
+            ? GRADES.filter((g) => m.abc[g] > 0).map((g) => (
+              <span key={g} style={{ whiteSpace: "nowrap", color: "var(--fg-3)" }}>
+                <span style={{ fontWeight: 700, color: GRADE_STYLE[g].ink }}>{m.abc[g]} {g}</span>
+                {m.abcCost?.[g] != null ? ` · ${money(m.abcCost[g])} cada` : ""}
+              </span>
+            ))
+            : <span style={{ color: "var(--fg-4)", fontSize: 13.5 }}>—</span>}
+        </span>
+      );
+      case "cpl": {
+        const cpl = m?.cpl != null ? m.cpl : leads ? spend / leads : null;
+        return <span key={col.key} className="tnum" style={right}>{cpl != null ? money(cpl) : "—"}</span>;
+      }
+      case "ctr": return <span key={col.key} className="tnum" style={right}>{pct(m?.ctr)}</span>;
+      case "cpc": return <span key={col.key} className="tnum" style={right}>{m?.costPerLinkClick != null ? money(m.costPerLinkClick) : "—"}</span>;
+      case "won": return <span key={col.key} className="tnum" style={{ ...right, fontWeight: 600 }}>{m?.won != null ? window.fmt.int(m.won) : "—"}</span>;
+      case "revenue": return <span key={col.key} className="tnum" style={{ ...right, fontWeight: 600 }}>{m?.revenue != null && m.revenue > 0 ? money(m.revenue) : "—"}</span>;
+      case "play3s": {
+        const impressions = Number(m?.impressions) || 0;
+        const play3s = impressions > 0 && m?.video3s != null ? Math.round((Number(m.video3s) / impressions) * 1000) / 10 : null;
+        return <span key={col.key} className="tnum" style={right}>{pct(play3s)}</span>;
+      }
+      case "impressions": return <span key={col.key} className="tnum" style={right}>{m?.impressions != null ? window.fmt.int(m.impressions) : "—"}</span>;
+      case "linkClicks": return <span key={col.key} className="tnum" style={right}>{m?.linkClicks != null ? window.fmt.int(m.linkClicks) : "—"}</span>;
+      case "cpm": return <span key={col.key} className="tnum" style={right}>{m?.cpm != null ? money(m.cpm) : "—"}</span>;
+      case "costPerWin": return <span key={col.key} className="tnum" style={right}>{m?.costPerWin != null ? money(m.costPerWin) : "—"}</span>;
+      case "roas": return <span key={col.key} className="tnum" style={{ ...right, fontWeight: 600 }}>{m?.roas != null ? String(m.roas).replace(".", ",") + "x" : "—"}</span>;
+      case "videoP25": case "videoP50": case "videoP95":
+        return <span key={col.key} className="tnum" style={right}>{m?.[col.key] != null ? window.fmt.int(m[col.key]) : "—"}</span>;
+      default: return <span key={col.key} />;
+    }
+  };
+
   return (
-    <Card title="Anúncios" hint="estilo Gerenciador · toggle pausa na Meta · nome drill-down"
-      action={<Segmented value={level} onChange={setLevel} options={levels.map(({ value, label }) => ({ value, label }))} />}
+    <Card title="Anúncios" hint="estilo Gerenciador · seleção filtra os níveis de baixo · colunas no botão"
+      action={
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <Segmented value={statusFilter} onChange={setStatusFilter}
+            options={[{ value: "active", label: "ativas" }, { value: "paused", label: "pausadas" }, { value: "all", label: "todas" }]} />
+          <Segmented value={level} onChange={setLevel} options={levels.map(({ value, label }) => ({ value, label }))} />
+          <ColumnPicker visible={visCols} onToggle={toggleCol} onReset={resetCols} />
+        </span>
+      }
       style={{ overflow: "hidden" }}>
-      {(selCampaign || selAdset) && (
-        <div style={{ display: "flex", gap: 8, padding: "0 24px 12px", flexWrap: "wrap" }}>
-          {selCampaign && chip(`campanha: ${selCampaign.name}`, () => { setSelCampaign(null); setSelAdset(null); })}
-          {selAdset && chip(`conjunto: ${selAdset.name}`, () => setSelAdset(null))}
+      {(selCampaigns.size > 0 || selAdsets.size > 0) && (
+        <div style={{ display: "flex", gap: 8, padding: "12px 24px 12px", flexWrap: "wrap" }}>
+          {selCampaigns.size > 0 && chip(
+            selCampaigns.size === 1 ? `campanha: ${nameOf("campaigns", [...selCampaigns][0])}` : `${selCampaigns.size} campanhas selecionadas`,
+            () => setSelCampaigns(new Set()))}
+          {selAdsets.size > 0 && chip(
+            selAdsets.size === 1 ? `conjunto: ${nameOf("adsets", [...selAdsets][0])}` : `${selAdsets.size} conjuntos selecionados`,
+            () => setSelAdsets(new Set()))}
         </div>
       )}
       <DragScroll>
         <div style={{ minWidth: minW }}>
-          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
-            <span /><span>{current.singular}</span><span>Status</span>
-            <span title="orçamento diário · editar e confirmar ✓ replica no Gerenciador" style={head}>Orçamento/dia</span>
-            <span style={head}>Investido</span><span style={head}>Leads</span>
-            <span title="clientes A/B/C atribuídos (UTM) · custo por cada" style={head}>Clientes ABC</span>
-            <span style={head}>CPL</span>
-            <span title="cliques no link ÷ impressões" style={head}>CTR link</span>
-            <span title="investido ÷ cliques no link" style={head}>CPC link</span>
-            <span title="conversões: leads atribuídos (UTM) que viraram ganho" style={head}>Conversões</span>
-            <span title="valor convertido: soma do valor dos negócios ganhos" style={head}>Valor conv.</span>
-            <span title="reproduções de 3s ÷ impressões" style={head}>3s play</span>
+          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", alignItems: "center" }}>
+            <span style={{ display: "flex", alignItems: "center" }}>
+              {level !== "ads" && (
+                <input type="checkbox" checked={allChecked} onChange={toggleSelAll}
+                  title={allChecked ? "desmarcar todos os visíveis" : "selecionar todos os visíveis (filtra os níveis de baixo)"}
+                  style={checkboxStyle} />
+              )}
+            </span>
+            <span /><span>{current.singular}</span>
+            {visible.map((c) => (
+              <span key={c.key} title={c.hint} style={c.left ? undefined : right}>{c.label}</span>
+            ))}
           </div>
           {error && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--neg)", fontSize: 12.5 }}>{error}</div>}
           {!objects && !error && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--fg-4)", fontSize: 12.5 }}>carregando conta de anúncios…</div>}
-          {objects && !rows.length && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--fg-4)", fontSize: 12.5 }}>{all.length ? "nada da seleção neste nível (limpe o chip ✕)" : "nenhum item neste nível"}</div>}
+          {objects && !rows.length && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--fg-4)", fontSize: 12.5 }}>{all.length ? "nada neste nível com os filtros atuais (mude o filtro de status ou limpe a seleção ✕)" : "nenhum item neste nível"}</div>}
           {rows.map((object) => {
             const m = metrics?.[level]?.[String(object.id)] || object;
             const state = delivery(object);
-            const leads = Number(m?.leads) || 0;
-            const spend = Number(m?.spend) || 0;
-            const cpl = m?.cpl != null ? m.cpl : leads ? spend / leads : null;
-            const impressions = Number(m?.impressions) || 0;
-            const play3s = impressions > 0 && m?.video3s != null ? Math.round((Number(m.video3s) / impressions) * 1000) / 10 : null;
             const active = object.status ? object.status !== "PAUSED" : state.label !== "pausado";
             const canDrill = level !== "ads";
+            const checked = !!selSet?.has(String(object.id));
             return (
-              <div key={object.id} style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "12px 24px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5, opacity: active ? 1 : .7 }}>
+              <div key={object.id} style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "12px 24px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5, opacity: active ? 1 : .7, background: checked ? "var(--accent-soft)" : undefined }}>
+                <span style={{ display: "flex", alignItems: "center" }}>
+                  {level !== "ads" && (
+                    <input type="checkbox" checked={checked} onChange={() => toggleSel(object)}
+                      title="selecionar pra filtrar os níveis de baixo (como no Gerenciador)"
+                      style={checkboxStyle} />
+                  )}
+                </span>
                 <Toggle on={active} label={object.name || object.id} busy={busyIds?.has(object.id)} disabled={!onToggle || !object.status} onChange={() => onToggle?.(level, object)} />
                 <span onClick={canDrill ? () => drill(object) : undefined}
                   title={canDrill ? `ver ${level === "campaigns" ? "os conjuntos" : "os anúncios"} de "${object.name || object.id}"` : undefined}
                   style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: canDrill ? "pointer" : "default", color: canDrill ? "var(--accent)" : "var(--fg-1)" }}>
                   {object.name || object.id}
                 </span>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--fg-2)" }}><span style={{ width: 7, height: 7, borderRadius: 99, background: state.tone }} />{state.label}</span>
-                {object.dailyBudget != null && onBudget ? (
-                  <BudgetCell o={object} onCommit={(v) => onBudget(level, object, v)} />
-                ) : object.lifetimeBudget != null ? (
-                  <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
-                    <span className="mono" style={{ fontSize: 12.5 }}>{money(object.lifetimeBudget)}</span>
-                    <span className="mono" style={{ fontSize: 9, color: "var(--fg-4)" }}>total</span>
-                  </span>
-                ) : (
-                  <span className="mono" style={{ textAlign: "right", fontSize: 10.5, color: "var(--fg-4)" }}
-                    title={level === "campaigns" ? "orçamento definido nos conjuntos (ABO)" : "orçamento definido na campanha (CBO)"}>
-                    {object.status && level === "campaigns" ? "no conjunto" : object.status && level === "adsets" ? "na campanha" : ""}
-                  </span>
-                )}
-                <span className="tnum" style={{ textAlign: "right" }}>{money(spend)}</span>
-                <span className="tnum" style={{ textAlign: "right" }}>{window.fmt.int(leads)}</span>
-                {/* uma linha por grade que o anúncio trouxe: "2 A · R$ 43,00 cada" */}
-                <span className="tnum" style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1, fontSize: 11.5 }}>
-                  {m?.abc && GRADES.some((g) => m.abc[g] > 0)
-                    ? GRADES.filter((g) => m.abc[g] > 0).map((g) => (
-                      <span key={g} style={{ whiteSpace: "nowrap", color: "var(--fg-3)" }}>
-                        <span style={{ fontWeight: 700, color: GRADE_STYLE[g].ink }}>{m.abc[g]} {g}</span>
-                        {m.abcCost?.[g] != null ? ` · ${money(m.abcCost[g])} cada` : ""}
-                      </span>
-                    ))
-                    : <span style={{ color: "var(--fg-4)", fontSize: 13.5 }}>—</span>}
-                </span>
-                <span className="tnum" style={{ textAlign: "right" }}>{cpl != null ? money(cpl) : "—"}</span>
-                <span className="tnum" style={{ textAlign: "right" }}>{pct(m?.ctr)}</span>
-                <span className="tnum" style={{ textAlign: "right" }}>{m?.costPerLinkClick != null ? money(m.costPerLinkClick) : "—"}</span>
-                <span className="tnum" style={{ textAlign: "right", fontWeight: 600 }}>{m?.won != null ? window.fmt.int(m.won) : "—"}</span>
-                <span className="tnum" style={{ textAlign: "right", fontWeight: 600 }}>{m?.revenue != null && m.revenue > 0 ? money(m.revenue) : "—"}</span>
-                <span className="tnum" style={{ textAlign: "right" }}>{pct(play3s)}</span>
+                {visible.map((c) => cell(c, object, m, state))}
               </div>
             );
           })}
@@ -612,255 +787,6 @@ function BudgetCell({ o, onCommit, sub = "diário" }) {
   );
 }
 
-function AdsManager({ objects, metrics, money, onToggle, onBudget, busyIds }) {
-  const [level, setLevel] = useState("campaigns"); // campaigns | adsets | ads
-  // Seleção estilo Gerenciador: checkbox nas linhas; campanhas marcadas filtram
-  // a aba de conjuntos, conjuntos marcados filtram a de anúncios (os rótulos
-  // das abas viram "Conjuntos de N campanhas" etc.). Clique no nome = atalho
-  // que seleciona SÓ aquela linha e desce um nível.
-  const [selCampaigns, setSelCampaigns] = useState(() => new Set());
-  const [selAdsets, setSelAdsets] = useState(() => new Set());
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [sort, setSort] = useState({ key: "spend", dir: -1 });
-
-  const matchStatus = (o) => {
-    if (statusFilter === "all") return true;
-    const eff = o.effectiveStatus || o.status;
-    return statusFilter === "active" ? eff === "ACTIVE" : eff !== "ACTIVE";
-  };
-  // Poda conjuntos selecionados que saíram do recorte quando a seleção de
-  // campanhas muda (senão a aba Anúncios filtraria por um conjunto invisível).
-  const pruneAdsets = (camps) => setSelAdsets((prev) => (camps.size
-    ? new Set([...prev].filter((sid) => {
-        const st = (objects.adsets || []).find((x) => String(x.id) === sid);
-        return st && camps.has(String(st.campaignId));
-      }))
-    : prev));
-  const toggleSel = (lv, id) => {
-    const key = String(id);
-    if (lv === "campaigns") {
-      setSelCampaigns((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); pruneAdsets(n); return n; });
-    } else if (lv === "adsets") {
-      setSelAdsets((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
-    }
-  };
-  const baseOf = (lv) => {
-    if (lv === "campaigns") return objects.campaigns || [];
-    if (lv === "adsets") return (objects.adsets || []).filter((s) => !selCampaigns.size || selCampaigns.has(String(s.campaignId)));
-    return (objects.ads || []).filter((a) =>
-      (!selCampaigns.size || selCampaigns.has(String(a.campaignId))) &&
-      (!selAdsets.size || selAdsets.has(String(a.adsetId))));
-  };
-  const mOf = (id) => metrics?.[level]?.[String(id)] || null;
-  const rows = baseOf(level).filter(matchStatus).map((o) => ({ o, m: mOf(o.id) }));
-
-  const sortVal = ({ o, m }) => {
-    if (sort.key === "name") return String(o.name || "").toLowerCase();
-    if (sort.key === "dailyBudget") return o.dailyBudget ?? -1;
-    const v = m?.[sort.key];
-    return v == null ? -Infinity : v;
-  };
-  rows.sort((a, b) => { const x = sortVal(a), y = sortVal(b); return (x < y ? -1 : x > y ? 1 : 0) * sort.dir; });
-  const clickSort = (key) => setSort((s) => (s.key === key ? { key, dir: -s.dir } : { key, dir: key === "name" ? 1 : -1 }));
-
-  // Totais do que está NA TELA (nível + drill + filtro), derivados dos brutos.
-  const sums = rows.reduce((acc, { m }) => {
-    if (!m) return acc;
-    for (const k of ["spend", "impressions", "linkClicks", "leads", "won", "revenue", "video3s", "videoP25", "videoP50", "videoP95"]) acc[k] += Number(m[k]) || 0;
-    return acc;
-  }, { spend: 0, impressions: 0, linkClicks: 0, leads: 0, won: 0, revenue: 0, video3s: 0, videoP25: 0, videoP50: 0, videoP95: 0 });
-  const hasMetrics = rows.some(({ m }) => m);
-  const totals = {
-    spend: sums.spend, leads: sums.leads, won: sums.won, revenue: sums.revenue,
-    video3s: sums.video3s, videoP25: sums.videoP25, videoP50: sums.videoP50, videoP95: sums.videoP95,
-    cpl: sums.leads > 0 ? sums.spend / sums.leads : null,
-    ctr: sums.impressions > 0 ? Math.round((sums.linkClicks / sums.impressions) * 10000) / 100 : null,
-    cpm: sums.impressions > 0 ? (sums.spend / sums.impressions) * 1000 : null,
-    costPerLinkClick: sums.linkClicks > 0 ? sums.spend / sums.linkClicks : null,
-    costPerWin: sums.won > 0 ? sums.spend / sums.won : null,
-    roas: sums.spend > 0 && sums.revenue > 0 ? Math.round((sums.revenue / sums.spend) * 100) / 100 : null,
-  };
-
-  const drill = (o) => {
-    if (level === "campaigns") { const n = new Set([String(o.id)]); setSelCampaigns(n); pruneAdsets(n); setLevel("adsets"); }
-    else if (level === "adsets") { setSelAdsets(new Set([String(o.id)])); setLevel("ads"); }
-  };
-  // Trocar de aba NÃO limpa a seleção (igual ao Gerenciador) — limpar é nos
-  // chips ✕ ou desmarcando os checkboxes.
-  const gotoLevel = (lv) => setLevel(lv);
-
-  const td = { padding: "10px 14px", borderBottom: "1px solid var(--line-1)" };
-  const tdM = { ...td, textAlign: "right", fontFamily: "var(--mono)", fontSize: 12.5, whiteSpace: "nowrap" };
-  const fmtCell = (m, col) => {
-    if (!m) return "";
-    const v = m[col.key];
-    if (col.kind === "int") return window.fmt.int(v || 0);
-    if (col.kind === "pct") return v != null ? String(v).replace(".", ",") + "%" : "";
-    if (col.kind === "x") return v != null ? String(v).replace(".", ",") + "x" : (col.empty || "");
-    return v != null ? money(v) : (col.empty || "");
-  };
-  const arrow = (key) => (sort.key === key ? (sort.dir === 1 ? " ↑" : " ↓") : "");
-  const chip = (label, onClear) => (
-    <span className="mono" style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 4px 0 10px", borderRadius: 999, fontSize: 11, border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)" }}>
-      {label}
-      <button onClick={onClear} title="limpar filtro" style={{ fontSize: 12, padding: "0 6px", color: "var(--accent)" }}>✕</button>
-    </span>
-  );
-  const nameOf = (lv, id) => ((objects[lv] || []).find((x) => String(x.id) === String(id))?.name) || id;
-  const plural = (n, um, muitos) => (n === 1 ? um : muitos);
-  const LEVELS = [
-    ["campaigns", selCampaigns.size ? `Campanhas · ${selCampaigns.size} selecionada${selCampaigns.size > 1 ? "s" : ""}` : "Campanhas"],
-    ["adsets", selCampaigns.size ? `Conjuntos de ${selCampaigns.size} ${plural(selCampaigns.size, "campanha", "campanhas")}` : "Conjuntos"],
-    ["ads", selAdsets.size ? `Anúncios de ${selAdsets.size} ${plural(selAdsets.size, "conjunto", "conjuntos")}`
-      : selCampaigns.size ? `Anúncios de ${selCampaigns.size} ${plural(selCampaigns.size, "campanha", "campanhas")}` : "Anúncios"],
-  ];
-
-  const selSetOf = (lv) => (lv === "campaigns" ? selCampaigns : lv === "adsets" ? selAdsets : null);
-  const isChecked = (o) => !!selSetOf(level)?.has(String(o.id));
-  const allChecked = level !== "ads" && rows.length > 0 && rows.every(({ o }) => isChecked(o));
-  const toggleSelAll = () => {
-    const ids = rows.map(({ o }) => String(o.id));
-    if (level === "campaigns") {
-      setSelCampaigns((prev) => { const n = new Set(prev); ids.forEach((id) => (allChecked ? n.delete(id) : n.add(id))); pruneAdsets(n); return n; });
-    } else if (level === "adsets") {
-      setSelAdsets((prev) => { const n = new Set(prev); ids.forEach((id) => (allChecked ? n.delete(id) : n.add(id))); return n; });
-    }
-  };
-  const checkboxStyle = { width: 14, height: 14, accentColor: "var(--accent)", cursor: "pointer" };
-
-  return (
-    <>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 16px 0", flexWrap: "wrap" }}>
-        <div style={{ display: "flex", gap: 2, border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: 3, background: "var(--bg-inset)" }}>
-          {LEVELS.map(([lv, label]) => (
-            <button key={lv} onClick={() => gotoLevel(lv)} style={{
-              padding: "4px 12px", borderRadius: 5, fontSize: 12.5,
-              fontWeight: level === lv ? 600 : 500,
-              background: level === lv ? "var(--bg-1)" : "transparent",
-              color: level === lv ? "var(--fg-1)" : "var(--fg-3)",
-              boxShadow: level === lv ? "var(--shadow-1)" : "none",
-            }}>
-              {label} <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)" }}>{baseOf(lv).filter(matchStatus).length}</span>
-            </button>
-          ))}
-        </div>
-        {selCampaigns.size > 0 && chip(
-          selCampaigns.size === 1 ? `campanha: ${nameOf("campaigns", [...selCampaigns][0])}` : `${selCampaigns.size} campanhas`,
-          () => { setSelCampaigns(new Set()); })}
-        {selAdsets.size > 0 && chip(
-          selAdsets.size === 1 ? `conjunto: ${nameOf("adsets", [...selAdsets][0])}` : `${selAdsets.size} conjuntos`,
-          () => setSelAdsets(new Set()))}
-        <span style={{ flex: 1 }} />
-        <Segmented value={statusFilter} onChange={setStatusFilter}
-          options={[{ value: "all", label: "todas" }, { value: "active", label: "ativas" }, { value: "paused", label: "pausadas" }]} />
-      </div>
-      {rows.length === 0 && (
-        <div className="mono" style={{ padding: "12px 16px", fontSize: 11.5, color: "var(--fg-4)" }}>
-          nada neste nível com os filtros atuais
-        </div>
-      )}
-      {rows.length > 0 && (
-      <DragScroll>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              <th style={{ ...thStyle, width: 34 }}>
-                {level !== "ads" && (
-                  <input type="checkbox" checked={allChecked} onChange={toggleSelAll}
-                    title={allChecked ? "desmarcar todos os visíveis" : "selecionar todos os visíveis (filtra os níveis de baixo)"}
-                    style={checkboxStyle} />
-                )}
-              </th>
-              <th style={{ ...thStyle, width: 46 }} />
-              <th style={{ ...thStyle, textAlign: "left", cursor: "pointer" }} onClick={() => clickSort("name")}>Nome{arrow("name")}</th>
-              <th style={thStyle}>Veiculação</th>
-              <th style={{ ...thStyle, cursor: "pointer" }} onClick={() => clickSort("dailyBudget")}>Orçamento/dia{arrow("dailyBudget")}</th>
-              {METRIC_COLS.map((c) => (
-                <th key={c.key} title={c.hint} style={{ ...thStyle, cursor: "pointer" }} onClick={() => clickSort(c.key)}>{c.label}{arrow(c.key)}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(({ o, m }) => {
-              const eff = o.effectiveStatus || o.status;
-              const d = DELIVERY[eff] || { label: String(eff || "").toLowerCase().replaceAll("_", " "), tone: "var(--fg-4)" };
-              const canDrill = level !== "ads";
-              const checked = isChecked(o);
-              return (
-                <tr key={o.id} style={checked ? { background: "var(--accent-soft)" } : undefined}>
-                  <td style={{ ...td, paddingRight: 0 }}>
-                    {level !== "ads" && (
-                      <input type="checkbox" checked={checked} onChange={() => toggleSel(level, o.id)}
-                        title="selecionar pra filtrar os níveis de baixo (como no Gerenciador)"
-                        style={checkboxStyle} />
-                    )}
-                  </td>
-                  <td style={{ ...td, paddingRight: 0 }}>
-                    <Toggle on={o.status !== "PAUSED"} label={o.name} busy={busyIds?.has(o.id)} onChange={() => onToggle(level, o)} />
-                  </td>
-                  <td onClick={canDrill ? () => drill(o) : undefined} title={canDrill ? "ver o nível de baixo filtrado" : o.name} style={{
-                    ...td, fontSize: 13, fontWeight: 600, cursor: canDrill ? "pointer" : "default",
-                    color: canDrill ? "var(--accent)" : "var(--fg-1)",
-                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 300, minWidth: 170,
-                  }}>{o.name}</td>
-                  <td style={{ ...td, whiteSpace: "nowrap", fontSize: 12, color: "var(--fg-2)" }}>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ width: 7, height: 7, borderRadius: 999, background: d.tone, flexShrink: 0 }} />
-                      {d.label}
-                    </span>
-                  </td>
-                  <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
-                    {o.dailyBudget != null ? (
-                      <BudgetCell o={o} onCommit={(v) => onBudget(level, o, v)} />
-                    ) : o.lifetimeBudget != null ? (
-                      <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
-                        <span className="mono" style={{ fontSize: 12.5 }}>{money(o.lifetimeBudget)}</span>
-                        <span className="mono" style={{ fontSize: 9, color: "var(--fg-4)" }}>total</span>
-                      </span>
-                    ) : level === "ads" ? "" : (
-                      <span className="mono" style={{ fontSize: 11, color: "var(--fg-4)" }} title={level === "campaigns" ? "orçamento definido nos conjuntos (ABO)" : "orçamento definido na campanha (CBO)"}>
-                        {level === "campaigns" ? "no conjunto" : "na campanha"}
-                      </span>
-                    )}
-                  </td>
-                  {METRIC_COLS.map((c) => (
-                    <td key={c.key} className="tnum" style={{ ...tdM, fontWeight: c.bold ? 600 : 400 }}>{fmtCell(m, c)}</td>
-                  ))}
-                </tr>
-              );
-            })}
-            {/* Linha de totais, como o rodapé do Gerenciador. */}
-            <tr style={{ background: "var(--bg-inset)" }}>
-              <td style={td} />
-              <td style={td} />
-              <td style={{ ...td, fontSize: 12, fontWeight: 600, color: "var(--fg-2)", whiteSpace: "nowrap" }}>
-                Resultados de {rows.length} {rows.length === 1 ? "item" : "itens"}
-              </td>
-              <td style={td} />
-              <td style={td} />
-              {METRIC_COLS.map((c) => (
-                <td key={c.key} className="tnum" style={{ ...tdM, fontWeight: 600 }}>
-                  {!hasMetrics ? "" /* período sem sync: vazio ≠ zero, igual às linhas */
-                    : c.kind === "int" ? window.fmt.int(totals[c.key] || 0)
-                    : c.kind === "pct" ? (totals[c.key] != null ? String(totals[c.key]).replace(".", ",") + "%" : "")
-                    : c.kind === "x" ? (totals[c.key] != null ? String(totals[c.key]).replace(".", ",") + "x" : "")
-                    : totals[c.key] != null ? money(totals[c.key]) : ""}
-                </td>
-              ))}
-            </tr>
-          </tbody>
-        </table>
-      </DragScroll>
-      )}
-    </>
-  );
-}
-
-const thStyle = {
-  textAlign: "right", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase",
-  color: "var(--fg-3)", padding: "10px 14px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)",
-  background: "var(--bg-inset)", whiteSpace: "nowrap", fontFamily: "var(--mono)", userSelect: "none",
-};
 
 // ── Insights de escala ───────────────────────────────────────────────────────
 // Sugestões por REGRA (explicáveis, sem IA): cruzam ROAS/receita por dor, CPL
