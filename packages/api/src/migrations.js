@@ -4,6 +4,7 @@
 // existem: na dúvida sobre o estado, não mexe.
 
 import { normalizeFunnel, kindOf } from "./stages.js";
+import { createClosedSubscription } from "./billing.js";
 
 // Garante o estágio "Integração" no funil do produto `leverads`, posicionado
 // entre "Negociação" e "Ganho". Integração é pós-venda: negócio já fechado,
@@ -439,6 +440,34 @@ export async function backfillCustomerArrFromLead(repo) {
   return changed;
 }
 
+// "Assinatura ativa pra todos os clientes": cliente sem assinatura ganha uma a
+// partir do próprio cadastro (plan/arr/paymentMethod), com a mesma regra do
+// fechamento (createClosedSubscription): faturado/parcelado = ciclo mensal com
+// a parcela; à vista = ciclo do plano com o contrato cheio. Self-idempotente
+// (só quem NÃO tem assinatura); pula churnado (endedAt no passado), Serviço
+// único (não é recorrência) e arr zerado. Sem plano assume anual (padrão da
+// casa) sem inventar o campo plan do cliente. arr não muda: annualized == arr.
+export async function backfillSubscriptionsFromCustomers(repo) {
+  const withSub = new Set((await repo.list("subscriptions")).map((s) => s.customer));
+  const now = new Date();
+  let changed = 0;
+  for (const c of await repo.list("customers")) {
+    if (withSub.has(c.id) || Number(c.arr) <= 0) continue;
+    if (c.endedAt && new Date(c.endedAt) <= now) continue;
+    const t = String(c.plan || "").toLowerCase();
+    if (t.includes("único") || t.includes("unico")) continue;
+    const planClosed = t.includes("semestral") ? "semestral" : t.includes("mensal") ? "mensal" : "anual";
+    const factor = { anual: 1, semestral: 2, mensal: 12 }[planClosed];
+    const sub = await createClosedSubscription(repo, {
+      customerId: c.id, saas: c.saas,
+      planClosed, amount: Number(c.arr) / factor,
+      paymentMethod: c.paymentMethod, startAt: c.startedAt,
+    }, now);
+    if (sub) changed++;
+  }
+  return changed;
+}
+
 export async function ensureUserScreens(repo) {
   let changed = 0;
   for (const [id, screens] of Object.entries(SCREENS_SEED)) {
@@ -536,5 +565,11 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] arr puxado do fechamento em ${n} cliente(s)`);
   } catch (err) {
     console.error("[migration] backfillCustomerArrFromLead falhou:", err?.message || err);
+  }
+  try {
+    const n = await backfillSubscriptionsFromCustomers(repo);
+    if (n) console.log(`[migration] assinatura ativa criada pra ${n} cliente(s)`);
+  } catch (err) {
+    console.error("[migration] backfillSubscriptionsFromCustomers falhou:", err?.message || err);
   }
 }
