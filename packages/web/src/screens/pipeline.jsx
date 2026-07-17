@@ -319,7 +319,7 @@ function KanbanColumn({ s, stage, cards, highlight, onDropCard, dragging, setDra
     return Number.isFinite(t) ? t : 0;
   };
   const ordered = [...cards].sort((a, b) => cardTs(b) - cardTs(a));
-  const shown = expanded ? ordered : ordered.slice(0, 3);
+  const shown = expanded ? ordered : ordered.slice(0, 10);
   const hidden = ordered.length - shown.length;
   return (
     <div
@@ -357,7 +357,7 @@ function KanbanColumn({ s, stage, cards, highlight, onDropCard, dragging, setDra
         {hidden > 0 && (
           <button onClick={() => setExpanded(true)} style={{ textAlign: "center", fontSize: 12, color: "var(--fg-4)", padding: "6px 0 2px" }}>+ {hidden} leads</button>
         )}
-        {expanded && ordered.length > 3 && (
+        {expanded && ordered.length > 10 && (
           <button onClick={() => setExpanded(false)} style={{ textAlign: "center", fontSize: 12, color: "var(--fg-4)", padding: "2px 0" }}>mostrar menos</button>
         )}
         {cards.length === 0 && <div style={{ fontSize: 12, textAlign: "center", color: "var(--fg-4)", padding: "18px 0" }}>vazio</div>}
