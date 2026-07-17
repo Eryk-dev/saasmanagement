@@ -140,6 +140,25 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
       } catch {
         data = (await get(`${igUserId}/media`, { fields: base, limit: String(limit) })).data || [];
       }
+      // Métricas de vídeo (views, tempo médio assistido, skip nos 3 primeiros
+      // segundos) não entram no combo aninhado acima — foto rejeita métrica de
+      // reel e a Graph derruba o lote inteiro — então cada vídeo ganha uma
+      // chamada própria, em paralelo e fail-soft; se o skip_rate não existir
+      // pra mídia (vídeo antigo, pré-reels), tenta o conjunto sem ele.
+      const video = {};
+      await Promise.all(data.filter((m) => m.media_type === "VIDEO").map(async (m) => {
+        for (const metric of ["views,ig_reels_avg_watch_time,reels_skip_rate", "views,ig_reels_avg_watch_time"]) {
+          try {
+            const body = await get(`${m.id}/insights`, { metric });
+            const val = (name) => {
+              const v = (body.data || []).find((x) => x.name === name)?.values?.[0]?.value;
+              return v == null || !Number.isFinite(Number(v)) ? null : Number(v);
+            };
+            video[m.id] = { views: val("views"), avgWatchMs: val("ig_reels_avg_watch_time"), skipRate: val("reels_skip_rate") };
+            return;
+          } catch { /* tenta o conjunto menor; sem ele, segue sem métricas de vídeo */ }
+        }
+      }));
       const child = (m) => m.children?.data?.[0];
       const ins = (m, name) => Number((m.insights?.data || []).find((x) => x.name === name)?.values?.[0]?.value) || 0;
       return data.map((m) => ({
@@ -157,6 +176,13 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
         saved: ins(m, "saved"),
         shares: ins(m, "shares"),
         totalInteractions: ins(m, "total_interactions"),
+        // Só vídeo tem: views, tempo médio (ms), % de skip nos 3s e a URL do
+        // arquivo (o front lê a duração dos metadados dele pra calcular
+        // retenção — a Graph não expõe duração). null/"" nos demais formatos.
+        views: video[m.id]?.views ?? null,
+        avgWatchMs: video[m.id]?.avgWatchMs ?? null,
+        skipRate: video[m.id]?.skipRate ?? null,
+        videoUrl: m.media_type === "VIDEO" ? (m.media_url || "") : "",
       }));
     },
 

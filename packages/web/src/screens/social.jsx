@@ -33,13 +33,53 @@ const KIND_HINTS = {
 // Só os tipos "criados aqui" abrem o editor (e ganham dor + copy por IA).
 const CREATED_HERE = new Set(["image", "carousel", "sequence"]);
 // Colunas da tabela de publicações (header e linhas compartilham o grid).
-const POSTS_GRID = "2fr .7fr .6fr .6fr .6fr .6fr .6fr .55fr .7fr";
+const POSTS_GRID = "2fr .7fr .6fr .55fr .55fr .5fr .6fr .5fr .6fr .55fr .7fr";
+const fmtPct = (x) => `${(Math.round(x * 10) / 10).toFixed(1).replace(".", ",")}%`;
 // Engajamento do post = interações totais ÷ alcance. null sem dados (posts do
 // histórico local ainda sem espelho no IG) — a célula mostra "—".
 function engRate(item) {
   const reach = Number(item.reach), inter = Number(item.totalInteractions);
   if (!Number.isFinite(reach) || reach <= 0 || !Number.isFinite(inter)) return null;
-  return `${(Math.round((inter / reach) * 1000) / 10).toFixed(1).replace(".", ",")}%`;
+  return fmtPct((inter / reach) * 100);
+}
+// Retenção do vídeo = tempo médio assistido (Graph, ms) ÷ duração. A Graph não
+// expõe a duração, então ela vem dos metadados do próprio arquivo, lidos no
+// navegador (useVideoDurations). null enquanto falta um dos lados.
+function retentionRate(item, durationSec) {
+  const avg = Number(item.avgWatchMs);
+  if (!(avg > 0) || !(durationSec > 0)) return null;
+  return fmtPct(Math.min(100, (avg / 1000 / durationSec) * 100));
+}
+// Play de 3s = quem NÃO pulou o reel nos 3 primeiros segundos (100 − skip rate
+// da Graph). Só existe pra reels; null nos outros formatos.
+function play3sRate(item) {
+  if (item.skipRate == null || !Number.isFinite(Number(item.skipRate))) return null;
+  return fmtPct(Math.max(0, Math.min(100, 100 - Number(item.skipRate))));
+}
+// Duração (s) por id de post: carrega só os METADADOS do arquivo de vídeo num
+// <video> descartável e lê .duration (funciona cross-origin; o arquivo não é
+// baixado inteiro). Fail-soft: vídeo que não carrega fica de fora e a coluna
+// de retenção mostra "—".
+function useVideoDurations(items) {
+  const [durs, setDurs] = useS({});
+  const tried = useR(new Set());
+  const key = items.map((m) => m.id).join(",");
+  useE(() => {
+    let alive = true;
+    for (const m of items) {
+      if (!m.videoUrl || m.avgWatchMs == null || tried.current.has(m.id)) continue;
+      tried.current.add(m.id);
+      const v = document.createElement("video");
+      v.preload = "metadata";
+      v.onloadedmetadata = () => {
+        if (alive && Number.isFinite(v.duration) && v.duration > 0) setDurs((d) => ({ ...d, [m.id]: v.duration }));
+        v.removeAttribute("src");
+      };
+      v.src = m.videoUrl;
+    }
+    return () => { alive = false; };
+  }, [key]);
+  return durs;
 }
 // Dores base da LeverAds — usadas quando o produto ainda não tem painMap; se o
 // produto tiver dores cadastradas (product.painMap), elas entram junto.
@@ -89,6 +129,7 @@ function SocialScreen() {
   const nonFollowerPct = reachTotal ? 100 - followerPct : 0;
   const formatMax = Math.max(1, ...(sum?.formats || []).map((f) => Number(f.avgReach) || 0));
   const recent = (sum?.media?.length ? sum.media : posts).slice(0, 6);
+  const durations = useVideoDurations(recent);
   const formatLabel = (item) => item.format
     ? (FORMATS.find((f) => f.id === item.format)?.label || item.format)
     : item.type === "VIDEO" ? "Reels" : item.type === "CAROUSEL_ALBUM" ? "Carrossel" : "Estático";
@@ -162,7 +203,7 @@ function SocialScreen() {
 
             <Card title="Publicações recentes" hint={'o histórico do "criar post" aparece aqui'} style={{ overflow: "hidden" }}>
               <div style={{ display: "grid", gridTemplateColumns: POSTS_GRID, gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
-                <span>Post</span><span>Formato</span><span style={{ textAlign: "right" }}>Alcance</span><span style={{ textAlign: "right" }}>Curtidas</span><span style={{ textAlign: "right" }}>Coment.</span><span style={{ textAlign: "right" }}>Salvos</span><span style={{ textAlign: "right" }}>Compart.</span><span style={{ textAlign: "right" }}>Eng.</span><span style={{ textAlign: "right" }}>Publicado</span>
+                <span>Post</span><span>Formato</span><span style={{ textAlign: "right" }}>Alcance</span><span style={{ textAlign: "right" }}>Curtidas</span><span style={{ textAlign: "right" }}>Coment.</span><span style={{ textAlign: "right" }}>Salvos</span><span style={{ textAlign: "right" }}>Compart.</span><span style={{ textAlign: "right" }}>Eng.</span><span style={{ textAlign: "right" }} title="tempo médio assistido ÷ duração do vídeo">Retenção</span><span style={{ textAlign: "right" }} title="% de views que passaram dos 3 primeiros segundos">Play 3s</span><span style={{ textAlign: "right" }}>Publicado</span>
               </div>
               {recent.map((item) => (
                 <div key={item.id} style={{ display: "grid", gridTemplateColumns: POSTS_GRID, gap: 12, padding: "13px 24px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5 }}>
@@ -174,6 +215,8 @@ function SocialScreen() {
                   <span className="tnum" style={{ textAlign: "right" }}>{item.saved != null ? fmtNum(item.saved) : "—"}</span>
                   <span className="tnum" style={{ textAlign: "right" }}>{item.shares != null ? fmtNum(item.shares) : "—"}</span>
                   <span className="tnum" style={{ textAlign: "right" }}>{engRate(item) ?? "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right" }} title={item.avgWatchMs > 0 ? `tempo médio ${(item.avgWatchMs / 1000).toFixed(1).replace(".", ",")}s${durations[item.id] ? ` de ${Math.round(durations[item.id])}s` : " (duração do vídeo indisponível)"}` : undefined}>{retentionRate(item, durations[item.id]) ?? "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right" }} title={item.skipRate != null ? `${fmtPct(Number(item.skipRate))} pularam nos 3 primeiros segundos` : undefined}>{play3sRate(item) ?? "—"}</span>
                   <span className="tnum" style={{ textAlign: "right", color: "var(--fg-3)" }}>{item.at ? new Date(item.at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "") : "—"}</span>
                 </div>
               ))}
