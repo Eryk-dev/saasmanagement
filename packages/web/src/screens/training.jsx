@@ -105,10 +105,12 @@ function Study({ saasId, mode, setMode }) {
             </button>
           </div>
         )}
-        <DeckList decks={data.decks}
-          onStudy={(role, foco) => { setSession(role); setFocus(!!foco); }} />
-        <SessionPreview decks={data.decks} queue={data.queue}
-          onStudy={(role) => { setSession(role); setFocus(false); }} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 14, alignItems: "start" }}>
+          <DeckList decks={data.decks}
+            onStudy={(role, foco) => { setSession(role); setFocus(!!foco); }} />
+          <SessionPreview decks={data.decks} queue={data.queue}
+            onStudy={(role) => { setSession(role); setFocus(false); }} />
+        </div>
       </>
     );
   };
@@ -176,7 +178,7 @@ function SessionPreview({ decks, queue, onStudy }) {
   const labels = ["De novo", "Difícil", "Bom", "Fácil"];
   const fallback = ["1 min", "8 min", "1 dia", "4 dias"];
   return (
-    <div style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: 28, maxWidth: 720, alignSelf: "center", width: "100%" }}>
+    <div style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: 28, width: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
         <span style={{ fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--fg-4)" }}>Prévia da sessão</span>
         <span className="mono tnum" style={{ marginLeft: "auto", fontSize: 12, color: "var(--fg-4)" }}>card 1 / {cards.length}</span>
