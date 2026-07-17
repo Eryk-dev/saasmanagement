@@ -9,6 +9,7 @@ import { CallSummaryCard } from "./today.jsx";
 import { SubscriptionsScreen } from "./subscriptions.jsx";
 import { CustomersAnalysis } from "./customers-analysis.jsx";
 import { EntityForm } from "../components/EntityForm.jsx";
+import { WhatsappChat } from "../components/whatsapp-chat.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { leadTier, waLink } from "../lib/ui.js";
 import { displayName } from "../lib/users.js";
@@ -478,6 +479,10 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
             <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Nenhuma fatura ainda.</div>
           )}
         </div>
+
+        {/* Inbox do WhatsApp conectado: a MESMA conversa da tela #whatsapp,
+            pra mandar mensagem pro cliente sem sair do popup. */}
+        <WhatsappChat lead={lead} phone={customer.phone} />
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
