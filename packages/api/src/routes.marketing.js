@@ -13,7 +13,7 @@
 
 import { meta as defaultMeta } from "./meta.js";
 import { stagePassCounts } from "./routes.funnel-metrics.js";
-import { isWon } from "./stages.js";
+import { isWon, kindOf } from "./stages.js";
 
 const DAY_MS = 86400000;
 // Dia no FUSO DO NEGÓCIO (America/Sao_Paulo, UTC-3 fixo — o Brasil não tem
@@ -487,10 +487,17 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       // quanto custou CADA um por grade — responde "essa dor/anúncio traz
       // cliente grande ou só lead C barato?".
       const abc = gradeCounts(matched);
+      // Calls agendadas: lead atribuído que marcou call (callAt), está no
+      // estágio de kind call ou passou por ele (histórico — cobre lead antigo
+      // sem callAt). Responde "essa dor/anúncio traz lead que senta na call?".
+      const calls = matched.filter((l) =>
+        l.callAt || kindOf(product, l.stage) === "call" ||
+        (stageActsByLead.get(l.id) || []).some((a) => kindOf(product, a.meta?.to) === "call")).length;
       return {
         ...g,
         abc,
         abcCost: gradeCost(g.spend, abc),
+        calls,
         spend: Math.round(g.spend * 100) / 100,
         cplMeta: g.metaLeads > 0 ? Math.round((g.spend / g.metaLeads) * 100) / 100 : null,
         leads: n,
@@ -537,12 +544,13 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       const k = code || "_sem";
       const p = byPain[k] || (byPain[k] = {
         code, label: code ? (product.painMap || {})[code] || code : "Sem código",
-        spend: 0, leads: 0, won: 0, revenue: 0, adsCount: 0, abc: { A: 0, B: 0, C: 0 },
+        spend: 0, leads: 0, calls: 0, won: 0, revenue: 0, adsCount: 0, abc: { A: 0, B: 0, C: 0 },
       });
       p.spend += a.spend;
       p.leads += a.leads;
       p.adsCount += 1;
-      p.won += a.won; // já calculado por anúncio no finishGroup
+      p.calls += a.calls; // já calculado por anúncio no finishGroup
+      p.won += a.won;
       p.revenue += a.revenue;
       for (const grade of GRADES) p.abc[grade] += a.abc[grade];
     }
