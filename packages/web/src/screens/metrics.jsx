@@ -690,19 +690,7 @@ function CompactAdsCard({ objects, metrics, money, busyIds, range, onRange, onTo
         );
       case "spend": return <span key={col.key} className="tnum" style={right}>{money(spend)}</span>;
       case "leads": return <span key={col.key} className="tnum" style={right}>{window.fmt.int(leads)}</span>;
-      case "abc": return (
-        // uma linha por grade que o anúncio trouxe: "2 A · R$ 43,00 cada"
-        <span key={col.key} className="tnum" style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1, fontSize: 11.5 }}>
-          {m?.abc && GRADES.some((g) => m.abc[g] > 0)
-            ? GRADES.filter((g) => m.abc[g] > 0).map((g) => (
-              <span key={g} style={{ whiteSpace: "nowrap", color: "var(--fg-3)" }}>
-                <span style={{ fontWeight: 700, color: GRADE_STYLE[g].ink }}>{m.abc[g]} {g}</span>
-                {m.abcCost?.[g] != null ? ` · ${money(m.abcCost[g])} cada` : ""}
-              </span>
-            ))
-            : <span style={{ color: "var(--fg-4)", fontSize: 13.5 }}>—</span>}
-        </span>
-      );
+      case "abc": return <AbcCell key={col.key} abc={m?.abc} abcCost={m?.abcCost} money={money} />;
       case "cpl": {
         const cpl = m?.cpl != null ? m.cpl : leads ? spend / leads : null;
         return <span key={col.key} className="tnum" style={right}>{cpl != null ? money(cpl) : "—"}</span>;
@@ -1038,25 +1026,31 @@ function PlacementTable({ placements, money }) {
 // um daquela grade (investido do grupo ÷ clientes da grade). "—" quando a
 // dor/anúncio não trouxe ninguém da grade.
 const GRADES = ["A", "B", "C"];
-function GradeCell({ grade, count, cost, money }) {
-  if (!count) return <span className="tnum" style={{ textAlign: "right", color: "var(--fg-4)" }}>—</span>;
+// Clientes A/B/C numa célula só, uma linha por grade ("2 A · R$ 43,00 cada") —
+// o MESMO formato da coluna Clientes ABC da tabela de anúncios.
+function AbcCell({ abc, abcCost, money }) {
   return (
-    <span className="tnum" style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
-      <span style={{ fontWeight: 700, color: GRADE_STYLE[grade].ink }}>{window.fmt.int(count)}</span>
-      <span style={{ fontSize: 10.5, color: "var(--fg-4)", whiteSpace: "nowrap" }}>{cost != null ? `${money(cost)} cada` : ""}</span>
+    <span className="tnum" style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1, fontSize: 11.5 }}>
+      {abc && GRADES.some((g) => abc[g] > 0)
+        ? GRADES.filter((g) => abc[g] > 0).map((g) => (
+          <span key={g} style={{ whiteSpace: "nowrap", color: "var(--fg-3)" }}>
+            <span style={{ fontWeight: 700, color: GRADE_STYLE[g].ink }}>{abc[g]} {g}</span>
+            {abcCost?.[g] != null ? ` · ${money(abcCost[g])} cada` : ""}
+          </span>
+        ))
+        : <span style={{ color: "var(--fg-4)", fontSize: 13.5 }}>—</span>}
     </span>
   );
 }
 
 function PainTable({ pains, money }) {
-  const cols = "1.6fr .8fr .55fr .7fr .6fr .6fr .6fr .55fr .6fr";
+  const cols = "1.6fr .8fr .55fr .7fr .6fr .9fr .55fr .6fr";
   return (
     <div style={{ marginTop: 14 }}>
       <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
         <span>Dor</span><span style={{ textAlign: "right" }}>Investido</span><span style={{ textAlign: "right" }}>Leads</span><span style={{ textAlign: "right" }}>CPL</span>
-        {GRADES.map((g) => (
-          <span key={g} title={`clientes ${g} que a dor trouxe · custo por cada`} style={{ textAlign: "right", color: GRADE_STYLE[g].ink }}>Cliente {g}</span>
-        ))}
+        <span title="leads da dor que marcaram call" style={{ textAlign: "right" }}>Calls</span>
+        <span title="clientes A/B/C que a dor trouxe · custo por cada" style={{ textAlign: "right" }}>Clientes ABC</span>
         <span style={{ textAlign: "right" }}>Ganhos</span><span style={{ textAlign: "right" }}>ROAS</span>
       </div>
       {pains.filter((p) => p.code).map((p) => (
@@ -1065,9 +1059,8 @@ function PainTable({ pains, money }) {
           <span className="tnum" style={{ textAlign: "right" }}>{money(p.spend)}</span>
           <span className="tnum" style={{ textAlign: "right" }}>{window.fmt.int(p.leads)}</span>
           <span className="tnum" style={{ textAlign: "right" }}>{p.cpl != null ? money(p.cpl) : "—"}</span>
-          {GRADES.map((g) => (
-            <GradeCell key={g} grade={g} count={p.abc?.[g] || 0} cost={p.abcCost?.[g]} money={money} />
-          ))}
+          <span className="tnum" style={{ textAlign: "right" }}>{p.calls > 0 ? window.fmt.int(p.calls) : "—"}</span>
+          <AbcCell abc={p.abc} abcCost={p.abcCost} money={money} />
           <span className="tnum" style={{ textAlign: "right", fontWeight: 600 }}>{window.fmt.int(p.won)}</span>
           <span className="tnum" style={{ textAlign: "right", fontWeight: 600, color: p.roas == null ? "var(--fg-4)" : p.roas >= 3 ? "var(--pos)" : "var(--warn)" }}>{p.roas != null ? String(p.roas).replace(".", ",") + "x" : "—"}</span>
         </div>
