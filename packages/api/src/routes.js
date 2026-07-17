@@ -615,8 +615,13 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
 // `ganho` no funil do produto; fallback por nome "Ganho"/"Closed Won" pra SaaS
 // sem funil configurado), nasce o customer com `startedAt` (base dos marcos de
 // pós-venda e do CAC) e o link bidirecional lead.customerId / customer.leadId.
-// Idempotente: se o lead já gerou cliente, não duplica. A receita continua
-// vindo das assinaturas (syncCustomerArr) — aqui só nasce o cadastro.
+// Idempotente: se o lead já gerou cliente, não duplica.
+// Valor e plano vêm do gate de fechamento (lead.amount + lead.planClosed):
+// `arr` guarda o ANUAL (a tabela mostra MRR = arr/12), então o valor do negócio
+// é anualizado pelo plano fechado. Assinatura criada depois manda mais — toda
+// mutação de assinatura reescreve o arr via syncCustomerArr.
+const CLOSED_PLAN_LABEL = { anual: "Anual", semestral: "Semestral", mensal: "Mensal", unico: "Pagamento único" };
+const CLOSED_PLAN_ANNUAL_FACTOR = { anual: 1, semestral: 2, mensal: 12, unico: 1 };
 export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } = {}) {
   if (!lead || !lead.saas) return null;
   const product = await repo.get("products", lead.saas);
@@ -631,8 +636,8 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
     saas: lead.saas,
     email: lead.email || "",
     phone: lead.phone || "",
-    plan: "",
-    arr: 0,
+    plan: CLOSED_PLAN_LABEL[lead.planClosed] || "",
+    arr: Math.round((Number(lead.amount) || 0) * (CLOSED_PLAN_ANNUAL_FACTOR[lead.planClosed] || 1)),
     leadId: lead.id,
     ...(lead.paymentMethod ? { paymentMethod: lead.paymentMethod } : {}), // modo como fechou (PIX/boleto/cartão 12x)
     startedAt: new Date().toISOString(),
