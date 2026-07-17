@@ -9,7 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { publicForm, validateAnswers, leadFromSubmission, submissionTerminal, makeRateLimiter, buildSteps, variantHeadline } from "./forms.js";
 import { painCode, leadGrade } from "./routes.marketing.js";
-import { isWon } from "./stages.js";
+import { isWon, kindOf } from "./stages.js";
 import { formPageHtml, EMBED_JS } from "./form-page.js";
 import { CREATE_DEFAULTS, dispatchProposal, publicBase } from "./routes.js";
 import { stageByKind, firstStage } from "./stages.js";
@@ -308,6 +308,10 @@ export function registerFormRoutes(app, repo, opts = {}) {
       // a headline campeã é a que traz cliente grande e contrato, não clique.
       const grades = { A: 0, B: 0, C: 0 };
       for (const l of vLeads) { const g = leadGrade(l); if (g) grades[g] += 1; }
+      // Call agendada: callAt marcado (agenda do pipeline) ou lead num estágio
+      // de kind "call" — mesmo critério do drip-runner pra "marcou call". Mede
+      // o meio do funil comercial: headline que gera CONVERSA, não só envio.
+      const calls = vLeads.filter((l) => l.callAt || kindOf(product, l.stage) === "call").length;
       const wonLeads = vLeads.filter((l) => isWon(product, l.stage));
       const revenue = wonLeads.reduce((s, l) => s + (Number(l.amount) || 0), 0);
       const times = events.filter(mine).map((e) => String(e.createdAt || "")).filter(Boolean).sort();
@@ -315,7 +319,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
         id: vid, ...(pain ? { pain } : {}),
         sessions: new Set(events.filter(mine).map((e) => e.session)).size,
         views: vu("view"), starts: vu("start"), submits: vu("submit"),
-        leads: vSubs.length, won: wonLeads.length, grades, revenue,
+        leads: vSubs.length, calls, won: wonLeads.length, grades, revenue,
         firstAt: times[0] || null, lastAt: times[times.length - 1] || null,
       };
     });
