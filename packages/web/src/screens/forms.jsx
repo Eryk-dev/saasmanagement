@@ -29,6 +29,22 @@ const formUrl = (f) => `${publicBase()}/f/${f.id}`;
 const slug = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
   .toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
 
+// Tabela do teste A/B no card — mesmo desenho da "Por dor" (Publicidade):
+// grid fracionário, número forte + contexto pequeno na linha de baixo.
+const AB_GRID = "minmax(240px, 2.4fr) .5fr .8fr .8fr .55fr .55fr .55fr .75fr .8fr .85fr";
+
+// Célula numérica: contagem em negrito em cima, subtexto (%) embaixo; zero
+// vira "—" — zero cinza repetido em toda célula é o que deixava a leitura ruim.
+function AbNum({ count, sub, ink }) {
+  if (!count) return <span className="tnum" style={{ textAlign: "right", color: "var(--fg-4)" }}>—</span>;
+  return (
+    <span className="tnum" style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1, justifySelf: "end" }}>
+      <span style={{ fontWeight: 700, color: ink || "var(--fg-1)" }}>{window.fmt.int(count)}</span>
+      {sub && <span style={{ fontSize: 10.5, color: "var(--fg-4)", whiteSpace: "nowrap" }}>{sub}</span>}
+    </span>
+  );
+}
+
 function FormsScreen({ saasId }) {
   const { SAAS } = window.SEED;
   const { version } = useData();
@@ -173,71 +189,59 @@ function FormsScreen({ saasId }) {
                             <span style={{ flex: 1 }} />
                             <button onClick={() => setView({ mode: "subs", form: f })} style={{ fontSize: 11.5, fontWeight: 600, color: "var(--accent)" }}>análise completa →</button>
                           </div>
-                          {/* Tabela por variante: funil (visitas → começar → lead), potencial
-                              dos leads que chegaram (cliente A/B/C, régua do leadTier) e o
-                              fechamento (ganhos + receita) — o card mostra a mesma leitura
-                              de marketing da análise completa, sem trocar de tela. */}
-                          <div className="tbl-x" style={{ border: "1px solid var(--line-faint)", borderRadius: "var(--r-3)", background: "var(--bg-inset)", overflow: "auto" }}>
-                            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
-                              <thead>
-                                <tr>
-                                  {[
-                                    ["Headline", "left", "texto da welcome que o lead viu"],
-                                    ["Visitas", "right", "sessões únicas que viram a variante"],
-                                    ["Começaram", "right", "clicaram em começar · % das visitas"],
-                                    ["Leads", "right", "finalizaram o form · % das visitas"],
-                                    ["A", "right", "clientes potencial A que chegaram"],
-                                    ["B", "right", "clientes potencial B que chegaram"],
-                                    ["C", "right", "clientes potencial C que chegaram"],
-                                    ["Call", "right", "leads com call agendada com o closer · % dos leads"],
-                                    ["Fecharam", "right", "viraram contrato (Ganho) · % dos leads"],
-                                    ["Receita", "right", "soma do valor dos contratos fechados"],
-                                  ].map(([h, align, tip]) => (
-                                    <th key={h} className="mono" title={tip} style={{ textAlign: align, fontSize: 10, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: h === "A" ? GRADE_STYLE.A.ink : h === "B" ? GRADE_STYLE.B.ink : h === "C" ? GRADE_STYLE.C.ink : "var(--fg-4)", padding: "8px 10px", borderBottom: "1px solid var(--line-1)" }}>{h}</th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {abGroups.map((g) => (
-                                  <React.Fragment key={g.pain || "base"}>
-                                    {abGroups.length > 1 && (
-                                      <tr>
-                                        <td colSpan={10} style={{ padding: "9px 10px 3px", fontSize: 11.5, color: "var(--fg-4)" }}>
-                                          <span className="mono code" style={{ fontSize: 10.5, fontWeight: 700, color: "var(--accent)" }}>{g.pain ? `[${g.pain}]` : "BASE"}</span>
-                                          {" "}{g.pain ? (painMap[g.pain] || `dor ${g.pain}`) : "sem dor (tráfego direto)"}
-                                        </td>
-                                      </tr>
-                                    )}
-                                    {g.rows.map((v) => {
-                                      const verdict = abVerdicts[`${v.pain || ""}|${v.id}`];
-                                      const gr = v.grades || {};
-                                      const td = { padding: "8px 10px", fontSize: 12.5, textAlign: "right", borderTop: "1px solid var(--line-faint)", whiteSpace: "nowrap" };
-                                      const dim = { color: "var(--fg-4)", fontSize: 11 };
-                                      return (
-                                        <tr key={v.id}>
-                                          <td style={{ ...td, textAlign: "left", whiteSpace: "normal", minWidth: 220, maxWidth: 380 }}>
-                                            <div style={{ display: "flex", alignItems: "baseline", gap: 7, minWidth: 0 }}>
-                                              <span className="mono code" style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: "var(--fg-4)" }}>{v.id}</span>
-                                              <span style={{ flex: 1, minWidth: 0, color: "var(--fg-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={variantTitle(v)}>“{variantTitle(v)}”</span>
-                                            </div>
-                                            {verdict?.label && <div className="mono" style={{ fontSize: 10, fontWeight: 600, color: verdict.tone, marginTop: 2 }}>{verdict.label}</div>}
-                                          </td>
-                                          <td className="mono tnum" style={td}>{window.fmt.int(v.views)}</td>
-                                          <td className="mono tnum" style={td}><span style={{ fontWeight: 600 }}>{window.fmt.int(v.starts)}</span> <span style={dim}>· {pct(v.starts, v.views)}</span></td>
-                                          <td className="mono tnum" style={td}><span style={{ fontWeight: 600 }}>{window.fmt.int(v.leads ?? v.submits)}</span> <span style={dim}>· {pct(v.submits, v.views)}</span></td>
-                                          <td className="mono tnum" style={{ ...td, fontWeight: 700, color: gr.A ? GRADE_STYLE.A.ink : "var(--fg-4)" }}>{gr.A || 0}</td>
-                                          <td className="mono tnum" style={{ ...td, fontWeight: 700, color: gr.B ? GRADE_STYLE.B.ink : "var(--fg-4)" }}>{gr.B || 0}</td>
-                                          <td className="mono tnum" style={{ ...td, fontWeight: 700, color: gr.C ? GRADE_STYLE.C.ink : "var(--fg-4)" }}>{gr.C || 0}</td>
-                                          <td className="mono tnum" style={td}><span style={{ fontWeight: 600, color: v.calls ? "var(--fg-1)" : "var(--fg-4)" }}>{v.calls || 0}</span> <span style={dim}>· {pct(v.calls || 0, v.leads || 0)}</span></td>
-                                          <td className="mono tnum" style={td}><span style={{ fontWeight: 600, color: v.won ? "var(--pos)" : "var(--fg-4)" }}>{v.won || 0}</span> <span style={dim}>· {pct(v.won || 0, v.leads || 0)}</span></td>
-                                          <td className="mono tnum" style={{ ...td, color: v.revenue ? "var(--fg-1)" : "var(--fg-4)" }}>{v.revenue ? window.fmt.money(v.revenue) : "—"}</td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </React.Fragment>
+                          {/* Tabela por variante no padrão da "Por dor" (Publicidade): grid
+                              com respiro, número forte + contexto pequeno embaixo e "—" no
+                              lugar de zero (zero cinza em toda célula vira ruído) — funil
+                              (visitas → começar → lead), potencial (cliente A/B/C), call
+                              agendada e fechamento (ganhos + receita). */}
+                          <div className="tbl-x" style={{ border: "1px solid var(--line-faint)", borderRadius: "var(--r-3)", overflow: "auto" }}>
+                            <div style={{ minWidth: 1120 }}>
+                              <div style={{ display: "grid", gridTemplateColumns: AB_GRID, gap: 12, padding: "10px 18px", fontSize: 10.5, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", background: "var(--bg-inset)" }}>
+                                <span title="texto da welcome que o lead viu">Headline</span>
+                                <span style={{ textAlign: "right" }} title="sessões únicas que viram a variante">Visitas</span>
+                                <span style={{ textAlign: "right" }} title="clicaram em começar · % das visitas">Começaram</span>
+                                <span style={{ textAlign: "right" }} title="finalizaram o form · % das visitas">Leads</span>
+                                {["A", "B", "C"].map((g) => (
+                                  <span key={g} style={{ textAlign: "right", color: GRADE_STYLE[g].ink }} title={`clientes potencial ${g} que chegaram`}>Cliente {g}</span>
                                 ))}
-                              </tbody>
-                            </table>
+                                <span style={{ textAlign: "right" }} title="leads com call agendada com o closer · % dos leads">Call</span>
+                                <span style={{ textAlign: "right" }} title="viraram contrato (Ganho) · % dos leads">Fecharam</span>
+                                <span style={{ textAlign: "right" }} title="soma do valor dos contratos fechados">Receita</span>
+                              </div>
+                              {abGroups.map((g) => (
+                                <React.Fragment key={g.pain || "base"}>
+                                  {abGroups.length > 1 && (
+                                    <div style={{ padding: "11px 18px 3px", fontSize: 11.5, color: "var(--fg-4)" }}>
+                                      <span className="mono code" style={{ fontSize: 10.5, fontWeight: 700, color: "var(--accent)" }}>{g.pain ? `[${g.pain}]` : "BASE"}</span>
+                                      {" "}{g.pain ? (painMap[g.pain] || `dor ${g.pain}`) : "sem dor (tráfego direto)"}
+                                    </div>
+                                  )}
+                                  {g.rows.map((v) => {
+                                    const verdict = abVerdicts[`${v.pain || ""}|${v.id}`];
+                                    const gr = v.grades || {};
+                                    const vLeads = v.leads ?? v.submits;
+                                    return (
+                                      <div key={v.id} style={{ display: "grid", gridTemplateColumns: AB_GRID, gap: 12, padding: "13px 18px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5 }}>
+                                        <div style={{ minWidth: 0 }}>
+                                          <div style={{ display: "flex", alignItems: "baseline", gap: 7, minWidth: 0 }}>
+                                            <span className="mono code" style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: "var(--fg-4)" }}>{v.id}</span>
+                                            <span style={{ flex: 1, minWidth: 0, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={variantTitle(v)}>“{variantTitle(v)}”</span>
+                                          </div>
+                                          {verdict?.label && <div className="mono" style={{ fontSize: 10, fontWeight: 600, color: verdict.tone, marginTop: 3 }}>{verdict.label}</div>}
+                                        </div>
+                                        <span className="tnum" style={{ textAlign: "right" }}>{window.fmt.int(v.views)}</span>
+                                        <AbNum count={v.starts} sub={`${pct(v.starts, v.views)} das visitas`} />
+                                        <AbNum count={vLeads} sub={`${pct(v.submits, v.views)} das visitas`} />
+                                        {["A", "B", "C"].map((code) => <AbNum key={code} count={gr[code] || 0} ink={GRADE_STYLE[code].ink} />)}
+                                        <AbNum count={v.calls || 0} sub={`${pct(v.calls || 0, vLeads || 0)} dos leads`} />
+                                        <AbNum count={v.won || 0} sub={`${pct(v.won || 0, vLeads || 0)} dos leads`} ink="var(--pos)" />
+                                        <span className="tnum" style={{ textAlign: "right", fontWeight: 600, color: v.revenue ? "var(--fg-1)" : "var(--fg-4)" }}>{v.revenue ? window.fmt.money(v.revenue) : "—"}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </React.Fragment>
+                              ))}
+                            </div>
                           </div>
                         </div>
                       )}
