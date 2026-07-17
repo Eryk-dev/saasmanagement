@@ -17,19 +17,24 @@ export const chromeBtnStyleSmall = {
 // mais dor de replicação) + ANÚNCIOS na maior conta (quanto mais anúncios, mais
 // volume a clonar). Leads antigos sem `listings` usam o campo `volume` legado.
 // alto = verde · médio = âmbar · baixo = cinza · sem respostas = neutro.
+// A API espelha essa régua em leadGrade() (routes.marketing.js) pras colunas
+// A/B/C de Publicidade — mudou aqui, muda lá.
 const TIER_ACCOUNTS = { "1": 0, "2": 1, "3-5": 2, "6-10": 3, "10+": 4 };
 const TIER_LISTINGS = { "0-100": 0, "100-500": 1, "500-2000": 2, "2000-10000": 3, "10000+": 4 };
 const TIER_VOLUME = { "0-10": 0, "10-50": 1, "50-200": 2, "200+": 3 }; // legado (anúncios novos/semana)
+// Cores próprias (não os tokens semânticos) pra separação clara à distância:
+// tone = preenchimentos (badge/tinta do card); ink = variante escura pra texto.
+export const GRADE_STYLE = {
+  A: { key: "alto", grade: "A", label: "cliente A", tone: "#16a34a", ink: "#15803d", badgeFg: "#fff" },
+  B: { key: "medio", grade: "B", label: "cliente B", tone: "#eab308", ink: "#a16207", badgeFg: "#463500" },
+  C: { key: "baixo", grade: "C", label: "cliente C", tone: "#9aa2ad", ink: "#5b6472", badgeFg: "#fff" },
+};
 export function leadTier(l) {
   const acc = TIER_ACCOUNTS[l?.accounts];
   const ads = l?.listings != null && l.listings !== "" ? TIER_LISTINGS[l.listings] : TIER_VOLUME[l?.volume];
   if (acc == null && ads == null) return { key: "sem", grade: null, label: "sem qualificação", tone: "var(--line-strong)", ink: "var(--fg-3)", badgeFg: "#fff" };
   const pts = (acc ?? 0) + (ads ?? 0);
-  // Cores próprias (não os tokens semânticos) pra separação clara à distância:
-  // tone = preenchimentos (badge/tinta do card); ink = variante escura pra texto.
-  if (pts >= 5) return { key: "alto", grade: "A", label: "cliente A", tone: "#16a34a", ink: "#15803d", badgeFg: "#fff" };
-  if (pts >= 2) return { key: "medio", grade: "B", label: "cliente B", tone: "#eab308", ink: "#a16207", badgeFg: "#463500" };
-  return { key: "baixo", grade: "C", label: "cliente C", tone: "#9aa2ad", ink: "#5b6472", badgeFg: "#fff" };
+  return GRADE_STYLE[pts >= 5 ? "A" : pts >= 2 ? "B" : "C"];
 }
 
 // Lead score helpers — score é numérico 0–100; cor e rótulo vêm por banda.
