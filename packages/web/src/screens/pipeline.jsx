@@ -312,13 +312,15 @@ function KanbanColumn({ s, stage, cards, highlight, onDropCard, dragging, setDra
   const [over, setOver] = useStP(false);
   const [expanded, setExpanded] = useStP(false);
   const total = cards.reduce((a, l) => a + (l.amount || 0), 0);
-  // Ordem temporal: mais novo primeiro (stageSince; fallback createdAt pra
-  // cards antigos que ainda não moveram).
-  const cardTs = (l) => {
+  // Ordem cronológica pelo próximo contato (atrasado primeiro, depois hoje,
+  // amanhã...); sem próximo passo vai pro fim, do mais novo na etapa pro mais
+  // antigo (stageSince; fallback createdAt pra cards que ainda não moveram).
+  const stageTs = (l) => {
     const t = new Date(l.stageSince || l.createdAt || 0).getTime();
     return Number.isFinite(t) ? t : 0;
   };
-  const ordered = [...cards].sort((a, b) => cardTs(b) - cardTs(a));
+  const nextTs = (l) => nextTouch(l)?.at ?? Infinity;
+  const ordered = [...cards].sort((a, b) => nextTs(a) - nextTs(b) || stageTs(b) - stageTs(a));
   const shown = expanded ? ordered : ordered.slice(0, 10);
   const hidden = ordered.length - shown.length;
   return (
