@@ -485,8 +485,10 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       const revenue = wonLeads.reduce((s, l) => s + (Number(l.amount) || 0), 0);
       // Quantos clientes A/B/C o grupo trouxe (grade do lead atribuído) e
       // quanto custou CADA um por grade — responde "essa dor/anúncio traz
-      // cliente grande ou só lead C barato?".
+      // cliente grande ou só lead C barato?". wonAbc = a grade só dos GANHOS
+      // (qual perfil de cliente essa origem de fato fecha).
       const abc = gradeCounts(matched);
+      const wonAbc = gradeCounts(wonLeads);
       // Calls agendadas: lead atribuído que marcou call (callAt), está no
       // estágio de kind call ou passou por ele (histórico — cobre lead antigo
       // sem callAt). Responde "essa dor/anúncio traz lead que senta na call?".
@@ -497,6 +499,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         ...g,
         abc,
         abcCost: gradeCost(g.spend, abc),
+        wonAbc,
         calls,
         spend: Math.round(g.spend * 100) / 100,
         cplMeta: g.metaLeads > 0 ? Math.round((g.spend / g.metaLeads) * 100) / 100 : null,
@@ -544,7 +547,8 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       const k = code || "_sem";
       const p = byPain[k] || (byPain[k] = {
         code, label: code ? (product.painMap || {})[code] || code : "Sem código",
-        spend: 0, leads: 0, calls: 0, won: 0, revenue: 0, adsCount: 0, abc: { A: 0, B: 0, C: 0 },
+        spend: 0, leads: 0, calls: 0, won: 0, revenue: 0, adsCount: 0,
+        abc: { A: 0, B: 0, C: 0 }, wonAbc: { A: 0, B: 0, C: 0 },
       });
       p.spend += a.spend;
       p.leads += a.leads;
@@ -552,7 +556,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       p.calls += a.calls; // já calculado por anúncio no finishGroup
       p.won += a.won;
       p.revenue += a.revenue;
-      for (const grade of GRADES) p.abc[grade] += a.abc[grade];
+      for (const grade of GRADES) { p.abc[grade] += a.abc[grade]; p.wonAbc[grade] += a.wonAbc[grade]; }
     }
     const pains = Object.values(byPain)
       .map((p) => ({

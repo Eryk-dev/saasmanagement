@@ -1114,6 +1114,28 @@ function AbcCell({ abc, abcCost, money }) {
   );
 }
 
+// Ganhos com a grade de quem fechou: "2 A · 1 B" embaixo do total. Ganho sem
+// grade (lead sem dados de contas/anúncios) vira "s/ grade" pra conta fechar.
+function WonAbcCell({ won, wonAbc }) {
+  const graded = wonAbc ? GRADES.reduce((a, g) => a + (wonAbc[g] || 0), 0) : 0;
+  const ungraded = Math.max(0, (won || 0) - graded);
+  if (!won) return <span className="tnum" style={{ textAlign: "right", fontWeight: 600 }}>0</span>;
+  return (
+    <span className="tnum" style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+      <span style={{ fontWeight: 600 }}>{window.fmt.int(won)}</span>
+      <span style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>
+        {GRADES.filter((g) => wonAbc?.[g] > 0).map((g, i) => (
+          <span key={g}>
+            {i > 0 && <span style={{ color: "var(--fg-4)" }}> · </span>}
+            <span style={{ fontWeight: 700, color: GRADE_STYLE[g].ink }}>{wonAbc[g]} {g}</span>
+          </span>
+        ))}
+        {ungraded > 0 && <span style={{ color: "var(--fg-4)" }}>{graded > 0 ? " · " : ""}{ungraded} s/ grade</span>}
+      </span>
+    </span>
+  );
+}
+
 function PainTable({ pains, money }) {
   const cols = "1.6fr .8fr .55fr .7fr .6fr .9fr .55fr .6fr";
   return (
@@ -1122,7 +1144,7 @@ function PainTable({ pains, money }) {
         <span>Dor</span><span style={{ textAlign: "right" }}>Investido</span><span style={{ textAlign: "right" }}>Leads</span><span style={{ textAlign: "right" }}>CPL</span>
         <span title="leads da dor que marcaram call" style={{ textAlign: "right" }}>Calls</span>
         <span title="clientes A/B/C que a dor trouxe · custo por cada" style={{ textAlign: "right" }}>Clientes ABC</span>
-        <span style={{ textAlign: "right" }}>Ganhos</span><span style={{ textAlign: "right" }}>ROAS</span>
+        <span title="ganhos da dor · com a grade A/B/C de cada cliente fechado" style={{ textAlign: "right" }}>Ganhos</span><span style={{ textAlign: "right" }}>ROAS</span>
       </div>
       {pains.filter((p) => p.code).map((p) => (
         <div key={p.code} style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "12px 24px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5 }}>
@@ -1132,7 +1154,7 @@ function PainTable({ pains, money }) {
           <span className="tnum" style={{ textAlign: "right" }}>{p.cpl != null ? money(p.cpl) : "—"}</span>
           <span className="tnum" style={{ textAlign: "right" }}>{p.calls > 0 ? window.fmt.int(p.calls) : "—"}</span>
           <AbcCell abc={p.abc} abcCost={p.abcCost} money={money} />
-          <span className="tnum" style={{ textAlign: "right", fontWeight: 600 }}>{window.fmt.int(p.won)}</span>
+          <WonAbcCell won={p.won} wonAbc={p.wonAbc} />
           <span className="tnum" style={{ textAlign: "right", fontWeight: 600, color: p.roas == null ? "var(--fg-4)" : p.roas >= 3 ? "var(--pos)" : "var(--warn)" }}>{p.roas != null ? String(p.roas).replace(".", ",") + "x" : "—"}</span>
         </div>
       ))}
