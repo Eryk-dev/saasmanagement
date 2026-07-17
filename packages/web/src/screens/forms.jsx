@@ -178,7 +178,7 @@ function FormsScreen({ saasId }) {
                               fechamento (ganhos + receita) — o card mostra a mesma leitura
                               de marketing da análise completa, sem trocar de tela. */}
                           <div className="tbl-x" style={{ border: "1px solid var(--line-faint)", borderRadius: "var(--r-3)", background: "var(--bg-inset)", overflow: "auto" }}>
-                            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 820 }}>
+                            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
                               <thead>
                                 <tr>
                                   {[
@@ -189,6 +189,7 @@ function FormsScreen({ saasId }) {
                                     ["A", "right", "clientes potencial A que chegaram"],
                                     ["B", "right", "clientes potencial B que chegaram"],
                                     ["C", "right", "clientes potencial C que chegaram"],
+                                    ["Call", "right", "leads com call agendada com o closer · % dos leads"],
                                     ["Fecharam", "right", "viraram contrato (Ganho) · % dos leads"],
                                     ["Receita", "right", "soma do valor dos contratos fechados"],
                                   ].map(([h, align, tip]) => (
@@ -201,7 +202,7 @@ function FormsScreen({ saasId }) {
                                   <React.Fragment key={g.pain || "base"}>
                                     {abGroups.length > 1 && (
                                       <tr>
-                                        <td colSpan={9} style={{ padding: "9px 10px 3px", fontSize: 11.5, color: "var(--fg-4)" }}>
+                                        <td colSpan={10} style={{ padding: "9px 10px 3px", fontSize: 11.5, color: "var(--fg-4)" }}>
                                           <span className="mono code" style={{ fontSize: 10.5, fontWeight: 700, color: "var(--accent)" }}>{g.pain ? `[${g.pain}]` : "BASE"}</span>
                                           {" "}{g.pain ? (painMap[g.pain] || `dor ${g.pain}`) : "sem dor (tráfego direto)"}
                                         </td>
@@ -227,6 +228,7 @@ function FormsScreen({ saasId }) {
                                           <td className="mono tnum" style={{ ...td, fontWeight: 700, color: gr.A ? GRADE_STYLE.A.ink : "var(--fg-4)" }}>{gr.A || 0}</td>
                                           <td className="mono tnum" style={{ ...td, fontWeight: 700, color: gr.B ? GRADE_STYLE.B.ink : "var(--fg-4)" }}>{gr.B || 0}</td>
                                           <td className="mono tnum" style={{ ...td, fontWeight: 700, color: gr.C ? GRADE_STYLE.C.ink : "var(--fg-4)" }}>{gr.C || 0}</td>
+                                          <td className="mono tnum" style={td}><span style={{ fontWeight: 600, color: v.calls ? "var(--fg-1)" : "var(--fg-4)" }}>{v.calls || 0}</span> <span style={dim}>· {pct(v.calls || 0, v.leads || 0)}</span></td>
                                           <td className="mono tnum" style={td}><span style={{ fontWeight: 600, color: v.won ? "var(--pos)" : "var(--fg-4)" }}>{v.won || 0}</span> <span style={dim}>· {pct(v.won || 0, v.leads || 0)}</span></td>
                                           <td className="mono tnum" style={{ ...td, color: v.revenue ? "var(--fg-1)" : "var(--fg-4)" }}>{v.revenue ? window.fmt.money(v.revenue) : "—"}</td>
                                         </tr>
@@ -1179,7 +1181,7 @@ function FormsDashboard({ forms }) {
                   </div>
                   <div className="tbl-x">
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr>{["Variante", "Título mostrado", "Visitas", "Começou", "% começar", "Enviou", "% envio", "A", "B", "C", "Ganhos", "% fechou", "Receita"].map(thAB)}</tr></thead>
+                      <thead><tr>{["Variante", "Título mostrado", "Visitas", "Começou", "% começar", "Enviou", "% envio", "A", "B", "C", "Call", "Ganhos", "% fechou", "Receita"].map(thAB)}</tr></thead>
                       <tbody>
                         {g.rows.map((v) => {
                           const verdict = verdicts[`${v.pain || ""}|${v.id}`];
@@ -1197,6 +1199,7 @@ function FormsDashboard({ forms }) {
                               <td className="mono tnum" style={{ ...tdAB, fontWeight: 700, color: gr.A ? GRADE_STYLE.A.ink : "var(--fg-4)" }}>{gr.A || 0}</td>
                               <td className="mono tnum" style={{ ...tdAB, fontWeight: 700, color: gr.B ? GRADE_STYLE.B.ink : "var(--fg-4)" }}>{gr.B || 0}</td>
                               <td className="mono tnum" style={{ ...tdAB, fontWeight: 700, color: gr.C ? GRADE_STYLE.C.ink : "var(--fg-4)" }}>{gr.C || 0}</td>
+                              <td className="mono tnum" style={tdAB}>{v.calls || 0}</td>
                               <td className="mono tnum" style={tdAB}>{v.won || 0}</td>
                               <td className="mono tnum" style={tdAB}>{v.leads > 0 ? pct(v.won, v.leads) : ""}</td>
                               <td className="mono tnum" style={tdAB}>{v.revenue ? window.fmt.money(v.revenue) : "—"}</td>
