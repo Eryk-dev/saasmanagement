@@ -6,6 +6,7 @@ import { painCodeOf } from "../lib/pains.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { EmptyState } from "../atoms.jsx";
 import { stageKind } from "../lib/funnel.js";
+import { GRADE_STYLE } from "../lib/ui.js";
 // Métricas — aquisição × funil do produto ativo (substitui a tela Marketing).
 // Hoje: investimento (Meta), leads, CPL real e custo por etapa, com séries no
 // tempo e quebra por campanha. CAC e LTV entram na fase de métricas de receita,
@@ -440,8 +441,8 @@ function CompactAdsCard({ objects, metrics, money, busyIds, onToggle, error }) {
     <Card title="Anúncios" hint="estilo Gerenciador · toggle pausa na Meta"
       action={<Segmented value={level} onChange={setLevel} options={levels.map(({ value, label }) => ({ value, label }))} />}
       style={{ overflow: "hidden" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "46px 1.8fr .7fr .8fr .6fr .7fr", gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
-        <span /><span>{current.singular}</span><span>Status</span><span style={{ textAlign: "right" }}>Investido</span><span style={{ textAlign: "right" }}>Leads</span><span style={{ textAlign: "right" }}>CPL</span>
+      <div style={{ display: "grid", gridTemplateColumns: "46px 1.7fr .7fr .75fr .5fr .9fr .65fr", gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+        <span /><span>{current.singular}</span><span>Status</span><span style={{ textAlign: "right" }}>Investido</span><span style={{ textAlign: "right" }}>Leads</span><span title="clientes A/B/C atribuídos (UTM) · custo por cada" style={{ textAlign: "right" }}>Clientes ABC</span><span style={{ textAlign: "right" }}>CPL</span>
       </div>
       {error && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--neg)", fontSize: 12.5 }}>{error}</div>}
       {!objects && !error && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--fg-4)", fontSize: 12.5 }}>carregando conta de anúncios…</div>}
@@ -454,12 +455,23 @@ function CompactAdsCard({ objects, metrics, money, busyIds, onToggle, error }) {
         const cpl = m?.cpl != null ? m.cpl : leads ? spend / leads : null;
         const active = object.status ? object.status !== "PAUSED" : state.label !== "pausado";
         return (
-          <div key={object.id} style={{ display: "grid", gridTemplateColumns: "46px 1.8fr .7fr .8fr .6fr .7fr", gap: 12, padding: "12px 24px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5, opacity: active ? 1 : .7 }}>
+          <div key={object.id} style={{ display: "grid", gridTemplateColumns: "46px 1.7fr .7fr .75fr .5fr .9fr .65fr", gap: 12, padding: "12px 24px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5, opacity: active ? 1 : .7 }}>
             <Toggle on={active} label={object.name || object.id} busy={busyIds?.has(object.id)} disabled={!onToggle || !object.status} onChange={() => onToggle?.(level, object)} />
             <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{object.name || object.id}</span>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--fg-2)" }}><span style={{ width: 7, height: 7, borderRadius: 99, background: state.tone }} />{state.label}</span>
             <span className="tnum" style={{ textAlign: "right" }}>{money(spend)}</span>
             <span className="tnum" style={{ textAlign: "right" }}>{window.fmt.int(leads)}</span>
+            {/* uma linha por grade que o anúncio trouxe: "2 A · R$ 43,00 cada" */}
+            <span className="tnum" style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1, fontSize: 11.5 }}>
+              {m?.abc && GRADES.some((g) => m.abc[g] > 0)
+                ? GRADES.filter((g) => m.abc[g] > 0).map((g) => (
+                  <span key={g} style={{ whiteSpace: "nowrap", color: "var(--fg-3)" }}>
+                    <span style={{ fontWeight: 700, color: GRADE_STYLE[g].ink }}>{m.abc[g]} {g}</span>
+                    {m.abcCost?.[g] != null ? ` · ${money(m.abcCost[g])} cada` : ""}
+                  </span>
+                ))
+                : <span style={{ color: "var(--fg-4)", fontSize: 13.5 }}>—</span>}
+            </span>
             <span className="tnum" style={{ textAlign: "right" }}>{cpl != null ? money(cpl) : "—"}</span>
           </div>
         );
@@ -916,12 +928,30 @@ function PlacementTable({ placements, money }) {
 // Quebra por dor: cada linha é um código "[X]" da nomenclatura dos anúncios.
 // O que decide escala é a última coluna (ROAS: receita dos ganhos ÷ investimento),
 // não o CPL.
+// Célula de cliente A/B/C: contagem forte na cor da grade + quanto custou CADA
+// um daquela grade (investido do grupo ÷ clientes da grade). "—" quando a
+// dor/anúncio não trouxe ninguém da grade.
+const GRADES = ["A", "B", "C"];
+function GradeCell({ grade, count, cost, money }) {
+  if (!count) return <span className="tnum" style={{ textAlign: "right", color: "var(--fg-4)" }}>—</span>;
+  return (
+    <span className="tnum" style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+      <span style={{ fontWeight: 700, color: GRADE_STYLE[grade].ink }}>{window.fmt.int(count)}</span>
+      <span style={{ fontSize: 10.5, color: "var(--fg-4)", whiteSpace: "nowrap" }}>{cost != null ? `${money(cost)} cada` : ""}</span>
+    </span>
+  );
+}
+
 function PainTable({ pains, money }) {
-  const cols = "1.6fr .8fr .6fr .7fr .6fr .6fr";
+  const cols = "1.6fr .8fr .55fr .7fr .6fr .6fr .6fr .55fr .6fr";
   return (
     <div style={{ marginTop: 14 }}>
       <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
-        <span>Dor</span><span style={{ textAlign: "right" }}>Investido</span><span style={{ textAlign: "right" }}>Leads</span><span style={{ textAlign: "right" }}>CPL</span><span style={{ textAlign: "right" }}>Ganhos</span><span style={{ textAlign: "right" }}>ROAS</span>
+        <span>Dor</span><span style={{ textAlign: "right" }}>Investido</span><span style={{ textAlign: "right" }}>Leads</span><span style={{ textAlign: "right" }}>CPL</span>
+        {GRADES.map((g) => (
+          <span key={g} title={`clientes ${g} que a dor trouxe · custo por cada`} style={{ textAlign: "right", color: GRADE_STYLE[g].ink }}>Cliente {g}</span>
+        ))}
+        <span style={{ textAlign: "right" }}>Ganhos</span><span style={{ textAlign: "right" }}>ROAS</span>
       </div>
       {pains.filter((p) => p.code).map((p) => (
         <div key={p.code} style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "12px 24px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5 }}>
@@ -929,6 +959,9 @@ function PainTable({ pains, money }) {
           <span className="tnum" style={{ textAlign: "right" }}>{money(p.spend)}</span>
           <span className="tnum" style={{ textAlign: "right" }}>{window.fmt.int(p.leads)}</span>
           <span className="tnum" style={{ textAlign: "right" }}>{p.cpl != null ? money(p.cpl) : "—"}</span>
+          {GRADES.map((g) => (
+            <GradeCell key={g} grade={g} count={p.abc?.[g] || 0} cost={p.abcCost?.[g]} money={money} />
+          ))}
           <span className="tnum" style={{ textAlign: "right", fontWeight: 600 }}>{window.fmt.int(p.won)}</span>
           <span className="tnum" style={{ textAlign: "right", fontWeight: 600, color: p.roas == null ? "var(--fg-4)" : p.roas >= 3 ? "var(--pos)" : "var(--warn)" }}>{p.roas != null ? String(p.roas).replace(".", ",") + "x" : "—"}</span>
         </div>

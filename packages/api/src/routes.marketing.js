@@ -38,6 +38,30 @@ export function painCode(adName) {
   return m ? m[1].toUpperCase() : null;
 }
 
+// Cliente A/B/C — a MESMA régua do leadTier() da web (packages/web/src/lib/ui.js,
+// mantê-las iguais): pontos de CONTAS + ANÚNCIOS na maior conta (listings;
+// `volume` é o legado semanal). A = 5+ pts · B = 2+ · C = resto; lead sem
+// nenhuma resposta fica de fora (null).
+const GRADE_ACCOUNTS = { "1": 0, "2": 1, "3-5": 2, "6-10": 3, "10+": 4 };
+const GRADE_LISTINGS = { "0-100": 0, "100-500": 1, "500-2000": 2, "2000-10000": 3, "10000+": 4 };
+const GRADE_VOLUME = { "0-10": 0, "10-50": 1, "50-200": 2, "200+": 3 };
+export function leadGrade(l) {
+  const acc = GRADE_ACCOUNTS[l?.accounts];
+  const ads = l?.listings != null && l.listings !== "" ? GRADE_LISTINGS[l.listings] : GRADE_VOLUME[l?.volume];
+  if (acc == null && ads == null) return null;
+  const pts = (acc ?? 0) + (ads ?? 0);
+  return pts >= 5 ? "A" : pts >= 2 ? "B" : "C";
+}
+const GRADES = ["A", "B", "C"];
+const gradeCounts = (leads) => {
+  const abc = { A: 0, B: 0, C: 0 };
+  for (const l of leads) { const g = leadGrade(l); if (g) abc[g] += 1; }
+  return abc;
+};
+// Custo por cliente de cada grade: investimento do grupo ÷ leads daquela grade.
+const gradeCost = (spend, abc) =>
+  Object.fromEntries(GRADES.map((k) => [k, abc[k] > 0 ? Math.round((spend / abc[k]) * 100) / 100 : null]));
+
 // Número do nome do arquivo: tira a extensão (senão o "4" de ".mp4" conta) e
 // pega a MAIOR sequência de dígitos (o id do vídeo, não um "v2" solto no meio).
 export function fileNumber(filename) {
@@ -459,8 +483,14 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       // pede o valor ao mover pra ganho). Com o spend vira ROAS — a resposta
       // pra "qual campanha traz RECEITA", não só lead/ganho barato.
       const revenue = wonLeads.reduce((s, l) => s + (Number(l.amount) || 0), 0);
+      // Quantos clientes A/B/C o grupo trouxe (grade do lead atribuído) e
+      // quanto custou CADA um por grade — responde "essa dor/anúncio traz
+      // cliente grande ou só lead C barato?".
+      const abc = gradeCounts(matched);
       return {
         ...g,
+        abc,
+        abcCost: gradeCost(g.spend, abc),
         spend: Math.round(g.spend * 100) / 100,
         cplMeta: g.metaLeads > 0 ? Math.round((g.spend / g.metaLeads) * 100) / 100 : null,
         leads: n,
@@ -499,20 +529,22 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     // Quebra por DOR — o código "[A]" no nome do anúncio agrupa spend/leads;
     // rótulo humano vem de product.painMap. "won" = leads atribuídos ao anúncio
     // (por UTM content) que estão em estágio de ganho — a resposta pra "qual dor
-    // traz lead que FECHA", não só lead barato.
+    // traz lead que FECHA", não só lead barato. "abc" soma as grades dos leads
+    // atribuídos aos anúncios da dor (cliente A/B/C, régua do leadTier).
     const byPain = {};
     for (const a of ads) {
       const code = painCode(a.name);
       const k = code || "_sem";
       const p = byPain[k] || (byPain[k] = {
         code, label: code ? (product.painMap || {})[code] || code : "Sem código",
-        spend: 0, leads: 0, won: 0, revenue: 0, adsCount: 0,
+        spend: 0, leads: 0, won: 0, revenue: 0, adsCount: 0, abc: { A: 0, B: 0, C: 0 },
       });
       p.spend += a.spend;
       p.leads += a.leads;
       p.adsCount += 1;
       p.won += a.won; // já calculado por anúncio no finishGroup
       p.revenue += a.revenue;
+      for (const grade of GRADES) p.abc[grade] += a.abc[grade];
     }
     const pains = Object.values(byPain)
       .map((p) => ({
@@ -522,6 +554,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         costPerWin: p.won > 0 ? Math.round((p.spend / p.won) * 100) / 100 : null,
         revenue: Math.round(p.revenue * 100) / 100,
         roas: p.spend > 0 && p.revenue > 0 ? Math.round((p.revenue / p.spend) * 100) / 100 : null,
+        abcCost: gradeCost(p.spend, p.abc),
       }))
       .sort((a, b) => b.spend - a.spend);
 
