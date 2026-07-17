@@ -363,7 +363,8 @@ function MetricsScreen() {
         </Card>
 
         <CompactAdsCard objects={compactObjects} metrics={metricMaps} money={money} busyIds={busyIds}
-          onToggle={objects && !objects.error ? toggleObject : null} error={objects?.error} />
+          onToggle={objects && !objects.error ? toggleObject : null}
+          onBudget={objects && !objects.error ? commitBudget : null} error={objects?.error} />
       </div>
     </div>
   );
@@ -423,59 +424,126 @@ function Toggle({ on, label, busy, disabled = false, onChange }) {
   );
 }
 
-function CompactAdsCard({ objects, metrics, money, busyIds, onToggle, error }) {
+function CompactAdsCard({ objects, metrics, money, busyIds, onToggle, onBudget, error }) {
   const [level, setLevel] = useState("campaigns");
+  // Drill-down do Gerenciador: clicar no NOME da campanha/conjunto vira filtro
+  // (chip com ✕) e pula pro nível de baixo — Conjuntos/Anúncios passam a mostrar
+  // só os filhos da seleção até o chip ser limpo.
+  const [selCampaign, setSelCampaign] = useState(null); // { id, name } | null
+  const [selAdset, setSelAdset] = useState(null);
   const levels = [
     { value: "campaigns", label: "Campanhas", singular: "Campanha" },
     { value: "adsets", label: "Conjuntos", singular: "Conjunto" },
     { value: "ads", label: "Anúncios", singular: "Anúncio" },
   ];
   const current = levels.find((item) => item.value === level);
-  const rows = objects?.[level] || [];
+  const all = objects?.[level] || [];
+  const rows = level === "campaigns" ? all
+    : level === "adsets" ? all.filter((s) => !selCampaign || String(s.campaignId) === selCampaign.id)
+    : all.filter((a) => (!selCampaign || String(a.campaignId) === selCampaign.id) && (!selAdset || String(a.adsetId) === selAdset.id));
   const delivery = (object) => {
     const status = object.effectiveStatus || object.status;
     return DELIVERY[status] || { label: status ? String(status).toLowerCase().replaceAll("_", " ") : "sem status", tone: "var(--fg-4)" };
   };
-
+  const drill = (object) => {
+    if (level === "campaigns") { setSelCampaign({ id: String(object.id), name: object.name || object.id }); setSelAdset(null); setLevel("adsets"); }
+    else if (level === "adsets") { setSelAdset({ id: String(object.id), name: object.name || object.id }); setLevel("ads"); }
+  };
+  const chip = (label, onClear) => (
+    <span className="mono" style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 4px 0 10px", borderRadius: 999, fontSize: 11, border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)" }}>
+      {label}
+      <button onClick={onClear} title="limpar filtro" style={{ fontSize: 12, padding: "0 6px", color: "var(--accent)" }}>✕</button>
+    </span>
+  );
+  const pct = (v) => (v != null ? String(v).replace(".", ",") + "%" : "—");
+  // Colunas fixas (a mesma régua no cabeçalho e nas linhas); o card rola na
+  // horizontal por arrasto (DragScroll) — largura mínima segura o alinhamento.
+  const cols = "46px minmax(190px,1.6fr) 105px 150px 95px 50px 150px 80px 70px 85px 85px 95px 70px";
+  const minW = 1460;
+  const head = { textAlign: "right" };
   return (
-    <Card title="Anúncios" hint="estilo Gerenciador · toggle pausa na Meta"
+    <Card title="Anúncios" hint="estilo Gerenciador · toggle pausa na Meta · nome drill-down"
       action={<Segmented value={level} onChange={setLevel} options={levels.map(({ value, label }) => ({ value, label }))} />}
       style={{ overflow: "hidden" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "46px 1.7fr .7fr .75fr .5fr .9fr .65fr", gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
-        <span /><span>{current.singular}</span><span>Status</span><span style={{ textAlign: "right" }}>Investido</span><span style={{ textAlign: "right" }}>Leads</span><span title="clientes A/B/C atribuídos (UTM) · custo por cada" style={{ textAlign: "right" }}>Clientes ABC</span><span style={{ textAlign: "right" }}>CPL</span>
-      </div>
-      {error && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--neg)", fontSize: 12.5 }}>{error}</div>}
-      {!objects && !error && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--fg-4)", fontSize: 12.5 }}>carregando conta de anúncios…</div>}
-      {objects && !rows.length && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--fg-4)", fontSize: 12.5 }}>nenhum item neste nível</div>}
-      {rows.map((object) => {
-        const m = metrics?.[level]?.[String(object.id)] || object;
-        const state = delivery(object);
-        const leads = Number(m?.leads) || 0;
-        const spend = Number(m?.spend) || 0;
-        const cpl = m?.cpl != null ? m.cpl : leads ? spend / leads : null;
-        const active = object.status ? object.status !== "PAUSED" : state.label !== "pausado";
-        return (
-          <div key={object.id} style={{ display: "grid", gridTemplateColumns: "46px 1.7fr .7fr .75fr .5fr .9fr .65fr", gap: 12, padding: "12px 24px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5, opacity: active ? 1 : .7 }}>
-            <Toggle on={active} label={object.name || object.id} busy={busyIds?.has(object.id)} disabled={!onToggle || !object.status} onChange={() => onToggle?.(level, object)} />
-            <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{object.name || object.id}</span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--fg-2)" }}><span style={{ width: 7, height: 7, borderRadius: 99, background: state.tone }} />{state.label}</span>
-            <span className="tnum" style={{ textAlign: "right" }}>{money(spend)}</span>
-            <span className="tnum" style={{ textAlign: "right" }}>{window.fmt.int(leads)}</span>
-            {/* uma linha por grade que o anúncio trouxe: "2 A · R$ 43,00 cada" */}
-            <span className="tnum" style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1, fontSize: 11.5 }}>
-              {m?.abc && GRADES.some((g) => m.abc[g] > 0)
-                ? GRADES.filter((g) => m.abc[g] > 0).map((g) => (
-                  <span key={g} style={{ whiteSpace: "nowrap", color: "var(--fg-3)" }}>
-                    <span style={{ fontWeight: 700, color: GRADE_STYLE[g].ink }}>{m.abc[g]} {g}</span>
-                    {m.abcCost?.[g] != null ? ` · ${money(m.abcCost[g])} cada` : ""}
-                  </span>
-                ))
-                : <span style={{ color: "var(--fg-4)", fontSize: 13.5 }}>—</span>}
-            </span>
-            <span className="tnum" style={{ textAlign: "right" }}>{cpl != null ? money(cpl) : "—"}</span>
+      {(selCampaign || selAdset) && (
+        <div style={{ display: "flex", gap: 8, padding: "0 24px 12px", flexWrap: "wrap" }}>
+          {selCampaign && chip(`campanha: ${selCampaign.name}`, () => { setSelCampaign(null); setSelAdset(null); })}
+          {selAdset && chip(`conjunto: ${selAdset.name}`, () => setSelAdset(null))}
+        </div>
+      )}
+      <DragScroll>
+        <div style={{ minWidth: minW }}>
+          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+            <span /><span>{current.singular}</span><span>Status</span>
+            <span title="orçamento diário · editar e confirmar ✓ replica no Gerenciador" style={head}>Orçamento/dia</span>
+            <span style={head}>Investido</span><span style={head}>Leads</span>
+            <span title="clientes A/B/C atribuídos (UTM) · custo por cada" style={head}>Clientes ABC</span>
+            <span style={head}>CPL</span>
+            <span title="cliques no link ÷ impressões" style={head}>CTR link</span>
+            <span title="investido ÷ cliques no link" style={head}>CPC link</span>
+            <span title="conversões: leads atribuídos (UTM) que viraram ganho" style={head}>Conversões</span>
+            <span title="valor convertido: soma do valor dos negócios ganhos" style={head}>Valor conv.</span>
+            <span title="reproduções de 3s ÷ impressões" style={head}>3s play</span>
           </div>
-        );
-      })}
+          {error && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--neg)", fontSize: 12.5 }}>{error}</div>}
+          {!objects && !error && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--fg-4)", fontSize: 12.5 }}>carregando conta de anúncios…</div>}
+          {objects && !rows.length && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--fg-4)", fontSize: 12.5 }}>{all.length ? "nada da seleção neste nível (limpe o chip ✕)" : "nenhum item neste nível"}</div>}
+          {rows.map((object) => {
+            const m = metrics?.[level]?.[String(object.id)] || object;
+            const state = delivery(object);
+            const leads = Number(m?.leads) || 0;
+            const spend = Number(m?.spend) || 0;
+            const cpl = m?.cpl != null ? m.cpl : leads ? spend / leads : null;
+            const impressions = Number(m?.impressions) || 0;
+            const play3s = impressions > 0 && m?.video3s != null ? Math.round((Number(m.video3s) / impressions) * 1000) / 10 : null;
+            const active = object.status ? object.status !== "PAUSED" : state.label !== "pausado";
+            const canDrill = level !== "ads";
+            return (
+              <div key={object.id} style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "12px 24px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5, opacity: active ? 1 : .7 }}>
+                <Toggle on={active} label={object.name || object.id} busy={busyIds?.has(object.id)} disabled={!onToggle || !object.status} onChange={() => onToggle?.(level, object)} />
+                <span onClick={canDrill ? () => drill(object) : undefined}
+                  title={canDrill ? `ver ${level === "campaigns" ? "os conjuntos" : "os anúncios"} de "${object.name || object.id}"` : undefined}
+                  style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: canDrill ? "pointer" : "default", color: canDrill ? "var(--accent)" : "var(--fg-1)" }}>
+                  {object.name || object.id}
+                </span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--fg-2)" }}><span style={{ width: 7, height: 7, borderRadius: 99, background: state.tone }} />{state.label}</span>
+                {object.dailyBudget != null && onBudget ? (
+                  <BudgetCell o={object} onCommit={(v) => onBudget(level, object, v)} />
+                ) : object.lifetimeBudget != null ? (
+                  <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+                    <span className="mono" style={{ fontSize: 12.5 }}>{money(object.lifetimeBudget)}</span>
+                    <span className="mono" style={{ fontSize: 9, color: "var(--fg-4)" }}>total</span>
+                  </span>
+                ) : (
+                  <span className="mono" style={{ textAlign: "right", fontSize: 10.5, color: "var(--fg-4)" }}
+                    title={level === "campaigns" ? "orçamento definido nos conjuntos (ABO)" : "orçamento definido na campanha (CBO)"}>
+                    {object.status && level === "campaigns" ? "no conjunto" : object.status && level === "adsets" ? "na campanha" : ""}
+                  </span>
+                )}
+                <span className="tnum" style={{ textAlign: "right" }}>{money(spend)}</span>
+                <span className="tnum" style={{ textAlign: "right" }}>{window.fmt.int(leads)}</span>
+                {/* uma linha por grade que o anúncio trouxe: "2 A · R$ 43,00 cada" */}
+                <span className="tnum" style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1, fontSize: 11.5 }}>
+                  {m?.abc && GRADES.some((g) => m.abc[g] > 0)
+                    ? GRADES.filter((g) => m.abc[g] > 0).map((g) => (
+                      <span key={g} style={{ whiteSpace: "nowrap", color: "var(--fg-3)" }}>
+                        <span style={{ fontWeight: 700, color: GRADE_STYLE[g].ink }}>{m.abc[g]} {g}</span>
+                        {m.abcCost?.[g] != null ? ` · ${money(m.abcCost[g])} cada` : ""}
+                      </span>
+                    ))
+                    : <span style={{ color: "var(--fg-4)", fontSize: 13.5 }}>—</span>}
+                </span>
+                <span className="tnum" style={{ textAlign: "right" }}>{cpl != null ? money(cpl) : "—"}</span>
+                <span className="tnum" style={{ textAlign: "right" }}>{pct(m?.ctr)}</span>
+                <span className="tnum" style={{ textAlign: "right" }}>{m?.costPerLinkClick != null ? money(m.costPerLinkClick) : "—"}</span>
+                <span className="tnum" style={{ textAlign: "right", fontWeight: 600 }}>{m?.won != null ? window.fmt.int(m.won) : "—"}</span>
+                <span className="tnum" style={{ textAlign: "right", fontWeight: 600 }}>{m?.revenue != null && m.revenue > 0 ? money(m.revenue) : "—"}</span>
+                <span className="tnum" style={{ textAlign: "right" }}>{pct(play3s)}</span>
+              </div>
+            );
+          })}
+        </div>
+      </DragScroll>
     </Card>
   );
 }
