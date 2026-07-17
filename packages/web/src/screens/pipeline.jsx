@@ -87,8 +87,6 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
 
   // Group active-product leads by stage
   const stages = s ? s.funnel.map(f => f.stage) : [];
-  // Config por estágio vinda de Ajustes (cor + regra "parado → Nd" + cadência).
-  const stageMeta = s ? Object.fromEntries(s.funnel.map(f => [f.stage, f])) : {};
   // Fatia por fase do processo: SDR vê a pré-venda (+ Desqualificado, o terminal
   // dela); Closer vê da call em diante (sem Desqualificado); CS vê o pós-venda
   // (integração/acompanhamento + Ganho).
@@ -171,7 +169,6 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
         <KanbanBoard
           s={s}
           stages={visibleStages}
-          stageMeta={stageMeta}
           byStage={byStage}
           highlight={highlight}
           onMove={requestMove}
@@ -266,26 +263,32 @@ function PersonFilter({ person, leads, onChange, me }) {
 }
 
 // ─────────────────────────────────────────────── Kanban
-function KanbanBoard({ s, stages, stageMeta = {}, byStage, highlight, onMove, selected, setSelected, onOpenLead, wonLeads, showWon }) {
+function KanbanBoard({ s, stages, byStage, highlight, onMove, selected, setSelected, onOpenLead, wonLeads, showWon }) {
   const [dragging, setDragging] = useStP(null);
+  // O resumo do Ganho entra logo à direita do pós-venda (Acompanhamento), antes
+  // das filas fora da régua (ex.: Nutrição); sem etapa de entrega visível, fim.
+  const wonAfter = stages.reduce((acc, st, i) =>
+    ["integracao", "posvenda"].includes(stageKind(s, st)) ? i : acc, stages.length - 1);
   return (
     <div style={{ flex: 1, overflowX: "auto", paddingBottom: 8, display: "flex", gap: 12, alignItems: "flex-start" }}>
-      {stages.map((st) => (
-        <KanbanColumn key={st}
-          s={s}
-          stage={st}
-          meta={stageMeta[st]}
-          cards={byStage[st] || []}
-          highlight={highlight === st}
-          onDropCard={(id) => { onMove(id, st); setDragging(null); }}
-          dragging={dragging}
-          setDragging={setDragging}
-          selected={selected}
-          setSelected={setSelected}
-          onOpenLead={onOpenLead}
-        />
+      {stages.map((st, i) => (
+        <React.Fragment key={st}>
+          <KanbanColumn
+            s={s}
+            stage={st}
+            cards={byStage[st] || []}
+            highlight={highlight === st}
+            onDropCard={(id) => { onMove(id, st); setDragging(null); }}
+            dragging={dragging}
+            setDragging={setDragging}
+            selected={selected}
+            setSelected={setSelected}
+            onOpenLead={onOpenLead}
+          />
+          {showWon && i === wonAfter && <WonSummary leads={wonLeads} />}
+        </React.Fragment>
       ))}
-      {showWon && <WonSummary leads={wonLeads} />}
+      {showWon && stages.length === 0 && <WonSummary leads={wonLeads} />}
     </div>
   );
 }
@@ -305,29 +308,12 @@ function WonSummary({ leads }) {
   );
 }
 
-// Dias que o card está parado no estágio atual. Base: stageSince (carimbado a cada
-// mudança de estágio); fallback createdAt pra cards antigos que ainda não moveram.
-// null quando não há timestamp — aí o badge não aparece.
-function daysInStage(card) {
-  const ts = card?.stageSince || card?.createdAt;
-  if (!ts) return null;
-  const ms = Date.now() - new Date(ts).getTime();
-  if (!Number.isFinite(ms)) return null;
-  return Math.max(0, Math.floor(ms / 86400000));
-}
-
-function KanbanColumn({ s, stage, meta, cards, highlight, onDropCard, dragging, setDragging, selected, setSelected, onOpenLead }) {
+function KanbanColumn({ s, stage, cards, highlight, onDropCard, dragging, setDragging, selected, setSelected, onOpenLead }) {
   const [over, setOver] = useStP(false);
   const [expanded, setExpanded] = useStP(false);
   const total = cards.reduce((a, l) => a + (l.amount || 0), 0);
-  // Card "parado": dias na coluna ≥ staleDays de Ajustes; sem config, 5 dias.
-  const staleLimit = meta?.staleDays == null || meta?.staleDays === "" ? 5 : Number(meta.staleDays);
-  const isStale = (l) => {
-    const dd = daysInStage(l);
-    return dd != null && dd >= staleLimit;
-  };
-  // Ordem temporal: mais novo primeiro. Usa o mesmo timestamp do badge "Nd"
-  // (stageSince, fallback createdAt) pra ordem visual bater com os dias exibidos.
+  // Ordem temporal: mais novo primeiro (stageSince; fallback createdAt pra
+  // cards antigos que ainda não moveram).
   const cardTs = (l) => {
     const t = new Date(l.stageSince || l.createdAt || 0).getTime();
     return Number.isFinite(t) ? t : 0;
@@ -359,7 +345,6 @@ function KanbanColumn({ s, stage, meta, cards, highlight, onDropCard, dragging, 
           <LeadCard
             key={l.id} d={l}
             s={s}
-            stale={isStale(l)}
             currentStage={stage}
             onDragStart={() => setDragging(l.id)}
             selected={selected.has(l.id)}
@@ -381,26 +366,13 @@ function KanbanColumn({ s, stage, meta, cards, highlight, onDropCard, dragging, 
   );
 }
 
-function LeadCard({ d, s, stale, currentStage, onDragStart, selected, onSelect, onOpen }) {
-  const days = daysInStage(d);
+function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen }) {
   const saasCfg = s || (window.SEED?.SAAS || []).find((x) => x.id === d.saas);
   const kind = stageKind(saasCfg, currentStage);
   const phase = phaseOf(kind);
   const next = nextTouchPill(d, { isOpen: workableStages(saasCfg).includes(currentStage) });
   const ownerId = phase === "entrega" ? (d.integrator || d.closer || d.owner) : (d.closer || d.owner);
   const showAvatar = phase !== "sdr" && ownerId;
-  const attempts = Number(d.stageAttempts) || (Array.isArray(d.attempts) ? d.attempts.length : 0);
-  const descriptor = ["contato", "qualificacao"].includes(kind) && attempts > 0
-    ? `${attempts}ª tentativa`
-    : (d.source || d.utm?.source || "");
-  const details = [d.company, descriptor].filter(Boolean).join(" · ");
-  const age = (() => {
-    const ts = d.stageSince || d.createdAt;
-    if (!ts) return "";
-    const hours = Math.max(0, Math.floor((Date.now() - new Date(ts).getTime()) / 3600000));
-    if (!Number.isFinite(hours)) return "";
-    return hours < 24 ? `há ${Math.max(1, hours)}h` : `${days}d na etapa`;
-  })();
   const nextLabel = next?.text?.replace(/^[◆●]\s*/, "") || "";
 
   return (
@@ -415,9 +387,9 @@ function LeadCard({ d, s, stale, currentStage, onDragStart, selected, onSelect, 
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</div>
-          <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {details}{details && age ? " · " : ""}<span style={{ color: stale ? "var(--neg)" : undefined, fontWeight: stale ? 600 : undefined }}>{age}</span>
-          </div>
+          {d.company && (
+            <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.company}</div>
+          )}
         </div>
         {showAvatar && <Avatar id={ownerId} name={displayName(ownerId)} size={24} />}
       </div>
