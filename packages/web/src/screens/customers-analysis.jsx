@@ -1,0 +1,162 @@
+import React from "react";
+import { StatTile, FilterTab, Card } from "../components/viz.jsx";
+
+// Análise da base de clientes — números do período sobre a coleção customers:
+// total faturado (valor dos contratos fechados), clientes novos, ticket médio,
+// preço mensal médio, churn e LTV. O período filtra por startedAt (entradas) e
+// endedAt (churn); "Tudo" olha a base inteira. Nada aqui é gravado: é leitura
+// dos mesmos campos que o gate de fechamento e o form de cliente preenchem.
+
+const { useState, useMemo } = React;
+const DAY = 86_400_000;
+
+// customer.arr guarda o ANUAL (mensal ×12, semestral ×2 no convertWonLead).
+// O valor do CONTRATO fechado é o arr desfeito desse fator.
+function contractValue(c) {
+  const t = String(c.plan || "").toLowerCase();
+  const factor = t.includes("mensal") ? 12 : t.includes("semestral") ? 2 : 1;
+  return (Number(c.arr) || 0) / factor;
+}
+
+function planBucket(plan) {
+  const t = String(plan || "").toLowerCase();
+  if (t.includes("único") || t.includes("unico")) return "Serviço único";
+  if (t.includes("semestral")) return "Semestral";
+  if (t.includes("mensal")) return "Mensal";
+  if (t.includes("anual")) return "Anual";
+  return "sem plano";
+}
+const PLAN_ORDER = ["Anual", "Semestral", "Serviço único", "Mensal", "sem plano"];
+
+const SHORTCUTS = [
+  { key: "tudo", label: "Tudo" },
+  { key: "mes", label: "Este mês" },
+  { key: "30d", label: "30 dias" },
+  { key: "90d", label: "90 dias" },
+  { key: "ano", label: "Este ano" },
+];
+
+function shortcutRange(key, now) {
+  const d = new Date(now);
+  if (key === "mes") return [new Date(d.getFullYear(), d.getMonth(), 1).getTime(), null];
+  if (key === "30d") return [now - 30 * DAY, null];
+  if (key === "90d") return [now - 90 * DAY, null];
+  if (key === "ano") return [new Date(d.getFullYear(), 0, 1).getTime(), null];
+  return [null, null]; // tudo
+}
+
+export function CustomersAnalysis({ customers }) {
+  const money = window.fmt.money;
+  const [shortcut, setShortcut] = useState("tudo");
+  const [fromInput, setFromInput] = useState("");
+  const [toInput, setToInput] = useState("");
+  const custom = shortcut === "custom";
+
+  const m = useMemo(() => {
+    const now = Date.now();
+    let [fromT, toT] = shortcutRange(shortcut, now);
+    if (custom) {
+      fromT = fromInput ? new Date(`${fromInput}T00:00:00`).getTime() : null;
+      toT = toInput ? new Date(`${toInput}T23:59:59`).getTime() : null;
+    }
+    const endT = toT ?? now;
+    const inPeriod = (iso) => {
+      const t = new Date(iso).getTime();
+      return Number.isFinite(t) && (fromT == null || t >= fromT) && t <= endT;
+    };
+
+    // Cohort = clientes que ENTRARAM no período (em "Tudo", a base inteira,
+    // incluindo cadastros antigos sem startedAt).
+    const cohort = customers.filter((c) => (c.startedAt ? inPeriod(c.startedAt) : fromT == null));
+    const faturado = cohort.reduce((a, c) => a + contractValue(c), 0);
+    const withMrr = cohort.filter((c) => (Number(c.arr) || 0) > 0);
+    const mrrMedio = withMrr.length ? withMrr.reduce((a, c) => a + (Number(c.arr) || 0) / 12, 0) / withMrr.length : 0;
+    const ticket = cohort.length ? faturado / cohort.length : 0;
+
+    const planos = new Map();
+    for (const c of cohort) {
+      const b = planBucket(c.plan);
+      planos.set(b, (planos.get(b) || 0) + 1);
+    }
+
+    // Churn do período: quem saiu (endedAt) ÷ base ativa no INÍCIO do período.
+    // Em "Tudo", base = todo mundo que já foi cliente.
+    const churned = customers.filter((c) => c.endedAt && inPeriod(c.endedAt));
+    const baseStart = fromT == null
+      ? customers.length
+      : customers.filter((c) => {
+          const s = c.startedAt ? new Date(c.startedAt).getTime() : 0;
+          const e = c.endedAt ? new Date(c.endedAt).getTime() : Infinity;
+          return s < fromT && e >= fromT;
+        }).length;
+    const churnPct = baseStart > 0 ? churned.length / baseStart : null;
+
+    // LTV = preço mensal médio ÷ churn MENSAL (churn do período diluído nos
+    // meses do período). Sem churn não existe divisor: mostra "sem churn ainda".
+    const firstStart = Math.min(...customers.map((c) => (c.startedAt ? new Date(c.startedAt).getTime() : Infinity)));
+    const spanStart = fromT ?? (Number.isFinite(firstStart) ? firstStart : now);
+    const months = Math.max((endT - spanStart) / (30 * DAY), 1);
+    const churnMonthly = churnPct != null ? churnPct / months : null;
+    const lifeMonths = churnMonthly > 0 ? 1 / churnMonthly : null;
+    const ltv = lifeMonths != null && mrrMedio > 0 ? mrrMedio * lifeMonths : null;
+
+    return { cohort, faturado, mrrMedio, ticket, planos, churned, baseStart, churnPct, lifeMonths, ltv };
+  }, [customers, shortcut, custom, fromInput, toInput]);
+
+  const pct = (v) => `${Math.round(v * 100)}%`;
+  const dateField = {
+    height: 32, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)",
+    background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5,
+  };
+  const planosTotal = m.cohort.length || 1;
+  const planRows = PLAN_ORDER.filter((b) => m.planos.get(b)).map((b) => ({ bucket: b, count: m.planos.get(b) }));
+
+  return (
+    <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        {SHORTCUTS.map((s) => (
+          <FilterTab key={s.key} active={shortcut === s.key} onClick={() => setShortcut(s.key)}>{s.label}</FilterTab>
+        ))}
+        <span style={{ width: 1, height: 20, background: "var(--line-2)", margin: "0 6px" }} />
+        <input type="date" value={fromInput} onChange={(e) => { setFromInput(e.target.value); setShortcut("custom"); }}
+          aria-label="De" style={{ ...dateField, borderColor: custom && fromInput ? "var(--accent)" : "var(--line-2)" }} />
+        <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>até</span>
+        <input type="date" value={toInput} onChange={(e) => { setToInput(e.target.value); setShortcut("custom"); }}
+          aria-label="Até" style={{ ...dateField, borderColor: custom && toInput ? "var(--accent)" : "var(--line-2)" }} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+        <StatTile label="Total faturado" value={money(m.faturado)} delta="contratos fechados no período" />
+        <StatTile label="Clientes novos" value={String(m.cohort.length)} delta="entraram no período" />
+        <StatTile label="Ticket médio" value={money(m.ticket)} delta="faturado ÷ clientes novos" />
+        <StatTile label="Preço mensal médio" value={money(m.mrrMedio)} delta="média do mensal (ARR ÷ 12)" />
+        <StatTile label="Churn" tone={m.churned.length > 0 ? "down" : "flat"}
+          value={m.churnPct == null ? "—" : pct(m.churnPct)}
+          small={m.churned.length ? `${m.churned.length} ${m.churned.length === 1 ? "saída" : "saídas"}` : ""}
+          delta={m.baseStart ? `sobre base de ${m.baseStart} no início do período` : "sem base no início do período"} />
+        <StatTile label="LTV" value={m.ltv != null ? money(m.ltv) : "—"}
+          delta={m.ltv != null
+            ? `vida média ~${Math.round(m.lifeMonths)} meses × preço mensal médio`
+            : "sem churn no período ainda (marque a saída no cliente pra calcular)"} />
+      </div>
+
+      <Card title="Quantidade de planos" hint="clientes novos do período, por plano fechado">
+        <div style={{ padding: "8px 24px 16px" }}>
+          {planRows.length === 0 && (
+            <div style={{ fontSize: 12.5, color: "var(--fg-4)", padding: "8px 0" }}>Nenhum cliente no período.</div>
+          )}
+          {planRows.map(({ bucket, count }) => (
+            <div key={bucket} style={{ display: "grid", gridTemplateColumns: "140px 1fr auto auto", alignItems: "center", gap: 12, padding: "7px 0", borderBottom: "1px solid var(--line-faint)", fontSize: 13 }}>
+              <span style={{ fontWeight: 600 }}>{bucket}</span>
+              <div style={{ height: 8, borderRadius: 4, background: "var(--bg-2)", overflow: "hidden" }}>
+                <div style={{ width: `${Math.max((count / planosTotal) * 100, 2)}%`, height: "100%", borderRadius: 4, background: "var(--accent)" }} />
+              </div>
+              <span className="tnum" style={{ fontWeight: 600 }}>{count}</span>
+              <span className="tnum" style={{ fontSize: 12, color: "var(--fg-4)", width: 38, textAlign: "right" }}>{pct(count / planosTotal)}</span>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}

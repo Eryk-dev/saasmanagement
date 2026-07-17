@@ -7,6 +7,7 @@ import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/mile
 import { ActivityList } from "../components/timeline.jsx";
 import { CallSummaryCard } from "./today.jsx";
 import { SubscriptionsScreen } from "./subscriptions.jsx";
+import { CustomersAnalysis } from "./customers-analysis.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { leadTier, waLink } from "../lib/ui.js";
 import { displayName } from "../lib/users.js";
@@ -68,7 +69,11 @@ function CustomersScreen({ initialTab = "base" }) {
   const mainSub = (c) => subsOf(c).find((s) => s.status === "active" || s.status === "past_due") || subsOf(c)[0] || null;
   // sub.plan é FK pra `plans` — resolve o nome (nunca mostrar o id cru na UI).
   const planLabel = (s) => plans.find((p) => p.id === s.plan)?.name || CYCLE_LABEL[s.cycle] || s.cycle || "plano";
-  const totalMrr = customers.reduce((a, c) => a + (c.arr || 0), 0) / 12;
+  // Cliente com endedAt no passado deu churn: fica fora do MRR, da contagem de
+  // ativos e da régua (mas segue na tabela e na Análise).
+  const isChurned = (c) => c.endedAt && new Date(c.endedAt).getTime() <= Date.now();
+  const activeCustomers = customers.filter((c) => !isChurned(c));
+  const totalMrr = activeCustomers.reduce((a, c) => a + (c.arr || 0), 0) / 12;
   const money = window.fmt.money;
   const shownCustomers = showAll ? customers : customers.slice(0, 50);
   const lastContact = (c) => {
@@ -89,22 +94,24 @@ function CustomersScreen({ initialTab = "base" }) {
   const nextActions = useMemo(() => {
     const order = { late: 0, soon: 1, next: 2 };
     return customers
+      .filter((c) => !isChurned(c))
       .map((c) => ({ customer: c, milestone: nextMilestone(withCycle(c), product) }))
       .filter((x) => x.milestone)
       .sort((a, b) => (order[a.milestone.status] - order[b.milestone.status]) || (new Date(a.milestone.dueAt) - new Date(b.milestone.dueAt)));
   }, [customers, subs, product, tick, version]);
-  const noRuler = useMemo(() => customers.filter((c) => !c.startedAt), [customers]);
+  const noRuler = useMemo(() => customers.filter((c) => !c.startedAt && !isChurned(c)), [customers]);
 
   if (!product) return <EmptyState title="Nenhum produto cadastrado" hint="Crie o produto em Ajustes." />;
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-      <PageHead title="Clientes" sub={`${customers.length} ${customers.length === 1 ? "ativo" : "ativos"} · MRR ${money(totalMrr)}`}>
-        <Segmented value={tab} onChange={setTab} options={[{ value: "base", label: "Clientes" }, { value: "billing", label: "Assinaturas" }]} />
+      <PageHead title="Clientes" sub={`${activeCustomers.length} ${activeCustomers.length === 1 ? "ativo" : "ativos"} · MRR ${money(totalMrr)}`}>
+        <Segmented value={tab} onChange={setTab} options={[{ value: "base", label: "Clientes" }, { value: "analysis", label: "Análise" }, { value: "billing", label: "Assinaturas" }]} />
         {tab === "base" && <PrimaryButton onClick={() => openForm("customers", { saas: product.id })}>+ novo cliente</PrimaryButton>}
       </PageHead>
 
       {tab === "billing" && <SubscriptionsScreen saasId={product.id} />}
+      {tab === "analysis" && <CustomersAnalysis customers={customers} />}
 
       {tab === "base" && (
       <div style={{ padding: "16px var(--pad-x) 56px" }}>
@@ -202,7 +209,7 @@ function CustomersScreen({ initialTab = "base" }) {
                             : c.startedAt ? <Pill tone="pos">régua completa</Pill> : <Pill tone="mut">sem início</Pill>}
                         </td>
                         <td style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)" }}>
-                          {st ? <Pill tone={st.tone}>{st.label}</Pill> : <Pill tone="mut">sem assinatura</Pill>}
+                          {isChurned(c) ? <Pill tone="neg">churn</Pill> : st ? <Pill tone={st.tone}>{st.label}</Pill> : <Pill tone="mut">sem assinatura</Pill>}
                         </td>
                       </tr>
                     );
@@ -261,7 +268,7 @@ function CustomerFacts({ customer, lead, product }) {
     ["Origem", lead?.source],
     ["Faixa de faturamento", lead?.value],
     ["Valor fechado", lead?.amount ? window.fmt.money(lead.amount) : null],
-    ["Pagamento", lead?.paymentMethod ? paymentLabel(lead.paymentMethod) : null],
+    ["Pagamento", (customer.paymentMethod || lead?.paymentMethod) ? paymentLabel(customer.paymentMethod || lead?.paymentMethod) : null],
     ["SDR", lead?.owner ? displayName(lead.owner) : null],
     ["Closer", lead?.closer ? displayName(lead.closer) : null],
     ["Integrador", lead?.integrator ? displayName(lead.integrator) : null],
