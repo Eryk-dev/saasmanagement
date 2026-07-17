@@ -4,7 +4,7 @@ import { useData } from "../data.jsx";
 import { PageHead, Segmented, FilterTab, StatTile, Card } from "../components/viz.jsx";
 import { painCodeOf } from "../lib/pains.js";
 import { useActiveSaas } from "../lib/workspace.js";
-import { EmptyState } from "../atoms.jsx";
+import { EmptyState, PrimaryButton } from "../atoms.jsx";
 import { stageKind } from "../lib/funnel.js";
 import { GRADE_STYLE } from "../lib/ui.js";
 // Métricas — aquisição × funil do produto ativo (substitui a tela Marketing).
@@ -332,12 +332,78 @@ function MetricsScreen() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Publicidade" sub={<span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>aquisição, funil e campanhas · <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--fg-2)", fontSize: 12.5, fontWeight: 500 }}><span style={{ width: 6, height: 6, borderRadius: 99, background: metaOn && product.metaAdAccount ? "var(--pos)" : "var(--fg-4)" }} />{metaOn && product.metaAdAccount ? "Meta conectada" : "Meta não conectada"}</span></span>}>
+        {metaOn && product.metaAdAccount && (
+          <PrimaryButton onClick={() => { setCloneAd((v) => !v); setCreative(false); }}>+ criar anúncio</PrimaryButton>
+        )}
+        {metaOn && product.metaAdAccount && (
+          <button onClick={() => { setCreative((v) => !v); setCloneAd(false); }}
+            title="Criar um anúncio do zero (escolhe copy, CTA e link)"
+            style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)" }}>
+            + criativo do zero
+          </button>
+        )}
+        <button onClick={() => setManual(manual ? null : { date: new Date().toISOString().slice(0, 10), name: "", spend: "" })}
+          style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)" }}>
+          + gasto manual
+        </button>
+        {metaOn && (
+          <button onClick={sync} disabled={syncing}
+            title="Sincroniza o período filtrado agora (além do automático do servidor)"
+            style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", opacity: syncing ? 0.6 : 1 }}>
+            {syncing ? "Sincronizando…" : "↻ sincronizar"}
+          </button>
+        )}
+        {liveAt && (
+          <span className="mono" title="Sync automático no servidor (último horário mostrado); leads chegam na hora via tempo real"
+            style={{ fontSize: 10.5, color: "var(--pos)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--pos)" }} />
+            ao vivo · {liveAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        )}
         {PERIODS.map((period) => <FilterTab key={period.value} active={range.preset === period.value} onClick={() => setRange({ preset: period.value })}>{period.label}</FilterTab>)}
       </PageHead>
 
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         {note && (
           <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>
+        )}
+
+        {cloneAd && (
+          <CloneAdPanel key={"clone-" + product.id} product={product} campaigns={objects && !objects.error ? objects.campaigns : []}
+            onDone={(msg) => { setNote({ ok: true, text: msg }); setCloneAd(false); load(); }}
+            onError={(msg) => setNote({ ok: false, text: msg })}
+            onClose={() => setCloneAd(false)} />
+        )}
+
+        {creative && (
+          <NewCreativePanel key={product.id} product={product} campaigns={objects && !objects.error ? objects.campaigns : []}
+            onDone={(msg) => { setNote({ ok: true, text: msg }); setCreative(false); load(); }}
+            onError={(msg) => setNote({ ok: false, text: msg })}
+            onClose={() => setCreative(false)} />
+        )}
+
+        {manual && (
+          <Card>
+            <div style={{ padding: "14px 16px", display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>Data</span>
+                <input type="date" value={manual.date} onChange={(e) => setManual({ ...manual, date: e.target.value })}
+                  style={{ height: 30, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)" }} />
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 180 }}>
+                <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>Campanha (opcional)</span>
+                <input type="text" placeholder="Entrada manual" value={manual.name} onChange={(e) => setManual({ ...manual, name: e.target.value })}
+                  style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 }} />
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>Gasto (R$)</span>
+                <input type="number" min="0" step="0.01" placeholder="0,00" value={manual.spend} onChange={(e) => setManual({ ...manual, spend: e.target.value })}
+                  style={{ width: 120, height: 30, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)", textAlign: "right" }} />
+              </label>
+              <button onClick={saveManual} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-1)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600 }}>Registrar</button>
+              <button onClick={() => setManual(null)} style={{ height: 30, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>cancelar</button>
+            </div>
+          </Card>
         )}
 
         {data && !data.error && !data.synced && (
@@ -351,6 +417,11 @@ function MetricsScreen() {
                     : "Conecte a Meta (variável META_ACCESS_TOKEN na API + conta de anúncio em Ajustes) ou aguarde a entrada manual de gasto, que chega na fase de marketing."}
                 </div>
               </div>
+              {metaOn && (
+                <button onClick={sync} disabled={syncing} style={{ padding: "8px 14px", borderRadius: "var(--r-1)", fontSize: 13, fontWeight: 600, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", opacity: syncing ? 0.6 : 1 }}>
+                  {syncing ? "Sincronizando…" : "Sincronizar agora"}
+                </button>
+              )}
             </div>
           </Card>
         )}
