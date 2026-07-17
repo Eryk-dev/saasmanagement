@@ -419,6 +419,26 @@ const SCREENS_SEED = {
   ana: ["today", "pipeline", "tasks"],
 };
 
+// Clientes nascidos da conversão automática ficavam com arr 0 — o valor
+// informado no gate de fechamento (lead.amount) não era carregado (corrigido em
+// convertWonLead). Backfill self-idempotente: só cliente com leadId, arr zerado
+// e SEM assinatura (assinatura é a fonte do arr via syncCustomerArr); o valor do
+// lead entra como contrato anual (padrão das ofertas). Plano não é inventado —
+// passa a ser capturado no fechamento daqui pra frente.
+export async function backfillCustomerArrFromLead(repo) {
+  const withSub = new Set((await repo.list("subscriptions")).map((s) => s.customer));
+  let changed = 0;
+  for (const c of await repo.list("customers")) {
+    if (!c.leadId || Number(c.arr) > 0 || withSub.has(c.id)) continue;
+    const lead = await repo.get("leads", c.leadId);
+    const amount = Number(lead?.amount) || 0;
+    if (amount <= 0) continue;
+    await repo.update("customers", c.id, { arr: Math.round(amount) });
+    changed++;
+  }
+  return changed;
+}
+
 export async function ensureUserScreens(repo) {
   let changed = 0;
   for (const [id, screens] of Object.entries(SCREENS_SEED)) {
@@ -510,5 +530,11 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] telas restritas aplicadas em ${n} usuário(s)`);
   } catch (err) {
     console.error("[migration] ensureUserScreens falhou:", err?.message || err);
+  }
+  try {
+    const n = await backfillCustomerArrFromLead(repo);
+    if (n) console.log(`[migration] arr puxado do fechamento em ${n} cliente(s)`);
+  } catch (err) {
+    console.error("[migration] backfillCustomerArrFromLead falhou:", err?.message || err);
   }
 }

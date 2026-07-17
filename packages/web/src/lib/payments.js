@@ -8,3 +8,12 @@ export const PAYMENT_METHODS = [
 ];
 
 export const paymentLabel = (id) => PAYMENT_METHODS.find((p) => p.id === id)?.label || "";
+
+// Plano com que o negócio fechou — também assinalado no gate de fechamento e
+// carregado pro customer no convertWonLead (vira a coluna Plano e a base do arr).
+export const CLOSED_PLANS = [
+  { id: "anual", label: "Anual" },
+  { id: "semestral", label: "Semestral" },
+  { id: "mensal", label: "Mensal" },
+  { id: "unico", label: "Pagamento único" },
+];

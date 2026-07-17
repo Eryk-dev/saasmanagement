@@ -293,12 +293,17 @@ test("lead ganho manda Purchase pro CAPI com o valor do negócio, uma vez só", 
   registerRoutes(app, repo, { metaCapi });
   await repo.create("leads", { id: "l1", saas: "leverads", name: "Ana", stage: "Novo lead", email: "ana@x.com", fbp: "fb.1.1.2", fbc: "fb.1.3.abc" });
 
-  // O modal de fechamento manda amount junto com o stage no mesmo PATCH.
-  await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { stage: "Ganho", amount: 600 } });
+  // O modal de fechamento manda amount + planClosed junto com o stage no mesmo PATCH.
+  await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { stage: "Ganho", amount: 7188, planClosed: "anual" } });
   assert.equal(purchases.length, 1);
   assert.equal(purchases[0].eventId, "won:l1");
   assert.equal(purchases[0].leadId, "l1");
-  assert.equal(purchases[0].value, 600);
+  assert.equal(purchases[0].value, 7188);
+
+  // O cliente nasce com valor e plano puxados do fechamento (arr = anual).
+  const won = (await repo.list("customers")).find((c) => c.leadId === "l1");
+  assert.equal(won.arr, 7188);
+  assert.equal(won.plan, "Anual");
   assert.equal(purchases[0].pixelId, "555666777");
   assert.equal(purchases[0].fbp, "fb.1.1.2");   // cookies persistidos no submit
   assert.equal(purchases[0].fbc, "fb.1.3.abc"); // melhoram o match do Purchase
@@ -313,5 +318,29 @@ test("lead ganho manda Purchase pro CAPI com o valor do negócio, uma vez só", 
   await app.inject({ method: "PATCH", url: "/api/leads/l2", payload: { stage: "Ganho", amount: 100 } });
   assert.equal(purchases.length, 1);
   assert.equal((await repo.list("customers")).length, 2);
+  await app.close();
+});
+
+test("plano mensal anualiza o arr no fechamento; backfill puxa arr de cliente antigo", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("leads", { id: "lm", saas: "leverads", name: "Dyno", stage: "Novo lead" });
+  await app.inject({ method: "PATCH", url: "/api/leads/lm", payload: { stage: "Ganho", amount: 599, planClosed: "mensal" } });
+  const dyno = (await repo.list("customers")).find((c) => c.leadId === "lm");
+  assert.equal(dyno.arr, 7188); // 599/mês × 12 — a tabela mostra MRR = arr/12
+  assert.equal(dyno.plan, "Mensal");
+
+  // Cliente antigo (convertido antes do fix, arr 0, sem assinatura): o backfill
+  // puxa o valor do fechamento. Cliente com assinatura NÃO é tocado (o arr dele
+  // é do syncCustomerArr).
+  const { backfillCustomerArrFromLead } = await import("../src/migrations.js");
+  await repo.create("leads", { id: "lo", saas: "leverads", name: "Store", stage: "Ganho", amount: 7188, customerId: "co" });
+  await repo.create("customers", { id: "co", saas: "leverads", name: "Storecase", leadId: "lo", arr: 0, plan: "" });
+  await repo.create("leads", { id: "ls", saas: "leverads", name: "Sub", stage: "Ganho", amount: 999, customerId: "cs" });
+  await repo.create("customers", { id: "cs", saas: "leverads", name: "ComSub", leadId: "ls", arr: 0 });
+  await repo.create("subscriptions", { id: "s1", customer: "cs", saas: "leverads", status: "active", price: 0, cycle: "monthly" });
+  const n = await backfillCustomerArrFromLead(repo);
+  assert.equal(n, 1);
+  assert.equal((await repo.get("customers", "co")).arr, 7188);
+  assert.equal((await repo.get("customers", "cs")).arr, 0);
   await app.close();
 });
