@@ -411,6 +411,11 @@ const ADS_COLS = [
   { key: "videoP95", label: "Vídeo 95%", width: "85px", on: false, hint: "espectadores que chegaram a 95% do vídeo" },
 ];
 const adsColsDefault = () => new Set(ADS_COLS.filter((c) => c.on).map((c) => c.key));
+// Ordem das colunas modeláveis — arrastável pelo cabeçalho. Status fica pregado
+// na frente (checkbox/toggle/nome nem entram: são estruturais do grid).
+const adsOrderDefault = () => ADS_COLS.map((c) => c.key).filter((k) => k !== "status");
+// Altura da tabela: mostra até 10 linhas; o resto fica atrás do "ver mais".
+const ADS_MAX_ROWS = 10;
 
 // Botão "Colunas" + popover de checkboxes (o "Personalizar colunas" do
 // Gerenciador). Posição FIXA calculada do botão — escapa do overflow:hidden
@@ -513,9 +518,42 @@ function CompactAdsCard({ objects, metrics, money, busyIds, onToggle, onBudget, 
     return n;
   });
   const resetCols = () => {
-    try { localStorage.removeItem("cockpit_ads_cols"); } catch { /* ignore */ }
+    try { localStorage.removeItem("cockpit_ads_cols"); localStorage.removeItem("cockpit_ads_cols_order"); } catch { /* ignore */ }
     setVisCols(adsColsDefault());
+    setColOrder(adsOrderDefault());
   };
+  // Ordem das colunas: arrasta o CABEÇALHO pra esquerda/direita (HTML5 DnD).
+  // Checkbox, toggle, nome e Status ficam fixos; o resto reordena e persiste
+  // no navegador (cockpit_ads_cols_order; chave desconhecida é descartada e
+  // coluna nova de versão futura entra no fim, na ordem padrão).
+  const [colOrder, setColOrder] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("cockpit_ads_cols_order") || "null");
+      if (Array.isArray(saved)) {
+        const known = saved.filter((k) => k !== "status" && ADS_COLS.some((c) => c.key === k));
+        if (known.length) return [...known, ...adsOrderDefault().filter((k) => !known.includes(k))];
+      }
+    } catch { /* padrão */ }
+    return adsOrderDefault();
+  });
+  const [dragCol, setDragCol] = useState(null);
+  const [overCol, setOverCol] = useState(null);
+  const moveCol = (fromKey, toKey) => {
+    if (!fromKey || !toKey || fromKey === toKey) return;
+    setColOrder((prev) => {
+      const from = prev.indexOf(fromKey), to = prev.indexOf(toKey);
+      if (from < 0 || to < 0) return prev;
+      // solta em cima de uma coluna: indo pra direita entra DEPOIS dela, indo
+      // pra esquerda entra ANTES — o mesmo gesto do Gerenciador.
+      const arr = prev.filter((k) => k !== fromKey);
+      arr.splice(arr.indexOf(toKey) + (from < to ? 1 : 0), 0, fromKey);
+      try { localStorage.setItem("cockpit_ads_cols_order", JSON.stringify(arr)); } catch { /* fica só na sessão */ }
+      return arr;
+    });
+  };
+  // "ver mais": a lista mostra até ADS_MAX_ROWS linhas; expandir vale até
+  // trocar de aba de nível (aí volta a encolher).
+  const [expanded, setExpanded] = useState(false);
 
   const levels = [
     { value: "campaigns", label: "Campanhas", singular: "Campanha" },
@@ -562,9 +600,10 @@ function CompactAdsCard({ objects, metrics, money, busyIds, onToggle, onBudget, 
       setSelAdsets((prev) => { const n = new Set(prev); ids.forEach((id) => (allChecked ? n.delete(id) : n.add(id))); return n; });
     }
   };
+  const changeLevel = (v) => { setLevel(v); setExpanded(false); };
   const drill = (o) => {
-    if (level === "campaigns") { const n = new Set([String(o.id)]); setSelCampaigns(n); pruneAdsets(n); setLevel("adsets"); }
-    else if (level === "adsets") { setSelAdsets(new Set([String(o.id)])); setLevel("ads"); }
+    if (level === "campaigns") { const n = new Set([String(o.id)]); setSelCampaigns(n); pruneAdsets(n); changeLevel("adsets"); }
+    else if (level === "adsets") { setSelAdsets(new Set([String(o.id)])); changeLevel("ads"); }
   };
 
   const delivery = (object) => {
@@ -584,7 +623,10 @@ function CompactAdsCard({ objects, metrics, money, busyIds, onToggle, onBudget, 
   // Régua do grid: checkbox + toggle + nome flexível + colunas VISÍVEIS (a
   // mesma no cabeçalho e nas linhas); o card rola na horizontal por arrasto
   // (DragScroll) — a largura mínima acompanha as colunas ligadas.
-  const visible = ADS_COLS.filter((c) => visCols.has(c.key));
+  const visible = ["status", ...colOrder]
+    .filter((k) => visCols.has(k))
+    .map((k) => ADS_COLS.find((c) => c.key === k))
+    .filter(Boolean);
   const cols = "28px 46px minmax(190px,1.6fr) " + visible.map((c) => c.width).join(" ");
   const minW = 28 + 46 + 190 + visible.reduce((a, c) => a + parseInt(c.width, 10), 0) + 12 * (visible.length + 2) + 48;
   const checkboxStyle = { width: 14, height: 14, accentColor: "var(--accent)", cursor: "pointer" };
@@ -659,7 +701,7 @@ function CompactAdsCard({ objects, metrics, money, busyIds, onToggle, onBudget, 
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <Segmented value={statusFilter} onChange={setStatusFilter}
             options={[{ value: "active", label: "ativas" }, { value: "paused", label: "pausadas" }, { value: "all", label: "todas" }]} />
-          <Segmented value={level} onChange={setLevel} options={levels.map(({ value, label }) => ({ value, label }))} />
+          <Segmented value={level} onChange={changeLevel} options={levels.map(({ value, label }) => ({ value, label }))} />
           <ColumnPicker visible={visCols} onToggle={toggleCol} onReset={resetCols} />
         </span>
       }
@@ -685,14 +727,30 @@ function CompactAdsCard({ objects, metrics, money, busyIds, onToggle, onBudget, 
               )}
             </span>
             <span /><span>{current.singular}</span>
-            {visible.map((c) => (
-              <span key={c.key} title={c.hint} style={c.left ? undefined : right}>{c.label}</span>
-            ))}
+            {visible.map((c) => {
+              const fixed = c.key === "status";
+              return (
+                <span key={c.key}
+                  draggable={!fixed}
+                  title={fixed ? c.hint : [c.hint, "arraste pra reordenar a coluna"].filter(Boolean).join(" · ")}
+                  onMouseDown={fixed ? undefined : (e) => e.stopPropagation()}
+                  onDragStart={fixed ? undefined : (e) => { e.dataTransfer.effectAllowed = "move"; setDragCol(c.key); }}
+                  onDragOver={fixed ? undefined : (e) => { if (dragCol) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (overCol !== c.key) setOverCol(c.key); } }}
+                  onDrop={fixed ? undefined : (e) => { e.preventDefault(); moveCol(dragCol, c.key); setDragCol(null); setOverCol(null); }}
+                  onDragEnd={fixed ? undefined : () => { setDragCol(null); setOverCol(null); }}
+                  style={{
+                    ...(c.left ? {} : right),
+                    ...(fixed ? {} : { cursor: "grab" }),
+                    ...(dragCol === c.key ? { opacity: 0.35 } : {}),
+                    ...(overCol === c.key && dragCol && dragCol !== c.key ? { color: "var(--accent)" } : {}),
+                  }}>{c.label}</span>
+              );
+            })}
           </div>
           {error && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--neg)", fontSize: 12.5 }}>{error}</div>}
           {!objects && !error && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--fg-4)", fontSize: 12.5 }}>carregando conta de anúncios…</div>}
           {objects && !rows.length && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--fg-4)", fontSize: 12.5 }}>{all.length ? "nada neste nível com os filtros atuais (mude o filtro de status ou limpe a seleção ✕)" : "nenhum item neste nível"}</div>}
-          {rows.map((object) => {
+          {(expanded ? rows : rows.slice(0, ADS_MAX_ROWS)).map((object) => {
             const m = metrics?.[level]?.[String(object.id)] || object;
             const state = delivery(object);
             const active = object.status ? object.status !== "PAUSED" : state.label !== "pausado";
@@ -717,6 +775,14 @@ function CompactAdsCard({ objects, metrics, money, busyIds, onToggle, onBudget, 
               </div>
             );
           })}
+          {rows.length > ADS_MAX_ROWS && (
+            <div style={{ borderTop: "1px solid var(--line-faint)", padding: "10px 24px" }}>
+              {/* sticky pra ficar visível mesmo com a tabela rolada na horizontal */}
+              <button onClick={() => setExpanded((v) => !v)} style={{ position: "sticky", left: 24, fontSize: 12.5, fontWeight: 600, color: "var(--accent)" }}>
+                {expanded ? "ver menos" : `ver mais ${rows.length - ADS_MAX_ROWS}`}
+              </button>
+            </div>
+          )}
         </div>
       </DragScroll>
     </Card>
