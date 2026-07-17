@@ -183,9 +183,37 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     closeRate: resolvedRate(wonRecent.length, callsRecent.length, goalRate(goals, "closer", "winRateCall"), 0.25),
   };
 
+  // CPL real dos últimos 30 dias (mesma régua do /api/marketing): spend do
+  // ad_insights ÷ leads criados no período (sem internos). Alimenta o cálculo
+  // de investimento necessário pra bater a meta na Análise.
+  const spend30 = round2(allInsights
+    .filter((r) => r.saas === product.id && r.date >= since30 && r.date <= today)
+    .reduce((a, r) => a + (Number(r.spend) || 0), 0));
+  const leads30 = leads.filter((l) => !l.internal && inRange(l.createdAt, since30)).length;
+  const cpl = spend30 > 0 && leads30 > 0 ? round2(spend30 / leads30) : null;
+
+  // Ponta a ponta REAL (ganhos 30d ÷ leads criados 30d): é a régua que bate com
+  // o caixa ("vendi X com Y de mídia"). As taxas de etapa acima são medidas em
+  // janela curta, então cada coorte está TRUNCADA (lead recente ainda não teve
+  // tempo de avançar; call recente ainda não teve tempo de fechar) e o viés se
+  // multiplica na cadeia: o produto das 4 dava ~metade da ponta a ponta real e
+  // o plano pedia 2-3x mais lead/investimento do que a história mostra. Com
+  // amostra decente, o fechamento é CALIBRADO pra cadeia fechar exatamente na
+  // ponta a ponta (a folga vai toda pro fechamento, a taxa mais poluída, já que
+  // o denominador de callsRecent também conta callAt de follow-up).
+  const chainProb = round4(clampRate(conversions.contactRate.value * conversions.bookingRate.value
+    * conversions.showRate.value * conversions.closeRate.value));
+  conversions.leadToWin = resolvedRate(wonRecent.length, leads30, null, chainProb);
+  const upstream = conversions.contactRate.value * conversions.bookingRate.value * conversions.showRate.value;
+  const calibrated = conversions.leadToWin.source === "history"
+    && conversions.leadToWin.numerator > 0 && conversions.leadToWin.denominator >= 20 && upstream > 0;
+  conversions.closeRateEffective = calibrated
+    ? { value: round4(clampRate(conversions.leadToWin.value / upstream)), source: "calibrated" }
+    : { value: conversions.closeRate.value, source: conversions.closeRate.source };
+
   const throughRate = (amount, rate) => amount === 0 ? 0 : amount != null && rate > 0 ? Math.ceil(amount / rate) : null;
   const winsRemaining = gap === 0 ? 0 : averageEntry > 0 ? Math.ceil(gap / averageEntry) : null;
-  const callsRemaining = throughRate(winsRemaining, conversions.closeRate.value);
+  const callsRemaining = throughRate(winsRemaining, conversions.closeRateEffective.value);
   const bookingsRemaining = throughRate(callsRemaining, conversions.showRate.value);
   const contactsRemaining = throughRate(bookingsRemaining, conversions.bookingRate.value);
   const leadsRemaining = throughRate(contactsRemaining, conversions.contactRate.value);
@@ -203,15 +231,6 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     .map((a) => a.lead)).size;
   const todayContacts = new Set(todayActivities.filter((a) => TOUCH_TYPES.has(a.type)).map((a) => a.lead)).size;
   const todayWon = leads.filter((l) => isWon(product, l.stage) && dayKey(l.stageSince) === today).length;
-
-  // CPL real dos últimos 30 dias (mesma régua do /api/marketing): spend do
-  // ad_insights ÷ leads criados no período (sem internos). Alimenta o cálculo
-  // de investimento necessário pra bater a meta na Análise.
-  const spend30 = round2(allInsights
-    .filter((r) => r.saas === product.id && r.date >= since30 && r.date <= today)
-    .reduce((a, r) => a + (Number(r.spend) || 0), 0));
-  const leads30 = leads.filter((l) => !l.internal && inRange(l.createdAt, since30)).length;
-  const cpl = spend30 > 0 && leads30 > 0 ? round2(spend30 / leads30) : null;
 
   const tcvMonthLeads = leads.filter((l) => isWon(product, l.stage) && inMonth(l.stageSince));
   const tcvMonth = round2(tcvMonthLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0));
