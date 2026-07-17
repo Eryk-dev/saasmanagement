@@ -374,8 +374,10 @@ function TodayScreen({ onOpenLead }) {
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, alignItems: "start" }}>
-              <CompactSchedule title="Amanhã" rows={q.amanha} onOpen={setScriptItem} />
-              <DayScore contacted={q.doneToday} contactedGoal={contactedGoal} calls={callsDone} callsGoal={Math.max(callsToday.length, 1)} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+                <DayScore contacted={q.doneToday} contactedGoal={contactedGoal} calls={callsDone} callsGoal={Math.max(callsToday.length, 1)} />
+                <CompactSchedule title="Amanhã" rows={q.amanha} onOpen={setScriptItem} />
+              </div>
               {futureRows.length > 0 && <CompactSchedule title="Próximos dias" rows={futureRows} onOpen={setScriptItem} />}
             </div>
           </div>
