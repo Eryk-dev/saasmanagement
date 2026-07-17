@@ -8,6 +8,10 @@ import { ActivityList } from "../components/timeline.jsx";
 import { CallSummaryCard } from "./today.jsx";
 import { SubscriptionsScreen } from "./subscriptions.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
+import { leadTier, waLink } from "../lib/ui.js";
+import { displayName } from "../lib/users.js";
+import { paymentLabel } from "../lib/payments.js";
+import { useAttribution, leadPain } from "../lib/pains.js";
 // Clientes — a base ativa do produto em dois blocos: a tabela de clientes e,
 // ao lado, "Próximas ações" (o próximo marco de retenção de cada cliente,
 // ordenado por urgência). Clicar num cliente abre um popup com o resumo dele
@@ -219,6 +223,7 @@ function CustomersScreen({ initialTab = "base" }) {
       {selected && (
         <CustomerModal
           customer={selected}
+          lead={(LEADS || []).find((l) => l.id === selected.leadId) || null}
           product={product}
           subs={subsOf(selected)}
           invoices={invoices.filter((i) => i.customer === selected.id)}
@@ -233,9 +238,54 @@ function CustomersScreen({ initialTab = "base" }) {
   );
 }
 
+// Dados do cliente: os campos comerciais herdados do lead de origem, moldados
+// pro pós-venda (contato clicável, potencial, dor do anúncio, valor fechado,
+// pagamento e responsáveis). Só o que está preenchido aparece; sem lead
+// vinculado, mostra o que o cadastro do cliente tiver.
+function CustomerFacts({ customer, lead, product }) {
+  const saasId = customer.saas || product?.id;
+  const saasCfg = (window.SEED?.SAAS || []).find((x) => x.id === saasId) || product;
+  const cat = useAttribution(saasId, !!lead?.utm);
+  const pain = lead ? leadPain(lead, cat, saasCfg?.painMap) : null;
+  const tier = lead ? leadTier(lead) : null;
+  const email = customer.email || lead?.email;
+  const phone = customer.phone || lead?.phone;
+  const wa = phone ? waLink(phone) : null;
+  const linkStyle = { color: "var(--accent)", fontWeight: 600, textDecoration: "none" };
+  const facts = [
+    ["Empresa", customer.company || lead?.company],
+    ["WhatsApp", wa ? <a href={wa} target="_blank" rel="noreferrer" style={linkStyle}>{phone}</a> : phone],
+    ["E-mail", email ? <a href={`mailto:${email}`} style={linkStyle}>{email}</a> : null],
+    ["Potencial", tier && tier.key !== "sem" ? tier.label : null],
+    ["Dor do anúncio", pain ? `[${pain.code}] ${pain.label}` : null],
+    ["Origem", lead?.source],
+    ["Faixa de faturamento", lead?.value],
+    ["Valor fechado", lead?.amount ? window.fmt.money(lead.amount) : null],
+    ["Pagamento", lead?.paymentMethod ? paymentLabel(lead.paymentMethod) : null],
+    ["SDR", lead?.owner ? displayName(lead.owner) : null],
+    ["Closer", lead?.closer ? displayName(lead.closer) : null],
+    ["Integrador", lead?.integrator ? displayName(lead.integrator) : null],
+    ["Motivo da busca", lead?.reason],
+  ].filter(([, v]) => v != null && v !== "");
+  if (facts.length === 0) return null;
+  return (
+    <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--line-faint)" }}>
+      <div className="mono" style={SECTION_LABEL}>Dados do cliente</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "0 20px" }}>
+        {facts.map(([k, v]) => (
+          <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5, padding: "5px 0", borderBottom: "1px solid var(--line-faint)" }}>
+            <span className="mono dim" style={{ flexShrink: 0, fontSize: 10.5 }}>{k}</span>
+            <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Popup do cliente: resumo (números + assinatura + faturas) e o histórico de
 // ações de retenção (régua de marcos com concluir + funil de origem).
-function CustomerModal({ customer, product, subs, invoices, planLabel, lastContact, onComplete, onEdit, onClose }) {
+function CustomerModal({ customer, lead, product, subs, invoices, planLabel, lastContact, onComplete, onEdit, onClose }) {
   React.useEffect(() => {
     const h = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", h);
@@ -279,6 +329,8 @@ function CustomerModal({ customer, product, subs, invoices, planLabel, lastConta
             </div>
           )}
         </div>
+
+        <CustomerFacts customer={customer} lead={lead} product={product} />
 
         <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--line-faint)" }}>
           <div className="mono" style={SECTION_LABEL}>Ações de retenção</div>
