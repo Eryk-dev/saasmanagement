@@ -12,7 +12,7 @@ import { EntityForm } from "../components/EntityForm.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { leadTier, waLink } from "../lib/ui.js";
 import { displayName } from "../lib/users.js";
-import { paymentLabel } from "../lib/payments.js";
+import { paymentLabel, PAYMENT_METHODS } from "../lib/payments.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 // Clientes — a base ativa do produto em dois blocos: a tabela de clientes e,
 // ao lado, "Próximas ações" (o próximo marco de retenção de cada cliente,
@@ -52,6 +52,12 @@ function CustomersScreen({ initialTab = "base" }) {
     customer.milestonesDone = done; // otimista: CUSTOMERS vem do SEED compartilhado
     setTick((n) => n + 1);
     api.update("customers", customer.id, { milestonesDone: done }).catch(() => refresh());
+  }
+  // Edição inline do popup (mesmo padrão otimista do concluir marco).
+  function patchCustomer(customer, p) {
+    Object.assign(customer, p);
+    setTick((n) => n + 1);
+    api.update("customers", customer.id, p).catch(() => refresh());
   }
 
   useEffect(() => {
@@ -239,6 +245,7 @@ function CustomersScreen({ initialTab = "base" }) {
           planLabel={planLabel}
           lastContact={lastContact}
           onComplete={completeMilestone}
+          onPatch={patchCustomer}
           onClose={() => setSel(null)}
         />
       )}
@@ -246,11 +253,16 @@ function CustomersScreen({ initialTab = "base" }) {
   );
 }
 
+// Caixa padrão das seções do popup (mesma linguagem do drawer do pipeline).
+const BOX = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "12px 14px", background: "var(--bg-inset)" };
+
 // Dados do cliente: os campos comerciais herdados do lead de origem, moldados
 // pro pós-venda (contato clicável, potencial, dor do anúncio, valor fechado,
-// pagamento e responsáveis). Só o que está preenchido aparece; sem lead
-// vinculado, mostra o que o cadastro do cliente tiver.
-function CustomerFacts({ customer, lead, product }) {
+// pagamento e responsáveis). O lápis liga a edição INLINE dos campos do
+// cadastro do cliente (nome, contato, e-mail, WhatsApp, plano, pagamento,
+// valor e cliente desde), sem trocar de janela; o que vem do lead é leitura.
+function CustomerFacts({ customer, lead, product, onPatch }) {
+  const [edit, setEdit] = useState(false);
   const saasId = customer.saas || product?.id;
   const saasCfg = (window.SEED?.SAAS || []).find((x) => x.id === saasId) || product;
   const cat = useAttribution(saasId, !!lead?.utm);
@@ -262,6 +274,7 @@ function CustomerFacts({ customer, lead, product }) {
   const linkStyle = { color: "var(--accent)", fontWeight: 600, textDecoration: "none" };
   const facts = [
     ["Empresa", customer.company || lead?.company],
+    ["Contato", customer.contact],
     ["WhatsApp", wa ? <a href={wa} target="_blank" rel="noreferrer" style={linkStyle}>{phone}</a> : phone],
     ["E-mail", email ? <a href={`mailto:${email}`} style={linkStyle}>{email}</a> : null],
     ["Potencial", tier && tier.key !== "sem" ? tier.label : null],
@@ -275,27 +288,70 @@ function CustomerFacts({ customer, lead, product }) {
     ["Integrador", lead?.integrator ? displayName(lead.integrator) : null],
     ["Motivo da busca", lead?.reason],
   ].filter(([, v]) => v != null && v !== "");
-  if (facts.length === 0) return null;
+  const patch = (p) => onPatch && onPatch(p);
+  const inputSt = { flex: 1, minWidth: 0, height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 };
+  const EditRow = ({ label, children }) => (
+    <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <span className="mono dim" style={{ width: 96, flexShrink: 0, fontSize: 10.5 }}>{label}</span>
+      {children}
+    </label>
+  );
+  const PLANS = ["Anual", "Semestral", "Trimestral", "Mensal"];
   return (
-    <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--line-faint)" }}>
-      <div className="mono" style={SECTION_LABEL}>Dados do cliente</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "0 20px" }}>
-        {facts.map(([k, v]) => (
-          <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5, padding: "5px 0", borderBottom: "1px solid var(--line-faint)" }}>
-            <span className="mono dim" style={{ flexShrink: 0, fontSize: 10.5 }}>{k}</span>
-            <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
-          </div>
-        ))}
+    <div style={BOX}>
+      <div className="mono" style={{ ...SECTION_LABEL, display: "flex", alignItems: "center", gap: 8 }}>
+        <span>Dados do cliente</span>
+        {onPatch && (
+          <button onClick={() => setEdit((v) => !v)} title={edit ? "Concluir edição" : "Editar os dados aqui mesmo"}
+            style={{ marginLeft: "auto", height: 22, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid " + (edit ? "var(--accent)" : "var(--line-2)"), background: edit ? "var(--accent)" : "var(--bg-1)", color: edit ? "var(--accent-fg)" : "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
+            {edit ? "✓ pronto" : "✎ editar"}
+          </button>
+        )}
       </div>
+      {edit ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          <EditRow label="Nome"><input defaultValue={customer.name || ""} onBlur={(e) => e.target.value !== (customer.name || "") && patch({ name: e.target.value })} style={inputSt} /></EditRow>
+          <EditRow label="Contato"><input defaultValue={customer.contact || ""} onBlur={(e) => e.target.value !== (customer.contact || "") && patch({ contact: e.target.value })} style={inputSt} /></EditRow>
+          <EditRow label="E-mail"><input defaultValue={customer.email || ""} onBlur={(e) => e.target.value !== (customer.email || "") && patch({ email: e.target.value })} style={inputSt} /></EditRow>
+          <EditRow label="WhatsApp"><input defaultValue={customer.phone || ""} onBlur={(e) => e.target.value !== (customer.phone || "") && patch({ phone: e.target.value })} style={inputSt} /></EditRow>
+          <EditRow label="Plano">
+            <select value={customer.plan || ""} onChange={(e) => patch({ plan: e.target.value })} style={inputSt}>
+              <option value="">sem plano</option>
+              {PLANS.map((p) => <option key={p} value={p}>{p}</option>)}
+              {customer.plan && !PLANS.includes(customer.plan) && <option value={customer.plan}>{customer.plan}</option>}
+            </select>
+          </EditRow>
+          <EditRow label="Pagamento">
+            <select value={customer.paymentMethod || ""} onChange={(e) => patch({ paymentMethod: e.target.value })} style={inputSt}>
+              <option value="">—</option>
+              {PAYMENT_METHODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+          </EditRow>
+          <EditRow label="Valor/ano (R$)"><input type="number" defaultValue={customer.arr ?? ""} onBlur={(e) => { const n = e.target.value === "" ? 0 : Number(e.target.value); if (n !== (customer.arr || 0)) patch({ arr: n }); }} style={inputSt} /></EditRow>
+          <EditRow label="Cliente desde"><input type="date" value={String(customer.startedAt || "").slice(0, 10)} onChange={(e) => patch({ startedAt: e.target.value })} style={inputSt} /></EditRow>
+        </div>
+      ) : facts.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Sem dados ainda. Use o ✎ pra preencher.</div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(215px, 1fr))", gap: "0 18px" }}>
+          {facts.map(([k, v]) => (
+            <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5, padding: "5px 0", borderBottom: "1px solid var(--line-1)" }}>
+              <span className="mono dim" style={{ flexShrink: 0, fontSize: 10.5 }}>{k}</span>
+              <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-// Popup do cliente: resumo (números + assinatura + faturas) e o histórico de
-// ações de retenção (régua de marcos com concluir + funil de origem).
+// Popup do cliente: tela dividida no padrão do drawer do pipeline (sem scroll
+// longo). Esquerda: dados do cliente (edição inline no próprio campo) +
+// assinaturas + faturas. Direita: régua de retenção + histórico do funil.
 // "Editar" NÃO abre outro popup: troca o corpo pelo form (EntityForm bare)
-// dentro deste mesmo modal; salvar/cancelar voltam pra visão de resumo.
-function CustomerModal({ customer, lead, product, subs, invoices, planLabel, lastContact, onComplete, onClose }) {
+// dentro deste mesmo modal, pros campos raros (flags, saúde, dono).
+function CustomerModal({ customer, lead, product, subs, invoices, planLabel, lastContact, onComplete, onPatch, onClose }) {
   const { refresh } = useData();
   const [editing, setEditing] = useState(false);
   React.useEffect(() => {
@@ -315,8 +371,8 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 90, background: "color-mix(in srgb, var(--bg-0) 62%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(640px, 100%)", maxHeight: "min(86vh, 940px)", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)" }}>
-        <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid var(--line-faint)", position: "sticky", top: 0, background: "var(--bg-1)", zIndex: 2 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: editing ? "min(640px, 100%)" : "min(1080px, 100%)", maxHeight: "min(92vh, 100%)", display: "flex", flexDirection: "column", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)" }}>
+        <div style={{ padding: "18px 24px 14px", borderBottom: "1px solid var(--line-faint)", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>{customer.name}</div>
@@ -345,19 +401,65 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         </div>
 
         {editing && (
-          <EntityForm
-            entityKey="customers"
-            record={customer}
-            bare
-            onClose={() => setEditing(false)}
-            onSaved={async () => { await refresh(); setEditing(false); }}
-          />
+          <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+            <EntityForm
+              entityKey="customers"
+              record={customer}
+              bare
+              onClose={() => setEditing(false)}
+              onSaved={async () => { await refresh(); setEditing(false); }}
+            />
+          </div>
         )}
 
-        {!editing && (<>
-        <CustomerFacts customer={customer} lead={lead} product={product} />
+        {!editing && (
+        <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "14px 16px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 14, alignItems: "start" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+        <CustomerFacts customer={customer} lead={lead} product={product} onPatch={onPatch ? (p) => onPatch(customer, p) : null} />
 
-        <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--line-faint)" }}>
+        <div style={BOX}>
+          <div className="mono" style={SECTION_LABEL}>Assinaturas</div>
+          {subs.length === 0 && (
+            <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Nenhuma assinatura. Crie na aba Assinaturas.</div>
+          )}
+          {subs.map((s) => {
+            const stt = SUB_STATUS[s.status] || { label: s.status, tone: "mut" };
+            return (
+              <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", fontSize: 13 }}>
+                <span style={{ color: "var(--fg-2)" }}>{planLabel(s)} · {CYCLE_LABEL[s.cycle] || s.cycle}</span>
+                <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+                  <span className="tnum mono" style={{ fontWeight: 500 }}>{money(s.price || 0)}</span>
+                  <Pill tone={stt.tone}>{stt.label}</Pill>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={BOX}>
+          <div className="mono" style={SECTION_LABEL}>Últimas faturas</div>
+          {invoices.slice(0, 4).map((i) => (
+            <div key={i.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", fontSize: 13 }}>
+              <span style={{ color: "var(--fg-2)" }}>
+                {i.dueDate ? new Date(i.dueDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "") : ""} · {i.kind || "fatura"}
+              </span>
+              <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+                <span className="tnum mono" style={{ fontWeight: 500 }}>{money(i.amount || 0)}</span>
+                <Pill tone={i.status === "paid" ? "pos" : i.status === "overdue" ? "neg" : "warn"}>
+                  {i.status === "paid" ? "paga" : i.status === "overdue" ? "vencida" : "aberta"}
+                </Pill>
+              </span>
+            </div>
+          ))}
+          {invoices.length === 0 && (
+            <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Nenhuma fatura ainda.</div>
+          )}
+        </div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+        <div style={BOX}>
           <div className="mono" style={SECTION_LABEL}>Ações de retenção</div>
           {!customer.startedAt && (
             <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
@@ -401,47 +503,11 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
           )}
         </div>
 
-        <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--line-faint)" }}>
-          <div className="mono" style={SECTION_LABEL}>Assinaturas</div>
-          {subs.length === 0 && (
-            <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Nenhuma assinatura. Crie na aba Assinaturas.</div>
-          )}
-          {subs.map((s) => {
-            const stt = SUB_STATUS[s.status] || { label: s.status, tone: "mut" };
-            return (
-              <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", fontSize: 13 }}>
-                <span style={{ color: "var(--fg-2)" }}>{planLabel(s)} · {CYCLE_LABEL[s.cycle] || s.cycle}</span>
-                <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-                  <span className="tnum mono" style={{ fontWeight: 500 }}>{money(s.price || 0)}</span>
-                  <Pill tone={stt.tone}>{stt.label}</Pill>
-                </span>
-              </div>
-            );
-          })}
-        </div>
-
-        <div style={{ padding: "16px 24px 20px", borderBottom: "1px solid var(--line-faint)" }}>
-          <div className="mono" style={SECTION_LABEL}>Últimas faturas</div>
-          {invoices.slice(0, 4).map((i) => (
-            <div key={i.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", fontSize: 13 }}>
-              <span style={{ color: "var(--fg-2)" }}>
-                {i.dueDate ? new Date(i.dueDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "") : ""} · {i.kind || "fatura"}
-              </span>
-              <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-                <span className="tnum mono" style={{ fontWeight: 500 }}>{money(i.amount || 0)}</span>
-                <Pill tone={i.status === "paid" ? "pos" : i.status === "overdue" ? "neg" : "warn"}>
-                  {i.status === "paid" ? "paga" : i.status === "overdue" ? "vencida" : "aberta"}
-                </Pill>
-              </span>
-            </div>
-          ))}
-          {invoices.length === 0 && (
-            <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Nenhuma fatura ainda.</div>
-          )}
-        </div>
-
         <CustomerHistory customer={customer} />
-        </>)}
+        </div>
+        </div>
+        </div>
+        )}
       </div>
     </div>
   );
@@ -467,7 +533,7 @@ function CustomerHistory({ customer }) {
   const shown = expanded ? acts : (acts || []).slice(0, 10);
   const timelineActs = shown.filter((a) => !(a.type === "system" && a.meta?.event === "call_summary"));
   return (
-    <div style={{ padding: "12px 16px" }}>
+    <div style={BOX}>
       {callSummary && <div style={{ marginBottom: 12 }}><CallSummaryCard summary={callSummary} phone={customer.phone || ""} /></div>}
       <div className="mono" style={{ fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
         Histórico do funil
