@@ -116,10 +116,17 @@ function OverviewScreen({ onNav, onOpenLead }) {
     return out;
   }, [leads, win.since, win.until, win.days]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Funil aberto (snapshot atual do pipeline — não é fluxo, não segue o período).
+  // Funil da JANELA: leads criados no período, agrupados pela etapa atual —
+  // responde "onde estão os leads que chegaram nesse período". Segue o filtro
+  // do topo, como todo o resto do card (era snapshot do pipeline inteiro e
+  // parecia travado ao trocar o período).
   const funnelStages = useMemo(() => openStages(product), [product]);
   const firstStage = firstStageOf(product);
-  const countByStage = (stage) => leads.filter((l) => l.stage === stage || (!l.stage && stage === firstStage)).length;
+  const leadsWindow = useMemo(
+    () => leads.filter((l) => inPeriod(l.createdAt)),
+    [leads, win.since, win.until], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const countByStage = (stage) => leadsWindow.filter((l) => l.stage === stage || (!l.stage && stage === firstStage)).length;
   const maxStage = Math.max(1, ...funnelStages.map(countByStage));
   // Ganho no PERÍODO (fluxo); Resultado usa o mês (custos são mensais).
   const wonLeadsPeriod = leads.filter((l) => isWonStage(product, l.stage) && inPeriod(l.stageSince));
