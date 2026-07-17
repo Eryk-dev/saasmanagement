@@ -256,6 +256,22 @@ function CustomersScreen({ initialTab = "base" }) {
 // Caixa padrão das seções do popup (mesma linguagem do drawer do pipeline).
 const BOX = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "12px 14px", background: "var(--bg-inset)" };
 
+// Nome do formulário de origem do lead (lead.form é o id). Mesmo padrão do
+// attributionCache de pains.js: cacheia a PROMESSA por SaaS pra não re-buscar
+// a lista de forms a cada popup aberto.
+const formsCache = {};
+function useFormName(saas, formId) {
+  const [name, setName] = useState(null);
+  useEffect(() => {
+    if (!saas || !formId) { setName(null); return; }
+    let alive = true;
+    (formsCache[saas] ??= api.list("forms").then((rows) => rows.filter((f) => f.saas === saas)).catch(() => { delete formsCache[saas]; return []; }))
+      .then((rows) => { if (alive) setName(rows.find((f) => f.id === formId)?.name || null); });
+    return () => { alive = false; };
+  }, [saas, formId]);
+  return name;
+}
+
 // Dados do cliente: os campos comerciais herdados do lead de origem, moldados
 // pro pós-venda (contato clicável, potencial, dor do anúncio, valor fechado,
 // pagamento e responsáveis). O lápis liga a edição INLINE dos campos do
@@ -268,6 +284,10 @@ function CustomerFacts({ customer, lead, product, onPatch }) {
   const cat = useAttribution(saasId, !!lead?.utm);
   const pain = lead ? leadPain(lead, cat, saasCfg?.painMap) : null;
   const tier = lead ? leadTier(lead) : null;
+  const formName = useFormName(saasId, lead?.form);
+  // Anúncio que trouxe o lead: utm.content é o id, o catálogo de atribuição
+  // resolve o nome (que já carrega o código de dor "[X]" no título).
+  const adName = lead?.utm?.content ? (cat?.ads?.[String(lead.utm.content)]?.name || String(lead.utm.content)) : null;
   const email = customer.email || lead?.email;
   const phone = customer.phone || lead?.phone;
   const wa = phone ? waLink(phone) : null;
@@ -280,6 +300,8 @@ function CustomerFacts({ customer, lead, product, onPatch }) {
     ["Potencial", tier && tier.key !== "sem" ? tier.label : null],
     ["Dor do anúncio", pain ? `[${pain.code}] ${pain.label}` : null],
     ["Origem", lead?.source],
+    ["Formulário", formName],
+    ["Anúncio", adName],
     ["Faixa de faturamento", lead?.value],
     ["Valor fechado", lead?.amount ? window.fmt.money(lead.amount) : null],
     ["Pagamento", (customer.paymentMethod || lead?.paymentMethod) ? paymentLabel(customer.paymentMethod || lead?.paymentMethod) : null],
@@ -296,7 +318,7 @@ function CustomerFacts({ customer, lead, product, onPatch }) {
       {children}
     </label>
   );
-  const PLANS = ["Anual", "Semestral", "Trimestral", "Mensal"];
+  const PLANS = ["Anual", "Semestral", "Serviço único", "Trimestral", "Mensal"];
   return (
     <div style={BOX}>
       <div className="mono" style={{ ...SECTION_LABEL, display: "flex", alignItems: "center", gap: 8 }}>
