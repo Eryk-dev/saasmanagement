@@ -32,6 +32,15 @@ const KIND_HINTS = {
 };
 // Só os tipos "criados aqui" abrem o editor (e ganham dor + copy por IA).
 const CREATED_HERE = new Set(["image", "carousel", "sequence"]);
+// Colunas da tabela de publicações (header e linhas compartilham o grid).
+const POSTS_GRID = "2fr .7fr .6fr .6fr .6fr .6fr .6fr .55fr .7fr";
+// Engajamento do post = interações totais ÷ alcance. null sem dados (posts do
+// histórico local ainda sem espelho no IG) — a célula mostra "—".
+function engRate(item) {
+  const reach = Number(item.reach), inter = Number(item.totalInteractions);
+  if (!Number.isFinite(reach) || reach <= 0 || !Number.isFinite(inter)) return null;
+  return `${(Math.round((inter / reach) * 1000) / 10).toFixed(1).replace(".", ",")}%`;
+}
 // Dores base da LeverAds — usadas quando o produto ainda não tem painMap; se o
 // produto tiver dores cadastradas (product.painMap), elas entram junto.
 const DEFAULT_PAINS = [
@@ -152,15 +161,19 @@ function SocialScreen() {
             {sum.errors?.insights && <div className="mono dim" style={{ fontSize: 11 }}>alcance indisponível: {sum.errors.insights}</div>}
 
             <Card title="Publicações recentes" hint={'o histórico do "criar post" aparece aqui'} style={{ overflow: "hidden" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "2fr .8fr .7fr .7fr .7fr", gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
-                <span>Post</span><span>Formato</span><span style={{ textAlign: "right" }}>Alcance</span><span style={{ textAlign: "right" }}>Curtidas</span><span style={{ textAlign: "right" }}>Publicado</span>
+              <div style={{ display: "grid", gridTemplateColumns: POSTS_GRID, gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+                <span>Post</span><span>Formato</span><span style={{ textAlign: "right" }}>Alcance</span><span style={{ textAlign: "right" }}>Curtidas</span><span style={{ textAlign: "right" }}>Coment.</span><span style={{ textAlign: "right" }}>Salvos</span><span style={{ textAlign: "right" }}>Compart.</span><span style={{ textAlign: "right" }}>Eng.</span><span style={{ textAlign: "right" }}>Publicado</span>
               </div>
               {recent.map((item) => (
-                <div key={item.id} style={{ display: "grid", gridTemplateColumns: "2fr .8fr .7fr .7fr .7fr", gap: 12, padding: "13px 24px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5 }}>
+                <div key={item.id} style={{ display: "grid", gridTemplateColumns: POSTS_GRID, gap: 12, padding: "13px 24px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5 }}>
                   {item.permalink ? <a href={item.permalink} target="_blank" rel="noreferrer" style={{ color: "inherit", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{postTitle(item)}</a> : <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{postTitle(item)}</span>}
                   <span><Pill tone="mut">{formatLabel(item)}</Pill></span>
                   <span className="tnum" style={{ textAlign: "right" }}>{item.reach != null ? fmtNum(item.reach) : "—"}</span>
                   <span className="tnum" style={{ textAlign: "right" }}>{item.likes != null ? fmtNum(item.likes) : "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right" }}>{item.comments != null ? fmtNum(item.comments) : "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right" }}>{item.saved != null ? fmtNum(item.saved) : "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right" }}>{item.shares != null ? fmtNum(item.shares) : "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right" }}>{engRate(item) ?? "—"}</span>
                   <span className="tnum" style={{ textAlign: "right", color: "var(--fg-3)" }}>{item.at ? new Date(item.at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "") : "—"}</span>
                 </div>
               ))}
