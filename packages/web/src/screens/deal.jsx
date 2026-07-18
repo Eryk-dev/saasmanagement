@@ -112,6 +112,16 @@ function LeadDetail({ lead: initial, onClose }) {
   // que acontece depois) continua aparecendo.
   const showCallSummary = !!callSummary && !(integrationBrief && callSummary.kind === "call");
 
+  // Última call de VENDA resumida: alimenta os tokens do roteiro (combinado,
+  // objeção em aberto, dor, temperatura) — o follow-up retoma de onde a call
+  // parou. A de integração fica de fora (estrutura própria, sem objeção).
+  const salesSummary = React.useMemo(() => {
+    const cs = (activities || [])
+      .filter((x) => x.meta?.event === "call_summary" && x.meta?.summary && (x.meta.kind || "call") === "call")
+      .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0))[0];
+    return cs ? cs.meta.summary : null;
+  }, [activities]);
+
   // A timeline NÃO repete o resumo de call nem o briefing: os dois já viram card
   // acima (bloco único do insight). Aqui ficam só os contatos e eventos.
   const timelineActs = React.useMemo(
@@ -189,7 +199,7 @@ function LeadDetail({ lead: initial, onClose }) {
   // Insights do estágio (roteiro) + checklist editável dos dados do 1º contato —
   // mesma lógica da tela de atividade do Meu dia (lib/scripts.js).
   const script = resolveScript(saasCfg, lead);
-  const scriptTk = scriptTokens(lead, saasCfg);
+  const scriptTk = scriptTokens(lead, saasCfg, salesSummary);
   const checklist = scriptChecklist(saasCfg, lead);
   const renderFala = (text) => scriptSegments(text, scriptTk).map((s, i) => {
     if (s.text != null) return <React.Fragment key={i}>{s.text}</React.Fragment>;
