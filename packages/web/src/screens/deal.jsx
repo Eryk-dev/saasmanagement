@@ -1,14 +1,12 @@
 import React from "react";
 import { Avatar } from "../atoms.jsx";
-import { ProposalActions } from "../components/ProposalActions.jsx";
 import { ActivityList, ActivityComposer } from "../components/timeline.jsx";
-import { WhatsappChat } from "../components/whatsapp-chat.jsx";
 import { RoutineSuggestion } from "../components/routine-suggestion.jsx";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
-import { leadScoreLabel, leadAge, waLink, leadTier } from "../lib/ui.js";
+import { leadScoreLabel, leadAge, waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
 import { stageKind, lossReasonLabel, nextTouchPill, workableStages } from "../lib/funnel.js";
 import { displayName, usersByRole } from "../lib/users.js";
-import { paymentLabel } from "../lib/payments.js";
+import { paymentLabel, closedPlanLabel } from "../lib/payments.js";
 import { api } from "../lib/api.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 import { sourceLabel } from "../lib/sources.js";
@@ -47,6 +45,7 @@ function LeadDetail({ lead: initial, onClose }) {
   const [lead, setLead] = React.useState(initial);
   const dirty = React.useRef(false);
   const [editResumo, setEditResumo] = React.useState(false); // lápis do Resumo → edita inline
+  const [showTimeline, setShowTimeline] = React.useState(false); // timeline recolhida por padrão
   const [pendingMove, setPendingMove] = React.useState(null); // { toStage, gate }
   // Timeline: fetch por lead (fora do bootstrap) + refetch quando o tempo real
   // avisa (version) — o drawer vive fora da árvore remontada do App.
@@ -157,6 +156,8 @@ function LeadDetail({ lead: initial, onClose }) {
   const summaryFacts = [
     ["Potencial", tier.key !== "sem" ? tier.label : null],
     ["Valor", lead.amount ? window.fmt.money(lead.amount) : null],
+    // Registrada no movimento Call → Follow-up: é a oferta que o follow-up cobra.
+    ["Proposta na mesa", lead.proposalOffer ? (lead.proposalOffer === "nenhuma" ? "não chegou na proposta" : closedPlanLabel(lead.proposalOffer) || lead.proposalOffer) : null],
     ["Pagamento", lead.paymentMethod ? paymentLabel(lead.paymentMethod) : null],
     ["Idade", leadAge(lead)],
     ["Na etapa", `${daysInStage}d`],
@@ -242,6 +243,15 @@ function LeadDetail({ lead: initial, onClose }) {
                   {lead.owner && <span title={`SDR: ${displayName(lead.owner)}`}><Avatar id={lead.owner} name={displayName(lead.owner)} size={18} /></span>}
                   {lead.closer && <span title={`Closer: ${displayName(lead.closer)}`}><Avatar id={lead.closer} name={displayName(lead.closer)} size={18} /></span>}
                 </span>
+              )}
+              {/* Proposta mora AQUI (o card antigo saiu): sempre a visão do
+                  CLIENTE — o link limpo, o mesmo que ele recebe. */}
+              {lead.proposalUrl && (
+                <a href={cockpitProposalUrl(lead.proposalUrl)} target="_blank" rel="noreferrer"
+                  className="chip" title="Abrir a proposta como o cliente vê"
+                  style={{ color: "var(--accent)", borderColor: "var(--accent-line)", background: "var(--accent-soft)", fontWeight: 600, textDecoration: "none" }}>
+                  proposta ↗
+                </a>
               )}
             </div>
           </div>
@@ -589,11 +599,6 @@ function LeadDetail({ lead: initial, onClose }) {
             {attribution.map(([k, v]) => <FactRow key={k} k={k} v={v} />)}
           </div>
         )}
-
-        <div style={box}>
-          <div className="mono" style={{ ...kicker, marginBottom: 10 }}>Proposta</div>
-          <ProposalActions l={lead} showViews />
-        </div>
           </div>
 
           {/* Coluna direita: insights (roteiro) do estágio atual + histórico. */}
@@ -650,22 +655,28 @@ function LeadDetail({ lead: initial, onClose }) {
           </div>
         )}
 
-        {/* Chat de WhatsApp (Cloud API): atalho contextual da conversa (a mesma
-            da tela #whatsapp). "Ligar" abre a conversa no app. */}
-        <WhatsappChat lead={lead} />
-
-        {/* Timeline: TODOS os pontos de contato + eventos automáticos (o histórico
-            do lead). comments[] antigos aparecem mesclados como notas. */}
-        <div style={{ ...box, display: "flex", flexDirection: "column", minHeight: 160 }}>
-          <div className="mono" style={{ ...kicker, marginBottom: 10 }}>
-            Timeline {activities ? `· ${timelineActs.length + (lead.comments?.length || 0)}` : ""}
-          </div>
-          <ActivityComposer lead={lead} onLogged={refetchTimeline} />
-          <div style={{ marginTop: 8 }}>
-            {activities === null
-              ? <div className="mono dim" style={{ fontSize: 11.5, padding: "10px 0" }}>carregando…</div>
-              : <ActivityList activities={timelineActs} comments={lead.comments} />}
-          </div>
+        {/* Timeline RECOLHÍVEL: nasce fechada (o histórico é consulta, não fluxo
+            do dia a dia) — o cabeçalho mostra a contagem e abre no clique, com o
+            composer de registrar toque junto. */}
+        <div style={{ ...box, display: "flex", flexDirection: "column", ...(showTimeline ? { minHeight: 160 } : {}) }}>
+          <button onClick={() => setShowTimeline((v) => !v)}
+            title={showTimeline ? "Recolher a timeline" : "Abrir a timeline (histórico + registrar toque)"}
+            className="mono" style={{ ...kicker, display: "flex", alignItems: "center", width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--fg-3)", textAlign: "left" }}>
+            <span>Timeline {activities ? `· ${timelineActs.length + (lead.comments?.length || 0)}` : ""}</span>
+            <span style={{ marginLeft: "auto", fontSize: 10 }}>{showTimeline ? "▴ recolher" : "▾ abrir"}</span>
+          </button>
+          {showTimeline && (
+            <>
+              <div style={{ marginTop: 10 }}>
+                <ActivityComposer lead={lead} onLogged={refetchTimeline} />
+              </div>
+              <div style={{ marginTop: 8 }}>
+                {activities === null
+                  ? <div className="mono dim" style={{ fontSize: 11.5, padding: "10px 0" }}>carregando…</div>
+                  : <ActivityList activities={timelineActs} comments={lead.comments} />}
+              </div>
+            </>
+          )}
         </div>
           </div>{/* fim coluna Insights */}
         </div>{/* fim grid duas colunas */}

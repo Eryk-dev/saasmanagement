@@ -16,8 +16,12 @@ import { api } from "../lib/api.js";
 export function moveGate(saasCfg, lead, toStage) {
   const toKind = stageKind(saasCfg, toStage);
   if (isLossKind(toKind)) return { type: "lost", toKind };
-  const fromPhase = phaseOf(stageKind(saasCfg, lead.stage || saasCfg?.funnel?.[0]?.stage));
+  const fromKind = stageKind(saasCfg, lead.stage || saasCfg?.funnel?.[0]?.stage);
+  const fromPhase = phaseOf(fromKind);
   if (fromPhase === "sdr" && phaseOf(toKind) === "closer" && !lead.closer) return { type: "handoff", toKind };
+  // Call feita → Follow-up: registra QUAL proposta ficou na mesa (a oferta que
+  // o cliente levou pra pensar) — é ela que o follow-up vai cobrar.
+  if (fromKind === "call" && toKind === "followup") return { type: "offer", toKind };
   // Fechamento = passar pra INTEGRAÇÃO (handoff pro Eryk) OU pra Ganho: pede o
   // valor do negócio na hora (é onde a receita do closer é lançada).
   if ((isWonKind(toKind) || toKind === "integracao") && !(Number(lead.amount) > 0)) return { type: "won", toKind };
@@ -47,8 +51,11 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // o gate captura o tamanho e o servidor cria a jornada inteira na conversão.
   const isKidsWon = isWonGate && lead.saas === "uniquekids";
   const [consultPackage, setConsultPackage] = React.useState(String(lead.consultPackage || 8));
-  const askCall = !isLost && !isWonGate && gate.toKind === "call";
-  const ready = isLost ? !!reason : isWonGate ? (Number(amount) > 0 && !!payment) : !!closer;
+  // Call → Follow-up: qual proposta ficou na mesa (o follow-up cobra ELA).
+  const isOffer = gate.type === "offer";
+  const [offer, setOffer] = React.useState(lead.proposalOffer || "");
+  const askCall = !isLost && !isWonGate && !isOffer && gate.toKind === "call";
+  const ready = isLost ? !!reason : isWonGate ? (Number(amount) > 0 && !!payment) : isOffer ? !!offer : !!closer;
 
   function confirm() {
     if (!ready) return;
@@ -62,13 +69,15 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
       // Mentoria é compra única (o valor não anualiza); o pacote é o "plano".
       patch.planClosed = isKidsWon ? "unico" : planClosed;
       if (isKidsWon) patch.consultPackage = Number(consultPackage) || 8;
+    } else if (isOffer) {
+      patch.proposalOffer = offer;
     } else {
       patch.closer = closer;
       if (callAt) patch.callAt = callAt;
     }
     onConfirm(patch, {
       // Nota do handoff vira um toque na timeline (contexto pro closer).
-      activity: !isLost && !isWonGate && note.trim()
+      activity: !isLost && !isWonGate && !isOffer && note.trim()
         ? { saas: lead.saas, lead: lead.id, type: "note", text: `Handoff → closer: ${note.trim()}`, author: currentUser()?.id || "", meta: { reschedule: false } }
         : null,
     });
@@ -78,13 +87,25 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
     <div onClick={onCancel} style={{ position: "fixed", inset: 0, zIndex: 90, background: "color-mix(in srgb, var(--bg-0) 62%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(420px, 100%)", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 18 }}>
         <div style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700 }}>
-          {isLost ? `Mover pra “${toStage}”` : isWonGate ? (gate.toKind === "integracao" ? "Fechar e mandar pra integração 🎉" : "Fechar como ganho 🎉") : "Passar pro closer"}
+          {isLost ? `Mover pra “${toStage}”` : isWonGate ? (gate.toKind === "integracao" ? "Fechar e mandar pra integração 🎉" : "Fechar como ganho 🎉") : isOffer ? "Call feita → follow-up" : "Passar pro closer"}
         </div>
         <div className="mono" style={{ fontSize: 11, color: "var(--fg-3)", marginTop: 3, marginBottom: 14 }}>
           {lead.name}{lead.company ? ` · ${lead.company}` : ""} → {toStage}
         </div>
 
-        {isWonGate ? (
+        {isOffer ? (
+          <>
+            <label style={label}>Qual proposta ficou na mesa? *</label>
+            <select value={offer} onChange={(e) => setOffer(e.target.value)} style={field} autoFocus>
+              <option value="">— a oferta que o cliente levou pra pensar —</option>
+              {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+              <option value="nenhuma">não chegou na proposta</option>
+            </select>
+            <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
+              fica no card e orienta o follow-up: é essa proposta que você vai cobrar
+            </div>
+          </>
+        ) : isWonGate ? (
           <>
             <label style={label}>Valor do negócio (R$) *</label>
             <input type="number" min="0" step="0.01" value={amount} autoFocus placeholder="ex.: 7188"

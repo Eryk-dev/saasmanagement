@@ -11,7 +11,7 @@ import { allUsers, currentUser, displayName, userById, usersByRole } from "../li
 import { useActiveSaas } from "../lib/workspace.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 import { resolveScript, scriptTokens, scriptSegments, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor } from "../lib/scripts.js";
-import { PAYMENT_METHODS, paymentLabel, closedPlanLabel } from "../lib/payments.js";
+import { PAYMENT_METHODS, CLOSED_PLANS, paymentLabel, closedPlanLabel } from "../lib/payments.js";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
 // "Amanhã" e "Próximos dias" (o que já está agendado, à vista), e "Sem data".
@@ -594,6 +594,8 @@ export function clientSummary(saasCfg, lead, stage, cat) {
     ["Etapa", `${stage}${daysInStage != null ? ` · ${daysInStage}d nela` : ""}`],
     ["Toques na etapa", Number(cad.maxAttempts) ? `${Number(lead.stageAttempts) || 0} de ${cad.maxAttempts}` : (Number(lead.stageAttempts) || 0) || null],
     ["Valor", lead.amount ? money(lead.amount) : null],
+    // Registrada no movimento Call → Follow-up: é a oferta que o follow-up cobra.
+    ["Proposta na mesa", lead.proposalOffer ? (lead.proposalOffer === "nenhuma" ? "não chegou na proposta" : closedPlanLabel(lead.proposalOffer) || lead.proposalOffer) : null],
     ["Pagamento", lead.paymentMethod ? paymentLabel(lead.paymentMethod) : null],
     ["Origem", lead.source],
     ["SDR / closer", [lead.owner && displayName(lead.owner), lead.closer && displayName(lead.closer)].filter(Boolean).join(" / ") || null],
@@ -1557,6 +1559,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const [note, setNote] = useS("");
   const [slot, setSlot] = useS(lead.callAt || "");
   const [day, setDay] = useS(() => nextBusinessDays(1)[0]); // dia da grade (qualquer dia via calendário)
+  // Call → Follow-up: qual proposta ficou na mesa (obrigatória nesse movimento).
+  const fromCall = stageKind(saasCfg, lead.stage || saasCfg?.funnel?.[0]?.stage) === "call";
+  const [offer, setOffer] = useS(lead.proposalOffer || "");
   const [email, setEmail] = useS(lead.email || "");
   const [emailTouched, setEmailTouched] = useS(false); // SDR digitou um e-mail próprio pro convite
   const [meetBusy, setMeetBusy] = useS(false);   // criando o Meet
@@ -1566,6 +1571,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     setDest(null); setCloser(lead.closer || ""); setSlot(lead.callAt || ""); setDay(nextBusinessDays(1)[0]);
     setIntegrator(lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
     setAmount(lead.amount || ""); setPayment(lead.paymentMethod || ""); setReason(""); setNote("");
+    setOffer(lead.proposalOffer || "");
     setEmail(lead.email || ""); setEmailTouched(false); setMeetBusy(false); setMeetRes(null); setMeetErr(null);
   }, [lead.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // Auto-preenche o e-mail do convite com o do lead SEMPRE que ele estiver
@@ -1617,7 +1623,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
 
   const ready = !dest ? false
     : setup === "call" ? !!(closer && slot)
-    : setup === "followup" ? !!closer // horário é opcional: sem slot cai na cadência
+    : setup === "followup" ? !!closer && (!fromCall || !!offer) // horário é opcional; saindo da call, a proposta na mesa é obrigatória
     : setup === "integrator" ? !!(integrator && (dest.kind !== "integracao" || (Number(amount) > 0 && !!payment)))
     : setup === "won" ? (Number(amount) > 0 && !!payment)
     : setup === "loss" ? !!reason
@@ -1630,7 +1636,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     // Follow-up: mantém o closer e, se um horário foi escolhido, agenda nele —
     // callAt (aparece na agenda, sem travar slots de venda) + nextActionAt (a
     // fila do "meu dia" vence exatamente nesse horário, não na cadência padrão).
-    else if (setup === "followup") { patch.closer = closer; if (slot) { patch.callAt = slot; patch.nextActionAt = slot; } }
+    else if (setup === "followup") { patch.closer = closer; if (fromCall && offer) patch.proposalOffer = offer; if (slot) { patch.callAt = slot; patch.nextActionAt = slot; } }
     // Integração: define o integrador e, se um horário foi escolhido na agenda,
     // agenda a integração nele (integrationAt aparece na Agenda e replica na
     // agenda pessoal do integrador que conectou o Google).
@@ -1739,6 +1745,18 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
           {setup === "followup" && (
             closer ? (
               <div>
+                {/* Saindo da CALL: registra qual proposta ficou na mesa — é ela
+                    que o follow-up cobra (aparece no Resumo do cliente). */}
+                {fromCall && (
+                  <div style={{ maxWidth: 280, marginBottom: 10 }}>
+                    <label style={label}>Qual proposta ficou na mesa? *</label>
+                    <select value={offer} onChange={(e) => setOffer(e.target.value)} style={fieldStyle}>
+                      <option value="">— a oferta que o cliente levou pra pensar —</option>
+                      {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                      <option value="nenhuma">não chegou na proposta</option>
+                    </select>
+                  </div>
+                )}
                 <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginBottom: 6 }}>
                   Quando fazer o follow-up · agenda de {displayName(closer)}
                 </div>
