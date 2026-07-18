@@ -39,7 +39,7 @@ export function registerConsultationRoutes(app, repo, { google, googleUser, anth
 
     try {
       const { meetUrl, eventId, htmlLink } = await google.createMeetEvent({
-        summary: `Consulta ${c.n || "?"}/8 · ${c.clientName || "cliente"}`,
+        summary: `Consulta ${c.n || "?"}/${c.packageTotal || 8} · ${c.clientName || "cliente"}`,
         description: [`Cliente: ${c.clientName || "?"}`, c.childName ? `Criança: ${c.childName}` : "", "Mentoria R.O.T.I.N.A · UniqueKids"].filter(Boolean).join("\n"),
         start: { dateTime: naive(s), timeZone: TZ },
         end: { dateTime: naive(e), timeZone: TZ },

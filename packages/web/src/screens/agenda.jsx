@@ -34,6 +34,14 @@ const WD_LABEL = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "
 
 export function AgendaScreen({ onOpenLead }) {
   const { version } = useData();
+  // Consultas 1:1 (mentoria UniqueKids): entram na grade e no conflito de
+  // horário da responsável, igual call/integração.
+  const [consultas, setConsultas] = useS([]);
+  useE(() => {
+    let alive = true;
+    api.list("consultations").then((rows) => alive && setConsultas(rows || [])).catch(() => {});
+    return () => { alive = false; };
+  }, [version]);
   // Pessoas com agenda: closers e integradores (Ajustes → Equipe).
   const people = useM(() => {
     const seen = new Set(); const out = [];
@@ -97,8 +105,11 @@ export function AgendaScreen({ onOpenLead }) {
       if (l.closer && l.callAt && !DEAD_CALL_KINDS.has(stageKind(saasCfgOf(l), l.stage))) put(l.closer, l.callAt, `call com ${l.name || "lead"}`);
       if (l.integrator && l.integrationAt) put(l.integrator, l.integrationAt, `integração com ${l.name || "lead"}`);
     }
+    for (const c of consultas) {
+      if (c.owner && c.at && c.status !== "canceled") put(c.owner, c.at, `consulta com ${c.clientName || "cliente"}`);
+    }
     return m;
-  }, [leads]);
+  }, [leads, consultas]);
   // Conflito com a agenda viva da pessoa no intervalo [from, to) da data.
   const liveConflict = (user, date, from, to) => {
     for (let h = Math.floor(from); h < to; h++) {
@@ -176,7 +187,7 @@ export function AgendaScreen({ onOpenLead }) {
         </span>
       </PageHead>
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14 }}>
-        {/* Filtro por pessoa: calls/integrações + compromissos/bloqueios dela */}
+        {/* Filtro por pessoa: calls/integrações/consultas + compromissos/bloqueios dela */}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Agenda de</span>
           {[{ id: "", name: "todos" }, ...people].map((p) => {
@@ -192,7 +203,7 @@ export function AgendaScreen({ onOpenLead }) {
           })}
         </div>
 
-        <AgendaView leads={leads} onOpenLead={onOpenLead} person={person || null} blocking={{ blocksFor, onSlot, onBlock }} />
+        <AgendaView leads={leads} consultations={consultas} onOpenLead={onOpenLead} person={person || null} blocking={{ blocksFor, onSlot, onBlock }} />
 
         <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center", fontSize: 12.5, color: "var(--fg-3)" }}>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>

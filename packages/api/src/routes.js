@@ -703,6 +703,37 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
       planClosed: lead.planClosed, amount: lead.amount, paymentMethod: lead.paymentMethod,
     });
   } catch { /* assinatura é best-effort */ }
+  // UniqueKids: o ganho É a compra do pacote de consultas (mentoria 1:1). A
+  // jornada inteira nasce aqui SEM data (n=1..N + packageTotal); o time marca
+  // cada consulta na tela Consultas, e o PATCH do `at` espelha na agenda Google
+  // da responsável. O Manual da Família (que as gravações preenchem) nasce
+  // junto. Idempotente: família que já tem consulta de pacote não ganha outro.
+  if (lead.saas === "uniquekids") {
+    try {
+      const family = { customerId: customer.id, leadId: lead.id, clientName: lead.name || customer.name || "" };
+      const consults = (await repo.list("consultations")).filter((c) => sameFamily(c, family));
+      if (!consults.some((c) => Number(c.packageTotal) > 0)) {
+        const total = Number(lead.consultPackage) === 4 ? 4 : 8;
+        for (let n = 1; n <= total; n++) {
+          await repo.create("consultations", {
+            saas: lead.saas, customerId: customer.id, leadId: lead.id,
+            clientName: family.clientName, childName: "", phone: lead.phone || "",
+            n, packageTotal: total, at: "", durationMin: 60, status: "scheduled",
+            notes: "", owner: lead.closer || "", meetUrl: "", meetEventId: "", meetScheduledAt: "",
+            calEventId: "", calEventUser: "", summary: null, summaryDoneFor: "", summaryAt: "",
+            transcriptUrl: "", createdAt: new Date().toISOString(),
+          });
+        }
+        const manuals = await repo.list("deliverables");
+        if (!manuals.some((m) => sameFamily(m, family))) {
+          await repo.create("deliverables", newManual({
+            saas: lead.saas, customerId: customer.id, leadId: lead.id,
+            clientName: family.clientName, childName: "",
+          }));
+        }
+      }
+    } catch { /* pacote de consultas é best-effort; dá pra criar na tela */ }
+  }
   try {
     await logActivity(repo, {
       saas: lead.saas, lead: lead.id, type: "system",
