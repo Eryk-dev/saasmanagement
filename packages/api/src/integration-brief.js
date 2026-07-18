@@ -37,9 +37,9 @@ export function factsOf(lead, { closerName = "" } = {}) {
   push("Time de anúncios", range(lead.staff));
   push("Planeja expandir contas", lead.plan_expand);
   push("Nicho", lead.niche);
-  if (Number(lead.amount) > 0) push("Valor fechado", MONEY(lead.amount));
-  push("Plano fechado", PLAN_LABEL[lead.planClosed] || "");
-  push("Forma de pagamento", PAY_LABEL[lead.paymentMethod] || "");
+  // Valor, plano e forma de pagamento NÃO entram: o briefing é de entrega, e
+  // tudo que chega aqui a IA acaba repetindo no resumo. O cockpit já mostra o
+  // que foi contratado no cabeçalho do card.
   push("Fechado por", closerName);
   push("Integração agendada para", lead.integrationAt);
   return f;
@@ -51,7 +51,7 @@ export function factsOf(lead, { closerName = "" } = {}) {
 export function formatBriefText(b) {
   const lines = ["Briefing da integração (IA) · negócio FECHADO e pago, passagem do closer pro integrador", "", b.resumo];
   const entregas = b.entregas || b.vendido; // shape antigo do briefing (antes do enxugamento)
-  if (entregas?.length) lines.push("", "Entregas acordadas:", ...entregas.map((v) => `• ${v}`));
+  if (entregas?.length) lines.push("", "Objetivos da entrega:", ...entregas.map((v) => `• ${v}`));
   if (b.atencao?.length) {
     lines.push("", "Pontos de atenção:");
     for (const a of b.atencao) lines.push(`• ${typeof a === "string" ? a : `${a.ponto}: ${a.porque}`}`);

@@ -107,12 +107,16 @@ test("o briefing parte do negócio JÁ FECHADO: nada de vender de novo", async (
   assert.ok(req.body.system.includes("FECHADO E PAGO"));
   assert.ok(/NUNCA peça pra confirmar, cobrar ou checar pagamento/.test(req.body.system));
   assert.ok(req.body.system.includes("SEJA CURTO"));
+  // o integrador não fala de dinheiro com o cliente: o card já mostra o contratado
+  assert.ok(req.body.system.includes("DINHEIRO NÃO ENTRA NO TEXTO"));
+  assert.ok(/OBJETIVOS DA ENTREGA NUNCA VÊM VAZIOS/.test(req.body.system));
 
   // e o schema conta a mesma história pros campos que mais escorregam pra venda
   const props = req.body.output_config.format.schema.properties;
   assert.ok(props.atencao.description.includes("a venda já aconteceu"));
   assert.ok(props.primeiraMensagem.description.includes("JÁ COMPROU"));
-  assert.ok(props.entregas.description.includes("já comprou"));
+  assert.ok(/nunca vazio/i.test(props.entregas.description), "objetivos da entrega nunca voltam vazios");
+  assert.ok(/PROIBIDO citar valor/i.test(props.entregas.description), "objetivos não falam de dinheiro");
 
   // sem transcrição o enquadramento se mantém
   const f2 = aiFake();
@@ -133,7 +137,8 @@ test("a integração acontece por CALL DE VÍDEO: o briefing organiza o fluxo em
 
   const props = req.body.output_config.format.schema.properties;
   assert.ok(props.primeiraMensagem.description.includes("CALL DE INTEGRAÇÃO POR VÍDEO"));
-  assert.ok(props.primeiraMensagem.description.includes("NÃO proponha dia, horário nem link"));
+  assert.ok(/propor dia\/hora\/link/.test(props.primeiraMensagem.description));
+  assert.ok(/perguntar disponibilidade/.test(props.primeiraMensagem.description), "perguntar horário duplicaria a agenda que o cockpit acrescenta");
   assert.ok(req.body.system.includes("passo a passo da call NÃO é seu trabalho"));
 });
 
@@ -149,7 +154,7 @@ test("briefLead: lê a transcrição da VENDA, grava a activity com o texto form
   assert.equal(acts[0].type, "system");
   assert.equal(acts[0].meta.source, "transcricao");
   assert.equal(acts[0].meta.brief.entregas.length, 2);
-  assert.ok(acts[0].text.includes("Entregas acordadas:"));
+  assert.ok(acts[0].text.includes("Objetivos da entrega:"));
   assert.ok(!/Passo a passo/i.test(acts[0].text), "o passo a passo mora no roteiro da etapa, não no briefing");
   assert.ok(!acts[0].text.includes("—")); // nunca travessão na copy
 
@@ -160,8 +165,9 @@ test("briefLead: lê a transcrição da VENDA, grava a activity com o texto form
   // os dados do cadastro chegam legíveis na IA (faixa "3-5" vira "3 a 5")
   const sent = f.calls[0].body.messages[0].content;
   assert.ok(sent.includes("Contas de marketplace: 3 a 5"));
-  assert.ok(sent.includes("Valor fechado: R$ 7.180,00"));
   assert.ok(sent.includes("Fechado por: Leonardo"));
+  // dinheiro não vai pra IA: chegando nos fatos, ela repete no resumo
+  assert.ok(!/Valor fechado|Forma de pagamento|Plano fechado/.test(sent));
 });
 
 test("briefLead: dedup por lead (força regerar) e nunca sobrescreve sozinho", async () => {
@@ -252,12 +258,15 @@ test("factsOf/formatBriefText: só o preenchido entra e o texto sai legível", (
   const facts = factsOf({ accounts: "10+", listings: "", volume: "50-200", amount: 0 });
   assert.ok(facts.includes("Contas de marketplace: mais de 10"));
   assert.ok(facts.includes("Anúncios novos por semana: 50 a 200"));
-  assert.ok(!facts.some((f) => f.startsWith("Valor fechado")));  // amount 0 não entra
+  // dinheiro (valor, plano, forma de pagamento) fica fora do briefing de ENTREGA
+  assert.ok(!facts.some((f) => /^(Valor fechado|Plano fechado|Forma de pagamento)/.test(f)));
+  assert.ok(!factsOf({ amount: 7180, planClosed: "anual", paymentMethod: "cartao12x" })
+    .some((f) => /^(Valor fechado|Plano fechado|Forma de pagamento)/.test(f)));
 
   const txt = formatBriefText({ resumo: "r", entregas: [], atencao: ["risco x, faça y"], primeiraMensagem: "" });
   assert.ok(txt.startsWith("Briefing da integração (IA) · negócio FECHADO e pago"), "a timeline abre dizendo que já fechou e pagou");
   assert.ok(txt.includes("Pontos de atenção:"));
-  assert.ok(!txt.includes("Entregas acordadas")); // lista vazia não vira seção órfã
+  assert.ok(!txt.includes("Objetivos da entrega")); // lista vazia não vira seção órfã
 
   // briefing no shape antigo (chave `vendido`) continua renderizando
   assert.ok(formatBriefText({ resumo: "r", vendido: ["clonar 4 contas"] }).includes("• clonar 4 contas"));

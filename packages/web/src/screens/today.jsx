@@ -717,10 +717,11 @@ export function IntegrationBriefCard({ brief, phone, deal }) {
   if (!brief) return null;
   // O negócio JÁ ESTÁ FECHADO: a linha do que foi contratado abre o card pra
   // ninguém tratar quem já comprou como lead em negociação.
+  // O que foi contratado (escopo), NÃO como foi pago: forma de pagamento é
+  // assunto do financeiro, o integrador não fala de dinheiro com o cliente.
   const closed = [
     Number(deal?.amount) > 0 ? window.fmt.money(deal.amount) : "",
     closedPlanLabel(deal?.planClosed),
-    paymentLabel(deal?.paymentMethod),
   ].filter(Boolean).join(" · ");
   const box = { border: "1px solid var(--accent-line)", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--accent-soft)" };
   const kick = { fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" };
@@ -772,12 +773,12 @@ export function IntegrationBriefCard({ brief, phone, deal }) {
       {brief.resumo && <div style={{ ...line, marginBottom: open ? 6 : 0 }}>{brief.resumo}</div>}
       {open && (
         <>
-          {entregas?.length > 0 && (
-            <div style={{ marginBottom: 6 }}>
-              {sub("Entregas acordadas")}
-              {entregas.map((v, i) => <div key={i} style={line}>• {v}</div>)}
-            </div>
-          )}
+          <div style={{ marginBottom: 6 }}>
+            {sub("Objetivos da entrega")}
+            {entregas?.length > 0
+              ? entregas.map((v, i) => <div key={i} style={line}>• {v}</div>)
+              : <div className="mono dim" style={{ fontSize: 11 }}>briefing antigo sem objetivos, use "refazer briefing" no card de Integração</div>}
+          </div>
           {brief.atencao?.length > 0 && (
             <div style={{ marginBottom: 6 }}>
               {sub("Pontos de atenção")}
