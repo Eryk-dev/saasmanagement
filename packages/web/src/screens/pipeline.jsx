@@ -538,26 +538,45 @@ function AgendaView({ leads, onOpenLead, blocking }) {
                   backgroundColor: isToday ? "color-mix(in srgb, var(--accent) 5%, transparent)" : "transparent",
                   cursor: blocking?.onSlot ? "pointer" : undefined,
                 }}>
-                {(blocking ? blocking.blocksFor(d) : []).map((b) => {
-                  const from = b.allDay ? H0 : Math.max(H0, Number(b.fromHour) || 0);
-                  const to = b.allDay ? H1 : Math.min(H1, Number(b.toHour) || 0);
-                  if (to <= from) return null;
-                  return (
-                    <div key={`blk-${b.id}`}
-                      onClick={(e) => { e.stopPropagation(); blocking.onBlock && blocking.onBlock(b); }}
-                      title={`bloqueado${b.reason ? ": " + b.reason : ""}${b.recur === "weekly" ? " · toda semana" : ""}${blocking.onBlock ? " · clique pra liberar" : ""}`}
-                      style={{
-                        position: "absolute", top: (from - H0) * hourH + 1, left: 2, right: 2, height: (to - from) * hourH - 3,
-                        background: "color-mix(in srgb, var(--neg) 8%, var(--bg-1))",
-                        border: "1px dashed color-mix(in srgb, var(--neg) 45%, var(--line-1))", borderLeft: "3px solid var(--neg)",
-                        borderRadius: 5, padding: "3px 6px", cursor: blocking.onBlock ? "pointer" : "default", overflow: "hidden",
-                      }}>
-                      <div className="mono" style={{ fontSize: 9.5, fontWeight: 600, color: "var(--neg)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        bloqueado{b.recur === "weekly" ? " ↻" : ""}{b.reason ? ` · ${b.reason}` : ""}
+                {(() => {
+                  // Itens da agenda (bloqueios/compromissos, decorados pela tela com
+                  // _tone/_label/_who): lanes próprias quando se sobrepõem (ex.: o
+                  // almoço do time inteiro no mesmo meio-dia).
+                  const laneEnds = [];
+                  const placedBlks = (blocking ? blocking.blocksFor(d) : [])
+                    .map((b) => ({ b, from: b.allDay ? H0 : Math.max(H0, Number(b.fromHour) || 0), to: b.allDay ? H1 : Math.min(H1, Number(b.toHour) || 0) }))
+                    .filter((x) => x.to > x.from)
+                    .sort((a, z) => a.from - z.from)
+                    .map((x) => {
+                      let lane = laneEnds.findIndex((t) => t <= x.from);
+                      if (lane < 0) { lane = laneEnds.length; laneEnds.push(0); }
+                      laneEnds[lane] = x.to;
+                      return { ...x, lane };
+                    });
+                  const bw = 100 / Math.max(1, laneEnds.length);
+                  return placedBlks.map(({ b, from, to, lane }) => {
+                    const tone = b._tone || null; // com tom = compromisso; sem = bloqueio vermelho
+                    const label = b._label || `bloqueado${b.recur === "weekly" ? " ↻" : ""}${b.reason ? ` · ${b.reason}` : ""}`;
+                    return (
+                      <div key={`blk-${b.id}`}
+                        onClick={(e) => { e.stopPropagation(); blocking.onBlock && blocking.onBlock(b); }}
+                        title={`${b._who ? b._who + " · " : ""}${label}${b.recur === "weekly" ? " · toda semana" : ""}${blocking.onBlock ? " · clique pra editar" : ""}`}
+                        style={{
+                          position: "absolute", top: (from - H0) * hourH + 1,
+                          left: `calc(${lane * bw}% + 2px)`, width: `calc(${bw}% - 4px)`,
+                          height: Math.max(16, (to - from) * hourH - 3),
+                          background: tone ? `color-mix(in srgb, ${tone} 14%, var(--bg-1))` : "color-mix(in srgb, var(--neg) 8%, var(--bg-1))",
+                          border: tone ? `1px solid color-mix(in srgb, ${tone} 45%, var(--line-1))` : "1px dashed color-mix(in srgb, var(--neg) 45%, var(--line-1))",
+                          borderLeft: `3px solid ${tone || "var(--neg)"}`,
+                          borderRadius: 5, padding: "2px 6px", cursor: blocking.onBlock ? "pointer" : "default", overflow: "hidden",
+                        }}>
+                        <div className="mono" style={{ fontSize: 9.5, fontWeight: 600, color: tone ? "var(--fg-2)" : "var(--neg)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {label}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  });
+                })()}
                 {placed.map(({ l, t, lane, kind }) => {
                   const who = kind === "toque" ? (l.owner || l.closer) : kind === "integração" ? (l.integrator || l.closer) : l.closer;
                   const tone = toneOf(who);
