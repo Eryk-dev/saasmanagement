@@ -696,15 +696,27 @@ function IntegrationsSettings({ s }) {
   const waOn = !!window.SEED?.CONFIG?.whatsapp?.configured;
   const [waPhoneId, setWaPhoneId] = useStS(s.waPhoneId || "");
   // Fluxo de permissão de ligação: 1º contato de um lead novo no inbox responde
-  // sozinho pedindo a permissão NATIVA de chamada com esta saudação; a resposta
-  // do lead salta como pop-up pro SDR. Exige "Allow voice calls" ligado no
-  // número (WhatsApp Manager → Call settings).
+  // sozinho pedindo a permissão NATIVA de chamada; a resposta do lead salta
+  // como pop-up pro SDR. DUAS saudações pelo relógio do time (seg a sex, no
+  // horário configurado): dentro pede pra ligar agora; fora avisa quando o
+  // time volta ({volta}) e pede a autorização pra esse retorno. Exige "Allow
+  // voice calls" ligado no número (WhatsApp Manager → Call settings).
   const [cfOn, setCfOn] = useStS(!!s.waCallFlow?.enabled);
   const [cfGreeting, setCfGreeting] = useStS(s.waCallFlow?.greeting || "");
+  const [cfAfter, setCfAfter] = useStS(s.waCallFlow?.afterHours || "");
+  const [cfStart, setCfStart] = useStS(s.waCallFlow?.hourStart ?? 8);
+  const [cfEnd, setCfEnd] = useStS(s.waCallFlow?.hourEnd ?? 18);
   async function saveWa() {
+    const hour = (v, fb) => { const n = Number(v); return Number.isFinite(n) && n >= 0 && n < 24 ? n : fb; };
     await api.update("products", s.id, {
       waPhoneId: waPhoneId.replace(/\D/g, ""),
-      waCallFlow: { enabled: !!cfOn, greeting: cfGreeting.trim() },
+      waCallFlow: {
+        enabled: !!cfOn,
+        greeting: cfGreeting.trim(),
+        afterHours: cfAfter.trim(),
+        hourStart: hour(cfStart, 8),
+        hourEnd: hour(cfEnd, 18),
+      },
     });
     await refresh();
   }
@@ -772,14 +784,28 @@ function IntegrationsSettings({ s }) {
                 Fluxo de ligação no 1º contato
               </label>
               <div className="mono dim" style={{ fontSize: 11, marginTop: 4, lineHeight: 1.5 }}>
-                a primeira mensagem de um lead novo (ex.: vindo do formulário) recebe sozinha o pedido NATIVO de permissão de ligação com a saudação abaixo · a resposta do lead salta como pop-up pro SDR · precisa do "Allow voice calls" ligado no número (WhatsApp Manager → Call settings)
+                a primeira mensagem de um lead novo (ex.: vindo do formulário) recebe sozinha o pedido NATIVO de permissão de ligação · a resposta do lead salta como pop-up pro SDR · precisa do "Allow voice calls" ligado no número (WhatsApp Manager → Call settings)
               </div>
               {cfOn && (
-                <textarea value={cfGreeting} onChange={(e) => setCfGreeting(e.target.value)} rows={2}
-                  placeholder={'Olá {nome}! Recebi seu formulário aqui. Posso te ligar pra uma breve conversa sobre a plataforma?'}
-                  style={{ ...inputStyle, width: "100%", height: "auto", minHeight: 56, marginTop: 8, padding: "8px 12px", fontSize: 12.5, lineHeight: 1.45, resize: "vertical", fontFamily: "inherit" }} />
+                <>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+                    <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>horário do time · seg a sex, das</span>
+                    <input type="number" min={0} max={23} value={cfStart} onChange={(e) => setCfStart(e.target.value)} className="mono" style={{ ...inputStyle, width: 58, fontFamily: "var(--mono)" }} />
+                    <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>às</span>
+                    <input type="number" min={1} max={24} value={cfEnd} onChange={(e) => setCfEnd(e.target.value)} className="mono" style={{ ...inputStyle, width: 58, fontFamily: "var(--mono)" }} />
+                    <span className="mono dim" style={{ fontSize: 10 }}>fim de semana conta como fora do horário</span>
+                  </div>
+                  <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", marginTop: 10 }}>dentro do horário (pede pra ligar agora)</div>
+                  <textarea value={cfGreeting} onChange={(e) => setCfGreeting(e.target.value)} rows={2}
+                    placeholder={'Olá {nome}! Recebi seu formulário aqui. Posso te ligar pra uma breve conversa sobre a plataforma?'}
+                    style={{ ...inputStyle, width: "100%", height: "auto", minHeight: 52, marginTop: 6, padding: "8px 12px", fontSize: 12.5, lineHeight: 1.45, resize: "vertical", fontFamily: "inherit" }} />
+                  <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", marginTop: 10 }}>fora do horário (avisa quando volta e já pede a autorização)</div>
+                  <textarea value={cfAfter} onChange={(e) => setCfAfter(e.target.value)} rows={2}
+                    placeholder={'Olá {nome}! Recebi seu formulário aqui. Nosso time está fora do horário agora, mas volta {volta}. Posso te ligar quando voltarmos pra falar sobre a plataforma? Já deixa a autorização aqui embaixo.'}
+                    style={{ ...inputStyle, width: "100%", height: "auto", minHeight: 52, marginTop: 6, padding: "8px 12px", fontSize: 12.5, lineHeight: 1.45, resize: "vertical", fontFamily: "inherit" }} />
+                  <div className="mono dim" style={{ fontSize: 10, marginTop: 4 }}>{"{nome}"} vira o primeiro nome do lead · {"{volta}"} vira "hoje às 8h" / "amanhã às 8h" / "segunda às 8h" · vazio usa o texto padrão</div>
+                </>
               )}
-              {cfOn && <div className="mono dim" style={{ fontSize: 10, marginTop: 4 }}>{"{nome}"} vira o primeiro nome do lead · vazio usa o texto padrão acima</div>}
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
               <button onClick={saveWa} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}><span style={{ fontSize: 11 }}>salvar</span></button>

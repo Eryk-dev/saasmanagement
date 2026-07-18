@@ -4,7 +4,7 @@
 import { makeWhatsapp } from "./whatsapp.js";
 import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId, setLeadWhatsappOptOut, waInsights, findLeadByPhone } from "./wa-store.js";
 import { applyHealthEvent, getWaHealth, waHealthSummary, recordWebhookDelivery } from "./wa-health.js";
-import { runInboundCallFlow, startCallFlow, openAlerts, closeThreadAlerts, parsePermissionReply } from "./wa-call-flow.js";
+import { runInboundCallFlow, startCallFlow, openAlerts, closeThreadAlerts, parsePermissionReply, greetingFor } from "./wa-call-flow.js";
 
 // Texto legível pra tipos que a Fase 1 ainda não renderiza (mídia/áudio).
 function bodyOf(m) {
@@ -249,7 +249,9 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
         thread: thread || { id: phone, phone, saas, leadId: lead?.id || null },
         product, lead, phoneId,
         author: req.authUser?.id || "cockpit",
-        text: String(req.body?.text || "").trim(),
+        // Manual é sempre o texto de "agora" (tem gente na tela pra ligar já),
+        // mesmo fora do horário do fluxo automático.
+        text: String(req.body?.text || "").trim() || greetingFor(product, lead, { business: true }),
       });
       return { ok: true, interactive: r.interactive, messageId: r.messageId };
     } catch (err) { return sendErrorReply(reply, err); }
