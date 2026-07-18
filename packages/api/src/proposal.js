@@ -73,6 +73,61 @@ export function slideVisible(slide, answers) {
   return got.some((g) => want.includes(g));
 }
 
+// ── Ofertas do slide de preço ───────────────────────────────────────────────
+// O slide `pricing` carrega ATÉ TRÊS ofertas: a principal, nos campos do
+// próprio slide, e as secretas em `offer2`/`offer3` (o closer revela com
+// Shift+1/2 na apresentação ao vivo). Estes são os campos que descrevem UMA
+// oferta — promover uma secreta a principal é copiar exatamente eles.
+const OFFER_KEYS = ["planTag", "planPill", "priceFrom", "pricePrefix", "currency", "price", "per", "sub", "cyclesLabel", "cyclesFrom", "cycles"];
+const offerAt = (slide, n) => (n === 2 ? slide?.offer2 : n === 3 ? slide?.offer3 : slide);
+const pricingSlide = (slides) => (slides || []).find((s) => s?.type === "pricing") || null;
+
+// Ofertas disponíveis num deck, na ordem da escada (1 = principal). Usado pelo
+// cockpit pra oferecer "qual proposta mandar" e pra validar o pedido de share.
+export function proposalOffers(slides) {
+  const slide = pricingSlide(slides);
+  if (!slide) return [];
+  const out = [];
+  for (const n of [1, 2, 3]) {
+    const o = offerAt(slide, n);
+    // A principal sempre conta; as secretas só quando realmente preenchidas
+    // (mesma régua do renderer pra decidir se o card existe).
+    if (!o || (n > 1 && !(o.price || o.planTag))) continue;
+    out.push({
+      offer: n,
+      label: String(o.planTag || `Oferta ${n}`),
+      price: String(o.price ?? ""),
+      per: String(o.per ?? ""),
+      cycles: String(o.cycles ?? ""),
+    });
+  }
+  return out;
+}
+
+// Deck com UMA oferta só: a escolhida vira a principal e as secretas somem (o
+// cliente não pode ver a escada de negociação). Slides não-pricing passam
+// intactos; o `revealPrice` fica como está — quem desliga a interação é o
+// `showAll` da proposta (o layout encadeado depende do flag pra existir).
+export function flattenOffer(slides, offer) {
+  const n = [1, 2, 3].includes(Number(offer)) ? Number(offer) : 1;
+  return (slides || []).map((s) => {
+    if (s?.type !== "pricing") return s;
+    const out = { ...s };
+    delete out.offer2;
+    delete out.offer3;
+    const src = offerAt(s, n);
+    // n===1 já é o próprio slide; só promoção precisa reescrever os campos (e
+    // APAGAR o que a oferta escolhida não define, senão sobra dado da anterior).
+    if (n !== 1 && src) {
+      for (const k of OFFER_KEYS) {
+        if (src[k] !== undefined) out[k] = src[k];
+        else delete out[k];
+      }
+    }
+    return out;
+  });
+}
+
 const CALC_DEFAULTS = {
   salaryMonthly: 3000, workHours: 176, minCopy: 10, minCompatEdit: 2,
   reworkPct: 0.10, netMargin: 0.10, revenueUpliftPct: 50,
@@ -121,8 +176,57 @@ export function publicProposal(p, { editable = false } = {}) {
     state: p.state || {},
     accepted: !!p.accepted,
     editable,
+    // Versão pro cliente: nada espera comando do closer (o preço e os
+    // benefícios abrem direto). Ver shareProposalOffer.
+    showAll: !!p.showAll,
     frozen: !!p.state?.frozen,
   };
+}
+
+// ── Versão pro CLIENTE (o link que vai no WhatsApp) ─────────────────────────
+// O deck é desenhado pra APRESENTAÇÃO AO VIVO: o preço só entra no comando do
+// closer e as ofertas 2/3 são secretas. Mandado assim, o cliente abre e vê uma
+// faixa vazia. Cada oferta ganha então uma proposta PRÓPRIA (id, link e
+// tracking separados, dá pra saber qual oferta ele abriu) com: a oferta
+// escolhida promovida a principal, as secretas fora, `showAll` (tudo visível
+// sem clicar) e SEM editKey (o link nunca abre a edição da apresentação).
+// Idempotente por (mãe, oferta): re-compartilhar re-snapshota o mesmo link,
+// então correção no deck ou nos dados do lead chega em quem já recebeu.
+export async function shareProposalOffer(repo, parent, offer, { baseUrl = "" } = {}) {
+  const offers = proposalOffers(parent?.slides);
+  // Oferta inválida NÃO cai na principal por silêncio: este link vai pro
+  // cliente, mandar o preço errado é pior que falhar.
+  const n = offer == null ? 1 : Number(offer);
+  const picked = offers.find((o) => o.offer === n);
+  if (!picked) return { ok: false, error: "oferta inexistente nesta proposta" };
+
+  const snapshot = {
+    saas: parent.saas,
+    template: parent.template || "",
+    lead: parent.lead || "",
+    name: parent.name || "Proposta",
+    theme: parent.theme || {},
+    calc: parent.calc || {},
+    acceptStage: parent.acceptStage || "",
+    data: parent.data || { lead: {}, answers: {} },
+    state: parent.state || {},
+    slides: flattenOffer(parent.slides, n),
+    showAll: true,
+    sharedFrom: parent.id,
+    sharedOffer: n,
+  };
+  const all = await repo.list("proposals");
+  const existing = all.find((p) => p.sharedFrom === parent.id && Number(p.sharedOffer) === n);
+  const saved = existing
+    ? await repo.update("proposals", existing.id, snapshot) // mesmo link, mantém views/aceite
+    : await repo.create("proposals", {
+        ...snapshot,
+        editKey: "", // sem chave = editable nunca liga (ver /p/:id)
+        views: 0,
+        accepted: false,
+        createdAt: new Date().toISOString(),
+      });
+  return { ok: true, proposal: saved, url: `${baseUrl}/p/${saved.id}`, offer: n, label: picked.label };
 }
 
 // Provider nativo do dispatcher de POST /api/leads/:id/proposal. Mesmo contrato

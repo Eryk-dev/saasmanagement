@@ -22,6 +22,7 @@ const SYSTEM_TEXT = {
   meet_created: (m) => `Meet criado na agenda${(m.attendees || []).length ? ` · ${m.attendees.length} convidado(s)` : ""}`,
   lead_created: (m) => `Lead criado${m.via === "form" ? " pelo formulário" : ""}${m.stage ? ` em “${m.stage}”` : ""}`,
   proposal_viewed: (m) => `Proposta visualizada${m.viewer === "cliente" ? " pelo cliente" : m.viewer === "time" ? " (pelo time)" : " pela 1ª vez"}${m.device ? ` · ${m.device}` : ""}`,
+  proposal_shared: (m) => `Proposta enviada pro cliente${m.label ? ` · ${m.label}` : ""}`,
   proposal_accepted: (m) => `Proposta aceita${m.stage ? ` → “${m.stage}”` : ""}`,
   customer_created: () => "Virou cliente 🎉",
 };

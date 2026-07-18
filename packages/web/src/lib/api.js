@@ -66,6 +66,10 @@ export const api = {
     const q = [auto && "auto=1", force && "force=1"].filter(Boolean).join("&");
     return req("POST", `/api/leads/${id}/proposal${q ? `?${q}` : ""}`);
   },
+  // Ofertas do deck do lead (a principal + as secretas da escada) e o link
+  // pronto pro cliente de UMA delas — o que vai no WhatsApp.
+  proposalOffers: (id) => req("GET", `/api/leads/${id}/proposal-offers`),
+  shareProposal: (id, offer) => req("POST", `/api/leads/${id}/proposal-share`, { offer }),
   // Builders: preview server-side do rascunho (mesmo HTML da página pública).
   formPreview: (draft) => req("POST", "/api/forms/preview", draft),
   // Funil de drop-off do form: sessões únicas por etapa. `since` (ISO) filtra o período.

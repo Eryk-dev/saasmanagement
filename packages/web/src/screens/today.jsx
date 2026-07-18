@@ -38,6 +38,10 @@ const ACTION_LABELS = {
   outro: "contato",
 };
 
+// Etapas em que mandar a proposta faz sentido no roteiro (a call tem bloco
+// próprio, com os atalhos da chamada junto).
+const PROPOSAL_KINDS = new Set(["proposta", "followup"]);
+
 const TIER_ORDER = { alto: 3, medio: 2, baixo: 1, sem: 0 };
 
 // Ordem de atendimento dentro de cada dia (Leo, jul/2026): confirmar call (o
@@ -783,19 +787,12 @@ export function IntegrationBriefCard({ brief, phone }) {
 // `onPatch` grava no lead (sincroniza a fila e persiste). Proposta é só do
 // closer na call — na tarefa de confirmação do SDR ela some.
 function CallShortcuts({ l, item, wa, onPatch }) {
-  const [busy, setBusy] = useS("");   // "meet" | "prop" | ""
+  const [busy, setBusy] = useS("");   // "meet" | ""
   const [err, setErr] = useS("");
   const firstName = l.name ? " " + String(l.name).trim().split(/\s+/)[0] : "";
   const waForward = wa && l.callUrl
     ? `${wa}?text=${encodeURIComponent(`Oi${firstName}! Aqui é da LeverAds. Nossa call vai ser por este link: ${l.callUrl}`)}`
     : null;
-  // Elegibilidade da proposta: mesma regra do ProposalActions (template nativo
-  // publicado pro SaaS ou Levercopy ligado). Some na confirmação do SDR.
-  const cfg = window.SEED?.CONFIG?.levercopy;
-  const propEligible = !item.confirm && (
-    (window.SEED?.CONFIG?.proposals?.nativeSaas || []).includes(l.saas)
-    || (!!cfg?.enabled && l.saas === cfg.saas)
-  );
   const googleOn = !!window.SEED?.CONFIG?.google?.connected;
 
   async function makeLink() {
@@ -805,15 +802,6 @@ function CallShortcuts({ l, item, wa, onPatch }) {
       if (googleOn) { const r = await api.createMeet(l.id); onPatch({ callUrl: r.callUrl, meetEventId: r.eventId }); }
       else onPatch({ callUrl: `https://meet.jit.si/LeverAds-${Math.random().toString(36).slice(2, 10)}` });
     } catch (e) { setErr(e?.message || "falha ao criar o link da call"); }
-    setBusy("");
-  }
-  async function genProposal() {
-    setBusy("prop"); setErr("");
-    try {
-      const r = await api.generateProposal(l.id, {});
-      if (!r || r.ok === false) setErr("não deu pra gerar a proposta");
-      else if (r.lead) onPatch({ proposalUrl: r.lead.proposalUrl, proposal_edit_url: r.lead.proposal_edit_url, proposta_id: r.lead.proposta_id });
-    } catch { setErr("não deu pra gerar a proposta"); }
     setBusy("");
   }
 
@@ -847,26 +835,117 @@ function CallShortcuts({ l, item, wa, onPatch }) {
         )}
       </div>
 
-      {/* Proposta: abrir/editar a existente ou gerar na hora (só pro closer). */}
-      {(l.proposalUrl || propEligible) && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-          <span style={rowLabel}>Proposta</span>
-          {l.proposalUrl ? (
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-              {/* "apresentar ao vivo" abre o link ?k (tela de setup + edição inline);
-                  "ver como cliente" é o link limpo que o cliente recebe. */}
-              <a href={l.proposal_edit_url || cockpitProposalUrl(l.proposalUrl)} target="_blank" rel="noopener noreferrer" style={{ ...chip, borderColor: "var(--accent-line)", color: "var(--accent)" }}>apresentar ao vivo ↗</a>
-              <a href={cockpitProposalUrl(l.proposalUrl)} target="_blank" rel="noopener noreferrer" style={chip}>ver como cliente ↗</a>
-            </div>
-          ) : (
-            <button onClick={genProposal} disabled={busy === "prop"} style={{ ...chip, alignSelf: "flex-start", borderColor: "var(--accent-line)", color: "var(--accent)" }}>
-              {busy === "prop" ? "gerando…" : "gerar proposta"}
-            </button>
-          )}
-        </div>
-      )}
+      <ProposalBlock l={l} wa={wa} item={item} onPatch={onPatch} />
 
       {err && <div className="mono" style={{ fontSize: 10.5, color: "var(--neg)" }}>{err}</div>}
+    </div>
+  );
+}
+
+// Proposta dentro do roteiro: APRESENTAR ao vivo (link com edição inline) e
+// MANDAR pro cliente no WhatsApp. O deck é de apresentação — o preço só entra
+// no comando do closer e as ofertas 2/3 são secretas —, então cada oferta tem
+// um link PRÓPRIO pro cliente (proposta separada, já visível e sem edição): o
+// botão gera/atualiza esse link e abre o Whats com a mensagem pronta.
+function ProposalBlock({ l, wa, item, onPatch }) {
+  const [offers, setOffers] = useS([]);
+  const [busy, setBusy] = useS("");
+  const [err, setErr] = useS("");
+  const [sent, setSent] = useS(null); // { offer, url } da última enviada
+
+  const cfg = window.SEED?.CONFIG?.levercopy;
+  const eligible = !item?.confirm && (
+    (window.SEED?.CONFIG?.proposals?.nativeSaas || []).includes(l.saas)
+    || (!!cfg?.enabled && l.saas === cfg.saas)
+  );
+  const brand = (window.SEED?.SAAS || []).find((s) => s.id === l.saas)?.name || "LeverAds";
+  const firstName = l.name ? " " + String(l.name).trim().split(/\s+/)[0] : "";
+
+  // Ofertas do deck (a principal + a escada secreta) — só existem depois que a
+  // proposta foi gerada; deck sem escada devolve uma opção só.
+  useE(() => {
+    setOffers([]); setSent(null); setErr("");
+    if (!l.proposta_id) return;
+    let alive = true;
+    api.proposalOffers(l.id)
+      .then((r) => { if (alive) setOffers(r?.offers || []); })
+      .catch(() => { /* sem ofertas: cai no link único de sempre */ });
+    return () => { alive = false; };
+  }, [l.id, l.proposta_id]);
+
+  async function genProposal() {
+    setBusy("gen"); setErr("");
+    try {
+      const r = await api.generateProposal(l.id, {});
+      if (!r || r.ok === false) setErr("não deu pra gerar a proposta");
+      else if (r.lead) onPatch({ proposalUrl: r.lead.proposalUrl, proposal_edit_url: r.lead.proposal_edit_url, proposta_id: r.lead.proposta_id });
+    } catch { setErr("não deu pra gerar a proposta"); }
+    setBusy("");
+  }
+
+  async function share(o) {
+    setBusy(`o${o.offer}`); setErr("");
+    // A aba do Whats abre ANTES do await: aberta depois da resposta, o
+    // navegador trata como popup e bloqueia. Sem telefone (ou se o bloqueio
+    // vier assim mesmo), o link fica no bloco pra copiar/abrir na mão.
+    const win = wa ? window.open("", "_blank") : null;
+    try {
+      const r = await api.shareProposal(l.id, o.offer);
+      setSent({ offer: o.offer, url: r.url });
+      const text = `Oi${firstName}! Aqui é da ${brand}. Segue a sua proposta com tudo o que a gente conversou: ${r.url}`;
+      if (win) win.location.replace(`${wa}?text=${encodeURIComponent(text)}`);
+    } catch {
+      if (win) win.close();
+      setErr("não deu pra preparar o link da proposta");
+    }
+    setBusy("");
+  }
+
+  if (!l.proposalUrl && !eligible) return null;
+
+  const chip = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
+  const rowLabel = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-4)", letterSpacing: "0.04em", textTransform: "uppercase" };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      <span style={rowLabel}>Proposta</span>
+      {!l.proposalUrl ? (
+        <button onClick={genProposal} disabled={busy === "gen"} style={{ ...chip, alignSelf: "flex-start", borderColor: "var(--accent-line)", color: "var(--accent)" }}>
+          {busy === "gen" ? "gerando…" : "gerar proposta"}
+        </button>
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            {/* "apresentar ao vivo" abre o link ?k (setup + edição inline);
+                "ver como cliente" é o link limpo do deck de apresentação. */}
+            <a href={l.proposal_edit_url || cockpitProposalUrl(l.proposalUrl)} target="_blank" rel="noopener noreferrer" style={{ ...chip, borderColor: "var(--accent-line)", color: "var(--accent)" }}>apresentar ao vivo ↗</a>
+            <a href={cockpitProposalUrl(l.proposalUrl)} target="_blank" rel="noopener noreferrer" style={chip}>ver como cliente ↗</a>
+          </div>
+          {offers.length > 0 && (
+            <>
+              <span style={{ ...rowLabel, marginTop: 3 }}>Mandar no Whats · escolha a oferta</span>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                {offers.map((o) => (
+                  <button key={o.offer} onClick={() => share(o)} disabled={!!busy}
+                    title={`Gera o link do cliente (preço visível, sem edição) da oferta ${o.label} e abre o WhatsApp`}
+                    style={{ ...chip, borderColor: sent?.offer === o.offer ? "#25D366" : "var(--line-2)", color: sent?.offer === o.offer ? "#128c4b" : "var(--fg-2)" }}>
+                    {busy === `o${o.offer}` ? "preparando…" : `${o.label}${o.price ? ` · ${o.price}` : ""}`}
+                  </button>
+                ))}
+                {!wa && <span className="mono dim" style={{ fontSize: 10 }}>sem telefone: o link fica aqui pra copiar</span>}
+              </div>
+            </>
+          )}
+          {sent && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <span className="mono" style={{ fontSize: 10, color: "var(--pos)" }}>✓ link do cliente pronto</span>
+              <button style={{ ...chip, height: 24 }} title="Copiar o link da proposta do cliente"
+                onClick={() => { try { navigator.clipboard.writeText(sent.url); } catch { window.prompt("Link da proposta:", sent.url); } }}>copiar</button>
+              <a href={cockpitProposalUrl(sent.url)} target="_blank" rel="noopener noreferrer" style={{ ...chip, height: 24 }}>conferir ↗</a>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -1117,6 +1196,13 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
             {/* Call agendada: atalhos do closer no topo (link da call + mandar pro
                 cliente no Whats + proposta), antes do passo a passo. */}
             {item.kind === "call" && !preview && <CallShortcuts l={l} item={item} wa={wa} onPatch={patch} />}
+            {/* Fora da call, quem cobra proposta/follow-up também precisa do
+                atalho de mandar a proposta no Whats (sem os atalhos da call). */}
+            {item.kind !== "call" && !preview && PROPOSAL_KINDS.has(item.kind) && (
+              <div style={{ border: "1px solid var(--line-2)", background: "var(--bg-inset)", borderRadius: "var(--r-2)", padding: "10px 12px" }}>
+                <ProposalBlock l={l} wa={wa} item={item} onPatch={patch} />
+              </div>
+            )}
             <div style={{ ...box, background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
               <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 4 }}>Como se comportar</div>
               <div style={{ fontSize: 12, lineHeight: 1.45 }}>{script.resumo}</div>
