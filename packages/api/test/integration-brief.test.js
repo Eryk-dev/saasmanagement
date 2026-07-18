@@ -93,6 +93,32 @@ test("cliente de IA: briefIntegration manda o schema do briefing com os dados do
   assert.ok(req.body.messages[0].content.includes("Transcrição da call de venda"));
 });
 
+test("o briefing parte do negócio JÁ FECHADO: nada de vender de novo", async () => {
+  const f = aiFake();
+  const a = makeAnthropic({ fetch: f, apiKey: "sk-test" });
+  await a.briefIntegration({ transcript: "Leo: fechado então", lead: { name: "Hiago" }, facts: ["Valor fechado: R$ 7.180,00"] });
+  const req = f.calls[0];
+
+  // o enquadramento é explícito no system E no contexto da mensagem
+  assert.ok(req.body.system.includes("O NEGÓCIO JÁ ESTÁ FECHADO"));
+  assert.ok(req.body.system.includes("ENTREGA, não venda"));
+  assert.ok(/NUNCA:.*negociar preço/s.test(req.body.system));   // proibição explícita de reabrir venda
+  assert.ok(req.body.system.includes("RISCO DE ENTREGA"));      // objeção em aberto muda de natureza
+  assert.ok(req.body.messages[0].content.includes("STATUS: NEGÓCIO FECHADO"));
+  assert.ok(req.body.messages[0].content.includes("JÁ FOI GANHA"));
+
+  // e o schema conta a mesma história pros campos que mais escorregam pra venda
+  const props = req.body.output_config.format.schema.properties;
+  assert.ok(props.atencao.description.includes("a venda já aconteceu"));
+  assert.ok(props.primeiraMensagem.description.includes("JÁ COMPROU"));
+  assert.ok(props.vendido.description.includes("JÁ COMPROU"));
+
+  // sem transcrição o enquadramento se mantém
+  const f2 = aiFake();
+  await makeAnthropic({ fetch: f2, apiKey: "sk-test" }).briefIntegration({ priorSummary: { resumo: "x" }, lead: { name: "Hiago" } });
+  assert.ok(f2.calls[0].body.messages[0].content.includes("JÁ FOI FECHADA"));
+});
+
 test("briefLead: lê a transcrição da VENDA, grava a activity com o texto formatado e carimba o lead", async () => {
   const { repo, briefer, f } = await setup();
   const r = await briefer.briefLead("l1");
@@ -211,6 +237,7 @@ test("factsOf/formatBriefText: só o preenchido entra e o texto sai legível", (
   assert.ok(!facts.some((f) => f.startsWith("Valor fechado")));  // amount 0 não entra
 
   const txt = formatBriefText({ resumo: "r", checklist: [], confirmar: ["quais contas"], primeiraMensagem: "" });
+  assert.ok(txt.startsWith("Briefing da integração (IA) · negócio FECHADO"), "a timeline também abre dizendo que já fechou");
   assert.ok(txt.includes("Confirmar com o cliente:"));
   assert.ok(!txt.includes("Passo a passo")); // lista vazia não vira seção órfã
 });

@@ -11,7 +11,7 @@ import { allUsers, currentUser, displayName, userById, usersByRole } from "../li
 import { useActiveSaas } from "../lib/workspace.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 import { resolveScript, scriptTokens, scriptSegments, scriptChecklist, isNoShowStage, confirmationScript, scriptKeyFor } from "../lib/scripts.js";
-import { PAYMENT_METHODS, paymentLabel } from "../lib/payments.js";
+import { PAYMENT_METHODS, paymentLabel, closedPlanLabel } from "../lib/payments.js";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
 // "Amanhã" e "Próximos dias" (o que já está agendado, à vista), e "Sem data".
@@ -689,10 +689,17 @@ export function CallSummaryCard({ summary, phone }) {
 // transcrição da call de VENDA quando o card entra em Integração). O integrador
 // não estava na call: aqui ele se localiza (quem é o cliente, o que foi
 // prometido) e vê o que fazer (confirmar, checklist, primeira mensagem).
-export function IntegrationBriefCard({ brief, phone }) {
+export function IntegrationBriefCard({ brief, phone, deal }) {
   const [copied, setCopied] = useS(false);
   const [open, setOpen] = useS(true);
   if (!brief) return null;
+  // O negócio JÁ ESTÁ FECHADO: a linha do que foi contratado abre o card pra
+  // ninguém tratar quem já comprou como lead em negociação.
+  const closed = [
+    Number(deal?.amount) > 0 ? window.fmt.money(deal.amount) : "",
+    closedPlanLabel(deal?.planClosed),
+    paymentLabel(deal?.paymentMethod),
+  ].filter(Boolean).join(" · ");
   const box = { border: "1px solid var(--accent-line)", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--accent-soft)" };
   const kick = { fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" };
   const line = { fontSize: 12, lineHeight: 1.5, color: "var(--fg-1)" };
@@ -705,9 +712,13 @@ export function IntegrationBriefCard({ brief, phone }) {
     <div style={box}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
         <span className="mono" style={{ ...kick, color: "var(--accent)" }}>Briefing da integração · IA</span>
+        <Pill tone="pos">negócio fechado</Pill>
         {brief.source === "resumo" && <Pill tone="warn">sem transcrição</Pill>}
         {brief.recordingUrl && <a href={brief.recordingUrl} target="_blank" rel="noopener noreferrer" className="mono" style={{ fontSize: 10.5, color: "var(--accent)" }}>🎥 gravação da venda</a>}
         <button onClick={() => setOpen((v) => !v)} className="mono dim" style={{ fontSize: 10.5, marginLeft: "auto" }}>{open ? "recolher" : "abrir"}</button>
+      </div>
+      <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 5 }}>
+        {closed ? `Já contratou: ${closed} · agora é entrega, não venda` : "O cliente já comprou, agora é entrega, não venda"}
       </div>
       {brief.resumo && <div style={{ ...line, marginBottom: open ? 6 : 0 }}>{brief.resumo}</div>}
       {open && (
