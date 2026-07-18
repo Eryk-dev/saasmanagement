@@ -17,8 +17,9 @@ const NAV = [
 
   { id: "pipeline",   label: "Pipeline",       icon: "≡",  group: "comercial" },
   { id: "customers",  label: "Clientes",       icon: "○",  group: "comercial" },
-  // Recurso legado mantido por URL, mas fora da navegação do handoff.
-  { id: "consultas",  label: "Consultas",      icon: "❋",  group: "comercial", hidden: true },
+  // Tela da mentoria 1:1 (pacote de consultas + Manual da Família): só aparece
+  // no workspace do UniqueKids (`saas`); nos outros produtos ela não existe.
+  { id: "consultas",  label: "Consultas",      icon: "❋",  group: "comercial", saas: "uniquekids" },
   { id: "proposals",  label: "Propostas",      icon: "▥",  group: "comercial" },
   { id: "offers",     label: "Link pagamento", icon: "◇",  group: "comercial" },
   { id: "agenda",     label: "Agenda",         icon: "▦",  group: "comercial" },
@@ -92,10 +93,11 @@ function NavRail({ current, onNav, collapsed }) {
   const brand = BRANDS[product?.id] || { label: product?.name || "Cockpit", Icon: GenericMark };
   // Aba do navegador acompanha a marca do workspace ativo.
   useE(() => { document.title = `${brand.label} · Cockpit`; }, [brand.label]);
-  // Build grouped list — só as telas permitidas pro usuário (user.screens);
-  // grupo sem tela permitida some inteiro. A API tem o guard de verdade.
+  // Build grouped list — só as telas permitidas pro usuário (user.screens) e,
+  // quando o item é de UM produto (item.saas), só no workspace dele; grupo sem
+  // tela permitida some inteiro. A API tem o guard de verdade.
   const groups = [];
-  NAV.filter((item) => !item.hidden && canSeeScreen(item.id)).forEach(item => {
+  NAV.filter((item) => !item.hidden && (!item.saas || item.saas === product?.id) && canSeeScreen(item.id)).forEach(item => {
     let g = groups.find(x => x.key === item.group);
     if (!g) { g = { key: item.group, items: [] }; groups.push(g); }
     g.items.push(item);
