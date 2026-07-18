@@ -46,6 +46,23 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     return { messageId: b.messages?.[0]?.id || "" };
   }
 
+  // Pedido NATIVO de permissão de ligação (Calling API): uma mensagem
+  // interactive com a saudação no corpo + botões permitir/recusar do próprio
+  // WhatsApp. Exige "Allow voice calls" ligado no número e janela de 24h aberta
+  // (fora dela é template aprovado). A resposta volta no webhook como
+  // interactive call_permission_reply (wa-call-flow.js).
+  async function sendCallPermission(to, bodyText, { phoneId } = {}) {
+    const b = await post({
+      to: digits(to), recipient_type: "individual", type: "interactive",
+      interactive: {
+        type: "call_permission_request",
+        action: { name: "call_permission_request" },
+        body: { text: String(bodyText || "Podemos te ligar?").slice(0, 1024) },
+      },
+    }, phoneId);
+    return { messageId: b.messages?.[0]?.id || "" };
+  }
+
   // Marca a mensagem recebida como lida (bolinha azul pro cliente). Best-effort.
   async function markRead(messageId, { phoneId } = {}) {
     if (!messageId) return;
@@ -144,7 +161,7 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     return null;
   }
 
-  return { configured, sendText, sendTemplate, markRead, verifyWebhook, numberInfo };
+  return { configured, sendText, sendTemplate, sendCallPermission, markRead, verifyWebhook, numberInfo };
 }
 
 // Número em dígitos (E.164 sem +) pra enviar e pra casar o recebido com o lead.

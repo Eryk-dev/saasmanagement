@@ -111,6 +111,7 @@ export async function listThreads(repo) {
       return {
         id: t.id, phone: t.phone, saas: t.saas || lead?.saas || "",
         waPhoneId: t.waPhoneId || "", // por qual dos NOSSOS números a conversa corre
+        callFlow: t.callFlow || null, // fluxo de permissão de ligação (pending/accepted/declined)
         leadId: t.leadId || null,
         name: (lead?.name || lead?.company || t.name || "").trim(),
         company: lead?.company || "",

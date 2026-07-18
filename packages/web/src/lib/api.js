@@ -106,6 +106,11 @@ export const api = {
   waThread: (id) => req("GET", `/api/whatsapp/threads/${id}`),
   waThreadRead: (id) => req("POST", `/api/whatsapp/threads/${id}/read`, {}),
   waThreadSend: (id, text) => req("POST", `/api/whatsapp/threads/${id}/send`, { text }),
+  // Fluxo de permissão de ligação: alertas quentes (lead respondeu → pop-up),
+  // resolver alerta e pedido manual de permissão numa conversa.
+  waAlerts: () => req("GET", "/api/whatsapp/alerts"),
+  waAlertDone: (id) => req("POST", `/api/whatsapp/alerts/${id}/done`, {}),
+  waCallPermission: (id, saas) => req("POST", `/api/whatsapp/threads/${id}/call-permission`, saas ? { saas } : {}),
   callSummary: (leadId, force = false, kind = "call") => req("POST", `/api/leads/${leadId}/call-summary`, { force, kind }),
   // Briefing de passagem pro integrador (lê a transcrição da call de VENDA).
   integrationBrief: (leadId, force = false) => req("POST", `/api/leads/${leadId}/integration-brief`, { force }),

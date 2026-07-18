@@ -695,8 +695,17 @@ function IntegrationsSettings({ s }) {
   // pelo número de outro — o inbox avisa em vez de sair pelo número errado.
   const waOn = !!window.SEED?.CONFIG?.whatsapp?.configured;
   const [waPhoneId, setWaPhoneId] = useStS(s.waPhoneId || "");
+  // Fluxo de permissão de ligação: 1º contato de um lead novo no inbox responde
+  // sozinho pedindo a permissão NATIVA de chamada com esta saudação; a resposta
+  // do lead salta como pop-up pro SDR. Exige "Allow voice calls" ligado no
+  // número (WhatsApp Manager → Call settings).
+  const [cfOn, setCfOn] = useStS(!!s.waCallFlow?.enabled);
+  const [cfGreeting, setCfGreeting] = useStS(s.waCallFlow?.greeting || "");
   async function saveWa() {
-    await api.update("products", s.id, { waPhoneId: waPhoneId.replace(/\D/g, "") });
+    await api.update("products", s.id, {
+      waPhoneId: waPhoneId.replace(/\D/g, ""),
+      waCallFlow: { enabled: !!cfOn, greeting: cfGreeting.trim() },
+    });
     await refresh();
   }
 
@@ -750,12 +759,32 @@ function IntegrationsSettings({ s }) {
           <span className={"chip " + (waOn ? "pos" : "")} style={{ height: 22 }}>{waOn ? "conectado" : "configurar WHATSAPP_TOKEN"}</span>
         </div>
         {waOn && (
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
-            <span className="mono" title="Phone number ID do número deste SaaS (WhatsApp Manager → API Setup, é o id do NÚMERO, não o da conta). O número precisa estar no mesmo WABA do token."
-              style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>número de {s.name}</span>
-            <input value={waPhoneId} placeholder="712249848640591" onChange={(e) => setWaPhoneId(e.target.value)} className="mono" style={{ ...inputStyle, width: 200, fontFamily: "var(--mono)" }} />
-            <button onClick={saveWa} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}><span style={{ fontSize: 11 }}>salvar</span></button>
-          </div>
+          <>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
+              <span className="mono" title="Phone number ID do número deste SaaS (WhatsApp Manager → API Setup, é o id do NÚMERO, não o da conta). O número precisa estar no mesmo WABA do token."
+                style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>número de {s.name}</span>
+              <input value={waPhoneId} placeholder="712249848640591" onChange={(e) => setWaPhoneId(e.target.value)} className="mono" style={{ ...inputStyle, width: 200, fontFamily: "var(--mono)" }} />
+            </div>
+            {/* Fluxo de ligação: pedido automático de permissão no 1º contato. */}
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px dashed var(--line-2)" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                <input type="checkbox" checked={cfOn} onChange={(e) => setCfOn(e.target.checked)} />
+                Fluxo de ligação no 1º contato
+              </label>
+              <div className="mono dim" style={{ fontSize: 11, marginTop: 4, lineHeight: 1.5 }}>
+                a primeira mensagem de um lead novo (ex.: vindo do formulário) recebe sozinha o pedido NATIVO de permissão de ligação com a saudação abaixo · a resposta do lead salta como pop-up pro SDR · precisa do "Allow voice calls" ligado no número (WhatsApp Manager → Call settings)
+              </div>
+              {cfOn && (
+                <textarea value={cfGreeting} onChange={(e) => setCfGreeting(e.target.value)} rows={2}
+                  placeholder={'Olá {nome}! Recebi seu formulário aqui. Posso te ligar pra uma breve conversa sobre a plataforma?'}
+                  style={{ ...inputStyle, width: "100%", height: "auto", minHeight: 56, marginTop: 8, padding: "8px 12px", fontSize: 12.5, lineHeight: 1.45, resize: "vertical", fontFamily: "inherit" }} />
+              )}
+              {cfOn && <div className="mono dim" style={{ fontSize: 10, marginTop: 4 }}>{"{nome}"} vira o primeiro nome do lead · vazio usa o texto padrão acima</div>}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
+              <button onClick={saveWa} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}><span style={{ fontSize: 11 }}>salvar</span></button>
+            </div>
+          </>
         )}
       </div>
 
