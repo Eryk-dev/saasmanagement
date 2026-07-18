@@ -46,6 +46,8 @@ function LeadDetail({ lead: initial, onClose }) {
   const dirty = React.useRef(false);
   const [editResumo, setEditResumo] = React.useState(false); // lápis do Resumo → edita inline
   const [showTimeline, setShowTimeline] = React.useState(false); // timeline recolhida por padrão
+  const [showGps, setShowGps] = React.useState(false);   // Próximo passo recolhido (o pill de atraso fica visível no cabeçalho)
+  const [showFrom, setShowFrom] = React.useState(false); // atribuição do anúncio recolhida
   const [pendingMove, setPendingMove] = React.useState(null); // { toStage, gate }
   // Timeline: fetch por lead (fora do bootstrap) + refetch quando o tempo real
   // avisa (version) — o drawer vive fora da árvore remontada do App.
@@ -338,12 +340,17 @@ function LeadDetail({ lead: initial, onClose }) {
             </div>
           </div>
 
-          {/* GPS: etapa (gateada) + próximo toque + call agendada, sem sair do drawer. */}
+          {/* GPS: etapa (gateada) + próximo toque + call agendada, sem sair do
+              drawer. RECOLHÍVEL: fechado, o cabeçalho segura o resumo (o pill
+              de atraso continua visível). */}
         <div style={{ ...box, display: "flex", flexDirection: "column", gap: 10 }}>
-          <div className="mono" style={{ ...kicker, display: "flex", alignItems: "center", gap: 8 }}>
+          <button onClick={() => setShowGps((v) => !v)} title={showGps ? "Recolher" : "Abrir o próximo passo (etapa, toque, call, proposta)"}
+            className="mono" style={{ ...kicker, display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
             Próximo passo
             {next && <span className="mono" style={{ fontSize: 10, color: next.key === "late" ? "var(--neg)" : next.key === "none" ? "var(--warn)" : "var(--fg-3)", textTransform: "none", letterSpacing: 0 }}>{next.text}</span>}
-          </div>
+            <span style={{ marginLeft: "auto", fontSize: 10, flexShrink: 0 }}>{showGps ? "▴ recolher" : "▾ abrir"}</span>
+          </button>
+          {showGps && (<>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <span className="mono dim" style={rowLabel}>Etapa</span>
             <select value={lead.stage || ""} onChange={(e) => moveStage(e.target.value)}
@@ -591,12 +598,22 @@ function LeadDetail({ lead: initial, onClose }) {
               </div>
             </>
           )}
+          </>)}
         </div>
 
+        {/* De onde veio: recolhível (consulta, não fluxo do dia a dia). */}
         {attribution.length > 0 && (
           <div style={box}>
-            <div className="mono" style={{ ...kicker, marginBottom: 6 }}>De onde veio · atribuição do anúncio</div>
-            {attribution.map(([k, v]) => <FactRow key={k} k={k} v={v} />)}
+            <button onClick={() => setShowFrom((v) => !v)} title={showFrom ? "Recolher" : "Abrir a atribuição (campanha, conjunto, anúncio, origem)"}
+              className="mono" style={{ ...kicker, display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+              De onde veio · atribuição do anúncio
+              <span style={{ marginLeft: "auto", fontSize: 10, flexShrink: 0 }}>{showFrom ? "▴ recolher" : "▾ abrir"}</span>
+            </button>
+            {showFrom && (
+              <div style={{ marginTop: 6 }}>
+                {attribution.map(([k, v]) => <FactRow key={k} k={k} v={v} />)}
+              </div>
+            )}
           </div>
         )}
           </div>
