@@ -37,6 +37,8 @@ export function scriptTokens(lead, saasCfg) {
     anuncios: answerLabel(saasCfg, lead, "listings"),
     expansao: answerLabel(saasCfg, lead, "plan_expand"),
     equipe: answerLabel(saasCfg, lead, "staff"),
+    suspensa: answerLabel(saasCfg, lead, "suspended"),
+    decisor: answerLabel(saasCfg, lead, "decider"),
     email: lead?.email || "",
     produto: saasCfg?.name || "",
     eu: firstName(currentUser()?.name),
@@ -57,6 +59,8 @@ const GAP_HINTS = {
   anuncios: "perguntar o volume de anúncios",
   expansao: "perguntar sobre abrir contas",
   equipe: "perguntar o time de marketing",
+  suspensa: "perguntar se já teve conta suspensa",
+  decisor: "perguntar quem decide junto",
   email: "pedir o e-mail",
   produto: "produto",
   eu: "seu nome",
@@ -94,8 +98,9 @@ export function scriptSegments(text, tokens) {
 // marcar a call. O que muda entre as tentativas é só a mensagem de WhatsApp.
 const QUALIFY_STEPS = [
   { t: "Atendeu: identificação", fala: "Oi {{nome}}, tudo bom? Sou {{eu}}, da {{produto}}. A gente se falou sobre o seu interesse na clonagem de anúncios. Consegue falar rapidinho agora?" },
-  { t: "Rodar a sequência de dados", fala: "Deixa eu confirmar o que tenho: nicho de {{nicho}}, loja {{empresa}}, {{contas}} nos marketplaces e uns {{anuncios}} anúncios na maior conta, confere?", dica: "Siga a ordem dos campos ao lado e complete o que faltar: expansão ({{expansao}}) e time de marketing ({{equipe}}). O e-mail fica pro final, depois de marcar a call." },
+  { t: "Rodar a sequência de dados", fala: "Deixa eu confirmar o que tenho: nicho de {{nicho}}, loja {{empresa}}, {{contas}} nos marketplaces e uns {{anuncios}} anúncios na maior conta, confere?", dica: "Siga a ordem dos campos ao lado e complete o que faltar: expansão ({{expansao}}), time de marketing ({{equipe}}), conta suspensa ({{suspensa}}) e quem decide junto ({{decisor}}). O e-mail fica pro final, depois de marcar a call." },
   { t: "Agendar a call", fala: "Fechado! Vou te colocar com nosso especialista pra você ver a ferramenta clonando anúncio de verdade na sua operação. Fica melhor amanhã de manhã ou no fim da tarde?", dica: "Sempre 2 opções de horário. Marcou? Registra em Call agendada e gera o link da videochamada." },
+  { t: "Preparar a call (logins + decisor)", fala: "Pra call render de verdade, anota duas coisas: entra já logado no Mercado Livre e na Shopee, porque o especialista clona anúncios de verdade nas suas contas, ao vivo. E se alguém decide junto com você, chama pra assistir, é rapidinho e vale a pena.", dica: "Sem login na call o teste não roda e o fechamento adia. Com sócio na decisão ({{decisor}}), a call só fecha se a pessoa estiver presente." },
   { t: "E-mail pra receber o convite", fala: "Perfeito! Pra fechar, me confirma seu melhor e-mail? Te mando o convite da nossa call por ele.", dica: "Preenche no campo ao lado; o convite do Meet vai automático pra ele." },
 ];
 
@@ -115,7 +120,10 @@ export const DEFAULT_SCRIPTS = {
       { t: "Anúncios na maior conta", fala: "E na sua maior conta, quantos anúncios publicados você tem? Você indicou {{anuncios}}." },
       { t: "Abrir mais contas", fala: "E você pretende abrir mais contas nos próximos meses?", dica: "Resposta do formulário: {{expansao}}." },
       { t: "Time de marketing", fala: "Quantas pessoas você tem hoje no time de marketing, cuidando dos anúncios?" },
+      { t: "Conta suspensa (dor de proteção)", fala: "E você já passou por conta suspensa ou banida no Mercado Livre?", dica: "Registra no campo ao lado. Quem já perdeu conta compra proteção: metade das calls que fecham chega machucada. Avisa o closer no handoff que a call é de blindagem da operação." },
+      { t: "Quem decide junto", fala: "Se a ferramenta fizer sentido pra você, você bate o martelo sozinho ou tem sócio, esposa, consultor que decide junto?", dica: "Registra ao lado. Decisor fora da call não fecha na hora: já convida a pessoa pra call do especialista." },
       { t: "Agendar a call", fala: "Fechado {{nome}}! Vou te colocar com nosso especialista pra você ver a ferramenta clonando anúncio de verdade na sua operação. Fica melhor amanhã de manhã ou no fim da tarde?", dica: "Sempre 2 opções de horário. Marcou? Registra em Call agendada no lead e gera o link da videochamada." },
+      { t: "Preparar a call (logins + decisor)", fala: "Pra call render de verdade, anota duas coisas: entra já logado no Mercado Livre e na Shopee, porque o especialista clona anúncios de verdade nas suas contas, ao vivo. E se alguém decide junto com você, chama pra assistir, é rapidinho e vale a pena.", dica: "Sem login na call o teste não roda e o fechamento adia. Com sócio na decisão, a call só fecha se a pessoa estiver presente." },
       { t: "E-mail pra receber o convite", fala: "Perfeito! Pra fechar, me confirma seu melhor e-mail? Te mando o convite da nossa call por ele.", dica: "Preenche no campo ao lado; o convite do Meet vai automático pra ele." },
     ],
   },
@@ -195,7 +203,7 @@ export const DEFAULT_SCRIPTS = {
     resumo: "Antes do especialista entrar, você garante a presença do cliente. 1h antes manda a confirmação; se ele responder, manda a de 10 min; sem resposta, LIGA 10 min antes. Sem abrir brecha pra cancelar: a call já está reservada, o cliente só entra.",
     objetivo: "Garantir a presença na call e reduzir no-show.",
     passos: [
-      { t: "1h antes: confirmação (WhatsApp)", fala: "Oi {{nome}}! Tudo bem? Aqui é {{eu}}, da {{produto}}. Tá tudo certo pra nossa call de hoje às {{hora_call}}. O especialista {{closer_responsavel}} já está se preparando pra te receber no link: {{link_call}}. Qualquer mudança de plano, pode me avisar aqui, ok? Te esperamos!" },
+      { t: "1h antes: confirmação (WhatsApp)", fala: "Oi {{nome}}! Tudo bem? Aqui é {{eu}}, da {{produto}}. Tá tudo certo pra nossa call de hoje às {{hora_call}}. O especialista {{closer_responsavel}} já está se preparando pra te receber no link: {{link_call}}. Duas dicas pra call render: entra já logado no Mercado Livre e na Shopee (ele clona anúncios de verdade nas suas contas, ao vivo) e, se alguém decide junto com você, chama pra assistir. Qualquer mudança de plano, pode me avisar aqui, ok? Te esperamos!", dica: "Logins em mãos e decisor presente são o que mais decide a call: sem login o teste ao vivo não roda; sem o sócio, a decisão adia." },
       { t: "10 min antes: cliente respondeu (WhatsApp)", fala: "Maravilha! Obrigado pelo retorno. Em 10 minutos ele já vai estar te aguardando." },
       { t: "10 min antes: sem resposta, LIGA", fala: "Oi {{nome}}, é {{eu}}, da {{produto}}. Nossa call é agora, o especialista já está na sala. Tô te mandando o link, entra que já vamos começar.", dica: "Não atendeu? Manda no WhatsApp: o especialista já está te esperando na sala, entra agora: {{link_call}}. Já começamos!" },
     ],
@@ -221,17 +229,24 @@ export const DEFAULT_SCRIPTS = {
       { t: "Não atendeu: WhatsApp (retoma ou encerra)", fala: "Oi {{nome}}! Ainda faz sentido pra você escalar sua operação usando nosso método? Assim eu consigo continuar com seu atendimento, ou até mesmo encerrar se agora não for a hora certa.", dica: "Sem resposta: mover pra Desqualificado (motivo: sem resposta). Respondeu com horário? Marca em Call agendada e move o card de volta." },
     ],
   },
+  // Estrutura tirada da análise das transcrições (jul/2026, 22 calls): toda call
+  // que chegou a clonar anúncio real NAS CONTAS DO LEAD fechou ou saiu com
+  // integração agendada; decisor ausente nunca fechou na hora. A call inteira é
+  // desenhada pra chegar na demo ao vivo o mais rápido possível.
   call: {
     titulo: "Call de fechamento",
-    resumo: "Antes da call: olhe a loja do lead, o nicho e o volume dele (está tudo no card). Confirme presença 1h antes pelo WhatsApp. Na call, demonstre na operação DELE e ancore no case Unique (+105% de vendas).",
-    objetivo: "Sair da call com proposta apresentada e o teste combinado: 10 anúncios clonados em 2 horas.",
+    resumo: "A call é desenhada pra chegar rápido na demo AO VIVO nas contas do lead: nas transcrições analisadas, toda call que clonou anúncio de verdade fechou ou saiu com integração agendada. Antes de entrar: confira o card (contas, anúncios, suspensão, decisor) e garanta que o SDR cobrou logins em mãos e decisor presente na confirmação.",
+    objetivo: "Sair com pagamento feito na call e integração agendada com dia e hora. Não fechou? Tarefa concreta, data marcada e o decisor presente na retomada.",
     passos: [
-      { t: "Confirmar presença (1h antes, WhatsApp)", fala: "Oi {{nome}}! Confirmado pra nossa call {{call}}? O link é esse: {{link_call}}" },
-      { t: "Quebra-gelo", fala: "Dei uma olhada na {{empresa}} antes da nossa conversa. Me conta rapidinho como está a operação hoje." },
-      { t: "Aprofundar a dor", fala: "Hoje, pra replicar um anúncio nas suas {{contas}}, quanto tempo o seu time gasta?" },
-      { t: "Demonstração ao vivo", fala: "Deixa eu te mostrar na prática: escolhe um anúncio seu que eu clono aqui, agora, na sua frente." },
-      { t: "Prova social", fala: "Um cliente nosso, a Unique, aumentou 105% as vendas depois de espelhar as contas com a ferramenta." },
-      { t: "Fechamento", fala: "Faz sentido pra você? Então o próximo passo é assim: a gente clona 10 anúncios seus em 2 horas de teste, e você vê o resultado na sua conta." },
+      { t: "Raio-X da operação (5 min)", fala: "Me conta como está a operação hoje: são {{contas}} e uns {{anuncios}} anúncios, certo? Quem sobe anúncio hoje? E quanto vocês estão faturando por mês?", dica: "Dados do SDR nos campos ao lado: time {{equipe}}, expansão {{expansao}}. Complete o que faltar, cada lacuna é pergunta." },
+      { t: "Pergunta da suspensão (define a narrativa)", fala: "E você já teve conta suspensa ou derrubada no Mercado Livre? Como foi?", dica: "Resposta do SDR: {{suspensa}}. Metade dos leads chega machucado e esse é o gatilho mais forte. Se sim, a call vira PROTEÇÃO (blindar a operação: qualquer conta nova recebe tudo em minutos). Se não, vira CRESCIMENTO (multiplicar presença no catálogo)." },
+      { t: "Espelho da dor (2 min)", fala: "Deixa eu ver se entendi: hoje o gargalo é braço. Subir esses {{anuncios}} anúncios em outra conta, na mão, levaria meses, é isso?", dica: "Devolver a dor nas palavras do lead antes da tese. As duas dores que dominam: falta de braço (quase todas as calls) e medo de perder conta (metade)." },
+      { t: "Tese em 3 etapas + vacina da canibalização", fala: "Nosso método tem 3 etapas: clonagem entre contas, conta mãe segurando o estoque com baixa automática (sem furo, roda junto com Bling e Tiny) e IA completando título e atributos pro anúncio chegar com nota máxima. E antes que você pergunte: replicar não canibaliza. A Unique dobrou a conta 2 e a conta 1 ainda subiu 20%.", dica: "Responder a canibalização ANTES de perguntarem desarma a objeção mais comum da fase de tese (apareceu em 3 calls, resolvida 3 vezes com esse case)." },
+      { t: "Demo AO VIVO nas contas dele (o coração)", fala: "Bora ver rodando na tua operação? Conecta as contas comigo que eu clono 10 anúncios teus agora, de verdade, na tua frente.", dica: "É aqui que a venda acontece. Sem login não tem demo (cobrar do SDR na confirmação). Deu erro? Chama o integrador e corrige na hora: vira prova de suporte (foi assim que fechou a Juliana, com pagamento na call). Objeções técnicas que sempre caem, todas com resposta pronta: estoque/furo (conta mãe + baixa automática), migração em massa (integrador sobe 150 anúncios em 5 a 10 min), limitações tipo Amazon/vídeo/catálogo (honestidade + roadmap)." },
+      { t: "Prova com números", fala: "Dois exemplos rápidos: a Unique subiu 105% espelhando as contas, e a Dyno Nutri fez 60 mil a mais em 20 dias.", dica: "Case certo pra dor certa: Unique pra quem duvida da estratégia de contas, Dyno Nutri pra quem tem pressa, e pra autopeça a criação por OEM com 100 por mês inclusos." },
+      { t: "Oferta com âncora única", fala: "O investimento é o plano anual: 7.188, em 12x de 599 sem juros, ou 6.488 à vista no Pix com 10% de desconto. Preço fixo, sem taxa por pedido: a gente não quer ser teu sócio. E tudo que lançarmos durante o teu contrato está incluso.", dica: "A escada (semestral e, por último, o serviço único de réplica) SÓ entra se travar em caixa, e com validade real: a condição vale nesta call. Questionaram a multa de cancelamento? Responde com o valor do primeiro dia (teus anúncios migram amanhã), não com a multa." },
+      { t: "Fechamento = agendar a integração", fala: "Então bora deixar rodando: que horário amanhã pro nosso integrador migrar teus {{anuncios}} anúncios, 13h ou 17h?", dica: "Não pergunte 'quer fechar?'. Pagamento ainda na call: Pix na hora ou link do cartão em 12x. Quem sai 'pra pagar depois' vira follow-up de cobrança." },
+      { t: "Não fechou: tarefa + data + decisor", fala: "Fechado, então combina assim: você resolve isso [logins, abrir a Shopee, falar com o sócio] e a gente se fala nesse dia, nesse horário. Se o sócio decide junto, traz ele que eu reapresento em 15 minutos.", dica: "Nunca aceite 'vou pensar' seco. Decisor ausente ({{decisor}}) nunca fechou na call: a remarcação é COM a pessoa. Registra a tarefa e a data no GPS do lead." },
     ],
   },
   proposta: {
@@ -438,7 +453,7 @@ export function catalogStageRow(saasCfg, item) {
 // marketing → e-mail por último (quando já está tudo confirmado). Cada item sai
 // com type/options pro painel renderizar o campo EDITÁVEL (select com as opções
 // do formulário; texto onde é livre). `key` é o campo do lead a ser gravado.
-const CHECKLIST_ORDER = ["niche", "company", "accounts", "listings", "plan_expand", "staff"];
+const CHECKLIST_ORDER = ["niche", "company", "accounts", "listings", "plan_expand", "staff", "suspended", "decider"];
 
 export function scriptChecklist(saasCfg, lead) {
   const qs = saasCfg?.leadQuestions || [];
