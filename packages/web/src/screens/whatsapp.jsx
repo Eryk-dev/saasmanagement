@@ -2,6 +2,7 @@ import React from "react";
 import { PageHead } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { WaBubbles, WaComposer } from "../components/wa-thread.jsx";
+import { waTemplatesFor } from "../lib/wa-templates.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -193,6 +194,16 @@ export function WhatsappInboxScreen({ onOpenLead }) {
 
   const current = (threads || []).find((t) => t.id === sel) || null;
 
+  // Modelos do fluxo de qualificação já preenchidos com o lead da conversa
+  // aberta. Conversa sem lead ainda aproveita o nome do contato; o resto vira
+  // [lembrete] no texto pro SDR completar antes de mandar.
+  const templates = React.useMemo(() => {
+    const rec = current?.leadId ? (window.SEED?.LEADS || []).find((l) => l.id === current.leadId) : null;
+    const lead = rec || (current ? { name: current.name || "", phone: current.phone, saas: current.saas } : null);
+    const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === (lead?.saas || product?.id));
+    return waTemplatesFor(lead, saasCfg);
+  }, [current?.id, current?.leadId, product?.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
+
   React.useEffect(() => {
     if (sel && current?.unread) api.waThreadRead(sel).catch(() => {});
   }, [sel, current?.unread]);
@@ -337,7 +348,8 @@ export function WhatsappInboxScreen({ onOpenLead }) {
               <div style={{ padding: 12, borderTop: "1px solid var(--line-1)" }}>
                 {configured ? (
                   <>
-                    <WaComposer onSend={(t) => api.waThreadSend(current.id, t).then(() => api.waThread(current.id).then((r) => setMsgs(r.messages || [])))} />
+                    <WaComposer templates={templates}
+                      onSend={(t) => api.waThreadSend(current.id, t).then(() => api.waThread(current.id).then((r) => setMsgs(r.messages || [])))} />
                     <div className="mono dim" style={{ fontSize: 9.5, marginTop: 5 }}>fora de 24h desde a última resposta do cliente, a Meta exige um template aprovado</div>
                   </>
                 ) : (

@@ -61,10 +61,15 @@ export function WaBubbles({ messages, emptyHint }) {
 }
 
 // Composer: textarea + enviar. onSend(text) → Promise; devolve erro pra mostrar.
-export function WaComposer({ onSend, disabled, placeholder }) {
+// `templates` = [{ group, items:[{ label, text }] }] com os tokens JÁ
+// preenchidos: escolher só ESCREVE na caixa (nunca dispara), porque a última
+// palavra sobre o que vai pro cliente é de quem está na conversa.
+export function WaComposer({ onSend, disabled, placeholder, templates }) {
   const [text, setText] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState("");
+  const [openTpl, setOpenTpl] = React.useState(false);
+  const boxRef = React.useRef(null);
 
   async function send() {
     const t = text.trim();
@@ -75,11 +80,55 @@ export function WaComposer({ onSend, disabled, placeholder }) {
     finally { setBusy(false); }
   }
 
+  // Caixa com rascunho não é sobrescrita: o modelo entra embaixo do que já
+  // estava escrito (dois modelos seguidos viram uma mensagem só).
+  function useTemplate(t) {
+    setText((prev) => (prev.trim() ? `${prev.replace(/\s+$/, "")}\n\n${t}` : t));
+    setOpenTpl(false);
+    requestAnimationFrame(() => {
+      const el = boxRef.current;
+      if (el) { el.focus(); el.selectionStart = el.selectionEnd = el.value.length; }
+    });
+  }
+
+  const groups = Array.isArray(templates) ? templates.filter((g) => g?.items?.length) : [];
+
   return (
     <div>
       {err && <div style={{ fontSize: 11, color: "#e5484d", marginBottom: 6 }}>{err}</div>}
+      {groups.length > 0 && (
+        <div style={{ position: "relative", marginBottom: 6 }}>
+          <button onClick={() => setOpenTpl((v) => !v)} disabled={disabled}
+            title="Mensagens prontas do fluxo de qualificação"
+            style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: openTpl ? "var(--bg-2)" : "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, cursor: "pointer", opacity: disabled ? 0.5 : 1 }}>
+            ⚡ modelos
+          </button>
+          {openTpl && (
+            <>
+              <div onClick={() => setOpenTpl(false)} style={{ position: "fixed", inset: 0, zIndex: 60 }} />
+              <div style={{ position: "absolute", bottom: "calc(100% + 6px)", left: 0, zIndex: 61, width: 340, maxHeight: "min(52vh, 460px)", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 6 }}>
+                {groups.map((g) => (
+                  <div key={g.group} style={{ marginBottom: 4 }}>
+                    <div className="mono" style={{ fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-4)", padding: "6px 8px 4px" }}>{g.group}</div>
+                    {g.items.map((it) => (
+                      <button key={it.label} onClick={() => useTemplate(it.text)} title={it.text}
+                        style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 8px", borderRadius: 6, border: 0, background: "transparent", color: "var(--fg-1)", fontSize: 12, cursor: "pointer", lineHeight: 1.35 }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-2)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                        {it.label}
+                        <span style={{ display: "block", color: "var(--fg-4)", fontSize: 10.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.text.replace(/\n+/g, " ")}</span>
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
       <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
         <textarea
+          ref={boxRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}

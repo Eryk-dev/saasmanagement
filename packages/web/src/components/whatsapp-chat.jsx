@@ -3,6 +3,7 @@ import { api } from "../lib/api.js";
 import { waLink, waDigits } from "../lib/ui.js";
 import { useData } from "../data.jsx";
 import { WaBubbles, WaComposer } from "./wa-thread.jsx";
+import { waTemplatesFor } from "../lib/wa-templates.js";
 
 // Chat de WhatsApp dentro do drawer do lead E do popup do cliente (mesma
 // conversa da tela de Inbox). Lê do wa-store (GET /api/whatsapp/threads/:numero)
@@ -33,6 +34,12 @@ export function WhatsappChat({ lead, phone: phoneProp }) {
 
   const refetch = () => tid && api.waThread(tid).then((r) => setMsgs(r.messages || [])).catch(() => {});
 
+  // Modelos do fluxo de qualificação com os dados DESTE lead já preenchidos.
+  const templates = React.useMemo(() => {
+    const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === lead?.saas);
+    return waTemplatesFor(lead, saasCfg);
+  }, [lead]);
+
   return (
     <div style={{ ...box, display: "flex", flexDirection: "column", minHeight: 200, maxHeight: 460 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -55,6 +62,7 @@ export function WhatsappChat({ lead, phone: phoneProp }) {
       {configured ? (
         <div style={{ marginTop: 8 }}>
           <WaComposer disabled={!phone} placeholder={phone ? undefined : "sem telefone"}
+            templates={templates}
             onSend={(t) => (lead?.phone ? api.sendWhatsapp(lead.id, t) : api.waThreadSend(tid, t)).then(refetch)} />
           <div className="mono dim" style={{ fontSize: 9.5, marginTop: 5 }}>
             fora de 24h desde a última resposta do cliente, a Meta exige um template aprovado
