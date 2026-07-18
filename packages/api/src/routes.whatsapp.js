@@ -2,12 +2,16 @@
 // conversas (tela dedicada) e envio. As mensagens vivem em wa_threads/wa_messages
 // (ver wa-store.js) — canônico pro inbox e pro chat do drawer.
 import { makeWhatsapp } from "./whatsapp.js";
-import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId, setLeadWhatsappOptOut, waInsights } from "./wa-store.js";
+import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId, setLeadWhatsappOptOut, waInsights, findLeadByPhone } from "./wa-store.js";
 import { applyHealthEvent, getWaHealth, waHealthSummary, recordWebhookDelivery } from "./wa-health.js";
+import { runInboundCallFlow, startCallFlow, openAlerts, closeThreadAlerts, parsePermissionReply } from "./wa-call-flow.js";
 
 // Texto legível pra tipos que a Fase 1 ainda não renderiza (mídia/áudio).
 function bodyOf(m) {
   if (m.text?.body) return m.text.body;
+  // Resposta ao pedido de permissão de ligação (fluxo de qualificação).
+  const perm = parsePermissionReply(m);
+  if (perm) return perm === "accepted" ? "✅ topou receber a ligação" : "🚫 prefere não receber ligação";
   if (m.type === "image") return "📷 imagem";
   if (m.type === "audio" || m.type === "voice") return "🎤 áudio";
   if (m.type === "video") return "🎬 vídeo";
@@ -24,6 +28,9 @@ function bodyOf(m) {
 async function sendAndRecord(repo, wa, { phone, text, author, phoneId, saas }) {
   const { messageId } = await wa.sendText(phone, text, { phoneId });
   await recordMessage(repo, { id: messageId, phone, direction: "out", text, status: "sent", author, waPhoneId: phoneId || "", saas });
+  // Alguém respondeu esta conversa: o alerta quente dela está resolvido pra
+  // todo mundo (o pop-up dos outros usuários fecha via SSE).
+  try { await closeThreadAlerts(repo, threadId(phone), author); } catch { /* alerta não trava o envio */ }
   return messageId;
 }
 
@@ -111,12 +118,19 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
             const inPhoneId = v.metadata?.phone_number_id || "";
             const owner = await productByPhoneId(inPhoneId).catch(() => null);
             for (const m of v.messages || []) {
-              await recordMessage(repo, {
+              const stored = await recordMessage(repo, {
                 id: m.id, phone: m.from, direction: "in", text: bodyOf(m),
                 at: m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : undefined,
                 from: m.from, status: "received", contactName,
                 waPhoneId: inPhoneId, saasHint: owner?.id || "",
               });
+              // Fluxo de permissão de ligação: 1º contato de lead conhecido →
+              // pede pra ligar; resposta com fluxo aberto → alerta quente
+              // (pop-up pro SDR). Re-entrega da Meta (dedup) não roda de novo.
+              if (stored) {
+                try { await runInboundCallFlow(repo, wa, { message: m, resolvePhoneId }); }
+                catch (err) { req.log?.warn?.({ err: err.message }, "fluxo de ligação falhou"); }
+              }
             }
             for (const st of v.statuses || []) {
               await updateStatus(repo, st.id, st.status, st.errors?.[0] || "");
@@ -190,6 +204,55 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
       wa.markRead(lastIn, { phoneId: thread?.waPhoneId || undefined }).catch(() => {});
     }
     return { ok: true };
+  });
+
+  // ── Fluxo de permissão de ligação ───────────────────────────────────────────
+  // Alertas quentes ABERTOS (lead respondeu com o fluxo aberto): o pop-up global
+  // do cockpit lê daqui a cada tick do SSE. Enriquecido com o lead pra mostrar
+  // nome/etapa sem segunda chamada.
+  app.get("/api/whatsapp/alerts", async () => {
+    const [alerts, leads] = await Promise.all([openAlerts(repo), repo.list("leads")]);
+    const byId = new Map(leads.map((l) => [l.id, l]));
+    return {
+      alerts: alerts
+        .map((a) => {
+          const lead = a.leadId ? byId.get(a.leadId) : null;
+          return { ...a, name: lead?.name || a.name || "", company: lead?.company || "", stage: lead?.stage || "" };
+        })
+        .sort((x, y) => String(y.at || "").localeCompare(String(x.at || ""))),
+    };
+  });
+
+  // "Resolvido" sem responder (ex.: vai ligar por fora). Fecha pra todo mundo.
+  app.post("/api/whatsapp/alerts/:id/done", async (req, reply) => {
+    const a = await repo.get("wa_alerts", req.params.id);
+    if (!a) return reply.code(404).send({ error: "Not found" });
+    await repo.update("wa_alerts", a.id, { status: "done", doneAt: new Date().toISOString(), doneBy: req.authUser?.id || "cockpit" });
+    return { ok: true };
+  });
+
+  // Pedido MANUAL de permissão de ligação (prospecção ativa, conversa antiga,
+  // lead que entrou por fora do form). Mesma mensagem do fluxo; dentro da janela
+  // de 24h — fora dela a Meta recusa e o erro chega legível (409).
+  app.post("/api/whatsapp/threads/:id/call-permission", async (req, reply) => {
+    const phone = threadId(req.params.id);
+    if (!phone) return reply.code(400).send({ error: "número inválido" });
+    const thread = await repo.get("wa_threads", phone);
+    const lead = thread?.leadId ? await repo.get("leads", thread.leadId) : await findLeadByPhone(repo, phone);
+    const saas = thread?.saas || lead?.saas || String(req.body?.saas || "");
+    const product = (await repo.list("products")).find((p) => p.id === saas) || null;
+    const phoneId = await resolvePhoneId({ saas, thread });
+    if (phoneId === null) return noNumberReply(reply, saas);
+    if (!wa.configured(phoneId)) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
+    try {
+      const r = await startCallFlow(repo, wa, {
+        thread: thread || { id: phone, phone, saas, leadId: lead?.id || null },
+        product, lead, phoneId,
+        author: req.authUser?.id || "cockpit",
+        text: String(req.body?.text || "").trim(),
+      });
+      return { ok: true, interactive: r.interactive, messageId: r.messageId };
+    } catch (err) { return sendErrorReply(reply, err); }
   });
 
   // Enviar pela conversa (inbox) — id é o número em dígitos, funciona com ou sem

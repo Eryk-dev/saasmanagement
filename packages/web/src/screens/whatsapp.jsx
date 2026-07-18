@@ -131,11 +131,16 @@ function WaTopStats({ numInfo, stats }) {
   );
 }
 
-export function WhatsappInboxScreen({ onOpenLead }) {
+export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
   const { version } = useData();
   const [product] = useActiveSaas();
   const [threads, setThreads] = React.useState(null);
   const [sel, setSel] = React.useState(null); // thread.id (número)
+
+  // Chegada pelo pop-up de lead quente: abre direto NA conversa do alerta.
+  React.useEffect(() => {
+    if (initialThread) setSel(String(initialThread));
+  }, [initialThread]);
   const [msgs, setMsgs] = React.useState([]);
   const [q, setQ] = React.useState("");
   const configured = !!window.SEED?.CONFIG?.whatsapp?.configured;
@@ -222,6 +227,15 @@ export function WhatsappInboxScreen({ onOpenLead }) {
   function openLead() {
     const rec = current?.leadId && (window.SEED?.LEADS || []).find((l) => l.id === current.leadId);
     if (rec && onOpenLead) onOpenLead(rec);
+  }
+
+  // Pedido manual de permissão de ligação (prospecção ativa / conversa antiga).
+  // O refetch das mensagens vem no tick do SSE; o erro da Meta chega legível.
+  function askToCall() {
+    if (!current) return;
+    api.waCallPermission(current.id, current.saas || product?.id)
+      .then(() => api.waThread(current.id).then((r) => setMsgs(r.messages || [])))
+      .catch((e) => window.alert(e.message || "não deu pra pedir a permissão"));
   }
 
   const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" };
@@ -341,6 +355,19 @@ export function WhatsappInboxScreen({ onOpenLead }) {
                     {prettyPhone(current.phone)}{current.stage ? ` · ${current.stage}` : ""}
                   </div>
                 </div>
+                {/* Fluxo de permissão de ligação: estado na conversa + pedido manual. */}
+                {current.callFlow?.permission === "accepted" && (
+                  <span title="o lead aceitou o pedido nativo de ligação" style={{ ...flowChip, background: "var(--pos)", color: "#fff" }}>✆ pode ligar</span>
+                )}
+                {current.callFlow?.permission === "pending" && (
+                  <span title="pedido de permissão de ligação enviado, sem resposta ainda" style={{ ...flowChip, border: "1px solid var(--line-2)", color: "var(--fg-3)" }}>✆ permissão pedida</span>
+                )}
+                {current.callFlow?.permission === "declined" && (
+                  <span title="o lead prefere não receber ligação" style={{ ...flowChip, border: "1px solid var(--line-2)", color: "var(--warn)" }}>sem ligação</span>
+                )}
+                {configured && !current.callFlow && (
+                  <button onClick={askToCall} style={pill} title="manda o pedido nativo de permissão de ligação com a saudação do fluxo (dentro da janela de 24h)">✆ Pedir pra ligar</button>
+                )}
                 {current.leadId ? (
                   <button onClick={openLead} style={pill}>Abrir lead ↗</button>
                 ) : (
@@ -378,3 +405,4 @@ export function WhatsappInboxScreen({ onOpenLead }) {
 }
 
 const pill = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 11px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", flexShrink: 0 };
+const flowChip = { display: "inline-flex", alignItems: "center", gap: 4, height: 24, padding: "0 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, flexShrink: 0 };
