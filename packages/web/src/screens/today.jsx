@@ -927,10 +927,11 @@ function ProposalBlock({ l, wa, item, onPatch }) {
       ) : (
         <>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-            {/* "apresentar ao vivo" abre o link ?k (setup + edição inline);
-                "ver como cliente" é o link limpo do deck de apresentação. */}
+            {/* Só o link ?k (setup + edição inline) fica aqui: o deck de
+                apresentação sem chave esconde o preço atrás do comando, então
+                não serve de prévia do cliente. O que o cliente recebe é o link
+                da oferta, conferível no "conferir" depois de mandar. */}
             <a href={l.proposal_edit_url || cockpitProposalUrl(l.proposalUrl)} target="_blank" rel="noopener noreferrer" style={{ ...chip, borderColor: "var(--accent-line)", color: "var(--accent)" }}>apresentar ao vivo ↗</a>
-            <a href={cockpitProposalUrl(l.proposalUrl)} target="_blank" rel="noopener noreferrer" style={chip}>ver como cliente ↗</a>
           </div>
           {offers.length > 0 && (
             <>
