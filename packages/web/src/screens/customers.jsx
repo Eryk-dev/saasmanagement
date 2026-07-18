@@ -98,16 +98,19 @@ function CustomersScreen({ initialTab = "base" }) {
 
   // Bloco "Próximas ações": o próximo marco em aberto de cada cliente,
   // vencidos primeiro, depois por data. Clientes sem startedAt ficam num
-  // rodapé próprio (a régua ainda não começou).
+  // rodapé próprio (a régua ainda não começou). Cliente da mentoria (UniqueKids)
+  // fica FORA da régua de SaaS: o pós-venda dele é a jornada de consultas, que
+  // vive na tela Consultas e na Agenda.
+  const isMentoria = (c) => c.saas === "uniquekids";
   const nextActions = useMemo(() => {
     const order = { late: 0, soon: 1, next: 2 };
     return customers
-      .filter((c) => !isChurned(c))
+      .filter((c) => !isChurned(c) && !isMentoria(c))
       .map((c) => ({ customer: c, milestone: nextMilestone(withCycle(c), product) }))
       .filter((x) => x.milestone)
       .sort((a, b) => (order[a.milestone.status] - order[b.milestone.status]) || (new Date(a.milestone.dueAt) - new Date(b.milestone.dueAt)));
   }, [customers, subs, product, tick, version]);
-  const noRuler = useMemo(() => customers.filter((c) => !c.startedAt && !isChurned(c)), [customers]);
+  const noRuler = useMemo(() => customers.filter((c) => !c.startedAt && !isChurned(c) && !isMentoria(c)), [customers]);
 
   if (!product) return <EmptyState title="Nenhum produto cadastrado" hint="Crie o produto em Ajustes." />;
 
@@ -196,7 +199,7 @@ function CustomersScreen({ initialTab = "base" }) {
                   {shownCustomers.map((c) => {
                     const sub = mainSub(c);
                     const st = sub ? SUB_STATUS[sub.status] || { label: sub.status, tone: "mut" } : null;
-                    const nm = nextMilestone(withCycle(c), product);
+                    const nm = isMentoria(c) ? null : nextMilestone(withCycle(c), product);
                     return (
                       <tr key={c.id} onClick={() => setSel(c.id)} style={{ cursor: "pointer" }}
                         onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
@@ -213,9 +216,11 @@ function CustomersScreen({ initialTab = "base" }) {
                         </td>
                         <td className="tnum" style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-3)", borderBottom: "1px solid var(--line-faint)" }}>{lastContact(c)}</td>
                         <td style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)" }}>
-                          {nm
-                            ? <Pill tone={nm.status === "late" ? "neg" : nm.status === "soon" ? "warn" : "mut"}>{nm.label} · {dueLabel(nm.dueAt)}</Pill>
-                            : c.startedAt ? <Pill tone="pos">régua completa</Pill> : <Pill tone="mut">sem início</Pill>}
+                          {isMentoria(c)
+                            ? <Pill tone="mut">mentoria · ver Consultas</Pill>
+                            : nm
+                              ? <Pill tone={nm.status === "late" ? "neg" : nm.status === "soon" ? "warn" : "mut"}>{nm.label} · {dueLabel(nm.dueAt)}</Pill>
+                              : c.startedAt ? <Pill tone="pos">régua completa</Pill> : <Pill tone="mut">sem início</Pill>}
                         </td>
                         <td style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)" }}>
                           {isChurned(c) ? <Pill tone="neg">churn</Pill> : st ? <Pill tone={st.tone}>{st.label}</Pill> : <Pill tone="mut">sem assinatura</Pill>}
@@ -385,7 +390,34 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
   const money = window.fmt.money;
   const mainSub = subs.find((s) => s.status === "active" || s.status === "past_due") || subs[0] || null;
   const st = mainSub ? SUB_STATUS[mainSub.status] || { label: mainSub.status, tone: "mut" } : null;
-  const summary = [
+
+  // Cliente da mentoria (UniqueKids): o pós-venda dele não é régua de SaaS nem
+  // assinatura recorrente — é o pacote de consultas comprado no Ganho. O popup
+  // troca esses blocos pela jornada real (mesma família da tela Consultas).
+  const isKids = customer.saas === "uniquekids";
+  const [consultas, setConsultas] = useState([]);
+  React.useEffect(() => {
+    if (!isKids) { setConsultas([]); return; }
+    let alive = true;
+    api.list("consultations")
+      .then((rows) => alive && setConsultas((rows || [])
+        .filter((x) => x.customerId === customer.id || (customer.leadId && x.leadId === customer.leadId))
+        .sort((a, b) => (a.n || 0) - (b.n || 0))))
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [isKids, customer.id, customer.leadId]);
+  const consultTotal = consultas.reduce((a, c) => Math.max(a, Number(c.packageTotal) || 0), 0) || 8;
+  const consultDone = consultas.filter((c) => c.status === "done").length;
+  const nextConsult = consultas.filter((c) => c.status === "scheduled" && c.at).sort((a, b) => String(a.at).localeCompare(String(b.at)))[0] || null;
+  const fmtConsultaAt = (at) => at ? new Date(at).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "") : "";
+  const CONSULT_STATUS = { done: { label: "feita", tone: "pos" }, scheduled: { label: "marcada", tone: "warn" }, canceled: { label: "cancelada", tone: "mut" } };
+
+  const summary = isKids ? [
+    { label: "Pacote", value: `Mentoria · ${consultTotal} consultas` },
+    { label: "Tempo de casa", value: tenureLabel(customer) || "defina o início" },
+    { label: "Último contato", value: lastContact(customer) },
+    { label: "Consultas", value: `${consultDone} de ${consultTotal} feitas` },
+  ] : [
     { label: "Plano", value: mainSub ? planLabel(mainSub) : customer.plan || "sem plano" },
     { label: "Tempo de casa", value: tenureLabel(customer) || "defina o início" },
     { label: "Último contato", value: lastContact(customer) },
@@ -400,7 +432,9 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>{customer.name}</div>
               <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 3 }}>
-                {money((customer.arr || 0) / 12)}/mês · {money(customer.arr || 0)}/ano{customer.email ? ` · ${customer.email}` : ""}
+                {isKids
+                  ? `${money(customer.arr || 0)} · Mentoria R.O.T.I.N.A`
+                  : `${money((customer.arr || 0) / 12)}/mês · ${money(customer.arr || 0)}/ano`}{customer.email ? ` · ${customer.email}` : ""}
               </div>
             </div>
             {!editing && (
@@ -441,6 +475,9 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
         <CustomerFacts customer={customer} lead={lead} product={product} onPatch={onPatch ? (p) => onPatch(customer, p) : null} />
 
+        {/* Mentoria não é recorrência: pra cliente Kids o bloco de assinaturas
+            sai (o pagamento fica em Dados do cliente e nas faturas). */}
+        {!isKids && (
         <div style={BOX}>
           <div className="mono" style={SECTION_LABEL}>Assinaturas</div>
           {subs.length === 0 && (
@@ -459,6 +496,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
             );
           })}
         </div>
+        )}
 
         <div style={BOX}>
           <div className="mono" style={SECTION_LABEL}>Últimas faturas</div>
@@ -486,6 +524,56 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+        {isKids ? (
+        <div style={BOX}>
+          <div className="mono" style={{ ...SECTION_LABEL, display: "flex", alignItems: "center" }}>
+            <span>Jornada de consultas</span>
+            <button onClick={() => { onClose(); window.location.hash = "consultas"; }}
+              style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
+              abrir Consultas ↗
+            </button>
+          </div>
+          {customer.startedAt && (
+            <div style={{ fontSize: 12, color: "var(--fg-3)", marginBottom: 10 }}>
+              cliente desde {new Date(customer.startedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(".", "")} · {nextConsult ? `próxima consulta: ${fmtConsultaAt(nextConsult.at)}` : consultDone >= consultTotal && consultas.length > 0 ? "jornada completa 🎉" : "sem próxima marcada"}
+            </div>
+          )}
+          {consultas.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
+              Nenhuma consulta ainda. O pacote nasce sozinho quando o lead vira Ganho; dá pra criar na tela Consultas também.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {consultas.map((c, i) => {
+                const cst = CONSULT_STATUS[c.status] || CONSULT_STATUS.scheduled;
+                const done = c.status === "done";
+                return (
+                  <div key={c.id} style={{ display: "flex", gap: 12, position: "relative", paddingBottom: i === consultas.length - 1 ? 0 : 14 }}>
+                    {i < consultas.length - 1 && <span style={{ position: "absolute", left: 7, top: 18, bottom: 0, width: 2, background: "var(--line-1)" }} />}
+                    <span style={{
+                      width: 16, height: 16, borderRadius: 999, flexShrink: 0, marginTop: 1, zIndex: 1,
+                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9,
+                      background: done ? "var(--pos-soft)" : c.at ? "var(--warn-soft)" : "var(--bg-2)",
+                      color: done ? "var(--pos)" : c.at ? "var(--warn)" : "var(--fg-4)",
+                      border: !done && !c.at ? "1px solid var(--line-2)" : "none",
+                    }}>
+                      {done ? "✓" : c.n || "○"}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>Consulta {c.n || "?"} de {c.packageTotal || consultTotal}</div>
+                      <div style={{ fontSize: 12, color: "var(--fg-3)" }}>
+                        {c.at ? fmtConsultaAt(c.at) : "sem data · marque na tela Consultas"}
+                        {c.summary ? " · resumo de IA pronto" : ""}
+                      </div>
+                    </div>
+                    <Pill tone={c.at || done ? cst.tone : "mut"}>{!done && !c.at ? "a marcar" : cst.label}</Pill>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        ) : (
         <div style={BOX}>
           <div className="mono" style={SECTION_LABEL}>Ações de retenção</div>
           {!customer.startedAt && (
@@ -529,6 +617,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
             </div>
           )}
         </div>
+        )}
 
         <CustomerHistory customer={customer} />
         </div>
