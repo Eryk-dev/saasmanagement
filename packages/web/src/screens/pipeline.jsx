@@ -414,7 +414,8 @@ function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen 
 // do GPS (nextActionAt) em estilo leve. Clique abre o lead.
 // `blocking` (opcional, tela Agenda): { blocksFor(d), onSlot(d, hora), onBlock(b) }
 // desenha os bloqueios da pessoa selecionada e liga o clique em horário vazio.
-function AgendaView({ leads, consultations = [], onOpenLead, blocking }) {
+// `person` (opcional): mostra só os eventos daquele responsável.
+function AgendaView({ leads, consultations = [], onOpenLead, blocking, person }) {
   const [week, setWeek] = useStP(0); // offset em semanas a partir da atual
   const [showTouches, setShowTouchesState] = useStP(() => {
     try { return localStorage.getItem("cockpit_agenda_touches") === "1"; } catch { return false; }
@@ -441,6 +442,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking }) {
     .map((c) => ({
       kind: "consulta",
       t: new Date(c.at),
+      who: c.owner || "",
       l: {
         id: `consulta-${c.id}`,
         name: c.clientName || "cliente",
@@ -453,12 +455,13 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking }) {
     }));
   const events = leads
     .flatMap(l => [
-      l.callAt ? { l, t: new Date(l.callAt), kind: "call" } : null,
-      l.integrationAt ? { l, t: new Date(l.integrationAt), kind: "integração" } : null,
-      showTouches && l.nextActionAt ? { l, t: new Date(l.nextActionAt), kind: "toque" } : null,
+      l.callAt ? { l, t: new Date(l.callAt), kind: "call", who: l.closer } : null,
+      l.integrationAt ? { l, t: new Date(l.integrationAt), kind: "integração", who: l.integrator || l.closer } : null,
+      showTouches && l.nextActionAt ? { l, t: new Date(l.nextActionAt), kind: "toque", who: l.owner || l.closer } : null,
     ])
     .concat(consultEvents)
-    .filter(e => e && Number.isFinite(e.t.getTime()) && e.t >= monday && e.t < end);
+    .filter(e => e && Number.isFinite(e.t.getTime()) && e.t >= monday && e.t < end)
+    .filter(e => !person || e.who === person);
   const fmtDay = (d, opts) => d.toLocaleDateString("pt-BR", opts).replace(/\./g, "");
   const label = `${fmtDay(days[0], { day: "2-digit", month: "short" })} · ${fmtDay(days[6], { day: "2-digit", month: "short", year: "numeric" })}`;
   const navBtn = {
@@ -597,8 +600,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking }) {
                     );
                   });
                 })()}
-                {placed.map(({ l, t, lane, kind }) => {
-                  const who = kind === "toque" ? (l.owner || l.closer) : kind === "integração" ? (l.integrator || l.closer) : l.closer;
+                {placed.map(({ l, t, lane, kind, who }) => {
                   const tone = toneOf(who);
                   const isTouch = kind === "toque";
                   // Follow-up (lead em estágio de kind followup): ocupa só 20 min na

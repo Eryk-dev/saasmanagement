@@ -63,21 +63,32 @@ export function AgendaScreen({ onOpenLead }) {
   const noticeT = React.useRef(null);
   const flash = (msg) => { setNotice(msg); clearTimeout(noticeT.current); noticeT.current = setTimeout(() => setNotice(""), 4000); };
 
+  // Filtro por pessoa: mostra só os eventos/itens dela ("" = time inteiro).
+  const [person, setPersonState] = useS(() => { try { return localStorage.getItem("cockpit_agenda_person") || ""; } catch { return ""; } });
+  const setPerson = (id) => { setPersonState(id); try { localStorage.setItem("cockpit_agenda_person", id); } catch { /* ignore */ } };
+
+  // Participantes do item: dona principal (user) + convidados (users[]).
+  const participantsOf = (b) => [...new Set([b.user, ...(Array.isArray(b.users) ? b.users : [])].filter(Boolean))];
+
   // Todos os itens do time no calendário, com a cara do dono: compromisso na
-  // cor da pessoa, bloqueio em vermelho.
+  // cor da pessoa principal, bloqueio em vermelho.
   const toneOf = (id) => (id ? `oklch(0.55 0.13 ${userTone(id)})` : "var(--fg-4)");
-  const decorate = (b) => ({
-    ...b,
-    _tone: b.kind === "event" ? toneOf(b.user) : null,
-    _label: b.kind === "event"
-      ? `${b.recur === "weekly" ? "↻ " : ""}${b.title || b.reason || "compromisso"}`
-      : `bloqueado${b.recur === "weekly" ? " ↻" : ""}${b.reason ? ` · ${b.reason}` : ""}`,
-    _who: displayName(b.user),
-  });
+  const decorate = (b) => {
+    const parts = participantsOf(b);
+    return {
+      ...b,
+      _tone: b.kind === "event" ? toneOf(b.user) : null,
+      _label: b.kind === "event"
+        ? `${b.recur === "weekly" ? "↻ " : ""}${b.title || b.reason || "compromisso"}${parts.length > 1 ? ` · ${parts.length} pessoas` : ""}`
+        : `bloqueado${b.recur === "weekly" ? " ↻" : ""}${b.reason ? ` · ${b.reason}` : ""}`,
+      _who: parts.map((id) => displayName(id)).join(", "),
+    };
+  };
   const blocksFor = (day) => {
     const ds = ymd(day), wd = day.getDay();
     return blocks
       .filter((b) => (b.recur === "weekly" ? Number(b.weekday) === wd : b.date === ds))
+      .filter((b) => !person || participantsOf(b).includes(person))
       .map(decorate);
   };
 
@@ -130,20 +141,22 @@ export function AgendaScreen({ onOpenLead }) {
   const onSlot = (day, hour) => setEditor({ block: null, date: ymd(day), fromHour: hour });
   const onBlock = (b) => setEditor({ block: b, date: b.recur === "once" ? b.date : "", fromHour: Number(b.fromHour) || 9 });
 
-  // Salvar do modal: valida, checa conflito e cria/atualiza. Devolve string de
-  // erro pra mostrar no próprio modal, ou null quando deu certo.
+  // Salvar do modal: valida, checa conflito de CADA participante e cria/atualiza.
+  // Devolve string de erro pra mostrar no próprio modal, ou null quando deu certo.
   function saveItem(form, existing) {
-    const { kind, text, user, date, from, to, recur } = form;
-    if (!user) return "Escolha a pessoa.";
+    const { kind, text, usersSel, date, from, to, recur } = form;
+    if (!usersSel.length) return "Escolha pelo menos uma pessoa.";
     if (!(to > from)) return "O fim precisa ser depois do início.";
     if (recur === "once" && !date) return "Escolha a data.";
     if (kind === "event" && !text.trim()) return "Dê um título pro compromisso.";
     if (recur === "once") {
-      const hit = liveConflict(user, date, from, to);
-      if (hit) return `${displayName(user)} já tem ${hit} nesse horário. Remarque antes.`;
+      for (const u of usersSel) {
+        const hit = liveConflict(u, date, from, to);
+        if (hit) return `${displayName(u)} já tem ${hit} nesse horário. Remarque antes.`;
+      }
     }
     const base = {
-      saas: "", user, kind, allDay: false, fromHour: from, toHour: to,
+      saas: "", user: usersSel[0], users: usersSel, kind, allDay: false, fromHour: from, toHour: to,
       title: kind === "event" ? text.trim() : "",
       reason: kind === "block" ? text.trim() : "",
     };
@@ -174,7 +187,23 @@ export function AgendaScreen({ onOpenLead }) {
         </span>
       </PageHead>
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14 }}>
-        <AgendaView leads={leads} consultations={consultas} onOpenLead={onOpenLead} blocking={{ blocksFor, onSlot, onBlock }} />
+        {/* Filtro por pessoa: calls/integrações/consultas + compromissos/bloqueios dela */}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Agenda de</span>
+          {[{ id: "", name: "todos" }, ...people].map((p) => {
+            const on = person === p.id;
+            return (
+              <button key={p.id || "all"} onClick={() => setPerson(p.id)}
+                style={{ height: 32, padding: "0 13px", borderRadius: 999, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+                  background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)",
+                  border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)") }}>
+                {p.id ? (p.name || displayName(p.id)) : "todos"}
+              </button>
+            );
+          })}
+        </div>
+
+        <AgendaView leads={leads} consultations={consultas} onOpenLead={onOpenLead} person={person || null} blocking={{ blocksFor, onSlot, onBlock }} />
 
         <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center", fontSize: 12.5, color: "var(--fg-3)" }}>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -210,7 +239,13 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
   const b = init.block;
   const [kind, setKind] = useS(b ? (b.kind === "event" ? "event" : "block") : "event");
   const [text, setText] = useS(b ? (b.title || b.reason || "") : "");
-  const [user, setUser] = useS(b?.user || defaultUser);
+  // Participantes: mais de uma pessoa = o compromisso aparece (e ocupa) a
+  // agenda de todas. A primeira selecionada dá a cor do evento.
+  const [sel, setSel] = useS(() => {
+    const init0 = b ? [...new Set([b.user, ...(Array.isArray(b.users) ? b.users : [])].filter(Boolean))] : [defaultUser].filter(Boolean);
+    return init0;
+  });
+  const toggleSel = (id) => setSel((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const [date, setDate] = useS(init.date || ymd(new Date()));
   const [from, setFrom] = useS(() => Number(b?.fromHour ?? init.fromHour ?? 9));
   const [to, setTo] = useS(() => Number(b?.toHour ?? ((b?.fromHour ?? init.fromHour ?? 9) + 1)));
@@ -226,7 +261,7 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
   const field = { height: 34, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, minWidth: 0 };
   const label = { fontSize: 10.5, fontFamily: "var(--mono)", color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 4 };
   const submit = () => {
-    const e = onSave({ kind, text, user, date, from, to, recur }, b || null);
+    const e = onSave({ kind, text, usersSel: sel, date, from, to, recur }, b || null);
     if (e) setErr(e); else onClose();
   };
 
@@ -250,18 +285,33 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
             style={{ ...field, width: "100%" }} />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div>
-            <span style={label}>Pessoa</span>
-            <select value={user} onChange={(e) => setUser(e.target.value)} style={{ ...field, width: "100%" }}>
-              {people.map((p) => <option key={p.id} value={p.id}>{p.name || p.id}</option>)}
-              {user && !people.some((p) => p.id === user) && <option value={user}>{displayName(user)}</option>}
-            </select>
+        <div>
+          <span style={label}>Pessoas (a agenda de cada uma fica ocupada)</span>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {people.map((p) => {
+              const on = sel.includes(p.id);
+              return (
+                <button key={p.id} onClick={() => toggleSel(p.id)}
+                  style={{ height: 30, padding: "0 12px", borderRadius: 999, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+                    background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)",
+                    border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)") }}>
+                  {on ? "✓ " : ""}{p.name || p.id}
+                </button>
+              );
+            })}
+            {sel.filter((id) => !people.some((p) => p.id === id)).map((id) => (
+              <button key={id} onClick={() => toggleSel(id)}
+                style={{ height: 30, padding: "0 12px", borderRadius: 999, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+                  background: "var(--accent-soft)", color: "var(--accent)", border: "1px solid var(--accent-line)" }}>
+                ✓ {displayName(id)}
+              </button>
+            ))}
           </div>
-          <div>
-            <span style={label}>Data</span>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ ...field, width: "100%" }} />
-          </div>
+        </div>
+
+        <div>
+          <span style={label}>Data</span>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ ...field, width: "100%" }} />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
