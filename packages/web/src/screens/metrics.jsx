@@ -740,6 +740,42 @@ function CompactAdsCard({ objects, metrics, money, busyIds, range, onRange, onTo
   const minW = 28 + 46 + 190 + visible.reduce((a, c) => a + parseInt(c.width, 10), 0) + 12 * (visible.length + 2) + 48;
   const checkboxStyle = { width: 14, height: 14, accentColor: "var(--accent)", cursor: "pointer" };
 
+  // Linha de TOTAIS do bloco: soma TODAS as linhas do recorte atual (filtro de
+  // status + seleção), inclusive as que estão atrás do "ver mais". Só o que é
+  // contagem/dinheiro soma; taxa e custo são RECALCULADOS do total, porque
+  // média de CPL não é o CPL do bloco (linha cara com 1 lead pesaria igual a
+  // uma barata com 40).
+  const SUMMABLE = ["spend", "leads", "metaLeads", "won", "revenue", "impressions", "linkClicks", "video3s", "videoP25", "videoP50", "videoP95"];
+  const round2 = (n) => Math.round(n * 100) / 100;
+  const totals = (() => {
+    if (!rows.length) return null;
+    const t = { abc: { A: 0, B: 0, C: 0 } };
+    const has = new Set();
+    let dailyBudget = 0, hasBudget = false;
+    for (const o of rows) {
+      const m = metrics?.[level]?.[String(o.id)] || o;
+      for (const k of SUMMABLE) {
+        const v = Number(m?.[k]);
+        if (Number.isFinite(v)) { t[k] = (t[k] || 0) + v; has.add(k); }
+      }
+      if (m?.abc) { for (const g of GRADES) t.abc[g] += Number(m.abc[g]) || 0; has.add("abc"); }
+      if (o.dailyBudget != null) { dailyBudget += Number(o.dailyBudget) || 0; hasBudget = true; }
+    }
+    for (const k of SUMMABLE) if (!has.has(k)) t[k] = null;
+    if (!has.has("abc")) t.abc = null;
+    const spend = t.spend || 0;
+    t.spend = round2(spend);
+    t.cpl = t.leads > 0 ? round2(spend / t.leads) : null;
+    t.cplMeta = t.metaLeads > 0 ? round2(spend / t.metaLeads) : null;
+    t.ctr = t.impressions > 0 ? Math.round((t.linkClicks / t.impressions) * 10000) / 100 : null;
+    t.cpm = t.impressions > 0 ? round2((spend / t.impressions) * 1000) : null;
+    t.costPerLinkClick = t.linkClicks > 0 ? round2(spend / t.linkClicks) : null;
+    t.costPerWin = t.won > 0 ? round2(spend / t.won) : null;
+    t.roas = spend > 0 && t.revenue > 0 ? round2(t.revenue / spend) : null;
+    t.abcCost = t.abc ? Object.fromEntries(GRADES.map((g) => [g, t.abc[g] > 0 ? round2(spend / t.abc[g]) : null])) : null;
+    return { m: t, dailyBudget: hasBudget ? dailyBudget : null };
+  })();
+
   // Célula de cada coluna — todas leem `m` (métricas do período por id) e o
   // objeto vivo; "—" = ainda sem dado sincronizado naquele range, não é zero.
   const cell = (col, object, m, state) => {
@@ -894,6 +930,26 @@ function CompactAdsCard({ objects, metrics, money, busyIds, range, onRange, onTo
               <button onClick={() => setExpanded((v) => !v)} style={{ position: "sticky", left: 24, fontSize: 12.5, fontWeight: 600, color: "var(--accent)" }}>
                 {expanded ? "ver menos" : `ver mais ${rows.length - ADS_MAX_ROWS}`}
               </button>
+            </div>
+          )}
+          {totals && (
+            <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "12px 24px", alignItems: "center", borderTop: "1px solid var(--line-2)", background: "var(--bg-inset)", fontSize: 13.5, fontWeight: 700 }}>
+              <span /><span />
+              <span title="soma de todas as linhas do recorte atual (filtro e seleção), inclusive as escondidas atrás do «ver mais»; taxas e custos são recalculados sobre o total">
+                Total · {rows.length} {rows.length === 1 ? current.singular.toLowerCase() : current.label.toLowerCase()}
+              </span>
+              {visible.map((c) => {
+                if (c.key === "status") return <span key={c.key} />;
+                if (c.key === "budget") return (
+                  <span key={c.key} style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+                    <span className="tnum">{totals.dailyBudget != null ? money(totals.dailyBudget) : "—"}</span>
+                    {totals.dailyBudget != null && (
+                      <span className="mono" style={{ fontSize: 9, fontWeight: 400, color: "var(--fg-4)" }} title="só os orçamentos definidos NESTE nível (os que ficam no nível de baixo não entram)">diário</span>
+                    )}
+                  </span>
+                );
+                return cell(c, {}, totals.m, {});
+              })}
             </div>
           )}
         </div>
