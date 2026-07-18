@@ -1,8 +1,10 @@
 import React from "react";
 import { Segmented } from "../components/viz.jsx";
-import { EmptyState } from "../atoms.jsx";
+import { EmptyState, PrimaryButton } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
+import { useData } from "../data.jsx";
+import { currentUser } from "../lib/users.js";
 import { FocusShell } from "./training-focus.jsx";
 
 // Treinamentos — flashcards estilo Anki com repetição espaçada (FSRS) POR
@@ -1122,4 +1124,45 @@ function PersonDetail({ user: u, today }) {
   );
 }
 
-export { TrainingScreen };
+// ── Portão do treino diário ──────────────────────────────────────────────────
+// Quem tem vaga operacional (etiqueta sdr/closer/integrator/social) só começa a
+// trabalhar depois de zerar a fila do dia: qualquer tela fora dos Treinamentos
+// fica atrás deste overlay enquanto houver card pendente. A cada revisão o SSE
+// atualiza a contagem; zerou, o cockpit libera sozinho. Admin sem etiqueta não
+// é travado, e falha da API nunca tranca a tela (fail-open).
+const GATE_ROLES = ["sdr", "closer", "integrator", "social"];
+
+function TrainingGate({ saasId, active }) {
+  const { version } = useData();
+  const [pending, setPending] = useS(null); // null = sem dado (não trava)
+  const me = currentUser();
+  const gated = !!me && (me.roles || []).some((r) => GATE_ROLES.includes(r));
+  useE(() => {
+    if (!saasId || !gated) { setPending(null); return; }
+    let alive = true;
+    api.trainingQueue(saasId)
+      .then((q) => { if (alive) setPending((q.decks || []).reduce((a, d) => a + d.counts.new + d.counts.learning + d.counts.review, 0)); })
+      .catch(() => alive && setPending(null));
+    return () => { alive = false; };
+  }, [saasId, gated, version]);
+
+  if (!active || !gated || !pending) return null;
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 80, background: "color-mix(in srgb, var(--bg-0) 88%, transparent)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ width: "min(440px, 100%)", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 26, textAlign: "center" }}>
+        <div style={{ fontSize: 34 }}>🧠</div>
+        <div style={{ fontFamily: "var(--display)", fontSize: 19, fontWeight: 700, marginTop: 8 }}>Treino do dia primeiro</div>
+        <div style={{ fontSize: 13.5, color: "var(--fg-2)", lineHeight: 1.55, marginTop: 8 }}>
+          Você tem <b>{pending} {pending === 1 ? "card" : "cards"}</b> na sua fila de hoje.
+          Zerou a fila, o cockpit libera sozinho.
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <PrimaryButton onClick={() => { try { location.hash = "#training"; } catch { /* ignore */ } }}>Começar o treino →</PrimaryButton>
+        </div>
+        <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", marginTop: 12 }}>uns minutos por dia · repetição espaçada é o que fixa</div>
+      </div>
+    </div>
+  );
+}
+
+export { TrainingScreen, TrainingGate };
