@@ -25,9 +25,14 @@ function answerLabel(saasCfg, lead, key) {
 }
 
 // Tokens disponíveis nos roteiros. Valor vazio → lacuna destacada na renderização.
-export function scriptTokens(lead, saasCfg) {
+// `callSummary` (opcional) é o resumo por IA da última call de VENDA: dele saem
+// os tokens que orientam o follow-up (combinado, objeção em aberto, dor,
+// temperatura) — o contato retoma DO PONTO em que a call parou, não do zero.
+export function scriptTokens(lead, saasCfg, callSummary) {
   const call = lead?.callAt ? new Date(lead.callAt) : null;
   const callOk = call && Number.isFinite(call.getTime());
+  const cs = callSummary || null;
+  const openObj = (cs?.objecoes || []).find((o) => o && o.resolvida === false);
   const integ = lead?.integrationAt ? new Date(lead.integrationAt) : null;
   const integOk = integ && Number.isFinite(integ.getTime());
   return {
@@ -50,6 +55,11 @@ export function scriptTokens(lead, saasCfg) {
     // Integração (entrega): call de vídeo própria, com link próprio.
     hora_integracao: integOk ? integ.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "",
     link_integracao: lead?.integrationCallUrl || "",
+    // Da última call de venda resumida (a transcrição orienta o contato).
+    combinado_call: (cs?.compromissos || []).filter(Boolean).slice(0, 2).join(" e "),
+    objecao_aberta: openObj ? openObj.objecao : cs ? "nenhuma, todas tratadas na call" : "",
+    dor_call: (cs?.dores || []).filter(Boolean)[0] || "",
+    temperatura_call: cs?.temperatura ? `${cs.temperatura}${cs.temperaturaPorque ? ` (${cs.temperaturaPorque})` : ""}` : "",
   };
 }
 
@@ -73,6 +83,10 @@ const GAP_HINTS = {
   link_call: "gerar o link no lead",
   hora_integracao: "o horário da integração",
   link_integracao: "criar o Meet da integração no lead",
+  combinado_call: "gerar o resumo da call (✨ no card acima)",
+  objecao_aberta: "gerar o resumo da call (✨ no card acima)",
+  dor_call: "gerar o resumo da call (✨ no card acima)",
+  temperatura_call: "gerar o resumo da call (✨ no card acima)",
 };
 
 // Divide um texto com {{tokens}} em segmentos prontos pra renderização:
@@ -263,33 +277,38 @@ export const DEFAULT_SCRIPTS = {
       { t: "Destravar", fala: "Me fala com sinceridade: o que falta pra gente começar? Se for investimento, me conta que eu vejo o que consigo por aqui." },
     ],
   },
+  // Follow-up ancorado na CALL TRANSCRITA: o resumo por IA (card acima do
+  // roteiro) diz onde a venda parou, e os tokens da call (combinado, objeção em
+  // aberto, dor, temperatura) entram nas falas — o contato retoma DALI, não do
+  // zero. Token vazio = lacuna mandando gerar o resumo (✨).
   followup1: {
     titulo: "Follow-up · 1º contato",
-    resumo: "Primeiro retorno depois da call. Negociação aberta: cobre a decisão com leveza e feche com um próximo passo DATADO. Sem compromisso combinado, o lead esfria.",
-    objetivo: "Puxar a decisão (ou a objeção real) e sair com um dia marcado pra bater o martelo.",
+    resumo: "A venda parou num ponto específico e o resumo da call acima diz qual. Retome dali: nada de reapresentar a ferramenta nem de 'e aí, pensou?'.",
+    objetivo: "Decisão (ou a objeção real declarada) e um dia marcado pra bater o martelo.",
     passos: [
-      { t: "Cobrança leve", fala: "Oi {{nome}}, tudo bom? Aqui é {{eu}}. Depois da nossa call você ficou de me dar um retorno sobre a {{produto}}. Conseguiu pensar por aí?" },
-      { t: "Puxar a objeção real", fala: "Me fala com sinceridade o que está pegando: é o investimento, o momento, ou ficou alguma dúvida sobre a ferramenta?" },
-      { t: "Compromisso datado", fala: "Fechado. Então me diz um dia bom ainda essa semana pra gente bater o martelo, que eu já deixo tudo pronto pra você começar.", dica: "Sai daqui com data. Sem retorno, o GPS traz de volta em 3 dias úteis pro 2º contato." },
+      { t: "Antes de chamar: ler a call", dica: "Temperatura: {{temperatura_call}}. Objeção em aberto: {{objecao_aberta}}. Dor confirmada: {{dor_call}}. O contato inteiro gira em volta disso." },
+      { t: "Retomar pelo combinado", fala: "Oi {{nome}}! Aqui é {{eu}}, da {{produto}}. Na nossa call a gente combinou: {{combinado_call}}. Como ficou aí do teu lado?" },
+      { t: "Atacar a objeção da call", fala: "Me fala com sinceridade o que ainda está pegando, que eu resolvo contigo agora.", dica: "Responda {{objecao_aberta}} de frente antes de pedir a decisão: preço se responde com o valor do primeiro dia, prazo com a integração rodando amanhã." },
+      { t: "Fechar com data", fala: "Fechado. Me diz um dia ainda essa semana pra gente bater o martelo que eu já deixo tudo pronto pra você começar.", dica: "Sai com data no GPS. Sem retorno, volta em 3 dias úteis pro 2º contato." },
     ],
   },
   followup2: {
     titulo: "Follow-up · 2º contato",
-    resumo: "3 dias depois, sem retorno. Reconhece o silêncio sem cobrar, ataca a objeção mais provável e reforça que o risco é baixo. Pede uma sinalização objetiva.",
-    objetivo: "Derrubar a objeção que travou a decisão e reabrir a conversa com um próximo passo.",
+    resumo: "3 dias sem retorno. Uma mensagem só: responde a objeção da call com prova e pede uma sinalização. Não repete a venda.",
+    objetivo: "Derrubar a objeção em aberto e arrancar um bora, um não ou a dúvida real.",
     passos: [
-      { t: "Retomada sem peso", fala: "Oi {{nome}}! Sei que a correria aperta, então não quero te deixar sem um retorno meu sobre a {{produto}}." },
-      { t: "Quebra de objeção + prova", fala: "Uma dúvida comum aqui é o quanto dá de trabalho, mas no seu caso é o contrário: a gente clona seus melhores anúncios pra outras contas em minutos, e um cliente nosso subiu 105% as vendas fazendo exatamente isso. O risco pra você é baixo." },
-      { t: "Pedido objetivo", fala: "Faz sentido a gente retomar? Me responde só com um 'bora' que eu já te reservo um horário pra fechar, ou me diz o que ainda está te segurando.", dica: "Sem resposta, o GPS devolve em mais 3 dias úteis pro 3º contato (último)." },
+      { t: "Antes de chamar: ler a call", dica: "A mensagem responde a objeção em aberto ({{objecao_aberta}}) e lembra a dor confirmada ({{dor_call}}), nessa ordem." },
+      { t: "Objeção respondida com prova", fala: "Oi {{nome}}! Não vou te deixar sem retorno. Sobre o que ficou no ar na nossa call: cliente nosso na mesma situação subiu 105% espelhando as contas, e o risco do teu lado é baixo, teus anúncios migram no primeiro dia." },
+      { t: "Pedido objetivo", fala: "Me responde só com um 'bora' que eu já reservo teu horário pra fechar, ou me diz o que ainda está te segurando.", dica: "Sem resposta, o GPS devolve em 3 dias úteis pro 3º contato (último)." },
     ],
   },
   followup3: {
     titulo: "Follow-up · 3º contato (último)",
-    resumo: "Última tentativa antes de encerrar. Saída elegante que pede um sim ou não claro, sem constranger. Sem resposta, o card vai pra Desqualificado.",
-    objetivo: "Fechar a decisão nos dois sentidos: retomar agora ou encerrar com respeito e liberar a fila.",
+    resumo: "Última tentativa: sim ou não claro, sem constranger. Sem resposta, Desqualificado (motivo: sem retorno) e a fila anda.",
+    objetivo: "Retomar com prioridade ou encerrar com respeito.",
     passos: [
-      { t: "Saída elegante", fala: "Oi {{nome}}, tudo certo? Vou parar de te chamar pra não virar chateação. Só me ajuda a entender: clonar seus anúncios entre contas ainda faz sentido pra sua operação agora?" },
-      { t: "Sim ou não claro", fala: "Se ainda fizer, eu retomo com prioridade e a gente fecha essa semana. Se não for a hora, sem problema nenhum, é só me falar que eu encerro seu atendimento por aqui e deixo a porta aberta pra quando quiser voltar.", dica: "Sem resposta depois deste contato, mova o card pra Desqualificado (motivo: sem retorno)." },
+      { t: "Saída elegante", fala: "Oi {{nome}}, vou parar de te chamar pra não virar chateação. Só me diz: resolver {{dor_call}} ainda é prioridade pra tua operação agora?" },
+      { t: "Sim ou não claro", fala: "Se ainda for, eu retomo com prioridade e a gente fecha essa semana. Se não for a hora, me fala que eu encerro por aqui e deixo a porta aberta pra quando quiser voltar.", dica: "Sem resposta depois deste contato: Desqualificado (motivo: sem retorno)." },
     ],
   },
   // Confirmação da INTEGRAÇÃO: 2h antes da call de vídeo, na fila do integrador

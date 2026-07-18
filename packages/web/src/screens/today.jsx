@@ -1017,7 +1017,6 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
   const script = previewScript || (item.confirm
     ? (item.confirmKind === "integracao" ? integrationConfirmationScript(l, saasCfg) : confirmationScript(l, saasCfg, item.confirmWindow))
     : resolveScript(saasCfg, l));
-  const tokens = scriptTokens(l, saasCfg);
   const checklist = scriptChecklist(saasCfg, l);
   const wa = waLink(l.phone);
   const tier = leadTier(l);
@@ -1031,12 +1030,13 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
   // saiu da última call, pra o closer conduzir o follow-up.
   const [acts, setActs] = useS(null);
   const [callSummary, setCallSummary] = useS(null);
+  const [salesSummary, setSalesSummary] = useS(null); // última call de VENDA resumida (alimenta os tokens do roteiro)
   const [actsReload, setActsReload] = useS(0); // bump refaz o fetch após anotar
   useE(() => {
     // Pré-visualização usa um lead fictício: não busca timeline (nem bate na API).
     if (preview) { setActs([]); return; }
     let alive = true;
-    setActs(null); setCallSummary(null);
+    setActs(null); setCallSummary(null); setSalesSummary(null);
     api.listActivities(l.id)
       .then((a) => {
         if (!alive) return;
@@ -1044,13 +1044,20 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
         setActs(all.filter((x) => x.type !== "system")
           .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0))
           .slice(0, 4));
-        const cs = all.filter((x) => x.meta?.event === "call_summary" && x.meta?.summary)
-          .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0))[0];
+        const sums = all.filter((x) => x.meta?.event === "call_summary" && x.meta?.summary)
+          .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0));
+        const cs = sums[0];
         setCallSummary(cs ? { ...cs.meta.summary, recordingUrl: cs.meta.recordingUrl || "", kind: cs.meta.kind || "call" } : null);
+        // Pros tokens do roteiro só serve a call de VENDA (a de integração tem
+        // outra estrutura: sentimento/pendências, nada de objeção/combinado).
+        setSalesSummary(sums.find((x) => (x.meta.kind || "call") === "call")?.meta.summary || null);
       })
-      .catch(() => { if (alive) { setActs([]); setCallSummary(null); } });
+      .catch(() => { if (alive) { setActs([]); setCallSummary(null); setSalesSummary(null); } });
     return () => { alive = false; };
   }, [l.id, actsReload]);
+  // Tokens depois do fetch: o roteiro do follow-up usa o que saiu da call
+  // transcrita (combinado, objeção em aberto, dor, temperatura).
+  const tokens = scriptTokens(l, saasCfg, salesSummary);
 
   const renderFala = (text) => scriptSegments(text, tokens).map((s, i) => {
     if (s.text != null) return <React.Fragment key={i}>{s.text}</React.Fragment>;
