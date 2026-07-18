@@ -1140,9 +1140,9 @@ function PersonDetail({ user: u, today }) {
 // papel de cada vaga NA ORDEM DO FUNIL (mídia social → SDR → closer → CS), em
 // linguagem simples pra qualquer pessoa do time entender o todo.
 const COMPANY = {
-  what: "A LeverAds é a plataforma que clona e sincroniza anúncios entre todas as contas de Mercado Livre e Shopee de um lojista, sozinha. O cliente publica na conta principal e a ferramenta replica pras outras, com estoque baixando junto e ficha técnica completada por IA. Resultado: mais exposição e mais venda, sem contratar mais gente pra operação.",
-  mission: "Fazer o lojista de marketplace vender mais sem aumentar a operação: a tecnologia multiplica a presença dele, o nosso time garante que rode.",
-  vision: "Ser a plataforma que todo lojista multi-conta do Brasil usa pra operar Mercado Livre e Shopee.",
+  what: "A LeverAds escala a operação de quem vende em marketplace usando tecnologia. O lojista cresce publicando em mais contas de Mercado Livre e Shopee, mas o trabalho manual não acompanha: nossa plataforma publica e mantém os anúncios sincronizados em todas as contas, com estoque integrado e ficha técnica completada por IA. Resultado: mais exposição e mais venda sem aumentar o time.",
+  mission: "Escalar a operação do lojista com tecnologia: ele vende em mais contas sem contratar mais gente, e o nosso time garante que rode.",
+  vision: "Ser a plataforma que todo lojista do Brasil usa pra operar e escalar suas vendas em marketplace.",
   pillars: [
     { t: "Velocidade", d: "Lead novo se atende em minutos, cliente novo roda no dia seguinte. Quem chega primeiro e entrega rápido, ganha." },
     { t: "Mostrar rodando, não prometer", d: "A gente prova ao vivo: demo na conta do cliente, case com print real. Falar é fácil; nós mostramos." },
@@ -1155,9 +1155,9 @@ const COMPANY = {
 const ROLE_GUIDES = [
   {
     role: "social", title: "Mídia social", tagline: "Traz gente pra dentro: anúncios e redes sociais",
-    respons: "É quem enche o topo do funil e mantém a marca viva. Cria os anúncios que atraem lojistas com a dor certa e cuida das redes sociais (Instagram/Facebook) com cases, bastidores e demonstrações.",
+    respons: "É quem enche o topo do funil e mantém a marca viva. Cria os anúncios que atraem lojistas com a dor certa e cuida das redes sociais (Instagram/Facebook) com cases, bastidores e demonstrações da plataforma.",
     processo: [
-      "Cria anúncios em vídeo falando das dores reais do lojista (conta banida, falta de braço, quer vender mais)",
+      "Cria anúncios em vídeo falando das dores reais do lojista (perdeu uma conta, não tem braço pra operar, quer vender mais)",
       "Publica, acompanha o que funciona e desliga o que cansou",
       "Coloca mais verba no que traz cliente bom, não só lead barato",
       "Mantém as redes sociais ativas: resultados de clientes, bastidores e a ferramenta em ação",
@@ -1176,10 +1176,10 @@ const ROLE_GUIDES = [
   },
   {
     role: "closer", title: "Closer", tagline: "A call de venda: mostrar funcionando e fechar",
-    respons: "É quem conduz a call e transforma interesse em cliente. Mostra a ferramenta funcionando ao vivo na conta do próprio lead e fecha o negócio ainda na conversa.",
+    respons: "É quem conduz a call e transforma interesse em cliente. Mostra a plataforma funcionando ao vivo na operação do próprio lead e fecha o negócio ainda na conversa.",
     processo: [
       "Começa entendendo a operação do cliente: o que vende, quantas contas, qual a maior dor",
-      "Mostra a ferramenta AO VIVO clonando anúncios de verdade nas contas dele",
+      "Mostra a plataforma AO VIVO publicando anúncios de verdade nas contas dele",
       "Usa resultados reais de clientes pra dar segurança (a Unique cresceu 105% no 1º mês)",
       "Apresenta o plano e fecha com pagamento ainda na call",
       "Sai da call com a integração agendada pro dia seguinte; não fechou, combina o próximo passo com data",
@@ -1187,9 +1187,9 @@ const ROLE_GUIDES = [
   },
   {
     role: "integrator", title: "Integrador · CS", tagline: "Entrega e cuidado: cliente rodando e renovando",
-    respons: "É quem recebe o cliente que acabou de fechar e cuida dele pelo contrato inteiro. Deixa a ferramenta rodando no dia seguinte e acompanha pra garantir resultado.",
+    respons: "É quem recebe o cliente que acabou de fechar e cuida dele pelo contrato inteiro. Deixa a operação rodando no dia seguinte e acompanha pra garantir resultado.",
     processo: [
-      "Faz a call de integração: conecta as contas e deixa a primeira clonagem rodando na tela do cliente",
+      "Faz a call de integração: conecta as contas e deixa a operação rodando na tela do cliente",
       "Acompanha de perto a primeira semana pra garantir que está tudo funcionando",
       "Faz contatos regulares ao longo do contrato: 1º mês, 3º mês, 6º mês e antes da renovação",
       "Fica de olho em sinal de abandono (cliente sumido, sem usar) e age no mesmo dia",
