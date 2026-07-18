@@ -180,6 +180,49 @@ test("envio fora da janela de 24h → 409 (precisa de template)", async () => {
   await app.close();
 });
 
+// A hospedagem troca o CORPO de respostas 5xx pela página de erro dela, então
+// erro da Meta que precisa chegar em quem opera não pode sair como 5xx.
+test("envio recusado pela Meta (fora das 24h) → 4xx, nunca 5xx", async () => {
+  const repo = makeMemRepo();
+  const wa = { ...fakeWa(), async sendText() { throw Object.assign(new Error("número inválido"), { code: 131026 }); } };
+  const app = await appWith(repo, wa);
+  const res = await app.inject({ method: "POST", url: "/api/whatsapp/threads/5541988887777/send", payload: { text: "oi" } });
+  assert.ok(res.statusCode >= 400 && res.statusCode < 500, `esperava 4xx, veio ${res.statusCode}`);
+  assert.match(res.json().error, /número inválido/);
+  await app.close();
+});
+
+test("GET /number: confirma o número conectado; falha vira 200 com motivo (nunca 5xx)", async () => {
+  const repo = makeMemRepo();
+
+  const ok = await appWith(repo, { ...fakeWa(), async numberInfo() { return { phoneNumberId: "PN1", display: "+55 41 93618-3835", name: "LeverAds", quality: "GREEN" }; } });
+  const rOk = await ok.inject({ method: "GET", url: "/api/whatsapp/number" });
+  assert.equal(rOk.statusCode, 200);
+  assert.deepEqual(rOk.json(), { ok: true, phoneNumberId: "PN1", display: "+55 41 93618-3835", name: "LeverAds", quality: "GREEN" });
+  await ok.close();
+
+  // Token só com permissão de ENVIO: leitura falha, mas não é credencial errada.
+  const perm = await appWith(repo, { ...fakeWa(), async numberInfo() { throw Object.assign(new Error("(#200) Requires whatsapp_business_management permission"), { code: 200, status: 403 }); } });
+  const rPerm = await perm.inject({ method: "GET", url: "/api/whatsapp/number" });
+  assert.equal(rPerm.statusCode, 200);
+  assert.equal(rPerm.json().ok, false);
+  assert.equal(rPerm.json().reason, "no_read_permission");
+  await perm.close();
+
+  // Credencial de fato errada continua distinguível.
+  const bad = await appWith(repo, { ...fakeWa(), async numberInfo() { throw Object.assign(new Error("Object with ID 'PN9' does not exist"), { code: 100, status: 400 }); } });
+  const rBad = await bad.inject({ method: "GET", url: "/api/whatsapp/number" });
+  assert.equal(rBad.statusCode, 200);
+  assert.equal(rBad.json().reason, "meta_error");
+  await bad.close();
+
+  const off = await appWith(repo, fakeWa({ configured: false }));
+  const rOff = await off.inject({ method: "GET", url: "/api/whatsapp/number" });
+  assert.equal(rOff.statusCode, 200);
+  assert.equal(rOff.json().reason, "not_configured");
+  await off.close();
+});
+
 test("webhook: status failed com código de não-entregável marca o número inválido", async () => {
   const repo = makeMemRepo();
   await repo.create("leads", { id: "ld1", saas: "leverads", phone: "5541992516545" });

@@ -61,16 +61,17 @@ export function WhatsappInboxScreen({ onOpenLead }) {
   const [q, setQ] = React.useState("");
   const configured = !!window.SEED?.CONFIG?.whatsapp?.configured;
 
-  // Número conectado, direto da Meta: confirma QUAL número está enviando (e,
-  // se as credenciais estiverem erradas, o erro aparece no lugar do número em
-  // vez de só falhar no primeiro envio). Uma consulta por abertura da tela.
+  // Número conectado, direto da Meta: confirma QUAL número está enviando. A
+  // rota responde 200 sempre (com ok/reason no corpo) — ler os dados do número
+  // exige whatsapp_business_management no token, permissão que o envio NÃO
+  // precisa, então falhar aqui não quer dizer que o inbox está quebrado.
   const [numInfo, setNumInfo] = React.useState(null);
   React.useEffect(() => {
     if (!configured) return;
     let alive = true;
     api.waNumber()
       .then((n) => alive && setNumInfo(n))
-      .catch((e) => alive && setNumInfo({ error: String(e.message || e).slice(0, 160) }));
+      .catch((e) => alive && setNumInfo({ ok: false, reason: "meta_error", error: String(e.message || e).slice(0, 200) }));
     return () => { alive = false; };
   }, [configured]);
 
@@ -119,8 +120,7 @@ export function WhatsappInboxScreen({ onOpenLead }) {
 
   const unreadLabel = totalUnread ? `${totalUnread} não lida${totalUnread > 1 ? "s" : ""}` : "conversas com os leads";
   const sub = !configured ? "não configurado no servidor"
-    : numInfo?.error ? `a Meta recusou as credenciais: ${numInfo.error}`
-    : numInfo?.display ? `enviando por ${numInfo.display}${numInfo.name ? ` · ${numInfo.name}` : ""} · ${unreadLabel}`
+    : numInfo?.ok && numInfo.display ? `enviando por ${numInfo.display}${numInfo.name ? ` · ${numInfo.name}` : ""} · ${unreadLabel}`
     : unreadLabel;
 
   return (
@@ -128,6 +128,14 @@ export function WhatsappInboxScreen({ onOpenLead }) {
       <PageHead title="WhatsApp" sub={sub} />
 
       <WaHealthBanner />
+
+      {configured && numInfo && numInfo.ok === false && (
+        <div style={{ margin: "12px var(--pad-x) 0", padding: "10px 14px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5 }}>
+          {numInfo.reason === "no_read_permission"
+            ? <>Não deu pra confirmar qual número está conectado: o token não tem a permissão <b>whatsapp_business_management</b> (leitura dos dados do número). <b>Isso não bloqueia o envio</b>, que usa outra permissão. Pra ver o número aqui, adicione essa permissão ao token no Meta Business.</>
+            : <>Não deu pra confirmar o número conectado. A Meta respondeu: <span className="mono">{numInfo.error || "erro desconhecido"}</span></>}
+        </div>
+      )}
 
       {!configured && (
         <div style={{ margin: "12px var(--pad-x) 0", padding: "10px 14px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", fontSize: 12.5, color: "var(--fg-2)" }}>
