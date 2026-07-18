@@ -706,6 +706,28 @@ function IntegrationsSettings({ s }) {
   const [cfAfter, setCfAfter] = useStS(s.waCallFlow?.afterHours || "");
   const [cfStart, setCfStart] = useStS(s.waCallFlow?.hourStart ?? 8);
   const [cfEnd, setCfEnd] = useStS(s.waCallFlow?.hourEnd ?? 18);
+  // Painel de variáveis das saudações: clique insere no campo que estava em
+  // edição, na posição do cursor (o textarea guarda a seleção mesmo no blur).
+  const [cfVars, setCfVars] = useStS(false);
+  const cfGreetRef = React.useRef(null);
+  const cfAfterRef = React.useRef(null);
+  const cfLastField = React.useRef("greeting");
+  const CF_VARS = [
+    { t: "{nome}", d: "primeiro nome do lead (some se não tiver)" },
+    { t: "{empresa}", d: "empresa do lead (some se não tiver)" },
+    { t: "{produto}", d: `nome do produto (${s.name})` },
+    { t: "{volta}", d: "quando o time volta: \"hoje às 8h\" / \"amanhã às 8h\" / \"segunda às 8h\" (pro texto de fora do horário)" },
+  ];
+  function cfInsertVar(tok) {
+    const after = cfLastField.current === "after";
+    const el = (after ? cfAfterRef : cfGreetRef).current;
+    const val = after ? cfAfter : cfGreeting;
+    const set = after ? setCfAfter : setCfGreeting;
+    const start = el?.selectionStart ?? val.length;
+    const end = el?.selectionEnd ?? val.length;
+    set(val.slice(0, start) + tok + val.slice(end));
+    requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(start + tok.length, start + tok.length); });
+  }
   async function saveWa() {
     const hour = (v, fb) => { const n = Number(v); return Number.isFinite(n) && n >= 0 && n < 24 ? n : fb; };
     await api.update("products", s.id, {
@@ -796,14 +818,36 @@ function IntegrationsSettings({ s }) {
                     <span className="mono dim" style={{ fontSize: 10 }}>fim de semana conta como fora do horário</span>
                   </div>
                   <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", marginTop: 10 }}>dentro do horário (pede pra ligar agora)</div>
-                  <textarea value={cfGreeting} onChange={(e) => setCfGreeting(e.target.value)} rows={2}
+                  <textarea ref={cfGreetRef} value={cfGreeting} onChange={(e) => setCfGreeting(e.target.value)} rows={2}
+                    onFocus={() => { cfLastField.current = "greeting"; }}
                     placeholder={'Olá {nome}! Recebi seu formulário aqui. Posso te ligar pra uma breve conversa sobre a plataforma?'}
                     style={{ ...inputStyle, width: "100%", height: "auto", minHeight: 52, marginTop: 6, padding: "8px 12px", fontSize: 12.5, lineHeight: 1.45, resize: "vertical", fontFamily: "inherit" }} />
                   <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", marginTop: 10 }}>fora do horário (avisa quando volta e já pede a autorização)</div>
-                  <textarea value={cfAfter} onChange={(e) => setCfAfter(e.target.value)} rows={2}
+                  <textarea ref={cfAfterRef} value={cfAfter} onChange={(e) => setCfAfter(e.target.value)} rows={2}
+                    onFocus={() => { cfLastField.current = "after"; }}
                     placeholder={'Olá {nome}! Recebi seu formulário aqui. Nosso time está fora do horário agora, mas volta {volta}. Posso te ligar quando voltarmos pra falar sobre a plataforma? Já deixa a autorização aqui embaixo.'}
                     style={{ ...inputStyle, width: "100%", height: "auto", minHeight: 52, marginTop: 6, padding: "8px 12px", fontSize: 12.5, lineHeight: 1.45, resize: "vertical", fontFamily: "inherit" }} />
-                  <div className="mono dim" style={{ fontSize: 10, marginTop: 4 }}>{"{nome}"} vira o primeiro nome do lead · {"{volta}"} vira "hoje às 8h" / "amanhã às 8h" / "segunda às 8h" · vazio usa o texto padrão</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                    <button onClick={() => setCfVars((v) => !v)} className="mono"
+                      style={{ height: 24, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-2)", background: cfVars ? "var(--accent-soft)" : "var(--bg-1)", color: cfVars ? "var(--accent)" : "var(--fg-3)", fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}>
+                      {"{ }"} variáveis
+                    </button>
+                    <span className="mono dim" style={{ fontSize: 10 }}>texto vazio usa o padrão</span>
+                  </div>
+                  {cfVars && (
+                    <div style={{ marginTop: 8, padding: "10px 12px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-2)", display: "flex", flexDirection: "column", gap: 6 }}>
+                      {CF_VARS.map((v) => (
+                        <div key={v.t} style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                          <button onClick={() => cfInsertVar(v.t)} className="mono" title="clique pra inserir no texto, na posição do cursor"
+                            style={{ flexShrink: 0, padding: "2px 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--accent)", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
+                            {v.t}
+                          </button>
+                          <span style={{ fontSize: 11.5, color: "var(--fg-2)", lineHeight: 1.45 }}>{v.d}</span>
+                        </div>
+                      ))}
+                      <span className="mono dim" style={{ fontSize: 10, marginTop: 2 }}>clique numa variável pra inserir no campo que você estava editando</span>
+                    </div>
+                  )}
                 </>
               )}
             </div>
