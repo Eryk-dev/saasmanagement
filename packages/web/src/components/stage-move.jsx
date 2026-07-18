@@ -43,6 +43,10 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   const [amount, setAmount] = React.useState("");
   const [payment, setPayment] = React.useState(lead.paymentMethod || "");
   const [planClosed, setPlanClosed] = React.useState(lead.planClosed || "anual");
+  // UniqueKids: o ganho É a compra de um pacote de consultas (mentoria 1:1) —
+  // o gate captura o tamanho e o servidor cria a jornada inteira na conversão.
+  const isKidsWon = isWonGate && lead.saas === "uniquekids";
+  const [consultPackage, setConsultPackage] = React.useState(String(lead.consultPackage || 8));
   const askCall = !isLost && !isWonGate && gate.toKind === "call";
   const ready = isLost ? !!reason : isWonGate ? (Number(amount) > 0 && !!payment) : !!closer;
 
@@ -56,6 +60,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
       patch.amount = Number(amount);
       patch.paymentMethod = payment;
       patch.planClosed = planClosed;
+      if (isKidsWon) patch.consultPackage = Number(consultPackage) || 8;
     } else {
       patch.closer = closer;
       if (callAt) patch.callAt = callAt;
@@ -99,6 +104,19 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
               <option value="">— como o cliente fechou —</option>
               {PAYMENT_METHODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
             </select>
+            {isKidsWon && (
+              <>
+                <div style={{ height: 12 }} />
+                <label style={label}>Pacote de consultas *</label>
+                <select value={consultPackage} onChange={(e) => setConsultPackage(e.target.value)} style={field}>
+                  <option value="8">8 consultas</option>
+                  <option value="4">4 consultas</option>
+                </select>
+                <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
+                  a jornada inteira nasce na tela Consultas (sem data); cada consulta marcada entra na Agenda e no Google
+                </div>
+              </>
+            )}
           </>
         ) : isLost ? (
           <>

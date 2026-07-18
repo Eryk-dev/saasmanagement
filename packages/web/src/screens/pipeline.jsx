@@ -414,7 +414,7 @@ function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen 
 // do GPS (nextActionAt) em estilo leve. Clique abre o lead.
 // `blocking` (opcional, tela Agenda): { blocksFor(d), onSlot(d, hora), onBlock(b) }
 // desenha os bloqueios da pessoa selecionada e liga o clique em horário vazio.
-function AgendaView({ leads, onOpenLead, blocking }) {
+function AgendaView({ leads, consultations = [], onOpenLead, blocking }) {
   const [week, setWeek] = useStP(0); // offset em semanas a partir da atual
   const [showTouches, setShowTouchesState] = useStP(() => {
     try { return localStorage.getItem("cockpit_agenda_touches") === "1"; } catch { return false; }
@@ -432,12 +432,32 @@ function AgendaView({ leads, onOpenLead, blocking }) {
   const end = new Date(monday); end.setDate(monday.getDate() + 7);
   // Eventos: call agendada (callAt), integração (integrationAt) e — opcional —
   // toque do GPS (nextActionAt). O mesmo lead pode ter os três.
+  // Consultas 1:1 (mentoria UniqueKids) entram na mesma grade como um "lead" de
+  // fachada: nome do cliente + posição no pacote, cor da responsável (owner via
+  // closer). O clique abre o lead de ORIGEM quando existir (_leadRef).
+  const leadById = new Map(leads.map((l) => [l.id, l]));
+  const consultEvents = (consultations || [])
+    .filter((c) => c.at && c.status !== "canceled")
+    .map((c) => ({
+      kind: "consulta",
+      t: new Date(c.at),
+      l: {
+        id: `consulta-${c.id}`,
+        name: c.clientName || "cliente",
+        company: `consulta ${c.n || "?"} de ${c.packageTotal || 8}`,
+        closer: c.owner || "",
+        callUrl: c.meetUrl || "",
+        saas: c.saas, stage: "",
+        _leadRef: (c.leadId && leadById.get(c.leadId)) || null,
+      },
+    }));
   const events = leads
     .flatMap(l => [
       l.callAt ? { l, t: new Date(l.callAt), kind: "call" } : null,
       l.integrationAt ? { l, t: new Date(l.integrationAt), kind: "integração" } : null,
       showTouches && l.nextActionAt ? { l, t: new Date(l.nextActionAt), kind: "toque" } : null,
     ])
+    .concat(consultEvents)
     .filter(e => e && Number.isFinite(e.t.getTime()) && e.t >= monday && e.t < end);
   const fmtDay = (d, opts) => d.toLocaleDateString("pt-BR", opts).replace(/\./g, "");
   const label = `${fmtDay(days[0], { day: "2-digit", month: "short" })} · ${fmtDay(days[6], { day: "2-digit", month: "short", year: "numeric" })}`;
@@ -589,7 +609,7 @@ function AgendaView({ leads, onOpenLead, blocking }) {
                   const timeStr = t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
                   return (
                     <div key={l.id + kind}
-                      onClick={(e) => { e.stopPropagation(); onOpenLead && onOpenLead(l); }}
+                      onClick={(e) => { e.stopPropagation(); const target = kind === "consulta" ? l._leadRef : l; if (target && onOpenLead) onOpenLead(target); }}
                       title={`${timeStr} · ${isFollowup ? "follow-up" : kind} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}`}
                       style={{
                         position: "absolute", top: (hour - H0) * hourH + 1,
@@ -611,8 +631,8 @@ function AgendaView({ leads, onOpenLead, blocking }) {
                       ) : (
                         <>
                           <div className="mono tnum" style={{ fontSize: 9.5, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {isTouch ? `○ ${l.name}` : `${timeStr}${who ? ` · ${displayName(who).split(" ")[0]}` : ""}${kind === "integração" ? " · int" : ""}`}
-                            {!isTouch && kind === "call" && l.callUrl && (
+                            {isTouch ? `○ ${l.name}` : `${timeStr}${who ? ` · ${displayName(who).split(" ")[0]}` : ""}${kind === "integração" ? " · int" : kind === "consulta" ? " · 1:1" : ""}`}
+                            {!isTouch && (kind === "call" || kind === "consulta") && l.callUrl && (
                               <a href={l.callUrl} target="_blank" rel="noopener noreferrer" title="Entrar na videochamada"
                                 onClick={(e) => e.stopPropagation()} style={{ marginLeft: 4, textDecoration: "none" }}>🎥</a>
                             )}
