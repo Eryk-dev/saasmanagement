@@ -584,7 +584,8 @@ function LeadDetail({ lead: initial, onClose }) {
             <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Insights do estágio · {lead.stage || (saasCfg?.funnel?.[0]?.stage ?? "")}</div>
             {/* Briefing de passagem em cima de tudo: é o que o integrador lê
                 primeiro quando abre o card que acabou de chegar nele. */}
-            <IntegrationBriefCard brief={integrationBrief} phone={lead.phone} />
+            <IntegrationBriefCard brief={integrationBrief} phone={lead.phone}
+              deal={{ amount: lead.amount, planClosed: lead.planClosed, paymentMethod: lead.paymentMethod }} />
             {/* Resumo da última call por IA em cima dos insights do estágio. */}
             <CallSummaryCard summary={callSummary} phone={lead.phone} />
             <div style={{ ...box, background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>

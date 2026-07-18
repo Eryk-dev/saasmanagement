@@ -47,7 +47,7 @@ export function factsOf(lead, { closerName = "" } = {}) {
 
 // Texto da timeline (plain, multiline, sem travessão — regra do Leo).
 export function formatBriefText(b) {
-  const lines = ["Briefing da integração (IA) · passagem do closer pro integrador", "", b.resumo];
+  const lines = ["Briefing da integração (IA) · negócio FECHADO, passagem do closer pro integrador (é entrega, não venda)", "", b.resumo];
   if (b.operacao?.length) lines.push("", "Operação do cliente:", ...b.operacao.map((o) => `• ${o.item}: ${o.valor}`));
   if (b.vendido?.length) lines.push("", "O que foi vendido/prometido:", ...b.vendido.map((v) => `• ${v}`));
   if (b.expectativa) lines.push("", `Expectativa do cliente: ${b.expectativa}`);

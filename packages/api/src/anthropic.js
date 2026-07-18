@@ -98,7 +98,7 @@ const BRIEF_SCHEMA = {
   additionalProperties: false,
   required: ["resumo", "operacao", "vendido", "expectativa", "atencao", "confirmar", "checklist", "primeiraMensagem"],
   properties: {
-    resumo: { type: "string", description: "Quem é o cliente, o que ele vende e o que contratou, em 3 a 5 frases diretas. Escreva pra alguém que NÃO estava na call" },
+    resumo: { type: "string", description: "Quem é o cliente, o que ele vende e o que JÁ CONTRATOU (negócio fechado), em 3 a 5 frases diretas. Escreva pra alguém que NÃO estava na call e que vai ENTREGAR, não vender" },
     operacao: {
       type: "array",
       description: "Fatos da operação dele que mudam o setup (contas, marketplaces, volume de anúncios, ERP/hub, conta banida, particularidades). Só o que apareceu na call ou nos dados do cadastro",
@@ -112,11 +112,11 @@ const BRIEF_SCHEMA = {
         },
       },
     },
-    vendido: { type: "array", items: { type: "string" }, description: "O que o closer prometeu/vendeu: escopo, entregas, prazos e condições ditos na call. Fiel à transcrição" },
+    vendido: { type: "array", items: { type: "string" }, description: "O que o closer prometeu e o cliente JÁ COMPROU: escopo, entregas, prazos e condições ditos na call. Fiel à transcrição, é o que ele vai cobrar" },
     expectativa: { type: "string", description: "O resultado que o cliente espera ver e em quanto tempo, nas palavras dele" },
     atencao: {
       type: "array",
-      description: "Riscos pro onboarding: objeção que ficou em aberto, expectativa desalinhada, pressa, desconfiança, limitação técnica",
+      description: "Riscos pra ENTREGA (a venda já aconteceu, ninguém precisa mais convencer): objeção que ficou em aberto e virou dúvida do cliente que já comprou, expectativa desalinhada, pressa, desconfiança, limitação técnica",
       items: {
         type: "object",
         additionalProperties: false,
@@ -141,13 +141,16 @@ const BRIEF_SCHEMA = {
         },
       },
     },
-    primeiraMensagem: { type: "string", description: "WhatsApp de abertura do integrador pro cliente: se apresenta, cita algo concreto da venda e propõe o próximo passo. 2 a 4 frases" },
+    primeiraMensagem: { type: "string", description: "WhatsApp de abertura do integrador pro cliente que JÁ COMPROU: se apresenta como quem vai tocar a entrega, cita algo concreto do que foi fechado e propõe o próximo passo. Nada de tom de venda, proposta ou negociação. 2 a 4 frases" },
   },
 };
 
 const BRIEF_SYSTEM = `Você prepara o BRIEFING DE PASSAGEM pro integrador da LeverAds, SaaS que clona e sincroniza anúncios entre contas de Mercado Livre e Shopee (multi-contas, proteção contra banimento, economia de operação).
-O cliente ACABOU DE FECHAR e o card passou pro integrador, que NÃO participou da call de vendas e vai fazer o onboarding. Ele precisa de duas coisas: se localizar (quem é esse cliente, o que compraram dele, o que foi prometido) e saber o que fazer (passos concretos, em ordem).
-Regras: português direto, sem enrolação e sem repetir o óbvio. NUNCA use travessão (—) em nenhum texto; use vírgula ou parênteses. Seja fiel à fonte: não invente conta, volume, prazo nem promessa que não apareceu. Quando um dado importante do setup não foi tratado na call, NÃO chute: coloque em "confirmar". Promessa feita pelo closer entra em "vendido" com as palavras que foram usadas, porque é o que o cliente vai cobrar. O checklist é do trabalho REAL de integração desse cliente (acessos, contas de origem e destino, o que clonar primeiro, atributos, combinar acompanhamento), não uma lista genérica. A primeira mensagem é de quem assume o cliente, cita algo concreto da venda e termina propondo dia/horário ou um próximo passo claro.`;
+PONTO DE PARTIDA, sem exceção: O NEGÓCIO JÁ ESTÁ FECHADO. O cliente comprou, pagou ou assinou, e o card passou pro integrador, que NÃO participou da call de vendas e vai fazer o onboarding. A partir daqui é ENTREGA, não venda. Escreva como quem assume um cliente que já é cliente.
+Por isso, NUNCA: sugira vender, revender, "convencer", "fechar", negociar preço, mandar proposta, reforçar benefício pra justificar a compra ou tratar o cliente como lead/prospect. Não deixe o texto dar a entender que a decisão ainda está de pé.
+Objeção que ficou em aberto na call NÃO é obstáculo de venda, é RISCO DE ENTREGA: o cliente comprou com essa dúvida na cabeça e ela vira frustração ou cancelamento se ninguém tratar. Coloque em "atenção" dizendo como resolver na prática durante o onboarding.
+Ele precisa de duas coisas: se localizar (quem é esse cliente, o que ele comprou, o que foi prometido) e saber o que fazer (passos concretos, em ordem).
+Regras: português direto, sem enrolação e sem repetir o óbvio. NUNCA use travessão (—) em nenhum texto; use vírgula ou parênteses. Seja fiel à fonte: não invente conta, volume, prazo nem promessa que não apareceu. Quando um dado importante do setup não foi tratado na call, NÃO chute: coloque em "confirmar". Promessa feita pelo closer entra em "vendido" com as palavras que foram usadas, porque é o que o cliente vai cobrar. O checklist é do trabalho REAL de integração desse cliente (acessos, contas de origem e destino, o que clonar primeiro, atributos, combinar acompanhamento), não uma lista genérica. A primeira mensagem é de quem assume a ENTREGA do que ele já comprou: se apresenta, cita algo concreto da venda e propõe dia/horário ou o próximo passo, sem nenhum tom de vendedor e sem reabrir negociação.`;
 
 const INTEGRATION_SYSTEM = `Você é o analista de Sucesso do Cliente. Você recebe a transcrição de uma call de INTEGRAÇÃO (onboarding/setup pós-venda, o cliente já comprou) e extrai o que importa pra equipe garantir que ele comece bem e não vire risco de churn.
 Regras: escreva em português direto, sem enrolação. NUNCA use travessão (—) em nenhum texto; use vírgula ou parênteses. Seja fiel à transcrição: não invente configuração, pendência nem combinado que não apareceu. Marque o sentimento como "em risco" quando o cliente sai confuso, frustrado, sem entender o produto ou com pendência crítica sem solução. Em cada pendência diga quem resolve (cliente ou equipe). A mensagem de WhatsApp é de acompanhamento (checar se ficou tudo certo, oferecer ajuda), curta (2 a 4 frases), citando algo concreto da call.`;
@@ -485,17 +488,18 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
     const clipped = text.length > MAX ? `[início da call omitido]\n${text.slice(-MAX)}` : text;
 
     const context = [
+      `STATUS: NEGÓCIO FECHADO. ${lead.name || "O cliente"} já comprou e o card acabou de passar pro integrador. O trabalho daqui pra frente é entregar, não vender.`,
       `Cliente: ${lead.name || "?"}${lead.company ? ` (${lead.company})` : ""}`,
       lead.niche ? `Nicho: ${lead.niche}` : "",
       `Produto contratado: ${productName}`,
-      callDate ? `Data da call de venda: ${callDate}` : "",
+      callDate ? `Data da call de venda (que terminou em fechamento): ${callDate}` : "",
       today ? `Hoje é: ${today}` : "",
       facts.length ? `\nDados do cadastro (respostas do formulário e do fechamento):\n${facts.map((f) => `- ${f}`).join("\n")}` : "",
     ].filter(Boolean).join("\n");
 
     const source = clipped
-      ? `Transcrição da call de venda:\n\n${clipped}`
-      : `Não há transcrição da call. Use o resumo estruturado que já foi extraído dela (JSON) e os dados do cadastro. Seja MAIS conservador: o que não estiver aqui vai pra "confirmar".\n\n${JSON.stringify(priorSummary || {}, null, 2)}`;
+      ? `Transcrição da call de venda (essa negociação JÁ FOI GANHA, você está lendo o histórico do que foi combinado):\n\n${clipped}`
+      : `Não há transcrição da call. Use o resumo estruturado que já foi extraído dela (JSON) e os dados do cadastro, lembrando que essa venda JÁ FOI FECHADA. Seja MAIS conservador: o que não estiver aqui vai pra "confirmar".\n\n${JSON.stringify(priorSummary || {}, null, 2)}`;
 
     const r = await requestJson(`${context}\n\n${source}`, { system: BRIEF_SYSTEM, schema: BRIEF_SCHEMA, schemaName: "integration_brief" });
     return { brief: r.parsed, usage: r.usage, model: r.model };
