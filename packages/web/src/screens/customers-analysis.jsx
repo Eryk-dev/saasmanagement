@@ -48,6 +48,9 @@ function cashSplit(c, now) {
 
 function planBucket(plan) {
   const t = String(plan || "").toLowerCase();
+  // Mentoria: o pacote comprado É a categoria (4 e 8 consultas contam separado).
+  const pack = t.match(/(\d+)\s*consulta/);
+  if (pack) return `Mentoria · ${pack[1]} consultas`;
   if (t.includes("único") || t.includes("unico")) return "Serviço único";
   if (t.includes("semestral")) return "Semestral";
   if (t.includes("mensal")) return "Mensal";
@@ -144,7 +147,12 @@ export function CustomersAnalysis({ customers }) {
     background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5,
   };
   const planosTotal = m.cohort.length || 1;
-  const planRows = PLAN_ORDER.filter((b) => m.planos.get(b)).map((b) => ({ bucket: b, count: m.planos.get(b) }));
+  // Ordem canônica primeiro; categorias de fora dela (ex.: pacotes da mentoria)
+  // entram depois, por volume — nenhum plano some do card.
+  const planRows = [
+    ...PLAN_ORDER.filter((b) => m.planos.get(b)),
+    ...[...m.planos.keys()].filter((b) => !PLAN_ORDER.includes(b)).sort((a, b) => m.planos.get(b) - m.planos.get(a)),
+  ].map((b) => ({ bucket: b, count: m.planos.get(b) }));
 
   // Embutida no topo da aba Clientes (acima das Próximas ações) — o padding de
   // página é do container; aqui só o empilhamento interno.

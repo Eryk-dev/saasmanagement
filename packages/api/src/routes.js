@@ -687,7 +687,10 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
     saas: lead.saas,
     email: lead.email || "",
     phone: lead.phone || "",
-    plan: CLOSED_PLAN_LABEL[lead.planClosed] || "",
+    // Mentoria (UniqueKids): o "plano" do cliente é o PACOTE comprado.
+    plan: lead.saas === "uniquekids"
+      ? `Mentoria · ${Number(lead.consultPackage) === 4 ? 4 : 8} consultas`
+      : (CLOSED_PLAN_LABEL[lead.planClosed] || ""),
     arr: Math.round((Number(lead.amount) || 0) * (CLOSED_PLAN_ANNUAL_FACTOR[lead.planClosed] || 1)),
     leadId: lead.id,
     ...(csOwner ? { owner: csOwner } : {}),

@@ -29,3 +29,14 @@ export const CLOSED_PLANS = [
 ];
 
 export const closedPlanLabel = (id) => CLOSED_PLANS.find((p) => p.id === id)?.label || (id === "mensal" ? "Mensal" : "");
+
+// UniqueKids não vende plano recorrente: vende PACOTE de consultas da mentoria
+// (o que o cliente comprou é o tamanho da jornada). Vale como rótulo do
+// customer.plan e como opção no gate de fechamento e no cadastro do cliente.
+export const CONSULT_PACKAGES = [8, 4];
+export const consultPackageLabel = (n) => `Mentoria · ${Number(n) || 8} consultas`;
+// Rótulo → nº de consultas ("Mentoria · 4 consultas" → 4); 0 quando não é pacote.
+export const consultPackageOf = (plan) => {
+  const m = String(plan || "").match(/(\d+)\s*consulta/i);
+  return m ? Number(m[1]) : 0;
+};

@@ -11,7 +11,7 @@
 
 // ── dynamic option helpers ──────────────────────────────────────────────────
 import { getActiveSaasId } from "./workspace.js";
-import { PAYMENT_METHODS } from "./payments.js";
+import { PAYMENT_METHODS, CONSULT_PACKAGES, consultPackageLabel } from "./payments.js";
 // Select "Produto" escopado ao WORKSPACE: só o produto ativo (e o do próprio
 // registro, por segurança ao editar) — a outra marca não vaza no formulário.
 const saasOptions = (values) => {
@@ -135,12 +135,18 @@ export const ENTITIES = {
       { key: "email", label: "E-mail", type: "text", help: "payer do Mercado Pago nas assinaturas" },
       // Plano guarda o RÓTULO (mesmo valor que o convertWonLead grava do gate);
       // "Mensal" fica como legado pra edição de clientes antigos.
-      { key: "plan", label: "Plano", type: "select", blankLabel: "—", options: [
-        { value: "Anual", label: "Anual" },
-        { value: "Semestral", label: "Semestral" },
-        { value: "Serviço único", label: "Serviço único" },
-        { value: "Mensal", label: "Mensal (legado)" },
-      ], help: "com assinatura ativa, a lista mostra o plano da assinatura" },
+      // O que o cliente comprou. Produto de mentoria (UniqueKids) vende PACOTE
+      // de consultas, não plano recorrente — o select troca junto com o produto.
+      { key: "plan", label: "Plano", type: "select", blankLabel: "—", options: (v) => (
+        v?.saas === "uniquekids"
+          ? CONSULT_PACKAGES.map((n) => ({ value: consultPackageLabel(n), label: consultPackageLabel(n) }))
+          : [
+            { value: "Anual", label: "Anual" },
+            { value: "Semestral", label: "Semestral" },
+            { value: "Serviço único", label: "Serviço único" },
+            { value: "Mensal", label: "Mensal (legado)" },
+          ]
+      ), help: "com assinatura ativa, a lista mostra o plano da assinatura" },
       { key: "paymentMethod", label: "Meio de pagamento", type: "select", blankLabel: "—",
         options: () => PAYMENT_METHODS.map((p) => ({ value: p.id, label: p.label })),
         help: "à vista/cartão = valor total no caixa; faturado/parcelado = entra por mês" },
