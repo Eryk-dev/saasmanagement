@@ -169,7 +169,7 @@ export function ConsultasScreen() {
       </div>
 
       {editing && (
-        <ConsultaModal c={editing} customers={customers}
+        <ConsultaModal c={editing} customers={customers} consultas={consultas}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); refresh(); }} />
       )}
@@ -280,12 +280,20 @@ function AgendaTab({ days, byCell, journeys, consultas, onShiftWeek, onToday, on
 }
 
 // ── Modal de consulta (criar/editar) ─────────────────────────────────────────
-function ConsultaModal({ c, customers, onClose, onSaved }) {
+function ConsultaModal({ c, customers, consultas = [], onClose, onSaved }) {
   const [form, setForm] = useS(c);
   const [busy, setBusy] = useS("");
   const [err, setErr] = useS("");
   const isNew = !c.id;
   const set = (p) => setForm((f) => ({ ...f, ...p }));
+
+  // Continuidade da jornada: recap da consulta ANTERIOR da mesma família (a de
+  // maior n abaixo desta que já tem resumo de IA). A mentora abre a consulta N
+  // já vendo o foco combinado, as tarefas de casa pra cobrar e os sinais.
+  const prev = useM(() => (consultas || [])
+    .filter((x) => x.id !== form.id && sameFamily(x, form) && x.summary && (Number(x.n) || 0) < (Number(form.n) || 99))
+    .sort((a, b) => (Number(b.n) || 0) - (Number(a.n) || 0))[0] || null,
+  [consultas, form.id, form.n, form.customerId, form.leadId, form.clientName]);
 
   function pickCustomer(id) {
     const cu = customers.find((x) => x.id === id);
@@ -368,6 +376,18 @@ function ConsultaModal({ c, customers, onClose, onSaved }) {
         <label style={{ ...lab, marginTop: 12 }}>Anotações da consulta
           <textarea value={form.notes || ""} onChange={(e) => set({ notes: e.target.value })} rows={3} placeholder="o que rolou, combinados, observações (entra no material do Manual)" style={{ ...inp, resize: "vertical" }} />
         </label>
+
+        {/* Recap da consulta anterior: o que foi combinado lá guia esta aqui. */}
+        {prev?.summary && (
+          <div style={{ marginTop: 12, padding: "10px 12px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", fontSize: 12.5, lineHeight: 1.5 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Recap da consulta anterior (nº {prev.n || "?"})</div>
+            {prev.summary.proxima && <div><b>Foco combinado pra esta:</b> {prev.summary.proxima}</div>}
+            {!!prev.summary.tarefas?.length && <div style={{ marginTop: 4 }}><b>Tarefas de casa pra checar:</b> {prev.summary.tarefas.join(" · ")}</div>}
+            {!!prev.summary.combinados?.length && <div style={{ marginTop: 4 }}><b>Combinados:</b> {prev.summary.combinados.join(" · ")}</div>}
+            {prev.summary.sinais && <div style={{ marginTop: 4, color: "var(--warn, #b45309)" }}><b>Sinais de atenção:</b> {prev.summary.sinais}</div>}
+            {prev.summary.resumo && <div style={{ marginTop: 4, color: "var(--fg-3)" }}>{prev.summary.resumo}</div>}
+          </div>
+        )}
 
         {/* Meet + resumo IA */}
         {!isNew && (

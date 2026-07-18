@@ -37,10 +37,21 @@ export function registerConsultationRoutes(app, repo, { google, googleUser, anth
     const attendees = [clientEmail, ...(Array.isArray(req.body?.guests) ? req.body.guests : [])]
       .map((x) => String(x || "").trim().toLowerCase()).filter(emailOk).slice(0, 10);
 
+    // Continuidade: a consulta seguinte recebe o resumo da anterior. Se a
+    // consulta anterior da MESMA família já foi resumida pela IA, o recap entra
+    // na descrição do evento (quem abre o convite chega contextualizado).
+    let recap = "";
+    try {
+      const prev = (await repo.list("consultations"))
+        .filter((x) => x.id !== c.id && sameFamily(x, c) && x.summary && (Number(x.n) || 0) < (Number(c.n) || 99))
+        .sort((a, b) => (Number(b.n) || 0) - (Number(a.n) || 0))[0] || null;
+      if (prev) recap = `\n\nResumo da consulta anterior (nº ${prev.n || "?"}):\n${formatConsultationText(prev.summary)}`.slice(0, 3500);
+    } catch { /* recap é bônus, nunca trava o Meet */ }
+
     try {
       const { meetUrl, eventId, htmlLink } = await google.createMeetEvent({
         summary: `Consulta ${c.n || "?"}/${c.packageTotal || 8} · ${c.clientName || "cliente"}`,
-        description: [`Cliente: ${c.clientName || "?"}`, c.childName ? `Criança: ${c.childName}` : "", "Mentoria R.O.T.I.N.A · UniqueKids"].filter(Boolean).join("\n"),
+        description: [`Cliente: ${c.clientName || "?"}`, c.childName ? `Criança: ${c.childName}` : "", "Mentoria R.O.T.I.N.A · UniqueKids"].filter(Boolean).join("\n") + recap,
         start: { dateTime: naive(s), timeZone: TZ },
         end: { dateTime: naive(e), timeZone: TZ },
         attendees,
