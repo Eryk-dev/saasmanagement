@@ -44,8 +44,8 @@ export function AgendaScreen({ onOpenLead }) {
   const [blockMode, setBlockMode] = useS(false); // botão "Travar horários" liga o clique-pra-travar
   const [reason, setReason] = useS("");
   const [recur, setRecur] = useS("once"); // "once" | "weekly"
-  const [lunchFrom, setLunchFrom] = useS(12);
-  const [lunchTo, setLunchTo] = useS(13);
+  const [fixedFrom, setFixedFrom] = useS(12);
+  const [fixedTo, setFixedTo] = useS(13);
   const [notice, setNotice] = useS("");
   const noticeT = React.useRef(null);
   const flash = (msg) => { setNotice(msg); clearTimeout(noticeT.current); noticeT.current = setTimeout(() => setNotice(""), 4000); };
@@ -91,18 +91,21 @@ export function AgendaScreen({ onOpenLead }) {
     for (const b of list) if (!String(b.id).startsWith("tmp_")) api.remove("agenda_blocks", b.id).catch((err) => console.warn("não removido:", err.message));
   }
 
-  // Preset de almoço: bloqueio recorrente seg a sex no horário escolhido, com
-  // motivo "almoço". Se a pessoa já tem, o mesmo botão libera tudo de uma vez.
-  const lunchBlocks = useM(
-    () => myBlocks.filter((b) => b.recur === "weekly" && String(b.reason || "").toLowerCase() === "almoço"),
-    [myBlocks],
+  // Horário fixo: bloqueio recorrente seg a sex no horário escolhido (livre,
+  // 07h às 21h), com o motivo do campo (ex.: almoço, academia). Se a pessoa já
+  // tem esse mesmo horário travado, o botão vira "liberar" e remove tudo.
+  const fixedBlocks = useM(
+    () => myBlocks.filter((b) => b.recur === "weekly" && !b.allDay
+      && Number(b.fromHour) === fixedFrom && Number(b.toHour) === fixedTo
+      && Number(b.weekday) >= 1 && Number(b.weekday) <= 5),
+    [myBlocks, fixedFrom, fixedTo],
   );
-  function toggleLunch() {
-    if (lunchBlocks.length) return removeBlocks(lunchBlocks);
+  function toggleFixed() {
+    if (fixedBlocks.length) return removeBlocks(fixedBlocks);
     for (let wd = 1; wd <= 5; wd++) {
-      addBlock({ saas: "", user, recur: "weekly", weekday: wd, allDay: false, fromHour: lunchFrom, toHour: lunchTo, reason: "almoço" });
+      addBlock({ saas: "", user, recur: "weekly", weekday: wd, allDay: false, fromHour: fixedFrom, toHour: fixedTo, reason: reason.trim() });
     }
-    flash(`Almoço travado pra ${displayName(user)}: ${pad(lunchFrom)}:00 às ${pad(lunchTo)}:00, segunda a sexta.`);
+    flash(`Horário travado pra ${displayName(user)}: ${pad(fixedFrom)}:00 às ${pad(fixedTo)}:00, segunda a sexta${reason.trim() ? ` (${reason.trim()})` : ""}.`);
   }
 
   function onSlot(day, hour) {
@@ -158,26 +161,22 @@ export function AgendaScreen({ onOpenLead }) {
 
             <span style={{ width: 1, height: 18, background: "var(--line-1)", margin: "0 4px" }} />
 
-            {/* Preset: almoço recorrente seg a sex no horário escolhido */}
-            <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Almoço</span>
-            {lunchBlocks.length === 0 && (
-              <>
-                <select value={lunchFrom} onChange={(e) => { const v = Number(e.target.value); setLunchFrom(v); if (lunchTo <= v) setLunchTo(v + 1); }}
-                  style={{ height: 34, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }}>
-                  {[11, 12, 13].map((h) => <option key={h} value={h}>{pad(h)}:00</option>)}
-                </select>
-                <span className="dim" style={{ fontSize: 12 }}>às</span>
-                <select value={lunchTo} onChange={(e) => setLunchTo(Number(e.target.value))}
-                  style={{ height: 34, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }}>
-                  {[lunchFrom + 1, lunchFrom + 2].map((h) => <option key={h} value={h}>{pad(h)}:00</option>)}
-                </select>
-              </>
-            )}
-            <button onClick={toggleLunch}
+            {/* Horário fixo recorrente seg a sex (almoço, academia, o que for) */}
+            <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Escolha um horário</span>
+            <select value={fixedFrom} onChange={(e) => { const v = Number(e.target.value); setFixedFrom(v); if (fixedTo <= v) setFixedTo(v + 1); }}
+              style={{ height: 34, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }}>
+              {Array.from({ length: 14 }, (_, i) => 7 + i).map((h) => <option key={h} value={h}>{pad(h)}:00</option>)}
+            </select>
+            <span className="dim" style={{ fontSize: 12 }}>às</span>
+            <select value={fixedTo} onChange={(e) => setFixedTo(Number(e.target.value))}
+              style={{ height: 34, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }}>
+              {Array.from({ length: 21 - fixedFrom }, (_, i) => fixedFrom + 1 + i).map((h) => <option key={h} value={h}>{pad(h)}:00</option>)}
+            </select>
+            <button onClick={toggleFixed}
               style={{ height: 34, padding: "0 13px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
-                background: lunchBlocks.length ? "var(--neg-soft)" : "var(--bg-1)", color: lunchBlocks.length ? "var(--neg)" : "var(--fg-1)",
-                border: "1px solid " + (lunchBlocks.length ? "color-mix(in srgb, var(--neg) 40%, transparent)" : "var(--line-2)") }}>
-              {lunchBlocks.length ? `liberar almoço de ${displayName(user)}` : "↻ travar seg a sex"}
+                background: fixedBlocks.length ? "var(--neg-soft)" : "var(--bg-1)", color: fixedBlocks.length ? "var(--neg)" : "var(--fg-1)",
+                border: "1px solid " + (fixedBlocks.length ? "color-mix(in srgb, var(--neg) 40%, transparent)" : "var(--line-2)") }}>
+              {fixedBlocks.length ? `liberar ${pad(fixedFrom)}:00 às ${pad(fixedTo)}:00` : "↻ travar seg a sex"}
             </button>
           </div>
         )}
