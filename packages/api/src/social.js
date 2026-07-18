@@ -1,9 +1,13 @@
-// Publicação orgânica e métricas de rede social (Instagram + página do
-// Facebook) via Graph API — o lado SOCIAL da integração Meta (o meta.js cuida
-// de ADS). Mesmo padrão: single tenant, credencial via env (META_ACCESS_TOKEN,
-// que precisa de instagram_basic + instagram_content_publish +
-// pages_read_engagement/pages_manage_posts pra publicar na página), factory
-// com fetch injetável pra testar offline.
+// Publicação orgânica, métricas e comentários de rede social (Instagram +
+// página do Facebook) via Graph API — o lado SOCIAL da integração Meta (o
+// meta.js cuida de ADS). Mesmo padrão: single tenant, credencial via env
+// (META_ACCESS_TOKEN), factory com fetch injetável pra testar offline.
+//
+// Permissões do token, por funcionalidade (ver .env.example):
+//   métricas      instagram_basic, instagram_manage_insights, pages_read_engagement
+//   publicar      instagram_content_publish, pages_manage_posts
+//   comentários   instagram_manage_comments (IG),
+//                 pages_manage_engagement + pages_read_user_content (página)
 //
 // Publicar no Instagram é SEMPRE em duas fases: cria um "container" apontando
 // pra URL PÚBLICA da mídia (a Meta baixa de lá — por isso o /public/social/ do
@@ -34,11 +38,15 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
   async function call(method, path, params = {}) {
     if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
     const qs = new URLSearchParams({ ...params, access_token: params.access_token || accessToken });
-    const url = method === "GET" ? `${GRAPH}/${path}?${qs}` : `${GRAPH}/${path}`;
+    // DELETE, como GET, leva tudo na query string (a Graph não lê corpo nele).
+    const inQuery = method === "GET" || method === "DELETE";
+    const url = inQuery ? `${GRAPH}/${path}?${qs}` : `${GRAPH}/${path}`;
     const res = await f(url, method === "GET" ? undefined : {
       method,
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: qs.toString(),
+      ...(inQuery ? {} : {
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: qs.toString(),
+      }),
     });
     const text = await res.text();
     let body;
@@ -53,6 +61,7 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
   }
   const get = (path, params) => call("GET", path, params);
   const post = (path, params) => call("POST", path, params);
+  const del = (path, params) => call("DELETE", path, params);
 
   // Espera o container de vídeo processar (a publish falha antes de FINISHED).
   async function waitContainer(containerId, { timeoutMs = 300000, intervalMs = 5000 } = {}) {
@@ -237,6 +246,130 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
       return body.access_token;
     },
 
+    // ── Comentários ─────────────────────────────────────────────────────────
+    // Exige instagram_manage_comments (IG) e pages_manage_engagement +
+    // pages_read_user_content (página do FB) no token.
+    //
+    // A forma dos dois lados é diferente (IG: text/username/timestamp; FB:
+    // message/from.name/created_time), então cada leitura já devolve o formato
+    // NORMALIZADO — quem consome (social-comments.js) não fica com um if por
+    // rede espalhado.
+
+    // Comentários de uma mídia do Instagram, com as respostas aninhadas.
+    // `replies` vem junto: um comentário respondido pela própria conta é o que
+    // marca "já resolvido", e sem elas todo comentário pareceria pendente.
+    async igComments(mediaId, { limit = 50 } = {}) {
+      const fields = "id,text,username,timestamp,like_count,hidden,replies{id,text,username,timestamp,like_count,hidden}";
+      const body = await get(`${mediaId}/comments`, { fields, limit: String(limit) });
+      const one = (c, parentId = "") => ({
+        id: String(c.id),
+        text: c.text || "",
+        author: c.username || "",
+        at: c.timestamp ? new Date(c.timestamp).toISOString() : "",
+        likes: Number(c.like_count) || 0,
+        hidden: !!c.hidden,
+        parentId,
+      });
+      const out = [];
+      for (const c of body.data || []) {
+        out.push(one(c));
+        for (const r of c.replies?.data || []) out.push(one(r, String(c.id)));
+      }
+      return out;
+    },
+
+    // Legenda/permalink de UMA mídia — o webhook de comentário só manda o id do
+    // post, e sem isso o comentário chegaria órfão ("post 178…") até a próxima
+    // varredura.
+    async igMediaInfo(mediaId) {
+      const m = await get(String(mediaId), { fields: "id,caption,permalink,media_type,timestamp" });
+      return {
+        id: String(m.id),
+        caption: m.caption || "",
+        permalink: m.permalink || "",
+        type: m.media_type || "",
+        at: m.timestamp ? new Date(m.timestamp).toISOString() : "",
+      };
+    },
+
+    async igReplyComment(commentId, message) {
+      const body = await post(`${commentId}/replies`, { message });
+      return String(body.id || "");
+    },
+
+    // Ocultar tira o comentário da vista de todo mundo menos de quem escreveu —
+    // é o movimento certo pra spam/ataque (excluir gera print de "censura").
+    async igHideComment(commentId, hide = true) {
+      await post(String(commentId), { hide: hide ? "true" : "false" });
+      return true;
+    },
+
+    async igDeleteComment(commentId) {
+      await del(String(commentId));
+      return true;
+    },
+
+    // Posts recentes da página do Facebook (pra varrer os comentários deles).
+    async fbPosts(pageId, { limit = 12, token } = {}) {
+      const access_token = token || (await this.pageToken(pageId));
+      const body = await get(`${pageId}/posts`, {
+        fields: "id,message,created_time,permalink_url",
+        limit: String(limit), access_token,
+      });
+      return (body.data || []).map((p) => ({
+        id: String(p.id),
+        caption: p.message || "",
+        permalink: p.permalink_url || "",
+        at: p.created_time ? new Date(p.created_time).toISOString() : "",
+      }));
+    },
+
+    // Comentários de um post da página, com as respostas aninhadas. `from` só
+    // vem preenchido com pages_read_user_content; sem ele a Meta devolve o
+    // comentário sem autor, e aí o card mostra "alguém".
+    async fbComments(postId, { limit = 50, token, pageId } = {}) {
+      const access_token = token || (await this.pageToken(pageId));
+      const fields = "id,message,created_time,like_count,is_hidden,from{id,name},comments{id,message,created_time,like_count,is_hidden,from{id,name}}";
+      const body = await get(`${postId}/comments`, { fields, limit: String(limit), filter: "stream", access_token });
+      const one = (c, parentId = "") => ({
+        id: String(c.id),
+        text: c.message || "",
+        author: c.from?.name || "",
+        authorId: String(c.from?.id || ""),
+        at: c.created_time ? new Date(c.created_time).toISOString() : "",
+        likes: Number(c.like_count) || 0,
+        hidden: !!c.is_hidden,
+        parentId,
+      });
+      const out = [];
+      for (const c of body.data || []) {
+        out.push(one(c));
+        for (const r of c.comments?.data || []) out.push(one(r, String(c.id)));
+      }
+      return out;
+    },
+
+    // Responder na página = criar um comentário FILHO do comentário (o edge
+    // /comments do próprio comentário), sempre com o token DA PÁGINA pra sair
+    // assinado como a página e não como pessoa.
+    async fbReplyComment(commentId, message, { token, pageId } = {}) {
+      const access_token = token || (await this.pageToken(pageId));
+      const body = await post(`${commentId}/comments`, { message, access_token });
+      return String(body.id || "");
+    },
+
+    async fbHideComment(commentId, hide = true, { token, pageId } = {}) {
+      const access_token = token || (await this.pageToken(pageId));
+      await post(String(commentId), { is_hidden: hide ? "true" : "false", access_token });
+      return true;
+    },
+
+    async fbDeleteComment(commentId, { token, pageId } = {}) {
+      const access_token = token || (await this.pageToken(pageId));
+      await del(String(commentId), { access_token });
+      return true;
+    },
+
     // ── Publicação · Instagram ──────────────────────────────────────────────
     // items = [{ url, mime }] com URLs PÚBLICAS. format: feed|story|reel.
     // kind: image|carousel|video|sequence. Retorna { id, permalink }.
@@ -341,6 +474,16 @@ export const social = {
   igOnlineFollowers: (id) => inst().igOnlineFollowers(id),
   pageInfo: (id) => inst().pageInfo(id),
   pageToken: (id) => inst().pageToken(id),
+  igComments: (id, o) => inst().igComments(id, o),
+  igReplyComment: (id, m) => inst().igReplyComment(id, m),
+  igHideComment: (id, h) => inst().igHideComment(id, h),
+  igDeleteComment: (id) => inst().igDeleteComment(id),
+  igMediaInfo: (id) => inst().igMediaInfo(id),
+  fbPosts: (id, o) => inst().fbPosts(id, o),
+  fbComments: (id, o) => inst().fbComments(id, o),
+  fbReplyComment: (id, m, o) => inst().fbReplyComment(id, m, o),
+  fbHideComment: (id, h, o) => inst().fbHideComment(id, h, o),
+  fbDeleteComment: (id, o) => inst().fbDeleteComment(id, o),
   publishInstagram: (id, o) => inst().publishInstagram(id, o),
   publishFacebook: (id, o) => inst().publishFacebook(id, o),
 };

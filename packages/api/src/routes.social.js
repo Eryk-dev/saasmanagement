@@ -1,4 +1,5 @@
-// Mídia social — métricas do perfil + publicação orgânica direto do cockpit.
+// Mídia social — métricas do perfil, publicação orgânica e a fila de
+// COMENTÁRIOS (IG + página do Facebook) direto do cockpit.
 //
 // Config por SaaS: `product.metaIgUserId` / `product.metaPageId` (Ajustes).
 // Sem eles, descobre dos anúncios que já rodam na conta (mesma página/IG dos
@@ -9,10 +10,15 @@
 // GET /public/social/:id — a Meta baixa a mídia por essa URL pública na hora
 // de criar o container. Cada publicação vira um registro em `social_posts`
 // (histórico com resultado por rede).
+//
+// Comentários vivem em `social_comments` (ver social-comments.js) e chegam por
+// duas vias: o webhook da Meta (POST /api/webhooks/social — instantâneo) e a
+// varredura dos posts recentes ao abrir a tela (reconcilia o estado real).
 
 import { social as defaultSocial } from "./social.js";
 import { meta as defaultMeta } from "./meta.js";
 import { publicBase } from "./routes.js";
+import { upsertComment, syncComments, listComments, commentInsights, invalidateSync, postTitleOf } from "./social-comments.js";
 
 const IMG_MAX = 15 * 1024 * 1024;   // PNG de 1080×1920 fica bem abaixo disso
 const VID_MAX = 80 * 1024 * 1024;   // reel curto; acima disso o jsonb sofre
@@ -299,6 +305,234 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
     } catch (e) {
       return reply.code(502).send({ error: e.message });
     }
+  });
+
+  // ── Comentários (IG + página do Facebook) ────────────────────────────────
+  // O webhook faz o comentário novo aparecer NA HORA; a varredura (syncComments)
+  // reconcilia o estado real — respostas dadas pelo app do Instagram, ocultos,
+  // e o que chegou enquanto o webhook esteve fora. Ver social-comments.js.
+
+  // @ da conta do IG por produto — é o que identifica "resposta nossa" num
+  // comentário. Cacheado no processo: muda praticamente nunca.
+  const usernames = new Map();
+  async function igUsernameFor(product, igUserId) {
+    if (!igUserId) return "";
+    if (usernames.has(product.id)) return usernames.get(product.id);
+    let u = "";
+    try { u = (await social.igAccount(igUserId))?.username || ""; } catch { /* segue sem: só piora a detecção de resposta */ }
+    usernames.set(product.id, u);
+    return u;
+  }
+
+  // Produto dono de um id da Meta (IG user id ou page id) — o webhook só manda
+  // esse id, e é ele que diz de qual produto é o comentário. Passa pelo cache
+  // de descoberta também: produto que nunca preencheu metaIgUserId à mão ainda
+  // assim é encontrado pelos anúncios que roda.
+  async function productForMetaId(metaId) {
+    const id = String(metaId || "");
+    if (!id) return null;
+    const products = await repo.list("products");
+    const direct = products.find((p) => String(p.metaIgUserId || "") === id || String(p.metaPageId || "") === id);
+    if (direct) return direct;
+    for (const p of products) {
+      const d = discovered.get(p.id);
+      if (d && (String(d.instagramUserId || "") === id || String(d.pageId || "") === id)) return p;
+    }
+    return null;
+  }
+
+  // Webhook da Meta pros objetos `instagram` (campo comments) e `page` (campo
+  // feed). Rota ABERTA (sob /api/webhooks/, ver OPEN_PREFIXES no index.js): a
+  // Meta chama sem key. O verify token reaproveita o do WhatsApp quando não há
+  // um próprio — é o mesmo app da Meta, e um env a menos pra configurar.
+  const verifyToken = () => process.env.META_WEBHOOK_VERIFY_TOKEN || process.env.WHATSAPP_VERIFY_TOKEN || "";
+
+  app.get("/api/webhooks/social", async (req, reply) => {
+    const q = req.query || {};
+    const token = verifyToken();
+    if (q["hub.mode"] === "subscribe" && token && q["hub.verify_token"] === token) {
+      return reply.type("text/plain").send(String(q["hub.challenge"] ?? ""));
+    }
+    return reply.code(403).send("forbidden");
+  });
+
+  app.post("/api/webhooks/social", async (req, reply) => {
+    try {
+      const object = String(req.body?.object || "");
+      for (const e of req.body?.entry || []) {
+        const product = await productForMetaId(e.id);
+        const saas = product?.id || "";
+        for (const ch of e.changes || []) {
+          const v = ch.value || {};
+          const field = ch.field || "";
+
+          // Instagram: comentário (e resposta a comentário) na mídia da conta.
+          // A Meta NÃO entrega os comentários da própria conta aqui, então tudo
+          // que chega por esta via é de outra pessoa.
+          if (object === "instagram" && (field === "comments" || field === "live_comments")) {
+            const mediaId = String(v.media?.id || "");
+            // O webhook manda só o id do post; sem legenda/permalink o card
+            // ficaria órfão até a próxima varredura, então busca na hora.
+            let post = null;
+            if (mediaId) { try { post = await social.igMediaInfo(mediaId); } catch { /* fail-soft */ } }
+            await upsertComment(repo, {
+              id: v.id, saas, network: "instagram",
+              postId: mediaId,
+              postTitle: post ? postTitleOf(post.caption, "Publicação sem legenda") : "",
+              permalink: post?.permalink || "",
+              author: v.from?.username || "",
+              authorId: String(v.from?.id || ""),
+              text: v.text || "",
+              at: new Date().toISOString(),
+              parentId: String(v.parent_id || ""),
+              ours: false, source: "webhook",
+            });
+          }
+
+          // Página do Facebook: o campo `feed` cobre TUDO que acontece no mural
+          // (post, curtida, comentário), então filtramos item=comment. `verb`
+          // separa criação de edição/remoção.
+          if (object === "page" && field === "feed" && String(v.item || "") === "comment") {
+            const verb = String(v.verb || "add");
+            const commentId = String(v.comment_id || "");
+            if (!commentId) continue;
+            if (verb === "remove") { await repo.remove("social_comments", commentId).catch(() => {}); continue; }
+            const pageId = String(e.id || "");
+            // Comentário DA PRÓPRIA página (nossa resposta pelo app do Facebook)
+            // entra marcado como nosso — é o que tira o comentário-pai da fila.
+            const ours = String(v.from?.id || "") === pageId;
+            await upsertComment(repo, {
+              id: commentId, saas, network: "facebook",
+              postId: String(v.post_id || ""),
+              author: v.from?.name || "",
+              authorId: String(v.from?.id || ""),
+              text: v.message || "",
+              at: v.created_time ? new Date(Number(v.created_time) * 1000).toISOString() : new Date().toISOString(),
+              // parent_id do FB vem igual ao post_id quando é comentário raiz.
+              parentId: v.parent_id && String(v.parent_id) !== String(v.post_id) ? String(v.parent_id) : "",
+              ours, source: "webhook",
+            });
+          }
+        }
+      }
+    } catch (err) { req.log?.warn?.({ err: err.message }, "social webhook falhou"); }
+    return reply.code(200).send({ ok: true }); // sempre 200: erro não faz a Meta re-tentar em loop
+  });
+
+  // Fila de comentários. `status`: pending (padrão) | answered | all.
+  // A varredura roda junto, com throttle de 1 min (`?sync=1` força).
+  app.get("/api/social/comments", async (req, reply) => {
+    const product = await productOr404(req, reply);
+    if (!product) return;
+    const status = ["pending", "answered", "all"].includes(req.query?.status) ? req.query.status : "pending";
+    const out = { configured: social.configured(), status, comments: [], insights: null, errors: {} };
+    if (social.configured()) {
+      const { igUserId, pageId } = await idsFor(product);
+      if (!igUserId && !pageId) out.errors.setup = "sem Instagram/página configurados no produto";
+      else {
+        try {
+          const [posts, igUsername] = await Promise.all([
+            igUserId ? social.igMedia(igUserId, { limit: 8 }).catch(() => []) : [],
+            igUsernameFor(product, igUserId),
+          ]);
+          const r = await syncComments(repo, social, {
+            saas: product.id, igUserId, pageId, igUsername, posts,
+            force: String(req.query?.sync || "") === "1",
+          });
+          Object.assign(out.errors, r.errors || {});
+        } catch (e) { out.errors.sync = e.message; }
+      }
+    }
+    // A lista sai do banco mesmo com a varredura falhando: o que o webhook já
+    // trouxe continua na tela (a Meta pode estar recusando a leitura e ainda
+    // assim entregando os comentários novos).
+    const [comments, insights] = await Promise.all([
+      listComments(repo, { saas: product.id, status }),
+      commentInsights(repo, { saas: product.id }),
+    ]);
+    out.comments = comments;
+    out.insights = insights;
+    return out;
+  });
+
+  // Contexto de UM comentário pra tela abrir a conversa: ele, a nossa resposta
+  // e os vizinhos do mesmo post.
+  async function commentOr404(req, reply) {
+    const c = await repo.get("social_comments", req.params.id);
+    if (!c) { reply.code(404).send({ error: "comentário não encontrado" }); return null; }
+    return c;
+  }
+
+  // Responder. Publica na Meta e grava a resposta como um comentário NOSSO
+  // filho do original — é o que tira o item da fila, no mesmo formato que a
+  // varredura traria depois.
+  app.post("/api/social/comments/:id/reply", async (req, reply) => {
+    if (!social.configured()) return reply.code(400).send({ error: "Meta não configurada — defina META_ACCESS_TOKEN" });
+    const c = await commentOr404(req, reply);
+    if (!c) return;
+    const text = String(req.body?.text || "").trim();
+    if (!text) return reply.code(400).send({ error: "resposta vazia" });
+    const product = c.saas ? await repo.get("products", c.saas) : null;
+    if (!product) return reply.code(400).send({ error: "comentário sem produto — reabra a tela pra sincronizar" });
+    const { igUserId, pageId } = await idsFor(product);
+    const author = req.authUser?.id || "cockpit";
+    const now = new Date().toISOString();
+    try {
+      let replyId = "";
+      if (c.network === "facebook") {
+        if (!pageId) return reply.code(400).send({ error: "página do Facebook não configurada (metaPageId)" });
+        replyId = await social.fbReplyComment(c.id, text, { pageId });
+      } else {
+        replyId = await social.igReplyComment(c.id, text);
+      }
+      // 422 (e não 5xx) fica pro erro da Meta: o proxy da hospedagem troca o
+      // corpo de respostas 5xx pela página de erro dele e o motivo real some.
+      await upsertComment(repo, {
+        id: replyId || `local_${c.id}_${Date.now()}`,
+        saas: c.saas, network: c.network, postId: c.postId, postTitle: c.postTitle, permalink: c.permalink,
+        author: c.network === "facebook" ? "página" : (await igUsernameFor(product, igUserId)) || "nós",
+        text, at: now, parentId: c.id, ours: true, replyBy: author, source: "cockpit",
+      });
+      await upsertComment(repo, { id: c.id, repliedAt: now, replyBy: author });
+      invalidateSync(c.saas);
+      return { ok: true, replyId };
+    } catch (e) {
+      return reply.code(422).send({ error: String(e.message || e).slice(0, 300) });
+    }
+  });
+
+  // Ocultar/mostrar — o movimento certo pra spam e ataque: some pra todo mundo
+  // menos pra quem escreveu, sem virar print de "apagaram meu comentário".
+  app.post("/api/social/comments/:id/hide", async (req, reply) => {
+    if (!social.configured()) return reply.code(400).send({ error: "Meta não configurada — defina META_ACCESS_TOKEN" });
+    const c = await commentOr404(req, reply);
+    if (!c) return;
+    const hide = req.body?.hide !== false;
+    const product = c.saas ? await repo.get("products", c.saas) : null;
+    try {
+      if (c.network === "facebook") {
+        const { pageId } = product ? await idsFor(product) : {};
+        if (!pageId) return reply.code(400).send({ error: "página do Facebook não configurada (metaPageId)" });
+        await social.fbHideComment(c.id, hide, { pageId });
+      } else {
+        await social.igHideComment(c.id, hide);
+      }
+      await upsertComment(repo, { id: c.id, hidden: hide });
+      invalidateSync(c.saas);
+      return { ok: true, hidden: hide };
+    } catch (e) {
+      return reply.code(422).send({ error: String(e.message || e).slice(0, 300) });
+    }
+  });
+
+  // Resolver sem responder (emoji, elogio, coisa já tratada no direct). Só
+  // muda o estado AQUI — nada é publicado nem apagado na Meta.
+  app.post("/api/social/comments/:id/done", async (req, reply) => {
+    const c = await commentOr404(req, reply);
+    if (!c) return;
+    const done = req.body?.done !== false;
+    await upsertComment(repo, { id: c.id, done });
+    return { ok: true, done };
   });
 
   // Histórico de publicações feitas pelo cockpit.

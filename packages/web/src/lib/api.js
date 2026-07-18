@@ -221,6 +221,14 @@ export const api = {
     return res.json();
   },
   trainingAssetUrl: (id) => `${BASE}/public/training/${encodeURIComponent(id)}`,
+  // Comentários de IG/página do FB: fila + ações. `sync` força a varredura na
+  // Meta (o padrão tem throttle de 1 min no servidor); o webhook já faz o
+  // comentário novo cair no banco sozinho.
+  socialComments: (saas, status = "pending", sync = false) =>
+    req("GET", `/api/social/comments?saas=${encodeURIComponent(saas)}&status=${encodeURIComponent(status)}${sync ? "&sync=1" : ""}`),
+  socialCommentReply: (id, text) => req("POST", `/api/social/comments/${encodeURIComponent(id)}/reply`, { text }),
+  socialCommentHide: (id, hide) => req("POST", `/api/social/comments/${encodeURIComponent(id)}/hide`, { hide }),
+  socialCommentDone: (id, done) => req("POST", `/api/social/comments/${encodeURIComponent(id)}/done`, { done }),
   socialPublish: (payload) => req("POST", "/api/social/publish", payload),
   // Copy do post por IA: preenche os campos do template + legenda a partir da dor.
   socialAiCopy: (payload) => req("POST", "/api/social/ai-copy", payload),

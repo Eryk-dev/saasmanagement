@@ -41,7 +41,11 @@ export function getActiveSaasId() {
 }
 
 export function useActiveSaas() {
-  const active = React.useSyncExternalStore(subscribe, snapshot);
+  // O 3º argumento (getServerSnapshot) é o MESMO snapshot: o produto ativo vive
+  // num módulo, não no DOM, então ler fora do browser é determinístico. Sem ele
+  // o React lança "Missing getServerSnapshot" e nenhuma tela renderiza no smoke
+  // de SSR (scripts/smoke-ssr.mjs).
+  const active = React.useSyncExternalStore(subscribe, snapshot, snapshot);
   const { SAAS } = window.SEED;
   // id salvo pode não existir mais (produto removido) — cai no 1º do portfólio.
   const product = SAAS.find((s) => s.id === active) || SAAS[0] || null;
