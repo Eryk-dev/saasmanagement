@@ -98,28 +98,31 @@ const BRIEF_SCHEMA = {
   additionalProperties: false,
   required: ["resumo", "entregas", "atencao", "primeiraMensagem"],
   properties: {
-    resumo: { type: "string", description: "Quem é o cliente, o que ele vende e o que JÁ CONTRATOU, em NO MÁXIMO 3 frases. Só o que o integrador precisa pra se localizar" },
+    resumo: { type: "string", description: "Quem é o cliente, o que ele vende e qual é a operação dele (contas, volume), em NO MÁXIMO 3 frases. Só o que o integrador precisa pra se localizar. PROIBIDO citar valor, preço, parcela, forma de pagamento ou duração de contrato" },
     entregas: {
       type: "array",
-      description: "ENTREGAS ACORDADAS: o que o closer prometeu e o cliente já comprou (escopo, quantidades, prazos ditos na call). Até 5 itens, UMA LINHA cada, na palavra que foi usada na venda, porque é o que ele vai cobrar. Nada de pagamento aqui",
+      description: "OBJETIVOS DA ENTREGA: o que o cliente vai ter funcionando quando a integração terminar (escopo e quantidades ditos na call: clonar X anúncios pra tal conta, sincronizar estoque, subir a Shopee...). SEMPRE 2 a 5 itens, nunca vazio: toda venda tem escopo, e sem transcrição você deduz do cadastro (contas e volume). UMA LINHA cada, na palavra usada na venda. PROIBIDO citar valor, preço, parcela ou forma de pagamento",
+      minItems: 2,
       items: { type: "string" },
     },
     atencao: {
       type: "array",
-      description: "PONTOS DE ATENÇÃO pra entrega (a venda já aconteceu, ninguém precisa mais convencer): até 3 itens, UMA LINHA cada, sempre no formato risco + o que fazer (ex.: 'já teve conta banida, explique a proteção antes de pedir os acessos'). Lista vazia se a call não deu sinal, é melhor que encher",
+      description: "PONTOS DE ATENÇÃO pra entrega (a venda já aconteceu, ninguém precisa mais convencer): até 3 itens, UMA LINHA cada, sempre no formato risco + o que fazer (ex.: 'já teve conta banida, explique a proteção antes de pedir os acessos'). Lista vazia se a call não deu sinal, é melhor que encher. PROIBIDO falar de pagamento, valor, parcela, cobrança ou de o negócio estar/não estar fechado: isso não é assunto do integrador",
       items: { type: "string" },
     },
-    primeiraMensagem: { type: "string", description: "WhatsApp de abertura do integrador pro cliente que JÁ COMPROU: se apresenta como quem vai tocar a entrega e cita algo concreto do que foi fechado. O próximo passo é a CALL DE INTEGRAÇÃO POR VÍDEO, mas NÃO proponha dia, horário nem link: o cockpit completa a mensagem com a agenda real. 2 a 3 frases" },
+    primeiraMensagem: { type: "string", description: "WhatsApp de abertura do integrador pro cliente que JÁ COMPROU. DIRETO: no MÁXIMO 2 frases curtas. Se apresenta em poucas palavras e diz o trabalho concreto da CALL DE INTEGRAÇÃO POR VÍDEO (ex.: clonar seus anúncios pra segunda conta, ao vivo com você). PROIBIDO: perguntar disponibilidade ou horário, propor dia/hora/link (o cockpit acrescenta a agenda real logo depois), falar de pagamento ou valor, enrolar com 'tudo bem?'/'espero que esteja bem', repetir o que o closer já explicou ou pedir informação que dá pra pegar na própria call" },
   },
 };
 
 const BRIEF_SYSTEM = `Você prepara o BRIEFING DE PASSAGEM pro integrador da LeverAds, SaaS que clona e sincroniza anúncios entre contas de Mercado Livre e Shopee (multi-contas, proteção contra banimento, economia de operação).
 PONTO DE PARTIDA, sem exceção: O NEGÓCIO JÁ ESTÁ FECHADO E PAGO. O cliente comprou, o pagamento já aconteceu, e o card passou pro integrador, que NÃO participou da call de vendas. A partir daqui é ENTREGA, não venda.
 Por isso, NUNCA: sugira vender, revender, "convencer", "fechar", negociar preço, mandar proposta ou tratar o cliente como lead. E NUNCA peça pra confirmar, cobrar ou checar pagamento, boleto, PIX, parcela ou assinatura: isso já foi resolvido antes de chegar aqui e pedir de novo passa insegurança pro cliente.
-SEJA CURTO. O integrador lê isso antes de uma call, não é relatório: três blocos objetivos (resumo, entregas acordadas, pontos de atenção) e a mensagem de abertura. Sem introdução, sem repetir a mesma informação em dois blocos, sem encher lista pra parecer completo. Item que não agrega, corte.
+DINHEIRO NÃO ENTRA NO TEXTO. Valor, preço, parcela, forma de pagamento e duração de contrato ficam FORA de resumo, objetivos, atenção e mensagem: o cockpit já mostra isso ao lado, e o integrador não fala de dinheiro com o cliente. Também não escreva se a venda estava "100% fechada" ou não: quando o card chega aqui, está fechado.
+SEJA CURTO. O integrador lê isso antes de uma call, não é relatório: três blocos objetivos (resumo, objetivos da entrega, pontos de atenção) e a mensagem de abertura. Sem introdução, sem repetir a mesma informação em dois blocos, sem encher lista pra parecer completo. Item que não agrega, corte.
+OBJETIVOS DA ENTREGA NUNCA VÊM VAZIOS: mesmo sem transcrição, o cadastro (contas, marketplaces, volume de anúncios) já diz o que precisa estar rodando no fim da integração.
 Objeção que ficou em aberto na call NÃO é obstáculo de venda, é RISCO DE ENTREGA: o cliente comprou com essa dúvida na cabeça e ela vira frustração se ninguém tratar. É isso que entra em "atenção", junto do que fazer.
 COMO A INTEGRAÇÃO ACONTECE: numa CALL DE VÍDEO com o cliente (Google Meet), tela compartilhada, onde se pegam os acessos e roda a primeira clonagem junto. O primeiro movimento do integrador é MARCAR essa call. O passo a passo da call NÃO é seu trabalho: ele já existe no roteiro da etapa, não repita aqui.
-NUNCA escreva dia, horário ou link da call: quem sabe a agenda de verdade é o cockpit, que completa a primeira mensagem com o horário marcado e o link do Meet.
+NUNCA escreva dia, horário ou link da call, nem PERGUNTE quando o cliente pode: quem sabe a agenda de verdade é o cockpit, que completa a primeira mensagem com o horário marcado e o link do Meet. Perguntar disponibilidade ali duplica e contradiz o que o cockpit acrescenta.
 Regras: português direto. NUNCA use travessão (—) em nenhum texto; use vírgula ou parênteses. Seja fiel à fonte: não invente conta, volume, prazo nem promessa que não apareceu. Dado importante que a call não cobriu simplesmente não entra (o integrador pergunta na call), não vire linha de "confirmar".`;
 
 const INTEGRATION_SYSTEM = `Você é o analista de Sucesso do Cliente. Você recebe a transcrição de uma call de INTEGRAÇÃO (onboarding/setup pós-venda, o cliente já comprou) e extrai o que importa pra equipe garantir que ele comece bem e não vire risco de churn.
