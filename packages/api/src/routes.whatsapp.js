@@ -3,7 +3,7 @@
 // (ver wa-store.js) — canônico pro inbox e pro chat do drawer.
 import { makeWhatsapp } from "./whatsapp.js";
 import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId, setLeadWhatsappOptOut } from "./wa-store.js";
-import { applyHealthEvent, getWaHealth, waHealthSummary } from "./wa-health.js";
+import { applyHealthEvent, getWaHealth, waHealthSummary, recordWebhookDelivery } from "./wa-health.js";
 
 // Texto legível pra tipos que a Fase 1 ainda não renderiza (mídia/áudio).
 function bodyOf(m) {
@@ -60,6 +60,17 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
         for (const ch of e.changes || []) {
           const v = ch.value || {};
           const field = ch.field || "";
+          // Carimba que a Meta entregou aqui, e por qual número: é o que separa
+          // "webhook não configurado" de "chegou e nós erramos", e o
+          // phone_number_id do metadata é o id certo pro env.
+          if (v.metadata?.phone_number_id) {
+            try {
+              await recordWebhookDelivery(repo, {
+                phoneNumberId: v.metadata.phone_number_id,
+                display: v.metadata.display_phone_number || "",
+              });
+            } catch { /* diagnóstico não pode derrubar a entrega */ }
+          }
           // Mensagens + status (field "messages"). O status "failed" com código de
           // não-entregável marca o número como inválido (dentro do updateStatus).
           if (v.messages || v.statuses || field === "messages") {
@@ -99,8 +110,11 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
   // a UI receber HTML no lugar da mensagem da Meta (foi o que aconteceu).
   app.get("/api/whatsapp/number", async () => {
     if (!wa.configured()) return { ok: false, reason: "not_configured" };
+    // Última entrega da Meta no nosso webhook (e por qual número): responde
+    // "chegou alguma coisa aqui?" sem depender do envio estar certo.
+    const webhook = (await getWaHealth(repo)).webhook || {};
     try {
-      return { ok: true, ...(await wa.numberInfo()) };
+      return { ok: true, webhook, ...(await wa.numberInfo()) };
     } catch (err) {
       // Ler os dados do número exige whatsapp_business_management no token;
       // ENVIAR exige whatsapp_business_messaging. Token só com messaging cai
@@ -109,8 +123,8 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
       const missingPermission = err.code === 200 || err.code === 10 || /permission/i.test(message);
       // Id trocado (o da conta no lugar do número): a mensagem já vem com o id
       // certo, e `numbers` deixa a UI mostrar a troca pronta pra copiar.
-      if (err.wrongId) return { ok: false, reason: "wrong_id", error: message, code: err.code || 0, numbers: err.numbers || [] };
-      return { ok: false, reason: missingPermission ? "no_read_permission" : "meta_error", error: message, code: err.code || 0 };
+      if (err.wrongId) return { ok: false, reason: "wrong_id", error: message, code: err.code || 0, numbers: err.numbers || [], webhook };
+      return { ok: false, reason: missingPermission ? "no_read_permission" : "meta_error", error: message, code: err.code || 0, webhook };
     }
   });
 
