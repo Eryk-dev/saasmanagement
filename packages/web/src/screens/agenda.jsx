@@ -41,8 +41,11 @@ export function AgendaScreen({ onOpenLead }) {
   const [user, setUser] = useS(() => (people.some((p) => p.id === meId) ? meId : (people[0]?.id || "")));
   useE(() => { if (!people.some((p) => p.id === user)) setUser(people[0]?.id || ""); }, [people]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const [blockMode, setBlockMode] = useS(false); // botão "Travar horários" liga o clique-pra-travar
   const [reason, setReason] = useS("");
   const [recur, setRecur] = useS("once"); // "once" | "weekly"
+  const [lunchFrom, setLunchFrom] = useS(12);
+  const [lunchTo, setLunchTo] = useS(13);
   const [notice, setNotice] = useS("");
   const noticeT = React.useRef(null);
   const flash = (msg) => { setNotice(msg); clearTimeout(noticeT.current); noticeT.current = setTimeout(() => setNotice(""), 4000); };
@@ -88,6 +91,20 @@ export function AgendaScreen({ onOpenLead }) {
     for (const b of list) if (!String(b.id).startsWith("tmp_")) api.remove("agenda_blocks", b.id).catch((err) => console.warn("não removido:", err.message));
   }
 
+  // Preset de almoço: bloqueio recorrente seg a sex no horário escolhido, com
+  // motivo "almoço". Se a pessoa já tem, o mesmo botão libera tudo de uma vez.
+  const lunchBlocks = useM(
+    () => myBlocks.filter((b) => b.recur === "weekly" && String(b.reason || "").toLowerCase() === "almoço"),
+    [myBlocks],
+  );
+  function toggleLunch() {
+    if (lunchBlocks.length) return removeBlocks(lunchBlocks);
+    for (let wd = 1; wd <= 5; wd++) {
+      addBlock({ saas: "", user, recur: "weekly", weekday: wd, allDay: false, fromHour: lunchFrom, toHour: lunchTo, reason: "almoço" });
+    }
+    flash(`Almoço travado pra ${displayName(user)}: ${pad(lunchFrom)}:00 às ${pad(lunchTo)}:00, segunda a sexta.`);
+  }
+
   function onSlot(day, hour) {
     const ds = ymd(day);
     const cov = blocksFor(day).filter((b) => b.allDay || (hour >= Number(b.fromHour) && hour < Number(b.toHour)));
@@ -106,37 +123,74 @@ export function AgendaScreen({ onOpenLead }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead title="Agenda" sub="a semana do time (calls + integrações) · clique num horário vazio pra travar a agenda da pessoa selecionada" />
+      <PageHead title="Agenda" sub="a semana do time (calls + integrações) · o botão Travar horários bloqueia a agenda de quem você escolher" />
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14 }}>
 
-        {/* Controles do travamento: pessoa · motivo · pontual/recorrente */}
+        {/* Botão do modo + pessoa; os controles do travamento aparecem com o modo ligado */}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Travar horários de</span>
+          <button onClick={() => setBlockMode((v) => !v)}
+            title={blockMode ? "Sair do modo de travamento" : "Ligar: clique nos horários do calendário pra travar/liberar"}
+            style={{
+              height: 38, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 600, cursor: "pointer",
+              background: blockMode ? "var(--accent)" : "var(--bg-1)", color: blockMode ? "var(--accent-fg)" : "var(--fg-1)",
+              border: "1px solid " + (blockMode ? "var(--accent)" : "var(--line-2)"), boxShadow: "var(--shadow-1)",
+            }}>
+            {blockMode ? "✓ travando · clique nos horários" : "Travar horários"}
+          </button>
+
+          <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>agenda de</span>
           {people.length === 0 && <span className="dim" style={{ fontSize: 12.5 }}>sem closers/CS</span>}
           {people.map((p) => <button key={p.id} onClick={() => setUser(p.id)} style={personChip(user === p.id)}>{displayName(p.id)}</button>)}
-
-          <span style={{ width: 1, height: 18, background: "var(--line-1)", margin: "0 4px" }} />
-
-          <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="motivo (opcional): reunião, folga…"
-            style={{ height: 38, width: 240, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--bg-1)", color: "var(--fg-1)", border: "1px solid var(--line-2)", fontSize: 13 }} />
-
-          <div title="Pontual = só nessa data. Recorrente = todo aquele dia da semana.">
-            <Segmented value={recur} onChange={setRecur} options={[{ value: "once", label: "só esse dia" }, { value: "weekly", label: "↻ toda semana" }]} />
-          </div>
 
           {notice && (
             <span style={{ padding: "7px 12px", borderRadius: "var(--r-2)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12.5, fontWeight: 500 }}>{notice}</span>
           )}
         </div>
 
-        <AgendaView leads={leads} onOpenLead={onOpenLead} blocking={{ blocksFor, onSlot, onBlock: (b) => removeBlocks([b]) }} />
+        {blockMode && (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", padding: "10px 14px", borderRadius: "var(--r-3)", background: "var(--bg-inset)", border: "1px solid var(--line-1)" }}>
+            <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="motivo (opcional): reunião, folga…"
+              style={{ height: 34, width: 220, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--bg-1)", color: "var(--fg-1)", border: "1px solid var(--line-2)", fontSize: 13 }} />
+
+            <div title="Pontual = só nessa data. Recorrente = todo aquele dia da semana.">
+              <Segmented value={recur} onChange={setRecur} options={[{ value: "once", label: "só esse dia" }, { value: "weekly", label: "↻ toda semana" }]} />
+            </div>
+
+            <span style={{ width: 1, height: 18, background: "var(--line-1)", margin: "0 4px" }} />
+
+            {/* Preset: almoço recorrente seg a sex no horário escolhido */}
+            <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Almoço</span>
+            {lunchBlocks.length === 0 && (
+              <>
+                <select value={lunchFrom} onChange={(e) => { const v = Number(e.target.value); setLunchFrom(v); if (lunchTo <= v) setLunchTo(v + 1); }}
+                  style={{ height: 34, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }}>
+                  {[11, 12, 13].map((h) => <option key={h} value={h}>{pad(h)}:00</option>)}
+                </select>
+                <span className="dim" style={{ fontSize: 12 }}>às</span>
+                <select value={lunchTo} onChange={(e) => setLunchTo(Number(e.target.value))}
+                  style={{ height: 34, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }}>
+                  {[lunchFrom + 1, lunchFrom + 2].map((h) => <option key={h} value={h}>{pad(h)}:00</option>)}
+                </select>
+              </>
+            )}
+            <button onClick={toggleLunch}
+              style={{ height: 34, padding: "0 13px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+                background: lunchBlocks.length ? "var(--neg-soft)" : "var(--bg-1)", color: lunchBlocks.length ? "var(--neg)" : "var(--fg-1)",
+                border: "1px solid " + (lunchBlocks.length ? "color-mix(in srgb, var(--neg) 40%, transparent)" : "var(--line-2)") }}>
+              {lunchBlocks.length ? `liberar almoço de ${displayName(user)}` : "↻ travar seg a sex"}
+            </button>
+          </div>
+        )}
+
+        <AgendaView leads={leads} onOpenLead={onOpenLead}
+          blocking={{ blocksFor, ...(blockMode ? { onSlot, onBlock: (b) => removeBlocks([b]) } : {}) }} />
 
         <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center", fontSize: 12.5, color: "var(--fg-3)" }}>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <span style={{ width: 10, height: 10, borderRadius: 3, background: "color-mix(in srgb, var(--neg) 8%, var(--bg-1))", border: "1px dashed var(--neg)" }} />
-            bloqueado de {displayName(user) || "—"} · ↻ = toda semana · clique pra liberar
+            bloqueado de {displayName(user) || "—"} · ↻ = toda semana{blockMode ? " · clique pra liberar" : ""}
           </span>
-          <span>evento de outra pessoa no mesmo horário não impede o seu bloqueio</span>
+          <span>{blockMode ? "evento de outra pessoa no mesmo horário não impede o seu bloqueio" : "ative o Travar horários pra criar ou liberar bloqueios"}</span>
           <span style={{ marginLeft: "auto" }}>{myBlocks.length} bloqueio{myBlocks.length === 1 ? "" : "s"} de {displayName(user) || "—"}</span>
         </div>
       </div>

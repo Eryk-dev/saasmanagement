@@ -526,7 +526,7 @@ function AgendaView({ leads, onOpenLead, blocking }) {
             const isToday = d.toDateString() === new Date().toDateString();
             return (
               <div key={i}
-                onClick={blocking ? (e) => {
+                onClick={blocking?.onSlot ? (e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   const hour = H0 + Math.floor((e.clientY - rect.top) / hourH);
                   if (hour >= H0 && hour < H1) blocking.onSlot(d, hour);
@@ -536,7 +536,7 @@ function AgendaView({ leads, onOpenLead, blocking }) {
                   borderLeft: "1px solid var(--line-1)",
                   backgroundImage: `repeating-linear-gradient(to bottom, var(--line-1) 0 1px, transparent 1px ${hourH}px)`,
                   backgroundColor: isToday ? "color-mix(in srgb, var(--accent) 5%, transparent)" : "transparent",
-                  cursor: blocking ? "pointer" : undefined,
+                  cursor: blocking?.onSlot ? "pointer" : undefined,
                 }}>
                 {(blocking ? blocking.blocksFor(d) : []).map((b) => {
                   const from = b.allDay ? H0 : Math.max(H0, Number(b.fromHour) || 0);
@@ -544,13 +544,13 @@ function AgendaView({ leads, onOpenLead, blocking }) {
                   if (to <= from) return null;
                   return (
                     <div key={`blk-${b.id}`}
-                      onClick={(e) => { e.stopPropagation(); blocking.onBlock(b); }}
-                      title={`bloqueado${b.reason ? ": " + b.reason : ""}${b.recur === "weekly" ? " · toda semana" : ""} · clique pra liberar`}
+                      onClick={(e) => { e.stopPropagation(); blocking.onBlock && blocking.onBlock(b); }}
+                      title={`bloqueado${b.reason ? ": " + b.reason : ""}${b.recur === "weekly" ? " · toda semana" : ""}${blocking.onBlock ? " · clique pra liberar" : ""}`}
                       style={{
                         position: "absolute", top: (from - H0) * hourH + 1, left: 2, right: 2, height: (to - from) * hourH - 3,
                         background: "color-mix(in srgb, var(--neg) 8%, var(--bg-1))",
                         border: "1px dashed color-mix(in srgb, var(--neg) 45%, var(--line-1))", borderLeft: "3px solid var(--neg)",
-                        borderRadius: 5, padding: "3px 6px", cursor: "pointer", overflow: "hidden",
+                        borderRadius: 5, padding: "3px 6px", cursor: blocking.onBlock ? "pointer" : "default", overflow: "hidden",
                       }}>
                       <div className="mono" style={{ fontSize: 9.5, fontWeight: 600, color: "var(--neg)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         bloqueado{b.recur === "weekly" ? " ↻" : ""}{b.reason ? ` · ${b.reason}` : ""}
