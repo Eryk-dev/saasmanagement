@@ -689,6 +689,16 @@ function IntegrationsSettings({ s }) {
     await refresh();
   }
 
+  // WhatsApp POR SAAS: cada produto conversa pelo SEU número (Cloud API). O
+  // token é global (env); o phone number id vive aqui. Produto sem id não fala
+  // pelo número de outro — o inbox avisa em vez de sair pelo número errado.
+  const waOn = !!window.SEED?.CONFIG?.whatsapp?.configured;
+  const [waPhoneId, setWaPhoneId] = useStS(s.waPhoneId || "");
+  async function saveWa() {
+    await api.update("products", s.id, { waPhoneId: waPhoneId.replace(/\D/g, "") });
+    await refresh();
+  }
+
   const g = window.SEED?.CONFIG?.google || {};
   async function connectGoogle() {
     try {
@@ -727,6 +737,25 @@ function IntegrationsSettings({ s }) {
           <input value={pixelId} placeholder="971201888623790" onChange={(e) => setPixelId(e.target.value)} className="mono" style={{ ...inputStyle, width: 170, fontFamily: "var(--mono)" }} />
           <button onClick={saveMeta} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}><span style={{ fontSize: 11 }}>salvar</span></button>
         </div>
+      </div>
+
+      {/* WhatsApp Cloud API: token global no env; o NÚMERO é por SaaS. */}
+      <div style={{ padding: "14px 16px", border: waOn ? "1px solid var(--line-1)" : "1px dashed var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", marginBottom: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>WhatsApp</div>
+            <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>inbox + envio pela Cloud API · cada SaaS conversa pelo SEU número (sem número, o envio bloqueia em vez de sair pelo número de outro produto)</div>
+          </div>
+          <span className={"chip " + (waOn ? "pos" : "")} style={{ height: 22 }}>{waOn ? "conectado" : "configurar WHATSAPP_TOKEN"}</span>
+        </div>
+        {waOn && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
+            <span className="mono" title="Phone number ID do número deste SaaS (WhatsApp Manager → API Setup, é o id do NÚMERO, não o da conta). O número precisa estar no mesmo WABA do token."
+              style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>número de {s.name}</span>
+            <input value={waPhoneId} placeholder="712249848640591" onChange={(e) => setWaPhoneId(e.target.value)} className="mono" style={{ ...inputStyle, width: 200, fontFamily: "var(--mono)" }} />
+            <button onClick={saveWa} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}><span style={{ fontSize: 11 }}>salvar</span></button>
+          </div>
+        )}
       </div>
 
       {/* Google Meet: calls criadas direto na agenda da conta conectada. */}

@@ -147,11 +147,13 @@ export function WhatsappInboxScreen({ onOpenLead }) {
   React.useEffect(() => {
     if (!configured) return;
     let alive = true;
-    api.waNumber()
+    // Número DO PRODUTO ativo: cada SaaS conversa pelo seu WhatsApp
+    // (product.waPhoneId; Ajustes → Integrações).
+    api.waNumber(product?.id)
       .then((n) => alive && setNumInfo(n))
       .catch((e) => alive && setNumInfo({ ok: false, reason: "meta_error", error: String(e.message || e).slice(0, 200) }));
     return () => { alive = false; };
-  }, [configured]);
+  }, [configured, product?.id]);
 
   // Números do inbox + saúde do número: refazem junto com o tempo real, então
   // "sem resposta" e "janela aberta" acompanham a mensagem que acabou de entrar.
@@ -167,7 +169,14 @@ export function WhatsappInboxScreen({ onOpenLead }) {
   React.useEffect(() => {
     let alive = true;
     api.waThreads()
-      .then((r) => alive && setThreads((r.threads || []).filter((t) => !product?.id || !t.saas || t.saas === product.id)))
+      // Escopo do inbox: conversas do produto ativo; órfã (sem saas) só aparece
+      // se corre pelo número deste produto (waPhoneId) ou não tem número marcado.
+      .then((r) => alive && setThreads((r.threads || []).filter((t) => {
+        if (!product?.id) return true;
+        if (t.saas) return t.saas === product.id;
+        if (t.waPhoneId && product.waPhoneId) return t.waPhoneId === product.waPhoneId;
+        return true;
+      })))
       .catch(() => alive && setThreads([]));
     return () => { alive = false; };
   }, [product?.id, version]);
@@ -221,7 +230,9 @@ export function WhatsappInboxScreen({ onOpenLead }) {
 
       {configured && numInfo && numInfo.ok === false && (
         <div style={{ margin: "12px var(--pad-x) 0", padding: "10px 14px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5 }}>
-          {numInfo.reason === "no_read_permission" ? (
+          {numInfo.reason === "no_number_for_saas" ? (
+            <>Este produto ainda <b>não tem um número de WhatsApp próprio</b>. As conversas não saem pelo número de outro produto: defina o <b>phone number id</b> de {product?.name || "este SaaS"} em <b>Ajustes → Integrações</b> (WhatsApp Manager → API Setup mostra o id do número).</>
+          ) : numInfo.reason === "no_read_permission" ? (
             <>Não deu pra confirmar qual número está conectado: o token não tem a permissão <b>whatsapp_business_management</b> (leitura dos dados do número). <b>Isso não bloqueia o envio</b>, que usa outra permissão. Pra ver o número aqui, adicione essa permissão ao token no Meta Business.</>
           ) : numInfo.reason === "wrong_id" ? (
             <>

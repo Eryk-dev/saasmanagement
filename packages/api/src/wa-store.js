@@ -20,7 +20,7 @@ export async function findLeadByPhone(repo, phone) {
 // Grava uma mensagem e atualiza o thread. Idempotente por id (a Meta re-entrega
 // o webhook). Resolve o lead pelo telefone se leadId não veio. Retorna o id da
 // mensagem, ou null se foi deduplicada.
-export async function recordMessage(repo, { id, phone, direction, text = "", at, status = "", from = "", author = "", leadId, saas, contactName = "" }) {
+export async function recordMessage(repo, { id, phone, direction, text = "", at, status = "", from = "", author = "", leadId, saas, contactName = "", waPhoneId = "", saasHint = "" }) {
   const tid = digits(phone || from);
   if (!tid) return null;
   const msgId = id || "wm_" + randomUUID();
@@ -31,11 +31,15 @@ export async function recordMessage(repo, { id, phone, direction, text = "", at,
     const lead = await findLeadByPhone(repo, tid);
     if (lead) { lid = lead.id; sa = sa || lead.saas || ""; }
   }
+  // Sem lead pra dizer o produto, vale o dono do NÚMERO por onde entrou
+  // (multi-número: conversa nova no WhatsApp da UniqueKids nasce etiquetada).
+  if (!sa && saasHint) sa = saasHint;
   const when = at || new Date().toISOString();
 
   await repo.create("wa_messages", {
     id: msgId, thread: tid, leadId: lid, saas: sa, direction, text,
     at: when, status, from: from || (direction === "in" ? tid : ""), author, readByAgent: direction === "out",
+    ...(waPhoneId ? { waPhoneId } : {}),
   });
 
   const prev = await repo.get("wa_threads", tid);
@@ -44,6 +48,8 @@ export async function recordMessage(repo, { id, phone, direction, text = "", at,
     name: contactName || prev?.name || "",
     leadId: lid ?? prev?.leadId ?? null,
     saas: sa || prev?.saas || "",
+    // O número da conversa: fixa por onde ela ENTROU (resposta sai pelo mesmo).
+    waPhoneId: waPhoneId || prev?.waPhoneId || "",
     lastText: text, lastAt: when, lastDir: direction,
     unread: direction === "in" ? (prev?.unread || 0) + 1 : (prev?.unread || 0),
     updatedAt: when,
@@ -104,6 +110,7 @@ export async function listThreads(repo) {
       const lead = t.leadId ? byId.get(t.leadId) : null;
       return {
         id: t.id, phone: t.phone, saas: t.saas || lead?.saas || "",
+        waPhoneId: t.waPhoneId || "", // por qual dos NOSSOS números a conversa corre
         leadId: t.leadId || null,
         name: (lead?.name || lead?.company || t.name || "").trim(),
         company: lead?.company || "",

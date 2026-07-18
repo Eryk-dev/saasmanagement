@@ -98,7 +98,7 @@ export const api = {
   sendWhatsapp: (leadId, text) => req("POST", `/api/leads/${leadId}/whatsapp`, { text }),
   // Inbox de WhatsApp: lista de conversas, mensagens de uma conversa, marcar
   // lida e enviar pela conversa (id = número em dígitos, com ou sem lead).
-  waNumber: () => req("GET", "/api/whatsapp/number"),
+  waNumber: (saas) => req("GET", `/api/whatsapp/number${saas ? `?saas=${encodeURIComponent(saas)}` : ""}`),
   // Números do inbox (esperando resposta, tempo de resposta, janela de 24h) +
   // saúde do número, pro painel no topo da tela.
   waInsights: (days) => req("GET", `/api/whatsapp/insights${days ? `?days=${days}` : ""}`),

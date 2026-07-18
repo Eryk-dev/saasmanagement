@@ -9,12 +9,16 @@
 // enviar TEMPLATE aprovado (sendTemplate); texto livre volta erro (Fase 2).
 const GRAPH = "https://graph.facebook.com/v23.0";
 
+// MULTI-NÚMERO: `phoneNumberId` do env é o DEFAULT (single-tenant legado); toda
+// operação aceita `{ phoneId }` pra usar o número do PRODUTO (product.waPhoneId,
+// Ajustes → Integrações) — cada SaaS conversa pelo seu WhatsApp.
 export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNumberId = "", verifyToken = "" } = {}) {
-  const configured = () => !!(token && phoneNumberId);
+  const configured = (phoneId) => !!(token && (phoneId || phoneNumberId));
 
-  async function post(payload) {
-    if (!configured()) throw new Error("WhatsApp não configurado — defina WHATSAPP_TOKEN e WHATSAPP_PHONE_NUMBER_ID");
-    const res = await f(`${GRAPH}/${phoneNumberId}/messages`, {
+  async function post(payload, phoneId) {
+    const pid = phoneId || phoneNumberId;
+    if (!token || !pid) throw new Error("WhatsApp não configurado — defina WHATSAPP_TOKEN e o número (env ou waPhoneId do produto)");
+    const res = await f(`${GRAPH}/${pid}/messages`, {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
       body: JSON.stringify({ messaging_product: "whatsapp", ...payload }),
@@ -30,22 +34,22 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
   }
 
   // Texto livre pro `to` (número do lead). Só funciona dentro da janela de 24h.
-  async function sendText(to, text) {
-    const b = await post({ to: digits(to), type: "text", text: { preview_url: true, body: String(text || "").slice(0, 4096) } });
+  async function sendText(to, text, { phoneId } = {}) {
+    const b = await post({ to: digits(to), type: "text", text: { preview_url: true, body: String(text || "").slice(0, 4096) } }, phoneId);
     return { messageId: b.messages?.[0]?.id || "" };
   }
 
   // Template aprovado (reabre conversa fora das 24h). Fase 2 (precisa dos templates
   // aprovados na Meta); já deixo pronto no cliente.
-  async function sendTemplate(to, name, lang = "pt_BR", components = []) {
-    const b = await post({ to: digits(to), type: "template", template: { name, language: { code: lang }, ...(components.length ? { components } : {}) } });
+  async function sendTemplate(to, name, lang = "pt_BR", components = [], { phoneId } = {}) {
+    const b = await post({ to: digits(to), type: "template", template: { name, language: { code: lang }, ...(components.length ? { components } : {}) } }, phoneId);
     return { messageId: b.messages?.[0]?.id || "" };
   }
 
   // Marca a mensagem recebida como lida (bolinha azul pro cliente). Best-effort.
-  async function markRead(messageId) {
+  async function markRead(messageId, { phoneId } = {}) {
     if (!messageId) return;
-    try { await post({ status: "read", message_id: messageId }); } catch { /* opcional */ }
+    try { await post({ status: "read", message_id: messageId }, phoneId); } catch { /* opcional */ }
   }
 
   async function get(path) {
@@ -86,12 +90,13 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
   // Qual número está de fato conectado (GET no phone number id). Serve de prova
   // viva de que token + WHATSAPP_PHONE_NUMBER_ID batem e apontam pro número
   // certo — é o que a tela de WhatsApp mostra no topo depois de trocar o número.
-  async function numberInfo() {
-    if (!configured()) throw new Error("WhatsApp não configurado — defina WHATSAPP_TOKEN e WHATSAPP_PHONE_NUMBER_ID");
+  async function numberInfo({ phoneId } = {}) {
+    const pid = phoneId || phoneNumberId;
+    if (!configured(pid)) throw new Error("WhatsApp não configurado — defina WHATSAPP_TOKEN e o número (env ou waPhoneId do produto)");
     let body, lastErr;
     for (const fields of NUMBER_FIELD_SETS) {
       try {
-        body = await get(`${phoneNumberId}?fields=${fields}`);
+        body = await get(`${pid}?fields=${fields}`);
         break;
       } catch (e) {
         lastErr = e;
@@ -110,17 +115,17 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
       // quais são os números dela e devolve o id certo pra trocar no env.
       if (!/nonexisting field/i.test(String(err.message || ""))) throw err;
       let numbers = [];
-      try { numbers = await accountNumbers(phoneNumberId); } catch { /* não é WABA também */ }
+      try { numbers = await accountNumbers(pid); } catch { /* não é WABA também */ }
       const wrong = new Error(numbers.length
-        ? `O WHATSAPP_PHONE_NUMBER_ID (${phoneNumberId}) é o id da CONTA do WhatsApp, não do número. Troque por ${numbers.map((n) => `${n.id} (${n.display || n.name || "número"})`).join(" ou ")} e reinicie a API.`
-        : `O WHATSAPP_PHONE_NUMBER_ID (${phoneNumberId}) não é um número do WhatsApp (a Meta não reconhece o campo do número nesse id). Pegue o "Phone number ID" em WhatsApp Manager → API Setup e ponha no env.`);
+        ? `O phone number id (${pid}) é o id da CONTA do WhatsApp, não do número. Troque por ${numbers.map((n) => `${n.id} (${n.display || n.name || "número"})`).join(" ou ")}.`
+        : `O phone number id (${pid}) não é um número do WhatsApp (a Meta não reconhece o campo do número nesse id). Pegue o "Phone number ID" em WhatsApp Manager → API Setup.`);
       wrong.code = err.code || 100;
       wrong.wrongId = true;
       wrong.numbers = numbers;
       throw wrong;
     }
     return {
-      phoneNumberId,
+      phoneNumberId: pid,
       display: body.display_phone_number || "",
       name: body.verified_name || "",
       quality: body.quality_rating || "",
