@@ -1135,71 +1135,122 @@ function PersonDetail({ user: u, today }) {
 }
 
 
-// ── As vagas e seus processos ────────────────────────────────────────────────
-// Resumo fixo do que cada vaga é responsável e do processo dela dentro da
-// empresa: o mapa que o treinamento aprofunda card a card. Todo mundo vê as 4
-// (entender o vizinho é parte do jogo).
+// ── A empresa, as vagas e seus processos ─────────────────────────────────────
+// Manual vivo: o que a LeverAds faz, missão/visão, os 5 pilares de cultura e o
+// papel de cada vaga NA ORDEM DO FUNIL (mídia social → SDR → closer → CS), em
+// linguagem simples pra qualquer pessoa do time entender o todo.
+const COMPANY = {
+  what: "A LeverAds é a plataforma que clona e sincroniza anúncios entre todas as contas de Mercado Livre e Shopee de um lojista, sozinha. O cliente publica na conta principal e a ferramenta replica pras outras, com estoque baixando junto e ficha técnica completada por IA. Resultado: mais exposição e mais venda, sem contratar mais gente pra operação.",
+  mission: "Fazer o lojista de marketplace vender mais sem aumentar a operação: a tecnologia multiplica a presença dele, o nosso time garante que rode.",
+  vision: "Ser a plataforma que todo lojista multi-conta do Brasil usa pra operar Mercado Livre e Shopee.",
+  pillars: [
+    { t: "Velocidade", d: "Lead novo se atende em minutos, cliente novo roda no dia seguinte. Quem chega primeiro e entrega rápido, ganha." },
+    { t: "Mostrar rodando, não prometer", d: "A gente prova ao vivo: demo na conta do cliente, case com print real. Falar é fácil; nós mostramos." },
+    { t: "Honestidade sempre", d: "O que não temos, a gente diz que não tem. Expectativa certa na venda é cliente satisfeito na entrega." },
+    { t: "Dono do processo", d: "Cada um segue e registra o seu processo: toque registrado, card atualizado, dado na mão. O sistema só ajuda quem alimenta ele." },
+    { t: "Cliente vira fã", d: "Entrega bem feita vira resultado, resultado vira case, case vira indicação. É assim que a gente cresce." },
+  ],
+};
+
 const ROLE_GUIDES = [
   {
-    role: "sdr", title: "SDR", tagline: "Topo do funil: transformar cadastro em call agendada",
-    respons: "Responde pela velocidade do 1º toque, pela qualificação completa e por entregar ao closer uma call confirmada, com login em mãos e decisor presente.",
+    role: "social", title: "Mídia social", tagline: "Traz gente pra dentro: anúncios e redes sociais",
+    respons: "É quem enche o topo do funil e mantém a marca viva. Cria os anúncios que atraem lojistas com a dor certa e cuida das redes sociais (Instagram/Facebook) com cases, bastidores e demonstrações.",
     processo: [
-      "Fila do Meu dia na ordem: lead novo é prioridade máxima (2 ligações + WhatsApp de apresentação)",
-      "Qualifica os 6 dados na ordem (nicho, loja, contas, anúncios, expansão, time) e marca a call com 2 opções de horário; e-mail por último",
-      "3 abordagens no total; sem sucesso, Nutrição: 3 ganchos de 7 em 7 dias (prova → teste sem risco → porta aberta)",
-      "Confirmação da call: 1h antes no WhatsApp (cobra logins ML/Shopee + decisor); sem resposta, LIGA 10 min antes",
-      "No-show: 2 remarcações (1h depois e no dia útil seguinte); sem retorno, Desqualificado",
+      "Cria anúncios em vídeo falando das dores reais do lojista (conta banida, falta de braço, quer vender mais)",
+      "Publica, acompanha o que funciona e desliga o que cansou",
+      "Coloca mais verba no que traz cliente bom, não só lead barato",
+      "Mantém as redes sociais ativas: resultados de clientes, bastidores e a ferramenta em ação",
     ],
   },
   {
-    role: "closer", title: "Closer", tagline: "Da call ao dinheiro: fechar com pagamento na call",
-    respons: "Responde pela conversão das calls em receita: demo ao vivo, objeções resolvidas na hora, pagamento ainda na call e integração agendada pro dia seguinte.",
+    role: "sdr", title: "SDR", tagline: "O primeiro contato: transformar cadastro em call marcada",
+    respons: "É quem fala primeiro com o lead que se cadastrou. Liga rápido, entende o tamanho da operação e marca a conversa com o especialista.",
     processo: [
-      "Raio-X (5 min): contas, anúncios, quem sobe anúncio, faturamento; pergunta da suspensão define a narrativa (proteção × crescimento)",
-      "Espelho da dor nas palavras do lead → tese das 3 etapas + vacina da canibalização antes que perguntem",
-      "Demo AO VIVO nas contas dele (o coração: quem clona de verdade, fecha) · prova com cases (Unique +105%, Dyno 60 mil/20 dias)",
-      "Oferta âncora única (anual 12x 599; à vista com desconto no Pix); a escada só entra travando em caixa, com validade nesta call",
-      "Fechamento = agendar a integração (13h ou 17h) com pagamento na linha; não fechou: tarefa + data + decisor, e follow-ups 1/2/3 a partir do resumo da call",
+      "Liga pra quem se cadastrou o mais rápido possível (lead novo é sempre a prioridade)",
+      "Confirma as informações básicas: o que vende, quantas contas tem, quantos anúncios",
+      "Marca a call com o especialista oferecendo 2 opções de horário",
+      "Antes da call, confirma a presença e lembra o cliente de entrar logado nas contas",
+      "Se o lead some, insiste um pouco, descansa e tenta de novo depois; furou a call, remarca",
     ],
   },
   {
-    role: "integrator", title: "Integrador · CS", tagline: "Entrega e retenção: rodando no dia seguinte, renovando no fim",
-    respons: "Responde pela ativação (cliente clonando em 24h), pela saúde da carteira na régua de retenção e por transformar resultado em case e indicação.",
+    role: "closer", title: "Closer", tagline: "A call de venda: mostrar funcionando e fechar",
+    respons: "É quem conduz a call e transforma interesse em cliente. Mostra a ferramenta funcionando ao vivo na conta do próprio lead e fecha o negócio ainda na conversa.",
     processo: [
-      "Confirmação 2h antes (computador + logins em mãos); sem resposta, liga 30 min antes",
-      "Call de vídeo (~20 min): conecta as contas, define a conta-mãe e roda a PRIMEIRA clonagem na tela do cliente",
-      "Registra tudo no card (contas, conta-mãe, pendências, próximo contato) pra ligar sempre com dado na mão",
-      "Régua: onboarding (semana 1) · check-in (mês 1) · revisão (mês 3) · upsell (mês 6) · renovação (2 meses antes do fim)",
-      "Sinal amarelo de churn (sem uso, sem resposta) = ligação hoje; resultado bom vira case autorizado + pedido de indicação",
+      "Começa entendendo a operação do cliente: o que vende, quantas contas, qual a maior dor",
+      "Mostra a ferramenta AO VIVO clonando anúncios de verdade nas contas dele",
+      "Usa resultados reais de clientes pra dar segurança (a Unique cresceu 105% no 1º mês)",
+      "Apresenta o plano e fecha com pagamento ainda na call",
+      "Sai da call com a integração agendada pro dia seguinte; não fechou, combina o próximo passo com data",
     ],
   },
   {
-    role: "social", title: "Mídia social", tagline: "Alimentar o topo: criativo por dor e presença que sustenta o funil",
-    respons: "Responde pelo fluxo de leads qualificados no topo: criativos por dor na convenção certa, leitura por CPL real/ABC/ROAS e presença orgânica consistente.",
+    role: "integrator", title: "Integrador · CS", tagline: "Entrega e cuidado: cliente rodando e renovando",
+    respons: "É quem recebe o cliente que acabou de fechar e cuida dele pelo contrato inteiro. Deixa a ferramenta rodando no dia seguinte e acompanha pra garantir resultado.",
     processo: [
-      "Criativo por dor com código [X] no nome e UTMs da convenção (é o que liga lead → anúncio → receita)",
-      "Anúncio novo nasce PAUSADO: revisão no Gerenciador antes de ativar",
-      "Leitura semanal: CPL real, CTR de link, 3s play, clientes A/B/C e ROAS por dor (relatório Por dor); julga com amostra, não com dia isolado",
-      "Orçamento gradual (+20% no conjunto que prova resultado); pausa criativo cansado (frequência alta, CTR caindo)",
-      "Orgânico no ritmo das metas: cases com print, bastidores e demonstrações, publicados e medidos pela tela Redes sociais",
+      "Faz a call de integração: conecta as contas e deixa a primeira clonagem rodando na tela do cliente",
+      "Acompanha de perto a primeira semana pra garantir que está tudo funcionando",
+      "Faz contatos regulares ao longo do contrato: 1º mês, 3º mês, 6º mês e antes da renovação",
+      "Fica de olho em sinal de abandono (cliente sumido, sem usar) e age no mesmo dia",
+      "Cliente com resultado vira case da empresa e fonte de indicação de novos clientes",
     ],
   },
 ];
 
 function RoleGuides() {
+  const label = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.07em", textTransform: "uppercase" };
   return (
-    <div style={{ marginTop: 6 }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, letterSpacing: "-0.01em" }}>As vagas e seus processos</h2>
-        <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>quem responde pelo quê · o mapa que os cards aprofundam</span>
+    <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, letterSpacing: "-0.01em" }}>A empresa e as vagas</h2>
+        <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>o mapa que os cards aprofundam</span>
+      </div>
+
+      {/* O que a empresa faz + missão/visão */}
+      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px 24px" }}>
+        <div className="mono" style={label}>O que a LeverAds faz</div>
+        <div style={{ fontSize: 13.5, color: "var(--fg-1)", lineHeight: 1.6, marginTop: 6, maxWidth: 900 }}>{COMPANY.what}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginTop: 16 }}>
+          <div>
+            <div className="mono" style={label}>Missão</div>
+            <div style={{ fontSize: 13, color: "var(--fg-2)", lineHeight: 1.55, marginTop: 4 }}>{COMPANY.mission}</div>
+          </div>
+          <div>
+            <div className="mono" style={label}>Visão</div>
+            <div style={{ fontSize: 13, color: "var(--fg-2)", lineHeight: 1.55, marginTop: 4 }}>{COMPANY.vision}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Os 5 pilares de cultura */}
+      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px 24px" }}>
+        <div className="mono" style={label}>Os 5 pilares da nossa cultura</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginTop: 12 }}>
+          {COMPANY.pillars.map((pl, i) => (
+            <div key={i} style={{ borderLeft: "3px solid var(--accent)", paddingLeft: 12 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700 }}>{i + 1}. {pl.t}</div>
+              <div style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5, marginTop: 3 }}>{pl.d}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* As vagas na ordem do funil */}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 4 }}>
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em" }}>As vagas, na ordem do funil</h3>
+        <span style={{ fontSize: 12, color: "var(--fg-4)" }}>mídia social → SDR → closer → CS · entender o vizinho é parte do jogo</span>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, alignItems: "start" }}>
-        {ROLE_GUIDES.map((g) => (
+        {ROLE_GUIDES.map((g, gi) => (
           <div key={g.role} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px 22px" }}>
-            <div style={{ fontSize: 15, fontWeight: 700 }}>{g.title}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span className="mono tnum" style={{ fontSize: 11, color: "var(--fg-4)" }}>{gi + 1}</span>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>{g.title}</div>
+            </div>
             <div style={{ fontSize: 12, color: "var(--accent)", fontWeight: 600, marginTop: 2 }}>{g.tagline}</div>
             <div style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.55, marginTop: 10 }}>{g.respons}</div>
-            <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.07em", textTransform: "uppercase", margin: "12px 0 6px" }}>Processo</div>
+            <div className="mono" style={{ ...label, margin: "12px 0 6px" }}>Como funciona no dia a dia</div>
             <ol style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
               {g.processo.map((s, i) => (
                 <li key={i} style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5 }}>{s}</li>
