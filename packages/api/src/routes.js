@@ -278,7 +278,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerAuthRoutes(app, repo);
   // Google Meet: conectar conta (OAuth) + criar call na agenda do closer.
   // Claude resume as calls (transcrição → timeline) quando há ANTHROPIC_API_KEY.
-  const { client: googleClient, googleUser, briefer } = registerGoogleRoutes(app, repo, { google: opts.google, googleUser: opts.googleUser, anthropic: anthropicClient });
+  const { client: googleClient, googleUser, briefer, autoIntegrationMeet } = registerGoogleRoutes(app, repo, { google: opts.google, googleUser: opts.googleUser, anthropic: anthropicClient });
   // Consultas 1:1 + Manual da Família (UniqueKids): Meet da consulta, resumo IA,
   // compor manual e página pública /m/:id. Depois do Google (usa os 2 clients).
   registerConsultationRoutes(app, repo, { google: googleClient, googleUser, anthropic: anthropicClient });
@@ -547,6 +547,19 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // conectou a própria conta Google. Best-effort: nunca quebra o PATCH.
     if (collection === "leads" && ("callAt" in req.body || "closer" in req.body || "integrationAt" in req.body || "integrator" in req.body)) {
       try { await syncPersonalCalendar(repo, googleUser, updated); } catch { /* fail-open */ }
+    }
+    // Card em INTEGRAÇÃO com horário marcado e sem link → o Meet da integração
+    // (convite da chamada) nasce sozinho: o cartão já chega com o link pro
+    // integrador e o convite vai pro cliente. Cobre o fechamento saindo da call
+    // (Meu dia grava stage+integrationAt juntos) e a data marcada depois no
+    // drawer. Solto em background; sem Google, o botão manual continua valendo.
+    if (collection === "leads" && ("stage" in req.body || "integrationAt" in req.body) && autoIntegrationMeet) {
+      try {
+        const k = kindOf(await repo.get("products", updated.saas), updated.stage);
+        if ((k === "integracao" || k === "posvenda") && updated.integrationAt && !updated.integrationCallUrl) {
+          autoIntegrationMeet(updated.id).catch(() => { /* botão manual continua */ });
+        }
+      } catch { /* fail-open */ }
     }
     // Consulta remarcada, cancelada ou reatribuída → re-espelha na agenda
     // pessoal da responsável (mesmo evento; cancelar apaga). Best-effort.

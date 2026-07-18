@@ -177,7 +177,7 @@ function LeadDetail({ lead: initial, onClose }) {
     ["Perda", lead.lostReason ? `${lossReasonLabel(saasCfg, lead.lostReason)}${lead.lostNote ? ` · ${lead.lostNote}` : ""}` : null],
   ].filter(([, v]) => v != null && v !== "");
 
-  const next = nextTouchPill(lead, { isOpen });
+  const next = nextTouchPill(lead, { isOpen, kind });
   // Cartões (mesma linguagem da tela de atividade): caixa com rótulo mono.
   const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "12px 14px", background: "var(--bg-inset)" };
   const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
