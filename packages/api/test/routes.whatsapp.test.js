@@ -198,7 +198,8 @@ test("GET /number: confirma o número conectado; falha vira 200 com motivo (nunc
   const ok = await appWith(repo, { ...fakeWa(), async numberInfo() { return { phoneNumberId: "PN1", display: "+55 41 93618-3835", name: "LeverAds", quality: "GREEN" }; } });
   const rOk = await ok.inject({ method: "GET", url: "/api/whatsapp/number" });
   assert.equal(rOk.statusCode, 200);
-  assert.deepEqual(rOk.json(), { ok: true, phoneNumberId: "PN1", display: "+55 41 93618-3835", name: "LeverAds", quality: "GREEN" });
+  // `webhook` = última entrega da Meta aqui (vazio quando nada chegou ainda).
+  assert.deepEqual(rOk.json(), { ok: true, webhook: {}, phoneNumberId: "PN1", display: "+55 41 93618-3835", name: "LeverAds", quality: "GREEN" });
   await ok.close();
 
   // Token só com permissão de ENVIO: leitura falha, mas não é credencial errada.
@@ -281,5 +282,46 @@ test("webhook: número FLAGGED + template RED viram saúde 'danger'", async () =
   assert.equal(s.number.event, "FLAGGED");
   assert.ok(s.messages.some((m) => /SINALIZADO/.test(m)));
   assert.ok(s.messages.some((m) => /VERMELHA/.test(m)));
+  await app.close();
+});
+
+test("webhook: entrega da Meta fica registrada com o id do número que recebeu", async () => {
+  const { getWaHealth } = await import("../src/wa-health.js");
+  const repo = makeMemRepo();
+  const app = await appWith(repo, fakeWa());
+  const deliver = (phoneNumberId, msgId) => app.inject({
+    method: "POST", url: "/api/webhooks/whatsapp",
+    payload: { entry: [{ changes: [{ field: "messages", value: {
+      metadata: { display_phone_number: "+55 41 93618-3835", phone_number_id: phoneNumberId },
+      messages: [{ id: msgId, from: "5541999990000", type: "text", text: { body: "oi" } }],
+    } }] }] },
+  });
+
+  await deliver("PN_CERTO", "wamid.A");
+  const h1 = (await getWaHealth(repo)).webhook;
+  assert.equal(h1.phoneNumberId, "PN_CERTO");   // é o id que deveria estar no env
+  assert.equal(h1.display, "+55 41 93618-3835");
+  assert.ok(h1.at);
+
+  // Mesma entrega em rajada não vira enxurrada de escrita (throttle de 1 min)…
+  await deliver("PN_CERTO", "wamid.B");
+  assert.equal((await getWaHealth(repo)).webhook.at, h1.at);
+  // …mas número diferente atualiza na hora (mudou de número no meio do caminho).
+  await deliver("PN_OUTRO", "wamid.C");
+  assert.equal((await getWaHealth(repo)).webhook.phoneNumberId, "PN_OUTRO");
+
+  // A tela lê isso pra separar "webhook não configurado" de "erro nosso".
+  const num = await appWith(repo, { ...fakeWa(), async numberInfo() { return { phoneNumberId: "PN_CERTO", display: "+55 41 93618-3835", name: "LeverAds", quality: "GREEN" }; } });
+  const body = (await num.inject({ method: "GET", url: "/api/whatsapp/number" })).json();
+  assert.equal(body.webhook.phoneNumberId, "PN_OUTRO");
+  await num.close();
+  await app.close();
+});
+
+test("GET /number: sem nenhuma entrega da Meta, webhook vem vazio", async () => {
+  const repo = makeMemRepo();
+  const app = await appWith(repo, { ...fakeWa(), async numberInfo() { return { phoneNumberId: "PN1", display: "", name: "", quality: "" }; } });
+  const body = (await app.inject({ method: "GET", url: "/api/whatsapp/number" })).json();
+  assert.deepEqual(body.webhook, {});
   await app.close();
 });

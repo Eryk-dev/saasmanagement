@@ -129,6 +129,23 @@ export function WhatsappInboxScreen({ onOpenLead }) {
 
       <WaHealthBanner />
 
+      {/* Recebimento é OUTRO caminho: não passa pelo WHATSAPP_PHONE_NUMBER_ID,
+          depende do webhook assinado na Meta. Se nada nunca foi entregue aqui,
+          "não chegou mensagem" tem endereço certo. */}
+      {configured && numInfo && !numInfo.webhook?.at && (
+        <div style={{ margin: "12px var(--pad-x) 0", padding: "10px 14px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5 }}>
+          A Meta <b>nunca entregou nada</b> neste webhook, então mensagem recebida não aparece aqui.
+          No app da Meta: Webhooks → WhatsApp Business Account → callback <span className="mono">{location.origin}/api/webhooks/whatsapp</span> com o mesmo verify token do servidor,
+          assine o campo <span className="mono">messages</span> e confirme que a conta está inscrita no app (<span className="mono">subscribed_apps</span>).
+        </div>
+      )}
+      {configured && numInfo?.webhook?.phoneNumberId && numInfo.ok && numInfo.phoneNumberId && numInfo.webhook.phoneNumberId !== numInfo.phoneNumberId && (
+        <div style={{ margin: "12px var(--pad-x) 0", padding: "10px 14px", border: "1px solid var(--warn)", background: "var(--warn-soft)", borderRadius: "var(--r-2)", fontSize: 12.5, color: "var(--fg-1)", lineHeight: 1.5 }}>
+          As mensagens estão chegando no número <b>{numInfo.webhook.display || numInfo.webhook.phoneNumberId}</b> (id <span className="mono">{numInfo.webhook.phoneNumberId}</span>),
+          mas o envio está configurado no id <span className="mono">{numInfo.phoneNumberId}</span>. Você recebe por um número e responde por outro.
+        </div>
+      )}
+
       {configured && numInfo && numInfo.ok === false && (
         <div style={{ margin: "12px var(--pad-x) 0", padding: "10px 14px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5 }}>
           {numInfo.reason === "no_read_permission" ? (
@@ -148,6 +165,9 @@ export function WhatsappInboxScreen({ onOpenLead }) {
                     ))}
                   </span>
                 </>
+              ) : numInfo.webhook?.phoneNumberId ? (
+                <> As mensagens que a Meta entrega aqui vêm do id <span className="mono">{numInfo.webhook.phoneNumberId}</span>
+                  {numInfo.webhook.display ? ` (${numInfo.webhook.display})` : ""} — é esse que a variável precisa ter.</>
               ) : (
                 <> Pegue o <b>Phone number ID</b> em WhatsApp Manager → API Setup (é o id do NÚMERO, não o da conta) e ponha na variável.</>
               )}

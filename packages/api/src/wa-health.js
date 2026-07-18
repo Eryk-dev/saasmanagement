@@ -4,11 +4,30 @@
 // os disparos antes de tomar ban. Depende de assinar na Meta os fields:
 // phone_number_quality_update, message_template_status_update,
 // message_template_quality_update, account_update/account_alerts.
-const EMPTY = { id: "wa_health", number: {}, templates: {}, account: {}, updatedAt: "" };
+const EMPTY = { id: "wa_health", number: {}, templates: {}, account: {}, webhook: {}, updatedAt: "" };
 
 export async function getWaHealth(repo) {
   const h = await repo.get("app_config", "wa_health");
   return h || { ...EMPTY };
+}
+
+// Prova de que a Meta ENTREGA no nosso webhook, e por qual número. Sem isso,
+// "não chegou mensagem" é ambíguo: pode ser webhook não configurado na Meta ou
+// erro nosso. O payload traz value.metadata.phone_number_id — que é o id do
+// número que RECEBEU, ou seja, o que deveria estar no WHATSAPP_PHONE_NUMBER_ID.
+// Escreve no máximo 1×/min (mensagem em massa não vira enxurrada de update),
+// mas sempre que o número mudar.
+export async function recordWebhookDelivery(repo, { phoneNumberId = "", display = "" } = {}) {
+  const cur = await getWaHealth(repo);
+  const prev = cur.webhook || {};
+  const at = new Date().toISOString();
+  const sameNumber = String(prev.phoneNumberId || "") === String(phoneNumberId || "");
+  if (sameNumber && prev.at && Date.now() - new Date(prev.at).getTime() < 60_000) return cur;
+  const next = {
+    ...cur, id: "wa_health", updatedAt: at,
+    webhook: { at, phoneNumberId: String(phoneNumberId || ""), display: display || prev.display || "" },
+  };
+  return cur.updatedAt ? repo.update("app_config", "wa_health", next) : repo.create("app_config", next);
 }
 
 // Aplica UM evento de webhook de saúde ao snapshot (merge + upsert). `field` é o
@@ -16,7 +35,7 @@ export async function getWaHealth(repo) {
 export async function applyHealthEvent(repo, field, value = {}) {
   const cur = await getWaHealth(repo);
   const at = new Date().toISOString();
-  const next = { ...cur, id: "wa_health", number: { ...cur.number }, templates: { ...cur.templates }, account: { ...cur.account }, updatedAt: at };
+  const next = { ...cur, id: "wa_health", number: { ...cur.number }, templates: { ...cur.templates }, account: { ...cur.account }, webhook: { ...cur.webhook }, updatedAt: at };
 
   if (field === "phone_number_quality_update") {
     next.number = { event: value.event || "", limit: value.current_limit || value.messaging_limit || "", display: value.display_phone_number || cur.number.display || "", at };
@@ -62,5 +81,7 @@ export function waHealthSummary(h) {
     if (st === "REJECTED" || st === "DISABLED" || st === "PAUSED") { bump("warn"); messages.push(`Template "${name}": ${st.toLowerCase()}.`); }
   }
 
-  return { level, messages, number: health.number || {}, account: health.account || {}, templates: health.templates || {}, updatedAt: health.updatedAt || "" };
+  // `webhook` não entra no nível de risco (é diagnóstico de configuração, não
+  // saúde do número): a tela usa pra dizer se a Meta já entregou algo aqui.
+  return { level, messages, number: health.number || {}, account: health.account || {}, templates: health.templates || {}, webhook: health.webhook || {}, updatedAt: health.updatedAt || "" };
 }
