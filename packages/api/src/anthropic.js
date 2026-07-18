@@ -96,63 +96,31 @@ const INTEGRATION_SCHEMA = {
 const BRIEF_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["resumo", "operacao", "vendido", "expectativa", "atencao", "confirmar", "checklist", "primeiraMensagem"],
+  required: ["resumo", "entregas", "atencao", "primeiraMensagem"],
   properties: {
-    resumo: { type: "string", description: "Quem é o cliente, o que ele vende e o que JÁ CONTRATOU (negócio fechado), em 3 a 5 frases diretas. Escreva pra alguém que NÃO estava na call e que vai ENTREGAR, não vender" },
-    operacao: {
+    resumo: { type: "string", description: "Quem é o cliente, o que ele vende e o que JÁ CONTRATOU, em NO MÁXIMO 3 frases. Só o que o integrador precisa pra se localizar" },
+    entregas: {
       type: "array",
-      description: "Fatos da operação dele que mudam o setup (contas, marketplaces, volume de anúncios, ERP/hub, conta banida, particularidades). Só o que apareceu na call ou nos dados do cadastro",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["item", "valor"],
-        properties: {
-          item: { type: "string", description: "o que é (ex.: contas de Mercado Livre)" },
-          valor: { type: "string", description: "o dado (ex.: 4 contas, 2 delas novas)" },
-        },
-      },
+      description: "ENTREGAS ACORDADAS: o que o closer prometeu e o cliente já comprou (escopo, quantidades, prazos ditos na call). Até 5 itens, UMA LINHA cada, na palavra que foi usada na venda, porque é o que ele vai cobrar. Nada de pagamento aqui",
+      items: { type: "string" },
     },
-    vendido: { type: "array", items: { type: "string" }, description: "O que o closer prometeu e o cliente JÁ COMPROU: escopo, entregas, prazos e condições ditos na call. Fiel à transcrição, é o que ele vai cobrar" },
-    expectativa: { type: "string", description: "O resultado que o cliente espera ver e em quanto tempo, nas palavras dele" },
     atencao: {
       type: "array",
-      description: "Riscos pra ENTREGA (a venda já aconteceu, ninguém precisa mais convencer): objeção que ficou em aberto e virou dúvida do cliente que já comprou, expectativa desalinhada, pressa, desconfiança, limitação técnica",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["ponto", "porque"],
-        properties: {
-          ponto: { type: "string", description: "o risco, em poucas palavras" },
-          porque: { type: "string", description: "o que na call indica isso e como não pisar nele" },
-        },
-      },
+      description: "PONTOS DE ATENÇÃO pra entrega (a venda já aconteceu, ninguém precisa mais convencer): até 3 itens, UMA LINHA cada, sempre no formato risco + o que fazer (ex.: 'já teve conta banida, explique a proteção antes de pedir os acessos'). Lista vazia se a call não deu sinal, é melhor que encher",
+      items: { type: "string" },
     },
-    confirmar: { type: "array", items: { type: "string" }, description: "O que o integrador precisa perguntar/confirmar logo no começo (dado que faltou ou ficou vago na venda)" },
-    checklist: {
-      type: "array",
-      description: "O que fazer na integração, EM ORDEM, do primeiro passo ao cliente rodando. A integração é feita numa CALL DE VÍDEO com o cliente: separe o que é pra combinar/pedir ANTES da call, o que roda DURANTE a call (tela compartilhada, acessos, primeira clonagem) e o que fica de acompanhamento DEPOIS",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["passo", "porque"],
-        properties: {
-          passo: { type: "string", description: "a ação, no imperativo (ex.: pedir acesso às 4 contas)" },
-          porque: { type: "string", description: "por que esse passo importa NESSE cliente, 1 frase" },
-        },
-      },
-    },
-    primeiraMensagem: { type: "string", description: "WhatsApp de abertura do integrador pro cliente que JÁ COMPROU: se apresenta como quem vai tocar a entrega e cita algo concreto do que foi fechado. O próximo passo é a CALL DE INTEGRAÇÃO POR VÍDEO, mas NÃO proponha dia, horário nem link: o cockpit completa a mensagem com a agenda real. Termine deixando o gancho da call, sem marcar. Nada de tom de venda, proposta ou negociação. 2 a 3 frases" },
+    primeiraMensagem: { type: "string", description: "WhatsApp de abertura do integrador pro cliente que JÁ COMPROU: se apresenta como quem vai tocar a entrega e cita algo concreto do que foi fechado. O próximo passo é a CALL DE INTEGRAÇÃO POR VÍDEO, mas NÃO proponha dia, horário nem link: o cockpit completa a mensagem com a agenda real. 2 a 3 frases" },
   },
 };
 
 const BRIEF_SYSTEM = `Você prepara o BRIEFING DE PASSAGEM pro integrador da LeverAds, SaaS que clona e sincroniza anúncios entre contas de Mercado Livre e Shopee (multi-contas, proteção contra banimento, economia de operação).
-PONTO DE PARTIDA, sem exceção: O NEGÓCIO JÁ ESTÁ FECHADO. O cliente comprou, pagou ou assinou, e o card passou pro integrador, que NÃO participou da call de vendas e vai fazer o onboarding. A partir daqui é ENTREGA, não venda. Escreva como quem assume um cliente que já é cliente.
-Por isso, NUNCA: sugira vender, revender, "convencer", "fechar", negociar preço, mandar proposta, reforçar benefício pra justificar a compra ou tratar o cliente como lead/prospect. Não deixe o texto dar a entender que a decisão ainda está de pé.
-Objeção que ficou em aberto na call NÃO é obstáculo de venda, é RISCO DE ENTREGA: o cliente comprou com essa dúvida na cabeça e ela vira frustração ou cancelamento se ninguém tratar. Coloque em "atenção" dizendo como resolver na prática durante o onboarding.
-Ele precisa de duas coisas: se localizar (quem é esse cliente, o que ele comprou, o que foi prometido) e saber o que fazer (passos concretos, em ordem).
-COMO A INTEGRAÇÃO ACONTECE: numa CALL DE VÍDEO com o cliente (Google Meet), tela compartilhada, onde se pegam os acessos e roda a primeira clonagem junto. Então o primeiro movimento do integrador é MARCAR essa call. O checklist se organiza por esse eixo: o que combinar/pedir antes da call, o que fazer durante e o que fica de acompanhamento depois.
-NUNCA escreva dia, horário ou link da call: quem sabe a agenda de verdade é o cockpit, que completa a primeira mensagem com o horário marcado e o link do Meet. Sua mensagem entrega o contexto e deixa o gancho da call, o resto é preenchido por cima.
-Regras: português direto, sem enrolação e sem repetir o óbvio. NUNCA use travessão (—) em nenhum texto; use vírgula ou parênteses. Seja fiel à fonte: não invente conta, volume, prazo nem promessa que não apareceu. Quando um dado importante do setup não foi tratado na call, NÃO chute: coloque em "confirmar". Promessa feita pelo closer entra em "vendido" com as palavras que foram usadas, porque é o que o cliente vai cobrar. O checklist é do trabalho REAL de integração desse cliente (acessos, contas de origem e destino, o que clonar primeiro, atributos, combinar acompanhamento), não uma lista genérica. A primeira mensagem é de quem assume a ENTREGA do que ele já comprou: se apresenta, cita algo concreto da venda e propõe dia/horário ou o próximo passo, sem nenhum tom de vendedor e sem reabrir negociação.`;
+PONTO DE PARTIDA, sem exceção: O NEGÓCIO JÁ ESTÁ FECHADO E PAGO. O cliente comprou, o pagamento já aconteceu, e o card passou pro integrador, que NÃO participou da call de vendas. A partir daqui é ENTREGA, não venda.
+Por isso, NUNCA: sugira vender, revender, "convencer", "fechar", negociar preço, mandar proposta ou tratar o cliente como lead. E NUNCA peça pra confirmar, cobrar ou checar pagamento, boleto, PIX, parcela ou assinatura: isso já foi resolvido antes de chegar aqui e pedir de novo passa insegurança pro cliente.
+SEJA CURTO. O integrador lê isso antes de uma call, não é relatório: três blocos objetivos (resumo, entregas acordadas, pontos de atenção) e a mensagem de abertura. Sem introdução, sem repetir a mesma informação em dois blocos, sem encher lista pra parecer completo. Item que não agrega, corte.
+Objeção que ficou em aberto na call NÃO é obstáculo de venda, é RISCO DE ENTREGA: o cliente comprou com essa dúvida na cabeça e ela vira frustração se ninguém tratar. É isso que entra em "atenção", junto do que fazer.
+COMO A INTEGRAÇÃO ACONTECE: numa CALL DE VÍDEO com o cliente (Google Meet), tela compartilhada, onde se pegam os acessos e roda a primeira clonagem junto. O primeiro movimento do integrador é MARCAR essa call. O passo a passo da call NÃO é seu trabalho: ele já existe no roteiro da etapa, não repita aqui.
+NUNCA escreva dia, horário ou link da call: quem sabe a agenda de verdade é o cockpit, que completa a primeira mensagem com o horário marcado e o link do Meet.
+Regras: português direto. NUNCA use travessão (—) em nenhum texto; use vírgula ou parênteses. Seja fiel à fonte: não invente conta, volume, prazo nem promessa que não apareceu. Dado importante que a call não cobriu simplesmente não entra (o integrador pergunta na call), não vire linha de "confirmar".`;
 
 const INTEGRATION_SYSTEM = `Você é o analista de Sucesso do Cliente. Você recebe a transcrição de uma call de INTEGRAÇÃO (onboarding/setup pós-venda, o cliente já comprou) e extrai o que importa pra equipe garantir que ele comece bem e não vire risco de churn.
 Regras: escreva em português direto, sem enrolação. NUNCA use travessão (—) em nenhum texto; use vírgula ou parênteses. Seja fiel à transcrição: não invente configuração, pendência nem combinado que não apareceu. Marque o sentimento como "em risco" quando o cliente sai confuso, frustrado, sem entender o produto ou com pendência crítica sem solução. Em cada pendência diga quem resolve (cliente ou equipe). A mensagem de WhatsApp é de acompanhamento (checar se ficou tudo certo, oferecer ajuda), curta (2 a 4 frases), citando algo concreto da call.`;

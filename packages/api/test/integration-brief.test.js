@@ -14,13 +14,9 @@ const { makeIntegrationBriefer, formatBriefText, factsOf } = await import("../sr
 
 const BRIEF = {
   resumo: "JCimport vende autopeças no ML e na Shopee, fechou o anual pra clonar anúncios entre 4 contas.",
-  operacao: [{ item: "Contas de Mercado Livre", valor: "4 contas, 2 abertas esse mês" }],
-  vendido: ["clonagem das 4 contas na primeira semana", "acompanhamento semanal no primeiro mês"],
-  expectativa: "ver os anúncios rodando nas contas novas em até 7 dias",
-  atencao: [{ ponto: "já teve conta banida", porque: "ficou receoso de vincular tudo, explique a proteção antes de pedir acesso" }],
-  confirmar: ["quais das 4 contas entram primeiro", "se o ERP dele exporta os SKUs"],
-  checklist: [{ passo: "pedir acesso às 4 contas", porque: "sem acesso nada roda e ele espera começar em 7 dias" }],
-  primeiraMensagem: "Oi Hiago! Aqui é o Eryk, vou tocar sua integração. Vi que você fechou pra clonar as 4 contas, posso te chamar amanhã às 10h pra pegar os acessos?",
+  entregas: ["clonagem das 4 contas na primeira semana", "acompanhamento semanal no primeiro mês"],
+  atencao: ["já teve conta banida, explique a proteção antes de pedir os acessos"],
+  primeiraMensagem: "Oi Hiago! Aqui é o Eryk, vou tocar sua integração da LeverAds. Vi que você fechou pra clonar as 4 contas, o próximo passo é a nossa call de vídeo.",
 };
 
 const FUNNEL = [
@@ -82,11 +78,12 @@ test("cliente de IA: briefIntegration manda o schema do briefing com os dados do
     facts: ["Contas de marketplace: 3 a 5", "Valor fechado: R$ 7.180,00"],
     today: "17/07/2026 10:00",
   });
-  assert.equal(brief.checklist[0].passo, "pedir acesso às 4 contas");
+  assert.equal(brief.entregas.length, 2);
 
   const req = f.calls[0];
   const props = req.body.output_config.format.schema.properties;
-  assert.ok(props.checklist && props.confirmar && props.vendido && props.atencao);
+  // três blocos objetivos + a mensagem: o passo a passo mora no roteiro da etapa
+  assert.deepEqual(Object.keys(props), ["resumo", "entregas", "atencao", "primeiraMensagem"]);
   assert.ok(req.body.system.includes("travessão"));           // regra de copy do Leo
   assert.ok(req.body.system.includes("NÃO participou"));      // o briefing é pra quem não estava na call
   assert.ok(req.body.messages[0].content.includes("Contas de marketplace: 3 a 5"));
@@ -106,12 +103,16 @@ test("o briefing parte do negócio JÁ FECHADO: nada de vender de novo", async (
   assert.ok(req.body.system.includes("RISCO DE ENTREGA"));      // objeção em aberto muda de natureza
   assert.ok(req.body.messages[0].content.includes("STATUS: NEGÓCIO FECHADO"));
   assert.ok(req.body.messages[0].content.includes("JÁ FOI GANHA"));
+  // pagamento JÁ FEITO: pedir pra confirmar/cobrar passa insegurança pro cliente
+  assert.ok(req.body.system.includes("FECHADO E PAGO"));
+  assert.ok(/NUNCA peça pra confirmar, cobrar ou checar pagamento/.test(req.body.system));
+  assert.ok(req.body.system.includes("SEJA CURTO"));
 
   // e o schema conta a mesma história pros campos que mais escorregam pra venda
   const props = req.body.output_config.format.schema.properties;
   assert.ok(props.atencao.description.includes("a venda já aconteceu"));
   assert.ok(props.primeiraMensagem.description.includes("JÁ COMPROU"));
-  assert.ok(props.vendido.description.includes("JÁ COMPROU"));
+  assert.ok(props.entregas.description.includes("já comprou"));
 
   // sem transcrição o enquadramento se mantém
   const f2 = aiFake();
@@ -133,8 +134,7 @@ test("a integração acontece por CALL DE VÍDEO: o briefing organiza o fluxo em
   const props = req.body.output_config.format.schema.properties;
   assert.ok(props.primeiraMensagem.description.includes("CALL DE INTEGRAÇÃO POR VÍDEO"));
   assert.ok(props.primeiraMensagem.description.includes("NÃO proponha dia, horário nem link"));
-  assert.ok(props.checklist.description.includes("ANTES da call"));
-  assert.ok(props.checklist.description.includes("DURANTE a call"));
+  assert.ok(req.body.system.includes("passo a passo da call NÃO é seu trabalho"));
 });
 
 test("briefLead: lê a transcrição da VENDA, grava a activity com o texto formatado e carimba o lead", async () => {
@@ -148,9 +148,9 @@ test("briefLead: lê a transcrição da VENDA, grava a activity com o texto form
   assert.equal(acts.length, 1);
   assert.equal(acts[0].type, "system");
   assert.equal(acts[0].meta.source, "transcricao");
-  assert.equal(acts[0].meta.brief.checklist.length, 1);
-  assert.ok(acts[0].text.includes("Passo a passo da integração:"));
-  assert.ok(acts[0].text.includes("1. pedir acesso às 4 contas"));
+  assert.equal(acts[0].meta.brief.entregas.length, 2);
+  assert.ok(acts[0].text.includes("Entregas acordadas:"));
+  assert.ok(!/Passo a passo/i.test(acts[0].text), "o passo a passo mora no roteiro da etapa, não no briefing");
   assert.ok(!acts[0].text.includes("—")); // nunca travessão na copy
 
   const lead = await repo.get("leads", "l1");
@@ -254,8 +254,11 @@ test("factsOf/formatBriefText: só o preenchido entra e o texto sai legível", (
   assert.ok(facts.includes("Anúncios novos por semana: 50 a 200"));
   assert.ok(!facts.some((f) => f.startsWith("Valor fechado")));  // amount 0 não entra
 
-  const txt = formatBriefText({ resumo: "r", checklist: [], confirmar: ["quais contas"], primeiraMensagem: "" });
-  assert.ok(txt.startsWith("Briefing da integração (IA) · negócio FECHADO"), "a timeline também abre dizendo que já fechou");
-  assert.ok(txt.includes("Confirmar com o cliente:"));
-  assert.ok(!txt.includes("Passo a passo")); // lista vazia não vira seção órfã
+  const txt = formatBriefText({ resumo: "r", entregas: [], atencao: ["risco x, faça y"], primeiraMensagem: "" });
+  assert.ok(txt.startsWith("Briefing da integração (IA) · negócio FECHADO e pago"), "a timeline abre dizendo que já fechou e pagou");
+  assert.ok(txt.includes("Pontos de atenção:"));
+  assert.ok(!txt.includes("Entregas acordadas")); // lista vazia não vira seção órfã
+
+  // briefing no shape antigo (chave `vendido`) continua renderizando
+  assert.ok(formatBriefText({ resumo: "r", vendido: ["clonar 4 contas"] }).includes("• clonar 4 contas"));
 });

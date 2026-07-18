@@ -704,6 +704,9 @@ export function IntegrationBriefCard({ brief, phone, deal }) {
   const kick = { fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" };
   const line = { fontSize: 12, lineHeight: 1.5, color: "var(--fg-1)" };
   const sub = (label) => <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>{label}</div>;
+  // O passo a passo da call fica no roteiro da etapa (card Passo a passo, logo
+  // abaixo): aqui é só o contexto. `vendido` é o shape antigo do briefing.
+  const entregas = brief.entregas || brief.vendido;
   // A integração é feita numa CALL DE VÍDEO: a mensagem que a IA escreve PROPÕE
   // a call (ela não conhece link nem agenda). Quando o horário já está marcado
   // e o Meet criado, a mensagem fecha o combinado com dia e link de verdade —
@@ -747,54 +750,17 @@ export function IntegrationBriefCard({ brief, phone, deal }) {
       {brief.resumo && <div style={{ ...line, marginBottom: open ? 6 : 0 }}>{brief.resumo}</div>}
       {open && (
         <>
-          {brief.operacao?.length > 0 && (
+          {entregas?.length > 0 && (
             <div style={{ marginBottom: 6 }}>
-              {sub("Operação do cliente")}
-              {brief.operacao.map((o, i) => (
-                <div key={i} style={{ ...line, display: "flex", gap: 6, alignItems: "baseline" }}>
-                  <span className="mono dim" style={{ fontSize: 10.5, flexShrink: 0 }}>{o.item}</span>
-                  <span style={{ minWidth: 0, fontWeight: 500 }}>{o.valor}</span>
-                </div>
-              ))}
+              {sub("Entregas acordadas")}
+              {entregas.map((v, i) => <div key={i} style={line}>• {v}</div>)}
             </div>
-          )}
-          {brief.vendido?.length > 0 && (
-            <div style={{ marginBottom: 6 }}>
-              {sub("Foi prometido na venda")}
-              {brief.vendido.map((v, i) => <div key={i} style={line}>• {v}</div>)}
-            </div>
-          )}
-          {brief.expectativa && (
-            <div style={{ ...line, marginBottom: 6 }}><span className="mono dim" style={{ ...kick, fontSize: 10 }}>Espera</span> · {brief.expectativa}</div>
           )}
           {brief.atencao?.length > 0 && (
             <div style={{ marginBottom: 6 }}>
-              {sub("Atenção")}
+              {sub("Pontos de atenção")}
               {brief.atencao.map((a, i) => (
-                <div key={i} style={{ marginBottom: 3 }}>
-                  <div style={{ ...line, fontWeight: 500, color: "var(--neg)" }}>{a.ponto}</div>
-                  {a.porque && <div className="dim" style={{ fontSize: 11, lineHeight: 1.4 }}>{a.porque}</div>}
-                </div>
-              ))}
-            </div>
-          )}
-          {brief.confirmar?.length > 0 && (
-            <div style={{ marginBottom: 6 }}>
-              {sub("Confirmar com o cliente")}
-              {brief.confirmar.map((c, i) => <div key={i} style={line}>• {c}</div>)}
-            </div>
-          )}
-          {brief.checklist?.length > 0 && (
-            <div style={{ marginBottom: 6 }}>
-              {sub("Passo a passo")}
-              {brief.checklist.map((c, i) => (
-                <div key={i} style={{ marginBottom: 3 }}>
-                  <div style={{ ...line, display: "flex", gap: 6, alignItems: "baseline" }}>
-                    <span className="mono" style={{ color: "var(--accent)", flexShrink: 0, fontSize: 10.5 }}>{i + 1}</span>
-                    <span style={{ minWidth: 0, fontWeight: 500 }}>{c.passo}</span>
-                  </div>
-                  {c.porque && <div className="dim" style={{ fontSize: 11, lineHeight: 1.4, paddingLeft: 14 }}>{c.porque}</div>}
-                </div>
+                <div key={i} style={{ ...line, color: "var(--neg)" }}>• {typeof a === "string" ? a : `${a.ponto}: ${a.porque}`}</div>
               ))}
             </div>
           )}

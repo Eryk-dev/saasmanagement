@@ -285,14 +285,19 @@ export const DEFAULT_SCRIPTS = {
       { t: "Sim ou não claro", fala: "Se ainda fizer, eu retomo com prioridade e a gente fecha essa semana. Se não for a hora, sem problema nenhum, é só me falar que eu encerro seu atendimento por aqui e deixo a porta aberta pra quando quiser voltar.", dica: "Sem resposta depois deste contato, mova o card pra Desqualificado (motivo: sem retorno)." },
     ],
   },
+  // Roteiro da CALL DE VÍDEO de integração (é aqui que mora o passo a passo do
+  // integrador; o briefing por IA fica só no contexto, sem repetir estes passos).
   integracao: {
-    titulo: "Integração · kickoff",
-    resumo: "Cliente fechado, hora de entregar rápido: quanto antes a primeira clonagem rodar, menor o risco de arrependimento. Conduza o checklist com objetividade.",
-    objetivo: "Acessos conectados, conta-mãe definida e a primeira leva de anúncios clonada.",
+    titulo: "Integração · call de vídeo",
+    resumo: "Cliente fechado e pago (não confirme pagamento, isso já passou). A integração é uma call de vídeo com tela compartilhada: você pega os acessos e roda a primeira clonagem junto com ele. Quanto antes rodar, menor o risco de arrependimento.",
+    objetivo: "Call feita: acessos conectados, conta-mãe definida e a primeira leva de anúncios clonada na frente dele.",
     passos: [
-      { t: "Kickoff", fala: "Oi {{nome}}! Bem-vindo à {{produto}}. Vou te guiar na integração, leva uns 20 minutos. Consegue fazer comigo hoje ainda?" },
-      { t: "Checklist técnico", fala: "Vou precisar do acesso das contas que vamos espelhar e a gente define juntos qual é a conta-mãe, a matriz dos seus anúncios." },
-      { t: "Primeira vitória", fala: "Fechando a conexão eu já disparo a primeira clonagem pra você ver rodando hoje mesmo." },
+      { t: "1. Marcar a call", fala: "Oi {{nome}}! Aqui é da {{produto}}, sou eu que vou tocar sua integração. A gente faz numa call de vídeo, com tela compartilhada, leva uns 20 minutos e já sai rodando. Qual o melhor dia e horário pra você?" },
+      { t: "2. Antes da call", fala: "Pra render: deixa em mãos os acessos das contas que a gente vai espelhar. Na call eu te mostro exatamente onde conectar cada uma." },
+      { t: "3. Abrir a call", fala: "Vou compartilhar a tela e a gente faz junto. Antes de mexer, me confirma: quais contas entram agora e qual delas é a principal, a que tem os anúncios bons?" },
+      { t: "4. Conta-mãe e acessos", fala: "Essa vira a conta-mãe, a matriz. O que você publicar nela replica pras outras, e o que já está lá a gente clona agora." },
+      { t: "5. Primeira clonagem na tela", fala: "Olha rodando: esses anúncios já estão saindo pras outras contas da {{empresa}}. Daqui pra frente é publicar na matriz e deixar replicar." },
+      { t: "6. Fechar e combinar o acompanhamento", fala: "Ficou alguma dúvida do que a gente fez agora? Eu te acompanho essa semana, me chama aqui a qualquer hora. Semana que vem eu te procuro pra ver como está o volume." },
     ],
   },
   posvenda: {

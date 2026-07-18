@@ -46,19 +46,15 @@ export function factsOf(lead, { closerName = "" } = {}) {
 }
 
 // Texto da timeline (plain, multiline, sem travessão — regra do Leo).
+// O passo a passo da call NÃO entra aqui: ele já vive no roteiro da etapa
+// (Passo a passo, no drawer). Repetir só faria o integrador ler duas vezes.
 export function formatBriefText(b) {
-  const lines = ["Briefing da integração (IA) · negócio FECHADO, passagem do closer pro integrador (é entrega, não venda)", "", b.resumo];
-  if (b.operacao?.length) lines.push("", "Operação do cliente:", ...b.operacao.map((o) => `• ${o.item}: ${o.valor}`));
-  if (b.vendido?.length) lines.push("", "O que foi vendido/prometido:", ...b.vendido.map((v) => `• ${v}`));
-  if (b.expectativa) lines.push("", `Expectativa do cliente: ${b.expectativa}`);
+  const lines = ["Briefing da integração (IA) · negócio FECHADO e pago, passagem do closer pro integrador", "", b.resumo];
+  const entregas = b.entregas || b.vendido; // shape antigo do briefing (antes do enxugamento)
+  if (entregas?.length) lines.push("", "Entregas acordadas:", ...entregas.map((v) => `• ${v}`));
   if (b.atencao?.length) {
     lines.push("", "Pontos de atenção:");
-    for (const a of b.atencao) lines.push(`• ${a.ponto}: ${a.porque}`);
-  }
-  if (b.confirmar?.length) lines.push("", "Confirmar com o cliente:", ...b.confirmar.map((c) => `• ${c}`));
-  if (b.checklist?.length) {
-    lines.push("", "Passo a passo da integração:");
-    b.checklist.forEach((c, i) => lines.push(`${i + 1}. ${c.passo} (${c.porque})`));
+    for (const a of b.atencao) lines.push(`• ${typeof a === "string" ? a : `${a.ponto}: ${a.porque}`}`);
   }
   if (b.primeiraMensagem) lines.push("", `Primeira mensagem sugerida: "${b.primeiraMensagem}"`);
   return lines.join("\n");
