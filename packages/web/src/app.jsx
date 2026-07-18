@@ -23,7 +23,7 @@ import { AnaliseScreen } from "./screens/analise.jsx";
 import { AquisicaoScreen } from "./screens/aquisicao.jsx";
 import { FuncionariosScreen } from "./screens/funcionarios.jsx";
 import { MetasScreen } from "./screens/metas.jsx";
-import { TrainingScreen } from "./screens/training.jsx";
+import { TrainingScreen, TrainingGate } from "./screens/training.jsx";
 import { CustomersScreen } from "./screens/customers.jsx";
 import { TasksScreen } from "./screens/tasks.jsx";
 import { MindmapsScreen } from "./screens/mindmaps.jsx";
@@ -256,6 +256,9 @@ function App() {
           <LeadDetail lead={leadSel} onClose={() => setLeadSel(null)} />
         </ErrorBoundary>
       )}
+
+      {/* Portão do treino diário: vaga operacional só trabalha com a fila zerada */}
+      <TrainingGate saasId={activeProduct?.id} active={scr !== "training"} />
 
       <CommandSearch
         open={searchOpen}
