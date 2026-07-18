@@ -48,6 +48,7 @@ const ADS_PERIODS = [
   { value: "3", label: "3 dias" },
   { value: "7", label: "7 dias" },
   { value: "30", label: "30 dias" },
+  { value: "life", label: "máximo" }, // tudo que já foi sincronizado do ad_insights
   { value: "custom", label: "personalizado" },
 ];
 // A Meta só devolve insights de até ~37 meses; o sync respeita esse teto.
@@ -526,6 +527,64 @@ const ADS_MAX_ROWS = 10;
 // Inputs de/até do "personalizado" do card Anúncios.
 const dateInputStyle = { height: 30, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 };
 
+// Filtro de data do card Anúncios: presets + máximo + personalizado com popover
+// de calendário. Escolher "personalizado" grava de/até EXPLÍCITOS no range (nada
+// de default silencioso) e abre o popover já com o calendário nativo do "de";
+// o chip ao lado mostra o intervalo aplicado e reabre o popover. Escolher uma
+// data que cruza a outra arrasta a outra junto (sem swap mudo).
+function AdsRangePicker({ range, onRange }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
+  const wrapRef = React.useRef(null);
+  const sinceRef = React.useRef(null);
+  const today = dayStr(Date.now());
+  const since = range.since || today, until = range.until || today;
+  const openPopover = () => {
+    const r = wrapRef.current?.getBoundingClientRect();
+    if (r) setPos({ top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right) });
+    setOpen(true);
+    setTimeout(() => { try { sinceRef.current?.showPicker?.(); } catch { /* navegador sem showPicker */ } }, 60);
+  };
+  const choose = (v) => {
+    if (v === "custom") { onRange({ preset: "custom", since, until }); openPopover(); }
+    else { setOpen(false); onRange({ ...range, preset: v }); }
+  };
+  const setSince = (v) => { if (v) onRange({ preset: "custom", since: v, until: until < v ? v : until }); };
+  const setUntil = (v) => { if (v) onRange({ preset: "custom", until: v, since: since > v ? v : since }); };
+  const fmt = (s) => `${s.slice(8, 10)}/${s.slice(5, 7)}`;
+  return (
+    <span ref={wrapRef} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <Segmented value={range.preset} onChange={choose} options={ADS_PERIODS} />
+      {range.preset === "custom" && (
+        <button className="mono tnum" onClick={openPopover} title="mudar o intervalo"
+          style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>
+          {fmt(since)} até {fmt(until)}
+        </button>
+      )}
+      {open && pos && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 60 }} />
+          <div style={{ position: "fixed", top: pos.top, right: pos.right, zIndex: 61, width: 218, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+            <span className="mono" style={{ fontSize: 10, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-4)" }}>Período personalizado</span>
+            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span className="mono dim" style={{ width: 24, fontSize: 10.5 }}>de</span>
+              <input ref={sinceRef} type="date" value={since} max={today} onChange={(e) => setSince(e.target.value)} style={{ ...dateInputStyle, flex: 1 }} />
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span className="mono dim" style={{ width: 24, fontSize: 10.5 }}>até</span>
+              <input type="date" value={until} min={since} max={today} onChange={(e) => setUntil(e.target.value)} style={{ ...dateInputStyle, flex: 1 }} />
+            </label>
+            <button onClick={() => setOpen(false)}
+              style={{ height: 30, borderRadius: "var(--r-2)", border: "1px solid var(--accent)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+              aplicar
+            </button>
+          </div>
+        </>
+      )}
+    </span>
+  );
+}
+
 // Botão "Colunas" + popover de checkboxes (o "Personalizar colunas" do
 // Gerenciador). Posição FIXA calculada do botão — escapa do overflow:hidden
 // do card; o overlay fecha no clique fora.
@@ -834,20 +893,7 @@ function CompactAdsCard({ objects, metrics, money, busyIds, range, onRange, onTo
     <Card title="Anúncios" hint="estilo Gerenciador · seleção filtra os níveis de baixo · colunas no botão"
       action={
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          {range && onRange && (
-            <>
-              <Segmented value={range.preset} onChange={(v) => onRange({ ...range, preset: v })} options={ADS_PERIODS} />
-              {range.preset === "custom" && (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  <input type="date" value={range.since || dayStr(Date.now())} max={dayStr(Date.now())}
-                    onChange={(e) => e.target.value && onRange({ ...range, since: e.target.value })} style={dateInputStyle} />
-                  <span style={{ color: "var(--fg-4)", fontSize: 12 }}>até</span>
-                  <input type="date" value={range.until || dayStr(Date.now())} max={dayStr(Date.now())}
-                    onChange={(e) => e.target.value && onRange({ ...range, until: e.target.value })} style={dateInputStyle} />
-                </span>
-              )}
-            </>
-          )}
+          {range && onRange && <AdsRangePicker range={range} onRange={onRange} />}
           <Segmented value={statusFilter} onChange={setStatusFilter}
             options={[{ value: "active", label: "ativas" }, { value: "paused", label: "pausadas" }, { value: "all", label: "todas" }]} />
           <Segmented value={level} onChange={changeLevel} options={levels.map(({ value, label }) => ({ value, label }))} />
@@ -863,6 +909,11 @@ function CompactAdsCard({ objects, metrics, money, busyIds, range, onRange, onTo
           {selAdsets.size > 0 && chip(
             selAdsets.size === 1 ? `conjunto: ${nameOf("adsets", [...selAdsets][0])}` : `${selAdsets.size} conjuntos selecionados`,
             () => setSelAdsets(new Set()))}
+        </div>
+      )}
+      {metrics && Object.keys(metrics.campaigns || {}).length === 0 && Object.keys(metrics.ads || {}).length === 0 && (
+        <div style={{ padding: "10px 24px 0", fontSize: 12, color: "var(--warn)" }}>
+          sem dados da Meta sincronizados nesse período · ajuste o intervalo ou rode o sync
         </div>
       )}
       <DragScroll>
