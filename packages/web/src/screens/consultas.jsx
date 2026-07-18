@@ -100,6 +100,9 @@ export function ConsultasScreen() {
       j.items.sort((a, b) => (a.n || 0) - (b.n || 0));
       j.done = j.items.filter((c) => c.status === "done").length;
       j.next = j.items.filter((c) => c.status === "scheduled" && c.at).sort((a, b) => String(a.at).localeCompare(String(b.at)))[0] || null;
+      // Tamanho do pacote comprado (8 ou 4): vem carimbado nas consultas criadas
+      // pela conversão do Ganho; jornada antiga/manual cai no padrão de 8.
+      j.total = j.items.reduce((a, c) => Math.max(a, Number(c.packageTotal) || 0), 0) || TOTAL;
     }
     return out.sort((a, b) => String(a.next?.at || "9999").localeCompare(String(b.next?.at || "9999")));
   }, [consultas]);
@@ -127,7 +130,7 @@ export function ConsultasScreen() {
   function nextOf(j) {
     const maxN = Math.max(0, ...j.items.map((c) => c.n || 0));
     const last = j.items[j.items.length - 1] || {};
-    newConsulta({ customerId: j.customerId, leadId: j.leadId, clientName: j.clientName, childName: last.childName || "", phone: last.phone || "", n: Math.min(maxN + 1, 99) });
+    newConsulta({ customerId: j.customerId, leadId: j.leadId, clientName: j.clientName, childName: last.childName || "", phone: last.phone || "", n: Math.min(maxN + 1, 99), packageTotal: j.total });
   }
 
   if (!product) return <EmptyState title="Sem produto ativo" hint="Escolha um produto no seletor da barra lateral." />;
@@ -209,13 +212,13 @@ function AgendaTab({ days, byCell, journeys, consultas, onShiftWeek, onToday, on
                 const cell = byCell.get(`${ymd(d)}-${pad(h)}`) || [];
                 return (
                   <div key={`${ymd(d)}-${h}`} onClick={() => (cell.length ? onPick(cell[0]) : onCell(d, h))}
-                    title={cell.length ? cell.map((c) => `${c.clientName} · consulta ${c.n}/${TOTAL}`).join("\n") : "marcar consulta"}
+                    title={cell.length ? cell.map((c) => `${c.clientName} · consulta ${c.n}/${c.packageTotal || TOTAL}`).join("\n") : "marcar consulta"}
                     style={{ height: 34, borderTop: "1px solid var(--line-1)", borderLeft: "1px solid var(--line-1)", cursor: "pointer", padding: 2, background: "transparent" }}>
                     {cell.map((c) => {
                       const st = STATUS[c.status] || STATUS.scheduled;
                       return (
                         <div key={c.id} style={{ height: "100%", borderRadius: 6, padding: "2px 7px", fontSize: 10.5, fontWeight: 700, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", background: "color-mix(in srgb, " + st.color + " 14%, transparent)", color: st.color, border: "1px solid color-mix(in srgb, " + st.color + " 35%, transparent)" }}>
-                          {c.clientName || "?"} · {c.n}/{TOTAL}
+                          {c.clientName || "?"} · {c.n}/{c.packageTotal || TOTAL}
                         </div>
                       );
                     })}
@@ -240,11 +243,11 @@ function AgendaTab({ days, byCell, journeys, consultas, onShiftWeek, onToday, on
               <div key={j.key} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 16px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 700, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{j.clientName || "?"}</div>
-                  <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)" }}>{j.done}/{TOTAL}</span>
+                  <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)" }}>{j.done}/{j.total}</span>
                 </div>
-                {/* bolinhas do progresso 1..8 */}
+                {/* bolinhas do progresso 1..N (tamanho do pacote comprado) */}
                 <div style={{ display: "flex", gap: 5, margin: "10px 0" }}>
-                  {Array.from({ length: TOTAL }, (_, i) => i + 1).map((n) => {
+                  {Array.from({ length: j.total }, (_, i) => i + 1).map((n) => {
                     const c = j.items.find((x) => x.n === n);
                     const st = c ? (STATUS[c.status] || STATUS.scheduled) : null;
                     const done = c?.status === "done";
@@ -261,10 +264,10 @@ function AgendaTab({ days, byCell, journeys, consultas, onShiftWeek, onToday, on
                   })}
                 </div>
                 <div className="mono dim" style={{ fontSize: 11 }}>
-                  {j.next ? `próxima: ${fmtAt(j.next.at)}` : j.done >= TOTAL ? "jornada completa 🎉" : "sem próxima marcada"}
+                  {j.next ? `próxima: ${fmtAt(j.next.at)}` : j.done >= j.total ? "jornada completa 🎉" : "sem próxima marcada"}
                 </div>
                 <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-                  {j.done < TOTAL && <button onClick={() => onNext(j)} style={chip(false)}>+ marcar próxima</button>}
+                  {j.done < j.total && <button onClick={() => onNext(j)} style={chip(false)}>+ marcar próxima</button>}
                   <button onClick={() => onOpenManual(j)} style={chip(false)}>Manual da Família</button>
                 </div>
               </div>
@@ -323,7 +326,7 @@ function ConsultaModal({ c, customers, onClose, onSaved }) {
     <div style={overlay} onClick={onClose}>
       <div style={{ ...sheet, width: "min(680px, 94vw)" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, flex: 1 }}>{isNew ? "Nova consulta" : `Consulta ${form.n}/${TOTAL} · ${form.clientName}`}</div>
+          <div style={{ fontSize: 15, fontWeight: 800, flex: 1 }}>{isNew ? "Nova consulta" : `Consulta ${form.n}/${form.packageTotal || TOTAL} · ${form.clientName}`}</div>
           <button onClick={onClose} style={{ ...chip(false), padding: "0 9px" }}>✕</button>
         </div>
 
