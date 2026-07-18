@@ -65,6 +65,18 @@ export function registerFormRoutes(app, repo, opts = {}) {
   const discord = opts.discord; // injetado por routes.js (fail-open, pode faltar em teste direto)
   const metaCapi = opts.metaCapi; // CAPI "Lead" server-side (fail-open, pode faltar em teste direto)
   const anthropic = opts.anthropic; // IA da variante de welcome (503 quando falta chave)
+  // Número comercial do WhatsApp: o form manda o lead falar com o número
+  // CONECTADO no cockpit, a não ser que aquele form tenha um número próprio
+  // escrito. Injetado por routes.js (o cliente do WhatsApp nasce depois daqui).
+  const salesWhatsapp = opts.salesWhatsapp || (async () => "");
+
+  // Preenche o WhatsApp do "obrigado" com o número conectado quando o form não
+  // define um: um número só pra manter, sem cópia velha em cada formulário.
+  async function withSalesWhatsapp(pf) {
+    if (pf?.thanks?.whatsapp) return pf;
+    const digits = await salesWhatsapp();
+    return digits ? { ...pf, thanks: { ...(pf.thanks || {}), whatsapp: digits } } : pf;
+  }
   const allow = makeRateLimiter({
     limit: opts.rateLimit ?? Number(process.env.FORM_RATE_LIMIT || 10),
     windowMs: opts.rateWindowMs ?? 60_000,
@@ -85,7 +97,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
   app.get("/public/forms/:id", async (req, reply) => {
     const form = await publishedForm(req.params.id);
     if (!form) return reply.code(404).send({ error: "Not found" });
-    return publicForm(form);
+    return withSalesWhatsapp(publicForm(form));
   });
 
   app.post("/public/forms/:id/submissions", async (req, reply) => {
@@ -390,7 +402,8 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // Pixel por produto: o form dispara o pixel do SaaS dele (fallback env).
     const product = form.saas ? await repo.get("products", form.saas) : null;
     const pain = await adPainOf(String(req.query.utm_content || ""));
-    return reply.type("text/html").send(formPageHtml(resolveWelcome(publicForm(form), pain), { embed, pixelId: product?.metaPixelId || "", pain }));
+    const pf = await withSalesWhatsapp(resolveWelcome(publicForm(form), pain));
+    return reply.type("text/html").send(formPageHtml(pf, { embed, pixelId: product?.metaPixelId || "", pain }));
   });
 
   app.get("/embed.js", async (_req, reply) => reply.type("text/javascript").send(EMBED_JS));
@@ -431,6 +444,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
   app.post("/api/forms/preview", async (req, reply) => {
     const draft = req.body && typeof req.body === "object" ? req.body : null;
     if (!draft) return reply.code(400).send({ error: "JSON body required" });
-    return { html: formPageHtml(resolveWelcome(publicForm(draft), ""), { embed: false, preview: true }) };
+    const pf = await withSalesWhatsapp(resolveWelcome(publicForm(draft), ""));
+    return { html: formPageHtml(pf, { embed: false, preview: true }) };
   });
 }

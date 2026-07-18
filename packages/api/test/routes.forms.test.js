@@ -518,3 +518,36 @@ test("suggest-welcome: gera variante por IA com contexto do form; 503 sem chave"
   await app.close();
   await off.close();
 });
+
+// O botão/redirect de WhatsApp do form manda o lead pro número CONECTADO no
+// cockpit (Cloud API), pra não existir cópia velha do número em cada form.
+test("WhatsApp do form: herda o número conectado; número escrito no form vence", async () => {
+  const wa = {
+    configured: () => true,
+    async numberInfo() { return { display: "+55 41 93618-3835" }; },
+    async sendText() { return { messageId: "x" }; },
+    async sendTemplate() { return { messageId: "x" }; },
+    async markRead() {},
+    verifyWebhook: () => null,
+  };
+  const { app, repo } = await buildApp({ whatsapp: wa });
+
+  // form sem número próprio: sai o do cockpit, em dígitos
+  const pub = (await app.inject({ method: "GET", url: "/public/forms/fo_test" })).json();
+  assert.equal(pub.thanks.whatsapp, "5541936183835");
+  const page = await app.inject({ method: "GET", url: "/f/fo_test" });
+  assert.ok(page.body.includes("5541936183835"), "a página hospedada leva o número conectado");
+
+  // form com número próprio continua mandando pro dele (override explícito)
+  await repo.create("forms", { ...FORM, id: "fo_proprio", thanks: { title: "ok", whatsapp: "11999998888" } });
+  const proprio = (await app.inject({ method: "GET", url: "/public/forms/fo_proprio" })).json();
+  assert.equal(proprio.thanks.whatsapp, "11999998888");
+  await app.close();
+});
+
+test("WhatsApp do form: sem Cloud API configurada, o form segue como está", async () => {
+  const { app } = await buildApp({ whatsapp: { configured: () => false, verifyWebhook: () => null } });
+  const pub = (await app.inject({ method: "GET", url: "/public/forms/fo_test" })).json();
+  assert.equal(pub.thanks.whatsapp, undefined);
+  await app.close();
+});
