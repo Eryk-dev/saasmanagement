@@ -230,7 +230,7 @@ function App() {
           {scr === "creative"    && <CreativeScreen />}
           {scr === "social"      && <SocialScreen />}
           {scr === "offers"      && <OffersScreen />}
-          {scr === "agenda"      && <AgendaScreen />}
+          {scr === "agenda"      && <AgendaScreen onOpenLead={openLead} />}
           {scr === "consultas"   && <ConsultasScreen />}
           {scr === "disparos"    && <DisparosScreen onOpenLead={openLead} />}
           {scr === "whatsapp"    && <WhatsappInboxScreen onOpenLead={openLead} />}
