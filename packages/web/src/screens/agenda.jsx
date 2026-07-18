@@ -23,10 +23,11 @@ const { useState: useS, useEffect: useE, useMemo: useM } = React;
 
 const pad = (n) => String(n).padStart(2, "0");
 const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-// Horas fracionadas (7.5 = 07:30) viram rótulo HH:MM.
-const fmtH = (v) => `${pad(Math.floor(v))}:${v % 1 ? "30" : "00"}`;
-// Passos de 30 min de `from` até `to` (inclusive).
-const halfHours = (from, to) => Array.from({ length: Math.round((to - from) * 2) + 1 }, (_, i) => from + i * 0.5);
+// Horas fracionadas (7.5 = 07:30, 7.25 = 07:15) viram rótulo HH:MM.
+const fmtH = (v) => `${pad(Math.floor(v))}:${pad(Math.round((v % 1) * 60))}`;
+// Passos de 15 min de `from` até `to` (inclusive) — o início do compromisso
+// acompanha a duração fina (15/45 min).
+const quarterHours = (from, to) => Array.from({ length: Math.round((to - from) * 4) + 1 }, (_, i) => from + i * 0.25);
 // Call já encerrada não ocupa agenda: follow-up (SDR marca por cima) e lead
 // fechado/perdido (o callAt vira história).
 const DEAD_CALL_KINDS = new Set(["followup", "ganho", "integracao", "posvenda", "perdido", "desqualificado"]);
@@ -142,14 +143,16 @@ export function AgendaScreen({ onOpenLead }) {
   const onBlock = (b) => setEditor({ block: b, date: b.recur === "once" ? b.date : "", fromHour: Number(b.fromHour) || 9 });
 
   // Salvar do modal: valida, checa conflito de CADA participante e cria/atualiza.
-  // Devolve string de erro pra mostrar no próprio modal, ou null quando deu certo.
+  // Recorrência abrangente: `weekdaysSel` = dias da semana alvo (null = pontual);
+  // cada dia vira um registro weekly. Devolve string de erro ou null quando ok.
   function saveItem(form, existing) {
-    const { kind, text, usersSel, date, from, to, recur } = form;
+    const { kind, text, usersSel, date, from, to, weekdaysSel } = form;
     if (!usersSel.length) return "Escolha pelo menos uma pessoa.";
     if (!(to > from)) return "O fim precisa ser depois do início.";
-    if (recur === "once" && !date) return "Escolha a data.";
+    if (!weekdaysSel && !date) return "Escolha a data.";
+    if (weekdaysSel && !weekdaysSel.length) return "Escolha pelo menos um dia da semana.";
     if (kind === "event" && !text.trim()) return "Dê um título pro compromisso.";
-    if (recur === "once") {
+    if (!weekdaysSel) {
       for (const u of usersSel) {
         const hit = liveConflict(u, date, from, to);
         if (hit) return `${displayName(u)} já tem ${hit} nesse horário. Remarque antes.`;
@@ -160,16 +163,18 @@ export function AgendaScreen({ onOpenLead }) {
       title: kind === "event" ? text.trim() : "",
       reason: kind === "block" ? text.trim() : "",
     };
-    const wd = date ? new Date(`${date}T12:00:00`).getDay() : Number(existing?.weekday) || 1;
     if (existing) {
-      updateBlock(existing.id, recur === "weekly"
-        ? { ...base, recur: "weekly", weekday: wd, date: "" }
+      updateBlock(existing.id, weekdaysSel
+        ? { ...base, recur: "weekly", weekday: weekdaysSel[0], date: "" }
         : { ...base, recur: "once", date, weekday: 0 });
-    } else if (recur === "weekdays") {
-      for (let w = 1; w <= 5; w++) addBlock({ ...base, recur: "weekly", weekday: w });
-      flash(`${kind === "event" ? "Compromisso" : "Bloqueio"} criado de segunda a sexta, ${fmtH(from)} às ${fmtH(to)}.`);
-    } else if (recur === "weekly") {
-      addBlock({ ...base, recur: "weekly", weekday: wd });
+      if (weekdaysSel && weekdaysSel.length > 1) {
+        for (const w of weekdaysSel.slice(1)) addBlock({ ...base, recur: "weekly", weekday: w });
+      }
+    } else if (weekdaysSel) {
+      for (const w of weekdaysSel) addBlock({ ...base, recur: "weekly", weekday: w });
+      if (weekdaysSel.length > 1) {
+        flash(`${kind === "event" ? "Compromisso" : "Bloqueio"} criado ${fmtH(from)} às ${fmtH(to)} em ${weekdaysSel.length} dias da semana.`);
+      }
     } else {
       addBlock({ ...base, recur: "once", date });
     }
@@ -232,24 +237,34 @@ export function AgendaScreen({ onOpenLead }) {
   );
 }
 
-// Modal de criar/editar compromisso ou bloqueio: tipo, título/motivo, pessoa,
-// data, de/até em passos de 30 min e recorrência (pontual · toda semana ·
-// seg a sex). Excluir mora aqui também.
+// Modal de criar/editar compromisso ou bloqueio: tipo, título/motivo, pessoas
+// (lista dropdown multi-seleção), data, início em passos de 15 min + DURAÇÃO
+// (15/30/45/60/90/120) e recorrência abrangente (não repete · toda semana ·
+// seg a sex · todos os dias · dias escolhidos). Excluir mora aqui também.
+const DUR_OPTIONS = [15, 30, 45, 60, 90, 120];
+const durLabel = (m) => (m < 60 ? `${m} min` : m % 60 === 0 ? `${m / 60}h` : `${Math.floor(m / 60)}h${m % 60}`);
+const WD_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+
 function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose }) {
   const b = init.block;
   const [kind, setKind] = useS(b ? (b.kind === "event" ? "event" : "block") : "event");
   const [text, setText] = useS(b ? (b.title || b.reason || "") : "");
   // Participantes: mais de uma pessoa = o compromisso aparece (e ocupa) a
   // agenda de todas. A primeira selecionada dá a cor do evento.
-  const [sel, setSel] = useS(() => {
-    const init0 = b ? [...new Set([b.user, ...(Array.isArray(b.users) ? b.users : [])].filter(Boolean))] : [defaultUser].filter(Boolean);
-    return init0;
-  });
+  const [sel, setSel] = useS(() => (b
+    ? [...new Set([b.user, ...(Array.isArray(b.users) ? b.users : [])].filter(Boolean))]
+    : [defaultUser].filter(Boolean)));
+  const [selOpen, setSelOpen] = useS(false);
   const toggleSel = (id) => setSel((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const [date, setDate] = useS(init.date || ymd(new Date()));
   const [from, setFrom] = useS(() => Number(b?.fromHour ?? init.fromHour ?? 9));
-  const [to, setTo] = useS(() => Number(b?.toHour ?? ((b?.fromHour ?? init.fromHour ?? 9) + 1)));
+  const [dur, setDur] = useS(() => {
+    const d = b ? Math.round((Number(b.toHour) - Number(b.fromHour)) * 60) : 60;
+    return d > 0 ? d : 60;
+  });
+  // Recorrência: "once" | "weekly" (dia da data) | "weekdays" | "daily" | "custom".
   const [recur, setRecur] = useS(b ? (b.recur === "weekly" ? "weekly" : "once") : "once");
+  const [customWds, setCustomWds] = useS(() => (b?.recur === "weekly" ? [Number(b.weekday)] : [1, 3, 5]));
   const [err, setErr] = useS("");
   useE(() => {
     const h = (e) => { if (e.key === "Escape") onClose(); };
@@ -257,17 +272,25 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
     return () => window.removeEventListener("keydown", h);
   }, [onClose]);
 
+  const to = from + dur / 60;
   const weekdayLabel = WD_LABEL[date ? new Date(`${date}T12:00:00`).getDay() : Number(b?.weekday) || 1];
   const field = { height: 34, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, minWidth: 0 };
   const label = { fontSize: 10.5, fontFamily: "var(--mono)", color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 4 };
+  const selNames = sel.map((id) => displayName(id) || id);
   const submit = () => {
-    const e = onSave({ kind, text, usersSel: sel, date, from, to, recur }, b || null);
+    const wd = date ? new Date(`${date}T12:00:00`).getDay() : Number(b?.weekday) || 1;
+    const weekdaysSel = recur === "once" ? null
+      : recur === "weekly" ? [wd]
+      : recur === "weekdays" ? [1, 2, 3, 4, 5]
+      : recur === "daily" ? [0, 1, 2, 3, 4, 5, 6]
+      : [...customWds].sort();
+    const e = onSave({ kind, text, usersSel: sel, date, from, to, weekdaysSel }, b || null);
     if (e) setErr(e); else onClose();
   };
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 90, background: "color-mix(in srgb, var(--bg-0) 62%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(440px, 100%)", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(440px, 100%)", maxHeight: "min(92vh, 100%)", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700, flex: 1 }}>
             {b ? "Editar item da agenda" : "Novo item na agenda"}
@@ -285,28 +308,37 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
             style={{ ...field, width: "100%" }} />
         </div>
 
-        <div>
-          <span style={label}>Pessoas (a agenda de cada uma fica ocupada)</span>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {people.map((p) => {
-              const on = sel.includes(p.id);
-              return (
-                <button key={p.id} onClick={() => toggleSel(p.id)}
-                  style={{ height: 30, padding: "0 12px", borderRadius: 999, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
-                    background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)",
-                    border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)") }}>
-                  {on ? "✓ " : ""}{p.name || p.id}
-                </button>
-              );
-            })}
-            {sel.filter((id) => !people.some((p) => p.id === id)).map((id) => (
-              <button key={id} onClick={() => toggleSel(id)}
-                style={{ height: 30, padding: "0 12px", borderRadius: 999, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
-                  background: "var(--accent-soft)", color: "var(--accent)", border: "1px solid var(--accent-line)" }}>
-                ✓ {displayName(id)}
-              </button>
-            ))}
-          </div>
+        {/* Pessoas: campo que abre a lista com checkboxes (a agenda de cada
+            selecionada fica ocupada). */}
+        <div style={{ position: "relative" }}>
+          <span style={label}>Pessoas</span>
+          <button onClick={() => setSelOpen((v) => !v)}
+            style={{ ...field, width: "100%", display: "flex", alignItems: "center", gap: 8, cursor: "pointer", textAlign: "left" }}>
+            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: sel.length ? "var(--fg-1)" : "var(--fg-4)" }}>
+              {sel.length ? selNames.join(", ") : "selecionar…"}
+            </span>
+            <span className="dim" style={{ fontSize: 11 }}>{selOpen ? "▲" : "▼"}</span>
+          </button>
+          {selOpen && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 5, marginTop: 4, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", boxShadow: "var(--shadow-pop)", padding: 4, maxHeight: 200, overflowY: "auto" }}>
+              {people.map((p) => (
+                <label key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 6, fontSize: 13, cursor: "pointer" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                  <input type="checkbox" checked={sel.includes(p.id)} onChange={() => toggleSel(p.id)}
+                    style={{ width: 14, height: 14, accentColor: "var(--accent)", cursor: "pointer" }} />
+                  {p.name || p.id}
+                </label>
+              ))}
+              {sel.filter((id) => !people.some((p) => p.id === id)).map((id) => (
+                <label key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 6, fontSize: 13, cursor: "pointer" }}>
+                  <input type="checkbox" checked onChange={() => toggleSel(id)}
+                    style={{ width: 14, height: 14, accentColor: "var(--accent)", cursor: "pointer" }} />
+                  {displayName(id)}
+                </label>
+              ))}
+            </div>
+          )}
         </div>
 
         <div>
@@ -316,26 +348,45 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div>
-            <span style={label}>Das</span>
-            <select value={from} onChange={(e) => { const v = Number(e.target.value); setFrom(v); if (to <= v) setTo(v + 0.5); }} style={{ ...field, width: "100%" }}>
-              {halfHours(7, 20.5).map((h) => <option key={h} value={h}>{fmtH(h)}</option>)}
+            <span style={label}>Começa às</span>
+            <select value={from} onChange={(e) => setFrom(Number(e.target.value))} style={{ ...field, width: "100%" }}>
+              {quarterHours(7, 20.75).map((h) => <option key={h} value={h}>{fmtH(h)}</option>)}
             </select>
           </div>
           <div>
-            <span style={label}>Às</span>
-            <select value={to} onChange={(e) => setTo(Number(e.target.value))} style={{ ...field, width: "100%" }}>
-              {halfHours(from + 0.5, 21).map((h) => <option key={h} value={h}>{fmtH(h)}</option>)}
+            <span style={label}>Duração</span>
+            <select value={dur} onChange={(e) => setDur(Number(e.target.value))} style={{ ...field, width: "100%" }}>
+              {DUR_OPTIONS.map((m) => <option key={m} value={m}>{durLabel(m)}</option>)}
+              {!DUR_OPTIONS.includes(dur) && <option value={dur}>{durLabel(dur)}</option>}
             </select>
           </div>
         </div>
+        <div className="mono dim" style={{ fontSize: 11, marginTop: -6 }}>termina às {fmtH(to)}</div>
 
         <div>
           <span style={label}>Repete</span>
           <select value={recur} onChange={(e) => setRecur(e.target.value)} style={{ ...field, width: "100%" }}>
             <option value="once">não repete (só {date ? date.slice(8, 10) + "/" + date.slice(5, 7) : "essa data"})</option>
             <option value="weekly">toda {weekdayLabel}</option>
-            {!b && <option value="weekdays">segunda a sexta, toda semana</option>}
+            <option value="weekdays">segunda a sexta, toda semana</option>
+            <option value="daily">todos os dias, toda semana</option>
+            <option value="custom">dias escolhidos…</option>
           </select>
+          {recur === "custom" && (
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 8 }}>
+              {WD_SHORT.map((wLabel, w) => {
+                const on = customWds.includes(w);
+                return (
+                  <button key={w} onClick={() => setCustomWds((prev) => (prev.includes(w) ? prev.filter((x) => x !== w) : [...prev, w]))}
+                    style={{ height: 30, padding: "0 11px", borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                      background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)",
+                      border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)") }}>
+                    {wLabel}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {err && <div style={{ padding: "8px 10px", borderRadius: "var(--r-2)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12.5 }}>{err}</div>}
