@@ -61,6 +61,19 @@ export function WhatsappInboxScreen({ onOpenLead }) {
   const [q, setQ] = React.useState("");
   const configured = !!window.SEED?.CONFIG?.whatsapp?.configured;
 
+  // Número conectado, direto da Meta: confirma QUAL número está enviando (e,
+  // se as credenciais estiverem erradas, o erro aparece no lugar do número em
+  // vez de só falhar no primeiro envio). Uma consulta por abertura da tela.
+  const [numInfo, setNumInfo] = React.useState(null);
+  React.useEffect(() => {
+    if (!configured) return;
+    let alive = true;
+    api.waNumber()
+      .then((n) => alive && setNumInfo(n))
+      .catch((e) => alive && setNumInfo({ error: String(e.message || e).slice(0, 160) }));
+    return () => { alive = false; };
+  }, [configured]);
+
   // Lista de conversas (refetch em tempo real). Escopo: produto ativo + órfãs.
   React.useEffect(() => {
     let alive = true;
@@ -104,9 +117,15 @@ export function WhatsappInboxScreen({ onOpenLead }) {
 
   const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" };
 
+  const unreadLabel = totalUnread ? `${totalUnread} não lida${totalUnread > 1 ? "s" : ""}` : "conversas com os leads";
+  const sub = !configured ? "não configurado no servidor"
+    : numInfo?.error ? `a Meta recusou as credenciais: ${numInfo.error}`
+    : numInfo?.display ? `enviando por ${numInfo.display}${numInfo.name ? ` · ${numInfo.name}` : ""} · ${unreadLabel}`
+    : unreadLabel;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-      <PageHead title="WhatsApp" sub={configured ? (totalUnread ? `${totalUnread} não lida${totalUnread > 1 ? "s" : ""}` : "conversas com os leads") : "não configurado no servidor"} />
+      <PageHead title="WhatsApp" sub={sub} />
 
       <WaHealthBanner />
 

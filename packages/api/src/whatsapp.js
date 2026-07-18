@@ -48,6 +48,29 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     try { await post({ status: "read", message_id: messageId }); } catch { /* opcional */ }
   }
 
+  // Qual número está de fato conectado (GET no phone number id). Serve de prova
+  // viva de que token + WHATSAPP_PHONE_NUMBER_ID batem e apontam pro número
+  // certo — é o que a tela de WhatsApp mostra no topo depois de trocar o número.
+  async function numberInfo() {
+    if (!configured()) throw new Error("WhatsApp não configurado — defina WHATSAPP_TOKEN e WHATSAPP_PHONE_NUMBER_ID");
+    const res = await f(`${GRAPH}/${phoneNumberId}?fields=display_phone_number,verified_name,quality_rating`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const text = await res.text();
+    let body; try { body = JSON.parse(text); } catch { body = {}; }
+    if (res.status >= 400 || body.error) {
+      const err = new Error(`WhatsApp API -> ${res.status}: ${body.error?.message || text.slice(0, 300)}`);
+      err.status = res.status; err.code = body.error?.code;
+      throw err;
+    }
+    return {
+      phoneNumberId,
+      display: body.display_phone_number || "",
+      name: body.verified_name || "",
+      quality: body.quality_rating || "",
+    };
+  }
+
   // Verificação do webhook (GET da Meta: hub.mode/hub.verify_token/hub.challenge).
   // Devolve o challenge se o token bate; null se não (rota responde 403).
   function verifyWebhook(mode, tok, challenge) {
@@ -55,7 +78,7 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     return null;
   }
 
-  return { configured, sendText, sendTemplate, markRead, verifyWebhook };
+  return { configured, sendText, sendTemplate, markRead, verifyWebhook, numberInfo };
 }
 
 // Número em dígitos (E.164 sem +) pra enviar e pra casar o recebido com o lead.

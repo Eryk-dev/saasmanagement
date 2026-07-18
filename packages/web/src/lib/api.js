@@ -94,6 +94,7 @@ export const api = {
   sendWhatsapp: (leadId, text) => req("POST", `/api/leads/${leadId}/whatsapp`, { text }),
   // Inbox de WhatsApp: lista de conversas, mensagens de uma conversa, marcar
   // lida e enviar pela conversa (id = número em dígitos, com ou sem lead).
+  waNumber: () => req("GET", "/api/whatsapp/number"),
   waThreads: () => req("GET", "/api/whatsapp/threads"),
   waThread: (id) => req("GET", `/api/whatsapp/threads/${id}`),
   waThreadRead: (id) => req("POST", `/api/whatsapp/threads/${id}/read`, {}),
