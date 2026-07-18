@@ -4,6 +4,7 @@ import { EmptyState } from "../atoms.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
+import { useData } from "../data.jsx";
 import { CreativeEditor } from "./creative.jsx";
 import { AreaLine, fmtNum } from "./social-metrics.jsx";
 
@@ -99,6 +100,10 @@ function SocialScreen() {
   const days = 30;
   const [err, setErr] = useS(null);
   const [wizard, setWizard] = useS(false);
+  const [tab, setTab] = useS("painel");
+  // Fila de comentários pendentes — some no badge da aba. Carregada junto com o
+  // painel pra o número já aparecer sem abrir a aba.
+  const [pending, setPending] = useS(null);
 
   // O handoff fixa a visão em 30 dias.
   useE(() => {
@@ -108,6 +113,18 @@ function SocialScreen() {
     Promise.all([api.socialSummary(product.id, days), api.socialPosts(product.id)])
       .then(([s, p]) => { if (alive) { setSum(s); setPosts(p || []); } })
       .catch((e) => alive && setErr(e.message));
+    return () => { alive = false; };
+  }, [product?.id]);
+
+  // Contagem de comentários pendentes pro badge da aba. Fora do carregamento do
+  // painel de propósito: varrer os comentários na Meta é lento e não pode
+  // atrasar as métricas.
+  useE(() => {
+    if (!product?.id) return;
+    let alive = true;
+    api.socialComments(product.id, "pending")
+      .then((r) => alive && setPending(r?.insights?.pending ?? null))
+      .catch(() => alive && setPending(null));
     return () => { alive = false; };
   }, [product?.id]);
 
@@ -140,12 +157,35 @@ function SocialScreen() {
       <PageHead
         title="Redes sociais"
         sub={<span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>métricas do perfil · <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--fg-2)", fontSize: 12.5, fontWeight: 500 }}><span style={{ width: 6, height: 6, borderRadius: 99, background: sum?.configured ? "var(--pos)" : "var(--fg-4)" }} />{sum?.configured ? `conectado${sum?.account?.username ? ` · @${sum.account.username}` : ""}` : "não conectado"}</span></span>}>
-        <button onClick={() => setWizard(true)}
-          style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13, fontWeight: 600 }}>
-          + criar post
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {[["painel", "Painel", null], ["comentarios", "Comentários", pending]].map(([id, label, badge]) => (
+            <button key={id} onClick={() => setTab(id)}
+              style={{
+                height: 32, padding: "0 12px", borderRadius: "var(--r-2)", fontSize: 13,
+                fontWeight: tab === id ? 600 : 500,
+                display: "inline-flex", alignItems: "center", gap: 6,
+                border: "1px solid " + (tab === id ? "var(--accent-line)" : "var(--line-2)"),
+                background: tab === id ? "var(--accent-soft)" : "transparent",
+                color: tab === id ? "var(--fg-1)" : "var(--fg-3)",
+              }}>
+              {label}
+              {badge > 0 && (
+                <span className="tnum" style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 99, background: "var(--warn)", color: "var(--bg-0)", fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{badge}</span>
+              )}
+            </button>
+          ))}
+          <button onClick={() => setWizard(true)}
+            style={{ height: 32, padding: "0 14px", marginLeft: 6, borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13, fontWeight: 600 }}>
+            + criar post
+          </button>
+        </div>
       </PageHead>
 
+      {tab === "comentarios" ? (
+        <ErrorBoundary label="comentarios">
+          <CommentsPanel saas={product?.id} onCount={setPending} />
+        </ErrorBoundary>
+      ) : (
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
         {!sum && !err && <div className="mono dim" style={{ fontSize: 12 }}>carregando métricas…</div>}
@@ -225,6 +265,7 @@ function SocialScreen() {
           </>
         )}
       </div>
+      )}
 
       {wizard && (
         <ErrorBoundary variant="modal" label="criar-post" onReset={() => setWizard(false)}>
@@ -521,6 +562,186 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
           {result?.ok && <span className="mono" style={{ fontSize: 12, color: "var(--pos)" }}>publicado ✓</span>}
           <button onClick={onClose} className="mono dim" style={{ marginLeft: "auto", fontSize: 12 }}>fechar</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Aba "Comentários" ────────────────────────────────────────────────────────
+// Fila de comentários do Instagram e da página do Facebook, com resposta direto
+// daqui. Comentário novo cai pelo webhook da Meta e a tela acende sozinha: o
+// webhook escreve na collection, o SSE do cockpit bate no `version` e o efeito
+// abaixo refaz o fetch. O botão "atualizar" força a varredura completa na Meta
+// (o padrão tem throttle de 1 min no servidor).
+
+const STATUSES = [
+  { id: "pending", label: "Pendentes" },
+  { id: "answered", label: "Respondidos" },
+  { id: "all", label: "Todos" },
+];
+const NET_LABEL = { instagram: "Instagram", facebook: "Facebook" };
+
+// "há 20 min" / "há 3h" / "há 2d" — a idade do comentário é o que decide a
+// ordem de atendimento, então ela vem antes da data absoluta.
+function ago(iso) {
+  const t = new Date(iso || 0).getTime();
+  if (!t) return "";
+  const min = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if (min < 1) return "agora";
+  if (min < 60) return `há ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `há ${h}h`;
+  return `há ${Math.round(h / 24)}d`;
+}
+
+function CommentsPanel({ saas, onCount }) {
+  const { version } = useData();
+  const [status, setStatus] = useS("pending");
+  const [data, setData] = useS(null);
+  const [err, setErr] = useS(null);
+  const [busy, setBusy] = useS(false);
+  // Qual comentário está com a caixa de resposta aberta, e o rascunho de cada um
+  // (guardado por id: trocar de card não pode perder o que já foi escrito).
+  const [open, setOpen] = useS("");
+  const [drafts, setDrafts] = useS({});
+  const [sending, setSending] = useS("");
+  const [actionErr, setActionErr] = useS({});
+
+  const load = React.useCallback(async (force = false) => {
+    if (!saas) return;
+    if (force) setBusy(true);
+    try {
+      const r = await api.socialComments(saas, status, force);
+      setData(r); setErr(null);
+      if (onCount) onCount(r?.insights?.pending ?? null);
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }, [saas, status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useE(() => { load(false); }, [load, version]);
+
+  async function act(id, fn) {
+    setSending(id);
+    setActionErr((m) => ({ ...m, [id]: null }));
+    try {
+      await fn();
+      setOpen("");
+      setDrafts((d) => ({ ...d, [id]: "" }));
+      await load(false);
+    } catch (e) {
+      setActionErr((m) => ({ ...m, [id]: e.message }));
+    } finally { setSending(""); }
+  }
+
+  const list = data?.comments || [];
+  const ins = data?.insights;
+  const btn = { height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 };
+  const primary = { ...btn, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", border: "1px solid var(--btn-bg, var(--accent))", fontWeight: 600 };
+
+  return (
+    <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+      {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
+      {data && data.configured === false && (
+        <EmptyState title="Meta não conectada" hint="Defina META_ACCESS_TOKEN no servidor com instagram_manage_comments (Instagram) e pages_manage_engagement (página do Facebook)." />
+      )}
+      {data?.errors?.setup && <div className="mono" style={{ fontSize: 11.5, color: "var(--warn)" }}>{data.errors.setup}</div>}
+
+      {ins && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+          <StatTile label="Esperando resposta" value={fmtNum(ins.pending)}
+            delta={ins.oldestPendingHours != null ? `o mais antigo há ${ins.oldestPendingHours >= 24 ? `${Math.round(ins.oldestPendingHours / 24)}d` : `${ins.oldestPendingHours}h`}` : "fila zerada"} />
+          <StatTile label="Tempo de resposta" value={ins.medianReplyMinutes == null ? "—" : ins.medianReplyMinutes >= 60 ? `${Math.round(ins.medianReplyMinutes / 60)}h` : `${ins.medianReplyMinutes} min`}
+            delta={ins.replySample ? `mediana de ${ins.replySample} respostas` : "sem resposta no período"} />
+          <StatTile label="Respondidos · 30 dias" value={ins.answeredRate == null ? "—" : `${ins.answeredRate}%`} delta={`${fmtNum(ins.answered)} de ${fmtNum(ins.inPeriod)} comentários`} />
+          <StatTile label="Ocultos" value={fmtNum(ins.hidden)} delta="some pra todo mundo menos pra quem escreveu" />
+        </div>
+      )}
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        {STATUSES.map((s) => (
+          <button key={s.id} onClick={() => setStatus(s.id)}
+            style={{ ...btn, ...(status === s.id ? { background: "var(--accent-soft)", border: "1px solid var(--accent-line)", color: "var(--fg-1)", fontWeight: 600 } : {}) }}>
+            {s.label}
+          </button>
+        ))}
+        <button onClick={() => load(true)} disabled={busy} style={{ ...btn, marginLeft: "auto", opacity: busy ? 0.6 : 1 }}>
+          {busy ? "buscando na Meta…" : "↻ atualizar"}
+        </button>
+      </div>
+
+      {/* Uma rede falhar não some com a outra: o Instagram continua na tela
+          mesmo quando a página do Facebook recusa a leitura. */}
+      {data?.errors?.instagram && <div className="mono dim" style={{ fontSize: 11 }}>Instagram indisponível: {data.errors.instagram}</div>}
+      {data?.errors?.facebook && <div className="mono dim" style={{ fontSize: 11 }}>Facebook indisponível: {data.errors.facebook}</div>}
+
+      {!data && !err && <div className="mono dim" style={{ fontSize: 12 }}>carregando comentários…</div>}
+
+      {data && !list.length && (
+        <EmptyState
+          title={status === "pending" ? "Nenhum comentário esperando" : "Nada por aqui"}
+          hint={status === "pending" ? "Tudo respondido. Comentário novo aparece aqui sozinho, sem precisar recarregar." : "Troque o filtro pra ver os outros comentários."} />
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {list.map((c) => {
+          const late = c.pending && c.waitingHours >= 24;
+          return (
+            <div key={c.id} style={{ border: "1px solid " + (late ? "var(--warn)" : "var(--line-1)"), borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <Pill tone="mut">{NET_LABEL[c.network] || c.network}</Pill>
+                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{c.author ? (c.network === "instagram" ? `@${c.author}` : c.author) : "alguém"}</span>
+                <span className="mono dim" style={{ fontSize: 11 }}>{ago(c.at)}</span>
+                {late && <Pill tone="warn">esperando há {c.waitingHours >= 48 ? `${Math.round(c.waitingHours / 24)} dias` : "mais de 1 dia"}</Pill>}
+                {c.hidden && <Pill tone="mut">oculto</Pill>}
+                {c.done && !c.answered && <Pill tone="mut">resolvido</Pill>}
+                <span className="mono dim" style={{ fontSize: 11, marginLeft: "auto", maxWidth: "45%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {c.permalink ? <a href={c.permalink} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>{c.postTitle || "ver post"} ↗</a> : (c.postTitle || "")}
+                </span>
+              </div>
+
+              <div style={{ fontSize: 13.5, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{c.text || <span className="dim">(sem texto)</span>}</div>
+
+              {c.reply && (
+                <div style={{ borderLeft: "2px solid var(--accent-line)", paddingLeft: 10, marginLeft: 2, display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span className="mono dim" style={{ fontSize: 10.5 }}>nossa resposta · {ago(c.reply.at)}</span>
+                  <span style={{ fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{c.reply.text}</span>
+                </div>
+              )}
+
+              {open === c.id ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <textarea autoFocus rows={3} value={drafts[c.id] || ""} onChange={(e) => setDrafts((d) => ({ ...d, [c.id]: e.target.value }))}
+                    placeholder={`Responder ${c.author ? (c.network === "instagram" ? "@" + c.author : c.author) : ""}…`}
+                    style={{ width: "100%", padding: "8px 10px", background: "var(--bg-0)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.5, resize: "vertical", fontFamily: "inherit" }} />
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <button disabled={sending === c.id || !(drafts[c.id] || "").trim()}
+                      onClick={() => act(c.id, () => api.socialCommentReply(c.id, drafts[c.id]))}
+                      style={{ ...primary, opacity: sending === c.id || !(drafts[c.id] || "").trim() ? 0.6 : 1 }}>
+                      {sending === c.id ? "publicando…" : "responder"}
+                    </button>
+                    <button onClick={() => setOpen("")} style={btn}>cancelar</button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button onClick={() => setOpen(c.id)} style={primary}>responder</button>
+                  {!c.answered && (
+                    <button disabled={sending === c.id} onClick={() => act(c.id, () => api.socialCommentDone(c.id, !c.done))} style={btn}>
+                      {c.done ? "reabrir" : "resolver sem responder"}
+                    </button>
+                  )}
+                  <button disabled={sending === c.id} onClick={() => act(c.id, () => api.socialCommentHide(c.id, !c.hidden))}
+                    title="ocultar tira o comentário da vista de todo mundo menos de quem escreveu"
+                    style={btn}>
+                    {c.hidden ? "mostrar de novo" : "ocultar"}
+                  </button>
+                </div>
+              )}
+
+              {actionErr[c.id] && <div className="mono" style={{ fontSize: 11.5, color: "var(--neg)" }}>{actionErr[c.id]}</div>}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
