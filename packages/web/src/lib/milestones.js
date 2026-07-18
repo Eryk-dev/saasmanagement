@@ -21,7 +21,9 @@ export function milestoneTemplate(product) {
 // sem nenhum sinal, assume contrato anual (o padrão da casa).
 const CYCLE_DAYS = { monthly: 30, quarterly: 91, semiannual: 182, annual: 365 };
 // "único" = serviço avulso, sem contrato correndo → nunca gera marco de renovação.
-const PLAN_HINTS = [["único", 0], ["unico", 0], ["mensal", 30], ["trimestral", 91], ["semestral", 182], ["anual", 365]];
+// "consulta" = pacote da mentoria (UniqueKids): jornada finita, sem renovação
+// de contrato correndo — o pós-venda dele é a régua de consultas, não esta.
+const PLAN_HINTS = [["consulta", 0], ["único", 0], ["unico", 0], ["mensal", 30], ["trimestral", 91], ["semestral", 182], ["anual", 365]];
 export const RENEWAL_LEAD_DAYS = 60; // contato de renovação 2 meses antes do fim
 
 function contractDays(customer) {

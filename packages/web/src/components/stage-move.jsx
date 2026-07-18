@@ -2,7 +2,7 @@ import React from "react";
 import { PrimaryButton } from "../atoms.jsx";
 import { stageKind, phaseOf, isLossKind, isWonKind, lossReasonsOf } from "../lib/funnel.js";
 import { usersByRole, currentUser } from "../lib/users.js";
-import { PAYMENT_METHODS, CLOSED_PLANS } from "../lib/payments.js";
+import { PAYMENT_METHODS, CLOSED_PLANS, CONSULT_PACKAGES } from "../lib/payments.js";
 import { api } from "../lib/api.js";
 
 // Gate de movimento de estágio — os três momentos do processo que exigem input:
@@ -59,7 +59,8 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
     } else if (isWonGate) {
       patch.amount = Number(amount);
       patch.paymentMethod = payment;
-      patch.planClosed = planClosed;
+      // Mentoria é compra única (o valor não anualiza); o pacote é o "plano".
+      patch.planClosed = isKidsWon ? "unico" : planClosed;
       if (isKidsWon) patch.consultPackage = Number(consultPackage) || 8;
     } else {
       patch.closer = closer;
@@ -93,30 +94,33 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
             <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
               vira a receita da campanha no relatório de marketing e o valor da conversão enviada pra Meta
             </div>
+            {/* Mentoria não tem plano recorrente: o PACOTE de consultas é o que
+                foi comprado, então ele substitui o "Plano fechado" no Kids. */}
             <div style={{ height: 12 }} />
-            <label style={label}>Plano fechado *</label>
-            <select value={planClosed} onChange={(e) => setPlanClosed(e.target.value)} style={field}>
-              {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-            </select>
+            {isKidsWon ? (
+              <>
+                <label style={label}>Pacote de consultas *</label>
+                <select value={consultPackage} onChange={(e) => setConsultPackage(e.target.value)} style={field}>
+                  {CONSULT_PACKAGES.map((n) => <option key={n} value={n}>{n} consultas</option>)}
+                </select>
+                <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
+                  a jornada inteira nasce na tela Consultas (sem data); cada consulta marcada entra na Agenda e no Google
+                </div>
+              </>
+            ) : (
+              <>
+                <label style={label}>Plano fechado *</label>
+                <select value={planClosed} onChange={(e) => setPlanClosed(e.target.value)} style={field}>
+                  {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                </select>
+              </>
+            )}
             <div style={{ height: 12 }} />
             <label style={label}>Modo de pagamento *</label>
             <select value={payment} onChange={(e) => setPayment(e.target.value)} style={field}>
               <option value="">— como o cliente fechou —</option>
               {PAYMENT_METHODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
             </select>
-            {isKidsWon && (
-              <>
-                <div style={{ height: 12 }} />
-                <label style={label}>Pacote de consultas *</label>
-                <select value={consultPackage} onChange={(e) => setConsultPackage(e.target.value)} style={field}>
-                  <option value="8">8 consultas</option>
-                  <option value="4">4 consultas</option>
-                </select>
-                <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
-                  a jornada inteira nasce na tela Consultas (sem data); cada consulta marcada entra na Agenda e no Google
-                </div>
-              </>
-            )}
           </>
         ) : isLost ? (
           <>

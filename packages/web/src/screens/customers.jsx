@@ -13,7 +13,7 @@ import { WhatsappChat } from "../components/whatsapp-chat.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { leadTier, waLink } from "../lib/ui.js";
 import { displayName } from "../lib/users.js";
-import { paymentLabel, PAYMENT_METHODS } from "../lib/payments.js";
+import { paymentLabel, PAYMENT_METHODS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf } from "../lib/payments.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 // Clientes — a base ativa do produto em dois blocos: a tabela de clientes e,
 // ao lado, "Próximas ações" (o próximo marco de retenção de cada cliente,
@@ -324,7 +324,10 @@ function CustomerFacts({ customer, lead, product, onPatch }) {
       {children}
     </label>
   );
-  const PLANS = ["Anual", "Semestral", "Serviço único", "Trimestral", "Mensal"];
+  // Mentoria vende pacote de consultas; os demais produtos, plano recorrente.
+  const PLANS = customer.saas === "uniquekids"
+    ? CONSULT_PACKAGES.map(consultPackageLabel)
+    : ["Anual", "Semestral", "Serviço único", "Trimestral", "Mensal"];
   return (
     <div style={BOX}>
       <div className="mono" style={{ ...SECTION_LABEL, display: "flex", alignItems: "center", gap: 8 }}>
@@ -342,9 +345,9 @@ function CustomerFacts({ customer, lead, product, onPatch }) {
           <EditRow label="Contato"><input defaultValue={customer.contact || ""} onBlur={(e) => e.target.value !== (customer.contact || "") && patch({ contact: e.target.value })} style={inputSt} /></EditRow>
           <EditRow label="E-mail"><input defaultValue={customer.email || ""} onBlur={(e) => e.target.value !== (customer.email || "") && patch({ email: e.target.value })} style={inputSt} /></EditRow>
           <EditRow label="WhatsApp"><input defaultValue={customer.phone || ""} onBlur={(e) => e.target.value !== (customer.phone || "") && patch({ phone: e.target.value })} style={inputSt} /></EditRow>
-          <EditRow label="Plano">
+          <EditRow label={customer.saas === "uniquekids" ? "Pacote" : "Plano"}>
             <select value={customer.plan || ""} onChange={(e) => patch({ plan: e.target.value })} style={inputSt}>
-              <option value="">sem plano</option>
+              <option value="">{customer.saas === "uniquekids" ? "sem pacote" : "sem plano"}</option>
               {PLANS.map((p) => <option key={p} value={p}>{p}</option>)}
               {customer.plan && !PLANS.includes(customer.plan) && <option value={customer.plan}>{customer.plan}</option>}
             </select>
@@ -406,14 +409,17 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
       .catch(() => {});
     return () => { alive = false; };
   }, [isKids, customer.id, customer.leadId]);
-  const consultTotal = consultas.reduce((a, c) => Math.max(a, Number(c.packageTotal) || 0), 0) || 8;
+  // Tamanho do pacote: o que as consultas carimbam manda; sem consultas ainda,
+  // lê o rótulo do cadastro ("Mentoria · 4 consultas"); por último, o padrão 8.
+  const consultTotal = consultas.reduce((a, c) => Math.max(a, Number(c.packageTotal) || 0), 0)
+    || consultPackageOf(customer.plan) || 8;
   const consultDone = consultas.filter((c) => c.status === "done").length;
   const nextConsult = consultas.filter((c) => c.status === "scheduled" && c.at).sort((a, b) => String(a.at).localeCompare(String(b.at)))[0] || null;
   const fmtConsultaAt = (at) => at ? new Date(at).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "") : "";
   const CONSULT_STATUS = { done: { label: "feita", tone: "pos" }, scheduled: { label: "marcada", tone: "warn" }, canceled: { label: "cancelada", tone: "mut" } };
 
   const summary = isKids ? [
-    { label: "Pacote", value: `Mentoria · ${consultTotal} consultas` },
+    { label: "Pacote", value: consultPackageLabel(consultTotal) },
     { label: "Tempo de casa", value: tenureLabel(customer) || "defina o início" },
     { label: "Último contato", value: lastContact(customer) },
     { label: "Consultas", value: `${consultDone} de ${consultTotal} feitas` },
