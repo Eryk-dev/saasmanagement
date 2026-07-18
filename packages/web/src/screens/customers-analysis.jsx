@@ -76,7 +76,11 @@ function shortcutRange(key, now) {
   return [null, null]; // tudo
 }
 
-export function CustomersAnalysis({ customers }) {
+// `isKids` = workspace de mentoria (compra única, sem recorrência): as métricas
+// de assinatura (preço mensal médio e LTV, que derivam de MRR ÷ churn) não
+// significam nada ali e saem — o resto (faturado, caixa, futuro, ticket, churn
+// de famílias) vale igual.
+export function CustomersAnalysis({ customers, isKids = false }) {
   const money = window.fmt.money;
   const [shortcut, setShortcut] = useState("tudo");
   const [fromInput, setFromInput] = useState("");
@@ -176,18 +180,20 @@ export function CustomersAnalysis({ customers }) {
         <StatTile label="Dinheiro futuro" value={money(m.futuro)} delta="parcelas a receber dos faturados/parcelados" />
         <StatTile label="Clientes novos" value={String(m.cohort.length)} delta="entraram no período" />
         <StatTile label="Ticket médio" value={money(m.ticket)} delta="contratado ÷ clientes novos" />
-        <StatTile label="Preço mensal médio" value={money(m.mrrMedio)} delta="média do mensal (ARR ÷ 12)" />
+        {!isKids && <StatTile label="Preço mensal médio" value={money(m.mrrMedio)} delta="média do mensal (ARR ÷ 12)" />}
         <StatTile label="Churn" tone={m.churned.length > 0 ? "down" : "flat"}
           value={m.churnPct == null ? "—" : pct(m.churnPct)}
           small={m.churned.length ? `${m.churned.length} ${m.churned.length === 1 ? "saída" : "saídas"}` : ""}
           delta={m.baseStart ? `sobre base de ${m.baseStart} no início do período` : "sem base no início do período"} />
-        <StatTile label="LTV" value={m.ltv != null ? money(m.ltv) : "—"}
-          delta={m.ltv != null
-            ? `vida média ~${Math.round(m.lifeMonths)} meses × preço mensal médio`
-            : "sem churn no período ainda (marque a saída no cliente pra calcular)"} />
+        {!isKids && (
+          <StatTile label="LTV" value={m.ltv != null ? money(m.ltv) : "—"}
+            delta={m.ltv != null
+              ? `vida média ~${Math.round(m.lifeMonths)} meses × preço mensal médio`
+              : "sem churn no período ainda (marque a saída no cliente pra calcular)"} />
+        )}
       </div>
 
-      <Card title="Quantidade de planos" hint="clientes novos do período, por plano fechado">
+      <Card title={isKids ? "Quantidade de pacotes" : "Quantidade de planos"} hint={isKids ? "clientes novos do período, por pacote comprado" : "clientes novos do período, por plano fechado"}>
         <div style={{ padding: "8px 24px 16px" }}>
           {planRows.length === 0 && (
             <div style={{ fontSize: 12.5, color: "var(--fg-4)", padding: "8px 0" }}>Nenhum cliente no período.</div>
