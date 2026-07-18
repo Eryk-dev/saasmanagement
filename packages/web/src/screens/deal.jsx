@@ -96,6 +96,7 @@ function LeadDetail({ lead: initial, onClose }) {
     return cs ? { ...cs.meta.summary, recordingUrl: cs.meta.recordingUrl || "", kind: cs.meta.kind || "call" } : null;
   }, [activities]);
 
+
   // Briefing de passagem pro integrador (activity integration_brief): sai da
   // transcrição da call de VENDA quando o card entra em Integração.
   const integrationBrief = React.useMemo(() => {
@@ -104,6 +105,12 @@ function LeadDetail({ lead: initial, onClose }) {
       .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0))[0];
     return b ? { ...b.meta.brief, source: b.meta.source || "", recordingUrl: b.meta.recordingUrl || "" } : null;
   }, [activities]);
+
+  // Depois do handoff, o briefing SUBSTITUI o resumo da call de venda: ele já
+  // nasce dessa call e é escrito pro integrador. Dois blocos dizendo a mesma
+  // coisa só fazem ler duas vezes. O resumo da call de INTEGRAÇÃO (onboarding,
+  // que acontece depois) continua aparecendo.
+  const showCallSummary = !!callSummary && !(integrationBrief && callSummary.kind === "call");
 
   // A timeline NÃO repete o resumo de call nem o briefing: os dois já viram card
   // acima (bloco único do insight). Aqui ficam só os contatos e eventos.
@@ -585,9 +592,13 @@ function LeadDetail({ lead: initial, onClose }) {
             {/* Briefing de passagem em cima de tudo: é o que o integrador lê
                 primeiro quando abre o card que acabou de chegar nele. */}
             <IntegrationBriefCard brief={integrationBrief} phone={lead.phone}
-              deal={{ amount: lead.amount, planClosed: lead.planClosed, paymentMethod: lead.paymentMethod }} />
-            {/* Resumo da última call por IA em cima dos insights do estágio. */}
-            <CallSummaryCard summary={callSummary} phone={lead.phone} />
+              deal={{
+                amount: lead.amount, planClosed: lead.planClosed, paymentMethod: lead.paymentMethod,
+                integrationAt: lead.integrationAt, integrationCallUrl: lead.integrationCallUrl,
+              }} />
+            {/* Resumo da última call por IA em cima dos insights do estágio
+                (some quando o briefing já cobre a call de venda). */}
+            <CallSummaryCard summary={showCallSummary ? callSummary : null} phone={lead.phone} />
             <div style={{ ...box, background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
               <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 4 }}>Como se comportar</div>
               <div style={{ fontSize: 12, lineHeight: 1.45 }}>{script.resumo}</div>

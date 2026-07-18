@@ -5,7 +5,7 @@ import { PageHead, Card, Pill, Segmented } from "../components/viz.jsx";
 import { EmptyState, PrimaryButton } from "../atoms.jsx";
 import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/milestones.js";
 import { ActivityList } from "../components/timeline.jsx";
-import { CallSummaryCard } from "./today.jsx";
+import { CallSummaryCard, IntegrationBriefCard } from "./today.jsx";
 import { SubscriptionsScreen } from "./subscriptions.jsx";
 import { CustomersAnalysis } from "./customers-analysis.jsx";
 import { EntityForm } from "../components/EntityForm.jsx";
@@ -556,12 +556,21 @@ function CustomerHistory({ customer }) {
     const cs = (acts || []).filter((x) => x.meta?.event === "call_summary" && x.meta?.summary).sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0))[0];
     return cs ? { ...cs.meta.summary, recordingUrl: cs.meta.recordingUrl || "", kind: cs.meta.kind || "call" } : null;
   }, [acts]);
+  // Briefing de passagem pro integrador: aqui ele SUBSTITUI o resumo da call de
+  // venda (nasce dela e é escrito pra quem vai entregar). O resumo da call de
+  // INTEGRAÇÃO, que acontece depois, continua aparecendo.
+  const brief = React.useMemo(() => {
+    const b = (acts || []).filter((x) => x.meta?.event === "integration_brief" && x.meta?.brief).sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0))[0];
+    return b ? { ...b.meta.brief, source: b.meta.source || "", recordingUrl: b.meta.recordingUrl || "" } : null;
+  }, [acts]);
   if (!customer?.leadId || (acts !== null && acts.length === 0)) return null;
   const shown = expanded ? acts : (acts || []).slice(0, 10);
-  const timelineActs = shown.filter((a) => !(a.type === "system" && a.meta?.event === "call_summary"));
+  const timelineActs = shown.filter((a) => !(a.type === "system" && (a.meta?.event === "call_summary" || a.meta?.event === "integration_brief")));
+  const showCallSummary = !!callSummary && !(brief && callSummary.kind === "call");
   return (
     <div style={BOX}>
-      {callSummary && <div style={{ marginBottom: 12 }}><CallSummaryCard summary={callSummary} phone={customer.phone || ""} /></div>}
+      {brief && <div style={{ marginBottom: 12 }}><IntegrationBriefCard brief={brief} phone={customer.phone || ""} /></div>}
+      {showCallSummary && <div style={{ marginBottom: 12 }}><CallSummaryCard summary={callSummary} phone={customer.phone || ""} /></div>}
       <div className="mono" style={{ fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
         Histórico do funil
       </div>

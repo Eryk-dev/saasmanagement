@@ -119,6 +119,24 @@ test("o briefing parte do negócio JÁ FECHADO: nada de vender de novo", async (
   assert.ok(f2.calls[0].body.messages[0].content.includes("JÁ FOI FECHADA"));
 });
 
+test("a integração acontece por CALL DE VÍDEO: o briefing organiza o fluxo em volta dela", async () => {
+  const f = aiFake();
+  await makeAnthropic({ fetch: f, apiKey: "sk-test" }).briefIntegration({ transcript: "Leo: fechado", lead: { name: "Hiago" } });
+  const req = f.calls[0];
+
+  assert.ok(req.body.system.includes("CALL DE VÍDEO"));
+  assert.ok(req.body.system.includes("primeiro movimento do integrador é MARCAR essa call"));
+  // dia/horário/link são da AGENDA REAL: a UI completa a mensagem por cima, e a
+  // IA propor um horário próprio faria a mensagem se contradizer.
+  assert.ok(req.body.system.includes("NUNCA escreva dia, horário ou link da call"));
+
+  const props = req.body.output_config.format.schema.properties;
+  assert.ok(props.primeiraMensagem.description.includes("CALL DE INTEGRAÇÃO POR VÍDEO"));
+  assert.ok(props.primeiraMensagem.description.includes("NÃO proponha dia, horário nem link"));
+  assert.ok(props.checklist.description.includes("ANTES da call"));
+  assert.ok(props.checklist.description.includes("DURANTE a call"));
+});
+
 test("briefLead: lê a transcrição da VENDA, grava a activity com o texto formatado e carimba o lead", async () => {
   const { repo, briefer, f } = await setup();
   const r = await briefer.briefLead("l1");
