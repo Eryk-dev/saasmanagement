@@ -28,6 +28,7 @@ test("numberInfo: id certo devolve número, nome e qualidade", async () => {
   const wa = makeWhatsapp({ fetch: f, token: "t", phoneNumberId: "PN1" });
   assert.deepEqual(await wa.numberInfo(), {
     phoneNumberId: "PN1", display: "+55 41 99251-6545", name: "LeverAds", quality: "GREEN",
+    tier: "", throughput: "", platform: "", // conta que não expõe limite/vazão
   });
   assert.equal(f.calls.length, 1); // sem diagnóstico quando deu certo
 });
@@ -73,4 +74,36 @@ test("numberInfo: sem configuração nem chama a Meta", async () => {
   const wa = makeWhatsapp({ fetch: f, token: "", phoneNumberId: "" });
   await assert.rejects(() => wa.numberInfo(), /não configurado/);
   assert.equal(f.calls.length, 0);
+});
+
+test("numberInfo: traz limite de envio e vazão quando a versão da Graph tem os campos", async () => {
+  const f = fakeFetch([["/PN1?", 200, {
+    display_phone_number: "+55 41 93618-3835", verified_name: "UniqueBox Notifica", quality_rating: "GREEN",
+    whatsapp_business_manager_messaging_limit: "TIER_1K", throughput: { level: "STANDARD" }, platform_type: "CLOUD_API",
+  }]]);
+  const wa = makeWhatsapp({ fetch: f, token: "t", phoneNumberId: "PN1" });
+  const r = await wa.numberInfo();
+  assert.equal(r.tier, "TIER_1K");
+  assert.equal(r.throughput, "STANDARD");
+  assert.equal(r.quality, "GREEN");
+  assert.equal(f.calls.length, 1); // conjunto completo passou de primeira
+});
+
+test("numberInfo: campo que a versão não conhece cai pro conjunto menor, sem virar 'id errado'", async () => {
+  let n = 0;
+  const f = async (url) => {
+    n++;
+    // Só o conjunto MÍNIMO é aceito; os maiores levam #100 de campo inexistente.
+    if (/messaging_limit|throughput/.test(String(url))) {
+      return { status: 400, text: async () => JSON.stringify(NO_FIELD) };
+    }
+    return { status: 200, text: async () => JSON.stringify({ display_phone_number: "+55 41 93618-3835", verified_name: "UniqueBox Notifica", quality_rating: "YELLOW" }) };
+  };
+  const wa = makeWhatsapp({ fetch: f, token: "t", phoneNumberId: "PN1" });
+  const r = await wa.numberInfo();
+  assert.equal(r.display, "+55 41 93618-3835"); // confirmação do número nunca quebra
+  assert.equal(r.quality, "YELLOW");
+  assert.equal(r.tier, "");                     // sem limite quando a Graph não expõe
+  assert.equal(r.throughput, "");
+  assert.equal(n, 3);                           // dois conjuntos recusados + o mínimo
 });
