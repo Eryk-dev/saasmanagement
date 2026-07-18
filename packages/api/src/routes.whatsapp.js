@@ -28,8 +28,11 @@ async function sendAndRecord(repo, wa, { phone, text, author }) {
 }
 
 function outsideWindow(err) { return err.code === 131047 || err.code === 470; }
+// 422 (e não 502) quando a Meta recusa o envio: o proxy da hospedagem substitui
+// o CORPO de respostas 5xx pela página de erro dele, e aí o motivo real (número
+// inválido, template reprovado, permissão) não chegaria em quem está enviando.
 function sendErrorReply(reply, err) {
-  return reply.code(outsideWindow(err) ? 409 : 502).send({
+  return reply.code(outsideWindow(err) ? 409 : 422).send({
     error: outsideWindow(err)
       ? "Fora da janela de 24h: a Meta só deixa reabrir a conversa com um template aprovado (Fase 2)."
       : String(err.message || err).slice(0, 300),
@@ -91,12 +94,20 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
   // ── Inbox (tela dedicada) ───────────────────────────────────────────────────
   // Número conectado (consulta a Meta na hora). Fora do bootstrap de propósito:
   // é uma chamada de rede, e o SEED recarrega a cada mudança de rev.
-  app.get("/api/whatsapp/number", async (req, reply) => {
-    if (!wa.configured()) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
+  // SEMPRE 200, com o resultado dentro do corpo: o proxy da hospedagem troca o
+  // corpo de qualquer 5xx pela página de erro dele, então status de erro faria
+  // a UI receber HTML no lugar da mensagem da Meta (foi o que aconteceu).
+  app.get("/api/whatsapp/number", async () => {
+    if (!wa.configured()) return { ok: false, reason: "not_configured" };
     try {
-      return await wa.numberInfo();
+      return { ok: true, ...(await wa.numberInfo()) };
     } catch (err) {
-      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+      // Ler os dados do número exige whatsapp_business_management no token;
+      // ENVIAR exige whatsapp_business_messaging. Token só com messaging cai
+      // aqui e mesmo assim envia normalmente — daí o reason separado.
+      const message = String(err.message || err).slice(0, 300);
+      const missingPermission = err.code === 200 || err.code === 10 || /permission/i.test(message);
+      return { ok: false, reason: missingPermission ? "no_read_permission" : "meta_error", error: message, code: err.code || 0 };
     }
   });
 
