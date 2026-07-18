@@ -4,7 +4,7 @@ import { EmptyState, PrimaryButton } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useData } from "../data.jsx";
-import { currentUser } from "../lib/users.js";
+import { currentUser, isAdminUser } from "../lib/users.js";
 import { FocusShell } from "./training-focus.jsx";
 
 // Treinamentos — flashcards estilo Anki com repetição espaçada (FSRS) POR
@@ -1281,15 +1281,19 @@ function RoleGuides() {
 // Quem tem vaga operacional (etiqueta sdr/closer/integrator/social) só começa a
 // trabalhar depois de zerar a fila do dia: qualquer tela fora dos Treinamentos
 // fica atrás deste overlay enquanto houver card pendente. A cada revisão o SSE
-// atualiza a contagem; zerou, o cockpit libera sozinho. Admin sem etiqueta não
-// é travado, e falha da API nunca tranca a tela (fail-open).
+// atualiza a contagem; zerou, o cockpit libera sozinho. Falha da API nunca
+// tranca a tela (fail-open).
+// ADMIN NUNCA É TRAVADO, mesmo tendo vaga: Leo e Jonathan fecham venda e o Eryk
+// integra, mas o treinamento é opcional pra quem toca o negócio. Sem esta
+// exceção o portão prendia justamente quem precisa entrar no cockpit pra
+// trabalhar.
 const GATE_ROLES = ["sdr", "closer", "integrator", "social"];
 
 function TrainingGate({ saasId, active }) {
   const { version } = useData();
   const [pending, setPending] = useS(null); // null = sem dado (não trava)
   const me = currentUser();
-  const gated = !!me && (me.roles || []).some((r) => GATE_ROLES.includes(r));
+  const gated = !!me && !isAdminUser(me) && (me.roles || []).some((r) => GATE_ROLES.includes(r));
   useE(() => {
     if (!saasId || !gated) { setPending(null); return; }
     let alive = true;
