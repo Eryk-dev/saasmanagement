@@ -1140,9 +1140,15 @@ function PersonDetail({ user: u, today }) {
 // papel de cada vaga NA ORDEM DO FUNIL (mídia social → SDR → closer → CS), em
 // linguagem simples pra qualquer pessoa do time entender o todo.
 const COMPANY = {
-  what: "A LeverAds escala a operação de quem vende em marketplace usando tecnologia. O lojista cresce publicando em mais contas de Mercado Livre e Shopee, mas o trabalho manual não acompanha: nossa plataforma publica e mantém os anúncios sincronizados em todas as contas, com estoque integrado e ficha técnica completada por IA. Resultado: mais exposição e mais venda sem aumentar o time.",
-  mission: "Escalar a operação do lojista com tecnologia: ele vende em mais contas sem contratar mais gente, e o nosso time garante que rode.",
-  vision: "Ser a plataforma que todo lojista do Brasil usa pra operar e escalar suas vendas em marketplace.",
+  what: "Somos uma empresa de tecnologia que escala operações de venda em marketplace. Construímos uma plataforma própria que publica e mantém anúncios sincronizados entre várias contas de Mercado Livre e Shopee, com estoque integrado e ficha técnica completada por IA. Vendemos por assinatura, com preço fixo e sem taxa por pedido, e entregamos a operação do cliente rodando já na primeira semana. Somos um time enxuto que opera tudo dentro do nosso próprio cockpit: da primeira ligação ao acompanhamento pós-venda, cada etapa tem processo, dado e responsável.",
+  mission: "Ser o motor tecnológico que faz uma operação de marketplace crescer sem crescer o time: o que levaria meses de trabalho manual, a gente entrega em minutos.",
+  vision: "Ser a plataforma padrão de operação de marketplace no Brasil, o sistema que roda por trás de quem vende em escala.",
+  facts: [
+    { k: "Produto", v: "Plataforma SaaS de operação em marketplace (Mercado Livre e Shopee): publicação em várias contas, sincronização, estoque integrado e IA na ficha técnica." },
+    { k: "Modelo", v: "Assinatura anual com preço fixo, sem percentual por pedido. Tudo que lançamos durante o contrato entra sem custo extra." },
+    { k: "Mercado", v: "Lojistas que já vendem em marketplace e querem crescer operando mais contas sem inchar o time." },
+    { k: "Como operamos", v: "Time enxuto em 4 frentes (mídia social, pré-venda, vendas e sucesso do cliente), com processo e métrica de ponta a ponta no cockpit." },
+  ],
   pillars: [
     { t: "Velocidade", d: "Lead novo se atende em minutos, cliente novo roda no dia seguinte. Quem chega primeiro e entrega rápido, ganha." },
     { t: "Mostrar rodando, não prometer", d: "A gente prova ao vivo: demo na conta do cliente, case com print real. Falar é fácil; nós mostramos." },
@@ -1209,9 +1215,17 @@ function RoleGuides() {
 
       {/* O que a empresa faz + missão/visão */}
       <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px 24px" }}>
-        <div className="mono" style={label}>O que a LeverAds faz</div>
+        <div className="mono" style={label}>Quem somos</div>
         <div style={{ fontSize: 13.5, color: "var(--fg-1)", lineHeight: 1.6, marginTop: 6, maxWidth: 900 }}>{COMPANY.what}</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginTop: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px 20px", marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line-faint)" }}>
+          {COMPANY.facts.map((f) => (
+            <div key={f.k}>
+              <div className="mono" style={label}>{f.k}</div>
+              <div style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5, marginTop: 4 }}>{f.v}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line-faint)" }}>
           <div>
             <div className="mono" style={label}>Missão</div>
             <div style={{ fontSize: 13, color: "var(--fg-2)", lineHeight: 1.55, marginTop: 4 }}>{COMPANY.mission}</div>
