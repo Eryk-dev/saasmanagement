@@ -37,7 +37,6 @@ export function scriptTokens(lead, saasCfg) {
     anuncios: answerLabel(saasCfg, lead, "listings"),
     expansao: answerLabel(saasCfg, lead, "plan_expand"),
     equipe: answerLabel(saasCfg, lead, "staff"),
-    suspensa: answerLabel(saasCfg, lead, "suspended"),
     decisor: answerLabel(saasCfg, lead, "decider"),
     email: lead?.email || "",
     produto: saasCfg?.name || "",
@@ -59,7 +58,6 @@ const GAP_HINTS = {
   anuncios: "perguntar o volume de anúncios",
   expansao: "perguntar sobre abrir contas",
   equipe: "perguntar o time de marketing",
-  suspensa: "perguntar se já teve conta suspensa",
   decisor: "perguntar quem decide junto",
   email: "pedir o e-mail",
   produto: "produto",
@@ -98,7 +96,7 @@ export function scriptSegments(text, tokens) {
 // marcar a call. O que muda entre as tentativas é só a mensagem de WhatsApp.
 const QUALIFY_STEPS = [
   { t: "Atendeu: identificação", fala: "Oi {{nome}}, tudo bom? Sou {{eu}}, da {{produto}}. A gente se falou sobre o seu interesse na clonagem de anúncios. Consegue falar rapidinho agora?" },
-  { t: "Rodar a sequência de dados", fala: "Deixa eu confirmar o que tenho: nicho de {{nicho}}, loja {{empresa}}, {{contas}} nos marketplaces e uns {{anuncios}} anúncios na maior conta, confere?", dica: "Siga a ordem dos campos ao lado e complete o que faltar: expansão ({{expansao}}), time de marketing ({{equipe}}), conta suspensa ({{suspensa}}) e quem decide junto ({{decisor}}). O e-mail fica pro final, depois de marcar a call." },
+  { t: "Rodar a sequência de dados", fala: "Deixa eu confirmar o que tenho: nicho de {{nicho}}, loja {{empresa}}, {{contas}} nos marketplaces e uns {{anuncios}} anúncios na maior conta, confere?", dica: "Siga a ordem dos campos ao lado e complete o que faltar: expansão ({{expansao}}), time de marketing ({{equipe}}) e quem decide junto ({{decisor}}). O e-mail fica pro final, depois de marcar a call." },
   { t: "Agendar a call", fala: "Fechado! Vou te colocar com nosso especialista pra você ver a ferramenta clonando anúncio de verdade na sua operação. Fica melhor amanhã de manhã ou no fim da tarde?", dica: "Sempre 2 opções de horário. Marcou? Registra em Call agendada e gera o link da videochamada." },
   { t: "Preparar a call (logins + decisor)", fala: "Pra call render de verdade, anota duas coisas: entra já logado no Mercado Livre e na Shopee, porque o especialista clona anúncios de verdade nas suas contas, ao vivo. E se alguém decide junto com você, chama pra assistir, é rapidinho e vale a pena.", dica: "Sem login na call o teste não roda e o fechamento adia. Com sócio na decisão ({{decisor}}), a call só fecha se a pessoa estiver presente." },
   { t: "E-mail pra receber o convite", fala: "Perfeito! Pra fechar, me confirma seu melhor e-mail? Te mando o convite da nossa call por ele.", dica: "Preenche no campo ao lado; o convite do Meet vai automático pra ele." },
@@ -120,7 +118,6 @@ export const DEFAULT_SCRIPTS = {
       { t: "Anúncios na maior conta", fala: "E na sua maior conta, quantos anúncios publicados você tem? Você indicou {{anuncios}}." },
       { t: "Abrir mais contas", fala: "E você pretende abrir mais contas nos próximos meses?", dica: "Resposta do formulário: {{expansao}}." },
       { t: "Time de marketing", fala: "Quantas pessoas você tem hoje no time de marketing, cuidando dos anúncios?" },
-      { t: "Conta suspensa (dor de proteção)", fala: "E você já passou por conta suspensa ou banida no Mercado Livre?", dica: "Registra no campo ao lado. Quem já perdeu conta compra proteção: metade das calls que fecham chega machucada. Avisa o closer no handoff que a call é de blindagem da operação." },
       { t: "Quem decide junto", fala: "Se a ferramenta fizer sentido pra você, você bate o martelo sozinho ou tem sócio, esposa, consultor que decide junto?", dica: "Registra ao lado. Decisor fora da call não fecha na hora: já convida a pessoa pra call do especialista." },
       { t: "Agendar a call", fala: "Fechado {{nome}}! Vou te colocar com nosso especialista pra você ver a ferramenta clonando anúncio de verdade na sua operação. Fica melhor amanhã de manhã ou no fim da tarde?", dica: "Sempre 2 opções de horário. Marcou? Registra em Call agendada no lead e gera o link da videochamada." },
       { t: "Preparar a call (logins + decisor)", fala: "Pra call render de verdade, anota duas coisas: entra já logado no Mercado Livre e na Shopee, porque o especialista clona anúncios de verdade nas suas contas, ao vivo. E se alguém decide junto com você, chama pra assistir, é rapidinho e vale a pena.", dica: "Sem login na call o teste não roda e o fechamento adia. Com sócio na decisão, a call só fecha se a pessoa estiver presente." },
@@ -239,7 +236,7 @@ export const DEFAULT_SCRIPTS = {
     objetivo: "Sair com pagamento feito na call e integração agendada com dia e hora. Não fechou? Tarefa concreta, data marcada e o decisor presente na retomada.",
     passos: [
       { t: "Raio-X da operação (5 min)", fala: "Me conta como está a operação hoje: são {{contas}} e uns {{anuncios}} anúncios, certo? Quem sobe anúncio hoje? E quanto vocês estão faturando por mês?", dica: "Dados do SDR nos campos ao lado: time {{equipe}}, expansão {{expansao}}. Complete o que faltar, cada lacuna é pergunta." },
-      { t: "Pergunta da suspensão (define a narrativa)", fala: "E você já teve conta suspensa ou derrubada no Mercado Livre? Como foi?", dica: "Resposta do SDR: {{suspensa}}. Metade dos leads chega machucado e esse é o gatilho mais forte. Se sim, a call vira PROTEÇÃO (blindar a operação: qualquer conta nova recebe tudo em minutos). Se não, vira CRESCIMENTO (multiplicar presença no catálogo)." },
+      { t: "Pergunta da suspensão (define a narrativa)", fala: "E você já teve conta suspensa ou derrubada no Mercado Livre? Como foi?", dica: "A dor do anúncio no card já dá a pista (código B = conta banida); confirme na conversa. Metade dos leads chega machucado e esse é o gatilho mais forte. Se sim, a call vira PROTEÇÃO (blindar a operação: qualquer conta nova recebe tudo em minutos). Se não, vira CRESCIMENTO (multiplicar presença no catálogo)." },
       { t: "Espelho da dor (2 min)", fala: "Deixa eu ver se entendi: hoje o gargalo é braço. Subir esses {{anuncios}} anúncios em outra conta, na mão, levaria meses, é isso?", dica: "Devolver a dor nas palavras do lead antes da tese. As duas dores que dominam: falta de braço (quase todas as calls) e medo de perder conta (metade)." },
       { t: "Tese em 3 etapas + vacina da canibalização", fala: "Nosso método tem 3 etapas: clonagem entre contas, conta mãe segurando o estoque com baixa automática (sem furo, roda junto com Bling e Tiny) e IA completando título e atributos pro anúncio chegar com nota máxima. E antes que você pergunte: replicar não canibaliza. A Unique dobrou a conta 2 e a conta 1 ainda subiu 20%.", dica: "Responder a canibalização ANTES de perguntarem desarma a objeção mais comum da fase de tese (apareceu em 3 calls, resolvida 3 vezes com esse case)." },
       { t: "Demo AO VIVO nas contas dele (o coração)", fala: "Bora ver rodando na tua operação? Conecta as contas comigo que eu clono 10 anúncios teus agora, de verdade, na tua frente.", dica: "É aqui que a venda acontece. Sem login não tem demo (cobrar do SDR na confirmação). Deu erro? Chama o integrador e corrige na hora: vira prova de suporte (foi assim que fechou a Juliana, com pagamento na call). Objeções técnicas que sempre caem, todas com resposta pronta: estoque/furo (conta mãe + baixa automática), migração em massa (integrador sobe 150 anúncios em 5 a 10 min), limitações tipo Amazon/vídeo/catálogo (honestidade + roadmap)." },
@@ -453,7 +450,7 @@ export function catalogStageRow(saasCfg, item) {
 // marketing → e-mail por último (quando já está tudo confirmado). Cada item sai
 // com type/options pro painel renderizar o campo EDITÁVEL (select com as opções
 // do formulário; texto onde é livre). `key` é o campo do lead a ser gravado.
-const CHECKLIST_ORDER = ["niche", "company", "accounts", "listings", "plan_expand", "staff", "suspended", "decider"];
+const CHECKLIST_ORDER = ["niche", "company", "accounts", "listings", "plan_expand", "staff", "decider"];
 
 export function scriptChecklist(saasCfg, lead) {
   const qs = saasCfg?.leadQuestions || [];
