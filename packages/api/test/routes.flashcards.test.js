@@ -38,8 +38,11 @@ const as = (user) => ({ "x-user": user });
 test("GET base: LeverAds cai nos 10 SDR + 10 closer com settings default; produto sem default = vazio", async () => {
   const { app } = await buildApp();
   const lev = (await app.inject({ method: "GET", url: "/api/flashcards/leverads" })).json();
-  assert.equal(lev.cards.filter((c) => c.role === "sdr").length, 10);
-  assert.equal(lev.cards.filter((c) => c.role === "closer").length, 10);
+  assert.equal(lev.cards.filter((c) => c.role === "sdr").length, 30);
+  assert.equal(lev.cards.filter((c) => c.role === "closer").length, 30);
+  assert.equal(lev.cards.filter((c) => c.role === "geral_negocio").length, 30);
+  assert.equal(lev.cards.filter((c) => c.role === "geral_marketplace").length, 30);
+  assert.equal(lev.roleLabels.geral_negocio, "Geral · Negócio");
   assert.equal(lev.settings.newPerDay, 10);
   assert.equal(lev.roleLabels.sdr, "SDR");
 
@@ -72,15 +75,16 @@ test("queue: exige sessão; monta só os baralhos da vaga; novos respeitam newPe
   assert.equal((await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue" })).statusCode, 401);
 
   const q = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("ana") })).json();
-  assert.deepEqual(q.decks.map((d) => d.role), ["sdr"]);   // ana só treina SDR
-  assert.deepEqual(q.decks[0].counts, { new: 10, learning: 0, review: 0 });
+  // ana treina os gerais (todo mundo, primeiro) + a vaga dela (SDR)
+  assert.deepEqual(q.decks.map((d) => d.role), ["geral_negocio", "geral_marketplace", "sdr"]);
+  assert.deepEqual(q.decks.find((d) => d.role === "sdr").counts, { new: 10, learning: 0, review: 0 });
   assert.equal(q.queue.sdr.length, 10);
   assert.equal(q.queue.sdr[0].srs, null);                   // novo = sem estado ainda
   for (const r of [1, 2, 3, 4]) assert.ok(q.queue.sdr[0].preview[r]);
 
   // admin sem etiqueta vê todos os baralhos
   const qe = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("eryk") })).json();
-  assert.deepEqual(qe.decks.map((d) => d.role), ["sdr", "closer", "integrator", "social"]);
+  assert.deepEqual(qe.decks.map((d) => d.role), ["geral_negocio", "geral_marketplace", "sdr", "closer", "integrator", "social"]);
 
   // baixa o limite diário → menos novos na fila
   await app.inject({ method: "PUT", url: "/api/flashcards/leverads", payload: {
@@ -88,7 +92,7 @@ test("queue: exige sessão; monta só os baralhos da vaga; novos respeitam newPe
     settings: { newPerDay: 3 },
   } });
   const q3 = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("ana") })).json();
-  assert.deepEqual(q3.decks[0].counts, { new: 3, learning: 0, review: 0 });
+  assert.deepEqual(q3.decks.find((d) => d.role === "sdr").counts, { new: 3, learning: 0, review: 0 });
 });
 
 test("review: Bom em card novo vira aprendendo (minutos) e consome o budget de novos; Fácil gradua pra revisão (dias)", async () => {
@@ -103,8 +107,8 @@ test("review: Bom em card novo vira aprendendo (minutos) e consome o budget de n
 
   // a fila reflete: 1 novo a menos no budget, sdr_1 agora em aprendendo
   const q = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("ana") })).json();
-  assert.equal(q.decks[0].counts.learning, 1);
-  assert.equal(q.decks[0].counts.new, 9); // 10 do limite - 1 novo já feito
+  assert.equal(q.decks.find((d) => d.role === "sdr").counts.learning, 1);
+  assert.equal(q.decks.find((d) => d.role === "sdr").counts.new, 9); // 10 do limite - 1 novo já feito
   assert.ok(q.queue.sdr.some((c) => c.id === "sdr_1" && c.srs?.state === 1));
 
   // Fácil (4) num card novo → gradua direto pra revisão, dias à frente (some da fila de hoje)
@@ -153,7 +157,7 @@ test("team: contadores por pessoa, respeitando escopo de produto do usuário", a
   const t = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/team" })).json();
   assert.ok(!t.users.some((u) => u.id === "zoe")); // zoe é do produto "outro"
   const ana = t.users.find((u) => u.id === "ana");
-  assert.equal(ana.deckSize, 10);      // só o baralho SDR conta pra ela
+  assert.equal(ana.deckSize, 90);      // gerais (60) + o baralho SDR (30)
   assert.equal(ana.seen, 2);
   assert.equal(ana.dueToday, 2);       // os dois voltam ainda hoje (learning)
   assert.equal(ana.doneToday, 2);
@@ -161,7 +165,7 @@ test("team: contadores por pessoa, respeitando escopo de produto do usuário", a
   assert.equal(ana.again7dPct, 50);    // 1 Errei em 2
   const bob = t.users.find((u) => u.id === "bob");
   assert.equal(bob.doneToday, 0);
-  assert.equal(bob.deckSize, 10);      // baralho closer
+  assert.equal(bob.deckSize, 90);      // gerais (60) + baralho closer (30)
 });
 
 test("stats: revisões por dia, streak atual e melhor sequência do usuário logado", async () => {
@@ -198,7 +202,7 @@ test("tipos: cloze expande por índice e occlusion por máscara, cada um com est
   ] } });
   const q = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("ana") })).json();
   assert.deepEqual(new Set(q.queue.sdr.map((c) => c.entryId)), new Set(["cz::c1", "cz::c2", "oc::m1", "oc::m2", "b"]));
-  assert.equal(q.decks[0].total, 5);
+  assert.equal(q.decks.find((d) => d.role === "sdr").total, 5);
 
   // revisa só o c1: gradua e some da fila; c2 segue novo e independente
   const r = (await app.inject({ method: "POST", url: "/api/flashcards/leverads/review", headers: as("ana"), payload: { cardId: "cz::c1", rating: 4 } })).json();
@@ -325,5 +329,5 @@ test("card removido da base some da fila (estado individual fica órfão sem que
   await app.inject({ method: "PUT", url: "/api/flashcards/leverads", payload: { cards: [{ id: "novo_1", role: "sdr", front: "P", back: "R" }] } });
   const q = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("ana") })).json();
   assert.deepEqual(q.queue.sdr.map((c) => c.id), ["novo_1"]);
-  assert.deepEqual(q.decks[0].counts, { new: 1, learning: 0, review: 0 });
+  assert.deepEqual(q.decks.find((d) => d.role === "sdr").counts, { new: 1, learning: 0, review: 0 });
 });
