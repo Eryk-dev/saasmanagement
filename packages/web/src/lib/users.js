@@ -59,6 +59,14 @@ export function currentUser() {
   try { return JSON.parse(localStorage.getItem("cockpit_user") || "null"); } catch { return null; }
 }
 
+// Dono da operação (etiqueta "admin" em Ajustes → Equipe). Lê o registro FRESCO
+// do bootstrap quando existe: marcar a caixinha vale no próximo refresh, sem
+// re-login (o localStorage guarda o usuário do momento do login).
+export function isAdminUser(user = currentUser()) {
+  const fresh = user?.id ? userById(user.id) : null;
+  return ((fresh || user)?.roles || []).includes("admin");
+}
+
 // ── Telas permitidas (user.screens) ─────────────────────────────────────────
 // null = sem restrição (lista vazia/ausente ou acesso por API key). Prefere o
 // registro fresco do bootstrap (SEED.USERS): mudança de permissão em Ajustes →
