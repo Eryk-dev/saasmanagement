@@ -412,7 +412,9 @@ function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen 
 // estilo Google Agenda. Cor do evento = responsável (lead.closer, matiz do
 // avatar); cinza quando não tem. Toggle "toques" sobrepõe os próximos contatos
 // do GPS (nextActionAt) em estilo leve. Clique abre o lead.
-function AgendaView({ leads, onOpenLead }) {
+// `blocking` (opcional, tela Agenda): { blocksFor(d), onSlot(d, hora), onBlock(b) }
+// desenha os bloqueios da pessoa selecionada e liga o clique em horário vazio.
+function AgendaView({ leads, onOpenLead, blocking }) {
   const [week, setWeek] = useStP(0); // offset em semanas a partir da atual
   const [showTouches, setShowTouchesState] = useStP(() => {
     try { return localStorage.getItem("cockpit_agenda_touches") === "1"; } catch { return false; }
@@ -523,12 +525,39 @@ function AgendaView({ leads, onOpenLead }) {
             const { placed, lanes } = layoutDay(d);
             const isToday = d.toDateString() === new Date().toDateString();
             return (
-              <div key={i} style={{
-                position: "relative", height: (H1 - H0) * hourH,
-                borderLeft: "1px solid var(--line-1)",
-                backgroundImage: `repeating-linear-gradient(to bottom, var(--line-1) 0 1px, transparent 1px ${hourH}px)`,
-                backgroundColor: isToday ? "color-mix(in srgb, var(--accent) 5%, transparent)" : "transparent",
-              }}>
+              <div key={i}
+                onClick={blocking ? (e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const hour = H0 + Math.floor((e.clientY - rect.top) / hourH);
+                  if (hour >= H0 && hour < H1) blocking.onSlot(d, hour);
+                } : undefined}
+                style={{
+                  position: "relative", height: (H1 - H0) * hourH,
+                  borderLeft: "1px solid var(--line-1)",
+                  backgroundImage: `repeating-linear-gradient(to bottom, var(--line-1) 0 1px, transparent 1px ${hourH}px)`,
+                  backgroundColor: isToday ? "color-mix(in srgb, var(--accent) 5%, transparent)" : "transparent",
+                  cursor: blocking ? "pointer" : undefined,
+                }}>
+                {(blocking ? blocking.blocksFor(d) : []).map((b) => {
+                  const from = b.allDay ? H0 : Math.max(H0, Number(b.fromHour) || 0);
+                  const to = b.allDay ? H1 : Math.min(H1, Number(b.toHour) || 0);
+                  if (to <= from) return null;
+                  return (
+                    <div key={`blk-${b.id}`}
+                      onClick={(e) => { e.stopPropagation(); blocking.onBlock(b); }}
+                      title={`bloqueado${b.reason ? ": " + b.reason : ""}${b.recur === "weekly" ? " · toda semana" : ""} · clique pra liberar`}
+                      style={{
+                        position: "absolute", top: (from - H0) * hourH + 1, left: 2, right: 2, height: (to - from) * hourH - 3,
+                        background: "color-mix(in srgb, var(--neg) 8%, var(--bg-1))",
+                        border: "1px dashed color-mix(in srgb, var(--neg) 45%, var(--line-1))", borderLeft: "3px solid var(--neg)",
+                        borderRadius: 5, padding: "3px 6px", cursor: "pointer", overflow: "hidden",
+                      }}>
+                      <div className="mono" style={{ fontSize: 9.5, fontWeight: 600, color: "var(--neg)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        bloqueado{b.recur === "weekly" ? " ↻" : ""}{b.reason ? ` · ${b.reason}` : ""}
+                      </div>
+                    </div>
+                  );
+                })}
                 {placed.map(({ l, t, lane, kind }) => {
                   const who = kind === "toque" ? (l.owner || l.closer) : kind === "integração" ? (l.integrator || l.closer) : l.closer;
                   const tone = toneOf(who);
@@ -541,7 +570,7 @@ function AgendaView({ leads, onOpenLead }) {
                   const timeStr = t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
                   return (
                     <div key={l.id + kind}
-                      onClick={() => onOpenLead && onOpenLead(l)}
+                      onClick={(e) => { e.stopPropagation(); onOpenLead && onOpenLead(l); }}
                       title={`${timeStr} · ${isFollowup ? "follow-up" : kind} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}`}
                       style={{
                         position: "absolute", top: (hour - H0) * hourH + 1,
@@ -1170,4 +1199,4 @@ function AnaliseView({ s, leads }) {
   );
 }
 
-export { PipelineScreen, AnaliseView };
+export { PipelineScreen, AnaliseView, AgendaView };
