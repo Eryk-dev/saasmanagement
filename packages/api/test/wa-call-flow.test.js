@@ -65,6 +65,20 @@ test("greetingFor: interpola {nome} e some com elegância sem nome; texto do pro
   assert.equal(greetingFor(p, { name: "João" }, biz), "Oi João, sou o Leonardo. Posso te ligar?");
 });
 
+test("greetingFor: {empresa} e {produto} interpolam (e somem sem valor, com o espaço junto)", () => {
+  const biz = { business: true };
+  const p = { name: "LeverAds", waCallFlow: { greeting: "Oi {nome}, vi o formulário da {empresa} sobre a {produto}. Posso te ligar?" } };
+  assert.equal(
+    greetingFor(p, { name: "João Lima", company: "Autopeças Sul" }, biz),
+    "Oi João, vi o formulário da Autopeças Sul sobre a LeverAds. Posso te ligar?",
+  );
+  // Lead sem empresa: a variável some junto com o espaço anterior (sem duplo espaço).
+  assert.equal(
+    greetingFor(p, { name: "João Lima" }, biz),
+    "Oi João, vi o formulário da sobre a LeverAds. Posso te ligar?",
+  );
+});
+
 // Relógio do negócio: UTC-3 fixo. Em jul/2026: 13=seg … 17=sex, 18=sáb, 19=dom.
 test("isBusinessHours: seg a sex dentro do horário (padrão 8h às 18h, configurável); fim de semana nunca", () => {
   assert.equal(isBusinessHours(null, new Date("2026-07-15T13:00:00Z")), true);  // qua 10h BRT

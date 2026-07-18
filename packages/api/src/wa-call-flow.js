@@ -55,14 +55,21 @@ function nextOpening(product, at = new Date()) {
 
 // `business` força o modo (o pedido manual é sempre "agora": tem gente na
 // tela clicando); sem ele, decide pelo relógio do negócio.
+// Variáveis das saudações (a tela de Ajustes lista): {nome} primeiro nome do
+// lead, {empresa} empresa do lead, {produto} nome do SaaS, {volta} quando o
+// time volta. Valor vazio some junto com o espaço anterior (sem "Olá !").
 export function greetingFor(product, lead, { at = new Date(), business } = {}) {
   const inHours = business ?? isBusinessHours(product, at);
   const cfg = product?.waCallFlow || {};
   const raw = String((inHours ? cfg.greeting : cfg.afterHours) || "").trim()
     || (inHours ? DEFAULT_CALL_GREETING : DEFAULT_AFTER_HOURS_GREETING);
   const first = String(lead?.name || "").trim().split(/\s+/)[0] || "";
+  const company = String(lead?.company || "").trim();
+  const productName = String(product?.name || "").trim();
   return raw
     .replace(/\{volta\}/gi, nextOpening(product, at))
+    .replace(/\s?\{produto\}/gi, productName ? ` ${productName}` : "")
+    .replace(/\s?\{empresa\}/gi, company ? ` ${company}` : "")
     .replace(/\s?\{nome\}/gi, first ? ` ${first}` : "")
     .replace(/\s+([!?,.])/g, "$1").trim();
 }
