@@ -107,6 +107,9 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
       // aqui e mesmo assim envia normalmente — daí o reason separado.
       const message = String(err.message || err).slice(0, 300);
       const missingPermission = err.code === 200 || err.code === 10 || /permission/i.test(message);
+      // Id trocado (o da conta no lugar do número): a mensagem já vem com o id
+      // certo, e `numbers` deixa a UI mostrar a troca pronta pra copiar.
+      if (err.wrongId) return { ok: false, reason: "wrong_id", error: message, code: err.code || 0, numbers: err.numbers || [] };
       return { ok: false, reason: missingPermission ? "no_read_permission" : "meta_error", error: message, code: err.code || 0 };
     }
   });

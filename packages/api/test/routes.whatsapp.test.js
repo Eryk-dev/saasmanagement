@@ -223,6 +223,20 @@ test("GET /number: confirma o número conectado; falha vira 200 com motivo (nunc
   await off.close();
 });
 
+test("GET /number: id da CONTA no lugar do número vira instrução com o id certo", async () => {
+  const repo = makeMemRepo();
+  const wrong = Object.assign(new Error("O WHATSAPP_PHONE_NUMBER_ID (WABA1) é o id da CONTA do WhatsApp, não do número. Troque por PN7 (+55 41 99251-6545) e reinicie a API."),
+    { code: 100, wrongId: true, numbers: [{ id: "PN7", display: "+55 41 99251-6545", name: "LeverAds" }] });
+  const app = await appWith(repo, { ...fakeWa(), async numberInfo() { throw wrong; } });
+  const r = await app.inject({ method: "GET", url: "/api/whatsapp/number" });
+  assert.equal(r.statusCode, 200);
+  const body = r.json();
+  assert.equal(body.reason, "wrong_id");                 // não se confunde com meta_error
+  assert.deepEqual(body.numbers, [{ id: "PN7", display: "+55 41 99251-6545", name: "LeverAds" }]);
+  assert.match(body.error, /PN7/);
+  await app.close();
+});
+
 test("webhook: status failed com código de não-entregável marca o número inválido", async () => {
   const repo = makeMemRepo();
   await repo.create("leads", { id: "ld1", saas: "leverads", phone: "5541992516545" });

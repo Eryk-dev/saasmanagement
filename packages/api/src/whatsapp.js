@@ -48,20 +48,54 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     try { await post({ status: "read", message_id: messageId }); } catch { /* opcional */ }
   }
 
-  // Qual número está de fato conectado (GET no phone number id). Serve de prova
-  // viva de que token + WHATSAPP_PHONE_NUMBER_ID batem e apontam pro número
-  // certo — é o que a tela de WhatsApp mostra no topo depois de trocar o número.
-  async function numberInfo() {
-    if (!configured()) throw new Error("WhatsApp não configurado — defina WHATSAPP_TOKEN e WHATSAPP_PHONE_NUMBER_ID");
-    const res = await f(`${GRAPH}/${phoneNumberId}?fields=display_phone_number,verified_name,quality_rating`, {
-      headers: { authorization: `Bearer ${token}` },
-    });
+  async function get(path) {
+    const res = await f(`${GRAPH}/${path}`, { headers: { authorization: `Bearer ${token}` } });
     const text = await res.text();
     let body; try { body = JSON.parse(text); } catch { body = {}; }
     if (res.status >= 400 || body.error) {
       const err = new Error(`WhatsApp API -> ${res.status}: ${body.error?.message || text.slice(0, 300)}`);
       err.status = res.status; err.code = body.error?.code;
       throw err;
+    }
+    return body;
+  }
+
+  // Números da CONTA (WABA). Só é chamado no diagnóstico abaixo: se o id
+  // configurado for o da conta, esta edge devolve os números dela — com o id
+  // que deveria estar no WHATSAPP_PHONE_NUMBER_ID.
+  async function accountNumbers(wabaId) {
+    const body = await get(`${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name`);
+    return (body.data || []).map((n) => ({
+      id: String(n.id || ""),
+      display: n.display_phone_number || "",
+      name: n.verified_name || "",
+    })).filter((n) => n.id);
+  }
+
+  // Qual número está de fato conectado (GET no phone number id). Serve de prova
+  // viva de que token + WHATSAPP_PHONE_NUMBER_ID batem e apontam pro número
+  // certo — é o que a tela de WhatsApp mostra no topo depois de trocar o número.
+  async function numberInfo() {
+    if (!configured()) throw new Error("WhatsApp não configurado — defina WHATSAPP_TOKEN e WHATSAPP_PHONE_NUMBER_ID");
+    let body;
+    try {
+      body = await get(`${phoneNumberId}?fields=display_phone_number,verified_name,quality_rating`);
+    } catch (err) {
+      // "(#100) Tried accessing nonexisting field (display_phone_number)" = o id
+      // NÃO é de um número. O engano clássico é usar o id da CONTA (WABA), que
+      // no painel da Meta fica logo acima do id do número. Em vez de repassar o
+      // erro cru da Graph, pergunta à conta quais são os números dela e devolve
+      // o id certo pra trocar no env.
+      if (!/nonexisting field/i.test(String(err.message || ""))) throw err;
+      let numbers = [];
+      try { numbers = await accountNumbers(phoneNumberId); } catch { /* não é WABA também */ }
+      const wrong = new Error(numbers.length
+        ? `O WHATSAPP_PHONE_NUMBER_ID (${phoneNumberId}) é o id da CONTA do WhatsApp, não do número. Troque por ${numbers.map((n) => `${n.id} (${n.display || n.name || "número"})`).join(" ou ")} e reinicie a API.`
+        : `O WHATSAPP_PHONE_NUMBER_ID (${phoneNumberId}) não é um número do WhatsApp (a Meta não reconhece o campo do número nesse id). Pegue o "Phone number ID" em WhatsApp Manager → API Setup e ponha no env.`);
+      wrong.code = err.code || 100;
+      wrong.wrongId = true;
+      wrong.numbers = numbers;
+      throw wrong;
     }
     return {
       phoneNumberId,
