@@ -21,9 +21,9 @@ function bodyOf(m) {
 
 // Envia texto e grava a mensagem out (+ atualiza o thread). Lança em erro da Meta
 // (o handler HTTP traduz a janela de 24h). `phone` = destino em qualquer formato.
-async function sendAndRecord(repo, wa, { phone, text, author }) {
-  const { messageId } = await wa.sendText(phone, text);
-  await recordMessage(repo, { id: messageId, phone, direction: "out", text, status: "sent", author });
+async function sendAndRecord(repo, wa, { phone, text, author, phoneId, saas }) {
+  const { messageId } = await wa.sendText(phone, text, { phoneId });
+  await recordMessage(repo, { id: messageId, phone, direction: "out", text, status: "sent", author, waPhoneId: phoneId || "", saas });
   return messageId;
 }
 
@@ -45,6 +45,37 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || "",
     verifyToken: process.env.WHATSAPP_VERIFY_TOKEN || "",
   });
+
+  // ── Número POR PRODUTO ──────────────────────────────────────────────────────
+  // Cada SaaS conversa pelo SEU WhatsApp: `product.waPhoneId` (Ajustes →
+  // Integrações). Resolução do número de saída, nesta ordem:
+  //   1. o número por onde a conversa CHEGOU (thread.waPhoneId) — resposta nunca
+  //      troca de número no meio da conversa;
+  //   2. o número do produto do lead/thread;
+  //   3. produto SEM waPhoneId: se ALGUM produto tem número próprio (multi-número
+  //      ativo), BLOQUEIA (null) — a UniqueKids sem número nunca fala pelo da
+  //      LeverAds; se NENHUM tem (legado single-tenant), segue o default do env
+  //      (undefined = o client usa o WHATSAPP_PHONE_NUMBER_ID);
+  //   4. sem produto nenhum (thread avulsa) → default do env.
+  // A migração ensureWaPhoneId (boot) carimba o env no leverads, dono histórico —
+  // a partir dela o multi-número está ativo e a regra 3 passa a bloquear.
+  async function resolvePhoneId({ saas = "", thread = null } = {}) {
+    if (thread?.waPhoneId) return thread.waPhoneId;
+    const sid = saas || thread?.saas || "";
+    if (!sid) return undefined;
+    const products = await repo.list("products");
+    const p = products.find((x) => x.id === sid);
+    if (p?.waPhoneId) return p.waPhoneId;
+    return products.some((x) => x.waPhoneId) ? null : undefined;
+  }
+  const noNumberReply = (reply, saas) => reply.code(503).send({
+    error: `WhatsApp sem número pra este produto${saas ? ` (${saas})` : ""} — defina o phone number id em Ajustes → Integrações`,
+  });
+  // Produto dono de um número recebido no webhook (etiqueta conversa nova).
+  async function productByPhoneId(pid) {
+    if (!pid) return null;
+    return (await repo.list("products")).find((x) => String(x.waPhoneId || "") === String(pid)) || null;
+  }
 
   // ── Webhook (rota ABERTA: a Meta chama sem key; sob /api/webhooks/) ──────────
   app.get("/api/webhooks/whatsapp", async (req, reply) => {
@@ -75,11 +106,16 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
           // não-entregável marca o número como inválido (dentro do updateStatus).
           if (v.messages || v.statuses || field === "messages") {
             const contactName = v.contacts?.[0]?.profile?.name || "";
+            // Por QUAL número a mensagem entrou: fica na thread (a resposta sai
+            // pelo mesmo número) e etiqueta conversa nova com o produto dono.
+            const inPhoneId = v.metadata?.phone_number_id || "";
+            const owner = await productByPhoneId(inPhoneId).catch(() => null);
             for (const m of v.messages || []) {
               await recordMessage(repo, {
                 id: m.id, phone: m.from, direction: "in", text: bodyOf(m),
                 at: m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : undefined,
                 from: m.from, status: "received", contactName,
+                waPhoneId: inPhoneId, saasHint: owner?.id || "",
               });
             }
             for (const st of v.statuses || []) {
@@ -108,13 +144,17 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
   // SEMPRE 200, com o resultado dentro do corpo: o proxy da hospedagem troca o
   // corpo de qualquer 5xx pela página de erro dele, então status de erro faria
   // a UI receber HTML no lugar da mensagem da Meta (foi o que aconteceu).
-  app.get("/api/whatsapp/number", async () => {
-    if (!wa.configured()) return { ok: false, reason: "not_configured" };
+  app.get("/api/whatsapp/number", async (req) => {
+    // Número DO PRODUTO ativo (?saas=): cada SaaS mostra o seu no topo do inbox.
+    const saas = String(req.query?.saas || "");
+    const phoneId = await resolvePhoneId({ saas });
+    if (phoneId === null) return { ok: false, reason: "no_number_for_saas", saas };
+    if (!wa.configured(phoneId)) return { ok: false, reason: "not_configured" };
     // Última entrega da Meta no nosso webhook (e por qual número): responde
     // "chegou alguma coisa aqui?" sem depender do envio estar certo.
     const webhook = (await getWaHealth(repo)).webhook || {};
     try {
-      return { ok: true, webhook, ...(await wa.numberInfo()) };
+      return { ok: true, webhook, ...(await wa.numberInfo({ phoneId })) };
     } catch (err) {
       // Ler os dados do número exige whatsapp_business_management no token;
       // ENVIAR exige whatsapp_business_messaging. Token só com messaging cai
@@ -145,34 +185,44 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
 
   app.post("/api/whatsapp/threads/:id/read", async (req) => {
     const lastIn = await markThreadRead(repo, req.params.id);
-    if (lastIn && wa.configured()) wa.markRead(lastIn).catch(() => {});
+    if (lastIn && wa.configured()) {
+      const thread = await repo.get("wa_threads", threadId(req.params.id));
+      wa.markRead(lastIn, { phoneId: thread?.waPhoneId || undefined }).catch(() => {});
+    }
     return { ok: true };
   });
 
-  // Enviar pela conversa (inbox) — id é o número em dígitos, funciona com ou sem lead.
+  // Enviar pela conversa (inbox) — id é o número em dígitos, funciona com ou sem
+  // lead. O número de saída segue a conversa (thread) / o produto.
   app.post("/api/whatsapp/threads/:id/send", async (req, reply) => {
-    if (!wa.configured()) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
     const phone = threadId(req.params.id);
     const text = String(req.body?.text || "").trim();
     if (!phone) return reply.code(400).send({ error: "número inválido" });
     if (!text) return reply.code(400).send({ error: "mensagem vazia" });
+    const thread = await repo.get("wa_threads", phone);
+    const phoneId = await resolvePhoneId({ thread });
+    if (phoneId === null) return noNumberReply(reply, thread?.saas || "");
+    if (!wa.configured(phoneId)) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
     try {
-      const messageId = await sendAndRecord(repo, wa, { phone, text, author: req.authUser?.id || "cockpit" });
+      const messageId = await sendAndRecord(repo, wa, { phone, text, author: req.authUser?.id || "cockpit", phoneId, saas: thread?.saas || "" });
       return { ok: true, messageId };
     } catch (err) { return sendErrorReply(reply, err); }
   });
 
-  // Enviar pelo drawer do lead (resolve o telefone do lead).
+  // Enviar pelo drawer do lead (resolve o telefone E o número do produto do lead).
   app.post("/api/leads/:id/whatsapp", async (req, reply) => {
-    if (!wa.configured()) return reply.code(503).send({ error: "WhatsApp não configurado no servidor (WHATSAPP_TOKEN/PHONE_NUMBER_ID)" });
     const lead = await repo.get("leads", req.params.id);
     if (!lead) return reply.code(404).send({ error: "Not found" });
     const phone = lead.phone || req.body?.to || "";
     const text = String(req.body?.text || "").trim();
     if (!phone) return reply.code(400).send({ error: "lead sem telefone" });
     if (!text) return reply.code(400).send({ error: "mensagem vazia" });
+    const thread = await repo.get("wa_threads", threadId(phone));
+    const phoneId = await resolvePhoneId({ saas: lead.saas || "", thread });
+    if (phoneId === null) return noNumberReply(reply, lead.saas || "");
+    if (!wa.configured(phoneId)) return reply.code(503).send({ error: "WhatsApp não configurado no servidor (WHATSAPP_TOKEN + número)" });
     try {
-      const messageId = await sendAndRecord(repo, wa, { phone, text, author: req.authUser?.id || "cockpit" });
+      const messageId = await sendAndRecord(repo, wa, { phone, text, author: req.authUser?.id || "cockpit", phoneId, saas: lead.saas || "" });
       return { ok: true, messageId };
     } catch (err) { return sendErrorReply(reply, err); }
   });

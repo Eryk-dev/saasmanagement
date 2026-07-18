@@ -487,6 +487,23 @@ export async function backfillSubscriptionsFromCustomers(repo) {
   return changed;
 }
 
+// WhatsApp multi-número: o número do env (single-tenant legado) pertence à
+// LEVERADS — carimba em product.waPhoneId uma vez (marcador waPhoneSeedV1) pra
+// regra nova valer: produto sem waPhoneId NÃO fala pelo número de outro (a
+// UniqueKids bloqueia com aviso até o Leo configurar o número próprio dela em
+// Ajustes → Integrações). Apagar o campo depois nunca é sobrescrito.
+export async function ensureWaPhoneId(repo) {
+  const envId = process.env.WHATSAPP_PHONE_NUMBER_ID || "";
+  if (!envId) return false;
+  const product = await repo.get("products", "leverads");
+  if (!product || product.waPhoneSeedV1) return false;
+  await repo.update("products", "leverads", {
+    ...(product.waPhoneId ? {} : { waPhoneId: envId }),
+    waPhoneSeedV1: true,
+  });
+  return !product.waPhoneId;
+}
+
 export async function ensureUserScreens(repo) {
   let changed = 0;
   for (const [id, screens] of Object.entries(SCREENS_SEED)) {
@@ -596,5 +613,11 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] assinatura ativa criada pra ${n} cliente(s)`);
   } catch (err) {
     console.error("[migration] backfillSubscriptionsFromCustomers falhou:", err?.message || err);
+  }
+  try {
+    const changed = await ensureWaPhoneId(repo);
+    if (changed) console.log("[migration] WhatsApp: número do env carimbado como waPhoneId do leverads");
+  } catch (err) {
+    console.error("[migration] ensureWaPhoneId falhou:", err?.message || err);
   }
 }
