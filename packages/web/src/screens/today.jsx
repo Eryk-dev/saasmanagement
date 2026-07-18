@@ -704,7 +704,24 @@ export function IntegrationBriefCard({ brief, phone, deal }) {
   const kick = { fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" };
   const line = { fontSize: 12, lineHeight: 1.5, color: "var(--fg-1)" };
   const sub = (label) => <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>{label}</div>;
-  const msg = brief.primeiraMensagem || "";
+  // A integração é feita numa CALL DE VÍDEO: a mensagem que a IA escreve PROPÕE
+  // a call (ela não conhece link nem agenda). Quando o horário já está marcado
+  // e o Meet criado, a mensagem fecha o combinado com dia e link de verdade —
+  // é a diferença entre "vamos marcar" e "está marcado, entra por aqui".
+  const meetUrl = deal?.integrationCallUrl || "";
+  const when = (() => {
+    const d = deal?.integrationAt ? new Date(deal.integrationAt) : null;
+    if (!d || !Number.isFinite(d.getTime())) return "";
+    return `${d.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit" })} às ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+  })();
+  const callLine = meetUrl
+    ? (when
+      ? `Fica ${when}. É por vídeo, entra por este link no horário: ${meetUrl}`
+      : `Nossa call de integração é por vídeo, entra por este link: ${meetUrl}`)
+    : when
+      ? `Fica ${when}, é uma call de vídeo. Te mando o link antes.`
+      : "A integração é numa call de vídeo comigo, qual o melhor dia e horário pra você?";
+  const msg = [brief.primeiraMensagem || "", callLine].filter(Boolean).join("\n\n");
   const wa = phone ? waLink(phone) : null;
   const waHref = wa ? (msg ? `${wa}?text=${encodeURIComponent(msg)}` : wa) : null;
   const copy = async () => { try { await navigator.clipboard.writeText(msg); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* sem clipboard */ } };
@@ -719,6 +736,13 @@ export function IntegrationBriefCard({ brief, phone, deal }) {
       </div>
       <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 5 }}>
         {closed ? `Já contratou: ${closed} · agora é entrega, não venda` : "O cliente já comprou, agora é entrega, não venda"}
+      </div>
+      {/* Estado da call de vídeo: é por ela que a integração acontece, então o
+          card cobra o que falta (marcar a data, criar o Meet) antes do resto. */}
+      <div className="mono" style={{ ...kick, fontSize: 10, marginBottom: 6, color: meetUrl ? "var(--pos)" : "var(--warn)" }}>
+        {meetUrl
+          ? `Call de vídeo ${when ? `marcada: ${when}` : "com link criado"}`
+          : when ? `Call de vídeo ${when}, falta criar o Meet (logo abaixo, em Integração)` : "Sem call de vídeo marcada: combine o horário e crie o Meet em Integração"}
       </div>
       {brief.resumo && <div style={{ ...line, marginBottom: open ? 6 : 0 }}>{brief.resumo}</div>}
       {open && (
@@ -776,7 +800,7 @@ export function IntegrationBriefCard({ brief, phone, deal }) {
           )}
           {msg && (
             <div style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: "7px 9px" }}>
-              <div className="mono dim" style={{ ...kick, fontSize: 9.5, marginBottom: 3 }}>Primeira mensagem sugerida</div>
+              <div className="mono dim" style={{ ...kick, fontSize: 9.5, marginBottom: 3 }}>{meetUrl ? "Mensagem com o link da call" : "Mensagem pra marcar a call de vídeo"}</div>
               <div style={{ fontSize: 12, lineHeight: 1.5, whiteSpace: "pre-wrap", marginBottom: 6 }}>{msg}</div>
               <div style={{ display: "flex", gap: 6 }}>
                 {waHref && <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", background: "#25D366", color: "#06120c", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>enviar no WhatsApp ↗</a>}
