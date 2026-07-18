@@ -9,7 +9,8 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { makeWhatsapp } = await import("../src/whatsapp.js");
 const { registerWhatsappRoutes } = await import("../src/routes.whatsapp.js");
-const { greetingFor, parsePermissionReply, DEFAULT_CALL_GREETING } = await import("../src/wa-call-flow.js");
+const { greetingFor, parsePermissionReply, isBusinessHours, runInboundCallFlow, DEFAULT_CALL_GREETING } = await import("../src/wa-call-flow.js");
+const { recordMessage } = await import("../src/wa-store.js");
 
 // Cliente fake: registra envios de texto e de pedido de permissão.
 function fakeWa(opts = {}) {
@@ -40,9 +41,11 @@ async function appWith(repo, wa) {
   return app;
 }
 
-// Produto com o fluxo ligado; lead novo casado pelo telefone.
+// Produto com o fluxo ligado; lead novo casado pelo telefone. Texto custom vale
+// pros DOIS modos (dentro/fora do horário) pra rota ficar independente do
+// relógio real — a escolha por horário tem testes próprios com data fixa.
 async function seedFlow(repo, { enabled = true, greeting = "" } = {}) {
-  await repo.create("products", { id: "leverads", name: "LeverAds", waCallFlow: { enabled, ...(greeting ? { greeting } : {}) } });
+  await repo.create("products", { id: "leverads", name: "LeverAds", waCallFlow: { enabled, ...(greeting ? { greeting, afterHours: greeting } : {}) } });
   await repo.create("leads", { id: "ld1", saas: "leverads", phone: "41992516545", name: "Maria Souza", stage: "Novo" });
 }
 
@@ -54,11 +57,42 @@ const inPermReply = (from, id, response) => ({
 });
 
 test("greetingFor: interpola {nome} e some com elegância sem nome; texto do produto vence o padrão", () => {
-  assert.equal(greetingFor(null, { name: "Maria Souza" }), DEFAULT_CALL_GREETING.replace("{nome}", "Maria"));
-  assert.ok(!greetingFor(null, null).includes("{nome}"));
-  assert.ok(!/Olá !/.test(greetingFor(null, null)));
+  const biz = { business: true };
+  assert.equal(greetingFor(null, { name: "Maria Souza" }, biz), DEFAULT_CALL_GREETING.replace("{nome}", "Maria"));
+  assert.ok(!greetingFor(null, null, biz).includes("{nome}"));
+  assert.ok(!/Olá !/.test(greetingFor(null, null, biz)));
   const p = { waCallFlow: { greeting: "Oi {nome}, sou o Leonardo. Posso te ligar?" } };
-  assert.equal(greetingFor(p, { name: "João" }), "Oi João, sou o Leonardo. Posso te ligar?");
+  assert.equal(greetingFor(p, { name: "João" }, biz), "Oi João, sou o Leonardo. Posso te ligar?");
+});
+
+// Relógio do negócio: UTC-3 fixo. Em jul/2026: 13=seg … 17=sex, 18=sáb, 19=dom.
+test("isBusinessHours: seg a sex dentro do horário (padrão 8h às 18h, configurável); fim de semana nunca", () => {
+  assert.equal(isBusinessHours(null, new Date("2026-07-15T13:00:00Z")), true);  // qua 10h BRT
+  assert.equal(isBusinessHours(null, new Date("2026-07-15T09:00:00Z")), false); // qua 6h BRT (antes)
+  assert.equal(isBusinessHours(null, new Date("2026-07-15T22:30:00Z")), false); // qua 19h30 BRT (depois)
+  assert.equal(isBusinessHours(null, new Date("2026-07-18T15:00:00Z")), false); // sáb 12h BRT
+  assert.equal(isBusinessHours(null, new Date("2026-07-19T15:00:00Z")), false); // dom
+  const p = { waCallFlow: { hourStart: 9, hourEnd: 17 } };
+  assert.equal(isBusinessHours(p, new Date("2026-07-15T11:30:00Z")), false); // qua 8h30 BRT, antes das 9
+  assert.equal(isBusinessHours(p, new Date("2026-07-15T19:30:00Z")), true);  // qua 16h30 BRT
+  assert.equal(isBusinessHours(p, new Date("2026-07-15T20:30:00Z")), false); // qua 17h30 BRT, depois das 17
+});
+
+test("greetingFor fora do horário: texto de ausência com o {volta} certo (hoje/amanhã/segunda)", () => {
+  const lead = { name: "Maria Souza" };
+  const at = (iso) => ({ at: new Date(iso) });
+  // qua 6h → hoje às 8h; qua 19h30 → amanhã; sex 19h → segunda; sáb → segunda; dom 20h → amanhã (que JÁ é segunda)
+  assert.match(greetingFor(null, lead, at("2026-07-15T09:00:00Z")), /hoje às 8h/);
+  assert.match(greetingFor(null, lead, at("2026-07-15T22:30:00Z")), /amanhã às 8h/);
+  assert.match(greetingFor(null, lead, at("2026-07-17T22:00:00Z")), /segunda às 8h/);
+  assert.match(greetingFor(null, lead, at("2026-07-18T15:00:00Z")), /segunda às 8h/);
+  assert.match(greetingFor(null, lead, at("2026-07-19T23:00:00Z")), /amanhã às 8h/);
+  // o texto fora do horário pede a autorização também
+  assert.match(greetingFor(null, lead, at("2026-07-18T15:00:00Z")), /autorização/);
+  assert.match(greetingFor(null, lead, at("2026-07-18T15:00:00Z")), /Maria/);
+  // horário custom muda o rótulo; texto custom de ausência respeita {volta}
+  const p = { waCallFlow: { hourStart: 9, afterHours: "Voltamos {volta}, {nome}. Pode ser?" } };
+  assert.equal(greetingFor(p, lead, at("2026-07-18T15:00:00Z")), "Voltamos segunda às 9h, Maria. Pode ser?");
 });
 
 test("parsePermissionReply: accept/reject nos shapes conhecidos; texto comum → null", () => {
@@ -146,6 +180,32 @@ test("fluxo NÃO dispara: produto desligado, lead desconhecido, lead ganho, conv
   await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inText("5541992516545", "wamid.D", "oi de novo") });
   assert.equal(wa.perms.length, 0);
   await app.close();
+});
+
+// Fluxo automático com relógio injetado: dentro do horário pede pra ligar
+// AGORA; fora dele manda o texto de ausência com o retorno e pede autorização.
+test("auto: dentro do horário usa a saudação normal; fora usa a de ausência com {volta}", async () => {
+  const trigger = async (isoNow) => {
+    const repo = makeMemRepo();
+    await repo.create("products", { id: "leverads", name: "LeverAds", waCallFlow: { enabled: true } });
+    await repo.create("leads", { id: "ld1", saas: "leverads", phone: "41992516545", name: "Maria Souza", stage: "Novo" });
+    const wa = fakeWa();
+    const msg = { from: "5541992516545", id: "wamid.X", type: "text", text: { body: "oi" } };
+    await recordMessage(repo, { id: msg.id, phone: msg.from, direction: "in", text: "oi", from: msg.from, status: "received" });
+    await runInboundCallFlow(repo, wa, { message: msg, resolvePhoneId: async () => "PN1", now: new Date(isoNow) });
+    return wa.perms[0]?.text || "";
+  };
+  // qua 10h BRT: fluxo de horário comercial
+  const inHours = await trigger("2026-07-15T13:00:00Z");
+  assert.match(inHours, /Posso te ligar pra uma breve conversa/);
+  assert.ok(!/fora do horário/.test(inHours));
+  // sáb 12h BRT: fluxo de ausência (volta segunda) pedindo a autorização
+  const weekend = await trigger("2026-07-18T15:00:00Z");
+  assert.match(weekend, /fora do horário/);
+  assert.match(weekend, /segunda às 8h/);
+  assert.match(weekend, /autorização/);
+  // qua 19h30 BRT: ausência com volta amanhã
+  assert.match(await trigger("2026-07-15T22:30:00Z"), /amanhã às 8h/);
 });
 
 test("interactive indisponível → cai pra texto simples com a mesma saudação (not_requested)", async () => {

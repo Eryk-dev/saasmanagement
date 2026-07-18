@@ -13,14 +13,58 @@ import { randomUUID } from "node:crypto";
 import { recordMessage, threadId } from "./wa-store.js";
 import { isWon } from "./stages.js";
 
-// Saudação padrão quando o produto não configurou a dele (Ajustes → Integrações).
-// {nome} = primeiro nome do lead; some com elegância quando o lead não tem nome.
+// Saudações padrão quando o produto não configurou as dele (Ajustes →
+// Integrações). {nome} = primeiro nome do lead (some com elegância quando não
+// tem); {volta} = quando o time volta ("hoje às 8h" / "amanhã às 8h" /
+// "segunda às 8h"), calculado do horário configurado.
 export const DEFAULT_CALL_GREETING = "Olá {nome}! Recebi seu formulário aqui. Posso te ligar pra uma breve conversa sobre a plataforma?";
+export const DEFAULT_AFTER_HOURS_GREETING = "Olá {nome}! Recebi seu formulário aqui. Nosso time está fora do horário agora, mas volta {volta}. Posso te ligar quando voltarmos pra falar sobre a plataforma? Já deixa a autorização aqui embaixo.";
 
-export function greetingFor(product, lead) {
-  const raw = String(product?.waCallFlow?.greeting || "").trim() || DEFAULT_CALL_GREETING;
+// ── Horário do time ─────────────────────────────────────────────────────────
+// O fluxo tem DUAS saudações: dentro do horário comercial (seg a sex, 8h às
+// 18h por padrão, configurável por produto) pede pra ligar AGORA; fora dele
+// avisa quando o time volta e pede a autorização pra ligar QUANDO voltar.
+// Relógio do negócio em UTC-3 fixo (mesma convenção do marketing/lead-flow).
+const BRT = 3 * 3_600_000;
+const hourOf = (v, fallback) => { const n = Number(v); return Number.isFinite(n) && n >= 0 && n < 24 ? n : fallback; };
+const businessClock = (at) => new Date(new Date(at).getTime() - BRT); // campos UTC = relógio de Brasília
+
+export function isBusinessHours(product, at = new Date()) {
+  const cfg = product?.waCallFlow || {};
+  const clock = businessClock(at);
+  const dow = clock.getUTCDay();
+  if (dow === 0 || dow === 6) return false;
+  const h = clock.getUTCHours() + clock.getUTCMinutes() / 60;
+  return h >= hourOf(cfg.hourStart, 8) && h < hourOf(cfg.hourEnd, 18);
+}
+
+// O {volta} da saudação fora do horário. Sexta à noite e sábado apontam pra
+// segunda; domingo à noite "amanhã" JÁ é segunda; madrugada de dia útil é hoje.
+function nextOpening(product, at = new Date()) {
+  const start = hourOf(product?.waCallFlow?.hourStart, 8);
+  const label = Number.isInteger(start)
+    ? `${start}h`
+    : `${Math.floor(start)}h${String(Math.round((start % 1) * 60)).padStart(2, "0")}`;
+  const clock = businessClock(at);
+  const dow = clock.getUTCDay();
+  const h = clock.getUTCHours() + clock.getUTCMinutes() / 60;
+  if (dow >= 1 && dow <= 5 && h < start) return `hoje às ${label}`;
+  if ((dow >= 1 && dow <= 4) || dow === 0) return `amanhã às ${label}`;
+  return `segunda às ${label}`;
+}
+
+// `business` força o modo (o pedido manual é sempre "agora": tem gente na
+// tela clicando); sem ele, decide pelo relógio do negócio.
+export function greetingFor(product, lead, { at = new Date(), business } = {}) {
+  const inHours = business ?? isBusinessHours(product, at);
+  const cfg = product?.waCallFlow || {};
+  const raw = String((inHours ? cfg.greeting : cfg.afterHours) || "").trim()
+    || (inHours ? DEFAULT_CALL_GREETING : DEFAULT_AFTER_HOURS_GREETING);
   const first = String(lead?.name || "").trim().split(/\s+/)[0] || "";
-  return raw.replace(/\s?\{nome\}/gi, first ? ` ${first}` : "").replace(/\s+([!?,.])/g, "$1").trim();
+  return raw
+    .replace(/\{volta\}/gi, nextOpening(product, at))
+    .replace(/\s?\{nome\}/gi, first ? ` ${first}` : "")
+    .replace(/\s+([!?,.])/g, "$1").trim();
 }
 
 // Resposta nativa do pedido de permissão (chega no webhook como mensagem
@@ -102,7 +146,7 @@ export async function startCallFlow(repo, wa, { thread, product, lead, phoneId, 
 //  - registra a resposta de permissão (aceitou/recusou) na thread;
 //  - fluxo aberto e quente → levanta o alerta (pop-up pro SDR);
 //  - 1º contato de lead conhecido com o fluxo ligado no produto → inicia.
-export async function runInboundCallFlow(repo, wa, { message, resolvePhoneId }) {
+export async function runInboundCallFlow(repo, wa, { message, resolvePhoneId, now = new Date() }) {
   const tid = threadId(message?.from || "");
   if (!tid) return;
   const thread = await repo.get("wa_threads", tid);
@@ -131,10 +175,10 @@ export async function runInboundCallFlow(repo, wa, { message, resolvePhoneId }) 
   }
 
   if (perm) return; // resposta de permissão sem fluxo registrado: nada a fazer
-  await maybeStart(repo, wa, { thread, resolvePhoneId });
+  await maybeStart(repo, wa, { thread, resolvePhoneId, now });
 }
 
-async function maybeStart(repo, wa, { thread, resolvePhoneId }) {
+async function maybeStart(repo, wa, { thread, resolvePhoneId, now = new Date() }) {
   if (!thread.leadId) return; // só lead conhecido — o form cria o lead antes de mandar pro WhatsApp
   const inbound = (await repo.list("wa_messages")).filter((m) => m.thread === thread.id && m.direction === "in");
   if (inbound.length > 1) return; // não é o 1º contato — conversa já existia
@@ -146,6 +190,8 @@ async function maybeStart(repo, wa, { thread, resolvePhoneId }) {
   const phoneId = await resolvePhoneId({ thread });
   if (phoneId === null || !wa.configured(phoneId)) return;
   try {
-    await startCallFlow(repo, wa, { thread, product, lead, phoneId });
+    // Dentro do horário: "posso te ligar?". Fora dele (noite/fim de semana):
+    // avisa quando o time volta e já pede a autorização pra esse retorno.
+    await startCallFlow(repo, wa, { thread, product, lead, phoneId, text: greetingFor(product, lead, { at: now }) });
   } catch { /* saudação não pode derrubar a entrega do webhook */ }
 }
