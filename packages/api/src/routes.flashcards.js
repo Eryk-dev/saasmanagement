@@ -312,12 +312,13 @@ const EMPTY_STATES = (saas, userId) => ({ id: stateDocId(saas, userId), saas, us
 function buildDeckQueue(cards, statesDoc, { now, newBudget }) {
   const end = dayEnd(now);
   const learning = [], review = [], fresh = [];
+  let learned = 0; // entries já graduadas (em revisão) = a pontuação do tema
   for (const card of cards) {
     for (const { entryId, sub } of cardEntries(card)) {
       const st = statesDoc.cards[entryId] || null;
       const item = { card, entryId, sub, st };
       if (!st || st.state === CARD_STATE.new) fresh.push(item);
-      else if (st.state === CARD_STATE.review) { if (new Date(st.due) <= end) review.push(item); }
+      else if (st.state === CARD_STATE.review) { learned++; if (new Date(st.due) <= end) review.push(item); }
       else if (new Date(st.due) <= end) learning.push(item); // learning/relearning
     }
   }
@@ -327,6 +328,7 @@ function buildDeckQueue(cards, statesDoc, { now, newBudget }) {
   const pack = ({ card, entryId, sub, st }) => ({ ...card, entryId, sub, srs: st, preview: previewIntervals(st, now) });
   return {
     counts: { new: newToday.length, learning: learning.length, review: review.length },
+    learned,
     cards: [...learning.map(pack), ...review.map(pack), ...newToday.map(pack)],
   };
 }
@@ -535,7 +537,7 @@ export function registerFlashcardRoutes(app, repo, { anthropic = null } = {}) {
       const deck = buildDeckQueue(cards.filter((c) => c.role === role), statesDoc, {
         now, newBudget: settings.newPerDay - (doneByRole[role] || 0),
       });
-      decks.push({ role, label: ROLE_LABELS[role], total: cards.filter((c) => c.role === role).flatMap(cardEntries).length, counts: deck.counts });
+      decks.push({ role, label: ROLE_LABELS[role], total: cards.filter((c) => c.role === role).flatMap(cardEntries).length, counts: deck.counts, learned: deck.learned });
       queue[role] = deck.cards;
     }
     const pendingExam = (await repo.list("training_exams"))
