@@ -87,9 +87,9 @@ function Study({ saasId, mode, setMode }) {
     if (!data) return <div className="mono dim" style={{ fontSize: 12 }}>montando sua fila…</div>;
     if (exam) return <ExamScreen saasId={saasId} exam={exam} onDone={() => { setExam(null); load(); }} />;
     if (session) {
-      const deck = data.decks.find((d) => d.role === session);
-      return <Session saasId={saasId} label={deck?.label || session} dayEnd={data.dayEnd}
-        cards={data.queue[session] || []} focus={focus} onToggleFocus={() => setFocus((f) => !f)}
+      return <Session saasId={saasId} label="Treino do dia" dayEnd={data.dayEnd}
+        roleLabels={Object.fromEntries(data.decks.map((d) => [d.role, d.label]))}
+        cards={mixQueues(data.decks, data.queue)} focus={focus} onToggleFocus={() => setFocus((f) => !f)}
         onExit={() => { setSession(null); setFocus(false); load(); }} />;
     }
     if (!data.decks.length) return <EmptyState title="Nenhum baralho pra você" hint="Peça pro gestor te dar uma vaga (SDR/closer/…) em Ajustes → Usuários." />;
@@ -107,12 +107,13 @@ function Study({ saasId, mode, setMode }) {
             </button>
           </div>
         )}
+        <StartCard decks={data.decks} onStudy={(foco) => { setSession(true); setFocus(!!foco); }} />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 14, alignItems: "start" }}>
-          <DeckList decks={data.decks}
-            onStudy={(role, foco) => { setSession(role); setFocus(!!foco); }} />
+          <DeckList decks={data.decks} />
           <SessionPreview decks={data.decks} queue={data.queue}
-            onStudy={(role) => { setSession(role); setFocus(false); }} />
+            onStudy={() => { setSession(true); setFocus(false); }} />
         </div>
+        <RoleGuides />
       </>
     );
   };
@@ -125,21 +126,57 @@ function Study({ saasId, mode, setMode }) {
   );
 }
 
-function DeckList({ decks, onStudy }) {
+// Fila única do dia: revezamento (round-robin) entre TODOS os baralhos da
+// pessoa. Ela não escolhe tema: a cadência passa por geral + vaga sempre,
+// mesmo que a sessão seja interrompida no meio.
+function mixQueues(decks, queue) {
+  const lists = decks.map((d) => [...(queue[d.role] || [])]).filter((l) => l.length);
+  const out = [];
+  while (lists.some((l) => l.length)) {
+    for (const l of lists) if (l.length) out.push(l.shift());
+  }
+  return out;
+}
+
+// O botão único do treino do dia: soma de todos os temas, sem escolher baralho.
+function StartCard({ decks, onStudy }) {
+  const total = decks.reduce((a, d) => a + d.counts.new + d.counts.learning + d.counts.review, 0);
+  if (!total) return (
+    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "18px 24px", maxWidth: 720, fontSize: 13.5, color: "var(--fg-2)" }}>
+      Fila de hoje zerada 🎉 O FSRS traz cada card de volta na hora certa. Volte amanhã.
+    </div>
+  );
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", borderRadius: "var(--r-4)", padding: "16px 20px", maxWidth: 720 }}>
+      <div style={{ flex: 1, minWidth: 220 }}>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>Treino do dia · {total} card{total === 1 ? "" : "s"}</div>
+        <div style={{ fontSize: 12.5, color: "var(--fg-2)", marginTop: 2 }}>os temas vêm misturados (geral + sua vaga), na cadência certa · você não escolhe, só responde</div>
+      </div>
+      <button onClick={() => onStudy(false)} style={{ height: 40, padding: "0 18px", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 600, background: "var(--btn-bg)", color: "var(--btn-fg)", border: "1px solid var(--btn-bg)", boxShadow: "var(--shadow-btn)", cursor: "pointer" }}>
+        Estudar →
+      </button>
+      <button onClick={() => onStudy(true)} title="modo foco: tela cheia + áudio ambiente" style={{ height: 40, padding: "0 14px", borderRadius: "var(--r-2)", fontSize: 13, background: "var(--bg-1)", color: "var(--fg-2)", border: "1px solid var(--line-2)", cursor: "pointer" }}>
+        ◐ foco
+      </button>
+    </div>
+  );
+}
+
+function DeckList({ decks }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14 }}>
-      {decks.map((d, index) => {
+      {decks.map((d) => {
         const total = d.counts.new + d.counts.learning + d.counts.review;
         return (
           <div key={d.role} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: 24 }}>
             <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em" }}>{d.label}</div>
-                <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 3 }}>{d.total} card{d.total === 1 ? "" : "s"} · vaga {d.role}</div>
+                <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 3 }}>{d.total} card{d.total === 1 ? "" : "s"}</div>
               </div>
-              {index === 0 && (
-                <span style={{ height: 22, display: "inline-flex", alignItems: "center", padding: "0 9px", borderRadius: "var(--r-1)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 11.5, fontWeight: 600 }}>sua vaga</span>
-              )}
+              <span style={{ height: 22, display: "inline-flex", alignItems: "center", padding: "0 9px", borderRadius: "var(--r-1)", background: d.role.startsWith("geral") ? "var(--bg-2)" : "var(--accent-soft)", color: d.role.startsWith("geral") ? "var(--fg-3)" : "var(--accent)", fontSize: 11.5, fontWeight: 600 }}>
+                {d.role.startsWith("geral") ? "todo o time" : "sua vaga"}
+              </span>
             </div>
             <div style={{ display: "flex", gap: 18, margin: "18px 0" }}>
               {[
@@ -153,15 +190,9 @@ function DeckList({ decks, onStudy }) {
                 </div>
               ))}
             </div>
-            {total > 0 ? (
-              <button onClick={() => onStudy(d.role, false)} style={{
-                height: 40, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 600,
-                background: index === 0 ? "var(--btn-bg)" : "var(--bg-1)", color: index === 0 ? "var(--btn-fg)" : "var(--fg-1)",
-                border: `1px solid ${index === 0 ? "var(--btn-bg)" : "var(--line-2)"}`, boxShadow: index === 0 ? "var(--shadow-btn)" : "none",
-              }}>Estudar →</button>
-            ) : (
-              <div style={{ fontSize: 13, color: "var(--fg-3)", lineHeight: 1.5 }}>Fila de hoje zerada — o FSRS traz cada card de volta na hora certa. Volte amanhã.</div>
-            )}
+            <div style={{ fontSize: 12, color: "var(--fg-4)", lineHeight: 1.5 }}>
+              {total > 0 ? "entra no treino do dia, misturado com os outros temas" : "fila de hoje zerada nesse tema"}
+            </div>
           </div>
         );
       })}
@@ -192,7 +223,7 @@ function SessionPreview({ decks, queue, onStudy }) {
       <div style={{ fontSize: 14, color: "var(--fg-2)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{answer || "Resposta disponível ao iniciar a sessão."}</div>
       <div style={{ display: "flex", gap: 8, marginTop: 22, flexWrap: "wrap" }}>
         {labels.map((label, index) => (
-          <button key={label} onClick={() => onStudy(deck.role)} style={{
+          <button key={label} onClick={() => onStudy()} style={{
             height: 32, padding: "0 14px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: index === 2 ? 600 : 500,
             background: index === 2 ? "var(--btn-bg)" : "var(--bg-1)", color: index === 2 ? "var(--btn-fg)" : "var(--fg-2)",
             border: `1px solid ${index === 2 ? "var(--btn-bg)" : "var(--line-2)"}`,
@@ -207,7 +238,7 @@ function SessionPreview({ decks, queue, onStudy }) {
 // Com focus=true a MESMA sessão (mesma fila, mesmo estado) veste a FocusShell:
 // tela cheia escura, card maior, textos fora do card em branco translúcido —
 // vars de tema só DENTRO de superfícies (--bg-1), que funcionam nos 2 temas.
-function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus }) {
+function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus, roleLabels }) {
   const [queue, setQueue] = useS(cards);
   const [flipped, setFlipped] = useS(false);
   const [busy, setBusy] = useS(false);
@@ -271,7 +302,7 @@ function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus })
           <div style={{ fontSize: 12.5, color: "var(--fg-2)", marginTop: 10, lineHeight: 1.5 }}>Fila de hoje zerada — o FSRS traz cada card de volta na hora certa. Volte amanhã.</div>
         </div>
         <ConsistencyCard saasId={saasId} />
-        <button onClick={onExit} style={{ ...btn, alignSelf: "flex-start", ...(focus ? { background: "transparent", color: "rgba(255,255,255,0.7)", border: "1px solid rgba(255,255,255,0.2)" } : {}) }}>← voltar aos baralhos</button>
+        <button onClick={onExit} style={{ ...btn, alignSelf: "flex-start", ...(focus ? { background: "transparent", color: "rgba(255,255,255,0.7)", border: "1px solid rgba(255,255,255,0.2)" } : {}) }}>← voltar</button>
       </div>
     );
   } else {
@@ -297,7 +328,7 @@ function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus })
             boxShadow: focus ? "0 24px 90px rgba(0,0,0,0.55)" : "var(--shadow-2)",
             padding: focus ? "34px 34px 28px" : "26px 26px 22px", minHeight: focus ? 220 : 180,
             display: "flex", flexDirection: "column", gap: 14, cursor: flipped ? "default" : "pointer" }}>
-          <div className="mono" style={kicker}>{label} · {bucket === "new" ? "card novo" : bucket === "review" ? "revisão" : "aprendendo"}{card.sub ? ` · ${card.sub}` : ""}</div>
+          <div className="mono" style={kicker}>{(roleLabels && roleLabels[card.role]) || label} · {bucket === "new" ? "card novo" : bucket === "review" ? "revisão" : "aprendendo"}{card.sub ? ` · ${card.sub}` : ""}</div>
           <CardFace card={card} flipped={flipped} focus={focus} />
         </div>
 
@@ -1119,6 +1150,84 @@ function PersonDetail({ user: u, today }) {
       <div>
         <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Constância</div>
         <Heatmap days={u.days || {}} today={today} />
+      </div>
+    </div>
+  );
+}
+
+
+// ── As vagas e seus processos ────────────────────────────────────────────────
+// Resumo fixo do que cada vaga é responsável e do processo dela dentro da
+// empresa: o mapa que o treinamento aprofunda card a card. Todo mundo vê as 4
+// (entender o vizinho é parte do jogo).
+const ROLE_GUIDES = [
+  {
+    role: "sdr", title: "SDR", tagline: "Topo do funil: transformar cadastro em call agendada",
+    respons: "Responde pela velocidade do 1º toque, pela qualificação completa e por entregar ao closer uma call confirmada, com login em mãos e decisor presente.",
+    processo: [
+      "Fila do Meu dia na ordem: lead novo é prioridade máxima (2 ligações + WhatsApp de apresentação)",
+      "Qualifica os 6 dados na ordem (nicho, loja, contas, anúncios, expansão, time) e marca a call com 2 opções de horário; e-mail por último",
+      "3 abordagens no total; sem sucesso, Nutrição: 3 ganchos de 7 em 7 dias (prova → teste sem risco → porta aberta)",
+      "Confirmação da call: 1h antes no WhatsApp (cobra logins ML/Shopee + decisor); sem resposta, LIGA 10 min antes",
+      "No-show: 2 remarcações (1h depois e no dia útil seguinte); sem retorno, Desqualificado",
+    ],
+  },
+  {
+    role: "closer", title: "Closer", tagline: "Da call ao dinheiro: fechar com pagamento na call",
+    respons: "Responde pela conversão das calls em receita: demo ao vivo, objeções resolvidas na hora, pagamento ainda na call e integração agendada pro dia seguinte.",
+    processo: [
+      "Raio-X (5 min): contas, anúncios, quem sobe anúncio, faturamento; pergunta da suspensão define a narrativa (proteção × crescimento)",
+      "Espelho da dor nas palavras do lead → tese das 3 etapas + vacina da canibalização antes que perguntem",
+      "Demo AO VIVO nas contas dele (o coração: quem clona de verdade, fecha) · prova com cases (Unique +105%, Dyno 60 mil/20 dias)",
+      "Oferta âncora única (anual 12x 599; à vista com desconto no Pix); a escada só entra travando em caixa, com validade nesta call",
+      "Fechamento = agendar a integração (13h ou 17h) com pagamento na linha; não fechou: tarefa + data + decisor, e follow-ups 1/2/3 a partir do resumo da call",
+    ],
+  },
+  {
+    role: "integrator", title: "Integrador · CS", tagline: "Entrega e retenção: rodando no dia seguinte, renovando no fim",
+    respons: "Responde pela ativação (cliente clonando em 24h), pela saúde da carteira na régua de retenção e por transformar resultado em case e indicação.",
+    processo: [
+      "Confirmação 2h antes (computador + logins em mãos); sem resposta, liga 30 min antes",
+      "Call de vídeo (~20 min): conecta as contas, define a conta-mãe e roda a PRIMEIRA clonagem na tela do cliente",
+      "Registra tudo no card (contas, conta-mãe, pendências, próximo contato) pra ligar sempre com dado na mão",
+      "Régua: onboarding (semana 1) · check-in (mês 1) · revisão (mês 3) · upsell (mês 6) · renovação (2 meses antes do fim)",
+      "Sinal amarelo de churn (sem uso, sem resposta) = ligação hoje; resultado bom vira case autorizado + pedido de indicação",
+    ],
+  },
+  {
+    role: "social", title: "Mídia social", tagline: "Alimentar o topo: criativo por dor e presença que sustenta o funil",
+    respons: "Responde pelo fluxo de leads qualificados no topo: criativos por dor na convenção certa, leitura por CPL real/ABC/ROAS e presença orgânica consistente.",
+    processo: [
+      "Criativo por dor com código [X] no nome e UTMs da convenção (é o que liga lead → anúncio → receita)",
+      "Anúncio novo nasce PAUSADO: revisão no Gerenciador antes de ativar",
+      "Leitura semanal: CPL real, CTR de link, 3s play, clientes A/B/C e ROAS por dor (relatório Por dor); julga com amostra, não com dia isolado",
+      "Orçamento gradual (+20% no conjunto que prova resultado); pausa criativo cansado (frequência alta, CTR caindo)",
+      "Orgânico no ritmo das metas: cases com print, bastidores e demonstrações, publicados e medidos pela tela Redes sociais",
+    ],
+  },
+];
+
+function RoleGuides() {
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, letterSpacing: "-0.01em" }}>As vagas e seus processos</h2>
+        <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>quem responde pelo quê · o mapa que os cards aprofundam</span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, alignItems: "start" }}>
+        {ROLE_GUIDES.map((g) => (
+          <div key={g.role} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px 22px" }}>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>{g.title}</div>
+            <div style={{ fontSize: 12, color: "var(--accent)", fontWeight: 600, marginTop: 2 }}>{g.tagline}</div>
+            <div style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.55, marginTop: 10 }}>{g.respons}</div>
+            <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.07em", textTransform: "uppercase", margin: "12px 0 6px" }}>Processo</div>
+            <ol style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
+              {g.processo.map((s, i) => (
+                <li key={i} style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5 }}>{s}</li>
+              ))}
+            </ol>
+          </div>
+        ))}
       </div>
     </div>
   );
