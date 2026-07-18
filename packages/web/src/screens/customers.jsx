@@ -61,11 +61,24 @@ function CustomersScreen({ initialTab = "base" }) {
     api.update("customers", customer.id, p).catch(() => refresh());
   }
 
+  // Workspace de mentoria (UniqueKids): a base não é assinatura recorrente, é
+  // pacote de consultas — a tabela troca as colunas de SaaS (plano/MRR/marco/
+  // assinatura) pelas da jornada (pacote/valor/próxima consulta/consultas).
+  const isKidsWorkspace = product?.id === "uniquekids";
+  const [allConsultas, setAllConsultas] = useState([]);
+
   useEffect(() => {
     api.list("subscriptions").then((rows) => setSubs(rows.filter((s) => s.saas === product?.id))).catch(() => {});
     api.list("plans").then((rows) => setPlans(rows.filter((p) => p.saas === product?.id))).catch(() => {});
     api.list("invoices").then((rows) => setInvoices(rows.filter((i) => i.saas === product?.id))).catch(() => {});
   }, [product?.id, version]);
+
+  useEffect(() => {
+    if (!isKidsWorkspace) { setAllConsultas([]); return; }
+    let alive = true;
+    api.list("consultations").then((rows) => alive && setAllConsultas(rows || [])).catch(() => {});
+    return () => { alive = false; };
+  }, [isKidsWorkspace, version, tick]);
 
   const customers = useMemo(() => {
     const list = (CUSTOMERS || []).filter((c) => c.saas === product?.id);
@@ -82,7 +95,20 @@ function CustomersScreen({ initialTab = "base" }) {
   const isChurned = (c) => c.endedAt && new Date(c.endedAt).getTime() <= Date.now();
   const activeCustomers = customers.filter((c) => !isChurned(c));
   const totalMrr = activeCustomers.reduce((a, c) => a + (c.arr || 0), 0) / 12;
+  const totalContratado = activeCustomers.reduce((a, c) => a + (c.arr || 0), 0);
   const money = window.fmt.money;
+
+  // Jornada de consultas do cliente (mesma família da tela Consultas).
+  const journeyOf = (c) => {
+    const items = allConsultas
+      .filter((x) => (x.customerId && x.customerId === c.id) || (c.leadId && x.leadId === c.leadId))
+      .sort((a, b) => (a.n || 0) - (b.n || 0));
+    const total = items.reduce((a, x) => Math.max(a, Number(x.packageTotal) || 0), 0) || consultPackageOf(c.plan) || 8;
+    const done = items.filter((x) => x.status === "done").length;
+    const next = items.filter((x) => x.status === "scheduled" && x.at).sort((a, b) => String(a.at).localeCompare(String(b.at)))[0] || null;
+    return { items, total, done, next };
+  };
+  const fmtNextAt = (at) => new Date(at).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "");
   const shownCustomers = showAll ? customers : customers.slice(0, 50);
   const lastContact = (c) => {
     const lead = (LEADS || []).find((l) => l.id === c.leadId);
@@ -116,7 +142,8 @@ function CustomersScreen({ initialTab = "base" }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-      <PageHead title="Clientes" sub={`${activeCustomers.length} ${activeCustomers.length === 1 ? "ativo" : "ativos"} · MRR ${money(totalMrr)}`}>
+      <PageHead title="Clientes"
+        sub={`${activeCustomers.length} ${activeCustomers.length === 1 ? "ativo" : "ativos"} · ${isKidsWorkspace ? `${money(totalContratado)} contratado` : `MRR ${money(totalMrr)}`}`}>
         <Segmented value={tab} onChange={setTab} options={[{ value: "base", label: "Clientes" }, { value: "billing", label: "Assinaturas" }]} />
         {tab === "base" && <PrimaryButton onClick={() => openForm("customers", { saas: product.id })}>+ novo cliente</PrimaryButton>}
       </PageHead>
@@ -133,7 +160,7 @@ function CustomersScreen({ initialTab = "base" }) {
           />
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, alignItems: "start" }}>
-            <CustomersAnalysis customers={customers} />
+            <CustomersAnalysis customers={customers} isKids={isKidsWorkspace} />
 
             <Card title="Próximas ações" hint="régua de retenção, vencidas primeiro">
               <div style={{ padding: "12px 0 8px" }}>
@@ -190,7 +217,10 @@ function CustomersScreen({ initialTab = "base" }) {
               <table style={{ width: "100%", minWidth: 880, borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
-                    {["Cliente", "Plano", "MRR", "Tempo de casa", "Último contato", "Próximo marco", "Assinatura"].map((h, i) => (
+                    {(isKidsWorkspace
+                      ? ["Cliente", "Pacote", "Valor", "Tempo de casa", "Último contato", "Próxima consulta", "Consultas"]
+                      : ["Cliente", "Plano", "MRR", "Tempo de casa", "Último contato", "Próximo marco", "Assinatura"]
+                    ).map((h, i) => (
                       <th key={h} style={{ textAlign: i === 2 ? "right" : "left", fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", padding: "12px 20px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
                     ))}
                   </tr>
@@ -199,31 +229,45 @@ function CustomersScreen({ initialTab = "base" }) {
                   {shownCustomers.map((c) => {
                     const sub = mainSub(c);
                     const st = sub ? SUB_STATUS[sub.status] || { label: sub.status, tone: "mut" } : null;
-                    const nm = isMentoria(c) ? null : nextMilestone(withCycle(c), product);
+                    const kids = isMentoria(c);
+                    const nm = kids ? null : nextMilestone(withCycle(c), product);
+                    const j = kids ? journeyOf(c) : null;
                     return (
                       <tr key={c.id} onClick={() => setSel(c.id)} style={{ cursor: "pointer" }}
                         onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
                         <td style={{ padding: "14px 20px", fontSize: 13.5, fontWeight: 600, borderBottom: "1px solid var(--line-faint)" }}>{c.name}</td>
+                        {/* Pacote (mentoria) × plano da assinatura (SaaS) */}
                         <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
-                          {sub ? planLabel(sub) : c.plan || "sem plano"}
+                          {kids ? consultPackageLabel(j.total) : sub ? planLabel(sub) : c.plan || "sem plano"}
                         </td>
+                        {/* Mentoria é compra única: mostra o valor do contrato, não MRR */}
                         <td className="tnum" style={{ padding: "14px 20px", fontSize: 13, textAlign: "right", borderBottom: "1px solid var(--line-faint)" }}>
-                          {money((c.arr || 0) / 12)}
+                          {money(kids ? (c.arr || 0) : (c.arr || 0) / 12)}
                         </td>
                         <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
                           {tenureLabel(c) || <span style={{ color: "var(--fg-4)" }}>defina o início</span>}
                         </td>
                         <td className="tnum" style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-3)", borderBottom: "1px solid var(--line-faint)" }}>{lastContact(c)}</td>
+                        {/* Próxima consulta (mentoria) × próximo marco da régua */}
                         <td style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)" }}>
-                          {isMentoria(c)
-                            ? <Pill tone="mut">mentoria · ver Consultas</Pill>
+                          {kids
+                            ? j.next
+                              ? <Pill tone="warn">consulta {j.next.n || "?"} · {fmtNextAt(j.next.at)}</Pill>
+                              : j.done >= j.total && j.items.length > 0
+                                ? <Pill tone="pos">jornada completa</Pill>
+                                : <Pill tone="mut">a marcar</Pill>
                             : nm
                               ? <Pill tone={nm.status === "late" ? "neg" : nm.status === "soon" ? "warn" : "mut"}>{nm.label} · {dueLabel(nm.dueAt)}</Pill>
                               : c.startedAt ? <Pill tone="pos">régua completa</Pill> : <Pill tone="mut">sem início</Pill>}
                         </td>
+                        {/* Progresso do pacote (mentoria) × status da assinatura */}
                         <td style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)" }}>
-                          {isChurned(c) ? <Pill tone="neg">churn</Pill> : st ? <Pill tone={st.tone}>{st.label}</Pill> : <Pill tone="mut">sem assinatura</Pill>}
+                          {isChurned(c)
+                            ? <Pill tone="neg">churn</Pill>
+                            : kids
+                              ? <Pill tone={j.done >= j.total && j.items.length > 0 ? "pos" : j.done > 0 ? "warn" : "mut"}>{j.done} de {j.total}</Pill>
+                              : st ? <Pill tone={st.tone}>{st.label}</Pill> : <Pill tone="mut">sem assinatura</Pill>}
                         </td>
                       </tr>
                     );
