@@ -319,3 +319,133 @@ test("GET /p/t/:id — preview do template em página própria (banner, sem pers
   assert.equal((await app.inject({ method: "GET", url: "/p/t/nope" })).statusCode, 404);
   await app.close();
 });
+
+// ── Versão pro cliente: uma proposta por oferta ─────────────────────────────
+// O deck é de apresentação (preço no comando do closer, ofertas 2/3 secretas).
+// Mandar pro cliente cria uma proposta própria por oferta, já visível e sem
+// edição — ver shareProposalOffer.
+const LADDER = {
+  ...TEMPLATE,
+  id: "pt_ladder",
+  slides: [
+    TEMPLATE.slides[0],
+    {
+      key: "investimento", type: "pricing", title: "Investimento",
+      revealPrice: true, planTag: "ANUAL", price: "7.188", per: "no ano", cycles: "12x de 599/mês",
+      sub: "só no anual", currency: false,
+      benefitGroups: [{ title: "O motor", items: ["Clonagem ilimitada"], synth: "economia" }],
+      offer2: { planTag: "SEMESTRAL", price: "3.588", per: "no semestre", cycles: "12x de 299/mês", currency: false },
+      offer3: { planTag: "SERVIÇO ÚNICO", price: "1.788", per: "à vista", cycles: "12x de 149/mês", currency: false },
+      acceptLabel: "Aceitar proposta",
+    },
+  ],
+};
+
+async function buildLadder() {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [{ stage: "Inbox" }, { stage: "Config + Kickoff" }] });
+  await repo.create("proposal_templates", { ...LADDER });
+  await repo.create("leads", { ...LEAD, id: "le_share" });
+  const app = Fastify();
+  registerRoutes(app, repo);
+  await app.inject({ method: "POST", url: "/api/leads/le_share/proposal?auto=1" });
+  return { app, repo };
+}
+
+test("proposal-offers: lista a oferta principal + as secretas da escada", async () => {
+  const { app } = await buildLadder();
+  const body = (await app.inject({ url: "/api/leads/le_share/proposal-offers" })).json();
+  assert.deepEqual(body.offers.map((o) => [o.offer, o.label, o.price]), [
+    [1, "ANUAL", "7.188"],
+    [2, "SEMESTRAL", "3.588"],
+    [3, "SERVIÇO ÚNICO", "1.788"],
+  ]);
+
+  // lead sem proposta gerada não quebra: devolve lista vazia
+  const { app: app2, repo } = await buildLadder();
+  await repo.create("leads", { id: "le_sem", saas: "leverads", name: "Zé" });
+  assert.deepEqual((await app2.inject({ url: "/api/leads/le_sem/proposal-offers" })).json(), { proposal: null, offers: [] });
+  assert.equal((await app2.inject({ url: "/api/leads/nope/proposal-offers" })).statusCode, 404);
+  await app.close(); await app2.close();
+});
+
+test("proposal-share: oferta secreta vira proposta própria, visível e sem edição", async () => {
+  const { app, repo } = await buildLadder();
+  const parentId = (await repo.get("leads", "le_share")).proposta_id;
+
+  const res = await app.inject({ method: "POST", url: "/api/leads/le_share/proposal-share", payload: { offer: 2 } });
+  assert.equal(res.statusCode, 200);
+  const body = res.json();
+  assert.equal(body.offer, 2);
+  assert.equal(body.label, "SEMESTRAL");
+  assert.notEqual(body.id, parentId);          // proposta PRÓPRIA, link separado
+  assert.match(body.url, new RegExp(`/p/${body.id}$`));
+
+  const shared = await repo.get("proposals", body.id);
+  assert.equal(shared.showAll, true);           // nada espera comando do closer
+  assert.equal(shared.editKey, "");             // link nunca abre a edição
+  assert.equal(shared.sharedFrom, parentId);
+  assert.equal(shared.lead, "le_share");
+  assert.equal(shared.acceptStage, "Config + Kickoff"); // aceite continua valendo
+
+  const price = shared.slides.find((s) => s.type === "pricing");
+  assert.equal(price.planTag, "SEMESTRAL");     // secreta promovida a principal
+  assert.equal(price.price, "3.588");
+  assert.equal(price.cycles, "12x de 299/mês");
+  assert.equal(price.sub, undefined);           // campo que a oferta 2 não define não sobra da 1
+  assert.equal(price.offer2, undefined);        // escada de negociação não vai pro cliente
+  assert.equal(price.offer3, undefined);
+  assert.deepEqual(price.benefitGroups, LADDER.slides[1].benefitGroups); // resto do slide intacto
+
+  // a proposta MÃE segue de apresentação (com escada e chave de edição)
+  const parent = await repo.get("proposals", parentId);
+  assert.ok(parent.editKey.length >= 16);
+  assert.equal(parent.slides.find((s) => s.type === "pricing").offer2.planTag, "SEMESTRAL");
+  assert.ok(!parent.showAll);
+
+  // timeline registra qual oferta foi enviada
+  const acts = (await repo.list("activities")).filter((a) => a.meta?.event === "proposal_shared");
+  assert.equal(acts.length, 1);
+  assert.equal(acts[0].meta.offer, 2);
+  assert.equal(acts[0].lead, "le_share");
+  await app.close();
+});
+
+test("proposal-share: mesma oferta reusa o link (re-snapshot); outra oferta é outro link", async () => {
+  const { app, repo } = await buildLadder();
+  const first = (await app.inject({ method: "POST", url: "/api/leads/le_share/proposal-share", payload: { offer: 3 } })).json();
+
+  // deck corrigido depois do envio: re-compartilhar atualiza o MESMO link
+  const parentId = (await repo.get("leads", "le_share")).proposta_id;
+  const parent = await repo.get("proposals", parentId);
+  const slides = parent.slides.map((s) => (s.type === "pricing" ? { ...s, offer3: { ...s.offer3, price: "1.999" } } : s));
+  await repo.update("proposals", parentId, { slides });
+
+  const again = (await app.inject({ method: "POST", url: "/api/leads/le_share/proposal-share", payload: { offer: 3 } })).json();
+  assert.equal(again.id, first.id);
+  assert.equal((await repo.get("proposals", first.id)).slides.find((s) => s.type === "pricing").price, "1.999");
+
+  const other = (await app.inject({ method: "POST", url: "/api/leads/le_share/proposal-share", payload: { offer: 1 } })).json();
+  assert.notEqual(other.id, first.id);
+  assert.equal((await repo.get("proposals", other.id)).slides.find((s) => s.type === "pricing").planTag, "ANUAL");
+
+  // oferta fora da escada e lead sem proposta são 400
+  assert.equal((await app.inject({ method: "POST", url: "/api/leads/le_share/proposal-share", payload: { offer: 9 } })).statusCode, 400);
+  await repo.create("leads", { id: "le_nada", saas: "leverads", name: "Zé" });
+  assert.equal((await app.inject({ method: "POST", url: "/api/leads/le_nada/proposal-share", payload: { offer: 1 } })).statusCode, 400);
+  await app.close();
+});
+
+test("página da proposta compartilhada: showAll no payload e ?k não abre edição", async () => {
+  const { app } = await buildLadder();
+  const shared = (await app.inject({ method: "POST", url: "/api/leads/le_share/proposal-share", payload: { offer: 2 } })).json();
+
+  const page = await app.inject({ url: `/p/${shared.id}` });
+  assert.equal(page.statusCode, 200);
+  assert.match(page.body, /"showAll":true/);
+  assert.match(page.body, /"editable":false/);
+  // sem editKey, chute de chave (inclusive vazia) não vira modo closer
+  assert.match((await app.inject({ url: `/p/${shared.id}?k=` })).body, /"editable":false/);
+  assert.match((await app.inject({ url: `/p/${shared.id}?k=qualquer` })).body, /"editable":false/);
+  await app.close();
+});

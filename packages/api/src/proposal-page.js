@@ -1079,7 +1079,12 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       var hasOpts = s.optionsFeatured != null && s.optionsFeatured !== '';
       // Reveal do preço: elementos que o véu controla NÃO levam data-reveal
       // (os dois mecanismos disputariam opacity/transform).
-      var reveal = !!s.revealPrice;
+      // staged = o slide foi desenhado no modo encadeado (benefícios em grupos
+      // + faixa de preço); reveal = a INTERAÇÃO está ligada. Na versão mandada
+      // pro cliente (P.showAll) o layout continua o mesmo, mas nada espera
+      // comando: sem véu, sem listeners, tudo já visível.
+      var staged = !!s.revealPrice;
+      var reveal = staged && !P.showAll;
       var sec = el('section', ((hasOpts ? 'compact-pricing ' : '') + (reveal ? 'price-pending' : '')).trim() || null);
       var w = el('div', 'wrap');
       w.appendChild(band(s, num, total));
@@ -1112,7 +1117,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       // o primeiro); "synth" do grupo é o banner-síntese (ex.: economia total).
       // Esgotados os passos, o próximo comando revela o preço. Sem grupos, a
       // lista plana de s.features renderiza como sempre.
-      var groups = reveal && Array.isArray(s.benefitGroups) && s.benefitGroups.length ? s.benefitGroups : null;
+      var groups = staged && Array.isArray(s.benefitGroups) && s.benefitGroups.length ? s.benefitGroups : null;
       var benefitsInner;
       if (groups) {
         benefitsInner = groups.map(function (g) {
@@ -1214,7 +1219,9 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
             (s.featuresTitle ? '<div class="benefits-title">' + fmt(s.featuresTitle) + '</div>' : '') +
             '<div class="benefit-grid">' + colsHtml + '</div>' +
           '</div>' +
-          '<div class="price-reveal price-band' + (hasOffer2 || hasOffer3 ? ' has-ladder' : '') + '">' +
+          // Sem interação (versão do cliente) a faixa entra na animação de
+          // scroll dos demais blocos, em vez de simplesmente estar lá.
+          '<div class="price-reveal price-band' + (hasOffer2 || hasOffer3 ? ' has-ladder' : '') + '"' + (reveal ? '' : ' data-reveal') + '>' +
             '<div class="pb-stage">' + panelsHtml + '</div>' + veilHtml +
           '</div>' +
           (guaranteeHtml || paybackHtml ? '<div data-reveal style="margin-top:16px">' + guaranteeHtml + paybackHtml + '</div>' : '');

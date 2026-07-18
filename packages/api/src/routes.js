@@ -11,7 +11,7 @@ import { registerFormRoutes } from "./routes.forms.js";
 import { registerWebhookRoutes } from "./routes.webhooks.js";
 import { mergeLeadQuestions } from "./forms.js";
 import { registerProposalRoutes } from "./routes.proposals.js";
-import { runNativeProposal } from "./proposal.js";
+import { runNativeProposal, proposalOffers, shareProposalOffer } from "./proposal.js";
 import { registerBillingRoutes } from "./routes.billing.js";
 import { initSubscription, syncCustomerArr, createClosedSubscription } from "./billing.js";
 import { registerAuthRoutes } from "./auth.js";
@@ -608,6 +608,39 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       req.log.warn({ leadId: lead.id, provider: result.provider, status: result.status, err: result.error }, "proposal generation failed");
     }
     return result;
+  });
+
+  // ── Mandar a proposta pro cliente (uma por oferta) ────────────────────────
+  // O deck do lead é de apresentação (preço no comando do closer, ofertas 2/3
+  // secretas). Aqui o closer escolhe QUAL oferta mandar e recebe um link
+  // próprio, já visível e sem edição. Ancorado no LEAD de propósito: é ação de
+  // quem trabalha a fila (pipeline/today), não da tela de propostas.
+  app.get("/api/leads/:id/proposal-offers", async (req, reply) => {
+    const lead = await repo.get("leads", req.params.id);
+    if (!lead) return reply.code(404).send({ error: "Not found" });
+    const proposal = lead.proposta_id ? await repo.get("proposals", lead.proposta_id) : null;
+    if (!proposal) return { proposal: null, offers: [] };
+    return { proposal: proposal.id, offers: proposalOffers(proposal.slides) };
+  });
+
+  app.post("/api/leads/:id/proposal-share", async (req, reply) => {
+    const lead = await repo.get("leads", req.params.id);
+    if (!lead) return reply.code(404).send({ error: "Not found" });
+    const proposal = lead.proposta_id ? await repo.get("proposals", lead.proposta_id) : null;
+    if (!proposal) return reply.code(400).send({ error: "lead ainda não tem proposta gerada" });
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const result = await shareProposalOffer(repo, proposal, body.offer, { baseUrl: publicBase(req) });
+    if (!result.ok) return reply.code(400).send({ error: result.error });
+    // Fica na timeline QUAL oferta foi mandada e quando (o "abriu" já entra
+    // sozinho na primeira visualização do cliente).
+    try {
+      await logActivity(repo, {
+        saas: lead.saas || "", lead: lead.id, type: "system",
+        meta: { event: "proposal_shared", proposal: result.proposal.id, offer: result.offer, label: result.label },
+        author: req.authUser?.id || "",
+      });
+    } catch { /* timeline é best-effort */ }
+    return { ok: true, id: result.proposal.id, url: result.url, offer: result.offer, label: result.label };
   });
 }
 
