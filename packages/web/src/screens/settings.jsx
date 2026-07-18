@@ -388,6 +388,7 @@ const ROLE_OPTS = [
   ["closer", "Closer", "conduz call/proposta/follow-up"],
   ["integrator", "Integração", "faz o setup pós-venda"],
   ["social", "Mídia social", "cuida das redes sociais e do conteúdo"],
+  ["admin", "Admin", "dono da operação: não é vaga do funil e não é cobrado no treinamento"],
 ];
 
 function TeamSettings() {
@@ -457,7 +458,7 @@ function TeamSettings() {
     <div>
       <SettingHeader title="Equipe & papéis" sub="quem aparece nos pickers de SDR/closer/integração do pipeline · papel ≠ permissão (todos são admin na v1)" />
       <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
-        <div className="mono" style={{ display: "grid", gridTemplateColumns: "1fr repeat(4, 100px) 140px 120px 44px", gap: 8, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
+        <div className="mono" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 140px 120px 44px`, gap: 8, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
           <span>Usuário</span>
           {ROLE_OPTS.map(([k, l, hint]) => <span key={k} title={hint} style={{ textAlign: "center" }}>{l}</span>)}
           <span title="Vazio = aparece nos pickers de todos os produtos; preenchido = só no workspace daquele produto">Produto</span>
@@ -466,7 +467,7 @@ function TeamSettings() {
         </div>
         {users === null && <div className="mono dim" style={{ padding: "12px 14px", fontSize: 12 }}>carregando…</div>}
         {Array.isArray(users) && users.map((u) => (
-          <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1fr repeat(4, 100px) 140px 120px 44px", gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
+          <div key={u.id} style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 140px 120px 44px`, gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 500 }}>
               <Avatar id={u.id} name={u.name} size={22} /> {u.name || u.id}
               <span className="mono dim code" style={{ fontSize: 10 }}>{u.id}</span>

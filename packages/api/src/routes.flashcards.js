@@ -293,14 +293,23 @@ function sanitizeSettings(input, existing = {}) {
   return out;
 }
 
+// "admin" é o dono da operação (Leo, Eryk, Jonathan): não é vaga de funil e
+// não gera treinamento obrigatório.
+export function isAdmin(user) {
+  return (user?.roles || []).includes("admin");
+}
+
 // Vagas que o usuário treina: os DOIS baralhos de conhecimentos gerais entram
 // pra todo mundo, primeiro (a porta de entrada do treinamento); a partir deles
-// a pessoa segue no fluxo da vaga dela (etiquetas do cadastro, roles do
-// funil). Sem etiqueta (ex.: admin) = vê todos os baralhos.
+// a pessoa segue no fluxo da vaga dela (etiquetas do cadastro, roles do funil).
+// Admin SEM vaga não recebe fila nenhuma (antes, "sem etiqueta" caía em todos
+// os baralhos, o oposto de isento); admin QUE TAMBÉM tem vaga mantém a fila
+// dela pra estudar quando quiser, só não é cobrado (fora do quadro da equipe).
+// Cadastro novo, ainda sem etiqueta nenhuma, segue vendo tudo.
 function rolesForUser(user) {
   const tags = (user?.roles || []).filter((r) => ROLES.has(r));
-  if (!tags.length) return [...ROLE_ORDER];
-  return ROLE_ORDER.filter((r) => GENERAL_ROLES.includes(r) || tags.includes(r));
+  if (tags.length) return ROLE_ORDER.filter((r) => GENERAL_ROLES.includes(r) || tags.includes(r));
+  return isAdmin(user) ? [] : [...ROLE_ORDER];
 }
 
 const stateDocId = (saas, userId) => `${saas}__${userId}`;
@@ -415,6 +424,9 @@ export async function teamSnapshot(repo, saas, cardsBase, now = new Date()) {
   const today = dayKey(now);
   const users = (await repo.list("users"))
     .filter((u) => !u.saas || u.saas === saas) // respeita o escopo de produto do usuário
+    // Admin fica FORA do quadro de cobrança: treinamento é opcional pra quem
+    // toca o negócio, então listar ele como "atrasado" seria ruído.
+    .filter((u) => !isAdmin(u))
     .map((u) => ({ id: u.id, name: u.name, roles: Array.isArray(u.roles) ? u.roles : [] }));
   const reviews = (await repo.list("training_reviews")).filter((r) => r.saas === saas);
   const exams = (await repo.list("training_exams")).filter((e) => e.saas === saas);

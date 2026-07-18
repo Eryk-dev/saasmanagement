@@ -16,6 +16,8 @@ const USERS = {
   bob: { id: "bob", name: "Bob", roles: ["closer"] },
   eryk: { id: "eryk", name: "Eryk", roles: [] },                       // sem etiqueta = todos os baralhos
   zoe: { id: "zoe", name: "Zoe", roles: ["sdr"], saas: "outro" },      // escopo de outro produto
+  leo: { id: "leo", name: "Leo", roles: ["admin"] },                   // dono: treino opcional
+  jon: { id: "jon", name: "Jon", roles: ["closer", "admin"] },         // fecha E é dono
 };
 
 async function buildApp() {
@@ -330,4 +332,32 @@ test("card removido da base some da fila (estado individual fica órfão sem que
   const q = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("ana") })).json();
   assert.deepEqual(q.queue.sdr.map((c) => c.id), ["novo_1"]);
   assert.deepEqual(q.decks.find((d) => d.role === "sdr").counts, { new: 1, learning: 0, review: 0 });
+});
+
+
+// Treinamento é obrigação de VAGA (SDR/closer/…). Quem toca o negócio (admin)
+// pode estudar, mas não é cobrado: sem fila própria e fora do quadro da equipe.
+test("admin: sem baralho obrigatório e fora da cobrança da equipe", async () => {
+  const { app } = await buildApp();
+
+  // admin puro não recebe fila (antes, "sem vaga" caía em TODOS os baralhos)
+  const leo = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("leo") })).json();
+  assert.deepEqual(leo.decks, []);
+  assert.deepEqual(leo.queue, {});
+
+  // admin que também é closer continua com o baralho da VAGA dele (estudo opcional)
+  const jon = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("jon") })).json();
+  assert.deepEqual(jon.decks.map((d) => d.role), ["geral_negocio", "geral_marketplace", "closer"]);
+  assert.equal(jon.queue.closer.length, 10);
+
+  // quadro da equipe não cobra admin (nem o puro, nem o que tem vaga)
+  const team = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/team" })).json();
+  const ids = team.users.map((u) => u.id);
+  assert.ok(!ids.includes("leo"), "admin puro fora do quadro");
+  assert.ok(!ids.includes("jon"), "admin com vaga também não é cobrado");
+  assert.ok(ids.includes("ana") && ids.includes("bob"), "quem tem vaga segue no quadro");
+
+  // sem etiqueta NENHUMA (cadastro novo) segue vendo tudo, como antes
+  const semTag = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("eryk") })).json();
+  assert.deepEqual(semTag.decks.map((d) => d.role), ["geral_negocio", "geral_marketplace", "sdr", "closer", "integrator", "social"]);
 });
