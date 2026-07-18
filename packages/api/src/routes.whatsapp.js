@@ -89,6 +89,17 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
   });
 
   // ── Inbox (tela dedicada) ───────────────────────────────────────────────────
+  // Número conectado (consulta a Meta na hora). Fora do bootstrap de propósito:
+  // é uma chamada de rede, e o SEED recarrega a cada mudança de rev.
+  app.get("/api/whatsapp/number", async (req, reply) => {
+    if (!wa.configured()) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
+    try {
+      return await wa.numberInfo();
+    } catch (err) {
+      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+    }
+  });
+
   app.get("/api/whatsapp/threads", async () => ({ threads: await listThreads(repo) }));
 
   app.get("/api/whatsapp/threads/:id", async (req) => ({
