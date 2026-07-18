@@ -1425,7 +1425,10 @@ function matchBlock(blocks, key) {
 // bloqueios manuais da tela Agenda. Devolve o mesmo contrato que a SlotGrid usa
 // (.has), com .info(key) extra pro tooltip (motivo do bloqueio).
 export function busyView(concreteKeys, userId) {
-  const blocks = ((typeof window !== "undefined" && window.SEED?.AGENDA_BLOCKS) || []).filter((b) => b.user === userId);
+  // Item conta pra pessoa quando ela é a dona (user) OU participante (users[],
+  // compromisso com mais de uma pessoa ocupa a agenda de todas).
+  const blocks = ((typeof window !== "undefined" && window.SEED?.AGENDA_BLOCKS) || [])
+    .filter((b) => b.user === userId || (Array.isArray(b.users) && b.users.includes(userId)));
   return {
     has: (key) => concreteKeys.has(key) || !!matchBlock(blocks, key),
     info: (key) => {

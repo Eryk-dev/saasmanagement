@@ -120,7 +120,9 @@ export const CREATE_DEFAULTS = {
   // a agenda. recur "once" usa `date` (YYYY-MM-DD); "weekly" usa `weekday`
   // (0=dom…6=sáb). allDay=true pega o dia todo; senão [fromHour, toHour) — aceita
   // fração (7.5 = 07:30).
-  agenda_blocks: { saas: "", user: "", kind: "block", title: "", recur: "once", date: "", weekday: 0, allDay: false, fromHour: 0, toHour: 0, reason: "", createdAt: "" },
+  // `users` = participantes (compromisso com mais de uma pessoa ocupa a agenda
+  // de todas; `user` segue como dona principal, compat com registros antigos).
+  agenda_blocks: { saas: "", user: "", users: [], kind: "block", title: "", recur: "once", date: "", weekday: 0, allDay: false, fromHour: 0, toHour: 0, reason: "", createdAt: "" },
   // Mapa mental / estratégia: nodes = [{ id, x, y, text, color, parent }] (árvore),
   // links = [{ from, to }] (conexões livres). name = título do mapa.
   mindmaps: { name: "Novo mapa", saas: "", nodes: [], links: [], createdAt: "" },
