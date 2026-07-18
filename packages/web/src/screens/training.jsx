@@ -594,7 +594,10 @@ function Heatmap({ days, today }) {
 }
 
 // ── Editar: a base oficial do time ───────────────────────────────────────────
-const ROLE_ORDER = ["sdr", "closer", "integrator", "social"];
+// Ordem das abas: baralhos de conhecimentos gerais primeiro (todo mundo passa
+// por eles), depois as vagas do funil. Role desconhecido cai no fim.
+const ROLE_ORDER = ["geral_negocio", "geral_marketplace", "sdr", "closer", "integrator", "social"];
+const roleOrderIdx = (r) => { const i = ROLE_ORDER.indexOf(r); return i < 0 ? ROLE_ORDER.length : i; };
 
 function Edit({ saasId, mode, setMode }) {
   const [cards, setCards] = useS(null);
@@ -621,8 +624,9 @@ function Edit({ saasId, mode, setMode }) {
   }, [saasId]);
 
   const dirty = cards && JSON.stringify({ cards, settings }) !== orig;
-  const rolesPresent = ROLE_ORDER.filter((r) => (cards || []).some((c) => c.role === r));
-  const roleTabs = [...new Set([...rolesPresent, "sdr", "closer"])].sort((a, b) => ROLE_ORDER.indexOf(a) - ROLE_ORDER.indexOf(b));
+  // Toda vaga com card na base vira aba (inclusive as gerais e roles novos).
+  const rolesPresent = [...new Set((cards || []).map((c) => c.role))];
+  const roleTabs = [...new Set([...rolesPresent, "sdr", "closer"])].sort((a, b) => roleOrderIdx(a) - roleOrderIdx(b));
   const roleCards = (cards || []).filter((c) => c.role === role);
 
   async function save() {
