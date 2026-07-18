@@ -28,6 +28,8 @@ function answerLabel(saasCfg, lead, key) {
 export function scriptTokens(lead, saasCfg) {
   const call = lead?.callAt ? new Date(lead.callAt) : null;
   const callOk = call && Number.isFinite(call.getTime());
+  const integ = lead?.integrationAt ? new Date(lead.integrationAt) : null;
+  const integOk = integ && Number.isFinite(integ.getTime());
   return {
     nome: firstName(lead?.name),
     nome_completo: String(lead?.name || "").trim(),
@@ -45,6 +47,9 @@ export function scriptTokens(lead, saasCfg) {
     hora_call: callOk ? call.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "",
     closer_responsavel: lead?.closer ? displayName(lead.closer) : "",
     link_call: lead?.callUrl || "",
+    // Integração (entrega): call de vídeo própria, com link próprio.
+    hora_integracao: integOk ? integ.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "",
+    link_integracao: lead?.integrationCallUrl || "",
   };
 }
 
@@ -66,6 +71,8 @@ const GAP_HINTS = {
   hora_call: "o horário da call",
   closer_responsavel: "o closer da call",
   link_call: "gerar o link no lead",
+  hora_integracao: "o horário da integração",
+  link_integracao: "criar o Meet da integração no lead",
 };
 
 // Divide um texto com {{tokens}} em segmentos prontos pra renderização:
@@ -285,12 +292,25 @@ export const DEFAULT_SCRIPTS = {
       { t: "Sim ou não claro", fala: "Se ainda fizer, eu retomo com prioridade e a gente fecha essa semana. Se não for a hora, sem problema nenhum, é só me falar que eu encerro seu atendimento por aqui e deixo a porta aberta pra quando quiser voltar.", dica: "Sem resposta depois deste contato, mova o card pra Desqualificado (motivo: sem retorno)." },
     ],
   },
+  // Confirmação da INTEGRAÇÃO: 2h antes da call de vídeo, na fila do integrador
+  // (ele mesmo confirma e depois conduz). Sem login em mãos a call não roda,
+  // então a confirmação é também preparação.
+  confirmacaoIntegracao: {
+    titulo: "Confirmação da integração",
+    resumo: "2h antes: garanta presença e prepare o cliente. Sem os logins em mãos e num computador, a call não roda e você perde o horário.",
+    objetivo: "Cliente confirmado, com os acessos separados e o link em mãos.",
+    passos: [
+      { t: "2h antes: confirmar (WhatsApp)", fala: "Oi {{nome}}! Aqui é {{eu}}, da {{produto}}. Nossa integração é hoje às {{hora_integracao}}, por vídeo: {{link_integracao}}. Pra já sair rodando, entra pelo computador e deixa os logins das contas em mãos, a gente conecta tudo junto na call. Confirma pra mim?", dica: "Login em mãos e computador (não celular) são o que faz a call render: sem isso não dá pra conectar as contas nem clonar ao vivo." },
+      { t: "Sem resposta até 30 min antes: LIGA", fala: "Oi {{nome}}, é {{eu}}, da {{produto}}. Passando só pra confirmar nossa integração de hoje às {{hora_integracao}}. Você consegue estar no computador com os logins em mãos?", dica: "Não atendeu? Manda o link de novo no WhatsApp e segue pro horário. Cliente pediu pra remarcar? Ajuste a data em Integração no card." },
+    ],
+  },
+
   // Roteiro da CALL DE VÍDEO de integração (é aqui que mora o passo a passo do
   // integrador; o briefing por IA fica só no contexto, sem repetir estes passos).
   integracao: {
     titulo: "Integração · call de vídeo",
-    resumo: "Cliente fechado e pago (não confirme pagamento, isso já passou). A integração é uma call de vídeo com tela compartilhada: você pega os acessos e roda a primeira clonagem junto com ele. Quanto antes rodar, menor o risco de arrependimento.",
-    objetivo: "Call feita: acessos conectados, conta-mãe definida e a primeira leva de anúncios clonada na frente dele.",
+    resumo: "Cliente já pagou, não confirme pagamento. Call de vídeo com tela compartilhada: conecta as contas e roda a primeira clonagem junto com ele.",
+    objetivo: "Acessos conectados, conta-mãe definida e a primeira leva clonada na frente dele.",
     passos: [
       { t: "1. Marcar a call", fala: "Oi {{nome}}! Aqui é da {{produto}}, sou eu que vou tocar sua integração. A gente faz numa call de vídeo, com tela compartilhada, leva uns 20 minutos e já sai rodando. Qual o melhor dia e horário pra você?" },
       { t: "2. Antes da call", fala: "Pra render: deixa em mãos os acessos das contas que a gente vai espelhar. Na call eu te mostro exatamente onde conectar cada uma." },
@@ -396,6 +416,13 @@ export function resolveScript(saasCfg, lead) {
 // lead.callConfirmed (o SDR marca "cliente confirmou" e o passo troca). Sem
 // window (drawer antigo), mostra 1h + a de 10min certa. Respeita override
 // product.scripts.confirmacao quando saasCfg é passado.
+// Confirmação da INTEGRAÇÃO (2h antes): janela única, então não fatia passos
+// como a da call. Respeita override product.scripts.confirmacaoIntegracao.
+export function integrationConfirmationScript(lead, saasCfg) {
+  return applyScriptOverride(DEFAULT_SCRIPTS.confirmacaoIntegracao, saasCfg?.scripts?.confirmacaoIntegracao)
+    || DEFAULT_SCRIPTS.confirmacaoIntegracao;
+}
+
 export function confirmationScript(lead, saasCfg, window) {
   const base = applyScriptOverride(DEFAULT_SCRIPTS.confirmacao, saasCfg?.scripts?.confirmacao) || DEFAULT_SCRIPTS.confirmacao;
   const confirmed = !!lead?.callConfirmed;
@@ -426,6 +453,7 @@ export const SCRIPT_CATALOG = [
   { key: "qualificacao2", label: "Qualificando · 2ª tentativa",   phase: "Pré-venda (SDR)", stageKind: "qualificacao" },
   { key: "qualificacao3", label: "Qualificando · 3ª tentativa",   phase: "Pré-venda (SDR)", stageKind: "qualificacao" },
   { key: "confirmacao",   label: "Confirmação da call",           phase: "Pré-venda (SDR)" },
+  { key: "confirmacaoIntegracao", label: "Confirmação da integração", phase: "Entrega" },
   { key: "noshow1",       label: "No show · 1ª remarcação",       phase: "Pré-venda (SDR)", stageMatch: "noshow" },
   { key: "noshow2",       label: "No show · 2ª remarcação",       phase: "Pré-venda (SDR)", stageMatch: "noshow" },
   { key: "nutricao1",     label: "Nutrição · 1º contato (prova)", phase: "Reativação",      stageMatch: "nutri" },
