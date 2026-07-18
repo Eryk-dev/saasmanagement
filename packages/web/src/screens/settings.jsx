@@ -55,12 +55,42 @@ function SettingsScreen({ saasId }) {
     />
   );
 
+  // Feedback do "salvar alterações": o clique dispara os botões [data-settings-save]
+  // das seções montadas; cada um emite settings-saved / settings-save-error no
+  // fim, e o botão do topo conta a história (salvando… → salvo ✓ / erro). O
+  // timeout cobre o caso de nenhuma seção responder (nada pra salvar).
+  const [saveState, setSaveState] = useStS("idle"); // idle | busy | done | error
+  React.useEffect(() => {
+    const ok = () => setSaveState((v) => (v === "busy" || v === "done" ? "done" : v));
+    const bad = () => setSaveState("error");
+    window.addEventListener("settings-saved", ok);
+    window.addEventListener("settings-save-error", bad);
+    return () => { window.removeEventListener("settings-saved", ok); window.removeEventListener("settings-save-error", bad); };
+  }, []);
+  React.useEffect(() => {
+    if (saveState === "idle") return;
+    const t = setTimeout(() => setSaveState("idle"), saveState === "busy" ? 5000 : saveState === "error" ? 4000 : 2500);
+    return () => clearTimeout(t);
+  }, [saveState]);
+  function saveAll() {
+    const targets = document.querySelectorAll("[data-settings-save]");
+    setSaveState(targets.length ? "busy" : "done"); // sem seção pra salvar = já está tudo salvo
+    targets.forEach((button) => button.click());
+  }
+  const saveLook = saveState === "done"
+    ? { background: "var(--pos)", color: "#fff" }
+    : saveState === "error"
+      ? { background: "var(--neg)", color: "#fff" }
+      : { background: "var(--btn-bg)", color: "var(--btn-fg)" };
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, maxWidth: 1080, width: "100%" }}>
       <PageHead title="Configurações" sub={`funil, campos e integrações · ${s?.name}`}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button onClick={() => window.location.reload()} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>descartar</button>
-          <button onClick={() => document.querySelectorAll("[data-settings-save]").forEach((button) => button.click())} style={{ height: 32, padding: "0 15px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600 }}>salvar alterações</button>
+          <button onClick={saveAll} disabled={saveState === "busy"} style={{ height: 32, padding: "0 15px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600, transition: "background .15s ease", ...saveLook }}>
+            {saveState === "busy" ? "salvando…" : saveState === "done" ? "salvo ✓" : saveState === "error" ? "erro ao salvar" : "salvar alterações"}
+          </button>
         </div>
       </PageHead>
 
@@ -99,10 +129,12 @@ function SaveBar({ onSave, disabled, hint, busyLabel = "Salvando…", label = "S
     setBusy(true); setError(null); setDone(false);
     try {
       await onSave();
+      window.dispatchEvent(new Event("settings-saved")); // feedback do botão do topo
       if (!mounted.current) return;
       setBusy(false); setDone(true);
       setTimeout(() => { if (mounted.current) setDone(false); }, 2500);
     } catch (e) {
+      window.dispatchEvent(new Event("settings-save-error"));
       if (mounted.current) { setBusy(false); setError(e.message || String(e)); }
     }
   }
@@ -111,6 +143,40 @@ function SaveBar({ onSave, disabled, hint, busyLabel = "Salvando…", label = "S
       <button data-settings-save onClick={go} disabled={busy || disabled} aria-label={label} style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clipPath: "inset(50%)" }}>{busy ? busyLabel : done ? "Salvo ✓" : label}</button>
       {error && <span style={{ display: "block", marginTop: 10, fontSize: 12, color: "var(--neg)" }}>{error}</span>}
     </>
+  );
+}
+
+// Botão de salvar VISÍVEL dos cards (Integrações): mesmo contrato do SaveBar
+// (data-settings-save responde ao "salvar alterações" do topo + eventos de
+// feedback), mas com o estado na cara — salvando… → salvo ✓, erro ao lado.
+function CardSaveButton({ onSave, label = "salvar" }) {
+  const [busy, setBusy] = useStS(false);
+  const [done, setDone] = useStS(false);
+  const [error, setError] = useStS("");
+  const mounted = React.useRef(true);
+  React.useEffect(() => () => { mounted.current = false; }, []);
+  async function go() {
+    if (busy) return;
+    setBusy(true); setError(""); setDone(false);
+    try {
+      await onSave();
+      window.dispatchEvent(new Event("settings-saved"));
+      if (!mounted.current) return;
+      setBusy(false); setDone(true);
+      setTimeout(() => { if (mounted.current) setDone(false); }, 2500);
+    } catch (e) {
+      window.dispatchEvent(new Event("settings-save-error"));
+      if (mounted.current) { setBusy(false); setError(e.message || "não deu pra salvar"); }
+    }
+  }
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+      {error && <span style={{ fontSize: 11.5, color: "var(--neg)" }}>{error}</span>}
+      <button data-settings-save onClick={go} disabled={busy}
+        style={{ ...chromeBtnStyleSmall, borderColor: done ? "var(--pos)" : "var(--accent-line)", color: done ? "var(--pos)" : "var(--accent)", opacity: busy ? 0.7 : 1 }}>
+        <span style={{ fontSize: 11 }}>{busy ? "salvando…" : done ? "salvo ✓" : label}</span>
+      </button>
+    </span>
   );
 }
 
@@ -779,7 +845,7 @@ function IntegrationsSettings({ s }) {
           <span className="mono" title="Pixel disparado na página pública do form deste SaaS (/f/:id) e no CAPI. Vazio = pixel padrão do env."
             style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>pixel de {s.name}</span>
           <input value={pixelId} placeholder="971201888623790" onChange={(e) => setPixelId(e.target.value)} className="mono" style={{ ...inputStyle, width: 170, fontFamily: "var(--mono)" }} />
-          <button onClick={saveMeta} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}><span style={{ fontSize: 11 }}>salvar</span></button>
+          <CardSaveButton onSave={saveMeta} />
         </div>
       </div>
 
@@ -852,7 +918,7 @@ function IntegrationsSettings({ s }) {
               )}
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-              <button onClick={saveWa} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}><span style={{ fontSize: 11 }}>salvar</span></button>
+              <CardSaveButton onSave={saveWa} />
             </div>
           </>
         )}
