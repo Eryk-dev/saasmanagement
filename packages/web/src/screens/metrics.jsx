@@ -502,6 +502,12 @@ const ADS_COLS = [
   { key: "won", label: "Conversões", width: "85px", on: true, hint: "conversões: leads atribuídos (UTM) que viraram ganho" },
   { key: "revenue", label: "Valor conv.", width: "95px", on: true, hint: "valor convertido: soma do valor dos negócios ganhos" },
   { key: "play3s", label: "3s play", width: "70px", on: true, hint: "reproduções de 3s ÷ impressões" },
+  // Leads/CPL pela ATRIBUIÇÃO DA META (metaLeads do insight) — pra reconciliar
+  // com o Gerenciador: a Meta credita pelo modelo dela (clique 7d + view 1d, na
+  // data do clique) e cobre a vida toda do anúncio; o cockpit conta lead REAL
+  // do CRM por UTM de último clique (cadeia completa só a partir de ~08/07).
+  { key: "metaLeads", label: "Leads Meta", width: "80px", on: false, hint: "leads que a META atribui ao anúncio (modelo dela) · compare com Leads (UTM real do CRM)" },
+  { key: "cplMeta", label: "CPL Meta", width: "85px", on: false, hint: "investido ÷ leads atribuídos pela Meta" },
   { key: "impressions", label: "Impressões", width: "95px", on: false },
   { key: "linkClicks", label: "Cliques link", width: "90px", on: false, hint: "cliques no link (inline link clicks)" },
   { key: "cpm", label: "CPM", width: "80px", on: false, hint: "custo por mil impressões" },
@@ -775,6 +781,8 @@ function CompactAdsCard({ objects, metrics, money, busyIds, range, onRange, onTo
         const play3s = impressions > 0 && m?.video3s != null ? Math.round((Number(m.video3s) / impressions) * 1000) / 10 : null;
         return <span key={col.key} className="tnum" style={right}>{pct(play3s)}</span>;
       }
+      case "metaLeads": return <span key={col.key} className="tnum" style={right}>{m?.metaLeads != null ? window.fmt.int(m.metaLeads) : "—"}</span>;
+      case "cplMeta": return <span key={col.key} className="tnum" style={right}>{m?.cplMeta != null ? money(m.cplMeta) : "—"}</span>;
       case "impressions": return <span key={col.key} className="tnum" style={right}>{m?.impressions != null ? window.fmt.int(m.impressions) : "—"}</span>;
       case "linkClicks": return <span key={col.key} className="tnum" style={right}>{m?.linkClicks != null ? window.fmt.int(m.linkClicks) : "—"}</span>;
       case "cpm": return <span key={col.key} className="tnum" style={right}>{m?.cpm != null ? money(m.cpm) : "—"}</span>;
