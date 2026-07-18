@@ -33,6 +33,7 @@ import { registerFlashcardRoutes } from "./routes.flashcards.js";
 import { registerGoogleRoutes } from "./routes.google.js";
 import { syncPersonalCalendar } from "./google-user.js";
 import { registerWhatsappRoutes } from "./routes.whatsapp.js";
+import { makeSalesWhatsapp } from "./sales-whatsapp.js";
 import { makeMailer } from "./mailer.js";
 import { getWaHealth, waHealthSummary } from "./wa-health.js";
 import { makeAnthropic } from "./anthropic.js";
@@ -236,7 +237,12 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     model: process.env.AI_MODEL || process.env.ANTHROPIC_MODEL || "",
   });
   // Superfície pública do form builder (/public/forms, /f/:id, /embed.js).
-  registerFormRoutes(app, repo, { ...(opts.forms || {}), discord: discordClient, metaCapi: metaCapiClient, anthropic: anthropicClient });
+  // `salesWhatsapp` resolve o número CONECTADO na Cloud API pro botão/redirect
+  // de WhatsApp do form (getter preguiçoso: o cliente nasce mais abaixo, e a
+  // função só é chamada em request; cache de 1h mora no makeSalesWhatsapp).
+  let whatsappClient = null;
+  const salesWhatsapp = makeSalesWhatsapp(() => whatsappClient);
+  registerFormRoutes(app, repo, { ...(opts.forms || {}), discord: discordClient, metaCapi: metaCapiClient, anthropic: anthropicClient, salesWhatsapp });
   // Webhooks de entrada (Shopify da UniqueKids → lead pra Ana). Rota aberta,
   // autenticada por assinatura HMAC da Shopify (ver routes.webhooks.js).
   registerWebhookRoutes(app, repo, { ...(opts.webhooks || {}) });
@@ -292,7 +298,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerSequenceRoutes(app, repo, { mailer: mailerClient });
   // WhatsApp (Cloud API): webhook (recebe) + envio pelo drawer do lead. O SDR
   // conversa com o cliente direto no cockpit; as mensagens viram timeline.
-  const whatsappClient = registerWhatsappRoutes(app, repo, { whatsapp: opts.whatsapp });
+  whatsappClient = registerWhatsappRoutes(app, repo, { whatsapp: opts.whatsapp });
   // Poller de resumos (index.js) usa os MESMOS clients das rotas.
   if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, anthropic: anthropicClient, mailer: mailerClient });
 

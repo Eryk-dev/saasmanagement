@@ -463,7 +463,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
             <LabeledInput label="Título" value={draft.thanks?.title || ""} onChange={(v) => set({ thanks: { ...draft.thanks, title: v } })} />
             <LabeledInput label="Subtítulo" value={draft.thanks?.subtitle || ""} onChange={(v) => set({ thanks: { ...draft.thanks, subtitle: v } })} />
             <LabeledInput label="Redirecionar para (URL, opcional)" value={draft.thanks?.redirectUrl || ""} onChange={(v) => set({ thanks: { ...draft.thanks, redirectUrl: v } })} placeholder="https://…" />
-            <LabeledInput label="WhatsApp do time (opcional)" value={draft.thanks?.whatsapp || ""} onChange={(v) => set({ thanks: { ...draft.thanks, whatsapp: v } })} placeholder="(11) 99999-9999" />
+            <LabeledInput label="WhatsApp do time (vazio = o número conectado no cockpit)" value={draft.thanks?.whatsapp || ""} onChange={(v) => set({ thanks: { ...draft.thanks, whatsapp: v } })} placeholder="usa o número do cockpit" />
             <LabeledInput label="Texto acima do botão WhatsApp" value={draft.thanks?.whatsappMsg || ""} onChange={(v) => set({ thanks: { ...draft.thanks, whatsappMsg: v } })} placeholder="Caso tenha ficado com alguma dúvida, você pode falar com nosso time agora." />
             <LabeledInput label="Mensagem que o LEAD envia no WhatsApp (opcional)" value={draft.thanks?.whatsappPrefill || ""} onChange={(v) => set({ thanks: { ...draft.thanks, whatsappPrefill: v } })} placeholder="Oi, me chamo {{nome}} e quero saber mais. Resumo: nicho - {{niche}}, contas - {{accounts}}." />
             <div className="mono dim" style={{ fontSize: 11, margin: "-4px 0 8px", lineHeight: 1.5 }}>
