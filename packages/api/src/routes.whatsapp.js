@@ -2,7 +2,7 @@
 // conversas (tela dedicada) e envio. As mensagens vivem em wa_threads/wa_messages
 // (ver wa-store.js) — canônico pro inbox e pro chat do drawer.
 import { makeWhatsapp } from "./whatsapp.js";
-import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId, setLeadWhatsappOptOut } from "./wa-store.js";
+import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId, setLeadWhatsappOptOut, waInsights } from "./wa-store.js";
 import { applyHealthEvent, getWaHealth, waHealthSummary, recordWebhookDelivery } from "./wa-health.js";
 
 // Texto legível pra tipos que a Fase 1 ainda não renderiza (mídia/áudio).
@@ -126,6 +126,15 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
       if (err.wrongId) return { ok: false, reason: "wrong_id", error: message, code: err.code || 0, numbers: err.numbers || [], webhook };
       return { ok: false, reason: missingPermission ? "no_read_permission" : "meta_error", error: message, code: err.code || 0, webhook };
     }
+  });
+
+  // Números do inbox (esperando resposta, tempo de resposta, janelas abertas)
+  // + a saúde do número que os webhooks contaram. Junto num payload só: é uma
+  // faixa de contexto no topo da tela, não vale duas chamadas.
+  app.get("/api/whatsapp/insights", async (req) => {
+    const days = Math.min(365, Math.max(1, Number(req.query?.days) || 30));
+    const [stats, health] = await Promise.all([waInsights(repo, { days }), getWaHealth(repo)]);
+    return { ...stats, health: waHealthSummary(health) };
   });
 
   app.get("/api/whatsapp/threads", async () => ({ threads: await listThreads(repo) }));

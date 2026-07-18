@@ -72,20 +72,42 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     })).filter((n) => n.id);
   }
 
+  // Campos do número, do mais completo pro mínimo. A Meta troca/deprecia campo
+  // entre versões (messaging_limit_tier → whatsapp_business_manager_messaging_limit)
+  // e UM campo inválido derruba a resposta INTEIRA — então cada conjunto é uma
+  // tentativa, e o último é o que sempre existiu. Assim campo novo nunca quebra
+  // a confirmação do número, que é o que a tela precisa antes de tudo.
+  const NUMBER_FIELD_SETS = [
+    "display_phone_number,verified_name,quality_rating,whatsapp_business_manager_messaging_limit,throughput,platform_type",
+    "display_phone_number,verified_name,quality_rating,messaging_limit_tier,throughput",
+    "display_phone_number,verified_name,quality_rating",
+  ];
+
   // Qual número está de fato conectado (GET no phone number id). Serve de prova
   // viva de que token + WHATSAPP_PHONE_NUMBER_ID batem e apontam pro número
   // certo — é o que a tela de WhatsApp mostra no topo depois de trocar o número.
   async function numberInfo() {
     if (!configured()) throw new Error("WhatsApp não configurado — defina WHATSAPP_TOKEN e WHATSAPP_PHONE_NUMBER_ID");
-    let body;
-    try {
-      body = await get(`${phoneNumberId}?fields=display_phone_number,verified_name,quality_rating`);
-    } catch (err) {
-      // "(#100) Tried accessing nonexisting field (display_phone_number)" = o id
-      // NÃO é de um número. O engano clássico é usar o id da CONTA (WABA), que
-      // no painel da Meta fica logo acima do id do número. Em vez de repassar o
-      // erro cru da Graph, pergunta à conta quais são os números dela e devolve
-      // o id certo pra trocar no env.
+    let body, lastErr;
+    for (const fields of NUMBER_FIELD_SETS) {
+      try {
+        body = await get(`${phoneNumberId}?fields=${fields}`);
+        break;
+      } catch (e) {
+        lastErr = e;
+        // Campo que esta versão não conhece: tenta o conjunto menor. Qualquer
+        // outro erro (token, id, permissão) é definitivo e sai pelo catch.
+        if (/nonexisting field/i.test(String(e.message || ""))) continue;
+        break;
+      }
+    }
+    if (!body) {
+      const err = lastErr || new Error("WhatsApp API: resposta vazia");
+      // Nem o conjunto MÍNIMO passou: "(#100) Tried accessing nonexisting field
+      // (display_phone_number)" = o id NÃO é de um número. O engano clássico é
+      // usar o id da CONTA (WABA), que no painel da Meta fica logo acima do id
+      // do número. Em vez de repassar o erro cru da Graph, pergunta à conta
+      // quais são os números dela e devolve o id certo pra trocar no env.
       if (!/nonexisting field/i.test(String(err.message || ""))) throw err;
       let numbers = [];
       try { numbers = await accountNumbers(phoneNumberId); } catch { /* não é WABA também */ }
@@ -102,6 +124,11 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
       display: body.display_phone_number || "",
       name: body.verified_name || "",
       quality: body.quality_rating || "",
+      // Teto de conversas INICIADAS por dia (o campo trocou de nome entre
+      // versões da Graph) e vazão de envio por segundo.
+      tier: String(body.whatsapp_business_manager_messaging_limit || body.messaging_limit_tier || ""),
+      throughput: body.throughput?.level || "",
+      platform: body.platform_type || "",
     };
   }
 

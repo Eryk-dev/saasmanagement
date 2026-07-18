@@ -52,6 +52,84 @@ export function WaHealthBanner({ style }) {
   );
 }
 
+// Teto de conversas INICIADAS por dia (tier da Meta) em português.
+const TIER_LABEL = {
+  TIER_50: "50 conversas/dia", TIER_250: "250 conversas/dia", TIER_1K: "1 mil conversas/dia",
+  TIER_10K: "10 mil conversas/dia", TIER_100K: "100 mil conversas/dia", TIER_UNLIMITED: "sem limite",
+};
+const QUALITY = {
+  GREEN: { label: "alta", color: "var(--pos)" },
+  YELLOW: { label: "média", color: "var(--warn)" },
+  RED: { label: "baixa", color: "var(--neg)" },
+};
+// Tempo curto fica em minutos (é a escala da conversa); acima de 90 min vira
+// hora, e acima de um dia vira dia — "1.480 min" ninguém lê.
+function dur(min) {
+  if (min == null) return "—";
+  if (min < 90) return `${min} min`;
+  const h = min / 60;
+  if (h < 36) return `${(Math.round(h * 10) / 10).toString().replace(".", ",")} h`;
+  return `${Math.round(h / 24)} d`;
+}
+
+// Faixa de contexto no topo do inbox: saúde do número (o que protege a conta)
+// e os números que mudam a ação do dia — quem está esperando resposta, quanto
+// a gente demora e quantas janelas de 24h ainda estão abertas.
+function WaTopStats({ numInfo, stats }) {
+  const q = QUALITY[String(numInfo?.quality || "").toUpperCase()];
+  const tier = numInfo?.tier ? (TIER_LABEL[numInfo.tier] || String(numInfo.tier).replace("TIER_", "").toLowerCase()) : null;
+  const waiting = stats?.awaiting || 0;
+  const item = (label, value, tone) => (
+    <div key={label} style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 96 }}>
+      <span className="mono" style={{ fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-4)" }}>{label}</span>
+      <span className="tnum" style={{ fontSize: 15, fontWeight: 600, color: tone || "var(--fg-1)", lineHeight: 1.2 }}>{value}</span>
+    </div>
+  );
+  const sep = <div style={{ width: 1, alignSelf: "stretch", background: "var(--line-1)" }} />;
+
+  return (
+    <div style={{ margin: "12px var(--pad-x) 0", padding: "12px 16px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+      {numInfo?.ok && (
+        <>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 150 }}>
+            <span className="mono" style={{ fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-4)" }}>Número</span>
+            <span style={{ fontSize: 13.5, fontWeight: 600 }}>{numInfo.display || "—"}</span>
+            {numInfo.name && <span style={{ fontSize: 11, color: "var(--fg-3)" }}>{numInfo.name}</span>}
+          </div>
+          {sep}
+          {q && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 96 }}>
+              <span className="mono" style={{ fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-4)" }}>Qualidade</span>
+              <span style={{ fontSize: 15, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 8, height: 8, borderRadius: 99, background: q.color }} />{q.label}
+              </span>
+            </div>
+          )}
+          {tier && item("Limite de envio", tier)}
+          {numInfo.throughput && item("Vazão", numInfo.throughput === "STANDARD" ? "padrão" : String(numInfo.throughput).toLowerCase())}
+          {sep}
+        </>
+      )}
+
+      {stats ? (
+        <>
+          {item(`Conversas · ${stats.days}d`, stats.activeThreads, null)}
+          {/* O número que manda no dia: cliente falou e ninguém voltou. */}
+          {item("Sem resposta", waiting ? `${waiting}${stats.oldestWaitHours != null ? ` · ${dur(Math.round(stats.oldestWaitHours * 60))}` : ""}` : "0", waiting ? "var(--neg)" : "var(--pos)")}
+          {item("Resposta típica", dur(stats.medianReplyMinutes))}
+          {/* Fora da janela de 24h a Meta só aceita template aprovado. */}
+          {item("Janela aberta", stats.openWindow)}
+          {item("Não lidas", stats.unread, stats.unread ? "var(--warn)" : null)}
+          {item("Recebidas / enviadas", `${stats.inbound} / ${stats.outbound}`)}
+          {stats.withoutLead > 0 && item("Sem lead", stats.withoutLead)}
+        </>
+      ) : (
+        <span className="mono dim" style={{ fontSize: 11 }}>carregando números do inbox…</span>
+      )}
+    </div>
+  );
+}
+
 export function WhatsappInboxScreen({ onOpenLead }) {
   const { version } = useData();
   const [product] = useActiveSaas();
@@ -74,6 +152,16 @@ export function WhatsappInboxScreen({ onOpenLead }) {
       .catch((e) => alive && setNumInfo({ ok: false, reason: "meta_error", error: String(e.message || e).slice(0, 200) }));
     return () => { alive = false; };
   }, [configured]);
+
+  // Números do inbox + saúde do número: refazem junto com o tempo real, então
+  // "sem resposta" e "janela aberta" acompanham a mensagem que acabou de entrar.
+  const [stats, setStats] = React.useState(null);
+  React.useEffect(() => {
+    if (!configured) return;
+    let alive = true;
+    api.waInsights().then((s) => alive && setStats(s)).catch(() => { /* faixa some, inbox segue */ });
+    return () => { alive = false; };
+  }, [configured, version]);
 
   // Lista de conversas (refetch em tempo real). Escopo: produto ativo + órfãs.
   React.useEffect(() => {
@@ -129,22 +217,7 @@ export function WhatsappInboxScreen({ onOpenLead }) {
 
       <WaHealthBanner />
 
-      {/* Recebimento é OUTRO caminho: não passa pelo WHATSAPP_PHONE_NUMBER_ID,
-          depende do webhook assinado na Meta. Se nada nunca foi entregue aqui,
-          "não chegou mensagem" tem endereço certo. */}
-      {configured && numInfo && !numInfo.webhook?.at && (
-        <div style={{ margin: "12px var(--pad-x) 0", padding: "10px 14px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5 }}>
-          A Meta <b>nunca entregou nada</b> neste webhook, então mensagem recebida não aparece aqui.
-          No app da Meta: Webhooks → WhatsApp Business Account → callback <span className="mono">{location.origin}/api/webhooks/whatsapp</span> com o mesmo verify token do servidor,
-          assine o campo <span className="mono">messages</span> e confirme que a conta está inscrita no app (<span className="mono">subscribed_apps</span>).
-        </div>
-      )}
-      {configured && numInfo?.webhook?.phoneNumberId && numInfo.ok && numInfo.phoneNumberId && numInfo.webhook.phoneNumberId !== numInfo.phoneNumberId && (
-        <div style={{ margin: "12px var(--pad-x) 0", padding: "10px 14px", border: "1px solid var(--warn)", background: "var(--warn-soft)", borderRadius: "var(--r-2)", fontSize: 12.5, color: "var(--fg-1)", lineHeight: 1.5 }}>
-          As mensagens estão chegando no número <b>{numInfo.webhook.display || numInfo.webhook.phoneNumberId}</b> (id <span className="mono">{numInfo.webhook.phoneNumberId}</span>),
-          mas o envio está configurado no id <span className="mono">{numInfo.phoneNumberId}</span>. Você recebe por um número e responde por outro.
-        </div>
-      )}
+      {configured && <WaTopStats numInfo={numInfo} stats={stats} />}
 
       {configured && numInfo && numInfo.ok === false && (
         <div style={{ margin: "12px var(--pad-x) 0", padding: "10px 14px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5 }}>

@@ -325,3 +325,26 @@ test("GET /number: sem nenhuma entrega da Meta, webhook vem vazio", async () => 
   assert.deepEqual(body.webhook, {});
   await app.close();
 });
+
+test("GET /insights: números do inbox + saúde do número num payload só", async () => {
+  const repo = makeMemRepo();
+  const now = new Date().toISOString();
+  const hAgo = (h) => new Date(Date.now() - h * 3_600_000).toISOString();
+  await repo.create("wa_threads", { id: "5541900000001", phone: "5541900000001", unread: 1, lastAt: hAgo(2), createdAt: hAgo(10) });
+  await repo.create("wa_messages", { id: "m1", thread: "5541900000001", direction: "in", at: hAgo(2) });
+  await repo.create("app_config", { id: "wa_health", number: { event: "FLAGGED", limit: "TIER_1K" }, templates: {}, account: {}, webhook: { at: now }, updatedAt: now });
+
+  const app = await appWith(repo, fakeWa());
+  const body = (await app.inject({ method: "GET", url: "/api/whatsapp/insights?days=7" })).json();
+  assert.equal(body.days, 7);
+  assert.equal(body.awaiting, 1);          // cliente falou por último
+  assert.equal(body.openWindow, 1);        // dentro das 24h: dá pra responder texto livre
+  assert.equal(body.unread, 1);
+  assert.equal(body.health.level, "danger"); // número FLAGGED entra no mesmo payload
+  assert.equal(body.health.number.limit, "TIER_1K");
+
+  // days fora da faixa não explode nem varre a base inteira
+  assert.equal((await app.inject({ method: "GET", url: "/api/whatsapp/insights?days=abc" })).json().days, 30);
+  assert.equal((await app.inject({ method: "GET", url: "/api/whatsapp/insights?days=9999" })).json().days, 365);
+  await app.close();
+});

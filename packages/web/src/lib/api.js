@@ -99,6 +99,9 @@ export const api = {
   // Inbox de WhatsApp: lista de conversas, mensagens de uma conversa, marcar
   // lida e enviar pela conversa (id = número em dígitos, com ou sem lead).
   waNumber: () => req("GET", "/api/whatsapp/number"),
+  // Números do inbox (esperando resposta, tempo de resposta, janela de 24h) +
+  // saúde do número, pro painel no topo da tela.
+  waInsights: (days) => req("GET", `/api/whatsapp/insights${days ? `?days=${days}` : ""}`),
   waThreads: () => req("GET", "/api/whatsapp/threads"),
   waThread: (id) => req("GET", `/api/whatsapp/threads/${id}`),
   waThreadRead: (id) => req("POST", `/api/whatsapp/threads/${id}/read`, {}),
