@@ -21,6 +21,10 @@ const { useState: useS, useEffect: useE, useMemo: useM } = React;
 const pad = (n) => String(n).padStart(2, "0");
 const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const keyOf = (dateStr, h) => `${dateStr}-${pad(h)}`;
+// Horas fracionadas (7.5 = 07:30) viram rótulo HH:MM.
+const fmtH = (v) => `${pad(Math.floor(v))}:${v % 1 ? "30" : "00"}`;
+// Passos de 30 min de `from` até `to` (inclusive).
+const halfHours = (from, to) => Array.from({ length: Math.round((to - from) * 2) + 1 }, (_, i) => from + i * 0.5);
 // Call já encerrada não ocupa agenda: follow-up (SDR marca por cima) e lead
 // fechado/perdido (o callAt vira história; o horário pode ser de outra pessoa,
 // ex. a integração do CS no mesmo slot).
@@ -92,8 +96,9 @@ export function AgendaScreen({ onOpenLead }) {
   }
 
   // Horário fixo: bloqueio recorrente seg a sex no horário escolhido (livre,
-  // 07h às 21h), com o motivo do campo (ex.: almoço, academia). Se a pessoa já
-  // tem esse mesmo horário travado, o botão vira "liberar" e remove tudo.
+  // 07h às 21h em passos de 30 min), com o motivo do campo (ex.: almoço,
+  // academia). Se a pessoa já tem esse mesmo horário travado, o botão vira
+  // "liberar" e remove tudo.
   const fixedBlocks = useM(
     () => myBlocks.filter((b) => b.recur === "weekly" && !b.allDay
       && Number(b.fromHour) === fixedFrom && Number(b.toHour) === fixedTo
@@ -105,12 +110,13 @@ export function AgendaScreen({ onOpenLead }) {
     for (let wd = 1; wd <= 5; wd++) {
       addBlock({ saas: "", user, recur: "weekly", weekday: wd, allDay: false, fromHour: fixedFrom, toHour: fixedTo, reason: reason.trim() });
     }
-    flash(`Horário travado pra ${displayName(user)}: ${pad(fixedFrom)}:00 às ${pad(fixedTo)}:00, segunda a sexta${reason.trim() ? ` (${reason.trim()})` : ""}.`);
+    flash(`Horário travado pra ${displayName(user)}: ${fmtH(fixedFrom)} às ${fmtH(fixedTo)}, segunda a sexta${reason.trim() ? ` (${reason.trim()})` : ""}.`);
   }
 
   function onSlot(day, hour) {
     const ds = ymd(day);
-    const cov = blocksFor(day).filter((b) => b.allDay || (hour >= Number(b.fromHour) && hour < Number(b.toHour)));
+    // Sobreposição: bloqueio fracionado (07:30) que toca o slot [h, h+1) conta.
+    const cov = blocksFor(day).filter((b) => b.allDay || (Number(b.fromHour) < hour + 1 && Number(b.toHour) > hour));
     if (cov.length) return removeBlocks(cov);
     const own = ownBusy.get(keyOf(ds, hour));
     if (own) return flash(`${pad(hour)}:00 tem ${own} na agenda de ${displayName(user)}. Remarque antes de travar.`);
@@ -163,20 +169,20 @@ export function AgendaScreen({ onOpenLead }) {
 
             {/* Horário fixo recorrente seg a sex (almoço, academia, o que for) */}
             <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Escolha um horário</span>
-            <select value={fixedFrom} onChange={(e) => { const v = Number(e.target.value); setFixedFrom(v); if (fixedTo <= v) setFixedTo(v + 1); }}
+            <select value={fixedFrom} onChange={(e) => { const v = Number(e.target.value); setFixedFrom(v); if (fixedTo <= v) setFixedTo(v + 0.5); }}
               style={{ height: 34, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }}>
-              {Array.from({ length: 14 }, (_, i) => 7 + i).map((h) => <option key={h} value={h}>{pad(h)}:00</option>)}
+              {halfHours(7, 20.5).map((h) => <option key={h} value={h}>{fmtH(h)}</option>)}
             </select>
             <span className="dim" style={{ fontSize: 12 }}>às</span>
             <select value={fixedTo} onChange={(e) => setFixedTo(Number(e.target.value))}
               style={{ height: 34, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }}>
-              {Array.from({ length: 21 - fixedFrom }, (_, i) => fixedFrom + 1 + i).map((h) => <option key={h} value={h}>{pad(h)}:00</option>)}
+              {halfHours(fixedFrom + 0.5, 21).map((h) => <option key={h} value={h}>{fmtH(h)}</option>)}
             </select>
             <button onClick={toggleFixed}
               style={{ height: 34, padding: "0 13px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
                 background: fixedBlocks.length ? "var(--neg-soft)" : "var(--bg-1)", color: fixedBlocks.length ? "var(--neg)" : "var(--fg-1)",
                 border: "1px solid " + (fixedBlocks.length ? "color-mix(in srgb, var(--neg) 40%, transparent)" : "var(--line-2)") }}>
-              {fixedBlocks.length ? `liberar ${pad(fixedFrom)}:00 às ${pad(fixedTo)}:00` : "↻ travar seg a sex"}
+              {fixedBlocks.length ? `liberar ${fmtH(fixedFrom)} às ${fmtH(fixedTo)}` : "↻ travar seg a sex"}
             </button>
           </div>
         )}

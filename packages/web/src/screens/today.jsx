@@ -1407,14 +1407,16 @@ const parseYMD = (s) => { const [y, m, dd] = String(s).split("-").map(Number); c
 
 // Um bloqueio de agenda (agenda_blocks) casa com o slot (cellKey "YYYY-MM-DD-HH")
 // do dono? recur "weekly" bate pelo dia da semana; "once" pela data. allDay pega o
-// dia todo; senão a hora tem que cair no intervalo [fromHour, toHour).
+// dia todo; senão vale SOBREPOSIÇÃO: o slot de call [h, h+1) fica ocupado se o
+// bloqueio toca qualquer pedaço dele (fromHour/toHour aceitam fração, ex. 7.5 =
+// 07:30 — bloqueio de meia hora ocupa o slot inteiro que ele invade).
 function matchBlock(blocks, key) {
   const dateStr = key.slice(0, 10);        // YYYY-MM-DD
   const hour = Number(key.slice(11, 13));  // HH
   const [y, m, d] = dateStr.split("-").map(Number);
   const weekday = new Date(y, m - 1, d).getDay();
   return blocks.find((b) => {
-    const hourHit = b.allDay || (hour >= Number(b.fromHour) && hour < Number(b.toHour));
+    const hourHit = b.allDay || (Number(b.fromHour) < hour + 1 && Number(b.toHour) > hour);
     if (!hourHit) return false;
     return b.recur === "weekly" ? Number(b.weekday) === weekday : b.date === dateStr;
   });
