@@ -8,6 +8,7 @@ import { makeGoogleUser, syncPersonalCalendar } from "./google-user.js";
 import { publicBase } from "./routes.js";
 import { logActivity } from "./lead-flow.js";
 import { makeCallSummarizer } from "./call-summaries.js";
+import { makeIntegrationBriefer } from "./integration-brief.js";
 
 export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic } = {}) {
   const client = google || makeGoogle({
@@ -23,6 +24,7 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     repo,
   });
   const summarizer = anthropic ? makeCallSummarizer({ repo, google: client, anthropic, log: app.log }) : null;
+  const briefer = anthropic ? makeIntegrationBriefer({ repo, google: client, anthropic, log: app.log }) : null;
 
   // Anti-CSRF do callback (rota aberta): só aceita state emitido por aqui, com
   // validade curta. O valor guarda { exp, userId }: userId preenchido = conexão
@@ -210,5 +212,20 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     }
   });
 
-  return { client, googleUser: gu };
+  // Briefing de passagem pro integrador (transcrição da call de VENDA → ordem de
+  // serviço do onboarding). Gerado sozinho quando o card entra em Integração;
+  // esta rota é o "gerar agora" do drawer. force = refazer.
+  app.post("/api/leads/:id/integration-brief", async (req, reply) => {
+    if (!briefer) return reply.code(503).send({ error: "IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor" });
+    try {
+      const r = await briefer.briefLead(req.params.id, { force: !!req.body?.force });
+      if (!r.ok && r.reason === "not_found") return reply.code(404).send({ error: "Not found" });
+      return r;
+    } catch (err) {
+      req.log.warn({ err: err.message, lead: req.params.id }, "briefing de integração falhou");
+      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+    }
+  });
+
+  return { client, googleUser: gu, briefer };
 }

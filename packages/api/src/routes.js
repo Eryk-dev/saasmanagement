@@ -41,7 +41,7 @@ import { meta as defaultMetaClient } from "./meta.js";
 import { metaCapi as defaultMetaCapi } from "./meta-capi.js";
 import { discord as defaultDiscord } from "./discord.js";
 import { currentRev, subscribe as subscribeChanges } from "./changes.js";
-import { isWon, firstStage } from "./stages.js";
+import { isWon, firstStage, kindOf } from "./stages.js";
 import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt, autoLeadOwner } from "./lead-flow.js";
 import { registerFunnelMetricsRoutes } from "./routes.funnel-metrics.js";
 import { registerScoreboardRoutes } from "./routes.scoreboard.js";
@@ -274,7 +274,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerAuthRoutes(app, repo);
   // Google Meet: conectar conta (OAuth) + criar call na agenda do closer.
   // Claude resume as calls (transcrição → timeline) quando há ANTHROPIC_API_KEY.
-  const { client: googleClient, googleUser } = registerGoogleRoutes(app, repo, { google: opts.google, googleUser: opts.googleUser, anthropic: anthropicClient });
+  const { client: googleClient, googleUser, briefer } = registerGoogleRoutes(app, repo, { google: opts.google, googleUser: opts.googleUser, anthropic: anthropicClient });
   // Consultas 1:1 + Manual da Família (UniqueKids): Meet da consulta, resumo IA,
   // compor manual e página pública /m/:id. Depois do Google (usa os 2 clients).
   registerConsultationRoutes(app, repo, { google: googleClient, googleUser, anthropic: anthropicClient });
@@ -529,6 +529,14 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // pro lead de origem. Idempotente e best-effort: nunca quebra o PATCH.
     if (collection === "leads" && typeof req.body.stage === "string") {
       try { await convertWonLead(repo, updated, { metaCapi: metaCapiClient }); } catch { /* fail-open */ }
+      // Card entrando em INTEGRAÇÃO → briefing de passagem pro integrador (lê a
+      // transcrição da call de venda). Solto em background: a resposta do PATCH
+      // não espera a IA, e o poller (index.js) re-tenta enquanto a transcrição
+      // do Google não fica pronta, que é o caso mais comum logo após o move.
+      const toKind = kindOf(await repo.get("products", updated.saas), updated.stage);
+      if (briefer && (toKind === "integracao" || toKind === "ganho") && !updated.integrationBriefAt) {
+        briefer.briefLead(updated.id).catch(() => { /* o poller tenta de novo */ });
+      }
     }
     // Call/integração agendada, reagendada ou reatribuída → espelha na agenda
     // PESSOAL do responsável (closer na call, integrator na integração) que

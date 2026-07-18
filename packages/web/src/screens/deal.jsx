@@ -13,7 +13,7 @@ import { api } from "../lib/api.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 import { sourceLabel } from "../lib/sources.js";
 import { resolveScript, scriptTokens, scriptSegments, scriptChecklist } from "../lib/scripts.js";
-import { CallSummaryCard } from "./today.jsx";
+import { CallSummaryCard, IntegrationBriefCard } from "./today.jsx";
 import { useData } from "../data.jsx";
 // Lead detail drawer — slides over the pipeline when a card is opened.
 // (Funil unificado: o card do pipeline é um lead, então o detalhe é do lead.)
@@ -96,10 +96,19 @@ function LeadDetail({ lead: initial, onClose }) {
     return cs ? { ...cs.meta.summary, recordingUrl: cs.meta.recordingUrl || "", kind: cs.meta.kind || "call" } : null;
   }, [activities]);
 
-  // A timeline NÃO repete o resumo de call: ele já vira o card acima (bloco único
-  // do insight). Aqui ficam só os contatos e eventos, sem o blocão duplicado.
+  // Briefing de passagem pro integrador (activity integration_brief): sai da
+  // transcrição da call de VENDA quando o card entra em Integração.
+  const integrationBrief = React.useMemo(() => {
+    const b = (activities || [])
+      .filter((x) => x.meta?.event === "integration_brief" && x.meta?.brief)
+      .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0))[0];
+    return b ? { ...b.meta.brief, source: b.meta.source || "", recordingUrl: b.meta.recordingUrl || "" } : null;
+  }, [activities]);
+
+  // A timeline NÃO repete o resumo de call nem o briefing: os dois já viram card
+  // acima (bloco único do insight). Aqui ficam só os contatos e eventos.
   const timelineActs = React.useMemo(
-    () => (activities || []).filter((a) => !(a.type === "system" && a.meta?.event === "call_summary")),
+    () => (activities || []).filter((a) => !(a.type === "system" && (a.meta?.event === "call_summary" || a.meta?.event === "integration_brief"))),
     [activities],
   );
 
@@ -475,6 +484,33 @@ function LeadDetail({ lead: initial, onClose }) {
                 <input type="datetime-local" value={lead.integrationAt || ""} onChange={(e) => patch({ integrationAt: e.target.value })}
                   style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
               </div>
+              {/* Briefing de passagem: o cockpit gera sozinho quando o card
+                  entra aqui (e re-tenta enquanto a transcrição da venda não
+                  fica pronta). Este botão é o "gera agora" / "refaz". */}
+              {window.SEED?.CONFIG?.ai?.configured && (
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <span className="mono dim" style={rowLabel}>Briefing</span>
+                  <button className="mono" style={{ fontSize: 11, color: "var(--accent)" }}
+                    title="Lê a transcrição da call de venda e monta o briefing pro integrador (contexto, o que foi prometido, o que confirmar e o passo a passo)"
+                    onClick={async (ev) => {
+                      const btn = ev.currentTarget; const was = btn.textContent;
+                      btn.disabled = true; btn.textContent = "montando…";
+                      try {
+                        let r = await api.integrationBrief(lead.id);
+                        if (!r.ok && r.reason === "already_done" && window.confirm("Esse lead já tem briefing. Gerar de novo?")) r = await api.integrationBrief(lead.id, true);
+                        if (r.ok) {
+                          refetchTimeline?.();
+                          window.alert(r.source === "resumo"
+                            ? "Briefing pronto ✓ (sem transcrição da call: saiu do resumo que a IA já tinha extraído, então confira antes de usar)"
+                            : "Briefing pronto ✓ (lido da transcrição da call de venda)");
+                        } else if (r.reason === "no_source") {
+                          window.alert("Sem fonte pra montar o briefing: essa venda não tem transcrição do Meet nem resumo de call. Gere o resumo da call primeiro (botão ✨ na linha do vídeo) ou registre o contexto na timeline.");
+                        } else if (r.reason) window.alert(`Não deu: ${r.reason}`);
+                      } catch (e) { window.alert(e.message || "Falha ao montar o briefing."); }
+                      finally { btn.disabled = false; btn.textContent = was; }
+                    }}>{lead.integrationBriefAt ? "✨ refazer briefing" : "✨ gerar briefing"}</button>
+                </div>
+              )}
               {/* Call de vídeo da integração: Meet PRÓPRIO (não o da venda) no
                   horário da integração; depois vira resumo de onboarding. */}
               <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0 }}>
@@ -546,6 +582,9 @@ function LeadDetail({ lead: initial, onClose }) {
           {/* Coluna direita: insights (roteiro) do estágio atual + histórico. */}
           <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
             <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Insights do estágio · {lead.stage || (saasCfg?.funnel?.[0]?.stage ?? "")}</div>
+            {/* Briefing de passagem em cima de tudo: é o que o integrador lê
+                primeiro quando abre o card que acabou de chegar nele. */}
+            <IntegrationBriefCard brief={integrationBrief} phone={lead.phone} />
             {/* Resumo da última call por IA em cima dos insights do estágio. */}
             <CallSummaryCard summary={callSummary} phone={lead.phone} />
             <div style={{ ...box, background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>

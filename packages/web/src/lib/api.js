@@ -100,6 +100,8 @@ export const api = {
   waThreadRead: (id) => req("POST", `/api/whatsapp/threads/${id}/read`, {}),
   waThreadSend: (id, text) => req("POST", `/api/whatsapp/threads/${id}/send`, { text }),
   callSummary: (leadId, force = false, kind = "call") => req("POST", `/api/leads/${leadId}/call-summary`, { force, kind }),
+  // Briefing de passagem pro integrador (lê a transcrição da call de VENDA).
+  integrationBrief: (leadId, force = false) => req("POST", `/api/leads/${leadId}/integration-brief`, { force }),
   // Insight de pitch: analisa os resumos das calls do produto e sugere uma
   // versão melhor de um roteiro. body: { scriptKey, scriptLabel, currentScript }.
   improvePitch: (saas, body) => req("POST", `/api/pitch/${saas}/improve`, body),
