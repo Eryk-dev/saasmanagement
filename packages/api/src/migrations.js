@@ -5,6 +5,7 @@
 
 import { normalizeFunnel, kindOf } from "./stages.js";
 import { createClosedSubscription } from "./billing.js";
+import { FLASHCARD_DEFAULTS } from "./routes.flashcards.js";
 
 // Garante o estágio "Integração" no funil do produto `leverads`, posicionado
 // entre "Negociação" e "Ganho". Integração é pós-venda: negócio já fechado,
@@ -226,6 +227,24 @@ export async function migrateNutricaoSevenDays(repo) {
     nutricao7dV1: true,
   });
   return changed;
+}
+
+// ── Flashcards: conhecimentos gerais + baralhos de 30 (jul/2026) ────────────
+// A base editada na tela (doc `flashcards`) congela os DEFAULTS do código, então
+// os baralhos novos (Geral · Negócio/Marketplaces) e os cards extras por vaga
+// não chegariam em produção. One-shot com marcador generalDecksV1 no doc:
+// APPENDA os cards de DEFAULTS cujo id ainda não existe; card existente (mesmo
+// editado pelo dono) nunca é tocado. Sem doc salvo, os DEFAULTS servem sozinhos.
+export async function migrateFlashcardsGeneralDecks(repo) {
+  const doc = await repo.get("flashcards", "leverads");
+  if (!doc || doc.generalDecksV1) return 0;
+  const have = new Set((doc.cards || []).map((c) => c && c.id));
+  const missing = (FLASHCARD_DEFAULTS.leverads || []).filter((c) => !have.has(c.id));
+  await repo.update("flashcards", "leverads", {
+    ...(missing.length ? { cards: [...(doc.cards || []), ...missing] } : {}),
+    generalDecksV1: true,
+  });
+  return missing.length;
 }
 
 // Todo funil de todo produto ganha `kind` (heurística por nome quando ausente).
@@ -505,6 +524,12 @@ export async function runStartupMigrations(repo) {
     if (changed) console.log("[migration] Nutrição: entrada ajustada pra 7 dias (168h) no leverads");
   } catch (err) {
     console.error("[migration] migrateNutricaoSevenDays falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateFlashcardsGeneralDecks(repo);
+    if (n) console.log(`[migration] flashcards: ${n} cards novos (gerais + vagas) anexados à base do leverads`);
+  } catch (err) {
+    console.error("[migration] migrateFlashcardsGeneralDecks falhou:", err?.message || err);
   }
   try {
     const n = await ensureFunnelKinds(repo);
