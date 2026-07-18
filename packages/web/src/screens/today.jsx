@@ -10,7 +10,7 @@ import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusine
 import { allUsers, currentUser, displayName, userById, usersByRole } from "../lib/users.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
-import { resolveScript, scriptTokens, scriptSegments, scriptChecklist, isNoShowStage, confirmationScript, scriptKeyFor } from "../lib/scripts.js";
+import { resolveScript, scriptTokens, scriptSegments, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor } from "../lib/scripts.js";
 import { PAYMENT_METHODS, paymentLabel, closedPlanLabel } from "../lib/payments.js";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
@@ -114,6 +114,23 @@ function buildQueue(leads, saasCfg, person) {
       g.hoje.push({ l, kind, phase, who, due: { t: callT - 60 * M, type: "confirm" }, done: false, stage, group: "confirm", confirm: true, confirmWindow: "1h" });
       g.hoje.push({ l, kind, phase, who, due: { t: callT - 10 * M, type: "confirm" }, done: false, stage, group: "confirm", confirm: true, confirmWindow: "10min" });
       continue;
+    }
+
+    // Confirmação da INTEGRAÇÃO: 2h antes da call de vídeo, na fila de quem vai
+    // conduzir (o integrador). Diferente da confirmação de call, aqui é a MESMA
+    // pessoa que confirma e faz, então o item de confirmação SOMA com o
+    // compromisso da integração (não substitui): ele confirma às 8h e conduz às
+    // 10h. Marcado como feito quando ele registra que o cliente confirmou. Só na
+    // fila de UMA pessoa (igual à confirmação de call): no "time todo" o
+    // compromisso da integração já aparece, e a linha extra viraria ruído.
+    const integT = l.integrationAt ? new Date(l.integrationAt).getTime() : NaN;
+    if (person && kind === "integracao" && Number.isFinite(integT) &&
+      integT >= startToday.getTime() && integT <= endToday.getTime()) {
+      g.hoje.push({
+        l, kind, phase, who, stage, group: "confirm",
+        due: { t: integT - 120 * 60 * 1000, type: "confirm" },
+        done: !!l.integrationConfirmed, confirm: true, confirmKind: "integracao", confirmWindow: "2h",
+      });
     }
 
     // "Quando" do card. Duas regras que se combinam:
@@ -443,13 +460,16 @@ function QueueRow({ item, block, featured, onScript, onClaim }) {
 
   const unowned = !who; // assumir só quando o card não tem responsável
   const action = item.confirm
-    ? (item.confirmWindow === "1h" ? "confirmar · 1h antes" : "confirmar · 10 min antes")
+    ? (item.confirmKind === "integracao" ? "confirmar integração · 2h antes"
+      : item.confirmWindow === "1h" ? "confirmar · 1h antes" : "confirmar · 10 min antes")
     : group === "noshow" ? "remarcar" : group === "nutri" ? "reativação" : (ACTION_LABELS[kind] || "contato");
   const whatsapp = waLink(l.phone);
   const meet = (kind === "call" || kind === "integracao") && l.callUrl;
   const attemptNumber = Number(l.stageAttempts) || 0;
-  const actionDetail = l.nextActionNote || (item.confirm && l.callAt
-    ? `call às ${new Date(l.callAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+  const hhmmOf = (v) => new Date(v).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const actionDetail = l.nextActionNote || (item.confirmKind === "integracao" && l.integrationAt
+    ? `integração às ${hhmmOf(l.integrationAt)}`
+    : item.confirm && l.callAt ? `call às ${hhmmOf(l.callAt)}`
     : due?.type === "call" ? "call confirmada · Meet criado pela agenda"
     : kind === "novo" ? `1º toque${l.source ? ` · ${l.source}` : ""}`
     : action);
@@ -977,9 +997,13 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
   useE(() => { setResched(false); setRSlot(""); }, [item.l.id]);
   function doReschedule() {
     if (!rSlot) return;
-    patch({ callAt: rSlot, callConfirmed: false });
+    // Na confirmação da INTEGRAÇÃO o horário que muda é o da entrega, não o da
+    // call de venda (que já aconteceu e virou histórico do card).
+    const isInteg = item.confirmKind === "integracao";
+    patch(isInteg ? { integrationAt: rSlot, integrationConfirmed: false } : { callAt: rSlot, callConfirmed: false });
     api.logActivity({
-      saas: l.saas, lead: l.id, type: "call", text: "remarcou a call na confirmação",
+      saas: l.saas, lead: l.id, type: "call",
+      text: isInteg ? "remarcou a integração na confirmação" : "remarcou a call na confirmação",
       author: currentUser()?.id || "", meta: { reschedule: false, event: "reschedule" },
     }).catch((err) => console.warn("remarcação não registrada:", err.message));
     setResched(false);
@@ -990,7 +1014,9 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
   // bloco "Depois da ação" (destino) some pra esse item. Em pré-visualização
   // (Ajustes → Scripts) o roteiro já vem pronto (previewScript) — mostra o
   // rascunho que está sendo editado, sem depender de resolver por lead.
-  const script = previewScript || (item.confirm ? confirmationScript(l, saasCfg, item.confirmWindow) : resolveScript(saasCfg, l));
+  const script = previewScript || (item.confirm
+    ? (item.confirmKind === "integracao" ? integrationConfirmationScript(l, saasCfg) : confirmationScript(l, saasCfg, item.confirmWindow))
+    : resolveScript(saasCfg, l));
   const tokens = scriptTokens(l, saasCfg);
   const checklist = scriptChecklist(saasCfg, l);
   const wa = waLink(l.phone);
@@ -1262,15 +1288,21 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
           )}
           {/* Confirmação: o SDR marca quando o cliente responde à mensagem de 1h;
               o roteiro troca o passo de 10 min (positiva) sozinho. */}
-          {item.confirm && (
-            <button onClick={() => patch({ callConfirmed: !l.callConfirmed })}
-              title={l.callConfirmed ? "Cliente confirmou presença (clique pra desmarcar)" : "Marcar que o cliente confirmou a presença"}
-              style={{ padding: "8px 14px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
-                background: l.callConfirmed ? "var(--pos)" : "var(--bg-1)", color: l.callConfirmed ? "#06120c" : "var(--fg-2)",
-                border: "1px solid " + (l.callConfirmed ? "var(--pos)" : "var(--line-2)") }}>
-              {l.callConfirmed ? "✓ cliente confirmou" : "cliente confirmou"}
-            </button>
-          )}
+          {item.confirm && (() => {
+            // Na integração o flag é próprio (integrationConfirmed): confirmar a
+            // entrega não pode marcar a call de venda como confirmada.
+            const isInteg = item.confirmKind === "integracao";
+            const on = isInteg ? !!l.integrationConfirmed : !!l.callConfirmed;
+            return (
+              <button onClick={() => patch(isInteg ? { integrationConfirmed: !on } : { callConfirmed: !on })}
+                title={on ? "Cliente confirmou presença (clique pra desmarcar)" : "Marcar que o cliente confirmou a presença"}
+                style={{ padding: "8px 14px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
+                  background: on ? "var(--pos)" : "var(--bg-1)", color: on ? "#06120c" : "var(--fg-2)",
+                  border: "1px solid " + (on ? "var(--pos)" : "var(--line-2)") }}>
+                {on ? "✓ cliente confirmou" : "cliente confirmou"}
+              </button>
+            );
+          })()}
           {/* Cliente pediu pra remarcar na confirmação: escolhe novo horário na
               agenda do closer. Salva o novo callAt E vira um toque (credita o SDR). */}
           {item.confirm && !preview && (
@@ -1285,9 +1317,12 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
           {item.confirm && !preview && resched && (
             <div style={{ flex: "1 1 100%", marginTop: 4, padding: 12, borderRadius: "var(--r-2)", background: "var(--bg-1)", border: "1px solid var(--line-2)" }}>
               <div style={{ fontSize: 12, color: "var(--fg-3)", marginBottom: 8 }}>
-                Novo horário da call{l.closer ? "" : " · defina o closer no card antes"} — vira um toque no lead (conta no placar do SDR).
+                {item.confirmKind === "integracao"
+                  ? "Novo horário da integração · o Meet criado antes continua valendo, reenvie o link no novo horário."
+                  : `Novo horário da call${l.closer ? "" : " · defina o closer no card antes"} — vira um toque no lead (conta no placar do SDR).`}
               </div>
-              <SlotGrid days={nextBusinessDays(6)} day={rDay} setDay={setRDay} slot={rSlot} setSlot={setRSlot} busy={callBusyKeys(leads, l.closer, l.id)} />
+              <SlotGrid days={nextBusinessDays(6)} day={rDay} setDay={setRDay} slot={rSlot} setSlot={setRSlot}
+                busy={callBusyKeys(leads, item.confirmKind === "integracao" ? l.integrator : l.closer, l.id)} />
               <div style={{ display: "flex", gap: 8, marginTop: 10, justifyContent: "flex-end" }}>
                 <button onClick={() => setResched(false)}
                   style={{ padding: "8px 12px", borderRadius: "var(--r-2)", fontSize: 12.5, background: "transparent", color: "var(--fg-3)", border: "1px solid var(--line-2)" }}>
