@@ -113,16 +113,14 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
 
   // Cria a call do lead: evento no calendário primário da conta conectada,
   // horário = lead.callAt (hora de Brasília) ou daqui a 30 min, duração 45 min.
-  app.post("/api/leads/:id/meet", async (req, reply) => {
-    if (!client.configured()) return reply.code(503).send({ error: "Google não configurado (GOOGLE_CLIENT_ID/SECRET)" });
-    if (!(await client.connected())) return reply.code(503).send({ error: "Google não conectado — Ajustes → Integrações → Conectar Google" });
-    const lead = await repo.get("leads", req.params.id);
-    if (!lead) return reply.code(404).send({ error: "Not found" });
+  // Cria o Meet de UM lead (venda ou integração) — corpo compartilhado entre a
+  // rota manual e o gatilho automático (card entrando em Integração com horário
+  // marcado). Lança em falha; quem chama decide se vira 502 ou silêncio.
+  async function createMeetForLead(lead, { kind = "call", guests = [], email = "", log = app.log } = {}) {
     const product = lead.saas ? await repo.get("products", lead.saas) : null;
 
     // Tipo de call: "call" (venda, usa lead.callAt) ou "integracao" (onboarding,
     // usa lead.integrationAt e grava campos PRÓPRIOS pra não sobrescrever a venda).
-    const kind = req.body?.kind === "integracao" ? "integracao" : "call";
     const whenRaw = kind === "integracao" ? lead.integrationAt : lead.callAt;
 
     // whenRaw vem do input datetime-local (sem fuso) e SIGNIFICA hora de
@@ -141,10 +139,10 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
       end = { dateTime: new Date(s.getTime() + 45 * 60_000).toISOString() };
     }
 
-    // Convidados: e-mail do LEAD (quando cadastrado) + extras do body
-    // (body.guests) + extras salvos no lead (meetGuests, string com vírgulas).
+    // Convidados: e-mail do LEAD (quando cadastrado) + extras da chamada
+    // (guests/email) + extras salvos no lead (meetGuests, string com vírgulas).
     const emailOk = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || "").trim());
-    const extraFromBody = [...(Array.isArray(req.body?.guests) ? req.body.guests : []), req.body?.email].filter(Boolean);
+    const extraFromBody = [...(Array.isArray(guests) ? guests : []), email].filter(Boolean);
     const extraFromLead = String(lead.meetGuests || "").split(/[,;\s]+/);
     const attendees = [...new Set([lead.email, ...extraFromBody, ...extraFromLead]
       .map((e) => String(e || "").trim().toLowerCase())
@@ -169,7 +167,7 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
       const code = (meetUrl.match(/meet\.google\.com\/([a-z0-9-]+)/i) || [])[1];
       if (code) {
         try { meetConfig = await client.configureSpace(code); }
-        catch (err) { req.log.warn({ err: err.message }, "Google: configuração da sala falhou (Meet criado mesmo assim)"); }
+        catch (err) { log.warn({ err: err.message }, "Google: configuração da sala falhou (Meet criado mesmo assim)"); }
       }
       // Horário REAL da call em ISO UTC (whenRaw é hora de Brasília sem fuso) —
       // é a referência do poller que resume a call depois que ela termina.
@@ -193,7 +191,31 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
       } catch { /* fail-open */ }
       return { ok: true, kind, callUrl: meetUrl, eventId, htmlLink, attendees, meetConfig };
     } catch (err) {
-      req.log.warn({ err: err.message, lead: lead.id }, "Google: criação do Meet falhou");
+      log.warn({ err: err.message, lead: lead.id }, "Google: criação do Meet falhou");
+      throw err;
+    }
+  }
+
+  // Gatilho automático: card em INTEGRAÇÃO com horário marcado e ainda sem
+  // link — cria o Meet (convite da chamada) sozinho, então o cartão já chega
+  // com o link pro integrador e o convite na agenda do cliente. Re-checa o
+  // lead fresco antes de criar (dois PATCHes rápidos não duplicam o evento).
+  async function autoIntegrationMeet(leadId) {
+    if (!client.configured() || !(await client.connected().catch(() => false))) return null;
+    const fresh = await repo.get("leads", leadId);
+    if (!fresh || !fresh.integrationAt || fresh.integrationCallUrl) return null;
+    return createMeetForLead(fresh, { kind: "integracao" });
+  }
+
+  app.post("/api/leads/:id/meet", async (req, reply) => {
+    if (!client.configured()) return reply.code(503).send({ error: "Google não configurado (GOOGLE_CLIENT_ID/SECRET)" });
+    if (!(await client.connected())) return reply.code(503).send({ error: "Google não conectado — Ajustes → Integrações → Conectar Google" });
+    const lead = await repo.get("leads", req.params.id);
+    if (!lead) return reply.code(404).send({ error: "Not found" });
+    const kind = req.body?.kind === "integracao" ? "integracao" : "call";
+    try {
+      return await createMeetForLead(lead, { kind, guests: req.body?.guests, email: req.body?.email, log: req.log });
+    } catch (err) {
       return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
     }
   });
@@ -227,5 +249,5 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     }
   });
 
-  return { client, googleUser: gu, briefer };
+  return { client, googleUser: gu, briefer, autoIntegrationMeet };
 }

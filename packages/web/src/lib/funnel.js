@@ -208,21 +208,26 @@ const parseWhen = (v) => {
   return Number.isFinite(t) ? t : null;
 };
 
-export function nextTouch(lead) {
+// O compromisso segue a ETAPA (`kind` opcional): na entrega (integração e
+// pós-venda) vale a integração marcada, e a call de VENDA que ficou gravada no
+// card é histórico — sem isso, todo card entregue nascia "atrasado" pela call
+// antiga. Sem kind informado, mantém o clássico (callAt).
+export function nextTouch(lead, { kind } = {}) {
   const touch = parseWhen(lead?.nextActionAt);
-  const meeting = parseWhen(lead?.callAt);
+  const delivery = kind === "integracao" || kind === "posvenda";
+  const meeting = delivery ? parseWhen(lead?.integrationAt) : parseWhen(lead?.callAt);
   if (touch == null && meeting == null) return null;
   if (meeting != null && (touch == null || meeting <= touch)) {
-    return { at: meeting, type: "meeting", note: "call" };
+    return { at: meeting, type: "meeting", note: delivery ? "integração" : "call" };
   }
   return { at: touch, type: "touch", note: lead?.nextActionNote || "" };
 }
 
 // Dados do pill de próximo contato (cards do kanban + fila). Generaliza o antigo
 // nextContactPill do pipeline: atrasado / hoje / futuro / sem próximo passo.
-export function nextTouchPill(lead, { isOpen = true } = {}) {
+export function nextTouchPill(lead, { isOpen = true, kind } = {}) {
   if (!isOpen) return null;
-  const t = nextTouch(lead);
+  const t = nextTouch(lead, { kind });
   if (!t) return { key: "none", text: "sem próximo passo", tone: "var(--warn)", type: "none" };
   const now = Date.now();
   const glyph = t.type === "meeting" ? "◆" : "●";

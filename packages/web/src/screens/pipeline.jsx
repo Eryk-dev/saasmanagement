@@ -319,7 +319,8 @@ function KanbanColumn({ s, stage, cards, highlight, onDropCard, dragging, setDra
     const t = new Date(l.stageSince || l.createdAt || 0).getTime();
     return Number.isFinite(t) ? t : 0;
   };
-  const nextTs = (l) => nextTouch(l)?.at ?? Infinity;
+  const colKind = stageKind(s, stage); // compromisso segue a etapa da coluna (call vs integração)
+  const nextTs = (l) => nextTouch(l, { kind: colKind })?.at ?? Infinity;
   const ordered = [...cards].sort((a, b) => nextTs(a) - nextTs(b) || stageTs(b) - stageTs(a));
   const shown = expanded ? ordered : ordered.slice(0, 10);
   const hidden = ordered.length - shown.length;
@@ -372,7 +373,7 @@ function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen 
   const saasCfg = s || (window.SEED?.SAAS || []).find((x) => x.id === d.saas);
   const kind = stageKind(saasCfg, currentStage);
   const phase = phaseOf(kind);
-  const next = nextTouchPill(d, { isOpen: workableStages(saasCfg).includes(currentStage) });
+  const next = nextTouchPill(d, { isOpen: workableStages(saasCfg).includes(currentStage), kind });
   const ownerId = phase === "entrega" ? (d.integrator || d.closer || d.owner) : (d.closer || d.owner);
   const showAvatar = phase !== "sdr" && ownerId;
   const nextLabel = next?.text?.replace(/^[◆●]\s*/, "") || "";
@@ -668,7 +669,7 @@ function LeadList({ leads }) {
   const g = { today: [], tomorrow: [], upcoming: [], none: [], late: [], closed: [] };
   for (const l of leads) {
     if (l.stage && !workable.has(l.stage)) { g.closed.push({ l, at: 0 }); continue; }
-    const t = nextTouch(l);
+    const t = nextTouch(l, { kind: stageKind(saasCfg, l.stage) });
     if (!t) { g.none.push({ l, at: 0 }); continue; }
     if (t.at < startToday.getTime()) g.late.push({ l, at: t.at });
     else if (t.at <= endToday.getTime()) g.today.push({ l, at: t.at });
