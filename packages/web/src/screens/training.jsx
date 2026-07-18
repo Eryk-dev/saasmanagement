@@ -95,24 +95,9 @@ function Study({ saasId, mode, setMode }) {
     if (!data.decks.length) return <EmptyState title="Nenhum baralho pra você" hint="Peça pro gestor te dar uma vaga (SDR/closer/…) em Ajustes → Usuários." />;
     return (
       <>
-        {data.exam && (
-          <div style={{ display: "flex", alignItems: "center", gap: 12, border: "1px solid var(--accent-line)", background: "var(--accent-soft)", borderRadius: "var(--r-3)", padding: "12px 16px", maxWidth: 720 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--accent)" }}>Prova de checkpoint</div>
-              <div style={{ fontSize: 11.5, color: "var(--fg-2)" }}>você aprendeu {data.exam.count} cards desde a última — mostra que ficou de verdade</div>
-            </div>
-            <button onClick={() => setExam(data.exam)}
-              style={{ ...btn, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", border: "1px solid var(--btn-bg, var(--accent))", fontWeight: 600 }}>
-              Fazer prova →
-            </button>
-          </div>
-        )}
-        <StartCard decks={data.decks} onStudy={(foco) => { setSession(true); setFocus(!!foco); }} />
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 14, alignItems: "start" }}>
-          <DeckList decks={data.decks} />
-          <SessionPreview decks={data.decks} queue={data.queue}
-            onStudy={() => { setSession(true); setFocus(false); }} />
-        </div>
+        <StartCard decks={data.decks} exam={data.exam} onExam={() => setExam(data.exam)}
+          onStudy={(foco) => { setSession(true); setFocus(!!foco); }} />
+        <DeckList decks={data.decks} />
         <RoleGuides />
       </>
     );
@@ -138,19 +123,45 @@ function mixQueues(decks, queue) {
   return out;
 }
 
-// O botão único do treino do dia: soma de todos os temas, sem escolher baralho.
-function StartCard({ decks, onStudy }) {
-  const total = decks.reduce((a, d) => a + d.counts.new + d.counts.learning + d.counts.review, 0);
+// O bloco "da vez": a próxima coisa a fazer, uma por vez. Prova de checkpoint
+// pendente vem antes; senão, o treino do dia com a quebra dos números (novos do
+// dia + aprendendo/revisões que o FSRS devolveu pra fixar); zerou, descanso.
+function StartCard({ decks, exam, onExam, onStudy }) {
+  const sum = (k) => decks.reduce((a, d) => a + d.counts[k], 0);
+  const novos = sum("new"), aprendendo = sum("learning"), revisar = sum("review");
+  const total = novos + aprendendo + revisar;
+  const shell = { border: "1px solid var(--accent-line)", background: "var(--accent-soft)", borderRadius: "var(--r-4)", padding: "16px 20px", maxWidth: 760 };
+  if (exam) {
+    return (
+      <div style={{ ...shell, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div className="mono" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--accent)" }}>Da vez</div>
+          <div style={{ fontSize: 15, fontWeight: 700, marginTop: 3 }}>Prova de checkpoint</div>
+          <div style={{ fontSize: 12.5, color: "var(--fg-2)", marginTop: 2 }}>você aprendeu {exam.count} cards desde a última · mostra que ficou de verdade</div>
+        </div>
+        <button onClick={onExam} style={{ height: 40, padding: "0 18px", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 600, background: "var(--btn-bg)", color: "var(--btn-fg)", border: "1px solid var(--btn-bg)", boxShadow: "var(--shadow-btn)", cursor: "pointer" }}>
+          Fazer prova →
+        </button>
+      </div>
+    );
+  }
   if (!total) return (
-    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "18px 24px", maxWidth: 720, fontSize: 13.5, color: "var(--fg-2)" }}>
+    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "18px 24px", maxWidth: 760, fontSize: 13.5, color: "var(--fg-2)" }}>
       Fila de hoje zerada 🎉 O FSRS traz cada card de volta na hora certa. Volte amanhã.
     </div>
   );
+  const parts = [
+    novos ? `${novos} novos do dia` : "",
+    aprendendo ? `${aprendendo} aprendendo (voltaram pra fixar)` : "",
+    revisar ? `${revisar} ${revisar === 1 ? "revisão vencida" : "revisões vencidas"}` : "",
+  ].filter(Boolean).join(" · ");
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", borderRadius: "var(--r-4)", padding: "16px 20px", maxWidth: 720 }}>
+    <div style={{ ...shell, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
       <div style={{ flex: 1, minWidth: 220 }}>
-        <div style={{ fontSize: 15, fontWeight: 700 }}>Treino do dia · {total} card{total === 1 ? "" : "s"}</div>
-        <div style={{ fontSize: 12.5, color: "var(--fg-2)", marginTop: 2 }}>os temas vêm misturados (geral + sua vaga), na cadência certa · você não escolhe, só responde</div>
+        <div className="mono" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--accent)" }}>Da vez</div>
+        <div style={{ fontSize: 15, fontWeight: 700, marginTop: 3 }}>Treino do dia · {total} card{total === 1 ? "" : "s"}</div>
+        <div style={{ fontSize: 12.5, color: "var(--fg-2)", marginTop: 2 }}>{parts}</div>
+        <div style={{ fontSize: 11.5, color: "var(--fg-3)", marginTop: 2 }}>temas misturados na cadência certa · você não escolhe, só responde</div>
       </div>
       <button onClick={() => onStudy(false)} style={{ height: 40, padding: "0 18px", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 600, background: "var(--btn-bg)", color: "var(--btn-fg)", border: "1px solid var(--btn-bg)", boxShadow: "var(--shadow-btn)", cursor: "pointer" }}>
         Estudar →
@@ -162,74 +173,42 @@ function StartCard({ decks, onStudy }) {
   );
 }
 
+// Tiles por tema = PONTUAÇÃO: % do baralho dominado (cards que já graduaram
+// pra revisão no FSRS). A fila do dia fica no bloco "da vez"; aqui é placar.
 function DeckList({ decks }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
       {decks.map((d) => {
-        const total = d.counts.new + d.counts.learning + d.counts.review;
+        const learned = d.learned || 0;
+        const pct = d.total > 0 ? Math.round((learned / d.total) * 100) : 0;
+        const tone = pct >= 80 ? "var(--pos)" : pct >= 40 ? "var(--warn)" : "var(--info)";
+        const pendToday = d.counts.new + d.counts.learning + d.counts.review;
         return (
-          <div key={d.role} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: 24 }}>
+          <div key={d.role} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px 22px" }}>
             <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em" }}>{d.label}</div>
-                <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 3 }}>{d.total} card{d.total === 1 ? "" : "s"}</div>
+                <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em" }}>{d.label}</div>
+                <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 3 }}>{learned} de {d.total} cards dominados</div>
               </div>
-              <span style={{ height: 22, display: "inline-flex", alignItems: "center", padding: "0 9px", borderRadius: "var(--r-1)", background: d.role.startsWith("geral") ? "var(--bg-2)" : "var(--accent-soft)", color: d.role.startsWith("geral") ? "var(--fg-3)" : "var(--accent)", fontSize: 11.5, fontWeight: 600 }}>
+              <span style={{ height: 22, display: "inline-flex", alignItems: "center", padding: "0 9px", borderRadius: "var(--r-1)", background: d.role.startsWith("geral") ? "var(--bg-2)" : "var(--accent-soft)", color: d.role.startsWith("geral") ? "var(--fg-3)" : "var(--accent)", fontSize: 11.5, fontWeight: 600, flexShrink: 0 }}>
                 {d.role.startsWith("geral") ? "todo o time" : "sua vaga"}
               </span>
             </div>
-            <div style={{ display: "flex", gap: 18, margin: "18px 0" }}>
-              {[
-                { key: "new", label: "novos", color: "var(--info)" },
-                { key: "learning", label: "aprendendo", color: "var(--warn)" },
-                { key: "review", label: "revisar hoje", color: "var(--pos)" },
-              ].map((c) => (
-                <div key={c.key}>
-                  <div className="tnum" style={{ fontSize: 20, fontWeight: 700, color: d.counts[c.key] ? c.color : "var(--fg-5)" }}>{d.counts[c.key]}</div>
-                  <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{c.label}</div>
-                </div>
-              ))}
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 14 }}>
+              <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 30, fontWeight: 700, color: tone }}>{pct}%</span>
+              <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: "0.06em" }}>pontuação</span>
             </div>
-            <div style={{ fontSize: 12, color: "var(--fg-4)", lineHeight: 1.5 }}>
-              {total > 0 ? "entra no treino do dia, misturado com os outros temas" : "fila de hoje zerada nesse tema"}
+            <div style={{ height: 7, marginTop: 8, borderRadius: 999, background: "var(--bg-3)", overflow: "hidden" }}>
+              <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: tone, transition: "width 200ms ease" }} />
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 10 }}>
+              {pendToday > 0
+                ? `${pendToday} no treino de hoje (${d.counts.new} novos · ${d.counts.learning} aprendendo · ${d.counts.review} revisar)`
+                : "nada pendente hoje nesse tema"}
             </div>
           </div>
         );
       })}
-    </div>
-  );
-}
-
-function SessionPreview({ decks, queue, onStudy }) {
-  const deck = decks.find((d) => (queue[d.role] || []).length > 0);
-  if (!deck) return null;
-  const cards = queue[deck.role] || [];
-  const card = cards[0];
-  const isCloze = card.type === "cloze";
-  const question = isCloze ? renderCloze(card.front, card.sub, false) : card.front;
-  const answer = isCloze ? <>{renderCloze(card.front, card.sub, true)}{card.back?.trim() && <> — {card.back}</>}</> : card.back;
-  const labels = ["De novo", "Difícil", "Bom", "Fácil"];
-  const fallback = ["1 min", "8 min", "1 dia", "4 dias"];
-  return (
-    <div style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: 28, width: "100%" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-        <span style={{ fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--fg-4)" }}>Prévia da sessão</span>
-        <span className="mono tnum" style={{ marginLeft: "auto", fontSize: 12, color: "var(--fg-4)" }}>card 1 / {cards.length}</span>
-      </div>
-      <div style={{ fontSize: 12.5, color: "var(--fg-4)", marginBottom: 8 }}>{deck.label}</div>
-      <div style={{ fontSize: 18, fontWeight: 600, lineHeight: 1.45, letterSpacing: "-0.01em", whiteSpace: "pre-wrap" }}>{question}</div>
-      {card.image && card.type !== "occlusion" && <img src={api.trainingAssetUrl(card.image)} alt="" style={{ maxWidth: "100%", maxHeight: 220, marginTop: 16, borderRadius: "var(--r-2)" }} />}
-      <div style={{ borderTop: "1px solid var(--line-faint)", margin: "20px 0 16px" }} />
-      <div style={{ fontSize: 14, color: "var(--fg-2)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{answer || "Resposta disponível ao iniciar a sessão."}</div>
-      <div style={{ display: "flex", gap: 8, marginTop: 22, flexWrap: "wrap" }}>
-        {labels.map((label, index) => (
-          <button key={label} onClick={() => onStudy()} style={{
-            height: 32, padding: "0 14px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: index === 2 ? 600 : 500,
-            background: index === 2 ? "var(--btn-bg)" : "var(--bg-1)", color: index === 2 ? "var(--btn-fg)" : "var(--fg-2)",
-            border: `1px solid ${index === 2 ? "var(--btn-bg)" : "var(--line-2)"}`,
-          }}>{label} · {card.preview?.[index + 1] || fallback[index]}</button>
-        ))}
-      </div>
     </div>
   );
 }
