@@ -89,6 +89,66 @@ const INTEGRATION_SCHEMA = {
   },
 };
 
+// BRIEFING DE HANDOFF pro integrador: gerado quando o card entra em Integração,
+// a partir da transcrição da call de VENDA (o integrador não estava lá). Não é
+// resumo de conversa: é ordem de serviço, o integrador precisa se localizar e
+// saber o que fazer no primeiro contato.
+const BRIEF_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["resumo", "operacao", "vendido", "expectativa", "atencao", "confirmar", "checklist", "primeiraMensagem"],
+  properties: {
+    resumo: { type: "string", description: "Quem é o cliente, o que ele vende e o que contratou, em 3 a 5 frases diretas. Escreva pra alguém que NÃO estava na call" },
+    operacao: {
+      type: "array",
+      description: "Fatos da operação dele que mudam o setup (contas, marketplaces, volume de anúncios, ERP/hub, conta banida, particularidades). Só o que apareceu na call ou nos dados do cadastro",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["item", "valor"],
+        properties: {
+          item: { type: "string", description: "o que é (ex.: contas de Mercado Livre)" },
+          valor: { type: "string", description: "o dado (ex.: 4 contas, 2 delas novas)" },
+        },
+      },
+    },
+    vendido: { type: "array", items: { type: "string" }, description: "O que o closer prometeu/vendeu: escopo, entregas, prazos e condições ditos na call. Fiel à transcrição" },
+    expectativa: { type: "string", description: "O resultado que o cliente espera ver e em quanto tempo, nas palavras dele" },
+    atencao: {
+      type: "array",
+      description: "Riscos pro onboarding: objeção que ficou em aberto, expectativa desalinhada, pressa, desconfiança, limitação técnica",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["ponto", "porque"],
+        properties: {
+          ponto: { type: "string", description: "o risco, em poucas palavras" },
+          porque: { type: "string", description: "o que na call indica isso e como não pisar nele" },
+        },
+      },
+    },
+    confirmar: { type: "array", items: { type: "string" }, description: "O que o integrador precisa perguntar/confirmar logo no começo (dado que faltou ou ficou vago na venda)" },
+    checklist: {
+      type: "array",
+      description: "O que fazer na integração, EM ORDEM, do primeiro passo ao cliente rodando",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["passo", "porque"],
+        properties: {
+          passo: { type: "string", description: "a ação, no imperativo (ex.: pedir acesso às 4 contas)" },
+          porque: { type: "string", description: "por que esse passo importa NESSE cliente, 1 frase" },
+        },
+      },
+    },
+    primeiraMensagem: { type: "string", description: "WhatsApp de abertura do integrador pro cliente: se apresenta, cita algo concreto da venda e propõe o próximo passo. 2 a 4 frases" },
+  },
+};
+
+const BRIEF_SYSTEM = `Você prepara o BRIEFING DE PASSAGEM pro integrador da LeverAds, SaaS que clona e sincroniza anúncios entre contas de Mercado Livre e Shopee (multi-contas, proteção contra banimento, economia de operação).
+O cliente ACABOU DE FECHAR e o card passou pro integrador, que NÃO participou da call de vendas e vai fazer o onboarding. Ele precisa de duas coisas: se localizar (quem é esse cliente, o que compraram dele, o que foi prometido) e saber o que fazer (passos concretos, em ordem).
+Regras: português direto, sem enrolação e sem repetir o óbvio. NUNCA use travessão (—) em nenhum texto; use vírgula ou parênteses. Seja fiel à fonte: não invente conta, volume, prazo nem promessa que não apareceu. Quando um dado importante do setup não foi tratado na call, NÃO chute: coloque em "confirmar". Promessa feita pelo closer entra em "vendido" com as palavras que foram usadas, porque é o que o cliente vai cobrar. O checklist é do trabalho REAL de integração desse cliente (acessos, contas de origem e destino, o que clonar primeiro, atributos, combinar acompanhamento), não uma lista genérica. A primeira mensagem é de quem assume o cliente, cita algo concreto da venda e termina propondo dia/horário ou um próximo passo claro.`;
+
 const INTEGRATION_SYSTEM = `Você é o analista de Sucesso do Cliente. Você recebe a transcrição de uma call de INTEGRAÇÃO (onboarding/setup pós-venda, o cliente já comprou) e extrai o que importa pra equipe garantir que ele comece bem e não vire risco de churn.
 Regras: escreva em português direto, sem enrolação. NUNCA use travessão (—) em nenhum texto; use vírgula ou parênteses. Seja fiel à transcrição: não invente configuração, pendência nem combinado que não apareceu. Marque o sentimento como "em risco" quando o cliente sai confuso, frustrado, sem entender o produto ou com pendência crítica sem solução. Em cada pendência diga quem resolve (cliente ou equipe). A mensagem de WhatsApp é de acompanhamento (checar se ficou tudo certo, oferecer ajuda), curta (2 a 4 frases), citando algo concreto da call.`;
 
@@ -413,6 +473,34 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
     return { summary: r.parsed, usage: r.usage, model: r.model };
   }
 
+  // Briefing de passagem pro integrador: transcrição da call de VENDA (fonte
+  // rica) ou, quando ela não existe/não saiu, o resumo estruturado que a IA já
+  // gerou dessa call. `facts` são os dados do cadastro (contas, marketplaces,
+  // volume, valor fechado), que entram SEMPRE: é o chão do briefing quando a
+  // call falou pouco de setup.
+  async function briefIntegration({ transcript = "", priorSummary = null, lead = {}, facts = [], productName = "LeverAds", callDate = "", today = "" }) {
+    if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
+    const MAX = 180_000;
+    const text = String(transcript || "");
+    const clipped = text.length > MAX ? `[início da call omitido]\n${text.slice(-MAX)}` : text;
+
+    const context = [
+      `Cliente: ${lead.name || "?"}${lead.company ? ` (${lead.company})` : ""}`,
+      lead.niche ? `Nicho: ${lead.niche}` : "",
+      `Produto contratado: ${productName}`,
+      callDate ? `Data da call de venda: ${callDate}` : "",
+      today ? `Hoje é: ${today}` : "",
+      facts.length ? `\nDados do cadastro (respostas do formulário e do fechamento):\n${facts.map((f) => `- ${f}`).join("\n")}` : "",
+    ].filter(Boolean).join("\n");
+
+    const source = clipped
+      ? `Transcrição da call de venda:\n\n${clipped}`
+      : `Não há transcrição da call. Use o resumo estruturado que já foi extraído dela (JSON) e os dados do cadastro. Seja MAIS conservador: o que não estiver aqui vai pra "confirmar".\n\n${JSON.stringify(priorSummary || {}, null, 2)}`;
+
+    const r = await requestJson(`${context}\n\n${source}`, { system: BRIEF_SYSTEM, schema: BRIEF_SCHEMA, schemaName: "integration_brief" });
+    return { brief: r.parsed, usage: r.usage, model: r.model };
+  }
+
   // Uma variante NOVA de welcome (título/subtítulo/botão) pro teste A/B do
   // form — usada pelo "aplicar" do insight de welcome fraca. Não grava nada:
   // devolve a copy pro usuário editar antes de publicar.
@@ -579,5 +667,5 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
     };
   }
 
-  return { configured, summarizeCall, summarizeIntegration, summarizeConsultation, composeDeliverables, suggestWelcome, suggestSocialCopy, suggestCampaignCopy, improvePitch, routineSuggestion, gradeAnswer, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
+  return { configured, summarizeCall, summarizeIntegration, briefIntegration, summarizeConsultation, composeDeliverables, suggestWelcome, suggestSocialCopy, suggestCampaignCopy, improvePitch, routineSuggestion, gradeAnswer, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
 }

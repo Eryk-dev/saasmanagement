@@ -12,6 +12,7 @@ import { initDb, repo } from "./db.js";
 import { registerRoutes } from "./routes.js";
 import { startMarketingAutoSync } from "./routes.marketing.js";
 import { startCallSummaries } from "./call-summaries.js";
+import { startIntegrationBriefs } from "./integration-brief.js";
 import { startConsultationSummaries } from "./consultations.js";
 import { startDripSequences } from "./drip-runner.js";
 import { startTrainingReminder } from "./training-reminder.js";
@@ -76,6 +77,9 @@ try {
   startMarketingAutoSync(repo, { log: app.log });
   // Resumo automático de calls: só faz algo com ANTHROPIC_API_KEY + Google conectado.
   startCallSummaries(repo, { ...app.integrationClients, log: app.log });
+  // Briefing de passagem pro integrador (card que entrou em Integração): tenta
+  // de novo enquanto a transcrição da call de venda não fica pronta no Google.
+  startIntegrationBriefs(repo, { ...app.integrationClients, log: app.log });
   // Resumo automático das consultas 1:1 (UniqueKids): mesmo circuito, poller próprio.
   startConsultationSummaries(repo, { ...app.integrationClients, log: app.log });
   // Sequências de nutrição (drip): auto-inscreve e avança os passos (e-mail pela

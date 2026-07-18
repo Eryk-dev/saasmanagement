@@ -39,8 +39,9 @@ function when(iso) {
 }
 
 function itemText(a) {
-  // Resumo de call gerado pela IA: texto completo multiline + link da gravação.
-  if (a.type === "system" && a.meta?.event === "call_summary") {
+  // Resumo de call e briefing de integração gerados pela IA: texto completo
+  // multiline + link da gravação.
+  if (a.type === "system" && (a.meta?.event === "call_summary" || a.meta?.event === "integration_brief")) {
     return (
       <div>
         <div style={{ whiteSpace: "pre-wrap", color: "var(--fg-1)" }}>{a.text}</div>

@@ -681,6 +681,100 @@ export function CallSummaryCard({ summary, phone }) {
   );
 }
 
+// Briefing de passagem pro INTEGRADOR (activity integration_brief, gerado da
+// transcrição da call de VENDA quando o card entra em Integração). O integrador
+// não estava na call: aqui ele se localiza (quem é o cliente, o que foi
+// prometido) e vê o que fazer (confirmar, checklist, primeira mensagem).
+export function IntegrationBriefCard({ brief, phone }) {
+  const [copied, setCopied] = useS(false);
+  const [open, setOpen] = useS(true);
+  if (!brief) return null;
+  const box = { border: "1px solid var(--accent-line)", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--accent-soft)" };
+  const kick = { fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" };
+  const line = { fontSize: 12, lineHeight: 1.5, color: "var(--fg-1)" };
+  const sub = (label) => <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>{label}</div>;
+  const msg = brief.primeiraMensagem || "";
+  const wa = phone ? waLink(phone) : null;
+  const waHref = wa ? (msg ? `${wa}?text=${encodeURIComponent(msg)}` : wa) : null;
+  const copy = async () => { try { await navigator.clipboard.writeText(msg); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* sem clipboard */ } };
+  return (
+    <div style={box}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+        <span className="mono" style={{ ...kick, color: "var(--accent)" }}>Briefing da integração · IA</span>
+        {brief.source === "resumo" && <Pill tone="warn">sem transcrição</Pill>}
+        {brief.recordingUrl && <a href={brief.recordingUrl} target="_blank" rel="noopener noreferrer" className="mono" style={{ fontSize: 10.5, color: "var(--accent)" }}>🎥 gravação da venda</a>}
+        <button onClick={() => setOpen((v) => !v)} className="mono dim" style={{ fontSize: 10.5, marginLeft: "auto" }}>{open ? "recolher" : "abrir"}</button>
+      </div>
+      {brief.resumo && <div style={{ ...line, marginBottom: open ? 6 : 0 }}>{brief.resumo}</div>}
+      {open && (
+        <>
+          {brief.operacao?.length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              {sub("Operação do cliente")}
+              {brief.operacao.map((o, i) => (
+                <div key={i} style={{ ...line, display: "flex", gap: 6, alignItems: "baseline" }}>
+                  <span className="mono dim" style={{ fontSize: 10.5, flexShrink: 0 }}>{o.item}</span>
+                  <span style={{ minWidth: 0, fontWeight: 500 }}>{o.valor}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {brief.vendido?.length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              {sub("Foi prometido na venda")}
+              {brief.vendido.map((v, i) => <div key={i} style={line}>• {v}</div>)}
+            </div>
+          )}
+          {brief.expectativa && (
+            <div style={{ ...line, marginBottom: 6 }}><span className="mono dim" style={{ ...kick, fontSize: 10 }}>Espera</span> · {brief.expectativa}</div>
+          )}
+          {brief.atencao?.length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              {sub("Atenção")}
+              {brief.atencao.map((a, i) => (
+                <div key={i} style={{ marginBottom: 3 }}>
+                  <div style={{ ...line, fontWeight: 500, color: "var(--neg)" }}>{a.ponto}</div>
+                  {a.porque && <div className="dim" style={{ fontSize: 11, lineHeight: 1.4 }}>{a.porque}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+          {brief.confirmar?.length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              {sub("Confirmar com o cliente")}
+              {brief.confirmar.map((c, i) => <div key={i} style={line}>• {c}</div>)}
+            </div>
+          )}
+          {brief.checklist?.length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              {sub("Passo a passo")}
+              {brief.checklist.map((c, i) => (
+                <div key={i} style={{ marginBottom: 3 }}>
+                  <div style={{ ...line, display: "flex", gap: 6, alignItems: "baseline" }}>
+                    <span className="mono" style={{ color: "var(--accent)", flexShrink: 0, fontSize: 10.5 }}>{i + 1}</span>
+                    <span style={{ minWidth: 0, fontWeight: 500 }}>{c.passo}</span>
+                  </div>
+                  {c.porque && <div className="dim" style={{ fontSize: 11, lineHeight: 1.4, paddingLeft: 14 }}>{c.porque}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+          {msg && (
+            <div style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: "7px 9px" }}>
+              <div className="mono dim" style={{ ...kick, fontSize: 9.5, marginBottom: 3 }}>Primeira mensagem sugerida</div>
+              <div style={{ fontSize: 12, lineHeight: 1.5, whiteSpace: "pre-wrap", marginBottom: 6 }}>{msg}</div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {waHref && <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", background: "#25D366", color: "#06120c", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>enviar no WhatsApp ↗</a>}
+                <button onClick={copy} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5 }}>{copied ? "copiado ✓" : "copiar"}</button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // Atalhos da call — pro operador que abre o roteiro de uma call agendada: reúne
 // num lugar só o LINK da chamada (entrar · copiar · mandar pro cliente no
 // WhatsApp já com o link no texto) e a PROPOSTA (abrir/editar a existente ou
