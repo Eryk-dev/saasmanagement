@@ -1,38 +1,40 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { usersByRole, currentUser, displayName } from "../lib/users.js";
+import { usersByRole, currentUser, displayName, userTone } from "../lib/users.js";
 import { PageHead, Segmented } from "../components/viz.jsx";
+import { PrimaryButton } from "../atoms.jsx";
 import { AgendaView } from "./pipeline.jsx";
 import { stageKind } from "../lib/funnel.js";
 
-// Tela Agenda — a MESMA visão semanal do pipeline (calls + integrações do time,
-// cores por responsável, clique abre o lead) + o travar horários por cima:
-// clica num horário vazio pra bloquear a agenda da pessoa selecionada (pontual
-// ou toda semana); clica no bloqueio pra liberar. Os bloqueios entram na
-// "agenda ocupada" (busyView em today.jsx) que a SlotGrid consulta em todo
-// lugar que marca call/integração.
-// Regra de conflito: só compromisso PRÓPRIO e VIVO da pessoa impede o bloqueio
-// (call dela como closer fora de follow-up/fechado; integração dela como
-// integrador). Evento dos outros no mesmo horário não trava a SUA agenda.
+// Tela Agenda — a agenda DE VERDADE do time, tudo num calendário só:
+//   · calls (lead.callAt) e integrações (integrationAt), cores por responsável,
+//     clique abre o lead (vem do AgendaView do pipeline);
+//   · COMPROMISSOS (kind "event"): título, dono, horário em passos de 30 min,
+//     pontual ou recorrente — aparecem na cor da pessoa;
+//   · BLOQUEIOS (kind "block"): mesmo registro, tracejado vermelho.
+// Clique num horário vazio abre o modal de criar; clique num compromisso ou
+// bloqueio abre pra editar/excluir. Ambos entram na "agenda ocupada" (busyView
+// em today.jsx) que a SlotGrid consulta em todo lugar que marca call/integração.
+// Conflito: só compromisso PRÓPRIO e VIVO da pessoa (call dela como closer fora
+// de follow-up/fechado; integração dela como integrador) impede salvar por cima.
 
 const { useState: useS, useEffect: useE, useMemo: useM } = React;
 
 const pad = (n) => String(n).padStart(2, "0");
 const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const keyOf = (dateStr, h) => `${dateStr}-${pad(h)}`;
 // Horas fracionadas (7.5 = 07:30) viram rótulo HH:MM.
 const fmtH = (v) => `${pad(Math.floor(v))}:${v % 1 ? "30" : "00"}`;
 // Passos de 30 min de `from` até `to` (inclusive).
 const halfHours = (from, to) => Array.from({ length: Math.round((to - from) * 2) + 1 }, (_, i) => from + i * 0.5);
 // Call já encerrada não ocupa agenda: follow-up (SDR marca por cima) e lead
-// fechado/perdido (o callAt vira história; o horário pode ser de outra pessoa,
-// ex. a integração do CS no mesmo slot).
+// fechado/perdido (o callAt vira história).
 const DEAD_CALL_KINDS = new Set(["followup", "ganho", "integracao", "posvenda", "perdido", "desqualificado"]);
+const WD_LABEL = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 
 export function AgendaScreen({ onOpenLead }) {
   const { version } = useData();
-  // Pessoas com agenda que recebe marcação: closers e integradores (CS).
+  // Pessoas com agenda: closers e integradores (Ajustes → Equipe).
   const people = useM(() => {
     const seen = new Set(); const out = [];
     for (const u of [...usersByRole("closer"), ...usersByRole("integrator")]) {
@@ -40,163 +42,253 @@ export function AgendaScreen({ onOpenLead }) {
     }
     return out;
   }, [version]);
-
   const meId = currentUser()?.id || "";
-  const [user, setUser] = useS(() => (people.some((p) => p.id === meId) ? meId : (people[0]?.id || "")));
-  useE(() => { if (!people.some((p) => p.id === user)) setUser(people[0]?.id || ""); }, [people]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const [blockMode, setBlockMode] = useS(false); // botão "Travar horários" liga o clique-pra-travar
-  const [reason, setReason] = useS("");
-  const [recur, setRecur] = useS("once"); // "once" | "weekly"
-  const [fixedFrom, setFixedFrom] = useS(12);
-  const [fixedTo, setFixedTo] = useS(13);
-  const [notice, setNotice] = useS("");
-  const noticeT = React.useRef(null);
-  const flash = (msg) => { setNotice(msg); clearTimeout(noticeT.current); noticeT.current = setTimeout(() => setNotice(""), 4000); };
+  const defaultUser = people.some((p) => p.id === meId) ? meId : (people[0]?.id || "");
 
   const [blocks, setBlocks] = useS(() => (window.SEED?.AGENDA_BLOCKS || []).map((b) => ({ ...b })));
   useE(() => { setBlocks((window.SEED?.AGENDA_BLOCKS || []).map((b) => ({ ...b }))); }, [version]);
   const [leads, setLeads] = useS(() => (window.SEED?.LEADS || []));
   useE(() => { setLeads(window.SEED?.LEADS || []); }, [version]);
 
-  const myBlocks = useM(() => blocks.filter((b) => b.user === user), [blocks, user]);
+  const [editor, setEditor] = useS(null); // { block? , date, fromHour } → modal
+  const [notice, setNotice] = useS("");
+  const noticeT = React.useRef(null);
+  const flash = (msg) => { setNotice(msg); clearTimeout(noticeT.current); noticeT.current = setTimeout(() => setNotice(""), 4000); };
+
+  // Todos os itens do time no calendário, com a cara do dono: compromisso na
+  // cor da pessoa, bloqueio em vermelho.
+  const toneOf = (id) => (id ? `oklch(0.55 0.13 ${userTone(id)})` : "var(--fg-4)");
+  const decorate = (b) => ({
+    ...b,
+    _tone: b.kind === "event" ? toneOf(b.user) : null,
+    _label: b.kind === "event"
+      ? `${b.recur === "weekly" ? "↻ " : ""}${b.title || b.reason || "compromisso"}`
+      : `bloqueado${b.recur === "weekly" ? " ↻" : ""}${b.reason ? ` · ${b.reason}` : ""}`,
+    _who: displayName(b.user),
+  });
   const blocksFor = (day) => {
     const ds = ymd(day), wd = day.getDay();
-    return myBlocks.filter((b) => (b.recur === "weekly" ? Number(b.weekday) === wd : b.date === ds));
+    return blocks
+      .filter((b) => (b.recur === "weekly" ? Number(b.weekday) === wd : b.date === ds))
+      .map(decorate);
   };
 
-  // Compromissos vivos da PRÓPRIA pessoa selecionada, por (dia, hora).
-  const ownBusy = useM(() => {
-    const m = new Map();
+  // Compromissos vivos da pessoa nos leads (call como closer, integração como
+  // integrador), por (dia, hora) — pro aviso de conflito ao salvar por cima.
+  const liveBusy = useM(() => {
+    const m = new Map(); // `${user}|${date}|${hour}` -> descrição
     const saasCfgOf = (l) => (window.SEED?.SAAS || []).find((x) => x.id === l.saas);
+    const put = (user, at, what) => {
+      const d = new Date(at);
+      if (Number.isFinite(d.getTime())) m.set(`${user}|${ymd(d)}|${d.getHours()}`, what);
+    };
     for (const l of leads) {
-      if (l.closer === user && l.callAt && !DEAD_CALL_KINDS.has(stageKind(saasCfgOf(l), l.stage))) {
-        const d = new Date(l.callAt);
-        if (Number.isFinite(d.getTime())) m.set(keyOf(ymd(d), d.getHours()), `call com ${l.name || "lead"}`);
-      }
-      if (l.integrator === user && l.integrationAt) {
-        const d = new Date(l.integrationAt);
-        if (Number.isFinite(d.getTime())) m.set(keyOf(ymd(d), d.getHours()), `integração com ${l.name || "lead"}`);
-      }
+      if (l.closer && l.callAt && !DEAD_CALL_KINDS.has(stageKind(saasCfgOf(l), l.stage))) put(l.closer, l.callAt, `call com ${l.name || "lead"}`);
+      if (l.integrator && l.integrationAt) put(l.integrator, l.integrationAt, `integração com ${l.name || "lead"}`);
     }
     return m;
-  }, [leads, user]);
+  }, [leads]);
+  // Conflito com a agenda viva da pessoa no intervalo [from, to) da data.
+  const liveConflict = (user, date, from, to) => {
+    for (let h = Math.floor(from); h < to; h++) {
+      const hit = liveBusy.get(`${user}|${date}|${h}`);
+      if (hit && from < h + 1 && to > h) return hit;
+    }
+    return null;
+  };
 
   function addBlock(obj) {
     const tmp = { ...obj, id: `tmp_${Date.now()}_${Math.round(Math.random() * 1e6)}` };
     setBlocks((prev) => [...prev, tmp]);
-    api.create("agenda_blocks", obj).catch((err) => { console.warn("bloqueio não salvo:", err.message); setBlocks((prev) => prev.filter((b) => b.id !== tmp.id)); });
+    api.create("agenda_blocks", obj).catch((err) => { console.warn("item não salvo:", err.message); setBlocks((prev) => prev.filter((b) => b.id !== tmp.id)); });
   }
-  function removeBlocks(list) {
-    if (!list.length) return;
-    if (list.some((b) => b.recur === "weekly") && !window.confirm("Bloqueio recorrente (toda semana). Remover de todas as semanas?")) return;
+  function updateBlock(id, patch) {
+    setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+    if (!String(id).startsWith("tmp_")) api.update("agenda_blocks", id, patch).catch((err) => console.warn("item não atualizado:", err.message));
+  }
+  function removeBlocks(list, { confirmWeekly = true } = {}) {
+    if (!list.length) return false;
+    if (confirmWeekly && list.some((b) => b.recur === "weekly") && !window.confirm("Item recorrente (toda semana). Remover de todas as semanas?")) return false;
     const ids = new Set(list.map((b) => b.id));
     setBlocks((prev) => prev.filter((b) => !ids.has(b.id)));
     for (const b of list) if (!String(b.id).startsWith("tmp_")) api.remove("agenda_blocks", b.id).catch((err) => console.warn("não removido:", err.message));
+    return true;
   }
 
-  // Horário fixo: bloqueio recorrente seg a sex no horário escolhido (livre,
-  // 07h às 21h em passos de 30 min), com o motivo do campo (ex.: almoço,
-  // academia). Se a pessoa já tem esse mesmo horário travado, o botão vira
-  // "liberar" e remove tudo.
-  const fixedBlocks = useM(
-    () => myBlocks.filter((b) => b.recur === "weekly" && !b.allDay
-      && Number(b.fromHour) === fixedFrom && Number(b.toHour) === fixedTo
-      && Number(b.weekday) >= 1 && Number(b.weekday) <= 5),
-    [myBlocks, fixedFrom, fixedTo],
-  );
-  function toggleFixed() {
-    if (fixedBlocks.length) return removeBlocks(fixedBlocks);
-    for (let wd = 1; wd <= 5; wd++) {
-      addBlock({ saas: "", user, recur: "weekly", weekday: wd, allDay: false, fromHour: fixedFrom, toHour: fixedTo, reason: reason.trim() });
+  // Clique em horário vazio → criar; clique num item → editar.
+  const onSlot = (day, hour) => setEditor({ block: null, date: ymd(day), fromHour: hour });
+  const onBlock = (b) => setEditor({ block: b, date: b.recur === "once" ? b.date : "", fromHour: Number(b.fromHour) || 9 });
+
+  // Salvar do modal: valida, checa conflito e cria/atualiza. Devolve string de
+  // erro pra mostrar no próprio modal, ou null quando deu certo.
+  function saveItem(form, existing) {
+    const { kind, text, user, date, from, to, recur } = form;
+    if (!user) return "Escolha a pessoa.";
+    if (!(to > from)) return "O fim precisa ser depois do início.";
+    if (recur === "once" && !date) return "Escolha a data.";
+    if (kind === "event" && !text.trim()) return "Dê um título pro compromisso.";
+    if (recur === "once") {
+      const hit = liveConflict(user, date, from, to);
+      if (hit) return `${displayName(user)} já tem ${hit} nesse horário. Remarque antes.`;
     }
-    flash(`Horário travado pra ${displayName(user)}: ${fmtH(fixedFrom)} às ${fmtH(fixedTo)}, segunda a sexta${reason.trim() ? ` (${reason.trim()})` : ""}.`);
+    const base = {
+      saas: "", user, kind, allDay: false, fromHour: from, toHour: to,
+      title: kind === "event" ? text.trim() : "",
+      reason: kind === "block" ? text.trim() : "",
+    };
+    const wd = date ? new Date(`${date}T12:00:00`).getDay() : Number(existing?.weekday) || 1;
+    if (existing) {
+      updateBlock(existing.id, recur === "weekly"
+        ? { ...base, recur: "weekly", weekday: wd, date: "" }
+        : { ...base, recur: "once", date, weekday: 0 });
+    } else if (recur === "weekdays") {
+      for (let w = 1; w <= 5; w++) addBlock({ ...base, recur: "weekly", weekday: w });
+      flash(`${kind === "event" ? "Compromisso" : "Bloqueio"} criado de segunda a sexta, ${fmtH(from)} às ${fmtH(to)}.`);
+    } else if (recur === "weekly") {
+      addBlock({ ...base, recur: "weekly", weekday: wd });
+    } else {
+      addBlock({ ...base, recur: "once", date });
+    }
+    return null;
   }
-
-  function onSlot(day, hour) {
-    const ds = ymd(day);
-    // Sobreposição: bloqueio fracionado (07:30) que toca o slot [h, h+1) conta.
-    const cov = blocksFor(day).filter((b) => b.allDay || (Number(b.fromHour) < hour + 1 && Number(b.toHour) > hour));
-    if (cov.length) return removeBlocks(cov);
-    const own = ownBusy.get(keyOf(ds, hour));
-    if (own) return flash(`${pad(hour)}:00 tem ${own} na agenda de ${displayName(user)}. Remarque antes de travar.`);
-    const cell = new Date(day); cell.setHours(hour, 0, 0, 0);
-    if (recur === "once" && cell.getTime() < Date.now()) return flash("Esse horário já passou. Use ↻ toda semana pra travar o horário daqui pra frente.");
-    addBlock(recur === "weekly"
-      ? { saas: "", user, recur: "weekly", weekday: day.getDay(), allDay: false, fromHour: hour, toHour: hour + 1, reason: reason.trim() }
-      : { saas: "", user, recur: "once", date: ds, allDay: false, fromHour: hour, toHour: hour + 1, reason: reason.trim() });
-  }
-
-  const personChip = (on) => ({ height: 34, padding: "0 13px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
-    background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)") });
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead title="Agenda" sub="a semana do time (calls + integrações) · o botão Travar horários bloqueia a agenda de quem você escolher" />
-      <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14 }}>
-
-        {/* Botão do modo + pessoa; os controles do travamento aparecem com o modo ligado */}
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <button onClick={() => setBlockMode((v) => !v)}
-            title={blockMode ? "Sair do modo de travamento" : "Ligar: clique nos horários do calendário pra travar/liberar"}
-            style={{
-              height: 38, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 600, cursor: "pointer",
-              background: blockMode ? "var(--accent)" : "var(--bg-1)", color: blockMode ? "var(--accent-fg)" : "var(--fg-1)",
-              border: "1px solid " + (blockMode ? "var(--accent)" : "var(--line-2)"), boxShadow: "var(--shadow-1)",
-            }}>
-            {blockMode ? "✓ travando · clique nos horários" : "Travar horários"}
-          </button>
-
-          <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>agenda de</span>
-          {people.length === 0 && <span className="dim" style={{ fontSize: 12.5 }}>sem closers/CS</span>}
-          {people.map((p) => <button key={p.id} onClick={() => setUser(p.id)} style={personChip(user === p.id)}>{displayName(p.id)}</button>)}
-
+      <PageHead title="Agenda" sub="calls, integrações, compromissos e bloqueios do time · clique num horário vazio pra criar">
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
           {notice && (
             <span style={{ padding: "7px 12px", borderRadius: "var(--r-2)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12.5, fontWeight: 500 }}>{notice}</span>
           )}
-        </div>
-
-        {blockMode && (
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", padding: "10px 14px", borderRadius: "var(--r-3)", background: "var(--bg-inset)", border: "1px solid var(--line-1)" }}>
-            <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="motivo (opcional): reunião, folga…"
-              style={{ height: 34, width: 220, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--bg-1)", color: "var(--fg-1)", border: "1px solid var(--line-2)", fontSize: 13 }} />
-
-            <div title="Pontual = só nessa data. Recorrente = todo aquele dia da semana.">
-              <Segmented value={recur} onChange={setRecur} options={[{ value: "once", label: "só esse dia" }, { value: "weekly", label: "↻ toda semana" }]} />
-            </div>
-
-            <span style={{ width: 1, height: 18, background: "var(--line-1)", margin: "0 4px" }} />
-
-            {/* Horário fixo recorrente seg a sex (almoço, academia, o que for) */}
-            <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Escolha um horário</span>
-            <select value={fixedFrom} onChange={(e) => { const v = Number(e.target.value); setFixedFrom(v); if (fixedTo <= v) setFixedTo(v + 0.5); }}
-              style={{ height: 34, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }}>
-              {halfHours(7, 20.5).map((h) => <option key={h} value={h}>{fmtH(h)}</option>)}
-            </select>
-            <span className="dim" style={{ fontSize: 12 }}>às</span>
-            <select value={fixedTo} onChange={(e) => setFixedTo(Number(e.target.value))}
-              style={{ height: 34, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }}>
-              {halfHours(fixedFrom + 0.5, 21).map((h) => <option key={h} value={h}>{fmtH(h)}</option>)}
-            </select>
-            <button onClick={toggleFixed}
-              style={{ height: 34, padding: "0 13px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
-                background: fixedBlocks.length ? "var(--neg-soft)" : "var(--bg-1)", color: fixedBlocks.length ? "var(--neg)" : "var(--fg-1)",
-                border: "1px solid " + (fixedBlocks.length ? "color-mix(in srgb, var(--neg) 40%, transparent)" : "var(--line-2)") }}>
-              {fixedBlocks.length ? `liberar ${fmtH(fixedFrom)} às ${fmtH(fixedTo)}` : "↻ travar seg a sex"}
-            </button>
-          </div>
-        )}
-
-        <AgendaView leads={leads} onOpenLead={onOpenLead}
-          blocking={{ blocksFor, ...(blockMode ? { onSlot, onBlock: (b) => removeBlocks([b]) } : {}) }} />
+          <PrimaryButton onClick={() => setEditor({ block: null, date: ymd(new Date()), fromHour: 9 })}>+ compromisso</PrimaryButton>
+        </span>
+      </PageHead>
+      <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14 }}>
+        <AgendaView leads={leads} onOpenLead={onOpenLead} blocking={{ blocksFor, onSlot, onBlock }} />
 
         <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center", fontSize: 12.5, color: "var(--fg-3)" }}>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 3, background: "color-mix(in srgb, var(--neg) 8%, var(--bg-1))", border: "1px dashed var(--neg)" }} />
-            bloqueado de {displayName(user) || "—"} · ↻ = toda semana{blockMode ? " · clique pra liberar" : ""}
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: "var(--accent-soft)", border: "1px solid var(--accent)" }} />
+            compromisso na cor da pessoa · clique pra editar
           </span>
-          <span>{blockMode ? "evento de outra pessoa no mesmo horário não impede o seu bloqueio" : "ative o Travar horários pra criar ou liberar bloqueios"}</span>
-          <span style={{ marginLeft: "auto" }}>{myBlocks.length} bloqueio{myBlocks.length === 1 ? "" : "s"} de {displayName(user) || "—"}</span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: "color-mix(in srgb, var(--neg) 8%, var(--bg-1))", border: "1px dashed var(--neg)" }} />
+            bloqueado · ↻ = toda semana
+          </span>
+          <span>compromissos e bloqueios ocupam a agenda: nenhuma call cai em cima</span>
+        </div>
+      </div>
+
+      {editor && (
+        <AgendaItemModal
+          init={editor}
+          people={people}
+          defaultUser={defaultUser}
+          onSave={saveItem}
+          onDelete={(b) => removeBlocks([b])}
+          onClose={() => setEditor(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Modal de criar/editar compromisso ou bloqueio: tipo, título/motivo, pessoa,
+// data, de/até em passos de 30 min e recorrência (pontual · toda semana ·
+// seg a sex). Excluir mora aqui também.
+function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose }) {
+  const b = init.block;
+  const [kind, setKind] = useS(b ? (b.kind === "event" ? "event" : "block") : "event");
+  const [text, setText] = useS(b ? (b.title || b.reason || "") : "");
+  const [user, setUser] = useS(b?.user || defaultUser);
+  const [date, setDate] = useS(init.date || ymd(new Date()));
+  const [from, setFrom] = useS(() => Number(b?.fromHour ?? init.fromHour ?? 9));
+  const [to, setTo] = useS(() => Number(b?.toHour ?? ((b?.fromHour ?? init.fromHour ?? 9) + 1)));
+  const [recur, setRecur] = useS(b ? (b.recur === "weekly" ? "weekly" : "once") : "once");
+  const [err, setErr] = useS("");
+  useE(() => {
+    const h = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose]);
+
+  const weekdayLabel = WD_LABEL[date ? new Date(`${date}T12:00:00`).getDay() : Number(b?.weekday) || 1];
+  const field = { height: 34, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, minWidth: 0 };
+  const label = { fontSize: 10.5, fontFamily: "var(--mono)", color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 4 };
+  const submit = () => {
+    const e = onSave({ kind, text, user, date, from, to, recur }, b || null);
+    if (e) setErr(e); else onClose();
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 90, background: "color-mix(in srgb, var(--bg-0) 62%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(440px, 100%)", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700, flex: 1 }}>
+            {b ? "Editar item da agenda" : "Novo item na agenda"}
+          </span>
+          <button onClick={onClose} aria-label="Fechar" className="mono dim" style={{ fontSize: 15 }}>✕</button>
+        </div>
+
+        <Segmented value={kind} onChange={setKind} options={[{ value: "event", label: "Compromisso" }, { value: "block", label: "Bloqueio" }]} />
+
+        <div>
+          <span style={label}>{kind === "event" ? "Título" : "Motivo (opcional)"}</span>
+          <input autoFocus value={text} onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+            placeholder={kind === "event" ? "reunião com fornecedor, dentista…" : "almoço, folga, compromisso externo…"}
+            style={{ ...field, width: "100%" }} />
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div>
+            <span style={label}>Pessoa</span>
+            <select value={user} onChange={(e) => setUser(e.target.value)} style={{ ...field, width: "100%" }}>
+              {people.map((p) => <option key={p.id} value={p.id}>{p.name || p.id}</option>)}
+              {user && !people.some((p) => p.id === user) && <option value={user}>{displayName(user)}</option>}
+            </select>
+          </div>
+          <div>
+            <span style={label}>Data</span>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ ...field, width: "100%" }} />
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div>
+            <span style={label}>Das</span>
+            <select value={from} onChange={(e) => { const v = Number(e.target.value); setFrom(v); if (to <= v) setTo(v + 0.5); }} style={{ ...field, width: "100%" }}>
+              {halfHours(7, 20.5).map((h) => <option key={h} value={h}>{fmtH(h)}</option>)}
+            </select>
+          </div>
+          <div>
+            <span style={label}>Às</span>
+            <select value={to} onChange={(e) => setTo(Number(e.target.value))} style={{ ...field, width: "100%" }}>
+              {halfHours(from + 0.5, 21).map((h) => <option key={h} value={h}>{fmtH(h)}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <span style={label}>Repete</span>
+          <select value={recur} onChange={(e) => setRecur(e.target.value)} style={{ ...field, width: "100%" }}>
+            <option value="once">não repete (só {date ? date.slice(8, 10) + "/" + date.slice(5, 7) : "essa data"})</option>
+            <option value="weekly">toda {weekdayLabel}</option>
+            {!b && <option value="weekdays">segunda a sexta, toda semana</option>}
+          </select>
+        </div>
+
+        {err && <div style={{ padding: "8px 10px", borderRadius: "var(--r-2)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12.5 }}>{err}</div>}
+
+        <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
+          {b && (
+            <button onClick={() => { if (onDelete(b)) onClose(); }}
+              style={{ height: 36, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid color-mix(in srgb, var(--neg) 40%, transparent)", background: "var(--neg-soft)", color: "var(--neg)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+              Excluir
+            </button>
+          )}
+          <span style={{ flex: 1 }} />
+          <button onClick={onClose} style={{ height: 36, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, cursor: "pointer" }}>Cancelar</button>
+          <PrimaryButton onClick={submit}>{b ? "Salvar" : "Criar"}</PrimaryButton>
         </div>
       </div>
     </div>

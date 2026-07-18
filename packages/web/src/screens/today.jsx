@@ -1431,7 +1431,8 @@ export function busyView(concreteKeys, userId) {
     info: (key) => {
       if (concreteKeys.has(key)) return { kind: "call" };
       const b = matchBlock(blocks, key);
-      return b ? { kind: "block", reason: b.reason || "" } : null;
+      // Compromisso (kind "event") ocupa igual; o tooltip mostra o título dele.
+      return b ? { kind: "block", reason: b.title || b.reason || "" } : null;
     },
   };
 }
