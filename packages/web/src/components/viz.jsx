@@ -68,7 +68,7 @@ export function FilterTab({ active, count, children, onClick, style }) {
 export function StatTile({ label, value, small, delta, tone = "flat" }) {
   const valueColor = tone === "down" ? "var(--neg)" : "var(--fg-1)";
   return (
-    <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px 24px", minWidth: 0, minHeight: 116 }}>
+    <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px var(--inset-x)", minWidth: 0, minHeight: 116 }}>
       <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--fg-3)", marginBottom: 6 }}>{label}</div>
       <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 30, fontWeight: 700, letterSpacing: "-0.025em", whiteSpace: "nowrap", color: valueColor }}>
         {value}{small && <span style={{ fontSize: 14, fontWeight: 500, color: "var(--fg-3)", marginLeft: 4 }}>{small}</span>}
@@ -84,10 +84,10 @@ export function Card({ title, hint, action, children, style }) {
   return (
     <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", minWidth: 0, ...style }}>
       {(title || hint) && (
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "20px 24px 0", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "20px var(--inset-x) 0", flexWrap: "wrap" }}>
           <h3 style={{ margin: 0, fontFamily: "var(--display)", fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em" }}>{title}</h3>
           {hint && <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{hint}</span>}
-          {action && <span style={{ marginLeft: "auto" }}>{action}</span>}
+          {action && <span style={{ marginLeft: "auto", minWidth: 0, maxWidth: "100%" }}>{action}</span>}
         </div>
       )}
       {children}

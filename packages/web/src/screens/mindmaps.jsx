@@ -2,6 +2,7 @@ import React from "react";
 import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
+import { useIsMobile } from "../lib/responsive.js";
 // Mapas mentais / estratégia — um canvas pra pensar em nós: ideias que ramificam
 // (árvore pai→filho) e conexões livres entre quaisquer nós (estratégia). Pan/zoom,
 // arrastar, cores, auto-organizar (layout em árvore) e vários mapas. Cada mapa é
@@ -40,6 +41,7 @@ function arrange(nodes) {
 }
 
 export function MindmapsScreen() {
+  const isMobile = useIsMobile();
   const [activeProduct] = useActiveSaas();
   const [maps, setMaps] = useState(null); // lista de mapas
   const [activeId, setActiveId] = useState(null);
@@ -76,9 +78,10 @@ export function MindmapsScreen() {
   const active = (maps || []).find((m) => m.id === activeId) || null;
 
   return (
-    <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-        {/* Sidebar: lista de mapas */}
-        <div style={{ width: 230, flexShrink: 0, borderRight: "1px solid var(--line-1)", overflow: "auto", padding: "16px 12px", background: "var(--bg-1)", display: "flex", flexDirection: "column", gap: 2 }}>
+    <div style={{ flex: 1, display: "flex", minHeight: 0, flexDirection: isMobile ? "column" : "row" }}>
+        {/* Sidebar: lista de mapas — no mobile vira uma faixa no topo (230px
+            fixos deixariam ~160px pro canvas). */}
+        <div style={{ width: isMobile ? "100%" : 230, maxHeight: isMobile ? 150 : undefined, flexShrink: 0, borderRight: isMobile ? "none" : "1px solid var(--line-1)", borderBottom: isMobile ? "1px solid var(--line-1)" : "none", overflow: "auto", padding: isMobile ? "10px 12px" : "16px 12px", background: "var(--bg-1)", display: "flex", flexDirection: "column", gap: 2 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 8px 12px" }}>
             <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Mapas</span>
             <button onClick={newMap} style={{ height: 24, padding: "0 4px", color: "var(--accent)", fontSize: 12.5, fontWeight: 600 }}>+ novo</button>
@@ -154,6 +157,18 @@ function MapEditor({ map, onSaved }) {
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
+
+  // Zoom centrado na tela (botões −/+ da toolbar; no touch não há roda).
+  const zoomBy = (f) => {
+    const el = wrapRef.current; if (!el) return;
+    const r = el.getBoundingClientRect();
+    const cx = r.width / 2, cy = r.height / 2;
+    setView((v) => {
+      const z = Math.min(2.4, Math.max(0.3, v.z * f));
+      const k = z / v.z;
+      return { z, x: cx - (cx - v.x) * k, y: cy - (cy - v.y) * k };
+    });
+  };
 
   // Atalhos de teclado (quando não está editando texto).
   useEffect(() => {
@@ -276,6 +291,9 @@ function MapEditor({ map, onSaved }) {
         <span style={{ width: 1, height: 20, background: "var(--line-1)", margin: "0 2px" }} />
         <button style={btn()} title="Organizar em árvore" onClick={autoOrganize}>organizar</button>
         <button style={btn()} title="Enquadrar tudo" onClick={fitView}>enquadrar</button>
+        {/* Zoom por botão: no touch não tem roda do mouse. */}
+        <button style={btn()} title="Afastar" onClick={() => zoomBy(0.82)}>−</button>
+        <button style={btn()} title="Aproximar" onClick={() => zoomBy(1.22)}>+</button>
         {selNode && (
           <>
             <span style={{ width: 1, height: 20, background: "var(--line-1)", margin: "0 2px" }} />

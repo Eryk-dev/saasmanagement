@@ -6,6 +6,7 @@ import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useData } from "../data.jsx";
 import { CreativeEditor } from "./creative.jsx";
+import { useIsMobile } from "../lib/responsive.js";
 import { AreaLine, fmtNum } from "./social-metrics.jsx";
 
 // Mídia social — métricas do perfil (Instagram + página do Facebook) e o fluxo
@@ -203,7 +204,7 @@ function SocialScreen() {
               <StatTile label="Posts no mês" value={fmtNum(eng?.posts ?? 0)} delta={`de 12 · meta mensal`} />
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16 }}>
               <Card title="Crescimento de seguidores" hint="acumulado · 30 dias">
                 <div style={{ padding: "8px 16px 12px" }}>
                   <AreaLine series={sum.followerSeries || []} cumulative valueLabel="seguidores" />
@@ -242,6 +243,8 @@ function SocialScreen() {
             {sum.errors?.insights && <div className="mono dim" style={{ fontSize: 11 }}>alcance indisponível: {sum.errors.insights}</div>}
 
             <Card title="Publicações recentes" hint={'o histórico do "criar post" aparece aqui'} style={{ overflow: "hidden" }}>
+             {/* .tbl-x: 11 colunas de métricas rolam na horizontal no mobile. */}
+             <div className="tbl-x"><div style={{ minWidth: 880 }}>
               <div style={{ display: "grid", gridTemplateColumns: POSTS_GRID, gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
                 <span>Post</span><span>Formato</span><span style={{ textAlign: "right" }}>Alcance</span><span style={{ textAlign: "right" }}>Curtidas</span><span style={{ textAlign: "right" }}>Coment.</span><span style={{ textAlign: "right" }}>Salvos</span><span style={{ textAlign: "right" }}>Compart.</span><span style={{ textAlign: "right" }}>Eng.</span><span style={{ textAlign: "right" }} title="tempo médio assistido ÷ duração do vídeo">Retenção</span><span style={{ textAlign: "right" }} title="% de views que passaram dos 3 primeiros segundos">Play 3s</span><span style={{ textAlign: "right" }}>Publicado</span>
               </div>
@@ -261,6 +264,7 @@ function SocialScreen() {
                 </div>
               ))}
               {!recent.length && <div style={{ padding: "18px 24px", borderTop: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 13 }}>nenhuma publicação ainda</div>}
+             </div></div>
             </Card>
           </>
         )}
@@ -284,6 +288,7 @@ function SocialScreen() {
 
 // ── Wizard "Criar post" ──────────────────────────────────────────────────────
 function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
+  const isMobile = useIsMobile();
   const [step, setStep] = useS(1);
   const [format, setFormat] = useS("feed");
   const [kind, setKind] = useS("image");
@@ -402,7 +407,9 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
           <button onClick={onClose} className="mono dim" style={{ marginLeft: "auto", fontSize: 15 }}>✕</button>
         </div>
 
-        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: step === 2 && kind !== "video" ? "hidden" : "auto" }}>
+        {/* No mobile o passo 2 (editor empilhado) precisa rolar; o hidden é só
+            pro editor lado a lado do desktop controlar o próprio scroll. */}
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: step === 2 && kind !== "video" && !isMobile ? "hidden" : "auto" }}>
           {step === 1 && (
             <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 18 }}>
               <div>

@@ -111,7 +111,7 @@ function MetasScreen() {
         {data && (
           <>
             {/* Metas por vaga */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 14 }}>
               {data.roles.map((r) => (
                 <div key={r.role} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: 24 }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 16 }}>

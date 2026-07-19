@@ -79,7 +79,7 @@ function IntegrationsScreen({ onOpenLead }) {
               <StatTile label="Em risco" value={String(sent["em risco"])} tone={sent["em risco"] > 0 ? "down" : "flat"} delta="pegar churn cedo" />
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16 }}>
               <Card title="Pendências recorrentes do onboarding" hint="× vezes · quem resolve">
                 <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "16px 24px 22px" }}>
                   {data.pendencias.length === 0 && <div className="mono dim" style={{ fontSize: 12 }}>nenhuma pendência registrada ainda</div>}

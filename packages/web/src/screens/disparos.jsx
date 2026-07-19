@@ -277,7 +277,7 @@ function DisparosScreen({ onOpenLead }) {
             })}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 16, alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 400px), 1fr))", gap: 16, alignItems: "start" }}>
             <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden", minWidth: 0 }}>
               <div style={{ overflowX: "auto" }}><div style={{ minWidth: 620 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "40px 1.3fr 1.1fr .9fr .9fr", gap: 12, padding: "12px 20px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", alignItems: "center" }}>
@@ -381,7 +381,7 @@ function DisparosScreen({ onOpenLead }) {
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 14 }}>
           {/* ── PÚBLICO ─────────────────────────────────────────────── */}
           <div style={{ ...box, display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
             <div style={kicker}>Público · etapas do funil</div>
@@ -680,7 +680,7 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
         <button onClick={() => setSeq(blankSeq(product?.id, me))} className="mono dim" style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", fontSize: 12 }}>+ nova</button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 14 }}>
         {/* Editor da sequência */}
         <div style={{ ...box, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -837,7 +837,7 @@ function TemplatesTab({ product }) {
   return (
     <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
       {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 14 }}>
         <div style={{ ...box, display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={kick}>{t.id ? "editar template" : "novo template"}</div>
           <div style={{ display: "flex", gap: 8 }}>

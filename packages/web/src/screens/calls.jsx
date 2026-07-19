@@ -143,7 +143,7 @@ function CallsScreen({ onOpenLead }) {
               <StatTile label="Frias" value={String(temp.frio)} tone="flat" />
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16 }}>
               <Card title="Objeções recorrentes" hint="o que mais trava as calls (× vezes · em aberto)">
                 <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "16px 24px 22px" }}>
                   {data.objecoes.length === 0 && <div className="mono dim" style={{ fontSize: 12 }}>nenhuma objeção registrada ainda</div>}

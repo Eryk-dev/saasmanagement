@@ -262,7 +262,7 @@ function LeadDetail({ lead: initial, onClose }) {
 
         {/* Corpo rolável: duas colunas (Cliente | Insights do estágio atual). */}
         <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", minHeight: 0 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16, alignItems: "start" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
             <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Cliente</div>
           {/* Resumo do cliente: dor em destaque + os fatos compilados num grid.
@@ -351,7 +351,7 @@ function LeadDetail({ lead: initial, onClose }) {
             <span style={{ marginLeft: "auto", fontSize: 10, flexShrink: 0 }}>{showGps ? "▴ recolher" : "▾ abrir"}</span>
           </button>
           {showGps && (<>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <span className="mono dim" style={rowLabel}>Etapa</span>
             <select value={lead.stage || ""} onChange={(e) => moveStage(e.target.value)}
               style={{ flex: 1, height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }}>
@@ -380,7 +380,7 @@ function LeadDetail({ lead: initial, onClose }) {
                 style={{ flexBasis: "100%", height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5 }} />
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <span className="mono dim" style={rowLabel}>Call agendada</span>
             {/* Em etapa de follow-up a fila do Meu dia vence pelo nextActionAt,
                 então marcar a call aqui SINCRONIZA o próximo toque no mesmo
@@ -398,7 +398,7 @@ function LeadDetail({ lead: initial, onClose }) {
           </div>
           {/* Link de videochamada: sala Jitsi com slug aleatório (sem conta, abre
               no navegador/celular), salva no lead e vai pro Whats com 1 clique. */}
-          <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0, flexWrap: "wrap" }}>
             <span className="mono dim" style={rowLabel}>Videochamada</span>
             {lead.callUrl ? (
               <>
@@ -491,7 +491,7 @@ function LeadDetail({ lead: initial, onClose }) {
             )}
           </div>
           {window.SEED?.CONFIG?.google?.connected && (
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <span className="mono dim" style={rowLabel}>Convidados extras</span>
               <input type="text" placeholder="emails separados por vírgula (além do lead)"
                 defaultValue={lead.meetGuests ?? ""}
@@ -501,7 +501,7 @@ function LeadDetail({ lead: initial, onClose }) {
             </div>
           )}
           {(kind === "proposta" || kind === "followup") && (
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <span className="mono dim" style={rowLabel}>Proposta</span>
               <input type="number" placeholder="Valor (R$)" defaultValue={lead.proposalValue ?? ""}
                 onBlur={(e) => patch({ proposalValue: e.target.value === "" ? "" : Number(e.target.value) })}
@@ -513,7 +513,7 @@ function LeadDetail({ lead: initial, onClose }) {
           )}
           {kind === "integracao" && (
             <>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <span className="mono dim" style={rowLabel}>Integração</span>
                 <input type="datetime-local" value={lead.integrationAt || ""} onChange={(e) => patch({ integrationAt: e.target.value })}
                   style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
@@ -522,7 +522,7 @@ function LeadDetail({ lead: initial, onClose }) {
                   entra aqui (e re-tenta enquanto a transcrição da venda não
                   fica pronta). Este botão é o "gera agora" / "refaz". */}
               {window.SEED?.CONFIG?.ai?.configured && (
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   <span className="mono dim" style={rowLabel}>Briefing</span>
                   <button className="mono" style={{ fontSize: 11, color: "var(--accent)" }}
                     title="Lê a transcrição da call de venda e monta o briefing pro integrador (contexto, o que foi prometido, o que confirmar e o passo a passo)"
@@ -547,7 +547,7 @@ function LeadDetail({ lead: initial, onClose }) {
               )}
               {/* Call de vídeo da integração: Meet PRÓPRIO (não o da venda) no
                   horário da integração; depois vira resumo de onboarding. */}
-              <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0, flexWrap: "wrap" }}>
                 <span className="mono dim" style={rowLabel}>Vídeo integração</span>
                 {lead.integrationCallUrl ? (
                   <>

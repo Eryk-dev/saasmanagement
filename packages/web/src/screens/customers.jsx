@@ -521,7 +521,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
 
         {!editing && (
         <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "14px 16px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 14, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 14, alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
         <CustomerFacts customer={customer} lead={lead} product={product} onPatch={onPatch ? (p) => onPatch(customer, p) : null} />
 

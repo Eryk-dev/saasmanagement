@@ -369,14 +369,14 @@ function TodayScreen({ onOpenLead }) {
             hint={person ? "Nenhuma ação pendente nessa fila. Confira o pipeline ou puxe leads novos." : "Nenhuma ação pendente."}
           />
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(300px, 380px)", gap: 16, alignItems: "start" }}>
+          <div className="resp-cols" style={{ "--cols": "minmax(0, 1fr) minmax(300px, 380px)", gap: 16, alignItems: "start" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
               <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "20px 24px 14px" }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "20px var(--inset-x) 14px" }}>
                   <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em" }}>Hoje</h3>
                   <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{pendingToday.length} pendentes · em ordem de execução</span>
                 </div>
-                {pendingToday.length === 0 && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", fontSize: 13, color: "var(--fg-3)" }}>Fila de hoje concluída.</div>}
+                {pendingToday.length === 0 && <div style={{ padding: "16px var(--inset-x)", borderTop: "1px solid var(--line-faint)", fontSize: 13, color: "var(--fg-3)" }}>Fila de hoje concluída.</div>}
                 {pendingToday.map((item, index) => (
                   <QueueRow key={item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id} item={item} block="hoje" featured={index === 0}
                     onScript={() => setScriptItem(item)} onClaim={() => claim(item)} />
@@ -385,7 +385,7 @@ function TodayScreen({ onOpenLead }) {
 
               {doneTodayRows.length > 0 && (
                 <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "20px 24px 14px" }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "20px var(--inset-x) 14px" }}>
                     <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em" }}>Feitas hoje</h3>
                     <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{doneTodayRows.length} concluídas</span>
                   </div>
@@ -476,7 +476,7 @@ function QueueRow({ item, block, featured, onScript, onClaim }) {
 
   return (
     <div onClick={onScript} title="Abrir o roteiro desta atividade" style={{
-      display: "flex", alignItems: "center", gap: 14, padding: featured ? "16px 24px" : "14px 24px",
+      display: "flex", alignItems: "center", gap: 14, padding: featured ? "16px var(--inset-x)" : "14px var(--inset-x)",
       borderTop: "1px solid var(--line-faint)", background: featured ? "var(--accent-soft)" : "transparent", cursor: "pointer", flexWrap: "wrap",
     }}>
       <span className="mono tnum" style={{ fontSize: 12.5, width: 44, flexShrink: 0, display: "flex", flexDirection: "column", gap: 1 }}>
@@ -489,7 +489,7 @@ function QueueRow({ item, block, featured, onScript, onClaim }) {
         <span title={stage} style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: "20px", padding: "0 8px", borderRadius: "var(--r-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 500 }}>{stage}</span>
         {attemptNumber > 0 && <span className="mono tnum" style={{ fontSize: 10.5, color: "var(--fg-4)", paddingLeft: 2 }}>{attemptNumber}ª tentativa</span>}
       </span>
-      <div style={{ flex: 1, minWidth: 240 }}>
+      <div style={{ flex: 1, minWidth: "min(240px, 100%)" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 14, fontWeight: 600 }}>{l.name}</span>
           {l.company && <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{l.company}</span>}
@@ -513,7 +513,7 @@ function DoneActivityRow({ item, onClick }) {
   const { l } = item;
   const time = l.lastActivityAt ? new Date(l.lastActivityAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
   return (
-    <button onClick={onClick} style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "12px 24px", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
+    <button onClick={onClick} style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "12px var(--inset-x)", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
       <span style={{ color: "var(--pos)", fontSize: 13, width: 44, flexShrink: 0 }}>✓</span>
       <span style={{ fontSize: 13.5, color: "var(--fg-3)", textDecoration: "line-through", flex: 1 }}>{l.name}{l.company ? ` · ${l.company}` : ""} — {ACTION_LABELS[item.kind] || "atividade concluída"}</span>
       <span className="mono tnum" style={{ fontSize: 12, color: "var(--fg-4)" }}>{time}</span>
@@ -530,8 +530,8 @@ function CompactSchedule({ title, rows, onOpen }) {
   };
   return (
     <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
-      <div style={{ padding: "20px 24px 12px" }}><h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em" }}>{title}</h3></div>
-      <div style={{ padding: "0 24px 8px" }}>
+      <div style={{ padding: "20px var(--inset-x) 12px" }}><h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em" }}>{title}</h3></div>
+      <div style={{ padding: "0 var(--inset-x) 8px" }}>
         {rows.length === 0 && <div style={{ borderTop: "1px solid var(--line-faint)", padding: "12px 0 14px", fontSize: 12.5, color: "var(--fg-4)" }}>nenhuma atividade</div>}
         {rows.slice(0, 5).map((item) => (
           <button key={item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id} onClick={() => onOpen(item)} style={{ width: "100%", display: "flex", gap: 10, alignItems: "baseline", padding: "10px 0", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
@@ -558,7 +558,7 @@ function DayScore({ contacted, contactedGoal, calls, callsGoal }) {
     </div>
   );
   return (
-    <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px 24px" }}>
+    <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px var(--inset-x)" }}>
       <div style={{ fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--fg-4)" }}>Placar do dia</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
         {progress("Contatados", contacted, contactedGoal)}
@@ -1124,12 +1124,12 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
               abrir lead
             </button>
           )}
-          <button onClick={onClose} className="mono dim" style={{ fontSize: 16, flexShrink: 0 }}>✕</button>
+          <button onClick={onClose} aria-label="Fechar" className="mono dim" style={{ fontSize: 16, flexShrink: 0, width: 36, height: 36, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--r-2)" }}>✕</button>
         </div>
 
         {/* Corpo rolável: duas colunas (CLIENTE | ROTEIRO) + o destino do card. */}
         <div style={{ padding: "12px 18px", display: "flex", flexDirection: "column", gap: 14, overflowY: "auto", minHeight: 0 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(310px, 1fr))", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 310px), 1fr))", gap: 16 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
             <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Cliente</div>
               <div style={box}>
@@ -1877,7 +1877,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
               </div>
             )
           ) : (
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <button onClick={confirm} disabled={!ready} style={{
                 height: 32, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
                 background: ready ? "var(--btn-bg, var(--accent))" : "var(--bg-2)", color: ready ? "var(--btn-fg, var(--accent-fg))" : "var(--fg-4)",

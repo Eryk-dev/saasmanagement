@@ -70,26 +70,32 @@ export function FocusShell({ children, onExit }) {
         }} />
       </div>
 
+      {/* No touch (sem Esc nem fullscreen de div no iOS) este botão é a ÚNICA
+          saída — área de toque de 40px e mais contraste. */}
       <button onClick={onExit} style={{
-        position: "fixed", top: 18, right: 22, zIndex: 2, background: "transparent",
-        border: "none", color: "rgba(255,255,255,0.4)", fontSize: 12, cursor: "pointer", fontFamily: "var(--mono)",
+        position: "fixed", top: "max(12px, env(safe-area-inset-top, 0px))", right: 14, zIndex: 2, background: "transparent",
+        border: "none", color: "rgba(255,255,255,0.6)", fontSize: 12, cursor: "pointer", fontFamily: "var(--mono)",
+        minHeight: 40, padding: "0 10px",
       }}>
         sair (esc)
       </button>
 
-      {/* conteúdo (sessão) centralizado */}
-      <div style={{ position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: "56px 20px 88px" }}>
-        {children}
+      {/* conteúdo (sessão) centralizado; margin auto (e não justify center) pra
+          card mais alto que a tela rolar até o topo em vez de cortar. */}
+      <div style={{ position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column", alignItems: "center", padding: "56px 20px 88px" }}>
+        <div style={{ margin: "auto 0", maxWidth: "100%" }}>{children}</div>
       </div>
 
-      {/* barra de áudio — quase invisível até o hover */}
+      {/* barra de áudio — quase invisível até o hover (no touch, sem hover,
+          fica sempre legível) */}
       <div
         onMouseEnter={(e) => { e.currentTarget.style.opacity = 1; }}
         onMouseLeave={(e) => { e.currentTarget.style.opacity = 0.4; }}
         style={{
           position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 2,
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-          padding: "14px 20px 18px", opacity: 0.4, transition: "opacity 0.35s",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 10, flexWrap: "wrap",
+          padding: "14px 20px calc(18px + env(safe-area-inset-bottom, 0px))",
+          opacity: window.matchMedia?.("(hover: none)")?.matches ? 0.85 : 0.4, transition: "opacity 0.35s",
         }}>
         {FOCUS_AUDIO_MODES.map((m) => (
           <button key={m.id} onClick={() => toggleMode(m.id)} title={mode === m.id ? "clique pra silenciar" : ""}

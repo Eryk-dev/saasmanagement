@@ -447,7 +447,7 @@ function MetricsScreen() {
               const conv = i === 0 ? (totalMilestoneLeads ? 100 : 0) : totalMilestoneLeads ? Math.round((s.count / totalMilestoneLeads) * 1000) / 10 : 0;
               const won = stageKind(product, s.stage) === "ganho";
               return (
-                <div key={s.stage} style={{ display: "grid", gridTemplateColumns: "150px 1fr 92px 60px", gap: 12, alignItems: "center" }}>
+                <div key={s.stage} style={{ display: "grid", gridTemplateColumns: "minmax(72px, 150px) 1fr minmax(64px, 92px) minmax(40px, 60px)", gap: 12, alignItems: "center" }}>
                   <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.stage}</span>
                   <div style={{ height: 20, borderRadius: 6, background: "var(--bg-2)", overflow: "hidden" }}><div style={{ height: "100%", width: `${Math.max(conv ? 3 : 0, conv)}%`, background: won ? "var(--pos)" : "var(--accent)", borderRadius: 6 }} /></div>
                   <span className="tnum" style={{ textAlign: "right", fontSize: 13.5, fontWeight: 700 }}>{s.costPer != null ? money(s.costPer) : "—"}</span>
@@ -553,8 +553,12 @@ function AdsRangePicker({ range, onRange }) {
   const setUntil = (v) => { if (v) onRange({ preset: "custom", until: v, since: since > v ? v : since }); };
   const fmt = (s) => `${s.slice(8, 10)}/${s.slice(5, 7)}`;
   return (
-    <span ref={wrapRef} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-      <Segmented value={range.preset} onChange={choose} options={ADS_PERIODS} />
+    <span ref={wrapRef} style={{ display: "inline-flex", alignItems: "center", gap: 6, maxWidth: "100%", minWidth: 0 }}>
+      {/* No mobile as 7 opções não cabem no header do card: o grupo rola na
+          horizontal em vez de o overflow:hidden cortar "hoje"/"personalizado". */}
+      <span style={{ maxWidth: "100%", overflowX: "auto", display: "inline-flex", flexShrink: 1 }}>
+        <Segmented value={range.preset} onChange={choose} options={ADS_PERIODS} />
+      </span>
       {range.preset === "custom" && (
         <button className="mono tnum" onClick={openPopover} title="mudar o intervalo"
           style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>
@@ -1254,7 +1258,10 @@ function WonAbcCell({ won, wonAbc }) {
 function PainTable({ pains, money }) {
   const cols = "1.6fr .8fr .55fr .7fr .6fr .9fr .55fr .6fr";
   return (
-    <div style={{ marginTop: 14 }}>
+    // .tbl-x: 8 colunas não cabem em tela de celular — rola na horizontal
+    // dentro do card em vez de o overflow:hidden clipar os valores.
+    <div className="tbl-x" style={{ marginTop: 14 }}>
+     <div>
       <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
         <span>Dor</span><span style={{ textAlign: "right" }}>Investido</span><span style={{ textAlign: "right" }}>Leads</span><span style={{ textAlign: "right" }}>CPL</span>
         <span title="leads da dor que marcaram call" style={{ textAlign: "right" }}>Calls</span>
@@ -1274,6 +1281,7 @@ function PainTable({ pains, money }) {
         </div>
       ))}
       {!pains.some((p) => p.code) && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--fg-4)", fontSize: 12.5 }}>nenhuma dor atribuída no período</div>}
+     </div>
     </div>
   );
 }

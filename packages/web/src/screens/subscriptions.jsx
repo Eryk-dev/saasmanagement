@@ -161,7 +161,7 @@ function SubscriptionsScreen({ saasId }) {
                       {s.pendingChange && <span className="mono dim" style={{ fontSize: 9, display: "block", marginTop: 2 }}>muda em {fmtDate(s.pendingChange.applyAt)}</span>}
                     </span>
                     <span className="mono dim tnum" style={{ fontSize: 12 }}>{fmtDate(s.periodEnd)}</span>
-                    <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
+                    <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
                       {mpConfigured && s.status !== "canceled" && (
                         <button onClick={() => mpLink(s)} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }} title={s.mpInitPoint ? "re-gerar/copiar link de autorização" : "gerar link de autorização no Mercado Pago"}>
                           <span style={{ fontSize: 11 }}>{s.mpPreapprovalId ? "link MP" : "cobrar via MP"}</span>

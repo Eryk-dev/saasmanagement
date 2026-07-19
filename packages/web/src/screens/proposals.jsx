@@ -224,7 +224,7 @@ function ProposalsScreen({ saasId }) {
             <EmptyState title="Nenhum template neste SaaS" hint="Crie o template base usado para gerar propostas a partir dos leads." action={<PrimaryButton onClick={() => setEditing({ template: null })}>+ criar template</PrimaryButton>} />
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))", gap: 14 }}>
             {templates.map((t) => {
               const pub = t.status === "published";
               const linked = proposals.filter((p) => p.template === t.id);
@@ -326,7 +326,7 @@ function TemplateEditor({ template, saasId, onDone, onCancel }) {
   }
 
   return (
-    <div className="editor-split" style={{ flex: 1, "--cols": "minmax(460px, 1fr) minmax(380px, 44%)", minHeight: 0 }}>
+    <div className="editor-split" style={{ flex: 1, "--cols": "minmax(min(100%, 460px), 1fr) minmax(min(100%, 380px), 44%)", minHeight: 0 }}>
       <div style={{ display: "flex", flexDirection: "column", minHeight: 0, borderRight: "1px solid var(--line-1)" }}>
         <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
@@ -531,7 +531,7 @@ function CalcEditor({ calc, onChange }) {
       <div style={{ ...cardStyle }}>
         <span className="mono" style={labelStyle}>Planos (R$/mês · contas incluídas · R$ por conta extra)</span>
         {cycles.map(([v, l]) => (
-          <div key={v} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <div key={v} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             <span className="mono dim" style={{ fontSize: 11, width: 76 }}>{l}</span>
             <input type="number" placeholder="base R$" value={calc.plans?.[v]?.base ?? ""} onChange={(e) => setPlan(v, "base", e.target.value)} style={{ ...inputStyle, width: 110 }} />
             <input type="number" placeholder="incluídas" value={calc.plans?.[v]?.included ?? ""} onChange={(e) => setPlan(v, "included", e.target.value)} style={{ ...inputStyle, width: 100 }} />
