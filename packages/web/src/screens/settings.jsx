@@ -244,8 +244,8 @@ function FunnelSettings({ s }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
-        <div style={{ padding: "24px 28px 0" }}><SettingHeader number="01" title="Etapas do funil" sub="a ordem define a régua de progresso" /></div>
-        <div style={{ padding: "16px 28px 20px" }}>
+        <div style={{ padding: "24px var(--pad-x) 0" }}><SettingHeader number="01" title="Etapas do funil" sub="a ordem define a régua de progresso" /></div>
+        <div style={{ padding: "16px var(--pad-x) 20px" }}>
           <div className="tbl-x">
             <div style={{ minWidth: 690 }}>
               <div style={{ display: "grid", gridTemplateColumns: "32px 1.4fr 1fr 1.2fr 40px", gap: 12, padding: "8px 0", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderBottom: "1px solid var(--line-1)" }}>
@@ -300,8 +300,8 @@ function LossReasonsSettings({ s }) {
 
   return (
     <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
-      <div style={{ padding: "24px 28px 0" }}><SettingHeader number="02" title="Motivos de perda" sub="aparecem ao marcar Perdido/Desqualificado" /></div>
-      <div style={{ padding: "16px 28px 24px", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      <div style={{ padding: "24px var(--pad-x) 0" }}><SettingHeader number="02" title="Motivos de perda" sub="aparecem ao marcar Perdido/Desqualificado" /></div>
+      <div style={{ padding: "16px var(--pad-x) 24px", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         {rows.map((r, i) => (
           <span key={i} style={{ display: "inline-flex", alignItems: "center", height: 34, border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: "0 8px 0 12px" }}>
             <input value={r.label || ""} placeholder="Novo motivo" onChange={(e) => setRows((current) => current.map((item, index) => index === i ? { ...item, label: e.target.value } : item))} style={{ width: Math.max(64, String(r.label || "Novo motivo").length * 7.5), border: 0, background: "transparent", fontSize: 12.5, fontWeight: 600, color: "var(--fg-2)" }} />
@@ -328,8 +328,8 @@ function AutomaticConversionSettings() {
   ];
   return (
     <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
-      <div style={{ padding: "24px 28px 0" }}><SettingHeader number="03" title="Conversão automática" sub="quando o lead vira cliente" /></div>
-      <div style={{ padding: "16px 28px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ padding: "24px var(--pad-x) 0" }}><SettingHeader number="03" title="Conversão automática" sub="quando o lead vira cliente" /></div>
+      <div style={{ padding: "16px var(--pad-x) 24px", display: "flex", flexDirection: "column", gap: 16 }}>
         {items.map(([on, title, description]) => (
           <div key={title} style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
             <Toggle on={on} />
@@ -523,7 +523,10 @@ function TeamSettings() {
   return (
     <div>
       <SettingHeader title="Equipe & papéis" sub="quem aparece nos pickers de SDR/closer/integração do pipeline · papel ≠ permissão (todos são admin na v1)" />
-      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
+      {/* .tbl-x: no mobile a grade (colunas fixas ~900px) rola dentro do card
+          em vez de estourar a página — mesmo padrão do Funil abaixo. */}
+      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
+       <div style={{ minWidth: 860 }}>
         <div className="mono" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 140px 120px 44px`, gap: 8, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
           <span>Usuário</span>
           {ROLE_OPTS.map(([k, l, hint]) => <span key={k} title={hint} style={{ textAlign: "center" }}>{l}</span>)}
@@ -554,6 +557,7 @@ function TeamSettings() {
               onMouseLeave={(e) => { e.currentTarget.style.color = "var(--fg-4)"; e.currentTarget.style.borderColor = "var(--line-2)"; }}>✕</button>
           </div>
         ))}
+       </div>
       </div>
       <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         {invite ? (

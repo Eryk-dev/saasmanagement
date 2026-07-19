@@ -73,7 +73,7 @@ function ProposalActions({ l, showViews = false }) {
     // vão com from=cockpit pra não contarem como "o cliente abriu".
     return (
       <span style={{ display: showViews ? "flex" : "inline-flex", flexDirection: showViews ? "column" : "row", gap: 6, alignItems: showViews ? "stretch" : "center" }}>
-        <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+        <span style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <a href={liveUrl} target="_blank" rel="noreferrer" style={linkBtnStyle}><span style={{ fontSize: 11 }}>apresentar ao vivo ↗</span></a>
           <a href={cockpitProposalUrl(l.proposalUrl)} target="_blank" rel="noreferrer" style={{ ...chromeBtnStyleSmall, textDecoration: "none" }}><span style={{ fontSize: 11 }}>ver como cliente ↗</span></a>
           {isLevercopy && <button onClick={() => gen(true)} disabled={busy} style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>{busy ? "…" : "re-gerar"}</span></button>}
@@ -85,7 +85,7 @@ function ProposalActions({ l, showViews = false }) {
   }
   if (isLevercopy) {
     return (
-      <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+      <span style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
         <button onClick={() => gen(false)} disabled={busy} style={accentBtnStyle}><span style={{ fontSize: 11 }}>{busy ? "gerando…" : err ? "tentar de novo" : "gerar proposta"}</span></button>
         {err && <span className="mono" style={{ fontSize: 9, color: "var(--neg)" }}>proposta não gerada</span>}
       </span>

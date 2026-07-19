@@ -128,7 +128,7 @@ function FormsScreen({ saasId }) {
             action={<PrimaryButton onClick={() => setView({ mode: "edit", form: null })}>+ Criar form</PrimaryButton>}
           />
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: 14, alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 380px), 1fr))", gap: 14, alignItems: "start" }}>
             {[...forms].sort((a, b) => (b.status === "published" ? 1 : 0) - (a.status === "published" ? 1 : 0)).map((f) => {
               const pub = f.status === "published";
               const stat = stats[f.id];
@@ -291,6 +291,9 @@ function RecentSubmissions({ submissions, forms, onOpen }) {
 
   return (
     <Card title="Envios recentes" hint="cada envio vira lead em Novo lead" style={{ overflow: "hidden" }}>
+     {/* .tbl-x: as 5 colunas rolam na horizontal no mobile em vez de virar
+         colunas de 30px ilegíveis. */}
+     <div className="tbl-x"><div style={{ minWidth: 640 }}>
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1.4fr 1fr 1.2fr .6fr", gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
         <span>Nome</span><span>E-mail</span><span>Empresa</span><span>Origem</span><span style={{ textAlign: "right" }}>Quando</span>
       </div>
@@ -309,6 +312,7 @@ function RecentSubmissions({ submissions, forms, onOpen }) {
         );
       })}
       {!rows.length && <div style={{ padding: "18px 24px", borderTop: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 13 }}>nenhum envio ainda</div>}
+     </div></div>
     </Card>
   );
 }
@@ -409,7 +413,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
   const qKeys = (draft.questions || []).filter((q) => q.key && q.type !== "insight").map((q) => ({ value: q.key, label: q.label || q.key }));
 
   return (
-    <div className="editor-split" style={{ flex: 1, "--cols": "minmax(440px, 1fr) minmax(380px, 46%)", minHeight: 0 }}>
+    <div className="editor-split" style={{ flex: 1, "--cols": "minmax(min(100%, 440px), 1fr) minmax(min(100%, 380px), 46%)", minHeight: 0 }}>
       {/* coluna do editor */}
       <div style={{ display: "flex", flexDirection: "column", minHeight: 0, borderRight: "1px solid var(--line-1)" }}>
         <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -620,8 +624,8 @@ function QuestionsBuilder({ questions, onChange }) {
             {hasOptions && (
               <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 24 }}>
                 {(q.options || []).map((o, oi) => (
-                  <div key={oi} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input value={o.label || ""} placeholder="Rótulo" onChange={(e) => updateOpt(i, oi, { label: e.target.value, value: o._valTouched ? o.value : slug(e.target.value) })} style={{ ...inputStyle, flex: 1 }} />
+                  <div key={oi} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <input value={o.label || ""} placeholder="Rótulo" onChange={(e) => updateOpt(i, oi, { label: e.target.value, value: o._valTouched ? o.value : slug(e.target.value) })} style={{ ...inputStyle, flex: 1, minWidth: 120 }} />
                     <input value={o.value || ""} placeholder="valor" onChange={(e) => updateOpt(i, oi, { value: e.target.value, _valTouched: true })} className="mono" style={{ ...inputStyle, width: 110, fontSize: 12 }} />
                     {q.type === "select" && (
                       <select value={o.to || ""} title="Pular para…" onChange={(e) => updateOpt(i, oi, { to: e.target.value })} style={{ ...inputStyle, width: 170, fontSize: 12 }}>
@@ -635,9 +639,9 @@ function QuestionsBuilder({ questions, onChange }) {
               </div>
             )}
 
-            <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 24 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 24, flexWrap: "wrap" }}>
               <span className="mono dim" style={{ fontSize: 10, letterSpacing: "0.04em" }}>depois desta pergunta:</span>
-              <select value={q.to || ""} onChange={(e) => update(i, { to: e.target.value })} style={{ ...inputStyle, width: 200, fontSize: 12 }}>
+              <select value={q.to || ""} onChange={(e) => update(i, { to: e.target.value })} style={{ ...inputStyle, width: 200, maxWidth: "100%", fontSize: 12 }}>
                 {jumpOptions(q.key).map((j) => <option key={j.value} value={j.value}>{j.label}</option>)}
               </select>
             </div>
@@ -698,7 +702,7 @@ function SubmissionsView({ form, onBack }) {
                   <span className="mono dim">{open === s.id ? "▾" : "▸"}</span>
                 </button>
                 {open === s.id && (
-                  <div style={{ padding: "4px 14px 14px 174px", display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ padding: "4px 14px 14px min(174px, 18%)", display: "flex", flexDirection: "column", gap: 6 }}>
                     {Object.entries(s.answers || {}).map(([k, v]) => (
                       <div key={k} style={{ fontSize: 12.5 }}>
                         <span className="mono dim" style={{ fontSize: 11 }}>{labels[k] || k}: </span>

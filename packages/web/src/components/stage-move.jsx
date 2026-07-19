@@ -85,7 +85,9 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
 
   return (
     <div onClick={onCancel} style={{ position: "fixed", inset: 0, zIndex: 90, background: "color-mix(in srgb, var(--bg-0) 62%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(420px, 100%)", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 18 }}>
+      {/* maxHeight+scroll: com o teclado aberto no celular o gate de ganho
+          (valor/método/pacote) passa da altura visível — rola em vez de cortar. */}
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(420px, 100%)", maxHeight: "min(88dvh, 100%)", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 18 }}>
         <div style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700 }}>
           {isLost ? `Mover pra “${toStage}”` : isWonGate ? (gate.toKind === "integracao" ? "Fechar e mandar pra integração 🎉" : "Fechar como ganho 🎉") : isOffer ? "Call feita → follow-up" : "Passar pro closer"}
         </div>

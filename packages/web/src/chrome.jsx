@@ -159,7 +159,7 @@ function NavRail({ current, onNav, collapsed }) {
         ))}
       </div>
 
-      <div style={{ padding: 12, borderTop: "1px solid var(--line-1)" }}>
+      <div style={{ padding: 12, paddingBottom: "calc(12px + env(safe-area-inset-bottom, 0px))", borderTop: "1px solid var(--line-1)" }}>
         {!collapsed && <WorkspaceSwitcher />}
       </div>
     </nav>
@@ -285,21 +285,30 @@ function TopBar({ title, leading, breadcrumb, onSearch }) {
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
         {leading}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, overflow: "hidden" }}>
           {breadcrumb && breadcrumb.map((b, i) => {
             const last = i === breadcrumb.length - 1;
             return (
               <React.Fragment key={i}>
                 {i > 0 && <span style={{ color: "var(--line-strong)", fontSize: 13 }}>/</span>}
-                <span style={{ fontSize: 13, fontWeight: last ? 600 : 450, color: last ? "var(--fg-1)" : "var(--fg-4)", whiteSpace: "nowrap" }}>{b}</span>
+                <span style={{ fontSize: 13, fontWeight: last ? 600 : 450, color: last ? "var(--fg-1)" : "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: last ? 1 : 0, minWidth: last ? 0 : undefined }}>{b}</span>
               </React.Fragment>
             );
           })}
-          {!breadcrumb && title && <h1 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{title}</h1>}
+          {!breadcrumb && title && <h1 style={{ margin: 0, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</h1>}
         </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
         <span className="hide-mobile" style={{ display: "inline-flex" }}><CmdK onClick={onSearch} /></span>
+        {/* No mobile o campo "Buscar lead…" some — a lupa mantém a busca a um toque. */}
+        <button onClick={onSearch} className="show-mobile" title="Buscar lead" aria-label="Buscar lead" style={{
+          width: 38, height: 38, alignItems: "center", justifyContent: "center",
+          borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-inset)", color: "var(--fg-3)",
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" /><path d="M20.4 20.4l-4.2-4.2" />
+          </svg>
+        </button>
         <UserMenu />
       </div>
     </header>

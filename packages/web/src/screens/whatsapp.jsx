@@ -7,6 +7,7 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { waLink } from "../lib/ui.js";
+import { useIsMobile } from "../lib/responsive.js";
 
 // Inbox de WhatsApp: um WhatsApp Web dentro do cockpit. Lista de conversas à
 // esquerda (não-lidas primeiro na cara, ordenadas por recência) + conversa
@@ -134,6 +135,7 @@ function WaTopStats({ numInfo, stats }) {
 export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
   const { version } = useData();
   const [product] = useActiveSaas();
+  const isMobile = useIsMobile();
   const [threads, setThreads] = React.useState(null);
   const [sel, setSel] = React.useState(null); // thread.id (número)
 
@@ -202,9 +204,10 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
     return s ? base.filter((t) => (t.name || "").toLowerCase().includes(s) || String(t.phone).includes(s.replace(/\D/g, ""))) : base;
   }, [threads, q]);
 
+  // No mobile a lista é a tela inicial: não auto-abre conversa (abrir = navegar).
   React.useEffect(() => {
-    if (!sel && list.length) setSel(list[0].id);
-  }, [list, sel]);
+    if (!isMobile && !sel && list.length) setSel(list[0].id);
+  }, [list, sel, isMobile]);
 
   const current = (threads || []).find((t) => t.id === sel) || null;
 
@@ -293,9 +296,12 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
         </div>
       )}
 
+      {/* Mobile = painel único (WhatsApp de celular): lista OU conversa, com
+          "‹ conversas" no cabeçalho pra voltar. Desktop segue lado a lado. */}
       <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 16, padding: "16px var(--pad-x) 56px" }}>
         {/* Lista de conversas */}
-        <div style={{ ...box, width: 340, flexShrink: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+        {(!isMobile || !current) && (
+        <div style={{ ...box, width: isMobile ? "100%" : 340, flexShrink: isMobile ? 1 : 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
           <div style={{ padding: 10, borderBottom: "1px solid var(--line-1)" }}>
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar por nome ou número"
               style={{ width: "100%", padding: "8px 10px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 }} />
@@ -337,8 +343,10 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
             })}
           </div>
         </div>
+        )}
 
         {/* Conversa aberta */}
+        {(!isMobile || current) && (
         <div style={{ ...box, flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
           {!current ? (
             <div style={{ margin: "auto", padding: 24 }}>
@@ -346,7 +354,11 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
             </div>
           ) : (
             <>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderBottom: "1px solid var(--line-1)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderBottom: "1px solid var(--line-1)", flexWrap: "wrap" }}>
+                {isMobile && (
+                  <button onClick={() => setSel(null)} aria-label="Voltar pra lista de conversas"
+                    style={{ ...pill, padding: "0 9px", fontSize: 14 }}>‹</button>
+                )}
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {current.name || prettyPhone(current.phone)}
@@ -399,6 +411,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
             </>
           )}
         </div>
+        )}
       </div>
     </div>
   );

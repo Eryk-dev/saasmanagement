@@ -1,5 +1,6 @@
 import React from "react";
 import { PageHead, Segmented } from "../components/viz.jsx";
+import { useIsMobile } from "../lib/responsive.js";
 
 // Estáticos — editor de criativos da marca pro Instagram, direto no cockpit.
 // 18 templates fixos (6 stories 1080×1920 · 6 posts de feed 1080×1350 · 6
@@ -983,6 +984,7 @@ const photoSlotsOf = (tpl) => tpl.els.filter((e) => e.type === "photo");
 const ZOOMS = [1, 1.35, 1.75];
 
 function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomIndex = 1, apiRef, standalone = false }) {
+  const isMobile = useIsMobile();
   const allowed = TEMPLATES.filter((t) => groups.includes(t.group));
   const [tplId, setTplId] = useS(allowed[0]?.id);
   const tpl = allowed.find((t) => t.id === tplId) || allowed[0] || TEMPLATES[0];
@@ -1178,7 +1180,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
         </PageHead>
 
         <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 16, alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 16, alignItems: "start" }}>
             <div style={{ background: "var(--bg-2)", borderRadius: "var(--r-4)", padding: 32, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 480 }}>
               {!ready && <div className="mono dim" style={{ fontSize: 12 }}>carregando fontes da marca…</div>}
               {Array.from({ length: tpl.slides }, (_, i) => (
@@ -1223,9 +1225,11 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
 
-      <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 0 }}>
+      {/* No mobile o editor empilha (galeria → preview → campos); os painéis
+          laterais fixos (216+320px) não cabem lado a lado em 390px. */}
+      <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 0, flexDirection: isMobile ? "column" : "row", overflowY: isMobile ? "auto" : undefined }}>
         {/* Galeria de templates */}
-        <div style={{ width: 216, flexShrink: 0, borderRight: "1px solid var(--line-1)", overflowY: "auto", padding: "12px 10px" }}>
+        <div style={{ width: isMobile ? "100%" : 216, flexShrink: 0, maxHeight: isMobile ? 168 : undefined, borderRight: isMobile ? "none" : "1px solid var(--line-1)", borderBottom: isMobile ? "1px solid var(--line-1)" : "none", overflowY: "auto", padding: "12px 10px" }}>
           {GROUPS.filter(([gid]) => groups.includes(gid)).map(([gid, glabel]) => (
             <div key={gid} style={{ marginBottom: 14 }}>
               <div className="mono" style={{ ...kicker, padding: "0 6px", marginBottom: 6 }}>{glabel}</div>
@@ -1254,8 +1258,8 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
         </div>
 
         {/* Preview */}
-        <div style={{ flex: 1, minWidth: 0, overflow: "auto", padding: 18, background: "var(--bg-inset)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <div style={{ flex: isMobile ? "none" : 1, minWidth: 0, overflow: "auto", padding: isMobile ? 12 : 18, background: "var(--bg-inset)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
             <span className="mono" style={kicker}>zoom</span>
             {ZOOMS.map((z, i) => (
               <button key={i} onClick={() => setZoom(i)}
@@ -1282,7 +1286,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
                   onPointerDown={(e) => onDown(e, i)}
                   onPointerMove={(e) => onMove(e, i)}
                   onPointerUp={() => onUp()}
-                  style={{ width: previewW, height: Math.round(previewW * tpl.h / tpl.w), borderRadius: 10, boxShadow: "var(--shadow-2)", background: "#0b1620", cursor: "grab", touchAction: "none" }} />
+                  style={{ width: previewW, maxWidth: "100%", height: "auto", aspectRatio: `${tpl.w} / ${tpl.h}`, borderRadius: 10, boxShadow: "var(--shadow-2)", background: "#0b1620", cursor: "grab", touchAction: "none" }} />
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <span className="mono dim" style={{ fontSize: 10.5 }}>
                     {tpl.slides > 1 ? `slide ${i + 1}/${tpl.slides}` : `${tpl.w}×${tpl.h}`}
@@ -1296,7 +1300,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
         </div>
 
         {/* Painel de edição */}
-        <div style={{ width: 320, flexShrink: 0, borderLeft: "1px solid var(--line-1)", overflowY: "auto", padding: "12px 14px" }}>
+        <div style={{ width: isMobile ? "100%" : 320, flexShrink: 0, borderLeft: isMobile ? "none" : "1px solid var(--line-1)", borderTop: isMobile ? "1px solid var(--line-1)" : "none", overflowY: isMobile ? "visible" : "auto", padding: "12px 14px" }}>
           <div className="mono" style={{ ...kicker, marginBottom: 10 }}>Texto do criativo</div>
           {fieldGroups.map((g) => (
             <div key={g.key} style={{ marginBottom: 14 }}>

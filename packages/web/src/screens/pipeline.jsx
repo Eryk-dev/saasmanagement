@@ -146,7 +146,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           <div style={{ flex: 1, minWidth: 260 }}>
             <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em" }}>Pipeline</h1>
             <div style={{ marginTop: 4, fontSize: 14.5, color: "var(--fg-3)" }}>
-              {openLeads.length} {openLeads.length === 1 ? "lead aberto" : "leads abertos"} · {newWeek} {newWeek === 1 ? "novo" : "novos"} esta semana · arraste para mover
+              {openLeads.length} {openLeads.length === 1 ? "lead aberto" : "leads abertos"} · {newWeek} {newWeek === 1 ? "novo" : "novos"} esta semana · arraste (ou toque) para mover
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 6, flexWrap: "wrap" }}>
@@ -330,7 +330,7 @@ function KanbanColumn({ s, stage, cards, highlight, onDropCard, dragging, setDra
       onDragLeave={() => setOver(false)}
       onDrop={(e) => { e.preventDefault(); setOver(false); if (dragging) onDropCard(dragging); }}
       style={{
-        width: 264, flexShrink: 0,
+        width: "min(264px, 82vw)", flexShrink: 0,
         background: over ? "var(--accent-soft)" : "var(--bg-2)",
         borderRadius: "var(--r-4)", padding: 10,
         boxShadow: highlight ? "0 0 0 2px var(--accent-line)" : "none",
@@ -505,7 +505,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
           <input type="checkbox" checked={showTouches} onChange={(e) => setShowTouches(e.target.checked)} style={{ accentColor: "var(--accent)" }} />
           mostrar toques
         </label>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
           {team.map(u => (
             <span key={u.id} className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5 }}>
               <span style={{ width: 9, height: 9, borderRadius: 3, background: toneOf(u.id) }} />{u.name || u.id}
@@ -892,7 +892,7 @@ function PaceChart({ data, s, leads }) {
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver((entries) => {
       const cw = entries[0]?.contentRect?.width;
-      if (cw) setW(Math.max(360, Math.round(cw)));
+      if (cw) setW(Math.max(300, Math.round(cw)));
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -1181,7 +1181,7 @@ function FunnelAnalytics({ s }) {
       <div style={card}>
         <div className="mono" style={kicker}>Conversão real estágio → estágio · leads que passaram + mediana de dias na etapa</div>
         {data.stages.map((st) => (
-          <div key={st.stage} style={{ display: "grid", gridTemplateColumns: "130px 1fr 56px 84px 84px", gap: 10, alignItems: "center", padding: "8px 0", borderTop: "1px solid var(--line-1)" }}>
+          <div key={st.stage} style={{ display: "grid", gridTemplateColumns: "minmax(84px, 130px) 1fr minmax(40px, 56px) minmax(58px, 84px) minmax(58px, 84px)", gap: 10, alignItems: "center", padding: "8px 0", borderTop: "1px solid var(--line-1)" }}>
             <span className="mono" style={{ fontSize: 12, color: "var(--fg-2)" }}>{st.stage}</span>
             <div style={{ height: 12, background: "var(--bg-3)", borderRadius: 3, position: "relative" }}>
               <div style={{ position: "absolute", inset: 0, width: `${(st.entered / maxEntered) * 100}%`, background: "var(--accent)", opacity: 0.55, borderRadius: 3 }} />

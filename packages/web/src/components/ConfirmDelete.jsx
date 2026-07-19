@@ -27,7 +27,7 @@ function ConfirmDelete({ entityKey, record, onClose, onDeleted }) {
       style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 80 }}
       onClick={onClose}
     >
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 380, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: "20px 22px" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(380px, calc(100vw - 32px))", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: "20px 22px" }}>
         <div style={{ fontSize: 15, fontWeight: 600 }}>Excluir {cfg.singular.toLowerCase()}?</div>
         <div className="mono dim" style={{ fontSize: 12, marginTop: 8, lineHeight: 1.5 }}>
           <span style={{ color: "var(--fg-1)" }}>{name}</span> será removido. Esta ação não pode ser desfeita.

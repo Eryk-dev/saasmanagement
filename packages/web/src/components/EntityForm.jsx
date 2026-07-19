@@ -417,7 +417,7 @@ function QuestionsEditor({ questions, onChange, lockKeys }) {
               </div>
               <button type="button" onClick={() => remove(i)} className="mono dim" style={{ fontSize: 13, padding: "0 6px" }}>✕</button>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, paddingLeft: 24 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, paddingLeft: 24, flexWrap: "wrap" }}>
               <select value={q.type || "text"} disabled={lockKeys} onChange={(e) => update(i, { type: e.target.value })} style={{ ...inputStyle, width: 150, opacity: lockKeys ? 0.6 : 1 }}>
                 <option value="text">Texto</option>
                 <option value="number">Número</option>

@@ -785,7 +785,7 @@ function EditCards({ cards, saasId, onPatch, onAdd, onRemove, roleLabel }) {
               <button onClick={(e) => { e.stopPropagation(); onRemove(c.id); }} title="remover card" className="mono dim" style={{ fontSize: 13 }}>✕</button>
             </div>
             {isOpen && (
-              <div style={{ borderTop: "1px solid var(--line-1)", padding: "12px 14px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14 }}>
+              <div style={{ borderTop: "1px solid var(--line-1)", padding: "12px 14px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 14 }}>
                 <CardEditor card={c} saasId={saasId} onPatch={onPatch} />
                 <CardPreview card={c} />
               </div>
@@ -1255,7 +1255,7 @@ function RoleGuides() {
         <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em" }}>As vagas, na ordem do funil</h3>
         <span style={{ fontSize: 12, color: "var(--fg-4)" }}>mídia social → SDR → closer → CS · entender o vizinho é parte do jogo</span>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 14, alignItems: "start" }}>
         {ROLE_GUIDES.map((g, gi) => (
           <div key={g.role} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px 22px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

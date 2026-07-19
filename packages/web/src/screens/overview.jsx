@@ -203,7 +203,7 @@ function OverviewScreen({ onNav, onOpenLead }) {
             delta={biz?.window?.newCustomers != null ? `${biz.window.newCustomers} ${biz.window.newCustomers === 1 ? "cliente novo" : "clientes novos"}` : null} tone="flat" />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 16, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 400px), 1fr))", gap: 16, alignItems: "start" }}>
           <Card title="Leads por dia" hint={`${pLabel} · clique numa etapa pra abrir o pipeline`}>
             <LineChart data={series} fmtValue={(v) => String(Math.round(v))} />
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(104px, 1fr))", gap: 8, padding: "12px 20px 20px" }}>

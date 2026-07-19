@@ -87,8 +87,8 @@ function AquisicaoScreen() {
                   const prev = i > 0 ? funnel[i - 1].value : null;
                   const conv = prev != null ? pct(s.value, prev) : null;
                   return (
-                    <div key={s.label} style={{ display: "grid", gridTemplateColumns: "150px 1fr 92px 60px", gap: 12, alignItems: "center" }}>
-                      <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg-2)" }}>{s.label}</span>
+                    <div key={s.label} style={{ display: "grid", gridTemplateColumns: "minmax(72px, 150px) 1fr minmax(56px, 92px) minmax(38px, 60px)", gap: 12, alignItems: "center" }}>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.label}</span>
                       <div style={{ height: 20, borderRadius: 6, background: "var(--bg-2)", overflow: "hidden" }}>
                         <div style={{ height: "100%", width: `${Math.max(2, Math.round((s.value / fmax) * 100))}%`, background: "var(--accent)", opacity: 0.85, borderRadius: "var(--r-1)" }} />
                       </div>
@@ -104,7 +104,7 @@ function AquisicaoScreen() {
             </Card>
 
             {/* Ritmo diário */}
-            <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
+            <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))" }}>
               <Card title="Investido por dia" hint={mkt?.syncedAt ? "sincronizado da Meta" : "sem gasto sincronizado"}>
                 <LineChart data={spendSeries} fmtValue={(v) => money(v)} />
               </Card>

@@ -107,7 +107,7 @@ function OffersScreen() {
         )}
 
         {items && items.length > 0 && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 340px), 1fr))", gap: 14 }}>
             {items.map((o, i) => {
               const hasLink = /^https?:\/\//i.test(o.link || "");
               return (

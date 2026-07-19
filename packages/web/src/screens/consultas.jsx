@@ -194,9 +194,11 @@ function AgendaTab({ days, byCell, journeys, consultas, onShiftWeek, onToday, on
         </span>
       </div>
 
-      {/* Grade da semana (seg-sáb × horas) */}
+      {/* Grade da semana (seg-sáb × horas) — no mobile rola na horizontal em
+          vez de espremer 6 dias em colunas de ~50px. */}
       <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", overflow: "hidden", background: "var(--bg-1)" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "52px repeat(6, 1fr)" }}>
+       <div style={{ overflowX: "auto" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "52px repeat(6, 1fr)", minWidth: 560 }}>
           <div style={{ background: "var(--bg-inset)" }} />
           {days.map((d) => (
             <div key={ymd(d)} style={{ padding: "8px 10px", background: "var(--bg-inset)", borderLeft: "1px solid var(--line-1)", textAlign: "center" }}>
@@ -228,6 +230,7 @@ function AgendaTab({ days, byCell, journeys, consultas, onShiftWeek, onToday, on
             </React.Fragment>
           ))}
         </div>
+       </div>
       </div>
 
       {/* Jornadas por cliente */}
@@ -238,7 +241,7 @@ function AgendaTab({ days, byCell, journeys, consultas, onShiftWeek, onToday, on
         ) : journeys.length === 0 ? (
           <EmptyState title="Nenhuma jornada ainda" hint="marca a 1ª consulta do cliente no botão acima (o Manual da Família nasce junto)" />
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))", gap: 12 }}>
             {journeys.map((j) => (
               <div key={j.key} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 16px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -332,7 +335,7 @@ function ConsultaModal({ c, customers, consultas = [], onClose, onSaved }) {
   const s = form.summary;
   return (
     <div style={overlay} onClick={onClose}>
-      <div style={{ ...sheet, width: "min(680px, 94vw)" }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ ...sheet, width: "min(680px, calc(100vw - 32px))" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
           <div style={{ fontSize: 15, fontWeight: 800, flex: 1 }}>{isNew ? "Nova consulta" : `Consulta ${form.n}/${form.packageTotal || TOTAL} · ${form.clientName}`}</div>
           <button onClick={onClose} style={{ ...chip(false), padding: "0 9px" }}>✕</button>
@@ -443,7 +446,7 @@ function EntregaveisTab({ manuais, customers, product, onOpen, refresh }) {
     return <EmptyState title="Nenhum manual ainda" hint="o Manual da Família nasce sozinho na 1ª consulta do cliente; ou crie um manualmente" action={<button onClick={createManual} style={chip(false)}>+ criar manual</button>} />;
   }
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))", gap: 12 }}>
       {manuais.map((m) => {
         const filled = (m.sections || []).filter((s) => String(s.content || "").trim()).length;
         const total = (m.sections || []).length || 6;
@@ -519,7 +522,7 @@ function ManualEditor({ m, onClose, refresh }) {
 
   return (
     <div style={overlay} onClick={onClose}>
-      <div style={{ ...sheet, width: "min(860px, 96vw)", maxHeight: "92vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ ...sheet, width: "min(860px, calc(100vw - 32px))", maxHeight: "92vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
           <div style={{ fontSize: 15, fontWeight: 800, flex: 1, minWidth: 200 }}>Manual da Família · {doc.clientName}</div>
           <button disabled={!!busy} onClick={compose} style={{ ...chip(false), borderColor: "var(--accent-line)", color: "var(--accent)", background: "var(--accent-soft)" }}

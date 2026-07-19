@@ -165,7 +165,7 @@ export function ActivityComposer({ lead, onLogged }) {
 
   return (
     <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: 8 }}>
-      <div style={{ display: "flex", gap: 2, marginBottom: 6 }}>
+      <div style={{ display: "flex", gap: 2, marginBottom: 6, flexWrap: "wrap" }}>
         {seg("whatsapp", "wpp")}{seg("call", "call")}{seg("meeting", "reunião")}{seg("email", "e-mail")}{seg("note", "nota")}
       </div>
       <textarea
@@ -176,7 +176,7 @@ export function ActivityComposer({ lead, onLogged }) {
         placeholder={type === "note" ? "anotação…" : "o que rolou nesse contato? (⌘↵ registra)"}
         style={{ width: "100%", padding: "7px 9px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5, resize: "vertical" }}
       />
-      <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
         <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)" }}>registrar + próximo:</span>
         {NEXT_PRESETS.map((p) => (
           <button key={p.key} disabled={busy} onClick={() => log(p.ms)} title={`registra o ${TYPE_META[type].label} e marca o próximo contato pra ${p.label}`}

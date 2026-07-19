@@ -168,7 +168,7 @@ function ExpensesScreen() {
           {data && !data.error && data.manual.length > 0 && (
             <div>
               {data.manual.map((e) => (
-                <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 24px", borderTop: "1px solid var(--line-faint)" }}>
+                <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px var(--inset-x)", borderTop: "1px solid var(--line-faint)", flexWrap: "wrap" }}>
                   <Pill tone="mut">{CAT_LABEL[e.category] || e.category}</Pill>
                   <span style={{ flex: 1, fontSize: 13, fontWeight: 500, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
                   {Number(e.pct) > 0 && (
