@@ -321,6 +321,25 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       return null;
     },
 
+    // Mídias do Instagram usadas nos anúncios da conta, inclusive as de "dark
+    // post", que não aparecem no /media do perfil. É por elas que se chega aos
+    // comentários de anúncio no IG (o equivalente do /ads_posts da página).
+    async adInstagramMedia(adAccountId, { limit = 25 } = {}) {
+      if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
+      const params = new URLSearchParams({
+        fields: "creative{effective_instagram_media_id}",
+        limit: String(limit),
+        access_token: accessToken,
+      });
+      const body = await get(`${GRAPH}/${acct(adAccountId)}/ads?${params}`);
+      const out = [];
+      for (const ad of body.data || []) {
+        const id = ad.creative?.effective_instagram_media_id;
+        if (id && !out.includes(String(id))) out.push(String(id));
+      }
+      return out;
+    },
+
     // Upload do vídeo do criativo (não-resumável — cobre vídeos de anúncio
     // típicos; a Graph aceita até ~1GB nesse modo). Retorna o video_id.
     async uploadVideo(adAccountId, { buffer, filename = "video.mp4", title }) {
@@ -489,6 +508,7 @@ export const meta = {
   listAccountAds: (a) => inst().listAccountAds(a),
   listAccountAdsets: (a) => inst().listAccountAdsets(a),
   discoverCreativeDefaults: (a) => inst().discoverCreativeDefaults(a),
+  adInstagramMedia: (a, o) => inst().adInstagramMedia(a, o),
   uploadVideo: (a, o) => inst().uploadVideo(a, o),
   videoThumbnail: (id, o) => inst().videoThumbnail(id, o),
   createAdCreative: (a, o) => inst().createAdCreative(a, o),

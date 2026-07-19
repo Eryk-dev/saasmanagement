@@ -242,6 +242,56 @@ test("syncComments: throttle — sem force, a segunda varredura no mesmo minuto 
   assert.equal(hits, 1);
 });
 
+test("syncComments: varre o mural E os posts de anúncio, sem repetir o que vem nos dois", async () => {
+  const repo = makeMemRepo();
+  invalidateSync("leverads");
+  const scanned = [];
+  const social = {
+    async pageToken() { return "tok"; },
+    async fbPosts() { return [{ id: "p1", caption: "post do mural" }]; },
+    // O anúncio que impulsiona p1 volta nos dois edges; p2 é dark post, só aqui.
+    async fbAdsPosts() { return [{ id: "p1", caption: "post do mural" }, { id: "p2", caption: "anúncio" }]; },
+    async fbComments(postId) {
+      scanned.push(postId);
+      return postId === "p2"
+        ? [{ id: "fc2", text: "link de afiliado", author: "bot", authorId: "u9", at: "2026-07-19T10:00:00.000Z" }]
+        : [];
+    },
+  };
+  const r = await syncComments(repo, social, { saas: "leverads", pageId: "pg1", force: true });
+  assert.deepEqual(scanned.sort(), ["p1", "p2"], "cada post é varrido uma vez só");
+  const row = await repo.get("social_comments", "fc2");
+  assert.equal(row.saas, "leverads");
+  assert.equal(row.postTitle, "anúncio");
+  assert.ok(!r.errors.facebook);
+});
+
+test("syncComments: /ads_posts sem permissão não derruba a leitura do mural", async () => {
+  const repo = makeMemRepo();
+  invalidateSync("leverads");
+  const social = {
+    async pageToken() { return "tok"; },
+    async fbPosts() { return [{ id: "p1", caption: "post do mural" }]; },
+    async fbAdsPosts() { throw new Error("(#200) sem permissão pra ads_posts"); },
+    async fbComments() { return [{ id: "fc1", text: "oi", author: "ana", authorId: "u1", at: "2026-07-19T10:00:00.000Z" }]; },
+  };
+  const r = await syncComments(repo, social, { saas: "leverads", pageId: "pg1", force: true });
+  assert.match(r.errors.facebookAds, /sem permissão/);
+  assert.ok(await repo.get("social_comments", "fc1"), "o mural tem que entrar mesmo sem os anúncios");
+});
+
+test("syncComments: as mídias de anúncio do IG não são cortadas pelo teto dos recentes", async () => {
+  const repo = makeMemRepo();
+  invalidateSync("leverads");
+  const scanned = [];
+  // 8 orgânicas (o `limit` padrão) + 1 de anúncio no fim da lista.
+  const posts = [...Array(8)].map((_, i) => ({ id: `m${i}`, caption: `post ${i}` }));
+  posts.push({ id: "adm1", caption: "anúncio" });
+  const social = { async igComments(id) { scanned.push(id); return []; } };
+  await syncComments(repo, social, { saas: "leverads", igUserId: "ig1", posts, force: true });
+  assert.ok(scanned.includes("adm1"), "a mídia de anúncio vem depois das orgânicas e não pode ser descartada");
+});
+
 test("postTitleOf: primeira linha, cortada, com fallback pra post sem legenda", () => {
   assert.equal(postTitleOf("Título\nresto"), "Título");
   assert.equal(postTitleOf("", "Publicação sem legenda"), "Publicação sem legenda");
@@ -296,6 +346,50 @@ test("webhook do Instagram: comentário novo entra na fila do produto dono da co
   // o card ficaria órfão até a próxima varredura.
   assert.equal(row.postTitle, "Post do dia");
   assert.equal(row.permalink, "https://insta/p/1");
+});
+
+test("webhook do Instagram: o produto é achado pelo metaIgUser, o nome que a descoberta grava", async () => {
+  const repo = makeMemRepo();
+  // Sem `metaIgUserId`: é exatamente assim que o produto está em produção.
+  await repo.create("products", { id: "leverads", metaIgUser: "ig1", metaPageId: "pg1" });
+  const app = buildApp(repo, fakeSocial());
+
+  await app.inject({
+    method: "POST", url: "/api/webhooks/social",
+    payload: {
+      object: "instagram",
+      entry: [{ id: "ig1", changes: [{ field: "comments", value: { id: "c9", text: "oi", from: { id: "u1", username: "joao" }, media: { id: "m1" } } }] }],
+    },
+  });
+  const row = await repo.get("social_comments", "c9");
+  assert.equal(row.saas, "leverads", "sem produto o comentário entra órfão e some da tela, que filtra por produto");
+});
+
+test("GET /api/social/comments: varre também as mídias de anúncio do Instagram", async () => {
+  const repo = makeMemRepo();
+  invalidateSync("leverads");
+  await repo.create("products", { id: "leverads", metaIgUser: "ig1", metaAdAccount: "act_1" });
+  const scanned = [];
+  const social = fakeSocial({
+    async igMediaInfo(id) { return { id, caption: "anúncio", permalink: "" }; },
+    async igComments(mediaId) {
+      scanned.push(mediaId);
+      return mediaId === "adm1"
+        ? [{ id: "c5", text: "isso é golpe?", author: "ana", at: "2026-07-19T10:00:00.000Z" }]
+        : [];
+    },
+  });
+  const app = Fastify();
+  registerSocialRoutes(app, repo, {
+    social,
+    meta: { discoverCreativeDefaults: async () => null, adInstagramMedia: async () => ["m1", "adm1"] },
+  });
+
+  const res = await app.inject({ method: "GET", url: "/api/social/comments?saas=leverads&sync=1" });
+  assert.equal(res.statusCode, 200);
+  // m1 já veio no orgânico e não pode repetir; adm1 só existe como anúncio.
+  assert.deepEqual(scanned.sort(), ["adm1", "m1"]);
+  assert.ok(res.json().comments.some((c) => c.id === "c5"), "comentário de anúncio tem que chegar na fila");
 });
 
 test("webhook da página: só item=comment entra; resposta da própria página vira 'nossa'", async () => {

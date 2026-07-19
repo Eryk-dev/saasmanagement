@@ -324,6 +324,24 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
       }));
     },
 
+    // Posts de ANÚNCIO da página ("dark posts"). NÃO saem no /posts, que lista
+    // só o que foi publicado no mural — mas é neles que cai a maior parte dos
+    // comentários enquanto a campanha roda. Sem esta leitura, comentário de
+    // anúncio é invisível pro cockpit.
+    async fbAdsPosts(pageId, { limit = 10, token } = {}) {
+      const access_token = token || (await this.pageToken(pageId));
+      const body = await get(`${pageId}/ads_posts`, {
+        fields: "id,message,created_time,permalink_url",
+        limit: String(limit), access_token,
+      });
+      return (body.data || []).map((p) => ({
+        id: String(p.id),
+        caption: p.message || "",
+        permalink: p.permalink_url || "",
+        at: p.created_time ? new Date(p.created_time).toISOString() : "",
+      }));
+    },
+
     // Comentários de um post da página, com as respostas aninhadas. `from` só
     // vem preenchido com pages_read_user_content; sem ele a Meta devolve o
     // comentário sem autor, e aí o card mostra "alguém".
@@ -480,6 +498,7 @@ export const social = {
   igDeleteComment: (id) => inst().igDeleteComment(id),
   igMediaInfo: (id) => inst().igMediaInfo(id),
   fbPosts: (id, o) => inst().fbPosts(id, o),
+  fbAdsPosts: (id, o) => inst().fbAdsPosts(id, o),
   fbComments: (id, o) => inst().fbComments(id, o),
   fbReplyComment: (id, m, o) => inst().fbReplyComment(id, m, o),
   fbHideComment: (id, h, o) => inst().fbHideComment(id, h, o),
