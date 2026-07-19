@@ -1,7 +1,7 @@
 // Mídia social — métricas do perfil, publicação orgânica e a fila de
 // COMENTÁRIOS (IG + página do Facebook) direto do cockpit.
 //
-// Config por SaaS: `product.metaIgUserId` / `product.metaPageId` (Ajustes).
+// Config por SaaS: `product.metaIgUser` / `product.metaPageId` (Ajustes).
 // Sem eles, descobre dos anúncios que já rodam na conta (mesma página/IG dos
 // criativos ativos — meta.discoverCreativeDefaults) e cacheia em memória.
 //
@@ -85,8 +85,14 @@ function growthInsights({ reachBreakdown, formats, engagement, followerGrowth, i
 export function registerSocialRoutes(app, repo, { social = defaultSocial, meta = defaultMeta, anthropic = null } = {}) {
   // Descoberta page/IG por saas (cache do processo; muda raro).
   const discovered = new Map();
+  // O id do IG é gravado como `metaIgUser` pela descoberta do marketing
+  // (routes.marketing.js) — `metaIgUserId` era o nome só desta tela e nunca
+  // chegou a existir no banco. Ler os dois: com só o nome antigo, o webhook não
+  // reconhecia o produto e o comentário do Instagram entrava órfão (saas vazio),
+  // some da tela, que filtra por produto.
+  const igIdOf = (p) => String(p?.metaIgUser || p?.metaIgUserId || "");
   async function idsFor(product) {
-    let igUserId = String(product.metaIgUserId || "");
+    let igUserId = igIdOf(product);
     let pageId = String(product.metaPageId || "");
     if (igUserId && pageId) return { igUserId, pageId };
     if (!discovered.has(product.id) && product.metaAdAccount) {
@@ -144,7 +150,7 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
       engagement: null, formats: [], insightsText: [], media: [], page: null, errors: {},
     };
     if (!igUserId && !pageId) {
-      out.errors.setup = "sem Instagram/página: configure metaIgUserId/metaPageId no produto ou rode um anúncio na conta pra descoberta automática";
+      out.errors.setup = "sem Instagram/página: configure metaIgUser/metaPageId no produto ou rode um anúncio na conta pra descoberta automática";
       return out;
     }
     const range = { since: dayStr(Date.now() - (days - 1) * 86400e3), until: dayStr(Date.now()) };
@@ -266,7 +272,7 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
     const { igUserId, pageId } = await idsFor(product);
     const results = {};
     if (networks.includes("instagram")) {
-      if (!igUserId) results.instagram = { ok: false, error: "conta do Instagram não configurada (metaIgUserId)" };
+      if (!igUserId) results.instagram = { ok: false, error: "conta do Instagram não configurada (metaIgUser)" };
       else {
         try { results.instagram = { ok: true, ...(await social.publishInstagram(igUserId, { format, kind, items, caption })) }; }
         catch (e) { results.instagram = { ok: false, error: e.message }; }
@@ -324,15 +330,32 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
     return u;
   }
 
+  // Mídias do IG a varrer: as recentes do perfil MAIS as usadas em anúncio.
+  // "Dark post" de anúncio não está no /media do perfil, e é justamente nele
+  // que cai a enxurrada de comentário de campanha (spam, dúvida, ataque). Sem
+  // isso, comentário de anúncio nunca chegava na fila.
+  async function igPostsForScan(product, igUserId, limit = 8) {
+    const organic = await social.igMedia(igUserId, { limit }).catch(() => []);
+    if (!product.metaAdAccount || typeof meta.adInstagramMedia !== "function") return organic;
+    let adIds = [];
+    try { adIds = await meta.adInstagramMedia(product.metaAdAccount, { limit: 25 }); }
+    catch { return organic; } // sem permissão de ads: segue só com o orgânico
+    const seen = new Set(organic.map((p) => String(p.id)));
+    // Cada mídia custa uma chamada pra pegar legenda/permalink, então limita.
+    const extra = await Promise.all(adIds.filter((id) => !seen.has(String(id))).slice(0, limit)
+      .map((id) => social.igMediaInfo(id).catch(() => null)));
+    return [...organic, ...extra.filter(Boolean)];
+  }
+
   // Produto dono de um id da Meta (IG user id ou page id) — o webhook só manda
   // esse id, e é ele que diz de qual produto é o comentário. Passa pelo cache
-  // de descoberta também: produto que nunca preencheu metaIgUserId à mão ainda
+  // de descoberta também: produto que nunca preencheu metaIgUser à mão ainda
   // assim é encontrado pelos anúncios que roda.
   async function productForMetaId(metaId) {
     const id = String(metaId || "");
     if (!id) return null;
     const products = await repo.list("products");
-    const direct = products.find((p) => String(p.metaIgUserId || "") === id || String(p.metaPageId || "") === id);
+    const direct = products.find((p) => igIdOf(p) === id || String(p.metaPageId || "") === id);
     if (direct) return direct;
     for (const p of products) {
       const d = discovered.get(p.id);
@@ -432,7 +455,7 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
       else {
         try {
           const [posts, igUsername] = await Promise.all([
-            igUserId ? social.igMedia(igUserId, { limit: 8 }).catch(() => []) : [],
+            igUserId ? igPostsForScan(product, igUserId) : [],
             igUsernameFor(product, igUserId),
           ]);
           const r = await syncComments(repo, social, {

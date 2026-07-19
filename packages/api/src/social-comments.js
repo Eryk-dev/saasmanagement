@@ -76,10 +76,12 @@ export async function syncComments(repo, social, { saas, igUserId, pageId, igUse
   let found = 0;
 
   // ── Instagram ──────────────────────────────────────────────────────────────
-  // Varre só os posts recentes: comentário em post velho é raro e cada post é
-  // uma chamada à Graph.
+  // `posts` já vem curado por quem chama (recentes do perfil + mídias de
+  // anúncio, ver igPostsForScan). O corte aqui é só um teto de segurança: se
+  // fosse `limit`, as mídias de anúncio, que vêm depois das orgânicas, seriam
+  // justamente as descartadas.
   if (igUserId) {
-    const recent = posts.slice(0, limit);
+    const recent = posts.slice(0, limit * 2);
     await Promise.all(recent.map(async (p) => {
       try {
         const list = await social.igComments(p.id, { limit: 50 });
@@ -104,7 +106,23 @@ export async function syncComments(repo, social, { saas, igUserId, pageId, igUse
   if (pageId) {
     try {
       const token = await social.pageToken(pageId);
-      const fbPosts = await social.fbPosts(pageId, { limit, token });
+      // Mural + anúncios. O /posts só traz o que foi publicado no mural, então
+      // sem o /ads_posts o comentário de anúncio (o mais comum com a campanha
+      // no ar) nunca entraria na fila. Falha do lado dos anúncios não derruba
+      // a leitura do orgânico.
+      const [organic, ads] = await Promise.all([
+        social.fbPosts(pageId, { limit, token }),
+        typeof social.fbAdsPosts === "function"
+          ? social.fbAdsPosts(pageId, { limit, token }).catch((e) => { errors.facebookAds = e.message; return []; })
+          : [],
+      ]);
+      const seen = new Set();
+      const fbPosts = [...organic, ...ads].filter((p) => {
+        const id = String(p.id || "");
+        if (!id || seen.has(id)) return false; // anúncio que impulsiona um post do mural vem nos dois
+        seen.add(id);
+        return true;
+      });
       await Promise.all(fbPosts.map(async (p) => {
         try {
           const list = await social.fbComments(p.id, { limit: 50, token });
