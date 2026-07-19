@@ -2,7 +2,7 @@
 // conversas (tela dedicada) e envio. As mensagens vivem em wa_threads/wa_messages
 // (ver wa-store.js) — canônico pro inbox e pro chat do drawer.
 import { makeWhatsapp } from "./whatsapp.js";
-import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId, setLeadWhatsappOptOut, waInsights, findLeadByPhone } from "./wa-store.js";
+import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId, setLeadWhatsappOptOut, waInsights, findLeadByPhone, findThreadByPhone } from "./wa-store.js";
 import { applyHealthEvent, getWaHealth, waHealthSummary, recordWebhookDelivery } from "./wa-health.js";
 import { runInboundCallFlow, startCallFlow, openAlerts, closeThreadAlerts, parsePermissionReply, greetingFor } from "./wa-call-flow.js";
 
@@ -193,14 +193,18 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
 
   app.get("/api/whatsapp/threads", async () => ({ threads: await listThreads(repo) }));
 
-  app.get("/api/whatsapp/threads/:id", async (req) => ({
-    messages: await listMessages(repo, req.params.id),
-  }));
+  // Mensagens por qualquer grafia do número (o drawer pede pelo telefone do
+  // lead, COM o nono dígito; a conversa pode viver no wa_id sem ele).
+  app.get("/api/whatsapp/threads/:id", async (req) => {
+    const thread = await findThreadByPhone(repo, req.params.id);
+    return { messages: await listMessages(repo, thread?.id || req.params.id), thread: thread?.id || threadId(req.params.id) };
+  });
 
   app.post("/api/whatsapp/threads/:id/read", async (req) => {
-    const lastIn = await markThreadRead(repo, req.params.id);
+    const thread = await findThreadByPhone(repo, req.params.id);
+    const tid = thread?.id || req.params.id;
+    const lastIn = await markThreadRead(repo, tid);
     if (lastIn && wa.configured()) {
-      const thread = await repo.get("wa_threads", threadId(req.params.id));
       wa.markRead(lastIn, { phoneId: thread?.waPhoneId || undefined }).catch(() => {});
     }
     return { ok: true };
@@ -237,7 +241,9 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
   app.post("/api/whatsapp/threads/:id/call-permission", async (req, reply) => {
     const phone = threadId(req.params.id);
     if (!phone) return reply.code(400).send({ error: "número inválido" });
-    const thread = await repo.get("wa_threads", phone);
+    // Conversa por qualquer grafia do número (com/sem o nono dígito) — o envio
+    // sai pro wa_id que a pessoa realmente usa, na MESMA conversa.
+    const thread = await findThreadByPhone(repo, phone);
     const lead = thread?.leadId ? await repo.get("leads", thread.leadId) : await findLeadByPhone(repo, phone);
     const saas = thread?.saas || lead?.saas || String(req.body?.saas || "");
     const product = (await repo.list("products")).find((p) => p.id === saas) || null;
@@ -246,7 +252,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
     if (!wa.configured(phoneId)) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
     try {
       const r = await startCallFlow(repo, wa, {
-        thread: thread || { id: phone, phone, saas, leadId: lead?.id || null },
+        thread: thread || { id: phone, phone, saas, leadId: lead?.id || null, waPhoneId: "" },
         product, lead, phoneId,
         author: req.authUser?.id || "cockpit",
         // Manual é sempre o texto de "agora" (tem gente na tela pra ligar já),
@@ -264,12 +270,14 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
     const text = String(req.body?.text || "").trim();
     if (!phone) return reply.code(400).send({ error: "número inválido" });
     if (!text) return reply.code(400).send({ error: "mensagem vazia" });
-    const thread = await repo.get("wa_threads", phone);
+    // Grafia com/sem o nono dígito cai na MESMA conversa (e envia pro wa_id
+    // que a pessoa usa de verdade — senão nasceria uma segunda thread).
+    const thread = await findThreadByPhone(repo, phone);
     const phoneId = await resolvePhoneId({ thread });
     if (phoneId === null) return noNumberReply(reply, thread?.saas || "");
     if (!wa.configured(phoneId)) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
     try {
-      const messageId = await sendAndRecord(repo, wa, { phone, text, author: req.authUser?.id || "cockpit", phoneId, saas: thread?.saas || "" });
+      const messageId = await sendAndRecord(repo, wa, { phone: thread?.phone || phone, text, author: req.authUser?.id || "cockpit", phoneId, saas: thread?.saas || "" });
       return { ok: true, messageId };
     } catch (err) { return sendErrorReply(reply, err); }
   });
@@ -282,12 +290,14 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
     const text = String(req.body?.text || "").trim();
     if (!phone) return reply.code(400).send({ error: "lead sem telefone" });
     if (!text) return reply.code(400).send({ error: "mensagem vazia" });
-    const thread = await repo.get("wa_threads", threadId(phone));
+    // O telefone do lead (com o nono dígito) e o wa_id da Meta (sem) são a
+    // MESMA conversa — resolve a existente e envia pro número que ela usa.
+    const thread = await findThreadByPhone(repo, phone);
     const phoneId = await resolvePhoneId({ saas: lead.saas || "", thread });
     if (phoneId === null) return noNumberReply(reply, lead.saas || "");
     if (!wa.configured(phoneId)) return reply.code(503).send({ error: "WhatsApp não configurado no servidor (WHATSAPP_TOKEN + número)" });
     try {
-      const messageId = await sendAndRecord(repo, wa, { phone, text, author: req.authUser?.id || "cockpit", phoneId, saas: lead.saas || "" });
+      const messageId = await sendAndRecord(repo, wa, { phone: thread?.phone || phone, text, author: req.authUser?.id || "cockpit", phoneId, saas: lead.saas || "" });
       return { ok: true, messageId };
     } catch (err) { return sendErrorReply(reply, err); }
   });

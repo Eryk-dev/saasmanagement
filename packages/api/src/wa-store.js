@@ -10,11 +10,36 @@ import { digits } from "./whatsapp.js";
 
 export const threadId = (phone) => digits(phone);
 
+// NONO DÍGITO: a Meta entrega o wa_id de celular BR fora de SP no formato
+// LEGADO, sem o 9 (5594 92246021), e o lead digita o telefone COM o 9 no form
+// (5594 9 92246021) — mesma pessoa, duas grafias, e o casamento exato falhava
+// (visto em prod 19/07: 3 de 4 leads do form ficaram órfãos e o fluxo de
+// ligação não disparou). Chave de casamento: 55 + DDD + últimos 8 dígitos.
+// O id da conversa continua sendo o wa_id CRU da Meta (é a chave do webhook);
+// só o CASAMENTO thread↔lead é tolerante.
+export function waMatchKey(v) {
+  const d = digits(v);
+  return d.startsWith("55") && d.length === 13 && d[4] === "9" ? d.slice(0, 4) + d.slice(5) : d;
+}
+
 export async function findLeadByPhone(repo, phone) {
-  const d = digits(phone);
-  if (!d) return null;
+  const key = waMatchKey(phone);
+  if (!key) return null;
   const leads = await repo.list("leads");
-  return leads.find((l) => l.phone && digits(l.phone) === d) || null;
+  return leads.find((l) => l.phone && waMatchKey(l.phone) === key) || null;
+}
+
+// Conversa existente de um telefone em QUALQUER grafia (com/sem o nono dígito):
+// id exato primeiro, senão a chave de casamento. É o que faz o drawer do lead
+// (telefone com 9) cair na MESMA conversa que o webhook criou (wa_id sem 9) em
+// vez de abrir uma segunda thread pra mesma pessoa.
+export async function findThreadByPhone(repo, phone) {
+  const id = threadId(phone);
+  if (!id) return null;
+  const exact = await repo.get("wa_threads", id);
+  if (exact) return exact;
+  const key = waMatchKey(id);
+  return (await repo.list("wa_threads")).find((t) => waMatchKey(t.id) === key) || null;
 }
 
 // Grava uma mensagem e atualiza o thread. Idempotente por id (a Meta re-entrega

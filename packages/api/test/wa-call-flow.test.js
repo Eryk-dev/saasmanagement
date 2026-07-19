@@ -318,6 +318,36 @@ test("pedido manual fora da janela de 24h → 409 legível (interactive e texto 
   await app.close();
 });
 
+// NONO DÍGITO (visto em prod 19/07): a Meta entrega wa_id fora de SP SEM o 9
+// e o lead digita COM — o casamento tolerante liga a conversa ao lead e o
+// fluxo dispara; a resposta do drawer cai na MESMA conversa (sem thread dupla).
+test("lead com nono dígito casa com wa_id sem ele: fluxo dispara e envio pelo lead reusa a conversa", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", waCallFlow: { enabled: true } });
+  await repo.create("leads", { id: "ld1", saas: "leverads", phone: "94992246021", name: "Rgd", stage: "" }); // COM o 9
+  const wa = fakeWa();
+  const app = await appWith(repo, wa);
+
+  // Mensagem chega do wa_id SEM o 9 (formato legado da Meta).
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inText("559492246021", "wamid.N1", "quero saber mais") });
+  const thr = await repo.get("wa_threads", "559492246021");
+  assert.equal(thr.leadId, "ld1");             // casou o lead mesmo sem o 9
+  assert.equal(wa.perms.length, 1);            // e o fluxo disparou
+  assert.match(wa.perms[0].text, /Rgd/);
+
+  // Resposta pelo DRAWER (telefone do lead, COM o 9) cai na MESMA conversa e
+  // sai pro wa_id que a pessoa usa (sem criar thread nova).
+  await app.inject({ method: "POST", url: "/api/leads/ld1/whatsapp", payload: { text: "bom dia!" } });
+  assert.equal((await repo.list("wa_threads")).length, 1);
+  assert.equal(wa.sent[0].to, "559492246021");
+
+  // Mensagens da conversa pelo telefone do lead também resolvem.
+  const opened = await (await app.inject({ method: "GET", url: "/api/whatsapp/threads/5594992246021" })).json();
+  assert.equal(opened.thread, "559492246021");
+  assert.ok(opened.messages.length >= 2);
+  await app.close();
+});
+
 test("resposta de permissão vira texto legível na conversa", async () => {
   const repo = makeMemRepo();
   await seedFlow(repo);
