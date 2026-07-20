@@ -274,7 +274,8 @@ function cardEntries(card) {
 }
 
 // Ajustes do treino por produto: quantos cards NOVOS por dia entram na fila
-// (limite do Anki; revisões não têm teto) e a prova de checkpoint — a cada
+// (limite GLOBAL da pessoa, repartido em rodízio entre os baralhos dela;
+// revisões não têm teto) e a prova de checkpoint — a cada
 // quantos cards GRADUADOS ela cai (0 = desligada), com quantas questões e
 // qual nota mínima. Tudo do gestor, na tela Editar.
 const SETTING_BOUNDS = {
@@ -535,6 +536,9 @@ export function registerFlashcardRoutes(app, repo, { anthropic = null } = {}) {
 
   // A fila do dia do usuário logado: um baralho por vaga dele (sem etiqueta =
   // todos), com contadores novo/aprendendo/revisar e os cards prontos pra sessão.
+  // O limite de novos é GLOBAL (newPerDay vale pro dia da pessoa, não por
+  // baralho) e sai em rodízio entre os baralhos — com 3 baralhos e limite 10,
+  // o dia tem 10 novos alternados, não 30.
   app.get("/api/flashcards/:saas/queue", async (req, reply) => {
     const user = requireUser(req, reply);
     if (!user) return;
@@ -544,13 +548,30 @@ export function registerFlashcardRoutes(app, repo, { anthropic = null } = {}) {
     const { cards, settings } = await baseDoc(product.id);
     const statesDoc = (await repo.get("training_states", stateDocId(product.id, user.id))) || EMPTY_STATES(product.id, user.id);
     const doneByRole = statesDoc.newDone[dayKey(now)] || {};
+    const built = rolesForUser(user).map((role) => {
+      const roleCards = cards.filter((c) => c.role === role);
+      return {
+        role,
+        total: roleCards.flatMap(cardEntries).length,
+        deck: buildDeckQueue(roleCards, statesDoc, { now, newBudget: Infinity }),
+      };
+    });
+    // rodízio: cada vaga do orçamento vai pro baralho com MENOS novos no dia
+    // (feitos + já alocados); baralho sem card novo sobrando cede a vez
+    let budget = Math.max(0, settings.newPerDay - Object.values(doneByRole).reduce((a, b) => a + b, 0));
+    const given = Object.fromEntries(built.map(({ role }) => [role, doneByRole[role] || 0]));
+    const alloc = Object.fromEntries(built.map(({ role }) => [role, 0]));
+    while (budget > 0) {
+      const next = built
+        .filter(({ role, deck }) => alloc[role] < deck.counts.new)
+        .sort((a, b) => given[a.role] - given[b.role])[0];
+      if (!next) break;
+      alloc[next.role]++; given[next.role]++; budget--;
+    }
     const decks = [], queue = {};
-    for (const role of rolesForUser(user)) {
-      const deck = buildDeckQueue(cards.filter((c) => c.role === role), statesDoc, {
-        now, newBudget: settings.newPerDay - (doneByRole[role] || 0),
-      });
-      decks.push({ role, label: ROLE_LABELS[role], total: cards.filter((c) => c.role === role).flatMap(cardEntries).length, counts: deck.counts, learned: deck.learned });
-      queue[role] = deck.cards;
+    for (const { role, total, deck } of built) {
+      decks.push({ role, label: ROLE_LABELS[role], total, counts: { ...deck.counts, new: alloc[role] }, learned: deck.learned });
+      queue[role] = deck.cards.slice(0, deck.counts.learning + deck.counts.review + alloc[role]);
     }
     const pendingExam = (await repo.list("training_exams"))
       .find((e) => e.saas === product.id && e.user === user.id && e.status === "pending");
