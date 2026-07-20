@@ -10,7 +10,8 @@ import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { waLink, leadTier } from "../lib/ui.js";
 import { useIsMobile } from "../lib/responsive.js";
-import { clientSummary } from "./today.jsx";
+import { clientSummary, buildQueue, ACTION_LABELS } from "./today.jsx";
+import { currentUser } from "../lib/users.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 
@@ -137,17 +138,38 @@ function WaTopStats({ numInfo, stats }) {
   );
 }
 
-export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
+export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead }) {
   const { version } = useData();
   const [product] = useActiveSaas();
   const isMobile = useIsMobile();
   const [threads, setThreads] = React.useState(null);
   const [sel, setSel] = React.useState(null); // thread.id (número)
+  // Conversa aberta POR LEAD que ainda não tem thread (1º toque): o pane roda
+  // com este registro sintético até a primeira mensagem criar a thread real.
+  const [virtual, setVirtual] = React.useState(null);
 
   // Chegada pelo pop-up de lead quente: abre direto NA conversa do alerta.
   React.useEffect(() => {
     if (initialThread) setSel(String(initialThread));
   }, [initialThread]);
+
+  // Abrir a conversa de um LEAD (atalho do Meu dia / mini-fila daqui): o
+  // servidor resolve a grafia do número (nono dígito) pro id da thread REAL;
+  // sem thread ainda, monta a conversa vazia — o composer decide sozinho
+  // entre texto livre e template (janela de 24h).
+  function openByLead(l) {
+    const digits = String(l?.phone || "").replace(/\D/g, "");
+    if (!digits) return;
+    const asVirtual = (id) => setVirtual({ id, phone: id, name: l.name || "", leadId: l.id, saas: l.saas || "", virtual: true });
+    api.waThread(digits)
+      .then((r) => { const id = String(r.thread || digits); asVirtual(id); setSel(id); })
+      .catch(() => { asVirtual(digits); setSel(digits); });
+  }
+  React.useEffect(() => {
+    if (!initialLead) return;
+    const l = (window.SEED?.LEADS || []).find((x) => x.id === initialLead);
+    if (l) openByLead(l);
+  }, [initialLead]); // eslint-disable-line react-hooks/exhaustive-deps
   const [msgs, setMsgs] = React.useState([]);
   const [q, setQ] = React.useState("");
   // Filtro da lista: quem respondeu (lead falou por último) × sem resposta
@@ -245,7 +267,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
     if (!isMobile && !sel && list.length) setSel(list[0].id);
   }, [list, sel, isMobile]);
 
-  const current = (threads || []).find((t) => t.id === sel) || null;
+  const current = (threads || []).find((t) => t.id === sel) || (virtual && virtual.id === sel ? virtual : null) || null;
 
   // Modelos do fluxo de qualificação já preenchidos com o lead da conversa
   // aberta. Conversa sem lead ainda aproveita o nome do contato; o resto vira
@@ -410,9 +432,12 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
         {(!isMobile || current) && (
         <div style={{ ...box, flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
           {!current ? (
-            <div style={{ margin: "auto", padding: 24 }}>
-              <EmptyState title="Escolha uma conversa" hint="selecione um contato à esquerda pra ver e responder" />
-            </div>
+            <>
+              <div style={{ margin: "auto", padding: 24 }}>
+                <EmptyState title="Escolha uma conversa" hint="selecione um contato à esquerda pra ver e responder" />
+              </div>
+              {!isMobile && configured && <MyQueueStrip product={product} version={version} currentLeadId={null} onPick={openByLead} />}
+            </>
           ) : (
             <>
               <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderBottom: "1px solid var(--line-1)", flexWrap: "wrap" }}>
@@ -433,10 +458,12 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
                 {(current.status || "open") === "closed" && (
                   <span style={{ ...flowChip, background: "var(--warn-soft)", color: "var(--warn)", border: "1px solid var(--warn-line)" }}>encerrada</span>
                 )}
-                <button onClick={toggleClosed} style={pill}
-                  title={(current.status || "open") === "closed" ? "volta pra lista viva do inbox" : "tira da lista viva (não mexe na etapa do card); mensagem nova do lead reabre sozinha"}>
-                  {(current.status || "open") === "closed" ? "reabrir" : "encerrar"}
-                </button>
+                {!current.virtual && (
+                  <button onClick={toggleClosed} style={pill}
+                    title={(current.status || "open") === "closed" ? "volta pra lista viva do inbox" : "tira da lista viva (não mexe na etapa do card); mensagem nova do lead reabre sozinha"}>
+                    {(current.status || "open") === "closed" ? "reabrir" : "encerrar"}
+                  </button>
+                )}
                 {/* Fluxo de permissão de ligação: estado na conversa + pedido manual. */}
                 {current.callFlow?.permission === "accepted" && (
                   <span title="o lead aceitou o pedido nativo de ligação" style={{ ...flowChip, background: "var(--pos)", color: "#fff" }}>✆ pode ligar</span>
@@ -485,6 +512,8 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
                 <WaBubbles messages={msgs} emptyHint={configured ? "manda a primeira mensagem abaixo" : "nenhuma mensagem"} />
               </div>
 
+              {!isMobile && configured && <MyQueueStrip product={product} version={version} currentLeadId={current.leadId || null} onPick={openByLead} />}
+
               <div style={{ padding: 12, borderTop: "1px solid var(--line-1)" }}>
                 {configured ? (
                   !msgsReady ? (
@@ -518,6 +547,55 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
           <LeadSideCard leadId={current.leadId} version={version} onOpenLead={openLead} />
         )}
       </div>
+    </div>
+  );
+}
+
+// Mini "Minhas atividades": as 3 próximas pendências de HOJE do usuário logado
+// (mesma fila e ordem do Meu dia), logo acima do campo de mensagem — o SDR
+// emenda um atendimento no outro sem sair do inbox. Clique abre a conversa do
+// lead, com ou sem thread ainda.
+function MyQueueStrip({ product, version, currentLeadId, onPick }) {
+  const me = currentUser()?.id || "";
+  const items = React.useMemo(() => {
+    if (!me) return [];
+    try {
+      const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === product?.id) || product;
+      return buildQueue(window.SEED?.LEADS || [], saasCfg, me).hoje.filter((i) => !i.done).slice(0, 3);
+    } catch { return []; }
+  }, [me, product?.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!items.length) return null;
+  const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
+  const timeOf = (i) => !i.due ? "agora"
+    : i.due.t < startToday.getTime() ? "atrasado"
+    : new Date(i.due.t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const labelOf = (i) => i.confirm ? "confirmar call"
+    : i.group === "noshow" ? "remarcar" : i.group === "nutri" ? "reativação" : (ACTION_LABELS[i.kind] || "contato");
+  return (
+    <div style={{ borderTop: "1px solid var(--line-1)", padding: "7px 12px 6px" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "0 4px 3px" }}>
+        <span className="mono" style={{ fontSize: 9.5, letterSpacing: 0.8, textTransform: "uppercase", color: "var(--fg-4)" }}>Minhas atividades · hoje</span>
+        <span style={{ flex: 1 }} />
+        <a href="#today" style={{ fontSize: 11, color: "var(--fg-3)", textDecoration: "none" }}>ver a fila →</a>
+      </div>
+      {items.map((i) => {
+        const on = !!currentLeadId && i.l.id === currentLeadId;
+        const late = i.due && i.due.t < startToday.getTime();
+        const hasPhone = !!String(i.l.phone || "").replace(/\D/g, "");
+        return (
+          <button key={i.confirmWindow ? `${i.l.id}-${i.confirmWindow}` : i.l.id} onClick={() => hasPhone && onPick(i.l)}
+            title={hasPhone ? "Abrir a conversa deste lead" : "lead sem telefone"} disabled={!hasPhone}
+            style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "4px", border: "none", borderRadius: "var(--r-1)",
+              background: on ? "var(--accent-soft)" : "transparent", cursor: hasPhone ? "pointer" : "default", textAlign: "left", opacity: hasPhone ? 1 : 0.55 }}>
+            <span className="mono tnum" style={{ fontSize: 10.5, width: 56, flexShrink: 0, color: late ? "var(--neg)" : "var(--fg-4)" }}>{timeOf(i)}</span>
+            <span style={{ fontSize: 10.5, lineHeight: "17px", padding: "0 7px", borderRadius: "var(--r-1)", background: "var(--bg-2)", color: "var(--fg-3)", flexShrink: 0, whiteSpace: "nowrap" }}>{labelOf(i)}</span>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: on ? "var(--accent)" : "var(--fg-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{i.l.name}</span>
+            {i.l.company && <span style={{ fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 3 }}>{i.l.company}</span>}
+            <span style={{ flex: 1 }} />
+            <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", flexShrink: 0 }}>abrir →</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

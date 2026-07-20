@@ -222,7 +222,7 @@ function SocialSellingNotice({ ig }) {
   );
 }
 
-function TodayScreen({ onOpenLead }) {
+function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   const { version } = useData();
   const [activeProduct] = useActiveSaas();
   const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === activeProduct?.id) || activeProduct;
@@ -379,7 +379,7 @@ function TodayScreen({ onOpenLead }) {
                 {pendingToday.length === 0 && <div style={{ padding: "16px var(--inset-x)", borderTop: "1px solid var(--line-faint)", fontSize: 13, color: "var(--fg-3)" }}>Fila de hoje concluída.</div>}
                 {pendingToday.map((item, index) => (
                   <QueueRow key={item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id} item={item} block="hoje" featured={index === 0}
-                    onScript={() => setScriptItem(item)} onClaim={() => claim(item)} />
+                    onScript={() => setScriptItem(item)} onClaim={() => claim(item)} onWhatsapp={onOpenWhatsapp} />
                 ))}
               </section>
 
@@ -426,7 +426,7 @@ function TodayScreen({ onOpenLead }) {
 // Uma linha da fila: sequência, quando, etapa (coluna do funil), ação a fazer,
 // lead com a qualificação compilada e as ações. Clique no corpo abre o ROTEIRO
 // (o painel de execução), não o card de status; o drawer fica no "abrir lead".
-function QueueRow({ item, block, featured, onScript, onClaim }) {
+function QueueRow({ item, block, featured, onScript, onClaim, onWhatsapp }) {
   const { l, kind, due, stage, who, group } = item;
   const now = Date.now();
 
@@ -501,7 +501,14 @@ function QueueRow({ item, block, featured, onScript, onClaim }) {
         {meet ? (
           <a href={meet} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", color: "var(--fg-2)", fontSize: 12.5, textDecoration: "none" }}>Abrir Meet</a>
         ) : whatsapp ? (
-          <a href={whatsapp} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: `1px solid ${featured ? "var(--btn-bg)" : "var(--line-2)"}`, background: featured ? "var(--btn-bg)" : "var(--bg-1)", color: featured ? "var(--btn-fg)" : "var(--fg-2)", fontSize: 12.5, fontWeight: featured ? 600 : 500, textDecoration: "none" }}>WhatsApp</a>
+          // Atalho pro INBOX interno (conversa do lead, com ou sem thread ainda);
+          // sem o handler (contexto antigo), cai no deep-link do app.
+          onWhatsapp ? (
+            <button onClick={() => onWhatsapp(l)} title="Abrir a conversa no inbox do cockpit"
+              style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: `1px solid ${featured ? "var(--btn-bg)" : "var(--line-2)"}`, background: featured ? "var(--btn-bg)" : "var(--bg-1)", color: featured ? "var(--btn-fg)" : "var(--fg-2)", fontSize: 12.5, fontWeight: featured ? 600 : 500 }}>WhatsApp</button>
+          ) : (
+            <a href={whatsapp} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: `1px solid ${featured ? "var(--btn-bg)" : "var(--line-2)"}`, background: featured ? "var(--btn-bg)" : "var(--bg-1)", color: featured ? "var(--btn-fg)" : "var(--fg-2)", fontSize: 12.5, fontWeight: featured ? 600 : 500, textDecoration: "none" }}>WhatsApp</a>
+          )
         ) : null}
         {(featured || (!meet && !whatsapp)) && <button onClick={onScript} style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5 }}>Roteiro</button>}
       </div>
@@ -1892,4 +1899,4 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   );
 }
 
-export { TodayScreen, ScriptPanel };
+export { TodayScreen, ScriptPanel, buildQueue, ACTION_LABELS };
