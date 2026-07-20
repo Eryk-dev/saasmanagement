@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   ensureIntegrationStage, migrateLeverAdsCrmFunnel, migrateLeverAdsSdrCadence, migrateNutricaoSevenDays, ensureFunnelKinds,
-  migrateGanhoAntesIntegracao, backfillWonAt,
+  migrateGanhoAntesIntegracao, backfillWonAt, backfillPostSaleCustomers,
   ensureLossReasons, ensureNoShowReason, ensureSdrGoals, ensureCloserGoals, ensureSocialGoals, ensureUserRoles, ensureUserSaasScope, ensureUserScreens, DEFAULT_LOSS_REASONS,
 } from "../src/migrations.js";
 
@@ -492,4 +492,30 @@ test("backfillWonAt: data do ganho sai do cliente e o lead sem cliente fica into
   assert.equal((await repo.get("leads", "l2")).wonAt, "2026-07-01T00:00:00Z");
   assert.equal((await repo.get("leads", "l3")).wonAt, undefined);
   assert.equal(await backfillWonAt(repo), 0); // idempotente
+});
+
+test("backfillPostSaleCustomers: card já na entrega vira cliente; ordem antiga não converte nada", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", funnel: [
+    { stage: "Follow-up", kind: "followup" }, { stage: "Ganho", kind: "ganho" },
+    { stage: "Integração", kind: "integracao" },
+  ] });
+  await repo.create("leads", { id: "l1", saas: "leverads", stage: "Integração", name: "Danilo", amount: 7180 });
+  await repo.create("leads", { id: "l2", saas: "leverads", stage: "Follow-up", name: "Aberto", amount: 5000 });
+  await repo.create("leads", { id: "l3", saas: "leverads", stage: "Integração", name: "Já cliente", customerId: "cus_x" });
+
+  assert.equal(await backfillPostSaleCustomers(repo), 1);
+  const l1 = await repo.get("leads", "l1");
+  assert.ok(l1.customerId, "o card na entrega tem que virar cliente");
+  assert.ok(l1.wonAt, "e carimbar a data da venda");
+  assert.equal((await repo.get("leads", "l2")).customerId, undefined);
+  assert.equal(await backfillPostSaleCustomers(repo), 0); // idempotente
+
+  // Ordem ANTIGA (entrega antes do ganho): ninguém converte.
+  const antigo = makeMemRepo();
+  await antigo.create("products", { id: "leverads", funnel: [
+    { stage: "Integração", kind: "integracao" }, { stage: "Ganho", kind: "ganho" },
+  ] });
+  await antigo.create("leads", { id: "x1", saas: "leverads", stage: "Integração", amount: 1000 });
+  assert.equal(await backfillPostSaleCustomers(antigo), 0);
 });
