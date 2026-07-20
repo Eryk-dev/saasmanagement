@@ -72,29 +72,32 @@ test("PUT sanitiza cards, clampa settings e persiste; PUT só de cards preserva 
   assert.equal((await app.inject({ method: "PUT", url: "/api/flashcards/naoexiste", payload: { cards: [] } })).statusCode, 404);
 });
 
-test("queue: exige sessão; monta só os baralhos da vaga; novos respeitam newPerDay; preview nos 4 botões", async () => {
+test("queue: exige sessão; monta só os baralhos da vaga; newPerDay é GLOBAL, em rodízio entre os baralhos; preview nos 4 botões", async () => {
   const { app } = await buildApp();
   assert.equal((await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue" })).statusCode, 401);
 
   const q = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("ana") })).json();
   // ana treina os gerais (todo mundo, primeiro) + a vaga dela (SDR)
   assert.deepEqual(q.decks.map((d) => d.role), ["geral_negocio", "geral_marketplace", "sdr"]);
-  assert.deepEqual(q.decks.find((d) => d.role === "sdr").counts, { new: 10, learning: 0, review: 0 });
-  assert.equal(q.queue.sdr.length, 10);
+  // 10 novos NO DIA (não por baralho), repartidos em rodízio: 4/3/3
+  assert.deepEqual(q.decks.map((d) => d.counts.new), [4, 3, 3]);
+  assert.deepEqual(q.decks.find((d) => d.role === "sdr").counts, { new: 3, learning: 0, review: 0 });
+  assert.equal(q.queue.sdr.length, 3);
   assert.equal(q.queue.sdr[0].srs, null);                   // novo = sem estado ainda
   for (const r of [1, 2, 3, 4]) assert.ok(q.queue.sdr[0].preview[r]);
 
   // admin sem etiqueta vê todos os baralhos
   const qe = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("eryk") })).json();
   assert.deepEqual(qe.decks.map((d) => d.role), ["geral_negocio", "geral_marketplace", "sdr", "closer", "integrator", "social"]);
+  assert.equal(qe.decks.reduce((a, d) => a + d.counts.new, 0), 10); // global mesmo com 6 baralhos
 
-  // baixa o limite diário → menos novos na fila
+  // baixa o limite diário → menos novos na fila (1 por baralho no rodízio)
   await app.inject({ method: "PUT", url: "/api/flashcards/leverads", payload: {
     cards: (await app.inject({ method: "GET", url: "/api/flashcards/leverads" })).json().cards,
     settings: { newPerDay: 3 },
   } });
   const q3 = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("ana") })).json();
-  assert.deepEqual(q3.decks.find((d) => d.role === "sdr").counts, { new: 3, learning: 0, review: 0 });
+  assert.deepEqual(q3.decks.map((d) => d.counts.new), [1, 1, 1]);
 });
 
 test("review: Bom em card novo vira aprendendo (minutos) e consome o budget de novos; Fácil gradua pra revisão (dias)", async () => {
@@ -107,10 +110,11 @@ test("review: Bom em card novo vira aprendendo (minutos) e consome o budget de n
   const due1 = new Date(r1.srs.due).getTime() - before;
   assert.ok(due1 > 0 && due1 < 30 * 60e3, `due em ${Math.round(due1 / 60e3)}min`);
 
-  // a fila reflete: 1 novo a menos no budget, sdr_1 agora em aprendendo
+  // a fila reflete: 1 novo a menos no budget GLOBAL do dia, sdr_1 em aprendendo
   const q = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("ana") })).json();
   assert.equal(q.decks.find((d) => d.role === "sdr").counts.learning, 1);
-  assert.equal(q.decks.find((d) => d.role === "sdr").counts.new, 9); // 10 do limite - 1 novo já feito
+  assert.equal(q.decks.reduce((a, d) => a + d.counts.new, 0), 9); // 10 do dia - 1 novo já feito
+  assert.equal(q.decks.find((d) => d.role === "sdr").counts.new, 2); // rodízio compensa o feito no sdr
   assert.ok(q.queue.sdr.some((c) => c.id === "sdr_1" && c.srs?.state === 1));
 
   // Fácil (4) num card novo → gradua direto pra revisão, dias à frente (some da fila de hoje)
@@ -348,7 +352,7 @@ test("admin: sem baralho obrigatório e fora da cobrança da equipe", async () =
   // admin que também é closer continua com o baralho da VAGA dele (estudo opcional)
   const jon = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("jon") })).json();
   assert.deepEqual(jon.decks.map((d) => d.role), ["geral_negocio", "geral_marketplace", "closer"]);
-  assert.equal(jon.queue.closer.length, 10);
+  assert.equal(jon.queue.closer.length, 3); // 10 do dia em rodízio: 4/3/3
 
   // quadro da equipe não cobra admin (nem o puro, nem o que tem vaga)
   const team = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/team" })).json();
