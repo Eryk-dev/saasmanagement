@@ -74,12 +74,16 @@ export function slideVisible(slide, answers) {
 }
 
 // ── Ofertas do slide de preço ───────────────────────────────────────────────
-// O slide `pricing` carrega ATÉ TRÊS ofertas: a principal, nos campos do
-// próprio slide, e as secretas em `offer2`/`offer3` (o closer revela com
-// Shift+1/2 na apresentação ao vivo). Estes são os campos que descrevem UMA
-// oferta — promover uma secreta a principal é copiar exatamente eles.
+// O slide `pricing` carrega ATÉ QUATRO ofertas: a principal, nos campos do
+// próprio slide, e as secretas em `offer2`/`offer3`/`offer4` (o closer revela
+// com Shift+1/2/3 na apresentação ao vivo). Estes são os campos que descrevem
+// UMA oferta — promover uma secreta a principal é copiar exatamente eles.
+// `sub` é onde entra o ESCOPO quando a oferta muda de produto (ex.: as ofertas
+// de OEM avulso em autopeças, que não incluem a clonagem): a lista de
+// benefícios é do slide e NÃO troca por oferta.
 const OFFER_KEYS = ["planTag", "planPill", "priceFrom", "pricePrefix", "currency", "price", "per", "sub", "cyclesLabel", "cyclesFrom", "cycles"];
-const offerAt = (slide, n) => (n === 2 ? slide?.offer2 : n === 3 ? slide?.offer3 : slide);
+export const OFFER_SLOTS = [1, 2, 3, 4];
+const offerAt = (slide, n) => (n === 2 ? slide?.offer2 : n === 3 ? slide?.offer3 : n === 4 ? slide?.offer4 : slide);
 const pricingSlide = (slides) => (slides || []).find((s) => s?.type === "pricing") || null;
 
 // Ofertas disponíveis num deck, na ordem da escada (1 = principal). Usado pelo
@@ -88,7 +92,7 @@ export function proposalOffers(slides) {
   const slide = pricingSlide(slides);
   if (!slide) return [];
   const out = [];
-  for (const n of [1, 2, 3]) {
+  for (const n of OFFER_SLOTS) {
     const o = offerAt(slide, n);
     // A principal sempre conta; as secretas só quando realmente preenchidas
     // (mesma régua do renderer pra decidir se o card existe).
@@ -109,12 +113,13 @@ export function proposalOffers(slides) {
 // intactos; o `revealPrice` fica como está — quem desliga a interação é o
 // `showAll` da proposta (o layout encadeado depende do flag pra existir).
 export function flattenOffer(slides, offer) {
-  const n = [1, 2, 3].includes(Number(offer)) ? Number(offer) : 1;
+  const n = OFFER_SLOTS.includes(Number(offer)) ? Number(offer) : 1;
   return (slides || []).map((s) => {
     if (s?.type !== "pricing") return s;
     const out = { ...s };
     delete out.offer2;
     delete out.offer3;
+    delete out.offer4;
     const src = offerAt(s, n);
     // n===1 já é o próprio slide; só promoção precisa reescrever os campos (e
     // APAGAR o que a oferta escolhida não define, senão sobra dado da anterior).

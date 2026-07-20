@@ -336,6 +336,9 @@ const LADDER = {
       benefitGroups: [{ title: "O motor", items: ["Clonagem ilimitada"], synth: "economia" }],
       offer2: { planTag: "SEMESTRAL", price: "3.588", per: "no semestre", cycles: "12x de 299/mês", currency: false },
       offer3: { planTag: "SERVIÇO ÚNICO", price: "1.788", per: "à vista", cycles: "12x de 149/mês", currency: false },
+      // 4º degrau (Shift+3): oferta de OUTRO escopo, com o recorte no `sub` —
+      // a lista de benefícios é do slide e não troca por oferta.
+      offer4: { planTag: "OEM SEMESTRAL", price: "2.688", per: "no semestre", cycles: "12x de 224/mês", currency: false, sub: "só o OEM · 100 SKUs por mês" },
       acceptLabel: "Aceitar proposta",
     },
   ],
@@ -359,6 +362,7 @@ test("proposal-offers: lista a oferta principal + as secretas da escada", async 
     [1, "ANUAL", "7.188"],
     [2, "SEMESTRAL", "3.588"],
     [3, "SERVIÇO ÚNICO", "1.788"],
+    [4, "OEM SEMESTRAL", "2.688"],
   ]);
 
   // lead sem proposta gerada não quebra: devolve lista vazia
@@ -448,4 +452,37 @@ test("página da proposta compartilhada: showAll no payload e ?k não abre ediç
   assert.match((await app.inject({ url: `/p/${shared.id}?k=` })).body, /"editable":false/);
   assert.match((await app.inject({ url: `/p/${shared.id}?k=qualquer` })).body, /"editable":false/);
   await app.close();
+});
+
+test("escada de 4 degraus: a 4ª oferta entra na lista e vira link do cliente", async () => {
+  const { app, repo } = await buildLadder();
+  const lead = (await app.inject({ method: "POST", url: "/api/leads", payload: { name: "Higor", saas: "leverads" } })).json();
+  await app.inject({ method: "POST", url: `/api/leads/${lead.id}/proposal`, payload: {} });
+
+  const offers = (await app.inject({ method: "GET", url: `/api/leads/${lead.id}/proposal-offers` })).json().offers;
+  assert.deepEqual(offers.map((o) => o.offer), [1, 2, 3, 4]);
+  assert.equal(offers[3].label, "OEM SEMESTRAL");
+  assert.equal(offers[3].price, "2.688");
+
+  const res = await app.inject({ method: "POST", url: `/api/leads/${lead.id}/proposal-share`, payload: { offer: 4 } });
+  assert.equal(res.statusCode, 200);
+  const shared = await repo.get("proposals", res.json().id);
+  const pricing = shared.slides.find((s) => s.type === "pricing");
+  // A 4ª virou a principal…
+  assert.equal(pricing.price, "2.688");
+  assert.equal(pricing.planTag, "OEM SEMESTRAL");
+  assert.equal(pricing.sub, "só o OEM · 100 SKUs por mês");
+  // …e a escada inteira sumiu do que o cliente recebe.
+  assert.equal(pricing.offer2, undefined);
+  assert.equal(pricing.offer3, undefined);
+  assert.equal(pricing.offer4, undefined);
+  assert.equal(shared.showAll, true);
+});
+
+test("escada de 4: oferta inexistente é recusada em vez de cair na principal", async () => {
+  const { app } = await buildLadder();
+  const lead = (await app.inject({ method: "POST", url: "/api/leads", payload: { name: "Higor", saas: "leverads" } })).json();
+  await app.inject({ method: "POST", url: `/api/leads/${lead.id}/proposal`, payload: {} });
+  const res = await app.inject({ method: "POST", url: `/api/leads/${lead.id}/proposal-share`, payload: { offer: 5 } });
+  assert.notEqual(res.statusCode, 200); // mandar preço errado é pior que falhar
 });

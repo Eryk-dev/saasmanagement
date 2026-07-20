@@ -383,17 +383,18 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .price-pending .stage-item, .price-revealed .stage-item { transition: opacity .45s var(--ease-out), transform .45s var(--ease-out); }
   .price-pending .stage-item:not(.on) { opacity: 0; transform: translateY(10px); }
   .price-revealed .stage-item { opacity: 1; transform: none; }
-  /* Segunda oferta (s.offer2): SECRETA — entra abaixo da principal só com
-     Shift+Espaço (negociação) e acinzenta a principal (comparativo). A pilha
-     ancora no rodapé da célula: o card principal aparece embaixo e, quando a
-     oferta 2 entra, ele sobe e ela assume o rodapé (a borda inferior não muda). */
+  /* Ofertas SECRETAS (s.offer2/3/4): entram abaixo da principal com Shift+1/2/3
+     (negociação) e acinzentam as anteriores (comparativo). A pilha ancora no
+     rodapé da célula: o card principal aparece embaixo e, quando a oferta
+     seguinte entra, ele sobe e ela assume o rodapé (a borda inferior não muda). */
   .has-offer2 { align-self: stretch; display: flex; flex-direction: column; justify-content: flex-end; }
-  .price-card.offer2, .price-card.offer3 { display: none; margin-top: 16px; }
-  .offer2-on .price-card.offer2, .offer3-on .price-card.offer3 { display: block; animation: offer2-in .5s var(--ease-out); }
+  .price-card.offer2, .price-card.offer3, .price-card.offer4 { display: none; margin-top: 16px; }
+  .offer2-on .price-card.offer2, .offer3-on .price-card.offer3, .offer4-on .price-card.offer4 { display: block; animation: offer2-in .5s var(--ease-out); }
   @keyframes offer2-in { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
-  .price-card.offer1, .price-card.offer2 { transition: filter .5s var(--ease-out), opacity .5s var(--ease-out); }
+  .price-card.offer1, .price-card.offer2, .price-card.offer3 { transition: filter .5s var(--ease-out), opacity .5s var(--ease-out); }
   .offer2-on .price-card.offer1,
-  .offer3-on .price-card.offer1, .offer3-on .price-card.offer2 { filter: grayscale(1); opacity: .55; }
+  .offer3-on .price-card.offer1, .offer3-on .price-card.offer2,
+  .offer4-on .price-card.offer1, .offer4-on .price-card.offer2, .offer4-on .price-card.offer3 { filter: grayscale(1); opacity: .55; }
   @media (prefers-reduced-motion: reduce) {
     .price-pending .price-reveal .price-card, .price-revealed .price-reveal .price-card, .price-veil,
     .price-pending .stage-item, .price-revealed .stage-item,
@@ -441,10 +442,12 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
     opacity: 0; transform: translateX(34px); transition: opacity .55s var(--ease-out), transform .55s var(--ease-out); }
   .pb-offer[data-o="1"] { opacity: 1; transform: none; }
   /* Troca de degrau: o anterior desliza pra ESQUERDA e some, o novo entra pela direita. */
-  .offer2-on .pb-offer[data-o="1"], .offer3-on .pb-offer[data-o="1"] { opacity: 0; transform: translateX(-34px); }
+  .offer2-on .pb-offer[data-o="1"], .offer3-on .pb-offer[data-o="1"], .offer4-on .pb-offer[data-o="1"] { opacity: 0; transform: translateX(-34px); }
   .offer2-on .pb-offer[data-o="2"] { opacity: 1; transform: none; }
-  .offer3-on .pb-offer[data-o="2"] { opacity: 0; transform: translateX(-34px); }
+  .offer3-on .pb-offer[data-o="2"], .offer4-on .pb-offer[data-o="2"] { opacity: 0; transform: translateX(-34px); }
   .offer3-on .pb-offer[data-o="3"] { opacity: 1; transform: none; }
+  .offer4-on .pb-offer[data-o="3"] { opacity: 0; transform: translateX(-34px); }
+  .offer4-on .pb-offer[data-o="4"] { opacity: 1; transform: none; }
   /* 3 zonas que preenchem a faixa de ponta a ponta: plano · preço (centro) · total. */
   .pb-left { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; flex: 0 0 auto; }
   .pb-left .price-tag { font-size: 15px; }
@@ -465,16 +468,19 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .pb-old-price .currency, .pb-old-price .per, .pb-old-price .price-main { font-size: 13px; }
   /* Oferta secreta anterior só entra na comparação se tiver sido ativada: pulou
      direto pra 3ª (só offer3-on)? a 2ª não aparece. */
-  .pb-old.off-need-2 { display: none; }
+  .pb-old.off-need-2, .pb-old.off-need-3 { display: none; }
   .offer2-on .pb-old.off-need-2 { display: inline-flex; }
+  .offer3-on .pb-old.off-need-3 { display: inline-flex; }
   @media (prefers-reduced-motion: reduce) { .pb-stage, .pb-offer { transition: none; } }
   @media (max-width: 899px) {
     .pb-offer { position: static; flex-direction: column; align-items: stretch; gap: 18px; transform: none; opacity: 1; }
-    .pb-offer[data-o="2"], .pb-offer[data-o="3"] { display: none; }
-    .offer2-on .pb-offer[data-o="1"], .offer3-on .pb-offer[data-o="1"] { display: none; }
+    .pb-offer[data-o="2"], .pb-offer[data-o="3"], .pb-offer[data-o="4"] { display: none; }
+    .offer2-on .pb-offer[data-o="1"], .offer3-on .pb-offer[data-o="1"], .offer4-on .pb-offer[data-o="1"] { display: none; }
     .offer2-on .pb-offer[data-o="2"] { display: flex; }
-    .offer3-on .pb-offer[data-o="2"] { display: none; }
+    .offer3-on .pb-offer[data-o="2"], .offer4-on .pb-offer[data-o="2"] { display: none; }
     .offer3-on .pb-offer[data-o="3"] { display: flex; }
+    .offer4-on .pb-offer[data-o="3"] { display: none; }
+    .offer4-on .pb-offer[data-o="4"] { display: flex; }
     .pb-center { border: 0; padding: 0; margin: 0; align-items: flex-start; }
     .pb-price.price-number { justify-content: flex-start; }
     .pb-compare { justify-content: flex-start; }
@@ -1148,15 +1154,17 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       }
       var hasOffer2 = !!(s.offer2 && (s.offer2.price || s.offer2.planTag));
       var hasOffer3 = !!(s.offer3 && (s.offer3.price || s.offer3.planTag));
-      // Ofertas 2 e 3 são secretas (Shift+Espaço em sequência, no modo reveal):
+      var hasOffer4 = !!(s.offer4 && (s.offer4.price || s.offer4.planTag));
+      // Ofertas 2, 3 e 4 são secretas (Shift+1/2/3, no modo reveal):
       // sem revealPrice ficam no DOM mas nunca aparecem, de propósito.
       // O wrapper .price-reveal mantém os cards na MESMA célula do grid
       // (empilhados, ancorados no rodapé); sem ele cairiam na coluna dos benefícios.
-      var wrapCards = reveal || hasOffer2 || hasOffer3;
+      var wrapCards = reveal || hasOffer2 || hasOffer3 || hasOffer4;
       var offersHtml =
-        priceCardHtml(s, hasOffer2 || hasOffer3 ? 'offer1' : '', !reveal) +
+        priceCardHtml(s, hasOffer2 || hasOffer3 || hasOffer4 ? 'offer1' : '', !reveal) +
         (hasOffer2 ? priceCardHtml(s.offer2, 'offer2', false) : '') +
-        (hasOffer3 ? priceCardHtml(s.offer3, 'offer3', false) : '');
+        (hasOffer3 ? priceCardHtml(s.offer3, 'offer3', false) : '') +
+        (hasOffer4 ? priceCardHtml(s.offer4, 'offer4', false) : '');
       var veilHtml = reveal ? '<div class="price-veil" aria-hidden="true"></div>' : '';
       var guaranteeHtml = hasGuarantee ? '<div class="guarantee" style="margin-top:16px"><div class="guarantee-head">' +
         '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L4 6v6c0 5.5 3.5 9.5 8 10 4.5-.5 8-4.5 8-10V6l-8-4z" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
@@ -1184,6 +1192,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         var offersArr = [s];
         if (hasOffer2) offersArr.push(s.offer2);
         if (hasOffer3) offersArr.push(s.offer3);
+        if (hasOffer4) offersArr.push(s.offer4);
         function priceLine(o) {
           return (o.pricePrefix ? '<span class="currency">' + fmt(o.pricePrefix) + '</span>' : '') +
             (o.currency === false ? '' : '<span class="currency">R$</span>') +
@@ -1194,7 +1203,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         }
         var panelsHtml = offersArr.map(function (o, i) {
           // Âncoras de comparação: as ofertas anteriores. A oferta 1 (base) sempre
-          // aparece; as secretas (2/3) só entram na comparação se tiverem sido
+          // aparece; as secretas (2/3/4) só entram na comparação se tiverem sido
           // ativadas — se o closer pula direto pra 3ª, a 2ª não aparece (off-need).
           var prev = offersArr.slice(0, i).map(function (p, j) {
             var needCls = j >= 1 ? ' off-need-' + (j + 1) : '';
@@ -1221,7 +1230,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           '</div>' +
           // Sem interação (versão do cliente) a faixa entra na animação de
           // scroll dos demais blocos, em vez de simplesmente estar lá.
-          '<div class="price-reveal price-band' + (hasOffer2 || hasOffer3 ? ' has-ladder' : '') + '"' + (reveal ? '' : ' data-reveal') + '>' +
+          '<div class="price-reveal price-band' + (hasOffer2 || hasOffer3 || hasOffer4 ? ' has-ladder' : '') + '"' + (reveal ? '' : ' data-reveal') + '>' +
             '<div class="pb-stage">' + panelsHtml + '</div>' + veilHtml +
           '</div>' +
           (guaranteeHtml || paybackHtml ? '<div data-reveal style="margin-top:16px">' + guaranteeHtml + paybackHtml + '</div>' : '');
@@ -1280,7 +1289,15 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
             if ((code === 'Digit2' || code === 'Numpad2') && hasOffer3) {
               if (!inView()) return;
               e.preventDefault();
+              sec.classList.remove('offer4-on');
               sec.classList.add('offer3-on');
+              fitSlides();
+              return;
+            }
+            if ((code === 'Digit3' || code === 'Numpad3') && hasOffer4) {
+              if (!inView()) return;
+              e.preventDefault();
+              sec.classList.add('offer4-on');
               fitSlides();
               return;
             }
