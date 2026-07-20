@@ -11,7 +11,7 @@ import {
 import { usersByRole, userTone, displayName, currentUser } from "../lib/users.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 import { useActiveSaas, pinActiveSaas } from "../lib/workspace.js";
-// Pipeline — Kanban + List + Agenda + Análise. Drag-and-drop between columns.
+// Pipeline — Kanban + Lista. Drag-and-drop between columns.
 // Funil unificado: os LEADS são os cards do pipeline (window.SEED.LEADS). Cada
 // lead já carrega seu `saas` + `stage`. Uma cópia local deixa o drag-and-drop
 // mutar otimisticamente antes de persistir (PATCH /api/leads/:id).
@@ -30,12 +30,12 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   const activeSaas = activeProduct?.id;
   useEfP(() => { pinActiveSaas(saasId); }, [saasId]);
   // Aba ativa persistida (localStorage): sobrevive ao refresh da página e à
-  // remontagem da tela quando o tempo real recarrega o SEED. A antiga aba
-  // "Análise" (e o alias "forecast") virou a TELA "Análise do pipeline" (menu
-  // Análises); preferência salva nesses valores cai no Kanban.
-  // "all" (Todos os pipelines) foi aposentada com o workspace por produto:
-  // cada marca tem o cockpit inteiro só dela, nada de empilhar produtos.
-  const VIEWS = ["kanban", "list", "agenda"];
+  // remontagem da tela quando o tempo real recarrega o SEED. As antigas abas
+  // "Análise" (e o alias "forecast") e "Agenda" viraram TELAS próprias (menu
+  // Análises e Agenda no comercial); preferência salva nesses valores cai no
+  // Kanban. "all" (Todos os pipelines) foi aposentada com o workspace por
+  // produto: cada marca tem o cockpit inteiro só dela.
+  const VIEWS = ["kanban", "list"];
   const [view, setViewState] = useStP(() => {
     try {
       const v = localStorage.getItem("cockpit_pipeline_view");
@@ -180,7 +180,6 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
         />
       )}
       {view === "list" && <LeadList leads={saasLeads} />}
-      {view === "agenda" && <AgendaView leads={saasAll} onOpenLead={onOpenLead} />}
 
       {pendingMove && (
         <MoveLeadModal
@@ -205,7 +204,6 @@ function ViewToggle({ view, onChange }) {
   return <Segmented value={view} onChange={onChange} options={[
     { value: "kanban", label: "Kanban" },
     { value: "list", label: "Lista" },
-    { value: "agenda", label: "Agenda" },
   ]} />;
 }
 
