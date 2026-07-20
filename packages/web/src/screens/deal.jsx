@@ -457,6 +457,17 @@ function LeadDetail({ lead: initial, onClose }) {
                           refetchTimeline?.();
                           const f = r.summary?.followup;
                           window.alert(`Resumo pronto ✓ Temperatura: ${r.summary?.temperatura || "?"}.${f?.quando ? " Próximo toque sugerido já foi agendado no GPS." : ""}`);
+                        } else if (r.reason === "call_in_progress") {
+                          // Encerrar a sala daqui destrava a transcrição sem
+                          // ninguém precisar entrar no Meet pra clicar.
+                          if (window.confirm("A sala do Meet ainda está ABERTA e o Google só gera a transcrição quando o último participante sai.\n\nEncerrar a sala agora? (não faça isso se a call ainda estiver rolando)")) {
+                            try {
+                              const e2 = await api.endMeet(lead.id, "call");
+                              window.alert(e2.ended
+                                ? "Sala encerrada ✓ A transcrição leva alguns minutos pra ficar pronta; o cockpit resume sozinho (ou clique de novo em resumir)."
+                                : "Não havia conferência ativa agora. Tente resumir de novo em alguns minutos.");
+                            } catch (e3) { window.alert(e3.message || "Não deu pra encerrar a sala."); }
+                          }
                         } else if (r.reason === "transcript_not_ready") {
                           window.alert(`A transcrição ainda não está pronta no Google. A call já terminou? Gravação e transcrição estavam ligadas? O cockpit tenta sozinho a cada 10 min.${r.detail ? `\n\nMotivo: ${r.detail}` : ""}`);
                         } else if (r.reason === "not_connected") {
@@ -597,6 +608,16 @@ function LeadDetail({ lead: initial, onClose }) {
                             if (r.ok) { refetchTimeline?.(); window.alert(`Resumo da integração pronto ✓ Cliente: ${r.summary?.sentimento || "?"}.`); }
                             // `detail` diz QUAL caminho falhou (Meet API / Drive) — sem ele
                             // o diagnóstico virava adivinhação.
+                            else if (r.reason === "call_in_progress") {
+                              if (window.confirm("A sala do Meet ainda está ABERTA e o Google só gera a transcrição quando o último participante sai.\n\nEncerrar a sala agora? (não faça isso se a call ainda estiver rolando)")) {
+                                try {
+                                  const e2 = await api.endMeet(lead.id, "integracao");
+                                  window.alert(e2.ended
+                                    ? "Sala encerrada ✓ A transcrição leva alguns minutos; o cockpit resume sozinho (ou clique de novo em resumir)."
+                                    : "Não havia conferência ativa agora. Tente resumir de novo em alguns minutos.");
+                                } catch (e3) { window.alert(e3.message || "Não deu pra encerrar a sala."); }
+                              }
+                            }
                             else if (r.reason === "transcript_not_ready") window.alert(`A transcrição ainda não está pronta no Google. A call já terminou? Transcrição estava ligada? O cockpit tenta sozinho a cada 10 min.${r.detail ? `\n\nMotivo: ${r.detail}` : ""}`);
                             else if (r.reason) window.alert(`Não deu: ${r.reason}`);
                           } catch (e) { window.alert(e.message || "Falha ao resumir a integração."); }

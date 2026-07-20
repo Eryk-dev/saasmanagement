@@ -210,6 +210,25 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
   // space, acha o conferenceRecord mais recente já encerrado, monta o texto
   // fala-a-fala com o nome de quem falou e anexa o link da gravação no Drive.
   // Retorna null quando o Google ainda está processando (quem chama re-tenta).
+  // Encerra a conferência ATIVA da sala. Sala esquecida aberta trava a gravação
+  // e a transcrição (o Google só as fecha quando o último participante sai), e
+  // sem isso o único jeito era alguém entrar no Meet e clicar em encerrar.
+  // 404/NOT_FOUND aqui = não havia conferência ativa (já fechou) — não é erro.
+  async function endActiveConference(meetingCode) {
+    const token = await accessToken();
+    const res = await f(`${MEET_URL}/spaces/${encodeURIComponent(meetingCode)}:endActiveConference`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: "{}",
+    });
+    if (res.status === 404) return { ended: false, reason: "no_active_conference" };
+    if (res.status >= 400) {
+      const b = await res.text().catch(() => "");
+      throw new Error(`Meet endActiveConference -> ${res.status}: ${String(b).replace(/\s+/g, " ").trim().slice(0, 200)}`);
+    }
+    return { ended: true };
+  }
+
   async function fetchTranscript(meetingCode) {
     const token = await accessToken();
     const got = await f(`${MEET_URL}/spaces/${encodeURIComponent(meetingCode)}`, {
@@ -224,7 +243,14 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
       filter: `space.name = "${space.name}"`,
     });
     const done = records.filter((r) => r.endTime).sort((a, b) => String(b.endTime).localeCompare(String(a.endTime)));
-    if (!done.length) return null; // call não aconteceu ou ainda está rolando
+    if (!done.length) {
+      // Conferência ABERTA (registro sem endTime): o Google só fecha a gravação
+      // e gera o Doc de transcrição quando o ÚLTIMO participante sai. Sala
+      // esquecida aberta = transcrição nunca sai, e sem este sinal a tela dizia
+      // só "não está pronta" (aconteceu com a integração do Cristiano, 20/07).
+      if (records.length) return { live: true, startTime: records[0].startTime || "" };
+      return null; // nenhuma conferência: a call não aconteceu nessa sala
+    }
 
     const rec = done[0];
     const transcripts = await meetList(`${rec.name}/transcripts`, "transcripts");
@@ -381,7 +407,7 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
     };
   }
 
-  return { configured, connected, account, grantedScopes, authUrl, exchangeCode, accessToken, createMeetEvent, configureSpace, fetchTranscript, sendGmail, gmailReady, getCalendarEvent, fetchTranscriptFromDrive };
+  return { configured, connected, account, grantedScopes, authUrl, exchangeCode, accessToken, createMeetEvent, configureSpace, fetchTranscript, endActiveConference, sendGmail, gmailReady, getCalendarEvent, fetchTranscriptFromDrive };
 }
 
 // Cabeçalho de e-mail com não-ASCII (nome, assunto): codifica em MIME
