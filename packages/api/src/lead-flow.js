@@ -103,6 +103,15 @@ export async function applyStageMove(repo, { lead, toStage, patch = {}, author =
     out.lostReason = lostReason;
     out.nextActionAt = ""; // terminal sai da fila do GPS
     out.nextActionNote = "";
+    // Lead descartado ENCERRA a conversa de WhatsApp junto (sai da lista viva
+    // do inbox); mensagem nova do lead reabre sozinha (recordMessage).
+    try {
+      const { findThreadByPhone } = await import("./wa-store.js");
+      const t = lead.phone ? await findThreadByPhone(repo, lead.phone) : null;
+      if (t && (t.status || "open") !== "closed") {
+        await repo.update("wa_threads", t.id, { status: "closed", closedAt: now.toISOString(), closedBy: author, closeReason: `lead ${kind}` });
+      }
+    } catch { /* conversa não trava o movimento do card */ }
   } else {
     // Revival (saiu de perdido/ganho pra estágio ativo) limpa a perda antiga,
     // a menos que o cliente mande outra no mesmo PATCH.

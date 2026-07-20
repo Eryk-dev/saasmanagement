@@ -222,13 +222,22 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
     const s = q.trim().toLowerCase();
     const base = threads || [];
     const byQ = s ? base.filter((t) => (t.name || "").toLowerCase().includes(s) || String(t.phone).includes(s.replace(/\D/g, ""))) : base;
-    if (answerFilter === "in") return byQ.filter((t) => t.lastDir === "in");
-    if (answerFilter === "out") return byQ.filter((t) => t.lastDir === "out");
-    return byQ;
+    // Encerradas ficam fora da lista viva (todas/respondidas/sem resposta) e
+    // têm o próprio filtro — mensagem nova do lead reabre e ela volta sozinha.
+    const open = byQ.filter((t) => (t.status || "open") !== "closed");
+    if (answerFilter === "closed") return byQ.filter((t) => t.status === "closed");
+    if (answerFilter === "in") return open.filter((t) => t.lastDir === "in");
+    if (answerFilter === "out") return open.filter((t) => t.lastDir === "out");
+    return open;
   }, [threads, q, answerFilter]);
   const answerCounts = React.useMemo(() => {
     const base = threads || [];
-    return { in: base.filter((t) => t.lastDir === "in").length, out: base.filter((t) => t.lastDir === "out").length };
+    const open = base.filter((t) => (t.status || "open") !== "closed");
+    return {
+      in: open.filter((t) => t.lastDir === "in").length,
+      out: open.filter((t) => t.lastDir === "out").length,
+      closed: base.length - open.length,
+    };
   }, [threads]);
 
   // No mobile a lista é a tela inicial: não auto-abre conversa (abrir = navegar).
@@ -257,6 +266,15 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
   function openLead() {
     const rec = current?.leadId && (window.SEED?.LEADS || []).find((l) => l.id === current.leadId);
     if (rec && onOpenLead) onOpenLead(rec);
+  }
+
+  // Encerrar/reabrir a conversa (status do inbox, separado da etapa do card).
+  // Otimista: some da lista viva na hora; o servidor confirma e o SSE alinha.
+  function toggleClosed() {
+    if (!current) return;
+    const closed = (current.status || "open") !== "closed";
+    setThreads((prev) => (prev || []).map((t) => (t.id === current.id ? { ...t, status: closed ? "closed" : "open" } : t)));
+    api.waThreadClose(current.id, closed).catch(() => {});
   }
 
   // Pedido manual de permissão de ligação (prospecção ativa / conversa antiga).
@@ -335,7 +353,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
             {/* Respondidas = o lead falou por último; sem resposta = a última é
                 nossa e o lead ainda não voltou (a fila do re-toque). */}
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-              {[["all", "todas", null], ["in", "respondidas", answerCounts.in], ["out", "sem resposta", answerCounts.out]].map(([id, label, n]) => {
+              {[["all", "todas", null], ["in", "respondidas", answerCounts.in], ["out", "sem resposta", answerCounts.out], ["closed", "encerradas", answerCounts.closed]].map(([id, label, n]) => {
                 const on = answerFilter === id;
                 return (
                   <button key={id} onClick={() => setAnswerFilter(id)}
@@ -410,6 +428,15 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
                     {prettyPhone(current.phone)}{current.stage ? ` · ${current.stage}` : ""}
                   </div>
                 </div>
+                {/* Status da conversa: encerrada sai da lista viva (lead
+                    desqualificado encerra sozinho; mensagem nova reabre). */}
+                {(current.status || "open") === "closed" && (
+                  <span style={{ ...flowChip, background: "var(--warn-soft)", color: "var(--warn)", border: "1px solid var(--warn-line)" }}>encerrada</span>
+                )}
+                <button onClick={toggleClosed} style={pill}
+                  title={(current.status || "open") === "closed" ? "volta pra lista viva do inbox" : "tira da lista viva (não mexe na etapa do card); mensagem nova do lead reabre sozinha"}>
+                  {(current.status || "open") === "closed" ? "reabrir" : "encerrar"}
+                </button>
                 {/* Fluxo de permissão de ligação: estado na conversa + pedido manual. */}
                 {current.callFlow?.permission === "accepted" && (
                   <span title="o lead aceitou o pedido nativo de ligação" style={{ ...flowChip, background: "var(--pos)", color: "#fff" }}>✆ pode ligar</span>

@@ -77,6 +77,9 @@ export async function recordMessage(repo, { id, phone, direction, text = "", at,
     waPhoneId: waPhoneId || prev?.waPhoneId || "",
     lastText: text, lastAt: when, lastDir: direction,
     unread: direction === "in" ? (prev?.unread || 0) + 1 : (prev?.unread || 0),
+    // Mensagem nova (de qualquer lado) REABRE conversa encerrada: se o lead
+    // desqualificado voltar a falar, ela ressuscita na lista sozinha.
+    status: "open",
     updatedAt: when,
   };
   if (prev) await repo.update("wa_threads", tid, patch);
@@ -143,6 +146,7 @@ export async function listThreads(repo) {
         stage: lead?.stage || "",
         lastText: t.lastText || "", lastAt: t.lastAt || t.updatedAt || "", lastDir: t.lastDir || "",
         unread: t.unread || 0,
+        status: t.status || "open", // "closed" = conversa encerrada (arquivo do inbox)
       };
     })
     .sort((a, b) => String(b.lastAt || "").localeCompare(String(a.lastAt || "")));
@@ -171,6 +175,9 @@ export async function waInsights(repo, { days = 30, now = Date.now() } = {}) {
   const replyTimes = [];
 
   for (const t of threads) {
+    // Conversa encerrada não conta como "esperando resposta" nem janela: saiu
+    // da operação do dia (volta sozinha se o lead mandar mensagem).
+    if ((t.status || "open") === "closed") continue;
     const msgs = (byThread.get(t.id) || []).slice().sort((a, b) => at(a) - at(b));
     if (!msgs.length) continue;
     unread += Number(t.unread) || 0;
