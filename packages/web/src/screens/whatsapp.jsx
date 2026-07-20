@@ -11,6 +11,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { waLink, leadTier } from "../lib/ui.js";
 import { useIsMobile } from "../lib/responsive.js";
 import { clientSummary } from "./today.jsx";
+import { scriptChecklist } from "../lib/scripts.js";
 
 // Inbox de WhatsApp: um WhatsApp Web dentro do cockpit. Lista de conversas à
 // esquerda (não-lidas primeiro na cara, ordenadas por recência) + conversa
@@ -496,12 +497,23 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
   );
 }
 
-// Card lateral do cliente: mesmo resumo compilado do roteiro (clientSummary),
-// vivo via SSE (re-render pelo version). Lead apagado/dessincronizado só some.
-function LeadSideCard({ leadId, version, onOpenLead }) { // eslint-disable-line no-unused-vars
-  const lead = (window.SEED?.LEADS || []).find((l) => l.id === leadId) || null;
-  if (!lead) return null;
+// Card lateral do cliente: as perguntas de qualificação EDITÁVEIS (preenche
+// conforme o lead responde no chat, mesmo checklist do roteiro) + o resumo
+// compilado (clientSummary), vivos via SSE. Lead apagado só some.
+function LeadSideCard({ leadId, version, onOpenLead }) {
+  // Edição otimista: o valor digitado vale na hora; o tick do SSE traz o SEED
+  // atualizado e zera a camada local (aí o dado já é o do servidor).
+  const [edits, setEdits] = React.useState({});
+  React.useEffect(() => { setEdits({}); }, [version, leadId]);
+  const base = (window.SEED?.LEADS || []).find((l) => l.id === leadId) || null;
+  if (!base) return null;
+  const lead = { ...base, ...edits };
   const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === lead.saas) || null;
+  const patch = (p) => {
+    setEdits((prev) => ({ ...prev, ...p }));
+    api.update("leads", base.id, p).catch((err) => console.warn("lead não salvo:", err.message));
+  };
+  const checklist = scriptChecklist(saasCfg, lead);
   const { pain, facts, attribution } = clientSummary(saasCfg, lead, lead.stage || saasCfg?.funnel?.[0]?.stage || "", null);
   const tier = leadTier(lead);
   const fmtDT = (iso) => {
@@ -534,6 +546,38 @@ function LeadSideCard({ leadId, version, onOpenLead }) { // eslint-disable-line 
             <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 2 }}>[{pain.code}] {pain.label}</div>
           </div>
         )}
+
+        {/* Qualificação EDITÁVEL (mesmo checklist do roteiro): o lead respondeu
+            no chat → preenche aqui e grava na hora. Amarelo = falta responder. */}
+        {checklist.length > 0 && (
+          <div>
+            <div className="mono" style={{ ...kicker, marginBottom: 4 }}>Qualificação · preencha conforme ele responde</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {checklist.map((c) => (
+                <div key={c.key} style={{ padding: "5px 8px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.value ? "var(--bg-1)" : "var(--warn-soft)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                    <span style={{ color: c.value ? "var(--pos)" : "var(--warn)", flexShrink: 0, fontSize: 11 }}>{c.value ? "✓" : "○"}</span>
+                    <span className="dim" style={{ fontSize: 10.5, lineHeight: 1.3, minWidth: 0 }}>{c.label}</span>
+                  </div>
+                  {c.type === "select" ? (
+                    <select value={c.raw || ""} onChange={(e) => patch({ [c.key]: e.target.value })}
+                      style={{ width: "100%", height: 26, padding: "0 6px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 11.5, fontWeight: 500 }}>
+                      <option value="">selecionar…</option>
+                      {c.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      {c.raw && !c.options.some((o) => o.value === c.raw) && <option value={c.raw}>{c.raw}</option>}
+                    </select>
+                  ) : (
+                    <input key={base.id + c.key} type="text" defaultValue={c.raw || ""} placeholder="preencher…"
+                      onBlur={(e) => { if (e.target.value !== (c.raw || "")) patch({ [c.key]: e.target.value }); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                      style={{ width: "100%", height: 26, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, fontWeight: 500 }} />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div>
           <div className="mono" style={{ ...kicker, marginBottom: 4 }}>Resumo do cliente</div>
           {facts.map(([k, v]) => (
