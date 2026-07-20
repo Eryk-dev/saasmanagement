@@ -1407,34 +1407,62 @@ export function setupType(kind) {
   return "none";
 }
 
-// Agenda da call: das 07h às 20h em blocos de 1h; a call OCUPA a hora do
-// closer (leads dele com callAt na mesma hora). Fim de semana fora (seg a sex).
-export const CALL_H0 = 7, CALL_H1 = 21; // slots 07:00…20:00 (bate com a agenda 7h-21h)
+// Agenda da call: das 07h às 20h30 em blocos de MEIA HORA; a call dura 1h, então
+// ocupa DOIS slots seguidos do closer. Fim de semana fora (seg a sex).
+export const CALL_H0 = 7, CALL_H1 = 21; // slots 07:00…20:30 (bate com a agenda 7h-21h)
+export const SLOT_MIN = 30;             // granularidade da grade
+const CALL_MIN = 60;                    // duração da call/integração
 export function nextBusinessDays(n) {
   const out = []; const d = new Date(); d.setHours(0, 0, 0, 0);
   while (out.length < n) { const w = d.getDay(); if (w !== 0 && w !== 6) out.push(new Date(d)); d.setDate(d.getDate() + 1); }
   return out;
 }
-const cellKey = (d) => { const p = (x) => String(x).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}`; };
-export const slotVal = (day, hour) => { const p = (x) => String(x).padStart(2, "0"); return `${day.getFullYear()}-${p(day.getMonth() + 1)}-${p(day.getDate())}T${p(hour)}:00`; };
+// Slots que uma call marcada em "YYYY-MM-DDTHH:MM" (hora local) ocuparia — pra
+// quem checa conflito fora da grade (input livre do drawer).
+export function callSlotKeys(localValue) {
+  const d = new Date(String(localValue || ""));
+  return Number.isFinite(d.getTime()) ? occupySlots(d) : [];
+}
+
+// Chave do slot: "YYYY-MM-DD-HH-MM" com MM em 00/30. O minuto entra na chave
+// porque a grade é de meia em meia hora — sem ele, call das 14h e das 14h30
+// cairiam na mesma célula e uma esconderia a outra.
+const pad2 = (x) => String(x).padStart(2, "0");
+const cellKey = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}-${pad2(d.getHours())}-${d.getMinutes() < 30 ? "00" : "30"}`;
+export const slotVal = (day, hour, min = 0) => `${day.getFullYear()}-${pad2(day.getMonth() + 1)}-${pad2(day.getDate())}T${pad2(hour)}:${pad2(min)}`;
+
+// Slots que um compromisso OCUPA: ele dura 1h e a grade é de 30 min, então
+// marca todas as meias-horas que a duração encosta. Call às 14h bloqueia 14h e
+// 14h30; call às 14h30 bloqueia 14h30 e 15h. Horário quebrado (14h10, vindo do
+// Google) é ancorado na meia hora que o contém, e aí pega três.
+export function occupySlots(start, minutes = CALL_MIN) {
+  const out = [];
+  const t0 = new Date(start);
+  t0.setMinutes(t0.getMinutes() < 30 ? 0 : 30, 0, 0); // âncora da meia hora
+  const end = new Date(start).getTime() + minutes * 60_000;
+  for (let c = new Date(t0); c.getTime() < end; c.setMinutes(c.getMinutes() + SLOT_MIN)) out.push(cellKey(c));
+  return out;
+}
 // YYYY-MM-DD local (pro <input type="date"> e comparação de dia); parseYMD volta
 // pra Date em hora LOCAL (new Date("YYYY-MM-DD") seria UTC → dia anterior no BRT).
 const ymd = (d) => { const p = (x) => String(x).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
 const sameYMD = (a, b) => ymd(a) === ymd(b);
 const parseYMD = (s) => { const [y, m, dd] = String(s).split("-").map(Number); const d = new Date(); d.setFullYear(y, (m || 1) - 1, dd || 1); d.setHours(0, 0, 0, 0); return d; };
 
-// Um bloqueio de agenda (agenda_blocks) casa com o slot (cellKey "YYYY-MM-DD-HH")
-// do dono? recur "weekly" bate pelo dia da semana; "once" pela data. allDay pega o
-// dia todo; senão vale SOBREPOSIÇÃO: o slot de call [h, h+1) fica ocupado se o
-// bloqueio toca qualquer pedaço dele (fromHour/toHour aceitam fração, ex. 7.5 =
-// 07:30 — bloqueio de meia hora ocupa o slot inteiro que ele invade).
+// Um bloqueio de agenda (agenda_blocks) casa com o slot (cellKey
+// "YYYY-MM-DD-HH-MM") do dono? recur "weekly" bate pelo dia da semana; "once"
+// pela data. allDay pega o dia todo; senão vale SOBREPOSIÇÃO: o slot de meia
+// hora [t, t+30min) fica ocupado se o bloqueio toca qualquer pedaço dele
+// (fromHour/toHour aceitam fração, ex. 7.5 = 07:30).
 function matchBlock(blocks, key) {
-  const dateStr = key.slice(0, 10);        // YYYY-MM-DD
-  const hour = Number(key.slice(11, 13));  // HH
+  const dateStr = key.slice(0, 10);         // YYYY-MM-DD
+  const hour = Number(key.slice(11, 13));   // HH
+  const minute = Number(key.slice(14, 16)); // MM (00|30)
+  const from = hour + minute / 60, to = from + SLOT_MIN / 60;
   const [y, m, d] = dateStr.split("-").map(Number);
   const weekday = new Date(y, m - 1, d).getDay();
   return blocks.find((b) => {
-    const hourHit = b.allDay || (Number(b.fromHour) < hour + 1 && Number(b.toHour) > hour);
+    const hourHit = b.allDay || (Number(b.fromHour) < to && Number(b.toHour) > from);
     if (!hourHit) return false;
     return b.recur === "weekly" ? Number(b.weekday) === weekday : b.date === dateStr;
   });
@@ -1471,7 +1499,7 @@ export function callBusyKeys(leads, closerId, selfId) {
     const cfg = saasList.find((s) => s.id === o.saas);
     if (stageKind(cfg, o.stage) === "followup") continue; // follow-up não ocupa a agenda
     const d = new Date(o.callAt);
-    if (Number.isFinite(d.getTime())) busy.add(cellKey(d));
+    if (Number.isFinite(d.getTime())) for (const k of occupySlots(d)) busy.add(k);
   }
   return busyView(busy, closerId);
 }
@@ -1484,14 +1512,15 @@ export function integBusyKeys(leads, integratorId, selfId) {
   for (const o of leads || []) {
     if (!integratorId || o.id === selfId || o.integrator !== integratorId || !o.integrationAt) continue;
     const d = new Date(o.integrationAt);
-    if (Number.isFinite(d.getTime())) busy.add(cellKey(d));
+    if (Number.isFinite(d.getTime())) for (const k of occupySlots(d)) busy.add(k);
   }
   return busyView(busy, integratorId);
 }
 
-// Grade de agenda reutilizável: abas de dia (dias úteis) + slots de 1h. Marca
-// como ocupado (e desabilita) o que já está no `busy` do dono. Usada tanto pela
-// call quanto pelo follow-up — o valor escolhido volta em `slotVal` (YYYY-MM-DDTHH:00).
+// Grade de agenda reutilizável: abas de dia (dias úteis) + slots de MEIA HORA.
+// Marca como ocupado (e desabilita) o que já está no `busy` do dono — e como a
+// call dura 1h, marcar as 14h derruba também as 14h30. Usada pela call e pelo
+// follow-up; o valor escolhido volta em `slotVal` (YYYY-MM-DDTHH:MM).
 export function SlotGrid({ days, day, setDay, slot, setSlot, busy }) {
   const custom = !days.some((d) => sameYMD(d, day)); // dia escolhido no calendário (fora dos chips)
   // Trocar de dia limpa o horário se ele era de OUTRO dia (senão o resumo mostraria
@@ -1523,19 +1552,22 @@ export function SlotGrid({ days, day, setDay, slot, setSlot, busy }) {
         </label>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))", gap: 6 }}>
-        {Array.from({ length: CALL_H1 - CALL_H0 }, (_, i) => CALL_H0 + i).map((h) => {
-          const cell = new Date(day); cell.setHours(h, 0, 0, 0);
+        {Array.from({ length: ((CALL_H1 - CALL_H0) * 60) / SLOT_MIN }, (_, i) => {
+          const total = CALL_H0 * 60 + i * SLOT_MIN;
+          return { h: Math.floor(total / 60), m: total % 60 };
+        }).map(({ h, m }) => {
+          const cell = new Date(day); cell.setHours(h, m, 0, 0);
           const key = cellKey(cell);
           const occupied = busy.has(key);
           const bInfo = occupied && busy.info ? busy.info(key) : null;
           const blocked = bInfo?.kind === "block"; // bloqueio manual (agenda) ≠ call já marcada
           const past = cell.getTime() < Date.now();
-          const val = slotVal(day, h);
+          const val = slotVal(day, h, m);
           const sel = slot === val;
           const disabled = occupied || past;
           const title = blocked ? ("agenda bloqueada" + (bInfo.reason ? `: ${bInfo.reason}` : "")) : occupied ? "closer já tem call nesse horário" : past ? "horário já passou" : "marcar";
           return (
-            <button key={h} disabled={disabled} onClick={() => setSlot(val)} title={title}
+            <button key={`${h}-${m}`} disabled={disabled} onClick={() => setSlot(val)} title={title}
               style={{
                 height: 32, borderRadius: "var(--r-2)", fontSize: 11.5, fontFamily: "var(--mono)",
                 background: sel ? "var(--accent)" : occupied ? "var(--neg-soft)" : "var(--bg-1)",
@@ -1543,7 +1575,7 @@ export function SlotGrid({ days, day, setDay, slot, setSlot, busy }) {
                 border: "1px solid " + (sel ? "var(--accent)" : occupied ? "color-mix(in srgb, var(--neg) 30%, var(--line-2))" : "var(--line-2)"),
                 opacity: past && !sel ? 0.45 : 1, cursor: disabled ? "not-allowed" : "pointer",
                 textDecoration: occupied && !blocked ? "line-through" : "none",
-              }}>{blocked ? "🔒 " : ""}{String(h).padStart(2, "0")}:00</button>
+              }}>{blocked ? "🔒 " : ""}{String(h).padStart(2, "0")}:{String(m).padStart(2, "0")}</button>
           );
         })}
       </div>
@@ -1594,17 +1626,19 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   // (dia útil à vista, dentro do expediente, no futuro e livre na agenda).
   useE(() => {
     if (!dest || setupType(dest.kind) !== "followup" || slot) return;
-    const m = String(callSummary?.followup?.quando || "").match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):/);
+    const m = String(callSummary?.followup?.quando || "").match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
     if (!m) return;
     const hh = Number(m[2]);
+    // A sugestão vem em qualquer minuto; ancora na meia hora da grade.
+    const mm = Number(m[3]) < 30 ? 0 : 30;
     if (hh < CALL_H0 || hh >= CALL_H1) return;
     const dd = nextBusinessDays(6);
     const idx = dd.findIndex((d) => cellKey(d).slice(0, 10) === m[1]);
     if (idx < 0) return;
-    const cell = new Date(dd[idx]); cell.setHours(hh, 0, 0, 0);
+    const cell = new Date(dd[idx]); cell.setHours(hh, mm, 0, 0);
     if (cell.getTime() <= Date.now()) return;
     if (closer && callBusyKeys(leads, closer, lead.id).has(cellKey(cell))) return;
-    setDay(dd[idx]); setSlot(`${m[1]}T${m[2]}:00`);
+    setDay(dd[idx]); setSlot(slotVal(dd[idx], hh, mm));
   }, [dest, callSummary]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (dests.length === 0) return null;
