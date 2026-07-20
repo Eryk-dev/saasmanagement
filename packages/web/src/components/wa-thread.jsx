@@ -171,12 +171,20 @@ export function WaTemplateComposer({ threadId, contactName = "", onSent }) {
 // `templates` = [{ group, items:[{ label, text }] }] com os tokens JÁ
 // preenchidos: escolher só ESCREVE na caixa (nunca dispara), porque a última
 // palavra sobre o que vai pro cliente é de quem está na conversa.
-export function WaComposer({ onSend, disabled, placeholder, templates }) {
+export function WaComposer({ onSend, disabled, placeholder, templates, apiRef }) {
   const [text, setText] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState("");
   const [openTpl, setOpenTpl] = React.useState(false);
   const boxRef = React.useRef(null);
+
+  // Atalhos de fora (ex.: "Agendar call") deixam um RASCUNHO na caixa pelo
+  // apiRef — mesma regra dos modelos: escrever nunca é enviar.
+  React.useEffect(() => {
+    if (!apiRef) return;
+    apiRef.current = { insert: (t) => useTemplate(t) };
+    return () => { apiRef.current = null; };
+  });
 
   async function send() {
     const t = text.trim();

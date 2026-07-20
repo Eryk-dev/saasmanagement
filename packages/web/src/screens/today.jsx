@@ -1402,14 +1402,14 @@ export function setupType(kind) {
 
 // Agenda da call: das 07h às 20h em blocos de 1h; a call OCUPA a hora do
 // closer (leads dele com callAt na mesma hora). Fim de semana fora (seg a sex).
-const CALL_H0 = 7, CALL_H1 = 21; // slots 07:00…20:00 (bate com a agenda 7h-21h)
-function nextBusinessDays(n) {
+export const CALL_H0 = 7, CALL_H1 = 21; // slots 07:00…20:00 (bate com a agenda 7h-21h)
+export function nextBusinessDays(n) {
   const out = []; const d = new Date(); d.setHours(0, 0, 0, 0);
   while (out.length < n) { const w = d.getDay(); if (w !== 0 && w !== 6) out.push(new Date(d)); d.setDate(d.getDate() + 1); }
   return out;
 }
 const cellKey = (d) => { const p = (x) => String(x).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}`; };
-const slotVal = (day, hour) => { const p = (x) => String(x).padStart(2, "0"); return `${day.getFullYear()}-${p(day.getMonth() + 1)}-${p(day.getDate())}T${p(hour)}:00`; };
+export const slotVal = (day, hour) => { const p = (x) => String(x).padStart(2, "0"); return `${day.getFullYear()}-${p(day.getMonth() + 1)}-${p(day.getDate())}T${p(hour)}:00`; };
 // YYYY-MM-DD local (pro <input type="date"> e comparação de dia); parseYMD volta
 // pra Date em hora LOCAL (new Date("YYYY-MM-DD") seria UTC → dia anterior no BRT).
 const ymd = (d) => { const p = (x) => String(x).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
@@ -1485,7 +1485,7 @@ export function integBusyKeys(leads, integratorId, selfId) {
 // Grade de agenda reutilizável: abas de dia (dias úteis) + slots de 1h. Marca
 // como ocupado (e desabilita) o que já está no `busy` do dono. Usada tanto pela
 // call quanto pelo follow-up — o valor escolhido volta em `slotVal` (YYYY-MM-DDTHH:00).
-function SlotGrid({ days, day, setDay, slot, setSlot, busy }) {
+export function SlotGrid({ days, day, setDay, slot, setSlot, busy }) {
   const custom = !days.some((d) => sameYMD(d, day)); // dia escolhido no calendário (fora dos chips)
   // Trocar de dia limpa o horário se ele era de OUTRO dia (senão o resumo mostraria
   // um slot que não bate com a grade visível).
