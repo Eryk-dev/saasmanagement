@@ -110,6 +110,11 @@ export const api = {
   // conversa fora da janela de 24h). params = valores das variáveis {{1}}…{{N}}.
   waMetaTemplates: () => req("GET", "/api/whatsapp/templates"),
   waThreadSendTemplate: (id, { name, language, params }) => req("POST", `/api/whatsapp/threads/${id}/send-template`, { name, language, params }),
+  // Ligação pelo cockpit (Calling API): inicia com a oferta SDP do browser,
+  // faz poll do estado (o answer chega via webhook) e encerra.
+  waCallStart: (id, sdp) => req("POST", `/api/whatsapp/threads/${id}/call`, { sdp }),
+  waCallState: (callId) => req("GET", `/api/whatsapp/calls/${encodeURIComponent(callId)}`),
+  waCallEnd: (callId) => req("POST", `/api/whatsapp/calls/${encodeURIComponent(callId)}/end`, {}),
   // Fluxo de permissão de ligação: alertas quentes (lead respondeu → pop-up),
   // resolver alerta e pedido manual de permissão numa conversa.
   waAlerts: () => req("GET", "/api/whatsapp/alerts"),
