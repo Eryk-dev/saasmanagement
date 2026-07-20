@@ -53,8 +53,32 @@ try {
   const ctx = { version: 0, refresh() {}, openForm() {}, openDelete() {} };
   const wrap = (el) => React.createElement(DataContext.Provider, { value: ctx }, el);
 
+  // Estados COM DADOS da Visão geral (os fetches não rodam no SSR): a faixa de
+  // meta e a régua de conversões renderizam com payloads no formato da API.
+  const fakePace = {
+    cash: {
+      target: 60000, collected: 34000, collectedToday: 1000, gap: 26000,
+      expectedToDate: 30000, progress: 0.5667, expectedProgress: 0.5, status: "ahead",
+      projected: 51000, actualDailyPace: 2833, requiredDailyPace: 2600,
+      remainingBusinessDays: 10, receivableCount: 2, forecastWithReceivables: 40000,
+    },
+    plan: {
+      blockedBy: null,
+      wins: { remaining: 4, perDay: 0.4, today: 0 }, calls: { remaining: 16, perDay: 1.6, today: 1 },
+      callsBooked: { remaining: 21, perDay: 2.1, today: 2 }, contacts: { remaining: 70, perDay: 7, today: 12 },
+      leads: { remaining: 88, perDay: 8.8, today: 5 },
+    },
+  };
+  const fakeTeam = {
+    leadsNew: 6, contacted: 5, callsBooked: 4, bookingRate: 80, shown: 2, noShow: 1,
+    showRate: 66.67, wonFromCalls: 1, callWinRate: 25, closeRate: 50, won: 1, revenue: 800,
+    leadToWin: 16.67, goals: { bookingRate: { target: 35, period: "month" } },
+  };
+
   const cases = [
     ["overview", "/src/screens/overview.jsx", "OverviewScreen", { onNav() {}, onOpenLead() {} }, "Visão geral"],
+    ["overview-pace", "/src/screens/overview.jsx", "PaceStrip", { pace: fakePace, onNav() {} }, "dias úteis restantes"],
+    ["overview-conversions", "/src/screens/overview.jsx", "FunnelConversions", { team: fakeTeam, pLabel: "30 dias" }, "comparecimento"],
     ["metrics", "/src/screens/metrics.jsx", "MetricsScreen", {}, "Publicidade"],
     ["expenses", "/src/screens/expenses.jsx", "ExpensesScreen", {}, "Custos operacionais"],
     ["customers", "/src/screens/customers.jsx", "CustomersScreen", {}, "Cliente Teste"],

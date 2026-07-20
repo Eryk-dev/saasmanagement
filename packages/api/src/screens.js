@@ -44,7 +44,7 @@ const ROUTE_SCREENS = [
   ["/api/ad_insights", ["metrics"]],
   ["/api/ai-costs", ["expenses"]],
   ["/api/expenses", ["expenses"]], // CRUD genérico E /api/expenses/summary/:saas
-  ["/api/pipeline-pace/", ["pipeline", "analise"]], // pace de caixa e metas diárias (Pipeline + tela Análise)
+  ["/api/pipeline-pace/", ["pipeline", "analise", "overview"]], // pace de caixa e metas diárias (Pipeline, Análise e faixa de meta da Visão geral)
   ["/api/funnel/", ["pipeline", "analise"]],  // análise do pipeline (Pipeline + tela Análise)
   ["/api/leads", ["pipeline", "today"]],    // inclui /api/leads/:id/proposal (ação do closer)
   ["/api/activities", ["pipeline", "today"]],
@@ -64,6 +64,10 @@ const ROUTE_SCREENS = [
   ["/api/sequences", ["disparos"]],      // sequências de nutrição (drip): CRUD + enroll/wa-sent/metrics/run
   ["/api/sequence_enrollments", ["disparos"]], // progresso das sequências
   ["/api/drip_templates", ["disparos"]], // biblioteca de conteúdo dos passos
+  // Números do inbox (esperando resposta/janelas) no "Precisa de atenção" da
+  // Visão geral — só a LEITURA agregada; conversas/envio seguem só do inbox.
+  // Precede /api/whatsapp (primeiro match vence).
+  ["/api/whatsapp/insights", ["whatsapp", "overview"]],
   ["/api/whatsapp", ["whatsapp"]],       // inbox de conversas (threads/messages/send/read); webhook /api/webhooks/whatsapp fica aberto
   // Bloqueios de agenda: a tela Agenda gerencia; quem marca call (pipeline/Meu dia)
   // precisa LER pra grade de horários respeitar os bloqueios.

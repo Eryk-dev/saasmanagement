@@ -231,6 +231,45 @@ test("Mídia social: papel aparece com a demanda de conteúdo (produção 0 por 
   await app.close();
 });
 
+test("Funil do TIME: contato humano, agendamento, comparecimento, call→ganho e ponta a ponta", async () => {
+  const { app, repo } = await buildApp();
+  // 4 leads que viraram call na janela (safra de calls), sem recorte por pessoa
+  const mkBooked = async (id, stage, extra = {}) => {
+    await repo.create("leads", { id, saas: "leverads", stage, createdAt: now, ...extra });
+    await repo.create("activities", { id: `st_${id}`, saas: "leverads", lead: id, type: "stage", author: "u_sdr", at: now, meta: { from: "Qualificando", to: "Call agendada" } });
+  };
+  await mkBooked("t1", "Ganho", { amount: 800, stageSince: now });                  // compareceu + fechou
+  await mkBooked("t2", "Follow-up");                                                // compareceu, não fechou
+  await mkBooked("t3", "Perdido", { lostReason: "nao_compareceu", stageSince: now }); // NÃO compareceu
+  await mkBooked("t4", "Call agendada");                                            // ainda não resolvido
+  await repo.create("activities", { id: "won_t1", saas: "leverads", lead: "t1", type: "stage", author: "u_clo", at: now, meta: { from: "Call agendada", to: "Ganho" } });
+  // lead só CONTATADO (toque humano, sem call)
+  await repo.create("leads", { id: "t5", saas: "leverads", stage: "Qualificando", createdAt: now });
+  await repo.create("activities", { id: "tq_t5", saas: "leverads", lead: "t5", type: "whatsapp", author: "u_sdr", at: now });
+  // automação NÃO conta como contato do time (author fora da lista de usuários)
+  await repo.create("leads", { id: "t6", saas: "leverads", stage: "Novo lead", createdAt: now });
+  await repo.create("activities", { id: "drip_t6", saas: "leverads", lead: "t6", type: "whatsapp", author: "drip", at: now });
+  // meta de TAXA role-scope anexada pra colorir a régua da Visão geral
+  await repo.create("goals", { id: "gb", saas: "leverads", scope: "role", key: "sdr", metric: "bookingRate", target: 35, period: "month" });
+
+  const t = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json().team;
+  assert.equal(t.leadsNew, 6);
+  assert.equal(t.contacted, 5);      // t1..t5; o drip do t6 não é trabalho do time
+  assert.equal(t.callsBooked, 4);
+  assert.equal(t.bookingRate, 80);   // 4 calls ÷ 5 contatados
+  assert.equal(t.shown, 2);          // t1, t2 (t4 segue sem resolução)
+  assert.equal(t.noShow, 1);         // t3
+  assert.equal(t.showRate, 66.67);   // 2 ÷ 3 resolvidos
+  assert.equal(t.wonFromCalls, 1);   // t1
+  assert.equal(t.callWinRate, 25);   // 1 ÷ 4 agendadas
+  assert.equal(t.closeRate, 50);     // 1 ÷ 2 realizadas
+  assert.equal(t.won, 1);            // transição do t1 pra Ganho na janela
+  assert.equal(t.revenue, 800);
+  assert.equal(t.leadToWin, 16.67);  // 1 ganho ÷ 6 leads criados
+  assert.equal(t.goals.bookingRate.target, 35);
+  await app.close();
+});
+
 test("404 pra produto inexistente", async () => {
   const { app } = await buildApp();
   assert.equal((await app.inject({ url: "/api/scoreboard/nada" })).statusCode, 404);
