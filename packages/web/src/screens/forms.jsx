@@ -13,7 +13,35 @@ import { PageHead, Card } from "../components/viz.jsx";
 // por vez, branching por opção, tema por marca. Lista → editor (com preview
 // server-side em iframe) → respostas. A página pública vive na API (/f/:id).
 
-const { useState, useEffect, useRef, useCallback } = React;
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+// Filtro de período da tela. 90 dias existe porque o ciclo de venda passa de um
+// mês: numa janela de 30d o lead que fecha aparece sem a submissão que o
+// originou (o corte é pela data da SUBMISSÃO), e a coluna Fecharam vive vazia.
+const PERIOD_PRESETS = [["hoje", "hoje"], ["ontem", "ontem"], ["7", "7 dias"], ["30", "30 dias"], ["90", "90 dias"], ["", "tudo"]];
+
+const dayStart = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.toISOString(); };
+const dayEnd = (d) => { const x = new Date(d); x.setHours(23, 59, 59, 999); return x.toISOString(); };
+
+// Range SEMPRE ancorado em fronteira de dia: o valor fica estável entre
+// re-renders (um since com Date.now() cru mudava a cada tick do tempo real,
+// re-disparava o fetch e fazia a tela piscar "carregando…" sem parar).
+function periodRange(preset, custom = { since: "", until: "" }) {
+  const now = new Date();
+  if (preset === "hoje") return { since: dayStart(now), until: "" };
+  if (preset === "ontem") { const y = new Date(now); y.setDate(y.getDate() - 1); return { since: dayStart(y), until: dayEnd(y) }; }
+  if (preset === "custom") return {
+    since: custom.since ? dayStart(custom.since + "T12:00:00") : "",
+    until: custom.until ? dayEnd(custom.until + "T12:00:00") : "",
+  };
+  if (!preset) return { since: "", until: "" };
+  const from = new Date(now); from.setDate(from.getDate() - (Number(preset) - 1));
+  return { since: dayStart(from), until: "" }; // "últimos N dias" = N dias corridos incluindo hoje
+}
+
+const periodLabel = (preset, custom) => (preset === "custom"
+  ? [custom?.since, custom?.until].filter(Boolean).join(" a ") || "personalizado"
+  : (PERIOD_PRESETS.find(([k]) => k === preset) || [null, "período"])[1]);
 
 const QUESTION_TYPES = [
   ["text", "Texto curto"], ["textarea", "Texto longo"], ["email", "E-mail"],
@@ -57,6 +85,9 @@ function FormsScreen({ saasId }) {
   const [submissions, setSubmissions] = useState([]);
   const [view, setView] = useState({ mode: "list" }); // list | edit | subs
   const [toast, setToast] = useState(null);
+  const [preset, setPreset] = useState("30"); // chave em PERIOD_PRESETS ou "custom"
+  const [custom, setCustom] = useState({ since: "", until: "" });
+  const range = useMemo(() => periodRange(preset, custom), [preset, custom.since, custom.until]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = useCallback(async () => {
     if (!active) return;
@@ -69,16 +100,29 @@ function FormsScreen({ saasId }) {
     for (const s of subs) c[s.form] = (c[s.form] || 0) + 1;
     subs.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
     setForms(fs); setCounts(c); setSubmissions(subs);
-    // Métricas de funil (30d) por form publicado — visitas e conversão da lista.
-    const since = new Date(Date.now() - 30 * 86400e3).toISOString();
-    const pub = fs.filter((f) => f.status === "published");
-    const results = await Promise.allSettled(pub.map((f) => api.formFunnel(f.id, { since })));
-    const st = {};
-    results.forEach((r, i) => { if (r.status === "fulfilled") st[pub[i].id] = r.value; });
-    setStats(st);
   }, [active]);
 
   useEffect(() => { load(); }, [load, version]);
+
+  // Métricas de funil por form publicado (tiles do topo E tabela do A/B saem
+  // daqui, então o período manda nas duas). Fetch SEPARADO do load: trocar de
+  // período não precisa rebuscar forms e respostas, que não dependem da janela.
+  const pubIds = useMemo(
+    () => forms.filter((f) => f.status === "published").map((f) => f.id).join(","),
+    [forms],
+  );
+  useEffect(() => {
+    const ids = pubIds ? pubIds.split(",") : [];
+    if (!ids.length) { setStats({}); return; }
+    let alive = true;
+    Promise.allSettled(ids.map((id) => api.formFunnel(id, range))).then((results) => {
+      if (!alive) return;
+      const st = {};
+      results.forEach((r, i) => { if (r.status === "fulfilled") st[ids[i]] = r.value; });
+      setStats(st);
+    });
+    return () => { alive = false; };
+  }, [pubIds, range.since, range.until, version]);
 
   // Troca de produto (workspace) volta pra lista e limpa as linhas antigas —
   // editor/respostas do produto anterior não podem ficar abertos sob a marca
@@ -117,6 +161,29 @@ function FormsScreen({ saasId }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <PageHead title="Formulários" sub="formulários de captação · o envio cria o lead no funil">
+        {/* O período manda nos tiles e na tabela do A/B ao mesmo tempo: são a
+            mesma resposta do funil, ler as duas em janelas diferentes engana. */}
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          {PERIOD_PRESETS.map(([key, label]) => (
+            <button
+              key={key || "tudo"} onClick={() => setPreset(key)}
+              style={{
+                ...chromeBtnStyleSmall, height: 30, padding: "0 11px",
+                ...(preset === key ? { background: "var(--btn-bg)", color: "var(--btn-fg)", fontWeight: 600 } : {}),
+              }}
+            >{label}</button>
+          ))}
+          <input
+            type="date" value={custom.since} max={custom.until || undefined}
+            onChange={(e) => { setCustom((c) => ({ ...c, since: e.target.value })); setPreset("custom"); }}
+            style={{ ...inputStyle, height: 30, width: 138, fontSize: 12 }}
+          />
+          <input
+            type="date" value={custom.until} min={custom.since || undefined}
+            onChange={(e) => { setCustom((c) => ({ ...c, until: e.target.value })); setPreset("custom"); }}
+            style={{ ...inputStyle, height: 30, width: 138, fontSize: 12 }}
+          />
+        </div>
         <PrimaryButton onClick={() => setView({ mode: "edit", form: null })}>+ novo formulário</PrimaryButton>
       </PageHead>
 
@@ -179,7 +246,7 @@ function FormsScreen({ saasId }) {
                   {pub ? (
                     <>
                       <div style={{ display: "flex", gap: 22, marginTop: 18, padding: "14px 16px", background: "var(--bg-inset)", border: "1px solid var(--line-faint)", borderRadius: "var(--r-3)", flexWrap: "wrap" }}>
-                        {[[window.fmt.int(visits), "visitas · 30d"], [window.fmt.int(starts), `começaram · ${pct(starts, visits)}`], [window.fmt.int(leads), `leads · ${pct(leads, starts)}`]].map(([value, label]) => <div key={label}><div className="tnum" style={{ fontSize: 18, fontWeight: 700 }}>{value}</div><div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{label}</div></div>)}
+                        {[[window.fmt.int(visits), `visitas · ${periodLabel(preset, custom)}`], [window.fmt.int(starts), `começaram · ${pct(starts, visits)}`], [window.fmt.int(leads), `leads · ${pct(leads, starts)}`]].map(([value, label]) => <div key={label}><div className="tnum" style={{ fontSize: 18, fontWeight: 700 }}>{value}</div><div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{label}</div></div>)}
                         <button onClick={() => setView({ mode: "subs", form: f })} style={{ textAlign: "left" }}><div className="tnum" style={{ fontSize: 18, fontWeight: 700, color: "var(--pos)" }}>{pct(leads, visits)}</div><div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>conversão total</div></button>
                       </div>
                       {abVariants.length > 1 && (
@@ -1021,34 +1088,16 @@ function withFormInsightAction(it, { form, adObjects }) {
 // ontem/3/7/30/tudo + data personalizada), tiles do topo, RESULTADOS DOS
 // TESTES A/B agrupados por dor (veredito de campeã por grupo) e o funil de
 // drop-off. A lista de forms fica logo abaixo, só gestão.
-const DASH_PRESETS = [["hoje", "hoje"], ["ontem", "ontem"], ["3", "3 dias"], ["7", "7 dias"], ["30", "30 dias"], ["", "tudo"]];
+const DASH_PRESETS = PERIOD_PRESETS;
 
 function FormsDashboard({ forms }) {
   const [formId, setFormId] = useState(forms[0]?.id);
   const form = forms.find((f) => f.id === formId) || forms[0];
-  const [preset, setPreset] = useState("30"); // chave em DASH_PRESETS ou "custom"
+  const [preset, setPreset] = useState("30"); // chave em PERIOD_PRESETS ou "custom"
   const [custom, setCustom] = useState({ since: "", until: "" });
   const [data, setData] = useState(null);
 
-  const dayStart = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.toISOString(); };
-  const dayEnd = (d) => { const x = new Date(d); x.setHours(23, 59, 59, 999); return x.toISOString(); };
-  // Range SEMPRE ancorado em fronteira de dia: o valor é estável entre
-  // re-renders (um since com Date.now() cru mudava a cada tick do tempo real,
-  // re-disparava o fetch e fazia a tela piscar "carregando…" sem parar).
-  const range = (() => {
-    const now = new Date();
-    if (preset === "hoje") return { since: dayStart(now), until: "" };
-    if (preset === "ontem") { const y = new Date(now); y.setDate(y.getDate() - 1); return { since: dayStart(y), until: dayEnd(y) }; }
-    if (preset === "custom") {
-      return {
-        since: custom.since ? dayStart(custom.since + "T12:00:00") : "",
-        until: custom.until ? dayEnd(custom.until + "T12:00:00") : "",
-      };
-    }
-    if (!preset) return { since: "", until: "" };
-    const from = new Date(now); from.setDate(from.getDate() - (Number(preset) - 1));
-    return { since: dayStart(from), until: "" }; // "últimos N dias" = N dias corridos incluindo hoje
-  })();
+  const range = periodRange(preset, custom);
 
   useEffect(() => {
     if (!form) return;
