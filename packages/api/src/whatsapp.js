@@ -69,6 +69,36 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     try { await post({ status: "read", message_id: messageId }, phoneId); } catch { /* opcional */ }
   }
 
+  // ── Calling API (ligação pelo WhatsApp direto do cockpit) ──────────────────
+  // Chamada INICIADA pelo negócio: manda a oferta SDP (não-trickle, com os ICE
+  // candidates já dentro) e o WhatsApp do lead toca. O SDP answer volta pelo
+  // webhook `calls` quando o lead atender. Exige "Allow voice calls" ligado no
+  // número e a permissão de ligação aceita na conversa.
+  async function initiateCall(to, sdp, { phoneId } = {}) {
+    const pid = phoneId || phoneNumberId;
+    if (!token || !pid) throw new Error("WhatsApp não configurado — defina WHATSAPP_TOKEN e o número");
+    const res = await f(`${GRAPH}/${pid}/calls`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ messaging_product: "whatsapp", to: digits(to), action: "connect", session: { sdp_type: "offer", sdp: String(sdp || "") } }),
+    });
+    const text = await res.text();
+    let body; try { body = JSON.parse(text); } catch { body = {}; }
+    if (res.status >= 400 || body.error) {
+      const err = new Error(`WhatsApp Calling -> ${res.status}: ${body.error?.message || text.slice(0, 300)}`);
+      err.status = res.status; err.code = body.error?.code;
+      throw err;
+    }
+    return { callId: body.calls?.[0]?.id || "" };
+  }
+
+  // Encerra (ou cancela o toque de) uma chamada iniciada por nós. Best-effort:
+  // chamada que o lead já encerrou volta erro da Meta e tudo bem.
+  async function terminateCall(callId, { phoneId } = {}) {
+    if (!callId) return;
+    await post({ call_id: callId, action: "terminate" }, phoneId);
+  }
+
   async function get(path) {
     const res = await f(`${GRAPH}/${path}`, { headers: { authorization: `Bearer ${token}` } });
     const text = await res.text();
@@ -193,7 +223,7 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     return null;
   }
 
-  return { configured, sendText, sendTemplate, sendCallPermission, markRead, verifyWebhook, numberInfo, listTemplates, tokenWabaIds };
+  return { configured, sendText, sendTemplate, sendCallPermission, markRead, verifyWebhook, numberInfo, listTemplates, tokenWabaIds, initiateCall, terminateCall };
 }
 
 // Número em dígitos (E.164 sem +) pra enviar e pra casar o recebido com o lead.

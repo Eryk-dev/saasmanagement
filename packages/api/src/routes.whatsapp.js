@@ -112,7 +112,9 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
           }
           // Mensagens + status (field "messages"). O status "failed" com código de
           // não-entregável marca o número como inválido (dentro do updateStatus).
-          if (v.messages || v.statuses || field === "messages") {
+          // Webhook de CHAMADA (field "calls") pode trazer `statuses` junto —
+          // não pode cair aqui, por isso o field exclui.
+          if (field !== "calls" && (v.messages || v.statuses || field === "messages")) {
             const contactName = v.contacts?.[0]?.profile?.name || "";
             // Por QUAL número a mensagem entrou: fica na thread (a resposta sai
             // pelo mesmo número) e etiqueta conversa nova com o produto dono.
@@ -135,6 +137,45 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
             }
             for (const st of v.statuses || []) {
               await updateStatus(repo, st.id, st.status, st.errors?.[0] || "");
+            }
+          } else if (field === "calls" || v.calls) {
+            // Ligação pelo cockpit (Calling API): o webhook traz o SDP answer
+            // quando o lead atende e os eventos de recusa/encerramento. Parse
+            // DEFENSIVO (event/status variam entre versões da Graph); id que a
+            // gente não conhece (ex.: chamada iniciada pelo lead) só loga.
+            // Status de chamada pode vir em `statuses` (não em `calls`): aplica
+            // no registro da chamada quando o id casa.
+            for (const st of v.statuses || []) {
+              const call = st.id ? await repo.get("wa_calls", st.id) : null;
+              if (call) await repo.update("wa_calls", call.id, { lastEvent: String(st.status || "").toLowerCase(), updatedAt: new Date().toISOString() });
+            }
+            for (const c of v.calls || []) {
+              const call = c.id ? await repo.get("wa_calls", c.id) : null;
+              if (!call) { req.log?.info?.({ call: c.id, event: c.event || c.status }, "evento de chamada sem registro"); continue; }
+              const ev = String(c.event || c.status || "").toLowerCase();
+              const patch = { lastEvent: ev || call.lastEvent || "", updatedAt: new Date().toISOString() };
+              if (c.session?.sdp) {
+                patch.sdpAnswer = c.session.sdp;
+                patch.status = "accepted";
+                patch.answeredAt = call.answeredAt || new Date().toISOString();
+              } else if (/reject/.test(ev)) {
+                patch.status = "rejected"; patch.endedAt = new Date().toISOString();
+              } else if (/terminat|ended|hangup/.test(ev)) {
+                patch.status = call.status === "ringing" ? "missed" : "ended";
+                patch.endedAt = new Date().toISOString();
+                if (Number(c.duration) > 0) patch.duration = Number(c.duration);
+              }
+              await repo.update("wa_calls", call.id, patch);
+              // Encerrou/recusou/não atendeu: vira uma linha no histórico da
+              // conversa (dedup pelo id derivado — a Meta re-entrega webhook).
+              if (patch.endedAt) {
+                const secs = patch.duration || (call.answeredAt ? Math.round((new Date(patch.endedAt) - new Date(call.answeredAt)) / 1000) : 0);
+                const dur = secs >= 60 ? `${Math.round(secs / 60)} min` : secs > 0 ? `${secs}s` : "";
+                const label = patch.status === "rejected" ? "📞 ligação recusada"
+                  : patch.status === "missed" ? "📞 ligação não atendida"
+                  : `📞 ligação pelo cockpit${dur ? ` · ${dur}` : ""}`;
+                await recordMessage(repo, { id: `${call.id}:log`, phone: call.phone, direction: "out", text: label, status: "sent", author: call.author || "cockpit", waPhoneId: call.waPhoneId || "", saas: call.saas || "" });
+              }
             }
           } else if (field === "user_preferences") {
             // Opt-out/opt-in de marketing nativo ("parar promoções") → suprime o
@@ -330,6 +371,53 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
       try { await closeThreadAlerts(repo, threadId(phone), req.authUser?.id || "cockpit"); } catch { /* alerta não trava o envio */ }
       return { ok: true, messageId };
     } catch (err) { return sendErrorReply(reply, err); }
+  });
+
+  // ── Ligação pelo cockpit (Calling API + WebRTC no browser) ──────────────────
+  // O browser gera a oferta SDP (não-trickle), a gente inicia a chamada na Meta
+  // e o WhatsApp do lead toca. O answer chega pelo webhook `calls` e o browser
+  // busca via GET do estado (poll de 1s enquanto toca). Permissão aceita na
+  // conversa é OBRIGATÓRIA (a Meta recusa sem ela; o gate aqui dá erro legível).
+  app.post("/api/whatsapp/threads/:id/call", async (req, reply) => {
+    const phone = threadId(req.params.id);
+    const sdp = String(req.body?.sdp || "");
+    if (!phone) return reply.code(400).send({ error: "número inválido" });
+    if (!sdp.includes("v=0")) return reply.code(400).send({ error: "oferta SDP inválida" });
+    const thread = await findThreadByPhone(repo, phone);
+    if (thread?.callFlow?.permission !== "accepted") {
+      return reply.code(409).send({ error: "esse lead ainda não aceitou receber ligação — peça a permissão na conversa primeiro" });
+    }
+    const phoneId = await resolvePhoneId({ thread });
+    if (phoneId === null) return noNumberReply(reply, thread?.saas || "");
+    if (!wa.configured(phoneId)) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
+    try {
+      const { callId } = await wa.initiateCall(thread?.phone || phone, sdp, { phoneId });
+      if (!callId) return reply.code(422).send({ error: "a Meta não devolveu o id da chamada" });
+      await repo.create("wa_calls", {
+        id: callId, thread: thread?.id || phone, phone: thread?.phone || phone,
+        leadId: thread?.leadId || null, saas: thread?.saas || "", waPhoneId: phoneId || "",
+        status: "ringing", author: req.authUser?.id || "cockpit", startedAt: new Date().toISOString(),
+      });
+      return { ok: true, callId };
+    } catch (err) { return sendErrorReply(reply, err); }
+  });
+
+  // Estado da chamada (poll do browser): traz o sdpAnswer quando o lead atende.
+  app.get("/api/whatsapp/calls/:id", async (req, reply) => {
+    const call = await repo.get("wa_calls", req.params.id);
+    if (!call) return reply.code(404).send({ error: "Not found" });
+    return call;
+  });
+
+  // Encerrar/cancelar a chamada pelo cockpit (o webhook confirma depois).
+  app.post("/api/whatsapp/calls/:id/end", async (req, reply) => {
+    const call = await repo.get("wa_calls", req.params.id);
+    if (!call) return reply.code(404).send({ error: "Not found" });
+    try { await wa.terminateCall(call.id, { phoneId: call.waPhoneId || undefined }); }
+    catch { /* lead pode já ter desligado — o estado local vale */ }
+    const patch = { status: call.status === "ringing" ? "canceled" : "ended", endedAt: call.endedAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
+    await repo.update("wa_calls", call.id, patch);
+    return { ok: true, ...patch };
   });
 
   // Enviar pela conversa (inbox) — id é o número em dígitos, funciona com ou sem

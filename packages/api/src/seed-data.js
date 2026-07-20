@@ -47,6 +47,7 @@ export const COLLECTIONS = {
   wa_threads: [],    // inbox de WhatsApp: índice de conversas, 1 por número (wa-store.js)
   wa_messages: [],   // inbox de WhatsApp: TODAS as mensagens in/out (wa-store.js)
   wa_alerts: [],     // alertas quentes do fluxo de ligação: lead respondeu → pop-up pro SDR (wa-call-flow.js)
+  wa_calls: [],      // ligações pelo WhatsApp direto do cockpit (Calling API): estado da chamada + SDP answer do webhook + log (routes.whatsapp.js)
   offers: [],        // links de pagamento das ofertas por produto (ferramenta)
   campaigns: [],     // disparos (e-mail + WhatsApp) pros leads qualificados por produto (ferramenta)
   sequences: [],     // sequências de nutrição (drip): passos por canal + gatilho por etapa

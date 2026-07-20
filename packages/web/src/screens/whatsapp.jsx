@@ -2,6 +2,7 @@ import React from "react";
 import { PageHead } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { WaBubbles, WaComposer, WaTemplateComposer, waWindowOpen } from "../components/wa-thread.jsx";
+import { WaCallButton } from "../components/wa-call.jsx";
 import { waTemplatesFor } from "../lib/wa-templates.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
@@ -374,9 +375,13 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
                     {prettyPhone(current.phone)}{current.stage ? ` · ${current.stage}` : ""}
                   </div>
                 </div>
-                {/* Fluxo de permissão de ligação: estado na conversa + pedido manual. */}
+                {/* Fluxo de permissão de ligação: estado na conversa + pedido manual.
+                    Permissão aceita libera a ligação DIRETO do cockpit (WebRTC). */}
                 {current.callFlow?.permission === "accepted" && (
-                  <span title="o lead aceitou o pedido nativo de ligação" style={{ ...flowChip, background: "var(--pos)", color: "#fff" }}>✆ pode ligar</span>
+                  <>
+                    <span title="o lead aceitou o pedido nativo de ligação" style={{ ...flowChip, background: "var(--pos)", color: "#fff" }}>✆ pode ligar</span>
+                    {configured && <WaCallButton threadId={current.id} contactName={current.name || prettyPhone(current.phone)} />}
+                  </>
                 )}
                 {current.callFlow?.permission === "pending" && (
                   <span title="pedido de permissão de ligação enviado, sem resposta ainda" style={{ ...flowChip, border: "1px solid var(--line-2)", color: "var(--fg-3)" }}>✆ permissão pedida</span>
