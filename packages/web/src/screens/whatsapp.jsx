@@ -11,7 +11,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { waLink, leadTier } from "../lib/ui.js";
 import { useIsMobile } from "../lib/responsive.js";
 import { clientSummary, buildQueue, ACTION_LABELS } from "./today.jsx";
-import { currentUser } from "../lib/users.js";
+import { currentUser, usersByRole } from "../lib/users.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 
@@ -650,22 +650,39 @@ function LinkLeadButton({ thread, onLinked }) {
 
 function MyQueueStrip({ product, version, currentLeadId, onPick }) {
   const me = currentUser()?.id || "";
+  // Onde a pessoa parou NESTA sessão: a lista é longa (a fila do SDR passa de
+  // 100) e o item só sai dela quando o toque é registrado, então sem esta
+  // marca não dá pra saber quem já foi atendido.
+  const [opened, setOpened] = React.useState(() => new Set());
   const items = React.useMemo(() => {
     if (!me) return [];
     try {
       const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === product?.id) || product;
+      const leads = window.SEED?.LEADS || [];
       // Critério: o que se resolve POR MENSAGEM. Entra tudo da fila da pessoa
       // (1º contato, tentativa, retomada, no-show, reativação, follow-up) mais
       // a confirmação de call, que é mensagem também. Fica de fora só a call/
       // integração em si — essas se atendem no Meet, não aqui.
       // (Filtrar por fase `sdr` esvaziava a faixa pra closer e CS: os cards
       // deles vêm por `closer`/`integrator`, nunca por `owner`.)
-      return buildQueue(window.SEED?.LEADS || [], saasCfg, me).hoje
-        .filter((i) => !i.done && (i.confirm || (i.kind !== "call" && i.kind !== "integracao")))
-        .slice(0, 3);
+      const byMsg = (i) => !i.done && (i.confirm || (i.kind !== "call" && i.kind !== "integracao"));
+      const mine = buildQueue(leads, saasCfg, me).hoje.filter(byMsg).map((i) => ({ ...i, pool: false }));
+      // A fila do SDR vem logo abaixo da minha: o inbox é onde ela se resolve,
+      // uma conversa atrás da outra, sem trocar de tela.
+      const pool = usersByRole("sdr").filter((u) => u.id !== me)
+        .flatMap((u) => buildQueue(leads, saasCfg, u.id).hoje.filter(byMsg).map((i) => ({ ...i, pool: true })));
+      const seen = new Set();
+      return [...mine, ...pool].filter((i) => {
+        const k = i.confirmWindow ? `${i.l.id}-${i.confirmWindow}` : i.l.id;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
     } catch { return []; }
   }, [me, product?.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!items.length) return null;
+  const mineCount = items.filter((i) => !i.pool).length;
+  const poolStart = items.findIndex((i) => i.pool);
   const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
   const timeOf = (i) => !i.due ? "agora"
     : i.due.t < startToday.getTime() ? "atrasado"
@@ -675,28 +692,54 @@ function MyQueueStrip({ product, version, currentLeadId, onPick }) {
   return (
     <div style={{ margin: "12px var(--pad-x) 0", padding: "8px 14px 7px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "0 4px 3px" }}>
-        <span className="mono" style={{ fontSize: 9.5, letterSpacing: 0.8, textTransform: "uppercase", color: "var(--fg-4)" }}>Minhas atividades · hoje</span>
+        <span className="mono" style={{ fontSize: 9.5, letterSpacing: 0.8, textTransform: "uppercase", color: "var(--fg-4)" }}>
+          Fila de hoje{mineCount ? ` · ${mineCount} minha${mineCount > 1 ? "s" : ""}` : ""}
+        </span>
+        <span className="mono tnum" style={{ fontSize: 9.5, color: "var(--fg-4)" }}>{items.length} no total</span>
         <span style={{ flex: 1 }} />
+        {opened.size > 0 && (
+          <button onClick={() => setOpened(new Set())} title="limpa as marcas de quem você já abriu nesta sessão"
+            className="mono" style={{ fontSize: 10, color: "var(--fg-4)", background: "none", border: "none", cursor: "pointer", padding: 0, marginRight: 10 }}>
+            {opened.size} atendido{opened.size > 1 ? "s" : ""} · limpar
+          </button>
+        )}
         <a href="#today" style={{ fontSize: 11, color: "var(--fg-3)", textDecoration: "none" }}>ver a fila →</a>
       </div>
-      {items.map((i) => {
-        const on = !!currentLeadId && i.l.id === currentLeadId;
-        const late = i.due && i.due.t < startToday.getTime();
-        const hasPhone = !!String(i.l.phone || "").replace(/\D/g, "");
-        return (
-          <button key={i.confirmWindow ? `${i.l.id}-${i.confirmWindow}` : i.l.id} onClick={() => hasPhone && onPick(i.l)}
-            title={hasPhone ? "Abrir a conversa deste lead" : "lead sem telefone"} disabled={!hasPhone}
-            style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "4px", border: "none", borderRadius: "var(--r-1)",
-              background: on ? "var(--accent-soft)" : "transparent", cursor: hasPhone ? "pointer" : "default", textAlign: "left", opacity: hasPhone ? 1 : 0.55 }}>
-            <span className="mono tnum" style={{ fontSize: 10.5, width: 56, flexShrink: 0, color: late ? "var(--neg)" : "var(--fg-4)" }}>{timeOf(i)}</span>
-            <span style={{ fontSize: 10.5, lineHeight: "17px", padding: "0 7px", borderRadius: "var(--r-1)", background: "var(--bg-2)", color: "var(--fg-3)", flexShrink: 0, whiteSpace: "nowrap" }}>{labelOf(i)}</span>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: on ? "var(--accent)" : "var(--fg-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{i.l.name}</span>
-            {i.l.company && <span style={{ fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 3 }}>{i.l.company}</span>}
-            <span style={{ flex: 1 }} />
-            <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", flexShrink: 0 }}>abrir →</span>
-          </button>
-        );
-      })}
+      {/* Lista rolável: a fila do SDR é longa e a faixa não pode comer a tela. */}
+      <div style={{ maxHeight: 132, overflowY: "auto" }}>
+        {items.map((i, idx) => {
+          const on = !!currentLeadId && i.l.id === currentLeadId;
+          const late = i.due && i.due.t < startToday.getTime();
+          const hasPhone = !!String(i.l.phone || "").replace(/\D/g, "");
+          const done = opened.has(i.l.id);
+          const row = (
+            <button key={i.confirmWindow ? `${i.l.id}-${i.confirmWindow}` : i.l.id}
+              onClick={() => { if (!hasPhone) return; setOpened((s) => new Set(s).add(i.l.id)); onPick(i.l); }}
+              title={hasPhone ? "Abrir a conversa deste lead" : "lead sem telefone"} disabled={!hasPhone}
+              style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "4px", border: "none", borderRadius: "var(--r-1)",
+                background: on ? "var(--accent-soft)" : "transparent", cursor: hasPhone ? "pointer" : "default", textAlign: "left", opacity: !hasPhone ? 0.55 : done && !on ? 0.5 : 1 }}>
+              <span className="mono tnum" style={{ fontSize: 10.5, width: 56, flexShrink: 0, color: late ? "var(--neg)" : "var(--fg-4)" }}>{timeOf(i)}</span>
+              <span style={{ fontSize: 10.5, lineHeight: "17px", padding: "0 7px", borderRadius: "var(--r-1)", background: "var(--bg-2)", color: "var(--fg-3)", flexShrink: 0, whiteSpace: "nowrap" }}>{labelOf(i)}</span>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: on ? "var(--accent)" : "var(--fg-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{i.l.name}</span>
+              {i.l.company && <span style={{ fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 3 }}>{i.l.company}</span>}
+              <span style={{ flex: 1 }} />
+              <span className="mono" style={{ fontSize: 10, color: done ? "var(--pos)" : "var(--fg-4)", flexShrink: 0 }}>{done ? "✓ aberto" : "abrir →"}</span>
+            </button>
+          );
+          // Divisória entre a minha fila e o pool do SDR.
+          if (idx === poolStart && poolStart > 0) {
+            return (
+              <React.Fragment key={`sep-${i.l.id}`}>
+                <div className="mono" style={{ fontSize: 9, letterSpacing: 0.8, textTransform: "uppercase", color: "var(--fg-4)", padding: "6px 4px 2px", borderTop: "1px solid var(--line-faint)", marginTop: 4 }}>
+                  Fila do SDR · {items.length - poolStart}
+                </div>
+                {row}
+              </React.Fragment>
+            );
+          }
+          return row;
+        })}
+      </div>
     </div>
   );
 }
