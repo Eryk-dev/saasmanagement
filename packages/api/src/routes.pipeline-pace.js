@@ -6,6 +6,9 @@ import { kindOf, isWon, isLoss, TOUCH_TYPES, isNoShowStage } from "./stages.js";
 
 const DAY = 86_400_000;
 const FORWARD_KINDS = new Set(["proposta", "followup", "integracao", "ganho"]);
+// Meta de caixa quando o produto ainda não tem a dele (product.monthlyCashTarget,
+// editável na tela Metas → Empresa). Exportada pra tela de Metas mostrar o padrão.
+export const DEFAULT_CASH_TARGET = 120_000;
 const DATE_FMT = new Intl.DateTimeFormat("en-CA", {
   timeZone: "America/Sao_Paulo",
   year: "numeric",
@@ -116,7 +119,8 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   const collectedToday = round2(paidMonth
     .filter((i) => dayKey(i.paidAt) === today)
     .reduce((a, i) => a + (Number(i.amount) || 0), 0));
-  const target = Number(product.monthlyCashTarget) > 0 ? Number(product.monthlyCashTarget) : 120_000;
+  const targetConfigured = Number(product.monthlyCashTarget) > 0;
+  const target = targetConfigured ? Number(product.monthlyCashTarget) : DEFAULT_CASH_TARGET;
   const gap = round2(Math.max(0, target - collected));
   const expectedToDate = round2(target * (calendar.elapsed / Math.max(1, calendar.total)));
   const actualDailyPace = calendar.elapsed > 0 ? round2(collected / calendar.elapsed) : 0;
@@ -243,6 +247,7 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     today,
     cash: {
       target,
+      targetConfigured, // false = rodando no padrão; a UI aponta pra Metas → Empresa
       collected,
       collectedToday,
       gap,

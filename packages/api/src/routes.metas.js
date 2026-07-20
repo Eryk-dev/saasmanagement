@@ -4,6 +4,12 @@
 // MESMA fonte que o scoreboard e a Visão geral já leem (goalFor: user vence
 // role). Setar uma meta aqui passa a valer em todo campo que mostra meta;
 // limpar volta pro benchmark padrão.
+//
+// Além das metas por vaga/pessoa, a tela edita a META DA EMPRESA: a meta de
+// venda do mês (caixa), gravada em product.monthlyCashTarget — é ela que a
+// faixa "Meta do mês" da Visão geral e a Análise do pipeline perseguem.
+
+import { DEFAULT_CASH_TARGET } from "./routes.pipeline-pace.js";
 
 // Catálogo das métricas por vaga: rótulo, unidade e o benchmark padrão (o valor
 // que a Visão geral usa quando não há meta configurada). `default: null` = sem
@@ -85,17 +91,34 @@ export function registerMetasRoutes(app, repo) {
     const userGoals = goals
       .filter((g) => g.scope === "user" && ALL_METRICS.has(g.metric))
       .map((g) => ({ key: g.key, metric: g.metric, target: Number(g.target) }));
-    return { saas: product.id, roles, users, userGoals };
+    // Meta da empresa: venda do mês em caixa (null = rodando no padrão).
+    const company = {
+      cashTarget: Number(product.monthlyCashTarget) > 0 ? Number(product.monthlyCashTarget) : null,
+      cashTargetDefault: DEFAULT_CASH_TARGET,
+    };
+    return { saas: product.id, roles, users, userGoals, company };
   });
 
   // Salva as metas (upsert/delete na collection goals). Cada item:
   // { scope:"role"|"user", key, metric, target }. target vazio/<=0 = remove
   // (volta pro benchmark). period sempre "month" (o front escala pro período).
+  // `company.cashTarget` (opcional) grava a meta de venda do mês no produto:
+  // positivo salva, vazio/zero limpa (a faixa volta pro padrão).
   app.put("/api/metas/:saas", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "produto não encontrado" });
     const incoming = Array.isArray(req.body?.goals) ? req.body.goals : null;
     if (!incoming) return reply.code(400).send({ error: "goals deve ser uma lista" });
+
+    let companySaved = false;
+    if (req.body?.company && typeof req.body.company === "object" && "cashTarget" in req.body.company) {
+      const num = Number(String(req.body.company.cashTarget ?? "").trim()); // "" → NaN (não 0)
+      const next = Number.isFinite(num) && num > 0 ? num : null;
+      if (next !== (Number(product.monthlyCashTarget) > 0 ? Number(product.monthlyCashTarget) : null)) {
+        await repo.update("products", product.id, { monthlyCashTarget: next });
+      }
+      companySaved = true;
+    }
 
     const goals = (await repo.list("goals")).filter((g) => (!g.saas || g.saas === product.id));
     // Acha a meta existente pelo CONTEÚDO (pega também as criadas pela tela
@@ -118,6 +141,6 @@ export function registerMetasRoutes(app, repo) {
         await repo.remove("goals", existing.id); removed++;          // limpar = voltar pro padrão
       }
     }
-    return { ok: true, created, updated, removed };
+    return { ok: true, created, updated, removed, companySaved };
   });
 }

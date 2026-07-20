@@ -659,6 +659,11 @@ function PaceStrip({ pace, onNav }) {
             hoje {money(c.collectedToday)} · ritmo {money(c.actualDailyPace)}/dia útil
             {c.requiredDailyPace != null ? ` · precisa ${money(c.requiredDailyPace)}/dia` : ""} · {int(c.remainingBusinessDays)} dias úteis restantes
           </div>
+          {c.targetConfigured === false && (
+            <button onClick={() => onNav && onNav("metas")} style={{ marginTop: 6, fontSize: 12, fontWeight: 600, color: "var(--warn)", textAlign: "left" }}>
+              essa é a meta padrão do sistema · defina a sua em Metas → Empresa
+            </button>
+          )}
         </div>
         <div style={{ flex: "1 1 340px", minWidth: 0 }}>
           <div style={{ fontSize: 12.5, marginBottom: 10 }}>

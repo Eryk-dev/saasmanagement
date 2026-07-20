@@ -17,27 +17,31 @@ function MetasScreen() {
   const [data, setData] = useS(null);
   const [roleVals, setRoleVals] = useS({});     // "role:metric" -> string
   const [overrides, setOverrides] = useS([]);   // [{ key, metric, target }]
-  const [orig, setOrig] = useS(null);           // { roleVals, overrides } snapshot
+  const [cash, setCash] = useS("");             // meta de venda do mês (caixa, R$) — product.monthlyCashTarget
+  const [orig, setOrig] = useS(null);           // { roleVals, overrides, cash } snapshot
   const [err, setErr] = useS(null);
   const [saving, setSaving] = useS(false);
   const [note, setNote] = useS(null);
+
+  // Snapshot vindo da API → estados dos campos + baseline do dirty.
+  const applyData = (d) => {
+    const rv = {};
+    for (const r of d.roles) for (const m of r.metrics) rv[rk(r.role, m.metric)] = m.target != null ? String(m.target) : "";
+    const ov = (d.userGoals || []).map((g) => ({ key: g.key, metric: g.metric, target: String(g.target) }));
+    const ct = d.company?.cashTarget != null ? String(d.company.cashTarget) : "";
+    setData(d); setRoleVals(rv); setOverrides(ov); setCash(ct);
+    setOrig({ roleVals: JSON.stringify(rv), overrides: JSON.stringify(ov), cash: ct });
+  };
 
   useE(() => {
     if (!product?.id) return;
     let alive = true;
     setData(null); setErr(null); setNote(null);
-    api.metas(product.id).then((d) => {
-      if (!alive) return;
-      const rv = {};
-      for (const r of d.roles) for (const m of r.metrics) rv[rk(r.role, m.metric)] = m.target != null ? String(m.target) : "";
-      const ov = (d.userGoals || []).map((g) => ({ key: g.key, metric: g.metric, target: String(g.target) }));
-      setData(d); setRoleVals(rv); setOverrides(ov);
-      setOrig({ roleVals: JSON.stringify(rv), overrides: JSON.stringify(ov) });
-    }).catch((e) => alive && setErr(e.message));
+    api.metas(product.id).then((d) => alive && applyData(d)).catch((e) => alive && setErr(e.message));
     return () => { alive = false; };
-  }, [product?.id]);
+  }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const dirty = orig && (JSON.stringify(roleVals) !== orig.roleVals || JSON.stringify(overrides) !== orig.overrides);
+  const dirty = orig && (JSON.stringify(roleVals) !== orig.roleVals || JSON.stringify(overrides) !== orig.overrides || cash !== orig.cash);
 
   // Mapa metric -> { label, unit } (pros rótulos dos overrides).
   const metricInfo = {};
@@ -71,13 +75,8 @@ function MetasScreen() {
       for (const o of JSON.parse(orig.overrides)) {
         if (!seen.has(`${o.key}:${o.metric}`)) goals.push({ scope: "user", key: o.key, metric: o.metric, target: "" });
       }
-      await api.saveMetas(product.id, goals);
-      const d = await api.metas(product.id);
-      const rv = {};
-      for (const r of d.roles) for (const m of r.metrics) rv[rk(r.role, m.metric)] = m.target != null ? String(m.target) : "";
-      const ov = (d.userGoals || []).map((g) => ({ key: g.key, metric: g.metric, target: String(g.target) }));
-      setData(d); setRoleVals(rv); setOverrides(ov);
-      setOrig({ roleVals: JSON.stringify(rv), overrides: JSON.stringify(ov) });
+      await api.saveMetas(product.id, goals, { cashTarget: cash });
+      applyData(await api.metas(product.id));
       setNote({ ok: true, text: "metas salvas · valem em todo campo que mostra meta" });
     } catch (e) {
       setNote({ ok: false, text: e.message });
@@ -86,7 +85,7 @@ function MetasScreen() {
   }
   function reset() {
     if (!orig) return;
-    setRoleVals(JSON.parse(orig.roleVals)); setOverrides(JSON.parse(orig.overrides));
+    setRoleVals(JSON.parse(orig.roleVals)); setOverrides(JSON.parse(orig.overrides)); setCash(orig.cash);
   }
 
   const kicker = { fontSize: 11, fontWeight: 600, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" };
@@ -110,6 +109,27 @@ function MetasScreen() {
 
         {data && (
           <>
+            {/* Meta da empresa: a venda do mês que a Visão geral e a Análise perseguem */}
+            <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: 24 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em" }}>Empresa</span>
+                <span className="dim" style={{ fontSize: 12 }}>a meta que o negócio persegue no mês</span>
+              </div>
+              <div className="dim" style={{ fontSize: 12.5, marginBottom: 14 }}>
+                a faixa "Meta do mês" da Visão geral e a Análise do pipeline seguem essa meta (caixa: faturas pagas no mês) e desdobram o que falta em ganhos, calls, contatos e leads por dia.
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, maxWidth: 440 }}>
+                <span style={{ flex: 1, fontSize: 13.5, color: "var(--fg-2)" }}>Meta de venda do mês</span>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <span className="mono dim" style={{ fontSize: 12 }}>R$</span>
+                  <input type="number" min="0" step="1" inputMode="decimal" value={cash}
+                    onChange={(e) => setCash(e.target.value)}
+                    placeholder={`padrão ${data.company?.cashTargetDefault ?? 120000}`}
+                    className="tnum" style={{ ...inp, width: 130, textAlign: "right" }} />
+                </div>
+              </label>
+            </div>
+
             {/* Metas por vaga */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 14 }}>
               {data.roles.map((r) => (
