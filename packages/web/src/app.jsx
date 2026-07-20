@@ -221,7 +221,7 @@ function App() {
         <ErrorBoundary variant="screen" label={`tela:${scr}`} resetKey={scr}>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
           {scr === "overview"    && <OverviewScreen onNav={nav} onOpenLead={openLead} />}
-          {scr === "today"       && <TodayScreen onOpenLead={openLead} />}
+          {scr === "today"       && <TodayScreen onOpenLead={openLead} onOpenWhatsapp={(l) => nav("whatsapp", { waLead: l.id, waThread: "" })} />}
           {scr === "pipeline"    && <PipelineScreen saasId={params.saas} onJump={jump} jumpFilter={params} onOpenLead={openLead} />}
           {scr === "customers"   && <CustomersScreen />}
           {scr === "metrics"     && <MetricsScreen />}
@@ -234,7 +234,7 @@ function App() {
           {scr === "agenda"      && <AgendaScreen onOpenLead={openLead} />}
           {scr === "consultas"   && <ConsultasScreen />}
           {scr === "disparos"    && <DisparosScreen onOpenLead={openLead} />}
-          {scr === "whatsapp"    && <WhatsappInboxScreen onOpenLead={openLead} initialThread={params.waThread} />}
+          {scr === "whatsapp"    && <WhatsappInboxScreen onOpenLead={openLead} initialThread={params.waThread} initialLead={params.waLead} />}
           {scr === "calls"       && <CallsScreen onOpenLead={openLead} />}
           {scr === "integrations" && <IntegrationsScreen onOpenLead={openLead} />}
           {scr === "aquisicao"   && <AquisicaoScreen />}
@@ -263,7 +263,7 @@ function App() {
 
       {/* Lead quente do WhatsApp (fluxo de ligação): salta em qualquer tela. */}
       <ErrorBoundary variant="modal" label="wa-hot" resetKey="wa-hot" onReset={() => {}}>
-        <WaHotAlert onOpenThread={(a) => nav("whatsapp", { waThread: a.thread })} />
+        <WaHotAlert onOpenThread={(a) => nav("whatsapp", { waThread: a.thread, waLead: "" })} />
       </ErrorBoundary>
 
       <CommandSearch
