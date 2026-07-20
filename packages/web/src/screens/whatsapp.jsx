@@ -12,6 +12,7 @@ import { waLink, leadTier } from "../lib/ui.js";
 import { useIsMobile } from "../lib/responsive.js";
 import { clientSummary } from "./today.jsx";
 import { scriptChecklist } from "../lib/scripts.js";
+import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 
 // Inbox de WhatsApp: um WhatsApp Web dentro do cockpit. Lista de conversas à
 // esquerda (não-lidas primeiro na cara, ordenadas por recência) + conversa
@@ -504,6 +505,10 @@ function LeadSideCard({ leadId, version, onOpenLead }) {
   // Edição otimista: o valor digitado vale na hora; o tick do SSE traz o SEED
   // atualizado e zera a camada local (aí o dado já é o do servidor).
   const [edits, setEdits] = React.useState({});
+  // Mover de etapa com gate (ganho/perdido/handoff pedem input) — mesmo modal
+  // do pipeline; o PATCH passa pelo applyStageMove do servidor, então Minhas
+  // atividades/Pipeline/Agenda refletem sozinhos via SSE.
+  const [pendingMove, setPendingMove] = React.useState(null);
   React.useEffect(() => { setEdits({}); }, [version, leadId]);
   const base = (window.SEED?.LEADS || []).find((l) => l.id === leadId) || null;
   if (!base) return null;
@@ -534,10 +539,39 @@ function LeadSideCard({ leadId, version, onOpenLead }) {
         </div>
         {lead.company && <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lead.company}</div>}
         <div style={{ marginTop: 7, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-          <span className="chip">{lead.stage || "sem etapa"}</span>
+          {/* Etapa EDITÁVEL: mover daqui vale como mover no pipeline (mesmos
+              gates de ganho/perda/handoff; o servidor agenda o GPS e o resto). */}
+          <select value={lead.stage || ""} title="Mover o card de etapa (mesmo efeito do pipeline)"
+            onChange={(e) => {
+              const toStage = e.target.value;
+              if (!toStage || toStage === base.stage) return;
+              const gate = moveGate(saasCfg, base, toStage);
+              if (gate) { setPendingMove({ toStage, gate }); return; }
+              patch({ stage: toStage });
+            }}
+            style={{ maxWidth: 170, height: 24, padding: "0 6px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600 }}>
+            {!lead.stage && <option value="">sem etapa</option>}
+            {(saasCfg?.funnel || []).map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
+            {lead.stage && !(saasCfg?.funnel || []).some((f) => f.stage === lead.stage) && <option value={lead.stage}>{lead.stage}</option>}
+          </select>
           {lead.callAt && <span className="chip accent" title="call marcada">▦ {fmtDT(lead.callAt)}</span>}
         </div>
       </div>
+
+      {pendingMove && (
+        <MoveLeadModal
+          lead={base}
+          toStage={pendingMove.toStage}
+          gate={pendingMove.gate}
+          saasCfg={saasCfg}
+          onCancel={() => setPendingMove(null)}
+          onConfirm={(mp, extra) => {
+            setEdits((prev) => ({ ...prev, ...mp }));
+            applyGatedMove(mp, extra, base.id).catch((err) => console.warn("movimento não persistido:", err.message));
+            setPendingMove(null);
+          }}
+        />
+      )}
 
       <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
         {pain && (
