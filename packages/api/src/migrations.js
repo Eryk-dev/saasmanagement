@@ -3,7 +3,7 @@
 // vezes (todo deploy reinicia o container) e nunca deve corromper dados que já
 // existem: na dúvida sobre o estado, não mexe.
 
-import { normalizeFunnel, kindOf } from "./stages.js";
+import { normalizeFunnel, kindOf, isPostSaleStage } from "./stages.js";
 import { createClosedSubscription } from "./billing.js";
 import { FLASHCARD_DEFAULTS } from "./routes.flashcards.js";
 
@@ -572,6 +572,31 @@ export async function backfillWonAt(repo) {
   return n;
 }
 
+// Card que já está numa etapa PÓS-VENDA sem ter passado pelo Ganho nunca virou
+// cliente: o convertWonLead dispara no PATCH do lead, e esses cards foram
+// arrastados direto pra entrega antes da regra existir. Depois da reordenação
+// eles CONTAM como venda (isPostSaleStage), então precisam do cliente e da
+// assinatura junto — senão a receita sobe e os Clientes ativos ficam pra trás.
+//
+// Idempotente por natureza: o convertWonLead já sai fora se o lead tem
+// customerId ou se existe cliente com aquele leadId. Roda DEPOIS da
+// reordenação, senão isPostSaleStage ainda é falso.
+export async function backfillPostSaleCustomers(repo) {
+  // Import dinâmico: migrations.js é carregado pelo index.js antes das rotas, e
+  // um import estático de routes.js aqui acoplaria a ordem de carga à toa.
+  const { convertWonLead } = await import("./routes.js");
+  const products = new Map((await repo.list("products")).map((p) => [p.id, p]));
+  const leads = await repo.list("leads");
+  let n = 0;
+  for (const lead of leads) {
+    if (lead.customerId) continue;
+    const product = products.get(lead.saas);
+    if (!product || !isPostSaleStage(product, lead.stage)) continue;
+    try { if (await convertWonLead(repo, lead)) n++; } catch { /* best-effort, igual ao fluxo normal */ }
+  }
+  return n;
+}
+
 export async function ensureUserScreens(repo) {
   let changed = 0;
   for (const [id, screens] of Object.entries(SCREENS_SEED)) {
@@ -701,5 +726,13 @@ export async function runStartupMigrations(repo) {
     if (r) console.log(`[migration] funil do leverads reordenado (ganho antes da integração): ${r.order.join(" → ")}`);
   } catch (err) {
     console.error("[migration] migrateGanhoAntesIntegracao falhou:", err?.message || err);
+  }
+  // Depois da reordenação: quem está na entrega passa a ser venda, então ganha
+  // cliente e assinatura como se tivesse passado pelo Ganho.
+  try {
+    const n = await backfillPostSaleCustomers(repo);
+    if (n) console.log(`[migration] cliente + assinatura criados pra ${n} lead(s) já na entrega`);
+  } catch (err) {
+    console.error("[migration] backfillPostSaleCustomers falhou:", err?.message || err);
   }
 }
