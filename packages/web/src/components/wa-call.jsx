@@ -143,10 +143,13 @@ export function WaCallButton({ threadId, contactName }) {
         </span>
       )}
       {active && (
+        // No MEIO da conversa (pedido do Leo): centrado na tela, sem backdrop —
+        // dá pra seguir digitando/lendo o chat com a ligação rolando.
         <div style={{
-          position: "fixed", right: 20, bottom: 20, zIndex: 95, minWidth: 240,
+          position: "fixed", left: "50%", top: "50%", transform: "translate(-50%, -50%)", zIndex: 95,
+          minWidth: 280, maxWidth: "min(360px, calc(100vw - 32px))",
           background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)",
-          boxShadow: "var(--shadow-pop)", padding: 14, display: "flex", flexDirection: "column", gap: 10,
+          boxShadow: "var(--shadow-pop)", padding: 16, display: "flex", flexDirection: "column", gap: 10,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span className="led pulse" style={{ color: phase === "connected" ? "var(--pos)" : "var(--warn)" }} />
