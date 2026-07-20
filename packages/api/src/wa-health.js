@@ -17,15 +17,18 @@ export async function getWaHealth(repo) {
 // número que RECEBEU, ou seja, o que deveria estar no WHATSAPP_PHONE_NUMBER_ID.
 // Escreve no máximo 1×/min (mensagem em massa não vira enxurrada de update),
 // mas sempre que o número mudar.
-export async function recordWebhookDelivery(repo, { phoneNumberId = "", display = "" } = {}) {
+export async function recordWebhookDelivery(repo, { phoneNumberId = "", display = "", wabaId = "" } = {}) {
   const cur = await getWaHealth(repo);
   const prev = cur.webhook || {};
   const at = new Date().toISOString();
   const sameNumber = String(prev.phoneNumberId || "") === String(phoneNumberId || "");
-  if (sameNumber && prev.at && Date.now() - new Date(prev.at).getTime() < 60_000) return cur;
+  // O id da CONTA (WABA) vem no entry do webhook e é o que a listagem de
+  // templates usa — quando aparece um novo, grava mesmo dentro do debounce.
+  const sameWaba = !wabaId || String(prev.wabaId || "") === String(wabaId);
+  if (sameNumber && sameWaba && prev.at && Date.now() - new Date(prev.at).getTime() < 60_000) return cur;
   const next = {
     ...cur, id: "wa_health", updatedAt: at,
-    webhook: { at, phoneNumberId: String(phoneNumberId || ""), display: display || prev.display || "" },
+    webhook: { at, phoneNumberId: String(phoneNumberId || ""), display: display || prev.display || "", wabaId: String(wabaId || prev.wabaId || "") },
   };
   return cur.updatedAt ? repo.update("app_config", "wa_health", next) : repo.create("app_config", next);
 }

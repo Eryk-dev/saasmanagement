@@ -41,7 +41,7 @@ function outsideWindow(err) { return err.code === 131047 || err.code === 470; }
 function sendErrorReply(reply, err) {
   return reply.code(outsideWindow(err) ? 409 : 422).send({
     error: outsideWindow(err)
-      ? "Fora da janela de 24h: a Meta só deixa reabrir a conversa com um template aprovado (Fase 2)."
+      ? "Fora da janela de 24h: a Meta só aceita template aprovado — use o composer de template."
       : String(err.message || err).slice(0, 300),
   });
 }
@@ -106,6 +106,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
               await recordWebhookDelivery(repo, {
                 phoneNumberId: v.metadata.phone_number_id,
                 display: v.metadata.display_phone_number || "",
+                wabaId: e.id || "", // id da CONTA — a listagem de templates precisa dele
               });
             } catch { /* diagnóstico não pode derrubar a entrega */ }
           }
@@ -260,6 +261,74 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
         text: String(req.body?.text || "").trim() || greetingFor(product, lead, { business: true }),
       });
       return { ok: true, interactive: r.interactive, messageId: r.messageId };
+    } catch (err) { return sendErrorReply(reply, err); }
+  });
+
+  // ── Templates aprovados (reabrir conversa fora da janela de 24h) ────────────
+  // Lista com cache curto: a Meta é consultada no máximo a cada 5 min. O id da
+  // conta (WABA) vem, nesta ordem: env WHATSAPP_WABA_ID → carimbo do webhook
+  // (entry.id, gravado na saúde) → debug_token do próprio token.
+  let tplCache = { at: 0, wabaId: "", items: null };
+  async function approvedTemplates() {
+    let wabaId = process.env.WHATSAPP_WABA_ID || "";
+    if (!wabaId) wabaId = String((await getWaHealth(repo)).webhook?.wabaId || "");
+    if (!wabaId) wabaId = (await wa.tokenWabaIds().catch(() => []))[0] || "";
+    if (!wabaId) {
+      const err = new Error("não achei o id da conta do WhatsApp (WABA) — mande uma mensagem pro número (o webhook carimba o id) ou defina WHATSAPP_WABA_ID no servidor");
+      err.status = 404;
+      throw err;
+    }
+    if (tplCache.items && tplCache.wabaId === wabaId && Date.now() - tplCache.at < 5 * 60_000) return tplCache.items;
+    const items = await wa.listTemplates(wabaId);
+    tplCache = { at: Date.now(), wabaId, items };
+    return items;
+  }
+
+  // Templates que o composer consegue enviar (corpo com variáveis numeradas).
+  app.get("/api/whatsapp/templates", async (req, reply) => {
+    if (!wa.configured()) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
+    try {
+      const all = await approvedTemplates();
+      return { templates: all.filter((t) => t.supported), unsupported: all.length - all.filter((t) => t.supported).length };
+    } catch (err) {
+      return reply.code(err.status === 404 ? 404 : 422).send({ error: String(err.message || err).slice(0, 300) });
+    }
+  });
+
+  // Envia um template aprovado pela conversa e grava o texto RENDERIZADO no
+  // histórico (o que o lead recebeu, com as variáveis preenchidas). É o único
+  // jeito que a Meta aceita de reabrir conversa fora da janela de 24h.
+  app.post("/api/whatsapp/threads/:id/send-template", async (req, reply) => {
+    const phone = threadId(req.params.id);
+    if (!phone) return reply.code(400).send({ error: "número inválido" });
+    const name = String(req.body?.name || "").trim();
+    const params = Array.isArray(req.body?.params) ? req.body.params.map((p) => String(p ?? "").trim()) : [];
+    if (!name) return reply.code(400).send({ error: "escolha o template" });
+    const thread = await findThreadByPhone(repo, phone);
+    const phoneId = await resolvePhoneId({ thread });
+    if (phoneId === null) return noNumberReply(reply, thread?.saas || "");
+    if (!wa.configured(phoneId)) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
+    let tpl;
+    try {
+      const lang = String(req.body?.language || "");
+      tpl = (await approvedTemplates()).find((t) => t.name === name && (!lang || t.language === lang));
+    } catch (err) { return reply.code(422).send({ error: String(err.message || err).slice(0, 300) }); }
+    if (!tpl) return reply.code(404).send({ error: "esse template não está entre os aprovados da Meta (a lista atualiza em até 5 min)" });
+    if (params.slice(0, tpl.params).filter(Boolean).length < tpl.params) {
+      return reply.code(400).send({ error: `preencha ${tpl.params === 1 ? "a variável" : `as ${tpl.params} variáveis`} do template` });
+    }
+    const components = tpl.params > 0
+      ? [{ type: "body", parameters: params.slice(0, tpl.params).map((t) => ({ type: "text", text: t })) }]
+      : [];
+    const rendered = tpl.body.replace(/\{\{\s*(\d+)\s*\}\}/g, (_, n) => params[Number(n) - 1] || "");
+    try {
+      const { messageId } = await wa.sendTemplate(thread?.phone || phone, tpl.name, tpl.language, components, { phoneId });
+      await recordMessage(repo, {
+        id: messageId, phone: thread?.phone || phone, direction: "out", text: rendered,
+        status: "sent", author: req.authUser?.id || "cockpit", waPhoneId: phoneId || "", saas: thread?.saas || "",
+      });
+      try { await closeThreadAlerts(repo, threadId(phone), req.authUser?.id || "cockpit"); } catch { /* alerta não trava o envio */ }
+      return { ok: true, messageId };
     } catch (err) { return sendErrorReply(reply, err); }
   });
 
