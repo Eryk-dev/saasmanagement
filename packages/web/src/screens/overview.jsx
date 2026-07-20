@@ -4,7 +4,7 @@ import { useData } from "../data.jsx";
 import { PageHead, FilterTab, StatTile, Card, LineChart } from "../components/viz.jsx";
 import { EmptyState, Avatar } from "../atoms.jsx";
 import { nextMilestone, dueLabel } from "../lib/milestones.js";
-import { openStages, isWonStage, firstStage as firstStageOf, stageKind, stageByKind } from "../lib/funnel.js";
+import { openStages, isWonStage, firstStage as firstStageOf, stageKind } from "../lib/funnel.js";
 import { displayName } from "../lib/users.js";
 import { leadTier } from "../lib/ui.js";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -174,13 +174,20 @@ function OverviewScreen({ onNav, onOpenLead }) {
   const stalled = (l) => l.stageSince && now - new Date(l.stageSince).getTime() > STALL_DAYS * DAY
     && !(l.callAt && new Date(l.callAt).getTime() > now);
   const openSet = new Set(openStages(product));
-  const proposalStage = stageByKind(product, "proposta");
-  const staleProposals = proposalStage ? leads.filter((l) => l.stage === proposalStage && stalled(l)) : [];
+  // Negociações paradas = proposta enviada OU pós-call (followup): funil sem
+  // etapa de proposta (LeverAds) negocia no Follow-up, então os dois kinds
+  // contam. O clique abre o pipeline na primeira etapa dessas.
+  const negStages = (product?.funnel || [])
+    .map((f) => f.stage)
+    .filter((s) => ["proposta", "followup"].includes(stageKind(product, s)));
+  const staleProposals = leads.filter((l) => negStages.includes(l.stage) && stalled(l));
+  const negStage = negStages[0] || null;
   // Leads quentes (A) parados no MEIO do funil: "novo" já tem o SLA de 1º toque
-  // e a etapa de proposta tem o item acima — aqui é o quente esquecido no caminho.
+  // e proposta/follow-up têm o item acima — aqui é o quente esquecido no caminho.
   const staleHot = leads.filter((l) => {
-    if (!openSet.has(l.stage) || l.stage === proposalStage) return false;
-    if (stageKind(product, l.stage) === "novo") return false;
+    if (!openSet.has(l.stage)) return false;
+    const k = stageKind(product, l.stage);
+    if (k === "novo" || k === "proposta" || k === "followup") return false;
     return leadTier(l).grade === "A" && stalled(l);
   });
   // Esperando resposta no WhatsApp = estado ATUAL do inbox (não segue a janela).
@@ -298,10 +305,10 @@ function OverviewScreen({ onNav, onOpenLead }) {
                 </button>
               )}
               {staleProposals.length > 0 && (
-                <button onClick={() => onNav && onNav("pipeline", { saas: product.id, stage: proposalStage })} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "11px 0", borderBottom: "1px solid var(--line-faint)", textAlign: "left" }}>
+                <button onClick={() => onNav && onNav("pipeline", { saas: product.id, stage: negStage })} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "11px 0", borderBottom: "1px solid var(--line-faint)", textAlign: "left" }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>{staleProposals.length} {staleProposals.length === 1 ? "proposta sem resposta" : "propostas sem resposta"}</div>
-                    <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 2 }}>{staleProposals.length === 1 ? "parada" : "paradas"} em {proposalStage} há {STALL_DAYS}+ dias · hora do follow-up</div>
+                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>{staleProposals.length} {staleProposals.length === 1 ? "negociação sem resposta" : "negociações sem resposta"}</div>
+                    <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 2 }}>{staleProposals.length === 1 ? "parada" : "paradas"} em {negStages.join(" / ")} há {STALL_DAYS}+ dias · hora do follow-up</div>
                   </div>
                   <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--accent)", whiteSpace: "nowrap" }}>fazer follow-up</span>
                 </button>

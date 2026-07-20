@@ -201,6 +201,18 @@ test("conversão histórica zerada bloqueia o desdobramento sem gerar infinito",
   await app.close();
 });
 
+test("furo pela ETAPA No show entra no comparecimento (não só o motivo de perda)", async () => {
+  const { app, repo } = await build({ funnel: [...FUNNEL, { stage: "No show", kind: "contato", conv: 1 }] });
+  await repo.create("leads", { id: "n1", saas: "leverads", stage: "Proposta", createdAt: "2026-07-05T12:00:00.000Z" });
+  await repo.create("leads", { id: "n2", saas: "leverads", stage: "No show", createdAt: "2026-07-05T12:00:00.000Z" });
+  await repo.create("activities", { id: "nb1", saas: "leverads", lead: "n1", type: "stage", meta: { from: "Novo lead", to: "Call agendada" }, at: "2026-07-06T14:00:00.000Z" });
+  await repo.create("activities", { id: "nb2", saas: "leverads", lead: "n2", type: "stage", meta: { from: "Novo lead", to: "Call agendada" }, at: "2026-07-06T14:00:00.000Z" });
+
+  const r = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
+  assert.deepEqual(r.conversions.showRate, { value: 0.5, source: "history", numerator: 1, denominator: 2 });
+  await app.close();
+});
+
 test("produto inexistente retorna 404", async () => {
   const { app } = await build();
   assert.equal((await app.inject({ url: "/api/pipeline-pace/nao-existe" })).statusCode, 404);

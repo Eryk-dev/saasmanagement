@@ -2,7 +2,7 @@
 // TCV/MRR entram só como contexto. O gap de caixa é desdobrado de trás pra
 // frente em metas diárias de ganho, call, agendamento, contato e lead.
 
-import { kindOf, isWon, isLoss, TOUCH_TYPES } from "./stages.js";
+import { kindOf, isWon, isLoss, TOUCH_TYPES, isNoShowStage } from "./stages.js";
 
 const DAY = 86_400_000;
 const FORWARD_KINDS = new Set(["proposta", "followup", "integracao", "ganho"]);
@@ -171,7 +171,8 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     const lost = isLoss(product, lead.stage);
     const advanced = won || FORWARD_KINDS.has(kindOf(product, lead.stage))
       || (actsByLead.get(lead.id) || []).some((a) => a.type === "stage" && FORWARD_KINDS.has(kindOf(product, a.meta?.to)));
-    if (lost && lead.lostReason === "nao_compareceu") noShow++;
+    // Furo = perda "nao_compareceu" OU parado na ETAPA de No show (fluxo atual).
+    if ((lost && lead.lostReason === "nao_compareceu") || (!won && isNoShowStage(lead.stage))) noShow++;
     else if (advanced || lost) shown++;
   }
   const callsRecent = leads.filter((l) => inRange(l.callAt, since30));
