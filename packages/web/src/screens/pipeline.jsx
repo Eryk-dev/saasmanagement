@@ -53,7 +53,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   const [highlight, setHighlight] = useStP(jumpFilter?.stage || null);
   const [selected, setSelected] = useStP(new Set());
   // Fase do processo (fatia as colunas visíveis — a "view" de cada papel) +
-  // pessoa (dono/closer). Fase persiste: o CS abre direto na view dele.
+  // pessoa (dono/closer/integrador). Fase persiste: o CS abre direto na view dele.
   const PHASES_OPTS = ["all", "sdr", "closer"];
   const [phase, setPhaseState] = useStP(() => {
     try { const v = localStorage.getItem("cockpit_pipeline_phase"); return PHASES_OPTS.includes(v) ? v : "all"; } catch { return "all"; }
@@ -76,10 +76,13 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   const saasCfgOf = (l) => SAAS.find(x => x.id === l.saas);
 
   const me = currentUser()?.id || "";
+  // Vínculo com a pessoa = dono, closer OU integrador — a MESMA régua do
+  // contador do chip (PersonFilter). O board filtrava só dono/closer e os
+  // cards de quem é integrador (Eryk) sumiam com o chip contando 15.
   const personMatch = (l) => {
     if (!person) return true;
     const who = person === "me" ? me : person;
-    return who ? l.owner === who || l.closer === who : true;
+    return who ? l.owner === who || l.closer === who || l.integrator === who : true;
   };
 
   const saasLeads = leads.filter(l => l.saas === activeSaas).filter(personMatch);
@@ -235,7 +238,8 @@ function PhaseFilter({ phase, counts, onChange }) {
   );
 }
 
-// Filtro por pessoa: "meus" (dono OU closer = usuário logado) ou alguém do time.
+// Filtro por pessoa: "meus" (dono, closer OU integrador = usuário logado) ou
+// alguém do time. O contador do chip usa a MESMA régua do personMatch do board.
 function PersonFilter({ person, leads, onChange, me }) {
   const users = window.SEED?.USERS || [];
   const selected = person === "me" ? me : person;
