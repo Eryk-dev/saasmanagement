@@ -4,7 +4,7 @@ import { useData } from "../data.jsx";
 import { PageHead, FilterTab, StatTile, Card, LineChart } from "../components/viz.jsx";
 import { EmptyState, Avatar } from "../atoms.jsx";
 import { nextMilestone, dueLabel } from "../lib/milestones.js";
-import { openStages, isWonStage, firstStage as firstStageOf, stageKind } from "../lib/funnel.js";
+import { openStages, isWonStage, isWonLead, wonAtOf, firstStage as firstStageOf, stageKind } from "../lib/funnel.js";
 import { displayName } from "../lib/users.js";
 import { leadTier } from "../lib/ui.js";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -143,10 +143,10 @@ function OverviewScreen({ onNav, onOpenLead }) {
   const countByStage = (stage) => leadsWindow.filter((l) => l.stage === stage || (!l.stage && stage === firstStage)).length;
   const maxStage = Math.max(1, ...funnelStages.map(countByStage));
   // Ganho no PERÍODO (fluxo); Resultado usa o mês (custos são mensais).
-  const wonLeadsPeriod = leads.filter((l) => isWonStage(product, l.stage) && inPeriod(l.stageSince));
+  const wonLeadsPeriod = leads.filter((l) => isWonLead(product, l) && inPeriod(wonAtOf(l)));
   const wonPeriod = wonLeadsPeriod.length;
   const thisMonth = (iso) => iso && dstr(iso).slice(0, 7) === new Date(now).toISOString().slice(0, 7);
-  const wonValueMonth = leads.filter((l) => isWonStage(product, l.stage) && thisMonth(l.stageSince)).reduce((a, l) => a + (l.amount || 0), 0);
+  const wonValueMonth = leads.filter((l) => isWonLead(product, l) && thisMonth(wonAtOf(l))).reduce((a, l) => a + (l.amount || 0), 0);
   // Resultado do mês = ganhos do mês menos os custos operacionais (mensais).
   const result = costs ? wonValueMonth - (costs.total || 0) : null;
 

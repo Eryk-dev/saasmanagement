@@ -22,8 +22,11 @@ export function moveGate(saasCfg, lead, toStage) {
   // Call feita → Follow-up: registra QUAL proposta ficou na mesa (a oferta que
   // o cliente levou pra pensar) — é ela que o follow-up vai cobrar.
   if (fromKind === "call" && toKind === "followup") return { type: "offer", toKind };
-  // Fechamento = passar pra INTEGRAÇÃO (handoff pro Eryk) OU pra Ganho: pede o
-  // valor do negócio na hora (é onde a receita do closer é lançada).
+  // Fechamento = passar pra Ganho, OU pra Integração num lead que ainda não
+  // fechou: pede o valor do negócio na hora (é onde a receita do closer é
+  // lançada). Com o Ganho ANTES da Integração o caminho normal já chega na
+  // entrega com valor e customerId, então o modal não reabre no handoff; a
+  // condição segue cobrindo quem for direto pra Integração pulando o Ganho.
   if ((isWonKind(toKind) || toKind === "integracao") && !(Number(lead.amount) > 0)) return { type: "won", toKind };
   return null;
 }
@@ -89,7 +92,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
           (valor/método/pacote) passa da altura visível — rola em vez de cortar. */}
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(420px, 100%)", maxHeight: "min(88dvh, 100%)", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 18 }}>
         <div style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700 }}>
-          {isLost ? `Mover pra “${toStage}”` : isWonGate ? (gate.toKind === "integracao" ? "Fechar e mandar pra integração 🎉" : "Fechar como ganho 🎉") : isOffer ? "Call feita → follow-up" : "Passar pro closer"}
+          {isLost ? `Mover pra “${toStage}”` : isWonGate ? "Fechar como ganho 🎉" : isOffer ? "Call feita → follow-up" : "Passar pro closer"}
         </div>
         <div className="mono" style={{ fontSize: 11, color: "var(--fg-3)", marginTop: 3, marginBottom: 14 }}>
           {lead.name}{lead.company ? ` · ${lead.company}` : ""} → {toStage}

@@ -8,7 +8,7 @@
 // Idempotente: um lead nunca é reinscrito na mesma sequência (enrolledKey), e o
 // e-mail só avança quando enviado (sem Gmail, tenta no próximo ciclo).
 import { logActivity } from "./lead-flow.js";
-import { isWon, kindOf } from "./stages.js";
+import { isWonLead, kindOf } from "./stages.js";
 import { leadTokens, interpolate, baseUrl, unsubToken, emailBodyWithUnsub } from "./disparos-util.js";
 
 const DAY = 86_400_000;
@@ -19,7 +19,7 @@ const schedule = (now, delayDays) => new Date(now + Math.max(0, Number(delayDays
 export function exitReasonFor(seq, lead, product) {
   const ex = seq.exitOn || {};
   if (ex.optOut !== false && lead.emailOptOut) return "descadastrou";
-  if (ex.won !== false && product && isWon(product, lead.stage)) return "fechou";
+  if (ex.won !== false && product && isWonLead(product, lead)) return "fechou";
   if (ex.booked !== false && (lead.callAt || (product && kindOf(product, lead.stage) === "call"))) return "marcou call";
   return "";
 }

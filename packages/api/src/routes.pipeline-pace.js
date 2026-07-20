@@ -2,7 +2,7 @@
 // TCV/MRR entram só como contexto. O gap de caixa é desdobrado de trás pra
 // frente em metas diárias de ganho, call, agendamento, contato e lead.
 
-import { kindOf, isWon, isLoss, TOUCH_TYPES, isNoShowStage } from "./stages.js";
+import { kindOf, isWonLead, wonAtOf, isLoss, TOUCH_TYPES, isNoShowStage } from "./stages.js";
 
 const DAY = 86_400_000;
 const FORWARD_KINDS = new Set(["proposta", "followup", "integracao", "ganho"]);
@@ -148,7 +148,7 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   }
   const initialRecent = [...firstPaid.values()].filter((i) => inRange(i.paidAt, since90));
   const paidRecent = paid.filter((i) => inRange(i.paidAt, since90));
-  const wonRecent90 = leads.filter((l) => isWon(product, l.stage) && inRange(l.stageSince, since90));
+  const wonRecent90 = leads.filter((l) => isWonLead(product, l) && inRange(wonAtOf(l), since90));
   const configuredTicket = goals.find((g) => g.scope === "role" && g.key === "closer" && g.metric === "ticket");
   let averageEntry = averageAmount(initialRecent);
   let averageEntrySource = averageEntry != null ? "initial_payments" : "";
@@ -171,7 +171,7 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   let shown = 0;
   let noShow = 0;
   for (const lead of booked) {
-    const won = isWon(product, lead.stage);
+    const won = isWonLead(product, lead);
     const lost = isLoss(product, lead.stage);
     const advanced = won || FORWARD_KINDS.has(kindOf(product, lead.stage))
       || (actsByLead.get(lead.id) || []).some((a) => a.type === "stage" && FORWARD_KINDS.has(kindOf(product, a.meta?.to)));
@@ -180,7 +180,7 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     else if (advanced || lost) shown++;
   }
   const callsRecent = leads.filter((l) => inRange(l.callAt, since30));
-  const wonRecent = leads.filter((l) => isWon(product, l.stage) && inRange(l.stageSince, since30));
+  const wonRecent = leads.filter((l) => isWonLead(product, l) && inRange(wonAtOf(l), since30));
   const conversions = {
     contactRate: resolvedRate(contacted.length, recentLeads.length, goalRate(goals, "sdr", "contactRate"), 0.8),
     bookingRate: resolvedRate(bookedFromRecentLeads.length, contacted.length, goalRate(goals, "sdr", "bookingRate"), 0.3),
@@ -235,9 +235,9 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     .filter((a) => a.type === "stage" && kindOf(product, a.meta?.to) === "call")
     .map((a) => a.lead)).size;
   const todayContacts = new Set(todayActivities.filter((a) => TOUCH_TYPES.has(a.type)).map((a) => a.lead)).size;
-  const todayWon = leads.filter((l) => isWon(product, l.stage) && dayKey(l.stageSince) === today).length;
+  const todayWon = leads.filter((l) => isWonLead(product, l) && dayKey(wonAtOf(l)) === today).length;
 
-  const tcvMonthLeads = leads.filter((l) => isWon(product, l.stage) && inMonth(l.stageSince));
+  const tcvMonthLeads = leads.filter((l) => isWonLead(product, l) && inMonth(wonAtOf(l)));
   const tcvMonth = round2(tcvMonthLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0));
   const mrr = round2(customers.reduce((a, c) => a + (Number(c.arr) || 0), 0) / 12);
 

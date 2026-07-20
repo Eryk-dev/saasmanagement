@@ -13,7 +13,7 @@
 
 import { meta as defaultMeta } from "./meta.js";
 import { stagePassCounts } from "./routes.funnel-metrics.js";
-import { isWon, kindOf } from "./stages.js";
+import { isWonLead, kindOf } from "./stages.js";
 
 const DAY_MS = 86400000;
 // Dia no FUSO DO NEGÓCIO (America/Sao_Paulo, UTC-3 fixo — o Brasil não tem
@@ -438,7 +438,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const metaLeads = sum("metaLeads");
     const per = (n) => (n > 0 ? Math.round((spend / n) * 100) / 100 : null);
     // Fecho do período inteiro: ganhos + receita (amount dos ganhos) → ROAS geral.
-    const wonAll = leads.filter((l) => isWon(product, l.stage));
+    const wonAll = leads.filter((l) => isWonLead(product, l));
     const revenueAll = wonAll.reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
     // Custo por etapa: leads que PASSARAM por cada estágio da régua de progresso
@@ -477,7 +477,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const finishGroup = (key) => (g) => {
       const matched = matching(key, g);
       const n = matched.length;
-      const wonLeads = matched.filter((l) => isWon(product, l.stage));
+      const wonLeads = matched.filter((l) => isWonLead(product, l));
       const won = wonLeads.length;
       // Receita = soma do amount dos ganhos atribuídos (o modal de fechamento
       // pede o valor ao mover pra ganho). Com o spend vira ROAS — a resposta

@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  guessKind, normalizeFunnel, kindOf, isWon, isLoss,
+  guessKind, normalizeFunnel, kindOf, isWon, isWonLead, wonAtOf, isLoss,
   ladderOf, stageByKind, firstStage, cadenceOf,
 } from "../src/stages.js";
 
@@ -86,4 +86,45 @@ test("stageByKind/firstStage/cadenceOf", () => {
   assert.equal(firstStage({}), "");
   assert.deepEqual(cadenceOf(product, "Novo lead"), { firstTouchHours: 2 });
   assert.deepEqual(cadenceOf(product, "Desqualificado"), {});
+});
+
+// ── A venda como fato do lead (Ganho antes da Integração) ────────────────────
+
+test("isWonLead: customerId sustenta a venda depois que o card sai do Ganho", () => {
+  // Funil na ordem NOVA: fechar e depois entregar.
+  const product = { funnel: [
+    { stage: "Follow-up", kind: "followup" },
+    { stage: "Ganho", kind: "ganho" },
+    { stage: "Integração", kind: "integracao" },
+  ] };
+  const noGanho = { stage: "Ganho" };
+  const naEntrega = { stage: "Integração", customerId: "cus_1" };
+  const aberto = { stage: "Follow-up" };
+
+  assert.equal(isWonLead(product, noGanho), true);
+  // O ponto da mudança: medir por POSIÇÃO diria que este não vendeu.
+  assert.equal(isWon(product, naEntrega.stage), false);
+  assert.equal(isWonLead(product, naEntrega), true);
+  assert.equal(isWonLead(product, aberto), false);
+  assert.equal(isWonLead(product, null), false);
+});
+
+test("isWonLead: quem foi direto pra Integração sem fechar NÃO conta como venda", () => {
+  const product = { funnel: [{ stage: "Ganho", kind: "ganho" }, { stage: "Integração", kind: "integracao" }] };
+  assert.equal(isWonLead(product, { stage: "Integração" }), false);
+});
+
+test("wonAtOf: wonAt vence o stageSince, que anda junto com o card", () => {
+  assert.equal(wonAtOf({ wonAt: "2026-07-01T00:00:00Z", stageSince: "2026-08-20T00:00:00Z" }), "2026-07-01T00:00:00Z");
+  assert.equal(wonAtOf({ stageSince: "2026-07-01T00:00:00Z" }), "2026-07-01T00:00:00Z"); // lead antigo, ainda no Ganho
+  assert.equal(wonAtOf(null), "");
+});
+
+test("ladderOf: com o ganho no meio, a entrega sai da régua de venda", () => {
+  const product = { funnel: [
+    { stage: "Novo lead", kind: "novo" }, { stage: "Follow-up", kind: "followup" },
+    { stage: "Ganho", kind: "ganho" }, { stage: "Integração", kind: "integracao" },
+    { stage: "Acompanhamento", kind: "posvenda" },
+  ] };
+  assert.deepEqual(ladderOf(product), ["Novo lead", "Follow-up", "Ganho"]);
 });

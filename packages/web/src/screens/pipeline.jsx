@@ -5,7 +5,7 @@ import { leadScoreTone, leadAge } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import {
-  stageKind, phaseOf, openStages, workableStages, isWonStage,
+  stageKind, phaseOf, openStages, workableStages, ladderOf, isWonStage, isWonLead, wonAtOf,
   nextTouch, nextTouchPill, lossReasonLabel,
 } from "../lib/funnel.js";
 import { usersByRole, userTone, displayName, currentUser } from "../lib/users.js";
@@ -175,7 +175,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           selected={selected}
           setSelected={setSelected}
           onOpenLead={onOpenLead}
-          wonLeads={saasAll.filter((l) => isWonStage(s, l.stage))}
+          wonLeads={saasAll.filter((l) => isWonLead(s, l))}
           showWon={phase !== "sdr"}
         />
       )}
@@ -265,10 +265,14 @@ function PersonFilter({ person, leads, onChange, me }) {
 // ─────────────────────────────────────────────── Kanban
 function KanbanBoard({ s, stages, byStage, highlight, onMove, selected, setSelected, onOpenLead, wonLeads, showWon }) {
   const [dragging, setDragging] = useStP(null);
-  // O resumo do Ganho entra logo à direita do pós-venda (Acompanhamento), antes
-  // das filas fora da régua (ex.: Nutrição); sem etapa de entrega visível, fim.
+  // O resumo do Ganho entra na POSIÇÃO do ganho no funil: com o Ganho antes da
+  // Integração ele vem logo depois da última etapa de venda (Follow-up), e a
+  // entrega segue à direita dele. Ancorar na entrega, como era antes, jogava o
+  // resumo pro fim do board e contrariava a ordem que o funil declara.
+  // Sem etapa de venda visível, cai no fim (comportamento antigo).
+  const SALE_KINDS = ["novo", "contato", "qualificacao", "call", "proposta", "followup"];
   const wonAfter = stages.reduce((acc, st, i) =>
-    ["integracao", "posvenda"].includes(stageKind(s, st)) ? i : acc, stages.length - 1);
+    SALE_KINDS.includes(stageKind(s, st)) ? i : acc, stages.length - 1);
   return (
     <div style={{ flex: 1, overflowX: "auto", paddingBottom: 8, display: "flex", gap: 12, alignItems: "flex-start" }}>
       {stages.map((st, i) => (
@@ -814,11 +818,17 @@ function analysisBuckets(s, leads, conversions) {
     const at = leads.filter((l) => l.stage === f.stage);
     const tcv = at.reduce((sum, lead) => sum + (Number(lead.amount) || 0), 0);
     const histProb = winProbByKind(stageKind(s, f.stage), conversions);
-    const sourceIndex = s.funnel.findIndex((stage) => stage.stage === f.stage);
-    const confProb = s.funnel.slice(sourceIndex).reduce((value, stage, offset) => {
-      if (offset === 0) return value;
-      const conversion = Number(stage.conv);
-      return value * (Number.isFinite(conversion) && stage.conv !== "" && stage.conv != null ? conversion : 1);
+    // Probabilidade pelo funil configurado: produto das taxas `conv` das etapas
+    // que ainda faltam ATÉ o ganho. Varria o array até o fim, o que já incluía
+    // terminais e filas fora da régua (Nutrição, No show, Mentoria); com o
+    // Ganho no meio do funil passaria a incluir a entrega também. A régua
+    // (ladderOf) é exatamente o caminho de venda, então é ela que manda.
+    const ladder = ladderOf(s);
+    const sourceIndex = ladder.indexOf(f.stage);
+    const confProb = sourceIndex === -1 ? 1 : ladder.slice(sourceIndex + 1).reduce((value, name) => {
+      const row = s.funnel.find((x) => x.stage === name);
+      const conversion = Number(row?.conv);
+      return value * (Number.isFinite(conversion) && row?.conv !== "" && row?.conv != null ? conversion : 1);
     }, 1);
     const prob = histProb ?? confProb;
     return { stage: f.stage, tcv, prob, weighted: tcv * prob, count: at.length, index: i, total: stages.length };
@@ -903,7 +913,7 @@ function PaceChart({ data, s, leads }) {
   const currentDay = data.today.startsWith(data.month) ? Number(data.today.slice(8, 10)) : totalDays;
   const byDay = Array.from({ length: currentDay }, () => 0);
   for (const lead of leads) {
-    if (!isWonStage(s, lead.stage) || !String(lead.stageSince || "").startsWith(data.month)) continue;
+    if (!isWonLead(s, lead) || !String(wonAtOf(lead)).startsWith(data.month)) continue;
     const day = Number(String(lead.stageSince).slice(8, 10));
     if (day >= 1 && day <= currentDay) byDay[day - 1] += Number(lead.amount) || 0;
   }

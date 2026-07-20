@@ -504,6 +504,74 @@ export async function ensureWaPhoneId(repo) {
   return !product.waPhoneId;
 }
 
+// ── Ganho ANTES da Integração (jul/2026) ────────────────────────────────────
+// O funil colocava a entrega antes do fechamento (… Follow-up → Integração →
+// Acompanhamento → Ganho), então a venda só era reconhecida no fim da entrega e
+// os cards em Integração não contavam como receita. A ordem certa é fechar e
+// depois entregar: … Follow-up → Ganho → Integração → Acompanhamento.
+//
+// Só a ordem do array muda; NENHUM lead é movido (quem está em Integração
+// continua em Integração, agora depois do ganho na régua). O que sustenta a
+// receita nessa nova ordem é `lead.customerId`/`wonAt` (ver isWonLead em
+// stages.js): a venda vira fato do lead e para de depender da posição do card.
+//
+// One-shot por `ganhoAntesIntegracaoV1`. Guarda estrita: só reordena se o funil
+// estiver EXATAMENTE no formato antigo (ganho depois de integracao), então
+// rodar de novo, ou num produto que já foi ajustado à mão, não faz nada.
+export async function migrateGanhoAntesIntegracao(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || product.ganhoAntesIntegracaoV1) return false;
+  const funnel = Array.isArray(product.funnel) ? product.funnel : [];
+  const idx = (kind) => funnel.findIndex((f) => kindOf(product, f?.stage) === kind);
+  const iGanho = idx("ganho"), iInteg = idx("integracao");
+  // Nada a fazer se falta alguma das duas ou se o ganho JÁ está antes.
+  if (iGanho === -1 || iInteg === -1 || iGanho < iInteg) {
+    await repo.update("products", "leverads", { ganhoAntesIntegracaoV1: true });
+    return false;
+  }
+  const ganhoRow = funnel[iGanho];
+  const reordered = funnel.filter((_, i) => i !== iGanho);
+  // Reinsere o ganho na posição da integração (que andou uma casa se o ganho
+  // estava antes dela no array original — não é o caso aqui, mas fica correto).
+  const at = reordered.findIndex((f) => kindOf(product, f?.stage) === "integracao");
+  reordered.splice(at, 0, ganhoRow);
+
+  // Os próximos passos salvos vencem os defaults do código, então precisam vir
+  // junto: fechar deixa de ser destino da entrega e a entrega passa a ser
+  // destino do ganho. Chaveado por ROTEIRO (followup1/2/3, integracao, …).
+  const nextSteps = { ...(product.nextSteps || {}) };
+  for (const [key, list] of Object.entries(nextSteps)) {
+    if (!Array.isArray(list)) continue;
+    if (/^followup/.test(key)) nextSteps[key] = list.filter((k) => k !== "integracao");
+    if (/^(integracao|posvenda)/.test(key)) nextSteps[key] = list.filter((k) => k !== "ganho");
+  }
+  if (!Array.isArray(nextSteps.ganho) || !nextSteps.ganho.length) nextSteps.ganho = ["integracao", "posvenda"];
+  if (Array.isArray(nextSteps.integracao) && !nextSteps.integracao.length) nextSteps.integracao = ["posvenda"];
+
+  await repo.update("products", "leverads", { funnel: reordered, nextSteps, ganhoAntesIntegracaoV1: true });
+  return { order: reordered.map((f) => f.stage) };
+}
+
+// Carimba `wonAt` nos leads que já venceram antes do campo existir. A data sai
+// do `startedAt` do cliente (gravado por convertWonLead no mesmo instante);
+// sem cliente vinculado, cai no stageSince, que ainda é o do ganho porque
+// esses cards nunca saíram do Ganho. Sem isso, o primeiro card a andar pra
+// Integração perderia a data e cairia no mês errado.
+export async function backfillWonAt(repo) {
+  const leads = await repo.list("leads");
+  const pending = leads.filter((l) => l.customerId && !l.wonAt);
+  if (!pending.length) return 0;
+  const byId = new Map((await repo.list("customers")).map((c) => [c.id, c]));
+  let n = 0;
+  for (const lead of pending) {
+    const at = byId.get(lead.customerId)?.startedAt || lead.stageSince || "";
+    if (!at) continue;
+    await repo.update("leads", lead.id, { wonAt: at });
+    n++;
+  }
+  return n;
+}
+
 export async function ensureUserScreens(repo) {
   let changed = 0;
   for (const [id, screens] of Object.entries(SCREENS_SEED)) {
@@ -619,5 +687,19 @@ export async function runStartupMigrations(repo) {
     if (changed) console.log("[migration] WhatsApp: número do env carimbado como waPhoneId do leverads");
   } catch (err) {
     console.error("[migration] ensureWaPhoneId falhou:", err?.message || err);
+  }
+  // wonAt ANTES da reordenação: o carimbo precisa existir antes que qualquer
+  // card possa sair do Ganho, senão a venda perde a data.
+  try {
+    const n = await backfillWonAt(repo);
+    if (n) console.log(`[migration] data do ganho (wonAt) carimbada em ${n} lead(s)`);
+  } catch (err) {
+    console.error("[migration] backfillWonAt falhou:", err?.message || err);
+  }
+  try {
+    const r = await migrateGanhoAntesIntegracao(repo);
+    if (r) console.log(`[migration] funil do leverads reordenado (ganho antes da integração): ${r.order.join(" → ")}`);
+  } catch (err) {
+    console.error("[migration] migrateGanhoAntesIntegracao falhou:", err?.message || err);
   }
 }

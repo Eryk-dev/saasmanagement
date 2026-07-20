@@ -4,7 +4,7 @@
 // estágio atual na régua), a MESMA do marketing pré-CRM — números degradam
 // honestos, nunca inventam transição (`coverage` expõe a proporção).
 
-import { ladderOf, kindOf, isWon, firstStage, LOSS_KINDS, TOUCH_TYPES } from "./stages.js";
+import { ladderOf, kindOf, isWonLead, firstStage, LOSS_KINDS, TOUCH_TYPES } from "./stages.js";
 
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
@@ -105,7 +105,7 @@ export function registerFunnelMetricsRoutes(app, repo) {
     }));
 
     // Fechamento e perdas do cohort (pelo estágio atual).
-    const wonCount = leads.filter((l) => isWon(product, l.stage)).length;
+    const wonCount = leads.filter((l) => isWonLead(product, l)).length;
     const lostLeads = leads.filter((l) => kindOf(product, l.stage) === "perdido");
     const dqLeads = leads.filter((l) => kindOf(product, l.stage) === "desqualificado");
     const winRate = wonCount + lostLeads.length > 0 ? round2(wonCount / (wonCount + lostLeads.length)) : null;

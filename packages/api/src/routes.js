@@ -716,7 +716,10 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
     ...(lead.paymentMethod ? { paymentMethod: lead.paymentMethod } : {}), // modo como fechou (PIX/boleto/cartão 12x)
     startedAt: new Date().toISOString(),
   });
-  await repo.update("leads", lead.id, { customerId: customer.id });
+  // `customerId` marca QUE vendeu, `wonAt` marca QUANDO. Os dois precisam ser
+  // do lead e não do card: `stageSince` é recarimbado a cada movimento, então
+  // seguir pra Integração jogaria a venda pro mês da integração.
+  await repo.update("leads", lead.id, { customerId: customer.id, wonAt: customer.startedAt });
   // Assinatura ativa nasce junto do cliente (plano fechado + meio de pagamento
   // → ciclo/preço; fatura inicial paga). Best-effort: o cliente já existe.
   try {
