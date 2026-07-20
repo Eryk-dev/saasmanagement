@@ -1,50 +1,55 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { usersByRole, currentUser, displayName } from "../lib/users.js";
-import { stageKind } from "../lib/funnel.js";
-import { SlotGrid, nextBusinessDays, busyView, callBusyKeys } from "../screens/today.jsx";
+import { stageKind, KINDS } from "../lib/funnel.js";
+import { SlotGrid, nextBusinessDays, busyView, callBusyKeys, destinationsFor, setupType } from "../screens/today.jsx";
+import { moveGate, MoveLeadModal, applyGatedMove } from "./stage-move.jsx";
 import { PrimaryButton } from "../atoms.jsx";
 
-// Atalho "Agendar call" do inbox de WhatsApp: o agendamento nasceu na conversa
-// ("conseguimos hoje às 13h?" → "Sim"), então marca TUDO dali mesmo — horário na
-// grade que respeita a agenda do closer (calls + bloqueios, a mesma SlotGrid do
-// roteiro), move o card pra etapa de call, cria o Meet com convite se tiver
-// e-mail e devolve um rascunho de confirmação pra caixa de mensagem (nunca
-// envia sozinho). Lead avançado (follow-up/ganho…) só ganha callAt/closer — a
-// etapa não anda pra trás.
+// "Próxima ação" do card, dentro do inbox: a conversa andou → o card anda
+// junto. O modal lista os DESTINOS certos pra etapa atual (mesma régua do
+// roteiro, destinationsFor) e cada um faz o setup completo:
+//   · call/follow-up → grade de horário na agenda do closer + Meet + rascunho
+//     de confirmação na caixa (nunca envia sozinho);
+//   · ganho/perdido/handoff → o mesmo gate do pipeline (MoveLeadModal);
+//   · movimento simples → aplica direto.
+// TUDO passa pelo PATCH canônico de leads (applyStageMove no servidor), então
+// Pipeline, Minhas atividades e Agenda refletem sozinhos via SSE.
 
 const { useState: useS, useEffect: useE } = React;
 
 const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || "").trim());
 
-export function ScheduleCallButton({ thread, onScheduled }) {
+export function NextActionButton({ thread, onScheduled }) {
   const [open, setOpen] = useS(false);
   const pill = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 11px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", flexShrink: 0 };
   if (!thread?.leadId) return null;
   return (
     <>
-      <button onClick={() => setOpen(true)} style={pill} title="Marcar a call combinada na conversa: horário livre na agenda, card na etapa de call e Meet">
-        ▦ Agendar call
+      <button onClick={() => setOpen(true)} style={pill} title="Atualizar o card pra próxima ação: agendar a call, fechar, marcar perda… reflete no pipeline e na fila na hora">
+        → Próxima ação
       </button>
-      {open && <ScheduleCallModal leadId={thread.leadId} onScheduled={onScheduled} onClose={() => setOpen(false)} />}
+      {open && <NextActionModal leadId={thread.leadId} onScheduled={onScheduled} onClose={() => setOpen(false)} />}
     </>
   );
 }
 
-function ScheduleCallModal({ leadId, onScheduled, onClose }) {
+function NextActionModal({ leadId, onScheduled, onClose }) {
   const leads = window.SEED?.LEADS || [];
   const lead = leads.find((l) => l.id === leadId) || null;
   const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === lead?.saas) || null;
   const closers = usersByRole("closer").filter((u) => !u.saas || u.saas === saasCfg?.id);
 
   const meId = currentUser()?.id || "";
+  const [dest, setDest] = useS(null);         // destino que pede AGENDA (call/follow-up)
+  const [gateMove, setGateMove] = useS(null); // destino com gate (ganho/perda/handoff)
   const [closer, setCloser] = useS(() => lead?.closer || (closers.some((c) => c.id === meId) ? meId : (closers[0]?.id || "")));
   const [day, setDay] = useS(() => nextBusinessDays(1)[0]);
   const [slot, setSlot] = useS(lead?.callAt || "");
   const [email, setEmail] = useS(lead?.email || "");
   const [busy, setBusy] = useS(false);
   const [err, setErr] = useS("");
-  const [done, setDone] = useS(null); // { when, movedTo, callUrl }
+  const [done, setDone] = useS(null); // { moved, when?, callUrl? }
 
   useE(() => {
     const h = (e) => { if (e.key === "Escape") onClose(); };
@@ -54,21 +59,17 @@ function ScheduleCallModal({ leadId, onScheduled, onClose }) {
 
   if (!lead) return null;
 
-  // Etapa de destino: a primeira de kind "call" do funil — mas só ANDA se o
-  // lead ainda está na fase SDR (novo/contato/qualificação); de call em diante
-  // o agendamento não rebaixa o card.
-  const callStage = (saasCfg?.funnel || []).find((f) => stageKind(saasCfg, f.stage) === "call")?.stage || "";
-  const curKind = stageKind(saasCfg, lead.stage || saasCfg?.funnel?.[0]?.stage);
-  const movesStage = !!callStage && ["novo", "contato", "qualificacao", "outro"].includes(curKind) && lead.stage !== callStage;
+  // Destinos curados pra etapa atual (ordem do roteiro / Ajustes → Próximos
+  // passos). "Tentar de novo" fica de fora: no inbox isso é só mandar outra
+  // mensagem; e a etapa atual também (mover pra ela mesma não é ação).
+  const dests = destinationsFor(saasCfg, lead).filter((d) => !d.retry && d.stage !== lead.stage);
 
   const agenda = busyView(callBusyKeys(leads, closer, lead.id), closer);
-
   const whenLabel = (iso) => {
     const d = new Date(iso);
     return d.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit" }) + " às " + d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   };
-  // Rascunho de confirmação pro composer (o SDR edita/envia — nunca sai sozinho).
-  // Copy do Leo, com o CLOSER escolhido no lugar do nome.
+  // Rascunho de confirmação pro composer (copy do Leo; o SDR revisa e envia).
   const draftFor = (iso) => {
     const d = new Date(iso);
     const today = new Date().toDateString() === d.toDateString();
@@ -77,12 +78,26 @@ function ScheduleCallModal({ leadId, onScheduled, onClose }) {
     return `Fechado! ${dia} às ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} então. ${who} te chama aqui um pouco antes da call. Qualquer dúvida, fico à disposição!!`;
   };
 
+  // Destino escolhido: agenda, gate ou movimento direto.
+  async function pick(d) {
+    const setup = setupType(d.kind);
+    if (setup === "call" || setup === "followup") { setDest(d); setErr(""); return; }
+    const gate = moveGate(saasCfg, lead, d.stage);
+    if (gate) { setGateMove({ toStage: d.stage, gate }); return; }
+    setBusy(true); setErr("");
+    try {
+      await api.update("leads", lead.id, { stage: d.stage });
+      setDone({ moved: d.stage });
+    } catch (e) { setErr(e?.message || "não deu pra mover"); }
+    finally { setBusy(false); }
+  }
+
+  // Agendamento (call/follow-up): grava closer + horário e MOVE pro destino.
   async function schedule(withInvite) {
-    if (!closer || !slot || busy) return;
+    if (!closer || !slot || busy || !dest) return;
     setBusy(true); setErr("");
     const patch = {
-      closer, callAt: slot,
-      ...(movesStage ? { stage: callStage } : {}),
+      closer, callAt: slot, stage: dest.stage,
       ...(withInvite && email.trim() ? { email: email.trim() } : {}),
     };
     try {
@@ -97,7 +112,7 @@ function ScheduleCallModal({ leadId, onScheduled, onClose }) {
           setErr("call marcada, mas o Meet falhou: " + (e?.message || e));
         }
       }
-      setDone({ when: whenLabel(slot), movedTo: movesStage ? callStage : "", callUrl });
+      setDone({ moved: dest.stage, when: whenLabel(slot), callUrl });
       onScheduled && onScheduled(draftFor(slot));
     } catch (e) {
       setErr(e?.message || "não deu pra agendar");
@@ -107,13 +122,18 @@ function ScheduleCallModal({ leadId, onScheduled, onClose }) {
   const field = { height: 34, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, minWidth: 0 };
   const label = { fontSize: 10.5, fontFamily: "var(--mono)", color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 4 };
   const googleOn = !!window.SEED?.CONFIG?.google?.connected;
+  const needsAgenda = dest && !done;
 
   return (
+    <>
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 90, background: "color-mix(in srgb, var(--bg-0) 62%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(560px, calc(100vw - 32px))", maxHeight: "min(92dvh, 100%)", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {needsAgenda && (
+            <button onClick={() => { setDest(null); setErr(""); }} aria-label="Voltar" className="mono dim" style={{ fontSize: 14, width: 30, height: 30, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>‹</button>
+          )}
           <span style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            Agendar call · {lead.name}
+            {needsAgenda ? `Agendar · ${dest.stage}` : "Próxima ação"} · {lead.name}
           </span>
           <button onClick={onClose} aria-label="Fechar" className="mono dim" style={{ fontSize: 15, width: 32, height: 32, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>✕</button>
         </div>
@@ -121,16 +141,49 @@ function ScheduleCallModal({ leadId, onScheduled, onClose }) {
         {done ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ padding: "10px 12px", borderRadius: "var(--r-2)", background: "var(--pos-soft)", color: "var(--pos)", fontSize: 13, fontWeight: 600 }}>
-              ✓ Call agendada {done.when} com {displayName(closer)}
+              ✓ Card atualizado pra “{done.moved}”{done.when ? ` · call ${done.when} com ${displayName(closer)}` : ""}
             </div>
             <div style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5 }}>
-              {done.movedTo ? <>Card movido pra <b>{done.movedTo}</b>. </> : <>Card já estava adiante no funil, só marquei o horário. </>}
-              {done.callUrl ? <>Meet criado: <a href={done.callUrl} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>{done.callUrl}</a>. </> : null}
-              Deixei a confirmação pronta na caixa de mensagem, é só revisar e enviar.
+              Pipeline, Minhas atividades e Agenda já refletem (tempo real).
+              {done.callUrl ? <> Meet criado: <a href={done.callUrl} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>{done.callUrl}</a>.</> : null}
+              {done.when ? <> Deixei a confirmação pronta na caixa de mensagem, é só revisar e enviar.</> : null}
             </div>
             {err && <div className="mono" style={{ fontSize: 11, color: "var(--warn)" }}>{err}</div>}
             <PrimaryButton onClick={onClose}>Voltar pra conversa</PrimaryButton>
           </div>
+        ) : !dest ? (
+          <>
+            <div className="mono dim" style={{ fontSize: 11 }}>
+              etapa atual: <b style={{ color: "var(--fg-1)" }}>{lead.stage || "início do funil"}</b> · escolha pra onde o card vai
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {dests.map((d) => {
+                const meta = KINDS[d.kind] || {};
+                const setup = setupType(d.kind);
+                return (
+                  <button key={d.stage} disabled={busy} onClick={() => pick(d)}
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", textAlign: "left", cursor: "pointer", opacity: busy ? 0.6 : 1 }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg-1)"; }}>
+                    <span className="mono" style={{ flexShrink: 0, width: 18, textAlign: "center", color: "var(--accent)" }}>{meta.glyph || "→"}</span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: 13.5, fontWeight: 600 }}>{d.stage}</span>
+                      <span className="mono dim" style={{ fontSize: 10 }}>
+                        {setup === "call" || setup === "followup" ? "escolhe o horário na agenda do closer"
+                          : setup === "won" ? "pede valor e forma de pagamento"
+                          : setup === "loss" ? "pede o motivo"
+                          : setup === "integrator" ? "define o integrador"
+                          : meta.label || "move direto"}
+                      </span>
+                    </span>
+                    <span className="dim" style={{ flexShrink: 0, fontSize: 12 }}>›</span>
+                  </button>
+                );
+              })}
+              {!dests.length && <div className="mono dim" style={{ fontSize: 11.5 }}>sem próximos passos configurados pra esta etapa — use o seletor de etapa do card</div>}
+            </div>
+            {err && <div className="mono" style={{ fontSize: 11.5, color: "var(--neg)" }}>{err}</div>}
+          </>
         ) : (
           <>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
@@ -152,8 +205,8 @@ function ScheduleCallModal({ leadId, onScheduled, onClose }) {
               <SlotGrid days={nextBusinessDays(6)} day={day} setDay={setDay} slot={slot} setSlot={setSlot} busy={agenda} />
             </div>
 
-            {movesStage && slot && (
-              <div className="mono dim" style={{ fontSize: 11 }}>ao agendar, o card vai de “{lead.stage || "início"}” pra “{callStage}”</div>
+            {slot && (
+              <div className="mono dim" style={{ fontSize: 11 }}>ao agendar, o card vai de “{lead.stage || "início"}” pra “{dest.stage}”</div>
             )}
             {err && <div className="mono" style={{ fontSize: 11.5, color: "var(--neg)" }}>{err}</div>}
 
@@ -172,6 +225,28 @@ function ScheduleCallModal({ leadId, onScheduled, onClose }) {
           </>
         )}
       </div>
+
     </div>
+
+    {/* Gate (ganho/perda/handoff) como IRMÃO do overlay: o backdrop dele
+        cancela só o gate, sem derrubar o modal de próxima ação. */}
+    {gateMove && (
+      <MoveLeadModal
+        lead={lead}
+        toStage={gateMove.toStage}
+        gate={gateMove.gate}
+        saasCfg={saasCfg}
+        onCancel={() => setGateMove(null)}
+        onConfirm={(mp, extra) => {
+          applyGatedMove(mp, extra, lead.id).catch((err2) => console.warn("movimento não persistido:", err2.message));
+          setGateMove(null);
+          setDone({ moved: gateMove.toStage });
+        }}
+      />
+    )}
+    </>
   );
 }
+
+// Nome antigo (só o agendamento) — o botão evoluiu pra "Próxima ação".
+export { NextActionButton as ScheduleCallButton };
