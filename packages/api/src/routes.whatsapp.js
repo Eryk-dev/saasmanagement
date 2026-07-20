@@ -520,7 +520,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     if (buf.length > 25 * 1024 * 1024) return reply.code(413).send({ error: "gravação acima de 25MB" });
     if (buf.length < 8 * 1024) return { ok: true, skipped: "gravação curta demais" };
     if (!transcriber.configured()) {
-      return reply.code(503).send({ error: "transcrição não configurada no servidor (OPENAI_API_KEY)" });
+      return reply.code(503).send({ error: "transcrição não configurada no servidor (OPENROUTER_API_KEY ou OPENAI_API_KEY)" });
     }
 
     const lead = call.leadId ? await repo.get("leads", call.leadId).catch(() => null) : null;
