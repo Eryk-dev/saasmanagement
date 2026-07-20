@@ -8,8 +8,9 @@ import { waTemplatesFor } from "../lib/wa-templates.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
-import { waLink } from "../lib/ui.js";
+import { waLink, leadTier } from "../lib/ui.js";
 import { useIsMobile } from "../lib/responsive.js";
+import { clientSummary } from "./today.jsx";
 
 // Inbox de WhatsApp: um WhatsApp Web dentro do cockpit. Lista de conversas à
 // esquerda (não-lidas primeiro na cara, ordenadas por recência) + conversa
@@ -147,6 +148,12 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
   }, [initialThread]);
   const [msgs, setMsgs] = React.useState([]);
   const [q, setQ] = React.useState("");
+  // Filtro da lista: quem respondeu (lead falou por último) × sem resposta
+  // (a gente falou por último e o lead ainda não voltou).
+  const [answerFilter, setAnswerFilter] = React.useState("all"); // all | in | out
+  // Card do cliente ao lado da conversa (desktop) — preferência lembrada.
+  const [sideOpen, setSideOpen] = React.useState(() => { try { return localStorage.getItem("cockpit_wa_sidecard") !== "0"; } catch { return true; } });
+  const toggleSide = () => setSideOpen((v) => { const n = !v; try { localStorage.setItem("cockpit_wa_sidecard", n ? "1" : "0"); } catch { /* ignore */ } return n; });
   const configured = !!window.SEED?.CONFIG?.whatsapp?.configured;
 
   // Número conectado, direto da Meta: confirma QUAL número está enviando. A
@@ -212,8 +219,15 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
   const list = React.useMemo(() => {
     const s = q.trim().toLowerCase();
     const base = threads || [];
-    return s ? base.filter((t) => (t.name || "").toLowerCase().includes(s) || String(t.phone).includes(s.replace(/\D/g, ""))) : base;
-  }, [threads, q]);
+    const byQ = s ? base.filter((t) => (t.name || "").toLowerCase().includes(s) || String(t.phone).includes(s.replace(/\D/g, ""))) : base;
+    if (answerFilter === "in") return byQ.filter((t) => t.lastDir === "in");
+    if (answerFilter === "out") return byQ.filter((t) => t.lastDir === "out");
+    return byQ;
+  }, [threads, q, answerFilter]);
+  const answerCounts = React.useMemo(() => {
+    const base = threads || [];
+    return { in: base.filter((t) => t.lastDir === "in").length, out: base.filter((t) => t.lastDir === "out").length };
+  }, [threads]);
 
   // No mobile a lista é a tela inicial: não auto-abre conversa (abrir = navegar).
   React.useEffect(() => {
@@ -313,9 +327,25 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
         {/* Lista de conversas */}
         {(!isMobile || !current) && (
         <div style={{ ...box, width: isMobile ? "100%" : 340, flexShrink: isMobile ? 1 : 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <div style={{ padding: 10, borderBottom: "1px solid var(--line-1)" }}>
+          <div style={{ padding: 10, borderBottom: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 8 }}>
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar por nome ou número"
               style={{ width: "100%", padding: "8px 10px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 }} />
+            {/* Respondidas = o lead falou por último; sem resposta = a última é
+                nossa e o lead ainda não voltou (a fila do re-toque). */}
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {[["all", "todas", null], ["in", "respondidas", answerCounts.in], ["out", "sem resposta", answerCounts.out]].map(([id, label, n]) => {
+                const on = answerFilter === id;
+                return (
+                  <button key={id} onClick={() => setAnswerFilter(id)}
+                    title={id === "in" ? "o lead falou por último" : id === "out" ? "a gente falou por último, esperando o lead" : "todas as conversas"}
+                    style={{ height: 26, padding: "0 10px", borderRadius: 999, fontSize: 11.5, fontWeight: 600, cursor: "pointer",
+                      background: on ? "var(--accent-soft)" : "transparent", color: on ? "var(--accent)" : "var(--fg-3)",
+                      border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)") }}>
+                    {label}{n != null ? <span className="tnum" style={{ marginLeft: 5, opacity: 0.75 }}>{n}</span> : null}
+                  </button>
+                );
+              })}
+            </div>
           </div>
           <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
             {threads === null ? (
@@ -400,6 +430,10 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
                     {/* Combinou o horário na conversa? Marca dali mesmo: agenda
                         do closer + card na etapa de call + rascunho de confirmação. */}
                     <ScheduleCallButton thread={current} onScheduled={(draft) => composerApi.current?.insert?.(draft)} />
+                    {!isMobile && (
+                      <button onClick={toggleSide} style={{ ...pill, ...(sideOpen ? { background: "var(--accent-soft)", color: "var(--accent)", borderColor: "var(--accent-line)" } : {}) }}
+                        title={sideOpen ? "Esconder o card do cliente" : "Mostrar o card do cliente ao lado da conversa"}>▤ card</button>
+                    )}
                     <button onClick={openLead} style={pill}>Abrir lead ↗</button>
                   </>
                 ) : (
@@ -441,6 +475,85 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
           )}
         </div>
         )}
+
+        {/* Card do cliente sempre à vista enquanto conversa (desktop): o resumo
+            de qualificação do roteiro, a call marcada e o atalho pro drawer. */}
+        {!isMobile && current?.leadId && sideOpen && (
+          <LeadSideCard leadId={current.leadId} version={version} onOpenLead={openLead} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Card lateral do cliente: mesmo resumo compilado do roteiro (clientSummary),
+// vivo via SSE (re-render pelo version). Lead apagado/dessincronizado só some.
+function LeadSideCard({ leadId, version, onOpenLead }) { // eslint-disable-line no-unused-vars
+  const lead = (window.SEED?.LEADS || []).find((l) => l.id === leadId) || null;
+  if (!lead) return null;
+  const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === lead.saas) || null;
+  const { pain, facts, attribution } = clientSummary(saasCfg, lead, lead.stage || saasCfg?.funnel?.[0]?.stage || "", null);
+  const tier = leadTier(lead);
+  const fmtDT = (iso) => {
+    const d = new Date(iso);
+    return Number.isFinite(d.getTime())
+      ? `${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+      : "";
+  };
+  const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "var(--mono)" };
+  return (
+    <div style={{ width: 300, flexShrink: 0, border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--line-1)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lead.name}</span>
+          {tier.grade && (
+            <span className="tnum" style={{ width: 18, height: 18, borderRadius: 5, display: "inline-flex", alignItems: "center", justifyContent: "center", background: tier.tone, color: tier.badgeFg, fontFamily: "var(--display)", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{tier.grade}</span>
+          )}
+        </div>
+        {lead.company && <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lead.company}</div>}
+        <div style={{ marginTop: 7, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <span className="chip">{lead.stage || "sem etapa"}</span>
+          {lead.callAt && <span className="chip accent" title="call marcada">▦ {fmtDT(lead.callAt)}</span>}
+        </div>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
+        {pain && (
+          <div style={{ padding: "6px 9px", borderRadius: "var(--r-2)", background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
+            <span className="mono" style={{ ...kicker, color: "var(--accent)" }}>dor do anúncio</span>
+            <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 2 }}>[{pain.code}] {pain.label}</div>
+          </div>
+        )}
+        <div>
+          <div className="mono" style={{ ...kicker, marginBottom: 4 }}>Resumo do cliente</div>
+          {facts.map(([k, v]) => (
+            <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11.5, padding: "3px 0", borderBottom: "1px solid var(--line-faint)" }}>
+              <span className="mono dim" style={{ flexShrink: 0, fontSize: 10 }}>{k}</span>
+              <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
+            </div>
+          ))}
+          {!facts.length && <div className="mono dim" style={{ fontSize: 11 }}>sem qualificação ainda</div>}
+        </div>
+        {attribution.length > 0 && (
+          <div>
+            <div className="mono" style={{ ...kicker, marginBottom: 4 }}>De onde veio</div>
+            {attribution.map(([k, v]) => (
+              <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, padding: "3px 0", borderBottom: "1px solid var(--line-faint)" }}>
+                <span className="mono dim" style={{ flexShrink: 0, fontSize: 10 }}>{k}</span>
+                <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {lead.nextActionAt && (
+          <div className="mono dim" style={{ fontSize: 10.5 }}>próximo toque {fmtDT(lead.nextActionAt)}{lead.nextActionNote ? ` · ${lead.nextActionNote}` : ""}</div>
+        )}
+      </div>
+
+      <div style={{ padding: 10, borderTop: "1px solid var(--line-1)" }}>
+        <button onClick={onOpenLead} style={{ width: "100%", height: 32, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+          Abrir lead completo ↗
+        </button>
       </div>
     </div>
   );
