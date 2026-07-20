@@ -3,6 +3,7 @@ import { PageHead } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { WaBubbles, WaComposer, WaTemplateComposer, waWindowOpen } from "../components/wa-thread.jsx";
 import { WaCallButton } from "../components/wa-call.jsx";
+import { ScheduleCallButton } from "../components/schedule-call.jsx";
 import { waTemplatesFor } from "../lib/wa-templates.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
@@ -193,6 +194,8 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
   // Mensagens da conversa aberta (refetch em tempo real). `msgsReady` evita o
   // composer decidir janela aberta/fechada antes do histórico chegar.
   const [msgsReady, setMsgsReady] = React.useState(false);
+  // O atalho "Agendar call" escreve o rascunho de confirmação na caixa por aqui.
+  const composerApi = React.useRef(null);
   // Reset SÓ na troca de conversa: tick do SSE não pode desmontar o composer
   // (perderia o rascunho digitado).
   React.useEffect(() => { setMsgsReady(false); }, [sel]);
@@ -393,7 +396,12 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
                   <button onClick={askToCall} style={pill} title="manda o pedido nativo de permissão de ligação com a saudação do fluxo (dentro da janela de 24h)">✆ Pedir pra ligar</button>
                 )}
                 {current.leadId ? (
-                  <button onClick={openLead} style={pill}>Abrir lead ↗</button>
+                  <>
+                    {/* Combinou o horário na conversa? Marca dali mesmo: agenda
+                        do closer + card na etapa de call + rascunho de confirmação. */}
+                    <ScheduleCallButton thread={current} onScheduled={(draft) => composerApi.current?.insert?.(draft)} />
+                    <button onClick={openLead} style={pill}>Abrir lead ↗</button>
+                  </>
                 ) : (
                   <span className="mono dim" style={{ fontSize: 10.5 }}>sem lead</span>
                 )}
@@ -413,7 +421,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
                     <div className="mono dim" style={{ fontSize: 11 }}>…</div>
                   ) : waWindowOpen(msgs) ? (
                     <>
-                      <WaComposer templates={templates}
+                      <WaComposer templates={templates} apiRef={composerApi}
                         onSend={(t) => api.waThreadSend(current.id, t).then(() => api.waThread(current.id).then((r) => setMsgs(r.messages || [])))} />
                       <div className="mono dim" style={{ fontSize: 9.5, marginTop: 5 }}>fora de 24h desde a última resposta do cliente, a Meta exige um template aprovado</div>
                     </>
