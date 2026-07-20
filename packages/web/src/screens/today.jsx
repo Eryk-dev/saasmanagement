@@ -54,6 +54,15 @@ const GROUP_ORDER = ["confirm", "appt", "novo", "noshow", "qual", "closer", "nut
 // (exclusivos de closer/integrador) e closer não herda a fila de novos.
 const PHASE_ROLE = { sdr: "sdr", closer: "closer", entrega: "integrator" };
 
+// Passo de confirmação (1h / 10min antes da call, 2h antes da integração) já
+// executado? O registro mora em `lead.confirmLog` AMARRADO ao horário vigente
+// do compromisso ({ at, "1h": iso, … }): remarcou a call, o log antigo perde a
+// validade sozinho e as tarefas de confirmação voltam pra fila.
+export function confirmStepDone(lead, window, at) {
+  const log = lead?.confirmLog;
+  return !!(log && at && log.at === at && log[window]);
+}
+
 // Monta a fila: um item por lead trabalhável, no bloco do dia certo e
 // classificado no grupo de prioridade (que define a ordem dentro do bloco).
 function buildQueue(leads, saasCfg, person) {
@@ -111,8 +120,11 @@ function buildQueue(leads, saasCfg, person) {
     // (positiva ou liga). Assim o SDR sabe a hora exata de executar cada uma.
     if (isConfirm) {
       const M = 60 * 1000;
-      g.hoje.push({ l, kind, phase, who, due: { t: callT - 60 * M, type: "confirm" }, done: false, stage, group: "confirm", confirm: true, confirmWindow: "1h" });
-      g.hoje.push({ l, kind, phase, who, due: { t: callT - 10 * M, type: "confirm" }, done: false, stage, group: "confirm", confirm: true, confirmWindow: "10min" });
+      // FEITO por janela: o SDR marcou "confirmou" ou "sem resposta" naquele
+      // passo (confirmStepDone), senão a tarefa continua pendente. Cliente que
+      // confirmou já resolve a de 1h; a de 10min segue (positiva ou ligação).
+      g.hoje.push({ l, kind, phase, who, due: { t: callT - 60 * M, type: "confirm" }, done: confirmStepDone(l, "1h", l.callAt) || !!l.callConfirmed, stage, group: "confirm", confirm: true, confirmWindow: "1h" });
+      g.hoje.push({ l, kind, phase, who, due: { t: callT - 10 * M, type: "confirm" }, done: confirmStepDone(l, "10min", l.callAt), stage, group: "confirm", confirm: true, confirmWindow: "10min" });
       continue;
     }
 
@@ -129,7 +141,7 @@ function buildQueue(leads, saasCfg, person) {
       g.hoje.push({
         l, kind, phase, who, stage, group: "confirm",
         due: { t: integT - 120 * 60 * 1000, type: "confirm" },
-        done: !!l.integrationConfirmed, confirm: true, confirmKind: "integracao", confirmWindow: "2h",
+        done: !!l.integrationConfirmed || confirmStepDone(l, "2h", l.integrationAt), confirm: true, confirmKind: "integracao", confirmWindow: "2h",
       });
     }
 
@@ -1019,6 +1031,30 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
     setResched(false);
     onClose && onClose();
   }
+
+  // Confirmação executada: "cliente confirmou" ou "sem resposta". Grava o passo
+  // no lead (confirmLog, amarrado ao horário vigente → a tarefa sai da fila),
+  // registra o TOQUE pro crédito no placar do dia — reschedule:false pra não
+  // bumpar tentativa nem re-agendar o GPS (a call já está marcada) — e avança
+  // pro próximo item da fila, que é o feedback que faltava.
+  function markConfirm(replied) {
+    const isInteg = item.confirmKind === "integracao";
+    const at = isInteg ? l.integrationAt : l.callAt;
+    const win = item.confirmWindow || "1h";
+    const prev = l.confirmLog && l.confirmLog.at === at ? l.confirmLog : { at };
+    const p = { confirmLog: { ...prev, [win]: new Date().toISOString() } };
+    if (replied) p[isInteg ? "integrationConfirmed" : "callConfirmed"] = true;
+    patch(p);
+    api.logActivity({
+      saas: l.saas, lead: l.id, type: "whatsapp",
+      text: replied
+        ? (isInteg ? "cliente confirmou a integração" : "cliente confirmou a call")
+        : `sem resposta na confirmação de ${win}`,
+      author: currentUser()?.id || "",
+      meta: { reschedule: false, event: replied ? "confirm" : "confirm_noreply", window: win },
+    }).catch((err) => console.warn("confirmação não registrada:", err.message));
+    if (onAfter) onAfter(); else onClose && onClose();
+  }
   // Item de confirmação de call usa o roteiro de confirmação; o resto, o roteiro
   // do estágio (por tentativa). A confirmação não é movimento de etapa, então o
   // bloco "Depois da ação" (destino) some pra esse item. Em pré-visualização
@@ -1311,8 +1347,10 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
             const isInteg = item.confirmKind === "integracao";
             const on = isInteg ? !!l.integrationConfirmed : !!l.callConfirmed;
             return (
-              <button onClick={() => patch(isInteg ? { integrationConfirmed: !on } : { callConfirmed: !on })}
-                title={on ? "Cliente confirmou presença (clique pra desmarcar)" : "Marcar que o cliente confirmou a presença"}
+              // Já confirmado: o clique DESMARCA (fica na tela). Ainda não:
+              // marca, credita o toque e vai pro próximo da fila.
+              <button onClick={() => (on ? patch(isInteg ? { integrationConfirmed: false } : { callConfirmed: false }) : markConfirm(true))}
+                title={on ? "Cliente confirmou presença (clique pra desmarcar)" : "Cliente respondeu confirmando: marca, credita o contato e vai pro próximo da fila"}
                 style={{ padding: "8px 14px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
                   background: on ? "var(--pos)" : "var(--bg-1)", color: on ? "#06120c" : "var(--fg-2)",
                   border: "1px solid " + (on ? "var(--pos)" : "var(--line-2)") }}>
@@ -1320,6 +1358,18 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
               </button>
             );
           })()}
+          {/* Sem resposta: registra a tentativa e tira a tarefa da fila — na
+              janela de 1h o próximo passo é a de 10 min; nela, é ligar. */}
+          {item.confirm && !preview && (
+            <button onClick={() => markConfirm(false)}
+              title={item.confirmWindow === "1h"
+                ? "Não respondeu: registra a tentativa e segue pro passo de 10 min (nele o roteiro manda ligar)"
+                : "Não respondeu: registra a tentativa — ligue no horário, a call segue reservada"}
+              style={{ padding: "8px 14px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
+                background: "var(--bg-1)", color: "var(--fg-2)", border: "1px dashed var(--line-strong)" }}>
+              sem resposta
+            </button>
+          )}
           {/* Cliente pediu pra remarcar na confirmação: escolhe novo horário na
               agenda do closer. Salva o novo callAt E vira um toque (credita o SDR). */}
           {item.confirm && !preview && (
