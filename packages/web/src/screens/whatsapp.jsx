@@ -311,6 +311,13 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead }) 
     api.waThreadClose(current.id, closed).catch(() => {});
   }
 
+  // Vincular conversa órfã a um lead. Otimista como o encerrar: o SSE traz o
+  // estado real logo em seguida (a rota também carimba as mensagens já gravadas).
+  function linkLead(leadId) {
+    if (!current) return;
+    setThreads((prev) => (prev || []).map((t) => (t.id === current.id ? { ...t, leadId } : t)));
+  }
+
   // Pedido manual de permissão de ligação (prospecção ativa / conversa antiga).
   // O refetch das mensagens vem no tick do SSE; o erro da Meta chega legível.
   function askToCall() {
@@ -505,7 +512,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead }) 
                     <button onClick={openLead} style={pill}>Abrir lead ↗</button>
                   </>
                 ) : (
-                  <span className="mono dim" style={{ fontSize: 10.5 }}>sem lead</span>
+                  <LinkLeadButton thread={current} onLinked={linkLead} />
                 )}
                 {/* "Ligar": com permissão aceita + WhatsApp configurado, o verde
                     DISCA daqui do cockpit (WebRTC); sem permissão, o verde abre
@@ -567,6 +574,64 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead }) 
 // (mesma fila e ordem do Meu dia), no topo do inbox, acima das métricas — o
 // SDR emenda um atendimento no outro sem sair da tela. Clique abre a conversa
 // do lead, com ou sem thread ainda.
+// Conversa órfã: quem escreveu de um número diferente do que digitou no form,
+// ou chegou no WhatsApp sem passar por ele. Sem vínculo o SDR fica sem contexto
+// e o fluxo automático não roda, então "sem lead" deixa de ser um rótulo morto e
+// vira a ação de amarrar. O casamento automático já resolve o caso claro; isto
+// cobre o resto (e desfaz, se amarrar errado).
+function LinkLeadButton({ thread, onLinked }) {
+  const [open, setOpen] = React.useState(false);
+  const [q, setQ] = React.useState("");
+  const [saving, setSaving] = React.useState("");
+  const leads = window.SEED?.LEADS || [];
+  const hits = React.useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return [];
+    return leads
+      .filter((l) => `${l.name || ""} ${l.company || ""} ${l.phone || ""}`.toLowerCase().includes(s))
+      .slice(0, 6);
+  }, [q, leads]);
+
+  async function link(lead) {
+    setSaving(lead.id);
+    try {
+      await api.waLinkThread(thread.id, lead.id);
+      setOpen(false); setQ("");
+      onLinked?.(lead.id);
+    } catch (e) { window.alert(e.message || "não deu pra vincular"); }
+    finally { setSaving(""); }
+  }
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} style={{ ...pill, borderStyle: "dashed" }}
+        title="Esta conversa não está ligada a nenhum lead — o fluxo automático não roda e o card não aparece aqui">
+        sem lead · vincular
+      </button>
+    );
+  }
+  return (
+    <div style={{ position: "relative" }}>
+      <input autoFocus value={q} onChange={(e) => setQ(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Escape") { setOpen(false); setQ(""); } }}
+        placeholder="buscar lead por nome, empresa ou telefone"
+        style={{ height: 28, width: 260, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12 }} />
+      {!!hits.length && (
+        <div style={{ position: "absolute", top: 32, right: 0, zIndex: 20, width: 300, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", boxShadow: "var(--shadow-2)", overflow: "hidden" }}>
+          {hits.map((l) => (
+            <button key={l.id} onClick={() => link(l)} disabled={!!saving}
+              style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 10px", fontSize: 12.5, borderBottom: "1px solid var(--line-faint)" }}>
+              <span style={{ fontWeight: 600 }}>{l.name || l.id}</span>
+              {l.company && <span className="dim"> · {l.company}</span>}
+              <span className="mono dim" style={{ display: "block", fontSize: 10.5 }}>{prettyPhone(l.phone) || "sem telefone"} · {l.stage || "novo"}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MyQueueStrip({ product, version, currentLeadId, onPick }) {
   const me = currentUser()?.id || "";
   const items = React.useMemo(() => {
