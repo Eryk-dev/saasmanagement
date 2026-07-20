@@ -150,7 +150,7 @@ function WaTopStats({ numInfo, stats }) {
   );
 }
 
-export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead }) {
+export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, initialDraft }) {
   const { version } = useData();
   const [product] = useActiveSaas();
   const isMobile = useIsMobile();
@@ -182,6 +182,12 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead }) 
     const l = (window.SEED?.LEADS || []).find((x) => x.id === initialLead);
     if (l) openByLead(l);
   }, [initialLead]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Mensagem sugerida vinda do roteiro: entra ESCRITA na caixa (nunca envia
+  // sozinha). Espera o composer montar — ele só existe com o histórico na mão
+  // e a janela de 24h aberta; fechada, o roteiro segue com o "copiar".
+  const pendingDraft = React.useRef("");
+  React.useEffect(() => { if (initialDraft) pendingDraft.current = String(initialDraft); }, [initialDraft]);
   const [msgs, setMsgs] = React.useState([]);
   const [q, setQ] = React.useState("");
   // Filtro da lista: quem respondeu (lead falou por último) × sem resposta
@@ -250,6 +256,16 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead }) 
       .catch(() => { if (!alive) return; setMsgs([]); setMsgsReady(true); });
     return () => { alive = false; };
   }, [sel, version]);
+
+  // Rascunho do roteiro entra na caixa assim que ela existir (o composer monta
+  // depois do histórico). Uma vez só: o que a pessoa editar não é sobrescrito.
+  React.useEffect(() => {
+    if (!pendingDraft.current || !msgsReady || !sel) return;
+    const t = setTimeout(() => {
+      if (composerApi.current?.insert) { composerApi.current.insert(pendingDraft.current); pendingDraft.current = ""; }
+    }, 80);
+    return () => clearTimeout(t);
+  }, [msgsReady, sel, initialDraft]);
 
   // Auto-seleciona a primeira conversa; marca como lida ao abrir.
   const list = React.useMemo(() => {
@@ -638,14 +654,14 @@ function MyQueueStrip({ product, version, currentLeadId, onPick }) {
     if (!me) return [];
     try {
       const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === product?.id) || product;
-      // O inbox é ferramenta de SDR por enquanto, então a mini-fila mostra só
-      // o trabalho DELE: fase sdr (1º contato, tentativa, retomada, reativação,
-      // remarcar no-show) MAIS a confirmação de call — que tem fase `closer`
-      // por vir da etapa de call, mas é do SDR (o buildQueue atribui a
-      // confirmação ao `owner`, não ao closer). Follow-up e a call em si são do
-      // closer e tiravam o foco de quem está atendendo no WhatsApp.
+      // Critério: o que se resolve POR MENSAGEM. Entra tudo da fila da pessoa
+      // (1º contato, tentativa, retomada, no-show, reativação, follow-up) mais
+      // a confirmação de call, que é mensagem também. Fica de fora só a call/
+      // integração em si — essas se atendem no Meet, não aqui.
+      // (Filtrar por fase `sdr` esvaziava a faixa pra closer e CS: os cards
+      // deles vêm por `closer`/`integrator`, nunca por `owner`.)
       return buildQueue(window.SEED?.LEADS || [], saasCfg, me).hoje
-        .filter((i) => !i.done && (i.phase === "sdr" || i.confirm))
+        .filter((i) => !i.done && (i.confirm || (i.kind !== "call" && i.kind !== "integracao")))
         .slice(0, 3);
     } catch { return []; }
   }, [me, product?.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -659,7 +675,7 @@ function MyQueueStrip({ product, version, currentLeadId, onPick }) {
   return (
     <div style={{ margin: "12px var(--pad-x) 0", padding: "8px 14px 7px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "0 4px 3px" }}>
-        <span className="mono" style={{ fontSize: 9.5, letterSpacing: 0.8, textTransform: "uppercase", color: "var(--fg-4)" }}>Minhas atividades de SDR · hoje</span>
+        <span className="mono" style={{ fontSize: 9.5, letterSpacing: 0.8, textTransform: "uppercase", color: "var(--fg-4)" }}>Minhas atividades · hoje</span>
         <span style={{ flex: 1 }} />
         <a href="#today" style={{ fontSize: 11, color: "var(--fg-3)", textDecoration: "none" }}>ver a fila →</a>
       </div>

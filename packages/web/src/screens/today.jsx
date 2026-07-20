@@ -428,6 +428,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
             onClose={() => setScriptItem(null)}
             onTouch={() => { const nx = nextAfter(scriptItem); logTouch(scriptItem); setScriptItem(nx); }}
             onOpenLead={() => { setScriptItem(null); onOpenLead && onOpenLead(scriptItem.l); }}
+            onWhatsapp={onOpenWhatsapp ? (l, draft) => { setScriptItem(null); onOpenWhatsapp(l, draft); } : null}
           />
         </ErrorBoundary>
       )}
@@ -634,7 +635,7 @@ export function clientSummary(saasCfg, lead, stage, cat) {
 // Meet) mostrado no roteiro pra o closer trabalhar o follow-up com contexto: o
 // que rolou, objeções (tratadas/em aberto), combinados, próximo passo e a
 // mensagem de WhatsApp pronta pra enviar. Some quando não há resumo ainda.
-export function CallSummaryCard({ summary, phone }) {
+export function CallSummaryCard({ summary, phone, onSend = null }) {
   const [copied, setCopied] = useS(false);
   if (!summary) return null;
   const box = { border: "1px solid var(--accent-line)", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--accent-soft)" };
@@ -717,7 +718,14 @@ export function CallSummaryCard({ summary, phone }) {
           <div className="mono dim" style={{ ...kick, fontSize: 9.5, marginBottom: 3 }}>WhatsApp sugerido</div>
           <div style={{ fontSize: 12, lineHeight: 1.5, whiteSpace: "pre-wrap", marginBottom: 6 }}>{msg}</div>
           <div style={{ display: "flex", gap: 6 }}>
-            {waHref && <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", background: "#25D366", color: "#06120c", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>enviar no WhatsApp ↗</a>}
+            {/* Com o inbox à mão (roteiro), o texto vai pra caixa de mensagem
+                DAQUI; fora dele (cliente/negócio), segue pro app. */}
+            {onSend ? (
+              <button onClick={() => onSend(msg)} title="Abre a conversa no inbox com esta mensagem já escrita"
+                style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", border: "none", background: "#25D366", color: "#06120c", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>enviar no WhatsApp</button>
+            ) : waHref && (
+              <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", background: "#25D366", color: "#06120c", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>enviar no WhatsApp ↗</a>
+            )}
             <button onClick={copy} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5 }}>{copied ? "copiado ✓" : "copiar"}</button>
           </div>
         </div>
@@ -999,7 +1007,7 @@ function ProposalBlock({ l, wa, item, onPatch }) {
 // conversa) e ROTEIRO à direita (postura, objetivo e o passo a passo com a
 // fala pronta). Em tela estreita as colunas empilham. "Toque e próximo"
 // mantém o operador em fluxo: registra e já abre o cliente seguinte.
-function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfter, onClose, onTouch, onOpenLead, preview = false, previewScript = null }) {
+function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfter, onClose, onTouch, onOpenLead, onWhatsapp, preview = false, previewScript = null }) {
   // Cópia local do lead: a edição inline dos campos reflete na hora aqui (fala
   // interpolada + checklist) e persiste via onPatch (fila + API).
   const [l, setL] = useS(item.l);
@@ -1273,7 +1281,8 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
           <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
             <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Roteiro</div>
             {/* Resumo da última call por IA em cima do roteiro do estágio. */}
-            <CallSummaryCard summary={callSummary} phone={l.phone} />
+            <CallSummaryCard summary={callSummary} phone={l.phone}
+              onSend={onWhatsapp ? (msg) => onWhatsapp(l, msg) : null} />
             {/* Call agendada: atalhos do closer no topo (link da call + mandar pro
                 cliente no Whats + proposta), antes do passo a passo. */}
             {item.kind === "call" && !preview && <CallShortcuts l={l} item={item} wa={wa} onPatch={patch} />}
@@ -1334,10 +1343,19 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
         <div style={{ marginTop: "auto", padding: "10px 18px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           {/* WhatsApp em linha própria, esticado (igual ao do drawer/pop de contato). */}
           {wa && (
-            <a href={wa} target="_blank" rel="noopener noreferrer" title={`WhatsApp · ${l.phone}`}
-              style={{ flex: "1 1 100%", textAlign: "center", padding: "10px 14px", borderRadius: "var(--r-2)", background: "#25D366", color: "#06120c", fontSize: 13.5, fontWeight: 700, textDecoration: "none" }}>
-              WhatsApp ↗
-            </a>
+            // Atende DENTRO do cockpit (inbox); sem o handler (pré-visualização
+            // em Ajustes → Scripts), cai no deep-link do app.
+            onWhatsapp ? (
+              <button onClick={() => onWhatsapp(l)} title={`Abrir a conversa no inbox · ${l.phone}`}
+                style={{ flex: "1 1 100%", textAlign: "center", padding: "10px 14px", borderRadius: "var(--r-2)", border: "none", background: "#25D366", color: "#06120c", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
+                WhatsApp
+              </button>
+            ) : (
+              <a href={wa} target="_blank" rel="noopener noreferrer" title={`WhatsApp · ${l.phone}`}
+                style={{ flex: "1 1 100%", textAlign: "center", padding: "10px 14px", borderRadius: "var(--r-2)", background: "#25D366", color: "#06120c", fontSize: 13.5, fontWeight: 700, textDecoration: "none" }}>
+                WhatsApp ↗
+              </a>
+            )
           )}
           {/* Confirmação: o SDR marca quando o cliente responde à mensagem de 1h;
               o roteiro troca o passo de 10 min (positiva) sozinho. */}
