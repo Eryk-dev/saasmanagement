@@ -77,6 +77,7 @@ test("ganho oficial: scoreboard, pace, custos %, marketing e funil contam os MES
   assert.equal(pace.context.wonMonth, sb.team.won);
   assert.equal(pace.context.tcvMonth, sb.team.revenue);
   assert.equal(costs.wonBase, pace.context.tcvMonth);          // base do custo % = mesmos fechados
+  assert.equal(pace.sale.sold, sb.team.revenue);               // a META persegue o mesmo vendido
   assert.equal(costs.manual[0].amount, 800);                    // 10% de 8.000
   assert.equal(mkt.totals.won, 2);
   assert.equal(mkt.totals.revenue, 8000);
@@ -126,6 +127,8 @@ test("furo de call (etapa No show) conta igual no placar e no pace", async () =>
 test("caixa do mês: faturas pagas + a receber, a mesma conta da faixa de meta", async () => {
   const { app } = await buildApp();
   const pace = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
+  assert.equal(pace.sale.target, 100000);
+  assert.equal(pace.sale.sold, 8000);      // vendido = os mesmos fechados do placar
   assert.equal(pace.cash.target, 100000);
   assert.equal(pace.cash.collected, 20000);
   assert.equal(pace.cash.receivables, 5000);

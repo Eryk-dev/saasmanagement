@@ -56,11 +56,12 @@ try {
   // Estados COM DADOS da Visão geral (os fetches não rodam no SSR): a faixa de
   // meta e a régua de conversões renderizam com payloads no formato da API.
   const fakePace = {
-    cash: {
-      target: 60000, collected: 34000, collectedToday: 1000, gap: 26000,
+    // A meta é ancorada no VENDIDO (bloco sale); cash é leitura informativa.
+    sale: {
+      target: 60000, sold: 34000, soldToday: 1000, gap: 26000,
       expectedToDate: 30000, progress: 0.5667, expectedProgress: 0.5, status: "ahead",
       projected: 51000, actualDailyPace: 2833, requiredDailyPace: 2600,
-      remainingBusinessDays: 10, receivableCount: 2, forecastWithReceivables: 40000,
+      remainingBusinessDays: 10,
     },
     plan: {
       blockedBy: null,
