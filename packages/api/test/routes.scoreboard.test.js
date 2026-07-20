@@ -107,27 +107,26 @@ test("Closer: conversão na call, ganhos (handoff), receita, ciclo call→ganho"
   await app.close();
 });
 
-test("Closer: CS que fechou conta no painel; ganho sem atividade cai no stageSince/cliente", async () => {
+test("Closer: venda pela régua oficial (isWonLead + wonAt), com fallbacks pro lead sem carimbo", async () => {
   const { app, repo } = await buildApp();
-  await repo.create("leads", { id: "wc", saas: "leverads", closer: "u_clo", stage: "Ganho", amount: 5000, createdAt: now, stageSince: now });
-  await repo.create("activities", { id: "st_wc", saas: "leverads", lead: "wc", type: "stage", at: now, meta: { from: "Follow-up", to: "Ganho" } });
+  // Venda carimbada (wonAt): a data oficial, mesmo que o card já tenha andado.
+  await repo.create("leads", { id: "wc", saas: "leverads", closer: "u_clo", stage: "Integração", amount: 5000, customerId: "cc", wonAt: now, createdAt: now, stageSince: "2026-08-02T10:00:00.000Z" });
   // u_cs é integrator (CS) e fechou um lead — o papel não censura o placar; o
-  // ganho dele conta. E o lead NÃO tem atividade de estágio (fechado antes do
-  // log): o fallback usa o stageSince.
+  // ganho dele conta. Lead legado sem wonAt: fallback no stageSince.
   await repo.create("leads", { id: "wx", saas: "leverads", closer: "u_cs", stage: "Ganho", amount: 7000, createdAt: now, stageSince: now });
-  // Lead ganho SEM stageSince e sem atividade: cai no startedAt do cliente vinculado.
+  // Lead ganho SEM carimbo nenhum: cai no startedAt do cliente vinculado.
   await repo.create("leads", { id: "wy", saas: "leverads", closer: "u_clo", stage: "Ganho", amount: 3000, createdAt: now });
   await repo.create("customers", { id: "cy", saas: "leverads", name: "Y", leadId: "wy", startedAt: "2026-07-09" });
-  // Lead ganho com transição registrada FORA da janela: pertence à outra janela.
-  await repo.create("leads", { id: "wz", saas: "leverads", closer: "u_clo", stage: "Ganho", amount: 900, createdAt: "2026-06-01T10:00:00.000Z", stageSince: now });
-  await repo.create("activities", { id: "st_wz", saas: "leverads", lead: "wz", type: "stage", at: "2026-06-02T10:00:00.000Z", meta: { from: "Follow-up", to: "Ganho" } });
+  // Venda carimbada FORA da janela (junho): não entra no placar de julho,
+  // mesmo com o card ainda em Ganho.
+  await repo.create("leads", { id: "wz", saas: "leverads", closer: "u_clo", stage: "Ganho", amount: 900, customerId: "cz", wonAt: "2026-06-02T10:00:00.000Z", createdAt: "2026-06-01T10:00:00.000Z", stageSince: now });
 
   const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
   const cs = sb.closer.find((p) => p.user === "u_cs");
   assert.equal(cs.won, 1);
   assert.equal(cs.revenue, 7000);
   const clo = sb.closer.find((p) => p.user === "u_clo");
-  assert.equal(clo.won, 2);              // wc (atividade) + wy (fallback via cliente); wz fica de fora
+  assert.equal(clo.won, 2);              // wc (wonAt) + wy (fallback via cliente); wz vendeu em junho
   assert.equal(clo.revenue, 8000);
   await app.close();
 });

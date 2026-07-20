@@ -8,14 +8,14 @@
 // Sem histórico de churn confiável ainda, então retenção entra magra (contas
 // novas + cancelamentos com data) — cresce quando o billing registrar o evento.
 
-import { kindOf, isWonLead, isLoss, cadenceOf, firstStage, TOUCH_TYPES, isNoShowStage } from "./stages.js";
+import { cadenceOf, firstStage, isLoss, TOUCH_TYPES } from "./stages.js";
+import {
+  DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead,
+  bookedLeadsIn as coreBooked, callOutcome as coreCallOutcome,
+  winsIn, customerStartMap,
+} from "./metrics-core.js";
 
-const DAY = 86_400_000;
 const HOUR = 3_600_000;
-// Dia no fuso do negócio (UTC-3), igual ao marketing/funil — a janela casa com
-// a das outras telas.
-const dayStr = (d) => new Date(new Date(d).getTime() - 3 * HOUR).toISOString().slice(0, 10);
-const round2 = (n) => Math.round(n * 100) / 100;
 const median = (arr) => {
   if (!arr.length) return null;
   const s = [...arr].sort((a, b) => a - b);
@@ -23,25 +23,19 @@ const median = (arr) => {
   return round2(s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2);
 };
 
-function rangeFromQuery(q, now = new Date()) {
-  const until = q.until || dayStr(now);
-  const since = q.since || dayStr(new Date(now.getTime() - 29 * DAY));
-  return { since, until };
-}
-
 export function registerScoreboardRoutes(app, repo) {
   app.get("/api/scoreboard/:saas", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "Not found" });
     const { since, until } = rangeFromQuery(req.query || {});
-    const inWin = (iso) => iso && dayStr(iso) >= since && dayStr(iso) <= until;
+    const inWin = (iso) => iso && dayKey(iso) >= since && dayKey(iso) <= until;
     // Janela ANTERIOR (semana/mês passado) — base da meta dinâmica de calls do
     // SDR: a meta da semana atual sai do volume de leads da semana passada
     // (completa), que é estável (a semana atual ainda não fechou).
     const prevSince = String(req.query?.prevSince || "");
     const prevUntil = String(req.query?.prevUntil || "");
     const hasPrev = /^\d{4}-\d{2}-\d{2}$/.test(prevSince) && /^\d{4}-\d{2}-\d{2}$/.test(prevUntil);
-    const inPrev = (iso) => iso && dayStr(iso) >= prevSince && dayStr(iso) <= prevUntil;
+    const inPrev = (iso) => iso && dayKey(iso) >= prevSince && dayKey(iso) <= prevUntil;
 
     const [allLeads, allActs, allCustomers, proposals, subs, users, goalsAll, npsAll] = await Promise.all([
       repo.list("leads"),
@@ -53,7 +47,8 @@ export function registerScoreboardRoutes(app, repo) {
       repo.list("goals"),
       repo.list("nps").catch(() => []),
     ]);
-    const leads = allLeads.filter((l) => l.saas === product.id);
+    // Lead interno (teste) fora de tudo — régua oficial do metrics-core.
+    const leads = allLeads.filter((l) => l.saas === product.id && isRealLead(l));
     const leadById = new Map(leads.map((l) => [l.id, l]));
     const customers = allCustomers.filter((c) => c.saas === product.id);
 
@@ -77,69 +72,16 @@ export function registerScoreboardRoutes(app, repo) {
     const withRole = (role) => users.filter((u) => (u.roles || []).includes(role)).map((u) => u.id);
     const goalMap = (uid, role, metrics) => Object.fromEntries(metrics.map((m) => [m, goalFor(uid, role, m)]).filter(([, g]) => g));
 
-    // ── Helpers compartilhados (SDR / closer / funil do time) ─────────────────
-    const FORWARD = new Set(["proposta", "followup", "integracao", "ganho"]); // avançou = a call aconteceu
-    // Leads DISTINTOS da lista que atingiram estágio de kind `call` na janela.
-    const bookedLeadsIn = (list) => {
-      const ids = new Set();
-      for (const l of list) {
-        for (const a of actsByLead.get(l.id) || []) {
-          if (a.type === "stage" && inWin(a.at) && kindOf(product, a.meta?.to) === "call") ids.add(l.id);
-        }
-      }
-      return [...ids].map((id) => leadById.get(id)).filter(Boolean);
-    };
-    // Resolução da safra de calls agendadas: compareceu = avançou pra frente
-    // (proposta/follow-up/integração/ganho) OU perdeu por OUTRO motivo (a call
-    // aconteceu); não compareceu = perda "nao_compareceu" OU parado na ETAPA de
-    // No show (o fluxo atual do pipeline manda o furão pra lá, não pra Perdido);
-    // ainda em Call agendada = não resolvido. won = está ganho hoje.
-    const callOutcome = (list) => {
-      let shown = 0, noShow = 0, won = 0;
-      for (const l of list) {
-        const isW = isWonLead(product, l);
-        const lost = isLoss(product, l.stage);
-        if (isW) won++;
-        const advanced = isW || FORWARD.has(kindOf(product, l.stage))
-          || (actsByLead.get(l.id) || []).some((a) => a.type === "stage" && FORWARD.has(kindOf(product, a.meta?.to)));
-        if ((lost && l.lostReason === "nao_compareceu") || (!isW && isNoShowStage(l.stage))) noShow++;
-        else if (advanced || lost) shown++;
-      }
-      return { shown, noShow, won };
-    };
-    // Início do cliente vinculado (leadId) — fallback do momento do fechamento
-    // pra lead ganho sem stageSince (fechados antes do log de atividades).
-    const customerStartByLead = new Map(customers.filter((c) => c.leadId && c.startedAt).map((c) => [c.leadId, c.startedAt]));
-    // Fechamentos NA JANELA: primeira transição pra kind integracao/ganho (pega
-    // o momento do fechamento mesmo que o card já tenha andado). Fallback pros
-    // ganhos de antes do log: lead PARADO em ganho/integração sem transição
-    // registrada conta pelo stageSince (ou pelo início do cliente vinculado);
-    // com transição fora da janela, o fechamento pertence à outra janela.
-    const winTransitionsFor = (list) => {
-      const winAt = new Map();
-      for (const l of list) {
-        for (const a of actsByLead.get(l.id) || []) {
-          if (a.type === "stage" && inWin(a.at) && !winAt.has(l.id)) {
-            const k = kindOf(product, a.meta?.to);
-            if (k === "integracao" || k === "ganho") winAt.set(l.id, a.at);
-          }
-        }
-      }
-      for (const l of list) {
-        if (winAt.has(l.id)) continue;
-        const k = kindOf(product, l.stage);
-        if (k !== "integracao" && k !== "ganho") continue;
-        const hasWonAct = (actsByLead.get(l.id) || []).some((a) => {
-          if (a.type !== "stage") return false;
-          const ak = kindOf(product, a.meta?.to);
-          return ak === "integracao" || ak === "ganho";
-        });
-        if (hasWonAct) continue;
-        const at = l.stageSince || customerStartByLead.get(l.id) || "";
-        if (inWin(at)) winAt.set(l.id, at);
-      }
-      return winAt;
-    };
+    // ── Réguas do metrics-core amarradas ao dataset da requisição ─────────────
+    // Safra de calls, resolução compareceu/furo/vendeu e fechamentos na janela
+    // moram no metrics-core.js — regra nova entra LÁ. Fechamento segue a régua
+    // oficial da venda como fato do lead (isWonLead + wonAt), com fallback pro
+    // lead legado sem carimbo (startedAt do cliente vinculado).
+    const actsOf = (id) => actsByLead.get(id) || [];
+    const bookedLeadsIn = (list) => coreBooked(product, list, actsOf, inWin);
+    const callOutcome = (list) => coreCallOutcome(product, list, actsOf);
+    const customerStartByLead = customerStartMap(customers);
+    const winTransitionsFor = (list) => winsIn(product, list, inWin, customerStartByLead);
 
     // ── SDR (agrupado por owner) ──────────────────────────────────────────────
     const slaMs = (Number(cadenceOf(product, firstStage(product)).firstTouchHours) || 48) * HOUR;
@@ -224,17 +166,11 @@ export function registerScoreboardRoutes(app, repo) {
       // avançou pra frente OU perdeu por outro motivo; no-show não conta.
       const callLeads = mine.filter((l) => inWin(l.callAt));
       const calls = callLeads.length;
-      let callsShown = 0;
-      for (const l of callLeads) {
-        if (isLoss(product, l.stage) && l.lostReason === "nao_compareceu") continue;
-        if (!isWonLead(product, l) && isNoShowStage(l.stage)) continue; // furou: parado na etapa de No show
-        const advanced = isWonLead(product, l) || FORWARD.has(kindOf(product, l.stage))
-          || (actsByLead.get(l.id) || []).some((a) => a.type === "stage" && FORWARD.has(kindOf(product, a.meta?.to)));
-        if (advanced || isLoss(product, l.stage)) callsShown++;
-      }
-      // GANHO do closer = fechamento = handoff pra INTEGRAÇÃO (ou direto Ganho),
-      // contado pela transição na janela (winTransitionsFor). O valor do negócio
-      // é lançado NESSA passagem (ver stage-move/DestinoSection).
+      // Compareceu/furo pela MESMA régua da safra (callOutcome do metrics-core).
+      const callsShown = callOutcome(callLeads).shown;
+      // GANHO do closer = venda na janela pela régua oficial (isWonLead +
+      // wonAt, metrics-core). O valor do negócio é lançado no fechamento
+      // (ver stage-move/DestinoSection).
       const winAt = winTransitionsFor(mine);
       const wonLeads = [...winAt.keys()].map((id) => leadById.get(id)).filter(Boolean);
       const wonN = wonLeads.length;

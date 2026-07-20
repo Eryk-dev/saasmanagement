@@ -12,10 +12,12 @@
 
 import { annualized } from "./billing.js";
 import { aiCosts as defaultAiCosts } from "./ai-costs.js";
-import { isWonLead, wonAtOf } from "./stages.js";
+import {
+  DAY_MS, round2, dayKey, monthKey, isRealLead,
+  winsIn, customerStartMap, tcvOf,
+} from "./metrics-core.js";
 
-const round2 = (n) => Math.round(n * 100) / 100;
-const monthOf = (iso) => String(iso || "").slice(0, 7);
+const monthOf = monthKey; // mês do dia do NEGÓCIO (metrics-core), não UTC
 
 export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts } = {}) {
   // Gasto com IA (OpenRouter/OpenAI/Anthropic) — agregado em USD pro período.
@@ -31,7 +33,7 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts } = {}) {
   app.get("/api/expenses/summary/:saas", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "Not found" });
-    const month = /^\d{4}-\d{2}$/.test(String(req.query.month || "")) ? String(req.query.month) : new Date().toISOString().slice(0, 7);
+    const month = /^\d{4}-\d{2}$/.test(String(req.query.month || "")) ? String(req.query.month) : monthKey(new Date());
 
     const [insights, expenses] = await Promise.all([repo.list("ad_insights"), repo.list("expenses")]);
     const round2 = (n) => Math.round(n * 100) / 100;
@@ -76,10 +78,11 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts } = {}) {
     const hasPct = expenses.some((e) => e.saas === product.id && Number(e.pct) > 0 && applies(e));
     let wonBase = 0;
     if (hasPct) {
-      const leads = await repo.list("leads");
-      wonBase = leads
-        .filter((l) => l.saas === product.id && isWonLead(product, l) && monthOf(wonAtOf(l)) === month)
-        .reduce((a, l) => a + (Number(l.amount) || 0), 0);
+      const [allLeads, allCustomers] = await Promise.all([repo.list("leads"), repo.list("customers")]);
+      const leads = allLeads.filter((l) => l.saas === product.id && isRealLead(l));
+      const starts = customerStartMap(allCustomers.filter((c) => c.saas === product.id));
+      const wins = winsIn(product, leads, (iso) => monthKey(iso) === month, starts);
+      wonBase = tcvOf(leads.filter((l) => wins.has(l.id)));
     }
     const manual = expenses
       .filter((e) => e.saas === product.id && applies(e))
@@ -101,15 +104,16 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts } = {}) {
     ]);
     const C = customers.filter((c) => c.saas === product.id);
     const S = subs.filter((s) => s.saas === product.id);
-    const L = leads.filter((l) => l.saas === product.id);
+    const L = leads.filter((l) => l.saas === product.id && isRealLead(l));
     const A = insights.filter((r) => r.saas === product.id);
 
-    // Janela corrente (?days=), pra CAC/conversão "agora".
-    const cutoffIso = new Date(Date.now() - days * 86400000).toISOString();
-    const cutoffDay = cutoffIso.slice(0, 10);
-    const spendWin = A.filter((r) => String(r.date) >= cutoffDay).reduce((a, r) => a + (Number(r.spend) || 0), 0);
-    const newCustWin = C.filter((c) => c.startedAt && c.startedAt >= cutoffIso).length;
-    const leadsWin = L.filter((l) => l.createdAt && l.createdAt >= cutoffIso).length;
+    // Janela corrente (?days=): últimos N dias do NEGÓCIO com hoje incluso — a
+    // mesma régua de dia/janela do resto do cockpit (metrics-core). Antes
+    // cortava por instante UTC e divergia do tile de Leads ao lado.
+    const sinceDay = dayKey(new Date(Date.now() - (days - 1) * DAY_MS));
+    const spendWin = A.filter((r) => String(r.date) >= sinceDay).reduce((a, r) => a + (Number(r.spend) || 0), 0);
+    const newCustWin = C.filter((c) => c.startedAt && dayKey(c.startedAt) >= sinceDay).length;
+    const leadsWin = L.filter((l) => l.createdAt && dayKey(l.createdAt) >= sinceDay).length;
     const cac = newCustWin > 0 && spendWin > 0 ? round2(spendWin / newCustWin) : null;
     const convRate = leadsWin > 0 ? round2((newCustWin / leadsWin) * 100) : null;
 
