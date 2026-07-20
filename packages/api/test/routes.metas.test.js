@@ -75,6 +75,27 @@ test("PUT: idempotente (mandar de novo atualiza, não duplica)", async () => {
   assert.equal(matches[0].target, 90);
 });
 
+test("meta da empresa: GET expõe cashTarget (null = padrão); PUT grava e limpa no produto", async () => {
+  const { app, repo } = await buildApp();
+  // Sem meta configurada: null + o padrão do pace pro placeholder da tela.
+  let r = (await app.inject({ method: "GET", url: "/api/metas/leverads" })).json();
+  assert.equal(r.company.cashTarget, null);
+  assert.equal(r.company.cashTargetDefault, 120000);
+
+  // PUT com company grava no product.monthlyCashTarget (goals pode ir vazio).
+  const put = await app.inject({ method: "PUT", url: "/api/metas/leverads", payload: { goals: [], company: { cashTarget: "80000" } } });
+  assert.equal(put.json().companySaved, true);
+  assert.equal((await repo.get("products", "leverads")).monthlyCashTarget, 80000);
+  r = (await app.inject({ method: "GET", url: "/api/metas/leverads" })).json();
+  assert.equal(r.company.cashTarget, 80000);
+
+  // Vazio limpa (a faixa volta pro padrão); sem `company` no body, não mexe.
+  await app.inject({ method: "PUT", url: "/api/metas/leverads", payload: { goals: [], company: { cashTarget: "" } } });
+  assert.equal((await repo.get("products", "leverads")).monthlyCashTarget, null);
+  await app.inject({ method: "PUT", url: "/api/metas/leverads", payload: { goals: [{ scope: "role", key: "sdr", metric: "bookingRate", target: 30 }] } });
+  assert.equal((await repo.get("products", "leverads")).monthlyCashTarget, null);
+});
+
 test("PUT inválido = 400; produto inexistente = 404", async () => {
   const { app } = await buildApp();
   assert.equal((await app.inject({ method: "PUT", url: "/api/metas/leverads", payload: { goals: "x" } })).statusCode, 400);

@@ -213,6 +213,14 @@ test("furo pela ETAPA No show entra no comparecimento (não só o motivo de perd
   await app.close();
 });
 
+test("sem monthlyCashTarget a meta cai no padrão e avisa targetConfigured=false", async () => {
+  const { app } = await build({ monthlyCashTarget: 0 });
+  const r = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
+  assert.equal(r.cash.target, 120000);
+  assert.equal(r.cash.targetConfigured, false); // a faixa aponta pra Metas → Empresa
+  await app.close();
+});
+
 test("produto inexistente retorna 404", async () => {
   const { app } = await build();
   assert.equal((await app.inject({ url: "/api/pipeline-pace/nao-existe" })).statusCode, 404);

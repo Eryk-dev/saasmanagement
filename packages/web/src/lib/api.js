@@ -191,8 +191,10 @@ export const api = {
   sequenceMetrics: (saas) => req("GET", `/api/sequences/metrics/${encodeURIComponent(saas)}`),
   sequenceRun: () => req("POST", "/api/sequences/run", {}),
   // Metas de desempenho por vaga/pessoa (ferramenta; escreve na collection goals).
+  // `company` (opcional): meta da empresa — { cashTarget } vai pro
+  // product.monthlyCashTarget (a meta que a Visão geral e a Análise perseguem).
   metas: (saas) => req("GET", `/api/metas/${encodeURIComponent(saas)}`),
-  saveMetas: (saas, goals) => req("PUT", `/api/metas/${encodeURIComponent(saas)}`, { goals }),
+  saveMetas: (saas, goals, company) => req("PUT", `/api/metas/${encodeURIComponent(saas)}`, company ? { goals, company } : { goals }),
   // Treinamentos: base de flashcards por vaga + fila FSRS individual (Anki).
   flashcards: (saas) => req("GET", `/api/flashcards/${encodeURIComponent(saas)}`),
   saveFlashcards: (saas, cards, settings) => req("PUT", `/api/flashcards/${encodeURIComponent(saas)}`, settings ? { cards, settings } : { cards }),
