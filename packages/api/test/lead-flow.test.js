@@ -409,3 +409,63 @@ test("remarcar a integração arrasta o GPS junto; toque marcado na mão continu
   await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { integrationAt: outro, nextActionAt: naMao } });
   assert.equal((await repo.get("leads", lead.id)).nextActionAt, naMao);
 });
+
+// ── Etapa de call exige horário ─────────────────────────────────────────────
+// Card em etapa de call sem hora não aparece na Agenda, não gera Meet, não
+// ocupa slot do closer e não conta como call agendada: some do processo e só
+// existe no kanban. Foi assim que o lead do Vinicius entrou (20/07).
+
+test("PATCH pra etapa de call sem callAt é recusado com 422 legível", async () => {
+  const { app, repo } = await buildApp();
+  const lead = (await app.inject({ method: "POST", url: "/api/leads", payload: { name: "Vinicius", saas: "leverads" } })).json();
+
+  const res = await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { stage: "Call agendada" } });
+  assert.equal(res.statusCode, 422);
+  assert.equal(res.json().code, "CALL_SEM_HORARIO");
+  assert.match(res.json().error, /exige data e hora/);
+  // E o card NÃO se mexeu: nada de etapa trocada com o resto pela metade.
+  assert.notEqual((await repo.get("leads", lead.id)).stage, "Call agendada");
+});
+
+test("PATCH pra etapa de call COM callAt passa e o GPS vira a hora da call", async () => {
+  const { app, repo } = await buildApp();
+  const lead = (await app.inject({ method: "POST", url: "/api/leads", payload: { name: "Vinicius", saas: "leverads" } })).json();
+  const brt = new Date(Date.now() + 26 * 3600e3 - 3 * 3600e3).toISOString().slice(0, 16);
+
+  const res = await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { stage: "Call agendada", callAt: brt } });
+  assert.equal(res.statusCode, 200);
+  const depois = await repo.get("leads", lead.id);
+  assert.equal(depois.stage, "Call agendada");
+  assert.equal(depois.callAt, brt);
+  assert.equal(depois.nextActionAt, brtToIso(brt));
+});
+
+test("lead que JÁ tem callAt pode mudar de etapa sem remandar a hora", async () => {
+  const { app, repo } = await buildApp();
+  const brt = new Date(Date.now() + 26 * 3600e3 - 3 * 3600e3).toISOString().slice(0, 16);
+  const lead = (await app.inject({ method: "POST", url: "/api/leads", payload: { name: "Keila", saas: "leverads", callAt: brt } })).json();
+
+  const res = await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { stage: "Call agendada" } });
+  assert.equal(res.statusCode, 200);
+  assert.equal((await repo.get("leads", lead.id)).stage, "Call agendada");
+});
+
+test("POST criando lead JÁ em etapa de call exige a hora", async () => {
+  const { app, repo } = await buildApp();
+  const semHora = await app.inject({ method: "POST", url: "/api/leads", payload: { name: "Vinicius", saas: "leverads", stage: "Call agendada" } });
+  assert.equal(semHora.statusCode, 422);
+  assert.equal(semHora.json().code, "CALL_SEM_HORARIO");
+  assert.equal((await repo.list("leads")).length, 0, "não pode nascer card fantasma");
+
+  const brt = new Date(Date.now() + 26 * 3600e3 - 3 * 3600e3).toISOString().slice(0, 16);
+  const comHora = await app.inject({ method: "POST", url: "/api/leads", payload: { name: "Vinicius", saas: "leverads", stage: "Call agendada", callAt: brt } });
+  assert.equal(comHora.statusCode, 201);
+  assert.equal(comHora.json().callAt, brt);
+});
+
+test("etapa que NÃO é de call segue entrando sem hora nenhuma", async () => {
+  const { app } = await buildApp();
+  const lead = (await app.inject({ method: "POST", url: "/api/leads", payload: { name: "Ana", saas: "leverads" } })).json();
+  const res = await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { stage: "Follow-up" } });
+  assert.equal(res.statusCode, 200);
+});

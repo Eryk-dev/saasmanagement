@@ -177,6 +177,10 @@ export const ENTITIES = {
       { key: "closer", label: "Closer", type: "select", options: usersWithRole("closer"), blankLabel: "—" },
       { key: "source", label: "Origem", type: "text", placeholder: "Form · /pricing" },
       { key: "stage", label: "Estágio", type: "select", options: stageOptions, blankLabel: "(primeiro estágio)" },
+      // Escolher uma etapa de call sem preencher isto é recusado pelo servidor:
+      // card em etapa de call sem hora não entra na Agenda nem ocupa o slot do
+      // closer, e some do processo (era o buraco que criava "call fantasma").
+      { key: "callAt", label: "Call agendada pra", type: "datetime", help: "obrigatório quando o estágio escolhido é de call" },
       { key: "nextActionAt", label: "Próximo toque", type: "datetime", help: "vazio = o GPS marca sozinho pela cadência do estágio de entrada" },
       { key: "nextActionNote", label: "O que fazer no toque", type: "text" },
     ],

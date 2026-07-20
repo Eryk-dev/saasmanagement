@@ -11,7 +11,7 @@ import { api } from "../lib/api.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 import { sourceLabel } from "../lib/sources.js";
 import { resolveScript, scriptTokens, scriptSegments, scriptChecklist } from "../lib/scripts.js";
-import { CallSummaryCard, IntegrationBriefCard } from "./today.jsx";
+import { CallSummaryCard, IntegrationBriefCard, callBusyKeys } from "./today.jsx";
 import { useData } from "../data.jsx";
 // Lead detail drawer — slides over the pipeline when a card is opened.
 // (Funil unificado: o card do pipeline é um lead, então o detalhe é do lead.)
@@ -64,6 +64,21 @@ function LeadDetail({ lead: initial, onClose }) {
   const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === lead.saas);
   const kind = stageKind(saasCfg, lead.stage || (saasCfg?.funnel?.[0]?.stage ?? ""));
   const isOpen = workableStages(saasCfg).includes(lead.stage) || !lead.stage;
+
+  // Agenda do closer deste lead, na mesma régua do Meu dia (call de 1h, ignora
+  // o próprio card e os follow-ups). Serve pra barrar horário já ocupado no
+  // input livre da call, que era o caminho sem nenhuma checagem.
+  const callBusy = React.useMemo(
+    () => callBusyKeys(window.SEED?.LEADS || [], lead.closer, lead.id),
+    [lead.closer, lead.id],
+  );
+  // A chave da grade é "YYYY-MM-DD-HH"; o datetime-local entrega
+  // "YYYY-MM-DDTHH:MM". Converte em vez de fatiar torto.
+  const slotKeyOf = (v) => { const s = String(v || ""); return s.length >= 13 ? `${s.slice(0, 10)}-${s.slice(11, 13)}` : ""; };
+  const callConflict = (v) => { const k = slotKeyOf(v); return !!k && callBusy.has(k); };
+  const callBusyMsg = lead.callAt && callConflict(lead.callAt)
+    ? `${displayName(lead.closer) || "o closer"} já tem call nesse horário`
+    : "";
 
   function patch(p) {
     dirty.current = true;
@@ -387,14 +402,23 @@ function LeadDetail({ lead: initial, onClose }) {
                 horário (igual o roteiro faz) — senão o card fica com a call
                 num dia e a fila cobrando em outro. */}
             <input type="datetime-local" value={lead.callAt || ""}
-              onChange={(e) => patch(kind === "followup" && e.target.value
-                ? { callAt: e.target.value, nextActionAt: localToIso(e.target.value) }
-                : { callAt: e.target.value })}
-              style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
+              onChange={(e) => {
+                // Digitação livre também respeita a agenda do closer: aqui não
+                // tem a grade do Meu dia pra esconder o slot ocupado, então a
+                // checagem é na hora de salvar (era por onde entravam duas
+                // calls do mesmo closer no mesmo horário, sem ninguém avisar).
+                if (e.target.value && callConflict(e.target.value)) return;
+                patch(kind === "followup" && e.target.value
+                  ? { callAt: e.target.value, nextActionAt: localToIso(e.target.value) }
+                  : { callAt: e.target.value });
+              }}
+              style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: `1px solid ${callBusyMsg ? "var(--neg)" : "var(--line-1)"}`, background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
             {lead.callAt && (
               <button onClick={() => patch({ callAt: "" })} className="mono dim" style={{ fontSize: 11 }} title="Limpar call">limpar</button>
             )}
-            <span className="mono dim" style={{ fontSize: 10 }}>aparece na Agenda</span>
+            <span className="mono dim" style={{ fontSize: 10, color: callBusyMsg ? "var(--neg)" : undefined }}>
+              {callBusyMsg || "aparece na Agenda"}
+            </span>
           </div>
           {/* Link de videochamada: sala Jitsi com slug aleatório (sem conta, abre
               no navegador/celular), salva no lead e vai pro Whats com 1 clique. */}

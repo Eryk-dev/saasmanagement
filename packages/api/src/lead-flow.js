@@ -91,6 +91,20 @@ export function appointmentAt(product, lead, stage = lead?.stage, now = new Date
 export async function applyStageMove(repo, { lead, toStage, patch = {}, author = "api", now = new Date() }) {
   const product = lead.saas ? await repo.get("products", lead.saas) : null;
   const kind = kindOf(product, toStage);
+  // Etapa de call EXIGE horário. Card em etapa de call sem hora não aparece na
+  // Agenda, não gera Meet, não ocupa slot do closer e não conta como call
+  // agendada em lugar nenhum — vira um fantasma que só aparece no kanban.
+  // A trava mora aqui porque TODA mudança de etapa passa por applyStageMove:
+  // tela, MCP, API externa e aceite de proposta.
+  if (kind === "call") {
+    const at = patch.callAt != null ? patch.callAt : lead.callAt;
+    if (!String(at || "").trim()) {
+      const err = new Error(`A etapa "${toStage}" exige data e hora da call — mande callAt junto da mudança de etapa.`);
+      err.statusCode = 422;
+      err.code = "CALL_SEM_HORARIO";
+      throw err;
+    }
+  }
   const out = {
     stageSince: patch.stageSince != null ? patch.stageSince : now.toISOString(),
     stageAttempts: 0, // contador de toques é POR estágio

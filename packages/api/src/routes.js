@@ -436,6 +436,19 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     }
     // GPS: lead nasce com o próximo toque marcado pela cadência do estágio de
     // entrada (SLA de 1º contato) — a fila da Visão geral já o mostra na hora.
+    // Criar lead JÁ numa etapa de call segue a mesma regra do movimento: sem
+    // horário o card nasceria fantasma (foi assim que o lead do Vinicius entrou).
+    if (collection === "leads" && typeof req.body.stage === "string" && req.body.stage) {
+      try {
+        const product = req.body.saas ? await repo.get("products", req.body.saas) : null;
+        if (kindOf(product, req.body.stage) === "call" && !String(req.body.callAt || "").trim()) {
+          return reply.code(422).send({
+            error: `A etapa "${req.body.stage}" exige data e hora da call — preencha "Call agendada pra".`,
+            code: "CALL_SEM_HORARIO",
+          });
+        }
+      } catch { /* fail-open: nunca bloqueia por erro de leitura do produto */ }
+    }
     if (collection === "leads" && !req.body.nextActionAt) {
       try {
         const product = req.body.saas ? await repo.get("products", req.body.saas) : null;
@@ -524,7 +537,15 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     if (collection === "leads" && typeof req.body.stage === "string") {
       const cur = await repo.get(collection, id);
       if (cur && cur.stage !== req.body.stage) {
-        patch = { ...req.body, ...(await applyStageMove(repo, { lead: cur, toStage: req.body.stage, patch: req.body, author: req.authUser?.id || "api" })) };
+        try {
+          patch = { ...req.body, ...(await applyStageMove(repo, { lead: cur, toStage: req.body.stage, patch: req.body, author: req.authUser?.id || "api" })) };
+        } catch (err) {
+          // Regra de negócio do movimento (ex.: call sem horário) vira 422 com a
+          // mensagem legível — o erro padrão do Fastify mandaria só
+          // "Unprocessable Entity" e a tela não teria o que mostrar.
+          if (err?.statusCode) return reply.code(err.statusCode).send({ error: err.message, code: err.code });
+          throw err;
+        }
       }
     }
     if (collection === "deals" && typeof req.body.stage === "string" && req.body.stageSince == null) {
