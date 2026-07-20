@@ -59,10 +59,11 @@ function NextActionModal({ leadId, onScheduled, onClose }) {
 
   if (!lead) return null;
 
-  // Destinos curados pra etapa atual (ordem do roteiro / Ajustes → Próximos
-  // passos). "Tentar de novo" fica de fora: no inbox isso é só mandar outra
-  // mensagem; e a etapa atual também (mover pra ela mesma não é ação).
-  const dests = destinationsFor(saasCfg, lead).filter((d) => !d.retry && d.stage !== lead.stage);
+  // Destinos curados pra etapa atual — ESPELHO de Ajustes → Próximos passos
+  // (destinationsFor, mesma régua do roteiro), incluindo o "tentar de novo"
+  // (retry): registra o toque e o GPS remarca; em lead novo promove pra
+  // qualificação sozinho (regra do servidor). Só a etapa atual fica de fora.
+  const dests = destinationsFor(saasCfg, lead).filter((d) => d.retry || d.stage !== lead.stage);
 
   const agenda = busyView(callBusyKeys(leads, closer, lead.id), closer);
   const whenLabel = (iso) => {
@@ -89,6 +90,18 @@ function NextActionModal({ leadId, onScheduled, onClose }) {
       await api.update("leads", lead.id, { stage: d.stage });
       setDone({ moved: d.stage });
     } catch (e) { setErr(e?.message || "não deu pra mover"); }
+    finally { setBusy(false); }
+  }
+
+  // "Tentar de novo": registra o TOQUE (activity whatsapp) — o servidor soma a
+  // tentativa, remarca o GPS pela cadência e, em lead novo, promove pra
+  // qualificação (onActivityCreated). Igual ao chip de retry do roteiro.
+  async function pickRetry(d) {
+    setBusy(true); setErr("");
+    try {
+      await api.logActivity({ saas: lead.saas, lead: lead.id, type: "whatsapp", text: "tentativa de contato (inbox)", author: currentUser()?.id || "" });
+      setDone({ retry: true, moved: d.promote ? d.stage : (lead.stage || d.stage) });
+    } catch (e) { setErr(e?.message || "não deu pra registrar a tentativa"); }
     finally { setBusy(false); }
   }
 
@@ -141,9 +154,10 @@ function NextActionModal({ leadId, onScheduled, onClose }) {
         {done ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ padding: "10px 12px", borderRadius: "var(--r-2)", background: "var(--pos-soft)", color: "var(--pos)", fontSize: 13, fontWeight: 600 }}>
-              ✓ Card atualizado pra “{done.moved}”{done.when ? ` · call ${done.when} com ${displayName(closer)}` : ""}
+              {done.retry ? `✓ Tentativa registrada · card em “${done.moved}”` : `✓ Card atualizado pra “${done.moved}”${done.when ? ` · call ${done.when} com ${displayName(closer)}` : ""}`}
             </div>
             <div style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5 }}>
+              {done.retry ? "O toque entrou na timeline e o GPS já remarcou a retomada pela cadência. " : null}
               Pipeline, Minhas atividades e Agenda já refletem (tempo real).
               {done.callUrl ? <> Meet criado: <a href={done.callUrl} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>{done.callUrl}</a>.</> : null}
               {done.when ? <> Deixei a confirmação pronta na caixa de mensagem, é só revisar e enviar.</> : null}
@@ -158,6 +172,25 @@ function NextActionModal({ leadId, onScheduled, onClose }) {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {dests.map((d) => {
+                // "Tentar de novo" (retry da régua): registra o toque; em lead
+                // novo o card segue sozinho pra qualificação (servidor).
+                if (d.retry) {
+                  return (
+                    <button key="retry" disabled={busy} onClick={() => pickRetry(d)}
+                      style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: "var(--r-2)", border: "1px dashed var(--line-strong)", background: "var(--bg-1)", textAlign: "left", cursor: "pointer", opacity: busy ? 0.6 : 1 }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg-1)"; }}>
+                      <span className="mono" style={{ flexShrink: 0, width: 18, textAlign: "center", color: "var(--fg-3)" }}>↻</span>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: "block", fontSize: 13.5, fontWeight: 600 }}>{d.promote ? `${d.stage} · registrar tentativa` : "Registrar tentativa"}</span>
+                        <span className="mono dim" style={{ fontSize: 10 }}>
+                          {d.promote ? "não respondeu ainda: soma o toque e o card segue pra qualificação" : "não respondeu: soma o toque e o GPS remarca a retomada"}
+                        </span>
+                      </span>
+                      <span className="dim" style={{ flexShrink: 0, fontSize: 12 }}>›</span>
+                    </button>
+                  );
+                }
                 const meta = KINDS[d.kind] || {};
                 const setup = setupType(d.kind);
                 return (
