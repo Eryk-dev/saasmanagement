@@ -130,6 +130,18 @@ function WaTopStats({ numInfo, stats }) {
           {item("Não lidas", stats.unread, stats.unread ? "var(--warn)" : null)}
           {item("Recebidas / enviadas", `${stats.inbound} / ${stats.outbound}`)}
           {stats.withoutLead > 0 && item("Sem lead", stats.withoutLead)}
+          {/* Preencheu o form E disparou a mensagem do obrigado = lead mais
+              quente. Mostra a taxa da janela. */}
+          {stats.form && stats.form.formLeads > 0 && item(
+            `Form → mandou o Whats · ${stats.days}d`,
+            `${stats.form.formStarted}/${stats.form.formLeads} · ${Math.round((stats.form.formStarted / stats.form.formLeads) * 100)}%`,
+            null,
+          )}
+          {/* Custo real das conversas (conversation_analytics da conta, BRL). */}
+          {stats.costs && stats.costs.cost != null && item(
+            `Custo · ${stats.days}d`,
+            `${window.fmt?.money ? window.fmt.money(stats.costs.cost) : `R$ ${stats.costs.cost}`}${stats.costs.conversations ? ` · ${stats.costs.conversations} conv.` : ""}`,
+          )}
         </>
       ) : (
         <span className="mono dim" style={{ fontSize: 11 }}>carregando números do inbox…</span>
@@ -543,7 +555,8 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead }) 
         {/* Card do cliente sempre à vista enquanto conversa (desktop): o resumo
             de qualificação do roteiro, a call marcada e o atalho pro drawer. */}
         {!isMobile && current?.leadId && sideOpen && (
-          <LeadSideCard leadId={current.leadId} version={version} onOpenLead={openLead} />
+          <LeadSideCard leadId={current.leadId} version={version} onOpenLead={openLead}
+            leadStarted={msgsReady && msgs.length ? msgs[0].direction === "in" : null} />
         )}
       </div>
     </div>
@@ -602,7 +615,7 @@ function MyQueueStrip({ product, version, currentLeadId, onPick }) {
 // Card lateral do cliente: as perguntas de qualificação EDITÁVEIS (preenche
 // conforme o lead responde no chat, mesmo checklist do roteiro) + o resumo
 // compilado (clientSummary), vivos via SSE. Lead apagado só some.
-function LeadSideCard({ leadId, version, onOpenLead }) {
+function LeadSideCard({ leadId, version, onOpenLead, leadStarted = null }) {
   // Edição otimista: o valor digitado vale na hora; o tick do SSE traz o SEED
   // atualizado e zera a camada local (aí o dado já é o do servidor).
   const [edits, setEdits] = React.useState({});
@@ -656,6 +669,10 @@ function LeadSideCard({ leadId, version, onOpenLead }) {
             {lead.stage && !(saasCfg?.funnel || []).some((f) => f.stage === lead.stage) && <option value={lead.stage}>{lead.stage}</option>}
           </select>
           {lead.callAt && <span className="chip accent" title="call marcada">▦ {fmtDT(lead.callAt)}</span>}
+          {/* Quem começou a conversa: lead que preencheu o form E disparou a
+              mensagem é mais quente do que o que só recebeu nosso template. */}
+          {leadStarted === true && <span className="chip pos" title="preencheu o form e MANDOU a mensagem do WhatsApp — mais interessado">ele iniciou</span>}
+          {leadStarted === false && <span className="chip" title="conversa aberta por nós (template/prospecção)">nós iniciamos</span>}
         </div>
       </div>
 

@@ -2,8 +2,8 @@
 // conversas (tela dedicada) e envio. As mensagens vivem em wa_threads/wa_messages
 // (ver wa-store.js) — canônico pro inbox e pro chat do drawer.
 import { makeWhatsapp } from "./whatsapp.js";
-import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId, setLeadWhatsappOptOut, waInsights, findLeadByPhone, findThreadByPhone } from "./wa-store.js";
-import { applyHealthEvent, getWaHealth, waHealthSummary, recordWebhookDelivery } from "./wa-health.js";
+import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId, setLeadWhatsappOptOut, waInsights, waFormEngagement, findLeadByPhone, findThreadByPhone } from "./wa-store.js";
+import { applyHealthEvent, getWaHealth, waHealthSummary, recordWebhookDelivery, resolveWabaId } from "./wa-health.js";
 import { runInboundCallFlow, startCallFlow, openAlerts, closeThreadAlerts, parsePermissionReply, greetingFor } from "./wa-call-flow.js";
 
 // Texto legível pra tipos que a Fase 1 ainda não renderiza (mídia/áudio).
@@ -252,10 +252,34 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
   // Números do inbox (esperando resposta, tempo de resposta, janelas abertas)
   // + a saúde do número que os webhooks contaram. Junto num payload só: é uma
   // faixa de contexto no topo da tela, não vale duas chamadas.
+  // Custo real do período (conversation_analytics) com cache de 10 min — é a
+  // Graph de management, não vale bater a cada tick do SSE.
+  let costCache = { at: 0, days: 0, value: null };
+  async function periodCost(days) {
+    // Cache também o negativo (sem permissão etc.) pra não martelar a Graph.
+    if (costCache.at && costCache.days === days && Date.now() - costCache.at < 10 * 60_000) return costCache.value;
+    let value = null;
+    try {
+      const wabaId = await resolveWabaId(repo, wa);
+      if (wabaId) {
+        const end = Math.floor(Date.now() / 1000);
+        const start = end - days * 24 * 3600;
+        value = await wa.conversationCosts(wabaId, { start, end });
+      }
+    } catch { /* sem permissão/limite: a faixa esconde o item */ }
+    costCache = { at: Date.now(), days, value };
+    return value;
+  }
+
   app.get("/api/whatsapp/insights", async (req) => {
     const days = Math.min(365, Math.max(1, Number(req.query?.days) || 30));
-    const [stats, health] = await Promise.all([waInsights(repo, { days }), getWaHealth(repo)]);
-    return { ...stats, health: waHealthSummary(health) };
+    const [stats, health, form, costs] = await Promise.all([
+      waInsights(repo, { days }),
+      getWaHealth(repo),
+      waFormEngagement(repo, { days }).catch(() => null),
+      wa.configured() ? periodCost(days) : null,
+    ]);
+    return { ...stats, health: waHealthSummary(health), form, costs };
   });
 
   app.get("/api/whatsapp/threads", async () => ({ threads: await listThreads(repo) }));
@@ -351,9 +375,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
   // (entry.id, gravado na saúde) → debug_token do próprio token.
   let tplCache = { at: 0, wabaId: "", items: null };
   async function approvedTemplates() {
-    let wabaId = process.env.WHATSAPP_WABA_ID || "";
-    if (!wabaId) wabaId = String((await getWaHealth(repo)).webhook?.wabaId || "");
-    if (!wabaId) wabaId = (await wa.tokenWabaIds().catch(() => []))[0] || "";
+    const wabaId = await resolveWabaId(repo, wa);
     if (!wabaId) {
       const err = new Error("não achei o id da conta do WhatsApp (WABA) — mande uma mensagem pro número (o webhook carimba o id) ou defina WHATSAPP_WABA_ID no servidor");
       err.status = 404;

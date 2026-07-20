@@ -17,6 +17,16 @@ export async function getWaHealth(repo) {
 // número que RECEBEU, ou seja, o que deveria estar no WHATSAPP_PHONE_NUMBER_ID.
 // Escreve no máximo 1×/min (mensagem em massa não vira enxurrada de update),
 // mas sempre que o número mudar.
+// Id da CONTA (WABA), nesta ordem: env WHATSAPP_WABA_ID → carimbo do webhook
+// (entry.id, gravado acima) → debug_token do próprio token. Compartilhado por
+// templates (routes.whatsapp) e custos (routes.metrics).
+export async function resolveWabaId(repo, wa) {
+  let wabaId = process.env.WHATSAPP_WABA_ID || "";
+  if (!wabaId) wabaId = String((await getWaHealth(repo)).webhook?.wabaId || "");
+  if (!wabaId && wa?.tokenWabaIds) wabaId = (await wa.tokenWabaIds().catch(() => []))[0] || "";
+  return wabaId;
+}
+
 export async function recordWebhookDelivery(repo, { phoneNumberId = "", display = "", wabaId = "" } = {}) {
   const cur = await getWaHealth(repo);
   const prev = cur.webhook || {};

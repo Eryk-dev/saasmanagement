@@ -113,10 +113,13 @@ function ExpensesScreen() {
         {data?.error && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>Falha ao carregar os custos.</div>}
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
-          <StatTile label="Total do mês" value={data ? brl(data.total) : "…"} delta="publicidade + IA + manuais" />
+          <StatTile label="Total do mês" value={data ? brl(data.total) : "…"} delta="publicidade + IA + WhatsApp + manuais" />
           <StatTile label="Publicidade" value={data ? brl(data.ads) : "…"} delta="automático · Meta e entradas manuais de anúncio" />
           <StatTile label="IA" value={data ? (data.ai != null ? brl(data.ai) : "sem dado no mês") : "…"}
             delta={data?.aiUSD != null ? `US$ ${data.aiUSD.toFixed(2).replace(".", ",")} · automático` : "automático via APIs dos provedores"} />
+          {/* Conversas cobradas pela Meta (conversation_analytics, BRL). */}
+          <StatTile label="WhatsApp" value={data ? (data.wa != null ? brl(data.wa) : "sem dado no mês") : "…"}
+            delta={data?.waConversations != null ? `${data.waConversations} conversas cobradas · automático` : "automático via Meta"} />
           <StatTile label="Lançados à mão" value={data ? brl(data.manualTotal) : "…"} delta={`${data?.manual?.length ?? 0} ${(data?.manual?.length ?? 0) === 1 ? "lançamento" : "lançamentos"}`} />
         </div>
 

@@ -87,6 +87,33 @@ export async function recordMessage(repo, { id, phone, direction, text = "", at,
   return msgId;
 }
 
+// "Preencheu o form E mandou a mensagem" — o lead que dá o passo extra de
+// disparar o wa.me do obrigado é mais quente. Conta, na janela: leads de FORM
+// criados no período × quantos têm conversa INICIADA POR ELES (1ª mensagem
+// inbound). Casamento tolerante ao nono dígito (waMatchKey).
+export async function waFormEngagement(repo, { days = 30, now = Date.now() } = {}) {
+  const since = now - Math.max(1, Number(days) || 30) * 24 * 3600_000;
+  const [threads, messages, leads] = await Promise.all([
+    repo.list("wa_threads"), repo.list("wa_messages"), repo.list("leads"),
+  ]);
+  const at = (m) => new Date(m.at || 0).getTime();
+  const firstByThread = new Map();
+  for (const m of messages) {
+    const cur = firstByThread.get(m.thread);
+    if (!cur || at(m) < at(cur)) firstByThread.set(m.thread, m);
+  }
+  const startedThreads = new Set();
+  for (const [tid, m] of firstByThread) if (m.direction === "in") startedThreads.add(tid);
+  const threadByKey = new Map(threads.map((t) => [waMatchKey(t.phone), t]));
+  const formLeads = leads.filter((l) =>
+    /^form/i.test(String(l.source || "")) && l.createdAt && new Date(l.createdAt).getTime() >= since);
+  const started = formLeads.filter((l) => {
+    const t = l.phone ? threadByKey.get(waMatchKey(l.phone)) : null;
+    return t && startedThreads.has(t.id);
+  });
+  return { formLeads: formLeads.length, formStarted: started.length };
+}
+
 // Códigos de erro da Meta que significam "não dá pra entregar / número não está
 // no WhatsApp" — sinal seguro pra marcar o número como inválido e limpar a base.
 // 131047/470 são RE-ENGAJAMENTO (fora da janela de 24h): o número é VÁLIDO, só
