@@ -11,7 +11,7 @@ import { api } from "../lib/api.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 import { sourceLabel } from "../lib/sources.js";
 import { resolveScript, scriptTokens, scriptSegments, scriptChecklist } from "../lib/scripts.js";
-import { CallSummaryCard, IntegrationBriefCard, callBusyKeys } from "./today.jsx";
+import { CallSummaryCard, IntegrationBriefCard, callBusyKeys, callSlotKeys } from "./today.jsx";
 import { useData } from "../data.jsx";
 // Lead detail drawer — slides over the pipeline when a card is opened.
 // (Funil unificado: o card do pipeline é um lead, então o detalhe é do lead.)
@@ -72,10 +72,10 @@ function LeadDetail({ lead: initial, onClose }) {
     () => callBusyKeys(window.SEED?.LEADS || [], lead.closer, lead.id),
     [lead.closer, lead.id],
   );
-  // A chave da grade é "YYYY-MM-DD-HH"; o datetime-local entrega
-  // "YYYY-MM-DDTHH:MM". Converte em vez de fatiar torto.
-  const slotKeyOf = (v) => { const s = String(v || ""); return s.length >= 13 ? `${s.slice(0, 10)}-${s.slice(11, 13)}` : ""; };
-  const callConflict = (v) => { const k = slotKeyOf(v); return !!k && callBusy.has(k); };
+  // A call dura 1h e a grade é de meia hora, então ela ocupa DOIS slots: marcar
+  // 14h colide tanto com uma call das 14h quanto com uma das 14h30. Checar só o
+  // primeiro slot deixaria a segunda passar.
+  const callConflict = (v) => callSlotKeys(v).some((k) => callBusy.has(k));
   const callBusyMsg = lead.callAt && callConflict(lead.callAt)
     ? `${displayName(lead.closer) || "o closer"} já tem call nesse horário`
     : "";
