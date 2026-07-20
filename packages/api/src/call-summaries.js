@@ -76,15 +76,28 @@ export function makeCallSummarizer({ repo, google, anthropic, log = console }) {
     // 1º a Meet API (conferenceRecords). Se ela não devolver (comum quando quem
     // hospeda a call é outra conta que não a conectada), cai no fallback do Drive:
     // lê o Doc de transcrição no Drive do organizador (a conta conectada).
-    let t = await google.fetchTranscript(code);
+    // A Meet API LANÇA em 4xx (API desabilitada no Cloud, sala de outra conta,
+    // escopo faltando) — sem este catch a exceção subia e matava o fallback do
+    // Drive, então a call ficava pra sempre sem resumo e o poller só logava
+    // warn. Erro dela vira diagnóstico e o Drive segue sendo tentado.
+    let t = null;
     let detail = "";
+    try {
+      t = await google.fetchTranscript(code);
+    } catch (err) {
+      detail = `meet: ${String(err.message || err).slice(0, 160)}`;
+      log.warn?.({ lead: leadId, kind, err: err.message }, "Meet API falhou (segue pro fallback do Drive)");
+    }
     if (!t && typeof google.fetchTranscriptFromDrive === "function") {
+      // Os dois motivos SOMAM (meet + drive): quando nenhum caminho traz a
+      // transcrição, o diagnóstico precisa dizer o que cada um respondeu.
+      const add = (s) => { detail = detail ? `${detail} · ${s}` : s; };
       try {
         t = await google.fetchTranscriptFromDrive({ eventId: lead[cfg.eventField], leadName: lead.name, since: lead[cfg.schedField] });
-        if (!t) detail = "drive: Doc de transcrição não encontrado (confira o título/horário da call ou a conta do Drive)";
+        if (!t) add("drive: Doc de transcrição não encontrado (confira o título/horário da call ou a conta do Drive)");
       } catch (err) {
         // 403 ACCESS_TOKEN_SCOPE_INSUFFICIENT aqui = reconectar o Google (escopo drive.readonly novo).
-        detail = `drive: ${String(err.message || err).slice(0, 160)}`;
+        add(`drive: ${String(err.message || err).slice(0, 160)}`);
         log.warn?.({ lead: lead.id, kind, err: err.message }, "fallback de transcrição pelo Drive falhou");
       }
     }

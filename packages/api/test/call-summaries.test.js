@@ -229,3 +229,43 @@ test("tick: pega só call encerrada e ainda sem resumo; rota POST /call-summary 
   void semMeet;
   void formatSummaryText;
 });
+
+// A Meet API LANÇA em 4xx (API desabilitada no Cloud, sala de outra conta,
+// escopo faltando). Antes a exceção subia e matava o fallback do Drive: a call
+// ficava pra sempre sem resumo (aconteceu com a integração do Cristiano em
+// 20/07). Agora o erro dela vira diagnóstico e o Drive segue sendo tentado.
+test("transcrição: Meet API lançando não mata o fallback do Drive", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [] });
+  await repo.create("leads", {
+    id: "le9", saas: "leverads", name: "Cristiano", stage: "Integração",
+    integrationCallUrl: "https://meet.google.com/sxj-tzvx-hud",
+    integrationMeetEventId: "ev9", integrationScheduledAt: "2026-07-20T14:00:00.000Z",
+  });
+  const anthropic = makeAnthropic({ fetch: makeAnthropicFetch(), apiKey: "sk-test" });
+  const boom = () => { throw new Error("Meet API spaces/sxj-tzvx-hud -> 403: SERVICE_DISABLED"); };
+
+  // Drive salva o dia: mesmo com a Meet API explodindo, o resumo sai.
+  const w = makeCallSummarizer({
+    repo, anthropic, log: { info() {}, warn() {} },
+    google: { connected: async () => true, fetchTranscript: boom, fetchTranscriptFromDrive: async () => TRANSCRIPT },
+  });
+  const ok = await w.summarizeLead("le9", { kind: "integracao" });
+  assert.equal(ok.ok, true, "fallback do Drive rodou mesmo com a Meet API lançando");
+  assert.equal((await repo.get("leads", "le9")).integrationSummaryFor, "ev9");
+
+  // Nenhum caminho traz a transcrição: os DOIS motivos aparecem no detail.
+  await repo.create("leads", {
+    id: "le10", saas: "leverads", name: "Outro", stage: "Integração",
+    integrationCallUrl: "https://meet.google.com/aaa-bbbb-ccc",
+    integrationMeetEventId: "ev10", integrationScheduledAt: "2026-07-20T14:00:00.000Z",
+  });
+  const w2 = makeCallSummarizer({
+    repo, anthropic, log: { info() {}, warn() {} },
+    google: { connected: async () => true, fetchTranscript: boom, fetchTranscriptFromDrive: async () => null },
+  });
+  const no = await w2.summarizeLead("le10", { kind: "integracao" });
+  assert.equal(no.reason, "transcript_not_ready");
+  assert.match(no.detail, /meet: .*SERVICE_DISABLED/);
+  assert.match(no.detail, /drive: /);
+});
