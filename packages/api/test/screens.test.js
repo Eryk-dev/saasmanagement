@@ -48,9 +48,13 @@ test("screenForRequest: mapa por prefixo + escritas administrativas", () => {
   assert.deepEqual(screenForRequest("GET", "/api/marketing/leverads"), ["metrics", "aquisicao"]);
   assert.deepEqual(screenForRequest("POST", "/api/leads/l1/proposal"), ["pipeline", "today"]);
   assert.deepEqual(screenForRequest("POST", "/api/activities"), ["pipeline", "today"]);
-  assert.deepEqual(screenForRequest("GET", "/api/pipeline-pace/leverads"), ["pipeline", "analise"]);
+  assert.deepEqual(screenForRequest("GET", "/api/pipeline-pace/leverads"), ["pipeline", "analise", "overview"]);
   assert.deepEqual(screenForRequest("GET", "/api/funnel/leverads"), ["pipeline", "analise"]);
   assert.deepEqual(screenForRequest("GET", "/api/scoreboard/leverads"), ["overview", "funcionarios"]);
+  // Leitura agregada do inbox na Visão geral; conversas/envio seguem só do inbox
+  assert.deepEqual(screenForRequest("GET", "/api/whatsapp/insights"), ["whatsapp", "overview"]);
+  assert.deepEqual(screenForRequest("GET", "/api/whatsapp/threads"), ["whatsapp"]);
+  assert.deepEqual(screenForRequest("POST", "/api/whatsapp/threads/5541999/send"), ["whatsapp"]);
   assert.deepEqual(screenForRequest("GET", "/api/customers"), ["customers"]);
   assert.equal(screenForRequest("GET", "/api/products"), null);           // catálogo é leitura livre
   assert.deepEqual(screenForRequest("PATCH", "/api/products/leverads"), ["settings"]);

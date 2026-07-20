@@ -4,8 +4,9 @@ import { useData } from "../data.jsx";
 import { PageHead, FilterTab, StatTile, Card, LineChart } from "../components/viz.jsx";
 import { EmptyState, Avatar } from "../atoms.jsx";
 import { nextMilestone, dueLabel } from "../lib/milestones.js";
-import { openStages, isWonStage, firstStage as firstStageOf } from "../lib/funnel.js";
+import { openStages, isWonStage, firstStage as firstStageOf, stageKind, stageByKind } from "../lib/funnel.js";
 import { displayName } from "../lib/users.js";
+import { leadTier } from "../lib/ui.js";
 import { useActiveSaas } from "../lib/workspace.js";
 // Visão geral — cockpit de GESTÃO. Responde: como está o negócio (receita, CAC,
 // ROAS) e como está o DESEMPENHO de cada papel (SDR/closer/CS), pessoa a pessoa,
@@ -59,6 +60,8 @@ function OverviewScreen({ onNav, onOpenLead }) {
   const [invoices, setInvoices] = useState([]);
   const [costs, setCosts] = useState(null); // custos do mês corrente (tela Custos)
   const [score, setScore] = useState(null); // placar do time da janela do topo
+  const [pace, setPace] = useState(null); // meta do mês (caixa) — /api/pipeline-pace
+  const [wa, setWa] = useState(null); // inbox do WhatsApp (números globais do time)
   // Período do TOPO governa os tiles de aquisição e o gráfico. Snapshots
   // financeiros (MRR, Clientes, Resultado do mês) seguem a cadência própria.
   const [period, setPeriod] = useState(() => { try { return localStorage.getItem("cockpit_ov_period") || "30d"; } catch { return "30d"; } });
@@ -75,7 +78,7 @@ function OverviewScreen({ onNav, onOpenLead }) {
     if (!product) return;
     if (loadedFor.current !== product.id) {
       loadedFor.current = product.id;
-      setMarketing(null); setInvoices([]); setCosts(null); setScore(null);
+      setMarketing(null); setInvoices([]); setCosts(null); setScore(null); setPace(null);
     }
     let alive = true;
     api.marketingMetrics(product.id, { since: win.since, until: win.until }).then((m) => alive && setMarketing(m)).catch(() => alive && setMarketing(null));
@@ -92,6 +95,17 @@ function OverviewScreen({ onNav, onOpenLead }) {
     api.scoreboard(product.id, win).then((s) => alive && setScore(s)).catch(() => {});
     return () => { alive = false; };
   }, [product?.id, version, period, custom.since, custom.until]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Meta do mês (pace de caixa) e inbox do WhatsApp: cadência própria (mês /
+  // estado atual), não seguem o filtro de período do topo. O inbox é ÚNICO pro
+  // time (o guard libera só a leitura agregada), então os números são globais.
+  useEffect(() => {
+    if (!product) return;
+    let alive = true;
+    api.pipelinePace(product.id).then((d) => alive && setPace(d)).catch(() => alive && setPace(null));
+    api.waInsights(30).then((d) => alive && setWa(d)).catch(() => alive && setWa(null));
+    return () => { alive = false; };
+  }, [product?.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const leads = useMemo(() => (LEADS || []).filter((l) => l.saas === product?.id), [LEADS, product?.id]);
 
@@ -153,6 +167,26 @@ function OverviewScreen({ onNav, onOpenLead }) {
     .sort((a, b) => String(a.m.dueAt).localeCompare(String(b.m.dueAt)))
     .slice(0, 3);
 
+  // Sinais extras do "Precisa de atenção", tudo de dado que já existe no
+  // cockpit. Parado = 3+ dias sem mudar de etapa e SEM call futura marcada
+  // (quem tem call marcada está esperando a call, não esquecido).
+  const STALL_DAYS = 3;
+  const stalled = (l) => l.stageSince && now - new Date(l.stageSince).getTime() > STALL_DAYS * DAY
+    && !(l.callAt && new Date(l.callAt).getTime() > now);
+  const openSet = new Set(openStages(product));
+  const proposalStage = stageByKind(product, "proposta");
+  const staleProposals = proposalStage ? leads.filter((l) => l.stage === proposalStage && stalled(l)) : [];
+  // Leads quentes (A) parados no MEIO do funil: "novo" já tem o SLA de 1º toque
+  // e a etapa de proposta tem o item acima — aqui é o quente esquecido no caminho.
+  const staleHot = leads.filter((l) => {
+    if (!openSet.has(l.stage) || l.stage === proposalStage) return false;
+    if (stageKind(product, l.stage) === "novo") return false;
+    return leadTier(l).grade === "A" && stalled(l);
+  });
+  // Esperando resposta no WhatsApp = estado ATUAL do inbox (não segue a janela).
+  const waAwaiting = wa?.awaiting || 0;
+  const fmtWait = (h) => (h >= 48 ? `${Math.round(h / 24)}d` : `${Math.round(h)}h`);
+
   if (!product) {
     return <EmptyState title="Nenhum produto cadastrado" hint="Crie o produto em Ajustes pra começar a operar o cockpit." />;
   }
@@ -186,6 +220,8 @@ function OverviewScreen({ onNav, onOpenLead }) {
       </PageHead>
 
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+        <PaceStrip pace={pace} onNav={onNav} />
+
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
           <StatTile label="Resultado do mês" value={result != null ? window.fmt.money(result) : "…"}
             delta={costs ? `${window.fmt.money(wonValueMonth)} ganhos · ${window.fmt.money(costs.total || 0)} custos` : "ganhos menos custos"}
@@ -202,6 +238,8 @@ function OverviewScreen({ onNav, onOpenLead }) {
           <StatTile label={`Lead → cliente · ${pShort}`} value={biz?.window?.convRate != null ? pctStr(biz.window.convRate) : "sem dado"}
             delta={biz?.window?.newCustomers != null ? `${biz.window.newCustomers} ${biz.window.newCustomers === 1 ? "cliente novo" : "clientes novos"}` : null} tone="flat" />
         </div>
+
+        <FunnelConversions team={score?.team} pLabel={pLabel} />
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 400px), 1fr))", gap: 16, alignItems: "start" }}>
           <Card title="Leads por dia" hint={`${pLabel} · clique numa etapa pra abrir o pipeline`}>
@@ -226,7 +264,7 @@ function OverviewScreen({ onNav, onOpenLead }) {
 
           <Card title="Precisa de atenção" hint="riscos primeiro · cada item tem ação">
             <div style={{ padding: "10px 24px 18px" }}>
-              {slaBreached === 0 && dueInvoices.length === 0 && dueMilestones.length === 0 && (
+              {slaBreached === 0 && waAwaiting === 0 && staleHot.length === 0 && staleProposals.length === 0 && dueInvoices.length === 0 && dueMilestones.length === 0 && (
                 <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Tudo em dia por aqui.</div>
               )}
               {slaBreached > 0 && (
@@ -236,6 +274,36 @@ function OverviewScreen({ onNav, onOpenLead }) {
                     <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 2 }}>Novo lead · nunca contatados além do prazo</div>
                   </div>
                   <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--accent)", whiteSpace: "nowrap" }}>abrir pipeline</span>
+                </button>
+              )}
+              {waAwaiting > 0 && (
+                <button onClick={() => onNav && onNav("whatsapp")} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "11px 0", borderBottom: "1px solid var(--line-faint)", textAlign: "left" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>{waAwaiting} {waAwaiting === 1 ? "conversa esperando" : "conversas esperando"} resposta no WhatsApp</div>
+                    <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 2 }}>
+                      {wa?.oldestWaitHours != null ? `mais antiga há ${fmtWait(wa.oldestWaitHours)} · ` : ""}
+                      {wa?.openWindow === 1 ? "1 janela de 24h aberta" : `${wa?.openWindow || 0} janelas de 24h abertas`} · inbox do time
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--accent)", whiteSpace: "nowrap" }}>abrir inbox</span>
+                </button>
+              )}
+              {staleHot.length > 0 && (
+                <button onClick={() => onNav && onNav("pipeline", { saas: product.id })} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "11px 0", borderBottom: "1px solid var(--line-faint)", textAlign: "left" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>{staleHot.length} {staleHot.length === 1 ? "lead quente (A) parado" : "leads quentes (A) parados"}</div>
+                    <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 2 }}>sem call marcada e sem avançar de etapa há {STALL_DAYS}+ dias</div>
+                  </div>
+                  <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--accent)", whiteSpace: "nowrap" }}>abrir pipeline</span>
+                </button>
+              )}
+              {staleProposals.length > 0 && (
+                <button onClick={() => onNav && onNav("pipeline", { saas: product.id, stage: proposalStage })} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "11px 0", borderBottom: "1px solid var(--line-faint)", textAlign: "left" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>{staleProposals.length} {staleProposals.length === 1 ? "proposta sem resposta" : "propostas sem resposta"}</div>
+                    <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 2 }}>{staleProposals.length === 1 ? "parada" : "paradas"} em {proposalStage} há {STALL_DAYS}+ dias · hora do follow-up</div>
+                  </div>
+                  <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--accent)", whiteSpace: "nowrap" }}>fazer follow-up</span>
                 </button>
               )}
               {dueMilestones.map(({ customer, m }) => (
@@ -530,4 +598,165 @@ function TeamPerformance({ score, days, pLabel, onPerson, product }) {
   );
 }
 
-export { OverviewScreen, TeamPerformance, periodWindow, PRESETS };
+// ── Meta do mês (pace de caixa) ──────────────────────────────────────────────
+// A manchete da Análise do pipeline aqui no topo: "estamos no caminho?". Caixa
+// = faturas pagas no mês (mesma conta do /api/pipeline-pace); o desdobramento
+// do gap (ganhos → calls → agendamentos → contatos → leads) vem pronto no plan.
+const PACE_STATUS = {
+  ahead: { label: "no ritmo", tone: "var(--pos)" },
+  attention: { label: "quase no ritmo", tone: "var(--warn)" },
+  behind: { label: "atrás do ritmo", tone: "var(--neg)" },
+};
+const PACE_BLOCKED = {
+  averageEntry: "sem ticket médio (nenhuma venda registrada e sem meta de ticket)",
+  closeRate: "taxa de fechamento zerada no histórico",
+  showRate: "comparecimento zerado no histórico",
+  bookingRate: "taxa de agendamento zerada no histórico",
+  contactRate: "taxa de contato zerada no histórico",
+};
+const fmtPerDay = (v) => Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+
+function PaceStrip({ pace, onNav }) {
+  const c = pace?.cash;
+  if (!c) return null;
+  const st = PACE_STATUS[c.status] || PACE_STATUS.attention;
+  const done = (c.gap || 0) === 0;
+  const pct = Math.min(100, Math.round((c.progress || 0) * 100));
+  const expPct = Math.min(100, Math.round((c.expectedProgress || 0) * 100));
+  const plan = pace.plan || {};
+  const steps = [
+    { key: "wins", label: "ganhos" },
+    { key: "calls", label: "calls" },
+    { key: "callsBooked", label: "agendamentos" },
+    { key: "contacts", label: "contatos" },
+    { key: "leads", label: "leads" },
+  ].map((s) => ({ ...s, ...(plan[s.key] || {}) }));
+  const havePlan = steps.some((s) => s.remaining != null);
+  return (
+    <Card title="Meta do mês" hint="caixa: faturas pagas no mês · mesma conta da tela Análise">
+      <div style={{ padding: "4px 24px 20px", display: "flex", flexWrap: "wrap", gap: "16px 36px", alignItems: "flex-start" }}>
+        <div style={{ flex: "1 1 320px", minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+            <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 27, fontWeight: 700 }}>{money(c.collected)}</span>
+            <span style={{ fontSize: 13, color: "var(--fg-3)" }}>de {money(c.target)} · {pct}%</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: st.tone, border: `1px solid color-mix(in srgb, ${st.tone} 40%, transparent)`, background: `color-mix(in srgb, ${st.tone} 10%, transparent)`, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap" }}>
+              {done ? "meta batida" : st.label}
+            </span>
+          </div>
+          <div title={`esperado até hoje: ${money(c.expectedToDate)} (${expPct}%)`}
+            style={{ position: "relative", height: 8, borderRadius: 999, background: "var(--bg-3)", margin: "10px 0 8px", overflow: "hidden" }}>
+            <span style={{ position: "absolute", inset: 0, width: `${pct}%`, borderRadius: 999, background: done ? "var(--pos)" : "var(--accent)" }} />
+            <span style={{ position: "absolute", top: 0, bottom: 0, left: `${expPct}%`, width: 2, background: "var(--fg-2)", opacity: 0.65 }} />
+          </div>
+          <div style={{ fontSize: 12, color: "var(--fg-3)" }}>
+            hoje {money(c.collectedToday)} · ritmo {money(c.actualDailyPace)}/dia útil
+            {c.requiredDailyPace != null ? ` · precisa ${money(c.requiredDailyPace)}/dia` : ""} · {int(c.remainingBusinessDays)} dias úteis restantes
+          </div>
+        </div>
+        <div style={{ flex: "1 1 340px", minWidth: 0 }}>
+          <div style={{ fontSize: 12.5, marginBottom: 10 }}>
+            <span style={{ color: "var(--fg-3)" }}>projeção do mês </span>
+            <b className="tnum">{money(c.projected)}</b>
+            <span style={{ color: "var(--fg-3)" }}> · com a receber </span>
+            <b className="tnum">{money(c.forecastWithReceivables)}</b>
+            <span style={{ color: "var(--fg-4)" }}> ({int(c.receivableCount)} {c.receivableCount === 1 ? "fatura aberta" : "faturas abertas"})</span>
+          </div>
+          {done && <div style={{ fontSize: 12.5, color: "var(--pos)", fontWeight: 600 }}>Meta do mês batida.</div>}
+          {!done && havePlan && (
+            <>
+              <div className="mono" style={{ fontSize: 9.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-4)", marginBottom: 6 }}>Pra bater a meta faltam</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {steps.map((s) => (
+                  <span key={s.key} title={s.perDay != null ? `${fmtPerDay(s.perDay)}/dia útil · hoje: ${int(s.today || 0)}` : undefined}
+                    style={{ fontSize: 11.5, border: "1px solid var(--line-2)", background: "var(--bg-inset)", borderRadius: 999, padding: "3px 10px", whiteSpace: "nowrap" }}>
+                    <b className="tnum">{s.remaining != null ? int(s.remaining) : "—"}</b> {s.label}
+                    {s.perDay != null && <span className="dim"> · {fmtPerDay(s.perDay)}/dia</span>}
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
+          {!done && !havePlan && (
+            <div style={{ fontSize: 12, color: "var(--fg-4)" }}>
+              não dá pra desdobrar a meta ainda: {PACE_BLOCKED[plan.blockedBy] || "sem histórico suficiente"}.
+            </div>
+          )}
+          <button onClick={() => onNav && onNav("analise")} style={{ marginTop: 10, fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>Ver análise completa →</button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// ── Conversões do funil (time inteiro) ───────────────────────────────────────
+// A régua que o Leo pediu: contatados → call agendada → realizada → ganho, com
+// a taxa entre cada etapa colorida pela meta do papel (Metas) ou benchmark.
+// Números = leads DISTINTOS do produto na janela do topo (bloco `team` do
+// /api/scoreboard); o recorte por pessoa fica no Desempenho do time.
+function StepBox({ value, label, sub }) {
+  return (
+    <div style={{ flex: "1 1 108px", minWidth: 104, padding: "10px 12px", textAlign: "center", borderRadius: "var(--r-3)", background: "var(--bg-inset)", border: "1px solid var(--line-1)" }}>
+      <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 20, fontWeight: 700 }}>{int(value)}</div>
+      <div style={{ fontSize: 11.5, color: "var(--fg-3)" }}>{label}</div>
+      {sub && <div className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)", marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+}
+
+function StepRate({ pct, label, num, den, good, ok }) {
+  return (
+    <div title={num != null && den != null ? `${int(num)} de ${int(den)}` : undefined}
+      style={{ flex: "0 0 auto", alignSelf: "center", textAlign: "center", padding: "0 2px", minWidth: 86 }}>
+      <div className="tnum" style={{ fontSize: 14.5, fontWeight: 700, color: pct == null ? "var(--fg-4)" : rateTone(pct, good, ok) }}>
+        {pct == null ? "—" : pctStr(pct)}
+      </div>
+      <div className="mono" style={{ fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", whiteSpace: "nowrap" }}>{label}</div>
+      <div style={{ fontSize: 14, lineHeight: 1.1, color: "var(--fg-4)" }}>→</div>
+    </div>
+  );
+}
+
+function FunnelConversions({ team, pLabel }) {
+  const cw = team ? tiers(team.goals?.callWinRate, 25) : null;
+  return (
+    <Card title="Conversões do funil" hint={`${pLabel} · time inteiro · taxa colorida pela meta (Metas) ou benchmark`}>
+      <div style={{ padding: "6px 24px 18px" }}>
+        {team == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
+        {team != null && (
+          <>
+            <div className="tbl-x">
+              <div style={{ display: "flex", gap: 8, alignItems: "stretch", minWidth: 640 }}>
+                <StepBox value={team.contacted} label="Contatados" sub={`${int(team.leadsNew)} leads novos`} />
+                <StepRate pct={team.bookingRate} label="agendamento" num={team.callsBooked} den={team.contacted} {...tiers(team.goals?.bookingRate, 30)} />
+                <StepBox value={team.callsBooked} label="Calls agendadas" />
+                <StepRate pct={team.showRate} label="comparecimento" num={team.shown} den={team.shown + team.noShow} {...tiers(team.goals?.showRate, 70)} />
+                <StepBox value={team.shown} label="Calls realizadas" sub={team.noShow > 0 ? `${int(team.noShow)} no-show` : null} />
+                <StepRate pct={team.closeRate} label="fechamento" num={team.wonFromCalls} den={team.shown} {...tiers(team.goals?.closeRate, 40)} />
+                <StepBox value={team.wonFromCalls} label="Ganhos da safra" sub="das calls do período" />
+              </div>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 18px", marginTop: 12, fontSize: 12.5 }}>
+              <span title="da safra de calls agendadas no período, quantas já fecharam (inclui no-show no denominador)">
+                <span style={{ color: "var(--fg-3)" }}>Call agendada → ganho </span>
+                <b className="tnum" style={{ color: team.callWinRate == null ? "var(--fg-4)" : rateTone(team.callWinRate, cw.good, cw.ok) }}>
+                  {team.callWinRate == null ? "—" : pctStr(team.callWinRate)}
+                </b>
+              </span>
+              <span title="ganhos do período ÷ leads criados no período (as safras se misturam: o ganho de hoje costuma ser lead de semanas atrás)">
+                <span style={{ color: "var(--fg-3)" }}>Lead → ganho </span>
+                <b className="tnum">{team.leadToWin == null ? "—" : pctStr(team.leadToWin)}</b>
+              </span>
+              <span title="fechamentos no período (transição pra integração/ganho), independente de quando a call foi marcada">
+                <span style={{ color: "var(--fg-3)" }}>Ganhos no período </span>
+                <b className="tnum">{int(team.won)}</b>
+                {team.revenue > 0 && <span style={{ color: "var(--fg-4)" }}> · {money(team.revenue)}</span>}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+export { OverviewScreen, TeamPerformance, PaceStrip, FunnelConversions, periodWindow, PRESETS };
