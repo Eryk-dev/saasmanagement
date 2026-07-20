@@ -321,6 +321,10 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead }) 
 
       <WaHealthBanner />
 
+      {/* A fila do dia mora no topo, acima das métricas: é o "o que fazer
+          agora" do inbox — clique e a conversa do lead abre embaixo. */}
+      {configured && <MyQueueStrip product={product} version={version} currentLeadId={current?.leadId || null} onPick={openByLead} />}
+
       {configured && <WaTopStats numInfo={numInfo} stats={stats} />}
 
       {configured && numInfo && numInfo.ok === false && (
@@ -432,12 +436,9 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead }) 
         {(!isMobile || current) && (
         <div style={{ ...box, flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
           {!current ? (
-            <>
-              <div style={{ margin: "auto", padding: 24 }}>
-                <EmptyState title="Escolha uma conversa" hint="selecione um contato à esquerda pra ver e responder" />
-              </div>
-              {!isMobile && configured && <MyQueueStrip product={product} version={version} currentLeadId={null} onPick={openByLead} />}
-            </>
+            <div style={{ margin: "auto", padding: 24 }}>
+              <EmptyState title="Escolha uma conversa" hint="selecione um contato à esquerda pra ver e responder" />
+            </div>
           ) : (
             <>
               <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderBottom: "1px solid var(--line-1)", flexWrap: "wrap" }}>
@@ -512,8 +513,6 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead }) 
                 <WaBubbles messages={msgs} emptyHint={configured ? "manda a primeira mensagem abaixo" : "nenhuma mensagem"} />
               </div>
 
-              {!isMobile && configured && <MyQueueStrip product={product} version={version} currentLeadId={current.leadId || null} onPick={openByLead} />}
-
               <div style={{ padding: 12, borderTop: "1px solid var(--line-1)" }}>
                 {configured ? (
                   !msgsReady ? (
@@ -552,9 +551,9 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead }) 
 }
 
 // Mini "Minhas atividades": as 3 próximas pendências de HOJE do usuário logado
-// (mesma fila e ordem do Meu dia), logo acima do campo de mensagem — o SDR
-// emenda um atendimento no outro sem sair do inbox. Clique abre a conversa do
-// lead, com ou sem thread ainda.
+// (mesma fila e ordem do Meu dia), no topo do inbox, acima das métricas — o
+// SDR emenda um atendimento no outro sem sair da tela. Clique abre a conversa
+// do lead, com ou sem thread ainda.
 function MyQueueStrip({ product, version, currentLeadId, onPick }) {
   const me = currentUser()?.id || "";
   const items = React.useMemo(() => {
@@ -572,7 +571,7 @@ function MyQueueStrip({ product, version, currentLeadId, onPick }) {
   const labelOf = (i) => i.confirm ? "confirmar call"
     : i.group === "noshow" ? "remarcar" : i.group === "nutri" ? "reativação" : (ACTION_LABELS[i.kind] || "contato");
   return (
-    <div style={{ borderTop: "1px solid var(--line-1)", padding: "7px 12px 6px" }}>
+    <div style={{ margin: "12px var(--pad-x) 0", padding: "8px 14px 7px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "0 4px 3px" }}>
         <span className="mono" style={{ fontSize: 9.5, letterSpacing: 0.8, textTransform: "uppercase", color: "var(--fg-4)" }}>Minhas atividades · hoje</span>
         <span style={{ flex: 1 }} />
