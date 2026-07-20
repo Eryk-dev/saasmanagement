@@ -244,12 +244,18 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
     });
     const done = records.filter((r) => r.endTime).sort((a, b) => String(b.endTime).localeCompare(String(a.endTime)));
     if (!done.length) {
-      // Conferência ABERTA (registro sem endTime): o Google só fecha a gravação
-      // e gera o Doc de transcrição quando o ÚLTIMO participante sai. Sala
-      // esquecida aberta = transcrição nunca sai, e sem este sinal a tela dizia
-      // só "não está pronta" (aconteceu com a integração do Cristiano, 20/07).
-      if (records.length) return { live: true, startTime: records[0].startTime || "" };
-      return null; // nenhuma conferência: a call não aconteceu nessa sala
+      // Sala ABERTA: o Google só fecha a gravação e gera o Doc de transcrição
+      // quando o ÚLTIMO participante sai, então sala esquecida aberta é
+      // transcrição que nunca sai.
+      // A detecção vem do `activeConference` do SPACE, não da lista de
+      // conferenceRecords: a conta conectada ORGANIZA a sala mas não participa
+      // da call (quem conduz é o closer/integrador), e a Meet API só lista
+      // registros pra quem participou — pra ela a lista vem sempre vazia (ver
+      // PR #206). O space, esse ela lê, porque é dona.
+      if (space.activeConference || records.length) {
+        return { live: true, startTime: records[0]?.startTime || "" };
+      }
+      return null; // nenhuma conferência visível: a call não aconteceu ou a conta não a enxerga
     }
 
     const rec = done[0];
