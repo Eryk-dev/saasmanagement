@@ -1,7 +1,7 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { currentUser, userById } from "../lib/users.js";
+import { currentUser, userById, isAdminUser } from "../lib/users.js";
 
 // Pop-up de lead quente do WhatsApp (fluxo de permissão de ligação): quando o
 // lead responde com o fluxo aberto, o alerta salta em QUALQUER tela pro SDR
@@ -48,14 +48,18 @@ export function WaHotAlert({ onOpenThread }) {
   const fails = React.useRef(0);           // 403 (tela restrita) desliga o componente
   const box = React.useRef(null);
 
+  // Dono (admin) não recebe pop-up de atendimento: responder lead quente na
+  // hora é trabalho de quem está na operação (SDR/CS), não de quem gere.
+  const admin = isAdminUser(currentUser());
+
   React.useEffect(() => {
-    if (fails.current >= 2) return;
+    if (admin || fails.current >= 2) return;
     let alive = true;
     api.waAlerts()
       .then((r) => { if (!alive) return; fails.current = 0; setAlerts(r.alerts || []); })
       .catch(() => { fails.current += 1; });
     return () => { alive = false; };
-  }, [version]);
+  }, [version, admin]);
 
   // Escopo por produto do usuário (Ana só vê UniqueKids); sem usuário casado,
   // mostra tudo — alerta perdido é pior que alerta a mais.
@@ -82,7 +86,7 @@ export function WaHotAlert({ onOpenThread }) {
     return () => clearTimeout(t);
   }, [cur?.id]);
 
-  if (!cur) return null;
+  if (admin || !cur) return null;
 
   const saasName = (window.SEED?.SAAS || []).find((s) => s.id === cur.saas)?.name || cur.saas || "";
   const accepted = cur.permission === "accepted";
