@@ -120,6 +120,23 @@ export const api = {
   // faz poll do estado (o answer chega via webhook) e encerra.
   waCallStart: (id, sdp) => req("POST", `/api/whatsapp/threads/${id}/call`, { sdp }),
   waCallState: (callId) => req("GET", `/api/whatsapp/calls/${encodeURIComponent(callId)}`),
+  // Gravação da ligação (os dois lados, estéreo): o servidor transcreve e, com
+  // lead na conversa, resume igual às calls de Meet.
+  waCallRecording: async (callId, blob, secs = 0) => {
+    const fd = new FormData();
+    fd.append("file", blob, `call-${callId}.webm`);
+    const key = getKey();
+    const res = await fetch(`${BASE}/api/whatsapp/calls/${encodeURIComponent(callId)}/recording?secs=${Math.round(secs)}`, {
+      method: "POST", headers: key ? { "x-api-key": key } : {}, body: fd,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      const err = new Error(text.slice(0, 200) || `API POST recording -> ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    return res.json();
+  },
   waCallEnd: (callId) => req("POST", `/api/whatsapp/calls/${encodeURIComponent(callId)}/end`, {}),
   // Fluxo de permissão de ligação: alertas quentes (lead respondeu → pop-up),
   // resolver alerta e pedido manual de permissão numa conversa.
