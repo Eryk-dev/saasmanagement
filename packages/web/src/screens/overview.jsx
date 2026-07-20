@@ -626,7 +626,9 @@ const PACE_BLOCKED = {
 const fmtPerDay = (v) => Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 
 function PaceStrip({ pace, onNav }) {
-  const c = pace?.cash;
+  // A meta mede o VENDIDO no mês (contrato cheio, bloco `sale` do pace) —
+  // decisão do Leo em 20/07; caixa e dinheiro futuro moram na aba Clientes.
+  const c = pace?.sale;
   if (!c) return null;
   const st = PACE_STATUS[c.status] || PACE_STATUS.attention;
   const done = (c.gap || 0) === 0;
@@ -642,11 +644,11 @@ function PaceStrip({ pace, onNav }) {
   ].map((s) => ({ ...s, ...(plan[s.key] || {}) }));
   const havePlan = steps.some((s) => s.remaining != null);
   return (
-    <Card title="Meta do mês" hint="caixa: faturas pagas no mês · mesma conta da tela Análise">
+    <Card title="Meta do mês" hint="vendido no mês, contrato cheio · caixa e dinheiro futuro na aba Clientes">
       <div style={{ padding: "4px 24px 20px", display: "flex", flexWrap: "wrap", gap: "16px 36px", alignItems: "flex-start" }}>
         <div style={{ flex: "1 1 320px", minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-            <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 27, fontWeight: 700 }}>{money(c.collected)}</span>
+            <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 27, fontWeight: 700 }}>{money(c.sold)}</span>
             <span style={{ fontSize: 13, color: "var(--fg-3)" }}>de {money(c.target)} · {pct}%</span>
             <span style={{ fontSize: 11, fontWeight: 700, color: st.tone, border: `1px solid color-mix(in srgb, ${st.tone} 40%, transparent)`, background: `color-mix(in srgb, ${st.tone} 10%, transparent)`, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap" }}>
               {done ? "meta batida" : st.label}
@@ -658,7 +660,7 @@ function PaceStrip({ pace, onNav }) {
             <span style={{ position: "absolute", top: 0, bottom: 0, left: `${expPct}%`, width: 2, background: "var(--fg-2)", opacity: 0.65 }} />
           </div>
           <div style={{ fontSize: 12, color: "var(--fg-3)" }}>
-            hoje {money(c.collectedToday)} · ritmo {money(c.actualDailyPace)}/dia útil
+            hoje {money(c.soldToday)} vendidos · ritmo {money(c.actualDailyPace)}/dia útil
             {c.requiredDailyPace != null ? ` · precisa ${money(c.requiredDailyPace)}/dia` : ""} · {int(c.remainingBusinessDays)} dias úteis restantes
           </div>
           {c.targetConfigured === false && (
@@ -671,9 +673,7 @@ function PaceStrip({ pace, onNav }) {
           <div style={{ fontSize: 12.5, marginBottom: 10 }}>
             <span style={{ color: "var(--fg-3)" }}>projeção do mês </span>
             <b className="tnum">{money(c.projected)}</b>
-            <span style={{ color: "var(--fg-3)" }}> · com a receber </span>
-            <b className="tnum">{money(c.forecastWithReceivables)}</b>
-            <span style={{ color: "var(--fg-4)" }}> ({int(c.receivableCount)} {c.receivableCount === 1 ? "fatura aberta" : "faturas abertas"})</span>
+            <button onClick={() => onNav && onNav("customers")} style={{ marginLeft: 12, fontSize: 12, fontWeight: 500, color: "var(--accent)" }}>caixa e dinheiro futuro → Clientes</button>
           </div>
           {done && <div style={{ fontSize: 12.5, color: "var(--pos)", fontWeight: 600 }}>Meta do mês batida.</div>}
           {!done && havePlan && (

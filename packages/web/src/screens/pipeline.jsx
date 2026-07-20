@@ -844,7 +844,7 @@ function goalMath(data, s, leads) {
   // Fechamento efetivo: calibrado pela ponta a ponta (ganhos÷leads 30d) quando
   // a amostra deixa — a cadeia toda passa a fechar no que a história mostra.
   const rClose = conv.closeRateEffective?.value ?? conv.closeRate.value;
-  const target = Number(data.cash.target) || 0;
+  const target = Number(data.sale.target) || 0;
   const closed = Number(data.context.tcvMonth) || 0;
   const gap = Math.max(0, target - closed);
   const ticket = data.context.averageEntry;
@@ -885,7 +885,7 @@ function goalMath(data, s, leads) {
     gap, target, closed, ticket, wins, calls, bookings, contacts, leadsNeeded,
     pipeWins, pipeValue, pipeCount, missingWins, newLeads, blockedBy,
     cpl, investNeeded, investNew,
-    daysLeft: data.cash.remainingBusinessDays,
+    daysLeft: data.sale.remainingBusinessDays,
   };
 }
 
@@ -912,13 +912,14 @@ function PaceChart({ data, s, leads }) {
   const byDay = Array.from({ length: currentDay }, () => 0);
   for (const lead of leads) {
     if (!isWonLead(s, lead) || !String(wonAtOf(lead)).startsWith(data.month)) continue;
-    const day = Number(String(lead.stageSince).slice(8, 10));
+    // Dia da VENDA (wonAt), não do card: stageSince muda quando o card anda.
+    const day = Number(String(wonAtOf(lead)).slice(8, 10));
     if (day >= 1 && day <= currentDay) byDay[day - 1] += Number(lead.amount) || 0;
   }
   const cumulative = [];
   byDay.reduce((sum, amount, index) => (cumulative[index] = sum + amount), 0);
   if (cumulative.length && cumulative[cumulative.length - 1] === 0 && data.context.tcvMonth > 0) cumulative[cumulative.length - 1] = data.context.tcvMonth;
-  const target = Number(data.cash.target) || 0;
+  const target = Number(data.sale.target) || 0;
   const max = Math.max(1, target, data.context.tcvMonth || 0);
   const H = 190, padL = 64, padR = 16, yTop = 22, yZero = 152;
   const x = (day) => padL + ((day - 1) / Math.max(1, totalDays - 1)) * (w - padL - padR);
@@ -960,8 +961,8 @@ function AnalysisPaceSummary({ data, s, leads }) {
   const forecast = buckets.reduce((sum, bucket) => sum + bucket.weighted, 0);
   const g = goalMath(data, s, leads);
   const closed = Number(data.context.tcvMonth) || 0;
-  const pace = data.cash.elapsedBusinessDays > 0 ? (closed / data.cash.elapsedBusinessDays) * data.cash.totalBusinessDays : 0;
-  const target = Number(data.cash.target) || 0;
+  const pace = data.sale.elapsedBusinessDays > 0 ? (closed / data.sale.elapsedBusinessDays) * data.sale.totalBusinessDays : 0;
+  const target = Number(data.sale.target) || 0;
   const paceVsTarget = target > 0 ? Math.round(((pace / target) - 1) * 100) : null;
   const monthLabel = new Date(`${data.month}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long" });
   const leadsDelta = g.gap === 0 ? "meta do mês batida"
@@ -972,12 +973,12 @@ function AnalysisPaceSummary({ data, s, leads }) {
     <>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
         <StatTile label="Fechado no mês" value={window.fmt.money(closed)} delta={`${data.context.wonMonth} ganhos até dia ${Number(data.today.slice(8, 10))}`} />
-        <StatTile label="Pace projetado" value={window.fmt.money(pace)} delta={`ritmo atual até ${data.cash.totalBusinessDays} dias úteis`} />
+        <StatTile label="Pace projetado" value={window.fmt.money(pace)} delta={`ritmo atual até ${data.sale.totalBusinessDays} dias úteis`} />
         <StatTile label="Meta do mês" value={window.fmt.money(target)} delta={paceVsTarget == null ? "meta não configurada" : `pace ${Math.abs(paceVsTarget)}% ${paceVsTarget >= 0 ? "acima" : "abaixo"} da meta`} />
         <StatTile label="Leads novos pra meta" value={g.gap === 0 ? "0" : wholeFmt(g.newLeads)} delta={leadsDelta} tone={g.gap === 0 || g.newLeads === 0 ? "pos" : "flat"} />
         <StatTile label="Forecast ponderado" value={window.fmt.money(forecast)} delta="pipeline aberto × probabilidade real (30d)" />
       </div>
-      <Card title={`Pace de caixa · ${monthLabel}`} hint="fechado vs. meta, dia a dia">
+      <Card title={`Pace de venda · ${monthLabel}`} hint="vendido (contrato cheio) vs. meta, dia a dia">
         <div style={{ padding: "8px 16px 12px" }}><PaceChart data={data} s={s} leads={leads} /></div>
       </Card>
     </>

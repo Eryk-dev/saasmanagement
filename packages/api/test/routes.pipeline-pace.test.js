@@ -80,6 +80,13 @@ test("pace usa faturas pagas, dias úteis e desdobra o gap pelas conversões rea
   assert.equal(res.statusCode, 200);
   const r = res.json();
 
+  // A META agora é o VENDIDO (contrato cheio); o caixa segue como leitura.
+  assert.equal(r.sale.target, 120000);
+  assert.equal(r.sale.sold, 40000);        // l1 vendido no mês (wonAt/stageSince)
+  assert.equal(r.sale.soldToday, 40000);   // vendido hoje (13/07)
+  assert.equal(r.sale.gap, 80000);
+  assert.equal(r.sale.requiredDailyPace, 5333.33);
+  assert.equal(r.plan.sold.remaining, 80000);
   assert.equal(r.cash.target, 120000);
   assert.equal(r.cash.collected, 40000);
   assert.equal(r.cash.collectedToday, 10000);
@@ -175,13 +182,13 @@ test("ponta a ponta real calibra o fechamento e o plano fecha consistente", asyn
   assert.equal(r.conversions.closeRate.value, 0.2); // 2 ganhos / 10 calls na janela (truncada)
   // efetivo = ponta a ponta ÷ (contato × agendamento × comparecimento) = 0,08 / 0,15
   assert.deepEqual(r.conversions.closeRateEffective, { value: 0.5333, source: "calibrated" });
-  // gap 120k / ticket 4k = 30 ganhos → calls usam o fechamento EFETIVO e a
-  // cadeia toda fecha na ponta a ponta (≈ 30 / 0,08 leads).
-  assert.equal(r.plan.wins.remaining, 30);
-  assert.equal(r.plan.calls.remaining, 57);       // 30 / 0,5333
-  assert.equal(r.plan.callsBooked.remaining, 76); // 57 / 0,75
-  assert.equal(r.plan.contacts.remaining, 152);   // 76 / 0,5
-  assert.equal(r.plan.leads.remaining, 380);      // 152 / 0,4 (≈ 30 / 0,08)
+  // gap do VENDIDO = 120k − 8k já vendidos = 112k; ÷ ticket 4k = 28 ganhos →
+  // calls usam o fechamento EFETIVO e a cadeia fecha na ponta a ponta.
+  assert.equal(r.plan.wins.remaining, 28);
+  assert.equal(r.plan.calls.remaining, 53);       // 28 / 0,5333
+  assert.equal(r.plan.callsBooked.remaining, 71); // 53 / 0,75
+  assert.equal(r.plan.contacts.remaining, 142);   // 71 / 0,5
+  assert.equal(r.plan.leads.remaining, 355);      // 142 / 0,4 (≈ 28 / 0,08)
 
   await app.close();
 });
@@ -218,6 +225,20 @@ test("sem monthlyCashTarget a meta cai no padrão e avisa targetConfigured=false
   const r = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
   assert.equal(r.cash.target, 120000);
   assert.equal(r.cash.targetConfigured, false); // a faixa aponta pra Metas → Empresa
+  await app.close();
+});
+
+test("a meta persegue o VENDIDO, não o caixa (cartão 12x entra cheio)", async () => {
+  const { app, repo } = await build({ monthlyCashTarget: 100000 });
+  // Caixa do mês: só R$ 5.000 pago; vendido no mês: contrato cheio de R$ 50.000.
+  await repo.create("invoices", { id: "iv", saas: "leverads", status: "paid", amount: 5000, paidAt: "2026-07-10T15:00:00.000Z" });
+  await repo.create("leads", { id: "big", saas: "leverads", stage: "Ganho", amount: 50000, createdAt: "2026-07-01T12:00:00.000Z", stageSince: "2026-07-08T12:00:00.000Z" });
+
+  const r = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
+  assert.equal(r.sale.sold, 50000);
+  assert.equal(r.sale.gap, 50000);
+  assert.equal(r.cash.collected, 5000);   // leitura de caixa intacta, separada da meta
+  assert.equal(r.plan.wins.remaining, 10); // gap do VENDIDO ÷ ticket (5.000)
   await app.close();
 });
 

@@ -195,13 +195,29 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     ? { value: round4(clampRate(conversions.leadToWin.value / upstream)), source: "calibrated" }
     : { value: conversions.closeRate.value, source: conversions.closeRate.source };
 
+  // ── Meta ancorada no VENDIDO (contrato cheio) ──────────────────────────────
+  // Decisão do Leo (20/07): a meta do mês mede o que foi VENDIDO no mês (TCV
+  // pela régua oficial isWonLead + wonAt) — cartão em 12x entra cheio. O caixa
+  // (faturas pagas) segue no bloco `cash` como leitura; o fluxo e o dinheiro
+  // futuro moram na aba Clientes. O desdobramento (plan) persegue o gap do
+  // VENDIDO, não o do caixa.
+  const todayWinLeads = winLeadsIn((iso) => dayKey(iso) === today);
+  const todayWon = todayWinLeads.length;
+  const tcvMonthLeads = winLeadsIn(inMonth);
+  const tcvMonth = tcvOf(tcvMonthLeads);
+  const sold = tcvMonth;
+  const soldToday = tcvOf(todayWinLeads);
+  const saleGap = round2(Math.max(0, target - sold));
+  const saleDelta = round2(sold - expectedToDate);
+  const salePace = calendar.elapsed > 0 ? round2(sold / calendar.elapsed) : 0;
+
   const throughRate = (amount, rate) => amount === 0 ? 0 : amount != null && rate > 0 ? Math.ceil(amount / rate) : null;
-  const winsRemaining = gap === 0 ? 0 : averageEntry > 0 ? Math.ceil(gap / averageEntry) : null;
+  const winsRemaining = saleGap === 0 ? 0 : averageEntry > 0 ? Math.ceil(saleGap / averageEntry) : null;
   const callsRemaining = throughRate(winsRemaining, conversions.closeRateEffective.value);
   const bookingsRemaining = throughRate(callsRemaining, conversions.showRate.value);
   const contactsRemaining = throughRate(bookingsRemaining, conversions.bookingRate.value);
   const leadsRemaining = throughRate(contactsRemaining, conversions.contactRate.value);
-  const blockedBy = gap === 0 ? null
+  const blockedBy = saleGap === 0 ? null
     : averageEntry == null ? "averageEntry"
     : conversions.closeRate.value <= 0 ? "closeRate"
     : conversions.showRate.value <= 0 ? "showRate"
@@ -213,19 +229,37 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   const todayContacts = new Set(activities
     .filter((a) => dayKey(a.at) === today && TOUCH_TYPES.has(a.type))
     .map((a) => a.lead)).size;
-  const todayWon = winLeadsIn((iso) => dayKey(iso) === today).length;
-
-  const tcvMonthLeads = winLeadsIn(inMonth);
-  const tcvMonth = tcvOf(tcvMonthLeads);
   const mrr = round2(customers.reduce((a, c) => a + (Number(c.arr) || 0), 0) / 12);
 
   return {
     saas: product.id,
     month,
     today,
-    cash: {
+    // A META: vendido no mês (contrato cheio) vs. meta de venda. É o bloco que
+    // a faixa da Visão geral e o resumo da Análise mostram.
+    sale: {
       target,
       targetConfigured, // false = rodando no padrão; a UI aponta pra Metas → Empresa
+      sold,
+      soldToday,
+      gap: saleGap,
+      expectedToDate,
+      deltaToPace: saleDelta,
+      actualDailyPace: salePace,
+      requiredDailyPace: calendar.remaining > 0 ? round2(saleGap / calendar.remaining) : null,
+      projected: round2(salePace * calendar.total),
+      progress: round4(target > 0 ? sold / target : 0),
+      expectedProgress,
+      status: saleDelta >= 0 ? "ahead" : sold >= expectedToDate * 0.95 ? "attention" : "behind",
+      totalBusinessDays: calendar.total,
+      elapsedBusinessDays: calendar.elapsed,
+      remainingBusinessDays: calendar.remaining,
+    },
+    // Leitura de CAIXA (faturas pagas) — informativa; o fluxo detalhado e o
+    // dinheiro futuro moram na aba Clientes.
+    cash: {
+      target,
+      targetConfigured,
       collected,
       collectedToday,
       gap,
@@ -255,7 +289,7 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     conversions,
     plan: {
       blockedBy,
-      cash: planMetric(gap, calendar.remaining, collectedToday),
+      sold: planMetric(saleGap, calendar.remaining, soldToday),
       leads: planMetric(leadsRemaining, calendar.remaining, leads.filter((l) => dayKey(l.createdAt) === today).length),
       contacts: planMetric(contactsRemaining, calendar.remaining, todayContacts),
       callsBooked: planMetric(bookingsRemaining, calendar.remaining, todayBooked),
