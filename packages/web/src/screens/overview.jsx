@@ -5,6 +5,7 @@ import { PageHead, FilterTab, StatTile, Card, LineChart } from "../components/vi
 import { EmptyState, Avatar } from "../atoms.jsx";
 import { nextMilestone, dueLabel } from "../lib/milestones.js";
 import { openStages, isWonStage, isWonLead, wonAtOf, firstStage as firstStageOf, stageKind } from "../lib/funnel.js";
+import { bizDay } from "../lib/format.js";
 import { displayName } from "../lib/users.js";
 import { leadTier } from "../lib/ui.js";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -107,10 +108,11 @@ function OverviewScreen({ onNav, onOpenLead }) {
     return () => { alive = false; };
   }, [product?.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const leads = useMemo(() => (LEADS || []).filter((l) => l.saas === product?.id), [LEADS, product?.id]);
+  // Sem leads internos (teste) — espelho do isRealLead do metrics-core da API.
+  const leads = useMemo(() => (LEADS || []).filter((l) => l.saas === product?.id && !l.internal), [LEADS, product?.id]);
 
   const now = Date.now();
-  const dstr = (iso) => String(iso || "").slice(0, 10);
+  const dstr = bizDay; // dia do NEGÓCIO (America/Sao_Paulo) — nunca slice UTC
   const inPeriod = (iso) => { const d = dstr(iso); return d >= win.since && d <= win.until; };
   const inPrevPeriod = (iso) => { const d = dstr(iso); return d >= win.prevSince && d <= win.prevUntil; };
   const leadsPeriod = leads.filter((l) => inPeriod(l.createdAt)).length;
@@ -145,7 +147,7 @@ function OverviewScreen({ onNav, onOpenLead }) {
   // Ganho no PERÍODO (fluxo); Resultado usa o mês (custos são mensais).
   const wonLeadsPeriod = leads.filter((l) => isWonLead(product, l) && inPeriod(wonAtOf(l)));
   const wonPeriod = wonLeadsPeriod.length;
-  const thisMonth = (iso) => iso && dstr(iso).slice(0, 7) === new Date(now).toISOString().slice(0, 7);
+  const thisMonth = (iso) => iso && dstr(iso).slice(0, 7) === dstr(new Date(now)).slice(0, 7);
   const wonValueMonth = leads.filter((l) => isWonLead(product, l) && thisMonth(wonAtOf(l))).reduce((a, l) => a + (l.amount || 0), 0);
   // Resultado do mês = ganhos do mês menos os custos operacionais (mensais).
   const result = costs ? wonValueMonth - (costs.total || 0) : null;

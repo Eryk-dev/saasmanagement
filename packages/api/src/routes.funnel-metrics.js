@@ -5,10 +5,13 @@
 // honestos, nunca inventam transição (`coverage` expõe a proporção).
 
 import { ladderOf, kindOf, isWonLead, firstStage, LOSS_KINDS, TOUCH_TYPES } from "./stages.js";
+import { dayKey, isRealLead } from "./metrics-core.js";
 
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
-const dayStr = (d) => new Date(d).toISOString().slice(0, 10);
+// Dia do negócio único (metrics-core) — antes cortava em UTC puro e o funil
+// divergia do marketing/scoreboard perto da meia-noite.
+const dayStr = dayKey;
 
 function rangeFromQuery(q, now = new Date()) {
   const until = q.until || dayStr(now);
@@ -59,9 +62,10 @@ export function registerFunnelMetricsRoutes(app, repo) {
     if (!product) return reply.code(404).send({ error: "Not found" });
     const { since, until } = rangeFromQuery(req.query || {});
 
-    // Cohort = leads CRIADOS no período (mesma janela do marketing/metrics).
+    // Cohort = leads CRIADOS no período (mesma janela do marketing/metrics),
+    // sem leads internos (régua oficial do metrics-core).
     const leads = (await repo.list("leads")).filter(
-      (l) => l.saas === product.id && l.createdAt && dayStr(l.createdAt) >= since && dayStr(l.createdAt) <= until,
+      (l) => l.saas === product.id && isRealLead(l) && l.createdAt && dayStr(l.createdAt) >= since && dayStr(l.createdAt) <= until,
     );
     const actsByLead = new Map();
     for (const a of await repo.list("activities")) {
