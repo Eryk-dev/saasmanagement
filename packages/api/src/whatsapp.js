@@ -154,6 +154,38 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     };
   }
 
+  // Templates APROVADOS da conta (WABA) — alimentam o composer fora da janela
+  // de 24h. Devolve o corpo e quantas variáveis numeradas ({{1}}…{{N}}) ele tem;
+  // template com variável fora do corpo (header/botão) ou nomeada fica marcado
+  // `supported:false` — o v1 do composer só preenche corpo numerado.
+  async function listTemplates(wabaId) {
+    const body = await get(`${wabaId}/message_templates?status=APPROVED&limit=100&fields=name,language,status,category,components`);
+    return (body.data || []).map((t) => {
+      const comps = t.components || [];
+      const bodyC = comps.find((c) => String(c.type || "").toUpperCase() === "BODY");
+      const bodyText = bodyC?.text || "";
+      const nums = (bodyText.match(/\{\{\s*(\d+)\s*\}\}/g) || []).map((s) => Number(s.replace(/\D/g, "")));
+      const otherVars = comps.some((c) => c !== bodyC && /\{\{/.test(JSON.stringify(c)));
+      const named = /\{\{\s*[a-z_]/i.test(bodyText);
+      return {
+        name: t.name, language: t.language, category: t.category || "",
+        body: bodyText, params: nums.length ? Math.max(...nums) : 0,
+        supported: !!bodyText && !otherVars && !named,
+      };
+    }).filter((t) => t.body);
+  }
+
+  // WABAs que o token enxerga (fallback pra achar o id da conta quando nenhum
+  // webhook carimbou ainda): o debug_token lista os target_ids dos escopos de
+  // WhatsApp do próprio token.
+  async function tokenWabaIds() {
+    const body = await get(`debug_token?input_token=${encodeURIComponent(token)}`);
+    const scopes = body.data?.granular_scopes || [];
+    const s = scopes.find((x) => x.scope === "whatsapp_business_management")
+      || scopes.find((x) => x.scope === "whatsapp_business_messaging");
+    return (s?.target_ids || []).map(String);
+  }
+
   // Verificação do webhook (GET da Meta: hub.mode/hub.verify_token/hub.challenge).
   // Devolve o challenge se o token bate; null se não (rota responde 403).
   function verifyWebhook(mode, tok, challenge) {
@@ -161,7 +193,7 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     return null;
   }
 
-  return { configured, sendText, sendTemplate, sendCallPermission, markRead, verifyWebhook, numberInfo };
+  return { configured, sendText, sendTemplate, sendCallPermission, markRead, verifyWebhook, numberInfo, listTemplates, tokenWabaIds };
 }
 
 // Número em dígitos (E.164 sem +) pra enviar e pra casar o recebido com o lead.

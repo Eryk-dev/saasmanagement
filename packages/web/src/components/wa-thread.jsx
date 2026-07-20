@@ -1,8 +1,18 @@
 import React from "react";
+import { api } from "../lib/api.js";
 
 // Peças de conversa de WhatsApp reusadas pelo inbox (tela) e pelo chat do drawer:
-// WaBubbles (histórico) + WaComposer (envio). As mensagens vêm do wa-store
-// (GET /api/whatsapp/threads/:id): { direction:"in"|"out", text, at, status }.
+// WaBubbles (histórico) + WaComposer (texto livre) + WaTemplateComposer (fora da
+// janela de 24h). As mensagens vêm do wa-store (GET /api/whatsapp/threads/:id):
+// { direction:"in"|"out", text, at, status, error }.
+
+// Janela de 24h da Meta: só mensagem RECEBIDA abre/renova. Sem inbound nas
+// últimas 24h, texto livre é recusado (131047 "Re-engagement message") — quem
+// renderiza o composer decide trocar pro de template com isto.
+export function waWindowOpen(messages) {
+  const lastIn = [...(messages || [])].reverse().find((m) => m.direction === "in");
+  return !!lastIn && Date.now() - new Date(lastIn.at || 0).getTime() < 24 * 3600_000;
+}
 
 function hhmm(iso) {
   const d = new Date(iso || 0);
@@ -18,9 +28,10 @@ function dayLabel(iso) {
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "");
 }
 
-// Ticks de status da mensagem enviada (espelha o WhatsApp).
-function StatusTicks({ status }) {
-  if (status === "failed") return <span title="falhou" style={{ color: "#e5484d" }}>⚠</span>;
+// Ticks de status da mensagem enviada (espelha o WhatsApp). Falha mostra o
+// motivo da Meta no title (ex.: "Re-engagement message" = fora da janela de 24h).
+function StatusTicks({ status, error }) {
+  if (status === "failed") return <span title={error ? `falhou: ${error}` : "falhou"} style={{ color: "#e5484d" }}>⚠</span>;
   const read = status === "read";
   return <span title={status || "enviado"} style={{ color: read ? "#4aa3ff" : "var(--fg-4)", letterSpacing: -2 }}>{status === "sent" || status === "received" ? "✓" : "✓✓"}</span>;
 }
@@ -50,12 +61,108 @@ export function WaBubbles({ messages, emptyHint }) {
                 borderBottomRightRadius: out ? 3 : 10, borderBottomLeftRadius: out ? 10 : 3,
               }}>{m.text}</div>
               <div className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)", marginTop: 2, display: "flex", gap: 4, justifyContent: out ? "flex-end" : "flex-start" }}>
-                {hhmm(m.at)}{out && <StatusTicks status={m.status} />}
+                {hhmm(m.at)}{out && <StatusTicks status={m.status} error={m.error} />}
               </div>
             </div>
           </React.Fragment>
         );
       })}
+    </div>
+  );
+}
+
+// Composer de TEMPLATE aprovado — substitui o de texto livre quando a janela de
+// 24h fechou (a Meta recusa texto). Lista os aprovados da conta, preenche as
+// variáveis ({{1}} já vem com o primeiro nome do contato), mostra o preview do
+// que o lead vai receber e envia. Quando o lead responder, a janela reabre e o
+// composer normal volta sozinho (o pai decide por waWindowOpen).
+export function WaTemplateComposer({ threadId, contactName = "", onSent }) {
+  const [list, setList] = React.useState(null); // null = carregando · [] = nenhum
+  const [loadErr, setLoadErr] = React.useState("");
+  const [sel, setSel] = React.useState("");
+  const [params, setParams] = React.useState([]);
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState("");
+
+  const firstName = String(contactName || "").trim().split(/\s+/)[0] || "";
+
+  React.useEffect(() => {
+    let alive = true;
+    api.waMetaTemplates()
+      .then((r) => { if (!alive) return; setList(r.templates || []); })
+      .catch((e) => { if (!alive) return; setList([]); setLoadErr(e?.message || "não deu pra listar os templates"); });
+    return () => { alive = false; };
+  }, []);
+
+  const tpl = (list || []).find((t) => t.name === sel) || null;
+
+  // Seleção inicial + variáveis: {{1}} ganha o primeiro nome do contato.
+  React.useEffect(() => {
+    if (!list?.length || sel) return;
+    setSel(list[0].name);
+  }, [list, sel]);
+  React.useEffect(() => {
+    if (!tpl) return;
+    setParams(Array.from({ length: tpl.params }, (_, i) => (i === 0 ? firstName : "")));
+  }, [tpl?.name]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const preview = tpl ? tpl.body.replace(/\{\{\s*(\d+)\s*\}\}/g, (_, n) => params[Number(n) - 1] || `{{${n}}}`) : "";
+  const ready = tpl && params.slice(0, tpl.params).every((p) => String(p || "").trim());
+
+  async function send() {
+    if (!ready || busy) return;
+    setBusy(true); setErr("");
+    try {
+      await api.waThreadSendTemplate(threadId, { name: tpl.name, language: tpl.language, params });
+      onSent && onSent();
+    } catch (e) { setErr(e?.message || "não foi possível enviar"); }
+    finally { setBusy(false); }
+  }
+
+  const field = { height: 30, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, minWidth: 0 };
+
+  return (
+    <div style={{ border: "1px dashed var(--warn-line, var(--line-2))", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--warn-soft)" }}>
+      <div className="mono" style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--warn)", marginBottom: 6 }}>
+        Fora da janela de 24h · só template aprovado chega
+      </div>
+
+      {list === null && <div className="mono dim" style={{ fontSize: 11.5 }}>carregando templates aprovados…</div>}
+
+      {list !== null && !list.length && (
+        <div style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5 }}>
+          {loadErr
+            ? <>Não deu pra listar os templates: <span className="mono">{loadErr}</span></>
+            : <>Nenhum template aprovado na Meta ainda. Crie em <b>WhatsApp Manager → Conta → Modelos de mensagem</b> (categoria utilidade, corpo com <span className="mono code">{"{{1}}"}</span> pro nome) — depois de aprovado ele aparece aqui sozinho.</>}
+          {" "}Enquanto isso, se o lead mandar qualquer mensagem, a janela reabre e o campo normal volta.
+        </div>
+      )}
+
+      {tpl && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+            <select value={sel} onChange={(e) => setSel(e.target.value)} style={{ ...field, flex: 1, minWidth: 160, maxWidth: "100%" }}>
+              {(list || []).map((t) => <option key={t.name + t.language} value={t.name}>{t.name} · {t.language}</option>)}
+            </select>
+            {Array.from({ length: tpl.params }, (_, i) => (
+              <input key={tpl.name + i} value={params[i] || ""} placeholder={`{{${i + 1}}}`}
+                onChange={(e) => setParams((prev) => prev.map((p, j) => (j === i ? e.target.value : p)))}
+                style={{ ...field, width: 130 }} />
+            ))}
+          </div>
+          <div style={{ padding: "7px 10px", borderRadius: 10, fontSize: 12.5, lineHeight: 1.4, whiteSpace: "pre-wrap", overflowWrap: "break-word", background: "var(--wa-out, #d6f5cf)", color: "#0c2318", alignSelf: "flex-start", maxWidth: "100%" }}>
+            {preview}
+          </div>
+          {err && <div style={{ fontSize: 11, color: "#e5484d" }}>{err}</div>}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <button disabled={!ready || busy} onClick={send} style={{
+              height: 34, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 700,
+              background: "#25D366", color: "#06120c", border: "none", cursor: "pointer", opacity: !ready || busy ? 0.55 : 1,
+            }}>{busy ? "…" : "Enviar template"}</button>
+            <span className="mono dim" style={{ fontSize: 10 }}>quando o lead responder, o campo de mensagem normal volta</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -2,7 +2,7 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { waLink, waDigits } from "../lib/ui.js";
 import { useData } from "../data.jsx";
-import { WaBubbles, WaComposer } from "./wa-thread.jsx";
+import { WaBubbles, WaComposer, WaTemplateComposer, waWindowOpen } from "./wa-thread.jsx";
 import { waTemplatesFor } from "../lib/wa-templates.js";
 
 // Chat de WhatsApp dentro do drawer do lead E do popup do cliente (mesma
@@ -61,12 +61,20 @@ export function WhatsappChat({ lead, phone: phoneProp }) {
 
       {configured ? (
         <div style={{ marginTop: 8 }}>
-          <WaComposer disabled={!phone} placeholder={phone ? undefined : "sem telefone"}
-            templates={templates}
-            onSend={(t) => (lead?.phone ? api.sendWhatsapp(lead.id, t) : api.waThreadSend(tid, t)).then(refetch)} />
-          <div className="mono dim" style={{ fontSize: 9.5, marginTop: 5 }}>
-            fora de 24h desde a última resposta do cliente, a Meta exige um template aprovado
-          </div>
+          {msgs !== null && phone && !waWindowOpen(msgs) ? (
+            // Janela de 24h fechada: só template aprovado chega (o campo normal
+            // volta sozinho quando o lead responder).
+            <WaTemplateComposer threadId={tid} contactName={lead?.name || ""} onSent={refetch} />
+          ) : (
+            <>
+              <WaComposer disabled={!phone} placeholder={phone ? undefined : "sem telefone"}
+                templates={templates}
+                onSend={(t) => (lead?.phone ? api.sendWhatsapp(lead.id, t) : api.waThreadSend(tid, t)).then(refetch)} />
+              <div className="mono dim" style={{ fontSize: 9.5, marginTop: 5 }}>
+                fora de 24h desde a última resposta do cliente, a Meta exige um template aprovado
+              </div>
+            </>
+          )}
         </div>
       ) : (
         <div className="mono dim" style={{ fontSize: 11, marginTop: 8, padding: "8px 10px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)" }}>

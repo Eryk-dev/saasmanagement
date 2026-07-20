@@ -1,7 +1,7 @@
 import React from "react";
 import { PageHead } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
-import { WaBubbles, WaComposer } from "../components/wa-thread.jsx";
+import { WaBubbles, WaComposer, WaTemplateComposer, waWindowOpen } from "../components/wa-thread.jsx";
 import { waTemplatesFor } from "../lib/wa-templates.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
@@ -189,11 +189,18 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
     return () => { alive = false; };
   }, [product?.id, version]);
 
-  // Mensagens da conversa aberta (refetch em tempo real).
+  // Mensagens da conversa aberta (refetch em tempo real). `msgsReady` evita o
+  // composer decidir janela aberta/fechada antes do histórico chegar.
+  const [msgsReady, setMsgsReady] = React.useState(false);
+  // Reset SÓ na troca de conversa: tick do SSE não pode desmontar o composer
+  // (perderia o rascunho digitado).
+  React.useEffect(() => { setMsgsReady(false); }, [sel]);
   React.useEffect(() => {
     if (!sel) { setMsgs([]); return; }
     let alive = true;
-    api.waThread(sel).then((r) => alive && setMsgs(r.messages || [])).catch(() => alive && setMsgs([]));
+    api.waThread(sel)
+      .then((r) => { if (!alive) return; setMsgs(r.messages || []); setMsgsReady(true); })
+      .catch(() => { if (!alive) return; setMsgs([]); setMsgsReady(true); });
     return () => { alive = false; };
   }, [sel, version]);
 
@@ -397,11 +404,20 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
 
               <div style={{ padding: 12, borderTop: "1px solid var(--line-1)" }}>
                 {configured ? (
-                  <>
-                    <WaComposer templates={templates}
-                      onSend={(t) => api.waThreadSend(current.id, t).then(() => api.waThread(current.id).then((r) => setMsgs(r.messages || [])))} />
-                    <div className="mono dim" style={{ fontSize: 9.5, marginTop: 5 }}>fora de 24h desde a última resposta do cliente, a Meta exige um template aprovado</div>
-                  </>
+                  !msgsReady ? (
+                    <div className="mono dim" style={{ fontSize: 11 }}>…</div>
+                  ) : waWindowOpen(msgs) ? (
+                    <>
+                      <WaComposer templates={templates}
+                        onSend={(t) => api.waThreadSend(current.id, t).then(() => api.waThread(current.id).then((r) => setMsgs(r.messages || [])))} />
+                      <div className="mono dim" style={{ fontSize: 9.5, marginTop: 5 }}>fora de 24h desde a última resposta do cliente, a Meta exige um template aprovado</div>
+                    </>
+                  ) : (
+                    // Janela de 24h fechada: texto livre seria recusado (131047) —
+                    // troca pro composer de template aprovado.
+                    <WaTemplateComposer threadId={current.id} contactName={current.name || ""}
+                      onSent={() => api.waThread(current.id).then((r) => setMsgs(r.messages || []))} />
+                  )
                 ) : (
                   <div className="mono dim" style={{ fontSize: 11, padding: "8px 10px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)" }}>
                     envio indisponível até o WhatsApp ser configurado no servidor

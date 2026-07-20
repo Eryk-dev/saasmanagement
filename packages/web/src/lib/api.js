@@ -106,6 +106,10 @@ export const api = {
   waThread: (id) => req("GET", `/api/whatsapp/threads/${id}`),
   waThreadRead: (id) => req("POST", `/api/whatsapp/threads/${id}/read`, {}),
   waThreadSend: (id, text) => req("POST", `/api/whatsapp/threads/${id}/send`, { text }),
+  // Templates APROVADOS na Meta + envio de um deles (o único jeito de reabrir
+  // conversa fora da janela de 24h). params = valores das variáveis {{1}}…{{N}}.
+  waMetaTemplates: () => req("GET", "/api/whatsapp/templates"),
+  waThreadSendTemplate: (id, { name, language, params }) => req("POST", `/api/whatsapp/threads/${id}/send-template`, { name, language, params }),
   // Fluxo de permissão de ligação: alertas quentes (lead respondeu → pop-up),
   // resolver alerta e pedido manual de permissão numa conversa.
   waAlerts: () => req("GET", "/api/whatsapp/alerts"),
