@@ -408,13 +408,9 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
                     {prettyPhone(current.phone)}{current.stage ? ` · ${current.stage}` : ""}
                   </div>
                 </div>
-                {/* Fluxo de permissão de ligação: estado na conversa + pedido manual.
-                    Permissão aceita libera a ligação DIRETO do cockpit (WebRTC). */}
+                {/* Fluxo de permissão de ligação: estado na conversa + pedido manual. */}
                 {current.callFlow?.permission === "accepted" && (
-                  <>
-                    <span title="o lead aceitou o pedido nativo de ligação" style={{ ...flowChip, background: "var(--pos)", color: "#fff" }}>✆ pode ligar</span>
-                    {configured && <WaCallButton threadId={current.id} contactName={current.name || prettyPhone(current.phone)} />}
-                  </>
+                  <span title="o lead aceitou o pedido nativo de ligação" style={{ ...flowChip, background: "var(--pos)", color: "#fff" }}>✆ pode ligar</span>
                 )}
                 {current.callFlow?.permission === "pending" && (
                   <span title="pedido de permissão de ligação enviado, sem resposta ainda" style={{ ...flowChip, border: "1px solid var(--line-2)", color: "var(--fg-3)" }}>✆ permissão pedida</span>
@@ -439,9 +435,23 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
                 ) : (
                   <span className="mono dim" style={{ fontSize: 10.5 }}>sem lead</span>
                 )}
-                {waLink(current.phone) && (
-                  <a href={waLink(current.phone)} target="_blank" rel="noopener noreferrer" title="Ligar / abrir no app"
-                    style={{ ...pill, background: "#25D366", color: "#06120c", border: "none", fontWeight: 700, textDecoration: "none" }}>✆ Ligar</a>
+                {/* "Ligar": com permissão aceita + WhatsApp configurado, o verde
+                    DISCA daqui do cockpit (WebRTC) e o app vira atalho discreto;
+                    sem permissão, o verde segue abrindo a conversa no app. */}
+                {configured && current.callFlow?.permission === "accepted" ? (
+                  <>
+                    <WaCallButton threadId={current.id} contactName={current.name || prettyPhone(current.phone)} />
+                    {waLink(current.phone) && (
+                      <a href={waLink(current.phone)} target="_blank" rel="noopener noreferrer" title="abrir a conversa no app do WhatsApp"
+                        style={{ ...pill, textDecoration: "none" }}>app ↗</a>
+                    )}
+                  </>
+                ) : (
+                  waLink(current.phone) && (
+                    <a href={waLink(current.phone)} target="_blank" rel="noopener noreferrer"
+                      title={configured ? "abre no app — pra discar daqui, o lead precisa aceitar a permissão de ligação" : "Ligar / abrir no app"}
+                      style={{ ...pill, background: "#25D366", color: "#06120c", border: "none", fontWeight: 700, textDecoration: "none" }}>✆ Ligar</a>
+                  )
                 )}
               </div>
 
