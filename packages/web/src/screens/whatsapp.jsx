@@ -3,7 +3,7 @@ import { PageHead } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { WaBubbles, WaComposer, WaTemplateComposer, waWindowOpen } from "../components/wa-thread.jsx";
 import { WaCallButton } from "../components/wa-call.jsx";
-import { ScheduleCallButton } from "../components/schedule-call.jsx";
+import { NextActionButton } from "../components/schedule-call.jsx";
 import { waTemplatesFor } from "../lib/wa-templates.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
@@ -425,9 +425,10 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
                 )}
                 {current.leadId ? (
                   <>
-                    {/* Combinou o horário na conversa? Marca dali mesmo: agenda
-                        do closer + card na etapa de call + rascunho de confirmação. */}
-                    <ScheduleCallButton thread={current} onScheduled={(draft) => composerApi.current?.insert?.(draft)} />
+                    {/* A conversa andou? O card anda junto: destinos da etapa
+                        atual (agendar call, fechar, perda…), tudo refletindo no
+                        pipeline/fila na hora. */}
+                    <NextActionButton thread={current} onScheduled={(draft) => composerApi.current?.insert?.(draft)} />
                     {!isMobile && (
                       <button onClick={toggleSide} style={{ ...pill, ...(sideOpen ? { background: "var(--accent-soft)", color: "var(--accent)", borderColor: "var(--accent-line)" } : {}) }}
                         title={sideOpen ? "Esconder o card do cliente" : "Mostrar o card do cliente ao lado da conversa"}>▤ card</button>
