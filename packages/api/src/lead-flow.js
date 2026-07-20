@@ -57,6 +57,32 @@ export function initialNextActionAt(product, stage, now = new Date()) {
   return ms ? rollToBusinessDay(new Date(now.getTime() + ms)).toISOString() : "";
 }
 
+// `callAt`/`integrationAt` são hora de Brasília SEM fuso ("YYYY-MM-DDTHH:MM"),
+// do jeito que o <input type="datetime-local"> entrega. Vira ISO UTC.
+export function brtToIso(value) {
+  const v = String(value || "").trim();
+  if (!v) return "";
+  const withZone = /[Zz]|[+-]\d{2}:\d{2}$/.test(v) ? v : `${v.length === 16 ? `${v}:00` : v}-03:00`;
+  const d = new Date(withZone);
+  return Number.isFinite(d.getTime()) ? d.toISOString() : "";
+}
+
+// COMPROMISSO MARCADO MANDA NO GPS. O lead tem hora combinada com o cliente
+// (call de venda ou reunião de integração), e o "próximo passo" tem que ser ela:
+// mostrar outro horário no card faz o time ler a hora errada do compromisso.
+//
+// Só vale pro compromisso DA ETAPA (call na etapa de call, integração na
+// entrega) e só se ainda está no futuro — compromisso que já passou não é
+// próximo passo, aí o toque volta a sair da cadência ou do resumo da call.
+export function appointmentAt(product, lead, stage = lead?.stage, now = new Date()) {
+  const kind = kindOf(product, stage);
+  const raw = kind === "call" ? lead?.callAt
+    : (kind === "integracao" || kind === "posvenda") ? lead?.integrationAt
+      : "";
+  const iso = brtToIso(raw);
+  return iso && new Date(iso).getTime() > now.getTime() ? iso : "";
+}
+
 // Calcula os campos derivados de um movimento de estágio e loga a activity
 // `stage` (o histórico real do funil). Retorna o patch a MESCLAR no PATCH do
 // cliente — campos explícitos do cliente sempre vencem (stageSince do optimistic
@@ -85,7 +111,11 @@ export async function applyStageMove(repo, { lead, toStage, patch = {}, author =
       out.nextActionAt = "";
       out.nextActionNote = "";
     } else if (patch.nextActionAt == null) {
-      out.nextActionAt = initialNextActionAt(product, toStage, now);
+      // Compromisso da etapa (call/integração já marcada) vence a cadência: o
+      // próximo passo é a hora combinada com o cliente, não um prazo genérico.
+      const merged = { ...lead, ...patch };
+      out.nextActionAt = appointmentAt(product, merged, toStage, now)
+        || initialNextActionAt(product, toStage, now);
     }
     // Entrega e pós-venda: card entrando em integração/CS/ganho sem integrador
     // definido, o ÚNICO usuário com papel integrator do produto assume sozinho

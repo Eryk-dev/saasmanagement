@@ -8,12 +8,13 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
-const { rollToBusinessDay } = await import("../src/lead-flow.js");
+const { rollToBusinessDay, appointmentAt, brtToIso } = await import("../src/lead-flow.js");
 
 const FUNNEL = [
   { stage: "Novo lead", kind: "novo", conv: 1, cadence: { firstTouchHours: 2 } },
   { stage: "Em contato", kind: "contato", conv: 1, cadence: { maxAttempts: 5, retryDays: 1 } },
   { stage: "Qualificando", kind: "qualificacao", conv: 1, cadence: { maxAttempts: 2, retryDays: 1 } },
+  { stage: "Call agendada", kind: "call", conv: 1, cadence: { maxAttempts: 3, retryDays: 1 } },
   { stage: "Follow-up", kind: "followup", conv: 0.5, cadence: { maxAttempts: 8, retryDays: 3 } },
   { stage: "Integração", kind: "integracao", conv: 1 },
   { stage: "Ganho", kind: "ganho", conv: 1 },
@@ -346,4 +347,65 @@ test("plano mensal anualiza o arr no fechamento; backfill puxa arr de cliente an
   assert.equal((await repo.get("customers", "co")).arr, 7188);
   assert.equal((await repo.get("customers", "cs")).arr, 0);
   await app.close();
+});
+
+// ── Compromisso marcado manda no GPS ────────────────────────────────────────
+// O card mostra UM horário como "próximo passo". Se o lead tem hora combinada
+// com o cliente (call ou integração) e o GPS aponta pra outra, o time lê a hora
+// errada do compromisso — foi o caso que o Leo pegou (integração às 17h com o
+// toque marcado pras 9h pela sugestão do resumo de call).
+
+const PROD = { funnel: [
+  { stage: "Call agendada", kind: "call" },
+  { stage: "Integração", kind: "integracao" },
+  { stage: "Follow-up", kind: "followup" },
+] };
+
+test("brtToIso: datetime-local é hora de Brasília, não UTC", () => {
+  assert.equal(brtToIso("2026-07-20T17:00"), "2026-07-20T20:00:00.000Z");
+  assert.equal(brtToIso("2026-07-20T17:00:00-03:00"), "2026-07-20T20:00:00.000Z"); // com fuso passa direto
+  assert.equal(brtToIso(""), "");
+  assert.equal(brtToIso("não é data"), "");
+});
+
+test("appointmentAt: pega o compromisso DA ETAPA, e só no futuro", () => {
+  const agora = new Date("2026-07-20T12:00:00.000Z"); // 09:00 BRT
+  const lead = { stage: "Integração", callAt: "2026-07-17T18:00", integrationAt: "2026-07-20T17:00" };
+
+  // Na entrega vale a integração (17h BRT = 20h UTC), não a call que já passou.
+  assert.equal(appointmentAt(PROD, lead, "Integração", agora), "2026-07-20T20:00:00.000Z");
+  // Na etapa de call vale o callAt — que aqui já passou, então não vale nada.
+  assert.equal(appointmentAt(PROD, lead, "Call agendada", agora), "");
+  // Etapa sem compromisso associado não inventa.
+  assert.equal(appointmentAt(PROD, lead, "Follow-up", agora), "");
+  // Compromisso passado não é próximo passo.
+  const depois = new Date("2026-07-20T23:00:00.000Z");
+  assert.equal(appointmentAt(PROD, lead, "Integração", depois), "");
+});
+
+test("mover pra Integração com hora marcada aponta o GPS pra ela, não pra cadência", async () => {
+  const { app, repo } = await buildApp();
+  const futuro = new Date(Date.now() + 6 * 3600e3);
+  const brt = new Date(futuro.getTime() - 3 * 3600e3).toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM" em BRT
+  const lead = (await app.inject({ method: "POST", url: "/api/leads", payload: { name: "Higor", saas: "leverads", integrationAt: brt } })).json();
+
+  await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { stage: "Integração" } });
+  const depois = await repo.get("leads", lead.id);
+  assert.equal(depois.nextActionAt, brtToIso(brt));
+});
+
+test("remarcar a integração arrasta o GPS junto; toque marcado na mão continua ganhando", async () => {
+  const { app, repo } = await buildApp();
+  const lead = (await app.inject({ method: "POST", url: "/api/leads", payload: { name: "Higor", saas: "leverads" } })).json();
+  await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { stage: "Integração" } });
+
+  const brt = new Date(Date.now() + 30 * 3600e3 - 3 * 3600e3).toISOString().slice(0, 16);
+  await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { integrationAt: brt } });
+  assert.equal((await repo.get("leads", lead.id)).nextActionAt, brtToIso(brt));
+
+  // nextActionAt explícito no mesmo PATCH vence o compromisso.
+  const naMao = new Date(Date.now() + 2 * 3600e3).toISOString();
+  const outro = new Date(Date.now() + 50 * 3600e3 - 3 * 3600e3).toISOString().slice(0, 16);
+  await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { integrationAt: outro, nextActionAt: naMao } });
+  assert.equal((await repo.get("leads", lead.id)).nextActionAt, naMao);
 });
