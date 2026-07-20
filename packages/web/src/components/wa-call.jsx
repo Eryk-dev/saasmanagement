@@ -132,9 +132,11 @@ export function WaCallButton({ threadId, contactName }) {
       <audio ref={audioRef} autoPlay style={{ display: "none" }} />
       {!active && (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <button onClick={start} style={{ ...pill, borderColor: "var(--accent-line)", color: "var(--accent)", background: "var(--accent-soft)" }}
-            title="Liga pelo WhatsApp daqui do cockpit (áudio no navegador) — o lead atende no app">
-            ✆ Ligar daqui
+          {/* O botão VERDE da conversa: com permissão aceita, "Ligar" é ligar
+              MESMO — disca daqui, o lead atende no WhatsApp. */}
+          <button onClick={start} style={{ ...pill, background: "#25D366", color: "#06120c", border: "none", fontWeight: 700 }}
+            title="Disca agora pelo cockpit (áudio no navegador) — o lead atende a chamada no WhatsApp">
+            ✆ Ligar
           </button>
           {phase === "done" && note && <span className="mono dim" style={{ fontSize: 10.5 }}>{note}</span>}
           {phase === "idle" && note && <span className="mono" style={{ fontSize: 10.5, color: "var(--warn)" }}>{note}</span>}
