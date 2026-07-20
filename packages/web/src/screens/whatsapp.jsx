@@ -573,7 +573,15 @@ function MyQueueStrip({ product, version, currentLeadId, onPick }) {
     if (!me) return [];
     try {
       const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === product?.id) || product;
-      return buildQueue(window.SEED?.LEADS || [], saasCfg, me).hoje.filter((i) => !i.done).slice(0, 3);
+      // O inbox é ferramenta de SDR por enquanto, então a mini-fila mostra só
+      // o trabalho DELE: fase sdr (1º contato, tentativa, retomada, reativação,
+      // remarcar no-show) MAIS a confirmação de call — que tem fase `closer`
+      // por vir da etapa de call, mas é do SDR (o buildQueue atribui a
+      // confirmação ao `owner`, não ao closer). Follow-up e a call em si são do
+      // closer e tiravam o foco de quem está atendendo no WhatsApp.
+      return buildQueue(window.SEED?.LEADS || [], saasCfg, me).hoje
+        .filter((i) => !i.done && (i.phase === "sdr" || i.confirm))
+        .slice(0, 3);
     } catch { return []; }
   }, [me, product?.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!items.length) return null;
@@ -586,7 +594,7 @@ function MyQueueStrip({ product, version, currentLeadId, onPick }) {
   return (
     <div style={{ margin: "12px var(--pad-x) 0", padding: "8px 14px 7px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "0 4px 3px" }}>
-        <span className="mono" style={{ fontSize: 9.5, letterSpacing: 0.8, textTransform: "uppercase", color: "var(--fg-4)" }}>Minhas atividades · hoje</span>
+        <span className="mono" style={{ fontSize: 9.5, letterSpacing: 0.8, textTransform: "uppercase", color: "var(--fg-4)" }}>Minhas atividades de SDR · hoje</span>
         <span style={{ flex: 1 }} />
         <a href="#today" style={{ fontSize: 11, color: "var(--fg-3)", textDecoration: "none" }}>ver a fila →</a>
       </div>
