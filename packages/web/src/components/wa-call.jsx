@@ -92,8 +92,10 @@ export function WaCallButton({ threadId, contactName }) {
     callIdRef.current = callId;
     setPhase("ringing");
 
-    // Poll do estado: answer (atendeu) ou fim (recusou/não atendeu). Cap de
-    // 75s tocando — depois cancela sozinho.
+    // Poll do estado. IMPORTANTE (visto nas chamadas reais): o SDP answer chega
+    // com o telefone AINDA TOCANDO (é o caminho de mídia/ringback) — aplica o
+    // áudio mas SEGUE em "chamando"; o cronômetro só dispara no atendimento de
+    // verdade (evento da Meta ou o botão "atendeu"). Cap de 75s tocando.
     const startedAt = Date.now();
     const poll = setInterval(async () => {
       let st;
@@ -101,12 +103,10 @@ export function WaCallButton({ threadId, contactName }) {
       if (st.sdpAnswer && pcRef.current && pcRef.current.signalingState === "have-local-offer") {
         try {
           await pcRef.current.setRemoteDescription({ type: "answer", sdp: st.sdpAnswer });
-          setPhase("connected"); setNote("");
-          const t0 = Date.now();
-          timersRef.current.push(setInterval(() => setSecs(Math.round((Date.now() - t0) / 1000)), 1000));
-        } catch (e) { await api.waCallEnd(callId).catch(() => {}); cleanup("falha no áudio: " + (e?.message || e)); }
-        return;
+          if (phaseRef.current === "ringing") setNote("tocando no WhatsApp dele… o áudio abre sozinho quando atender");
+        } catch (e) { await api.waCallEnd(callId).catch(() => {}); cleanup("falha no áudio: " + (e?.message || e)); return; }
       }
+      if ((st.status === "accepted" || st.answeredAt) && phaseRef.current === "ringing") { markConnected(); return; }
       if (["rejected", "missed", "canceled", "ended"].includes(st.status)) {
         cleanup(st.status === "rejected" ? "o lead recusou" : st.status === "missed" ? "não atendeu" : "ligação encerrada");
         return;
@@ -117,6 +117,16 @@ export function WaCallButton({ threadId, contactName }) {
       }
     }, 1000);
     timersRef.current.push(poll);
+  }
+
+  // Atendeu de verdade: agora sim vira "em ligação" e o cronômetro parte do
+  // zero. Vem do evento da Meta (poll) ou do clique manual do SDR — o botão
+  // existe enquanto o journal de eventos calibra o nome real do atendimento.
+  function markConnected() {
+    if (phaseRef.current === "connected") return;
+    setPhase("connected"); setNote("");
+    const t0 = Date.now();
+    timersRef.current.push(setInterval(() => setSecs(Math.round((Date.now() - t0) / 1000)), 1000));
   }
 
   async function endCall(msg = "ligação encerrada") {
@@ -159,10 +169,18 @@ export function WaCallButton({ threadId, contactName }) {
           <div className="mono dim" style={{ fontSize: 11 }}>
             {phase === "connected" ? "em ligação pelo WhatsApp" : note || "chamando…"}
           </div>
-          <button onClick={() => endCall()} style={{
-            height: 34, borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 700,
-            background: "var(--neg)", color: "#fff", border: "none", cursor: "pointer",
-          }}>Encerrar</button>
+          <div style={{ display: "flex", gap: 8 }}>
+            {phase === "ringing" && (
+              <button onClick={markConnected} title="Ele atendeu e o evento da Meta não chegou? Inicia a contagem daqui"
+                style={{ flex: 1, height: 34, borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 700, background: "var(--pos)", color: "#fff", border: "none", cursor: "pointer" }}>
+                Atendeu
+              </button>
+            )}
+            <button onClick={() => endCall(phase === "ringing" ? "chamada cancelada" : "ligação encerrada")} style={{
+              flex: 1, height: 34, borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 700,
+              background: "var(--neg)", color: "#fff", border: "none", cursor: "pointer",
+            }}>{phase === "ringing" ? "Cancelar" : "Encerrar"}</button>
+          </div>
         </div>
       )}
     </>

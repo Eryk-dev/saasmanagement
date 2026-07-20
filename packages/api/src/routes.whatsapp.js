@@ -139,37 +139,62 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
               await updateStatus(repo, st.id, st.status, st.errors?.[0] || "");
             }
           } else if (field === "calls" || v.calls) {
-            // Ligação pelo cockpit (Calling API): o webhook traz o SDP answer
-            // quando o lead atende e os eventos de recusa/encerramento. Parse
-            // DEFENSIVO (event/status variam entre versões da Graph); id que a
-            // gente não conhece (ex.: chamada iniciada pelo lead) só loga.
-            // Status de chamada pode vir em `statuses` (não em `calls`): aplica
-            // no registro da chamada quando o id casa.
+            // Ligação pelo cockpit (Calling API). Lições das chamadas REAIS de
+            // 20/07: o SDP answer chega ~1-2s após o connect (é o caminho de
+            // mídia/ringback, o telefone AINDA está tocando) — SDP ≠ atendeu.
+            // O `duration` do terminate é o tempo CONECTADO (vem null quando
+            // ninguém atendeu). Então: tocar e atender são estados separados,
+            // e cada evento entra num journal (events[]) pra calibrar os nomes
+            // que a Meta usa nas próximas chamadas.
+            const journal = (call, e, extra = {}) => [...(call.events || []), { e, at: new Date().toISOString(), ...extra }].slice(-24);
+            const isAnswerEv = (s) => /accept|answer|pick|in_progress|ongoing/.test(s);
             for (const st of v.statuses || []) {
               const call = st.id ? await repo.get("wa_calls", st.id) : null;
-              if (call) await repo.update("wa_calls", call.id, { lastEvent: String(st.status || "").toLowerCase(), updatedAt: new Date().toISOString() });
+              if (!call) continue;
+              const ev = String(st.status || "").toLowerCase();
+              const patch = { lastEvent: ev, events: journal(call, `status:${ev}`), updatedAt: new Date().toISOString() };
+              // Status de bridge SEM sdp (connected/accepted/in_progress) = o
+              // lead atendeu de verdade.
+              if ((isAnswerEv(ev) || /connect/.test(ev)) && !call.answeredAt && call.status !== "ended") {
+                patch.status = "accepted";
+                patch.answeredAt = new Date().toISOString();
+              }
+              await repo.update("wa_calls", call.id, patch);
             }
             for (const c of v.calls || []) {
               const call = c.id ? await repo.get("wa_calls", c.id) : null;
               if (!call) { req.log?.info?.({ call: c.id, event: c.event || c.status }, "evento de chamada sem registro"); continue; }
               const ev = String(c.event || c.status || "").toLowerCase();
-              const patch = { lastEvent: ev || call.lastEvent || "", updatedAt: new Date().toISOString() };
+              const patch = { lastEvent: ev || call.lastEvent || "", events: journal(call, `call:${ev}`, c.session?.sdp ? { sdp: true } : {}), updatedAt: new Date().toISOString() };
               if (c.session?.sdp) {
+                // Caminho de mídia pronto (ringback) — segue TOCANDO até um
+                // evento de atendimento de verdade.
                 patch.sdpAnswer = c.session.sdp;
+              } else if (isAnswerEv(ev) && !call.answeredAt) {
                 patch.status = "accepted";
-                patch.answeredAt = call.answeredAt || new Date().toISOString();
-              } else if (/reject/.test(ev)) {
+                patch.answeredAt = new Date().toISOString();
+              }
+              if (/reject|declin|busy/.test(ev)) {
                 patch.status = "rejected"; patch.endedAt = new Date().toISOString();
-              } else if (/terminat|ended|hangup/.test(ev)) {
-                patch.status = call.status === "ringing" ? "missed" : "ended";
+              } else if (/terminat|ended|hangup|complet|failed|timeout|no_answer|noanswer|missed/.test(ev)) {
                 patch.endedAt = new Date().toISOString();
-                if (Number(c.duration) > 0) patch.duration = Number(c.duration);
+                // duration da Meta = tempo CONECTADO; >0 prova que atendeu
+                // (mesmo sem evento de accept no meio).
+                const metaDur = Number(c.duration) || 0;
+                if (metaDur > 0) {
+                  patch.duration = metaDur;
+                  if (!call.answeredAt) patch.answeredAt = new Date(Date.now() - metaDur * 1000).toISOString();
+                  patch.status = "ended";
+                } else {
+                  patch.status = call.answeredAt || call.status === "accepted" ? "ended" : "missed";
+                }
               }
               await repo.update("wa_calls", call.id, patch);
               // Encerrou/recusou/não atendeu: vira uma linha no histórico da
               // conversa (dedup pelo id derivado — a Meta re-entrega webhook).
               if (patch.endedAt) {
-                const secs = patch.duration || (call.answeredAt ? Math.round((new Date(patch.endedAt) - new Date(call.answeredAt)) / 1000) : 0);
+                const answeredAt = patch.answeredAt || call.answeredAt;
+                const secs = Number(patch.duration) || (answeredAt ? Math.round((new Date(patch.endedAt) - new Date(answeredAt)) / 1000) : 0);
                 const dur = secs >= 60 ? `${Math.round(secs / 60)} min` : secs > 0 ? `${secs}s` : "";
                 const label = patch.status === "rejected" ? "📞 ligação recusada"
                   : patch.status === "missed" ? "📞 ligação não atendida"
@@ -240,6 +265,21 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
   app.get("/api/whatsapp/threads/:id", async (req) => {
     const thread = await findThreadByPhone(repo, req.params.id);
     return { messages: await listMessages(repo, thread?.id || req.params.id), thread: thread?.id || threadId(req.params.id) };
+  });
+
+  // Encerrar/reabrir a conversa (status do INBOX, separado da etapa do funil).
+  // Encerrada sai da lista viva e das contagens; mensagem nova reabre sozinha.
+  app.post("/api/whatsapp/threads/:id/close", async (req, reply) => {
+    const thread = await findThreadByPhone(repo, req.params.id);
+    if (!thread) return reply.code(404).send({ error: "Not found" });
+    const closed = req.body?.closed !== false;
+    await repo.update("wa_threads", thread.id, {
+      status: closed ? "closed" : "open",
+      closedAt: closed ? new Date().toISOString() : "",
+      closedBy: closed ? (req.authUser?.id || "cockpit") : "",
+      closeReason: closed ? String(req.body?.reason || "manual") : "",
+    });
+    return { ok: true, status: closed ? "closed" : "open" };
   });
 
   app.post("/api/whatsapp/threads/:id/read", async (req) => {
