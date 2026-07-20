@@ -3,7 +3,7 @@
 // que detecta calls encerradas (Meet criado pelo cockpit) e resume sozinho.
 // O resumo vira activity "call_summary" (visível no drawer) e preenche o
 // próximo toque do GPS quando a IA sugere follow-up e o lead está em aberto.
-import { logActivity } from "./lead-flow.js";
+import { logActivity, appointmentAt } from "./lead-flow.js";
 
 const CLOSED_STAGE = /perdid|ganh|fechad|won|lost|cliente/i;
 
@@ -124,7 +124,13 @@ export function makeCallSummarizer({ repo, google, anthropic, log = console }) {
     if (q && !CLOSED_STAGE.test(String(lead.stage || ""))) {
       const at = new Date(/[Zz]|[+-]\d{2}:\d{2}$/.test(q) ? q : `${q.length === 16 ? `${q}:00` : q}-03:00`);
       if (Number.isFinite(at.getTime()) && at.getTime() > Date.now()) {
-        patch.nextActionAt = at.toISOString();
+        // COMPROMISSO MARCADO MANDA: com call/integração já agendada, a sugestão
+        // da IA não muda o HORÁRIO do GPS (o card mostraria uma hora que não é a
+        // do compromisso e o time lê errado). A NOTA dela entra do mesmo jeito,
+        // que é onde está o valor ("confirmar o pagamento antes da reunião").
+        const product = lead.saas ? await repo.get("products", lead.saas).catch(() => null) : null;
+        const booked = appointmentAt(product, lead);
+        patch.nextActionAt = booked || at.toISOString();
         if (summary.followup.nota) patch.nextActionNote = summary.followup.nota;
       }
     }

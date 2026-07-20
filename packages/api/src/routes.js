@@ -43,7 +43,7 @@ import { metaCapi as defaultMetaCapi } from "./meta-capi.js";
 import { discord as defaultDiscord } from "./discord.js";
 import { currentRev, subscribe as subscribeChanges } from "./changes.js";
 import { isWon, isPostSaleStage, firstStage, kindOf } from "./stages.js";
-import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt, autoLeadOwner } from "./lead-flow.js";
+import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt, appointmentAt, autoLeadOwner } from "./lead-flow.js";
 import { registerFunnelMetricsRoutes } from "./routes.funnel-metrics.js";
 import { registerScoreboardRoutes } from "./routes.scoreboard.js";
 import { registerPipelinePaceRoutes } from "./routes.pipeline-pace.js";
@@ -553,6 +553,18 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // conectou a própria conta Google. Best-effort: nunca quebra o PATCH.
     if (collection === "leads" && ("callAt" in req.body || "closer" in req.body || "integrationAt" in req.body || "integrator" in req.body)) {
       try { await syncPersonalCalendar(repo, googleUser, updated); } catch { /* fail-open */ }
+    }
+    // Remarcou a call/integração → o GPS segue o compromisso. Só quando o
+    // horário mudou de verdade e o PATCH não trouxe um nextActionAt explícito
+    // (toque marcado na mão pelo time continua ganhando).
+    if (collection === "leads" && ("callAt" in req.body || "integrationAt" in req.body) && req.body.nextActionAt == null) {
+      try {
+        const at = appointmentAt(await repo.get("products", updated.saas), updated);
+        if (at && at !== updated.nextActionAt) {
+          await repo.update("leads", updated.id, { nextActionAt: at });
+          updated.nextActionAt = at;
+        }
+      } catch { /* fail-open: o GPS antigo continua valendo */ }
     }
     // Card em INTEGRAÇÃO com horário marcado e sem link → o Meet da integração
     // (convite da chamada) nasce sozinho: o cartão já chega com o link pro
