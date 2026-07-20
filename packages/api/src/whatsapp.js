@@ -205,6 +205,18 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     }).filter((t) => t.body);
   }
 
+  // Custo REAL das conversas no período (conversation_analytics da conta):
+  // a Meta cobra por conversa de 24h; `cost` volta na moeda da conta (BRL).
+  // start/end em SEGUNDOS unix. Soma todos os pontos da janela.
+  async function conversationCosts(wabaId, { start, end }) {
+    const field = `conversation_analytics.start(${start}).end(${end}).granularity(MONTHLY).metric_types(["COST","CONVERSATION"])`;
+    const body = await get(`${wabaId}?fields=${encodeURIComponent(field)}`);
+    const points = (body.conversation_analytics?.data || []).flatMap((d) => d.data_points || []);
+    let cost = 0, conversations = 0;
+    for (const p of points) { cost += Number(p.cost) || 0; conversations += Number(p.conversation) || 0; }
+    return { cost: Math.round(cost * 100) / 100, conversations };
+  }
+
   // WABAs que o token enxerga (fallback pra achar o id da conta quando nenhum
   // webhook carimbou ainda): o debug_token lista os target_ids dos escopos de
   // WhatsApp do próprio token.
@@ -223,7 +235,7 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     return null;
   }
 
-  return { configured, sendText, sendTemplate, sendCallPermission, markRead, verifyWebhook, numberInfo, listTemplates, tokenWabaIds, initiateCall, terminateCall };
+  return { configured, sendText, sendTemplate, sendCallPermission, markRead, verifyWebhook, numberInfo, listTemplates, tokenWabaIds, initiateCall, terminateCall, conversationCosts };
 }
 
 // Número em dígitos (E.164 sem +) pra enviar e pra casar o recebido com o lead.

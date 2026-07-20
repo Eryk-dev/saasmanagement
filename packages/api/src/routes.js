@@ -272,7 +272,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Treinamentos: flashcards por vaga com repetição espaçada (FSRS) por pessoa
   // + prova de checkpoint (a IA corrige as questões digitadas).
   registerFlashcardRoutes(app, repo, { anthropic: anthropicClient });
-  registerMetricsRoutes(app, repo);
+  // getWhatsapp é getter: o client só nasce mais abaixo (registerWhatsappRoutes)
+  // e o custo de WhatsApp do resumo de despesas resolve na hora do request.
+  registerMetricsRoutes(app, repo, { getWhatsapp: () => whatsappClient });
   // Métricas reais de funil (conversão/tempo por estágio, motivos de perda, SLA)
   // a partir do histórico de transições da timeline.
   registerFunnelMetricsRoutes(app, repo);

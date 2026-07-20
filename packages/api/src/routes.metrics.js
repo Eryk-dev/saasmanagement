@@ -19,7 +19,7 @@ import {
 
 const monthOf = monthKey; // mês do dia do NEGÓCIO (metrics-core), não UTC
 
-export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts } = {}) {
+export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhatsapp = () => null } = {}) {
   // Gasto com IA (OpenRouter/OpenAI/Anthropic) — agregado em USD pro período.
   app.get("/api/ai-costs", async (req, reply) => {
     if (!ai.configured()) return reply.code(503).send({ error: "nenhuma chave de IA configurada (OPENROUTER_API_KEY / OPENAI_ADMIN_KEY / ANTHROPIC_ADMIN_KEY)" });
@@ -84,13 +84,34 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts } = {}) {
       const wins = winsIn(product, leads, (iso) => monthKey(iso) === month, starts);
       wonBase = tcvOf(leads.filter((l) => wins.has(l.id)));
     }
+    // WhatsApp do mês: custo REAL das conversas (conversation_analytics da
+    // conta, em BRL). Conta é GLOBAL como a IA → atribui ao primeiro produto
+    // (quando cada SaaS tiver número próprio, refinar por telefone).
+    let wa = null, waConversations = null;
+    const waClient = getWhatsapp();
+    if (aiOwner && waClient?.configured?.()) {
+      try {
+        const { resolveWabaId } = await import("./wa-health.js");
+        const wabaId = await resolveWabaId(repo, waClient);
+        if (wabaId) {
+          const startMs = new Date(`${month}-01T00:00:00-03:00`).getTime();
+          const endRef = new Date(`${month}-01T00:00:00-03:00`); endRef.setMonth(endRef.getMonth() + 1);
+          const r = await waClient.conversationCosts(wabaId, {
+            start: Math.floor(startMs / 1000),
+            end: Math.floor(Math.min(endRef.getTime(), Date.now()) / 1000),
+          });
+          wa = round2(r.cost); waConversations = r.conversations;
+        }
+      } catch { /* fail-open: WhatsApp fica null */ }
+    }
+
     const manual = expenses
       .filter((e) => e.saas === product.id && applies(e))
       .map((e) => (Number(e.pct) > 0 ? { ...e, amount: round2((Number(e.pct) / 100) * wonBase) } : e))
       .sort((a, b) => (b.recurring === true) - (a.recurring === true) || String(a.category).localeCompare(String(b.category)));
     const manualTotal = round2(manual.reduce((a, e) => a + (Number(e.amount) || 0), 0));
-    const total = round2(ads + (aiBRL || 0) + manualTotal);
-    return { month, ads, ai: aiBRL, aiUSD, usdBrl, manual, manualTotal, total, wonBase: hasPct ? round2(wonBase) : undefined };
+    const total = round2(ads + (aiBRL || 0) + (wa || 0) + manualTotal);
+    return { month, ads, ai: aiBRL, aiUSD, usdBrl, wa, waConversations, manual, manualTotal, total, wonBase: hasPct ? round2(wonBase) : undefined };
   });
 
   app.get("/api/metrics/:saas", async (req, reply) => {
