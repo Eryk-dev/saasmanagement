@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  guessKind, normalizeFunnel, kindOf, isWon, isWonLead, wonAtOf, isLoss,
+  guessKind, normalizeFunnel, kindOf, isWon, isWonLead, isPostSaleStage, wonAtOf, isLoss,
   ladderOf, stageByKind, firstStage, cadenceOf,
 } from "../src/stages.js";
 
@@ -109,9 +109,12 @@ test("isWonLead: customerId sustenta a venda depois que o card sai do Ganho", ()
   assert.equal(isWonLead(product, null), false);
 });
 
-test("isWonLead: quem foi direto pra Integração sem fechar NÃO conta como venda", () => {
+// Regra REVISADA em 20/07 (o Leo decidiu depois de ver 4 cards parados lá): na
+// ordem nova, Integração fica DEPOIS do Ganho, então arrastar direto pra lá é
+// fechar a venda. Antes esta asserção era o contrário — ver isPostSaleStage.
+test("isWonLead: quem foi direto pra Integração conta como venda na ordem nova", () => {
   const product = { funnel: [{ stage: "Ganho", kind: "ganho" }, { stage: "Integração", kind: "integracao" }] };
-  assert.equal(isWonLead(product, { stage: "Integração" }), false);
+  assert.equal(isWonLead(product, { stage: "Integração" }), true);
 });
 
 test("wonAtOf: wonAt vence o stageSince, que anda junto com o card", () => {
@@ -127,4 +130,36 @@ test("ladderOf: com o ganho no meio, a entrega sai da régua de venda", () => {
     { stage: "Acompanhamento", kind: "posvenda" },
   ] };
   assert.deepEqual(ladderOf(product), ["Novo lead", "Follow-up", "Ganho"]);
+});
+
+test("isPostSaleStage: só vale quando o ganho vem ANTES da entrega no funil", () => {
+  const ordemNova = { funnel: [
+    { stage: "Follow-up", kind: "followup" }, { stage: "Ganho", kind: "ganho" },
+    { stage: "Integração", kind: "integracao" }, { stage: "Acompanhamento", kind: "posvenda" },
+  ] };
+  assert.equal(isPostSaleStage(ordemNova, "Integração"), true);
+  assert.equal(isPostSaleStage(ordemNova, "Acompanhamento"), true);
+  assert.equal(isPostSaleStage(ordemNova, "Follow-up"), false);
+  assert.equal(isPostSaleStage(ordemNova, "Ganho"), false);
+
+  // Ordem ANTIGA: a entrega vem antes do fechamento, então estar nela não diz
+  // nada — contar ali inflaria a receita com quem ainda não fechou.
+  const ordemAntiga = { funnel: [
+    { stage: "Integração", kind: "integracao" }, { stage: "Ganho", kind: "ganho" },
+  ] };
+  assert.equal(isPostSaleStage(ordemAntiga, "Integração"), false);
+  // Produto sem etapa de ganho nenhuma (uniquekids) não ganha venda de graça.
+  assert.equal(isPostSaleStage({ funnel: [{ stage: "Integração", kind: "integracao" }] }, "Integração"), false);
+});
+
+test("isWonLead: na ordem nova, card na entrega conta mesmo sem customerId", () => {
+  const product = { funnel: [
+    { stage: "Ganho", kind: "ganho" }, { stage: "Integração", kind: "integracao" },
+  ] };
+  assert.equal(isWonLead(product, { stage: "Integração" }), true);
+  // Na ordem antiga o MESMO card não conta.
+  const antigo = { funnel: [
+    { stage: "Integração", kind: "integracao" }, { stage: "Ganho", kind: "ganho" },
+  ] };
+  assert.equal(isWonLead(antigo, { stage: "Integração" }), false);
 });
