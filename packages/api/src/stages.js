@@ -118,7 +118,23 @@ export function isWon(product, stageName) {
 // cobrar valor, sair do drip).
 export function isWonLead(product, lead) {
   if (!lead) return false;
-  return !!lead.customerId || isWon(product, lead.stage);
+  return !!lead.customerId || isWon(product, lead.stage) || isPostSaleStage(product, lead.stage);
+}
+
+// Etapa que fica DEPOIS do ganho no funil (entrega, CS). Estar nela significa
+// que a venda já aconteceu, mesmo sem `customerId` — é o caso do card que o
+// closer arrasta direto pra Integração, pulando o Ganho.
+//
+// A checagem é POSICIONAL de propósito: num funil que ainda põe a entrega ANTES
+// do fechamento (a ordem antiga), estar em Integração não quer dizer nada, e
+// contar ali inflaria a receita. Só vale depois que o ganho vem primeiro.
+export function isPostSaleStage(product, stageName) {
+  const kind = kindOf(product, stageName);
+  if (kind !== "integracao" && kind !== "posvenda") return false;
+  const funnel = funnelOf(product);
+  const iGanho = funnel.findIndex((f) => kindOf(product, f?.stage) === "ganho");
+  if (iGanho === -1) return false;
+  return funnel.findIndex((f) => f?.stage === stageName) > iGanho;
 }
 
 // QUANDO a venda aconteceu. `stageSince` é recarimbado a cada movimento, então

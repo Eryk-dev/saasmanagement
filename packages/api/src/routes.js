@@ -42,7 +42,7 @@ import { meta as defaultMetaClient } from "./meta.js";
 import { metaCapi as defaultMetaCapi } from "./meta-capi.js";
 import { discord as defaultDiscord } from "./discord.js";
 import { currentRev, subscribe as subscribeChanges } from "./changes.js";
-import { isWon, firstStage, kindOf } from "./stages.js";
+import { isWon, isPostSaleStage, firstStage, kindOf } from "./stages.js";
 import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt, autoLeadOwner } from "./lead-flow.js";
 import { registerFunnelMetricsRoutes } from "./routes.funnel-metrics.js";
 import { registerScoreboardRoutes } from "./routes.scoreboard.js";
@@ -689,7 +689,10 @@ const CLOSED_PLAN_ANNUAL_FACTOR = { anual: 1, semestral: 2, mensal: 12, unico: 1
 export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } = {}) {
   if (!lead || !lead.saas) return null;
   const product = await repo.get("products", lead.saas);
-  if (!isWon(product, lead.stage)) return null;
+  // Vira cliente ao FECHAR. Etapa pós-venda (entrega/CS) também dispara: com o
+  // Ganho antes da Integração, arrastar direto pra entrega é fechar a venda, e
+  // sem isso o lead ficaria contando receita sem cliente nem assinatura.
+  if (!isWon(product, lead.stage) && !isPostSaleStage(product, lead.stage)) return null;
   const customers = await repo.list("customers");
   if (customers.some((c) => c.leadId === lead.id)) return null;
   if (lead.customerId && customers.some((c) => c.id === lead.customerId)) return null;

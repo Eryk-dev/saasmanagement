@@ -66,12 +66,26 @@ export const isTerminalKind = (k) => k === "ganho" || isLossKind(k);
 
 export const isWonStage = (saasCfg, stage) => isWonKind(stageKind(saasCfg, stage));
 
+// Etapa DEPOIS do ganho no funil (entrega, CS): estar nela já é ter vendido,
+// mesmo sem customerId (card arrastado direto pra Integração, pulando o Ganho).
+// Posicional de propósito: num funil que ainda põe a entrega ANTES do ganho,
+// estar lá não significa nada e contar inflaria a receita.
+export function isPostSaleStage(saasCfg, stage) {
+  const kind = stageKind(saasCfg, stage);
+  if (kind !== "integracao" && kind !== "posvenda") return false;
+  const funnel = funnelOf(saasCfg);
+  const iGanho = funnel.findIndex((f) => stageKind(saasCfg, f?.stage) === "ganho");
+  if (iGanho === -1) return false;
+  return funnel.findIndex((f) => f?.stage === stage) > iGanho;
+}
+
 // A venda como FATO do lead (espelho do isWonLead/wonAtOf da API, stages.js).
 // Com o Ganho ANTES da Integração o card segue pra entrega, então medir pela
 // POSIÇÃO faria a receita sumir depois de reconhecida. `customerId` é gravado
 // por convertWonLead e nunca limpo; `wonAt` guarda a data real (o stageSince é
 // recarimbado a cada movimento e jogaria a venda pro mês da etapa seguinte).
-export const isWonLead = (saasCfg, lead) => !!lead?.customerId || isWonStage(saasCfg, lead?.stage);
+export const isWonLead = (saasCfg, lead) =>
+  !!lead?.customerId || isWonStage(saasCfg, lead?.stage) || isPostSaleStage(saasCfg, lead?.stage);
 export const wonAtOf = (lead) => lead?.wonAt || lead?.stageSince || "";
 export const isTerminalStage = (saasCfg, stage) => isTerminalKind(stageKind(saasCfg, stage));
 
