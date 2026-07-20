@@ -4,6 +4,7 @@ import { stageKind, phaseOf, isLossKind, isWonKind, lossReasonsOf } from "../lib
 import { usersByRole, currentUser } from "../lib/users.js";
 import { PAYMENT_METHODS, CLOSED_PLANS, CONSULT_PACKAGES } from "../lib/payments.js";
 import { api } from "../lib/api.js";
+import { SlotGrid, nextBusinessDays, callBusyKeys } from "../screens/today.jsx";
 
 // Gate de movimento de estágio — os três momentos do processo que exigem input:
 //   handoff  = card saindo da fase SDR pra fase Closer sem closer marcado
@@ -11,6 +12,8 @@ import { api } from "../lib/api.js";
 //              o servidor aceita sem e grava "nao_informado" — API/MCP não travam)
 //   won      = card indo pra Ganho sem valor de negócio (o amount vira a receita
 //              da campanha no relatório de marketing e o Purchase enviado à Meta)
+//   call     = card indo pra etapa de call sem hora marcada (o servidor exige;
+//              a grade já esconde o horário ocupado do closer)
 // Usado pelo drag-and-drop do board E pelo select de estágio do drawer.
 
 export function moveGate(saasCfg, lead, toStage) {
@@ -22,6 +25,10 @@ export function moveGate(saasCfg, lead, toStage) {
   // Call feita → Follow-up: registra QUAL proposta ficou na mesa (a oferta que
   // o cliente levou pra pensar) — é ela que o follow-up vai cobrar.
   if (fromKind === "call" && toKind === "followup") return { type: "offer", toKind };
+  // Etapa de call SEM hora marcada: o servidor recusa (card em call sem horário
+  // não aparece na Agenda nem ocupa slot), então o gate pede a hora ANTES de
+  // mover, em vez de deixar o PATCH tomar 422 e o card não sair do lugar.
+  if (toKind === "call" && !lead.callAt) return { type: "call", toKind };
   // Fechamento = passar pra Ganho, OU pra Integração num lead que ainda não
   // fechou: pede o valor do negócio na hora (é onde a receita do closer é
   // lançada). Com o Ganho ANTES da Integração o caminho normal já chega na
@@ -57,8 +64,22 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // Call → Follow-up: qual proposta ficou na mesa (o follow-up cobra ELA).
   const isOffer = gate.type === "offer";
   const [offer, setOffer] = React.useState(lead.proposalOffer || "");
+  // Hora da call pela MESMA grade do Meu dia: slot ocupado do closer vem
+  // desabilitado, então não dá pra criar conflito digitando.
+  const isCall = gate.type === "call";
   const askCall = !isLost && !isWonGate && !isOffer && gate.toKind === "call";
-  const ready = isLost ? !!reason : isWonGate ? (Number(amount) > 0 && !!payment) : isOffer ? !!offer : !!closer;
+  const [day, setDay] = React.useState(() => nextBusinessDays(1)[0]);
+  const busy = React.useMemo(
+    () => callBusyKeys(window.SEED?.LEADS || [], closer, lead.id),
+    [closer, lead.id],
+  );
+  // A call é OBRIGATÓRIA pra entrar na etapa (regra do servidor), tanto no gate
+  // de call quanto no handoff que já cai numa etapa de call.
+  const ready = isLost ? !!reason
+    : isWonGate ? (Number(amount) > 0 && !!payment)
+      : isOffer ? !!offer
+        : askCall ? (!!closer && !!callAt)
+          : !!closer;
 
   function confirm() {
     if (!ready) return;
@@ -92,7 +113,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
           (valor/método/pacote) passa da altura visível — rola em vez de cortar. */}
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(420px, 100%)", maxHeight: "min(88dvh, 100%)", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 18 }}>
         <div style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700 }}>
-          {isLost ? `Mover pra “${toStage}”` : isWonGate ? "Fechar como ganho 🎉" : isOffer ? "Call feita → follow-up" : "Passar pro closer"}
+          {isLost ? `Mover pra “${toStage}”` : isWonGate ? "Fechar como ganho 🎉" : isOffer ? "Call feita → follow-up" : isCall ? "Marcar a call" : "Passar pro closer"}
         </div>
         <div className="mono" style={{ fontSize: 11, color: "var(--fg-3)", marginTop: 3, marginBottom: 14 }}>
           {lead.name}{lead.company ? ` · ${lead.company}` : ""} → {toStage}
@@ -169,8 +190,8 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
             {askCall && (
               <>
                 <div style={{ height: 10 }} />
-                <label style={label}>Call agendada pra (opcional)</label>
-                <input type="datetime-local" value={callAt} onChange={(e) => setCallAt(e.target.value)} style={field} />
+                <label style={label}>Call agendada pra *</label>
+                <SlotGrid days={nextBusinessDays(6)} day={day} setDay={setDay} slot={callAt} setSlot={setCallAt} busy={busy} />
               </>
             )}
             <div style={{ height: 10 }} />
