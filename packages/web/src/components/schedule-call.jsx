@@ -68,11 +68,13 @@ function ScheduleCallModal({ leadId, onScheduled, onClose }) {
     return d.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit" }) + " às " + d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   };
   // Rascunho de confirmação pro composer (o SDR edita/envia — nunca sai sozinho).
+  // Copy do Leo, com o CLOSER escolhido no lugar do nome.
   const draftFor = (iso) => {
     const d = new Date(iso);
     const today = new Date().toDateString() === d.toDateString();
     const dia = today ? "hoje" : d.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit" });
-    return `Fechado! ${dia} às ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} então. Te chamo por aqui um pouco antes da call.`;
+    const who = displayName(closer) || "nosso closer";
+    return `Fechado! ${dia} às ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} então. ${who} te chama aqui um pouco antes da call. Qualquer dúvida, fico à disposição!!`;
   };
 
   async function schedule(withInvite) {
