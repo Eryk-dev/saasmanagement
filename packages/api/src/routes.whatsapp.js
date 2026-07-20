@@ -5,6 +5,9 @@ import { makeWhatsapp } from "./whatsapp.js";
 import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId, setLeadWhatsappOptOut, waInsights, waFormEngagement, findLeadByPhone, findThreadByPhone, linkThreadToLead } from "./wa-store.js";
 import { applyHealthEvent, getWaHealth, waHealthSummary, recordWebhookDelivery, resolveWabaId } from "./wa-health.js";
 import { runInboundCallFlow, startCallFlow, openAlerts, closeThreadAlerts, parsePermissionReply, greetingFor } from "./wa-call-flow.js";
+import { transcriber as defaultTranscriber } from "./transcribe.js";
+import { formatSummaryText } from "./call-summaries.js";
+import { logActivity } from "./lead-flow.js";
 
 // Texto legível pra tipos que a Fase 1 ainda não renderiza (mídia/áudio).
 function bodyOf(m) {
@@ -46,7 +49,7 @@ function sendErrorReply(reply, err) {
   });
 }
 
-export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
+export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, transcriber = defaultTranscriber } = {}) {
   const wa = whatsapp || makeWhatsapp({
     token: process.env.WHATSAPP_TOKEN || "",
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || "",
@@ -497,6 +500,86 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
     const patch = { status: call.status === "ringing" ? "canceled" : "ended", endedAt: call.endedAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
     await repo.update("wa_calls", call.id, patch);
     return { ok: true, ...patch };
+  });
+
+  // Gravação da ligação (multipart, campo `file`): o browser grava os DOIS
+  // lados em canais separados (nós na esquerda, o lead na direita) e sobe o
+  // arquivo ao desligar. Aqui vira transcrição e, com lead na conversa, o
+  // MESMO resumo estratégico das calls de Meet (activity `call_summary`, que o
+  // drawer e o roteiro já sabem ler).
+  //
+  // O áudio NÃO fica guardado: transcreveu, o texto basta e o banco não incha.
+  // Falha de transcrição nunca é erro do cockpit — a ligação já aconteceu.
+  app.post("/api/whatsapp/calls/:id/recording", async (req, reply) => {
+    const call = await repo.get("wa_calls", req.params.id);
+    if (!call) return reply.code(404).send({ error: "Not found" });
+    const file = await req.file();
+    if (!file) return reply.code(400).send({ error: "envie o áudio (multipart, campo file)" });
+    const buf = await file.toBuffer();
+    // Teto da própria API de transcrição (25MB) — ~2h de opus estéreo.
+    if (buf.length > 25 * 1024 * 1024) return reply.code(413).send({ error: "gravação acima de 25MB" });
+    if (buf.length < 8 * 1024) return { ok: true, skipped: "gravação curta demais" };
+    if (!transcriber.configured()) {
+      return reply.code(503).send({ error: "transcrição não configurada no servidor (OPENAI_API_KEY)" });
+    }
+
+    const lead = call.leadId ? await repo.get("leads", call.leadId).catch(() => null) : null;
+    const product = call.saas ? await repo.get("products", call.saas).catch(() => null) : null;
+    let transcript = "";
+    try {
+      transcript = await transcriber.transcribe(buf, {
+        filename: `wa-call-${call.id}.webm`, mime: file.mimetype || "audio/webm",
+        // Nomes próprios do negócio no prompt: é onde o Whisper mais erra.
+        prompt: [product?.name || "LeverAds", lead?.name, lead?.company].filter(Boolean).join(", "),
+      });
+    } catch (err) {
+      app.log?.warn?.({ call: call.id, err: err.message }, "transcrição da ligação falhou");
+      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+    }
+    if (!transcript) return { ok: true, skipped: "sem fala reconhecida" };
+
+    await repo.update("wa_calls", call.id, {
+      transcript, transcriptAt: new Date().toISOString(),
+      transcriptChars: transcript.length, durationSec: Number(req.query?.secs) || call.durationSec || 0,
+    });
+
+    // Resumo estratégico: mesma régua da call de Meet. Sem lead na conversa (ou
+    // sem IA) fica só a transcrição, que já é o pedido.
+    let summarized = false;
+    if (lead && anthropic?.configured?.()) {
+      try {
+        const brt = (d) => new Date(d).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        const { summary } = await anthropic.summarizeCall({
+          transcript,
+          lead: { name: lead.name, company: lead.company, niche: lead.niche, stage: lead.stage },
+          productName: product?.name || "LeverAds",
+          callDate: brt(call.startedAt || Date.now()),
+          today: brt(new Date()),
+        });
+        await logActivity(repo, {
+          saas: lead.saas || call.saas || "",
+          lead: lead.id,
+          type: "system",
+          text: formatSummaryText(summary),
+          meta: {
+            event: "call_summary",
+            kind: "call",
+            // De onde veio: ligação do WhatsApp pelo cockpit, não Meet. Os
+            // campos de dedup do Meet (callSummaryFor) NÃO são tocados, senão
+            // a call de venda no Meet deixaria de ser resumida.
+            source: "whatsapp_call",
+            waCallId: call.id,
+            temperatura: summary.temperatura || "",
+            summary,
+          },
+          author: req.authUser?.id || "cockpit",
+        });
+        summarized = true;
+      } catch (err) {
+        app.log?.warn?.({ call: call.id, err: err.message }, "resumo da ligação falhou (transcrição salva)");
+      }
+    }
+    return { ok: true, chars: transcript.length, summarized };
   });
 
   // Enviar pela conversa (inbox) — id é o número em dígitos, funciona com ou sem

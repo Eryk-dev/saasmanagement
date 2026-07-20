@@ -300,7 +300,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerSequenceRoutes(app, repo, { mailer: mailerClient });
   // WhatsApp (Cloud API): webhook (recebe) + envio pelo drawer do lead. O SDR
   // conversa com o cliente direto no cockpit; as mensagens viram timeline.
-  whatsappClient = registerWhatsappRoutes(app, repo, { whatsapp: opts.whatsapp });
+  whatsappClient = registerWhatsappRoutes(app, repo, { whatsapp: opts.whatsapp, anthropic: anthropicClient, transcriber: opts.transcriber });
   // Poller de resumos (index.js) usa os MESMOS clients das rotas.
   if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, anthropic: anthropicClient, mailer: mailerClient });
 
