@@ -415,7 +415,9 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
                   <span title="o lead aceitou o pedido nativo de ligação" style={{ ...flowChip, background: "var(--pos)", color: "#fff" }}>✆ pode ligar</span>
                 )}
                 {current.callFlow?.permission === "pending" && (
-                  <span title="pedido de permissão de ligação enviado, sem resposta ainda" style={{ ...flowChip, border: "1px solid var(--line-2)", color: "var(--fg-3)" }}>✆ permissão pedida</span>
+                  <button onClick={askToCall}
+                    title="pedido enviado, sem resposta ainda — clique pra pedir de novo (a Meta aceita 1 pedido a cada 24h; fora da janela ela recusa e o erro aparece)"
+                    style={{ ...flowChip, border: "1px solid var(--line-2)", color: "var(--fg-3)", background: "var(--bg-1)", cursor: "pointer" }}>✆ permissão pedida · pedir de novo</button>
                 )}
                 {current.callFlow?.permission === "declined" && (
                   <span title="o lead prefere não receber ligação" style={{ ...flowChip, border: "1px solid var(--line-2)", color: "var(--warn)" }}>sem ligação</span>
@@ -439,16 +441,10 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread }) {
                   <span className="mono dim" style={{ fontSize: 10.5 }}>sem lead</span>
                 )}
                 {/* "Ligar": com permissão aceita + WhatsApp configurado, o verde
-                    DISCA daqui do cockpit (WebRTC) e o app vira atalho discreto;
-                    sem permissão, o verde segue abrindo a conversa no app. */}
+                    DISCA daqui do cockpit (WebRTC); sem permissão, o verde abre
+                    a conversa no app. */}
                 {configured && current.callFlow?.permission === "accepted" ? (
-                  <>
-                    <WaCallButton threadId={current.id} contactName={current.name || prettyPhone(current.phone)} />
-                    {waLink(current.phone) && (
-                      <a href={waLink(current.phone)} target="_blank" rel="noopener noreferrer" title="abrir a conversa no app do WhatsApp"
-                        style={{ ...pill, textDecoration: "none" }}>app ↗</a>
-                    )}
-                  </>
+                  <WaCallButton threadId={current.id} contactName={current.name || prettyPhone(current.phone)} />
                 ) : (
                   waLink(current.phone) && (
                     <a href={waLink(current.phone)} target="_blank" rel="noopener noreferrer"
