@@ -12,6 +12,7 @@ const FUNNEL = [
   { stage: "Novo lead", kind: "novo", conv: 1, cadence: { firstTouchHours: 2 } },
   { stage: "Qualificando", kind: "qualificacao", conv: 1 },
   { stage: "Call agendada", kind: "call", conv: 1 },
+  { stage: "No show", kind: "contato", conv: 1 }, // furo de call vai pra cá no fluxo atual (kind contato, identidade pelo nome)
   { stage: "Follow-up", kind: "followup", conv: 0.5 },
   { stage: "Ganho", kind: "ganho", conv: 1 },
   { stage: "Perdido", kind: "perdido", conv: 0 },
@@ -228,6 +229,30 @@ test("Mídia social: papel aparece com a demanda de conteúdo (produção 0 por 
   assert.ok(s, "o responsável social aparece");
   assert.equal(s.postsPerMonth, 0);        // produção não conectada ainda
   assert.equal(s.goals.postsPerMonth.target, 30); // a meta (demanda) aparece
+  await app.close();
+});
+
+test("No show por ETAPA conta como furo (SDR, closer e time), não só o motivo de perda", async () => {
+  const { app, repo } = await buildApp();
+  const mk = async (id, stage, extra = {}) => {
+    await repo.create("leads", { id, saas: "leverads", owner: "u_sdr", closer: "u_clo", stage, createdAt: now, callAt: now, ...extra });
+    await repo.create("activities", { id: `st_${id}`, saas: "leverads", lead: id, type: "stage", author: "u_sdr", at: now, meta: { from: "Qualificando", to: "Call agendada" } });
+  };
+  await mk("s1", "Ganho", { amount: 300, stageSince: now });
+  await mk("s2", "No show"); // furou: parado na etapa de No show (sem motivo de perda)
+  await repo.create("activities", { id: "won_s1", saas: "leverads", lead: "s1", type: "stage", author: "u_clo", at: now, meta: { from: "Call agendada", to: "Ganho" } });
+
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  const s = sb.sdr.find((x) => x.user === "u_sdr");
+  assert.equal(s.callsBooked, 2);
+  assert.equal(s.noShow, 1);       // s2 pela ETAPA
+  assert.equal(s.shown, 1);        // s1
+  assert.equal(s.showRate, 50);
+  const c = sb.closer.find((x) => x.user === "u_clo");
+  assert.equal(c.calls, 2);
+  assert.equal(c.callsShown, 1);   // a call do s2 não aconteceu
+  assert.equal(sb.team.noShow, 1);
+  assert.equal(sb.team.showRate, 50);
   await app.close();
 });
 

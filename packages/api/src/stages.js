@@ -29,6 +29,12 @@ export const TERMINAL_KINDS = new Set(["ganho", "perdido", "desqualificado"]);
 // contato, contador de tentativas do estágio e o reagendamento da cadência).
 export const TOUCH_TYPES = new Set(["whatsapp", "call", "email", "meeting"]);
 
+// Etapa de "No show" (cliente furou a call): o kind dela é `contato` (mesma
+// cadência de retomada da Nutrição), então a identidade vem do NOME — espelho
+// do isNoShowStage do front (lib/scripts.js, destinationsFor do Meu dia). Os
+// placares usam pra contar furo de call mesmo sem o motivo de perda.
+export const isNoShowStage = (stage) => /no.?show/i.test(String(stage || ""));
+
 // Heurística por nome pra funis criados antes do `kind` existir (pt/en).
 // index/length desempatam: 1º estágio sem nome reconhecível = "novo".
 export function guessKind(stageName, index = -1, length = 0) {

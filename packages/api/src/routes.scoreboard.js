@@ -8,7 +8,7 @@
 // Sem histórico de churn confiável ainda, então retenção entra magra (contas
 // novas + cancelamentos com data) — cresce quando o billing registrar o evento.
 
-import { kindOf, isWon, isLoss, cadenceOf, firstStage, TOUCH_TYPES } from "./stages.js";
+import { kindOf, isWon, isLoss, cadenceOf, firstStage, TOUCH_TYPES, isNoShowStage } from "./stages.js";
 
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
@@ -91,7 +91,8 @@ export function registerScoreboardRoutes(app, repo) {
     };
     // Resolução da safra de calls agendadas: compareceu = avançou pra frente
     // (proposta/follow-up/integração/ganho) OU perdeu por OUTRO motivo (a call
-    // aconteceu); não compareceu = perda "nao_compareceu" (o closer marca);
+    // aconteceu); não compareceu = perda "nao_compareceu" OU parado na ETAPA de
+    // No show (o fluxo atual do pipeline manda o furão pra lá, não pra Perdido);
     // ainda em Call agendada = não resolvido. won = está ganho hoje.
     const callOutcome = (list) => {
       let shown = 0, noShow = 0, won = 0;
@@ -101,7 +102,7 @@ export function registerScoreboardRoutes(app, repo) {
         if (isW) won++;
         const advanced = isW || FORWARD.has(kindOf(product, l.stage))
           || (actsByLead.get(l.id) || []).some((a) => a.type === "stage" && FORWARD.has(kindOf(product, a.meta?.to)));
-        if (lost && l.lostReason === "nao_compareceu") noShow++;
+        if ((lost && l.lostReason === "nao_compareceu") || (!isW && isNoShowStage(l.stage))) noShow++;
         else if (advanced || lost) shown++;
       }
       return { shown, noShow, won };
@@ -226,6 +227,7 @@ export function registerScoreboardRoutes(app, repo) {
       let callsShown = 0;
       for (const l of callLeads) {
         if (isLoss(product, l.stage) && l.lostReason === "nao_compareceu") continue;
+        if (!isWon(product, l.stage) && isNoShowStage(l.stage)) continue; // furou: parado na etapa de No show
         const advanced = isWon(product, l.stage) || FORWARD.has(kindOf(product, l.stage))
           || (actsByLead.get(l.id) || []).some((a) => a.type === "stage" && FORWARD.has(kindOf(product, a.meta?.to)));
         if (advanced || isLoss(product, l.stage)) callsShown++;
