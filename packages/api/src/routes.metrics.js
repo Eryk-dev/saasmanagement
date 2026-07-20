@@ -12,7 +12,7 @@
 
 import { annualized } from "./billing.js";
 import { aiCosts as defaultAiCosts } from "./ai-costs.js";
-import { isWon } from "./stages.js";
+import { isWonLead, wonAtOf } from "./stages.js";
 
 const round2 = (n) => Math.round(n * 100) / 100;
 const monthOf = (iso) => String(iso || "").slice(0, 7);
@@ -70,15 +70,15 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts } = {}) {
       ? String(e.month) <= month && (!e.endMonth || String(e.endMonth) >= month)
       : e.month === month;
     // Custo PERCENTUAL (e.pct, ex.: checkout 12%, imposto): calculado mês a mês
-    // sobre os GANHOS do pipeline no mês (lead.amount dos leads que viraram
-    // Ganho, pelo carimbo stageSince) — a MESMA base do "Resultado do mês" da
-    // Visão geral, então Resultado = ganhos − custos fecha redondo.
+    // sobre os GANHOS do pipeline no mês (lead.amount dos leads que venderam,
+    // pelo carimbo wonAt) — a MESMA base do "Resultado do mês" da Visão geral,
+    // então Resultado = ganhos − custos fecha redondo.
     const hasPct = expenses.some((e) => e.saas === product.id && Number(e.pct) > 0 && applies(e));
     let wonBase = 0;
     if (hasPct) {
       const leads = await repo.list("leads");
       wonBase = leads
-        .filter((l) => l.saas === product.id && isWon(product, l.stage) && monthOf(l.stageSince) === month)
+        .filter((l) => l.saas === product.id && isWonLead(product, l) && monthOf(wonAtOf(l)) === month)
         .reduce((a, l) => a + (Number(l.amount) || 0), 0);
     }
     const manual = expenses

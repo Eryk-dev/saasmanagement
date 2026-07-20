@@ -9,7 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { publicForm, validateAnswers, leadFromSubmission, submissionTerminal, makeRateLimiter, buildSteps, variantHeadline } from "./forms.js";
 import { painCode, leadGrade } from "./routes.marketing.js";
-import { isWon, kindOf } from "./stages.js";
+import { isWonLead, kindOf } from "./stages.js";
 import { formPageHtml, EMBED_JS } from "./form-page.js";
 import { CREATE_DEFAULTS, dispatchProposal, publicBase } from "./routes.js";
 import { stageByKind, firstStage } from "./stages.js";
@@ -324,7 +324,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
       // de kind "call" — mesmo critério do drip-runner pra "marcou call". Mede
       // o meio do funil comercial: headline que gera CONVERSA, não só envio.
       const calls = vLeads.filter((l) => l.callAt || kindOf(product, l.stage) === "call").length;
-      const wonLeads = vLeads.filter((l) => isWon(product, l.stage));
+      const wonLeads = vLeads.filter((l) => isWonLead(product, l));
       const revenue = wonLeads.reduce((s, l) => s + (Number(l.amount) || 0), 0);
       const times = events.filter(mine).map((e) => String(e.createdAt || "")).filter(Boolean).sort();
       return {

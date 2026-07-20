@@ -104,6 +104,31 @@ export function isWon(product, stageName) {
   return kindOf(product, stageName) === "ganho";
 }
 
+// A venda como FATO do lead, não como posição do card. Enquanto o Ganho era a
+// última etapa o card nunca saía de lá, então "está em Ganho" e "vendeu" eram a
+// mesma coisa. Com o Ganho ANTES da Integração o card segue pra entrega, e
+// medir pela posição faria a receita sumir justamente depois de reconhecida.
+//
+// `customerId` é o carimbo certo: convertWonLead grava ao criar o cliente
+// (routes.js), é idempotente e NUNCA é limpo, então sobrevive a qualquer
+// movimento posterior do card. Conferido em produção: 10 de 10 ganhos têm.
+//
+// Use ESTA função em tudo que é dinheiro e placar; `isWon` (por estágio) segue
+// valendo pra decidir o que fazer no MOMENTO do movimento (criar cliente,
+// cobrar valor, sair do drip).
+export function isWonLead(product, lead) {
+  if (!lead) return false;
+  return !!lead.customerId || isWon(product, lead.stage);
+}
+
+// QUANDO a venda aconteceu. `stageSince` é recarimbado a cada movimento, então
+// sozinho ele joga o ganho pro mês da etapa seguinte assim que o card anda.
+// `wonAt` (gravado por convertWonLead) é a data real; o fallback cobre lead
+// antigo, sem carimbo, que ainda está parado no Ganho.
+export function wonAtOf(lead) {
+  return lead?.wonAt || lead?.stageSince || "";
+}
+
 export function isLoss(product, stageName) {
   return LOSS_KINDS.has(kindOf(product, stageName));
 }

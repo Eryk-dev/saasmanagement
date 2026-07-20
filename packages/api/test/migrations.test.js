@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   ensureIntegrationStage, migrateLeverAdsCrmFunnel, migrateLeverAdsSdrCadence, migrateNutricaoSevenDays, ensureFunnelKinds,
+  migrateGanhoAntesIntegracao, backfillWonAt,
   ensureLossReasons, ensureNoShowReason, ensureSdrGoals, ensureCloserGoals, ensureSocialGoals, ensureUserRoles, ensureUserSaasScope, ensureUserScreens, DEFAULT_LOSS_REASONS,
 } from "../src/migrations.js";
 
@@ -424,4 +425,71 @@ test("ensureUserScreens restringe sdr e ana à operação (today+pipeline+tasks)
   await repo.update("users", "sdr", { screens: [] });
   assert.equal(await ensureUserScreens(repo), 0);
   assert.deepEqual((await repo.get("users", "sdr")).screens, []);
+});
+
+// ── Ganho antes da Integração ───────────────────────────────────────────────
+
+const ORDEM_ANTIGA = [
+  { stage: "Novo lead", kind: "novo" },
+  { stage: "Follow-up", kind: "followup" },
+  { stage: "Integração", kind: "integracao" },
+  { stage: "Acompanhamento", kind: "posvenda" },
+  { stage: "Ganho", kind: "ganho" },
+  { stage: "Nutrição", kind: "contato" },
+];
+
+test("migrateGanhoAntesIntegracao: move o ganho pra antes da entrega sem mexer em lead", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", {
+    id: "leverads", funnel: ORDEM_ANTIGA,
+    nextSteps: { followup1: ["retry", "integracao", "ganho"], integracao: ["posvenda", "ganho"], posvenda: ["ganho"] },
+  });
+  await repo.create("leads", { id: "l1", saas: "leverads", stage: "Integração" });
+
+  const r = await migrateGanhoAntesIntegracao(repo);
+  assert.deepEqual(r.order, ["Novo lead", "Follow-up", "Ganho", "Integração", "Acompanhamento", "Nutrição"]);
+
+  const p = await repo.get("products", "leverads");
+  // Fechar sai dos destinos da entrega; a entrega vira destino do ganho.
+  assert.deepEqual(p.nextSteps.followup1, ["retry", "ganho"]);
+  assert.deepEqual(p.nextSteps.integracao, ["posvenda"]);
+  assert.deepEqual(p.nextSteps.posvenda, []);
+  assert.deepEqual(p.nextSteps.ganho, ["integracao", "posvenda"]);
+  // Card NÃO é movido: quem estava na entrega continua lá.
+  assert.equal((await repo.get("leads", "l1")).stage, "Integração");
+});
+
+test("migrateGanhoAntesIntegracao: one-shot e não mexe em funil já na ordem nova", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", funnel: ORDEM_ANTIGA });
+  await migrateGanhoAntesIntegracao(repo);
+  const depois = (await repo.get("products", "leverads")).funnel;
+  assert.equal(await migrateGanhoAntesIntegracao(repo), false); // 2ª vez não faz nada
+  assert.deepEqual((await repo.get("products", "leverads")).funnel, depois);
+
+  // Produto que já nasce na ordem certa só ganha o marcador.
+  const repo2 = makeMemRepo();
+  await repo2.create("products", { id: "leverads", funnel: [
+    { stage: "Ganho", kind: "ganho" }, { stage: "Integração", kind: "integracao" },
+  ] });
+  assert.equal(await migrateGanhoAntesIntegracao(repo2), false);
+  const p2 = await repo2.get("products", "leverads");
+  assert.deepEqual(p2.funnel.map((f) => f.stage), ["Ganho", "Integração"]);
+  assert.equal(p2.ganhoAntesIntegracaoV1, true);
+});
+
+test("backfillWonAt: data do ganho sai do cliente e o lead sem cliente fica intocado", async () => {
+  const repo = makeMemRepo();
+  await repo.create("customers", { id: "cus_1", startedAt: "2026-06-19T23:10:31.783Z" });
+  await repo.create("leads", { id: "l1", customerId: "cus_1", stageSince: "2026-07-20T00:00:00Z" });
+  await repo.create("leads", { id: "l2", customerId: "cus_sumiu", stageSince: "2026-07-01T00:00:00Z" });
+  await repo.create("leads", { id: "l3", stage: "Follow-up" });
+
+  assert.equal(await backfillWonAt(repo), 2);
+  // A data do ganho vence o stageSince, que já andou.
+  assert.equal((await repo.get("leads", "l1")).wonAt, "2026-06-19T23:10:31.783Z");
+  // Cliente sumido cai no stageSince (o card nunca saiu do Ganho).
+  assert.equal((await repo.get("leads", "l2")).wonAt, "2026-07-01T00:00:00Z");
+  assert.equal((await repo.get("leads", "l3")).wonAt, undefined);
+  assert.equal(await backfillWonAt(repo), 0); // idempotente
 });

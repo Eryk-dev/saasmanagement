@@ -8,7 +8,7 @@
 // Sem histórico de churn confiável ainda, então retenção entra magra (contas
 // novas + cancelamentos com data) — cresce quando o billing registrar o evento.
 
-import { kindOf, isWon, isLoss, cadenceOf, firstStage, TOUCH_TYPES, isNoShowStage } from "./stages.js";
+import { kindOf, isWonLead, isLoss, cadenceOf, firstStage, TOUCH_TYPES, isNoShowStage } from "./stages.js";
 
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
@@ -97,7 +97,7 @@ export function registerScoreboardRoutes(app, repo) {
     const callOutcome = (list) => {
       let shown = 0, noShow = 0, won = 0;
       for (const l of list) {
-        const isW = isWon(product, l.stage);
+        const isW = isWonLead(product, l);
         const lost = isLoss(product, l.stage);
         if (isW) won++;
         const advanced = isW || FORWARD.has(kindOf(product, l.stage))
@@ -227,8 +227,8 @@ export function registerScoreboardRoutes(app, repo) {
       let callsShown = 0;
       for (const l of callLeads) {
         if (isLoss(product, l.stage) && l.lostReason === "nao_compareceu") continue;
-        if (!isWon(product, l.stage) && isNoShowStage(l.stage)) continue; // furou: parado na etapa de No show
-        const advanced = isWon(product, l.stage) || FORWARD.has(kindOf(product, l.stage))
+        if (!isWonLead(product, l) && isNoShowStage(l.stage)) continue; // furou: parado na etapa de No show
+        const advanced = isWonLead(product, l) || FORWARD.has(kindOf(product, l.stage))
           || (actsByLead.get(l.id) || []).some((a) => a.type === "stage" && FORWARD.has(kindOf(product, a.meta?.to)));
         if (advanced || isLoss(product, l.stage)) callsShown++;
       }

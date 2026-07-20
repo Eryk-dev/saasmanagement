@@ -11,7 +11,7 @@
 // Pré-requisito na Meta: "Allow voice calls" ligado no número (Call settings).
 import { randomUUID } from "node:crypto";
 import { recordMessage, threadId } from "./wa-store.js";
-import { isWon } from "./stages.js";
+import { isWonLead } from "./stages.js";
 
 // Saudações padrão quando o produto não configurou as dele (Ajustes →
 // Integrações). {nome} = primeiro nome do lead (some com elegância quando não
@@ -193,7 +193,7 @@ async function maybeStart(repo, wa, { thread, resolvePhoneId, now = new Date() }
   if (!lead) return;
   const product = (await repo.list("products")).find((p) => p.id === (thread.saas || lead.saas));
   if (!product?.waCallFlow?.enabled) return;
-  if (isWon(product, lead.stage)) return; // cliente fechado não recebe "posso te ligar?"
+  if (isWonLead(product, lead)) return; // cliente fechado não recebe "posso te ligar?"
   const phoneId = await resolvePhoneId({ thread });
   if (phoneId === null || !wa.configured(phoneId)) return;
   try {

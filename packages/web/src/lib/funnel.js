@@ -65,6 +65,14 @@ export const isLossKind = (k) => k === "perdido" || k === "desqualificado";
 export const isTerminalKind = (k) => k === "ganho" || isLossKind(k);
 
 export const isWonStage = (saasCfg, stage) => isWonKind(stageKind(saasCfg, stage));
+
+// A venda como FATO do lead (espelho do isWonLead/wonAtOf da API, stages.js).
+// Com o Ganho ANTES da Integração o card segue pra entrega, então medir pela
+// POSIÇÃO faria a receita sumir depois de reconhecida. `customerId` é gravado
+// por convertWonLead e nunca limpo; `wonAt` guarda a data real (o stageSince é
+// recarimbado a cada movimento e jogaria a venda pro mês da etapa seguinte).
+export const isWonLead = (saasCfg, lead) => !!lead?.customerId || isWonStage(saasCfg, lead?.stage);
+export const wonAtOf = (lead) => lead?.wonAt || lead?.stageSince || "";
 export const isTerminalStage = (saasCfg, stage) => isTerminalKind(stageKind(saasCfg, stage));
 
 // Nomes terminais do produto (+ marcador legado "disqualified" que vive fora do
@@ -154,10 +162,14 @@ export const NEXT_KINDS = {
   contato:       ["retry", "call", "desqualificado"],   // Nutrição: reativar
   qualificacao:  ["retry", "call", "contato", "desqualificado"], // contato = Nutrição
   call:          ["retry", "noshow", "followup", "ganho", "desqualificado"], // noshow = cliente furou
-  followup:      ["retry", "integracao", "ganho", "desqualificado"],
+  // Com o Ganho ANTES da Integração, fechar é o passo do closer e a entrega vem
+  // depois: o Follow-up não manda mais direto pra Integração, e Integração e
+  // pós-venda não voltam pro Ganho (seria andar pra trás na régua).
+  followup:      ["retry", "ganho", "desqualificado"],
   proposta:      ["retry", "followup", "ganho", "desqualificado"],
-  integracao:    ["posvenda", "ganho"],
-  posvenda:      ["ganho"],
+  ganho:         ["integracao", "posvenda"],
+  integracao:    ["posvenda"],
+  posvenda:      [],
   outro:         ["retry", "desqualificado"],
 };
 
