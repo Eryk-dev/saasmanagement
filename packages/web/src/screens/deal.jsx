@@ -458,7 +458,7 @@ function LeadDetail({ lead: initial, onClose }) {
                           const f = r.summary?.followup;
                           window.alert(`Resumo pronto ✓ Temperatura: ${r.summary?.temperatura || "?"}.${f?.quando ? " Próximo toque sugerido já foi agendado no GPS." : ""}`);
                         } else if (r.reason === "transcript_not_ready") {
-                          window.alert("A transcrição ainda não está pronta no Google. A call já terminou? Gravação e transcrição estavam ligadas? Tenta de novo em alguns minutos (o cockpit também tenta sozinho a cada 10 min).");
+                          window.alert(`A transcrição ainda não está pronta no Google. A call já terminou? Gravação e transcrição estavam ligadas? O cockpit tenta sozinho a cada 10 min.${r.detail ? `\n\nMotivo: ${r.detail}` : ""}`);
                         } else if (r.reason === "not_connected") {
                           window.alert("Google não conectado. Ajustes → Integrações → Conectar Google.");
                         } else if (r.reason) {
@@ -595,7 +595,9 @@ function LeadDetail({ lead: initial, onClose }) {
                             let r = await api.callSummary(lead.id, false, "integracao");
                             if (!r.ok && r.reason === "already_done" && window.confirm("Essa integração já tem resumo. Gerar de novo?")) r = await api.callSummary(lead.id, true, "integracao");
                             if (r.ok) { refetchTimeline?.(); window.alert(`Resumo da integração pronto ✓ Cliente: ${r.summary?.sentimento || "?"}.`); }
-                            else if (r.reason === "transcript_not_ready") window.alert("A transcrição ainda não está pronta no Google. A call já terminou? Transcrição estava ligada? Tenta de novo em alguns minutos (o cockpit também tenta sozinho a cada 10 min).");
+                            // `detail` diz QUAL caminho falhou (Meet API / Drive) — sem ele
+                            // o diagnóstico virava adivinhação.
+                            else if (r.reason === "transcript_not_ready") window.alert(`A transcrição ainda não está pronta no Google. A call já terminou? Transcrição estava ligada? O cockpit tenta sozinho a cada 10 min.${r.detail ? `\n\nMotivo: ${r.detail}` : ""}`);
                             else if (r.reason) window.alert(`Não deu: ${r.reason}`);
                           } catch (e) { window.alert(e.message || "Falha ao resumir a integração."); }
                           finally { btn.disabled = false; btn.textContent = "✨ resumir integração"; }
