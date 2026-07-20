@@ -269,3 +269,31 @@ test("transcrição: Meet API lançando não mata o fallback do Drive", async ()
   assert.match(no.detail, /meet: .*SERVICE_DISABLED/);
   assert.match(no.detail, /drive: /);
 });
+
+// Sala ESQUECIDA ABERTA: o Google só fecha gravação/transcrição quando o último
+// participante sai, então enquanto houver conferência ativa não existe
+// transcrição pra buscar. Foi o que segurou a integração do Cristiano (20/07):
+// a tela dizia "não está pronta" quando o certo era "encerre a sala".
+test("sala aberta vira reason próprio (call_in_progress), não transcript_not_ready", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [] });
+  await repo.create("leads", {
+    id: "le11", saas: "leverads", name: "Cristiano", stage: "Integração",
+    integrationCallUrl: "https://meet.google.com/sxj-tzvx-hud",
+    integrationMeetEventId: "ev11", integrationScheduledAt: "2026-07-20T14:00:00.000Z",
+  });
+  const anthropic = makeAnthropic({ fetch: makeAnthropicFetch(), apiKey: "sk-test" });
+  const w = makeCallSummarizer({
+    repo, anthropic, log: { info() {}, warn() {} },
+    google: {
+      connected: async () => true,
+      fetchTranscript: async () => ({ live: true, startTime: "2026-07-20T14:00:00Z" }),
+      fetchTranscriptFromDrive: async () => null, // Doc só nasce quando a call fecha
+    },
+  });
+  const r = await w.summarizeLead("le11", { kind: "integracao" });
+  assert.equal(r.reason, "call_in_progress");
+  assert.match(r.detail, /sala do Meet ainda está aberta/i);
+  // Nada é gravado no lead: quando a sala fechar, o poller resume de verdade.
+  assert.equal((await repo.get("leads", "le11")).integrationSummaryFor, undefined);
+});

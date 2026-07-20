@@ -82,8 +82,13 @@ export function makeCallSummarizer({ repo, google, anthropic, log = console }) {
     // warn. Erro dela vira diagnóstico e o Drive segue sendo tentado.
     let t = null;
     let detail = "";
+    let live = false;
     try {
       t = await google.fetchTranscript(code);
+      // Sala ainda ABERTA: não existe transcrição enquanto alguém está lá
+      // dentro (o Google fecha a gravação quando o último sai). Vira reason
+      // próprio pra tela mandar encerrar a sala em vez de "não está pronta".
+      if (t?.live) { live = true; t = null; }
     } catch (err) {
       detail = `meet: ${String(err.message || err).slice(0, 160)}`;
       log.warn?.({ lead: leadId, kind, err: err.message }, "Meet API falhou (segue pro fallback do Drive)");
@@ -100,6 +105,11 @@ export function makeCallSummarizer({ repo, google, anthropic, log = console }) {
         add(`drive: ${String(err.message || err).slice(0, 160)}`);
         log.warn?.({ lead: lead.id, kind, err: err.message }, "fallback de transcrição pelo Drive falhou");
       }
+    }
+    // Sala aberta e o Drive (ainda) sem o Doc: o motivo é a call que não fechou,
+    // não "transcrição processando" — é acionável (sair da sala destrava).
+    if (!t && live) {
+      return { ok: false, reason: "call_in_progress", detail: "a sala do Meet ainda está aberta: o Google só gera a transcrição quando o último participante sai" };
     }
     if (!t) return { ok: false, reason: "transcript_not_ready", ...(detail ? { detail } : {}) };
 

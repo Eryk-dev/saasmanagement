@@ -94,6 +94,8 @@ export const api = {
   googleUserDisconnect: () => req("POST", "/api/google/user/disconnect"),
   // body opcional: { guests: [emails] } ou { email } — convidados extras da call.
   createMeet: (leadId, body) => req("POST", `/api/leads/${leadId}/meet`, body),
+  // Encerra a conferência aberta da sala (sala esquecida trava a transcrição).
+  endMeet: (leadId, kind = "call") => req("POST", `/api/leads/${leadId}/meet/end`, { kind }),
   // WhatsApp (Cloud API): envia mensagem pelo drawer do lead.
   sendWhatsapp: (leadId, text) => req("POST", `/api/leads/${leadId}/whatsapp`, { text }),
   // Inbox de WhatsApp: lista de conversas, mensagens de uma conversa, marcar

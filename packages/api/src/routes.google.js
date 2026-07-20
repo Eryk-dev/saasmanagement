@@ -220,6 +220,25 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     }
   });
 
+  // Encerra a conferência que ficou ABERTA na sala do lead. Sala esquecida
+  // aberta trava gravação/transcrição (o Google só fecha quando o último sai),
+  // e sem isso alguém tinha que entrar no Meet pra clicar em encerrar.
+  app.post("/api/leads/:id/meet/end", async (req, reply) => {
+    if (!(await client.connected())) return reply.code(503).send({ error: "Google não conectado — Ajustes → Integrações → Conectar Google" });
+    const lead = await repo.get("leads", req.params.id);
+    if (!lead) return reply.code(404).send({ error: "Not found" });
+    const kind = req.body?.kind === "integracao" ? "integracao" : "call";
+    const url = kind === "integracao" ? lead.integrationCallUrl : lead.callUrl;
+    const code = (String(url || "").match(/meet\.google\.com\/([a-z0-9-]+)/i) || [])[1];
+    if (!code) return reply.code(422).send({ error: "esse lead não tem sala do Meet nesse tipo de call" });
+    try {
+      const r = await client.endActiveConference(code);
+      return { ok: true, ...r };
+    } catch (err) {
+      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+    }
+  });
+
   // Resumo estratégico da call (transcrição do Meet → Claude → timeline).
   // force = re-resumir mesmo já tendo resumo desta call.
   app.post("/api/leads/:id/call-summary", async (req, reply) => {
