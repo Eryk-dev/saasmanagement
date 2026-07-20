@@ -297,3 +297,25 @@ test("sala aberta vira reason próprio (call_in_progress), não transcript_not_r
   // Nada é gravado no lead: quando a sala fechar, o poller resume de verdade.
   assert.equal((await repo.get("leads", "le11")).integrationSummaryFor, undefined);
 });
+
+// Sala aberta com a conta conectada FORA da call: ela organiza mas não
+// participa, e a Meet API só lista conferenceRecords pra quem participou (PR
+// #206) — a lista vem vazia mesmo com gente na sala. O sinal confiável é o
+// `activeConference` do SPACE, que a conta lê por ser dona.
+test("google.fetchTranscript: activeConference no space marca sala aberta mesmo sem conferenceRecords", async () => {
+  const { makeGoogle } = await import("../src/google.js");
+  const f = async (url) => {
+    const u = String(url);
+    const ok = (body) => ({ status: 200, json: async () => body });
+    if (u.includes("oauth2.googleapis.com/token")) return ok({ access_token: "at", expires_in: 3600 });
+    if (u.includes("/v2/spaces/sxj-tzvx-hud")) {
+      return ok({ name: "spaces/sp9", activeConference: { conferenceRecord: "conferenceRecords/live1" } });
+    }
+    if (u.includes("/v2/conferenceRecords?")) return ok({ conferenceRecords: [] }); // vazio: a conta não participou
+    return ok({});
+  };
+  const repo = { get: async () => ({ id: "google_oauth", refreshToken: "rt" }), update: async () => {}, create: async () => {} };
+  const g = makeGoogle({ fetch: f, repo, clientId: "cid", clientSecret: "cs", redirectUri: "https://x/cb" });
+  const t = await g.fetchTranscript("sxj-tzvx-hud");
+  assert.equal(t?.live, true, "sala aberta detectada pelo activeConference");
+});
