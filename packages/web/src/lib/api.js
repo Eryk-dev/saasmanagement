@@ -107,6 +107,8 @@ export const api = {
   waThreadRead: (id) => req("POST", `/api/whatsapp/threads/${id}/read`, {}),
   // Encerrar/reabrir a conversa (status do inbox; mensagem nova reabre sozinha).
   waThreadClose: (id, closed = true) => req("POST", `/api/whatsapp/threads/${id}/close`, { closed }),
+  // Vincula (ou desvincula, com leadId vazio) uma conversa órfã a um lead.
+  waLinkThread: (id, leadId) => req("POST", `/api/whatsapp/threads/${id}/link`, { leadId }),
   waThreadSend: (id, text) => req("POST", `/api/whatsapp/threads/${id}/send`, { text }),
   // Templates APROVADOS na Meta + envio de um deles (o único jeito de reabrir
   // conversa fora da janela de 24h). params = valores das variáveis {{1}}…{{N}}.

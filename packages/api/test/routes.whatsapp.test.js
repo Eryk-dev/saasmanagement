@@ -348,3 +348,81 @@ test("GET /insights: números do inbox + saúde do número num payload só", asy
   assert.equal((await app.inject({ method: "GET", url: "/api/whatsapp/insights?days=9999" })).json().days, 365);
   await app.close();
 });
+
+// ── Lead que escreveu de OUTRO número ───────────────────────────────────────
+// O form leva a pessoa pro WhatsApp com uma mensagem pronta que tem o NOME
+// dela. Se o aparelho tem número diferente do que ela digitou, o casamento por
+// telefone falha e a conversa nasce órfã: sem contexto pro SDR e sem fluxo
+// automático (prod 20/07 — form 11 94356-3980, mensagem de 11 4321-3413).
+
+const NOW_TS = String(Math.floor(Date.now() / 1000)); // o helper inMsg usa ts fixo de 2024
+const PREFILL = (nome) => `Oi, me chamo ${nome} e quero saber mais sobre a LeverAds. Resumo da minha operação: segmento - Outros, contas no ML/Shopee - 1 conta.`;
+
+test("conversa nova casa pelo NOME da mensagem do form quando o número não bate", async () => {
+  const repo = makeMemRepo();
+  await repo.create("leads", { id: "le_1", saas: "leverads", name: "Fernando", phone: "11943563980", createdAt: new Date().toISOString() });
+  const app = await appWith(repo, fakeWa());
+
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inMsg("551143213413", "wamid.A", PREFILL("Fernando"), NOW_TS) });
+
+  const thread = await repo.get("wa_threads", "551143213413");
+  assert.equal(thread.leadId, "le_1", "a conversa tem que achar o lead pelo nome");
+  // O telefone do FORM fica intacto; o do WhatsApp entra em campo próprio.
+  const lead = await repo.get("leads", "le_1");
+  assert.equal(lead.phone, "11943563980");
+  assert.equal(lead.waPhone, "551143213413");
+});
+
+test("não casa: dois leads com o mesmo nome na janela, nome curto, ou lead antigo", async () => {
+  const agora = new Date().toISOString();
+  const velho = new Date(Date.now() - 3 * 3600e3).toISOString();
+
+  // Ambíguo: dois "Fernando" recentes → deixa órfã pro vínculo manual.
+  const r1 = makeMemRepo();
+  await r1.create("leads", { id: "a", saas: "leverads", name: "Fernando", phone: "11900000001", createdAt: agora });
+  await r1.create("leads", { id: "b", saas: "leverads", name: "Fernando", phone: "11900000002", createdAt: agora });
+  await (await appWith(r1, fakeWa())).inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inMsg("551143213413", "wamid.B", PREFILL("Fernando"), NOW_TS) });
+  assert.equal((await r1.get("wa_threads", "551143213413")).leadId, null);
+
+  // Lead de 3h atrás não é o do redirect que acabou de acontecer.
+  const r2 = makeMemRepo();
+  await r2.create("leads", { id: "c", saas: "leverads", name: "Fernando", phone: "11900000003", createdAt: velho });
+  await (await appWith(r2, fakeWa())).inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inMsg("551143213414", "wamid.C", PREFILL("Fernando"), NOW_TS) });
+  assert.equal((await r2.get("wa_threads", "551143213414")).leadId, null);
+
+  // Mensagem curta não casa com ninguém.
+  const r3 = makeMemRepo();
+  await r3.create("leads", { id: "d", saas: "leverads", name: "Fernando", phone: "11900000004", createdAt: agora });
+  await (await appWith(r3, fakeWa())).inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inMsg("551143213415", "wamid.D", "oi", NOW_TS) });
+  assert.equal((await r3.get("wa_threads", "551143213415")).leadId, null);
+});
+
+test("casamento por TELEFONE continua ganhando e não inventa waPhone", async () => {
+  const repo = makeMemRepo();
+  await repo.create("leads", { id: "le_1", saas: "leverads", name: "Fernando", phone: "5511943213413", createdAt: new Date().toISOString() });
+  const app = await appWith(repo, fakeWa());
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inMsg("5511943213413", "wamid.E", PREFILL("Fernando"), NOW_TS) });
+  assert.equal((await repo.get("wa_threads", "5511943213413")).leadId, "le_1");
+  assert.equal((await repo.get("leads", "le_1")).waPhone, undefined);
+});
+
+test("POST /threads/:id/link vincula na mão, carimba as mensagens e desvincula", async () => {
+  const repo = makeMemRepo();
+  await repo.create("leads", { id: "le_9", saas: "leverads", name: "Zulmira", phone: "11988887777" });
+  const app = await appWith(repo, fakeWa());
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inMsg("551143213413", "wamid.F", "oi, tudo bem?", NOW_TS) });
+  assert.equal((await repo.get("wa_threads", "551143213413")).leadId, null);
+
+  const res = await app.inject({ method: "POST", url: "/api/whatsapp/threads/551143213413/link", payload: { leadId: "le_9" } });
+  assert.equal(res.statusCode, 200);
+  assert.equal((await repo.get("wa_threads", "551143213413")).leadId, "le_9");
+  // Mensagem já gravada também passa a apontar pro lead.
+  assert.equal((await repo.list("wa_messages")).find((m) => m.id === "wamid.F").leadId, "le_9");
+  assert.equal((await repo.get("leads", "le_9")).waPhone, "551143213413");
+
+  const nao = await app.inject({ method: "POST", url: "/api/whatsapp/threads/551143213413/link", payload: { leadId: "naoexiste" } });
+  assert.equal(nao.statusCode, 404);
+
+  await app.inject({ method: "POST", url: "/api/whatsapp/threads/551143213413/link", payload: { leadId: "" } });
+  assert.equal((await repo.get("wa_threads", "551143213413")).leadId, null);
+});

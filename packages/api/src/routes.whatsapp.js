@@ -2,7 +2,7 @@
 // conversas (tela dedicada) e envio. As mensagens vivem em wa_threads/wa_messages
 // (ver wa-store.js) — canônico pro inbox e pro chat do drawer.
 import { makeWhatsapp } from "./whatsapp.js";
-import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId, setLeadWhatsappOptOut, waInsights, waFormEngagement, findLeadByPhone, findThreadByPhone } from "./wa-store.js";
+import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId, setLeadWhatsappOptOut, waInsights, waFormEngagement, findLeadByPhone, findThreadByPhone, linkThreadToLead } from "./wa-store.js";
 import { applyHealthEvent, getWaHealth, waHealthSummary, recordWebhookDelivery, resolveWabaId } from "./wa-health.js";
 import { runInboundCallFlow, startCallFlow, openAlerts, closeThreadAlerts, parsePermissionReply, greetingFor } from "./wa-call-flow.js";
 
@@ -304,6 +304,23 @@ export function registerWhatsappRoutes(app, repo, { whatsapp } = {}) {
       closeReason: closed ? String(req.body?.reason || "manual") : "",
     });
     return { ok: true, status: closed ? "closed" : "open" };
+  });
+
+  // Vincular conversa órfã a um lead, na mão. Cobre quem escreveu de um número
+  // diferente do que digitou no form (o casamento automático só age quando há
+  // um único candidato) e quem chegou no WhatsApp sem passar pelo form.
+  app.post("/api/whatsapp/threads/:id/link", async (req, reply) => {
+    const thread = await findThreadByPhone(repo, req.params.id);
+    if (!thread) return reply.code(404).send({ error: "conversa não encontrada" });
+    const leadId = String(req.body?.leadId || "");
+    if (!leadId) { // desvincular
+      await repo.update("wa_threads", thread.id, { leadId: null });
+      return { ok: true, leadId: null };
+    }
+    const lead = await repo.get("leads", leadId);
+    if (!lead) return reply.code(404).send({ error: "lead não encontrado" });
+    const r = await linkThreadToLead(repo, thread.id, lead);
+    return { ok: true, ...r };
   });
 
   app.post("/api/whatsapp/threads/:id/read", async (req) => {

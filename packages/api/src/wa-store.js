@@ -42,6 +42,49 @@ export async function findThreadByPhone(repo, phone) {
   return (await repo.list("wa_threads")).find((t) => waMatchKey(t.id) === key) || null;
 }
 
+// LEAD QUE ESCREVEU DE OUTRO NÚMERO. O form leva a pessoa pro WhatsApp com uma
+// mensagem pronta que contém o NOME dela; se o aparelho tem número diferente do
+// que ela digitou, o casamento por telefone falha e a conversa nasce órfã — sem
+// contexto pro SDR e sem fluxo automático (visto em prod 20/07: form com
+// 11 94356-3980, mensagem de 11 4321-3413, 17 segundos depois).
+//
+// Casa pelo NOME dentro do texto, numa janela curta e SÓ quando há um único
+// candidato. Na dúvida devolve null e a conversa fica órfã pro vínculo manual,
+// que é reversível — vincular errado, não.
+const FORM_MATCH_MS = 30 * 60_000;
+export async function findLeadByFormMessage(repo, { text, saas = "", at } = {}) {
+  const body = String(text || "").toLowerCase();
+  if (body.length < 20) return null; // "oi" não casa com ninguém
+  const now = at ? new Date(at).getTime() : Date.now();
+  if (!Number.isFinite(now)) return null;
+  const leads = await repo.list("leads");
+  const hits = leads.filter((l) => {
+    if (saas && l.saas && l.saas !== saas) return false;
+    const name = String(l.name || "").trim().toLowerCase();
+    if (name.length < 3) return false; // nome curto demais casa por acidente
+    const created = new Date(l.createdAt || 0).getTime();
+    if (!Number.isFinite(created)) return false;
+    if (now - created > FORM_MATCH_MS || created - now > 60_000) return false;
+    return body.includes(name);
+  });
+  return hits.length === 1 ? hits[0] : null;
+}
+
+// Amarra uma conversa a um lead: thread, mensagens já gravadas e o número do
+// WhatsApp no lead. O telefone do FORM fica intacto — os dois servem, e são
+// coisas diferentes (por onde ligar × por onde escrever).
+export async function linkThreadToLead(repo, tid, lead) {
+  if (!tid || !lead?.id) return null;
+  const thread = await repo.get("wa_threads", tid);
+  if (thread) await repo.update("wa_threads", tid, { leadId: lead.id, saas: thread.saas || lead.saas || "" });
+  const msgs = (await repo.list("wa_messages")).filter((m) => m.thread === tid && !m.leadId);
+  for (const m of msgs) await repo.update("wa_messages", m.id, { leadId: lead.id, saas: m.saas || lead.saas || "" });
+  const patch = {};
+  if (waMatchKey(lead.phone) !== waMatchKey(tid)) patch.waPhone = tid; // escreveu de outro número
+  if (Object.keys(patch).length) await repo.update("leads", lead.id, patch);
+  return { thread: tid, lead: lead.id, messages: msgs.length, waPhone: patch.waPhone || "" };
+}
+
 // Grava uma mensagem e atualiza o thread. Idempotente por id (a Meta re-entrega
 // o webhook). Resolve o lead pelo telefone se leadId não veio. Retorna o id da
 // mensagem, ou null se foi deduplicada.
@@ -52,9 +95,21 @@ export async function recordMessage(repo, { id, phone, direction, text = "", at,
   if (await repo.get("wa_messages", msgId)) return null; // dedup
 
   let lid = leadId ?? null, sa = saas || "";
+  let waPhoneOfLead = "";
   if (lid == null) {
     const lead = await findLeadByPhone(repo, tid);
     if (lead) { lid = lead.id; sa = sa || lead.saas || ""; }
+  }
+  // Conversa NOVA, entrando, e nenhum lead com esse número: pode ser o lead do
+  // form escrevendo de outro aparelho. Só na primeira mensagem da thread — é
+  // exatamente o momento do redirect do form.
+  if (lid == null && direction === "in" && !(await repo.get("wa_threads", tid))) {
+    const byForm = await findLeadByFormMessage(repo, { text, saas: sa || saasHint, at });
+    if (byForm) {
+      lid = byForm.id;
+      sa = sa || byForm.saas || "";
+      if (waMatchKey(byForm.phone) !== waMatchKey(tid)) waPhoneOfLead = tid;
+    }
   }
   // Sem lead pra dizer o produto, vale o dono do NÚMERO por onde entrou
   // (multi-número: conversa nova no WhatsApp da UniqueKids nasce etiquetada).
@@ -84,6 +139,10 @@ export async function recordMessage(repo, { id, phone, direction, text = "", at,
   };
   if (prev) await repo.update("wa_threads", tid, patch);
   else await repo.create("wa_threads", { ...patch, createdAt: when, unread: direction === "in" ? 1 : 0 });
+  // Guarda o número de onde ele REALMENTE escreveu, sem apagar o do form.
+  if (waPhoneOfLead && lid) {
+    try { await repo.update("leads", lid, { waPhone: waPhoneOfLead }); } catch { /* não trava a mensagem */ }
+  }
   return msgId;
 }
 
