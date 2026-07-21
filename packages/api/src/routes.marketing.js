@@ -38,23 +38,27 @@ export function painCode(adName) {
   return m ? m[1].toUpperCase() : null;
 }
 
-// Cliente A/B/C — a MESMA régua do leadTier() da web (packages/web/src/lib/ui.js,
-// mantê-las iguais): pontos de CONTAS + ANÚNCIOS na maior conta (listings;
-// `volume` é o legado semanal). A = 5+ pts · B = 2+ · C = resto; lead sem
-// nenhuma resposta fica de fora (null).
+// Cliente A/B/C/D/E — a MESMA régua do leadTier() da web (packages/web/src/lib/
+// ui.js, mantê-las iguais): matriz CONTAS × ANÚNCIOS (listings; `volume` é o
+// legado semanal). 5 níveis (A maior … E menor): 1 conta tem teto D (nada pra
+// replicar); senão s = pontos de contas + anúncios, A ≥6 · B ≥4 · C ≥2 · D
+// resto. Lead sem nenhuma resposta fica de fora (null).
 const GRADE_ACCOUNTS = { "1": 0, "2": 1, "3-5": 2, "6-10": 3, "10+": 4 };
 const GRADE_LISTINGS = { "0-100": 0, "100-500": 1, "500-2000": 2, "2000-10000": 3, "10000+": 4 };
 const GRADE_VOLUME = { "0-10": 0, "10-50": 1, "50-200": 2, "200+": 3 };
 export function leadGrade(l) {
+  const accKnown = l?.accounts != null && l.accounts !== "";
   const acc = GRADE_ACCOUNTS[l?.accounts];
   const ads = l?.listings != null && l.listings !== "" ? GRADE_LISTINGS[l.listings] : GRADE_VOLUME[l?.volume];
   if (acc == null && ads == null) return null;
-  const pts = (acc ?? 0) + (ads ?? 0);
-  return pts >= 5 ? "A" : pts >= 2 ? "B" : "C";
+  const a = acc ?? 0, li = ads ?? 0;
+  if (accKnown && l.accounts === "1") return li >= 1 ? "D" : "E";
+  const s = a + li;
+  return s >= 6 ? "A" : s >= 4 ? "B" : s >= 2 ? "C" : "D";
 }
-const GRADES = ["A", "B", "C"];
+const GRADES = ["A", "B", "C", "D", "E"];
 const gradeCounts = (leads) => {
-  const abc = { A: 0, B: 0, C: 0 };
+  const abc = { A: 0, B: 0, C: 0, D: 0, E: 0 };
   for (const l of leads) { const g = leadGrade(l); if (g) abc[g] += 1; }
   return abc;
 };
@@ -548,7 +552,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       const p = byPain[k] || (byPain[k] = {
         code, label: code ? (product.painMap || {})[code] || code : "Sem código",
         spend: 0, leads: 0, calls: 0, won: 0, revenue: 0, adsCount: 0,
-        abc: { A: 0, B: 0, C: 0 }, wonAbc: { A: 0, B: 0, C: 0 },
+        abc: { A: 0, B: 0, C: 0, D: 0, E: 0 }, wonAbc: { A: 0, B: 0, C: 0, D: 0, E: 0 },
       });
       p.spend += a.spend;
       p.leads += a.leads;

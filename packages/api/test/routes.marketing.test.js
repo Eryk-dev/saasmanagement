@@ -214,7 +214,7 @@ test("métricas: adsets/ads agregados com CPL real por utm.term/utm.content (id 
 
 // ── Criativos (upload de vídeo → anúncio pausado) e quebra por dor ──────────
 
-const { painCode, CREATIVE_URL_TAGS } = await import("../src/routes.marketing.js");
+const { painCode, CREATIVE_URL_TAGS, leadGrade } = await import("../src/routes.marketing.js");
 const multipart = (await import("@fastify/multipart")).default;
 
 test("painCode: extrai o código [X] de qualquer posição do nome do anúncio", () => {
@@ -371,8 +371,9 @@ test("métricas por dor: agrupa [X] do nome do anúncio, rotula pelo painMap e c
   const now = "2026-06-02T10:00:00.000Z";
   // UTM completo como nos leads reais (campaign/term/content dinâmicos da Meta).
   const mk = (id, content, stage, extra = {}) => repo.create("leads", { id, saas: "leverads", stage, createdAt: now, utm: { campaign: "c1", term: "s1", content }, ...extra });
-  // Qualificação → grade: l1 = A (10+ contas · 2-10 mil anúncios), l2 = C
-  // (1 conta, sem listings), l3 = B pelo `volume` legado (sem listings).
+  // Qualificação → grade (matriz 5 níveis): l1 = A (10+ contas · 2-10 mil
+  // anúncios), l2 = E (1 conta, sem listings = teto E), l3 = C pelo `volume`
+  // legado (sem contas → s=3).
   await mk("l1", "a1", "Ganho", { amount: 600, accounts: "10+", listings: "2000-10000" }); // valor pedido pelo modal de fechamento
   await mk("l2", "a1", "Inbox", { accounts: "1" });
   await mk("l3", "a3", "Inbox", { volume: "200+" });
@@ -388,18 +389,18 @@ test("métricas por dor: agrupa [X] do nome do anúncio, rotula pelo painMap e c
   assert.equal(A.costPerWin, 160);
   assert.equal(A.revenue, 600);         // amount do l1
   assert.equal(A.roas, 3.75);           // 600 / 160
-  // clientes A/B/C da dor = soma das grades dos anúncios (a1 traz A+C, a3 traz B);
+  // clientes por grade da dor = soma das grades dos anúncios (a1 traz A+E, a3 traz C);
   // custo por cada = investido da dor ÷ clientes da grade
-  assert.deepEqual(A.abc, { A: 1, B: 1, C: 1 });
-  assert.deepEqual(A.abcCost, { A: 160, B: 160, C: 160 });
+  assert.deepEqual(A.abc, { A: 1, B: 0, C: 1, D: 0, E: 1 });
+  assert.deepEqual(A.abcCost, { A: 160, B: null, C: 160, D: null, E: 160 });
   const B = m.pains.find((p) => p.code === "B");
   assert.equal(B.label, "Múltiplas abas");
   assert.equal(B.leads, 0);
   assert.equal(B.cpl, null);
   assert.equal(B.revenue, 0);
   assert.equal(B.roas, null);           // sem receita não inventa ROAS
-  assert.deepEqual(B.abc, { A: 0, B: 0, C: 0 });
-  assert.deepEqual(B.abcCost, { A: null, B: null, C: null }); // sem cliente não inventa custo
+  assert.deepEqual(B.abc, { A: 0, B: 0, C: 0, D: 0, E: 0 });
+  assert.deepEqual(B.abcCost, { A: null, B: null, C: null, D: null, E: null }); // sem cliente não inventa custo
   const sem = m.pains.find((p) => p.code === null);
   assert.equal(sem.label, "Sem código");
   assert.equal(sem.spend, 10);
@@ -418,7 +419,7 @@ test("métricas por dor: agrupa [X] do nome do anúncio, rotula pelo painMap e c
   assert.equal(a1.videoP25, 40);
   assert.equal(a1.videoP50, 30);
   assert.equal(a1.videoP95, 10);
-  assert.deepEqual(a1.abc, { A: 1, B: 0, C: 1 }); // l1 e l2 atribuídos por utm.content
+  assert.deepEqual(a1.abc, { A: 1, B: 0, C: 0, D: 0, E: 1 }); // l1=A, l2=E, por utm.content
   assert.equal(a1.abcCost.A, 60); // 60 de spend ÷ 1 cliente A
   const c1 = m.campaigns.find((c) => c.id === "c1");
   assert.equal(c1.won, 1);
@@ -630,4 +631,25 @@ test("placements: breakdown com CPL/CPM da Meta, ordenado por spend, com cache",
   const off = (await app.inject({ url: "/api/marketing/outro/placements" })).json();
   assert.deepEqual(off, { placements: [], configured: false });
   await app.close();
+});
+
+test("leadGrade: matriz de 5 níveis (contas × anúncios) + teto de 1 conta", () => {
+  const g = (accounts, listings) => leadGrade({ accounts, listings });
+  // 1 conta: teto D; E só no catálogo mínimo.
+  assert.equal(g("1", "0-100"), "E");
+  assert.equal(g("1", "100-500"), "D");
+  assert.equal(g("1", "10000+"), "D"); // 1 conta nunca passa de D
+  // 2 contas: 100-500 = C, 500-2000 = C, 2000-10000 = B, 10000+ = B (A só com escala real)
+  assert.equal(g("2", "0-100"), "D");
+  assert.equal(g("2", "100-500"), "C");
+  assert.equal(g("2", "2000-10000"), "B");
+  assert.equal(g("2", "10000+"), "B");
+  // 3-5 contas: só chega em A com 10000+
+  assert.equal(g("3-5", "500-2000"), "B");
+  assert.equal(g("3-5", "10000+"), "A");
+  // 10+ contas: A já em 500-2000
+  assert.equal(g("10+", "0-100"), "B");
+  assert.equal(g("10+", "500-2000"), "A");
+  // sem nenhuma resposta = fora (null)
+  assert.equal(g(undefined, undefined), null);
 });
