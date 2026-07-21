@@ -457,29 +457,14 @@ function LeadDetail({ lead: initial, onClose }) {
                           refetchTimeline?.();
                           const f = r.summary?.followup;
                           window.alert(`Resumo pronto ✓ Temperatura: ${r.summary?.temperatura || "?"}.${f?.quando ? " Próximo toque sugerido já foi agendado no GPS." : ""}`);
-                        } else if (r.reason === "call_in_progress") {
-                          // Encerrar a sala daqui destrava a transcrição sem
-                          // ninguém precisar entrar no Meet pra clicar.
-                          if (window.confirm("A sala do Meet ainda está ABERTA e o Google só gera a transcrição quando o último participante sai.\n\nEncerrar a sala agora? (não faça isso se a call ainda estiver rolando)")) {
-                            try {
-                              const e2 = await api.endMeet(lead.id, "call");
-                              window.alert(e2.ended
-                                ? "Sala encerrada ✓ A transcrição leva alguns minutos pra ficar pronta; o cockpit resume sozinho (ou clique de novo em resumir)."
-                                : "Não havia conferência ativa agora. Tente resumir de novo em alguns minutos.");
-                            } catch (e3) { window.alert(e3.message || "Não deu pra encerrar a sala."); }
-                          }
-                        } else if (r.reason === "transcript_not_ready") {
-                          // Sem o Doc no Drive, a suspeita nº 1 é a sala que
-                          // ficou aberta (o Google só gera a transcrição quando
-                          // o último sai). Oferece encerrar mesmo sem detectar:
-                          // sem conferência ativa a API responde 404 e nada acontece.
-                          if (window.confirm(`A transcrição ainda não está no Google.${r.detail ? `\n\nMotivo: ${r.detail}` : ""}\n\nA causa mais comum é a sala do Meet ter ficado ABERTA (o Google só gera a transcrição quando o último participante sai).\n\nTentar encerrar a sala agora? (não faça isso se a call ainda estiver rolando)`)) {
-                            try {
-                              const e2 = await api.endMeet(lead.id, "call");
-                              window.alert(e2.ended
-                                ? "Sala encerrada ✓ A transcrição leva alguns minutos; o cockpit resume sozinho (ou clique de novo em resumir)."
-                                : "A sala já não tinha ninguém (a call fechou). Se a transcrição estava ligada, ela sai em alguns minutos e o cockpit resume sozinho — senão, confirme que a transcrição estava ligada no Meet.");
-                            } catch (e3) { window.alert(e3.message || "Não deu pra encerrar a sala."); }
+                        } else if (r.reason === "call_in_progress" || r.reason === "transcript_not_ready") {
+                          // Quase sempre é a sala que ficou ABERTA (o Google só
+                          // gera a transcrição quando o último sai). Encerrar
+                          // pela API não rola: o Meet nasce do Google Calendar e
+                          // a Meet API nega (403) — quem encerra é um humano na
+                          // sala. Então abrimos o Meet pra o SDR encerrar/sair.
+                          if (window.confirm(`A transcrição ainda não está no Google.${r.detail ? `\n\nMotivo: ${r.detail}` : ""}\n\nQuase sempre é a sala do Meet que ficou ABERTA (o Google só gera a transcrição quando o último participante sai).\n\nAbrir o Meet pra encerrar? Entre e clique em "Encerrar a chamada para todos" (ou saia, se estiver sozinho). Em alguns minutos a transcrição sai e o cockpit resume.`)) {
+                            window.open(lead.callUrl, "_blank", "noopener");
                           }
                         } else if (r.reason === "not_connected") {
                           window.alert("Google não conectado. Ajustes → Integrações → Conectar Google.");
@@ -617,26 +602,13 @@ function LeadDetail({ lead: initial, onClose }) {
                             let r = await api.callSummary(lead.id, false, "integracao");
                             if (!r.ok && r.reason === "already_done" && window.confirm("Essa integração já tem resumo. Gerar de novo?")) r = await api.callSummary(lead.id, true, "integracao");
                             if (r.ok) { refetchTimeline?.(); window.alert(`Resumo da integração pronto ✓ Cliente: ${r.summary?.sentimento || "?"}.`); }
-                            // `detail` diz QUAL caminho falhou (Meet API / Drive) — sem ele
-                            // o diagnóstico virava adivinhação.
-                            else if (r.reason === "call_in_progress") {
-                              if (window.confirm("A sala do Meet ainda está ABERTA e o Google só gera a transcrição quando o último participante sai.\n\nEncerrar a sala agora? (não faça isso se a call ainda estiver rolando)")) {
-                                try {
-                                  const e2 = await api.endMeet(lead.id, "integracao");
-                                  window.alert(e2.ended
-                                    ? "Sala encerrada ✓ A transcrição leva alguns minutos; o cockpit resume sozinho (ou clique de novo em resumir)."
-                                    : "Não havia conferência ativa agora. Tente resumir de novo em alguns minutos.");
-                                } catch (e3) { window.alert(e3.message || "Não deu pra encerrar a sala."); }
-                              }
-                            }
-                            else if (r.reason === "transcript_not_ready") {
-                              if (window.confirm(`A transcrição ainda não está no Google.${r.detail ? `\n\nMotivo: ${r.detail}` : ""}\n\nA causa mais comum é a sala do Meet ter ficado ABERTA (o Google só gera a transcrição quando o último participante sai).\n\nTentar encerrar a sala agora? (não faça isso se a call ainda estiver rolando)`)) {
-                                try {
-                                  const e2 = await api.endMeet(lead.id, "integracao");
-                                  window.alert(e2.ended
-                                    ? "Sala encerrada ✓ A transcrição leva alguns minutos; o cockpit resume sozinho (ou clique de novo em resumir)."
-                                    : "A sala já não tinha ninguém (a call fechou). Se a transcrição estava ligada, ela sai em alguns minutos e o cockpit resume sozinho — senão, confirme que a transcrição estava ligada no Meet.");
-                                } catch (e3) { window.alert(e3.message || "Não deu pra encerrar a sala."); }
+                            // Sala aberta / sem transcrição: encerrar via API não
+                            // rola (Meet do Calendar → 403), então abrimos o Meet
+                            // pra o integrador encerrar/sair — aí o Google gera a
+                            // transcrição e o poller resume.
+                            else if (r.reason === "call_in_progress" || r.reason === "transcript_not_ready") {
+                              if (window.confirm(`A transcrição ainda não está no Google.${r.detail ? `\n\nMotivo: ${r.detail}` : ""}\n\nQuase sempre é a sala do Meet que ficou ABERTA (o Google só gera a transcrição quando o último participante sai).\n\nAbrir o Meet pra encerrar? Entre e clique em "Encerrar a chamada para todos" (ou saia, se estiver sozinho). Em alguns minutos a transcrição sai e o cockpit resume.`)) {
+                                window.open(lead.integrationCallUrl, "_blank", "noopener");
                               }
                             }
                             else if (r.reason) window.alert(`Não deu: ${r.reason}`);
