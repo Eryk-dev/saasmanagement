@@ -6,6 +6,7 @@ import { PageHead, Segmented } from "../components/viz.jsx";
 import { PrimaryButton } from "../atoms.jsx";
 import { AgendaView } from "./pipeline.jsx";
 import { stageKind } from "../lib/funnel.js";
+import { useActiveSaas } from "../lib/workspace.js";
 
 // Tela Agenda — a agenda DE VERDADE do time, tudo num calendário só:
 //   · calls (lead.callAt) e integrações (integrationAt), cores por responsável,
@@ -35,29 +36,38 @@ const WD_LABEL = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "
 
 export function AgendaScreen({ onOpenLead }) {
   const { version } = useData();
+  // Agenda POR PRODUTO: o workspace ativo vê só os seus compromissos. Leads
+  // (calls/integrações) e consultas filtram por saas; compromissos/bloqueios
+  // nascem carimbados com o produto e a grade só mostra os dele (legado sem
+  // saas aparece em todos, pra não sumir os antigos).
+  const [product] = useActiveSaas();
+  const saasId = product?.id || "";
+  const ofSaas = (x) => !saasId || !x?.saas || x.saas === saasId;
+
   // Consultas 1:1 (mentoria UniqueKids): entram na grade e no conflito de
   // horário da responsável, igual call/integração.
   const [consultas, setConsultas] = useS([]);
   useE(() => {
     let alive = true;
-    api.list("consultations").then((rows) => alive && setConsultas(rows || [])).catch(() => {});
+    api.list("consultations").then((rows) => alive && setConsultas((rows || []).filter(ofSaas))).catch(() => {});
     return () => { alive = false; };
-  }, [version]);
-  // Pessoas com agenda: closers e integradores (Ajustes → Equipe).
+  }, [version, saasId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Pessoas com agenda: closers e integradores (Ajustes → Equipe) do produto
+  // ativo — pessoa de OUTRO produto (ex.: Ana só UniqueKids) não entra no filtro.
   const people = useM(() => {
     const seen = new Set(); const out = [];
     for (const u of [...usersByRole("closer"), ...usersByRole("integrator")]) {
-      if (!seen.has(u.id)) { seen.add(u.id); out.push(u); }
+      if (!seen.has(u.id) && (!u.saas || u.saas === saasId)) { seen.add(u.id); out.push(u); }
     }
     return out;
-  }, [version]);
+  }, [version, saasId]);
   const meId = currentUser()?.id || "";
   const defaultUser = people.some((p) => p.id === meId) ? meId : (people[0]?.id || "");
 
   const [blocks, setBlocks] = useS(() => (window.SEED?.AGENDA_BLOCKS || []).map((b) => ({ ...b })));
   useE(() => { setBlocks((window.SEED?.AGENDA_BLOCKS || []).map((b) => ({ ...b }))); }, [version]);
-  const [leads, setLeads] = useS(() => (window.SEED?.LEADS || []));
-  useE(() => { setLeads(window.SEED?.LEADS || []); }, [version]);
+  const [leads, setLeads] = useS(() => (window.SEED?.LEADS || []).filter(ofSaas));
+  useE(() => { setLeads((window.SEED?.LEADS || []).filter(ofSaas)); }, [version, saasId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [editor, setEditor] = useS(null); // { block? , date, fromHour } → modal
   const [notice, setNotice] = useS("");
@@ -88,6 +98,7 @@ export function AgendaScreen({ onOpenLead }) {
   const blocksFor = (day) => {
     const ds = ymd(day), wd = day.getDay();
     return blocks
+      .filter(ofSaas) // produto ativo (bloqueio legado sem saas aparece em todos)
       .filter((b) => (b.recur === "weekly" ? Number(b.weekday) === wd : b.date === ds))
       .filter((b) => !person || participantsOf(b).includes(person))
       .map(decorate);
@@ -159,7 +170,7 @@ export function AgendaScreen({ onOpenLead }) {
       }
     }
     const base = {
-      saas: "", user: usersSel[0], users: usersSel, kind, allDay: false, fromHour: from, toHour: to,
+      saas: saasId, user: usersSel[0], users: usersSel, kind, allDay: false, fromHour: from, toHour: to,
       title: kind === "event" ? text.trim() : "",
       reason: kind === "block" ? text.trim() : "",
     };
@@ -183,7 +194,7 @@ export function AgendaScreen({ onOpenLead }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead title="Agenda" sub="calls, integrações, compromissos e bloqueios do time · clique num horário vazio pra criar">
+      <PageHead title="Agenda" sub={`${product?.name || "operação"} · calls, integrações, compromissos e bloqueios do time · clique num horário vazio pra criar`}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
           {notice && (
             <span style={{ padding: "7px 12px", borderRadius: "var(--r-2)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12.5, fontWeight: 500 }}>{notice}</span>
