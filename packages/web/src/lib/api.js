@@ -147,6 +147,9 @@ export const api = {
   // Templates APROVADOS na Meta + envio de um deles (o único jeito de reabrir
   // conversa fora da janela de 24h). params = valores das variáveis {{1}}…{{N}}.
   waMetaTemplates: () => req("GET", "/api/whatsapp/templates"),
+  // Cria/submete um template pra aprovação da Meta (nasce PENDING; aprovado,
+  // entra no composer sozinho). { name, category, language, body, example[] }.
+  waCreateTemplate: (payload) => req("POST", "/api/whatsapp/templates", payload),
   waThreadSendTemplate: (id, { name, language, params }) => req("POST", `/api/whatsapp/threads/${id}/send-template`, { name, language, params }),
   // Ligação pelo cockpit (Calling API): inicia com a oferta SDP do browser,
   // faz poll do estado (o answer chega via webhook) e encerra.

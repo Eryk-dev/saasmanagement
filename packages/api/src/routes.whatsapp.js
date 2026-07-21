@@ -462,6 +462,36 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     }
   });
 
+  // Cria um template e SUBMETE pra aprovação da Meta. Nasce PENDING; a Meta
+  // revisa (minutos a horas) e, aprovado, entra no composer sozinho. Nome só
+  // com [a-z0-9_] (regra da Meta); UTILITY (relação/transação) x MARKETING
+  // (promo/reengajamento) muda a régua de revisão e o custo.
+  app.post("/api/whatsapp/templates", async (req, reply) => {
+    if (!wa.configured()) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
+    const name = String(req.body?.name || "").trim().toLowerCase()
+      .replace(/[^a-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").slice(0, 60);
+    const body = String(req.body?.body || "").trim();
+    const category = ["UTILITY", "MARKETING"].includes(String(req.body?.category || "").toUpperCase())
+      ? String(req.body.category).toUpperCase() : "UTILITY";
+    const language = String(req.body?.language || "pt_BR").trim() || "pt_BR";
+    const example = Array.isArray(req.body?.example) ? req.body.example.map((x) => String(x ?? "")) : [];
+    if (!name) return reply.code(400).send({ error: "dá um nome pro template (ex.: call_no_show)" });
+    if (!body) return reply.code(400).send({ error: "escreve o corpo da mensagem" });
+    const nVars = (body.match(/\{\{\s*\d+\s*\}\}/g) || []).length;
+    if (nVars > 0 && example.filter((x) => x.trim()).length < nVars) {
+      return reply.code(400).send({ error: `dá um exemplo pra cada variável ({{1}}…): a Meta reprova template sem exemplo` });
+    }
+    try {
+      const wabaId = await resolveWabaId(repo, wa);
+      if (!wabaId) return reply.code(404).send({ error: "não achei o id da conta do WhatsApp (WABA) — mande uma mensagem pro número ou defina WHATSAPP_WABA_ID" });
+      const r = await wa.createTemplate(wabaId, { name, category, language, body, example });
+      tplCache = { at: 0, wabaId: "", items: null }; // fura o cache (aparece quando aprovar)
+      return { ok: true, ...r };
+    } catch (err) {
+      return reply.code(err.status === 404 ? 404 : 422).send({ error: String(err.message || err).slice(0, 400) });
+    }
+  });
+
   // Envia um template aprovado pela conversa e grava o texto RENDERIZADO no
   // histórico (o que o lead recebeu, com as variáveis preenchidas). É o único
   // jeito que a Meta aceita de reabrir conversa fora da janela de 24h.
