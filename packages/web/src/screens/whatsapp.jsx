@@ -516,7 +516,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
                 {current.callFlow?.permission === "declined" && (
                   <span title="o lead prefere não receber ligação" style={{ ...flowChip, border: "1px solid var(--line-2)", color: "var(--warn)" }}>sem ligação</span>
                 )}
-                {configured && !current.callFlow && (
+                {configured && (!current.callFlow || current.callFlow.permission === "not_requested") && (
                   <button onClick={askToCall} style={pill} title="manda o pedido nativo de permissão de ligação com a saudação do fluxo (dentro da janela de 24h)">✆ Pedir pra ligar</button>
                 )}
                 {current.leadId ? (
@@ -534,16 +534,28 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
                 ) : (
                   <LinkLeadButton thread={current} onLinked={linkLead} />
                 )}
-                {/* "Ligar": com permissão aceita + WhatsApp configurado, o verde
-                    DISCA daqui do cockpit (WebRTC); sem permissão, o verde abre
-                    a conversa no app. */}
+                {/* "Ligar" tem DOIS botões bem diferentes, pra não parecer que
+                    "não faz a ligação":
+                     • permissão ACEITA (+ configurado) → verde sólido que DISCA
+                       daqui do cockpit (WebRTC), o único que liga de verdade.
+                     • sem permissão → botão de CONTORNO "no app ↗" (abre o
+                       WhatsApp), visualmente distinto pra deixar claro que NÃO
+                       é a discagem — pra ligar daqui, peça a permissão primeiro
+                       (o botão "Pedir pra ligar" já está no header). */}
                 {configured && current.callFlow?.permission === "accepted" ? (
                   <WaCallButton threadId={current.id} contactName={current.name || prettyPhone(current.phone)} />
+                ) : !configured ? (
+                  // WhatsApp não configurado no servidor: o app é o único caminho.
+                  waLink(current.phone) && (
+                    <a href={waLink(current.phone)} target="_blank" rel="noopener noreferrer"
+                      title="Ligar / abrir no app"
+                      style={{ ...pill, background: "#25D366", color: "#06120c", border: "none", fontWeight: 700, textDecoration: "none" }}>✆ Ligar</a>
+                  )
                 ) : (
                   waLink(current.phone) && (
                     <a href={waLink(current.phone)} target="_blank" rel="noopener noreferrer"
-                      title={configured ? "abre no app — pra discar daqui, o lead precisa aceitar a permissão de ligação" : "Ligar / abrir no app"}
-                      style={{ ...pill, background: "#25D366", color: "#06120c", border: "none", fontWeight: 700, textDecoration: "none" }}>✆ Ligar</a>
+                      title="Abre a conversa no WhatsApp pra ligar POR LÁ. Pra discar daqui do cockpit, use o ‘Pedir pra ligar’ e espere o lead aceitar."
+                      style={{ ...pill, textDecoration: "none" }}>✆ Ligar no app ↗</a>
                   )
                 )}
               </div>

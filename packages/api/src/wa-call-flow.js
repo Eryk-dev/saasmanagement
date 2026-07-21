@@ -159,16 +159,24 @@ export async function runInboundCallFlow(repo, wa, { message, resolvePhoneId, no
   const thread = await repo.get("wa_threads", tid);
   if (!thread) return;
 
-  const had = !!thread.callFlow;
   const perm = parsePermissionReply(message);
-  if (perm && had) {
+  if (perm) {
+    // Aceite/recusa é FATO do lead (ele tocou permitir/recusar no WhatsApp):
+    // grava SEMPRE, mesmo sem fluxo pendente registrado. Antes só gravava se o
+    // callFlow já existia (`perm && had`), então aceite que chegava sem o
+    // "pending" — pedido manual que não persistiu, corrida do webhook, número
+    // reprovisionado — era exibido ("topou receber a ligação") mas o estado
+    // ficava null e o "Ligar" nunca virava discagem. Sem fluxo prévio, cria um.
+    const prevFlow = thread.callFlow || { startedAt: new Date().toISOString(), auto: false };
     await repo.update("wa_threads", tid, {
-      callFlow: { ...thread.callFlow, permission: perm, permissionAt: new Date().toISOString() },
+      callFlow: { ...prevFlow, permission: perm, permissionAt: new Date().toISOString() },
     });
   }
 
-  if (had) {
-    const startedAt = new Date(thread.callFlow.startedAt || 0).getTime();
+  // Tem fluxo (já tinha, ou o aceite acabou de criar) → é conversa quente:
+  // levanta o pop-up e não reinicia o "posso te ligar?".
+  if (thread.callFlow || perm) {
+    const startedAt = new Date(thread.callFlow?.startedAt || now).getTime();
     if (Date.now() - startedAt <= HOT_WINDOW_MS) {
       const fresh = (await repo.get("wa_threads", tid)) || thread;
       await raiseAlert(repo, fresh, {
@@ -181,7 +189,6 @@ export async function runInboundCallFlow(repo, wa, { message, resolvePhoneId, no
     return;
   }
 
-  if (perm) return; // resposta de permissão sem fluxo registrado: nada a fazer
   await maybeStart(repo, wa, { thread, resolvePhoneId, now });
 }
 

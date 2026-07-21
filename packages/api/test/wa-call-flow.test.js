@@ -267,6 +267,34 @@ test("resposta do lead com fluxo aberto → alerta quente; permissão aceita fic
   await app.close();
 });
 
+// Bug do Umberto (21/07): a saudação "posso te ligar?" foi digitada na mão
+// (sem passar pelo startCallFlow que cria o callFlow=pending), então quando o
+// lead ACEITOU, a thread estava com callFlow=null e o aceite era só exibido —
+// o estado nunca virava "accepted" e o "Ligar" caía no app pra sempre. Agora o
+// aceite grava a permissão mesmo sem fluxo prévio.
+test("aceite SEM fluxo pendente registrado grava a permissão (não some) e vira alerta quente", async () => {
+  const repo = makeMemRepo();
+  await seedFlow(repo);
+  const wa = fakeWa();
+  const app = await appWith(repo, wa);
+
+  // 1º inbound cria a thread. Fluxo NÃO dispara aqui (produto ligado, mas
+  // simulamos a saudação manual: mandamos um out antes pra não ser "1º contato").
+  await app.inject({ method: "POST", url: "/api/whatsapp/threads/5541992516545/send", payload: { text: "Oi Maria, posso te ligar?" } });
+  const before = await repo.get("wa_threads", "5541992516545");
+  assert.equal(before.callFlow ?? null, null); // saudação manual não cria callFlow
+
+  // Lead toca "permitir" — chega o call_permission_reply sem fluxo prévio.
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inPermReply("5541992516545", "wamid.OK", "accept") });
+
+  const thr = await repo.get("wa_threads", "5541992516545");
+  assert.equal(thr.callFlow.permission, "accepted"); // ANTES: ficava null
+  const alerts = (await repo.list("wa_alerts")).filter((a) => a.status === "open");
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0].permission, "accepted");
+  await app.close();
+});
+
 test("responder a conversa (send) resolve o alerta; e o botão resolvido também", async () => {
   const repo = makeMemRepo();
   await seedFlow(repo);
