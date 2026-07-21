@@ -228,6 +228,19 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     return { cost: Math.round(cost * 100) / 100, messages, model: "PMP" };
   }
 
+  // Mídia recebida (áudio/imagem/…): a Cloud API entrega em 2 passos — GET do
+  // media id devolve uma URL curta (assinada, expira em minutos) + o mime; a URL
+  // se baixa COM o token (é da lookaside.fbsbx, não abre no browser sem header).
+  // Devolve o binário e o mime pra rota servir/cachear.
+  async function fetchMedia(mediaId) {
+    const meta = await get(`${mediaId}`); // { url, mime_type, file_size, ... }
+    if (!meta?.url) throw new Error("a Meta não devolveu a URL da mídia (id expirado?)");
+    const res = await f(meta.url, { headers: { authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error(`download da mídia -> ${res.status}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    return { buf, mime: meta.mime_type || "application/octet-stream" };
+  }
+
   // WABAs que o token enxerga (fallback pra achar o id da conta quando nenhum
   // webhook carimbou ainda): o debug_token lista os target_ids dos escopos de
   // WhatsApp do próprio token.
@@ -246,7 +259,7 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     return null;
   }
 
-  return { configured, sendText, sendTemplate, sendCallPermission, markRead, verifyWebhook, numberInfo, listTemplates, tokenWabaIds, initiateCall, terminateCall, conversationCosts };
+  return { configured, sendText, sendTemplate, sendCallPermission, markRead, verifyWebhook, numberInfo, listTemplates, tokenWabaIds, initiateCall, terminateCall, conversationCosts, fetchMedia };
 }
 
 // Número em dígitos (E.164 sem +) pra enviar e pra casar o recebido com o lead.

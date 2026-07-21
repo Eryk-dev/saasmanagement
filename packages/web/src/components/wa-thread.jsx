@@ -36,6 +36,61 @@ function StatusTicks({ status, error }) {
   return <span title={status || "enviado"} style={{ color: read ? "#4aa3ff" : "var(--fg-4)", letterSpacing: -2 }}>{status === "sent" || status === "received" ? "✓" : "✓✓"}</span>;
 }
 
+// Mídia recebida (áudio/imagem/vídeo/documento). O binário se baixa autenticado
+// (a Graph só entrega com token) e toca via object URL — só busca quando entra
+// na tela (lazy) pra não puxar todos os áudios ao abrir a conversa.
+function MediaBubble({ msg, out }) {
+  const kind = msg.media?.kind || "";
+  const [url, setUrl] = React.useState("");
+  const [err, setErr] = React.useState("");
+  const [load, setLoad] = React.useState(false);
+  const boxRef = React.useRef(null);
+  const started = React.useRef(false);
+
+  const fetchIt = React.useCallback(() => {
+    if (started.current) return;
+    started.current = true;
+    setLoad(true);
+    api.waMedia(msg.id)
+      .then((blob) => setUrl(URL.createObjectURL(blob)))
+      .catch((e) => setErr(e?.status === 502 ? "áudio expirado no WhatsApp" : "não deu pra carregar"))
+      .finally(() => setLoad(false));
+  }, [msg.id]);
+
+  // Áudio: carrega sozinho ao aparecer (é pra ouvir na hora). Imagem/vídeo:
+  // idem. Documento: só baixa no clique.
+  React.useEffect(() => {
+    if (kind === "document") return;
+    const el = boxRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") { fetchIt(); return; }
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { fetchIt(); io.disconnect(); } }, { rootMargin: "200px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [kind, fetchIt]);
+
+  React.useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
+
+  const label = { audio: "🎤 áudio", image: "📷 imagem", video: "🎬 vídeo", document: "📎 " + (msg.media?.filename || "documento") }[kind] || "mídia";
+  return (
+    <div ref={boxRef} style={{ minWidth: kind === "audio" ? 210 : 120 }}>
+      {err ? (
+        <span className="mono dim" style={{ fontSize: 11 }}>{label} · {err}</span>
+      ) : kind === "audio" ? (
+        url ? <audio controls src={url} style={{ width: 230, height: 34 }} /> : <span className="mono dim" style={{ fontSize: 11 }}>{load ? "carregando áudio…" : label}</span>
+      ) : kind === "image" ? (
+        url ? <img src={url} alt="imagem" style={{ maxWidth: 240, maxHeight: 240, borderRadius: 8, display: "block" }} /> : <span className="mono dim" style={{ fontSize: 11 }}>{load ? "carregando…" : label}</span>
+      ) : kind === "video" ? (
+        url ? <video controls src={url} style={{ maxWidth: 260, borderRadius: 8, display: "block" }} /> : <span className="mono dim" style={{ fontSize: 11 }}>{load ? "carregando…" : label}</span>
+      ) : (
+        // documento: link que baixa sob demanda
+        <button onClick={fetchIt} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: out ? "#0c2318" : "var(--fg-1)", fontSize: 12.5, textDecoration: "underline" }}>
+          {url ? <a href={url} download={msg.media?.filename || "arquivo"} style={{ color: "inherit" }}>{label} · baixar</a> : load ? "baixando…" : label}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function WaBubbles({ messages, emptyHint }) {
   const ref = React.useRef(null);
   React.useEffect(() => { const el = ref.current; if (el) el.scrollTop = el.scrollHeight; }, [messages.length]);
@@ -59,7 +114,7 @@ export function WaBubbles({ messages, emptyHint }) {
                 padding: "7px 10px", borderRadius: 10, fontSize: 12.5, lineHeight: 1.4, whiteSpace: "pre-wrap", overflowWrap: "break-word",
                 background: out ? "var(--wa-out, #d6f5cf)" : "var(--bg-3)", color: out ? "#0c2318" : "var(--fg-1)",
                 borderBottomRightRadius: out ? 3 : 10, borderBottomLeftRadius: out ? 10 : 3,
-              }}>{m.text}</div>
+              }}>{m.media?.id ? <MediaBubble msg={m} out={out} /> : m.text}</div>
               <div className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)", marginTop: 2, display: "flex", gap: 4, justifyContent: out ? "flex-end" : "flex-start" }}>
                 {hhmm(m.at)}{out && <StatusTicks status={m.status} error={m.error} />}
               </div>

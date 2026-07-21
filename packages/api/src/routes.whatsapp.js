@@ -9,6 +9,20 @@ import { transcriber as defaultTranscriber } from "./transcribe.js";
 import { formatSummaryText } from "./call-summaries.js";
 import { logActivity } from "./lead-flow.js";
 
+// Mídia de uma mensagem recebida: a Cloud API manda só o ID (o binário se baixa
+// depois, com o token). Devolve {kind, id, mime, filename} ou null.
+function mediaOf(m) {
+  const t = m?.type;
+  const pick = (kind, obj, fn) => obj?.id ? { kind, id: obj.id, mime: obj.mime_type || "", filename: fn || "" } : null;
+  if (t === "audio") return pick("audio", m.audio);
+  if (t === "voice") return pick("audio", m.voice);       // nota de voz = áudio
+  if (t === "image") return pick("image", m.image);
+  if (t === "video") return pick("video", m.video);
+  if (t === "sticker") return pick("image", m.sticker);
+  if (t === "document") return pick("document", m.document, m.document?.filename);
+  return null;
+}
+
 // Texto legível pra tipos que a Fase 1 ainda não renderiza (mídia/áudio).
 function bodyOf(m) {
   if (m.text?.body) return m.text.body;
@@ -128,7 +142,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
                 id: m.id, phone: m.from, direction: "in", text: bodyOf(m),
                 at: m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : undefined,
                 from: m.from, status: "received", contactName,
-                waPhoneId: inPhoneId, saasHint: owner?.id || "",
+                waPhoneId: inPhoneId, saasHint: owner?.id || "", media: mediaOf(m),
               });
               // Fluxo de permissão de ligação: 1º contato de lead conhecido →
               // pede pra ligar; resposta com fluxo aberto → alerta quente
@@ -292,6 +306,36 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
   app.get("/api/whatsapp/threads/:id", async (req) => {
     const thread = await findThreadByPhone(repo, req.params.id);
     return { messages: await listMessages(repo, thread?.id || req.params.id), thread: thread?.id || threadId(req.params.id) };
+  });
+
+  // Mídia recebida (áudio/imagem/vídeo/documento): baixa da Meta na 1ª vez e
+  // guarda em `wa_media` (base64) pra não re-bater na Graph a cada play — e
+  // porque o id da Meta EXPIRA (~30 dias), então cachear preserva o áudio. O
+  // player do inbox busca isto autenticado e toca via blob (a rota exige a
+  // sessão da tela `whatsapp`; ver ROUTE_SCREENS). `:id` = id da mensagem.
+  app.get("/api/whatsapp/media/:id", async (req, reply) => {
+    const msg = await repo.get("wa_messages", req.params.id);
+    if (!msg?.media?.id) return reply.code(404).send({ error: "mensagem sem mídia" });
+    const cached = await repo.get("wa_media", msg.id).catch(() => null);
+    if (cached?.data) {
+      reply.header("cache-control", "private, max-age=86400");
+      return reply.type(cached.mime || msg.media.mime || "application/octet-stream").send(Buffer.from(cached.data, "base64"));
+    }
+    if (!wa.configured(msg.waPhoneId || undefined)) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
+    let buf, mime;
+    try { ({ buf, mime } = await wa.fetchMedia(msg.media.id)); }
+    catch (err) {
+      // id expirado / erro da Graph: mídia antiga pode não vir mais.
+      return reply.code(502).send({ error: String(err.message || err).slice(0, 200) });
+    }
+    // Cacheia (teto de 16MB pra não estourar o doc; áudio de voz é KBs).
+    if (buf.length <= 16 * 1024 * 1024) {
+      try {
+        await repo.create("wa_media", { id: msg.id, mime: mime || msg.media.mime || "", size: buf.length, data: buf.toString("base64"), at: new Date().toISOString() });
+      } catch { /* cache é bônus; segue servindo */ }
+    }
+    reply.header("cache-control", "private, max-age=86400");
+    return reply.type(mime || msg.media.mime || "application/octet-stream").send(buf);
   });
 
   // Encerrar/reabrir a conversa (status do INBOX, separado da etapa do funil).
