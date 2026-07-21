@@ -155,7 +155,11 @@ export function registerFormRoutes(app, repo, opts = {}) {
     const lead = await repo.create("leads", {
       ...(CREATE_DEFAULTS.leads || {}),
       ...leadFromSubmission(form, answers),
-      ...(disqualified ? { disqualified: true, stage: dqStage, lostReason: "sem_fit", lostNote: "Reprovado no funil do form" } : {}),
+      // Lead QUALIFICADO nasce no 1º estágio do funil — não no "" do default,
+      // que deixava o card como fantasma na fila ("1º contato · atrasado" com
+      // stage vazio). Desqualificado vai pro cemitério (dqStage).
+      stage: disqualified ? dqStage : (firstStage(product) || ""),
+      ...(disqualified ? { disqualified: true, lostReason: "sem_fit", lostNote: "Reprovado no funil do form" } : {}),
       ...(owner ? { owner } : {}),
       ...(utm ? { utm } : {}),
       ...(fbp ? { fbp } : {}),
