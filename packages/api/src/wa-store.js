@@ -164,13 +164,28 @@ export async function waFormEngagement(repo, { days = 30, now = Date.now() } = {
   const startedThreads = new Set();
   for (const [tid, m] of firstByThread) if (m.direction === "in") startedThreads.add(tid);
   const threadByKey = new Map(threads.map((t) => [waMatchKey(t.phone), t]));
+
+  // Denominador JUSTO: só entram os form leads que PODERIAM ter mandado a
+  // mensagem. (1) sem telefone não há como mandar; (2) criado ANTES do número
+  // receber a primeira mensagem (WhatsApp no ar) nunca teve a chance — contá-lo
+  // derruba a taxa de graça (era o que inflava pra ~250). Ancoramos o início da
+  // janela na 1ª mensagem RECEBIDA de qualquer conversa.
+  let firstInbound = Infinity;
+  for (const m of messages) {
+    if (m.direction !== "in") continue;
+    const t = at(m);
+    if (t > 0) firstInbound = Math.min(firstInbound, t);
+  }
+  const windowStart = Math.max(since, Number.isFinite(firstInbound) ? firstInbound : since);
+
   const formLeads = leads.filter((l) =>
-    /^form/i.test(String(l.source || "")) && l.createdAt && new Date(l.createdAt).getTime() >= since);
+    /^form/i.test(String(l.source || "")) && l.phone &&
+    l.createdAt && new Date(l.createdAt).getTime() >= windowStart);
   const started = formLeads.filter((l) => {
-    const t = l.phone ? threadByKey.get(waMatchKey(l.phone)) : null;
+    const t = threadByKey.get(waMatchKey(l.phone));
     return t && startedThreads.has(t.id);
   });
-  return { formLeads: formLeads.length, formStarted: started.length };
+  return { formLeads: formLeads.length, formStarted: started.length, since: windowStart };
 }
 
 // Códigos de erro da Meta que significam "não dá pra entregar / número não está
