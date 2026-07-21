@@ -26,14 +26,17 @@ export function registerConsultationRoutes(app, repo, { google, googleUser, anth
     const e = new Date(s.getTime() + (Number(c.durationMin) || 60) * 60_000);
     const naive = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:00`;
 
-    // Convidado: e-mail do cliente (customer ou lead de origem).
+    // Convidado: e-mail digitado NA consulta vence (a Ana controla pra quem vai
+    // o convite), com fallback pro e-mail do cliente (customer ou lead).
     const emailOk = (x) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(x || "").trim());
-    let clientEmail = "";
-    try {
-      const customer = c.customerId ? await repo.get("customers", c.customerId) : null;
-      const lead = !customer && c.leadId ? await repo.get("leads", c.leadId) : null;
-      clientEmail = String(customer?.email || lead?.email || "").trim().toLowerCase();
-    } catch { /* sem convidado */ }
+    let clientEmail = String(c.clientEmail || "").trim().toLowerCase();
+    if (!clientEmail) {
+      try {
+        const customer = c.customerId ? await repo.get("customers", c.customerId) : null;
+        const lead = !customer && c.leadId ? await repo.get("leads", c.leadId) : null;
+        clientEmail = String(customer?.email || lead?.email || "").trim().toLowerCase();
+      } catch { /* sem convidado */ }
+    }
     const attendees = [clientEmail, ...(Array.isArray(req.body?.guests) ? req.body.guests : [])]
       .map((x) => String(x || "").trim().toLowerCase()).filter(emailOk).slice(0, 10);
 

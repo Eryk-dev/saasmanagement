@@ -284,7 +284,16 @@ function AgendaTab({ days, byCell, journeys, consultas, onShiftWeek, onToday, on
 
 // ── Modal de consulta (criar/editar) ─────────────────────────────────────────
 function ConsultaModal({ c, customers, consultas = [], onClose, onSaved }) {
-  const [form, setForm] = useS(c);
+  // Prefill do e-mail do convite pelo cadastro do cliente quando a consulta
+  // ainda não tem o seu (consultas antigas, ou família que já tem e-mail no
+  // customer) — a Ana abre e já vê pra quem o convite vai, sem redigitar.
+  const [form, setForm] = useS(() => {
+    if (c.id && !c.clientEmail && c.customerId) {
+      const cu = customers.find((x) => x.id === c.customerId);
+      if (cu?.email) return { ...c, clientEmail: cu.email };
+    }
+    return c;
+  });
   const [busy, setBusy] = useS("");
   const [err, setErr] = useS("");
   const isNew = !c.id;
@@ -300,7 +309,9 @@ function ConsultaModal({ c, customers, consultas = [], onClose, onSaved }) {
 
   function pickCustomer(id) {
     const cu = customers.find((x) => x.id === id);
-    if (cu) set({ customerId: cu.id, leadId: cu.leadId || "", clientName: cu.contact || cu.name || "", phone: cu.phone || "" });
+    // Só prefill o e-mail do cadastro quando o campo ainda está vazio — nunca
+    // sobrescreve um e-mail que a Ana digitou pra este convite.
+    if (cu) set({ customerId: cu.id, leadId: cu.leadId || "", clientName: cu.contact || cu.name || "", phone: cu.phone || "", clientEmail: form.clientEmail || cu.email || "" });
     else set({ customerId: "", leadId: "" });
   }
 
@@ -357,6 +368,9 @@ function ConsultaModal({ c, customers, consultas = [], onClose, onSaved }) {
           <label style={lab}>WhatsApp (opcional)
             <input value={form.phone || ""} onChange={(e) => set({ phone: e.target.value })} placeholder="(41) 9…" style={inp} />
           </label>
+          <label style={lab}>E-mail (convite do Meet)
+            <input type="email" value={form.clientEmail || ""} onChange={(e) => set({ clientEmail: e.target.value })} placeholder="pra receber o convite" style={inp} />
+          </label>
           <label style={lab}>Consulta nº
             <input type="number" min={1} max={99} value={form.n} onChange={(e) => set({ n: Number(e.target.value) || 1 })} style={inp} />
           </label>
@@ -400,9 +414,16 @@ function ConsultaModal({ c, customers, consultas = [], onClose, onSaved }) {
                 ? <a href={form.meetUrl} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 11.5, color: "var(--accent)" }}>{form.meetUrl} ↗</a>
                 : <span className="mono dim" style={{ fontSize: 11 }}>sem Meet ainda (o Meet grava e transcreve sozinho)</span>}
               <span style={{ flex: 1 }} />
-              {!form.meetUrl && <button disabled={!!busy || !form.at} title={form.at ? "cria o Meet no horário da consulta" : "defina o horário primeiro"} onClick={() => act("meet", () => api.consultationMeet(form.id))} style={chip(false)}>{busy === "meet" ? "criando…" : "Criar Meet"}</button>}
+              {!form.meetUrl && <button disabled={!!busy || !form.at} title={form.at ? "cria o Meet no horário da consulta e manda o convite por e-mail" : "defina o horário primeiro"} onClick={() => act("meet", () => api.consultationMeet(form.id))} style={chip(false)}>{busy === "meet" ? "criando…" : "Criar Meet"}</button>}
               <button disabled={!!busy || !form.meetUrl} onClick={() => act("sum", () => api.consultationSummary(form.id, true))} style={chip(false)} title="busca a transcrição e resume (também acontece sozinho após a consulta)">{busy === "sum" ? "resumindo…" : "↻ Resumir com IA"}</button>
             </div>
+            {!form.meetUrl && (
+              <div className="dim" style={{ fontSize: 11, marginTop: 6 }}>
+                {form.clientEmail?.trim()
+                  ? <>o convite (com o link do Meet) vai por e-mail pra <b>{form.clientEmail.trim()}</b></>
+                  : "sem e-mail preenchido: o Meet é criado, mas ninguém recebe convite — preencha o e-mail acima"}
+              </div>
+            )}
             {s && (
               <div style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.5 }}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>Resumo da consulta (IA)</div>
