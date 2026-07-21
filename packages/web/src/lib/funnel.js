@@ -234,31 +234,40 @@ const parseWhen = (v) => {
   return Number.isFinite(t) ? t : null;
 };
 
-// O compromisso segue a ETAPA (`kind` opcional): na entrega (integração e
-// pós-venda) vale a integração marcada, e a call de VENDA que ficou gravada no
-// card é histórico — sem isso, todo card entregue nascia "atrasado" pela call
-// antiga. Sem kind informado, mantém o clássico (callAt).
-export function nextTouch(lead, { kind } = {}) {
+// O compromisso (call/integração) só ancora o card NA ETAPA dele: call em etapa
+// de call, integração na entrega (integração/pós-venda). Fora disso é histórico
+// — a call de VENDA gravada no card não rege um lead que já virou entrega.
+// Regra (espelho do Meu dia, today.jsx): um compromisso VIVO da etapa (marcado
+// pra hoje em diante) conduz o card e o toque do GPS (nextActionAt) NÃO compete
+// — senão um card com call daqui a 2 dias aparece "atrasado" hoje por um toque
+// vencido de antes do agendamento. Sem compromisso vivo, vale o GPS; e um
+// compromisso vencido sem GPS ainda ancora (o card segue sinalizado).
+// Sem kind informado, mantém o clássico (callAt).
+export function nextTouch(lead, { kind, now = Date.now() } = {}) {
   const touch = parseWhen(lead?.nextActionAt);
   const delivery = kind === "integracao" || kind === "posvenda";
-  const meeting = delivery ? parseWhen(lead?.integrationAt) : parseWhen(lead?.callAt);
-  if (touch == null && meeting == null) return null;
-  if (meeting != null && (touch == null || meeting <= touch)) {
-    return { at: meeting, type: "meeting", note: delivery ? "integração" : "call" };
-  }
-  return { at: touch, type: "touch", note: lead?.nextActionNote || "" };
+  const anchored = kind == null || kind === "call" || delivery; // etapa cujo compromisso rege
+  const meeting = anchored
+    ? (delivery ? parseWhen(lead?.integrationAt) : parseWhen(lead?.callAt))
+    : null;
+  const note = delivery ? "integração" : "call";
+  const startOfDay = new Date(now); startOfDay.setHours(0, 0, 0, 0);
+  const meetingLive = meeting != null && meeting >= startOfDay.getTime();
+  if (meetingLive) return { at: meeting, type: "meeting", note };       // compromisso vivo rege
+  if (touch != null) return { at: touch, type: "touch", note: lead?.nextActionNote || "" };
+  if (meeting != null) return { at: meeting, type: "meeting", note };   // vencido, mas ainda sinaliza
+  return null;
 }
 
 // Dados do pill de próximo contato (cards do kanban + fila). Generaliza o antigo
 // nextContactPill do pipeline: atrasado / hoje / futuro / sem próximo passo.
-export function nextTouchPill(lead, { isOpen = true, kind } = {}) {
+export function nextTouchPill(lead, { isOpen = true, kind, now = Date.now() } = {}) {
   if (!isOpen) return null;
-  const t = nextTouch(lead, { kind });
+  const t = nextTouch(lead, { kind, now });
   if (!t) return { key: "none", text: "sem próximo passo", tone: "var(--warn)", type: "none" };
-  const now = Date.now();
   const glyph = t.type === "meeting" ? "◆" : "●";
   const d = new Date(t.at);
-  const sameDay = d.toDateString() === new Date().toDateString();
+  const sameDay = d.toDateString() === new Date(now).toDateString();
   const hm = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   if (t.at < now && !sameDay) {
     const days = Math.floor((now - t.at) / 86_400_000);
