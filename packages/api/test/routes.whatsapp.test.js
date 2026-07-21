@@ -51,14 +51,16 @@ test("client: erro da Meta (fora das 24h) propaga status/code", async () => {
 
 // Cliente fake pras rotas (sem rede): registra o que foi enviado.
 function fakeWa(opts = {}) {
-  const sent = [], read = [];
+  const sent = [], read = [], created = [];
   return {
-    sent, read,
+    sent, read, created,
     configured: () => opts.configured !== false,
     verifyWebhook: (mode, tok, ch) => (mode === "subscribe" && tok === "vt" ? String(ch) : null),
     async sendText(to, text) { if (opts.throw) throw Object.assign(new Error("re-engagement"), { code: 131047 }); sent.push({ to, text }); return { messageId: "wamid.SENT" + sent.length }; },
     async sendTemplate() { return { messageId: "wamid.T" }; },
     async markRead(id) { read.push(id); },
+    async tokenWabaIds() { return ["WABA1"]; },
+    async createTemplate(wabaId, spec) { created.push({ wabaId, spec }); return { id: "tpl_1", status: "PENDING", category: spec.category }; },
   };
 }
 
@@ -425,4 +427,44 @@ test("POST /threads/:id/link vincula na mão, carimba as mensagens e desvincula"
 
   await app.inject({ method: "POST", url: "/api/whatsapp/threads/551143213413/link", payload: { leadId: "" } });
   assert.equal((await repo.get("wa_threads", "551143213413")).leadId, null);
+});
+
+test("client: createTemplate submete pra Meta com BODY + exemplo por variável", async () => {
+  const f = okFetch({ id: "tpl_9", status: "PENDING", category: "UTILITY" });
+  const wa = makeWhatsapp({ fetch: f, token: "tok", phoneNumberId: "PN1" });
+  const r = await wa.createTemplate("WABA1", { name: "call_no_show", category: "UTILITY", language: "pt_BR", body: "Oi {{1}}, sumiu da call?", example: ["João"] });
+  assert.equal(r.id, "tpl_9");
+  assert.equal(r.status, "PENDING");
+  const c = f.calls[0];
+  assert.ok(c.url.endsWith("/WABA1/message_templates"));
+  assert.equal(c.init.headers.authorization, "Bearer tok");
+  assert.equal(c.payload.name, "call_no_show");
+  assert.equal(c.payload.category, "UTILITY");
+  assert.equal(c.payload.components[0].type, "BODY");
+  assert.deepEqual(c.payload.components[0].example, { body_text: [["João"]] });
+});
+
+test("POST /whatsapp/templates: cria o template (nome saneado, wabaId resolvido) e fura o cache", async () => {
+  const wa = fakeWa();
+  const app = await appWith(makeMemRepo(), wa);
+  const res = await app.inject({ method: "POST", url: "/api/whatsapp/templates", payload: {
+    name: "Call No-Show!", category: "UTILITY", body: "Oi {{1}}, sumiu da call?", example: ["João"],
+  } });
+  assert.equal(res.statusCode, 200);
+  const body = res.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.status, "PENDING");
+  assert.equal(wa.created.length, 1);
+  assert.equal(wa.created[0].wabaId, "WABA1");
+  assert.equal(wa.created[0].spec.name, "call_no_show"); // saneado: minúsculo, sem espaço/!
+});
+
+test("POST /whatsapp/templates: variável sem exemplo → 400; sem nome/corpo → 400", async () => {
+  const app = await appWith(makeMemRepo(), fakeWa());
+  const semEx = await app.inject({ method: "POST", url: "/api/whatsapp/templates", payload: { name: "x_tpl", body: "Oi {{1}}" } });
+  assert.equal(semEx.statusCode, 400);
+  const semNome = await app.inject({ method: "POST", url: "/api/whatsapp/templates", payload: { body: "Oi" } });
+  assert.equal(semNome.statusCode, 400);
+  const semCorpo = await app.inject({ method: "POST", url: "/api/whatsapp/templates", payload: { name: "x_tpl" } });
+  assert.equal(semCorpo.statusCode, 400);
 });

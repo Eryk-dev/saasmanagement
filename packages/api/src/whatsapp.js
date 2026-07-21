@@ -235,6 +235,37 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     }).filter((t) => t.body);
   }
 
+  // Cria (submete pra aprovação) um template na conta (WABA). A Meta revisa e o
+  // template nasce PENDING; vira APPROVED em minutos/horas e aí entra no
+  // composer sozinho (listTemplates só traz APPROVED). Corpo com variáveis
+  // numeradas {{1}}…{{N}}: a Meta EXIGE um exemplo por variável (senão rejeita).
+  //   spec: { name, category: "UTILITY"|"MARKETING", language, body, example: [..] }
+  async function createTemplate(wabaId, { name, category = "UTILITY", language = "pt_BR", body = "", example = [] } = {}) {
+    if (!token) throw new Error("WhatsApp não configurado (WHATSAPP_TOKEN)");
+    if (!wabaId) throw new Error("sem id da conta do WhatsApp (WABA)");
+    const nums = (body.match(/\{\{\s*(\d+)\s*\}\}/g) || []).map((s) => Number(s.replace(/\D/g, "")));
+    const nVars = nums.length ? Math.max(...nums) : 0;
+    const bodyComp = { type: "BODY", text: body };
+    if (nVars > 0) {
+      // um exemplo por variável, na ordem; falta vira "exemplo" pra não travar.
+      const ex = Array.from({ length: nVars }, (_, i) => String(example[i] || "").trim() || "exemplo");
+      bodyComp.example = { body_text: [ex] };
+    }
+    const res = await f(`${GRAPH}/${wabaId}/message_templates`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ name, language, category, components: [bodyComp] }),
+    });
+    const text = await res.text();
+    let b; try { b = JSON.parse(text); } catch { b = {}; }
+    if (res.status >= 400 || b.error) {
+      const err = new Error(`WhatsApp API -> ${res.status}: ${b.error?.error_user_msg || b.error?.message || text.slice(0, 300)}`);
+      err.status = res.status; err.code = b.error?.code;
+      throw err;
+    }
+    return { id: b.id || "", status: b.status || "PENDING", category: b.category || category };
+  }
+
   // Custo REAL das conversas no período (conversation_analytics da conta):
   // a Meta cobra por conversa de 24h; `cost` volta na moeda da conta (BRL).
   // start/end em SEGUNDOS unix. Soma todos os pontos da janela.
@@ -289,7 +320,7 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     return null;
   }
 
-  return { configured, sendText, sendTemplate, sendCallPermission, markRead, verifyWebhook, numberInfo, listTemplates, tokenWabaIds, initiateCall, terminateCall, conversationCosts, fetchMedia, uploadMedia, sendMedia };
+  return { configured, sendText, sendTemplate, sendCallPermission, markRead, verifyWebhook, numberInfo, listTemplates, createTemplate, tokenWabaIds, initiateCall, terminateCall, conversationCosts, fetchMedia, uploadMedia, sendMedia };
 }
 
 // Número em dígitos (E.164 sem +) pra enviar e pra casar o recebido com o lead.
