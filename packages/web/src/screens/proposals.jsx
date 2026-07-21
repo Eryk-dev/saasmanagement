@@ -117,80 +117,6 @@ const patchShowIf = (slide, field, v) => {
 
 const publicBase = () => import.meta.env.VITE_API_BASE || window.location.origin;
 
-// Mensagem pronta pra mandar a proposta no WhatsApp (o closer escolhe o contato).
-// Mesmo padrão da tela de Pagamentos (offers.jsx).
-function waShareProposal(label, url) {
-  const msg = `Oi! Segue nossa proposta *${label}*, é só abrir:\n${url}`;
-  return `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
-}
-
-// Agrupa as propostas de envio por linha de produto (CLONE / CLONE+OEM / OEM),
-// mantendo a ordem em que chegam. Laço simples de propósito: um `[...new Set()]`
-// inline no JSX foi minificado pelo build do deploy num TDZ ("Cannot access 'q'
-// before initialization") que derrubava a tela; código plano evita isso.
-function groupSendReady(items) {
-  const groups = [];
-  const byKey = {};
-  for (const p of items || []) {
-    const key = p.sendGroup || "";
-    if (!byKey[key]) { byKey[key] = { group: key, items: [] }; groups.push(byKey[key]); }
-    byKey[key].items.push(p);
-  }
-  return groups;
-}
-
-const sendBtn = {
-  height: 32, padding: "0 13px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
-  display: "inline-flex", alignItems: "center", textDecoration: "none", boxShadow: "var(--shadow-1)",
-  border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)",
-};
-
-// Card de UMA proposta pronta pra enviar. Componente próprio (não JSX aninhado
-// no ProposalsScreen) — escopo simples e minificação previsível.
-function SendProposalCard({ proposal, copied, onCopy }) {
-  const url = `${publicBase()}/p/${proposal.id}`;
-  const isCopied = copied === proposal.id;
-  return (
-    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-inset)", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{proposal.name}</div>
-        {proposal.sendPrice ? <div className="tnum" style={{ fontSize: 12.5, color: "var(--accent)", marginTop: 2 }}>{proposal.sendPrice}</div> : null}
-      </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button onClick={() => onCopy(url, proposal.id)}
-          style={{ ...sendBtn, border: "1px solid transparent", cursor: "pointer", background: isCopied ? "var(--pos-soft)" : "var(--btn-bg)", color: isCopied ? "var(--pos)" : "var(--btn-fg)" }}>
-          {isCopied ? "✓ copiado" : "Copiar"}
-        </button>
-        <a href={url} target="_blank" rel="noopener noreferrer" style={sendBtn}>Abrir ↗</a>
-        <a href={waShareProposal(proposal.name, url)} target="_blank" rel="noopener noreferrer" style={sendBtn}>WhatsApp ↗</a>
-      </div>
-    </div>
-  );
-}
-
-// Seção "Prontas pra enviar": propostas de envio (preço revelado) agrupadas por
-// linha de produto, com Copiar / Abrir / WhatsApp. Toda a lógica fica aqui, num
-// componente de escopo simples.
-function ReadyToSendSection({ items, copied, onCopy }) {
-  const groups = groupSendReady(items);
-  return (
-    <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px 24px 24px" }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
-        <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em" }}>Prontas pra enviar</h3>
-        <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>preço já revelado, sem edição · copie e mande depois da call</span>
-      </div>
-      {groups.map((g) => (
-        <div key={g.group || "_"} style={{ marginTop: 16 }}>
-          {g.group ? <div className="mono" style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 8 }}>{g.group}</div> : null}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))", gap: 12 }}>
-            {g.items.map((p) => <SendProposalCard key={p.id} proposal={p} copied={copied} onCopy={onCopy} />)}
-          </div>
-        </div>
-      ))}
-    </section>
-  );
-}
-
 function ProposalsScreen({ saasId }) {
   const { SAAS } = window.SEED;
   const { version } = useData();
@@ -201,8 +127,6 @@ function ProposalsScreen({ saasId }) {
   const [templates, setTemplates] = useState([]);
   const [proposals, setProposals] = useState([]);
   const [editing, setEditing] = useState(null); // { template } | null
-  const [copied, setCopied] = useState("");
-  const copyTimer = useRef(null);
 
   const load = useCallback(async () => {
     if (!active) return;
@@ -232,26 +156,6 @@ function ProposalsScreen({ saasId }) {
 
   const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "") : "—");
   const templateById = new Map(templates.map((t) => [t.id, t]));
-
-  // Propostas PRONTAS pra enviar: snapshots sem lead, preço já revelado, uma por
-  // oferta (marcadas com sendReady). Ficam fora da tabela de "geradas" — não são
-  // proposta de um lead, e sim atalho de envio, agrupadas por linha de produto.
-  const sendReady = proposals.filter((p) => p.sendReady)
-    .sort((a, b) => (Number(a.sendOrder) || 0) - (Number(b.sendOrder) || 0));
-  const generated = proposals.filter((p) => !p.sendReady);
-
-  async function copyLink(url, key) {
-    try { await navigator.clipboard.writeText(url); }
-    catch {
-      const ta = document.createElement("textarea");
-      ta.value = url; document.body.appendChild(ta); ta.select();
-      try { document.execCommand("copy"); } catch { /* ignore */ }
-      document.body.removeChild(ta);
-    }
-    setCopied(key);
-    clearTimeout(copyTimer.current);
-    copyTimer.current = setTimeout(() => setCopied(""), 1600);
-  }
   const recentCutoff = Date.now() - 30 * 86400000;
   const outlineButton = {
     height: 30, padding: "0 12px", border: "1px solid var(--line-2)",
@@ -269,7 +173,7 @@ function ProposalsScreen({ saasId }) {
     setEditing({ template: next });
   };
 
-  const recentTable = !generated.length ? (
+  const recentTable = !proposals.length ? (
     <div style={{ padding: "30px 24px", color: "var(--fg-4)", fontSize: 13 }}>
       Nenhuma proposta gerada ainda.
     </div>
@@ -279,7 +183,7 @@ function ProposalsScreen({ saasId }) {
         <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1.3fr .8fr .9fr .6fr", gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
           <span>Lead</span><span>Template</span><span>Gerada em</span><span>Status</span><span />
         </div>
-        {generated.slice(0, tab === "geradas" ? generated.length : 6).map((p) => {
+        {proposals.slice(0, tab === "geradas" ? proposals.length : 6).map((p) => {
           const template = templateById.get(p.template);
           const status = p.accepted
             ? { label: "fechou", cls: "chip pos" }
@@ -315,10 +219,6 @@ function ProposalsScreen({ saasId }) {
       </PageHead>
 
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-        {tab === "templates" && sendReady.length > 0 && (
-          <ReadyToSendSection items={sendReady} copied={copied} onCopy={copyLink} />
-        )}
-
         {tab === "templates" && (!templates.length ? (
           <div style={{ minHeight: 230, background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
             <EmptyState title="Nenhum template neste SaaS" hint="Crie o template base usado para gerar propostas a partir dos leads." action={<PrimaryButton onClick={() => setEditing({ template: null })}>+ criar template</PrimaryButton>} />
@@ -327,7 +227,7 @@ function ProposalsScreen({ saasId }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))", gap: 14 }}>
             {templates.map((t) => {
               const pub = t.status === "published";
-              const linked = generated.filter((p) => p.template === t.id);
+              const linked = proposals.filter((p) => p.template === t.id);
               const generated = linked.filter((p) => !p.createdAt || new Date(p.createdAt).getTime() >= recentCutoff).length;
               const opened = linked.filter((p) => Number(p.views || 0) > 0).length;
               const closed = linked.filter((p) => p.accepted).length;
