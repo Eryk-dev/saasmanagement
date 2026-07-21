@@ -117,6 +117,13 @@ const patchShowIf = (slide, field, v) => {
 
 const publicBase = () => import.meta.env.VITE_API_BASE || window.location.origin;
 
+// Mensagem pronta pra mandar a proposta no WhatsApp (o closer escolhe o contato).
+// Mesmo padrão da tela de Pagamentos (offers.jsx).
+function waShareProposal(label, url) {
+  const msg = `Oi! Segue nossa proposta *${label}*, é só abrir:\n${url}`;
+  return `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+}
+
 function ProposalsScreen({ saasId }) {
   const { SAAS } = window.SEED;
   const { version } = useData();
@@ -127,6 +134,8 @@ function ProposalsScreen({ saasId }) {
   const [templates, setTemplates] = useState([]);
   const [proposals, setProposals] = useState([]);
   const [editing, setEditing] = useState(null); // { template } | null
+  const [copied, setCopied] = useState("");
+  const copyTimer = useRef(null);
 
   const load = useCallback(async () => {
     if (!active) return;
@@ -156,6 +165,26 @@ function ProposalsScreen({ saasId }) {
 
   const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "") : "—");
   const templateById = new Map(templates.map((t) => [t.id, t]));
+
+  // Propostas PRONTAS pra enviar: snapshots sem lead, preço já revelado, uma por
+  // oferta (marcadas com sendReady). Ficam fora da tabela de "geradas" — não são
+  // proposta de um lead, e sim atalho de envio, agrupadas por linha de produto.
+  const sendReady = proposals.filter((p) => p.sendReady)
+    .sort((a, b) => (Number(a.sendOrder) || 0) - (Number(b.sendOrder) || 0));
+  const generated = proposals.filter((p) => !p.sendReady);
+
+  async function copyLink(url, key) {
+    try { await navigator.clipboard.writeText(url); }
+    catch {
+      const ta = document.createElement("textarea");
+      ta.value = url; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); } catch { /* ignore */ }
+      document.body.removeChild(ta);
+    }
+    setCopied(key);
+    clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(""), 1600);
+  }
   const recentCutoff = Date.now() - 30 * 86400000;
   const outlineButton = {
     height: 30, padding: "0 12px", border: "1px solid var(--line-2)",
@@ -173,7 +202,7 @@ function ProposalsScreen({ saasId }) {
     setEditing({ template: next });
   };
 
-  const recentTable = !proposals.length ? (
+  const recentTable = !generated.length ? (
     <div style={{ padding: "30px 24px", color: "var(--fg-4)", fontSize: 13 }}>
       Nenhuma proposta gerada ainda.
     </div>
@@ -183,7 +212,7 @@ function ProposalsScreen({ saasId }) {
         <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1.3fr .8fr .9fr .6fr", gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
           <span>Lead</span><span>Template</span><span>Gerada em</span><span>Status</span><span />
         </div>
-        {proposals.slice(0, tab === "geradas" ? proposals.length : 6).map((p) => {
+        {generated.slice(0, tab === "geradas" ? generated.length : 6).map((p) => {
           const template = templateById.get(p.template);
           const status = p.accepted
             ? { label: "fechou", cls: "chip pos" }
@@ -219,6 +248,46 @@ function ProposalsScreen({ saasId }) {
       </PageHead>
 
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+        {tab === "templates" && sendReady.length > 0 && (
+          <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px 24px 24px" }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
+              <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em" }}>Prontas pra enviar</h3>
+              <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>preço já revelado, sem edição · copie e mande depois da call</span>
+            </div>
+            {/* Uma por oferta, agrupada pela linha de produto (CLONE / CLONE+OEM /
+                OEM), na mesma ordem dos links de pagamento. */}
+            {[...new Set(sendReady.map((p) => p.sendGroup || ""))].map((grupo) => (
+              <div key={grupo || "_"} style={{ marginTop: 16 }}>
+                {grupo && <div className="mono" style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 8 }}>{grupo}</div>}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))", gap: 12 }}>
+                  {sendReady.filter((p) => (p.sendGroup || "") === grupo).map((p) => {
+                    const url = `${publicBase()}/p/${p.id}`;
+                    const isCopied = copied === p.id;
+                    return (
+                      <div key={p.id} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-inset)", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
+                          {p.sendPrice && <div className="tnum" style={{ fontSize: 12.5, color: "var(--accent)", marginTop: 2 }}>{p.sendPrice}</div>}
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <button onClick={() => copyLink(url, p.id)}
+                            style={{ height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid transparent", fontSize: 12.5, fontWeight: 600, cursor: "pointer", boxShadow: "var(--shadow-1)", background: isCopied ? "var(--pos-soft)" : "var(--btn-bg)", color: isCopied ? "var(--pos)" : "var(--btn-fg)" }}>
+                            {isCopied ? "✓ copiado" : "Copiar"}
+                          </button>
+                          <a href={url} target="_blank" rel="noopener noreferrer"
+                            style={{ height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", textDecoration: "none", boxShadow: "var(--shadow-1)" }}>Abrir ↗</a>
+                          <a href={waShareProposal(p.name, url)} target="_blank" rel="noopener noreferrer"
+                            style={{ height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", textDecoration: "none", boxShadow: "var(--shadow-1)" }}>WhatsApp ↗</a>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </section>
+        )}
+
         {tab === "templates" && (!templates.length ? (
           <div style={{ minHeight: 230, background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
             <EmptyState title="Nenhum template neste SaaS" hint="Crie o template base usado para gerar propostas a partir dos leads." action={<PrimaryButton onClick={() => setEditing({ template: null })}>+ criar template</PrimaryButton>} />
@@ -227,7 +296,7 @@ function ProposalsScreen({ saasId }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))", gap: 14 }}>
             {templates.map((t) => {
               const pub = t.status === "published";
-              const linked = proposals.filter((p) => p.template === t.id);
+              const linked = generated.filter((p) => p.template === t.id);
               const generated = linked.filter((p) => !p.createdAt || new Date(p.createdAt).getTime() >= recentCutoff).length;
               const opened = linked.filter((p) => Number(p.views || 0) > 0).length;
               const closed = linked.filter((p) => p.accepted).length;
