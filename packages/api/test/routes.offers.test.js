@@ -62,3 +62,14 @@ test("PUT com items inválido = 400; produto inexistente = 404", async () => {
   const missing = await app.inject({ method: "PUT", url: "/api/offers/naoexiste", payload: { items: [] } });
   assert.equal(missing.statusCode, 404);
 });
+
+test("PUT preserva proposalUrl http e corta o inválido", async () => {
+  const { app } = await buildApp();
+  const payload = { items: [
+    { key: "anual", label: "Anual", price: "12x 599", link: "https://mpago.la/abc", proposalUrl: "https://levermoney.com.br/p/pr_env_clone_anual" },
+    { key: "semestral", label: "Semestral", link: "https://mpago.la/def", proposalUrl: "javascript:alert(1)" },
+  ] };
+  const saved = (await app.inject({ method: "PUT", url: "/api/offers/leverads", payload })).json().items;
+  assert.equal(saved[0].proposalUrl, "https://levermoney.com.br/p/pr_env_clone_anual");
+  assert.equal(saved[1].proposalUrl, ""); // não-http é cortado, igual ao link de pagamento
+});

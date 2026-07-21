@@ -15,8 +15,9 @@ const DEFAULTS = {
 
 const isHttp = (s) => /^https?:\/\//i.test(String(s || "").trim());
 
-// Sanitiza a lista vinda do cliente: mantém a forma {key,label,price,link},
-// corta o que não presta e só aceita link http(s) (ou vazio).
+// Sanitiza a lista vinda do cliente: mantém a forma {key,label,price,link,
+// proposalUrl}, corta o que não presta e só aceita link http(s) (ou vazio).
+// proposalUrl = link da proposta pronta pra enviar (atalho "Proposta ↗").
 function sanitize(items) {
   if (!Array.isArray(items)) return null;
   return items.slice(0, 20).map((it, i) => ({
@@ -24,6 +25,7 @@ function sanitize(items) {
     label: String(it?.label || "").slice(0, 120),
     price: String(it?.price || "").slice(0, 120),
     link: isHttp(it?.link) ? String(it.link).trim().slice(0, 500) : "",
+    proposalUrl: isHttp(it?.proposalUrl) ? String(it.proposalUrl).trim().slice(0, 500) : "",
   })).filter((it) => it.label || it.link);
 }
 

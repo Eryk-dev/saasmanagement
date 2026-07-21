@@ -42,7 +42,7 @@ function OffersScreen() {
     setItems((prev) => prev.map((it, j) => (j === i ? { ...it, [field]: value } : it)));
   }
   function addOffer() {
-    setItems((prev) => [...(prev || []), { key: `oferta_${(prev?.length || 0) + 1}`, label: "Nova oferta", price: "", link: "" }]);
+    setItems((prev) => [...(prev || []), { key: `oferta_${(prev?.length || 0) + 1}`, label: "Nova oferta", price: "", link: "", proposalUrl: "" }]);
   }
   function removeOffer(i) {
     setItems((prev) => prev.filter((_, j) => j !== i));
@@ -110,6 +110,7 @@ function OffersScreen() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 340px), 1fr))", gap: 14 }}>
             {items.map((o, i) => {
               const hasLink = /^https?:\/\//i.test(o.link || "");
+              const hasProposal = /^https?:\/\//i.test(o.proposalUrl || "");
               return (
                 <div key={i} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
@@ -131,6 +132,13 @@ function OffersScreen() {
                       className="mono" style={{ ...inp, fontSize: 12 }} />
                   </div>
 
+                  <div>
+                    <span style={{ ...kicker, display: "block", marginBottom: 8 }}>Link da proposta</span>
+                    <input value={o.proposalUrl || ""} onChange={(e) => patch(i, "proposalUrl", e.target.value)}
+                      placeholder="https://levermoney.com.br/p/…"
+                      className="mono" style={{ ...inp, fontSize: 12 }} />
+                  </div>
+
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button onClick={() => copy(o.link, o.key || i)} disabled={!hasLink}
                       style={{ ...btn, background: copied === (o.key || i) ? "var(--pos-soft)" : "var(--btn-bg)", color: copied === (o.key || i) ? "var(--pos)" : "var(--btn-fg)", borderColor: "transparent", opacity: hasLink ? 1 : 0.5 }}>
@@ -140,6 +148,8 @@ function OffersScreen() {
                       style={{ ...btn, textDecoration: "none", opacity: hasLink ? 1 : 0.4, pointerEvents: hasLink ? "auto" : "none" }}>Abrir ↗</a>
                     <a href={hasLink ? waShare(o, product?.name) : undefined} target="_blank" rel="noopener noreferrer"
                       style={{ ...btn, textDecoration: "none", opacity: hasLink ? 1 : 0.4, pointerEvents: hasLink ? "auto" : "none" }}>WhatsApp ↗</a>
+                    <a href={hasProposal ? o.proposalUrl : undefined} target="_blank" rel="noopener noreferrer"
+                      style={{ ...btn, textDecoration: "none", opacity: hasProposal ? 1 : 0.4, pointerEvents: hasProposal ? "auto" : "none" }}>Proposta ↗</a>
                   </div>
                 </div>
               );
