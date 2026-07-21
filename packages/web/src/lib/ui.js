@@ -33,21 +33,24 @@ export const GRADE_STYLE = {
   D: { key: "D", grade: "D", label: "cliente D", tone: "#ea580c", ink: "#c2410c", badgeFg: "#fff" },
   E: { key: "E", grade: "E", label: "cliente E", tone: "#9aa2ad", ink: "#5b6472", badgeFg: "#fff" },
 };
-// Matriz de qualidade (contas × anúncios), seletiva, definida com o Leo em
-// 21/07 — o valor da LeverAds é amplitude (contas pra replicar) × profundidade
-// (anúncios). Por isso 1 conta tem teto D (não há pra onde replicar) e A exige
-// escala nos dois eixos. `s` = pontos de contas + pontos de anúncios (0–8).
-// A API espelha em leadGrade() (routes.marketing.js) — mudou aqui, muda lá.
+// Matriz de qualidade (linha = contas, coluna = anúncios), redesenhada pelo Leo
+// em 21/07. É TABELA DE CONSULTA, não fórmula, pra bater exato com o desenho.
+// Índices: contas 1/2/3-5/6-10/10+ (0-4) × anúncios ≤100/100-500/500-2k/2k-10k/
+// 10k+ (0-4). Sem resposta cai no índice 0 (menor). A API espelha em
+// leadGrade() (routes.marketing.js) — mudou aqui, muda lá.
+//        ≤100 100-500 500-2k 2-10k 10k+
+const GRADE_GRID = [
+  ["E", "D", "D", "C", "C"], // 1 conta
+  ["D", "C", "C", "B", "B"], // 2 contas
+  ["C", "B", "B", "A", "A"], // 3-5 contas
+  ["B", "B", "A", "A", "A"], // 6-10 contas
+  ["A", "A", "A", "A", "A"], // 10+ contas
+];
 export function leadTier(l) {
-  const accKnown = l?.accounts != null && l.accounts !== "";
   const acc = TIER_ACCOUNTS[l?.accounts];
   const ads = l?.listings != null && l.listings !== "" ? TIER_LISTINGS[l.listings] : TIER_VOLUME[l?.volume];
   if (acc == null && ads == null) return { key: "sem", grade: null, label: "sem qualificação", tone: "var(--line-strong)", ink: "var(--fg-3)", badgeFg: "#fff" };
-  const a = acc ?? 0, li = ads ?? 0;
-  // 1 conta: E só no catálogo mínimo (0-100), senão D.
-  if (accKnown && l.accounts === "1") return GRADE_STYLE[li >= 1 ? "D" : "E"];
-  const s = a + li;
-  return GRADE_STYLE[s >= 6 ? "A" : s >= 4 ? "B" : s >= 2 ? "C" : "D"];
+  return GRADE_STYLE[GRADE_GRID[acc ?? 0][ads ?? 0]];
 }
 
 // Lead score helpers — score é numérico 0–100; cor e rótulo vêm por banda.
