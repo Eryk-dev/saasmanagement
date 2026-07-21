@@ -1,4 +1,5 @@
 import React from "react";
+import { Mp3Encoder } from "@breezystack/lamejs";
 import { api } from "../lib/api.js";
 
 // Peças de conversa de WhatsApp reusadas pelo inbox (tela) e pelo chat do drawer:
@@ -226,14 +227,45 @@ export function WaTemplateComposer({ threadId, contactName = "", onSent }) {
 // `templates` = [{ group, items:[{ label, text }] }] com os tokens JÁ
 // preenchidos: escolher só ESCREVE na caixa (nunca dispara), porque a última
 // palavra sobre o que vai pro cliente é de quem está na conversa.
-// Container de gravação que o WhatsApp aceita (ogg opus / mp4). Chrome só grava
-// webm — nesse caso mandamos webm mesmo e, se a Meta recusar, o erro sobe.
+// Melhor container que o navegador grava. Qualquer um serve: a gente NÃO manda
+// ele cru (o WhatsApp recusa webm e o mp4 do MediaRecorder é fragmentado, dava
+// "Media upload error"); a gravação é sempre re-codificada pra MP3 antes de
+// enviar (audio/mpeg é aceito em qualquer navegador).
 function pickRecMime() {
-  const wanted = ["audio/ogg;codecs=opus", "audio/mp4", "audio/webm;codecs=opus", "audio/webm"];
+  const wanted = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4", "audio/webm"];
   const MR = typeof window !== "undefined" ? window.MediaRecorder : null;
   return (MR && wanted.find((m) => MR.isTypeSupported?.(m))) || "";
 }
-const REC_EXT = (mime) => mime.includes("ogg") ? "ogg" : mime.includes("mp4") ? "m4a" : "webm";
+
+// Re-codifica a gravação (qualquer formato do navegador) pra MP3 mono, que o
+// WhatsApp aceita sempre. O navegador decodifica a PRÓPRIA gravação (Web Audio)
+// e o lamejs (JS puro) codifica o MP3 — sem servidor, sem ffmpeg.
+async function toMp3(blob) {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) throw new Error("sem AudioContext");
+  const ctx = new AC();
+  let audio;
+  try { audio = await ctx.decodeAudioData(await blob.arrayBuffer()); }
+  finally { ctx.close?.(); }
+  const rate = audio.sampleRate;
+  // mono: mistura os canais se vier estéreo
+  const n = audio.length, mono = new Float32Array(n);
+  for (let c = 0; c < audio.numberOfChannels; c++) {
+    const d = audio.getChannelData(c);
+    for (let i = 0; i < n; i++) mono[i] += d[i] / audio.numberOfChannels;
+  }
+  const pcm = new Int16Array(n);
+  for (let i = 0; i < n; i++) { const s = Math.max(-1, Math.min(1, mono[i])); pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff; }
+  const enc = new Mp3Encoder(1, rate, 64);
+  const out = [];
+  for (let i = 0; i < pcm.length; i += 1152) {
+    const buf = enc.encodeBuffer(pcm.subarray(i, i + 1152));
+    if (buf.length) out.push(new Uint8Array(buf));
+  }
+  const end = enc.flush();
+  if (end.length) out.push(new Uint8Array(end));
+  return new Blob(out, { type: "audio/mpeg" });
+}
 
 export function WaComposer({ onSend, onSendMedia, disabled, placeholder, templates, apiRef }) {
   const [text, setText] = React.useState("");
@@ -303,16 +335,21 @@ export function WaComposer({ onSend, onSendMedia, disabled, placeholder, templat
   async function stopRecAndSend() {
     const r = rec; if (!r) return;
     setRec(null);
-    const blob = await new Promise((resolve) => {
+    const raw = await new Promise((resolve) => {
       r.recorder.onstop = () => resolve(new Blob(r.chunks, { type: r.mime }));
       try { r.recorder.stop(); } catch { resolve(null); }
     });
     stopStream(r);
-    if (!blob || blob.size < 1200) { setErr("gravação curta demais"); return; }
+    if (!raw || raw.size < 1200) { setErr("gravação curta demais"); return; }
     setBusy(true);
-    try { await onSendMedia(blob, { filename: `nota-de-voz.${REC_EXT(r.mime)}` }); }
-    catch (e) { setErr(e?.message || "não deu pra enviar o áudio"); }
-    finally { setBusy(false); }
+    try {
+      // Sempre MP3: é o formato que o WhatsApp aceita em qualquer navegador (o
+      // webm/mp4 cru do MediaRecorder dava "Media upload error").
+      const mp3 = await toMp3(raw);
+      await onSendMedia(mp3, { filename: "nota-de-voz.mp3" });
+    } catch (e) {
+      setErr(e?.message === "sem AudioContext" ? "seu navegador não converte o áudio; anexe um arquivo pelo 📎" : (e?.message || "não deu pra enviar o áudio"));
+    } finally { setBusy(false); }
   }
   function cancelRec() {
     const r = rec; if (!r) return;
