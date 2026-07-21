@@ -319,3 +319,24 @@ test("google.fetchTranscript: activeConference no space marca sala aberta mesmo 
   const t = await g.fetchTranscript("sxj-tzvx-hud");
   assert.equal(t?.live, true, "sala aberta detectada pelo activeConference");
 });
+
+// endActiveConference: sala já fechada devolve 400 FAILED_PRECONDITION (não
+// 404). Antes isso virava throw -> a rota respondia 502 e o proxy da
+// hospedagem trocava o corpo pela página de erro dele (HTML "Not Found"), como
+// o Leo viu no lead do Cristiano. Agora vira diagnóstico "sem conferência ativa".
+test("google.endActiveConference: 400 FAILED_PRECONDITION vira no_active_conference, não erro", async () => {
+  const { makeGoogle } = await import("../src/google.js");
+  const f = async (url) => {
+    const u = String(url);
+    if (u.includes("oauth2.googleapis.com/token")) return { status: 200, json: async () => ({ access_token: "at", expires_in: 3600 }) };
+    if (u.includes(":endActiveConference")) return {
+      status: 400,
+      text: async () => JSON.stringify({ error: { code: 400, status: "FAILED_PRECONDITION", message: "There is no active conference." } }),
+    };
+    return { status: 200, json: async () => ({}) };
+  };
+  const repo = { get: async () => ({ id: "google_oauth", refreshToken: "rt" }), update: async () => {}, create: async () => {} };
+  const g = makeGoogle({ fetch: f, repo, clientId: "cid", clientSecret: "cs", redirectUri: "https://x/cb" });
+  const r = await g.endActiveConference("sxj-tzvx-hud");
+  assert.deepEqual(r, { ended: false, reason: "no_active_conference" });
+});

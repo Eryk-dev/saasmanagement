@@ -221,12 +221,20 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
       body: "{}",
     });
-    if (res.status === 404) return { ended: false, reason: "no_active_conference" };
-    if (res.status >= 400) {
-      const b = await res.text().catch(() => "");
-      throw new Error(`Meet endActiveConference -> ${res.status}: ${String(b).replace(/\s+/g, " ").trim().slice(0, 200)}`);
+    if (res.status < 300) return { ended: true };
+    const raw = await res.text().catch(() => "");
+    let body; try { body = JSON.parse(raw); } catch { body = {}; }
+    const status = body.error?.status || "";
+    const msg = body.error?.message || raw;
+    // SEM conferência ativa: a sala já fechou (ou nunca teve). A Meet API
+    // responde 400 FAILED_PRECONDITION nesse caso (não 404), então tratar só o
+    // 404 deixava um erro real subir. Aqui vira diagnóstico, não exceção.
+    if (res.status === 404 || res.status === 400 || /FAILED_PRECONDITION|NOT_FOUND|no active|not active/i.test(`${status} ${msg}`)) {
+      return { ended: false, reason: "no_active_conference" };
     }
-    return { ended: true };
+    const err = new Error(`Meet endActiveConference -> ${res.status}: ${String(msg).replace(/\s+/g, " ").trim().slice(0, 200)}`);
+    err.status = res.status;
+    throw err;
   }
 
   async function fetchTranscript(meetingCode) {
