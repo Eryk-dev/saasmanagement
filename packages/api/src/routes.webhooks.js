@@ -52,6 +52,87 @@ export function orderTrigger(order, floor = 0) {
   return null;
 }
 
+// Cria (ou reaproveita) o lead da UniqueKids pra um pedido da Shopify.
+// COMPARTILHADO pelo webhook (tempo real) e pelo poller de reconciliação — a
+// mesma regra de dono/idempotência/campos nos dois caminhos. `at` = data do
+// PEDIDO (o poller preenche pedidos antigos com a data real, não "agora"), pra
+// as métricas de marketing baterem. Retorna { lead, created }.
+export async function upsertShopifyLead(repo, order, { reason, at } = {}) {
+  const orderId = String(order?.id ?? order?.admin_graphql_api_id ?? "");
+  if (orderId) {
+    const dup = (await repo.list("leads")).find(
+      (l) => l && l.saas === "uniquekids" && String(l.shopifyOrderId || "") === orderId);
+    if (dup) return { lead: dup, created: false };
+  }
+  const cust = order.customer || {};
+  const name = [cust.first_name, cust.last_name].filter(Boolean).join(" ").trim()
+    || String(order.name || "").trim() || "Cliente Shopify";
+  const phone = order.phone || cust.phone
+    || order.shipping_address?.phone || order.billing_address?.phone || "";
+  const email = order.email || cust.email || "";
+  const owner = await uniquekidsOwner(repo);
+  const product = await repo.get("products", "uniquekids");
+  const nextAt = initialNextActionAt(product, "");
+  const createdAt = at || order.created_at || new Date().toISOString();
+  const lead = await repo.create("leads", {
+    ...(CREATE_DEFAULTS.leads || {}),
+    saas: "uniquekids",
+    name, phone, email,
+    stage: firstStage(product),
+    stageSince: createdAt,
+    source: `Shopify · ${reason}`,
+    shopifyOrderId: orderId,
+    ...(owner ? { owner, closer: owner } : {}),
+    ...(nextAt ? { nextActionAt: nextAt } : {}),
+    createdAt,
+  });
+  try {
+    await logActivity(repo, {
+      saas: "uniquekids", lead: lead.id, type: "system",
+      meta: { event: "lead_created", via: "shopify", order: orderId, reason }, author: "shopify",
+    });
+  } catch { /* histórico é best-effort */ }
+  return { lead, created: true };
+}
+
+// Poller de reconciliação: puxa os pedidos pagos da Shopify e preenche os leads
+// que faltam (dedup por shopifyOrderId). É a rede de segurança pro webhook —
+// mesmo que ele falhe/não esteja registrado, os pedidos entram no próximo tick.
+// No 1º tick (ou base vazia) varre 40 dias pra trás e faz o backfill sozinho.
+// Sem token da Shopify (SHOPIFY_ADMIN_TOKEN), fica DORMENTE.
+export function startShopifySync(repo = defaultRepo, { shopify, intervalMs = 15 * 60_000, log = console } = {}) {
+  if (!shopify?.configured?.()) { log.info?.("shopify sync: sem SHOPIFY_ADMIN_TOKEN/STORE — desligado"); return () => {}; }
+  let running = false;
+  async function tick() {
+    if (running) return; running = true;
+    try {
+      const leads = await repo.list("leads");
+      const lastAt = leads
+        .filter((l) => l.saas === "uniquekids" && l.shopifyOrderId && l.createdAt)
+        .map((l) => l.createdAt).sort().pop();
+      // 2 dias de folga do último (pedidos pagos com atraso) ou 40 dias no 1º run.
+      const since = lastAt
+        ? new Date(new Date(lastAt).getTime() - 2 * 86_400_000).toISOString()
+        : new Date(Date.now() - 40 * 86_400_000).toISOString();
+      const orders = await shopify.paidOrdersSince(since);
+      const floor = Number(process.env.SHOPIFY_UNIQUEKIDS_MIN || 0);
+      let created = 0;
+      for (const o of orders) {
+        const reason = orderTrigger(o, floor);
+        if (!reason) continue;
+        const r = await upsertShopifyLead(repo, o, { reason });
+        if (r.created) created++;
+      }
+      if (created) log.info?.(`shopify sync: ${created} lead(s) novo(s) da UniqueKids`);
+    } catch (err) { log.warn?.({ err: err.message }, "shopify sync falhou (re-tenta no próximo ciclo)"); }
+    finally { running = false; }
+  }
+  tick(); // corre no boot (faz o backfill imediato)
+  const timer = setInterval(tick, intervalMs);
+  if (timer.unref) timer.unref();
+  return () => clearInterval(timer);
+}
+
 export function registerWebhookRoutes(app, repo = defaultRepo, opts = {}) {
   // Instância encapsulada só do webhook: um parser que GUARDA o corpo cru (pra
   // conferir o HMAC) sem afetar o parse JSON das demais rotas do app.
@@ -83,42 +164,9 @@ export function registerWebhookRoutes(app, repo = defaultRepo, opts = {}) {
       const floor = Number(process.env.SHOPIFY_UNIQUEKIDS_MIN || 0);
       const reason = orderTrigger(order, floor);
       if (!reason) return reply.code(200).send("no match");
-      // 4) Idempotência: a Shopify reentrega; o mesmo pedido não cria lead 2x.
-      const orderId = String(order.id ?? order.admin_graphql_api_id ?? "");
-      if (orderId) {
-        const dup = (await repo.list("leads")).find(
-          (l) => l && l.saas === "uniquekids" && String(l.shopifyOrderId || "") === orderId);
-        if (dup) return reply.code(200).send({ ok: true, duplicate: true, lead: dup.id });
-      }
-      // 5) Cria o lead pra Ana (owner+closer = ela, pra aparecer no funil todo).
-      const cust = order.customer || {};
-      const name = [cust.first_name, cust.last_name].filter(Boolean).join(" ").trim()
-        || String(order.name || "").trim() || "Cliente Shopify";
-      const phone = order.phone || cust.phone
-        || order.shipping_address?.phone || order.billing_address?.phone || "";
-      const email = order.email || cust.email || "";
-      const owner = await uniquekidsOwner(repo);
-      const product = await repo.get("products", "uniquekids");
-      const nextAt = initialNextActionAt(product, "");
-      const now = new Date().toISOString();
-      const lead = await repo.create("leads", {
-        ...(CREATE_DEFAULTS.leads || {}),
-        saas: "uniquekids",
-        name, phone, email,
-        stage: firstStage(product),
-        stageSince: now,
-        source: `Shopify · ${reason}`,
-        shopifyOrderId: orderId,
-        ...(owner ? { owner, closer: owner } : {}),
-        ...(nextAt ? { nextActionAt: nextAt } : {}),
-        createdAt: now,
-      });
-      try {
-        await logActivity(repo, {
-          saas: "uniquekids", lead: lead.id, type: "system",
-          meta: { event: "lead_created", via: "shopify", order: orderId, reason }, author: "shopify",
-        });
-      } catch { /* histórico é best-effort */ }
+      // 4+5) Idempotência + criação — mesma função do poller de reconciliação.
+      const { lead, created } = await upsertShopifyLead(repo, order, { reason, at: new Date().toISOString() });
+      if (!created) return reply.code(200).send({ ok: true, duplicate: true, lead: lead.id });
       req.log?.info(`shopify → lead uniquekids ${lead.id} (${reason})`);
       return reply.code(200).send({ ok: true, lead: lead.id });
     });

@@ -16,6 +16,8 @@ import { startIntegrationBriefs } from "./integration-brief.js";
 import { startConsultationSummaries } from "./consultations.js";
 import { startDripSequences } from "./drip-runner.js";
 import { startTrainingReminder } from "./training-reminder.js";
+import { startShopifySync } from "./routes.webhooks.js";
+import { makeShopify } from "./shopify.js";
 import { ensureDefaultAdmins, makeAuthHook } from "./auth.js";
 import { makeScreenGuardHook } from "./screens.js";
 import { runStartupMigrations } from "./migrations.js";
@@ -87,6 +89,16 @@ try {
   startDripSequences(repo, { ...app.integrationClients, log: app.log });
   // Lembrete diário de treinamento (flashcards vencendo) — no-op sem Discord.
   startTrainingReminder(repo, { log: app.log });
+  // Reconciliação da Shopify (UniqueKids): puxa os pedidos pagos e preenche os
+  // leads que faltam — rede de segurança pro webhook orders/paid (que ficou 8
+  // dias sem entregar). No-op sem SHOPIFY_ADMIN_TOKEN + SHOPIFY_STORE.
+  startShopifySync(repo, {
+    shopify: makeShopify({
+      store: process.env.SHOPIFY_STORE || "4b778b.myshopify.com",
+      token: process.env.SHOPIFY_ADMIN_TOKEN || "",
+    }),
+    log: app.log,
+  });
 } catch (err) {
   app.log.error(err);
   process.exit(1);
