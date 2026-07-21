@@ -46,7 +46,9 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   const dirty = React.useRef(false);
   const [editResumo, setEditResumo] = React.useState(false); // lápis do Resumo → edita inline
   const [showTimeline, setShowTimeline] = React.useState(false); // timeline recolhida por padrão
-  const [showGps, setShowGps] = React.useState(false);   // Próximo passo recolhido (o pill de atraso fica visível no cabeçalho)
+  const [showGps, setShowGps] = React.useState(false);   // Próximo passo: a linha grande fica sempre visível; isto abre os editores
+  const [showCall, setShowCall] = React.useState(false); // "Detalhes da call" (vídeo/convidados) recolhido por padrão
+  const [showEntrega, setShowEntrega] = React.useState(false); // "Entrega" (briefing/vídeo integração) recolhido
   const [showFrom, setShowFrom] = React.useState(false); // atribuição do anúncio recolhida
   const [pendingMove, setPendingMove] = React.useState(null); // { toStage, gate }
   // Timeline: fetch por lead (fora do bootstrap) + refetch quando o tempo real
@@ -193,6 +195,12 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   ].filter(([, v]) => v != null && v !== "");
 
   const next = nextTouchPill(lead, { isOpen, kind });
+  // O compromisso QUE a etapa está esperando (o "próximo passo" de verdade):
+  // call na etapa de call, integração na entrega, senão o toque do GPS. É o que
+  // vira a linha grande no topo do bloco; o resto é contexto por fase.
+  const primaryStep = kind === "call" ? { label: "Call", verb: "agendar call" }
+    : (kind === "integracao" || kind === "posvenda") ? { label: "Integração", verb: "marcar integração" }
+    : { label: "Próximo toque", verb: "marcar toque" };
   // Cartões (mesma linguagem da tela de atividade): caixa com rótulo mono.
   const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "12px 14px", background: "var(--bg-inset)" };
   const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
@@ -359,21 +367,22 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               drawer. RECOLHÍVEL: fechado, o cabeçalho segura o resumo (o pill
               de atraso continua visível). */}
         <div style={{ ...box, display: "flex", flexDirection: "column", gap: 10 }}>
-          <button onClick={() => setShowGps((v) => !v)} title={showGps ? "Recolher" : "Abrir o próximo passo (etapa, toque, call, proposta)"}
-            className="mono" style={{ ...kicker, display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
-            Próximo passo
-            {next && <span className="mono" style={{ fontSize: 10, color: next.key === "late" ? "var(--neg)" : next.key === "none" ? "var(--warn)" : "var(--fg-3)", textTransform: "none", letterSpacing: 0 }}>{next.text}</span>}
-            <span style={{ marginLeft: "auto", fontSize: 10, flexShrink: 0 }}>{showGps ? "▴ recolher" : "▾ abrir"}</span>
+          {/* A LINHA GRANDE: o compromisso REAL da etapa (call na etapa de call,
+              integração na entrega, senão o toque), colorido por atrasado/hoje/
+              futuro. É o "próximo passo"; etapa, call, proposta e entrega viram
+              contexto por fase, recolhido abaixo. */}
+          <button onClick={() => isOpen && setShowGps((v) => !v)} disabled={!isOpen}
+            title={showGps ? "Recolher os editores" : "Editar etapa, toque, call…"}
+            style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", background: "none", border: "none", padding: 0, cursor: isOpen ? "pointer" : "default", textAlign: "left" }}>
+            <span className="mono" style={{ ...kicker, flexShrink: 0 }}>Próximo passo</span>
+            {!isOpen
+              ? <span className="dim" style={{ fontSize: 12.5 }}>lead finalizado</span>
+              : next && next.key !== "none"
+                ? <span style={{ fontSize: 13.5, fontWeight: 700, color: next.tone }}>{primaryStep.label} <span style={{ fontWeight: 400, color: "var(--fg-4)" }}>·</span> {next.text.replace(/^[◆●]\s*/, "")}</span>
+                : <span style={{ fontSize: 13, fontWeight: 600, color: "var(--warn)" }}>sem {primaryStep.label.toLowerCase()} · {primaryStep.verb}</span>}
+            {isOpen && <span className="mono" style={{ marginLeft: "auto", fontSize: 10, color: "var(--fg-4)", flexShrink: 0 }}>{showGps ? "▴ recolher" : "▾ editar"}</span>}
           </button>
           {showGps && (<>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <span className="mono dim" style={rowLabel}>Etapa</span>
-            <select value={lead.stage || ""} onChange={(e) => moveStage(e.target.value)}
-              style={{ flex: 1, height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }}>
-              {(saasCfg?.funnel || []).map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
-              {saasCfg?.funnel?.every((f) => f.stage !== lead.stage) && lead.stage && <option value={lead.stage}>{lead.stage}</option>}
-            </select>
-          </div>
           <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
             <span className="mono dim" style={{ ...rowLabel, paddingTop: 6 }}>Próximo toque</span>
             <div style={{ display: "flex", gap: 5, flex: 1, flexWrap: "wrap", alignItems: "center" }}>
@@ -420,6 +429,14 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               {callBusyMsg || "aparece na Agenda"}
             </span>
           </div>
+          {/* Detalhes da call: link do vídeo + convidados extras, recolhidos —
+              logística, não o "quando". */}
+          <button onClick={() => setShowCall((v) => !v)}
+            className="mono" style={{ ...kicker, display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+            Detalhes da call
+            <span style={{ marginLeft: "auto", fontSize: 10, flexShrink: 0, textTransform: "none", letterSpacing: 0 }}>{showCall ? "▴ recolher" : "▾ vídeo · convidados"}</span>
+          </button>
+          {showCall && (<>
           {/* Link de videochamada: sala Jitsi com slug aleatório (sem conta, abre
               no navegador/celular), salva no lead e vai pro Whats com 1 clique. */}
           <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0, flexWrap: "wrap" }}>
@@ -531,6 +548,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                 style={{ flex: 1, height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, fontFamily: "var(--mono)" }} />
             </div>
           )}
+          </>)}
           {(kind === "proposta" || kind === "followup") && (
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <span className="mono dim" style={rowLabel}>Proposta</span>
@@ -549,6 +567,14 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                 <input type="datetime-local" value={lead.integrationAt || ""} onChange={(e) => patch({ integrationAt: e.target.value })}
                   style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
               </div>
+              {/* Entrega: briefing pro integrador + vídeo/resumo da integração,
+                  recolhidos — a DATA fica em cima, sempre visível. */}
+              <button onClick={() => setShowEntrega((v) => !v)}
+                className="mono" style={{ ...kicker, display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+                Entrega
+                <span style={{ marginLeft: "auto", fontSize: 10, flexShrink: 0, textTransform: "none", letterSpacing: 0 }}>{showEntrega ? "▴ recolher" : "▾ briefing · vídeo"}</span>
+              </button>
+              {showEntrega && (<>
               {/* Briefing de passagem: o cockpit gera sozinho quando o card
                   entra aqui (e re-tenta enquanto a transcrição da venda não
                   fica pronta). Este botão é o "gera agora" / "refaz". */}
@@ -635,8 +661,19 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   )
                 )}
               </div>
+              </>)}
             </>
           )}
+          {/* mover etapa: demoted, no fim — a etapa é CONSEQUÊNCIA do trabalho,
+              não o "próximo passo". Antes era a 1ª linha e confundia. */}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 2 }}>
+            <span className="mono dim" style={{ fontSize: 11, flexShrink: 0 }}>mover etapa</span>
+            <select value={lead.stage || ""} onChange={(e) => moveStage(e.target.value)}
+              style={{ flex: 1, height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
+              {(saasCfg?.funnel || []).map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
+              {saasCfg?.funnel?.every((f) => f.stage !== lead.stage) && lead.stage && <option value={lead.stage}>{lead.stage}</option>}
+            </select>
+          </div>
           </>)}
         </div>
 
