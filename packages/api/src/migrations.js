@@ -247,6 +247,41 @@ export async function migrateFlashcardsGeneralDecks(repo) {
   return missing.length;
 }
 
+// Permissão de ligação perdida (jul/2026): quando a saudação "posso te ligar?"
+// era digitada na mão (sem passar pelo startCallFlow que cria callFlow=pending),
+// o aceite do lead era só exibido ("topou receber a ligação") mas a thread ficava
+// com callFlow=null — e o botão "Ligar" nunca virava discagem. O código já grava
+// o aceite mesmo sem fluxo prévio; esta migração conserta as conversas que
+// aceitaram/recusaram ANTES do fix (a última resposta de permissão vale). Idempotente.
+export async function backfillCallPermission(repo) {
+  const [threads, messages] = await Promise.all([repo.list("wa_threads"), repo.list("wa_messages")]);
+  // texto RENDERIZADO com que a resposta de permissão é gravada (bodyOf)
+  const REPLY = { "✅ topou receber a ligação": "accepted", "🚫 prefere não receber ligação": "declined" };
+  const latest = new Map(); // thread → { perm, at } da resposta de permissão mais recente
+  for (const m of messages) {
+    if (m.direction !== "in") continue;
+    const perm = REPLY[String(m.text || "")];
+    if (!perm) continue;
+    const at = new Date(m.at || 0).getTime();
+    const cur = latest.get(m.thread);
+    if (!cur || at > cur.at) latest.set(m.thread, { perm, at, iso: m.at });
+  }
+  let fixed = 0;
+  for (const t of threads) {
+    const r = latest.get(t.id);
+    if (!r) continue;
+    if (t.callFlow?.permission === r.perm) continue; // já está certo
+    await repo.update("wa_threads", t.id, {
+      callFlow: {
+        ...(t.callFlow || { startedAt: r.iso, auto: false }),
+        permission: r.perm, permissionAt: r.iso, backfill: true,
+      },
+    });
+    fixed++;
+  }
+  return fixed;
+}
+
 // Todo funil de todo produto ganha `kind` (heurística por nome quando ausente).
 // Cobre multi-SaaS e o caso do dono ter editado o funil (guarda acima falhou).
 export async function ensureFunnelKinds(repo) {
@@ -646,6 +681,12 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] kind garantido no funil de ${n} produto(s)`);
   } catch (err) {
     console.error("[migration] ensureFunnelKinds falhou:", err?.message || err);
+  }
+  try {
+    const n = await backfillCallPermission(repo);
+    if (n) console.log(`[migration] permissão de ligação reconstruída em ${n} conversa(s)`);
+  } catch (err) {
+    console.error("[migration] backfillCallPermission falhou:", err?.message || err);
   }
   try {
     const n = await ensureLossReasons(repo);
