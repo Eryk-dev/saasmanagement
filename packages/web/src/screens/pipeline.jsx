@@ -1,7 +1,7 @@
 import React from "react";
 import { Avatar, EmptyState, PrimaryButton } from "../atoms.jsx";
 import { Card, FilterTab, Segmented, StatTile } from "../components/viz.jsx";
-import { leadScoreTone, leadAge } from "../lib/ui.js";
+import { leadScoreTone, leadAge, leadTier } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import {
@@ -383,6 +383,10 @@ function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen 
   const ownerId = phase === "entrega" ? (d.integrator || d.closer || d.owner) : (d.closer || d.owner);
   const showAvatar = phase !== "sdr" && ownerId;
   const nextLabel = next?.text?.replace(/^[◆●]\s*/, "") || "";
+  // Qualidade do cliente (A/B/C) pela régua de contas × anúncios — a mesma do
+  // Publicidade e do drawer. Só mostra quando o lead respondeu a qualificação.
+  const tier = leadTier(d);
+  const grade = tier?.grade || "";
 
   return (
     <div
@@ -394,6 +398,9 @@ function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen 
         borderRadius: "var(--r-3)", padding: "12px 14px", cursor: "grab", boxShadow: "var(--shadow-card)",
       }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+        {grade && (
+          <span title={tier.label} style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 5, background: tier.tone, color: tier.badgeFg, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>{grade}</span>
+        )}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</div>
           {d.company && (
