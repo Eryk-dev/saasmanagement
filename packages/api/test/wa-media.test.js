@@ -6,21 +6,36 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
+import multipart from "@fastify/multipart";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerWhatsappRoutes } = await import("../src/routes.whatsapp.js");
 
-function fakeWa({ fetchMediaCalls = [], bytes = Buffer.from("OPUSAUDIO") } = {}) {
+function fakeWa({ fetchMediaCalls = [], sent = [], bytes = Buffer.from("OPUSAUDIO") } = {}) {
   return {
     configured: () => true,
     verifyWebhook: () => null,
     async sendText() { return { messageId: "x" }; },
     async fetchMedia(id) { fetchMediaCalls.push(id); return { buf: bytes, mime: "audio/ogg; codecs=opus" }; },
+    async uploadMedia(buf, opts) { sent.push({ step: "upload", size: buf.length, mime: opts.mime, filename: opts.filename }); return "UP_1"; },
+    async sendMedia(to, m, opts) { sent.push({ step: "send", to, ...m }); return { messageId: "wamid.OUT_MEDIA" }; },
+    sent,
   };
+}
+
+function buildMultipart(bytes, { name = "nota-de-voz.ogg", type = "audio/ogg" } = {}) {
+  const boundary = "----cockpitMediaBoundary";
+  const chunks = [
+    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: ${type}\r\n\r\n`),
+    Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes),
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ];
+  return { body: Buffer.concat(chunks), contentType: `multipart/form-data; boundary=${boundary}` };
 }
 
 async function appWith(repo, wa) {
   const app = Fastify();
+  await app.register(multipart);
   registerWhatsappRoutes(app, repo, { whatsapp: wa });
   await app.ready();
   return app;
@@ -60,6 +75,46 @@ test("GET media baixa da Graph na 1ª vez, cacheia e serve o binário; 2ª vez v
   assert.equal(r2.statusCode, 200);
   assert.equal(r2.rawPayload.toString(), "OPUSAUDIO");
   assert.equal(calls.length, 1);               // NÃO bateu de novo (veio do cache)
+  await app.close();
+});
+
+test("enviar áudio: sobe (uploadMedia) + envia (sendMedia), grava a msg out com a mídia e cacheia o binário", async () => {
+  const repo = makeMemRepo();
+  const sent = [];
+  const app = await appWith(repo, fakeWa({ sent }));
+  const mp = buildMultipart(Buffer.from("MEUOPUS12345678"), { name: "nota-de-voz.ogg", type: "audio/ogg" });
+  const res = await app.inject({ method: "POST", url: "/api/whatsapp/threads/5541999/media", payload: mp.body, headers: { "content-type": mp.contentType } });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.json(), { ok: true, messageId: "wamid.OUT_MEDIA", kind: "audio" });
+
+  // 2 passos na ordem certa, com o mime do arquivo
+  assert.equal(sent[0].step, "upload");
+  assert.equal(sent[0].mime, "audio/ogg");
+  assert.equal(sent[1].step, "send");
+  assert.equal(sent[1].kind, "audio");
+  assert.equal(sent[1].mediaId, "UP_1");
+
+  // mensagem out com a referência da mídia (a bolha vira player no nosso inbox)
+  const msg = await repo.get("wa_messages", "wamid.OUT_MEDIA");
+  assert.equal(msg.direction, "out");
+  assert.equal(msg.text, "🎤 áudio");
+  assert.equal(msg.media.kind, "audio");
+  assert.equal(msg.media.id, "UP_1");
+  // binário cacheado sob o id da mensagem → toca de volta sem re-baixar
+  const media = await repo.get("wa_media", "wamid.OUT_MEDIA");
+  assert.ok(media?.data);
+  assert.equal(Buffer.from(media.data, "base64").toString(), "MEUOPUS12345678");
+  await app.close();
+});
+
+test("enviar imagem detecta o kind pelo mime", async () => {
+  const repo = makeMemRepo();
+  const sent = [];
+  const app = await appWith(repo, fakeWa({ sent }));
+  const mp = buildMultipart(Buffer.from("PNGDATA"), { name: "foto.png", type: "image/png" });
+  const res = await app.inject({ method: "POST", url: "/api/whatsapp/threads/5541999/media", payload: mp.body, headers: { "content-type": mp.contentType } });
+  assert.equal(res.json().kind, "image");
+  assert.equal(sent[1].kind, "image");
   await app.close();
 });
 

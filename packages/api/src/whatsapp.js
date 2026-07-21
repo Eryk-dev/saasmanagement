@@ -39,6 +39,36 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     return { messageId: b.messages?.[0]?.id || "" };
   }
 
+  // Sobe um arquivo pro número (POST /{phoneId}/media multipart) e devolve o
+  // media id — o passo 1 pra ENVIAR mídia (áudio de voz, imagem, documento).
+  async function uploadMedia(buffer, { mime = "application/octet-stream", filename = "file", phoneId } = {}) {
+    const pid = phoneId || phoneNumberId;
+    if (!token || !pid) throw new Error("WhatsApp não configurado — defina WHATSAPP_TOKEN e o número");
+    const fd = new FormData();
+    fd.append("messaging_product", "whatsapp");
+    fd.append("type", mime);
+    fd.append("file", new Blob([buffer], { type: mime }), filename);
+    const res = await f(`${GRAPH}/${pid}/media`, { method: "POST", headers: { authorization: `Bearer ${token}` }, body: fd });
+    const text = await res.text();
+    let body; try { body = JSON.parse(text); } catch { body = {}; }
+    if (res.status >= 400 || body.error) {
+      const err = new Error(`upload de mídia -> ${res.status}: ${body.error?.message || text.slice(0, 200)}`);
+      err.status = res.status; err.code = body.error?.code;
+      throw err;
+    }
+    return body.id || "";
+  }
+
+  // Envia uma mídia já subida (passo 2). `kind` = audio|image|video|document.
+  // Áudio de voz = kind "audio" (o WhatsApp mostra como nota de voz).
+  async function sendMedia(to, { kind = "audio", mediaId, filename = "", caption = "" }, { phoneId } = {}) {
+    const media = { id: mediaId };
+    if (kind === "document" && filename) media.filename = filename;
+    if (caption && (kind === "image" || kind === "video" || kind === "document")) media.caption = caption.slice(0, 1024);
+    const b = await post({ to: digits(to), type: kind, [kind]: media }, phoneId);
+    return { messageId: b.messages?.[0]?.id || "" };
+  }
+
   // Template aprovado (reabre conversa fora das 24h). Fase 2 (precisa dos templates
   // aprovados na Meta); já deixo pronto no cliente.
   async function sendTemplate(to, name, lang = "pt_BR", components = [], { phoneId } = {}) {
@@ -259,7 +289,7 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     return null;
   }
 
-  return { configured, sendText, sendTemplate, sendCallPermission, markRead, verifyWebhook, numberInfo, listTemplates, tokenWabaIds, initiateCall, terminateCall, conversationCosts, fetchMedia };
+  return { configured, sendText, sendTemplate, sendCallPermission, markRead, verifyWebhook, numberInfo, listTemplates, tokenWabaIds, initiateCall, terminateCall, conversationCosts, fetchMedia, uploadMedia, sendMedia };
 }
 
 // Número em dígitos (E.164 sem +) pra enviar e pra casar o recebido com o lead.

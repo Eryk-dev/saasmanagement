@@ -226,12 +226,25 @@ export function WaTemplateComposer({ threadId, contactName = "", onSent }) {
 // `templates` = [{ group, items:[{ label, text }] }] com os tokens JÁ
 // preenchidos: escolher só ESCREVE na caixa (nunca dispara), porque a última
 // palavra sobre o que vai pro cliente é de quem está na conversa.
-export function WaComposer({ onSend, disabled, placeholder, templates, apiRef }) {
+// Container de gravação que o WhatsApp aceita (ogg opus / mp4). Chrome só grava
+// webm — nesse caso mandamos webm mesmo e, se a Meta recusar, o erro sobe.
+function pickRecMime() {
+  const wanted = ["audio/ogg;codecs=opus", "audio/mp4", "audio/webm;codecs=opus", "audio/webm"];
+  const MR = typeof window !== "undefined" ? window.MediaRecorder : null;
+  return (MR && wanted.find((m) => MR.isTypeSupported?.(m))) || "";
+}
+const REC_EXT = (mime) => mime.includes("ogg") ? "ogg" : mime.includes("mp4") ? "m4a" : "webm";
+
+export function WaComposer({ onSend, onSendMedia, disabled, placeholder, templates, apiRef }) {
   const [text, setText] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState("");
   const [openTpl, setOpenTpl] = React.useState(false);
+  const [rec, setRec] = React.useState(null); // { recorder, chunks, mime, t0 } enquanto grava
+  const [recSecs, setRecSecs] = React.useState(0);
   const boxRef = React.useRef(null);
+  const fileRef = React.useRef(null);
+  const canMedia = !!onSendMedia && !disabled;
 
   // Atalhos de fora (ex.: "Agendar call") deixam um RASCUNHO na caixa pelo
   // apiRef — mesma regra dos modelos: escrever nunca é enviar.
@@ -248,6 +261,64 @@ export function WaComposer({ onSend, disabled, placeholder, templates, apiRef })
     try { await onSend(t); setText(""); }
     catch (e) { setErr(e?.message || "não foi possível enviar"); }
     finally { setBusy(false); }
+  }
+
+  // Anexo (arquivo do disco): áudio, imagem, vídeo ou documento.
+  async function pickFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permite re-selecionar o mesmo arquivo
+    if (!file || !canMedia) return;
+    setBusy(true); setErr("");
+    try { await onSendMedia(file, { filename: file.name }); }
+    catch (er) { setErr(er?.message || "não deu pra enviar o arquivo"); }
+    finally { setBusy(false); }
+  }
+
+  // Gravar nota de voz: começa a captura; parar envia, cancelar descarta.
+  async function startRec() {
+    if (rec || !canMedia) return;
+    setErr("");
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch { setErr("microfone bloqueado — libere o acesso no navegador"); return; }
+    const mime = pickRecMime();
+    let recorder;
+    try { recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined); }
+    catch { stream.getTracks().forEach((t) => t.stop()); setErr("navegador não grava áudio"); return; }
+    const chunks = [];
+    recorder.ondataavailable = (ev) => { if (ev.data?.size) chunks.push(ev.data); };
+    const t0 = Date.now();
+    recorder.start();
+    setRec({ recorder, chunks, stream, mime: recorder.mimeType || mime || "audio/webm", t0 });
+    setRecSecs(0);
+  }
+  React.useEffect(() => {
+    if (!rec) return;
+    const id = setInterval(() => setRecSecs(Math.round((Date.now() - rec.t0) / 1000)), 500);
+    return () => clearInterval(id);
+  }, [rec]);
+
+  function stopStream(r) { try { r.stream.getTracks().forEach((t) => t.stop()); } catch { /* já parou */ } }
+
+  async function stopRecAndSend() {
+    const r = rec; if (!r) return;
+    setRec(null);
+    const blob = await new Promise((resolve) => {
+      r.recorder.onstop = () => resolve(new Blob(r.chunks, { type: r.mime }));
+      try { r.recorder.stop(); } catch { resolve(null); }
+    });
+    stopStream(r);
+    if (!blob || blob.size < 1200) { setErr("gravação curta demais"); return; }
+    setBusy(true);
+    try { await onSendMedia(blob, { filename: `nota-de-voz.${REC_EXT(r.mime)}` }); }
+    catch (e) { setErr(e?.message || "não deu pra enviar o áudio"); }
+    finally { setBusy(false); }
+  }
+  function cancelRec() {
+    const r = rec; if (!r) return;
+    setRec(null);
+    try { r.recorder.onstop = null; r.recorder.stop(); } catch { /* ok */ }
+    stopStream(r);
   }
 
   // Caixa com rascunho não é sobrescrita: o modelo entra embaixo do que já
@@ -296,7 +367,26 @@ export function WaComposer({ onSend, disabled, placeholder, templates, apiRef })
           )}
         </div>
       )}
+      {rec ? (
+        // Gravando: linha própria com timer, enviar (▶ para+manda) e descartar.
+        <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "7px 4px" }}>
+          <span style={{ width: 9, height: 9, borderRadius: 99, background: "#e5484d", flexShrink: 0 }} />
+          <span className="mono" style={{ fontSize: 12.5, color: "var(--fg-2)" }}>gravando… {String(Math.floor(recSecs / 60)).padStart(2, "0")}:{String(recSecs % 60).padStart(2, "0")}</span>
+          <span style={{ flex: 1 }} />
+          <button onClick={cancelRec} title="descartar" style={{ height: 34, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, cursor: "pointer" }}>descartar</button>
+          <button onClick={stopRecAndSend} title="enviar a nota de voz" style={{ height: 34, padding: "0 16px", borderRadius: "var(--r-2)", border: "none", background: "#25D366", color: "#06120c", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>enviar ↑</button>
+        </div>
+      ) : (
       <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
+        {canMedia && (
+          <>
+            <input ref={fileRef} type="file" accept="audio/*,image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx" onChange={pickFile} style={{ display: "none" }} />
+            <button onClick={() => fileRef.current?.click()} disabled={busy} title="Anexar arquivo (áudio, imagem, documento)"
+              style={{ height: 38, width: 38, flexShrink: 0, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 16, cursor: "pointer", opacity: busy ? 0.55 : 1 }}>📎</button>
+            <button onClick={startRec} disabled={busy} title="Gravar nota de voz"
+              style={{ height: 38, width: 38, flexShrink: 0, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 16, cursor: "pointer", opacity: busy ? 0.55 : 1 }}>🎤</button>
+          </>
+        )}
         <textarea
           ref={boxRef}
           value={text}
@@ -312,6 +402,7 @@ export function WaComposer({ onSend, disabled, placeholder, templates, apiRef })
           background: "#25D366", color: "#06120c", border: "none", cursor: "pointer", opacity: busy || !text.trim() || disabled ? 0.55 : 1, flexShrink: 0,
         }}>{busy ? "…" : "Enviar"}</button>
       </div>
+      )}
     </div>
   );
 }

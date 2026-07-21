@@ -645,6 +645,59 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     } catch (err) { return sendErrorReply(reply, err); }
   });
 
+  // Enviar MÍDIA pela conversa (multipart, campo `file`): sobe o arquivo no
+  // número (uploadMedia) e envia como áudio/imagem/vídeo/documento. Grava a
+  // mensagem out COM a referência da mídia e cacheia o binário em `wa_media`
+  // pra tocar no nosso próprio inbox (a bolha usa a mesma MediaBubble).
+  // Formatos: o WhatsApp aceita ogg(opus)/mp3/m4a/aac/amr em áudio; se o
+  // navegador mandar webm (Chrome grava assim) e a Meta recusar, o erro sobe
+  // legível — a UI avisa.
+  const MEDIA_KIND = (mime) => {
+    const m = String(mime || "").toLowerCase();
+    if (m.startsWith("audio/")) return "audio";
+    if (m.startsWith("image/")) return "image";
+    if (m.startsWith("video/")) return "video";
+    return "document";
+  };
+  app.post("/api/whatsapp/threads/:id/media", async (req, reply) => {
+    const phone = threadId(req.params.id);
+    if (!phone) return reply.code(400).send({ error: "número inválido" });
+    const file = await req.file();
+    if (!file) return reply.code(400).send({ error: "envie o arquivo (multipart, campo file)" });
+    const buf = await file.toBuffer();
+    if (!buf.length) return reply.code(400).send({ error: "arquivo vazio" });
+    if (buf.length > 16 * 1024 * 1024) return reply.code(413).send({ error: "arquivo acima de 16MB (limite do WhatsApp)" });
+    const thread = await findThreadByPhone(repo, phone);
+    const phoneId = await resolvePhoneId({ thread });
+    if (phoneId === null) return noNumberReply(reply, thread?.saas || "");
+    if (!wa.configured(phoneId)) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
+
+    const mime = file.mimetype || "application/octet-stream";
+    const kind = MEDIA_KIND(mime);
+    const filename = file.filename || (kind === "audio" ? "audio.ogg" : "arquivo");
+    const to = thread?.phone || phone;
+    let mediaId, messageId;
+    try {
+      mediaId = await wa.uploadMedia(buf, { mime, filename, phoneId });
+      ({ messageId } = await wa.sendMedia(to, { kind, mediaId, filename, caption: String(req.body?.caption || "") }, { phoneId }));
+    } catch (err) { return sendErrorReply(reply, err); }
+
+    const label = { audio: "🎤 áudio", image: "📷 imagem", video: "🎬 vídeo", document: "📎 " + filename }[kind];
+    await recordMessage(repo, {
+      id: messageId, phone: to, direction: "out", text: label, status: "sent",
+      author: req.authUser?.id || "cockpit", waPhoneId: phoneId || "", saas: thread?.saas || "",
+      media: { kind, id: mediaId, mime, filename },
+    });
+    // Cacheia o binário sob o id da MENSAGEM pra tocar no nosso inbox (o mediaId
+    // da Meta expira; guardamos a cópia como no recebimento).
+    if (messageId && buf.length <= 16 * 1024 * 1024) {
+      try { await repo.create("wa_media", { id: messageId, mime, size: buf.length, data: buf.toString("base64"), at: new Date().toISOString() }); }
+      catch { /* cache é bônus */ }
+    }
+    try { await closeThreadAlerts(repo, threadId(phone), req.authUser?.id || "cockpit"); } catch { /* não trava */ }
+    return { ok: true, messageId, kind };
+  });
+
   // Enviar pelo drawer do lead (resolve o telefone E o número do produto do lead).
   app.post("/api/leads/:id/whatsapp", async (req, reply) => {
     const lead = await repo.get("leads", req.params.id);
