@@ -38,7 +38,7 @@ const localToIso = (v) => {
 // Catálogo de atribuição e dor do criativo: helpers compartilhados com o
 // pipeline (lib/pains.js) — cache por SaaS no módulo.
 
-function LeadDetail({ lead: initial, onClose }) {
+function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   const { refresh, version } = useData();
   // Cópia local: as ações rápidas (etapa, próximo contato) editam aqui e
   // persistem otimisticamente; o pipeline ressincroniza no fechar (refresh).
@@ -663,13 +663,15 @@ function LeadDetail({ lead: initial, onClose }) {
             {/* Briefing de passagem em cima de tudo: é o que o integrador lê
                 primeiro quando abre o card que acabou de chegar nele. */}
             <IntegrationBriefCard brief={integrationBrief} phone={lead.phone}
+              onSend={onOpenWhatsapp ? (msg) => onOpenWhatsapp(lead, msg) : null}
               deal={{
                 amount: lead.amount, planClosed: lead.planClosed, paymentMethod: lead.paymentMethod,
                 integrationAt: lead.integrationAt, integrationCallUrl: lead.integrationCallUrl,
               }} />
             {/* Resumo da última call por IA em cima dos insights do estágio
                 (some quando o briefing já cobre a call de venda). */}
-            <CallSummaryCard summary={showCallSummary ? callSummary : null} phone={lead.phone} />
+            <CallSummaryCard summary={showCallSummary ? callSummary : null} phone={lead.phone}
+              onSend={onOpenWhatsapp ? (msg) => onOpenWhatsapp(lead, msg) : null} />
             <div style={{ ...box, background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
               <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 4 }}>Como se comportar</div>
               <div style={{ fontSize: 12, lineHeight: 1.45 }}>{script.resumo}</div>
@@ -740,10 +742,19 @@ function LeadDetail({ lead: initial, onClose }) {
 
         <div style={{ flexShrink: 0, padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", gap: 8, background: "var(--bg-inset)" }}>
           {wa ? (
-            <a href={wa} target="_blank" rel="noopener noreferrer" title={`WhatsApp · ${lead.phone}`}
-              style={{ flex: 1, textAlign: "center", padding: "10px 12px", background: "#25D366", color: "#06120c", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 700, textDecoration: "none" }}>
-              WhatsApp ↗
-            </a>
+            // Abre a conversa DENTRO do cockpit (inbox); sem o handler cai no
+            // deep-link do app.
+            onOpenWhatsapp ? (
+              <button onClick={() => onOpenWhatsapp(lead)} title={`Abrir a conversa no inbox · ${lead.phone}`}
+                style={{ flex: 1, textAlign: "center", padding: "10px 12px", background: "#25D366", color: "#06120c", border: "none", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
+                WhatsApp
+              </button>
+            ) : (
+              <a href={wa} target="_blank" rel="noopener noreferrer" title={`WhatsApp · ${lead.phone}`}
+                style={{ flex: 1, textAlign: "center", padding: "10px 12px", background: "#25D366", color: "#06120c", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 700, textDecoration: "none" }}>
+                WhatsApp ↗
+              </a>
+            )
           ) : (
             <span className="mono dim" style={{ flex: 1, textAlign: "center", padding: "10px 12px", fontSize: 12 }}>sem telefone cadastrado</span>
           )}

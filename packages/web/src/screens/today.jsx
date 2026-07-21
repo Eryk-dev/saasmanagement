@@ -738,7 +738,7 @@ export function CallSummaryCard({ summary, phone, onSend = null }) {
 // transcrição da call de VENDA quando o card entra em Integração). O integrador
 // não estava na call: aqui ele se localiza (quem é o cliente, o que foi
 // prometido) e vê o que fazer (confirmar, checklist, primeira mensagem).
-export function IntegrationBriefCard({ brief, phone, deal }) {
+export function IntegrationBriefCard({ brief, phone, deal, onSend = null }) {
   const [copied, setCopied] = useS(false);
   const [open, setOpen] = useS(true);
   if (!brief) return null;
@@ -819,7 +819,14 @@ export function IntegrationBriefCard({ brief, phone, deal }) {
               <div className="mono dim" style={{ ...kick, fontSize: 9.5, marginBottom: 3 }}>{meetUrl ? "Mensagem com o link da call" : "Mensagem pra marcar a call de vídeo"}</div>
               <div style={{ fontSize: 12, lineHeight: 1.5, whiteSpace: "pre-wrap", marginBottom: 6 }}>{msg}</div>
               <div style={{ display: "flex", gap: 6 }}>
-                {waHref && <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", background: "#25D366", color: "#06120c", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>enviar no WhatsApp ↗</a>}
+                {/* Com o inbox à mão (drawer no pipeline), o texto vai pra caixa
+                    de mensagem DAQUI; fora dele, segue pro app. */}
+                {onSend && msg ? (
+                  <button onClick={() => onSend(msg)} title="Abre a conversa no inbox com esta mensagem já escrita"
+                    style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", border: "none", background: "#25D366", color: "#06120c", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>enviar no WhatsApp</button>
+                ) : waHref && (
+                  <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", background: "#25D366", color: "#06120c", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>enviar no WhatsApp ↗</a>
+                )}
                 <button onClick={copy} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5 }}>{copied ? "copiado ✓" : "copiar"}</button>
               </div>
             </div>

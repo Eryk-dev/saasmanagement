@@ -254,7 +254,8 @@ function App() {
           cartão é dismissível (Fechar chama o onClose) e o resto do app segue. */}
       {leadSel && (
         <ErrorBoundary variant="modal" label="lead" resetKey={leadSel.id} onReset={() => setLeadSel(null)}>
-          <LeadDetail lead={leadSel} onClose={() => setLeadSel(null)} />
+          <LeadDetail lead={leadSel} onClose={() => setLeadSel(null)}
+            onOpenWhatsapp={(l, draft) => { setLeadSel(null); nav("whatsapp", { waLead: l.id, waThread: "", waDraft: draft || "" }); }} />
         </ErrorBoundary>
       )}
 
