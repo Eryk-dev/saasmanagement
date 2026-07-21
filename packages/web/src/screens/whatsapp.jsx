@@ -571,7 +571,8 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
                   ) : waWindowOpen(msgs) ? (
                     <>
                       <WaComposer templates={templates} apiRef={composerApi}
-                        onSend={(t) => api.waThreadSend(current.id, t).then(() => api.waThread(current.id).then((r) => setMsgs(r.messages || [])))} />
+                        onSend={(t) => api.waThreadSend(current.id, t).then(() => api.waThread(current.id).then((r) => setMsgs(r.messages || [])))}
+                        onSendMedia={(blob, opts) => api.waSendMedia(current.id, blob, opts).then(() => api.waThread(current.id).then((r) => setMsgs(r.messages || [])))} />
                       <div className="mono dim" style={{ fontSize: 9.5, marginTop: 5 }}>fora de 24h desde a última resposta do cliente, a Meta exige um template aprovado</div>
                     </>
                   ) : (

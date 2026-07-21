@@ -69,7 +69,8 @@ export function WhatsappChat({ lead, phone: phoneProp }) {
             <>
               <WaComposer disabled={!phone} placeholder={phone ? undefined : "sem telefone"}
                 templates={templates}
-                onSend={(t) => (lead?.phone ? api.sendWhatsapp(lead.id, t) : api.waThreadSend(tid, t)).then(refetch)} />
+                onSend={(t) => (lead?.phone ? api.sendWhatsapp(lead.id, t) : api.waThreadSend(tid, t)).then(refetch)}
+                onSendMedia={phone ? (blob, opts) => api.waSendMedia(tid, blob, opts).then(refetch) : undefined} />
               <div className="mono dim" style={{ fontSize: 9.5, marginTop: 5 }}>
                 fora de 24h desde a última resposta do cliente, a Meta exige um template aprovado
               </div>

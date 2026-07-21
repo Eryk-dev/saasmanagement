@@ -112,6 +112,25 @@ export const api = {
   // Vincula (ou desvincula, com leadId vazio) uma conversa órfã a um lead.
   waLinkThread: (id, leadId) => req("POST", `/api/whatsapp/threads/${id}/link`, { leadId }),
   waThreadSend: (id, text) => req("POST", `/api/whatsapp/threads/${id}/send`, { text }),
+  // Enviar mídia (áudio de voz, imagem, documento) pela conversa: sobe o
+  // arquivo, o servidor manda pelo WhatsApp e devolve o id da mensagem.
+  waSendMedia: async (threadId, blob, { filename = "audio.ogg", caption = "" } = {}) => {
+    const fd = new FormData();
+    fd.append("file", blob, filename);
+    if (caption) fd.append("caption", caption);
+    const key = getKey();
+    const res = await fetch(`${BASE}/api/whatsapp/threads/${encodeURIComponent(threadId)}/media`, {
+      method: "POST", headers: key ? { "x-api-key": key } : {}, body: fd,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      let msg = text; try { msg = JSON.parse(text).error || text; } catch { /* texto cru */ }
+      const err = new Error(String(msg).slice(0, 240) || `envio de mídia -> ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    return res.json();
+  },
   // Mídia recebida (áudio/imagem/…): baixa o binário autenticado (a Graph só
   // entrega com token) e devolve um Blob pra tocar/exibir via object URL.
   waMedia: async (msgId) => {
