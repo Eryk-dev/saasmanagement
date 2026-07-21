@@ -42,7 +42,7 @@ const ACTION_LABELS = {
 // próprio, com os atalhos da chamada junto).
 const PROPOSAL_KINDS = new Set(["proposta", "followup"]);
 
-const TIER_ORDER = { alto: 3, medio: 2, baixo: 1, sem: 0 };
+const TIER_ORDER = { A: 5, B: 4, C: 3, D: 2, E: 1, sem: 0 };
 
 // Ordem de atendimento dentro de cada dia (Leo, jul/2026): confirmar call (o
 // mais time-sensitive) e horário marcado primeiro; novos e no-show (leads

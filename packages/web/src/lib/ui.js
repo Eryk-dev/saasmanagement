@@ -24,17 +24,30 @@ const TIER_LISTINGS = { "0-100": 0, "100-500": 1, "500-2000": 2, "2000-10000": 3
 const TIER_VOLUME = { "0-10": 0, "10-50": 1, "50-200": 2, "200+": 3 }; // legado (anúncios novos/semana)
 // Cores próprias (não os tokens semânticos) pra separação clara à distância:
 // tone = preenchimentos (badge/tinta do card); ink = variante escura pra texto.
+// 5 níveis (A maior … E menor), gradiente verde→cinza. `key` = a própria letra
+// (o TIER_ORDER do Meu dia ordena por ela; "sem" = lead que não respondeu).
 export const GRADE_STYLE = {
-  A: { key: "alto", grade: "A", label: "cliente A", tone: "#16a34a", ink: "#15803d", badgeFg: "#fff" },
-  B: { key: "medio", grade: "B", label: "cliente B", tone: "#eab308", ink: "#a16207", badgeFg: "#463500" },
-  C: { key: "baixo", grade: "C", label: "cliente C", tone: "#9aa2ad", ink: "#5b6472", badgeFg: "#fff" },
+  A: { key: "A", grade: "A", label: "cliente A", tone: "#16a34a", ink: "#15803d", badgeFg: "#fff" },
+  B: { key: "B", grade: "B", label: "cliente B", tone: "#65a30d", ink: "#4d7c0f", badgeFg: "#fff" },
+  C: { key: "C", grade: "C", label: "cliente C", tone: "#eab308", ink: "#a16207", badgeFg: "#463500" },
+  D: { key: "D", grade: "D", label: "cliente D", tone: "#ea580c", ink: "#c2410c", badgeFg: "#fff" },
+  E: { key: "E", grade: "E", label: "cliente E", tone: "#9aa2ad", ink: "#5b6472", badgeFg: "#fff" },
 };
+// Matriz de qualidade (contas × anúncios), seletiva, definida com o Leo em
+// 21/07 — o valor da LeverAds é amplitude (contas pra replicar) × profundidade
+// (anúncios). Por isso 1 conta tem teto D (não há pra onde replicar) e A exige
+// escala nos dois eixos. `s` = pontos de contas + pontos de anúncios (0–8).
+// A API espelha em leadGrade() (routes.marketing.js) — mudou aqui, muda lá.
 export function leadTier(l) {
+  const accKnown = l?.accounts != null && l.accounts !== "";
   const acc = TIER_ACCOUNTS[l?.accounts];
   const ads = l?.listings != null && l.listings !== "" ? TIER_LISTINGS[l.listings] : TIER_VOLUME[l?.volume];
   if (acc == null && ads == null) return { key: "sem", grade: null, label: "sem qualificação", tone: "var(--line-strong)", ink: "var(--fg-3)", badgeFg: "#fff" };
-  const pts = (acc ?? 0) + (ads ?? 0);
-  return GRADE_STYLE[pts >= 5 ? "A" : pts >= 2 ? "B" : "C"];
+  const a = acc ?? 0, li = ads ?? 0;
+  // 1 conta: E só no catálogo mínimo (0-100), senão D.
+  if (accKnown && l.accounts === "1") return GRADE_STYLE[li >= 1 ? "D" : "E"];
+  const s = a + li;
+  return GRADE_STYLE[s >= 6 ? "A" : s >= 4 ? "B" : s >= 2 ? "C" : "D"];
 }
 
 // Lead score helpers — score é numérico 0–100; cor e rótulo vêm por banda.
