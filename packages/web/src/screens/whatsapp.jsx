@@ -137,10 +137,12 @@ function WaTopStats({ numInfo, stats }) {
             `${stats.form.formStarted}/${stats.form.formLeads} · ${Math.round((stats.form.formStarted / stats.form.formLeads) * 100)}%`,
             null,
           )}
-          {/* Custo real das conversas (conversation_analytics da conta, BRL). */}
+          {/* Custo real do período (pricing_analytics da conta, cobrança por
+              mensagem desde 01/07/2025, na moeda da conta). Serviço dentro da
+              janela de 24h é grátis; o que pesa são os templates. */}
           {stats.costs && stats.costs.cost != null && item(
             `Custo · ${stats.days}d`,
-            `${window.fmt?.money ? window.fmt.money(stats.costs.cost) : `R$ ${stats.costs.cost}`}${stats.costs.conversations ? ` · ${stats.costs.conversations} conv.` : ""}`,
+            `${window.fmt?.money ? window.fmt.money(stats.costs.cost) : `R$ ${stats.costs.cost}`}${stats.costs.messages ? ` · ${stats.costs.messages} msg` : ""}`,
           )}
         </>
       ) : (
