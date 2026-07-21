@@ -468,11 +468,29 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
       },
     }));
   const events = leads
-    .flatMap(l => [
-      l.callAt ? { l, t: new Date(l.callAt), kind: "call", who: l.closer } : null,
-      l.integrationAt ? { l, t: new Date(l.integrationAt), kind: "integração", who: l.integrator || l.closer } : null,
-      showTouches && l.nextActionAt ? { l, t: new Date(l.nextActionAt), kind: "toque", who: l.owner || l.closer } : null,
-    ])
+    .flatMap(l => {
+      const k = stageKind(saasCfgOf(l), l.stage);
+      const out = [];
+      // Follow-up é COMPROMISSO agendado (a pessoa marcou "retomar dia X às Y",
+      // com nota): o compromisso vive no nextActionAt e aparece SEMPRE na
+      // agenda. Antes só entrava com "mostrar toques" ligado, e quando o
+      // follow-up era marcado pelo drawer (só nextActionAt, sem callAt) sumia —
+      // foi o caso da Laura. Toque de CADÊNCIA (novo/contato/qualificação) segue
+      // opcional pelo toggle, senão a agenda vira lista de GPS.
+      if (l.nextActionAt && k === "followup") {
+        out.push({ l, t: new Date(l.nextActionAt), kind: "follow-up", who: l.closer || l.owner });
+      } else if (l.nextActionAt && showTouches) {
+        out.push({ l, t: new Date(l.nextActionAt), kind: "toque", who: l.owner || l.closer });
+      }
+      // Call marcada. Quando o roteiro grava callAt = nextActionAt no follow-up,
+      // não duplica (o bloco de follow-up acima já cobre esse horário).
+      const naSame = l.callAt && l.nextActionAt && new Date(l.callAt).getTime() === new Date(l.nextActionAt).getTime();
+      if (l.callAt && !(k === "followup" && naSame)) {
+        out.push({ l, t: new Date(l.callAt), kind: "call", who: l.closer });
+      }
+      if (l.integrationAt) out.push({ l, t: new Date(l.integrationAt), kind: "integração", who: l.integrator || l.closer });
+      return out;
+    })
     .concat(consultEvents)
     .filter(e => e && Number.isFinite(e.t.getTime()) && e.t >= monday && e.t < end)
     .filter(e => !person || e.who === person);
@@ -502,7 +520,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
     return { placed, lanes: Math.max(1, laneEnds.length) };
   };
 
-  const calls = events.filter(e => e.kind !== "toque").length;
+  const calls = events.filter(e => e.kind === "call" || e.kind === "integração" || e.kind === "consulta").length;
 
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
@@ -617,9 +635,9 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                 {placed.map(({ l, t, lane, kind, who }) => {
                   const tone = toneOf(who);
                   const isTouch = kind === "toque";
-                  // Follow-up (lead em estágio de kind followup): ocupa só 20 min na
-                  // agenda e vem com fundo ESCURO + letra clara, pra destacar da call.
-                  const isFollowup = kind === "call" && stageKind(saasCfgOf(l), l.stage) === "followup";
+                  // Follow-up: ocupa 20 min na agenda, fundo ESCURO + letra clara
+                  // pra destacar da call. Agora o kind já vem explícito ("follow-up").
+                  const isFollowup = kind === "follow-up";
                   const hour = Math.min(H1 - 1, Math.max(H0, t.getHours() + t.getMinutes() / 60));
                   const w = 100 / lanes;
                   const timeStr = t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
