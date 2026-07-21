@@ -478,7 +478,7 @@ function LeadDetail({ lead: initial, onClose }) {
                               const e2 = await api.endMeet(lead.id, "call");
                               window.alert(e2.ended
                                 ? "Sala encerrada ✓ A transcrição leva alguns minutos; o cockpit resume sozinho (ou clique de novo em resumir)."
-                                : "Não havia conferência ativa nessa sala. Então a transcrição não foi gerada na call: confira se a gravação/transcrição estava ligada.");
+                                : "A sala já não tinha ninguém (a call fechou). Se a transcrição estava ligada, ela sai em alguns minutos e o cockpit resume sozinho — senão, confirme que a transcrição estava ligada no Meet.");
                             } catch (e3) { window.alert(e3.message || "Não deu pra encerrar a sala."); }
                           }
                         } else if (r.reason === "not_connected") {
@@ -635,7 +635,7 @@ function LeadDetail({ lead: initial, onClose }) {
                                   const e2 = await api.endMeet(lead.id, "integracao");
                                   window.alert(e2.ended
                                     ? "Sala encerrada ✓ A transcrição leva alguns minutos; o cockpit resume sozinho (ou clique de novo em resumir)."
-                                    : "Não havia conferência ativa nessa sala. Então a transcrição não foi gerada na call: confira se a gravação/transcrição estava ligada.");
+                                    : "A sala já não tinha ninguém (a call fechou). Se a transcrição estava ligada, ela sai em alguns minutos e o cockpit resume sozinho — senão, confirme que a transcrição estava ligada no Meet.");
                                 } catch (e3) { window.alert(e3.message || "Não deu pra encerrar a sala."); }
                               }
                             }

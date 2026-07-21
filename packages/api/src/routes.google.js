@@ -235,7 +235,10 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
       const r = await client.endActiveConference(code);
       return { ok: true, ...r };
     } catch (err) {
-      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+      // 422, NUNCA 5xx: o proxy da hospedagem troca o corpo de qualquer 5xx
+      // pela página de erro dele (HTML "Not Found"), e aí o motivo real da Meta
+      // não chega a quem clicou. Mesmo tratamento das rotas de WhatsApp.
+      return reply.code(422).send({ error: String(err.message || err).slice(0, 300) });
     }
   });
 

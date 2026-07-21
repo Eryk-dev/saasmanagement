@@ -208,13 +208,24 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
   // Custo REAL das conversas no período (conversation_analytics da conta):
   // a Meta cobra por conversa de 24h; `cost` volta na moeda da conta (BRL).
   // start/end em SEGUNDOS unix. Soma todos os pontos da janela.
+  // Custo real do período. A Meta trocou a cobrança de POR CONVERSA pra POR
+  // MENSAGEM em 01/07/2025 e DESCONTINUOU o `conversation_analytics` (COST) —
+  // ele passou a devolver 0 (era por isso que a faixa mostrava "R$ 0"). O
+  // custo real agora sai do `pricing_analytics` (COST + VOLUME por mensagem
+  // entregue). Mesmo somatório, campo novo. Resposta ainda não conferida com a
+  // Graph real (sem token local) — o shape segue o padrão do analytics antigo.
   async function conversationCosts(wabaId, { start, end }) {
-    const field = `conversation_analytics.start(${start}).end(${end}).granularity(MONTHLY).metric_types(["COST","CONVERSATION"])`;
+    const field = `pricing_analytics.start(${start}).end(${end}).granularity(DAILY).metric_types(["COST","VOLUME"])`;
     const body = await get(`${wabaId}?fields=${encodeURIComponent(field)}`);
-    const points = (body.conversation_analytics?.data || []).flatMap((d) => d.data_points || []);
-    let cost = 0, conversations = 0;
-    for (const p of points) { cost += Number(p.cost) || 0; conversations += Number(p.conversation) || 0; }
-    return { cost: Math.round(cost * 100) / 100, conversations };
+    const points = (body.pricing_analytics?.data || []).flatMap((d) => d.data_points || []);
+    let cost = 0, messages = 0;
+    for (const p of points) {
+      cost += Number(p.cost) || 0;
+      // volume = mensagens cobráveis no modelo novo; nomes alternativos por
+      // segurança até o shape real estar confirmado em produção.
+      messages += Number(p.volume ?? p.message_count ?? p.messages) || 0;
+    }
+    return { cost: Math.round(cost * 100) / 100, messages, model: "PMP" };
   }
 
   // WABAs que o token enxerga (fallback pra achar o id da conta quando nenhum
