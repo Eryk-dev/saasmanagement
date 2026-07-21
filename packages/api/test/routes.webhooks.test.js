@@ -135,3 +135,38 @@ test("ignora tópicos que não são de pedido (200, sem lead)", async () => {
   assert.equal((await repo.list("leads")).length, 0);
   await app.close();
 });
+
+// Poller de reconciliação (rede de segurança do webhook): puxa os pedidos pagos
+// da Shopify e preenche os leads que faltam. Foi construído porque o webhook
+// orders/paid ficou 8 dias sem entregar (nenhum lead novo desde o backfill de
+// 13/07). Cobre: só "tarefas diárias" entra, dedup por order id, data do PEDIDO.
+test("startShopifySync: backfill dos pedidos que o webhook perdeu, com dedup e gatilho", async () => {
+  const { startShopifySync } = await import("../src/routes.webhooks.js");
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "uniquekids", name: "UniqueKids", funnel: [{ stage: "Novo lead", kind: "novo" }] });
+  await repo.create("users", { id: "ana", name: "Ana", saas: "uniquekids", roles: ["closer"] });
+  // Já existe um lead do pedido 1001 (o webhook pegou esse) — não pode duplicar.
+  await repo.create("leads", { id: "le_shp1001", saas: "uniquekids", shopifyOrderId: "1001", stage: "Novo lead", createdAt: "2026-07-13T18:00:00Z" });
+
+  const orders = [
+    { id: 1001, created_at: "2026-07-13T18:00:00Z", customer: { first_name: "Maria" }, line_items: [{ title: "Quadro Tarefas Diárias" }], phone: "11999990000" },
+    { id: 1002, created_at: "2026-07-15T10:00:00Z", customer: { first_name: "Joana" }, line_items: [{ title: "Tarefas Diárias + Bônus" }], shipping_address: { phone: "11988887777" } },
+    { id: 1003, created_at: "2026-07-16T12:00:00Z", customer: { first_name: "Caneca" }, line_items: [{ title: "Caneca personalizada" }] }, // NÃO é tarefas diárias
+  ];
+  const shopify = { configured: () => true, paidOrdersSince: async () => orders };
+
+  const stop = startShopifySync(repo, { shopify, intervalMs: 1e9, log: { info() {}, warn() {} } });
+  await new Promise((r) => setTimeout(r, 50)); // deixa o tick do boot rodar
+  stop();
+
+  const leads = await repo.list("leads");
+  const kids = leads.filter((l) => l.saas === "uniquekids");
+  assert.equal(kids.length, 2, "1001 (dedup) + 1002 (novo); 1003 não é gatilho");
+  const novo = kids.find((l) => l.shopifyOrderId === "1002");
+  assert.ok(novo, "pedido 1002 virou lead");
+  assert.equal(novo.name, "Joana");
+  assert.equal(novo.phone, "11988887777");
+  assert.equal(novo.closer, "ana");
+  assert.equal(novo.createdAt, "2026-07-15T10:00:00Z", "usa a data do PEDIDO, não 'agora'");
+  assert.ok(!leads.some((l) => l.shopifyOrderId === "1003"), "caneca não entra");
+});
