@@ -124,6 +124,73 @@ function waShareProposal(label, url) {
   return `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
 }
 
+// Agrupa as propostas de envio por linha de produto (CLONE / CLONE+OEM / OEM),
+// mantendo a ordem em que chegam. Laço simples de propósito: um `[...new Set()]`
+// inline no JSX foi minificado pelo build do deploy num TDZ ("Cannot access 'q'
+// before initialization") que derrubava a tela; código plano evita isso.
+function groupSendReady(items) {
+  const groups = [];
+  const byKey = {};
+  for (const p of items || []) {
+    const key = p.sendGroup || "";
+    if (!byKey[key]) { byKey[key] = { group: key, items: [] }; groups.push(byKey[key]); }
+    byKey[key].items.push(p);
+  }
+  return groups;
+}
+
+const sendBtn = {
+  height: 32, padding: "0 13px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
+  display: "inline-flex", alignItems: "center", textDecoration: "none", boxShadow: "var(--shadow-1)",
+  border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)",
+};
+
+// Card de UMA proposta pronta pra enviar. Componente próprio (não JSX aninhado
+// no ProposalsScreen) — escopo simples e minificação previsível.
+function SendProposalCard({ proposal, copied, onCopy }) {
+  const url = `${publicBase()}/p/${proposal.id}`;
+  const isCopied = copied === proposal.id;
+  return (
+    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-inset)", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{proposal.name}</div>
+        {proposal.sendPrice ? <div className="tnum" style={{ fontSize: 12.5, color: "var(--accent)", marginTop: 2 }}>{proposal.sendPrice}</div> : null}
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button onClick={() => onCopy(url, proposal.id)}
+          style={{ ...sendBtn, border: "1px solid transparent", cursor: "pointer", background: isCopied ? "var(--pos-soft)" : "var(--btn-bg)", color: isCopied ? "var(--pos)" : "var(--btn-fg)" }}>
+          {isCopied ? "✓ copiado" : "Copiar"}
+        </button>
+        <a href={url} target="_blank" rel="noopener noreferrer" style={sendBtn}>Abrir ↗</a>
+        <a href={waShareProposal(proposal.name, url)} target="_blank" rel="noopener noreferrer" style={sendBtn}>WhatsApp ↗</a>
+      </div>
+    </div>
+  );
+}
+
+// Seção "Prontas pra enviar": propostas de envio (preço revelado) agrupadas por
+// linha de produto, com Copiar / Abrir / WhatsApp. Toda a lógica fica aqui, num
+// componente de escopo simples.
+function ReadyToSendSection({ items, copied, onCopy }) {
+  const groups = groupSendReady(items);
+  return (
+    <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px 24px 24px" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
+        <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em" }}>Prontas pra enviar</h3>
+        <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>preço já revelado, sem edição · copie e mande depois da call</span>
+      </div>
+      {groups.map((g) => (
+        <div key={g.group || "_"} style={{ marginTop: 16 }}>
+          {g.group ? <div className="mono" style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 8 }}>{g.group}</div> : null}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))", gap: 12 }}>
+            {g.items.map((p) => <SendProposalCard key={p.id} proposal={p} copied={copied} onCopy={onCopy} />)}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 function ProposalsScreen({ saasId }) {
   const { SAAS } = window.SEED;
   const { version } = useData();
@@ -249,43 +316,7 @@ function ProposalsScreen({ saasId }) {
 
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         {tab === "templates" && sendReady.length > 0 && (
-          <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px 24px 24px" }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
-              <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em" }}>Prontas pra enviar</h3>
-              <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>preço já revelado, sem edição · copie e mande depois da call</span>
-            </div>
-            {/* Uma por oferta, agrupada pela linha de produto (CLONE / CLONE+OEM /
-                OEM), na mesma ordem dos links de pagamento. */}
-            {[...new Set(sendReady.map((p) => p.sendGroup || ""))].map((grupo) => (
-              <div key={grupo || "_"} style={{ marginTop: 16 }}>
-                {grupo && <div className="mono" style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 8 }}>{grupo}</div>}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))", gap: 12 }}>
-                  {sendReady.filter((p) => (p.sendGroup || "") === grupo).map((p) => {
-                    const url = `${publicBase()}/p/${p.id}`;
-                    const isCopied = copied === p.id;
-                    return (
-                      <div key={p.id} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-inset)", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
-                          {p.sendPrice && <div className="tnum" style={{ fontSize: 12.5, color: "var(--accent)", marginTop: 2 }}>{p.sendPrice}</div>}
-                        </div>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          <button onClick={() => copyLink(url, p.id)}
-                            style={{ height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid transparent", fontSize: 12.5, fontWeight: 600, cursor: "pointer", boxShadow: "var(--shadow-1)", background: isCopied ? "var(--pos-soft)" : "var(--btn-bg)", color: isCopied ? "var(--pos)" : "var(--btn-fg)" }}>
-                            {isCopied ? "✓ copiado" : "Copiar"}
-                          </button>
-                          <a href={url} target="_blank" rel="noopener noreferrer"
-                            style={{ height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", textDecoration: "none", boxShadow: "var(--shadow-1)" }}>Abrir ↗</a>
-                          <a href={waShareProposal(p.name, url)} target="_blank" rel="noopener noreferrer"
-                            style={{ height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", textDecoration: "none", boxShadow: "var(--shadow-1)" }}>WhatsApp ↗</a>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </section>
+          <ReadyToSendSection items={sendReady} copied={copied} onCopy={copyLink} />
         )}
 
         {tab === "templates" && (!templates.length ? (
