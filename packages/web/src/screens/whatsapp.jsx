@@ -138,11 +138,13 @@ function WaTopStats({ numInfo, stats }) {
             null,
           )}
           {/* Custo real do período (pricing_analytics da conta, cobrança por
-              mensagem desde 01/07/2025, na moeda da conta). Serviço dentro da
-              janela de 24h é grátis; o que pesa são os templates. */}
+              mensagem desde 01/07/2025). Serviço dentro da janela de 24h é
+              grátis; o que pesa são os templates. Valores em centavos (fmt.money
+              arredonda pra real inteiro e escondia o R$0,42), então formata com
+              centavos aqui. */}
           {stats.costs && stats.costs.cost != null && item(
             `Custo · ${stats.days}d`,
-            `${window.fmt?.money ? window.fmt.money(stats.costs.cost) : `R$ ${stats.costs.cost}`}${stats.costs.messages ? ` · ${stats.costs.messages} msg` : ""}`,
+            `${Number(stats.costs.cost).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}${stats.costs.messages ? ` · ${stats.costs.messages} msg` : ""}`,
           )}
         </>
       ) : (
