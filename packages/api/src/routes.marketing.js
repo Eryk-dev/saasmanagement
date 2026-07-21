@@ -40,21 +40,24 @@ export function painCode(adName) {
 
 // Cliente A/B/C/D/E — a MESMA régua do leadTier() da web (packages/web/src/lib/
 // ui.js, mantê-las iguais): matriz CONTAS × ANÚNCIOS (listings; `volume` é o
-// legado semanal). 5 níveis (A maior … E menor): 1 conta tem teto D (nada pra
-// replicar); senão s = pontos de contas + anúncios, A ≥6 · B ≥4 · C ≥2 · D
-// resto. Lead sem nenhuma resposta fica de fora (null).
+// legado semanal), TABELA DE CONSULTA redesenhada pelo Leo em 21/07 (não
+// fórmula, pra bater exato). Lead sem nenhuma resposta fica de fora (null).
 const GRADE_ACCOUNTS = { "1": 0, "2": 1, "3-5": 2, "6-10": 3, "10+": 4 };
 const GRADE_LISTINGS = { "0-100": 0, "100-500": 1, "500-2000": 2, "2000-10000": 3, "10000+": 4 };
 const GRADE_VOLUME = { "0-10": 0, "10-50": 1, "50-200": 2, "200+": 3 };
+//        ≤100 100-500 500-2k 2-10k 10k+
+const GRADE_GRID = [
+  ["E", "D", "D", "C", "C"], // 1 conta
+  ["D", "C", "C", "B", "B"], // 2 contas
+  ["C", "B", "B", "A", "A"], // 3-5 contas
+  ["B", "B", "A", "A", "A"], // 6-10 contas
+  ["A", "A", "A", "A", "A"], // 10+ contas
+];
 export function leadGrade(l) {
-  const accKnown = l?.accounts != null && l.accounts !== "";
   const acc = GRADE_ACCOUNTS[l?.accounts];
   const ads = l?.listings != null && l.listings !== "" ? GRADE_LISTINGS[l.listings] : GRADE_VOLUME[l?.volume];
   if (acc == null && ads == null) return null;
-  const a = acc ?? 0, li = ads ?? 0;
-  if (accKnown && l.accounts === "1") return li >= 1 ? "D" : "E";
-  const s = a + li;
-  return s >= 6 ? "A" : s >= 4 ? "B" : s >= 2 ? "C" : "D";
+  return GRADE_GRID[acc ?? 0][ads ?? 0];
 }
 const GRADES = ["A", "B", "C", "D", "E"];
 const gradeCounts = (leads) => {

@@ -633,23 +633,20 @@ test("placements: breakdown com CPL/CPM da Meta, ordenado por spend, com cache",
   await app.close();
 });
 
-test("leadGrade: matriz de 5 níveis (contas × anúncios) + teto de 1 conta", () => {
+test("leadGrade: matriz de 5 níveis (tabela contas × anúncios, redesenho 21/07)", () => {
   const g = (accounts, listings) => leadGrade({ accounts, listings });
-  // 1 conta: teto D; E só no catálogo mínimo.
-  assert.equal(g("1", "0-100"), "E");
-  assert.equal(g("1", "100-500"), "D");
-  assert.equal(g("1", "10000+"), "D"); // 1 conta nunca passa de D
-  // 2 contas: 100-500 = C, 500-2000 = C, 2000-10000 = B, 10000+ = B (A só com escala real)
-  assert.equal(g("2", "0-100"), "D");
-  assert.equal(g("2", "100-500"), "C");
-  assert.equal(g("2", "2000-10000"), "B");
-  assert.equal(g("2", "10000+"), "B");
-  // 3-5 contas: só chega em A com 10000+
-  assert.equal(g("3-5", "500-2000"), "B");
-  assert.equal(g("3-5", "10000+"), "A");
-  // 10+ contas: A já em 500-2000
-  assert.equal(g("10+", "0-100"), "B");
-  assert.equal(g("10+", "500-2000"), "A");
+  // Matriz completa (linha = contas, coluna = anúncios) — bate com o desenho do Leo.
+  const GRID = {
+    "1":    ["E", "D", "D", "C", "C"],
+    "2":    ["D", "C", "C", "B", "B"],
+    "3-5":  ["C", "B", "B", "A", "A"],
+    "6-10": ["B", "B", "A", "A", "A"],
+    "10+":  ["A", "A", "A", "A", "A"],
+  };
+  const cols = ["0-100", "100-500", "500-2000", "2000-10000", "10000+"];
+  for (const [acc, row] of Object.entries(GRID)) {
+    row.forEach((expected, j) => assert.equal(g(acc, cols[j]), expected, `${acc} × ${cols[j]}`));
+  }
   // sem nenhuma resposta = fora (null)
   assert.equal(g(undefined, undefined), null);
 });
