@@ -123,6 +123,30 @@ test("POST /:id/meet: cria o Meet no horário, convida o cliente e grava referê
   await app.close();
 });
 
+test("POST /:id/meet: e-mail DIGITADO na consulta vence o do cadastro do cliente", async () => {
+  const repo = makeMemRepo();
+  await repo.create("customers", { id: "cu1", email: "mae@gmail.com" });
+  // a Ana preencheu o e-mail do convite direto na consulta (ex.: o pai)
+  await repo.create("consultations", { id: "cs1", clientName: "Mariana", customerId: "cu1", clientEmail: "pai@gmail.com", n: 1, at: "2026-07-20T15:00", durationMin: 60, status: "scheduled", owner: "ana" });
+  const app = await appWith(repo);
+
+  const body = (await app.inject({ method: "POST", url: "/api/consultations/cs1/meet" })).json();
+  assert.deepEqual(body.attendees, ["pai@gmail.com"]); // o da consulta vence
+  await app.close();
+});
+
+test("POST /:id/meet: sem e-mail em lugar nenhum → Meet criado sem convidado", async () => {
+  const repo = makeMemRepo();
+  await repo.create("customers", { id: "cu1" }); // cliente sem e-mail
+  await repo.create("consultations", { id: "cs1", clientName: "Mariana", customerId: "cu1", n: 1, at: "2026-07-20T15:00", durationMin: 60, status: "scheduled", owner: "ana" });
+  const app = await appWith(repo);
+
+  const body = (await app.inject({ method: "POST", url: "/api/consultations/cs1/meet" })).json();
+  assert.equal(body.ok, true);
+  assert.deepEqual(body.attendees, []); // Meet criado, mas ninguém convidado
+  await app.close();
+});
+
 test("POST /:id/meet: sem horário → 400; consulta inexistente → 404", async () => {
   const repo = makeMemRepo();
   await repo.create("consultations", { id: "cs1", clientName: "M", n: 1, at: "", status: "scheduled" });
