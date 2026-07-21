@@ -88,7 +88,7 @@ export async function linkThreadToLead(repo, tid, lead) {
 // Grava uma mensagem e atualiza o thread. Idempotente por id (a Meta re-entrega
 // o webhook). Resolve o lead pelo telefone se leadId não veio. Retorna o id da
 // mensagem, ou null se foi deduplicada.
-export async function recordMessage(repo, { id, phone, direction, text = "", at, status = "", from = "", author = "", leadId, saas, contactName = "", waPhoneId = "", saasHint = "" }) {
+export async function recordMessage(repo, { id, phone, direction, text = "", at, status = "", from = "", author = "", leadId, saas, contactName = "", waPhoneId = "", saasHint = "", media = null }) {
   const tid = digits(phone || from);
   if (!tid) return null;
   const msgId = id || "wm_" + randomUUID();
@@ -120,6 +120,10 @@ export async function recordMessage(repo, { id, phone, direction, text = "", at,
     id: msgId, thread: tid, leadId: lid, saas: sa, direction, text,
     at: when, status, from: from || (direction === "in" ? tid : ""), author, readByAgent: direction === "out",
     ...(waPhoneId ? { waPhoneId } : {}),
+    // Mídia (áudio/imagem/vídeo/documento): guarda o id da Meta pra baixar sob
+    // demanda no player (a Graph só entrega o binário com o token; ver a rota
+    // /api/whatsapp/media/:id). `kind`/`mime`/`filename` bastam pra UI decidir.
+    ...(media && media.id ? { media: { kind: media.kind || "", id: String(media.id), mime: media.mime || "", filename: media.filename || "" } } : {}),
   });
 
   const prev = await repo.get("wa_threads", tid);

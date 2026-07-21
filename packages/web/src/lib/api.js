@@ -112,6 +112,19 @@ export const api = {
   // Vincula (ou desvincula, com leadId vazio) uma conversa órfã a um lead.
   waLinkThread: (id, leadId) => req("POST", `/api/whatsapp/threads/${id}/link`, { leadId }),
   waThreadSend: (id, text) => req("POST", `/api/whatsapp/threads/${id}/send`, { text }),
+  // Mídia recebida (áudio/imagem/…): baixa o binário autenticado (a Graph só
+  // entrega com token) e devolve um Blob pra tocar/exibir via object URL.
+  waMedia: async (msgId) => {
+    const key = getKey();
+    const res = await fetch(`${BASE}/api/whatsapp/media/${encodeURIComponent(msgId)}`, { headers: key ? { "x-api-key": key } : {} });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      const err = new Error(text.slice(0, 200) || `mídia -> ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    return res.blob();
+  },
   // Templates APROVADOS na Meta + envio de um deles (o único jeito de reabrir
   // conversa fora da janela de 24h). params = valores das variáveis {{1}}…{{N}}.
   waMetaTemplates: () => req("GET", "/api/whatsapp/templates"),

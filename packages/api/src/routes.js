@@ -53,7 +53,7 @@ import { registerPipelinePaceRoutes } from "./routes.pipeline-pace.js";
 // wa_threads/wa_messages ficam FORA do CRUD genérico: o inbox usa as rotas
 // dedicadas (/api/whatsapp/*, gateadas), então o texto das conversas não vaza
 // pra qualquer usuário autenticado via /api/wa_messages.
-const PRIVATE = new Set(["users", "sessions", "wa_threads", "wa_messages"]);
+const PRIVATE = new Set(["users", "sessions", "wa_threads", "wa_messages", "wa_media"]);
 const isExposed = (c) => COLLECTION_NAMES.includes(c) && !PRIVATE.has(c);
 
 // Collections external SaaS are allowed to write to via REST/MCP.
