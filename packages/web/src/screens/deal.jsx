@@ -742,19 +742,21 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
 
         <div style={{ flexShrink: 0, padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", gap: 8, background: "var(--bg-inset)" }}>
           {wa ? (
-            // Abre a conversa DENTRO do cockpit (inbox); sem o handler cai no
-            // deep-link do app.
-            onOpenWhatsapp ? (
-              <button onClick={() => onOpenWhatsapp(lead)} title={`Abrir a conversa no inbox · ${lead.phone}`}
-                style={{ flex: 1, textAlign: "center", padding: "10px 12px", background: "#25D366", color: "#06120c", border: "none", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
-                WhatsApp
-              </button>
-            ) : (
-              <a href={wa} target="_blank" rel="noopener noreferrer" title={`WhatsApp · ${lead.phone}`}
-                style={{ flex: 1, textAlign: "center", padding: "10px 12px", background: "#25D366", color: "#06120c", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 700, textDecoration: "none" }}>
-                WhatsApp ↗
+            // Dois caminhos: o VERDE sólido abre a conversa no INBOX do cockpit
+            // (responder daqui, com histórico); o de contorno abre no WhatsApp
+            // Web/app pra quem prefere atender por lá.
+            <>
+              {onOpenWhatsapp && (
+                <button onClick={() => onOpenWhatsapp(lead)} title={`Abrir a conversa no inbox do cockpit · ${lead.phone}`}
+                  style={{ flex: 1, textAlign: "center", padding: "10px 12px", background: "#25D366", color: "#06120c", border: "none", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
+                  WhatsApp no cockpit
+                </button>
+              )}
+              <a href={wa} target="_blank" rel="noopener noreferrer" title={`Abrir no WhatsApp Web/app · ${lead.phone}`}
+                style={{ flex: onOpenWhatsapp ? "0 1 auto" : 1, textAlign: "center", padding: "10px 14px", background: onOpenWhatsapp ? "var(--bg-1)" : "#25D366", color: onOpenWhatsapp ? "var(--fg-2)" : "#06120c", border: onOpenWhatsapp ? "1px solid var(--line-2)" : "none", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: onOpenWhatsapp ? 600 : 700, textDecoration: "none", whiteSpace: "nowrap" }}>
+                {onOpenWhatsapp ? "Web ↗" : "WhatsApp ↗"}
               </a>
-            )
+            </>
           ) : (
             <span className="mono dim" style={{ flex: 1, textAlign: "center", padding: "10px 12px", fontSize: 12 }}>sem telefone cadastrado</span>
           )}
