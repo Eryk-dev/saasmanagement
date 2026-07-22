@@ -83,7 +83,36 @@ export const topPerformer = (people) => [...people].sort((a, b) => ((b.closer?.r
 // closer mostra o topo (agendamento) e o fundo (receita) do funil; um CS que
 // também fecha mostra os dois lados pra nenhum sumir. bizDays = dias ÚTEIS da
 // janela (as metas absolutas não contam fim de semana).
+// O cartão de cada pessoa mostra AS METAS DA VAGA DELA (as mesmas da tela
+// Metas), com o realizado no período. A lista vem do servidor já com a parte de
+// cada um (a meta de vaga é do time e o placar reparte), então aqui só resta
+// formatar e reescalar a meta do MÊS pros dias úteis da janela — e só a de
+// FLUXO: taxa é proporção, ticket é média e contas ativas é saldo.
+function targetMetric(t, bizDays, p) {
+  const rate = t.unit === "%";
+  let target = t.kind === "flow" ? scaledGoal({ target: t.target, period: t.period }, bizDays) : t.target;
+  // Sem meta configurada de calls agendadas, cai no alvo dinâmico (leads da
+  // janela anterior × taxa de agendamento) em vez de ficar sem régua.
+  if (target == null && t.metric === "callsBooked") target = bookingTarget(p, bizDays);
+  return {
+    label: t.label, value: t.value, target,
+    fmt: t.unit === "R$" ? asMoney : rate ? asRate : asInt,
+    rate, good: target || undefined,
+  };
+}
+
 export function metricsFor(p, bizDays) {
+  const rows = ["sdr", "closer", "cs", "social"].flatMap((role) => p[role]?.targets || []);
+  // Uma pessoa pode acumular vagas (SDR + closer): a mesma métrica não pode
+  // aparecer duas vezes no cartão.
+  const seen = new Set();
+  const metrics = rows.filter((t) => !seen.has(t.metric) && seen.add(t.metric)).map((t) => targetMetric(t, bizDays, p));
+  // Vaga sem meta nenhuma configurada ainda: mantém o resumo antigo pra o cartão
+  // não ficar vazio enquanto o Leo não preenche a tela Metas.
+  return metrics.length ? metrics : legacyMetricsFor(p, bizDays);
+}
+
+function legacyMetricsFor(p, bizDays) {
   if (p.sdr && p.closer) return [
     { label: "Calls agendadas", value: p.sdr.callsBooked, target: bookingTarget(p, bizDays), fmt: asInt },
     { label: "Receita", value: p.closer.revenue, target: scaledGoal(p.closer.goals?.revenue, bizDays), fmt: asMoney },

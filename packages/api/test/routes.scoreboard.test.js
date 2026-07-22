@@ -479,10 +479,9 @@ test("sem meta configurada a derivada cai nos benchmarks (75% × 33%)", async ()
   await app.close();
 });
 
-// A Visão geral cobra o que a tela Metas define: cada meta configurada com o
-// realizado do TIME na janela. Só entra meta preenchida — campo em branco na
-// tela não pode virar linha cobrando zero.
-test("targets: toda meta configurada vem com o realizado do time e o rateio", async () => {
+// O cartão de cada pessoa mostra AS METAS DA VAGA dela com o realizado no
+// período — é o que a Visão geral cobra, pessoa a pessoa.
+test("targets por PESSOA: metas da vaga com o realizado dela e a parte do rateio", async () => {
   const { app, repo } = await buildApp();
   await repo.create("users", { id: "u_clo2", name: "Cida Closer", roles: ["closer"] });
   for (const [id, key, metric, target] of [
@@ -493,27 +492,45 @@ test("targets: toda meta configurada vem com o realizado do time e o rateio", as
     ["g5", "sdr", "showRate", 75],
   ]) await repo.create("goals", { id, saas: "leverads", scope: "role", key, metric, target, period: "month" });
 
-  // 1 lead contatado que virou call, compareceu e fechou por R$ 500.
   await repo.create("leads", { id: "w1", saas: "leverads", owner: "u_sdr", closer: "u_clo", stage: "Ganho", amount: 500, createdAt: now, stageSince: now });
   await repo.create("activities", { id: "t_w1", saas: "leverads", lead: "w1", type: "call", author: "u_sdr", at: now });
   await repo.create("activities", { id: "b_w1", saas: "leverads", lead: "w1", type: "stage", at: now, meta: { from: "Qualificando", to: "Call agendada" } });
   await repo.create("activities", { id: "st_w1", saas: "leverads", lead: "w1", type: "stage", at: now, meta: { from: "Follow-up", to: "Ganho" } });
 
   const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
-  const by = Object.fromEntries(sb.targets.map((t) => [t.metric, t]));
-  assert.deepEqual(Object.keys(by).sort(), ["contacts", "conversaoCall", "revenue", "showRate", "won"]);
-  // meta vem em base MENSAL (quem reescala pra janela é a tela, pelos dias úteis)
-  assert.equal(by.won.target, 24);
-  assert.equal(by.won.value, 1, "realizado do time no período");
-  assert.equal(by.won.people, 2, "24 do time = 12 por closer");
-  assert.equal(by.won.kind, "flow", "só fluxo pode ser reescalado pra janela");
-  assert.equal(by.revenue.value, 500);
-  assert.equal(by.conversaoCall.kind, "rate");
-  assert.equal(by.conversaoCall.people, 1, "taxa não se reparte");
-  assert.equal(by.conversaoCall.value, sb.team.closeRate, "mesma régua do funil da Visão geral");
-  assert.equal(by.contacts.value, sb.team.contacted, "mesmo número do funil, não uma 2ª contagem");
-  assert.equal(by.showRate.value, sb.team.showRate);
-  // metas não configuradas (ticket, NPS, posts…) ficam de fora
-  assert.equal(by.ticket, undefined);
+  const clo = Object.fromEntries(sb.closer.find((x) => x.user === "u_clo").targets.map((t) => [t.metric, t]));
+  assert.equal(clo.won.target, 12, "24 do time ÷ 2 closers = a parte dele");
+  assert.equal(clo.won.teamTarget, 24);
+  assert.equal(clo.won.value, 1, "realizado DELE, não do time");
+  assert.equal(clo.won.kind, "flow", "só fluxo pode ser reescalado pra janela");
+  assert.equal(clo.revenue.target, 60000);
+  assert.equal(clo.conversaoCall.target, 40, "taxa não se reparte");
+  assert.equal(clo.conversaoCall.kind, "rate");
+  assert.equal(clo.ticket.target, null, "sem meta, mas com valor medido, ainda aparece");
+  assert.equal(clo.ticket.value, 500);
+
+  const sdr = Object.fromEntries(sb.sdr.find((x) => x.user === "u_sdr").targets.map((t) => [t.metric, t]));
+  assert.equal(sdr.contacts.target, 300, "1 SDR só: a meta do time é dele inteira");
+  assert.equal(sdr.contacts.value, 1);
+  assert.equal(sdr.showRate.target, 75);
+  // métrica sem meta E sem valor medido não vira linha vazia no cartão
+  assert.equal(sdr.bookingRate.value, 100);
+  await app.close();
+});
+
+test("Ana (só UniqueKids) não entra no placar da LeverAds", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("users", { id: "ana", name: "Ana", roles: ["closer", "integrator", "social"], saas: "uniquekids" });
+  await repo.create("goals", { id: "g1", saas: "leverads", scope: "role", key: "closer", metric: "won", target: 24, period: "month" });
+  await repo.create("leads", { id: "w1", saas: "leverads", closer: "u_clo", stage: "Ganho", amount: 500, createdAt: now, stageSince: now });
+  await repo.create("activities", { id: "st_w1", saas: "leverads", lead: "w1", type: "stage", at: now, meta: { from: "Follow-up", to: "Ganho" } });
+  await repo.create("customers", { id: "c1", saas: "leverads", owner: "u_cs", startedAt: now });
+
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  for (const role of ["sdr", "closer", "cs", "social"]) {
+    assert.equal(sb[role].some((x) => x.user === "ana"), false, `ana não pode aparecer em ${role}`);
+  }
+  // e não dilui a meta do time daqui: 1 closer da LeverAds persegue os 24
+  assert.equal(sb.closer.find((x) => x.user === "u_clo").targets.find((t) => t.metric === "won").target, 24);
   await app.close();
 });
