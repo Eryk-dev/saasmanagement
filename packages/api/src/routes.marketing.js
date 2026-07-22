@@ -290,6 +290,18 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     return { pageId, instagramUserId, link: product.metaLink || "", painMap: product.painMap || {} };
   });
 
+  // Mídia do criativo de UM anúncio (pra pré-visualizar o vídeo/imagem na tabela
+  // de Anúncios). Busca sob demanda no clique — a URL do vídeo da Meta é
+  // temporária, então não vale cachear. Erro da Meta vira 502 legível.
+  app.get("/api/marketing/:saas/ad/:adId/creative", async (req, reply) => {
+    if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
+    try {
+      return await meta.adCreativeMedia(req.params.adId);
+    } catch (err) {
+      return reply.code(502).send({ error: err.message });
+    }
+  });
+
   // Novo criativo: recebe o vídeo (multipart) + copy e cria o anúncio PAUSADO
   // no conjunto indicado, já com a nomenclatura da dor ("[A] …") e as UTMs da
   // convenção — o lead que vier desse anúncio chega carimbado com a origem.

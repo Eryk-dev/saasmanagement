@@ -86,3 +86,29 @@ test("renameObject: POST {name} no nó", async () => {
   assert.deepEqual(r, { id: "as_copy", name: "1303 [B]" });
   assert.equal(f.calls[0].body.name, "1303 [B]");
 });
+
+test("adCreativeMedia: vídeo → busca o source (2ª chamada); imagem → sem 2ª chamada", async () => {
+  // Anúncio de VÍDEO: creative traz object_story_spec.video_data.video_id.
+  const fv = recorder((url) => {
+    if (url.includes("/vid123")) return { source: "https://video.fbcdn/xyz.mp4" };
+    return { name: "1300 [B]", creative: { object_story_spec: { video_data: { video_id: "vid123", image_url: "https://thumb.jpg" } } } };
+  });
+  const v = await makeMeta({ fetch: fv, accessToken: "t" }).adCreativeMedia("ad_1");
+  assert.equal(v.type, "video");
+  assert.equal(v.videoUrl, "https://video.fbcdn/xyz.mp4");
+  assert.equal(v.thumbnail, "https://thumb.jpg");
+  assert.equal(v.title, "1300 [B]");
+  assert.equal(fv.calls.length, 2); // ad + video source
+
+  // Anúncio de IMAGEM: link_data.image_url, sem vídeo → uma chamada só.
+  const fi = recorder(() => ({ name: "1258 [A]", creative: { object_story_spec: { link_data: { image_url: "https://img.jpg" } } } }));
+  const i = await makeMeta({ fetch: fi, accessToken: "t" }).adCreativeMedia("ad_2");
+  assert.equal(i.type, "image");
+  assert.equal(i.imageUrl, "https://img.jpg");
+  assert.equal(fi.calls.length, 1);
+
+  // Sem mídia → type "none".
+  const fn = recorder(() => ({ name: "x", creative: {} }));
+  const n = await makeMeta({ fetch: fn, accessToken: "t" }).adCreativeMedia("ad_3");
+  assert.equal(n.type, "none");
+});

@@ -463,7 +463,7 @@ function MetricsScreen() {
           <PainTable pains={(data && !data.error ? data.pains : []) || []} money={money} />
         </Card>
 
-        <CompactAdsCard objects={compactObjects} metrics={metricMaps} money={money} busyIds={busyIds}
+        <CompactAdsCard saas={product.id} objects={compactObjects} metrics={metricMaps} money={money} busyIds={busyIds}
           range={adsRange} onRange={setAdsRange}
           onToggle={objects && !objects.error ? toggleObject : null}
           onBudget={objects && !objects.error ? commitBudget : null} error={objects?.error} />
@@ -661,8 +661,9 @@ function Toggle({ on, label, busy, disabled = false, onChange }) {
   );
 }
 
-function CompactAdsCard({ objects, metrics, money, busyIds, range, onRange, onToggle, onBudget, error }) {
+function CompactAdsCard({ saas, objects, metrics, money, busyIds, range, onRange, onToggle, onBudget, error }) {
   const [level, setLevel] = useState("campaigns");
+  const [creativeAd, setCreativeAd] = useState(null); // anúncio com o criativo aberto no modal
   // Seleção estilo Gerenciador: checkbox nas linhas — campanhas marcadas
   // filtram a aba Conjuntos, conjuntos marcados filtram a de Anúncios. Clicar
   // no NOME é o atalho que seleciona SÓ aquela linha e desce um nível. Trocar
@@ -1001,10 +1002,16 @@ function CompactAdsCard({ objects, metrics, money, busyIds, range, onRange, onTo
                   )}
                 </span>
                 <Toggle on={active} label={object.name || object.id} busy={busyIds?.has(object.id)} disabled={!onToggle || !object.status} onChange={() => onToggle?.(level, object)} />
-                <span onClick={canDrill ? () => drill(object) : undefined}
-                  title={canDrill ? `ver ${level === "campaigns" ? "os conjuntos" : "os anúncios"} de "${object.name || object.id}"` : undefined}
-                  style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: canDrill ? "pointer" : "default", color: canDrill ? "var(--accent)" : "var(--fg-1)" }}>
-                  {object.name || object.id}
+                <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                  {level === "ads" && (
+                    <button onClick={(e) => { e.stopPropagation(); setCreativeAd(object); }} title="ver o criativo (vídeo/imagem)"
+                      style={{ flexShrink: 0, fontSize: 10, lineHeight: 1, color: "var(--accent)", padding: 2 }}>▶</button>
+                  )}
+                  <span onClick={canDrill ? () => drill(object) : undefined}
+                    title={canDrill ? `ver ${level === "campaigns" ? "os conjuntos" : "os anúncios"} de "${object.name || object.id}"` : undefined}
+                    style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: canDrill ? "pointer" : "default", color: canDrill ? "var(--accent)" : "var(--fg-1)" }}>
+                    {object.name || object.id}
+                  </span>
                 </span>
                 {visible.map((c) => cell(c, object, m, state))}
               </div>
@@ -1040,7 +1047,39 @@ function CompactAdsCard({ objects, metrics, money, busyIds, range, onRange, onTo
           )}
         </div>
       </DragScroll>
+      {creativeAd && <CreativeModal saas={saas} ad={creativeAd} onClose={() => setCreativeAd(null)} />}
     </Card>
+  );
+}
+
+// Pré-visualização do criativo de um anúncio: busca a mídia sob demanda (a URL
+// do vídeo da Meta é temporária) e mostra o vídeo (ou a imagem) num modal.
+function CreativeModal({ saas, ad, onClose }) {
+  const [st, setSt] = useState({ loading: true });
+  useEffect(() => {
+    let alive = true;
+    api.adCreative(saas, ad.id)
+      .then((m) => { if (alive) setSt({ loading: false, media: m }); })
+      .catch((e) => { if (alive) setSt({ loading: false, error: e.message }); });
+    return () => { alive = false; };
+  }, [saas, ad.id]);
+  const media = st.media;
+  const box = { width: "100%", borderRadius: "var(--r-2)", maxHeight: "70dvh" };
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 95, background: "color-mix(in srgb, var(--bg-0) 62%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(520px, 100%)", maxHeight: "88dvh", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 18 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 12 }}>
+          <span style={{ fontFamily: "var(--display)", fontSize: 14.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ad.name || ad.id}</span>
+          <span style={{ flex: 1 }} />
+          <button onClick={onClose} className="dim" style={{ fontSize: 12.5 }}>fechar ✕</button>
+        </div>
+        {st.loading && <div className="mono dim" style={{ fontSize: 12, padding: "32px 0", textAlign: "center" }}>carregando criativo…</div>}
+        {st.error && <div className="mono" style={{ fontSize: 12, color: "var(--neg)", padding: "8px 0" }}>{st.error}</div>}
+        {media?.type === "video" && <video src={media.videoUrl} poster={media.thumbnail || undefined} controls autoPlay playsInline style={{ ...box, background: "#000" }} />}
+        {media?.type === "image" && <img src={media.imageUrl} alt={ad.name || ""} style={{ ...box, objectFit: "contain" }} />}
+        {media?.type === "none" && <div className="mono dim" style={{ fontSize: 12, padding: "24px 0", textAlign: "center" }}>sem mídia disponível pra este anúncio</div>}
+      </div>
+    </div>
   );
 }
 
