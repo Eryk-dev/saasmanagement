@@ -281,6 +281,18 @@ async function buildCreativeApp(repo, fetchImpl) {
   return app;
 }
 
+// O upload responde 202 e a conversa com a Meta segue em background (evita o
+// 502 do proxy num vídeo de 150 MB). Os testes acompanham pelo mesmo endpoint
+// de polling que o front usa.
+async function waitJob(app, jobId) {
+  for (let i = 0; i < 400; i++) {
+    const job = (await app.inject({ url: `/api/marketing/job/${jobId}` })).json();
+    if (job.status !== "running") return job;
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  throw new Error("o trabalho não terminou a tempo");
+}
+
 test("criativos: sobe vídeo e cria anúncio PAUSADO com dor no nome, UTMs e aprendizado no produto", async () => {
   const repo = makeMemRepo();
   await repo.create("products", { id: "leverads", name: "LeverAds", metaAdAccount: "act_123", funnel: [] });
@@ -292,12 +304,12 @@ test("criativos: sobe vídeo e cria anúncio PAUSADO com dor no nome, UTMs e apr
     link: "https://leverads.com.br/diagnostico", painCode: "a", painLabel: "Conta banida",
   }, Buffer.from("fake-video-bytes"));
   const res = await app.inject({ method: "POST", url: "/api/marketing/leverads/creatives", payload, headers });
-  assert.equal(res.statusCode, 200);
-  const body = res.json();
-  assert.equal(body.ok, true);
-  assert.equal(body.adId, "ad9");
-  assert.equal(body.name, "[A] v1 depoimento"); // convenção garantida no nome
-  assert.equal(body.status, "PAUSED");
+  assert.equal(res.statusCode, 202);            // aceita e devolve o trabalho
+  const job = await waitJob(app, res.json().jobId);
+  assert.equal(job.status, "done", job.error || "");
+  assert.equal(job.result.adId, "ad9");
+  assert.equal(job.result.name, "[A] v1 depoimento"); // convenção garantida no nome
+  assert.equal(job.result.status, "PAUSED");
 
   // creative: página descoberta dos anúncios atuais, vídeo + thumbnail, UTMs da convenção
   const spec = JSON.parse(graph.captured.posts.creative.object_story_spec);

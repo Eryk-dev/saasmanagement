@@ -7,6 +7,8 @@
 // A conta de anúncio é POR SAAS: `product.metaAdAccount` (ex.: act_1234567890),
 // configurada em Ajustes → Integrações.
 
+import { openAsBlob } from "node:fs";
+
 const GRAPH = "https://graph.facebook.com/v23.0";
 
 export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
@@ -342,12 +344,15 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
 
     // Upload do vídeo do criativo (não-resumável — cobre vídeos de anúncio
     // típicos; a Graph aceita até ~1GB nesse modo). Retorna o video_id.
-    async uploadVideo(adAccountId, { buffer, filename = "video.mp4", title }) {
+    // `path` (arquivo em disco) é o caminho preferido: openAsBlob entrega um
+    // Blob preguiçoso que o fetch lê em pedaços, então um vídeo de 150 MB não
+    // ocupa memória nenhuma. `buffer` continua aceito pra chamadas pequenas.
+    async uploadVideo(adAccountId, { buffer, path, filename = "video.mp4", title }) {
       if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
       const fd = new FormData();
       fd.append("access_token", accessToken);
       if (title) fd.append("title", title);
-      fd.append("source", new Blob([buffer]), filename);
+      fd.append("source", path ? await openAsBlob(path) : new Blob([buffer]), filename);
       const res = await f(`${GRAPH}/${acct(adAccountId)}/advideos`, { method: "POST", body: fd });
       const text = await res.text();
       let body;
