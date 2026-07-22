@@ -22,6 +22,13 @@ function fileNumberOf(filename) {
   return runs.sort((a, b) => b.length - a.length || 0)[0] || "";
 }
 
+// Teto do vídeo: a API aceita 500 MB e o nginx 512 MB. Barrar aqui evita subir
+// o arquivo inteiro pra receber um 413 do proxy no fim do upload.
+const MAX_VIDEO = 500 * 1024 * 1024;
+const tooBig = (file) => file && file.size > MAX_VIDEO
+  ? `vídeo de ${(file.size / 1024 / 1024).toFixed(0)} MB — o limite é 500 MB, comprima antes de subir`
+  : "";
+
 const DAY = 86_400_000;
 // Dia LOCAL do navegador (Brasil), não UTC — às 21h de Brasília o toISOString
 // já vira o dia seguinte e o filtro "hoje" apontava pra um dia sem dados.
@@ -1420,6 +1427,8 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
   const valid = painCodeSel && (pain !== "_new" || painLabelSel) && campaignId && sourceAdsetId && file && detectedNumber && !busy;
 
   async function submit() {
+    const big = tooBig(file);
+    if (big) return onError(big);
     setBusy(true);
     try {
       const fd = new FormData();
@@ -1549,6 +1558,8 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
   const valid = adsetId && name.trim() && message.trim() && link.trim() && file && (pain !== "_new" || (painCodeSel && painLabelSel));
 
   async function submit() {
+    const big = tooBig(file);
+    if (big) return onError(big);
     setBusy(true);
     try {
       const fd = new FormData();

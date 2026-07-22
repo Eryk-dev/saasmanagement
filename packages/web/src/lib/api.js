@@ -34,6 +34,30 @@ async function req(method, path, body) {
   return res.status === 204 ? null : res.json();
 }
 
+// POST multipart (vídeo/áudio/imagem) — fetch cru: o browser define o boundary.
+// Erro vira mensagem legível: quando quem responde é o proxy (413 do nginx, 502
+// de gateway) o corpo é HTML, e jogar essa página na tela não diz nada ao time.
+async function upload(path, formData) {
+  const headers = {};
+  const key = getKey();
+  if (key) headers["x-api-key"] = key;
+  const res = await fetch(`${BASE}${path}`, { method: "POST", headers, body: formData });
+  const text = await res.text().catch(() => "");
+  if (!res.ok) {
+    let msg = "";
+    try { msg = JSON.parse(text).error || ""; } catch { /* não é JSON: veio do proxy */ }
+    if (!msg) {
+      msg = res.status === 413
+        ? "arquivo grande demais pro servidor (limite 512 MB) — comprima o vídeo e tente de novo"
+        : `HTTP ${res.status} (resposta do proxy, não da API)`;
+    }
+    const err = new Error(msg);
+    err.status = res.status;
+    throw err;
+  }
+  return JSON.parse(text);
+}
+
 // URL do stream de mudanças (SSE). EventSource não manda headers — a key/token
 // vai em ?key= (o servidor só aceita query key nessa rota).
 export function eventsUrl() {
@@ -200,37 +224,9 @@ export const api = {
   // integrator opcional (undefined = todos; "" = sem integrador) separa por integrador.
   integrationAnalysis: (saas, integrator) => req("GET", `/api/integrations/${saas}/summary${integrator != null ? `?integrator=${encodeURIComponent(integrator)}` : ""}`),
   // Upload multipart (vídeo) — fetch cru: o browser define o boundary do form.
-  uploadCreative: async (saas, formData) => {
-    const headers = {};
-    const key = getKey();
-    if (key) headers["x-api-key"] = key;
-    const res = await fetch(`${BASE}/api/marketing/${saas}/creatives`, { method: "POST", headers, body: formData });
-    const text = await res.text().catch(() => "");
-    if (!res.ok) {
-      let msg = text;
-      try { msg = JSON.parse(text).error || text; } catch { /* texto cru */ }
-      const err = new Error(msg || `HTTP ${res.status}`);
-      err.status = res.status;
-      throw err;
-    }
-    return JSON.parse(text);
-  },
+  uploadCreative: (saas, formData) => upload(`/api/marketing/${saas}/creatives`, formData),
   // Criar anúncio clonando um conjunto e trocando o vídeo (multipart, mesmo padrão).
-  adFromVideo: async (saas, formData) => {
-    const headers = {};
-    const key = getKey();
-    if (key) headers["x-api-key"] = key;
-    const res = await fetch(`${BASE}/api/marketing/${saas}/ad-from-video`, { method: "POST", headers, body: formData });
-    const text = await res.text().catch(() => "");
-    if (!res.ok) {
-      let msg = text;
-      try { msg = JSON.parse(text).error || text; } catch { /* texto cru */ }
-      const err = new Error(msg || `HTTP ${res.status}`);
-      err.status = res.status;
-      throw err;
-    }
-    return JSON.parse(text);
-  },
+  adFromVideo: (saas, formData) => upload(`/api/marketing/${saas}/ad-from-video`, formData),
   // Gasto com IA (OpenRouter/OpenAI/Anthropic), agregado em USD.
   aiCosts: (days) => req("GET", `/api/ai-costs${days ? `?days=${days}` : ""}`),
   // Custos operacionais do mês (ads + IA automáticos + lançamentos manuais).
