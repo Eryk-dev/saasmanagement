@@ -371,9 +371,8 @@ test("métricas por dor: agrupa [X] do nome do anúncio, rotula pelo painMap e c
   const now = "2026-06-02T10:00:00.000Z";
   // UTM completo como nos leads reais (campaign/term/content dinâmicos da Meta).
   const mk = (id, content, stage, extra = {}) => repo.create("leads", { id, saas: "leverads", stage, createdAt: now, utm: { campaign: "c1", term: "s1", content }, ...extra });
-  // Qualificação → grade (matriz 5 níveis): l1 = A (10+ contas · 2-10 mil
-  // anúncios), l2 = E (1 conta, sem listings = teto E), l3 = C pelo `volume`
-  // legado (sem contas → s=3).
+  // Qualificação → grade: l1 = S (10+ contas · 2-10 mil = topo), l2 = E (1
+  // conta, sem listings), l3 = C pelo `volume` legado (sem contas → índice 0).
   await mk("l1", "a1", "Ganho", { amount: 600, accounts: "10+", listings: "2000-10000" }); // valor pedido pelo modal de fechamento
   await mk("l2", "a1", "Inbox", { accounts: "1" });
   await mk("l3", "a3", "Inbox", { volume: "200+" });
@@ -389,18 +388,18 @@ test("métricas por dor: agrupa [X] do nome do anúncio, rotula pelo painMap e c
   assert.equal(A.costPerWin, 160);
   assert.equal(A.revenue, 600);         // amount do l1
   assert.equal(A.roas, 3.75);           // 600 / 160
-  // clientes por grade da dor = soma das grades dos anúncios (a1 traz A+E, a3 traz C);
+  // clientes por grade da dor = soma das grades dos anúncios (a1 traz S+E, a3 traz C);
   // custo por cada = investido da dor ÷ clientes da grade
-  assert.deepEqual(A.abc, { A: 1, B: 0, C: 1, D: 0, E: 1 });
-  assert.deepEqual(A.abcCost, { A: 160, B: null, C: 160, D: null, E: 160 });
+  assert.deepEqual(A.abc, { S: 1, A: 0, B: 0, C: 1, D: 0, E: 1 });
+  assert.deepEqual(A.abcCost, { S: 160, A: null, B: null, C: 160, D: null, E: 160 });
   const B = m.pains.find((p) => p.code === "B");
   assert.equal(B.label, "Múltiplas abas");
   assert.equal(B.leads, 0);
   assert.equal(B.cpl, null);
   assert.equal(B.revenue, 0);
   assert.equal(B.roas, null);           // sem receita não inventa ROAS
-  assert.deepEqual(B.abc, { A: 0, B: 0, C: 0, D: 0, E: 0 });
-  assert.deepEqual(B.abcCost, { A: null, B: null, C: null, D: null, E: null }); // sem cliente não inventa custo
+  assert.deepEqual(B.abc, { S: 0, A: 0, B: 0, C: 0, D: 0, E: 0 });
+  assert.deepEqual(B.abcCost, { S: null, A: null, B: null, C: null, D: null, E: null }); // sem cliente não inventa custo
   const sem = m.pains.find((p) => p.code === null);
   assert.equal(sem.label, "Sem código");
   assert.equal(sem.spend, 10);
@@ -419,8 +418,8 @@ test("métricas por dor: agrupa [X] do nome do anúncio, rotula pelo painMap e c
   assert.equal(a1.videoP25, 40);
   assert.equal(a1.videoP50, 30);
   assert.equal(a1.videoP95, 10);
-  assert.deepEqual(a1.abc, { A: 1, B: 0, C: 0, D: 0, E: 1 }); // l1=A, l2=E, por utm.content
-  assert.equal(a1.abcCost.A, 60); // 60 de spend ÷ 1 cliente A
+  assert.deepEqual(a1.abc, { S: 1, A: 0, B: 0, C: 0, D: 0, E: 1 }); // l1=S, l2=E, por utm.content
+  assert.equal(a1.abcCost.S, 60); // 60 de spend ÷ 1 cliente S
   const c1 = m.campaigns.find((c) => c.id === "c1");
   assert.equal(c1.won, 1);
   assert.equal(c1.costPerWin, 210); // spend total 210 / 1 ganho
@@ -640,8 +639,8 @@ test("leadGrade: matriz de 5 níveis (tabela contas × anúncios, redesenho 21/0
     "1":    ["E", "D", "D", "C", "C"],
     "2":    ["D", "C", "C", "B", "B"],
     "3-5":  ["C", "B", "B", "A", "A"],
-    "6-10": ["B", "B", "A", "A", "A"],
-    "10+":  ["A", "A", "A", "A", "A"],
+    "6-10": ["B", "B", "A", "S", "S"],
+    "10+":  ["A", "A", "A", "S", "S"],
   };
   const cols = ["0-100", "100-500", "500-2000", "2000-10000", "10000+"];
   for (const [acc, row] of Object.entries(GRID)) {

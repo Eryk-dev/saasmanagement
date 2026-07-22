@@ -1299,7 +1299,7 @@ function PlacementTable({ placements, money }) {
 // Célula de cliente A/B/C: contagem forte na cor da grade + quanto custou CADA
 // um daquela grade (investido do grupo ÷ clientes da grade). "—" quando a
 // dor/anúncio não trouxe ninguém da grade.
-const GRADES = ["A", "B", "C", "D", "E"];
+const GRADES = ["S", "A", "B", "C", "D", "E"];
 // Clientes A/B/C numa célula só, uma linha por grade ("2 A · R$ 43,00 cada") —
 // o MESMO formato da coluna Clientes ABC da tabela de anúncios.
 function AbcCell({ abc, abcCost, money }) {

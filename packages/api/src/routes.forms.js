@@ -322,7 +322,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
       // Potencial dos leads que a variante trouxe (cliente A/B/C, régua do
       // leadGrade) + fechamento: quantos ganharam e a receita (amount) deles —
       // a headline campeã é a que traz cliente grande e contrato, não clique.
-      const grades = { A: 0, B: 0, C: 0, D: 0, E: 0 };
+      const grades = { S: 0, A: 0, B: 0, C: 0, D: 0, E: 0 };
       for (const l of vLeads) { const g = leadGrade(l); if (g) grades[g] += 1; }
       // Call agendada: callAt marcado (agenda do pipeline) ou lead num estágio
       // de kind "call" — mesmo critério do drip-runner pra "marcou call". Mede

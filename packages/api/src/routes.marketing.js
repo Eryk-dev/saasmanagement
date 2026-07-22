@@ -50,8 +50,8 @@ const GRADE_GRID = [
   ["E", "D", "D", "C", "C"], // 1 conta
   ["D", "C", "C", "B", "B"], // 2 contas
   ["C", "B", "B", "A", "A"], // 3-5 contas
-  ["B", "B", "A", "A", "A"], // 6-10 contas
-  ["A", "A", "A", "A", "A"], // 10+ contas
+  ["B", "B", "A", "S", "S"], // 6-10 contas
+  ["A", "A", "A", "S", "S"], // 10+ contas
 ];
 export function leadGrade(l) {
   const acc = GRADE_ACCOUNTS[l?.accounts];
@@ -59,9 +59,9 @@ export function leadGrade(l) {
   if (acc == null && ads == null) return null;
   return GRADE_GRID[acc ?? 0][ads ?? 0];
 }
-const GRADES = ["A", "B", "C", "D", "E"];
+const GRADES = ["S", "A", "B", "C", "D", "E"];
 const gradeCounts = (leads) => {
-  const abc = { A: 0, B: 0, C: 0, D: 0, E: 0 };
+  const abc = { S: 0, A: 0, B: 0, C: 0, D: 0, E: 0 };
   for (const l of leads) { const g = leadGrade(l); if (g) abc[g] += 1; }
   return abc;
 };
@@ -567,7 +567,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       const p = byPain[k] || (byPain[k] = {
         code, label: code ? (product.painMap || {})[code] || code : "Sem código",
         spend: 0, leads: 0, calls: 0, won: 0, revenue: 0, adsCount: 0,
-        abc: { A: 0, B: 0, C: 0, D: 0, E: 0 }, wonAbc: { A: 0, B: 0, C: 0, D: 0, E: 0 },
+        abc: { S: 0, A: 0, B: 0, C: 0, D: 0, E: 0 }, wonAbc: { S: 0, A: 0, B: 0, C: 0, D: 0, E: 0 },
       });
       p.spend += a.spend;
       p.leads += a.leads;

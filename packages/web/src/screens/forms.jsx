@@ -59,9 +59,9 @@ const slug = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
 
 // Tabela do teste A/B no card — mesmo desenho da "Por dor" (Publicidade):
 // grid fracionário, número forte + contexto pequeno na linha de baixo.
-const AB_GRID = "minmax(240px, 2.4fr) .5fr .8fr .8fr .5fr .5fr .5fr .5fr .5fr .75fr .8fr .85fr";
+const AB_GRID = "minmax(240px, 2.4fr) .5fr .8fr .8fr .5fr .5fr .5fr .5fr .5fr .5fr .75fr .8fr .85fr";
 // Colunas de qualidade do lead no A/B — 5 níveis (A maior … E menor).
-const AB_GRADES = ["A", "B", "C", "D", "E"];
+const AB_GRADES = ["S", "A", "B", "C", "D", "E"];
 
 // Célula numérica: contagem em negrito em cima, subtexto (%) embaixo; zero
 // vira "—" — zero cinza repetido em toda célula é o que deixava a leitura ruim.
@@ -264,7 +264,7 @@ function FormsScreen({ saasId }) {
                               (visitas → começar → lead), potencial (cliente A/B/C), call
                               agendada e fechamento (ganhos + receita). */}
                           <div className="tbl-x" style={{ border: "1px solid var(--line-faint)", borderRadius: "var(--r-3)", overflow: "auto" }}>
-                            <div style={{ minWidth: 1240 }}>
+                            <div style={{ minWidth: 1290 }}>
                               <div style={{ display: "grid", gridTemplateColumns: AB_GRID, gap: 12, padding: "10px 18px", fontSize: 10.5, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", background: "var(--bg-inset)" }}>
                                 <span title="texto da welcome que o lead viu">Headline</span>
                                 <span style={{ textAlign: "right" }} title="sessões únicas que viram a variante">Visitas</span>
