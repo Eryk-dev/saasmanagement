@@ -11,7 +11,7 @@ import { CustomersAnalysis } from "./customers-analysis.jsx";
 import { EntityForm } from "../components/EntityForm.jsx";
 import { WhatsappChat } from "../components/whatsapp-chat.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
-import { leadTier, waLink, GRADE_STYLE } from "../lib/ui.js";
+import { leadTier, waLink, GRADE_STYLE, GRADE_GRID, GRADE_ACCOUNTS, GRADE_LISTINGS } from "../lib/ui.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { displayName } from "../lib/users.js";
 import { paymentLabel, PAYMENT_METHODS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf } from "../lib/payments.js";
@@ -257,7 +257,8 @@ function CustomersScreen({ initialTab = "base" }) {
               </div>
             </Card>
 
-            <Card style={{ overflow: "hidden" }}>
+            <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+            <Card style={{ overflow: "hidden", flex: "1 1 560px", minWidth: 0 }}>
               <div className="tbl-x">
               <table style={{ width: "100%", minWidth: isKidsWorkspace ? 880 : 960, borderCollapse: "collapse" }}>
                 <thead>
@@ -333,6 +334,9 @@ function CustomersScreen({ initialTab = "base" }) {
                 {customers.length > 50 && <button onClick={() => setShowAll((v) => !v)} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>{showAll ? "Mostrar 50" : "Ver todos"}</button>}
               </div>
             </Card>
+            {/* Legenda: como o nível A/B/C sai (contas × anúncios). Só LeverAds. */}
+            {!isKidsWorkspace && <NivelLegend />}
+            </div>
           </div>
         )}
       </div>
@@ -380,6 +384,36 @@ function useFormName(saas, formId) {
 // pagamento e responsáveis). O lápis liga a edição INLINE dos campos do
 // cadastro do cliente (nome, contato, e-mail, WhatsApp, plano, pagamento,
 // valor e cliente desde), sem trocar de janela; o que vem do lead é leitura.
+// Legenda da classificação de nível (ao lado da tabela): a MESMA matriz que
+// define a grade (GRADE_GRID de lib/ui.js) — contas de marketplace × anúncios
+// na maior conta. Mais de cada = nível mais alto (S topo, E base).
+function NivelLegend() {
+  return (
+    <div style={{ ...BOX, flex: "0 1 250px", minWidth: 220 }}>
+      <div className="mono" style={SECTION_LABEL}>Como o nível é definido</div>
+      <div style={{ fontSize: 11.5, color: "var(--fg-3)", lineHeight: 1.45, marginBottom: 12 }}>
+        Cruzamento de <b style={{ color: "var(--fg-2)" }}>contas de marketplace</b> (linha) × <b style={{ color: "var(--fg-2)" }}>anúncios na maior conta</b> (coluna). Quanto mais de cada, mais alto o nível (S no topo, E na base).
+      </div>
+      <div className="mono" style={{ fontSize: 8.5, color: "var(--fg-4)", textAlign: "center", marginBottom: 3, paddingLeft: 30 }}>anúncios →</div>
+      <div style={{ display: "grid", gridTemplateColumns: "30px repeat(5, 1fr)", gap: 3, alignItems: "center" }}>
+        <span />
+        {GRADE_LISTINGS.map((l) => <span key={l} className="mono" style={{ fontSize: 8, color: "var(--fg-4)", textAlign: "center", lineHeight: 1.1 }}>{l}</span>)}
+        {GRADE_GRID.map((row, r) => (
+          <React.Fragment key={r}>
+            <span className="mono" style={{ fontSize: 9, color: "var(--fg-4)", textAlign: "right", paddingRight: 4, whiteSpace: "nowrap" }}>{GRADE_ACCOUNTS[r]}</span>
+            {row.map((g, c) => {
+              const s = GRADE_STYLE[g];
+              return <span key={c} title={`${GRADE_ACCOUNTS[r]} conta(s) · ${GRADE_LISTINGS[c]} anúncios = ${s.label}`}
+                style={{ height: 20, borderRadius: 4, background: s.tone, color: s.badgeFg, fontSize: 10.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{g}</span>;
+            })}
+          </React.Fragment>
+        ))}
+      </div>
+      <div className="mono" style={{ fontSize: 8.5, color: "var(--fg-4)", marginTop: 4 }}>↑ contas</div>
+    </div>
+  );
+}
+
 // Respostas do formulário de diagnóstico (campos do lead), editáveis do popup
 // do cliente — mesmo checklist do drawer do pipeline (scriptChecklist). Alterar
 // aqui persiste no lead e recalcula o Potencial/Nível do cliente.

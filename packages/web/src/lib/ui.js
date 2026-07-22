@@ -40,13 +40,16 @@ export const GRADE_STYLE = {
 // 10k+ (0-4). Sem resposta cai no índice 0 (menor). A API espelha em
 // leadGrade() (routes.marketing.js) — mudou aqui, muda lá.
 //        ≤100 100-500 500-2k 2-10k 10k+
-const GRADE_GRID = [
+export const GRADE_GRID = [
   ["E", "D", "D", "C", "C"], // 1 conta
   ["D", "C", "C", "B", "B"], // 2 contas
   ["C", "B", "B", "A", "A"], // 3-5 contas
   ["B", "B", "A", "S", "S"], // 6-10 contas
   ["A", "A", "A", "S", "S"], // 10+ contas
 ];
+// Rótulos dos eixos da matriz (linha = contas, coluna = anúncios) pra legenda.
+export const GRADE_ACCOUNTS = ["1", "2", "3-5", "6-10", "10+"];
+export const GRADE_LISTINGS = ["≤100", "100-500", "500-2k", "2-10k", "10k+"];
 export function leadTier(l) {
   const acc = TIER_ACCOUNTS[l?.accounts];
   const ads = l?.listings != null && l.listings !== "" ? TIER_LISTINGS[l.listings] : TIER_VOLUME[l?.volume];
