@@ -24,6 +24,21 @@ function localDT(date) {
   return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}T${p(date.getHours())}:${p(date.getMinutes())}`;
 }
 // nextActionAt é ISO UTC — converte pro formato do input datetime-local e volta.
+// Atalho de próximo toque: N dias à frente, às 9h, e nunca no fim de semana.
+// "+45d" é uma intenção ("daqui a um mês e meio"), não uma data exata, então
+// cair num sábado só gera toque atrasado na segunda: sábado e domingo empurram
+// pra segunda. Fica aqui em cima porque a lista de atalhos ficou longa e
+// repetir o corpo em cada um escondia a única coisa que muda, o número de dias.
+const emDias = (n) => () => {
+  const t = new Date();
+  t.setDate(t.getDate() + n);
+  t.setHours(9, 0, 0, 0);
+  const dia = t.getDay();
+  if (dia === 6) t.setDate(t.getDate() + 2);
+  else if (dia === 0) t.setDate(t.getDate() + 1);
+  return t;
+};
+
 const isoToLocal = (iso) => {
   if (!iso) return "";
   const d = new Date(iso);
@@ -397,10 +412,17 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
           <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
             <span className="mono dim" style={{ ...rowLabel, paddingTop: 6 }}>Próximo toque</span>
             <div style={{ display: "flex", gap: 5, flex: 1, flexWrap: "wrap", alignItems: "center" }}>
+              {/* Atalhos curtos tocam a semana; os longos (15 a 60 dias) são pra
+                  quem pediu pra voltar depois, que hoje virava data digitada na
+                  mão. Todos caem às 9h, começo do dia de trabalho. */}
               {[["hoje +1h", () => { const t = new Date(); t.setHours(t.getHours() + 1, 0, 0, 0); return t; }],
                 ["amanhã 9h", () => { const t = new Date(); t.setDate(t.getDate() + 1); t.setHours(9, 0, 0, 0); return t; }],
-                ["+2d", () => { const t = new Date(); t.setDate(t.getDate() + 2); t.setHours(9, 0, 0, 0); return t; }],
-                ["+1sem", () => { const t = new Date(); t.setDate(t.getDate() + 7); t.setHours(9, 0, 0, 0); return t; }]].map(([label, mk]) => (
+                ["+2d", emDias(2)],
+                ["+1sem", emDias(7)],
+                ["+15d", emDias(15)],
+                ["+30d", emDias(30)],
+                ["+45d", emDias(45)],
+                ["+60d", emDias(60)]].map(([label, mk]) => (
                 <button key={label} onClick={() => patch({ nextActionAt: mk().toISOString() })} style={presetBtn}>
                   {label}
                 </button>
