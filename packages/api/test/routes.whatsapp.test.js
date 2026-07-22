@@ -156,6 +156,44 @@ test("POST /threads/:id/send: envia pela conversa e grava a saída", async () =>
   await app.close();
 });
 
+const FUNNEL = [
+  { stage: "Novo lead", kind: "novo" },
+  { stage: "Qualificando", kind: "qualificacao" },
+  { stage: "Follow-up", kind: "followup" },
+];
+
+test("POST /threads/:id/send: 1º contato num lead NOVO registra o toque e promove pra qualificação", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", funnel: FUNNEL });
+  await repo.create("leads", { id: "ld1", saas: "leverads", phone: "5541988887777", name: "Novo", stage: "Novo lead" });
+  await repo.create("wa_threads", { id: "5541988887777", phone: "5541988887777", leadId: "ld1", saas: "leverads" });
+  const app = await appWith(repo, fakeWa());
+
+  await app.inject({ method: "POST", url: "/api/whatsapp/threads/5541988887777/send", payload: { text: "oi, vim pelo anúncio" } });
+
+  const lead = await repo.get("leads", "ld1");
+  assert.equal(lead.stage, "Qualificando");         // 1º contato promoveu o card
+  assert.equal(lead.lastActivityType, "whatsapp");  // toque gravado (deixou de ser "sem atividade")
+  const acts = (await repo.list("activities")).filter((a) => a.lead === "ld1");
+  assert.equal(acts.filter((a) => a.type === "whatsapp").length, 1); // exatamente 1 toque de 1º contato (+ o "stage" da promoção)
+  await app.close();
+});
+
+test("POST /threads/:id/send: lead JÁ no funil não vira toque a cada mensagem (não infla tentativa)", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", funnel: FUNNEL });
+  await repo.create("leads", { id: "ld2", saas: "leverads", phone: "5541988886666", name: "Meio", stage: "Follow-up" });
+  await repo.create("wa_threads", { id: "5541988886666", phone: "5541988886666", leadId: "ld2", saas: "leverads" });
+  const app = await appWith(repo, fakeWa());
+
+  await app.inject({ method: "POST", url: "/api/whatsapp/threads/5541988886666/send", payload: { text: "seguindo o follow" } });
+
+  const lead = await repo.get("leads", "ld2");
+  assert.equal(lead.stage, "Follow-up");            // não mexe na etapa
+  assert.equal((await repo.list("activities")).filter((a) => a.lead === "ld2").length, 0); // sem toque automático
+  await app.close();
+});
+
 test("POST /leads/:id/whatsapp: envia, grava out com leadId; sem telefone → 400; inexistente → 404", async () => {
   const repo = makeMemRepo();
   await repo.create("leads", { id: "ld1", saas: "leverads", phone: "41992516545" });

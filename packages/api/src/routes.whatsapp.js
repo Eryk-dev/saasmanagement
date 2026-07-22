@@ -7,8 +7,28 @@ import { applyHealthEvent, getWaHealth, waHealthSummary, recordWebhookDelivery, 
 import { runInboundCallFlow, startCallFlow, openAlerts, closeThreadAlerts, parsePermissionReply, greetingFor } from "./wa-call-flow.js";
 import { transcriber as defaultTranscriber } from "./transcribe.js";
 import { formatSummaryText } from "./call-summaries.js";
-import { logActivity } from "./lead-flow.js";
+import { logActivity, onActivityCreated } from "./lead-flow.js";
+import { kindOf, firstStage } from "./stages.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
+
+// 1º contato pelo inbox: mandar mensagem pra um lead NOVO registra o toque e
+// promove pra qualificação (o card sai de "1º contato" na fila e no pipeline) —
+// antes, enviar não gravava atividade nenhuma, então o lead ficava preso.
+// Só o lead NOVO: quem já está no funil não vira toque a cada mensagem (não
+// inflar tentativa nem remarcar o GPS numa conversa ativa; pra isso a pessoa usa
+// "Próxima ação"). Nunca trava o envio.
+async function markFirstContact(repo, leadId, author) {
+  if (!leadId) return;
+  try {
+    const lead = await repo.get("leads", leadId);
+    if (!lead) return;
+    const product = lead.saas ? await repo.get("products", lead.saas) : null;
+    const stage = lead.stage || firstStage(product);
+    if (kindOf(product, stage) !== "novo") return;
+    const activity = await logActivity(repo, { saas: lead.saas || "", lead: leadId, type: "whatsapp", text: "1º contato pelo inbox", author: author || "cockpit" });
+    await onActivityCreated(repo, activity);
+  } catch { /* toque não trava o envio */ }
+}
 
 // Mídia de uma mensagem recebida: a Cloud API manda só o ID (o binário se baixa
 // depois, com o token). Devolve {kind, id, mime, filename} ou null.
@@ -525,6 +545,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
         id: messageId, phone: thread?.phone || phone, direction: "out", text: rendered,
         status: "sent", author: req.authUser?.id || "cockpit", waPhoneId: phoneId || "", saas: thread?.saas || "",
       });
+      await markFirstContact(repo, thread?.leadId || (await findLeadByPhone(repo, thread?.phone || phone))?.id, req.authUser?.id);
       try { await closeThreadAlerts(repo, threadId(phone), req.authUser?.id || "cockpit"); } catch { /* alerta não trava o envio */ }
       return { ok: true, messageId };
     } catch (err) { return sendErrorReply(reply, err); }
@@ -672,6 +693,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     if (!wa.configured(phoneId)) return reply.code(NOT_CONFIGURED).send({ error: "WhatsApp não configurado no servidor" });
     try {
       const messageId = await sendAndRecord(repo, wa, { phone: thread?.phone || phone, text, author: req.authUser?.id || "cockpit", phoneId, saas: thread?.saas || "" });
+      await markFirstContact(repo, thread?.leadId || (await findLeadByPhone(repo, thread?.phone || phone))?.id, req.authUser?.id);
       return { ok: true, messageId };
     } catch (err) { return sendErrorReply(reply, err); }
   });
@@ -719,6 +741,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
       author: req.authUser?.id || "cockpit", waPhoneId: phoneId || "", saas: thread?.saas || "",
       media: { kind, id: mediaId, mime, filename },
     });
+    await markFirstContact(repo, thread?.leadId || (await findLeadByPhone(repo, to))?.id, req.authUser?.id);
     // Cacheia o binário sob o id da MENSAGEM pra tocar no nosso inbox (o mediaId
     // da Meta expira; guardamos a cópia como no recebimento).
     if (messageId && buf.length <= 16 * 1024 * 1024) {
@@ -745,6 +768,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     if (!wa.configured(phoneId)) return reply.code(NOT_CONFIGURED).send({ error: "WhatsApp não configurado no servidor (WHATSAPP_TOKEN + número)" });
     try {
       const messageId = await sendAndRecord(repo, wa, { phone: thread?.phone || phone, text, author: req.authUser?.id || "cockpit", phoneId, saas: lead.saas || "" });
+      await markFirstContact(repo, lead.id, req.authUser?.id);
       return { ok: true, messageId };
     } catch (err) { return sendErrorReply(reply, err); }
   });
