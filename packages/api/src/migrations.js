@@ -282,6 +282,28 @@ export async function backfillCallPermission(repo) {
   return fixed;
 }
 
+// Tema do form de diagnóstico LeverAds → design system Lever Premium (claro).
+// Roda JUNTO do deploy do CSS novo do form-page.js: assim o tema (dado) e o
+// visual (código) trocam no MESMO boot, sem janela com logo branco invisível
+// no fundo claro. One-shot pelo marcador `dsThemeV1` no doc (guarda o tema
+// antigo em `themeBackup`). O form da UniqueKids NÃO é tocado.
+const LEVERADS_DS_THEME = {
+  bg: "#f7f8fa", surface: "#ffffff", fg: "#0c1d2b",
+  accent: "#0F766E", accentFg: "#ffffff",
+  font: "'Instrument Sans', system-ui, sans-serif",
+  radius: 12, logoUrl: "", logoHeight: 24,
+};
+export async function migrateFormLeverAdsDsTheme(repo) {
+  const form = await repo.get("forms", "fo_diagnostico_leverads");
+  if (!form || form.dsThemeV1) return false;
+  await repo.update("forms", "fo_diagnostico_leverads", {
+    themeBackup: form.theme || null,
+    theme: { ...LEVERADS_DS_THEME },
+    dsThemeV1: true,
+  });
+  return true;
+}
+
 // Todo funil de todo produto ganha `kind` (heurística por nome quando ausente).
 // Cobre multi-SaaS e o caso do dono ter editado o funil (guarda acima falhou).
 export async function ensureFunnelKinds(repo) {
@@ -687,6 +709,12 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] permissão de ligação reconstruída em ${n} conversa(s)`);
   } catch (err) {
     console.error("[migration] backfillCallPermission falhou:", err?.message || err);
+  }
+  try {
+    const done = await migrateFormLeverAdsDsTheme(repo);
+    if (done) console.log("[migration] form LeverAds: tema trocado pro design system Lever Premium (claro)");
+  } catch (err) {
+    console.error("[migration] migrateFormLeverAdsDsTheme falhou:", err?.message || err);
   }
   try {
     const n = await ensureLossReasons(repo);
