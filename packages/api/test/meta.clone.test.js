@@ -185,3 +185,34 @@ test("uploadVideo: vídeo pequeno continua num POST só", async () => {
   assert.equal(await meta.uploadVideo("act_1", { buffer: Buffer.alloc(1024), filename: "p.mp4" }), "v_small");
   assert.deepEqual(calls, [null]); // sem fases: caminho direto
 });
+
+// ── Erro da Meta legível ────────────────────────────────────────────────────
+// "Invalid parameter" sozinho não diz nada a quem está na tela; a Graph manda
+// o motivo de gente em error_user_msg e o par code/subcode pra documentação.
+
+const { metaErrorText } = await import("../src/meta.js");
+
+test("metaErrorText: junta mensagem técnica, motivo de gente e códigos", () => {
+  assert.equal(
+    metaErrorText({ message: "Invalid parameter", error_user_msg: "O conjunto de origem usa orçamento de campanha", code: 100, error_subcode: 1885183 }),
+    "Invalid parameter · O conjunto de origem usa orçamento de campanha · [código 100/1885183]",
+  );
+  // sem detalhe humano, não inventa nada além do código
+  assert.equal(metaErrorText({ message: "Invalid parameter", code: 100 }), "Invalid parameter · [código 100]");
+  // detalhe repetido não aparece duas vezes
+  assert.equal(metaErrorText({ message: "Limite atingido", error_user_title: "Limite atingido" }), "Limite atingido");
+  // erro sem corpo cai no texto cru da resposta
+  assert.equal(metaErrorText(null, "<html>502</html>"), "<html>502</html>");
+});
+
+test("erro da Graph chega no chamador com o motivo de gente junto", async () => {
+  const f = async () => ({
+    status: 400,
+    text: async () => JSON.stringify({ error: { message: "Invalid parameter", error_user_msg: "Não dá pra copiar um conjunto arquivado", code: 100, error_subcode: 1487390 } }),
+  });
+  const meta = makeMeta({ fetch: f, accessToken: "t" });
+  await assert.rejects(
+    () => meta.copyAdSet("as_1", {}),
+    (e) => e.message === "Meta API -> 400: Invalid parameter · Não dá pra copiar um conjunto arquivado · [código 100/1487390]",
+  );
+});

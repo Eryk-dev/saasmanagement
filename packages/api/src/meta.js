@@ -14,6 +14,24 @@ const GRAPH = "https://graph.facebook.com/v23.0";
 // POST único é mais rápido e continua valendo pros criativos pequenos.
 const CHUNK_THRESHOLD = 20 * 1024 * 1024;
 
+// "Invalid parameter" sozinho não diz NADA a quem está na tela — e a Graph
+// quase sempre manda junto o que de fato aconteceu em error_user_msg (texto de
+// gente) e o par code/subcode (o que se procura na documentação). Junta tudo
+// numa linha só, sem repetir o que já está dito.
+export function metaErrorText(error, fallback = "") {
+  if (!error) return fallback;
+  const parts = [];
+  const msg = String(error.message || "").trim();
+  const userMsg = String(error.error_user_msg || "").trim();
+  const userTitle = String(error.error_user_title || "").trim();
+  if (msg) parts.push(msg);
+  const detail = userMsg || userTitle;
+  if (detail && !msg.includes(detail)) parts.push(detail);
+  const codes = [error.code, error.error_subcode].filter((c) => c != null).join("/");
+  if (codes) parts.push(`[código ${codes}]`);
+  return parts.join(" · ") || fallback;
+}
+
 export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const configured = () => !!accessToken;
   const acct = (id) => (String(id).startsWith("act_") ? String(id) : `act_${id}`);
@@ -24,7 +42,7 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
     let body;
     try { body = JSON.parse(text); } catch { body = {}; }
     if (res.status >= 400 || body.error) {
-      const msg = body.error?.message || text.slice(0, 300);
+      const msg = metaErrorText(body.error, text.slice(0, 300));
       const err = new Error(`Meta API -> ${res.status}: ${msg}`);
       err.status = res.status;
       throw err;
@@ -44,7 +62,7 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
     let body;
     try { body = JSON.parse(text); } catch { body = {}; }
     if (res.status >= 400 || body.error) {
-      const msg = body.error?.message || text.slice(0, 300);
+      const msg = metaErrorText(body.error, text.slice(0, 300));
       const err = new Error(`Meta API -> ${res.status}: ${msg}`);
       err.status = res.status;
       throw err;
@@ -369,7 +387,7 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
           let body;
           try { body = JSON.parse(text); } catch { body = {}; }
           if (res.status >= 400 || body.error) {
-            const msg = body.error?.message || text.slice(0, 300) || `sem detalhe (fase ${fields.upload_phase})`;
+            const msg = metaErrorText(body.error, text.slice(0, 300) || `sem detalhe (fase ${fields.upload_phase})`);
             throw new Error(`Meta API -> ${res.status}: ${msg}`);
           }
           return body;
@@ -410,8 +428,7 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       let body;
       try { body = JSON.parse(text); } catch { body = {}; }
       if (res.status >= 400 || body.error) {
-        const msg = body.error?.message || text.slice(0, 300);
-        throw new Error(`Meta API -> ${res.status}: ${msg}`);
+        throw new Error(`Meta API -> ${res.status}: ${metaErrorText(body.error, text.slice(0, 300))}`);
       }
       if (!body.id) throw new Error("Meta API: upload de vídeo não retornou id");
       return String(body.id);
@@ -486,6 +503,17 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       return { adsetId: copied, adIds };
     },
 
+    // Anúncios de um conjunto (id + nome), pra ler o criativo do ORIGINAL antes
+    // de montar o novo. Ignora os já apagados.
+    async adsOfAdSet(adsetId) {
+      if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
+      const params = new URLSearchParams({ fields: "id,name,effective_status", limit: "50", access_token: accessToken });
+      const body = await get(`${GRAPH}/${adsetId}/ads?${params}`);
+      return (body.data || [])
+        .filter((a) => String(a.effective_status || "").toUpperCase() !== "DELETED")
+        .map((a) => ({ id: String(a.id), name: a.name || "" }));
+    },
+
     // Renomeia qualquer nó (conjunto ou anúncio) — POST {name}.
     async renameObject(objectId, name) {
       if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
@@ -543,7 +571,12 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
         throw new Error("o anúncio de origem não é um anúncio de vídeo simples (sem object_story_spec.video_data) — troca de vídeo não se aplica");
       }
       spec.video_data.video_id = String(videoId);
-      if (imageUrl) spec.video_data.image_url = imageUrl;
+      // A thumbnail do vídeo NOVO entra por url; o image_hash do vídeo antigo
+      // tem que sair junto, senão a Meta usa a capa do criativo anterior.
+      if (imageUrl) {
+        spec.video_data.image_url = imageUrl;
+        delete spec.video_data.image_hash;
+      }
       const body = await post(`${acct(adAccountId)}/adcreatives`, {
         name,
         object_story_spec: JSON.stringify(spec),
