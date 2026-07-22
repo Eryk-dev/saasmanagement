@@ -11,7 +11,7 @@ import { CustomersAnalysis } from "./customers-analysis.jsx";
 import { EntityForm } from "../components/EntityForm.jsx";
 import { WhatsappChat } from "../components/whatsapp-chat.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
-import { leadTier, waLink } from "../lib/ui.js";
+import { leadTier, waLink, GRADE_STYLE } from "../lib/ui.js";
 import { displayName } from "../lib/users.js";
 import { paymentLabel, PAYMENT_METHODS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf } from "../lib/payments.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
@@ -98,6 +98,24 @@ function CustomersScreen({ initialTab = "base" }) {
   const totalContratado = activeCustomers.reduce((a, c) => a + (c.arr || 0), 0);
   const money = window.fmt.money;
 
+  // Nível (categoria A/B/C/…) do cliente = grade do lead que virou cliente
+  // (mesma régua da Publicidade/Forms). Sem lead qualificado → "sem nível".
+  const gradeOf = (c) => {
+    const lead = c.leadId ? (LEADS || []).find((l) => l.id === c.leadId) : null;
+    return leadTier(lead || null);
+  };
+  // Distribuição por nível dos clientes ATIVOS (só faz sentido na LeverAds; a
+  // mentoria não tem grade de marketplace).
+  const gradeDist = useMemo(() => {
+    const counts = {}; let sem = 0;
+    for (const c of activeCustomers) {
+      const t = gradeOf(c);
+      if (t.grade) counts[t.grade] = (counts[t.grade] || 0) + 1;
+      else sem++;
+    }
+    return { counts, sem };
+  }, [activeCustomers, LEADS]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Jornada de consultas do cliente (mesma família da tela Consultas).
   const journeyOf = (c) => {
     const items = allConsultas
@@ -162,6 +180,32 @@ function CustomersScreen({ initialTab = "base" }) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, alignItems: "start" }}>
             <CustomersAnalysis customers={customers} isKids={isKidsWorkspace} />
 
+            {!isKidsWorkspace && (
+              <Card title="Clientes por nível" hint="categoria (A/B/C…) da carteira ativa, pela grade do lead">
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "10px 22px", padding: "6px 24px 20px", alignItems: "center" }}>
+                  {["S", "A", "B", "C", "D", "E"].filter((g) => gradeDist.counts[g] > 0).map((g) => {
+                    const s = GRADE_STYLE[g];
+                    return (
+                      <div key={g} style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                        <span title={s.label} style={{ width: 22, height: 22, borderRadius: 6, background: s.tone, color: s.badgeFg, fontSize: 12.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1, flexShrink: 0 }}>{g}</span>
+                        <span className="tnum" style={{ fontSize: 19, fontWeight: 700 }}>{gradeDist.counts[g]}</span>
+                      </div>
+                    );
+                  })}
+                  {gradeDist.sem > 0 && (
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                      <span title="sem qualificação (lead não respondeu contas/anúncios)" style={{ width: 22, height: 22, borderRadius: 6, border: "1px solid var(--line-2)", color: "var(--fg-4)", fontSize: 12.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1, flexShrink: 0 }}>—</span>
+                      <span className="tnum" style={{ fontSize: 19, fontWeight: 700, color: "var(--fg-3)" }}>{gradeDist.sem}</span>
+                      <span style={{ fontSize: 12, color: "var(--fg-4)" }}>sem nível</span>
+                    </div>
+                  )}
+                  {Object.keys(gradeDist.counts).length === 0 && gradeDist.sem === 0 && (
+                    <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>sem clientes ativos ainda</span>
+                  )}
+                </div>
+              </Card>
+            )}
+
             <Card title="Próximas ações" hint="régua de retenção, vencidas primeiro">
               <div style={{ padding: "12px 0 8px" }}>
                 {nextActions.length === 0 && (
@@ -214,14 +258,14 @@ function CustomersScreen({ initialTab = "base" }) {
 
             <Card style={{ overflow: "hidden" }}>
               <div className="tbl-x">
-              <table style={{ width: "100%", minWidth: 880, borderCollapse: "collapse" }}>
+              <table style={{ width: "100%", minWidth: isKidsWorkspace ? 880 : 960, borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
                     {(isKidsWorkspace
                       ? ["Cliente", "Pacote", "Valor", "Tempo de casa", "Último contato", "Próxima consulta", "Consultas"]
-                      : ["Cliente", "Plano", "MRR", "Tempo de casa", "Último contato", "Próximo marco", "Assinatura"]
-                    ).map((h, i) => (
-                      <th key={h} style={{ textAlign: i === 2 ? "right" : "left", fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", padding: "12px 20px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
+                      : ["Cliente", "Nível", "Plano", "MRR", "Tempo de casa", "Último contato", "Próximo marco", "Assinatura"]
+                    ).map((h) => (
+                      <th key={h} style={{ textAlign: (h === "MRR" || h === "Valor") ? "right" : "left", fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", padding: "12px 20px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -237,6 +281,14 @@ function CustomersScreen({ initialTab = "base" }) {
                         onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
                         <td style={{ padding: "14px 20px", fontSize: 13.5, fontWeight: 600, borderBottom: "1px solid var(--line-faint)" }}>{c.name}</td>
+                        {/* Nível (categoria A/B/C…) do cliente, pela grade do lead. Só LeverAds. */}
+                        {!isKidsWorkspace && (() => { const t = gradeOf(c); return (
+                          <td style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)" }}>
+                            {t.grade
+                              ? <span title={t.label} style={{ width: 22, height: 22, borderRadius: 6, background: t.tone, color: t.badgeFg, fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>{t.grade}</span>
+                              : <span style={{ fontSize: 13, color: "var(--fg-4)" }}>—</span>}
+                          </td>
+                        ); })()}
                         {/* Pacote (mentoria) × plano da assinatura (SaaS) */}
                         <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
                           {kids ? consultPackageLabel(j.total) : sub ? planLabel(sub) : c.plan || "sem plano"}
