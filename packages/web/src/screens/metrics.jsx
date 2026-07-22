@@ -491,6 +491,9 @@ const DELIVERY = {
 // Colunas do card Anúncios — modeláveis: o botão "Colunas" liga/desliga cada
 // uma (persistido no navegador, chave cockpit_ads_cols). `on` marca o conjunto
 // padrão; a ordem aqui é a ordem na tela; width é a trilha do grid.
+// Número pra ordenação: vazio/NaN vira -Infinity (cai no fim em qualquer direção).
+const numOr = (v) => (v == null || v === "" || Number.isNaN(Number(v)) ? -Infinity : Number(v));
+
 const ADS_COLS = [
   { key: "status", label: "Status", width: "115px", left: true, on: true },
   { key: "budget", label: "Orçamento/dia", width: "150px", on: true, hint: "orçamento diário · editar e confirmar ✓ replica no Gerenciador" },
@@ -710,6 +713,10 @@ function CompactAdsCard({ objects, metrics, money, busyIds, range, onRange, onTo
   });
   const [dragCol, setDragCol] = useState(null);
   const [overCol, setOverCol] = useState(null);
+  // Ordenação por coluna: clicar no cabeçalho cicla desc → asc → nenhuma (volta
+  // pra ordem da Meta). Só uma coluna ativa por vez; "—" (sem valor) sempre no fim.
+  const [sort, setSort] = useState({ key: null, dir: "desc" });
+  const toggleSort = (key) => setSort((s) => (s.key !== key ? { key, dir: "desc" } : s.dir === "desc" ? { key, dir: "asc" } : { key: null, dir: "desc" }));
   const moveCol = (fromKey, toKey) => {
     if (!fromKey || !toKey || fromKey === toKey) return;
     setColOrder((prev) => {
@@ -745,6 +752,26 @@ function CompactAdsCard({ objects, metrics, money, busyIds, range, onRange, onTo
     : level === "adsets" ? all.filter((s) => !selCampaigns.size || selCampaigns.has(String(s.campaignId)))
     : all.filter((a) => (!selCampaigns.size || selCampaigns.has(String(a.campaignId))) && (!selAdsets.size || selAdsets.has(String(a.adsetId))));
   const rows = base.filter(matchStatus);
+
+  // Valor numérico de uma coluna pra ordenar (mesma fonte do render, `m`).
+  // NaN/ausente vira -Infinity → cai no fim em qualquer direção (regra do "—").
+  const sortNum = (key, object, m) => {
+    if (key === "budget") { const b = object?.dailyBudget ?? object?.lifetimeBudget; return b == null ? -Infinity : Number(b); }
+    if (key === "cpc") return numOr(m?.costPerLinkClick);
+    if (key === "play3s") { const imp = Number(m?.impressions) || 0; return imp > 0 && m?.video3s != null ? Number(m.video3s) / imp : -Infinity; }
+    if (key === "abc") { const a = m?.abc; return a ? (a.A + a.B + a.C + a.D + a.E) : -Infinity; }
+    return numOr(m?.[key]);
+  };
+  const sortedRows = sort.key
+    ? [...rows].sort((a, b) => {
+        const va = sortNum(sort.key, a, metrics?.[level]?.[String(a.id)] || a);
+        const vb = sortNum(sort.key, b, metrics?.[level]?.[String(b.id)] || b);
+        if (va === -Infinity && vb === -Infinity) return 0;
+        if (va === -Infinity) return 1;
+        if (vb === -Infinity) return -1;
+        return sort.dir === "asc" ? va - vb : vb - va;
+      })
+    : rows;
 
   // Poda conjuntos selecionados que saíram do recorte quando a seleção de
   // campanhas muda (senão a aba Anúncios filtraria por um conjunto invisível).
@@ -933,28 +960,32 @@ function CompactAdsCard({ objects, metrics, money, busyIds, range, onRange, onTo
             <span /><span>{current.singular}</span>
             {visible.map((c) => {
               const fixed = c.key === "status";
+              const sortable = !fixed; // status é o único sem ordenação
+              const arrow = sort.key === c.key ? (sort.dir === "asc" ? " ▲" : " ▼") : "";
               return (
                 <span key={c.key}
                   draggable={!fixed}
-                  title={fixed ? c.hint : [c.hint, "arraste pra reordenar a coluna"].filter(Boolean).join(" · ")}
+                  title={fixed ? c.hint : [c.hint, "clique pra ordenar · arraste pra reordenar"].filter(Boolean).join(" · ")}
                   onMouseDown={fixed ? undefined : (e) => e.stopPropagation()}
+                  onClick={sortable ? () => toggleSort(c.key) : undefined}
                   onDragStart={fixed ? undefined : (e) => { e.dataTransfer.effectAllowed = "move"; setDragCol(c.key); }}
                   onDragOver={fixed ? undefined : (e) => { if (dragCol) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (overCol !== c.key) setOverCol(c.key); } }}
                   onDrop={fixed ? undefined : (e) => { e.preventDefault(); moveCol(dragCol, c.key); setDragCol(null); setOverCol(null); }}
                   onDragEnd={fixed ? undefined : () => { setDragCol(null); setOverCol(null); }}
                   style={{
                     ...(c.left ? {} : right),
-                    ...(fixed ? {} : { cursor: "grab" }),
+                    ...(fixed ? {} : { cursor: "grab", userSelect: "none" }),
                     ...(dragCol === c.key ? { opacity: 0.35 } : {}),
+                    ...(sort.key === c.key ? { color: "var(--accent)" } : {}),
                     ...(overCol === c.key && dragCol && dragCol !== c.key ? { color: "var(--accent)" } : {}),
-                  }}>{c.label}</span>
+                  }}>{c.label}{arrow}</span>
               );
             })}
           </div>
           {error && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--neg)", fontSize: 12.5 }}>{error}</div>}
           {!objects && !error && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--fg-4)", fontSize: 12.5 }}>carregando conta de anúncios…</div>}
           {objects && !rows.length && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--fg-4)", fontSize: 12.5 }}>{all.length ? "nada neste nível com os filtros atuais (mude o filtro de status ou limpe a seleção ✕)" : "nenhum item neste nível"}</div>}
-          {(expanded ? rows : rows.slice(0, ADS_MAX_ROWS)).map((object) => {
+          {(expanded ? sortedRows : sortedRows.slice(0, ADS_MAX_ROWS)).map((object) => {
             const m = metrics?.[level]?.[String(object.id)] || object;
             const state = delivery(object);
             const active = object.status ? object.status !== "PAUSED" : state.label !== "pausado";
