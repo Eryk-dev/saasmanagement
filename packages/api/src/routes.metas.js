@@ -19,6 +19,13 @@ const pct = (r) => Math.round(r * 100);
 // que a Visão geral usa quando não há meta configurada). `default: null` = sem
 // padrão (o Leo define, ex.: ganhos/receita/ticket).
 //
+// `kind` = como a métrica se comporta no TEMPO, e é o que decide se a meta do
+// mês pode ser reescalada pra uma janela menor:
+//   flow  acumula (contatos, ganhos, receita, posts) → meta de 7 dias = fatia
+//   rate  proporção (taxas) → 30% é 30% em qualquer janela
+//   avg   média (ticket) e stock = saldo (contas ativas) → nunca se reparte no
+//         tempo: metade do mês não tem "metade do ticket".
+//
 // `team: true` = a meta é o alvo do TIME INTEIRO, e o placar divide pelas
 // pessoas da vaga (2 closers e "24 ganhos" = 12 pra cada, somando os 24 que a
 // empresa precisa). Sem a flag, a meta é de CADA pessoa — é o certo pra taxa
@@ -28,11 +35,11 @@ export const META_CATALOG = [
   {
     role: "sdr", label: "SDR", hint: "prospecção e agendamento",
     metrics: [
-      { metric: "contactRate", label: "Taxa de contato", unit: "%", hint: "dos leads novos, quantos você alcança", default: pct(RATE_BENCHMARKS.contactRate) },
-      { metric: "bookingRate", label: "Taxa de agendamento", unit: "%", hint: "dos contatados, quantos marcam call", default: pct(RATE_BENCHMARKS.bookingRate) },
-      { metric: "showRate", label: "Comparecimento na call", unit: "%", hint: "das agendadas, quantas acontecem", default: pct(RATE_BENCHMARKS.showRate) },
-      { metric: "contacts", label: "Contatos no mês", unit: "n", default: null, team: true },
-      { metric: "callsBooked", label: "Calls agendadas", unit: "n", default: null, team: true },
+      { metric: "contactRate", kind: "rate", label: "Taxa de contato", unit: "%", hint: "dos leads novos, quantos você alcança", default: pct(RATE_BENCHMARKS.contactRate) },
+      { metric: "bookingRate", kind: "rate", label: "Taxa de agendamento", unit: "%", hint: "dos contatados, quantos marcam call", default: pct(RATE_BENCHMARKS.bookingRate) },
+      { metric: "showRate", kind: "rate", label: "Comparecimento na call", unit: "%", hint: "das agendadas, quantas acontecem", default: pct(RATE_BENCHMARKS.showRate) },
+      { metric: "contacts", kind: "flow", label: "Contatos no mês", unit: "n", default: null, team: true },
+      { metric: "callsBooked", kind: "flow", label: "Calls agendadas", unit: "n", default: null, team: true },
     ],
   },
   {
@@ -42,19 +49,19 @@ export const META_CATALOG = [
       // placar mede, que o pace usa na cadeia e que a régua da Visão geral
       // colore. A conversão sobre as AGENDADAS não é campo: é conta
       // (comparecimento × esta), senão dá pra configurar duas que se contradizem.
-      { metric: "conversaoCall", label: "Call → ganho", unit: "%", hint: "das calls que aconteceram", default: pct(RATE_BENCHMARKS.closeRate) },
-      { metric: "won", label: "Ganhos no mês", unit: "n", default: null, team: true },
-      { metric: "revenue", label: "Receita no mês", unit: "R$", default: null, team: true },
-      { metric: "ticket", label: "Ticket médio", unit: "R$", default: null },
+      { metric: "conversaoCall", kind: "rate", label: "Call → ganho", unit: "%", hint: "das calls que aconteceram", default: pct(RATE_BENCHMARKS.closeRate) },
+      { metric: "won", kind: "flow", label: "Ganhos no mês", unit: "n", default: null, team: true },
+      { metric: "revenue", kind: "flow", label: "Receita no mês", unit: "R$", default: null, team: true },
+      { metric: "ticket", kind: "avg", label: "Ticket médio", unit: "R$", default: null },
     ],
   },
   {
     role: "integrator", label: "Integrador · CS", hint: "integração e pós-venda",
     metrics: [
-      { metric: "retentionRate", label: "Retenção", unit: "%", default: 95 },
-      { metric: "nps", label: "NPS alvo", unit: "n", default: null },
-      { metric: "newAccounts", label: "Contas novas no mês", unit: "n", default: null, team: true },
-      { metric: "activeAccounts", label: "Contas ativas", unit: "n", default: null, team: true },
+      { metric: "retentionRate", kind: "rate", label: "Retenção", unit: "%", default: 95 },
+      { metric: "nps", kind: "avg", label: "NPS alvo", unit: "n", default: null },
+      { metric: "newAccounts", kind: "flow", label: "Contas novas no mês", unit: "n", default: null, team: true },
+      { metric: "activeAccounts", kind: "stock", label: "Contas ativas", unit: "n", default: null, team: true },
     ],
   },
   {
@@ -62,13 +69,13 @@ export const META_CATALOG = [
     metrics: [
       // Fase de aprendizado: cobra VOLUME e consistência (o hábito de produzir)
       // antes de perseguir resultado — o Leo lapida engajamento/alcance depois.
-      { metric: "postsPerMonth", label: "Posts no mês", unit: "n", default: 30, team: true },        // 1/dia
-      { metric: "storiesPerMonth", label: "Stories no mês", unit: "n", default: 120, team: true },   // 4/dia
-      { metric: "adsPerMonth", label: "Ads no mês", unit: "n", default: 48, team: true },            // 12/semana
+      { metric: "postsPerMonth", kind: "flow", label: "Posts no mês", unit: "n", default: 30, team: true },        // 1/dia
+      { metric: "storiesPerMonth", kind: "flow", label: "Stories no mês", unit: "n", default: 120, team: true },   // 4/dia
+      { metric: "adsPerMonth", kind: "flow", label: "Ads no mês", unit: "n", default: 48, team: true },            // 12/semana
       // Resultado (secundárias por ora, sem alvo — pra ajustar no futuro).
-      { metric: "followerGrowth", label: "Novos seguidores no mês", unit: "n", default: null, team: true },
-      { metric: "engagementRate", label: "Taxa de engajamento", unit: "%", default: null },
-      { metric: "reachMonth", label: "Alcance no mês", unit: "n", default: null, team: true },
+      { metric: "followerGrowth", kind: "flow", label: "Novos seguidores no mês", unit: "n", default: null, team: true },
+      { metric: "engagementRate", kind: "rate", label: "Taxa de engajamento", unit: "%", default: null },
+      { metric: "reachMonth", kind: "flow", label: "Alcance no mês", unit: "n", default: null, team: true },
     ],
   },
 ];

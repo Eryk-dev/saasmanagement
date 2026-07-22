@@ -15,7 +15,7 @@ export const asRate = (value) => value == null ? "—" : `${String(Math.round(va
 // não opera no fim de semana, então a meta se distribui só nos dias úteis (base
 // = 21,75 úteis/mês ≈ 261/12; 5 úteis/semana) — cada dia útil carrega a fatia do
 // fim de semana. Janela sem dia útil (ex.: "ontem" num domingo) não cobra meta.
-function scaledGoal(goal, bizDays) {
+export function scaledGoal(goal, bizDays) {
   if (!goal?.target || !(bizDays > 0)) return null;
   const base = goal.period === "week" ? 5 : 21.75;
   return Math.max(1, Math.round(goal.target * (bizDays / base)));
