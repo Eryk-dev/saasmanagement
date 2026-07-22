@@ -5,6 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
+import multipart from "@fastify/multipart";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
@@ -69,5 +70,51 @@ test("lead novo nasce com os campos do CRM (GPS/perda/denorm)", async () => {
   assert.equal(lead.closer, "");
   assert.equal(lead.lastActivityAt, "");
   assert.equal(lead.stageAttempts, 0);
+  await app.close();
+});
+
+// Foto anexada ao toque (print da conversa): bytes na collection, URL em
+// meta.photo e a imagem servida ABERTA — a tag <img> não manda header.
+test("asset do toque: upload multipart, servido em /public/activities/:id e ligado por meta.photo", async () => {
+  const repo = makeMemRepo();
+  const app = Fastify();
+  await app.register(multipart);
+  registerRoutes(app, repo);
+
+  const boundary = "----cockpittest";
+  const payload = Buffer.concat([
+    Buffer.from(`--${boundary}\r\ncontent-disposition: form-data; name="file"; filename="print.png"\r\ncontent-type: image/png\r\n\r\n`),
+    Buffer.from("fake-png-bytes"),
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+  const mp = { "content-type": `multipart/form-data; boundary=${boundary}` };
+  const up = await app.inject({ method: "POST", url: "/api/activities/asset", headers: mp, payload });
+  assert.equal(up.statusCode, 200, up.body);
+  const { url } = up.json();
+  assert.match(url, /^\/public\/activities\/aa_/);
+
+  const got = await app.inject({ method: "GET", url });
+  assert.equal(got.statusCode, 200);
+  assert.equal(got.headers["content-type"].split(";")[0], "image/png");
+  assert.equal(got.rawPayload.toString(), "fake-png-bytes");
+
+  // o anexo vive em meta.photo do toque, sem coluna nova
+  const a = (await app.inject({
+    method: "POST", url: "/api/activities",
+    payload: { lead: "l1", saas: "leverads", type: "whatsapp", text: "print da conversa", meta: { photo: url } },
+  })).json();
+  assert.equal(a.meta.photo, url);
+
+  // arquivo que não é imagem é recusado, e id inexistente é 404
+  const txt = Buffer.concat([
+    Buffer.from(`--${boundary}\r\ncontent-disposition: form-data; name="file"; filename="a.txt"\r\ncontent-type: text/plain\r\n\r\n`),
+    Buffer.from("nao sou imagem"),
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+  assert.equal((await app.inject({ method: "POST", url: "/api/activities/asset", headers: mp, payload: txt })).statusCode, 400);
+  assert.equal((await app.inject({ method: "GET", url: "/public/activities/aa_naoexiste" })).statusCode, 404);
+
+  // a collection dos bytes fica FORA do CRUD genérico (não vaza base64 por /api)
+  assert.equal((await app.inject({ url: "/api/activity_assets" })).statusCode, 404);
   await app.close();
 });

@@ -400,6 +400,25 @@ export const api = {
   // CRM: timeline do lead (pontos de contato + eventos automáticos).
   listActivities: (leadId) => req("GET", `/api/activities?lead=${encodeURIComponent(leadId)}`),
   logActivity: (a) => req("POST", "/api/activities", a),
+  // Foto anexada ao toque (print da conversa) → asset servido em
+  // /public/activities/:id; a URL vai em activity.meta.photo.
+  activityAsset: async (blob, name = "anexo.png") => {
+    const fd = new FormData();
+    fd.append("file", blob, name);
+    const key = getKey();
+    const res = await fetch(`${BASE}/api/activities/asset`, {
+      method: "POST", headers: key ? { "x-api-key": key } : {}, body: fd,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      let msg = "";
+      try { msg = JSON.parse(text).error || ""; } catch { /* HTML do proxy */ }
+      const err = new Error(msg || proxyMessage(res.status));
+      err.status = res.status;
+      throw err;
+    }
+    return res.json();
+  },
   // Métricas reais de funil (conversão/tempo por etapa, perdas, SLA de 1º toque).
   funnelAnalytics: (saas, { since, until } = {}) => {
     const q = new URLSearchParams();
