@@ -620,27 +620,15 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
 // dev local. Testes usam makeMeta com fetch mockado.
 let _meta = null;
 const inst = () => (_meta ??= makeMeta({ accessToken: process.env.META_ACCESS_TOKEN || "" }));
-export const meta = {
-  configured: () => inst().configured(),
-  campaignInsights: (a, r) => inst().campaignInsights(a, r),
-  adInsights: (a, r) => inst().adInsights(a, r),
-  listCampaigns: (a) => inst().listCampaigns(a),
-  listAdsets: (id) => inst().listAdsets(id),
-  listAds: (id) => inst().listAds(id),
-  listAccountAds: (a) => inst().listAccountAds(a),
-  listAccountAdsets: (a) => inst().listAccountAdsets(a),
-  discoverCreativeDefaults: (a) => inst().discoverCreativeDefaults(a),
-  adInstagramMedia: (a, o) => inst().adInstagramMedia(a, o),
-  uploadVideo: (a, o) => inst().uploadVideo(a, o),
-  videoThumbnail: (id, o) => inst().videoThumbnail(id, o),
-  createAdCreative: (a, o) => inst().createAdCreative(a, o),
-  createAd: (a, o) => inst().createAd(a, o),
-  copyAdSet: (id, o) => inst().copyAdSet(id, o),
-  renameObject: (id, n) => inst().renameObject(id, n),
-  getAdCreativeSpec: (id) => inst().getAdCreativeSpec(id),
-  adCreativeMedia: (id) => inst().adCreativeMedia(id),
-  createVideoCreativeFromSpec: (a, o) => inst().createVideoCreativeFromSpec(a, o),
-  updateAd: (id, o) => inst().updateAd(id, o),
-  setObjectStatus: (id, s) => inst().setObjectStatus(id, s),
-  setObjectBudget: (id, v) => inst().setObjectBudget(id, v),
-};
+// Método novo na fábrica passava a valer nos testes (que injetam um meta falso)
+// e quebrava SÓ em produção, porque esta fachada era uma lista escrita à mão e
+// alguém sempre esquece de somar a linha. O Proxy repassa tudo, então a lista
+// não existe mais pra ficar desatualizada.
+export const meta = new Proxy({}, {
+  get: (_t, prop) => {
+    const target = inst();
+    const value = target[prop];
+    return typeof value === "function" ? value.bind(target) : value;
+  },
+  has: (_t, prop) => prop in inst(),
+});
