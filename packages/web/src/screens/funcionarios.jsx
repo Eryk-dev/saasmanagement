@@ -1,10 +1,10 @@
 import React from "react";
-import { PageHead, FilterTab } from "../components/viz.jsx";
+import { PageHead } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
-import { periodWindow, PRESETS } from "./overview.jsx";
+import { PeriodPicker, periodWindow } from "../components/period-picker.jsx";
 import { buildPeople, TeamCards, topPerformer, asRate } from "../components/team-cards.jsx";
 
 // Funcionários — desempenho por pessoa. Reusa os cartões do time (TeamCards, os
@@ -18,7 +18,9 @@ function FuncionariosScreen({ onNav }) {
   const [product] = useActiveSaas();
   const [period, setPeriod] = useState(() => { try { return localStorage.getItem("cockpit_func_period") || "30d"; } catch { return "30d"; } });
   const setP = (p) => { setPeriod(p); try { localStorage.setItem("cockpit_func_period", p); } catch { /* ignore */ } };
-  const win = useMemo(() => periodWindow(period, {}), [period]);
+  const [custom, setCustom] = useState(() => { try { return JSON.parse(localStorage.getItem("cockpit_func_custom")) || { since: "", until: "" }; } catch { return { since: "", until: "" }; } });
+  const setC = (c) => { setCustom(c); try { localStorage.setItem("cockpit_func_custom", JSON.stringify(c)); } catch { /* ignore */ } };
+  const win = useMemo(() => periodWindow(period, custom), [period, custom.since, custom.until]);
   const [score, setScore] = useState(null);
 
   useEffect(() => {
@@ -26,7 +28,7 @@ function FuncionariosScreen({ onNav }) {
     let alive = true; setScore(null);
     api.scoreboard(product.id, win).then((s) => alive && setScore(s)).catch(() => alive && setScore(null));
     return () => { alive = false; };
-  }, [product?.id, period, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [product?.id, period, custom.since, custom.until, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clicar num nome abre o pipeline filtrado por aquela pessoa (o pipeline lê a
   // pessoa do localStorage) — mesmo comportamento da Visão geral.
@@ -54,11 +56,7 @@ function FuncionariosScreen({ onNav }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Análise de Equipe" sub="desempenho por pessoa · placar por papel (SDR · closer · CS)">
-        <div style={{ display: "flex", alignItems: "center", gap: 3, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          {PRESETS.filter((p) => ["7d", "15d", "30d", "90d"].includes(p.key)).map((p) => (
-            <FilterTab key={p.key} active={period === p.key} onClick={() => setP(p.key)}>{p.label}</FilterTab>
-          ))}
-        </div>
+        <PeriodPicker period={period} custom={custom} onChange={(p, c) => { setP(p); setC(c || { since: "", until: "" }); }} />
       </PageHead>
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         {score == null && <div className="dim" style={{ fontSize: 12.5 }}>carregando…</div>}

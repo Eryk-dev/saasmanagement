@@ -1,10 +1,10 @@
 import React from "react";
-import { PageHead, FilterTab, StatTile, Card, LineChart } from "../components/viz.jsx";
+import { PageHead, StatTile, Card, LineChart } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
-import { periodWindow, PRESETS } from "./overview.jsx";
+import { PeriodPicker, periodWindow } from "../components/period-picker.jsx";
 
 // Aquisição — os NÚMEROS QUE IMPORTAM de Publicidade + Formulários num lugar só:
 // o funil de aquisição (investido → impressões → cliques → visitas no form →
@@ -26,7 +26,9 @@ function AquisicaoScreen() {
   const [product] = useActiveSaas();
   const [period, setPeriod] = useState(() => { try { return localStorage.getItem("cockpit_aq_period") || "30d"; } catch { return "30d"; } });
   const setP = (p) => { setPeriod(p); try { localStorage.setItem("cockpit_aq_period", p); } catch { /* ignore */ } };
-  const win = useMemo(() => periodWindow(period, {}), [period]);
+  const [custom, setCustom] = useState(() => { try { return JSON.parse(localStorage.getItem("cockpit_aq_custom")) || { since: "", until: "" }; } catch { return { since: "", until: "" }; } });
+  const setC = (c) => { setCustom(c); try { localStorage.setItem("cockpit_aq_custom", JSON.stringify(c)); } catch { /* ignore */ } };
+  const win = useMemo(() => periodWindow(period, custom), [period, custom.since, custom.until]);
   const [mkt, setMkt] = useState(null);
   const [biz, setBiz] = useState(null);
 
@@ -36,7 +38,7 @@ function AquisicaoScreen() {
     api.marketingMetrics(product.id, { since: win.since, until: win.until }).then((m) => alive && setMkt(m)).catch(() => alive && setMkt(null));
     api.metrics(product.id, { days: win.days }).then((b) => alive && setBiz(b)).catch(() => alive && setBiz(null));
     return () => { alive = false; };
-  }, [product?.id, period, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [product?.id, period, custom.since, custom.until, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!product) return <EmptyState title="Sem produto ativo" hint="Escolha um produto no seletor da barra lateral." />;
 
@@ -60,9 +62,7 @@ function AquisicaoScreen() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Análise de Aquisição" sub="investimento em anúncios + conversão dos formulários · o funil de aquisição">
-        <div style={{ display: "flex", alignItems: "center", gap: 3, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          {PRESETS.filter((p) => ["7d", "15d", "30d", "90d"].includes(p.key)).map((p) => <FilterTab key={p.key} active={period === p.key} onClick={() => setP(p.key)}>{p.label}</FilterTab>)}
-        </div>
+        <PeriodPicker period={period} custom={custom} onChange={(p, c) => { setP(p); setC(c || { since: "", until: "" }); }} />
       </PageHead>
 
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>

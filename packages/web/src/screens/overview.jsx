@@ -1,7 +1,7 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { PageHead, FilterTab, StatTile, Card } from "../components/viz.jsx";
+import { PageHead, StatTile, Card } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { nextMilestone, dueLabel } from "../lib/milestones.js";
 import { openStages, isWonLead, wonAtOf, stageKind } from "../lib/funnel.js";
@@ -10,6 +10,7 @@ import { displayName } from "../lib/users.js";
 import { leadTier } from "../lib/ui.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { buildPeople, TeamCards, topPerformer } from "../components/team-cards.jsx";
+import { PeriodPicker, periodWindow, PRESETS } from "../components/period-picker.jsx";
 // Visão geral — cockpit de GESTÃO. Responde: como está o negócio (receita, CAC,
 // ROAS) e como está o DESEMPENHO de cada papel (SDR/closer/CS), pessoa a pessoa,
 // contra a meta. A execução ("quem contatar agora") mora no Meu dia, não aqui.
@@ -22,47 +23,6 @@ const shortDay = (d) => d.toLocaleDateString("pt-BR", { day: "2-digit", month: "
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const pctStr = (n) => (n == null ? "" : String(n).replace(".", ",") + "%");
 
-// Filtro de período da Visão geral: presets de N dias (+ hoje/ontem/custom). A
-// janela ANTERIOR é a mesma duração imediatamente antes — base da meta dinâmica
-// de calls do SDR (leads do período anterior × taxa).
-const PRESETS = [
-  { key: "today", label: "Hoje", days: 1, off: 0 },
-  { key: "yesterday", label: "Ontem", days: 1, off: 1 },
-  { key: "3d", label: "3 dias", days: 3, off: 0 },
-  { key: "7d", label: "7 dias", days: 7, off: 0 },
-  { key: "15d", label: "15 dias", days: 15, off: 0 },
-  { key: "30d", label: "30 dias", days: 30, off: 0 },
-  { key: "60d", label: "60 dias", days: 60, off: 0 },
-  { key: "90d", label: "90 dias", days: 90, off: 0 },
-];
-// Dias ÚTEIS (seg–sex) no intervalo [since, until], inclusivo. O time não opera
-// no fim de semana, então as metas absolutas (mês/semana) se distribuem só nos
-// dias úteis — a fatia do fim de semana vira meta a mais nos dias úteis, não
-// some. Meio-dia evita borda de fuso; setDate anda o dia certo mesmo com DST.
-function businessDaysBetween(sinceYmd, untilYmd) {
-  let n = 0;
-  const d = new Date(`${sinceYmd}T12:00:00`), end = new Date(`${untilYmd}T12:00:00`);
-  while (d <= end) { const w = d.getDay(); if (w !== 0 && w !== 6) n++; d.setDate(d.getDate() + 1); }
-  return n;
-}
-function periodWindow(period, custom, now = new Date()) {
-  if (period === "custom" && custom?.since && custom?.until) {
-    const s = new Date(`${custom.since}T00:00:00`), u = new Date(`${custom.until}T00:00:00`);
-    const days = Math.max(1, Math.round((u - s) / DAY) + 1);
-    const prevUntil = new Date(s.getTime() - DAY), prevSince = new Date(prevUntil.getTime() - (days - 1) * DAY);
-    const lbl = `${custom.since.slice(5)} a ${custom.until.slice(5)}`;
-    return { since: custom.since, until: custom.until, prevSince: ymd(prevSince), prevUntil: ymd(prevUntil), days, businessDays: businessDaysBetween(custom.since, custom.until), short: lbl, label: lbl };
-  }
-  const p = PRESETS.find((x) => x.key === period) || PRESETS.find((x) => x.key === "30d");
-  const end0 = new Date(now); end0.setHours(0, 0, 0, 0);
-  const end = new Date(end0.getTime() - (p.off || 0) * DAY);
-  const since = new Date(end.getTime() - (p.days - 1) * DAY);
-  const prevUntil = new Date(since.getTime() - DAY), prevSince = new Date(prevUntil.getTime() - (p.days - 1) * DAY);
-  const short = p.key === "today" ? "hoje" : p.key === "yesterday" ? "ontem" : p.label.toLowerCase();
-  const sinceYmd = ymd(since), untilYmd = ymd(end);
-  return { since: sinceYmd, until: untilYmd, prevSince: ymd(prevSince), prevUntil: ymd(prevUntil), days: p.days, businessDays: businessDaysBetween(sinceYmd, untilYmd), short, label: short };
-}
-const dateInp = { height: 32, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontFamily: "var(--mono)" };
 
 function OverviewScreen({ onNav, onOpenLead }) {
   const { SAAS, LEADS, CUSTOMERS } = window.SEED;
@@ -198,19 +158,7 @@ function OverviewScreen({ onNav, onOpenLead }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Visão geral" sub={today}>
-        <div style={{ display: "flex", alignItems: "center", gap: 3, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          {PRESETS.filter((p) => !["3d", "60d"].includes(p.key)).map((p) => (
-            <FilterTab key={p.key} active={period === p.key} onClick={() => setPeriodP(p.key)}>{p.label}</FilterTab>
-          ))}
-          <FilterTab active={period === "custom"} onClick={() => setPeriodP("custom")}>Personalizado</FilterTab>
-          {period === "custom" && (
-            <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
-              <input type="date" value={custom.since} onChange={(e) => setCustomP({ ...custom, since: e.target.value })} style={dateInp} />
-              <span className="mono dim" style={{ fontSize: 10 }}>até</span>
-              <input type="date" value={custom.until} onChange={(e) => setCustomP({ ...custom, until: e.target.value })} style={dateInp} />
-            </span>
-          )}
-        </div>
+        <PeriodPicker period={period} custom={custom} onChange={(p, c) => { setPeriodP(p); setCustomP(c || { since: "", until: "" }); }} />
       </PageHead>
 
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
