@@ -60,6 +60,10 @@ const publicUser = (u) => ({
   id: u.id, name: u.name, role: u.role || "admin",
   roles: Array.isArray(u.roles) ? u.roles : [],
   saas: u.saas || "",
+  // Foto de perfil: URL de /public/users/:id com ?v= do último upload (a tag
+  // <img> não manda header, então a rota é aberta e o ?v= fura o cache). "" =
+  // sem foto, o SPA cai nas iniciais.
+  photo: u.photo || "",
   // Telas permitidas (screens.js): [] = todas. O SPA usa pra montar o menu e o
   // guard da API usa pra fechar as rotas correspondentes.
   screens: Array.isArray(u.screens) ? u.screens : [],
@@ -151,6 +155,64 @@ export function registerAuthRoutes(app, repo) {
     return { ok: true };
   });
 
+  // ── Meu perfil ────────────────────────────────────────────────────────────
+  // Nome e foto são do PRÓPRIO usuário: /api/auth/me não passa pelo guard de
+  // Ajustes (SETTINGS_WRITE_PREFIXES cobre /api/auth/users), então quem tem
+  // telas restritas (SDR, Ana) também consegue se editar. Cargo NÃO entra aqui
+  // — etiquetas de papel continuam sendo gestão, em Ajustes → Equipe.
+  app.patch("/api/auth/me", async (req, reply) => {
+    const me = await sessionUser(repo, headerKey(req));
+    if (!me) return reply.code(401).send({ error: "sessão inválida" });
+    const name = String(req.body?.name || "").trim();
+    if (name.length < 2) return reply.code(400).send({ error: "nome precisa de 2+ caracteres" });
+    // O login casa por id OU nome (case-insensitive): deixar dois usuários com o
+    // mesmo nome tornaria a entrada ambígua.
+    const taken = (await repo.list("users")).some((u) => u.id !== me.id
+      && (u.id.toLowerCase() === name.toLowerCase() || String(u.name || "").toLowerCase() === name.toLowerCase()));
+    if (taken) return reply.code(409).send({ error: "já existe alguém no time com esse nome" });
+    const updated = await repo.update("users", me.id, { name });
+    return publicUser(updated);
+  });
+
+  // Foto de perfil: bytes na collection `user_assets` (1 por usuário, id = id do
+  // usuário) e URL com ?v= no registro — mesmo desenho de /public/training e
+  // /public/social, que já rodam em produção.
+  app.post("/api/auth/me/photo", async (req, reply) => {
+    const me = await sessionUser(repo, headerKey(req));
+    if (!me) return reply.code(401).send({ error: "sessão inválida" });
+    const file = await req.file();
+    if (!file) return reply.code(400).send({ error: "envie uma imagem (multipart, campo file)" });
+    if (!/^image\//.test(file.mimetype || "")) return reply.code(400).send({ error: "só aceito imagem" });
+    const buf = await file.toBuffer();
+    if (buf.length > 2 * 1024 * 1024) return reply.code(413).send({ error: "imagem acima de 2MB — recorte ou comprima" });
+    const doc = {
+      id: me.id, mime: file.mimetype, size: buf.length,
+      data: buf.toString("base64"), at: new Date().toISOString(),
+    };
+    if (await repo.get("user_assets", me.id)) await repo.update("user_assets", me.id, doc);
+    else await repo.create("user_assets", doc);
+    const photo = `/public/users/${me.id}?v=${Date.now().toString(36)}`;
+    const updated = await repo.update("users", me.id, { photo });
+    return publicUser(updated);
+  });
+
+  app.delete("/api/auth/me/photo", async (req, reply) => {
+    const me = await sessionUser(repo, headerKey(req));
+    if (!me) return reply.code(401).send({ error: "sessão inválida" });
+    await repo.remove("user_assets", me.id);
+    const updated = await repo.update("users", me.id, { photo: "" });
+    return publicUser(updated);
+  });
+
+  // Rota ABERTA (está em OPEN_PREFIXES): <img> não manda header. Só devolve os
+  // bytes da foto — nada do usuário vaza aqui.
+  app.get("/public/users/:id", async (req, reply) => {
+    const doc = await repo.get("user_assets", req.params.id);
+    if (!doc) return reply.code(404).send({ error: "sem foto" });
+    reply.header("cache-control", "public, max-age=86400, immutable");
+    return reply.type(doc.mime || "image/png").send(Buffer.from(doc.data || "", "base64"));
+  });
+
   // Gestão mínima do time (qualquer autenticado — todos admins na v1).
   app.get("/api/auth/users", async () => (await repo.list("users")).map(publicUser));
 
@@ -178,7 +240,14 @@ export function registerAuthRoutes(app, repo) {
     if (!user) return reply.code(404).send({ error: "Not found" });
     const { name, roles, password, saas, screens } = req.body || {};
     const patch = {};
-    if (typeof name === "string" && name.trim()) patch.name = name.trim();
+    if (typeof name === "string" && name.trim()) {
+      // Mesma guarda do /api/auth/me: o login casa por id OU nome, então dois
+      // nomes iguais no time deixariam a entrada ambígua.
+      const taken = (await repo.list("users")).some((u) => u.id !== user.id
+        && (u.id.toLowerCase() === name.trim().toLowerCase() || String(u.name || "").toLowerCase() === name.trim().toLowerCase()));
+      if (taken) return reply.code(409).send({ error: "já existe alguém no time com esse nome" });
+      patch.name = name.trim();
+    }
     if (roles !== undefined) patch.roles = sanitizeRoles(roles);
     if (saas !== undefined) patch.saas = sanitizeSaas(saas); // "" volta a valer pra todos
     if (screens !== undefined) patch.screens = sanitizeScreens(screens); // [] volta a ver tudo
@@ -205,6 +274,7 @@ export function registerAuthRoutes(app, repo) {
       return reply.code(409).send({ error: `este usuário ainda é responsável por ${owned} lead(s) — reatribua antes de remover`, owned });
     }
     await repo.remove("users", id);
+    try { await repo.remove("user_assets", id); } catch { /* pode nem ter foto */ }
     // Sessões órfãs do usuário removido (best-effort; a auth trata como deslogado).
     try { for (const s of await repo.list("sessions")) if (s.user === id) await repo.remove("sessions", s.id); } catch { /* ignore */ }
     return { ok: true, removed: id, owned };

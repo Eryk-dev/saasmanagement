@@ -5,10 +5,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
+import multipart from "@fastify/multipart";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
 const { ensureDefaultAdmins, makeAuthHook, hashPassword, verifyPassword } = await import("../src/auth.js");
+const { makeScreenGuardHook } = await import("../src/screens.js");
 
 function providedKey(req) {
   const h = req.headers["x-api-key"];
@@ -220,4 +222,79 @@ test("DELETE usuário: remove; bloqueia (409) quem é responsável por lead e fo
   assert.equal(blocked.statusCode, 409);
   assert.equal(blocked.json().owned, 1);
   assert.equal((await app.inject({ method: "DELETE", url: `/api/auth/users/${d.id}?force=1`, headers: H })).statusCode, 200);
+});
+
+// Meu perfil: nome e foto são do PRÓPRIO usuário. O ponto delicado é que
+// /api/auth/users/* está atrás do guard da tela Ajustes — quem tem telas
+// restritas (SDR, Ana) só consegue se editar porque /api/auth/me fica fora dele.
+test("meu perfil: nome + foto do próprio usuário, mesmo com telas restritas", async (t) => {
+  const repo = makeMemRepo();
+  const app = Fastify();
+  await app.register(multipart);
+  app.addHook("onRequest", makeAuthHook({
+    apiKey: "test-key", repo,
+    openPaths: new Set(["/api/auth/login"]),
+    openPrefixes: ["/public/users/"], // mesma lista do index.js
+    providedKey,
+  }));
+  app.addHook("onRequest", makeScreenGuardHook());
+  registerRoutes(app, repo);
+  t.after(() => app.close());
+
+  const KEY = { "x-api-key": "test-key" };
+  await app.inject({ method: "POST", url: "/api/auth/users", headers: KEY, payload: { id: "ana", name: "Ana", password: "abcd", screens: ["today"] } });
+  await app.inject({ method: "POST", url: "/api/auth/users", headers: KEY, payload: { id: "bob", name: "Bob", password: "abcd" } });
+  const token = (await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "ana", password: "abcd" } })).json().token;
+  const H = { "x-api-key": token };
+
+  // A rota de gestão é barrada pro usuário restrito; a do próprio perfil, não.
+  assert.equal((await app.inject({ method: "PATCH", url: "/api/auth/users/ana", headers: H, payload: { name: "Ana Paula" } })).statusCode, 403);
+  const renamed = await app.inject({ method: "PATCH", url: "/api/auth/me", headers: H, payload: { name: "Ana Paula" } });
+  assert.equal(renamed.statusCode, 200, renamed.body);
+  assert.equal(renamed.json().name, "Ana Paula");
+  assert.equal(renamed.json().passwordHash, undefined, "hash nunca vaza");
+  // e o login segue funcionando pelo nome novo
+  assert.equal((await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "Ana Paula", password: "abcd" } })).statusCode, 200);
+
+  // nome de outra pessoa → 409 (o login casa por id OU nome: não pode ambiguar)
+  assert.equal((await app.inject({ method: "PATCH", url: "/api/auth/me", headers: H, payload: { name: "Bob" } })).statusCode, 409);
+  assert.equal((await app.inject({ method: "PATCH", url: "/api/auth/me", headers: H, payload: { name: "A" } })).statusCode, 400);
+  // key mestre não é ninguém — não tem perfil pra editar
+  assert.equal((await app.inject({ method: "PATCH", url: "/api/auth/me", headers: KEY, payload: { name: "Zé" } })).statusCode, 401);
+
+  // Foto: multipart → URL versionada, servida ABERTA (a <img> não manda header)
+  const boundary = "----cockpittest";
+  const payload = Buffer.concat([
+    Buffer.from(`--${boundary}\r\ncontent-disposition: form-data; name="file"; filename="eu.png"\r\ncontent-type: image/png\r\n\r\n`),
+    Buffer.from("fake-png-bytes"),
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+  const mp = { ...H, "content-type": `multipart/form-data; boundary=${boundary}` };
+  const up = await app.inject({ method: "POST", url: "/api/auth/me/photo", headers: mp, payload });
+  assert.equal(up.statusCode, 200, up.body);
+  const url = up.json().photo;
+  assert.match(url, /^\/public\/users\/ana\?v=/);
+
+  const got = await app.inject({ method: "GET", url }); // sem credencial nenhuma
+  assert.equal(got.statusCode, 200);
+  assert.equal(got.headers["content-type"].split(";")[0], "image/png");
+  assert.equal(got.rawPayload.toString(), "fake-png-bytes");
+  // a lista do time carrega a foto (é dela que o SPA monta os avatares)
+  assert.equal((await app.inject({ url: "/api/auth/users", headers: H })).json().find((u) => u.id === "ana").photo, url);
+
+  // trocar a foto substitui o registro (1 por usuário, id = id do usuário)
+  await app.inject({ method: "POST", url: "/api/auth/me/photo", headers: mp, payload });
+  assert.equal((await repo.list("user_assets")).length, 1);
+
+  // remover: some do usuário e a rota pública devolve 404
+  assert.equal((await app.inject({ method: "DELETE", url: "/api/auth/me/photo", headers: H })).json().photo, "");
+  assert.equal((await app.inject({ method: "GET", url: "/public/users/ana" })).statusCode, 404);
+
+  // arquivo que não é imagem é recusado
+  const txt = Buffer.concat([
+    Buffer.from(`--${boundary}\r\ncontent-disposition: form-data; name="file"; filename="a.txt"\r\ncontent-type: text/plain\r\n\r\n`),
+    Buffer.from("nao sou imagem"),
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+  assert.equal((await app.inject({ method: "POST", url: "/api/auth/me/photo", headers: mp, payload: txt })).statusCode, 400);
 });

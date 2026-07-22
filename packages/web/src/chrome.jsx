@@ -406,6 +406,118 @@ const menuItemStyle = {
   borderRadius: "var(--r-2)", fontSize: 13, textAlign: "left", color: "var(--fg-1)",
 };
 
+// Foto do celular vira quadrado de 512px em JPEG antes de subir: o servidor
+// recusa acima de 2MB e o avatar nunca passa de 40px na tela — mandar o
+// original só faria o boot do time carregar imagem grande à toa.
+function squareJpeg(file, size = 512) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const side = Math.min(img.width, img.height);
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("não consegui processar a imagem"))), "image/jpeg", 0.85);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("esse arquivo não é uma imagem válida")); };
+    img.src = url;
+  });
+}
+
+// Meu perfil: nome e foto do próprio usuário. O CARGO fica de fora (etiquetas de
+// papel são gestão, em Ajustes → Equipe) — aqui só é exibido. Ao salvar recarrega
+// a página: o usuário logado mora no localStorage e o time em window.SEED, então
+// recarregar é o jeito honesto de todo avatar da tela ficar igual de uma vez.
+function ProfileModal({ user, onClose }) {
+  const [name, setName] = useS(user?.name || "");
+  const [blob, setBlob] = useS(null);      // foto nova, já quadrada
+  const [preview, setPreview] = useS(userPhoto(user?.id));
+  const [drop, setDrop] = useS(false);     // pediu pra remover a foto atual
+  const [busy, setBusy] = useS(false);
+  const [msg, setMsg] = useS(null);        // { ok, text }
+  const fileRef = useR(null);
+  const inputStyle = { width: "100%", height: 30, padding: "0 8px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 };
+  const labelStyle = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "var(--mono)" };
+  const linkStyle = { fontSize: 11, color: "var(--fg-3)", fontFamily: "var(--mono)", textDecoration: "underline", textUnderlineOffset: 3 };
+
+  async function pick(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // escolher o MESMO arquivo de novo tem que disparar
+    if (!file) return;
+    setMsg(null);
+    try {
+      const square = await squareJpeg(file);
+      setBlob(square);
+      setDrop(false);
+      setPreview(URL.createObjectURL(square));
+    } catch (err) { setMsg({ ok: false, text: err.message }); }
+  }
+
+  function removePhoto() {
+    setBlob(null);
+    setPreview("");
+    setDrop(true);
+  }
+
+  const dirtyName = name.trim() && name.trim() !== (user?.name || "");
+  const dirty = !!(dirtyName || blob || (drop && user?.photo));
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!dirty) return onClose();
+    setBusy(true); setMsg(null);
+    try {
+      let updated = null;
+      if (dirtyName) updated = await api.updateMe(name.trim());
+      if (blob) updated = await api.uploadMyPhoto(blob);
+      else if (drop && user?.photo) updated = await api.removeMyPhoto();
+      if (updated) { try { localStorage.setItem("cockpit_user", JSON.stringify(updated)); } catch { /* ignore */ } }
+      setMsg({ ok: true, text: "perfil atualizado" });
+      setTimeout(() => location.reload(), 600);
+    } catch (err) {
+      setBusy(false);
+      setMsg({ ok: false, text: err.message || String(err) });
+    }
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 90 }}>
+      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} style={{ width: "min(340px, calc(100vw - 24px))", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ fontSize: 15, fontWeight: 500 }}>Meu perfil</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <UserDot name={name || user?.name} photo={preview} size={64} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+            <input ref={fileRef} type="file" accept="image/*" onChange={pick} style={{ display: "none" }} />
+            <button type="button" onClick={() => fileRef.current?.click()} style={{ padding: "6px 12px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 12 }}>
+              {preview ? "Trocar foto…" : "Escolher foto…"}
+            </button>
+            {preview && <button type="button" onClick={removePhoto} className="dim" style={linkStyle}>remover foto</button>}
+          </div>
+        </div>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={labelStyle}>Nome</span>
+          <input value={name} autoFocus onChange={(e) => setName(e.target.value)} style={inputStyle} />
+        </label>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={labelStyle}>Cargo</span>
+          <div className="mono dim" style={{ fontSize: 12 }}>{cargoOf(user)}</div>
+          <span className="mono dim" style={{ fontSize: 10 }}>quem muda o cargo é a gestão, em Ajustes → Equipe</span>
+        </div>
+        {msg && <div className="mono" style={{ fontSize: 11, color: msg.ok ? "var(--pos)" : "var(--neg)" }}>{msg.text}</div>}
+        <div style={{ display: "flex", gap: 8 }}>
+          <button type="submit" disabled={busy || !dirty} style={{ flex: 1, padding: "8px 12px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy || !dirty ? 0.6 : 1 }}>
+            {busy ? "Salvando…" : "Salvar"}
+          </button>
+          <button type="button" onClick={onClose} style={{ padding: "8px 14px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function PasswordModal({ onClose }) {
   const [current, setCurrent] = useS("");
   const [next, setNext] = useS("");
@@ -450,14 +562,23 @@ function PasswordModal({ onClose }) {
   );
 }
 
-function UserDot({ name }) {
+// Bolinha da conta: a foto do usuário quando existe, senão a inicial no
+// contraste forte de sempre. `photo` vem resolvido de fora (URL do servidor ou
+// blob do preview no "Meu perfil").
+function UserDot({ name, photo, size = 30 }) {
+  const base = {
+    width: size, height: size, borderRadius: 999, flex: "0 0 auto",
+    display: "inline-flex", alignItems: "center", justifyContent: "center",
+  };
+  if (photo) {
+    return <img src={photo} alt={name || ""} style={{ ...base, objectFit: "cover", background: "var(--bg-2)", border: "1px solid var(--line-1)" }} />;
+  }
   return (
     <span style={{
-      width: 30, height: 30, borderRadius: 999,
-      display: "inline-flex", alignItems: "center", justifyContent: "center",
+      ...base,
       background: "var(--fg-1)",
       color: "var(--bg-1)",
-      fontSize: 12,
+      fontSize: size * 0.4,
       fontWeight: 600,
     }}>{(name || "?")[0].toUpperCase()}</span>
   );

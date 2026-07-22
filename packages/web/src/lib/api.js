@@ -78,6 +78,13 @@ function upload(path, formData, onProgress) {
   });
 }
 
+// Foto de perfil: o servidor guarda o caminho relativo (/public/users/:id?v=…);
+// com VITE_API_BASE apontando pra outra origem, a <img> precisa do prefixo.
+export function assetUrl(path) {
+  if (!path) return "";
+  return /^(https?:|data:|blob:)/.test(path) ? path : `${BASE}${path}`;
+}
+
 // URL do stream de mudanças (SSE). EventSource não manda headers — a key/token
 // vai em ?key= (o servidor só aceita query key nessa rota).
 export function eventsUrl() {
@@ -91,6 +98,29 @@ export const api = {
   login: (username, password) => req("POST", "/api/auth/login", { username, password }),
   logout: () => req("POST", "/api/auth/logout", {}),
   changePassword: (current, password) => req("POST", "/api/auth/password", { current, password }),
+  // Meu perfil: nome e foto do PRÓPRIO usuário (o cargo continua sendo gestão,
+  // em Ajustes → Equipe). Todas devolvem o usuário atualizado.
+  updateMe: (name) => req("PATCH", "/api/auth/me", { name }),
+  uploadMyPhoto: async (blob, name = "foto.jpg") => {
+    const fd = new FormData();
+    fd.append("file", blob, name);
+    const key = getKey();
+    const res = await fetch(`${BASE}/api/auth/me/photo`, {
+      method: "POST",
+      headers: key ? { "x-api-key": key } : {},
+      body: fd,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      let msg = "";
+      try { msg = JSON.parse(text).error || ""; } catch { /* HTML do proxy */ }
+      const err = new Error(msg || proxyMessage(res.status));
+      err.status = res.status;
+      throw err;
+    }
+    return res.json();
+  },
+  removeMyPhoto: () => req("DELETE", "/api/auth/me/photo"),
   // Usuários do time (lista sanitizada) — responsáveis do kanban de tarefas.
   listUsers: () => req("GET", "/api/auth/users"),
   list: (collection, query = {}) => {

@@ -494,6 +494,18 @@ function TeamSettings() {
     setSaving("");
   }
 
+  // Renomear alguém do time (o próprio usuário também troca em Meu perfil, com
+  // a foto). Salva ao sair do campo; 409 = nome já usado por outra pessoa.
+  async function renameUser(u, name) {
+    const clean = String(name || "").trim();
+    if (!clean || clean === u.name) return;
+    setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, name: clean } : x)));
+    setSaving(u.id);
+    try { await api.updateUser(u.id, { name: clean }); }
+    catch (e) { alert("não renomeou: " + e.message); load(); }
+    setSaving("");
+  }
+
   async function createUser() {
     if (!invite?.name || !invite?.password) return;
     try {
@@ -537,8 +549,16 @@ function TeamSettings() {
         {users === null && <div className="mono dim" style={{ padding: "12px 14px", fontSize: 12 }}>carregando…</div>}
         {Array.isArray(users) && users.map((u) => (
           <div key={u.id} style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 140px 120px 44px`, gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 500 }}>
-              <Avatar id={u.id} name={u.name} size={22} /> {u.name || u.id}
+            <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 500, minWidth: 0 }}>
+              <Avatar id={u.id} name={u.name} size={22} />
+              <input defaultValue={u.name || u.id} key={u.name}
+                title="Nome exibido no cockpit (a foto cada um troca em Meu perfil)"
+                onBlur={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "transparent"; renameUser(u, e.target.value); }}
+                onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") { e.currentTarget.value = u.name || u.id; e.currentTarget.blur(); } }}
+                style={{ ...inputStyle, height: 26, fontSize: 13, fontWeight: 500, minWidth: 0, flex: 1, background: "transparent", border: "1px solid transparent" }}
+                onFocus={(e) => { e.currentTarget.style.background = "var(--bg-2)"; e.currentTarget.style.borderColor = "var(--line-1)"; }}
+                onMouseEnter={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.style.borderColor = "var(--line-1)"; }}
+                onMouseLeave={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.style.borderColor = "transparent"; }} />
               <span className="mono dim code" style={{ fontSize: 10 }}>{u.id}</span>
             </span>
             {ROLE_OPTS.map(([k]) => (
