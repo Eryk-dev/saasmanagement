@@ -10,6 +10,22 @@ import { useActiveSaas } from "../lib/workspace.js";
 
 const { useState: useS, useEffect: useE } = React;
 
+// Meta digitada que briga com o que a meta do mês exige (mais de 15% de
+// diferença). 15% porque arredondamento de cadeia sempre dá uma folga pequena,
+// e avisar por 3 de diferença vira ruído que ninguém lê.
+const divergente = (digitado, derivado) => {
+  const v = Number(String(digitado ?? "").trim());
+  if (!(v > 0) || !(Number(derivado) > 0)) return false;
+  return Math.abs(v - derivado) / derivado > 0.15;
+};
+
+// "2026-08" → "ago/2026" (o mês da agenda de metas).
+const mesLabel = (m) => {
+  const [ano, mes] = String(m).split("-");
+  const d = new Date(Number(ano), Number(mes) - 1, 1);
+  return d.toLocaleDateString("pt-BR", { month: "short", year: "numeric" }).replace(".", "");
+};
+
 const rk = (role, metric) => `${role}:${metric}`;
 
 const money = (n) => `R$ ${Math.round(n).toLocaleString("pt-BR")}`;
@@ -67,6 +83,7 @@ function MetasScreen() {
   const [cash, setCash] = useS("");             // meta de venda do mês (caixa, R$) — product.monthlyCashTarget
   const [orig, setOrig] = useS(null);           // { roleVals, overrides, cash } snapshot
   const [err, setErr] = useS(null);
+  const [meses, setMeses] = useS({});   // agenda: "AAAA-MM" -> meta daquele mês
   const [saving, setSaving] = useS(false);
   const [note, setNote] = useS(null);
 
@@ -76,8 +93,9 @@ function MetasScreen() {
     for (const r of d.roles) for (const m of r.metrics) rv[rk(r.role, m.metric)] = m.target != null ? String(m.target) : "";
     const ov = (d.userGoals || []).map((g) => ({ key: g.key, metric: g.metric, target: String(g.target) }));
     const ct = d.company?.cashTarget != null ? String(d.company.cashTarget) : "";
-    setData(d); setRoleVals(rv); setOverrides(ov); setCash(ct);
-    setOrig({ roleVals: JSON.stringify(rv), overrides: JSON.stringify(ov), cash: ct });
+    const ms = Object.fromEntries((d.company?.months || []).map((m) => [m.month, m.target != null ? String(m.target) : ""]));
+    setData(d); setRoleVals(rv); setOverrides(ov); setCash(ct); setMeses(ms);
+    setOrig({ roleVals: JSON.stringify(rv), overrides: JSON.stringify(ov), cash: ct, meses: JSON.stringify(ms) });
   };
 
   useE(() => {
@@ -88,7 +106,7 @@ function MetasScreen() {
     return () => { alive = false; };
   }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const dirty = orig && (JSON.stringify(roleVals) !== orig.roleVals || JSON.stringify(overrides) !== orig.overrides || cash !== orig.cash);
+  const dirty = orig && (JSON.stringify(roleVals) !== orig.roleVals || JSON.stringify(overrides) !== orig.overrides || cash !== orig.cash || JSON.stringify(meses) !== orig.meses);
 
   // Mapa metric -> { label, unit } (pros rótulos dos overrides).
   const metricInfo = {};
@@ -132,7 +150,7 @@ function MetasScreen() {
       for (const o of JSON.parse(orig.overrides)) {
         if (!seen.has(`${o.key}:${o.metric}`)) goals.push({ scope: "user", key: o.key, metric: o.metric, target: "" });
       }
-      await api.saveMetas(product.id, goals, { cashTarget: cash });
+      await api.saveMetas(product.id, goals, { cashTarget: cash, months: meses });
       applyData(await api.metas(product.id));
       setNote({ ok: true, text: "metas salvas · valem em todo campo que mostra meta" });
     } catch (e) {
@@ -142,7 +160,7 @@ function MetasScreen() {
   }
   function reset() {
     if (!orig) return;
-    setRoleVals(JSON.parse(orig.roleVals)); setOverrides(JSON.parse(orig.overrides)); setCash(orig.cash);
+    setRoleVals(JSON.parse(orig.roleVals)); setOverrides(JSON.parse(orig.overrides)); setCash(orig.cash); setMeses(JSON.parse(orig.meses));
   }
 
   const kicker = { fontSize: 11, fontWeight: 600, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" };
@@ -194,6 +212,36 @@ function MetasScreen() {
                     className="tnum" style={{ ...inp, width: 130, textAlign: "right" }} />
                 </div>
               </label>
+
+              {/* Agenda dos próximos meses: configurar agosto hoje faz a
+                  plataforma inteira virar de meta sozinha no dia 1º — a faixa da
+                  Visão geral, o pace e as metas de vaga que seguem a meta. */}
+              {(data.company?.months || []).length > 0 && (
+                <div style={{ marginTop: 18, borderTop: "1px solid var(--line-1)", paddingTop: 16 }}>
+                  <div style={{ fontSize: 13.5, color: "var(--fg-2)", marginBottom: 4 }}>Meses seguintes</div>
+                  <div className="dim" style={{ fontSize: 12.5, marginBottom: 12 }}>
+                    deixe em branco pra o mês seguir a meta acima. Quando o mês virar, o valor daqui passa a valer sozinho em toda a plataforma, e as metas de vaga que estão em branco se reajustam junto.
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 190px), 1fr))", gap: 10 }}>
+                    {data.company.months.map((m) => (
+                      <label key={m.month} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ flex: 1, fontSize: 13, color: m.current ? "var(--fg-1)" : "var(--fg-2)", fontWeight: m.current ? 600 : 400 }}>
+                          {mesLabel(m.month)}
+                          {m.current && <span className="dim" style={{ fontSize: 11, marginLeft: 6 }}>mês atual</span>}
+                        </span>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <span className="mono dim" style={{ fontSize: 12 }}>R$</span>
+                          <input type="number" min="0" step="1" inputMode="decimal"
+                            value={meses[m.month] ?? ""}
+                            onChange={(e) => setMeses((p) => ({ ...p, [m.month]: e.target.value }))}
+                            placeholder={String(m.effective)}
+                            className="tnum" style={{ ...inp, width: 110, textAlign: "right" }} />
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Pace: o que a meta do mês exige, pela mesma cadeia da Análise */}
@@ -248,13 +296,29 @@ function MetasScreen() {
                           {/* Meta de volume é do TIME: mostra a parte de cada um,
                               que é o que o placar vai cobrar da pessoa. */}
                           {shareHint(m, r.role) && <span className="dim" style={{ display: "block", fontSize: 11.5 }}>{shareHint(m, r.role)}</span>}
+                          {/* Campo vazio NÃO é campo sem régua: ele segue a meta
+                              do mês pela cadeia do pace, e reajusta sozinho
+                              quando a meta muda (inclusive na virada do mês). */}
+                          {roleVals[rk(r.role, m.metric)] === "" && m.derived != null && (
+                            <span style={{ display: "block", fontSize: 11.5, color: "var(--accent)" }}>seguindo a meta do mês: {Math.round(m.derived)}</span>
+                          )}
+                          {/* Número digitado VENCE (é decisão de gestão), mas
+                              quando ele briga com a meta do mês a tela avisa em
+                              vez de deixar duas verdades convivendo caladas. */}
+                          {divergente(roleVals[rk(r.role, m.metric)], m.derived) && (
+                            <button type="button" onClick={() => setRole(r.role, m.metric, String(Math.round(m.derived)))}
+                              style={{ display: "block", fontSize: 11.5, color: "var(--warn)", textAlign: "left", fontWeight: 600 }}>
+                              a meta do mês pede {Math.round(m.derived)} · usar esse
+                            </button>
+                          )}
                         </span>
                         <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                           {m.unit === "R$" && <span className="mono dim" style={{ fontSize: 12 }}>R$</span>}
                           <input type="number" min="0" step={m.unit === "%" ? "1" : "0.01"} inputMode="decimal"
                             value={roleVals[rk(r.role, m.metric)] ?? ""}
                             onChange={(e) => setRole(r.role, m.metric, e.target.value)}
-                            placeholder={m.default != null ? `padrão ${m.default}` : "—"}
+                            placeholder={m.derived != null ? `${Math.round(m.derived)} pela meta` : m.default != null ? `padrão ${m.default}` : "—"}
+                            title={m.derived != null ? `vazio = segue a meta do mês (${Math.round(m.derived)})` : undefined}
                             className="tnum" style={{ ...inp, width: m.unit === "R$" ? 90 : 76, textAlign: "right" }} />
                           <span className="mono dim" style={{ fontSize: 12, width: 26 }}>{m.unit === "%" ? "%" : ""}</span>
                         </div>

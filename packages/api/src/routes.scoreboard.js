@@ -9,8 +9,8 @@
 // novas + cancelamentos com data) — cresce quando o billing registrar o evento.
 
 import { cadenceOf, firstStage, isLoss, TOUCH_TYPES } from "./stages.js";
-import { TEAM_METRICS, META_CATALOG } from "./routes.metas.js";
-import { RATE_BENCHMARKS } from "./routes.pipeline-pace.js";
+import { TEAM_METRICS, META_CATALOG, deriveGoalsFromPace } from "./routes.metas.js";
+import { RATE_BENCHMARKS, computePipelinePace } from "./routes.pipeline-pace.js";
 import {
   DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead,
   bookedLeadsIn as coreBooked, callOutcome as coreCallOutcome,
@@ -76,11 +76,30 @@ export function registerScoreboardRoutes(app, repo) {
     // UniqueKids) não pode diluir a meta do time daqui.
     const inProduct = (u) => !u.saas || u.saas === product.id;
     const headcount = (role) => Math.max(1, users.filter((u) => inProduct(u) && (u.roles || []).includes(role)).length);
+    // Meta DERIVADA da meta de venda do mês: o que a empresa precisa desdobrado
+    // pela mesma cadeia da tela Metas (venda ÷ ticket = ganhos, ÷ fechamento =
+    // calls, e por aí). Vale como fallback do campo em branco, então trocar a
+    // meta do mês reajusta a régua de todo mundo sozinho — inclusive quando o
+    // mês vira e entra o alvo agendado pro mês novo.
+    let derivado = {};
+    try {
+      const d = deriveGoalsFromPace(await computePipelinePace(repo, product));
+      derivado = Object.fromEntries((d?.goals || []).map((g) => [`${g.role}.${g.metric}`, Number(g.target)]));
+    } catch { derivado = {}; }
+
     const goalFor = (userId, role, metric) => {
       const u = goals.find((g) => g.scope === "user" && g.key === userId && g.metric === metric);
       if (u) return { target: Number(u.target) || 0, period: u.period || "month", scope: "user" };
       const r = goals.find((g) => g.scope === "role" && g.key === role && g.metric === metric);
-      if (!r) return null;
+      if (!r) {
+        // Só VOLUME de time se deriva. Ticket e taxa entram na cadeia como
+        // premissa (vêm do histórico), então virar meta seria dizer "seu alvo é
+        // o que você já faz" — alvo que ninguém persegue.
+        const auto = derivado[`${role}.${metric}`];
+        if (!(Number(auto) > 0) || !TEAM_METRICS.has(metric)) return null;
+        const people = headcount(role);
+        return { target: round2(auto / people), period: "month", scope: "derived", teamTarget: auto, people };
+      }
       const total = Number(r.target) || 0;
       const period = r.period || "month";
       if (!TEAM_METRICS.has(metric)) return { target: total, period, scope: "role" };
