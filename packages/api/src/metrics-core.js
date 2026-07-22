@@ -59,7 +59,12 @@ export function rangeFromQuery(q = {}, now = new Date()) {
 
 // ── O que é lead ─────────────────────────────────────────────────────────────
 // Lead interno (teste/seed) fica fora de TODA contagem oficial.
-export const isRealLead = (l) => !l?.internal;
+// Lead que conta nas métricas do produto: fora os testes internos do time e
+// fora quem saiu por uma SAÍDA LATERAL do form (ex.: "ainda não vende em
+// marketplace", que vai pra fila da Mentoria). Esses últimos são contato, mas
+// não são lead DESTE produto — contá-los faz o CPL parecer barato justamente
+// porque encheu de gente que não compra.
+export const isRealLead = (l) => !l?.internal && !l?.formExit;
 
 // ── Fechamentos numa janela ──────────────────────────────────────────────────
 // Vendas da janela pela régua oficial: isWonLead + data do wonAtOf. Fallback

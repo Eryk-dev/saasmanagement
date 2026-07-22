@@ -459,6 +459,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
               .map((o) => {
                 const opt = { value: o.value.trim(), label: String(o.label || o.value).trim() };
                 if (o.to) opt.to = o.to;
+                if (o.exit) opt.exit = o.exit;
                 return opt;
               });
           }
@@ -467,6 +468,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
       thanks: draft.thanks,
       // Tela de descarte: só persiste se o builder configurou algum texto.
       reject: draft.reject && (String(draft.reject.title || "").trim() || String(draft.reject.subtitle || "").trim()) ? draft.reject : null,
+      exits: Object.keys(draft.exits || {}).length ? draft.exits : null,
       mapping: Object.fromEntries(Object.entries(draft.mapping || {}).filter(([, v]) => v)),
     };
     try {
@@ -527,6 +529,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
           </div>
           <QuestionsBuilder
             questions={draft.questions || []}
+            exits={draft.exits || {}}
             onChange={(qs) => set({ questions: qs })}
           />
 
@@ -557,7 +560,39 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
             <LabeledInput label="Subtítulo" value={draft.reject?.subtitle || ""} onChange={(v) => set({ reject: { ...draft.reject, subtitle: v } })} placeholder="No momento não é um fit, mas agradecemos o contato." />
           </div>
 
-          <div style={sectionTitle}>Mapeamento → lead</div>
+          <div style={sectionTitle}>Saídas laterais</div>
+          <div className="mono dim" style={{ fontSize: 11, marginBottom: 8, lineHeight: 1.5 }}>
+            Pra quem <b>não é deste produto, mas também não é lixo</b> (ex.: ainda não vende em marketplace).
+            A opção da pergunta aponta pra saída, a pessoa segue respondendo normalmente e o lead nasce
+            na <b>coluna escolhida</b>, sem dono e <b>sem contar como conversão</b> (senão a Meta passa a
+            trazer mais gente fora do perfil). Sem coluna, o contato só é registrado se ele chegou a ser pedido.
+          </div>
+          {Object.entries(draft.exits || {}).map(([k, ex]) => (
+            <div key={k} style={{ ...cardStyle, marginBottom: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <span className="mono" style={{ fontSize: 11.5, color: "var(--fg-2)" }}>{k}</span>
+                <button type="button" onClick={() => { const e = { ...draft.exits }; delete e[k]; set({ exits: e }); }}
+                  className="mono dim" style={{ fontSize: 13, padding: "0 6px", marginLeft: "auto" }}>✕</button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <LabeledInput label="Nome da saída" value={ex.label || ""} placeholder="Ainda não vende"
+                  onChange={(v) => set({ exits: { ...draft.exits, [k]: { ...ex, label: v } } })} />
+                <LabeledInput label="Coluna do pipeline" value={ex.stage || ""} placeholder="Mentoria"
+                  onChange={(v) => set({ exits: { ...draft.exits, [k]: { ...ex, stage: v } } })} />
+              </div>
+              <LabeledInput label="Título da tela final" value={ex.title || ""}
+                onChange={(v) => set({ exits: { ...draft.exits, [k]: { ...ex, title: v } } })} />
+              <LabeledInput label="Subtítulo" value={ex.subtitle || ""}
+                onChange={(v) => set({ exits: { ...draft.exits, [k]: { ...ex, subtitle: v } } })} />
+            </div>
+          ))}
+          <button type="button" style={addBtnStyle}
+            onClick={() => {
+              const k = (prompt("Chave da saída (ex.: mentoria)") || "").trim().toLowerCase().replace(/[^a-z0-9_]/g, "");
+              if (k) set({ exits: { ...(draft.exits || {}), [k]: { label: "", stage: "", title: "", subtitle: "" } } });
+            }}>+ adicionar saída</button>
+
+          <div style={{ ...sectionTitle, marginTop: 18 }}>Mapeamento → lead</div>
           <div className="mono dim" style={{ fontSize: 11, marginBottom: 8, lineHeight: 1.5 }}>
             Cada envio vira um lead no pipeline deste SaaS. Aponte qual pergunta alimenta cada campo do lead — as demais respostas vão juntas no lead.
           </div>
@@ -599,7 +634,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
 
 // Editor da lista de perguntas — espelha o QuestionsEditor do EntityForm, com os
 // tipos extras (email/phone/textarea) e branching por opção ("pular para").
-function QuestionsBuilder({ questions, onChange }) {
+function QuestionsBuilder({ questions, onChange, exits }) {
   const update = (i, patch) => { const next = [...questions]; next[i] = { ...next[i], ...patch }; onChange(next); };
   const remove = (i) => onChange(questions.filter((_, j) => j !== i));
   const move = (i, dir) => {
@@ -698,6 +733,12 @@ function QuestionsBuilder({ questions, onChange }) {
                     {q.type === "select" && (
                       <select value={o.to || ""} title="Pular para…" onChange={(e) => updateOpt(i, oi, { to: e.target.value })} style={{ ...inputStyle, width: 170, fontSize: 12 }}>
                         {jumpOptions(q.key).map((j) => <option key={j.value} value={j.value}>{j.label}</option>)}
+                      </select>
+                    )}
+                    {q.type === "select" && Object.keys(exits || {}).length > 0 && (
+                      <select value={o.exit || ""} title="Sai por…" onChange={(e) => updateOpt(i, oi, { exit: e.target.value })} style={{ ...inputStyle, width: 160, fontSize: 12 }}>
+                        <option value="">(fluxo de venda)</option>
+                        {Object.entries(exits).map(([k, e]) => <option key={k} value={k}>↴ {e.label || k}</option>)}
                       </select>
                     )}
                     <button type="button" onClick={() => update(i, { options: (q.options || []).filter((_, j) => j !== oi) })} className="mono dim" style={{ fontSize: 13, padding: "0 6px" }}>✕</button>

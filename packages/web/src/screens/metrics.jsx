@@ -474,6 +474,14 @@ function MetricsScreen() {
           <StatTile label="Investimento" value={t ? money(t.spend) : "…"} delta={t?.ctr != null ? `CTR ${String(t.ctr).replace(".", ",")}%` : null} />
           <StatTile label="Visitas no form" value={t?.formViews != null ? window.fmt.int(t.formViews) : "…"}
             delta={t?.formViews > 0 ? `conversão do form ${((t.formStarts / t.formViews) * 100).toFixed(1).replace(".", ",")}%` : "sem visitas no período"} />
+          {/* Quem respondeu que ainda NÃO vende em marketplace: sai do funil de
+              venda (não vira lead nem conversão) e vira medida da qualidade do
+              tráfego. Número alto = problema de segmentação/criativo, não de form. */}
+          {t?.foraDoPerfil > 0 && (
+            <StatTile label="Fora do perfil" value={window.fmt.int(t.foraDoPerfil)}
+              delta={t.leads + t.foraDoPerfil > 0 ? `${((t.foraDoPerfil / (t.leads + t.foraDoPerfil)) * 100).toFixed(0)}% dos envios não vendem ainda` : "não vendem em marketplace"}
+              tone="down" />
+          )}
           <StatTile label="Lead → cliente" value={biz?.window?.convRate != null ? `${String(biz.window.convRate).replace(".", ",")}%` : "sem dado"}
             delta={biz?.window?.newCustomers != null ? `${biz.window.newCustomers} ${biz.window.newCustomers === 1 ? "cliente novo" : "clientes novos"}` : "conversão no período"} />
           <StatTile label={`CAC · ${rangeDays}d`} value={biz?.window?.cac != null ? money(biz.window.cac) : "sem dado"} delta="investimento ÷ clientes" />

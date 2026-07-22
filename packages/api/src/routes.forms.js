@@ -7,7 +7,7 @@
 // definição do form. IDs são opacos; forms em rascunho não existem publicamente.
 
 import { randomUUID } from "node:crypto";
-import { publicForm, validateAnswers, leadFromSubmission, submissionTerminal, makeRateLimiter, buildSteps, variantHeadline } from "./forms.js";
+import { publicForm, validateAnswers, leadFromSubmission, submissionTerminal, submissionExit, makeRateLimiter, buildSteps, variantHeadline } from "./forms.js";
 import { painCode, leadGrade } from "./routes.marketing.js";
 import { isWonLead, kindOf } from "./stages.js";
 import { formPageHtml, EMBED_JS } from "./form-page.js";
@@ -120,6 +120,13 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // server-authoritative). Captura o contato marcado, mas sem proposta e sem
     // contar como conversão (Lead Pixel/CAPI) — pra não otimizar anúncio nesse público.
     const disqualified = submissionTerminal(form.questions || [], answers) === "_reject";
+    // SAÍDA LATERAL: a pessoa não é descarte nem venda deste produto, é outra
+    // conversa (ex.: ainda não vende em marketplace e quer aprender). Ela é
+    // guardada no estágio que a saída indicar, SEM contar como conversão pra
+    // Meta: contar ensinaria o anúncio a caçar mais gente fora do perfil, que é
+    // exatamente o problema que a pergunta veio resolver.
+    const exitKey = submissionExit(form.questions || [], answers);
+    const exit = (exitKey && (form.exits || {})[exitKey]) || null;
 
     let utm = normalizeMetaSource(sanitizeUtm(body.utm));
     // Orgânico ganha origem legível pelo referrer (google, instagram, site) —
@@ -149,18 +156,26 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // pela cadência do estágio de entrada (SLA de 1º contato).
     const product = form.saas ? await repo.get("products", form.saas) : null;
     const dqStage = stageByKind(product, "desqualificado")?.stage || "disqualified";
-    const nextAt = disqualified ? "" : initialNextActionAt(product, "");
-    // Lead qualificado entra com o SDR do produto como dono; desqualificado vai
-    // pro cemitério sem responsável (ninguém trabalha ele agora).
-    const owner = disqualified ? null : await autoLeadOwner(repo, form.saas);
-    const lead = await repo.create("leads", {
+    // Saída lateral não tem toque marcado nem dono: ninguém trabalha essa fila
+    // hoje, e um GPS apontando pra ela só encheria a agenda de quem vende.
+    const nextAt = disqualified || exit ? "" : initialNextActionAt(product, "");
+    const owner = disqualified || exit ? null : await autoLeadOwner(repo, form.saas);
+    // Saída que acontece ANTES das perguntas de contato (ex.: "não tenho
+    // interesse") não gera lead nenhum: seria um card sem nome e sem telefone,
+    // que ninguém consegue trabalhar. O envio fica registrado do mesmo jeito
+    // (submission + funil de desistência do form), que é o que interessa medir.
+    const semContato = !leadFromSubmission(form, answers).phone && !leadFromSubmission(form, answers).email;
+    const lead = exit && semContato ? null : await repo.create("leads", {
       ...(CREATE_DEFAULTS.leads || {}),
       ...leadFromSubmission(form, answers),
       // Lead QUALIFICADO nasce no 1º estágio do funil — não no "" do default,
       // que deixava o card como fantasma na fila ("1º contato · atrasado" com
       // stage vazio). Desqualificado vai pro cemitério (dqStage).
-      stage: disqualified ? dqStage : (firstStage(product) || ""),
+      stage: exit ? (exit.stage || dqStage) : disqualified ? dqStage : (firstStage(product) || ""),
       ...(disqualified ? { disqualified: true, lostReason: "sem_fit", lostNote: "Reprovado no funil do form" } : {}),
+      // `formExit` deixa a fila pesquisável depois ("quem saiu por 'ainda não
+      // vende'"), sem depender de ler as respostas de cada envio.
+      ...(exit ? { formExit: exitKey } : {}),
       ...(owner ? { owner } : {}),
       ...(utm ? { utm } : {}),
       ...(fbp ? { fbp } : {}),
@@ -173,7 +188,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
       createdAt: new Date().toISOString(), // métricas de marketing filtram por período
     });
     // Timeline: nascimento do lead via form (o POST genérico tem log próprio).
-    try {
+    if (lead) try {
       await logActivity(repo, {
         saas: form.saas || "", lead: lead.id, type: "system",
         meta: {
@@ -187,7 +202,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
     const submission = await repo.create("form_submissions", {
       form: form.id,
       saas: form.saas,
-      lead: lead.id,
+      lead: lead?.id || "",
       answers,
       ...(utm ? { utm } : {}),
       ...(variant ? { variant } : {}),
@@ -201,7 +216,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // do Pixel. IP/UA vêm da request. PII (email/phone) é hasheada no módulo.
     // Best-effort: nenhuma falha de CAPI pode quebrar o envio do form.
     // Desqualificado NÃO conta como conversão (espelha o Pixel client-side).
-    if (!disqualified && !internal && metaCapi?.configured(product?.metaPixelId)) {
+    if (!disqualified && !exit && !internal && metaCapi?.configured(product?.metaPixelId)) {
       try {
         await metaCapi.sendLead({
           eventId: body.eventId || submission.id,
@@ -225,13 +240,13 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // pelo MESMO dispatcher da rota manual (native quando há template publicado);
     // elegibilidade/config é decisão do provider e nunca quebra o envio.
     // Desqualificado não recebe proposta.
-    if (!disqualified) {
+    if (!disqualified && !exit) {
       try { await dispatchProposal(repo, lead, { auto: true, baseUrl: publicBase(req) }); } catch { /* fail-open */ }
     }
 
     // Aviso no Discord: lead re-buscado pra incluir o link da proposta que o
     // dispatcher acabou de gravar (se gerou). Nunca quebra o envio.
-    if (discord?.configured()) {
+    if (lead && discord?.configured()) {
       const fresh = (await repo.get("leads", lead.id)) || lead;
       const product = await repo.get("products", form.saas);
       await discord.leadNew({ lead: fresh, productName: product?.name });

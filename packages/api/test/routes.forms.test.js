@@ -551,3 +551,117 @@ test("WhatsApp do form: sem Cloud API configurada, o form segue como está", asy
   assert.equal(pub.thanks.whatsapp, undefined);
   await app.close();
 });
+
+// ── Saída lateral (quem não é do produto, mas não é lixo) ───────────────────
+// O caso real: gente que ainda NÃO vende em marketplace chegando no form da
+// LeverAds. Não é descarte (pode virar cliente de outro produto) e não pode
+// contar como conversão, senão a Meta passa a caçar mais gente assim.
+
+const FORM_EXIT = {
+  id: "fo_exit",
+  name: "Diagnóstico",
+  saas: "leverads",
+  status: "published",
+  questions: [
+    {
+      key: "vende", label: "Você já vende em marketplace?", type: "select", required: true,
+      options: [
+        { value: "sim", label: "Sim" },
+        { value: "nao", label: "Não", to: "interesse", exit: "mentoria" },
+      ],
+    },
+    { key: "contas", label: "Quantas contas?", type: "select", required: true, options: [{ value: "1" }, { value: "2+" }], to: "nome" },
+    { key: "nome", label: "Nome?", type: "text", required: true },
+    { key: "whatsapp", label: "WhatsApp?", type: "phone", required: true, to: "_end" },
+    {
+      key: "interesse", label: "Quer aprender?", type: "select", required: true,
+      options: [
+        { value: "sim", label: "Sim", to: "verba" },
+        { value: "nao", label: "Não", to: "_end", exit: "sem_interesse" },
+      ],
+    },
+    { key: "verba", label: "Verba?", type: "select", required: true, options: [{ value: "ate1k" }, { value: "mais" }], to: "nome" },
+  ],
+  mapping: { name: "nome", phone: "whatsapp" },
+  exits: {
+    mentoria: { label: "Ainda não vende", stage: "Mentoria", title: "Recebemos!", subtitle: "Te chamamos quando abrir." },
+    sem_interesse: { label: "Sem interesse", title: "Tudo bem!", subtitle: "Boa sorte." },
+  },
+  thanks: { title: "Valeu!" },
+};
+
+async function appComSaida(opts = {}) {
+  const repo = makeMemRepo();
+  await repo.create("forms", { ...FORM_EXIT });
+  await repo.create("products", {
+    id: "leverads", name: "LeverAds", metaPixelId: "px1",
+    funnel: [
+      { stage: "Novo lead", kind: "novo" },
+      { stage: "Desqualificado", kind: "desqualificado" },
+      { stage: "Mentoria", kind: "outro" },
+    ],
+  });
+  const app = Fastify();
+  registerRoutes(app, repo, opts);
+  return { app, repo };
+}
+
+const envia = (app, answers) =>
+  app.inject({ method: "POST", url: "/public/forms/fo_exit/submissions", payload: { answers } });
+
+test("saída lateral: lead vai pra Mentoria, sem dono, sem conversão e sem proposta", async () => {
+  const enviados = [];
+  const metaCapi = { configured: () => true, sendLead: async (p) => enviados.push(p) };
+  const { app, repo } = await appComSaida({ metaCapi });
+
+  const res = await envia(app, { vende: "nao", interesse: "sim", verba: "ate1k", nome: "Ana", whatsapp: "41999998888" });
+  assert.equal(res.statusCode, 201);
+
+  const lead = (await repo.list("leads"))[0];
+  assert.equal(lead.stage, "Mentoria");        // fila do produto novo, não o cemitério
+  assert.equal(lead.formExit, "mentoria");     // pesquisável depois
+  assert.equal(lead.name, "Ana");              // reusa as MESMAS perguntas de contato
+  assert.equal(lead.phone, "41999998888");
+  assert.ok(!lead.disqualified);               // não é descarte
+  assert.ok(!lead.owner);                      // ninguém trabalha essa fila hoje
+  assert.ok(!lead.nextActionAt);               // e não entra no GPS de ninguém
+  assert.equal(enviados.length, 0, "saída lateral não pode virar conversão na Meta");
+  assert.equal(lead.proposalUrl, undefined);
+});
+
+test("quem já vende segue o fluxo normal: 1º estágio, dono e conversão", async () => {
+  const enviados = [];
+  const metaCapi = { configured: () => true, sendLead: async (p) => enviados.push(p) };
+  const { app, repo } = await appComSaida({ metaCapi });
+
+  const res = await envia(app, { vende: "sim", contas: "2+", nome: "Bia", whatsapp: "41999997777" });
+  assert.equal(res.statusCode, 201);
+  const lead = (await repo.list("leads"))[0];
+  assert.equal(lead.stage, "Novo lead");
+  assert.equal(lead.formExit, undefined);
+  assert.equal(enviados.length, 1);            // esse SIM conta como conversão
+});
+
+test("saída antes do contato não cria card fantasma no pipeline", async () => {
+  const { app, repo } = await appComSaida();
+  const res = await envia(app, { vende: "nao", interesse: "nao" });
+  assert.equal(res.statusCode, 201);
+  assert.equal((await repo.list("leads")).length, 0, "sem nome e sem telefone, não vira card");
+  assert.equal((await repo.list("form_submissions")).length, 1, "mas o envio fica registrado");
+});
+
+test("voltar e trocar a resposta desfaz a saída", async () => {
+  const { submissionExit } = await import("../src/forms.js");
+  const qs = FORM_EXIT.questions;
+  assert.equal(submissionExit(qs, { vende: "nao", interesse: "sim", verba: "ate1k", nome: "A", whatsapp: "1" }), "mentoria");
+  assert.equal(submissionExit(qs, { vende: "sim", contas: "2+", nome: "A", whatsapp: "1" }), "");
+});
+
+test("a página pública recebe as saídas e o exit das opções", async () => {
+  const pub = publicForm(FORM_EXIT);
+  assert.equal(pub.exits.mentoria.stage, "Mentoria");
+  assert.equal(pub.questions[0].options[1].exit, "mentoria");
+  const html = formPageHtml(pub, { id: "fo_exit" });
+  assert.match(html, /exitOfTrail/);           // o renderer sabe calcular a saída
+  assert.match(html, /!rejected && !exitKey/); // e não dispara o Pixel nela
+});

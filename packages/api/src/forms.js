@@ -36,7 +36,7 @@ export function publicForm(form) {
     questions: (form.questions || []).map((q) => ({
       key: q.key, label: q.label, type: q.type || "text", required: !!q.required,
       placeholder: q.placeholder || "", help: q.help || "", stack: !!q.stack,
-      options: (q.options || []).map((o) => ({ value: o.value, label: o.label || o.value, to: o.to || "" })),
+      options: (q.options || []).map((o) => ({ value: o.value, label: o.label || o.value, to: o.to || "", exit: o.exit || "" })),
       to: q.to || "",
       stat: q.stat || "", statLabel: q.statLabel || "",
       durationMs: Number(q.durationMs) > 0 ? Number(q.durationMs) : 2400,
@@ -45,6 +45,12 @@ export function publicForm(form) {
     // Tela final de NÃO-qualificado (branch `_reject`): mensagem de descarte.
     // Sem proposta/redirect/conversão — só a copy. Null = builder ainda não configurou.
     reject: form.reject || null,
+    // SAÍDAS LATERAIS: quem responde algo que tira a pessoa do produto principal
+    // (ex.: "ainda não vendo em marketplace") sai por aqui. Não é descarte nem
+    // venda: é outra conversa. A opção marca `exit` e a pessoa carrega a saída
+    // até o fim, o que deixa reusar as MESMAS perguntas de contato do fluxo
+    // normal (mapping de nome/telefone continua valendo).
+    exits: form.exits || null,
   };
 }
 
@@ -62,9 +68,10 @@ export function buildSteps(questions) {
   return steps;
 }
 
-// Percorre o branching do renderer (andando por telas) e devolve tanto o caminho
-// (perguntas visitadas) quanto o terminal alcançado: "_end" (qualificado, padrão)
-// ou "_reject" (não-qualificado). Guarda contra loops (cada tela visita 1x).
+// Percorre o branching do renderer (andando por telas) e devolve o caminho
+// (perguntas visitadas), o terminal alcançado ("_end" qualificado, padrão, ou
+// "_reject" não-qualificado) e a SAÍDA LATERAL carregada pelo caminho (`exit`
+// da opção escolhida; a última vence). Guarda contra loops (cada tela 1x).
 function walkPath(questions, answers) {
   const steps = buildSteps(questions);
   const stepOfKey = new Map();
@@ -73,6 +80,7 @@ function walkPath(questions, answers) {
   const seen = new Set();
   let s = 0;
   let terminal = "_end"; // chegar ao fim naturalmente = qualificado
+  let exit = "";         // saída lateral marcada por alguma opção do caminho
   while (s >= 0 && s < steps.length) {
     if (seen.has(s)) break;
     seen.add(s);
@@ -82,6 +90,7 @@ function walkPath(questions, answers) {
     for (const q of qs) {
       if (q.type === "select") {
         const opt = (q.options || []).find((o) => o.value === answers[q.key]);
+        if (opt && opt.exit) exit = opt.exit;
         if (opt && opt.to) { to = opt.to; break; }
       }
       if (q.to) { to = q.to; break; }
@@ -89,7 +98,7 @@ function walkPath(questions, answers) {
     if (to === "_end" || to === "_reject") { terminal = to; break; }
     s = to && stepOfKey.has(to) ? stepOfKey.get(to) : s + 1;
   }
-  return { path, terminal };
+  return { path, terminal, exit };
 }
 
 // Caminho efetivamente percorrido (perguntas) dado um conjunto de respostas.
@@ -101,6 +110,11 @@ export function computePath(questions, answers) {
 // decisão server-authoritative — o frontend não é confiável pra marcar descarte.
 export function submissionTerminal(questions, answers) {
   return walkPath(questions, answers).terminal;
+}
+
+// Saída lateral do envio ("" = fluxo principal). Ver `exits` no publicForm.
+export function submissionExit(questions, answers) {
+  return walkPath(questions, answers).exit;
 }
 
 // Deriva/atualiza a lista de perguntas de qualificação (leadQuestions) do produto
