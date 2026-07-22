@@ -102,7 +102,8 @@ export function registerScoreboardRoutes(app, repo) {
 
     // ── SDR (agrupado por owner) ──────────────────────────────────────────────
     const slaMs = (Number(cadenceOf(product, firstStage(product)).firstTouchHours) || 48) * HOUR;
-    const sdrIds = [...new Set([...withRole("sdr"), ...leads.map((l) => l.owner).filter(Boolean)])];
+    const sdrRole = new Set(withRole("sdr")); // membro do papel SDR sempre aparece (pra ver a meta)
+    const sdrIds = [...new Set([...sdrRole, ...leads.map((l) => l.owner).filter(Boolean)])];
     const sdr = sdrIds.map((uid) => {
       const mine = leads.filter((l) => l.owner === uid);
       const cohort = mine.filter((l) => inWin(l.createdAt));
@@ -168,7 +169,7 @@ export function registerScoreboardRoutes(app, repo) {
         // UI); callsBooked absoluto fica de fallback se alguém preferir fixo.
         goals: goalMap(uid, "sdr", ["contactRate", "bookingRate", "showRate", "callWinRate", "callsBooked", "contacts"]),
       };
-    }).filter((p) => p.leadsNew > 0 || p.callsBooked > 0 || p.contacted > 0)
+    }).filter((p) => sdrRole.has(p.user) || p.leadsNew > 0 || p.callsBooked > 0 || p.contacted > 0) // ghost/owner legado só com atividade; SDR real sempre
       .sort((a, b) => b.callsBooked - a.callsBooked);
 
     // ── Closer (agrupado por closer) ──────────────────────────────────────────
@@ -176,7 +177,8 @@ export function registerScoreboardRoutes(app, repo) {
     // que fechou um negócio (o papel não censura o placar; o fechamento dele
     // aparece aqui E as contas dele seguem no painel de CS). O filtro final
     // (calls > 0 || won > 0) já esconde quem não tem movimento.
-    const closerIds = [...new Set([...withRole("closer"), ...leads.map((l) => l.closer).filter(Boolean)])];
+    const closerRole = new Set(withRole("closer")); // membro do papel closer sempre aparece (pra ver a meta)
+    const closerIds = [...new Set([...closerRole, ...leads.map((l) => l.closer).filter(Boolean)])];
     const closer = closerIds.map((uid) => {
       const mine = leads.filter((l) => l.closer === uid);
       // Calls agendadas (pela data da call) e quantas ACONTECERAM (compareceram):
@@ -214,7 +216,7 @@ export function registerScoreboardRoutes(app, repo) {
         lossReasons,
         goals: goalMap(uid, "closer", ["won", "revenue", "conversaoCall", "winRateCall", "ticket"]),
       };
-    }).filter((p) => p.calls > 0 || p.won > 0)
+    }).filter((p) => closerRole.has(p.user) || p.calls > 0 || p.won > 0) // closer legado (ex.: CS que fechou) só com movimento; closer real sempre
       .sort((a, b) => b.revenue - a.revenue);
 
     // ── CS / retenção (agrupado por customer.owner) ───────────────────────────
