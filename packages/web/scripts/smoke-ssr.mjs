@@ -168,6 +168,27 @@ try {
     console.error(`✗ agenda-consulta: ${err.message}`);
     failed++;
   }
+  // Item SEMANAL da agenda: o formulário deriva do campo DATA o rótulo e o
+  // weekday que SALVA. Se a data cair no dia de hoje, abrir e salvar MOVE o
+  // compromisso — foi o bug que jogou "toda quarta" na quinta.
+  try {
+    const { formDateFor } = await server.ssrLoadModule("/src/screens/agenda.jsx");
+    const qua = new Date("2026-07-22T10:00:00"); // quarta
+    const wd = (ymd) => new Date(`${ymd}T12:00:00`).getDay();
+    const check = (name, got, want) => { if (got !== want) throw new Error(`${name}: ${got} ≠ ${want}`); };
+    // Semanal de QUINTA aberto numa QUARTA: a referência é quinta, não hoje.
+    check("semanal segue o weekday gravado", wd(formDateFor({ block: { recur: "weekly", weekday: 4 } }, qua)), 4);
+    check("domingo não vira segunda", wd(formDateFor({ block: { recur: "weekly", weekday: 0 } }, qua)), 0);
+    // Clicar num slot da grade manda a data do slot e ela vence.
+    check("slot clicado vence", formDateFor({ date: "2026-07-29", fromHour: 14 }, qua), "2026-07-29");
+    // Pontual usa a data dele; item novo cai em hoje.
+    check("pontual usa a data do item", formDateFor({ block: { recur: "once", date: "2026-08-03" } }, qua), "2026-08-03");
+    check("item novo cai em hoje", formDateFor({}, qua), "2026-07-22");
+    console.log("✓ agenda-semanal");
+  } catch (err) {
+    console.error(`✗ agenda-semanal: ${err.message}`);
+    failed++;
+  }
 } finally {
   await server.close();
 }

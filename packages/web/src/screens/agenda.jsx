@@ -256,6 +256,24 @@ const DUR_OPTIONS = [15, 30, 45, 60, 90, 120];
 const durLabel = (m) => (m < 60 ? `${m} min` : m % 60 === 0 ? `${m / 60}h` : `${Math.floor(m / 60)}h${m % 60}`);
 const WD_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 
+// Data de referência do formulário. Item SEMANAL não guarda data (só o dia da
+// semana), e o formulário deriva do campo DATA tanto o rótulo ("toda quarta")
+// quanto o `weekday` que SALVA. Cair no dia de hoje quando não há data foi um
+// bug de perder dado: abrir um compromisso de quinta numa quarta mostrava "toda
+// quarta" e salvar MOVIA o compromisso pro dia em que a pessoa mexeu nele.
+// Agora a referência sai do weekday GRAVADO: a próxima data que cai nesse dia.
+export function formDateFor(init, now = new Date()) {
+  if (init?.date) return ymd(init.date instanceof Date ? init.date : new Date(`${init.date}T12:00:00`));
+  const b = init?.block;
+  const d = new Date(now); d.setHours(12, 0, 0, 0);
+  if (b?.recur === "weekly" && Number.isFinite(Number(b.weekday))) {
+    d.setDate(d.getDate() + ((Number(b.weekday) - d.getDay() + 7) % 7));
+  } else if (b?.date) {
+    return b.date;
+  }
+  return ymd(d);
+}
+
 function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose }) {
   const b = init.block;
   const [kind, setKind] = useS(b ? (b.kind === "event" ? "event" : "block") : "event");
@@ -267,7 +285,7 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
     : [defaultUser].filter(Boolean)));
   const [selOpen, setSelOpen] = useS(false);
   const toggleSel = (id) => setSel((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  const [date, setDate] = useS(init.date || ymd(new Date()));
+  const [date, setDate] = useS(() => formDateFor(init));
   const [from, setFrom] = useS(() => Number(b?.fromHour ?? init.fromHour ?? 9));
   const [dur, setDur] = useS(() => {
     const d = b ? Math.round((Number(b.toHour) - Number(b.fromHour)) * 60) : 60;
@@ -284,12 +302,14 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
   }, [onClose]);
 
   const to = from + dur / 60;
-  const weekdayLabel = WD_LABEL[date ? new Date(`${date}T12:00:00`).getDay() : Number(b?.weekday) || 1];
+  // Sem data não tem como derivar: cai no weekday gravado (0 = domingo é dia
+  // válido, então nada de `|| 1`, que engolia domingo virando segunda).
+  const weekdayLabel = WD_LABEL[date ? new Date(`${date}T12:00:00`).getDay() : (Number(b?.weekday) || 0)];
   const field = { height: 34, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, minWidth: 0 };
   const label = { fontSize: 10.5, fontFamily: "var(--mono)", color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 4 };
   const selNames = sel.map((id) => displayName(id) || id);
   const submit = () => {
-    const wd = date ? new Date(`${date}T12:00:00`).getDay() : Number(b?.weekday) || 1;
+    const wd = date ? new Date(`${date}T12:00:00`).getDay() : (Number(b?.weekday) || 0);
     const weekdaysSel = recur === "once" ? null
       : recur === "weekly" ? [wd]
       : recur === "weekdays" ? [1, 2, 3, 4, 5]
