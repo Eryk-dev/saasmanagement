@@ -242,6 +242,9 @@ function MetasScreen() {
                       <label key={m.metric} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         <span style={{ flex: 1, fontSize: 13.5, color: "var(--fg-2)", minWidth: 0 }}>
                           {m.label}
+                          {/* Denominador da taxa escrito por extenso: "25%" sem
+                              dizer de quê foi o que deixou duas metas brigando. */}
+                          {m.hint && <span className="dim" style={{ display: "block", fontSize: 11.5 }}>{m.hint}</span>}
                           {/* Meta de volume é do TIME: mostra a parte de cada um,
                               que é o que o placar vai cobrar da pessoa. */}
                           {shareHint(m, r.role) && <span className="dim" style={{ display: "block", fontSize: 11.5 }}>{shareHint(m, r.role)}</span>}

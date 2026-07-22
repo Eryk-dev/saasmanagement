@@ -11,6 +11,16 @@ import {
 // Meta de caixa quando o produto ainda não tem a dele (product.monthlyCashTarget,
 // editável na tela Metas → Empresa). Exportada pra tela de Metas mostrar o padrão.
 export const DEFAULT_CASH_TARGET = 120_000;
+
+// Benchmark de cada taxa do funil (SaaS inbound morno), usado quando não há
+// histórico nem meta. Mora AQUI porque é a cadeia do pace que aplica, e o
+// catálogo da tela Metas importa daqui — um número só por taxa, senão a tela
+// mostra um valor e o pace calcula com outro (foi o que aconteceu com o
+// fechamento: catálogo em 25% das AGENDADAS e pace em 25% das que
+// COMPARECERAM, dois significados no mesmo campo).
+// `closeRate` é sempre sobre as calls que ACONTECERAM — o furo já é cobrado no
+// showRate, e contar duas vezes esconderia de quem é o problema.
+export const RATE_BENCHMARKS = { contactRate: 0.8, bookingRate: 0.3, showRate: 0.75, closeRate: 0.33 };
 const round4 = (n) => Math.round(n * 10_000) / 10_000;
 const clampRate = (n) => Math.max(0, Math.min(1, n));
 
@@ -180,13 +190,14 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   const nShown = callOut.shown + adjN("shown");
   const nWon = callOut.won + adjN("won");
   const conversions = {
-    contactRate: resolvedRate(nContacted, nLeads, goalRate(goals, "sdr", "contactRate"), 0.8),
-    bookingRate: resolvedRate(nBooked, nContacted, goalRate(goals, "sdr", "bookingRate"), 0.3),
+    contactRate: resolvedRate(nContacted, nLeads, goalRate(goals, "sdr", "contactRate"), RATE_BENCHMARKS.contactRate),
+    bookingRate: resolvedRate(nBooked, nContacted, goalRate(goals, "sdr", "bookingRate"), RATE_BENCHMARKS.bookingRate),
     // Comparecimento sobre as AGENDADAS (funil encadeado): dos que marcaram call,
     // quantos apareceram.
-    showRate: resolvedRate(nShown, nBooked, goalRate(goals, "sdr", "showRate"), 0.75),
-    // Call → ganho: dos que compareceram, quantos fecharam.
-    closeRate: resolvedRate(nWon, nShown, goalRate(goals, "closer", "winRateCall"), 0.25),
+    showRate: resolvedRate(nShown, nBooked, goalRate(goals, "sdr", "showRate"), RATE_BENCHMARKS.showRate),
+    // Call → ganho: dos que compareceram, quantos fecharam. A meta é a
+    // `conversaoCall` do closer — a MESMA que o placar mede (won ÷ compareceram).
+    closeRate: resolvedRate(nWon, nShown, goalRate(goals, "closer", "conversaoCall"), RATE_BENCHMARKS.closeRate),
   };
 
   // CPL real dos últimos 30 dias (mesma régua do /api/marketing): spend do

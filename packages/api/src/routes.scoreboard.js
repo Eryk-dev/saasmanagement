@@ -10,6 +10,7 @@
 
 import { cadenceOf, firstStage, isLoss, TOUCH_TYPES } from "./stages.js";
 import { TEAM_METRICS } from "./routes.metas.js";
+import { RATE_BENCHMARKS } from "./routes.pipeline-pace.js";
 import {
   DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead,
   bookedLeadsIn as coreBooked, callOutcome as coreCallOutcome,
@@ -84,6 +85,19 @@ export function registerScoreboardRoutes(app, repo) {
       const people = headcount(role);
       // teamTarget/people ficam no payload pra UI poder dizer "12 dos 24 do time".
       return { target: round2(total / people), period, scope: "role", teamTarget: total, people };
+    };
+    // Conversão sobre as calls AGENDADAS (o placar chama de callWinRate no SDR e
+    // winRateCall no closer) NÃO é meta digitada: é CONTA — comparecimento ×
+    // fechamento. Ter as três editáveis é o que deixava o card do closer se
+    // contradizendo: 25% das agendadas com 75% de comparecimento são 33% das que
+    // aconteceram, nunca 25%. Meta por PESSOA legada nesse campo ainda vence.
+    const rateGoal = (role, metric, fallback) => {
+      const g = goalFor("", role, metric);
+      return Number(g?.target) > 0 ? Number(g.target) / 100 : fallback;
+    };
+    const bookedWinGoal = (uid, role) => goalFor(uid, role, role === "sdr" ? "callWinRate" : "winRateCall") || {
+      target: round2(rateGoal("sdr", "showRate", RATE_BENCHMARKS.showRate) * rateGoal("closer", "conversaoCall", RATE_BENCHMARKS.closeRate) * 100),
+      period: "month", scope: "derived", from: ["showRate", "conversaoCall"],
     };
     const nameOf = (id) => users.find((u) => u.id === id)?.name || id;
     const withRole = (role) => users.filter((u) => (u.roles || []).includes(role)).map((u) => u.id);
@@ -167,7 +181,7 @@ export function registerScoreboardRoutes(app, repo) {
         callWinRate: callsBooked > 0 ? round2((wonFromCalls / callsBooked) * 100) : null,
         // Metas por TAXA (o alvo absoluto de calls sai de leads × bookingRate na
         // UI); callsBooked absoluto fica de fallback se alguém preferir fixo.
-        goals: goalMap(uid, "sdr", ["contactRate", "bookingRate", "showRate", "callWinRate", "callsBooked", "contacts"]),
+        goals: { ...goalMap(uid, "sdr", ["contactRate", "bookingRate", "showRate", "callsBooked", "contacts"]), callWinRate: bookedWinGoal(uid, "sdr") },
       };
     }).filter((p) => sdrRole.has(p.user) || p.leadsNew > 0 || p.callsBooked > 0 || p.contacted > 0) // ghost/owner legado só com atividade; SDR real sempre
       .sort((a, b) => b.callsBooked - a.callsBooked);
@@ -214,7 +228,7 @@ export function registerScoreboardRoutes(app, repo) {
         ticket: wonN > 0 ? round2(revenue / wonN) : null,
         cycleDays: median(cycle),
         lossReasons,
-        goals: goalMap(uid, "closer", ["won", "revenue", "conversaoCall", "winRateCall", "ticket"]),
+        goals: { ...goalMap(uid, "closer", ["won", "revenue", "conversaoCall", "ticket"]), winRateCall: bookedWinGoal(uid, "closer") },
       };
     }).filter((p) => closerRole.has(p.user) || p.calls > 0 || p.won > 0) // closer legado (ex.: CS que fechou) só com movimento; closer real sempre
       .sort((a, b) => b.revenue - a.revenue);
@@ -306,7 +320,7 @@ export function registerScoreboardRoutes(app, repo) {
       goals: {
         bookingRate: goalFor("", "sdr", "bookingRate"),
         showRate: goalFor("", "sdr", "showRate"),
-        callWinRate: goalFor("", "sdr", "callWinRate"),
+        callWinRate: bookedWinGoal("", "sdr"),
         closeRate: goalFor("", "closer", "conversaoCall"),
       },
     };

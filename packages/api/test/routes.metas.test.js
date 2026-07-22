@@ -117,10 +117,10 @@ test("derived: a meta do mês desce pela cadeia do pace e vira alvo de time", as
   assert.equal(d.target, 120000);
   assert.equal(d.ticket, 5000);
   assert.equal(d.won, 24);          // 120000 ÷ 5000
-  assert.equal(d.callsShown, 96);   // 24 ÷ 25% de fechamento
-  assert.equal(d.callsBooked, 128); // 96 ÷ 75% de comparecimento
-  assert.equal(d.contacts, 427);    // 128 ÷ 30% de agendamento
-  assert.equal(d.leads, 534);       // 427 ÷ 80% de contato
+  assert.equal(d.callsShown, 73);   // 24 ÷ 33% de fechamento (das que ACONTECERAM)
+  assert.equal(d.callsBooked, 98);  // 73 ÷ 75% de comparecimento
+  assert.equal(d.contacts, 327);    // 98 ÷ 30% de agendamento
+  assert.equal(d.leads, 409);       // 327 ÷ 80% de contato
 
   // O que o botão grava: só VOLUME (taxa continua digitada, senão vira circular).
   const byMetric = Object.fromEntries(d.goals.map((g) => [g.metric, g]));
@@ -150,6 +150,7 @@ test("catálogo marca quais metas são do TIME (repartem) e quais são de cada u
   const { app } = await buildApp();
   const r = (await app.inject({ method: "GET", url: "/api/metas/leverads" })).json();
   const m = (role, metric) => r.roles.find((x) => x.role === role).metrics.find((y) => y.metric === metric);
+  assert.equal(m("closer", "conversaoCall").hint, "das calls que aconteceram", "denominador escrito por extenso");
   assert.equal(m("closer", "won").team, true);
   assert.equal(m("closer", "revenue").team, true);
   assert.equal(m("closer", "ticket").team, undefined, "média não se reparte");

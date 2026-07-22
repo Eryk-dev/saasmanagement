@@ -87,7 +87,7 @@ export function metricsFor(p, bizDays) {
   if (p.sdr && p.closer) return [
     { label: "Calls agendadas", value: p.sdr.callsBooked, target: bookingTarget(p, bizDays), fmt: asInt },
     { label: "Receita", value: p.closer.revenue, target: scaledGoal(p.closer.goals?.revenue, bizDays), fmt: asMoney },
-    { label: "Conversão na call", value: p.closer.conversaoCall, target: p.closer.goals?.conversaoCall?.target, good: 40, fmt: asRate, rate: true },
+    { label: "Conversão na call", value: p.closer.conversaoCall, target: p.closer.goals?.conversaoCall?.target, good: 33, fmt: asRate, rate: true },
   ];
   if (p.closer && p.cs) return [
     { label: "Ganhos", value: p.closer.won, target: scaledGoal(p.closer.goals?.won, bizDays), fmt: asInt },
@@ -98,7 +98,10 @@ export function metricsFor(p, bizDays) {
   if (p.closer) return [
     { label: "Ganhos", value: p.closer.won, target: scaledGoal(p.closer.goals?.won, bizDays), fmt: asInt },
     { label: "Receita", value: p.closer.revenue, target: scaledGoal(p.closer.goals?.revenue, bizDays), fmt: asMoney },
-    { label: "Win rate", value: p.closer.winRateCall, target: p.closer.goals?.winRateCall?.target, good: 25, fmt: asRate, rate: true },
+    // Fechamento sobre as calls que ACONTECERAM: é a habilidade do closer, limpa
+    // de no-show (o furo é cobrado no comparecimento do SDR). Mesma métrica dos
+    // outros cartões de closer, pra não haver duas réguas pro mesmo trabalho.
+    { label: "Conversão na call", value: p.closer.conversaoCall, target: p.closer.goals?.conversaoCall?.target, good: 33, fmt: asRate, rate: true },
   ];
   if (p.sdr) return [
     { label: "Calls agendadas", value: p.sdr.callsBooked, target: bookingTarget(p, bizDays), fmt: asInt },
