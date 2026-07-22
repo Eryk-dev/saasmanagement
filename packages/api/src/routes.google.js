@@ -11,6 +11,32 @@ import { makeCallSummarizer } from "./call-summaries.js";
 import { makeIntegrationBriefer } from "./integration-brief.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 
+const TZ = "America/Sao_Paulo";
+
+// Horário de call/integração → INSTANTE (Date), aceitando os dois formatos que
+// existem na base: "YYYY-MM-DDTHH:MM[:SS]" (naive, do input datetime-local, que
+// significa hora de Brasília) e ISO com fuso ("…Z" ou "…±HH:MM", de lead que
+// entrou por integração). Devolve null pra vazio ou lixo — quem chama decide o
+// fallback, em vez de estourar RangeError lá na frente.
+export function callMoment(whenRaw) {
+  const raw = String(whenRaw || "").trim();
+  if (!raw) return null;
+  const hasZone = /([Zz]|[+-]\d{2}:?\d{2})$/.test(raw);
+  const d = new Date(hasZone ? raw : `${raw}${raw.length === 16 ? ":00" : ""}-03:00`);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
+// Hora de PAREDE em São Paulo ("YYYY-MM-DDTHH:MM:SS"), pro Calendar receber o
+// horário cru + timeZone. Sai do fuso de verdade, não do fuso do servidor: com
+// getHours() o mesmo instante virava horário diferente em máquina UTC.
+export function wallClockBrt(date) {
+  const p = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  }).format(date);
+  return p.replace(" ", "T");
+}
+
 export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic } = {}) {
   const client = google || makeGoogle({
     clientId: process.env.GOOGLE_CLIENT_ID || "",
@@ -124,21 +150,19 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     // usa lead.integrationAt e grava campos PRÓPRIOS pra não sobrescrever a venda).
     const whenRaw = kind === "integracao" ? lead.integrationAt : lead.callAt;
 
-    // whenRaw vem do input datetime-local (sem fuso) e SIGNIFICA hora de
-    // Brasília — o Calendar recebe o horário cru + timeZone, sem conversão.
-    const TZ = "America/Sao_Paulo";
-    let start, end;
-    if (whenRaw) {
-      const s = new Date(whenRaw + (whenRaw.length === 16 ? ":00" : ""));
-      const e = new Date(s.getTime() + 45 * 60_000);
-      const naive = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:00`;
-      start = { dateTime: naive(s), timeZone: TZ };
-      end = { dateTime: naive(e), timeZone: TZ };
-    } else {
-      const s = new Date(Date.now() + 30 * 60_000);
-      start = { dateTime: s.toISOString() };
-      end = { dateTime: new Date(s.getTime() + 45 * 60_000).toISOString() };
-    }
+    // O horário da call chega em DOIS formatos na base: "YYYY-MM-DDTHH:MM"
+    // (naive, do input datetime-local, que SIGNIFICA hora de Brasília) e ISO
+    // completo com fuso (lead que entrou por integração). Grudar "-03:00" no
+    // segundo produzia "…Z-03:00" = Invalid Date, e o botão de criar Meet
+    // estourava com "Invalid time value" — foi o que aconteceu na prática.
+    // callMoment normaliza os dois no MESMO instante.
+    const s = callMoment(whenRaw) || new Date(Date.now() + 30 * 60_000);
+    const e = new Date(s.getTime() + 45 * 60_000);
+    // O Calendar recebe a hora de PAREDE em São Paulo + timeZone (nunca UTC
+    // cru): assim o evento cai às 17:30 pra quem está no Brasil, tenha o
+    // servidor o fuso que tiver.
+    const start = { dateTime: wallClockBrt(s), timeZone: TZ };
+    const end = { dateTime: wallClockBrt(e), timeZone: TZ };
 
     // Convidados: e-mail do LEAD (quando cadastrado) + extras da chamada
     // (guests/email) + extras salvos no lead (meetGuests, string com vírgulas).
@@ -170,11 +194,9 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
         try { meetConfig = await client.configureSpace(code); }
         catch (err) { log.warn({ err: err.message }, "Google: configuração da sala falhou (Meet criado mesmo assim)"); }
       }
-      // Horário REAL da call em ISO UTC (whenRaw é hora de Brasília sem fuso) —
-      // é a referência do poller que resume a call depois que ela termina.
-      const scheduledAt = whenRaw
-        ? new Date(`${whenRaw}${whenRaw.length === 16 ? ":00" : ""}-03:00`).toISOString()
-        : new Date(Date.now() + 30 * 60_000).toISOString();
+      // Horário REAL da call em ISO UTC — é a referência do poller que resume a
+      // call depois que ela termina. Mesmo instante do evento criado acima.
+      const scheduledAt = s.toISOString();
       // Grava no conjunto de campos do TIPO (integração NÃO pisa na call de venda).
       const patch = kind === "integracao"
         ? { integrationCallUrl: meetUrl, integrationMeetEventId: eventId, integrationScheduledAt: scheduledAt }

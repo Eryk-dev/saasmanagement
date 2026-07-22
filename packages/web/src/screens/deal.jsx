@@ -29,6 +29,11 @@ const isoToLocal = (iso) => {
   const d = new Date(iso);
   return Number.isFinite(d.getTime()) ? localDT(d) : "";
 };
+// callAt/integrationAt são naive ("YYYY-MM-DDTHH:MM") na esmagadora maioria, mas
+// lead vindo de integração pode ter ISO com fuso — o input datetime-local NÃO
+// renderiza esse formato, e o campo aparecia vazio num lead que tem call
+// marcada. Converte só pra exibir; o próximo save regrava no formato canônico.
+const dtLocal = (v) => (/([Zz]|[+-]\d{2}:?\d{2})$/.test(String(v || "")) ? isoToLocal(v) : (v || ""));
 const localToIso = (v) => {
   if (!v) return "";
   const d = new Date(v);
@@ -416,7 +421,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                 então marcar a call aqui SINCRONIZA o próximo toque no mesmo
                 horário (igual o roteiro faz) — senão o card fica com a call
                 num dia e a fila cobrando em outro. */}
-            <input type="datetime-local" value={lead.callAt || ""}
+            <input type="datetime-local" value={dtLocal(lead.callAt)}
               onChange={(e) => {
                 // Digitação livre também respeita a agenda do closer: aqui não
                 // tem a grade do Meu dia pra esconder o slot ocupado, então a
@@ -560,7 +565,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
             <>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <span className="mono dim" style={rowLabel}>Integração</span>
-                <input type="datetime-local" value={lead.integrationAt || ""} onChange={(e) => patch({ integrationAt: e.target.value })}
+                <input type="datetime-local" value={dtLocal(lead.integrationAt)} onChange={(e) => patch({ integrationAt: e.target.value })}
                   style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
               </div>
               {/* Entrega: briefing pro integrador + vídeo/resumo da integração,
