@@ -99,6 +99,15 @@ function CustomersScreen({ initialTab = "base" }) {
   const totalContratado = activeCustomers.reduce((a, c) => a + (c.arr || 0), 0);
   const money = window.fmt.money;
 
+  // Colunas Pagamento e Total pago da tabela: meio de pagamento (do cliente ou do
+  // lead que fechou) e a soma das faturas PAGAS do cliente (inclui upsell).
+  const leadById = React.useMemo(() => new Map((LEADS || []).map((l) => [l.id, l])), [LEADS]);
+  const paidByCustomer = React.useMemo(() => {
+    const m = new Map();
+    for (const i of invoices) if (i.status === "paid") m.set(i.customer, (m.get(i.customer) || 0) + (Number(i.amount) || 0));
+    return m;
+  }, [invoices]);
+
   // Nível (categoria A/B/C/…) do cliente = grade do lead que virou cliente
   // (mesma régua da Publicidade/Forms). Sem lead qualificado → "sem nível".
   const gradeOf = (c) => {
@@ -260,14 +269,14 @@ function CustomersScreen({ initialTab = "base" }) {
             <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
             <Card style={{ overflow: "hidden", flex: "1 1 560px", minWidth: 0 }}>
               <div className="tbl-x">
-              <table style={{ width: "100%", minWidth: isKidsWorkspace ? 880 : 960, borderCollapse: "collapse" }}>
+              <table style={{ width: "100%", minWidth: isKidsWorkspace ? 880 : 1160, borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
                     {(isKidsWorkspace
                       ? ["Cliente", "Pacote", "Valor", "Tempo de casa", "Último contato", "Próxima consulta", "Consultas"]
-                      : ["Cliente", "Nível", "Plano", "MRR", "Tempo de casa", "Último contato", "Próximo marco", "Assinatura"]
+                      : ["Cliente", "Nível", "Plano", "MRR", "Pagamento", "Total pago", "Tempo de casa", "Último contato", "Próximo marco", "Assinatura"]
                     ).map((h) => (
-                      <th key={h} style={{ textAlign: (h === "MRR" || h === "Valor") ? "right" : "left", fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", padding: "12px 20px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
+                      <th key={h} style={{ textAlign: (h === "MRR" || h === "Valor" || h === "Total pago") ? "right" : "left", fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", padding: "12px 20px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -299,6 +308,23 @@ function CustomersScreen({ initialTab = "base" }) {
                         <td className="tnum" style={{ padding: "14px 20px", fontSize: 13, textAlign: "right", borderBottom: "1px solid var(--line-faint)" }}>
                           {money(kids ? (c.arr || 0) : (c.arr || 0) / 12)}
                         </td>
+                        {/* Meio de pagamento (cliente > lead) e total já pago (faturas pagas). Só SaaS. */}
+                        {!isKidsWorkspace && (() => {
+                          const pm = c.paymentMethod || leadById.get(c.leadId)?.paymentMethod;
+                          return (
+                            <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
+                              {pm ? paymentLabel(pm) : <span style={{ color: "var(--fg-4)" }}>—</span>}
+                            </td>
+                          );
+                        })()}
+                        {!isKidsWorkspace && (() => {
+                          const paid = paidByCustomer.get(c.id) || 0;
+                          return (
+                            <td className="tnum" style={{ padding: "14px 20px", fontSize: 13, textAlign: "right", color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
+                              {paid > 0 ? money(paid) : <span style={{ color: "var(--fg-4)" }}>—</span>}
+                            </td>
+                          );
+                        })()}
                         <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
                           {tenureLabel(c) || <span style={{ color: "var(--fg-4)" }}>defina o início</span>}
                         </td>
