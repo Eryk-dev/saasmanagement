@@ -136,7 +136,7 @@ function FuncionariosScreen({ onNav }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-      <PageHead title="Funcionários" sub="desempenho por pessoa · placar por papel (SDR · closer · CS)">
+      <PageHead title="Análise de Equipe" sub="desempenho por pessoa · placar por papel (SDR · closer · CS)">
         <div style={{ display: "flex", alignItems: "center", gap: 3, flexWrap: "wrap", justifyContent: "flex-end" }}>
           {PRESETS.filter((p) => ["7d", "15d", "30d", "90d"].includes(p.key)).map((p) => (
             <FilterTab key={p.key} active={period === p.key} onClick={() => setP(p.key)}>{p.label}</FilterTab>

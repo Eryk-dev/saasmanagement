@@ -52,7 +52,7 @@ function IntegrationsScreen({ onOpenLead }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead title="Análise de integração"
+      <PageHead title="Análise de Integração"
         sub={(data ? `${data.count} ${data.count === 1 ? "integração resumida" : "integrações resumidas"}` : "integrações resumidas") + " · sentimento dos clientes e pendências do onboarding"} />
 
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
