@@ -14,6 +14,7 @@ import { formPageHtml, EMBED_JS } from "./form-page.js";
 import { CREATE_DEFAULTS, dispatchProposal, publicBase } from "./routes.js";
 import { stageByKind, firstStage } from "./stages.js";
 import { logActivity, initialNextActionAt, autoLeadOwner } from "./lead-flow.js";
+import { findDuplicateLead, dedupMergePatch } from "./lead-dedup.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 
 const clientIp = (req) =>
@@ -164,10 +165,11 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // interesse") não gera lead nenhum: seria um card sem nome e sem telefone,
     // que ninguém consegue trabalhar. O envio fica registrado do mesmo jeito
     // (submission + funil de desistência do form), que é o que interessa medir.
-    const semContato = !leadFromSubmission(form, answers).phone && !leadFromSubmission(form, answers).email;
-    const lead = exit && semContato ? null : await repo.create("leads", {
+    const contact = leadFromSubmission(form, answers);
+    const semContato = !contact.phone && !contact.email;
+    const leadPayload = {
       ...(CREATE_DEFAULTS.leads || {}),
-      ...leadFromSubmission(form, answers),
+      ...contact,
       // Lead QUALIFICADO nasce no 1º estágio do funil — não no "" do default,
       // que deixava o card como fantasma na fila ("1º contato · atrasado" com
       // stage vazio). Desqualificado vai pro cemitério (dqStage).
@@ -186,13 +188,29 @@ export function registerFormRoutes(app, repo, opts = {}) {
       ...(nextAt ? { nextActionAt: nextAt } : {}),
       ...(internal ? { internal: true, source: `Form · ${form.name || form.id} · teste da equipe` } : {}),
       createdAt: new Date().toISOString(), // métricas de marketing filtram por período
-    });
-    // Timeline: nascimento do lead via form (o POST genérico tem log próprio).
+    };
+    // Evita CADASTRO DUPLICADO: mesma pessoa (telefone/e-mail) já no produto →
+    // MESCLA no card que existe (refresca atribuição + preenche buracos), sem
+    // criar outro e sem tocar o estado do funil (etapa/dono/GPS/proposta) — lead
+    // terminal segue fechado (decisão do Leo). Teste da equipe não dedup.
+    let lead = null, resubmit = false;
+    if (!(exit && semContato)) {
+      const dup = internal ? null : await findDuplicateLead(repo, { saas: form.saas, phone: contact.phone, email: contact.email });
+      if (dup) {
+        resubmit = true;
+        const patch = dedupMergePatch(dup, leadPayload);
+        lead = Object.keys(patch).length ? await repo.update("leads", dup.id, patch) : dup;
+      } else {
+        lead = await repo.create("leads", leadPayload);
+      }
+    }
+    // Timeline: nascimento do lead via form (o POST genérico tem log próprio);
+    // re-entrada de quem já existia entra como `lead_resubmit`, sem virar toque.
     if (lead) try {
       await logActivity(repo, {
         saas: form.saas || "", lead: lead.id, type: "system",
         meta: {
-          event: "lead_created", via: "form", form: form.id,
+          event: resubmit ? "lead_resubmit" : "lead_created", via: "form", form: form.id,
           stage: lead.stage || firstStage(product),
           ...(utm ? { utm } : {}),
         },
@@ -216,7 +234,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // do Pixel. IP/UA vêm da request. PII (email/phone) é hasheada no módulo.
     // Best-effort: nenhuma falha de CAPI pode quebrar o envio do form.
     // Desqualificado NÃO conta como conversão (espelha o Pixel client-side).
-    if (!disqualified && !exit && !internal && metaCapi?.configured(product?.metaPixelId)) {
+    if (!disqualified && !exit && !internal && !resubmit && metaCapi?.configured(product?.metaPixelId)) {
       try {
         await metaCapi.sendLead({
           eventId: body.eventId || submission.id,
@@ -239,14 +257,16 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // Mesmo gatilho best-effort do EntityForm: lead novo tenta gerar proposta
     // pelo MESMO dispatcher da rota manual (native quando há template publicado);
     // elegibilidade/config é decisão do provider e nunca quebra o envio.
-    // Desqualificado não recebe proposta.
-    if (!disqualified && !exit) {
+    // Desqualificado não recebe proposta. Re-entrada (duplicata) reusa o estado
+    // do lead que já existe — não regera proposta.
+    if (!disqualified && !exit && !resubmit) {
       try { await dispatchProposal(repo, lead, { auto: true, baseUrl: publicBase(req) }); } catch { /* fail-open */ }
     }
 
     // Aviso no Discord: lead re-buscado pra incluir o link da proposta que o
-    // dispatcher acabou de gravar (se gerou). Nunca quebra o envio.
-    if (lead && discord?.configured()) {
+    // dispatcher acabou de gravar (se gerou). Re-entrada (duplicata) não vira
+    // aviso de lead novo. Nunca quebra o envio.
+    if (lead && !resubmit && discord?.configured()) {
       const fresh = (await repo.get("leads", lead.id)) || lead;
       const product = await repo.get("products", form.saas);
       await discord.leadNew({ lead: fresh, productName: product?.name });

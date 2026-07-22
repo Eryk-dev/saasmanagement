@@ -187,7 +187,7 @@ test("submission com variante A/B denormaliza formHeadline + formVariant no lead
   assert.equal(lead.formHeadline, "Espelhe suas contas sem redigitar");
 
   // Variante sem headline resolvível: grava a versão, mas não inventa headline.
-  await app.inject({ method: "POST", url: "/public/forms/fo_ab/submissions", payload: { answers: { ...ANSWERS_FULL, nome: "Bia" }, variant: "Z" } });
+  await app.inject({ method: "POST", url: "/public/forms/fo_ab/submissions", payload: { answers: { ...ANSWERS_FULL, nome: "Bia", email: "bia@ex.com" }, variant: "Z" } }); // e-mail distinto: pessoa diferente (senão dedup mescla)
   const bia = (await repo.list("leads")).find((l) => l.name === "Bia");
   assert.equal(bia.formVariant, "Z");
   assert.equal(bia.formHeadline, undefined);

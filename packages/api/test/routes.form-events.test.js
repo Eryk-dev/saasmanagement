@@ -193,12 +193,12 @@ test("funil separa variantes por dor (mesmo id em dores diferentes não colide)"
 test("funil por variante inclui leads/ganhos (submission → lead → estágio de ganho) e janelas de tempo", async () => {
   const { app, repo } = await buildApp();
   // duas conversões da variante B-001 na dor B; uma fecha contrato
-  for (const [session, nome] of [["w1", "Ana"], ["w2", "Bia"]]) {
+  for (const [session, nome, whatsapp] of [["w1", "Ana", "41999990000"], ["w2", "Bia", "41999990001"]]) {
     await post(app, { session, event: "view", variant: "B-001", pain: "B" });
     await post(app, { session, event: "start", variant: "B-001", pain: "B" });
     await app.inject({
       method: "POST", url: "/public/forms/fo_test/submissions",
-      payload: { answers: { niche: "moda", accounts: "2", nome, whatsapp: "41999990000" }, variant: "B-001", pain: "B" },
+      payload: { answers: { niche: "moda", accounts: "2", nome, whatsapp }, variant: "B-001", pain: "B" }, // telefones distintos: pessoas diferentes (senão dedup mescla)
     });
     await post(app, { session, event: "submit", variant: "B-001", pain: "B" });
   }
