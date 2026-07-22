@@ -44,6 +44,7 @@ import { discord as defaultDiscord } from "./discord.js";
 import { currentRev, subscribe as subscribeChanges } from "./changes.js";
 import { isWon, isPostSaleStage, firstStage, kindOf } from "./stages.js";
 import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt, appointmentAt, autoLeadOwner } from "./lead-flow.js";
+import { findDuplicateLead, dedupMergePatch } from "./lead-dedup.js";
 import { registerFunnelMetricsRoutes } from "./routes.funnel-metrics.js";
 import { registerScoreboardRoutes } from "./routes.scoreboard.js";
 import { registerPipelinePaceRoutes } from "./routes.pipeline-pace.js";
@@ -501,6 +502,25 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     if (collection === "leads" && !req.body.owner) {
       const owner = await autoLeadOwner(repo, req.body.saas);
       if (owner) stamp.owner = owner;
+    }
+    // Evita CADASTRO DUPLICADO: a mesma pessoa (telefone/e-mail) já no produto
+    // MESCLA no lead que existe e devolve ele, sem criar card novo. Refresca a
+    // atribuição e preenche buracos, sem tocar etapa/dono/GPS/proposta — lead
+    // terminal continua fechado (decisão do Leo). Teste da equipe não dedup.
+    if (collection === "leads" && !req.body.internal) {
+      const dup = await findDuplicateLead(repo, { saas: req.body.saas, phone: req.body.phone, email: req.body.email });
+      if (dup) {
+        const patch = dedupMergePatch(dup, req.body);
+        const merged = Object.keys(patch).length ? await repo.update("leads", dup.id, patch) : dup;
+        try {
+          await logActivity(repo, {
+            saas: merged.saas || "", lead: merged.id, type: "system",
+            meta: { event: "lead_resubmit", via: "api", source: req.body.source || "" },
+            author: req.authUser?.id || "api",
+          });
+        } catch { /* fail-open */ }
+        return reply.code(200).send(merged);
+      }
     }
     let created = await repo.create(collection, { ...(CREATE_DEFAULTS[collection] || {}), ...req.body, ...stamp });
     // Toque registrado → denormalizações do lead (últ. contato, tentativas) +
