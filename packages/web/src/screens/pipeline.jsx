@@ -267,14 +267,17 @@ function PersonFilter({ person, leads, onChange, me }) {
 // ─────────────────────────────────────────────── Kanban
 function KanbanBoard({ s, stages, byStage, highlight, onMove, selected, setSelected, onOpenLead, wonLeads, showWon }) {
   const [dragging, setDragging] = useStP(null);
-  // O resumo do Ganho entra na POSIÇÃO do ganho no funil: com o Ganho antes da
-  // Integração ele vem logo depois da última etapa de venda (Follow-up), e a
-  // entrega segue à direita dele. Ancorar na entrega, como era antes, jogava o
-  // resumo pro fim do board e contrariava a ordem que o funil declara.
-  // Sem etapa de venda visível, cai no fim (comportamento antigo).
-  const SALE_KINDS = ["novo", "contato", "qualificacao", "call", "proposta", "followup"];
-  const wonAfter = stages.reduce((acc, st, i) =>
-    SALE_KINDS.includes(stageKind(s, st)) ? i : acc, stages.length - 1);
+  // O resumo do Ganho entra na POSIÇÃO que o FUNIL declara pro ganho: logo depois
+  // da última etapa VISÍVEL que vem ANTES do ganho na ordem do funil (Follow-up),
+  // e a entrega (Integração) segue à direita dele. Ancorar por "última etapa de
+  // venda" jogava o resumo pro FIM quando havia etapa de kind contato (Nutrição /
+  // No show) DEPOIS da Integração — elas contavam como venda e o resumo pulava a
+  // Integração. Sem etapa antes do ganho visível, cai no fim (comportamento antigo).
+  const fullOrder = (s?.funnel || []).map((f) => f.stage);
+  const wonPos = fullOrder.findIndex((st) => stageKind(s, st) === "ganho");
+  const wonAfter = wonPos < 0
+    ? stages.length - 1
+    : stages.reduce((acc, st, i) => (fullOrder.indexOf(st) < wonPos ? i : acc), stages.length - 1);
   return (
     <div style={{ flex: 1, overflowX: "auto", paddingBottom: 8, display: "flex", gap: 12, alignItems: "flex-start" }}>
       {stages.map((st, i) => (
