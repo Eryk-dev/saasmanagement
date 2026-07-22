@@ -109,7 +109,7 @@ function CallsScreen({ onOpenLead }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead title="Análise de pitch"
+      <PageHead title="Análise de Pitches"
         sub={(data ? `${data.count} ${data.count === 1 ? "call resumida" : "calls resumidas"}` : "calls resumidas") + " por IA · objeções, dores e temperatura" + (closer != null ? ` · ${closer ? displayName(closer) : "sem closer"}` : "")} />
 
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
