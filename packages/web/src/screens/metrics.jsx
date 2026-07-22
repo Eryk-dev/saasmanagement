@@ -7,6 +7,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { EmptyState, PrimaryButton } from "../atoms.jsx";
 import { stageKind } from "../lib/funnel.js";
 import { GRADE_STYLE } from "../lib/ui.js";
+import { InsightsCard } from "../components/insights.jsx";
 // Métricas — aquisição × funil do produto ativo (substitui a tela Marketing).
 // Hoje: investimento (Meta), leads, CPL real e custo por etapa, com séries no
 // tempo e quebra por campanha. CAC e LTV entram na fase de métricas de receita,
@@ -468,6 +469,13 @@ function MetricsScreen() {
             delta={biz?.ltv?.ltvCac != null ? (biz.ltv.ltvCac >= 3 ? "saudável acima de 3x" : "abaixo do saudável (3x)") : null}
             tone={biz?.ltv?.ltvCac != null ? (biz.ltv.ltvCac >= 3 ? "up" : "down") : "flat"} />
         </div>
+
+        {/* Regras do gerenciador: recomendações por regra (nível do lead, custo
+            por lead qualificado, ROAS por dor) comparadas com a média da conta,
+            com portão de volume. Aplicar passa pela confirmação (pausar / +20%).
+            Some inteiro quando não há recomendação ou tudo foi dispensado. */}
+        <InsightsCard title="Regras do gerenciador" hint="recomendações pra escalar/cortar anúncio pela qualidade do lead e retorno · aplicar pede confirmação"
+          items={insights} scope={`ads:${product.id}`} onApplied={reloadObjects} />
 
         <Card title="Custo por etapa do funil" hint="investimento ÷ leads que chegaram em cada marco · % = quantos chegaram até ali">
           <div style={{ padding: "16px 24px 22px", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1204,11 +1212,33 @@ function buildInsights(data, placements, objects) {
   const x = (v) => String(v).replace(".", ",") + "x";
   const pains = (data.pains || []).filter((p) => p.code);
 
+  // Régra de VALOR (não CPL cru): o que interessa é lead que vira cliente bom.
+  // "qualificado" = níveis S/A/B/C (D/E não valem a operação). O alvo das regras
+  // é a MÉDIA da própria conta (auto-calibra): anúncio muito pior que a média
+  // no custo por lead qualificado é candidato a cortar; dor bem melhor, a subir.
+  const qual = (o) => (o.abc?.S || 0) + (o.abc?.A || 0) + (o.abc?.B || 0) + (o.abc?.C || 0);
+  const adsArr = data.ads || [];
+  const blSpend = adsArr.reduce((s, a) => s + (a.spend || 0), 0);
+  const blQual = adsArr.reduce((s, a) => s + qual(a), 0);
+  const blendedQualCost = blQual > 0 ? blSpend / blQual : null; // R$ por lead A/B/C na conta
+
   // Melhor dor por ROAS → escalar (precisa de receita real, não só ganho).
+  let bestRoasCode = null;
   const withRoas = pains.filter((p) => p.roas != null);
   if (withRoas.length) {
     const best = [...withRoas].sort((a, b) => b.roas - a.roas)[0];
+    bestRoasCode = best.code;
     out.push({ id: `escalar-dor:${best.code}`, meta: { kind: "raiseBudget", code: best.code }, tone: "escalar", tag: "Escalar", text: `A dor [${best.code}] ${best.label} tem o melhor retorno do período: ROAS ${x(best.roas)} (${money(best.revenue)} de receita sobre ${money(best.spend)} investidos). Vale subir o orçamento dos conjuntos que rodam essa dor.` });
+  }
+  // Escalar por VALOR (mais rápido que ROAS, que é atrasado pela venda anual): a
+  // dor com o menor custo por lead qualificado (bem abaixo da média) que TAMBÉM
+  // agenda call. Portão de volume: ≥3 qualificados e ≥1 call.
+  if (blendedQualCost) {
+    const bestQ = pains.filter((p) => qual(p) >= 3 && p.calls >= 1 && (p.spend / qual(p)) <= 0.7 * blendedQualCost)
+      .sort((a, b) => (a.spend / qual(a)) - (b.spend / qual(b)))[0];
+    if (bestQ && bestQ.code !== bestRoasCode) {
+      out.push({ id: `escalar-qual:${bestQ.code}`, meta: { kind: "raiseBudget", code: bestQ.code }, tone: "escalar", tag: "Escalar", text: `A dor [${bestQ.code}] ${bestQ.label} traz cliente A/B/C a ${money(bestQ.spend / qual(bestQ))} cada, abaixo da média da conta (${money(blendedQualCost)}), e já agenda call. Vale subir o orçamento dela.` });
+    }
   }
   // Dor que gasta, gera lead e não fecha nenhum → problema de fundo de funil.
   for (const p of pains.filter((p) => p.spend >= 100 && p.leads >= 3 && !p.won).slice(0, 2)) {
@@ -1226,6 +1256,20 @@ function buildInsights(data, placements, objects) {
     for (const a of (data.ads || []).filter((a) => a.leads === 0 && a.spend >= 3 * cplRef && delivering(a))
       .sort((a, b) => b.spend - a.spend).slice(0, 2)) {
       out.push({ id: `ad-sem-lead:${a.id}`, meta: { kind: "pauseAd", adId: a.id, adName: a.name }, tone: "cortar", tag: "Cortar", text: `O anúncio “${a.name}” já gastou ${money(a.spend)} (3× o CPL médio de ${money(cplRef)}) sem gerar nenhum lead. Candidato a pausar no card Anúncios.` });
+    }
+    // Traz LEAD, mas nenhum QUALIFICADO (só D/E): público errado. Portão: ≥3
+    // leads e gasto ≥2× CPL (dado suficiente pra julgar o nível).
+    for (const a of (data.ads || []).filter((a) => delivering(a) && a.leads >= 3 && a.spend >= 2 * cplRef && qual(a) === 0)
+      .sort((a, b) => b.spend - a.spend).slice(0, 2)) {
+      out.push({ id: `ad-lead-fraco:${a.id}`, meta: { kind: "pauseAd", adId: a.id, adName: a.name }, tone: "cortar", tag: "Cortar", text: `O anúncio “${a.name}” gastou ${money(a.spend)} e trouxe ${a.leads} leads, mas nenhum nível A/B/C (todos D/E). Está atraindo o público errado — candidato a pausar.` });
+    }
+    // Traz lead qualificado, mas MUITO CARO vs a média da conta (≥2,5×). Portão:
+    // ≥1 qualificado e gasto ≥3× CPL.
+    if (blendedQualCost) {
+      for (const a of (data.ads || []).filter((a) => delivering(a) && qual(a) >= 1 && a.spend >= 3 * cplRef && (a.spend / qual(a)) >= 2.5 * blendedQualCost)
+        .sort((a, b) => (b.spend / qual(b)) - (a.spend / qual(a))).slice(0, 2)) {
+        out.push({ id: `ad-qual-caro:${a.id}`, meta: { kind: "pauseAd", adId: a.id, adName: a.name }, tone: "cortar", tag: "Cortar", text: `O anúncio “${a.name}” traz cliente A/B/C a ${money(a.spend / qual(a))} cada, mais de 2,5× a média da conta (${money(blendedQualCost)}). Candidato a pausar ou reduzir.` });
+      }
     }
   }
   // Placements: fatia relevante do gasto sem nenhum lead na visão da Meta.
