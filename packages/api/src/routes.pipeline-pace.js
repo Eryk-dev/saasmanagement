@@ -5,7 +5,7 @@
 import { TOUCH_TYPES } from "./stages.js";
 import {
   DAY_MS as DAY, round2, dayKey, isRealLead,
-  bookedLeadsIn, callOutcome, winsIn, customerStartMap, tcvOf,
+  bookedLeadsIn, callOutcome, winsIn, customerStartMap, tcvOf, waContactedLeadIds,
 } from "./metrics-core.js";
 
 // Meta de caixa quando o produto ainda não tem a dele (product.monthlyCashTarget,
@@ -74,7 +74,7 @@ function planMetric(remaining, days, today) {
 }
 
 export async function computePipelinePace(repo, product, now = new Date()) {
-  const [allInvoices, allLeads, allActivities, allCustomers, allProposals, allGoals, allInsights] = await Promise.all([
+  const [allInvoices, allLeads, allActivities, allCustomers, allProposals, allGoals, allInsights, waMessages] = await Promise.all([
     repo.list("invoices"),
     repo.list("leads"),
     repo.list("activities"),
@@ -82,6 +82,7 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     repo.list("proposals"),
     repo.list("goals"),
     repo.list("ad_insights"),
+    repo.list("wa_messages").catch(() => []),
   ]);
   const today = dayKey(now);
   const month = today.slice(0, 7);
@@ -164,7 +165,10 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   // Conversões operacionais dos últimos 30 dias, espelhando o placar atual.
   const recentLeads = leads.filter((l) => inRange(l.createdAt, since30));
   const recentLeadIds = new Set(recentLeads.map((l) => l.id));
-  const contacted = recentLeads.filter((l) => (actsByLead.get(l.id) || []).some((a) => TOUCH_TYPES.has(a.type)));
+  // Contato = toque na timeline OU mensagem enviada no WhatsApp do cockpit (mesma
+  // régua do placar; o inbox virou a ferramenta do SDR).
+  const waContacted = waContactedLeadIds(waMessages, { saas: product.id });
+  const contacted = recentLeads.filter((l) => (actsByLead.get(l.id) || []).some((a) => TOUCH_TYPES.has(a.type)) || waContacted.has(l.id));
   // Uma safra de calls só (as agendadas na janela) e a resolução dela — o funil
   // inteiro corre sobre a MESMA base: contato → agendamento → comparecimento →
   // call→ganho encadeiam. Antes cada taxa usava uma contagem de call diferente
