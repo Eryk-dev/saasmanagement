@@ -74,7 +74,8 @@ export function registerScoreboardRoutes(app, repo) {
     const goals = goalsAll.filter((g) => !g.saas || g.saas === product.id);
     // Escopo de produto no headcount: quem atende só outro produto (ex.: Ana na
     // UniqueKids) não pode diluir a meta do time daqui.
-    const headcount = (role) => Math.max(1, users.filter((u) => (!u.saas || u.saas === product.id) && (u.roles || []).includes(role)).length);
+    const inProduct = (u) => !u.saas || u.saas === product.id;
+    const headcount = (role) => Math.max(1, users.filter((u) => inProduct(u) && (u.roles || []).includes(role)).length);
     const goalFor = (userId, role, metric) => {
       const u = goals.find((g) => g.scope === "user" && g.key === userId && g.metric === metric);
       if (u) return { target: Number(u.target) || 0, period: u.period || "month", scope: "user" };
@@ -101,8 +102,30 @@ export function registerScoreboardRoutes(app, repo) {
       period: "month", scope: "derived", from: ["showRate", "conversaoCall"],
     };
     const nameOf = (id) => users.find((u) => u.id === id)?.name || id;
-    const withRole = (role) => users.filter((u) => (u.roles || []).includes(role)).map((u) => u.id);
+    // Escopo de PRODUTO: quem atende só outro workspace (a Ana é só UniqueKids)
+    // não entra no placar daqui. Quem tem lead/cliente deste produto entra de
+    // qualquer jeito — as listas abaixo somam owner/closer dos registros.
+    const withRole = (role) => users.filter((u) => inProduct(u) && (u.roles || []).includes(role)).map((u) => u.id);
     const goalMap = (uid, role, metrics) => Object.fromEntries(metrics.map((m) => [m, goalFor(uid, role, m)]).filter(([, g]) => g));
+
+    // Metas da vaga com o realizado DA PESSOA — é o que o cartão dela mostra na
+    // Visão geral. Sai daqui (e não de um mapa no front) pra o valor ser o MESMO
+    // que o resto do placar já calculou pra ela. Entra a métrica que tem meta OU
+    // valor medido: meta em branco e sem medição não vira linha vazia no cartão.
+    const personTargets = (uid, role, values) => (META_CATALOG.find((c) => c.role === role)?.metrics || []).flatMap((m) => {
+      const goal = goalFor(uid, role, m.metric);
+      const target = Number(goal?.target) > 0 ? Number(goal.target) : null;
+      const value = values[m.metric] ?? null;
+      if (target == null && value == null) return [];
+      return [{
+        metric: m.metric, label: m.label, unit: m.unit, kind: m.kind, hint: m.hint || "",
+        // `target` já é a PARTE desta pessoa (goalFor reparte a meta do time);
+        // `kind` diz se a tela pode reescalar a meta do mês pra janela.
+        target, period: goal?.period || "month",
+        teamTarget: goal?.teamTarget ?? null, people: goal?.people ?? 1,
+        value,
+      }];
+    });
 
     // ── Réguas do metrics-core amarradas ao dataset da requisição ─────────────
     // Safra de calls, resolução compareceu/furo/vendeu e fechamentos na janela
@@ -166,8 +189,12 @@ export function registerScoreboardRoutes(app, repo) {
         if (waMine.has(l.id)) contactedIds.add(l.id);
       }
       const contacted = contactedIds.size;
+      // Taxa de contato DELE: da safra que entrou na janela, quantos alcançou.
+      const contactRate = leadsNew > 0 ? round2((contacted / leadsNew) * 100) : null;
       return {
         user: uid, name: nameOf(uid),
+        contactRate,
+        targets: personTargets(uid, "sdr", { contactRate, bookingRate: contacted > 0 ? round2((booked.length / contacted) * 100) : null, showRate: resolved > 0 ? round2((shown / resolved) * 100) : null, contacts: contacted, callsBooked }),
         leadsNew,
         leadsPrev, // leads da janela anterior (base da meta dinâmica de calls)
         contacted,
@@ -222,6 +249,10 @@ export function registerScoreboardRoutes(app, repo) {
       const lossReasons = Object.entries(reasonCount).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
       return {
         user: uid, name: nameOf(uid),
+        targets: personTargets(uid, "closer", {
+          conversaoCall: callsShown > 0 ? round2((wonN / callsShown) * 100) : null,
+          won: wonN, revenue: round2(revenue), ticket: wonN > 0 ? round2(revenue / wonN) : null,
+        }),
         calls, callsShown,
         won: wonN, revenue: round2(revenue), lost: lost.length,
         // Conversão na call = ganhos ÷ calls que ACONTECERAM (habilidade de fechar,
@@ -257,6 +288,7 @@ export function registerScoreboardRoutes(app, repo) {
       const nps = scores.length ? round2(scores.reduce((a, s) => a + s, 0) / scores.length) : null;
       return {
         user: uid, name: nameOf(uid),
+        targets: personTargets(uid, "integrator", { retentionRate, nps, newAccounts, activeAccounts: mine.length }),
         activeAccounts: mine.length,
         newAccounts,
         churned,
@@ -275,6 +307,7 @@ export function registerScoreboardRoutes(app, repo) {
     const social = withRole("social").map((uid) => ({
       user: uid, name: nameOf(uid),
       postsPerMonth: 0, storiesPerMonth: 0, adsPerMonth: 0, // produção não conectada ainda
+      targets: personTargets(uid, "social", { postsPerMonth: 0, storiesPerMonth: 0, adsPerMonth: 0 }),
       goals: goalMap(uid, "social", ["postsPerMonth", "storiesPerMonth", "adsPerMonth"]),
     }));
 
@@ -335,59 +368,6 @@ export function registerScoreboardRoutes(app, repo) {
       },
     };
 
-    // ── Metas × realizado do TIME ─────────────────────────────────────────────
-    // A tela Metas define, a Visão geral cobra. Sai daqui (e não de uma soma no
-    // front) porque o realizado tem que ser o MESMO número que os cartões por
-    // pessoa mostram — duas contagens do mesmo trabalho é como a Visão geral
-    // acabava divergindo da Metas. Só entra meta CONFIGURADA (target > 0): campo
-    // em branco na tela não vira linha aqui.
-    const sumOf = (rows, field) => rows.reduce((a, r) => a + (Number(r[field]) || 0), 0);
-    const avgOf = (rows, field) => {
-      const xs = rows.map((r) => Number(r[field])).filter((n) => Number.isFinite(n));
-      return xs.length ? round2(xs.reduce((a, n) => a + n, 0) / xs.length) : null;
-    };
-    // Retenção e NPS do time saem da base INTEIRA do produto, não da média das
-    // médias por pessoa (quem cuida de 1 conta pesaria igual a quem cuida de 20).
-    const churnedTeam = subs.filter((s) => s.status === "canceled" && inWin(s.canceledAt)
-      && customers.some((c) => c.id === s.customer)).length;
-    const baseTeam = customers.length + churnedTeam;
-    const npsTeam = npsSaas.filter((n) => Number.isFinite(Number(n.score))).map((n) => Number(n.score));
-    const teamValue = {
-      sdr: {
-        contactRate: team.contactRate, bookingRate: team.bookingRate, showRate: team.showRate,
-        contacts: team.contacted, callsBooked: team.callsBooked,
-      },
-      closer: {
-        conversaoCall: team.closeRate, won: team.won, revenue: team.revenue,
-        ticket: team.won > 0 ? round2(team.revenue / team.won) : null,
-      },
-      integrator: {
-        retentionRate: baseTeam > 0 ? round2(((baseTeam - churnedTeam) / baseTeam) * 100) : null,
-        nps: npsTeam.length ? round2(npsTeam.reduce((a, n) => a + n, 0) / npsTeam.length) : null,
-        newAccounts: sumOf(cs, "newAccounts"), activeAccounts: customers.length,
-      },
-      social: {
-        postsPerMonth: sumOf(social, "postsPerMonth"), storiesPerMonth: sumOf(social, "storiesPerMonth"),
-        adsPerMonth: sumOf(social, "adsPerMonth"), followerGrowth: sumOf(social, "followerGrowth"),
-        reachMonth: sumOf(social, "reachMonth"), engagementRate: avgOf(social, "engagementRate"),
-      },
-    };
-    const targets = META_CATALOG.flatMap((cat) => cat.metrics.flatMap((m) => {
-      const goal = goals.find((g) => g.scope === "role" && g.key === cat.role && g.metric === m.metric);
-      const target = Number(goal?.target);
-      if (!(target > 0)) return [];
-      return [{
-        role: cat.role, roleLabel: cat.label, metric: m.metric,
-        label: m.label, hint: m.hint || "", unit: m.unit,
-        // `kind` diz se a meta do MÊS pode ser reescalada pra janela (só `flow`);
-        // `people` é o rateio que cada um persegue.
-        kind: m.kind, team: !!m.team,
-        target, period: goal.period || "month",
-        people: m.team ? headcount(cat.role) : 1,
-        value: teamValue[cat.role]?.[m.metric] ?? null,
-      }];
-    }));
-
-    return { saas: product.id, since, until, sdr, closer, cs, social, team, targets };
+    return { saas: product.id, since, until, sdr, closer, cs, social, team };
   });
 }

@@ -9,7 +9,7 @@ import { bizDay } from "../lib/format.js";
 import { displayName } from "../lib/users.js";
 import { leadTier } from "../lib/ui.js";
 import { useActiveSaas } from "../lib/workspace.js";
-import { buildPeople, TeamCards, topPerformer, scaledGoal } from "../components/team-cards.jsx";
+import { buildPeople, TeamCards, topPerformer } from "../components/team-cards.jsx";
 // Visão geral — cockpit de GESTÃO. Responde: como está o negócio (receita, CAC,
 // ROAS) e como está o DESEMPENHO de cada papel (SDR/closer/CS), pessoa a pessoa,
 // contra a meta. A execução ("quem contatar agora") mora no Meu dia, não aqui.
@@ -235,8 +235,6 @@ function OverviewScreen({ onNav, onOpenLead }) {
 
         <FunnelConversions team={score?.team} pLabel={pLabel} />
 
-        <GoalsBoard targets={score?.targets} bizDays={win.businessDays} pLabel={pLabel} onNav={onNav} />
-
         <TeamPerformance score={score} bizDays={win.businessDays} onPerson={openPerson} />
 
         <Card title="Precisa de atenção" hint="riscos primeiro · cada item tem ação">
@@ -340,73 +338,6 @@ const tiers = (goal, fallbackGood) => {
   const good = goal?.target > 0 ? goal.target : fallbackGood;
   return { good, ok: Math.round(good * 0.66) };
 };
-
-// ── Metas do time × realizado ────────────────────────────────────────────────
-// Toda meta configurada na tela Metas com o que o time entregou na janela do
-// topo. O alvo vem do servidor em base MENSAL e é reescalado aqui pela MESMA
-// função dos cartões por pessoa (dias úteis), senão a Visão geral cobraria um
-// número e o cartão de cada um cobraria outro. Só meta de FLUXO se reescala:
-// taxa é proporção, ticket é média e saldo é saldo.
-function GoalRow({ t, bizDays }) {
-  const flow = t.kind === "flow";
-  const goal = flow ? scaledGoal({ target: t.target, period: t.period }, bizDays) : t.target;
-  const rate = t.unit === "%";
-  const fmt = (n) => (n == null ? "—" : t.unit === "R$" ? money(n) : rate ? pctStr(n) : int(n));
-  const done = goal > 0 && t.value != null ? Math.min(100, Math.round((t.value / goal) * 100)) : null;
-  const tone = rate ? rateTone(t.value, goal, Math.round(goal * 0.66)) : "var(--fg-1)";
-  return (
-    <div style={{ padding: "9px 0", borderTop: "1px solid var(--line-1)" }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-        <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: "var(--fg-2)" }}>
-          {t.label}
-          {t.people > 1 && <span className="dim" style={{ fontSize: 11 }}> · {fmt(goal / t.people)} por pessoa</span>}
-        </span>
-        <span className="tnum" style={{ fontSize: 13.5, fontWeight: 600, color: tone, whiteSpace: "nowrap" }}>
-          {fmt(t.value)}
-          <span style={{ fontWeight: 400, fontSize: 12, color: "var(--fg-4)" }}> / {fmt(goal)}</span>
-        </span>
-      </div>
-      {!rate && done != null && (
-        <div style={{ height: 4, borderRadius: 999, background: "var(--bg-2)", overflow: "hidden", marginTop: 6 }}>
-          <div style={{ height: "100%", width: `${done}%`, background: done >= 100 ? "var(--pos)" : "var(--accent)", borderRadius: 999 }} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function GoalsBoard({ targets, bizDays, pLabel, onNav }) {
-  const byRole = [];
-  for (const t of targets || []) {
-    let g = byRole.find((x) => x.role === t.role);
-    if (!g) { g = { role: t.role, label: t.roleLabel, rows: [] }; byRole.push(g); }
-    g.rows.push(t);
-  }
-  return (
-    <Card title="Metas do time" hint={`${pLabel} · meta do mês reescalada pelos dias úteis da janela · edite em Metas`}>
-      <div style={{ padding: "6px 24px 20px" }}>
-        {targets == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
-        {targets != null && !byRole.length && (
-          <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>
-            Nenhuma meta configurada ainda.{" "}
-            <button onClick={() => onNav && onNav("metas")} style={{ color: "var(--accent)", fontWeight: 600 }}>abrir Metas</button>
-            {" "}e usar o botão "derivar metas do pace".
-          </div>
-        )}
-        {byRole.length > 0 && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))", gap: "0 28px" }}>
-            {byRole.map((g) => (
-              <div key={g.role} style={{ paddingTop: 10 }}>
-                <div className="mono" style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)" }}>{g.label}</div>
-                {g.rows.map((t) => <GoalRow key={t.metric} t={t} bizDays={bizDays} />)}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </Card>
-  );
-}
 
 // ── Desempenho do time ───────────────────────────────────────────────────────
 // Os mesmos cartões da tela Análises → Equipe (TeamCards): um "quadradinho" por
