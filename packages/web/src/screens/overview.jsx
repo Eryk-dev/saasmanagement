@@ -35,13 +35,23 @@ const PRESETS = [
   { key: "60d", label: "60 dias", days: 60, off: 0 },
   { key: "90d", label: "90 dias", days: 90, off: 0 },
 ];
+// Dias ÚTEIS (seg–sex) no intervalo [since, until], inclusivo. O time não opera
+// no fim de semana, então as metas absolutas (mês/semana) se distribuem só nos
+// dias úteis — a fatia do fim de semana vira meta a mais nos dias úteis, não
+// some. Meio-dia evita borda de fuso; setDate anda o dia certo mesmo com DST.
+function businessDaysBetween(sinceYmd, untilYmd) {
+  let n = 0;
+  const d = new Date(`${sinceYmd}T12:00:00`), end = new Date(`${untilYmd}T12:00:00`);
+  while (d <= end) { const w = d.getDay(); if (w !== 0 && w !== 6) n++; d.setDate(d.getDate() + 1); }
+  return n;
+}
 function periodWindow(period, custom, now = new Date()) {
   if (period === "custom" && custom?.since && custom?.until) {
     const s = new Date(`${custom.since}T00:00:00`), u = new Date(`${custom.until}T00:00:00`);
     const days = Math.max(1, Math.round((u - s) / DAY) + 1);
     const prevUntil = new Date(s.getTime() - DAY), prevSince = new Date(prevUntil.getTime() - (days - 1) * DAY);
     const lbl = `${custom.since.slice(5)} a ${custom.until.slice(5)}`;
-    return { since: custom.since, until: custom.until, prevSince: ymd(prevSince), prevUntil: ymd(prevUntil), days, short: lbl, label: lbl };
+    return { since: custom.since, until: custom.until, prevSince: ymd(prevSince), prevUntil: ymd(prevUntil), days, businessDays: businessDaysBetween(custom.since, custom.until), short: lbl, label: lbl };
   }
   const p = PRESETS.find((x) => x.key === period) || PRESETS.find((x) => x.key === "30d");
   const end0 = new Date(now); end0.setHours(0, 0, 0, 0);
@@ -49,7 +59,8 @@ function periodWindow(period, custom, now = new Date()) {
   const since = new Date(end.getTime() - (p.days - 1) * DAY);
   const prevUntil = new Date(since.getTime() - DAY), prevSince = new Date(prevUntil.getTime() - (p.days - 1) * DAY);
   const short = p.key === "today" ? "hoje" : p.key === "yesterday" ? "ontem" : p.label.toLowerCase();
-  return { since: ymd(since), until: ymd(end), prevSince: ymd(prevSince), prevUntil: ymd(prevUntil), days: p.days, short, label: short };
+  const sinceYmd = ymd(since), untilYmd = ymd(end);
+  return { since: sinceYmd, until: untilYmd, prevSince: ymd(prevSince), prevUntil: ymd(prevUntil), days: p.days, businessDays: businessDaysBetween(sinceYmd, untilYmd), short, label: short };
 }
 const dateInp = { height: 32, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontFamily: "var(--mono)" };
 
@@ -224,7 +235,7 @@ function OverviewScreen({ onNav, onOpenLead }) {
 
         <FunnelConversions team={score?.team} pLabel={pLabel} />
 
-        <TeamPerformance score={score} days={win.days} onPerson={openPerson} />
+        <TeamPerformance score={score} bizDays={win.businessDays} onPerson={openPerson} />
 
         <Card title="Precisa de atenção" hint="riscos primeiro · cada item tem ação">
           <div style={{ padding: "10px 24px 18px" }}>
@@ -329,7 +340,7 @@ const tiers = (goal, fallbackGood) => {
 // Os mesmos cartões da tela Análises → Equipe (TeamCards): um "quadradinho" por
 // pessoa com as métricas do papel e o progresso vs. meta, aqui embutido na Visão
 // geral. Segue o período do topo; clicar num nome abre o pipeline daquela pessoa.
-function TeamPerformance({ score, days, onPerson }) {
+function TeamPerformance({ score, bizDays, onPerson }) {
   const people = buildPeople(score);
   const highlight = topPerformer(people);
   return (
@@ -337,7 +348,7 @@ function TeamPerformance({ score, days, onPerson }) {
       <div style={{ padding: "8px 24px 24px" }}>
         {score == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
         {score != null && !people.length && <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Sem atividade nesse período.</div>}
-        {people.length > 0 && <TeamCards people={people} days={days} onPerson={onPerson} highlight={highlight} />}
+        {people.length > 0 && <TeamCards people={people} bizDays={bizDays} onPerson={onPerson} highlight={highlight} />}
       </div>
     </Card>
   );
