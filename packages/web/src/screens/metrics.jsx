@@ -13,7 +13,7 @@ import { InsightsCard } from "../components/insights.jsx";
 // tempo e quebra por campanha. CAC e LTV entram na fase de métricas de receita,
 // nesta mesma tela.
 
-const { useState, useEffect } = React;
+const { useState, useEffect, useRef } = React;
 
 // Número do nome do arquivo (sem extensão, maior sequência de dígitos) — espelha
 // o fileNumber do servidor pra o preview do nome final bater.
@@ -26,6 +26,10 @@ function fileNumberOf(filename) {
 // Teto do vídeo: a API aceita 500 MB e o nginx 512 MB. Barrar aqui evita subir
 // o arquivo inteiro pra receber um 413 do proxy no fim do upload.
 const MAX_VIDEO = 500 * 1024 * 1024;
+// Teto do orçamento diário por conjunto (o servidor recusa acima disso, ver
+// MAX_DAILY_BUDGET na API): o anúncio nasce ATIVO, então o teto é o que impede
+// um dedo errado virar milhares por dia.
+const MAX_BUDGET = 100;
 const tooBig = (file) => file && file.size > MAX_VIDEO
   ? `vídeo de ${(file.size / 1024 / 1024).toFixed(0)} MB — o limite é 500 MB, comprima antes de subir`
   : "";
@@ -1550,11 +1554,27 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
   const [campaignId, setCampaignId] = useState("");
   const [adsets, setAdsets] = useState(null);
   const [sourceAdsetId, setSourceAdsetId] = useState("");
-  const [files, setFiles] = useState([]);       // a leva: um anúncio por vídeo
-  const [numOverride, setNumOverride] = useState("");
+  // A leva é uma LISTA que cresce no "+": o time monta o lote vídeo a vídeo,
+  // conferindo o número de cada um, em vez de depender de uma seleção múltipla
+  // única (que não dá pra corrigir sem refazer tudo).
+  const [linhas, setLinhas] = useState([{ id: 1, file: null, numero: "" }]);
   const [budget, setBudget] = useState("");     // orçamento diário do conjunto novo
+  const [ativo, setAtivo] = useState(true);     // sobe rodando na Meta
   const [busy, setBusy] = useState(false);
   const [queue, setQueue] = useState([]);       // acompanhamento por vídeo
+
+  const proxId = useRef(2);
+  const addLinha = () => setLinhas((v) => [...v, { id: proxId.current++, file: null, numero: "" }]);
+  const setLinha = (id, patch) => setLinhas((v) => v.map((l) => (l.id === id ? { ...l, ...patch } : l)));
+  const tiraLinha = (id) => setLinhas((v) => (v.length > 1 ? v.filter((l) => l.id !== id) : [{ id: proxId.current++, file: null, numero: "" }]));
+  // Escolher vários arquivos de uma vez também vale: viram linhas na hora.
+  const escolheu = (id, lista) => {
+    const [primeiro, ...resto] = lista;
+    setLinhas((v) => {
+      const base = v.map((l) => (l.id === id ? { ...l, file: primeiro, numero: fileNumberOf(primeiro.name) } : l));
+      return [...base, ...resto.map((f) => ({ id: proxId.current++, file: f, numero: fileNumberOf(f.name) }))];
+    });
+  };
 
   useEffect(() => {
     api.creativeDefaults(product.id).then(setDefaults).catch(() => setDefaults({ painMap: {} }));
@@ -1582,28 +1602,31 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
       .catch((e) => { setAdsets([]); onError(e.message || "Falha ao listar conjuntos."); });
   }, [campaignId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Orçamento nasce com o do conjunto de origem — o valor que o clone teria de
-  // qualquer jeito. Editar aqui é o atalho pra testar a dor com outro budget.
+  // Orçamento nasce com o do conjunto de origem, LIMITADO ao teto: o conjunto
+  // clonado costuma vir de um que já roda com mais (R$ 250/dia), e o anúncio
+  // novo é um teste — sobe rodando, então começa pequeno.
   const sourceAdset = (adsets || []).find((s) => s.id === sourceAdsetId) || null;
   useEffect(() => {
-    setBudget(sourceAdset?.dailyBudget != null ? String(sourceAdset.dailyBudget).replace(".", ",") : "");
+    const doOrigem = sourceAdset?.dailyBudget;
+    const inicial = doOrigem != null ? Math.min(doOrigem, MAX_BUDGET) : MAX_BUDGET;
+    setBudget(String(inicial).replace(".", ","));
   }, [sourceAdsetId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Número por vídeo: sai do nome do arquivo. O campo avulso só faz sentido com
-  // UM vídeo — numa leva, cada arquivo traz o seu.
-  const numberOf = (f) => (files.length === 1 ? numOverride.trim() || fileNumberOf(f.name) : fileNumberOf(f.name));
-  const semNumero = files.filter((f) => !numberOf(f));
-  const grandes = files.filter((f) => tooBig(f));
-  const finalName = painCodeSel && files.length === 1 && numberOf(files[0]) ? `${numberOf(files[0])} [${painCodeSel}]` : "";
+  // Linhas prontas: com arquivo, com número e dentro do limite de tamanho.
+  const comArquivo = linhas.filter((l) => l.file);
+  const semNumero = comArquivo.filter((l) => !l.numero.trim());
+  const grandes = comArquivo.filter((l) => tooBig(l.file));
+  const orcamento = Number(budget.replace(",", ".")) || 0;
+  const orcamentoOk = orcamento > 0 && orcamento <= MAX_BUDGET;
   const valid = painCodeSel && (pain !== "_new" || painLabelSel) && campaignId && sourceAdsetId
-    && files.length > 0 && !semNumero.length && !grandes.length && !busy;
+    && comArquivo.length > 0 && !semNumero.length && !grandes.length && orcamentoOk && !busy;
 
   // Um anúncio por vídeo. O ENVIO é sequencial (a banda de subida é uma só e
   // dois uploads juntos só se atrapalham), mas o trabalho na Meta segue no
   // servidor: enquanto o 2º vídeo sobe, o 1º já está sendo processado lá.
   async function submit() {
     setBusy(true);
-    const inicial = files.map((f) => ({ file: f, nome: f.name, numero: numberOf(f), estado: "fila", pct: 0, passo: "", erro: "", resultado: null }));
+    const inicial = comArquivo.map((l) => ({ file: l.file, nome: l.file.name, numero: l.numero.trim(), estado: "fila", pct: 0, passo: "", erro: "", resultado: null }));
     setQueue(inicial);
     const patch = (i, p) => setQueue((prev) => prev.map((it, k) => (k === i ? { ...it, ...p } : it)));
 
@@ -1617,7 +1640,8 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
         if (painLabelSel) fd.append("painLabel", painLabelSel);
         fd.append("sourceAdsetId", sourceAdsetId);
         fd.append("number", item.numero);
-        if (budget.trim()) fd.append("dailyBudget", budget.trim());
+        fd.append("dailyBudget", budget.trim());
+        fd.append("activate", ativo ? "1" : "0");
         fd.append("video", item.file, item.file.name);
         const { jobId } = await api.adFromVideo(product.id, fd, (p) => patch(i, { pct: p }));
         patch(i, { estado: "servidor", pct: 1, passo: "na fila do servidor" });
@@ -1643,10 +1667,15 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
       return; // painel fica aberto com a fila, pra ver o que caiu e repetir só isso
     }
     const nomes = feitos.map((x) => x.job.result.adsetName).join(", ");
-    const orc = budget.trim() ? ` com R$ ${budget.trim()}/dia` : "";
+    const orc = ` com R$ ${budget.trim()}/dia`;
+    // O status vem do SERVIDOR, não do que foi pedido: quando o orçamento não
+    // cola, ele sobe pausado de propósito, e a mensagem tem que dizer isso.
+    const ativos = feitos.filter((x) => x.job.result.status === "ACTIVE").length;
+    const comoSubiu = ativos === feitos.length ? "RODANDO" : ativos ? `${ativos} rodando e ${feitos.length - ativos} pausados` : "PAUSADOS";
+    const rabo = avisos.length ? ` — ATENÇÃO: ${avisos.join(" · ")}` : ativos ? " — já estão gastando, acompanhe no card Anúncios." : " — revise e ative no Gerenciador.";
     onDone(feitos.length === 1
-      ? `Anúncio "${nomes}" criado PAUSADO${orc}${avisos.length ? ` — ATENÇÃO: ${avisos.join(" · ")}` : " — revise e ative no Gerenciador."}`
-      : `${feitos.length} anúncios criados PAUSADOS${orc}: ${nomes}${avisos.length ? ` — ATENÇÃO: ${avisos.join(" · ")}` : " — revise e ative no Gerenciador."}`);
+      ? `Anúncio "${nomes}" criado ${comoSubiu}${orc}${rabo}`
+      : `${feitos.length} anúncios criados ${comoSubiu}${orc}: ${nomes}${rabo}`);
   }
 
   const lbl = { display: "flex", flexDirection: "column", gap: 4 };
@@ -1654,15 +1683,35 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
   const inp = { height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
 
   return (
-    <Card title="Criar anúncio" hint="clona o conjunto da dor e troca só o vídeo · um anúncio por vídeo, todos pausados com o nome «número [dor]»">
+    <Card title="Criar anúncio" hint="clona o conjunto da dor e troca só o vídeo · um anúncio por vídeo, nome «número [dor]»">
       <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span className="mono" style={cap}>1 · Vídeos da leva {comArquivo.length > 1 ? `(${comArquivo.length} anúncios)` : ""}</span>
+          {linhas.map((l, i) => (
+            <div key={l.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <span className="mono dim" style={{ fontSize: 11, width: 16, textAlign: "right" }}>{i + 1}</span>
+              <input type="file" accept="video/*" multiple disabled={busy}
+                onChange={(e) => { const fs = [...(e.target.files || [])]; if (fs.length) escolheu(l.id, fs); setQueue([]); }}
+                style={{ ...inp, flex: 1, minWidth: 220, paddingTop: 4 }} />
+              <input type="text" placeholder="número" disabled={busy || !l.file}
+                value={l.numero} onChange={(e) => setLinha(l.id, { numero: e.target.value.replace(/[^\w-]/g, "") })}
+                style={{ ...inp, width: 96, fontFamily: "var(--mono)" }} />
+              <span className="mono dim" style={{ fontSize: 11, minWidth: 74 }}>
+                {l.numero.trim() && painCodeSel ? `${l.numero.trim()} [${painCodeSel}]` : ""}
+              </span>
+              <button onClick={() => tiraLinha(l.id)} disabled={busy} title="tirar da leva"
+                style={{ color: "var(--fg-3)", fontSize: 13, padding: "0 6px" }}>✕</button>
+            </div>
+          ))}
+          <div>
+            <button onClick={addLinha} disabled={busy}
+              style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-1)", border: "1px dashed var(--line-2)", background: "transparent", color: "var(--fg-2)", fontSize: 12.5 }}>
+              + adicionar vídeo
+            </button>
+          </div>
+        </div>
+
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
-          <label style={lbl}>
-            <span className="mono" style={cap}>1 · Vídeos (pode escolher vários)</span>
-            <input type="file" accept="video/*" multiple disabled={busy}
-              onChange={(e) => { setFiles([...(e.target.files || [])]); setQueue([]); }}
-              style={{ ...inp, paddingTop: 4, height: 30 }} />
-          </label>
           <label style={lbl}>
             <span className="mono" style={cap}>2 · Dor do anúncio</span>
             <select value={pain} onChange={(e) => setPain(e.target.value)} style={inp}>
@@ -1671,19 +1720,12 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
               <option value="_new">+ nova dor…</option>
             </select>
           </label>
-          <label style={lbl}>
-            <span className="mono" style={cap}>Número {files.length > 1 ? "(cada arquivo traz o seu)" : "(do arquivo)"}</span>
-            <input type="text" disabled={files.length > 1}
-              placeholder={files.length > 1 ? `${files.length} vídeos: número de cada nome` : files.length === 1 ? (fileNumberOf(files[0].name) || "sem número no nome") : "sobe o vídeo"}
-              value={files.length > 1 ? "" : numOverride} onChange={(e) => setNumOverride(e.target.value.replace(/[^\w-]/g, ""))}
-              style={{ ...inp, fontFamily: "var(--mono)", opacity: files.length > 1 ? 0.6 : 1 }} />
-          </label>
         </div>
 
         {(semNumero.length > 0 || grandes.length > 0) && (
           <div className="mono" style={{ fontSize: 11.5, color: "var(--neg)", lineHeight: 1.6 }}>
-            {semNumero.length > 0 && <div>sem número no nome (renomeie pra «1330.mp4»): {semNumero.map((f) => f.name).join(", ")}</div>}
-            {grandes.length > 0 && <div>acima de 500 MB: {grandes.map((f) => f.name).join(", ")}</div>}
+            {semNumero.length > 0 && <div>sem número (o do nome do arquivo não foi achado, preencha ao lado): {semNumero.map((l) => l.file.name).join(", ")}</div>}
+            {grandes.length > 0 && <div>acima de 500 MB: {grandes.map((l) => l.file.name).join(", ")}</div>}
           </div>
         )}
 
@@ -1719,27 +1761,51 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
             </select>
           </label>
           <label style={lbl}>
-            <span className="mono" style={cap}>5 · Orçamento diário do conjunto (R$)</span>
-            <input type="text" inputMode="decimal" placeholder={sourceAdset ? (sourceAdset.dailyBudget != null ? "igual ao de origem" : "orçamento na campanha (CBO)") : "escolha o conjunto"}
+            <span className="mono" style={cap}>5 · Orçamento diário por conjunto (R$, teto {MAX_BUDGET})</span>
+            <input type="text" inputMode="decimal" placeholder={`até ${MAX_BUDGET}`}
               value={budget} onChange={(e) => setBudget(e.target.value.replace(/[^\d.,]/g, ""))}
-              style={{ ...inp, fontFamily: "var(--mono)" }} />
+              style={{ ...inp, fontFamily: "var(--mono)", borderColor: budget && !orcamentoOk ? "var(--neg)" : "var(--line-2)" }} />
           </label>
         </div>
+
+        {budget && !orcamentoOk && (
+          <div className="mono" style={{ fontSize: 11.5, color: "var(--neg)" }}>
+            orçamento tem que ser maior que zero e no máximo R$ {MAX_BUDGET} por conjunto
+          </div>
+        )}
+
+        {/* O anúncio nasce RODANDO por decisão do Leo (22/07): sobe e já entrega.
+            O aviso fica explícito porque, ao contrário de antes, isso gasta —
+            e o valor por conjunto é o que está no campo acima. */}
+        <label style={{
+          display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, padding: "9px 11px", borderRadius: "var(--r-1)",
+          background: ativo ? "var(--warn-soft, var(--bg-2))" : "var(--bg-2)",
+          border: `1px solid ${ativo ? "color-mix(in srgb, var(--warn) 40%, transparent)" : "var(--line-faint)"}`,
+        }}>
+          <input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} disabled={busy} />
+          <span style={{ color: "var(--fg-1)" }}>
+            {ativo
+              ? <>Subir <b>rodando</b>: os anúncios começam a entregar assim que a Meta aprovar, gastando até <b>R$ {budget || MAX_BUDGET}/dia cada</b>{comArquivo.length > 1 ? ` (${comArquivo.length} conjuntos)` : ""}.</>
+              : <>Subir <b>pausado</b>: nada gasta até alguém ativar no Gerenciador.</>}
+          </span>
+        </label>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <button onClick={submit} disabled={!valid}
             style={{ height: 32, padding: "0 16px", borderRadius: "var(--r-1)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600, opacity: !valid ? 0.55 : 1 }}>
-            {busy ? "Trabalhando… pode deixar rodando" : files.length > 1 ? `Criar ${files.length} anúncios pausados` : "Criar anúncio pausado"}
+            {busy ? "Trabalhando… pode deixar rodando"
+              : `Criar ${comArquivo.length > 1 ? `${comArquivo.length} anúncios` : "anúncio"} ${ativo ? "rodando" : "pausado"}`}
           </button>
           <button onClick={onClose} disabled={busy} style={{ height: 32, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>{queue.length && !busy ? "fechar" : "cancelar"}</button>
-          {!busy && finalName && <span className="mono dim" style={{ fontSize: 11.5 }}>nome final do conjunto e do anúncio: <b style={{ color: "var(--fg-2)" }}>{finalName}</b></span>}
+          {!busy && comArquivo.length === 1 && comArquivo[0].numero.trim() && painCodeSel
+            && <span className="mono dim" style={{ fontSize: 11.5 }}>nome final do conjunto e do anúncio: <b style={{ color: "var(--fg-2)" }}>{comArquivo[0].numero.trim()} [{painCodeSel}]</b></span>}
           {busy && <span className="mono dim" style={{ fontSize: 11.5 }}>aviso na tela e no navegador quando terminar</span>}
         </div>
 
         {queue.length > 0 && <FilaDeVideos itens={queue} pain={painCodeSel} />}
 
         <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.5 }}>
-          cada vídeo vira um anúncio: clona o conjunto escolhido (mantém público, posicionamento, copy e CTA), troca só o vídeo, nomeia conjunto e anúncio como «número [dor]» e aplica o orçamento diário acima (vazio mantém o do conjunto de origem). Os vídeos sobem um de cada vez, pra Meta não recusar por excesso de chamadas. Nada gasta até você ativar no Gerenciador.
+          cada vídeo vira um anúncio: clona o conjunto escolhido (mantém público, posicionamento, copy e CTA), troca só o vídeo, nomeia conjunto e anúncio como «número [dor]» e aplica o orçamento diário acima. Os vídeos sobem um de cada vez, pra Meta não recusar por excesso de chamadas. O teto de R$ {MAX_BUDGET} por conjunto é travado também no servidor, e se a campanha usar orçamento de CAMPANHA (CBO) o anúncio sobe pausado, porque ali o teto não pode ser garantido.
         </div>
       </div>
     </Card>

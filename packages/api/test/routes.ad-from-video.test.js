@@ -40,6 +40,7 @@ function fakeMeta(overrides = {}) {
     async createVideoCreativeFromSpec(acct, o) { calls.push(["createVideoCreativeFromSpec", acct, o]); return "cr_new"; },
     async updateAd(id, o) { calls.push(["updateAd", id, o]); return { id, name: o.name }; },
     async setObjectBudget(id, brl) { calls.push(["setObjectBudget", id, brl]); return { id, dailyBudget: brl }; },
+    async setObjectStatus(id, status) { calls.push(["setObjectStatus", id, status]); return { id, status }; },
   };
   const meta = { ...base, ...overrides };
   meta.calls = calls;
@@ -73,7 +74,7 @@ async function submit(app, fields, file) {
 test("clona conjunto, renomeia «1303 [B]» e troca só o vídeo; nasce pausado", async () => {
   const meta = fakeMeta();
   const { app, repo } = await buildApp(meta);
-  const { res, job } = await submit(app, { painCode: "B", painLabel: "Medo de banimento", sourceAdsetId: "as_src" }, { name: "1303.mp4" });
+  const { res, job } = await submit(app, { painCode: "B", painLabel: "Medo de banimento", sourceAdsetId: "as_src", activate: "0" }, { name: "1303.mp4" });
   assert.equal(res.statusCode, 202, res.body);
   assert.equal(job.status, "done", job.error || "");
   const b = job.result;
@@ -89,7 +90,7 @@ test("clona conjunto, renomeia «1303 [B]» e troca só o vídeo; nasce pausado"
   // campo de "melhorias padrão" que ela mesma descontinuou (100/3858504).
   const seq = meta.calls.map((c) => c[0]);
   assert.deepEqual(seq, ["adsOfAdSet", "getAdCreativeSpec", "uploadVideo", "videoThumbnail", "copyAdSet", "renameObject", "createVideoCreativeFromSpec", "createAd"]);
-  assert.deepEqual(meta.calls.find((c) => c[0] === "copyAdSet")[2], { statusOption: "PAUSED", deepCopy: false });
+  assert.deepEqual(meta.calls.find((c) => c[0] === "copyAdSet")[2], { statusOption: "PAUSED", deepCopy: false }); // activate=0 no envio
   assert.equal(meta.calls.find((c) => c[0] === "getAdCreativeSpec")[1], "ad_src"); // spec vem do anúncio DE ORIGEM
   assert.equal(meta.calls.find((c) => c[0] === "renameObject")[2], "1303 [B]");
   const create = meta.calls.find((c) => c[0] === "createVideoCreativeFromSpec")[2];
@@ -109,22 +110,22 @@ test("clona conjunto, renomeia «1303 [B]» e troca só o vídeo; nasce pausado"
 test("número pode vir avulso quando o arquivo não tem número", async () => {
   const meta = fakeMeta();
   const { app } = await buildApp(meta);
-  const { job } = await submit(app, { painCode: "A", sourceAdsetId: "as_src", number: "7" }, { name: "depoimento.mp4" });
+  const { job } = await submit(app, { painCode: "A", sourceAdsetId: "as_src", number: "7", activate: "0" }, { name: "depoimento.mp4" });
   assert.equal(job.status, "done", job.error || "");
   assert.equal(job.result.adsetName, "7 [A]");
 });
 
 // Orçamento no conjunto novo: o clone nasce com o do conjunto de origem e o
 // time quer poder testar a dor com outro valor sem abrir o Gerenciador.
-test("orçamento diário pedido é aplicado no conjunto clonado (aceita «R$ 149,90»)", async () => {
+test("orçamento diário pedido é aplicado no conjunto clonado (aceita «R$ 89,90»)", async () => {
   const meta = fakeMeta();
   const { app } = await buildApp(meta);
-  const { job } = await submit(app, { painCode: "A", sourceAdsetId: "as_src", number: "1330", dailyBudget: "R$ 149,90" }, { name: "1330.mp4" });
+  const { job } = await submit(app, { painCode: "A", sourceAdsetId: "as_src", number: "1330", dailyBudget: "R$ 89,90" }, { name: "1330.mp4" });
   assert.equal(job.status, "done", job.error || "");
   assert.equal(job.warning, null);
-  assert.equal(job.result.dailyBudget, 149.9);
+  assert.equal(job.result.dailyBudget, 89.9);
   const budget = meta.calls.find((c) => c[0] === "setObjectBudget");
-  assert.deepEqual([budget[1], budget[2]], ["as_copy", 149.9]); // no conjunto NOVO
+  assert.deepEqual([budget[1], budget[2]], ["as_copy", 89.9]); // no conjunto NOVO
   // e depois do rename, pra não brigar com a cópia
   assert.ok(meta.calls.findIndex((c) => c[0] === "setObjectBudget") > meta.calls.findIndex((c) => c[0] === "renameObject"));
 });
@@ -132,21 +133,32 @@ test("orçamento diário pedido é aplicado no conjunto clonado (aceita «R$ 149
 test("orçamento vazio não toca no orçamento herdado do conjunto de origem", async () => {
   const meta = fakeMeta();
   const { app } = await buildApp(meta);
-  const { job } = await submit(app, { painCode: "A", sourceAdsetId: "as_src", number: "1330", dailyBudget: "" }, { name: "1330.mp4" });
+  const { job } = await submit(app, { painCode: "A", sourceAdsetId: "as_src", number: "1330", dailyBudget: "", activate: "0" }, { name: "1330.mp4" });
   assert.equal(job.status, "done", job.error || "");
   assert.equal(meta.calls.find((c) => c[0] === "setObjectBudget"), undefined);
 });
 
 // Campanha com orçamento na CAMPANHA (CBO) recusa orçamento no conjunto. O
 // anúncio já existe nessa hora — perder o trabalho seria pior que avisar.
-test("orçamento recusado pela Meta vira aviso, não derruba o anúncio", async () => {
+test("orçamento recusado (CBO) com anúncio ATIVO: sobe pausado por segurança", async () => {
   const meta = fakeMeta({ async setObjectBudget() { throw new Error("Ad set budget is not allowed when campaign budget optimization is on"); } });
   const { app } = await buildApp(meta);
-  const { job } = await submit(app, { painCode: "A", sourceAdsetId: "as_src", number: "1331", dailyBudget: "200" }, { name: "1331.mp4" });
+  const { job } = await submit(app, { painCode: "A", sourceAdsetId: "as_src", number: "1331", dailyBudget: "80" }, { name: "1331.mp4" });
+  assert.equal(job.status, "done");                       // o anúncio existe
+  assert.equal(job.result.status, "PAUSED");              // mas NÃO entrega
+  assert.match(job.warning, /subiu PAUSADO por segurança/);
+  assert.match(job.warning, /orçamento da campanha/);     // diz por quê
+  assert.equal(meta.calls.find((c) => c[0] === "createAd")[2].status, "PAUSED");
+  assert.deepEqual(meta.calls.find((c) => c[0] === "setObjectStatus")?.slice(1), ["as_copy", "PAUSED"]);
+});
+
+test("orçamento recusado com anúncio já pausado é só aviso", async () => {
+  const meta = fakeMeta({ async setObjectBudget() { throw new Error("CBO on"); } });
+  const { app } = await buildApp(meta);
+  const { job } = await submit(app, { painCode: "A", sourceAdsetId: "as_src", number: "1331", dailyBudget: "80", activate: "0" }, { name: "1331.mp4" });
   assert.equal(job.status, "done");
-  assert.match(job.warning, /orçamento de R\$ 200 não colou/);
-  assert.equal(job.result.adsetName, "1331 [A]");
-  assert.ok(meta.calls.some((c) => c[0] === "createAd")); // seguiu até o fim
+  assert.match(job.warning, /não colou/);
+  assert.ok(meta.calls.some((c) => c[0] === "createAd"));  // seguiu até o fim
 });
 
 test("sem número (nem no arquivo nem avulso) = 400; conjunto sem anúncio = trabalho com erro", async () => {
@@ -158,7 +170,7 @@ test("sem número (nem no arquivo nem avulso) = 400; conjunto sem anúncio = tra
 
   const metaEmpty = fakeMeta({ async adsOfAdSet() { return []; } });
   const { app: app2 } = await buildApp(metaEmpty);
-  const { job } = await submit(app2, { painCode: "A", sourceAdsetId: "as_src" }, { name: "1303.mp4" });
+  const { job } = await submit(app2, { painCode: "A", sourceAdsetId: "as_src", activate: "0" }, { name: "1303.mp4" });
   assert.equal(job.status, "error");
   assert.match(job.error, /não tem anúncio/);
   assert.match(job.error, /lendo o anúncio de origem/); // o erro diz em que passo morreu
@@ -204,7 +216,7 @@ test("leva de vídeos: o servidor processa um por vez e avisa a posição na fil
   const { app } = await buildApp(meta);
 
   const post = (n) => {
-    const mp = buildMultipart({ painCode: "A", sourceAdsetId: "as_src", number: String(n) }, { name: `${n}.mp4` });
+    const mp = buildMultipart({ painCode: "A", sourceAdsetId: "as_src", number: String(n), activate: "0" }, { name: `${n}.mp4` });
     return app.inject({ method: "POST", url: "/api/marketing/leverads/ad-from-video", headers: { "content-type": mp.contentType }, payload: mp.body });
   };
   const enviados = await Promise.all([post(1301), post(1302), post(1303)]);
@@ -236,7 +248,7 @@ test("leva: vídeo que falha não trava os outros da fila", async () => {
   });
   const { app } = await buildApp(meta);
   const post = (n) => {
-    const mp = buildMultipart({ painCode: "A", sourceAdsetId: "as_src", number: String(n) }, { name: `${n}.mp4` });
+    const mp = buildMultipart({ painCode: "A", sourceAdsetId: "as_src", number: String(n), activate: "0" }, { name: `${n}.mp4` });
     return app.inject({ method: "POST", url: "/api/marketing/leverads/ad-from-video", headers: { "content-type": mp.contentType }, payload: mp.body });
   };
   const res = await Promise.all([post(1301), post(1302), post(1303)]);
@@ -250,4 +262,36 @@ test("leva: vídeo que falha não trava os outros da fila", async () => {
   }
   assert.deepEqual(jobs.map((j) => j.status), ["done", "error", "done"]);
   assert.match(jobs[1].error, /corrompido/);
+});
+
+
+// ── Anúncio nasce RODANDO + teto de orçamento ───────────────────────────────
+// Decisão do Leo (22/07): o anúncio sobe ativo, já entregando. Como isso GASTA,
+// o teto de R$ 100/dia por conjunto é obrigatório e vive no servidor.
+test("por padrão o conjunto e o anúncio nascem ATIVOS", async () => {
+  const meta = fakeMeta();
+  const { app } = await buildApp(meta);
+  const { job } = await submit(app, { painCode: "A", sourceAdsetId: "as_src", number: "1340", dailyBudget: "100" }, { name: "1340.mp4" });
+  assert.equal(job.status, "done", job.error || "");
+  assert.equal(job.result.status, "ACTIVE");
+  assert.equal(meta.calls.find((c) => c[0] === "copyAdSet")[2].statusOption, "ACTIVE");
+  assert.equal(meta.calls.find((c) => c[0] === "createAd")[2].status, "ACTIVE");
+});
+
+test("orçamento acima do teto é recusado antes de subir o vídeo", async () => {
+  const meta = fakeMeta();
+  const { app } = await buildApp(meta);
+  const { res } = await submit(app, { painCode: "A", sourceAdsetId: "as_src", number: "1341", dailyBudget: "101" }, { name: "1341.mp4" });
+  assert.equal(res.statusCode, 400);
+  assert.match(res.json().error, /teto de R\$ 100/);
+  assert.equal(meta.calls.length, 0); // nem chegou a falar com a Meta
+});
+
+test("anúncio ativo SEM orçamento é recusado (herdaria o do conjunto de origem)", async () => {
+  const meta = fakeMeta();
+  const { app } = await buildApp(meta);
+  const { res } = await submit(app, { painCode: "A", sourceAdsetId: "as_src", number: "1342" }, { name: "1342.mp4" });
+  assert.equal(res.statusCode, 400);
+  assert.match(res.json().error, /precisa de orçamento diário/);
+  assert.equal(meta.calls.length, 0);
 });

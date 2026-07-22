@@ -104,6 +104,12 @@ async function spoolToDisk(data) {
   return { path, cleanup: () => rm(dir, { recursive: true, force: true }).catch(() => {}) };
 }
 
+// Teto de segurança do orçamento diário por conjunto. Anúncio criado daqui
+// nasce ATIVO (decisão do Leo em 22/07), ou seja, gasta assim que a Meta
+// aprova: o teto é o que impede um dedo errado virar R$ 2.500/dia. Trava no
+// servidor, não só na tela.
+export const MAX_DAILY_BUDGET = 100;
+
 // Orçamento diário digitado pelo usuário ("120", "120,50", "R$ 120") em número.
 // Vazio = manter o orçamento que veio do conjunto clonado.
 function parseBudget(raw) {
@@ -506,6 +512,18 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     // Orçamento diário do conjunto NOVO (opcional): o clone nasce com o
     // orçamento do conjunto de origem, e é comum querer testar com outro valor.
     const dailyBudget = parseBudget(field("dailyBudget"));
+    if (dailyBudget && dailyBudget > MAX_DAILY_BUDGET) {
+      return reply.code(400).send({ error: `orçamento diário acima do teto de R$ ${MAX_DAILY_BUDGET} por conjunto` });
+    }
+    // Nasce ATIVO por padrão (o anúncio já entra rodando). "0" pausa, pra quem
+    // quiser revisar no Gerenciador antes de gastar.
+    const activate = field("activate") !== "0";
+    const statusNovo = activate ? "ACTIVE" : "PAUSED";
+    // Ativo SEM orçamento definido herdaria o do conjunto de origem, que pode
+    // ser bem acima do teto. Se vai gastar sozinho, o teto tem que ser explícito.
+    if (activate && !dailyBudget) {
+      return reply.code(400).send({ error: `anúncio ativo precisa de orçamento diário (até R$ ${MAX_DAILY_BUDGET}) — sem isso ele herdaria o orçamento do conjunto de origem` });
+    }
 
     let spool;
     try {
@@ -536,19 +554,31 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         //    código 100/3858504). Copiamos o conjunto (público, orçamento,
         //    posicionamento, otimização) e montamos o anúncio novo por cima.
         job.step = "clonando o conjunto de origem";
-        const copy = await meta.copyAdSet(sourceAdsetId, { statusOption: "PAUSED", deepCopy: false });
+        const copy = await meta.copyAdSet(sourceAdsetId, { statusOption: statusNovo, deepCopy: false });
         // 4. renomeia o conjunto clonado.
         await meta.renameObject(copy.adsetId, finalName);
         // 5. orçamento diário pedido (se veio). Falha aqui NÃO invalida o
         //    anúncio — campanha com orçamento na campanha (CBO) recusa
         //    orçamento no conjunto, e o time precisa saber disso sem perder o
         //    trabalho já feito.
+        let statusFinal = statusNovo;
         if (dailyBudget) {
           job.step = "ajustando o orçamento do conjunto";
           try {
             await meta.setObjectBudget(copy.adsetId, dailyBudget);
           } catch (err) {
-            job.warning = `anúncio criado, mas o orçamento de R$ ${dailyBudget} não colou: ${String(err.message || err).slice(0, 200)}`;
+            // Campanha com orçamento na CAMPANHA (CBO) recusa orçamento no
+            // conjunto. Se era pra subir ativo, sobe PAUSADO: melhor o time
+            // ativar na mão do que rodar sem o teto que ele pediu.
+            statusFinal = "PAUSED";
+            job.warning = statusNovo === "ACTIVE"
+              ? `subiu PAUSADO por segurança: o orçamento de R$ ${dailyBudget} não colou (${String(err.message || err).slice(0, 160)}) e sem ele o anúncio gastaria pelo orçamento da campanha`
+              : `anúncio criado, mas o orçamento de R$ ${dailyBudget} não colou: ${String(err.message || err).slice(0, 200)}`;
+            // try/catch, não .catch(): método ausente estoura SÍNCRONO e
+            // levaria junto um anúncio que já está criado.
+            if (statusNovo === "ACTIVE") {
+              try { await meta.setObjectStatus(copy.adsetId, "PAUSED"); } catch { /* o anúncio já nasce pausado abaixo */ }
+            }
           }
         }
         // 6. anúncio novo no conjunto clonado: mesmo spec da origem, só o vídeo
@@ -557,7 +587,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         const creativeId = await meta.createVideoCreativeFromSpec(product.metaAdAccount, {
           name: finalName, sourceSpec: spec, videoId, imageUrl, urlTags: urlTags || CREATIVE_URL_TAGS,
         });
-        const ad = await meta.createAd(product.metaAdAccount, { adsetId: copy.adsetId, creativeId, name: finalName });
+        const ad = await meta.createAd(product.metaAdAccount, { adsetId: copy.adsetId, creativeId, name: finalName, status: statusFinal });
         const ads = [{ id: String(ad.id), name: finalName }];
         // 7. dor nova aprendida entra no mapa do produto.
         if (code && painLabel && (product.painMap || {})[code] !== painLabel) {
@@ -565,7 +595,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         }
         job.status = "done";
         job.step = "pronto";
-        job.result = { adsetId: copy.adsetId, adsetName: finalName, ads, number, code, dailyBudget, status: "PAUSED" };
+        job.result = { adsetId: copy.adsetId, adsetName: finalName, ads, number, code, dailyBudget, status: statusFinal };
       } catch (err) {
         app.log.warn({ err: err.message }, "Meta: ad-from-video falhou");
         job.status = "error";
