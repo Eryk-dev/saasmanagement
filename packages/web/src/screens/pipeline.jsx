@@ -1102,6 +1102,19 @@ function GoalReversePlan({ data, s, leads }) {
           </div>
         )}
 
+        {data.paceAdjust && (
+          <div style={{ padding: "8px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-2)", fontSize: 11.5, color: "var(--fg-3)" }}>
+            <b>Inclui histórico pré-cockpit</b> (dados reais de antes do registro no sistema, somados ao funil):{" "}
+            {[
+              data.paceAdjust.leads && `+${data.paceAdjust.leads} leads`,
+              data.paceAdjust.contacted && `+${data.paceAdjust.contacted} contatos`,
+              data.paceAdjust.booked && `+${data.paceAdjust.booked} agendadas`,
+              data.paceAdjust.shown && `+${data.paceAdjust.shown} comparecimentos`,
+              data.paceAdjust.won && `+${data.paceAdjust.won} ganhos`,
+            ].filter(Boolean).join(" · ")}.
+          </div>
+        )}
+
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, paddingTop: 14, borderTop: "1px solid var(--line-faint)" }}>
           <div>
             <div className="mono" style={noteLabel}>Ticket médio</div>

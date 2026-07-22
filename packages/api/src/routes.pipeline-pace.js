@@ -164,16 +164,29 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   // Resolve a MESMA safra que o agendamento conta (bookedFromRecentLeads), pra
   // o funil encadear exato: agendadas N → dessas, quantas compareceram/fecharam.
   const callOut = callOutcome(product, bookedFromRecentLeads, actsOf); // { shown, noShow, won }
-  const wonRecent = winLeadsIn((iso) => inRange(iso, since30));
+
+  // Ajuste de histórico PRÉ-COCKPIT (product.paceAdjust): dados REAIS de antes do
+  // registro no cockpit (call no telefone, contato por outro canal, venda antiga)
+  // somados às contagens do funil. Somas positivas em { leads, contacted, booked,
+  // shown, won }; zero/ausente = funil só do que o sistema gravou. O funil
+  // ENCADEIA — cada denominador é o passo anterior (contato → agendamento →
+  // comparecimento → call→ganho) — então o histórico entra limpo.
+  const adj = product.paceAdjust && typeof product.paceAdjust === "object" ? product.paceAdjust : {};
+  const adjN = (k) => { const n = Math.floor(Number(adj[k])); return Number.isFinite(n) && n > 0 ? n : 0; };
+  const paceAdjust = ["leads", "contacted", "booked", "shown", "won"].reduce((o, k) => (adjN(k) ? { ...o, [k]: adjN(k) } : o), null);
+  const nLeads = recentLeads.length + adjN("leads");
+  const nContacted = contacted.length + adjN("contacted");
+  const nBooked = bookedFromRecentLeads.length + adjN("booked");
+  const nShown = callOut.shown + adjN("shown");
+  const nWon = callOut.won + adjN("won");
   const conversions = {
-    contactRate: resolvedRate(contacted.length, recentLeads.length, goalRate(goals, "sdr", "contactRate"), 0.8),
-    bookingRate: resolvedRate(bookedFromRecentLeads.length, contacted.length, goalRate(goals, "sdr", "bookingRate"), 0.3),
-    showRate: resolvedRate(callOut.shown, callOut.shown + callOut.noShow, goalRate(goals, "sdr", "showRate"), 0.75),
-    // Call REALIZADA → ganho: dos que compareceram, quantos fecharam (a MESMA
-    // safra). É a mesma "conversão na call" do placar; o gap pra ponta a ponta
-    // real (lead→ganho) é a truncagem da janela (call recente ainda não fechou),
-    // e a calibração abaixo corrige o plano.
-    closeRate: resolvedRate(callOut.won, callOut.shown, goalRate(goals, "closer", "winRateCall"), 0.25),
+    contactRate: resolvedRate(nContacted, nLeads, goalRate(goals, "sdr", "contactRate"), 0.8),
+    bookingRate: resolvedRate(nBooked, nContacted, goalRate(goals, "sdr", "bookingRate"), 0.3),
+    // Comparecimento sobre as AGENDADAS (funil encadeado): dos que marcaram call,
+    // quantos apareceram.
+    showRate: resolvedRate(nShown, nBooked, goalRate(goals, "sdr", "showRate"), 0.75),
+    // Call → ganho: dos que compareceram, quantos fecharam.
+    closeRate: resolvedRate(nWon, nShown, goalRate(goals, "closer", "winRateCall"), 0.25),
   };
 
   // CPL real dos últimos 30 dias (mesma régua do /api/marketing): spend do
@@ -196,7 +209,8 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   // agendada na janela ainda não teve tempo de virar ganho).
   const chainProb = round4(clampRate(conversions.contactRate.value * conversions.bookingRate.value
     * conversions.showRate.value * conversions.closeRate.value));
-  conversions.leadToWin = resolvedRate(wonRecent.length, leads30, null, chainProb);
+  // Lead → ganho = ganhos do funil ÷ leads (ambos com o histórico pré-cockpit).
+  conversions.leadToWin = resolvedRate(nWon, nLeads, null, chainProb);
   const upstream = conversions.contactRate.value * conversions.bookingRate.value * conversions.showRate.value;
   const calibrated = conversions.leadToWin.source === "history"
     && conversions.leadToWin.numerator > 0 && conversions.leadToWin.denominator >= 20 && upstream > 0;
@@ -295,6 +309,7 @@ export async function computePipelinePace(repo, product, now = new Date()) {
       averageEntrySource,
     },
     marketing: { spend30, leads30, cpl },
+    paceAdjust, // histórico pré-cockpit somado ao funil (null quando não há)
     conversions,
     plan: {
       blockedBy,
