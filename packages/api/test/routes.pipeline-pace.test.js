@@ -179,16 +179,17 @@ test("ponta a ponta real calibra o fechamento e o plano fecha consistente", asyn
 
   const r = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
   assert.deepEqual(r.conversions.leadToWin, { value: 0.08, source: "history", numerator: 2, denominator: 25 });
-  assert.equal(r.conversions.closeRate.value, 0.6667); // realizada → ganho: 2 ganhos ÷ 3 compareceram (as calls antigas não poluem mais)
-  // efetivo = ponta a ponta ÷ (contato × agendamento × comparecimento) = 0,08 / 0,15
-  assert.deepEqual(r.conversions.closeRateEffective, { value: 0.5333, source: "calibrated" });
+  assert.equal(r.conversions.closeRate.value, 0.6667); // realizada → ganho: 2 ganhos ÷ 3 compareceram
+  assert.equal(r.conversions.showRate.value, 0.6);     // comparecimento sobre AGENDADAS: 3 ÷ 5 (funil encadeado)
+  // efetivo = ponta a ponta ÷ (contato × agendamento × comparecimento) = 0,08 / 0,12
+  assert.deepEqual(r.conversions.closeRateEffective, { value: 0.6667, source: "calibrated" });
   // gap do VENDIDO = 120k − 8k já vendidos = 112k; ÷ ticket 4k = 28 ganhos →
   // calls usam o fechamento EFETIVO e a cadeia fecha na ponta a ponta.
   assert.equal(r.plan.wins.remaining, 28);
-  assert.equal(r.plan.calls.remaining, 53);       // 28 / 0,5333
-  assert.equal(r.plan.callsBooked.remaining, 71); // 53 / 0,75
-  assert.equal(r.plan.contacts.remaining, 142);   // 71 / 0,5
-  assert.equal(r.plan.leads.remaining, 355);      // 142 / 0,4 (≈ 28 / 0,08)
+  assert.equal(r.plan.calls.remaining, 42);       // 28 / 0,6667
+  assert.equal(r.plan.callsBooked.remaining, 70); // 42 / 0,6
+  assert.equal(r.plan.contacts.remaining, 140);   // 70 / 0,5
+  assert.equal(r.plan.leads.remaining, 350);      // 140 / 0,4 (≈ 28 / 0,08)
 
   await app.close();
 });
@@ -217,6 +218,39 @@ test("furo pela ETAPA No show entra no comparecimento (não só o motivo de perd
 
   const r = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
   assert.deepEqual(r.conversions.showRate, { value: 0.5, source: "history", numerator: 1, denominator: 2 });
+  await app.close();
+});
+
+test("paceAdjust: histórico pré-cockpit soma ao funil, que encadeia (cada denom = passo anterior)", async () => {
+  const { app, repo } = await build({ paceAdjust: { contacted: 80, booked: 10, shown: 10, won: 7 } });
+  // Base logada: 10 leads na janela, 8 contatados, 3 agendados (l1-l3), os 3
+  // compareceram, l1 fechou.
+  for (let i = 1; i <= 10; i++) {
+    await repo.create("leads", { id: `l${i}`, saas: "leverads", stage: "Novo lead", createdAt: "2026-07-05T12:00:00.000Z" });
+    if (i <= 8) await repo.create("activities", { id: `t${i}`, saas: "leverads", lead: `l${i}`, type: "whatsapp", at: "2026-07-06T12:00:00.000Z" });
+  }
+  await repo.update("leads", "l1", { stage: "Ganho", stageSince: "2026-07-10T12:00:00.000Z", amount: 5000 });
+  await repo.update("leads", "l2", { stage: "Proposta" });
+  await repo.update("leads", "l3", { stage: "Proposta" });
+  for (const i of [1, 2, 3]) await repo.create("activities", { id: `bk${i}`, saas: "leverads", lead: `l${i}`, type: "stage", meta: { from: "Novo lead", to: "Call agendada" }, at: "2026-07-07T12:00:00.000Z" });
+
+  const r = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
+  assert.deepEqual(r.paceAdjust, { contacted: 80, booked: 10, shown: 10, won: 7 });
+  const c = r.conversions;
+  // leads 10 → contatados 8+80=88 → agendados 3+10=13 → compareceram 3+10=13 → ganho 1+7=8
+  assert.deepEqual([c.contactRate.numerator, c.contactRate.denominator], [88, 10]);
+  assert.deepEqual([c.bookingRate.numerator, c.bookingRate.denominator], [13, 88]);
+  assert.deepEqual([c.showRate.numerator, c.showRate.denominator], [13, 13]);   // comparecimento sobre agendados
+  assert.deepEqual([c.closeRate.numerator, c.closeRate.denominator], [8, 13]);  // ganho sobre compareceram
+  assert.deepEqual([c.leadToWin.numerator, c.leadToWin.denominator], [8, 10]);  // ganho do funil sobre leads
+  await app.close();
+});
+
+test("sem paceAdjust: paceAdjust é null e o funil não muda", async () => {
+  const { app, repo } = await build();
+  await repo.create("leads", { id: "x1", saas: "leverads", stage: "Novo lead", createdAt: "2026-07-05T12:00:00.000Z" });
+  const r = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
+  assert.equal(r.paceAdjust, null);
   await app.close();
 });
 
