@@ -21,7 +21,7 @@ const { useState: useS, useEffect: useE } = React;
 
 const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || "").trim());
 
-export function NextActionButton({ thread, onScheduled }) {
+export function NextActionButton({ thread, onScheduled, onResolved }) {
   const [open, setOpen] = useS(false);
   const pill = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 11px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", flexShrink: 0 };
   if (!thread?.leadId) return null;
@@ -30,12 +30,15 @@ export function NextActionButton({ thread, onScheduled }) {
       <button onClick={() => setOpen(true)} style={pill} title="Atualizar o card pra próxima ação: agendar a call, fechar, marcar perda… reflete no pipeline e na fila na hora">
         → Próxima ação
       </button>
-      {open && <NextActionModal leadId={thread.leadId} onScheduled={onScheduled} onClose={() => setOpen(false)} />}
+      {open && <NextActionModal leadId={thread.leadId} onScheduled={onScheduled} onResolved={onResolved} onClose={() => setOpen(false)} />}
     </>
   );
 }
 
-function NextActionModal({ leadId, onScheduled, onClose }) {
+// onResolved(leadId): avisa a fila do inbox que essa atividade foi executada, pra
+// ela sair da lista na hora (a pessoa abre a conversa, faz a próxima ação e o
+// item some — sem esperar o re-cálculo do dia).
+function NextActionModal({ leadId, onScheduled, onResolved, onClose }) {
   const leads = window.SEED?.LEADS || [];
   const lead = leads.find((l) => l.id === leadId) || null;
   const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === lead?.saas) || null;
@@ -94,6 +97,7 @@ function NextActionModal({ leadId, onScheduled, onClose }) {
     try {
       await api.update("leads", lead.id, { stage: d.stage });
       refresh();
+      onResolved?.(lead.id);
       setDone({ moved: d.stage });
     } catch (e) { setErr(e?.message || "não deu pra mover"); }
     finally { setBusy(false); }
@@ -107,6 +111,7 @@ function NextActionModal({ leadId, onScheduled, onClose }) {
     try {
       await api.logActivity({ saas: lead.saas, lead: lead.id, type: "whatsapp", text: "tentativa de contato (inbox)", author: currentUser()?.id || "" });
       refresh(); // toque re-agenda o GPS no servidor, mas o evento é "activities" (a SSE ignora) — recarrega na mão pra fila andar
+      onResolved?.(lead.id);
       setDone({ retry: true, moved: d.promote ? d.stage : (lead.stage || d.stage) });
     } catch (e) { setErr(e?.message || "não deu pra registrar a tentativa"); }
     finally { setBusy(false); }
@@ -123,6 +128,7 @@ function NextActionModal({ leadId, onScheduled, onClose }) {
     try {
       await api.update("leads", lead.id, patch);
       refresh();
+      onResolved?.(lead.id);
       let callUrl = "";
       if (withInvite) {
         try {
@@ -279,7 +285,7 @@ function NextActionModal({ leadId, onScheduled, onClose }) {
         saasCfg={saasCfg}
         onCancel={() => setGateMove(null)}
         onConfirm={(mp, extra) => {
-          applyGatedMove(mp, extra, lead.id).then(refresh).catch((err2) => console.warn("movimento não persistido:", err2.message));
+          applyGatedMove(mp, extra, lead.id).then(() => { refresh(); onResolved?.(lead.id); }).catch((err2) => console.warn("movimento não persistido:", err2.message));
           setGateMove(null);
           setDone({ moved: gateMove.toStage });
         }}
