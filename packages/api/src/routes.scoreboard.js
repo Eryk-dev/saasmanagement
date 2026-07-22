@@ -246,8 +246,23 @@ export function registerScoreboardRoutes(app, repo) {
     // da Análise de Pace, então as duas telas mostram os mesmos números. Inclui
     // o ajuste de HISTÓRICO PRÉ-COCKPIT (product.paceAdjust). O funil ENCADEIA:
     // cada denominador é o passo anterior.
+    // O ajuste PRÉ-COCKPIT só entra quando a JANELA alcança a época anterior ao
+    // registro no cockpit. Os leads existem desde antes, mas o time só passou a
+    // logar toque/call/etapa aqui a partir do 1º registro de atividade — então
+    // somar o histórico (product.paceAdjust) numa janela recente (ex.: "ontem")
+    // inflava o funil (contatados > leads). Época = 1º dia com atividade do
+    // produto (ou product.paceAdjust.before, se fixado). Aplica se since < época.
+    let activityEpoch = null;
+    for (const a of allActs) {
+      if (a.saas !== product.id) continue;
+      const d = dayKey(a.at);
+      if (d && (!activityEpoch || d < activityEpoch)) activityEpoch = d;
+    }
+    const adjCutoff = product.paceAdjust?.before || activityEpoch;
+    const teamAdjust = product.paceAdjust && (!adjCutoff || since < adjCutoff) ? product.paceAdjust : null;
+
     const teamWonLeads = [...winTransitionsFor(leads).keys()].map((id) => leadById.get(id)).filter(Boolean);
-    const fc = funnelCounts(product, { leads, actsOf, inWin, winLeadsIn: () => teamWonLeads, adjust: product.paceAdjust });
+    const fc = funnelCounts(product, { leads, actsOf, inWin, winLeadsIn: () => teamWonLeads, adjust: teamAdjust });
     const team = {
       leadsNew: fc.leads,
       contacted: fc.contacted,
