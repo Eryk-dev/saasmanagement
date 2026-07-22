@@ -48,7 +48,7 @@ test("envio pelo lead usa o número DO PRODUTO; produto sem número bloqueia com
 
   // UniqueKids SEM waPhoneId: 503 com instrução, e NADA sai pelo número da LeverAds.
   const blocked = await app.inject({ method: "POST", url: "/api/leads/lk/whatsapp", payload: { text: "oi" } });
-  assert.equal(blocked.statusCode, 503);
+  assert.equal(blocked.statusCode, 424);
   assert.match(blocked.json().error, /Ajustes → Integrações/);
   assert.equal(wa.sent.length, 1);
   await app.close();

@@ -63,7 +63,7 @@ test("gera a sugestão, converte idade/neuro em rótulo e grava no lead", async 
 test("IA não configurada → 503; lead inexistente → 404; IA caiu → 502", async () => {
   const repo = makeMemRepo();
   await seed(repo);
-  assert.equal((await (await appWith(repo, fakeAI({ configured: false }))).inject({ method: "POST", url: "/api/leads/ld1/routine-suggestion" })).statusCode, 503);
+  assert.equal((await (await appWith(repo, fakeAI({ configured: false }))).inject({ method: "POST", url: "/api/leads/ld1/routine-suggestion" })).statusCode, 424);
   assert.equal((await (await appWith(repo, fakeAI())).inject({ method: "POST", url: "/api/leads/nope/routine-suggestion" })).statusCode, 404);
-  assert.equal((await (await appWith(repo, fakeAI({ throw: true }))).inject({ method: "POST", url: "/api/leads/ld1/routine-suggestion" })).statusCode, 502);
+  assert.equal((await (await appWith(repo, fakeAI({ throw: true }))).inject({ method: "POST", url: "/api/leads/ld1/routine-suggestion" })).statusCode, 424);
 });

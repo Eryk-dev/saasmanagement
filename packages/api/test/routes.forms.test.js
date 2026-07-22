@@ -512,7 +512,7 @@ test("suggest-welcome: gera variante por IA com contexto do form; 503 sem chave"
   // sem chave de IA → 503 com mensagem acionável
   const off = Fastify();
   registerRoutes(off, repo, { anthropic: { configured: () => false } });
-  assert.equal((await off.inject({ method: "POST", url: "/api/forms/fo_test/suggest-welcome", payload: {} })).statusCode, 503);
+  assert.equal((await off.inject({ method: "POST", url: "/api/forms/fo_test/suggest-welcome", payload: {} })).statusCode, 424);
   // form inexistente → 404
   assert.equal((await app.inject({ method: "POST", url: "/api/forms/nada/suggest-welcome", payload: {} })).statusCode, 404);
   await app.close();

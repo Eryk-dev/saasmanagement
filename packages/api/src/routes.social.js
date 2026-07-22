@@ -19,6 +19,7 @@ import { social as defaultSocial } from "./social.js";
 import { meta as defaultMeta } from "./meta.js";
 import { publicBase } from "./routes.js";
 import { upsertComment, syncComments, listComments, commentInsights, invalidateSync, postTitleOf } from "./social-comments.js";
+import { UPSTREAM_FAILED } from "./http-status.js";
 
 const IMG_MAX = 15 * 1024 * 1024;   // PNG de 1080×1920 fica bem abaixo disso
 const VID_MAX = 80 * 1024 * 1024;   // reel curto; acima disso o jsonb sofre
@@ -309,7 +310,7 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
       const r = await anthropic.suggestSocialCopy({ dor, suggestion, formatLabel, templateName, fields });
       return { fields: r.fields, caption: r.caption };
     } catch (e) {
-      return reply.code(502).send({ error: e.message });
+      return reply.code(UPSTREAM_FAILED).send({ error: e.message });
     }
   });
 

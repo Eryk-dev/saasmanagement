@@ -9,6 +9,7 @@ import { publicBase } from "./routes.js";
 import { logActivity } from "./lead-flow.js";
 import { makeCallSummarizer } from "./call-summaries.js";
 import { makeIntegrationBriefer } from "./integration-brief.js";
+import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 
 export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic } = {}) {
   const client = google || makeGoogle({
@@ -48,7 +49,7 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
 
   app.get("/api/google/auth-url", async (req, reply) => {
     if (!client.configured()) {
-      return reply.code(503).send({ error: "Google não configurado — defina GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no servidor" });
+      return reply.code(NOT_CONFIGURED).send({ error: "Google não configurado — defina GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no servidor" });
     }
     sweep();
     const state = randomUUID();
@@ -69,7 +70,7 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
   app.get("/api/google/user/auth-url", async (req, reply) => {
     const uid = req.authUser?.id;
     if (!uid) return reply.code(401).send({ error: "Entre com seu usuário pra conectar o Google pessoal" });
-    if (!gu.configured()) return reply.code(503).send({ error: "Google não configurado no servidor (GOOGLE_CLIENT_ID/SECRET)" });
+    if (!gu.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Google não configurado no servidor (GOOGLE_CLIENT_ID/SECRET)" });
     sweep();
     const state = randomUUID();
     states.set(state, { exp: Date.now() + 10 * 60_000, userId: uid });
@@ -208,15 +209,15 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
   }
 
   app.post("/api/leads/:id/meet", async (req, reply) => {
-    if (!client.configured()) return reply.code(503).send({ error: "Google não configurado (GOOGLE_CLIENT_ID/SECRET)" });
-    if (!(await client.connected())) return reply.code(503).send({ error: "Google não conectado — Ajustes → Integrações → Conectar Google" });
+    if (!client.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Google não configurado (GOOGLE_CLIENT_ID/SECRET)" });
+    if (!(await client.connected())) return reply.code(NOT_CONFIGURED).send({ error: "Google não conectado — Ajustes → Integrações → Conectar Google" });
     const lead = await repo.get("leads", req.params.id);
     if (!lead) return reply.code(404).send({ error: "Not found" });
     const kind = req.body?.kind === "integracao" ? "integracao" : "call";
     try {
       return await createMeetForLead(lead, { kind, guests: req.body?.guests, email: req.body?.email, log: req.log });
     } catch (err) {
-      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+      return reply.code(UPSTREAM_FAILED).send({ error: String(err.message || err).slice(0, 300) });
     }
   });
 
@@ -224,7 +225,7 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
   // aberta trava gravação/transcrição (o Google só fecha quando o último sai),
   // e sem isso alguém tinha que entrar no Meet pra clicar em encerrar.
   app.post("/api/leads/:id/meet/end", async (req, reply) => {
-    if (!(await client.connected())) return reply.code(503).send({ error: "Google não conectado — Ajustes → Integrações → Conectar Google" });
+    if (!(await client.connected())) return reply.code(NOT_CONFIGURED).send({ error: "Google não conectado — Ajustes → Integrações → Conectar Google" });
     const lead = await repo.get("leads", req.params.id);
     if (!lead) return reply.code(404).send({ error: "Not found" });
     const kind = req.body?.kind === "integracao" ? "integracao" : "call";
@@ -245,14 +246,14 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
   // Resumo estratégico da call (transcrição do Meet → Claude → timeline).
   // force = re-resumir mesmo já tendo resumo desta call.
   app.post("/api/leads/:id/call-summary", async (req, reply) => {
-    if (!summarizer) return reply.code(503).send({ error: "IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor" });
+    if (!summarizer) return reply.code(NOT_CONFIGURED).send({ error: "IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor" });
     try {
       const r = await summarizer.summarizeLead(req.params.id, { force: !!req.body?.force, kind: req.body?.kind === "integracao" ? "integracao" : "call" });
       if (!r.ok && r.reason === "not_found") return reply.code(404).send({ error: "Not found" });
       return r;
     } catch (err) {
       req.log.warn({ err: err.message, lead: req.params.id }, "resumo de call falhou");
-      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+      return reply.code(UPSTREAM_FAILED).send({ error: String(err.message || err).slice(0, 300) });
     }
   });
 
@@ -260,14 +261,14 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
   // serviço do onboarding). Gerado sozinho quando o card entra em Integração;
   // esta rota é o "gerar agora" do drawer. force = refazer.
   app.post("/api/leads/:id/integration-brief", async (req, reply) => {
-    if (!briefer) return reply.code(503).send({ error: "IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor" });
+    if (!briefer) return reply.code(NOT_CONFIGURED).send({ error: "IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor" });
     try {
       const r = await briefer.briefLead(req.params.id, { force: !!req.body?.force });
       if (!r.ok && r.reason === "not_found") return reply.code(404).send({ error: "Not found" });
       return r;
     } catch (err) {
       req.log.warn({ err: err.message, lead: req.params.id }, "briefing de integração falhou");
-      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+      return reply.code(UPSTREAM_FAILED).send({ error: String(err.message || err).slice(0, 300) });
     }
   });
 

@@ -181,7 +181,7 @@ test("mp/link sem MP configurado → 503; cliente sem e-mail → 400", async () 
   await repo.create("products", { id: "p1", name: "P1" });
   await repo.create("customers", { id: "c1", name: "Sem Email", saas: "p1" });
   const sub = (await app.inject({ method: "POST", url: "/api/subscriptions", payload: { customer: "c1", saas: "p1", price: 100, cycle: "monthly" } })).json();
-  assert.equal((await app.inject({ method: "POST", url: `/api/subscriptions/${sub.id}/mp/link`, payload: {} })).statusCode, 503);
+  assert.equal((await app.inject({ method: "POST", url: `/api/subscriptions/${sub.id}/mp/link`, payload: {} })).statusCode, 424);
   await app.close();
 
   const { app: app2 } = buildApp(repo, {});

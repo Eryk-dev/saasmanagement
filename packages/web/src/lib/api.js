@@ -15,6 +15,15 @@ export function getKey() {
 export function setKey(k) { try { localStorage.setItem(STORAGE_KEY, k); } catch { /* ignore */ } }
 export function clearKey() { try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ } }
 
+// Nossa API não responde 5xx de propósito (o proxy engoliria o corpo, ver
+// http-status.js), então 5xx aqui é sempre infraestrutura: proxy, container
+// reiniciando ou bug não tratado.
+function proxyMessage(status) {
+  if (status === 413) return "arquivo grande demais pro servidor (limite 512 MB) — comprima o vídeo e tente de novo";
+  if (status === 502 || status === 503 || status === 504) return "o servidor não respondeu (deploy rodando ou container reiniciando) — espere uns segundos e tente de novo";
+  return `HTTP ${status} (resposta do proxy, não da API)`;
+}
+
 async function req(method, path, body) {
   const headers = {};
   if (body !== undefined) headers["content-type"] = "application/json";
@@ -27,19 +36,17 @@ async function req(method, path, body) {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    const err = new Error(`API ${method} ${path} -> ${res.status} ${text}`);
+    // Erro nosso vem em JSON com `error`. Quando não vem, quem respondeu foi o
+    // proxy com uma página HTML inteira — despejar isso na tela (já aconteceu)
+    // esconde o problema em vez de mostrar.
+    let msg = "";
+    try { msg = JSON.parse(text).error || ""; } catch { /* HTML do proxy */ }
+    const err = new Error(msg || proxyMessage(res.status));
     err.status = res.status;
+    err.path = path;
     throw err;
   }
   return res.status === 204 ? null : res.json();
-}
-
-// Quando quem responde é o proxy (nginx/Traefik), o corpo é HTML: jogar essa
-// página na tela não diz nada ao time. Traduz os casos que aparecem de verdade.
-function proxyMessage(status) {
-  if (status === 413) return "arquivo grande demais pro servidor (limite 512 MB) — comprima o vídeo e tente de novo";
-  if (status === 502 || status === 504) return "o proxy cortou a conexão antes da API responder — se o vídeo já tinha subido, confira no Gerenciador antes de repetir";
-  return `HTTP ${status} (resposta do proxy, não da API)`;
 }
 
 // POST multipart (vídeo/áudio/imagem) via XHR — não é preciosismo: fetch não

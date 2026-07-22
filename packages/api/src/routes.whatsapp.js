@@ -8,6 +8,7 @@ import { runInboundCallFlow, startCallFlow, openAlerts, closeThreadAlerts, parse
 import { transcriber as defaultTranscriber } from "./transcribe.js";
 import { formatSummaryText } from "./call-summaries.js";
 import { logActivity } from "./lead-flow.js";
+import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 
 // Mídia de uma mensagem recebida: a Cloud API manda só o ID (o binário se baixa
 // depois, com o token). Devolve {kind, id, mime, filename} ou null.
@@ -92,7 +93,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     if (p?.waPhoneId) return p.waPhoneId;
     return products.some((x) => x.waPhoneId) ? null : undefined;
   }
-  const noNumberReply = (reply, saas) => reply.code(503).send({
+  const noNumberReply = (reply, saas) => reply.code(NOT_CONFIGURED).send({
     error: `WhatsApp sem número pra este produto${saas ? ` (${saas})` : ""} — defina o phone number id em Ajustes → Integrações`,
   });
   // Produto dono de um número recebido no webhook (etiqueta conversa nova).
@@ -321,12 +322,12 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
       reply.header("cache-control", "private, max-age=86400");
       return reply.type(cached.mime || msg.media.mime || "application/octet-stream").send(Buffer.from(cached.data, "base64"));
     }
-    if (!wa.configured(msg.waPhoneId || undefined)) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
+    if (!wa.configured(msg.waPhoneId || undefined)) return reply.code(NOT_CONFIGURED).send({ error: "WhatsApp não configurado no servidor" });
     let buf, mime;
     try { ({ buf, mime } = await wa.fetchMedia(msg.media.id)); }
     catch (err) {
       // id expirado / erro da Graph: mídia antiga pode não vir mais.
-      return reply.code(502).send({ error: String(err.message || err).slice(0, 200) });
+      return reply.code(UPSTREAM_FAILED).send({ error: String(err.message || err).slice(0, 200) });
     }
     // Cacheia (teto de 16MB pra não estourar o doc; áudio de voz é KBs).
     if (buf.length <= 16 * 1024 * 1024) {
@@ -419,7 +420,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     const product = (await repo.list("products")).find((p) => p.id === saas) || null;
     const phoneId = await resolvePhoneId({ saas, thread });
     if (phoneId === null) return noNumberReply(reply, saas);
-    if (!wa.configured(phoneId)) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
+    if (!wa.configured(phoneId)) return reply.code(NOT_CONFIGURED).send({ error: "WhatsApp não configurado no servidor" });
     try {
       const r = await startCallFlow(repo, wa, {
         thread: thread || { id: phone, phone, saas, leadId: lead?.id || null, waPhoneId: "" },
@@ -453,7 +454,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
 
   // Templates que o composer consegue enviar (corpo com variáveis numeradas).
   app.get("/api/whatsapp/templates", async (req, reply) => {
-    if (!wa.configured()) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
+    if (!wa.configured()) return reply.code(NOT_CONFIGURED).send({ error: "WhatsApp não configurado no servidor" });
     try {
       const all = await approvedTemplates();
       return { templates: all.filter((t) => t.supported), unsupported: all.length - all.filter((t) => t.supported).length };
@@ -467,7 +468,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
   // com [a-z0-9_] (regra da Meta); UTILITY (relação/transação) x MARKETING
   // (promo/reengajamento) muda a régua de revisão e o custo.
   app.post("/api/whatsapp/templates", async (req, reply) => {
-    if (!wa.configured()) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
+    if (!wa.configured()) return reply.code(NOT_CONFIGURED).send({ error: "WhatsApp não configurado no servidor" });
     const name = String(req.body?.name || "").trim().toLowerCase()
       .replace(/[^a-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").slice(0, 60);
     const body = String(req.body?.body || "").trim();
@@ -504,7 +505,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     const thread = await findThreadByPhone(repo, phone);
     const phoneId = await resolvePhoneId({ thread });
     if (phoneId === null) return noNumberReply(reply, thread?.saas || "");
-    if (!wa.configured(phoneId)) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
+    if (!wa.configured(phoneId)) return reply.code(NOT_CONFIGURED).send({ error: "WhatsApp não configurado no servidor" });
     let tpl;
     try {
       const lang = String(req.body?.language || "");
@@ -545,7 +546,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     }
     const phoneId = await resolvePhoneId({ thread });
     if (phoneId === null) return noNumberReply(reply, thread?.saas || "");
-    if (!wa.configured(phoneId)) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
+    if (!wa.configured(phoneId)) return reply.code(NOT_CONFIGURED).send({ error: "WhatsApp não configurado no servidor" });
     try {
       const { callId } = await wa.initiateCall(thread?.phone || phone, sdp, { phoneId });
       if (!callId) return reply.code(422).send({ error: "a Meta não devolveu o id da chamada" });
@@ -594,7 +595,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     if (buf.length > 25 * 1024 * 1024) return reply.code(413).send({ error: "gravação acima de 25MB" });
     if (buf.length < 8 * 1024) return { ok: true, skipped: "gravação curta demais" };
     if (!transcriber.configured()) {
-      return reply.code(503).send({ error: "transcrição não configurada no servidor (OPENROUTER_API_KEY ou OPENAI_API_KEY)" });
+      return reply.code(NOT_CONFIGURED).send({ error: "transcrição não configurada no servidor (OPENROUTER_API_KEY ou OPENAI_API_KEY)" });
     }
 
     const lead = call.leadId ? await repo.get("leads", call.leadId).catch(() => null) : null;
@@ -608,7 +609,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
       });
     } catch (err) {
       app.log?.warn?.({ call: call.id, err: err.message }, "transcrição da ligação falhou");
-      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+      return reply.code(UPSTREAM_FAILED).send({ error: String(err.message || err).slice(0, 300) });
     }
     if (!transcript) return { ok: true, skipped: "sem fala reconhecida" };
 
@@ -668,7 +669,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     const thread = await findThreadByPhone(repo, phone);
     const phoneId = await resolvePhoneId({ thread });
     if (phoneId === null) return noNumberReply(reply, thread?.saas || "");
-    if (!wa.configured(phoneId)) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
+    if (!wa.configured(phoneId)) return reply.code(NOT_CONFIGURED).send({ error: "WhatsApp não configurado no servidor" });
     try {
       const messageId = await sendAndRecord(repo, wa, { phone: thread?.phone || phone, text, author: req.authUser?.id || "cockpit", phoneId, saas: thread?.saas || "" });
       return { ok: true, messageId };
@@ -700,7 +701,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     const thread = await findThreadByPhone(repo, phone);
     const phoneId = await resolvePhoneId({ thread });
     if (phoneId === null) return noNumberReply(reply, thread?.saas || "");
-    if (!wa.configured(phoneId)) return reply.code(503).send({ error: "WhatsApp não configurado no servidor" });
+    if (!wa.configured(phoneId)) return reply.code(NOT_CONFIGURED).send({ error: "WhatsApp não configurado no servidor" });
 
     const mime = file.mimetype || "application/octet-stream";
     const kind = MEDIA_KIND(mime);
@@ -741,7 +742,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     const thread = await findThreadByPhone(repo, phone);
     const phoneId = await resolvePhoneId({ saas: lead.saas || "", thread });
     if (phoneId === null) return noNumberReply(reply, lead.saas || "");
-    if (!wa.configured(phoneId)) return reply.code(503).send({ error: "WhatsApp não configurado no servidor (WHATSAPP_TOKEN + número)" });
+    if (!wa.configured(phoneId)) return reply.code(NOT_CONFIGURED).send({ error: "WhatsApp não configurado no servidor (WHATSAPP_TOKEN + número)" });
     try {
       const messageId = await sendAndRecord(repo, wa, { phone: thread?.phone || phone, text, author: req.authUser?.id || "cockpit", phoneId, saas: lead.saas || "" });
       return { ok: true, messageId };

@@ -138,12 +138,12 @@ test("guardas: chamada inexistente, áudio curto, sem chave e erro da transcriç
     return { app: a };
   })();
   const nokey = await app3.inject({ method: "POST", url: "/api/whatsapp/calls/c/recording", payload: mp.body, headers: hd });
-  assert.equal(nokey.statusCode, 503);
+  assert.equal(nokey.statusCode, 424);
   assert.match(nokey.json().error, /OPENROUTER_API_KEY/);
 
   // a API de transcrição respondeu erro → 502 com o motivo legível
   const { app: app4 } = await buildApp({ transcribeErr: "audio muito longo" });
   const boom = await app4.inject({ method: "POST", url: "/api/whatsapp/calls/call_1/recording", payload: mp.body, headers: hd });
-  assert.equal(boom.statusCode, 502);
+  assert.equal(boom.statusCode, 424);
   assert.match(boom.json().error, /audio muito longo/);
 });

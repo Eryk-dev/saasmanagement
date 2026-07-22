@@ -12,6 +12,7 @@
 
 import { annualized } from "./billing.js";
 import { aiCosts as defaultAiCosts } from "./ai-costs.js";
+import { NOT_CONFIGURED } from "./http-status.js";
 import {
   DAY_MS, round2, dayKey, monthKey, isRealLead,
   winsIn, customerStartMap, tcvOf,
@@ -22,7 +23,7 @@ const monthOf = monthKey; // mês do dia do NEGÓCIO (metrics-core), não UTC
 export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhatsapp = () => null } = {}) {
   // Gasto com IA (OpenRouter/OpenAI/Anthropic) — agregado em USD pro período.
   app.get("/api/ai-costs", async (req, reply) => {
-    if (!ai.configured()) return reply.code(503).send({ error: "nenhuma chave de IA configurada (OPENROUTER_API_KEY / OPENAI_ADMIN_KEY / ANTHROPIC_ADMIN_KEY)" });
+    if (!ai.configured()) return reply.code(NOT_CONFIGURED).send({ error: "nenhuma chave de IA configurada (OPENROUTER_API_KEY / OPENAI_ADMIN_KEY / ANTHROPIC_ADMIN_KEY)" });
     const days = Math.min(90, Math.max(7, Number(req.query.days) || 30));
     return ai.report(days);
   });

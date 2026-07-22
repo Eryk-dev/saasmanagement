@@ -7,6 +7,8 @@
 // Digest compacto dos resumos de call pra caber no prompt: objeções mais
 // frequentes (com quantas ficaram em aberto e como foram tratadas quando
 // resolvidas), dores mais citadas e a distribuição de temperatura.
+import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
+
 export function buildCallsDigest(summaries) {
   const objMap = new Map(); // chave normalizada -> { objecao, total, abertas, tratadas: [] }
   const doresMap = new Map();
@@ -123,7 +125,7 @@ export function registerPitchRoutes(app, repo, { anthropic } = {}) {
   });
 
   app.post("/api/pitch/:saas/improve", async (req, reply) => {
-    if (!anthropic?.configured()) return reply.code(503).send({ error: "IA não configurada (OPENROUTER_API_KEY ou ANTHROPIC_API_KEY)" });
+    if (!anthropic?.configured()) return reply.code(NOT_CONFIGURED).send({ error: "IA não configurada (OPENROUTER_API_KEY ou ANTHROPIC_API_KEY)" });
     const saas = req.params.saas;
     const product = await repo.get("products", saas);
     if (!product) return reply.code(404).send({ error: "Produto não encontrado" });
@@ -156,7 +158,7 @@ export function registerPitchRoutes(app, repo, { anthropic } = {}) {
       return { ...suggestion, base: acts.length };
     } catch (err) {
       req.log?.warn?.({ err }, "improve-pitch falhou");
-      return reply.code(502).send({ error: String(err?.message || err).slice(0, 300) });
+      return reply.code(UPSTREAM_FAILED).send({ error: String(err?.message || err).slice(0, 300) });
     }
   });
 }

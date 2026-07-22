@@ -13,6 +13,7 @@
 import { logActivity } from "./lead-flow.js";
 import { ladderOf, isWon, kindOf } from "./stages.js";
 import { unsubSig, unsubToken, baseUrl, leadTokens, interpolate, emailBodyWithUnsub } from "./disparos-util.js";
+import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 
 const CHANNELS = new Set(["whatsapp", "email"]);
 const DAY = 86_400_000;
@@ -63,7 +64,7 @@ export function registerCampaignRoutes(app, repo, { anthropic, mailer } = {}) {
     const camp = await repo.get("campaigns", req.params.id);
     if (!camp) return reply.code(404).send({ error: "campanha não encontrada" });
     if (!mailer || !(await mailer.ready())) {
-      return reply.code(503).send({ error: "Conecte o Google com permissão de e-mail (Ajustes → Integrações → reconectar Google)." });
+      return reply.code(NOT_CONFIGURED).send({ error: "Conecte o Google com permissão de e-mail (Ajustes → Integrações → reconectar Google)." });
     }
     const { leadIds } = req.body || {};
     if (!Array.isArray(leadIds) || leadIds.length === 0) return reply.code(400).send({ error: "informe leadIds (lista)" });
@@ -155,7 +156,7 @@ export function registerCampaignRoutes(app, repo, { anthropic, mailer } = {}) {
       const r = await anthropic.suggestCampaignCopy({ channel, objetivo, publico, productName });
       return { subject: r.subject, body: r.body, whatsapp: r.whatsapp };
     } catch (e) {
-      return reply.code(502).send({ error: e.message });
+      return reply.code(UPSTREAM_FAILED).send({ error: e.message });
     }
   });
 

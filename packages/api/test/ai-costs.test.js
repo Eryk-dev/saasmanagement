@@ -68,6 +68,6 @@ test("GET /api/ai-costs responde agregado; 503 sem nenhuma chave", async () => {
 
   const off = Fastify();
   registerMetricsRoutes(off, repo, { ai: { configured: () => false } });
-  assert.equal((await off.inject({ method: "GET", url: "/api/ai-costs" })).statusCode, 503);
+  assert.equal((await off.inject({ method: "GET", url: "/api/ai-costs" })).statusCode, 424);
   await off.close();
 });

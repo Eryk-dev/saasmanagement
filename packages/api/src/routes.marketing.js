@@ -20,6 +20,7 @@ import { meta as defaultMeta } from "./meta.js";
 import { stagePassCounts } from "./routes.funnel-metrics.js";
 import { isWonLead, kindOf } from "./stages.js";
 import { dayKey } from "./metrics-core.js";
+import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 
 const DAY_MS = 86400000;
 // Dia no FUSO DO NEGÓCIO — régua única do metrics-core (America/Sao_Paulo).
@@ -202,7 +203,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
   // Puxa os insights da Meta pro período (default: últimos 30 dias) — de UM SaaS
   // (?saas=) ou de todos que têm metaAdAccount configurado.
   app.post("/api/marketing/sync", async (req, reply) => {
-    if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
+    if (!meta.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
     const { since, until } = rangeFromQuery(req.body || {});
     const products = (await repo.list("products"))
       .filter((p) => p.metaAdAccount && (!req.body?.saas || p.id === req.body.saas));
@@ -223,7 +224,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
   // ── Gerenciamento de campanha (precisa de ads_management no token) ────────
   // Lista ao vivo da conta do produto: status, orçamento, objetivo.
   app.get("/api/marketing/:saas/campaigns", async (req, reply) => {
-    if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
+    if (!meta.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "Not found" });
     if (!product.metaAdAccount) return reply.code(400).send({ error: "conta de anúncio não configurada (Ajustes → Integrações)" });
@@ -231,7 +232,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       return { campaigns: await meta.listCampaigns(product.metaAdAccount) };
     } catch (err) {
       req.log.warn({ err: err.message }, "Meta: listCampaigns falhou");
-      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+      return reply.code(UPSTREAM_FAILED).send({ error: String(err.message || err).slice(0, 300) });
     }
   });
 
@@ -239,14 +240,14 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
   // nó da Graph decide). O corpo diz o estado alvo; a resposta ecoa o aplicado.
   // /campaigns/:id/status continua valendo (compat com integrações antigas).
   const statusHandler = async (req, reply) => {
-    if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
+    if (!meta.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
     const status = req.body?.status;
     if (status !== "ACTIVE" && status !== "PAUSED") return reply.code(400).send({ error: "status deve ser ACTIVE ou PAUSED" });
     try {
       return { ok: true, ...(await meta.setObjectStatus(req.params.id, status)) };
     } catch (err) {
       req.log.warn({ err: err.message, object: req.params.id }, "Meta: setObjectStatus falhou");
-      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+      return reply.code(UPSTREAM_FAILED).send({ error: String(err.message || err).slice(0, 300) });
     }
   };
   app.post("/api/marketing/campaigns/:id/status", statusHandler);
@@ -254,14 +255,14 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
 
   // Orçamento diário (R$) — campanha CBO ou conjunto ABO.
   const budgetHandler = async (req, reply) => {
-    if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
+    if (!meta.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
     const dailyBudget = Number(req.body?.dailyBudget);
     if (!Number.isFinite(dailyBudget) || dailyBudget <= 0) return reply.code(400).send({ error: "dailyBudget (R$) deve ser um número positivo" });
     try {
       return { ok: true, ...(await meta.setObjectBudget(req.params.id, dailyBudget)) };
     } catch (err) {
       req.log.warn({ err: err.message, object: req.params.id }, "Meta: setObjectBudget falhou");
-      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+      return reply.code(UPSTREAM_FAILED).send({ error: String(err.message || err).slice(0, 300) });
     }
   };
   app.post("/api/marketing/campaigns/:id/budget", budgetHandler);
@@ -269,19 +270,19 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
 
   // Anúncios de um conjunto — gerenciamento nível anúncio no mesmo bloco.
   app.get("/api/marketing/adsets/:id/ads", async (req, reply) => {
-    if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
+    if (!meta.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
     try {
       return { ads: await meta.listAds(req.params.id) };
     } catch (err) {
       req.log.warn({ err: err.message, adset: req.params.id }, "Meta: listAds falhou");
-      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+      return reply.code(UPSTREAM_FAILED).send({ error: String(err.message || err).slice(0, 300) });
     }
   });
 
   // Os TRÊS níveis ao vivo da conta (campanhas, conjuntos, anúncios) — base da
   // visão estilo Gerenciador no SPA (abas por nível + toggle + orçamento).
   app.get("/api/marketing/:saas/adobjects", async (req, reply) => {
-    if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
+    if (!meta.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "Not found" });
     if (!product.metaAdAccount) return reply.code(400).send({ error: "conta de anúncio não configurada (Ajustes → Integrações)" });
@@ -297,7 +298,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const KEYS = ["campaigns", "adsets", "ads"];
     if (settled.every((r) => r.status === "rejected")) {
       req.log.warn({ err: settled[0].reason?.message }, "Meta: adobjects falhou");
-      return reply.code(502).send({ error: String(settled[0].reason?.message || "Meta indisponível").slice(0, 300) });
+      return reply.code(UPSTREAM_FAILED).send({ error: String(settled[0].reason?.message || "Meta indisponível").slice(0, 300) });
     }
     const alive = (o) => o.effectiveStatus !== "ARCHIVED" && o.effectiveStatus !== "DELETED";
     const out = {};
@@ -315,12 +316,12 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
 
   // Conjuntos de uma campanha — o formulário de novo criativo escolhe o destino.
   app.get("/api/marketing/campaigns/:id/adsets", async (req, reply) => {
-    if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
+    if (!meta.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
     try {
       return { adsets: await meta.listAdsets(req.params.id) };
     } catch (err) {
       req.log.warn({ err: err.message, campaign: req.params.id }, "Meta: listAdsets falhou");
-      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+      return reply.code(UPSTREAM_FAILED).send({ error: String(err.message || err).slice(0, 300) });
     }
   });
 
@@ -350,11 +351,11 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
   // de Anúncios). Busca sob demanda no clique — a URL do vídeo da Meta é
   // temporária, então não vale cachear. Erro da Meta vira 502 legível.
   app.get("/api/marketing/:saas/ad/:adId/creative", async (req, reply) => {
-    if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
+    if (!meta.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
     try {
       return await meta.adCreativeMedia(req.params.adId);
     } catch (err) {
-      return reply.code(502).send({ error: err.message });
+      return reply.code(UPSTREAM_FAILED).send({ error: err.message });
     }
   });
 
@@ -362,7 +363,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
   // no conjunto indicado, já com a nomenclatura da dor ("[A] …") e as UTMs da
   // convenção — o lead que vier desse anúncio chega carimbado com a origem.
   app.post("/api/marketing/:saas/creatives", async (req, reply) => {
-    if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
+    if (!meta.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "Not found" });
     if (!product.metaAdAccount) return reply.code(400).send({ error: "conta de anúncio não configurada (Ajustes → Integrações)" });
@@ -451,7 +452,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
   // [dor]" e trocamos SÓ o vídeo do anúncio duplicado, mantendo todo o resto.
   // Nasce PAUSADO — revisão humana no Gerenciador antes de gastar.
   app.post("/api/marketing/:saas/ad-from-video", async (req, reply) => {
-    if (!meta.configured()) return reply.code(503).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
+    if (!meta.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "Not found" });
     if (!product.metaAdAccount) return reply.code(400).send({ error: "conta de anúncio não configurada (Ajustes → Integrações)" });
@@ -772,7 +773,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         placementCache.set(key, cached);
       } catch (err) {
         req.log.warn({ err: err.message }, "Meta: placementInsights falhou");
-        return reply.code(502).send({ error: "Meta indisponível pros placements" });
+        return reply.code(UPSTREAM_FAILED).send({ error: "Meta indisponível pros placements" });
       }
     }
     const placements = cached.rows
