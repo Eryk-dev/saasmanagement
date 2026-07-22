@@ -54,6 +54,26 @@ test("SDR: leads novos, calls agendadas (transição pra kind call) e SLA de 1º
   await app.close();
 });
 
+test("contato por WhatsApp do cockpit conta (SDR e funil do time), sem virar atividade", async () => {
+  const { app, repo } = await buildApp();
+  // Lead do SDR SEM nenhum toque na timeline — só uma mensagem ENVIADA no inbox.
+  await repo.create("leads", { id: "lw", saas: "leverads", owner: "u_sdr", stage: "Qualificando", createdAt: now });
+  await repo.create("wa_messages", { id: "m1", saas: "leverads", leadId: "lw", direction: "out", author: "u_sdr", at: "2026-07-10T15:00:00.000Z" });
+  // Mensagem RECEBIDA (in) do lead não conta como contato NOSSO.
+  await repo.create("wa_messages", { id: "m2", saas: "leverads", leadId: "lw", direction: "in", author: "", at: "2026-07-10T15:01:00.000Z" });
+  // Lead de outro SDR-owner por mensagem: não credita o u_sdr.
+  await repo.create("leads", { id: "lo", saas: "leverads", owner: "outro", stage: "Qualificando", createdAt: now });
+  await repo.create("wa_messages", { id: "m3", saas: "leverads", leadId: "lo", direction: "out", author: "outro", at: now });
+
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  const s = sb.sdr.find((x) => x.user === "u_sdr");
+  assert.equal(s.contacted, 1);                    // lw contado pela mensagem enviada, sem atividade
+  assert.equal(sb.team.contacted, 2);              // lw + lo no funil do time (qualquer envio)
+  // Não criou atividade de cadência (o inbox segue separado da timeline).
+  assert.equal((await repo.list("activities")).length, 0);
+  await app.close();
+});
+
 test("SDR: show-rate (não compareceu) e calls→ganho sobre o cohort de calls", async () => {
   const { app, repo } = await buildApp();
   const mk = async (id, stage, extra = {}) => {

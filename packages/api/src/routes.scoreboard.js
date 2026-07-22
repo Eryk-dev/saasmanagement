@@ -14,7 +14,7 @@ import { RATE_BENCHMARKS } from "./routes.pipeline-pace.js";
 import {
   DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead,
   bookedLeadsIn as coreBooked, callOutcome as coreCallOutcome,
-  winsIn, customerStartMap, funnelCounts,
+  winsIn, customerStartMap, funnelCounts, waContactedLeadIds,
 } from "./metrics-core.js";
 
 const HOUR = 3_600_000;
@@ -39,7 +39,7 @@ export function registerScoreboardRoutes(app, repo) {
     const hasPrev = /^\d{4}-\d{2}-\d{2}$/.test(prevSince) && /^\d{4}-\d{2}-\d{2}$/.test(prevUntil);
     const inPrev = (iso) => iso && dayKey(iso) >= prevSince && dayKey(iso) <= prevUntil;
 
-    const [allLeads, allActs, allCustomers, proposals, subs, users, goalsAll, npsAll] = await Promise.all([
+    const [allLeads, allActs, allCustomers, proposals, subs, users, goalsAll, npsAll, waMessages] = await Promise.all([
       repo.list("leads"),
       repo.list("activities"),
       repo.list("customers"),
@@ -48,6 +48,7 @@ export function registerScoreboardRoutes(app, repo) {
       repo.list("users").catch(() => []),
       repo.list("goals"),
       repo.list("nps").catch(() => []),
+      repo.list("wa_messages").catch(() => []),
     ]);
     // Lead interno (teste) fora de tudo — régua oficial do metrics-core.
     const leads = allLeads.filter((l) => l.saas === product.id && isRealLead(l));
@@ -153,12 +154,16 @@ export function registerScoreboardRoutes(app, repo) {
       // pode remarcar mais de uma vez), e o próprio toque já credita "contatado".
       const contactedIds = new Set();
       let reschedules = 0;
+      // Mensagem que ELE enviou no WhatsApp do cockpit, na janela, conta como
+      // contato (o inbox virou a ferramenta do SDR). Não vira toque de cadência.
+      const waMine = waContactedLeadIds(waMessages, { saas: product.id, author: uid, inWin });
       for (const l of mine) {
         for (const a of actsByLead.get(l.id) || []) {
           if (!inWin(a.at) || a.author !== uid) continue;
           if (a.meta?.event === "reschedule") reschedules++;
           if (TOUCH_TYPES.has(a.type) || a.type === "stage") contactedIds.add(l.id);
         }
+        if (waMine.has(l.id)) contactedIds.add(l.id);
       }
       const contacted = contactedIds.size;
       return {
@@ -295,7 +300,10 @@ export function registerScoreboardRoutes(app, repo) {
     const teamAdjust = product.paceAdjust && (!adjCutoff || since < adjCutoff) ? product.paceAdjust : null;
 
     const teamWonLeads = [...winTransitionsFor(leads).keys()].map((id) => leadById.get(id)).filter(Boolean);
-    const fc = funnelCounts(product, { leads, actsOf, inWin, winLeadsIn: () => teamWonLeads, adjust: teamAdjust });
+    // Contato por WhatsApp do cockpit também conta no funil do time (mesma régua
+    // do pipeline-pace: qualquer mensagem enviada pro lead).
+    const waTeam = waContactedLeadIds(waMessages, { saas: product.id });
+    const fc = funnelCounts(product, { leads, actsOf, inWin, winLeadsIn: () => teamWonLeads, adjust: teamAdjust, waContactedIds: waTeam });
     const team = {
       leadsNew: fc.leads,
       contacted: fc.contacted,

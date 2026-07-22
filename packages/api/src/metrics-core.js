@@ -126,10 +126,27 @@ export function callOutcome(product, list, actsOf) {
 // `adjust` (product.paceAdjust) soma HISTÓRICO PRÉ-COCKPIT (dados reais de antes
 // do registro no sistema): { leads, contacted, booked, shown, won } — só somas
 // positivas; noShow e ganhos totais (revenue) não entram no ajuste.
-export function funnelCounts(product, { leads, actsOf, inWin, winLeadsIn, adjust } = {}) {
+// Leads contatados por MENSAGEM enviada no WhatsApp do cockpit. O inbox é
+// separado das activities DE PROPÓSITO (chat ≠ toque de cadência, não re-agenda
+// o GPS), mas a mensagem ENVIADA conta como contato no funil/placar. Devolve o
+// Set de leadIds com ≥1 mensagem `out`. Opções: `author` (só de um usuário, pro
+// placar por pessoa) e `inWin` (só na janela). Sem elas, qualquer envio conta.
+export function waContactedLeadIds(waMessages, { saas, author, inWin } = {}) {
+  const ids = new Set();
+  for (const m of waMessages || []) {
+    if (m.direction !== "out" || !m.leadId || !m.author) continue;
+    if (saas && m.saas && m.saas !== saas) continue;
+    if (author && m.author !== author) continue;
+    if (inWin && !inWin(m.at)) continue;
+    ids.add(m.leadId);
+  }
+  return ids;
+}
+
+export function funnelCounts(product, { leads, actsOf, inWin, winLeadsIn, adjust, waContactedIds } = {}) {
   const recentLeads = leads.filter((l) => inWin(l.createdAt));
   const recentIds = new Set(recentLeads.map((l) => l.id));
-  const contacted = recentLeads.filter((l) => (actsOf(l.id) || []).some((a) => TOUCH_TYPES.has(a.type)));
+  const contacted = recentLeads.filter((l) => (actsOf(l.id) || []).some((a) => TOUCH_TYPES.has(a.type)) || waContactedIds?.has(l.id));
   const booked = bookedLeadsIn(product, leads, actsOf, inWin).filter((l) => recentIds.has(l.id));
   const outcome = callOutcome(product, booked, actsOf);
   const wonLeads = winLeadsIn ? winLeadsIn(inWin) : [];
