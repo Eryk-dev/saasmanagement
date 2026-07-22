@@ -1,6 +1,6 @@
 import React from "react";
 import { Avatar } from "../atoms.jsx";
-import { api } from "../lib/api.js";
+import { api, assetUrl } from "../lib/api.js";
 import { displayName, currentUser } from "../lib/users.js";
 
 // Timeline do lead: activities (pontos de contato + eventos automáticos) +
@@ -99,6 +99,15 @@ export function ActivityList({ activities, comments, compact }) {
               <div style={{ fontSize: compact ? 12 : 12.5, color: auto ? "var(--fg-3)" : "var(--fg-1)", overflowWrap: "break-word" }}>
                 {itemText(a)}
               </div>
+              {/* Print anexado ao toque: miniatura que abre o original em outra
+                  aba (a rota é aberta, então o link funciona fora do cockpit). */}
+              {a.meta?.photo && (
+                <a href={assetUrl(a.meta.photo)} target="_blank" rel="noopener noreferrer" title="abrir a imagem"
+                  style={{ display: "inline-block", marginTop: 6 }}>
+                  <img src={assetUrl(a.meta.photo)} alt="anexo do contato" loading="lazy"
+                    style={{ maxWidth: compact ? 130 : 200, maxHeight: compact ? 130 : 200, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", display: "block" }} />
+                </a>
+              )}
               <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", marginTop: 2, display: "flex", alignItems: "center", gap: 5 }}>
                 {when(a.at)}
                 {a.author && a.author !== "system" && a.author !== "api" && a.author !== "lead" && (
@@ -125,30 +134,74 @@ const NEXT_PRESETS = [
   { key: "+1sem", label: "+1sem", ms: 7 * 86_400_000 },
 ];
 
+// Print grande demais vira imagem de 1800px de lado (o servidor recusa acima de
+// 5MB). Abaixo disso vai o arquivo ORIGINAL: recomprimir print de conversa só
+// borraria o texto, que é justamente o que se quer ler depois.
+const MAX_SIDE = 1800;
+function shrinkImage(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const side = Math.max(img.width, img.height);
+      if (side <= MAX_SIDE && file.size <= 4 * 1024 * 1024) return resolve(file);
+      const scale = Math.min(1, MAX_SIDE / side);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((b) => resolve(b || file), "image/jpeg", 0.9);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
 export function ActivityComposer({ lead, onLogged }) {
   const [type, setType] = React.useState("whatsapp");
   const [text, setText] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [photo, setPhoto] = React.useState(null); // { blob, preview, name }
+  const [err, setErr] = React.useState("");
+  const fileRef = React.useRef(null);
+
+  // A foto só sobe no "registrar": escolher e desistir não deixa anexo órfão no
+  // banco. Até lá o preview é um blob local.
+  const attach = async (file) => {
+    if (!file || !/^image\//.test(file.type || "")) return;
+    setErr("");
+    const blob = await shrinkImage(file);
+    setPhoto((old) => {
+      if (old?.preview) URL.revokeObjectURL(old.preview);
+      return { blob, preview: URL.createObjectURL(blob), name: file.name || "print.png" };
+    });
+  };
+  const dropPhoto = () => setPhoto((old) => { if (old?.preview) URL.revokeObjectURL(old.preview); return null; });
+  React.useEffect(() => () => { if (photo?.preview) URL.revokeObjectURL(photo.preview); }, [photo?.preview]);
 
   async function log(nextMs) {
     if (busy) return;
     const t = text.trim();
-    if (!t && type === "note") return; // nota vazia não existe
-    setBusy(true);
+    if (!t && !photo && type === "note") return; // nota vazia não existe
+    setBusy(true); setErr("");
     try {
+      let photoUrl = "";
+      if (photo) photoUrl = (await api.activityAsset(photo.blob, photo.name)).url;
       const a = await api.logActivity({
         saas: lead.saas, lead: lead.id, type, text: t,
         author: currentUser()?.id || "",
         // preset de próximo contato vence o re-agendamento automático da cadência
-        ...(nextMs ? { meta: { reschedule: false } } : {}),
+        ...(nextMs || photoUrl ? { meta: { ...(nextMs ? { reschedule: false } : {}), ...(photoUrl ? { photo: photoUrl } : {}) } } : {}),
       });
       if (nextMs) {
         await api.update("leads", lead.id, { nextActionAt: new Date(Date.now() + nextMs).toISOString() });
       }
-      setText("");
+      setText(""); dropPhoto();
       onLogged && onLogged(a);
-    } catch (err) {
-      console.warn("activity não registrada:", err.message);
+    } catch (e) {
+      console.warn("activity não registrada:", e.message);
+      setErr(e.message || "não deu pra registrar");
     } finally {
       setBusy(false);
     }
@@ -172,11 +225,31 @@ export function ActivityComposer({ lead, onLogged }) {
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) log(); }}
+        // Print vem do Ctrl+V na maioria das vezes (recorte da conversa direto
+        // da área de transferência), então colar anexa sem passar pelo seletor.
+        onPaste={(e) => {
+          const f = [...(e.clipboardData?.files || [])].find((x) => /^image\//.test(x.type));
+          if (f) { e.preventDefault(); attach(f); }
+        }}
         rows={2}
-        placeholder={type === "note" ? "anotação…" : "o que rolou nesse contato? (⌘↵ registra)"}
+        placeholder={type === "note" ? "anotação… (cole um print pra anexar)" : "o que rolou nesse contato? (⌘↵ registra · cole um print pra anexar)"}
         style={{ width: "100%", padding: "7px 9px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5, resize: "vertical" }}
       />
+      {photo && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+          <img src={photo.preview} alt="anexo" style={{ width: 46, height: 46, objectFit: "cover", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)" }} />
+          <span className="mono dim" style={{ fontSize: 10.5, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{photo.name}</span>
+          <button onClick={dropPhoto} title="remover anexo" className="mono dim" style={{ fontSize: 10.5, textDecoration: "underline", textUnderlineOffset: 3 }}>remover</button>
+        </div>
+      )}
+      {err && <div className="mono" style={{ fontSize: 10.5, color: "var(--neg)", marginTop: 6 }}>{err}</div>}
       <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
+        <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }}
+          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; attach(f); }} />
+        <button onClick={() => fileRef.current?.click()} title="anexar uma foto/print ao contato"
+          style={{ height: 22, padding: "0 8px", borderRadius: 4, fontSize: 10.5, fontFamily: "var(--mono)", background: photo ? "var(--accent-soft)" : "var(--bg-2)", border: "1px solid " + (photo ? "var(--accent-line, var(--accent))" : "var(--line-2)"), color: photo ? "var(--accent)" : "var(--fg-2)", cursor: "pointer" }}>
+          {photo ? "1 foto" : "+ foto"}
+        </button>
         <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)" }}>registrar + próximo:</span>
         {NEXT_PRESETS.map((p) => (
           <button key={p.key} disabled={busy} onClick={() => log(p.ms)} title={`registra o ${TYPE_META[type].label} e marca o próximo contato pra ${p.label}`}

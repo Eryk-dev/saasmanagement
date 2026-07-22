@@ -595,6 +595,29 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
   const fmtConsultaAt = (at) => at ? new Date(at).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "") : "";
   const CONSULT_STATUS = { done: { label: "feita", tone: "pos" }, scheduled: { label: "marcada", tone: "warn" }, canceled: { label: "cancelada", tone: "mut" } };
 
+  // Registrar upsell (trabalho de CS): cria uma fatura kind:"upsell" PAGA na data
+  // informada — assim já entra no CAIXA pela régua existente e conta na meta de
+  // upsell do CS (atribuída pelo dono do cliente). O bump do SSE recarrega a lista
+  // de faturas sozinho (deps [product, version] no efeito da tela).
+  const [upsellOpen, setUpsellOpen] = useState(false);
+  const [upVal, setUpVal] = useState("");
+  const [upDate, setUpDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [upSaving, setUpSaving] = useState(false);
+  async function saveUpsell() {
+    const amount = Number(upVal);
+    if (!(amount > 0) || !upDate || upSaving) return;
+    setUpSaving(true);
+    const at = new Date(`${upDate}T12:00:00`).toISOString();
+    try {
+      await api.create("invoices", {
+        customer: customer.id, saas: customer.saas || product?.id || "",
+        amount, kind: "upsell", status: "paid", dueDate: at, paidAt: at,
+        createdAt: new Date().toISOString(),
+      });
+      setUpsellOpen(false); setUpVal("");
+    } finally { setUpSaving(false); }
+  }
+
   const summary = isKids ? [
     { label: "Pacote", value: consultPackageLabel(consultTotal) },
     { label: "Tempo de casa", value: tenureLabel(customer) || "defina o início" },
@@ -687,7 +710,29 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         )}
 
         <div style={BOX}>
-          <div className="mono" style={SECTION_LABEL}>Últimas faturas</div>
+          <div className="mono" style={{ ...SECTION_LABEL, display: "flex", alignItems: "center", gap: 8 }}>
+            <span>Últimas faturas</span>
+            <button onClick={() => setUpsellOpen((v) => !v)}
+              title="Registrar um upsell (venda extra pra um cliente atual). Vira fatura paga: entra no caixa e conta na meta de upsell do CS."
+              style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
+              {upsellOpen ? "cancelar" : "+ upsell"}
+            </button>
+          </div>
+          {upsellOpen && (
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "2px 0 10px" }}>
+              <span className="mono dim" style={{ fontSize: 12 }}>R$</span>
+              <input type="number" min="0" step="0.01" inputMode="decimal" autoFocus value={upVal}
+                onChange={(e) => setUpVal(e.target.value)} placeholder="valor"
+                onKeyDown={(e) => e.key === "Enter" && saveUpsell()}
+                className="tnum" style={{ height: 28, width: 96, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, textAlign: "right" }} />
+              <input type="date" value={upDate} onChange={(e) => setUpDate(e.target.value)}
+                style={{ height: 28, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontFamily: "var(--mono)" }} />
+              <button onClick={saveUpsell} disabled={!(Number(upVal) > 0) || upSaving}
+                style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "none", background: "var(--accent)", color: "#fff", fontSize: 12.5, fontWeight: 600, opacity: !(Number(upVal) > 0) || upSaving ? 0.5 : 1 }}>
+                {upSaving ? "salvando…" : "registrar"}
+              </button>
+            </div>
+          )}
           {invoices.slice(0, 4).map((i) => (
             <div key={i.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", fontSize: 13 }}>
               <span style={{ color: "var(--fg-2)" }}>

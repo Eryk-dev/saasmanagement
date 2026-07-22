@@ -66,6 +66,15 @@ export function rangeFromQuery(q = {}, now = new Date()) {
 // porque encheu de gente que não compra.
 export const isRealLead = (l) => !l?.internal && !l?.formExit;
 
+// ── Indicação (referral) ─────────────────────────────────────────────────────
+// Lead que veio por INDICAÇÃO (de um cliente): a origem (`source`) ou o
+// `utm.source` contém "indica" — pega "Indicação", "indicacao", "Indicação de
+// cliente". É a régua do placar do CS (meta de indicação): conta TODA indicação
+// recebida na janela, sem atribuição fina por pessoa (decisão do Leo).
+const stripAccents = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+export const isReferralLead = (l) =>
+  stripAccents(l?.source).includes("indica") || stripAccents(l?.utm?.source).includes("indica");
+
 // ── Fechamentos numa janela ──────────────────────────────────────────────────
 // Vendas da janela pela régua oficial: isWonLead + data do wonAtOf. Fallback
 // pro lead legado sem carimbo nenhum: startedAt do cliente vinculado (leadId).

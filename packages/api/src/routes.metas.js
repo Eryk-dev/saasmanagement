@@ -63,6 +63,13 @@ export const META_CATALOG = [
       { metric: "nps", kind: "avg", label: "NPS alvo", unit: "n", default: null },
       { metric: "newAccounts", kind: "flow", label: "Contas novas no mês", unit: "n", default: null, team: true },
       { metric: "activeAccounts", kind: "stock", label: "Contas ativas", unit: "n", default: null, team: true },
+      // Trabalho de CS (retenção): upsell e indicação. SEM `team` de propósito — o
+      // papel `integrator` junta o CS e o integrador técnico (Eryk), e só o CS faz
+      // upsell/indicação; repartir o alvo pelos dois subestimaria a fatia do CS.
+      // Upsell = fatura kind:"upsell" (entra no caixa, atribuída pelo dono do
+      // cliente); indicação = leads com origem "Indicação" na janela (nº do time).
+      { metric: "upsells", kind: "flow", label: "Upsells no mês", unit: "n", default: null },
+      { metric: "referrals", kind: "flow", label: "Indicações no mês", unit: "n", default: null },
     ],
   },
   {
