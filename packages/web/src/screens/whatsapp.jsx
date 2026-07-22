@@ -163,6 +163,13 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
   // Conversa aberta POR LEAD que ainda não tem thread (1º toque): o pane roda
   // com este registro sintético até a primeira mensagem criar a thread real.
   const [virtual, setVirtual] = React.useState(null);
+  // Atividades já RESOLVIDAS nesta sessão: a pessoa abriu a conversa e executou
+  // a próxima ação → o item some da fila na hora (sem esperar o dia recalcular).
+  // O refresh do SEED costuma tirar sozinho, mas movimento que mantém o lead
+  // trabalhável hoje (ex.: só mudou de etapa) ficaria; esta marca garante que sai.
+  const [resolved, setResolved] = React.useState(() => new Set());
+  const markResolved = React.useCallback((leadId) => { if (leadId) setResolved((s) => new Set(s).add(leadId)); }, []);
+  const clearResolved = React.useCallback(() => setResolved(new Set()), []);
 
   // Chegada pelo pop-up de lead quente: abre direto NA conversa do alerta.
   React.useEffect(() => {
@@ -370,7 +377,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
 
       {/* A fila do dia mora no topo, acima das métricas: é o "o que fazer
           agora" do inbox — clique e a conversa do lead abre embaixo. */}
-      {configured && <MyQueueStrip product={product} version={version} currentLeadId={current?.leadId || null} onPick={openByLead} />}
+      {configured && <MyQueueStrip product={product} version={version} currentLeadId={current?.leadId || null} onPick={openByLead} resolved={resolved} onClearHandled={clearResolved} />}
 
       {configured && <WaTopStats numInfo={numInfo} stats={stats} />}
 
@@ -532,7 +539,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
                     {/* A conversa andou? O card anda junto: destinos da etapa
                         atual (agendar call, fechar, perda…), tudo refletindo no
                         pipeline/fila na hora. */}
-                    <NextActionButton thread={current} onScheduled={(draft) => composerApi.current?.insert?.(draft)} />
+                    <NextActionButton thread={current} onScheduled={(draft) => composerApi.current?.insert?.(draft)} onResolved={markResolved} />
                     {!isMobile && (
                       <button onClick={toggleSide} style={{ ...pill, ...(sideOpen ? { background: "var(--accent-soft)", color: "var(--accent)", borderColor: "var(--accent-line)" } : {}) }}
                         title={sideOpen ? "Esconder o card do cliente" : "Mostrar o card do cliente ao lado da conversa"}>▤ card</button>
@@ -603,7 +610,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
         {/* Card do cliente sempre à vista enquanto conversa (desktop): o resumo
             de qualificação do roteiro, a call marcada e o atalho pro drawer. */}
         {!isMobile && current?.leadId && sideOpen && (
-          <LeadSideCard leadId={current.leadId} version={version} onOpenLead={openLead}
+          <LeadSideCard leadId={current.leadId} version={version} onOpenLead={openLead} onResolved={markResolved}
             leadStarted={msgsReady && msgs.length ? msgs[0].direction === "in" : null} />
         )}
       </div>
@@ -673,7 +680,7 @@ function LinkLeadButton({ thread, onLinked }) {
   );
 }
 
-function MyQueueStrip({ product, version, currentLeadId, onPick }) {
+function MyQueueStrip({ product, version, currentLeadId, onPick, resolved, onClearHandled }) {
   const me = currentUser()?.id || "";
   // Onde a pessoa parou NESTA sessão: a lista é longa (a fila do SDR passa de
   // 100) e o item só sai dela quando o toque é registrado, então sem esta
@@ -705,9 +712,11 @@ function MyQueueStrip({ product, version, currentLeadId, onPick }) {
       });
     } catch { return []; }
   }, [me, product?.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!items.length) return null;
-  const mineCount = items.filter((i) => !i.pool).length;
-  const poolStart = items.findIndex((i) => i.pool);
+  // Tira da lista quem já foi resolvido nesta sessão (próxima ação executada).
+  const visible = resolved?.size ? items.filter((i) => !resolved.has(i.l.id)) : items;
+  if (!visible.length) return null;
+  const mineCount = visible.filter((i) => !i.pool).length;
+  const poolStart = visible.findIndex((i) => i.pool);
   const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
   const timeOf = (i) => !i.due ? "agora"
     : i.due.t < startToday.getTime() ? "atrasado"
@@ -720,19 +729,24 @@ function MyQueueStrip({ product, version, currentLeadId, onPick }) {
         <span className="mono" style={{ fontSize: 9.5, letterSpacing: 0.8, textTransform: "uppercase", color: "var(--fg-4)" }}>
           Fila de hoje{mineCount ? ` · ${mineCount} minha${mineCount > 1 ? "s" : ""}` : ""}
         </span>
-        <span className="mono tnum" style={{ fontSize: 9.5, color: "var(--fg-4)" }}>{items.length} no total</span>
+        <span className="mono tnum" style={{ fontSize: 9.5, color: "var(--fg-4)" }}>{visible.length} no total</span>
         <span style={{ flex: 1 }} />
-        {opened.size > 0 && (
+        {resolved?.size > 0 ? (
+          <button onClick={() => { onClearHandled?.(); setOpened(new Set()); }} title="mostra de novo as atividades que você resolveu nesta sessão"
+            className="mono" style={{ fontSize: 10, color: "var(--fg-4)", background: "none", border: "none", cursor: "pointer", padding: 0, marginRight: 10 }}>
+            {resolved.size} feito{resolved.size > 1 ? "s" : ""} · mostrar
+          </button>
+        ) : opened.size > 0 ? (
           <button onClick={() => setOpened(new Set())} title="limpa as marcas de quem você já abriu nesta sessão"
             className="mono" style={{ fontSize: 10, color: "var(--fg-4)", background: "none", border: "none", cursor: "pointer", padding: 0, marginRight: 10 }}>
-            {opened.size} atendido{opened.size > 1 ? "s" : ""} · limpar
+            {opened.size} aberto{opened.size > 1 ? "s" : ""} · limpar
           </button>
-        )}
+        ) : null}
         <a href="#today" style={{ fontSize: 11, color: "var(--fg-3)", textDecoration: "none" }}>ver a fila →</a>
       </div>
       {/* Lista rolável: a fila do SDR é longa e a faixa não pode comer a tela. */}
       <div style={{ maxHeight: 132, overflowY: "auto" }}>
-        {items.map((i, idx) => {
+        {visible.map((i, idx) => {
           const on = !!currentLeadId && i.l.id === currentLeadId;
           const late = i.due && i.due.t < startToday.getTime();
           const hasPhone = !!String(i.l.phone || "").replace(/\D/g, "");
@@ -756,7 +770,7 @@ function MyQueueStrip({ product, version, currentLeadId, onPick }) {
             return (
               <React.Fragment key={`sep-${i.l.id}`}>
                 <div className="mono" style={{ fontSize: 9, letterSpacing: 0.8, textTransform: "uppercase", color: "var(--fg-4)", padding: "6px 4px 2px", borderTop: "1px solid var(--line-faint)", marginTop: 4 }}>
-                  Fila do SDR · {items.length - poolStart}
+                  Fila do SDR · {visible.length - poolStart}
                 </div>
                 {row}
               </React.Fragment>
@@ -772,7 +786,7 @@ function MyQueueStrip({ product, version, currentLeadId, onPick }) {
 // Card lateral do cliente: as perguntas de qualificação EDITÁVEIS (preenche
 // conforme o lead responde no chat, mesmo checklist do roteiro) + o resumo
 // compilado (clientSummary), vivos via SSE. Lead apagado só some.
-function LeadSideCard({ leadId, version, onOpenLead, leadStarted = null }) {
+function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = null }) {
   // Edição otimista: o valor digitado vale na hora; o tick do SSE traz o SEED
   // atualizado e zera a camada local (aí o dado já é o do servidor).
   const [edits, setEdits] = React.useState({});
@@ -822,6 +836,7 @@ function LeadSideCard({ leadId, version, onOpenLead, leadStarted = null }) {
               const gate = moveGate(saasCfg, base, toStage);
               if (gate) { setPendingMove({ toStage, gate }); return; }
               patch({ stage: toStage });
+              onResolved?.(base.id); // moveu o card daqui: sai da fila do inbox na hora
             }}
             style={{ maxWidth: 170, height: 24, padding: "0 6px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600 }}>
             {!lead.stage && <option value="">sem etapa</option>}
@@ -845,7 +860,7 @@ function LeadSideCard({ leadId, version, onOpenLead, leadStarted = null }) {
           onCancel={() => setPendingMove(null)}
           onConfirm={(mp, extra) => {
             setEdits((prev) => ({ ...prev, ...mp }));
-            applyGatedMove(mp, extra, base.id).then(refresh).catch((err) => console.warn("movimento não persistido:", err.message));
+            applyGatedMove(mp, extra, base.id).then(() => { refresh(); onResolved?.(base.id); }).catch((err) => console.warn("movimento não persistido:", err.message));
             setPendingMove(null);
           }}
         />
