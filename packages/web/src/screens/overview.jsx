@@ -738,12 +738,24 @@ function FunnelConversions({ team, pLabel }) {
         {team == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
         {team != null && (
           <>
+            {team.paceAdjust && (
+              <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", fontSize: 11.5, color: "var(--fg-3)" }}>
+                <b>Inclui histórico pré-cockpit</b> (dados reais de antes do registro):{" "}
+                {[
+                  team.paceAdjust.leads && `+${team.paceAdjust.leads} leads`,
+                  team.paceAdjust.contacted && `+${team.paceAdjust.contacted} contatos`,
+                  team.paceAdjust.booked && `+${team.paceAdjust.booked} agendadas`,
+                  team.paceAdjust.shown && `+${team.paceAdjust.shown} comparecimentos`,
+                  team.paceAdjust.won && `+${team.paceAdjust.won} ganhos`,
+                ].filter(Boolean).join(" · ")}.
+              </div>
+            )}
             <div className="tbl-x">
               <div style={{ display: "flex", gap: 8, alignItems: "stretch", minWidth: 640 }}>
                 <StepBox value={team.contacted} label="Contatados" sub={`${int(team.leadsNew)} leads novos`} />
                 <StepRate pct={team.bookingRate} label="agendamento" num={team.callsBooked} den={team.contacted} {...tiers(team.goals?.bookingRate, 30)} />
                 <StepBox value={team.callsBooked} label="Calls agendadas" />
-                <StepRate pct={team.showRate} label="comparecimento" num={team.shown} den={team.shown + team.noShow} {...tiers(team.goals?.showRate, 70)} />
+                <StepRate pct={team.showRate} label="comparecimento" num={team.shown} den={team.callsBooked} {...tiers(team.goals?.showRate, 70)} />
                 <StepBox value={team.shown} label="Calls realizadas" sub={team.noShow > 0 ? `${int(team.noShow)} no-show` : null} />
                 <StepRate pct={team.closeRate} label="fechamento" num={team.wonFromCalls} den={team.shown} {...tiers(team.goals?.closeRate, 40)} />
                 <StepBox value={team.wonFromCalls} label="Ganhos da safra" sub="das calls do período" />

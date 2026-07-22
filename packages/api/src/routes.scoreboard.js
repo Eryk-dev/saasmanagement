@@ -12,7 +12,7 @@ import { cadenceOf, firstStage, isLoss, TOUCH_TYPES } from "./stages.js";
 import {
   DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead,
   bookedLeadsIn as coreBooked, callOutcome as coreCallOutcome,
-  winsIn, customerStartMap,
+  winsIn, customerStartMap, funnelCounts,
 } from "./metrics-core.js";
 
 const HOUR = 3_600_000;
@@ -241,44 +241,33 @@ export function registerScoreboardRoutes(app, repo) {
     }));
 
     // ── Funil do TIME (produto inteiro, mesma janela) ─────────────────────────
-    // A régua de conversão da Visão geral: contatados → call agendada →
-    // realizada → ganho, sem recorte por pessoa. Contatado = lead que recebeu
-    // ação HUMANA na janela (author na lista de usuários) — automação
-    // (drip/webhook) não conta como trabalho do time. Ganhos do período usam a
-    // mesma régua de transição do closer; call → ganho segue a safra de calls.
-    const humanIds = new Set(users.map((u) => u.id));
-    const teamContacted = new Set();
-    for (const l of leads) {
-      for (const a of actsByLead.get(l.id) || []) {
-        if (!inWin(a.at) || !humanIds.has(a.author)) continue;
-        if (TOUCH_TYPES.has(a.type) || a.type === "stage") teamContacted.add(l.id);
-      }
-    }
-    const teamBooked = bookedLeadsIn(leads);
-    const teamCalls = callOutcome(teamBooked);
-    const teamResolved = teamCalls.shown + teamCalls.noShow;
+    // A régua de conversão da Visão geral: contatados → agendaram call →
+    // compareceram → ganho, sem recorte por pessoa. É a MESMA base (funnelCounts)
+    // da Análise de Pace, então as duas telas mostram os mesmos números. Inclui
+    // o ajuste de HISTÓRICO PRÉ-COCKPIT (product.paceAdjust). O funil ENCADEIA:
+    // cada denominador é o passo anterior.
     const teamWonLeads = [...winTransitionsFor(leads).keys()].map((id) => leadById.get(id)).filter(Boolean);
-    const teamLeadsNew = leads.filter((l) => inWin(l.createdAt)).length;
+    const fc = funnelCounts(product, { leads, actsOf, inWin, winLeadsIn: () => teamWonLeads, adjust: product.paceAdjust });
     const team = {
-      leadsNew: teamLeadsNew,
-      contacted: teamContacted.size,
-      callsBooked: teamBooked.length,
-      // Taxa de agendamento = calls agendadas ÷ leads contatados na janela.
-      bookingRate: teamContacted.size > 0 ? round2((teamBooked.length / teamContacted.size) * 100) : null,
-      shown: teamCalls.shown,
-      noShow: teamCalls.noShow,
-      showRate: teamResolved > 0 ? round2((teamCalls.shown / teamResolved) * 100) : null,
-      wonFromCalls: teamCalls.won,
-      // Call agendada → ganho (inclui no-show) e call REALIZADA → ganho: o gap
-      // entre as duas denuncia perda por não-comparecimento.
-      callWinRate: teamBooked.length > 0 ? round2((teamCalls.won / teamBooked.length) * 100) : null,
-      closeRate: teamCalls.shown > 0 ? round2((teamCalls.won / teamCalls.shown) * 100) : null,
-      won: teamWonLeads.length,
-      revenue: round2(teamWonLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0)),
-      // Ponta a ponta da janela: ganhos ÷ leads criados. Coortes se misturam
-      // (o ganho de hoje costuma ser lead de semanas atrás) — honesto em regime
-      // estável, igual à régua da Análise.
-      leadToWin: teamLeadsNew > 0 ? round2((teamWonLeads.length / teamLeadsNew) * 100) : null,
+      leadsNew: fc.leads,
+      contacted: fc.contacted,
+      callsBooked: fc.booked,
+      // Taxa de agendamento = calls agendadas ÷ leads contatados.
+      bookingRate: fc.contacted > 0 ? round2((fc.booked / fc.contacted) * 100) : null,
+      shown: fc.shown,
+      noShow: fc.noShow,
+      // Comparecimento sobre as AGENDADAS (funil encadeado): dos que marcaram, quantos apareceram.
+      showRate: fc.booked > 0 ? round2((fc.shown / fc.booked) * 100) : null,
+      wonFromCalls: fc.won, // ganhos da safra de calls (+ pré-cockpit) — o que encadeia
+      // Call agendada → ganho (sobre agendadas) e call REALIZADA → ganho (sobre
+      // compareceram): o gap denuncia perda por não-comparecimento.
+      callWinRate: fc.booked > 0 ? round2((fc.won / fc.booked) * 100) : null,
+      closeRate: fc.shown > 0 ? round2((fc.won / fc.shown) * 100) : null,
+      won: fc.wonTotal,      // ganhos TOTAIS no período (todos, por transição)
+      revenue: fc.revenue,
+      // Lead → ganho: ganhos do funil ÷ leads (ambos com o histórico pré-cockpit).
+      leadToWin: fc.leads > 0 ? round2((fc.won / fc.leads) * 100) : null,
+      paceAdjust: fc.adjust, // histórico pré-cockpit somado (null quando não há)
       // Metas de TAXA por papel (role-scope) pra colorir a régua na UI.
       goals: {
         bookingRate: goalFor("", "sdr", "bookingRate"),

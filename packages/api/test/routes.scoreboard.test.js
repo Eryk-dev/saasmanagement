@@ -257,9 +257,12 @@ test("No show por ETAPA conta como furo (SDR, closer e time), não só o motivo 
 
 test("Funil do TIME: contato humano, agendamento, comparecimento, call→ganho e ponta a ponta", async () => {
   const { app, repo } = await buildApp();
-  // 4 leads que viraram call na janela (safra de calls), sem recorte por pessoa
+  // 4 leads que viraram call na janela (safra de calls), sem recorte por pessoa.
+  // Contatado = lead com TOQUE (whatsapp/call/…) — a mesma régua da Análise de
+  // Pace (funnelCounts); um lead agendado teve toque antes.
   const mkBooked = async (id, stage, extra = {}) => {
     await repo.create("leads", { id, saas: "leverads", stage, createdAt: now, ...extra });
+    await repo.create("activities", { id: `tq_${id}`, saas: "leverads", lead: id, type: "whatsapp", author: "u_sdr", at: now });
     await repo.create("activities", { id: `st_${id}`, saas: "leverads", lead: id, type: "stage", author: "u_sdr", at: now, meta: { from: "Qualificando", to: "Call agendada" } });
   };
   await mkBooked("t1", "Ganho", { amount: 800, stageSince: now });                  // compareceu + fechou
@@ -267,30 +270,48 @@ test("Funil do TIME: contato humano, agendamento, comparecimento, call→ganho e
   await mkBooked("t3", "Perdido", { lostReason: "nao_compareceu", stageSince: now }); // NÃO compareceu
   await mkBooked("t4", "Call agendada");                                            // ainda não resolvido
   await repo.create("activities", { id: "won_t1", saas: "leverads", lead: "t1", type: "stage", author: "u_clo", at: now, meta: { from: "Call agendada", to: "Ganho" } });
-  // lead só CONTATADO (toque humano, sem call)
+  // lead só CONTATADO (toque, sem call)
   await repo.create("leads", { id: "t5", saas: "leverads", stage: "Qualificando", createdAt: now });
   await repo.create("activities", { id: "tq_t5", saas: "leverads", lead: "t5", type: "whatsapp", author: "u_sdr", at: now });
-  // automação NÃO conta como contato do time (author fora da lista de usuários)
+  // lead sem toque nenhum: não conta como contatado
   await repo.create("leads", { id: "t6", saas: "leverads", stage: "Novo lead", createdAt: now });
-  await repo.create("activities", { id: "drip_t6", saas: "leverads", lead: "t6", type: "whatsapp", author: "drip", at: now });
   // meta de TAXA role-scope anexada pra colorir a régua da Visão geral
   await repo.create("goals", { id: "gb", saas: "leverads", scope: "role", key: "sdr", metric: "bookingRate", target: 35, period: "month" });
 
   const t = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json().team;
   assert.equal(t.leadsNew, 6);
-  assert.equal(t.contacted, 5);      // t1..t5; o drip do t6 não é trabalho do time
+  assert.equal(t.contacted, 5);      // t1..t5 têm toque; t6 não
   assert.equal(t.callsBooked, 4);
   assert.equal(t.bookingRate, 80);   // 4 calls ÷ 5 contatados
   assert.equal(t.shown, 2);          // t1, t2 (t4 segue sem resolução)
   assert.equal(t.noShow, 1);         // t3
-  assert.equal(t.showRate, 66.67);   // 2 ÷ 3 resolvidos
+  assert.equal(t.showRate, 50);      // comparecimento sobre AGENDADAS: 2 ÷ 4 (funil encadeado)
   assert.equal(t.wonFromCalls, 1);   // t1
   assert.equal(t.callWinRate, 25);   // 1 ÷ 4 agendadas
   assert.equal(t.closeRate, 50);     // 1 ÷ 2 realizadas
-  assert.equal(t.won, 1);            // transição do t1 pra Ganho na janela
+  assert.equal(t.won, 1);            // ganhos totais no período (transição do t1)
   assert.equal(t.revenue, 800);
   assert.equal(t.leadToWin, 16.67);  // 1 ganho ÷ 6 leads criados
+  assert.equal(t.paceAdjust, null);  // sem histórico pré-cockpit neste produto
   assert.equal(t.goals.bookingRate.target, 35);
+  await app.close();
+});
+
+test("Funil do TIME: histórico pré-cockpit (product.paceAdjust) soma ao funil da Visão geral", async () => {
+  const { app, repo } = await buildApp();
+  await repo.update("products", "leverads", { paceAdjust: { contacted: 80, booked: 10, shown: 10, won: 7 } });
+  await repo.create("leads", { id: "a1", saas: "leverads", stage: "Ganho", amount: 500, createdAt: now, stageSince: now });
+  await repo.create("activities", { id: "tq_a1", saas: "leverads", lead: "a1", type: "whatsapp", author: "u_sdr", at: now });
+  await repo.create("activities", { id: "st_a1", saas: "leverads", lead: "a1", type: "stage", author: "u_sdr", at: now, meta: { from: "Qualificando", to: "Call agendada" } });
+  await repo.create("activities", { id: "wa1", saas: "leverads", lead: "a1", type: "stage", author: "u_clo", at: now, meta: { from: "Call agendada", to: "Ganho" } });
+
+  const t = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json().team;
+  assert.deepEqual(t.paceAdjust, { contacted: 80, booked: 10, shown: 10, won: 7 });
+  assert.equal(t.leadsNew, 1);        // 1 lead logado (sem ajuste de leads)
+  assert.equal(t.contacted, 81);      // 1 + 80
+  assert.equal(t.callsBooked, 11);    // 1 + 10
+  assert.equal(t.shown, 11);          // 1 + 10
+  assert.equal(t.wonFromCalls, 8);    // 1 + 7
   await app.close();
 });
 
