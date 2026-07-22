@@ -60,12 +60,24 @@ src="https://www.facebook.com/tr?id=${id}&ev=PageView&noscript=1"></noscript>
     : "";
 };
 
-// Marca padrão de todo formulário: o ícone Lever (círculo + seta), versão branca
-// pro fundo escuro. Usado quando o tema do form não define um logoUrl próprio.
-// Tamanho fixo no código (não depende de theme.logoHeight) pra ser durável: o
-// builder não tem editor de logo, então nenhum save reverte a marca.
+// Marca padrão de todo formulário: o ícone Lever (círculo + seta). Duas versões
+// pra manter contraste: BRANCA pro fundo escuro, COLORIDA (navy+teal) pro claro
+// do design system. A escolha é pela luminância do bg do tema. Tamanho fixo
+// (não depende de theme.logoHeight) pra ser durável: o builder não tem editor
+// de logo, então nenhum save reverte a marca.
 const BRAND_ICON = "https://copy.levermoney.com.br/lever/logo-icon-inverse.svg";
+const BRAND_ICON_LIGHT = "https://copy.levermoney.com.br/lever/logo-icon-color.svg";
 const BRAND_ICON_H = 160;
+
+// Fundo claro? (luminância aproximada do hex do bg). Decide a versão do logo e
+// nada mais — o resto do visual vem dos tokens.
+function isLightBg(hex) {
+  const m = String(hex || "").trim().match(/^#?([0-9a-f]{6})$/i);
+  if (!m) return false; // color-mix/rgb desconhecido: assume escuro (comportamento antigo)
+  const n = parseInt(m[1], 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) > 150;
+}
 
 // Link do Google Fonts pra família primária do tema + JetBrains Mono (pills,
 // labels). Família desconhecida só falha o link — fallback system-ui assume.
@@ -77,20 +89,30 @@ const fontHref = (font) => {
 
 export function formPageHtml(form, { embed = false, preview = false, pixelId = "", pain = "" } = {}) {
   const t = form.theme || {};
-  const bg = t.bg || "#0f1115";
-  const surface = t.surface || "color-mix(in oklab, #ffffff 5%, transparent)";
-  const fg = t.fg || "#f2f3f5";
-  const accent = t.accent || "#6c5ce7";
+  // Defaults no design system Lever Premium: paper claro, ink navy, teal com
+  // parcimônia, botão primário NAVY. Sem glow/gradiente. Um tema salvo no
+  // builder ainda sobrescreve (a UniqueKids tem o dela).
+  // Cores EXATAS dos tokens do cockpit (packages/web/src/tokens.css, Lever
+  // Premium): paper frio, ink navy, teal do hue 183. Batem com a plataforma.
+  const bg = t.bg || "#f7f8fa";
+  const surface = t.surface || "#ffffff";
+  const fg = t.fg || "#0c1d2b";
+  const accent = t.accent || "#0F766E";
   const accentFg = t.accentFg || "#ffffff";
+  // Botão primário do DS: navy (o ink), não o accent. Deriva do fg, mas o tema
+  // pode definir `btn`/`btnFg` pra casos especiais.
+  const btn = t.btn || fg;
+  const btnFg = t.btnFg || "#FFFFFF";
   const font = t.font || "'Instrument Sans', system-ui, -apple-system, sans-serif";
-  const radius = t.radius != null ? Number(t.radius) : 14;
+  const radius = t.radius != null ? Number(t.radius) : 12;
   const logoH = Math.min(240, Math.max(12, Number(t.logoHeight) || 40));
   // Logo do form: se o tema define logoUrl próprio, usa-o no tamanho do tema.
   // Caso contrário, o ícone Lever padrão num tamanho fixo (durável, vale pra
   // todo form e imune a saves do builder).
+  const brandIcon = isLightBg(bg) ? BRAND_ICON_LIGHT : BRAND_ICON;
   const logo = t.logoUrl
     ? `<img class="logo" src="${escAttr(t.logoUrl)}" alt="">`
-    : `<img class="logo" src="${BRAND_ICON}" alt="" style="height:${BRAND_ICON_H}px">`;
+    : `<img class="logo" src="${brandIcon}" alt="" style="height:${BRAND_ICON_H}px">`;
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -107,19 +129,23 @@ ${metaPixelHead(pixelId)}
   :root {
     --bg: ${bg}; --surface: ${surface}; --fg: ${fg};
     --accent: ${accent}; --accent-fg: ${accentFg}; --radius: ${radius}px;
+    --btn: ${btn}; --btn-fg: ${btnFg};
     --font-display: ${font};
     --font-mono: 'JetBrains Mono', ui-monospace, monospace;
-    --ink-2: color-mix(in oklab, var(--fg) 82%, transparent);
-    --ink-3: color-mix(in oklab, var(--fg) 55%, transparent);
-    --ink-4: color-mix(in oklab, var(--fg) 38%, transparent);
-    --ink-5: color-mix(in oklab, var(--fg) 18%, transparent);
-    --line: color-mix(in oklab, var(--fg) 10%, transparent);
-    --raised: color-mix(in oklab, var(--fg) 5%, transparent);
-    --accent-soft: color-mix(in oklab, var(--accent) 12%, transparent);
-    --accent-line: color-mix(in oklab, var(--accent) 28%, transparent);
-    --glow: 0 0 0 4px color-mix(in oklab, var(--accent) 18%, transparent);
+    /* Ink em degraus, batendo com os --fg-* do cockpit (soft/muted/faint). */
+    --ink-2: color-mix(in oklab, var(--fg) 72%, var(--surface));
+    --ink-3: color-mix(in oklab, var(--fg) 56%, var(--surface));
+    --ink-4: color-mix(in oklab, var(--fg) 40%, var(--surface));
+    --ink-5: color-mix(in oklab, var(--fg) 28%, var(--surface));
+    /* Linhas e superfícies do design system: finas, sem sombra/gradiente. */
+    --line: color-mix(in oklab, var(--fg) 12%, var(--surface));
+    --line-2: color-mix(in oklab, var(--fg) 24%, var(--surface));
+    --raised: var(--surface);
+    --accent-soft: color-mix(in oklab, var(--accent) 9%, var(--surface));
+    --accent-line: color-mix(in oklab, var(--accent) 38%, var(--surface));
+    --btn-hover: color-mix(in oklab, var(--btn) 82%, #ffffff);
     --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
-    --error: #ff6b6b;
+    --error: #c0392b;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   /* O embed também usa o fundo do tema: as cores da marca assumem o próprio bg
@@ -131,13 +157,10 @@ ${metaPixelHead(pixelId)}
     -webkit-font-smoothing: antialiased; overflow-x: hidden; position: relative;
   }
   button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
-  ::selection { background: var(--accent); color: var(--accent-fg); }
-  .atmos {
-    position: ${embed ? "absolute" : "fixed"}; inset: 0; pointer-events: none; z-index: 0;
-    background:
-      radial-gradient(ellipse 70% 50% at 50% 0%, color-mix(in oklab, var(--accent) 7%, transparent) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 40% at 50% 100%, color-mix(in oklab, var(--accent) 4%, transparent) 0%, transparent 60%);
-  }
+  ::selection { background: color-mix(in oklab, var(--accent) 22%, var(--surface)); color: var(--fg); }
+  /* Design system: fundo papel liso, sem atmosfera/glow. Mantido vazio pra não
+     mexer no HTML/JS que referencia o elemento. */
+  .atmos { display: none; }
   .shell {
     flex: 1; display: flex; flex-direction: column; width: 100%; max-width: 580px;
     margin: 0 auto; padding: ${embed ? "28px 24px 40px" : "48px 24px 72px"};
@@ -155,12 +178,12 @@ ${metaPixelHead(pixelId)}
   .backbtn { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; color: var(--ink-4); padding: 6px 4px; transition: color .12s; }
   .backbtn:hover { color: var(--accent); }
   .progress { display: flex; gap: 6px; margin-bottom: 32px; }
-  .progress i { flex: 1; height: 3px; background: var(--ink-5); border-radius: 999px; overflow: hidden; position: relative; }
+  .progress i { flex: 1; height: 3px; background: var(--line); border-radius: 999px; overflow: hidden; position: relative; }
   .progress i.done { background: var(--accent); }
   .progress i.active::after { content: ''; position: absolute; inset: 0; background: var(--accent); transform-origin: left; animation: barfill 1.4s var(--ease-out) forwards; }
   @keyframes barfill { from { transform: scaleX(0); } to { transform: scaleX(.6); } }
   .eyebrow { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 11px; color: var(--accent); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 16px; }
-  .eyebrow::before { content: ''; width: 6px; height: 6px; border-radius: 999px; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+  .eyebrow::before { content: ''; width: 6px; height: 6px; border-radius: 999px; background: var(--accent); }
   h1.q { font-weight: 500; font-size: clamp(26px, 5vw, 38px); line-height: 1.08; letter-spacing: -0.025em; text-wrap: balance; }
   h1.q .req { color: var(--accent); }
   h1.q em, .sub em, .load-title em { font-style: italic; color: var(--accent); font-weight: 400; }
@@ -169,28 +192,26 @@ ${metaPixelHead(pixelId)}
   .opts { display: flex; flex-direction: column; gap: 8px; }
   .opt {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    padding: 16px 20px; background: var(--raised); border: 1px solid var(--line);
+    padding: 15px 18px; background: var(--surface); border: 1px solid var(--line);
     border-radius: var(--radius); text-align: left; color: var(--ink-2); font-size: 16px;
-    transition: all .12s var(--ease-out); -webkit-tap-highlight-color: transparent;
-    width: 100%; position: relative; overflow: hidden;
+    transition: border-color .12s, background-color .12s; -webkit-tap-highlight-color: transparent;
+    width: 100%; position: relative;
   }
-  .opt:hover { border-color: color-mix(in oklab, var(--fg) 20%, transparent); background: color-mix(in oklab, var(--fg) 7%, transparent); transform: translateY(-1px); }
-  .opt:active { transform: translateY(0) scale(.99); }
-  .opt.sel { border-color: var(--accent); color: var(--fg); box-shadow: var(--glow);
-    background: linear-gradient(180deg, var(--accent-soft) 0%, transparent 100%); }
+  .opt:hover { border-color: var(--line-2); }
+  .opt.sel { border-color: var(--accent); color: var(--fg); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
   .opt-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
-  .bullet { width: 18px; height: 18px; border-radius: 999px; border: 1.5px solid var(--ink-5); flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all .12s; }
+  .bullet { width: 18px; height: 18px; border-radius: 999px; border: 1.5px solid var(--line-2); flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: border-color .12s, background-color .12s; }
   .bullet.sq { border-radius: 5px; }
   .opt.sel .bullet { border-color: var(--accent); background: var(--accent); }
-  .opt.sel .bullet::after { content: ''; width: 6px; height: 6px; border-radius: 999px; background: var(--bg); }
+  .opt.sel .bullet::after { content: ''; width: 6px; height: 6px; border-radius: 999px; background: var(--surface); }
   .opt-key { font-family: var(--font-mono); font-size: 11px; color: var(--ink-4); letter-spacing: .06em; }
   input.text, textarea.text {
-    width: 100%; padding: 16px 20px; background: var(--raised); border: 1px solid var(--line);
+    width: 100%; padding: 15px 18px; background: var(--surface); border: 1px solid var(--line-2);
     border-radius: var(--radius); color: var(--fg); font: inherit; font-size: 17px;
-    outline: none; transition: all .12s;
+    outline: none; transition: border-color .12s;
   }
-  input.text:focus, textarea.text:focus { border-color: var(--accent); box-shadow: var(--glow); background: color-mix(in oklab, var(--fg) 7%, transparent); }
-  input.text::placeholder, textarea.text::placeholder { color: var(--ink-5); }
+  input.text:focus, textarea.text:focus { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  input.text::placeholder, textarea.text::placeholder { color: var(--ink-4); }
   textarea.text { resize: none; min-height: 110px; line-height: 1.5; }
   .fgroup { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; }
   .fgroup > label { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); letter-spacing: .08em; text-transform: uppercase; }
@@ -199,13 +220,12 @@ ${metaPixelHead(pixelId)}
   .cta-row { margin-top: 32px; display: flex; flex-direction: column; gap: 10px; }
   .cta {
     display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%;
-    padding: 16px 20px; background: var(--accent); color: var(--accent-fg);
+    padding: 15px 20px; background: var(--btn); color: var(--btn-fg);
     border-radius: var(--radius); font-weight: 600; font-size: 16px; letter-spacing: -.005em;
-    transition: all .12s var(--ease-out); -webkit-tap-highlight-color: transparent;
+    transition: background-color .12s; -webkit-tap-highlight-color: transparent;
   }
-  .cta:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); box-shadow: var(--glow); }
-  .cta:active:not(:disabled) { transform: translateY(0) scale(.99); }
-  .cta:disabled { opacity: .35; cursor: not-allowed; }
+  .cta:hover:not(:disabled) { background: var(--btn-hover); }
+  .cta:disabled { opacity: .4; cursor: not-allowed; }
   .hint { font-size: 13px; color: var(--ink-4); text-align: center; }
   .hint b { font-weight: 600; color: var(--ink-2); }
   .err { margin-top: 12px; font-size: 14px; color: var(--error); min-height: 18px; display: flex; align-items: center; gap: 6px; }
@@ -222,34 +242,27 @@ ${metaPixelHead(pixelId)}
   .stagger > *:nth-child(7) { animation-delay: .47s; }
   .stagger > *:nth-child(8) { animation-delay: .54s; }
   .load-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; text-align: center; padding: 64px 8px; gap: 28px; }
-  .spinner { width: 56px; height: 56px; border-radius: 999px; border: 2px solid var(--line); border-top-color: var(--accent); animation: spin .9s cubic-bezier(0.4, 0, 0.2, 1) infinite; position: relative; }
-  .spinner::after { content: ''; position: absolute; inset: 6px; border-radius: 999px; border: 1px solid var(--accent-line); opacity: .4; animation: pulse 2s ease-in-out infinite; }
+  .spinner { width: 52px; height: 52px; border-radius: 999px; border: 2px solid var(--line); border-top-color: var(--accent); animation: spin .9s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes pulse { 0%, 100% { transform: scale(1); opacity: .4; } 50% { transform: scale(1.4); opacity: 0; } }
   .load-title { font-weight: 500; font-size: clamp(22px, 4.5vw, 32px); line-height: 1.18; max-width: 460px; text-wrap: balance; letter-spacing: -0.015em; }
   .load-sub { font-size: 14px; color: var(--ink-3); max-width: 400px; line-height: 1.6; }
-  .stat { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 24px 32px; background: var(--raised); border: 1px solid var(--line); border-radius: calc(var(--radius) + 8px); max-width: 400px; }
-  .stat-num { font-style: italic; font-weight: 500; font-size: 56px; line-height: 1; color: var(--accent); letter-spacing: -.03em; }
+  .stat { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 24px 32px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); max-width: 400px; }
+  .stat-num { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 52px; line-height: 1; color: var(--accent); letter-spacing: -.03em; }
   .stat-lbl { font-size: 14px; color: var(--ink-3); text-align: center; line-height: 1.55; }
-  .load-progress { width: 220px; height: 2px; background: var(--ink-5); border-radius: 999px; overflow: hidden; position: relative; }
+  .load-progress { width: 220px; height: 2px; background: var(--line); border-radius: 999px; overflow: hidden; position: relative; }
   .load-progress::after { content: ''; position: absolute; inset: 0; background: var(--accent); transform-origin: left; animation: loadbar var(--load-duration, 2.4s) linear forwards; }
   @keyframes loadbar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
   .done-wrap { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 24px; }
   .success-icon {
-    width: 80px; height: 80px; border-radius: 999px; background: var(--accent-soft);
+    width: 72px; height: 72px; border-radius: 999px; background: var(--accent-soft);
     border: 1px solid var(--accent-line); display: flex; align-items: center; justify-content: center;
-    margin-bottom: 24px; color: var(--accent); position: relative;
+    margin-bottom: 24px; color: var(--accent);
   }
-  .success-icon::before, .success-icon::after { content: ''; position: absolute; inset: -1px; border-radius: 999px; border: 1px solid var(--accent); }
-  .success-icon::before { animation: ring 2.4s ease-out infinite; }
-  .success-icon::after { animation: ring 2.4s ease-out 1.2s infinite; }
-  @keyframes ring { 0% { transform: scale(1); opacity: .6; } 100% { transform: scale(1.6); opacity: 0; } }
-  /* Tela de NÃO-qualificado: ícone neutro, sem o verde/glow comemorativo nem o anel. */
+  /* Tela de NÃO-qualificado: ícone neutro. */
   .success-icon.neg { background: var(--surface); border-color: var(--line); color: var(--ink-3); }
-  .success-icon.neg::before, .success-icon.neg::after { display: none; }
-  /* CTA WhatsApp na tela final — "fale com o time". */
-  .wa-cta { display: inline-flex; align-items: center; justify-content: center; gap: 8px; margin-top: 20px; padding: 13px 22px; border-radius: 999px; background: #25D366; color: #06120c; font-weight: 600; font-size: 15px; text-decoration: none; box-shadow: 0 6px 22px -8px rgba(37,211,102,.6); transition: transform .15s ease, box-shadow .15s ease; }
-  .wa-cta:hover { transform: translateY(-1px); box-shadow: 0 10px 28px -8px rgba(37,211,102,.7); }
+  /* CTA WhatsApp na tela final — "fale com o time". Verde da marca, plano. */
+  .wa-cta { display: inline-flex; align-items: center; justify-content: center; gap: 8px; margin-top: 20px; padding: 13px 22px; border-radius: var(--radius); background: #1FA855; color: #ffffff; font-weight: 600; font-size: 15px; text-decoration: none; transition: background-color .12s; }
+  .wa-cta:hover { background: #178c46; }
   .wa-cta svg { width: 20px; height: 20px; }
   .hp { position: absolute; left: -9999px; opacity: 0; height: 0; width: 0; pointer-events: none; }
 </style>
