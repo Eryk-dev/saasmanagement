@@ -99,14 +99,11 @@ function CustomersScreen({ initialTab = "base" }) {
   const totalContratado = activeCustomers.reduce((a, c) => a + (c.arr || 0), 0);
   const money = window.fmt.money;
 
-  // Colunas Pagamento e Total pago da tabela: meio de pagamento (do cliente ou do
-  // lead que fechou) e a soma das faturas PAGAS do cliente (inclui upsell).
+  // Colunas Pagamento e Total fechado da tabela: meio de pagamento (do cliente ou
+  // do lead que fechou) e o VALOR FECHADO do contrato (lead.amount lançado no
+  // fechamento, fallback no arr do cliente). Fechado, não pago — mostra o valor
+  // mesmo quando a fatura ainda está aberta (boleto/pix à vista não baixado).
   const leadById = React.useMemo(() => new Map((LEADS || []).map((l) => [l.id, l])), [LEADS]);
-  const paidByCustomer = React.useMemo(() => {
-    const m = new Map();
-    for (const i of invoices) if (i.status === "paid") m.set(i.customer, (m.get(i.customer) || 0) + (Number(i.amount) || 0));
-    return m;
-  }, [invoices]);
 
   // Nível (categoria A/B/C/…) do cliente = grade do lead que virou cliente
   // (mesma régua da Publicidade/Forms). Sem lead qualificado → "sem nível".
@@ -274,9 +271,9 @@ function CustomersScreen({ initialTab = "base" }) {
                   <tr>
                     {(isKidsWorkspace
                       ? ["Cliente", "Pacote", "Valor", "Tempo de casa", "Último contato", "Próxima consulta", "Consultas"]
-                      : ["Cliente", "Nível", "Plano", "MRR", "Pagamento", "Total pago", "Tempo de casa", "Último contato", "Próximo marco", "Assinatura"]
+                      : ["Cliente", "Nível", "Plano", "MRR", "Pagamento", "Total fechado", "Tempo de casa", "Último contato", "Próximo marco", "Assinatura"]
                     ).map((h) => (
-                      <th key={h} style={{ textAlign: (h === "MRR" || h === "Valor" || h === "Total pago") ? "right" : "left", fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", padding: "12px 20px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
+                      <th key={h} style={{ textAlign: (h === "MRR" || h === "Valor" || h === "Total fechado") ? "right" : "left", fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", padding: "12px 20px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -318,10 +315,10 @@ function CustomersScreen({ initialTab = "base" }) {
                           );
                         })()}
                         {!isKidsWorkspace && (() => {
-                          const paid = paidByCustomer.get(c.id) || 0;
+                          const fechado = Number(leadById.get(c.leadId)?.amount) || Number(c.arr) || 0;
                           return (
                             <td className="tnum" style={{ padding: "14px 20px", fontSize: 13, textAlign: "right", color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
-                              {paid > 0 ? money(paid) : <span style={{ color: "var(--fg-4)" }}>—</span>}
+                              {fechado > 0 ? money(fechado) : <span style={{ color: "var(--fg-4)" }}>—</span>}
                             </td>
                           );
                         })()}
