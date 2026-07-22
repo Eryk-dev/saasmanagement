@@ -6,7 +6,7 @@ import { EmptyState } from "../atoms.jsx";
 import { nextMilestone, dueLabel } from "../lib/milestones.js";
 import { openStages, isWonLead, wonAtOf, stageKind } from "../lib/funnel.js";
 import { bizDay } from "../lib/format.js";
-import { displayName } from "../lib/users.js";
+import { displayName, currentUser, isAdminUser, canSeeScreen } from "../lib/users.js";
 import { leadTier } from "../lib/ui.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { buildPeople, TeamCards, topPerformer } from "../components/team-cards.jsx";
@@ -45,6 +45,15 @@ function OverviewScreen({ onNav, onOpenLead }) {
   const pLabel = win.label;
   const pShort = win.short;
 
+  // Lente por CARGO: quem não é gestão não precisa (nem deve) abrir a tela de
+  // gestão inteira. Vê duas coisas, que são as que mudam o trabalho dele hoje:
+  // as metas da própria vaga e a meta do mês da empresa. O resto (receita, CAC,
+  // ROAS, placar dos colegas, fila de atenção) é decisão de gestão.
+  const eu = currentUser();
+  // Sem usuário = acesso por chave mestra (integrações, MCP): vale como gestão,
+  // igual ao allowedScreens. Só sessão de pessoa cai na lente da vaga.
+  const gestao = !eu || isAdminUser();
+
   // Troca de PRODUTO zera os painéis; refresh por versão (SSE) ou período refaz.
   const loadedFor = React.useRef(null);
   useEffect(() => {
@@ -54,10 +63,14 @@ function OverviewScreen({ onNav, onOpenLead }) {
       setMarketing(null); setInvoices([]); setCosts(null); setScore(null); setPace(null);
     }
     let alive = true;
-    api.marketingMetrics(product.id, { since: win.since, until: win.until }).then((m) => alive && setMarketing(m)).catch(() => alive && setMarketing(null));
-    api.metrics(product.id, { days: win.days }).then((b) => alive && setBiz(b)).catch(() => alive && setBiz(null));
-    api.list("invoices").then((rows) => alive && setInvoices(rows.filter((i) => i.saas === product.id))).catch(() => {});
-    api.expensesSummary(product.id).then((c) => alive && setCosts(c)).catch(() => alive && setCosts(null));
+    // Na lente individual esses painéis nem existem: não buscar poupa rede e
+    // evita chamada que o guard de telas barraria pra quem não é gestão.
+    if (gestao) {
+      api.marketingMetrics(product.id, { since: win.since, until: win.until }).then((m) => alive && setMarketing(m)).catch(() => alive && setMarketing(null));
+      api.metrics(product.id, { days: win.days }).then((b) => alive && setBiz(b)).catch(() => alive && setBiz(null));
+      api.list("invoices").then((rows) => alive && setInvoices(rows.filter((i) => i.saas === product.id))).catch(() => {});
+      api.expensesSummary(product.id).then((c) => alive && setCosts(c)).catch(() => alive && setCosts(null));
+    }
     return () => { alive = false; };
   }, [product?.id, version, period, custom.since, custom.until]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -76,7 +89,7 @@ function OverviewScreen({ onNav, onOpenLead }) {
     if (!product) return;
     let alive = true;
     api.pipelinePace(product.id).then((d) => alive && setPace(d)).catch(() => alive && setPace(null));
-    api.waInsights(30).then((d) => alive && setWa(d)).catch(() => alive && setWa(null));
+    if (gestao) api.waInsights(30).then((d) => alive && setWa(d)).catch(() => alive && setWa(null));
     return () => { alive = false; };
   }, [product?.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -154,6 +167,36 @@ function OverviewScreen({ onNav, onOpenLead }) {
 
   const today = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
   const slaBreached = (score?.sdr || []).reduce((sum, p) => sum + (Number(p.breached) || 0), 0);
+
+  // ── Lente individual (SDR, closer, CS, mídia social) ──────────────────────
+  // Duas coisas e mais nada: as metas da própria vaga e a meta do mês da
+  // empresa. O placar da pessoa é o MESMO cartão que a gestão vê dela, então
+  // não existem dois números pro mesmo trabalho.
+  if (!gestao) {
+    const minha = buildPeople(score).find((p) => p.user === eu?.id) || null;
+    return (
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
+        <PageHead title="Suas metas" sub={today}>
+          <PeriodPicker period={period} custom={custom} onChange={(p, c) => { setPeriodP(p); setCustomP(c || { since: "", until: "" }); }} />
+        </PageHead>
+        <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <PaceStrip pace={pace} links={false} />
+          <Card title={`Suas metas · ${pLabel}`} hint="o que a sua vaga precisa entregar no período · meta de mês reescalada pelos dias úteis">
+            <div style={{ padding: "8px 24px 24px" }}>
+              {score == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
+              {score != null && !minha && (
+                <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.6 }}>
+                  Sua vaga ainda não tem metas configuradas neste produto.<br />
+                  Peça pra gestão preencher em <b>Metas</b>, que elas aparecem aqui.
+                </div>
+              )}
+              {minha && <TeamCards people={[minha]} bizDays={win.businessDays} highlight={null} onPerson={canSeeScreen("pipeline") ? openPerson : null} />}
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
@@ -323,7 +366,7 @@ const PACE_BLOCKED = {
 };
 const fmtPerDay = (v) => Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 
-function PaceStrip({ pace, onNav }) {
+function PaceStrip({ pace, onNav, links = true }) {
   // A meta mede o VENDIDO no mês (contrato cheio, bloco `sale` do pace) —
   // decisão do Leo em 20/07; caixa e dinheiro futuro moram na aba Clientes.
   const c = pace?.sale;
@@ -361,7 +404,7 @@ function PaceStrip({ pace, onNav }) {
             hoje {money(c.soldToday)} vendidos · ritmo {money(c.actualDailyPace)}/dia útil
             {c.requiredDailyPace != null ? ` · precisa ${money(c.requiredDailyPace)}/dia` : ""} · {int(c.remainingBusinessDays)} dias úteis restantes
           </div>
-          {c.targetConfigured === false && (
+          {links && c.targetConfigured === false && (
             <button onClick={() => onNav && onNav("metas")} style={{ marginTop: 6, fontSize: 12, fontWeight: 600, color: "var(--warn)", textAlign: "left" }}>
               essa é a meta padrão do sistema · defina a sua em Metas → Empresa
             </button>
@@ -371,7 +414,7 @@ function PaceStrip({ pace, onNav }) {
           <div style={{ fontSize: 12.5, marginBottom: 10 }}>
             <span style={{ color: "var(--fg-3)" }}>projeção do mês </span>
             <b className="tnum">{money(c.projected)}</b>
-            <button onClick={() => onNav && onNav("customers")} style={{ marginLeft: 12, fontSize: 12, fontWeight: 500, color: "var(--accent)" }}>caixa e dinheiro futuro → Clientes</button>
+            {links && <button onClick={() => onNav && onNav("customers")} style={{ marginLeft: 12, fontSize: 12, fontWeight: 500, color: "var(--accent)" }}>caixa e dinheiro futuro → Clientes</button>}
           </div>
           {done && <div style={{ fontSize: 12.5, color: "var(--pos)", fontWeight: 600 }}>Meta do mês batida.</div>}
           {!done && havePlan && (
@@ -393,7 +436,7 @@ function PaceStrip({ pace, onNav }) {
               não dá pra desdobrar a meta ainda: {PACE_BLOCKED[plan.blockedBy] || "sem histórico suficiente"}.
             </div>
           )}
-          <button onClick={() => onNav && onNav("analise")} style={{ marginTop: 10, fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>Ver análise completa →</button>
+          {links && <button onClick={() => onNav && onNav("analise")} style={{ marginTop: 10, fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>Ver análise completa →</button>}
         </div>
       </div>
     </Card>
