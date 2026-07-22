@@ -155,7 +155,7 @@ function WaTopStats({ numInfo, stats }) {
 }
 
 export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, initialDraft }) {
-  const { version } = useData();
+  const { version, refresh } = useData();
   const [product] = useActiveSaas();
   const isMobile = useIsMobile();
   const [threads, setThreads] = React.useState(null);
@@ -307,6 +307,10 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
   }, [list, sel, isMobile]);
 
   const current = (threads || []).find((t) => t.id === sel) || (virtual && virtual.id === sel ? virtual : null) || null;
+  // Contatou o lead na conversa: tira ele da fila (Minhas atividades) e recarrega
+  // o SEED. Mandar mensagem pra um lead NOVO promove pra qualificação no servidor
+  // (1º contato), então o card sai de "1º contato" na fila e anda no pipeline.
+  const afterContact = () => { if (current?.leadId) markResolved(current.leadId); refresh(); };
 
   // Modelos do fluxo de qualificação já preenchidos com o lead da conversa
   // aberta. Conversa sem lead ainda aproveita o nome do contato; o resto vira
@@ -586,15 +590,15 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
                   ) : waWindowOpen(msgs) ? (
                     <>
                       <WaComposer templates={templates} apiRef={composerApi}
-                        onSend={(t) => api.waThreadSend(current.id, t).then(() => api.waThread(current.id).then((r) => setMsgs(r.messages || [])))}
-                        onSendMedia={(blob, opts) => api.waSendMedia(current.id, blob, opts).then(() => api.waThread(current.id).then((r) => setMsgs(r.messages || [])))} />
+                        onSend={(t) => api.waThreadSend(current.id, t).then(() => { afterContact(); return api.waThread(current.id).then((r) => setMsgs(r.messages || [])); })}
+                        onSendMedia={(blob, opts) => api.waSendMedia(current.id, blob, opts).then(() => { afterContact(); return api.waThread(current.id).then((r) => setMsgs(r.messages || [])); })} />
                       <div className="mono dim" style={{ fontSize: 9.5, marginTop: 5 }}>fora de 24h desde a última resposta do cliente, a Meta exige um template aprovado</div>
                     </>
                   ) : (
                     // Janela de 24h fechada: texto livre seria recusado (131047) —
                     // troca pro composer de template aprovado.
                     <WaTemplateComposer threadId={current.id} contactName={current.name || ""}
-                      onSent={() => api.waThread(current.id).then((r) => setMsgs(r.messages || []))} />
+                      onSent={() => { afterContact(); return api.waThread(current.id).then((r) => setMsgs(r.messages || [])); }} />
                   )
                 ) : (
                   <div className="mono dim" style={{ fontSize: 11, padding: "8px 10px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)" }}>
