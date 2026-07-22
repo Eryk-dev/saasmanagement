@@ -140,6 +140,34 @@ try {
     console.error(`✗ periodo: ${err.message}`);
     failed++;
   }
+  // Agenda ocupada: a consulta da mentoria (UniqueKids) tem que bloquear o slot
+  // de call de venda de quem atende. É regra de negócio, não render — vale um
+  // teste de verdade, e vale AQUI porque busyView lê window.SEED.
+  try {
+    const { busyView, callSlotKeys } = await server.ssrLoadModule("/src/screens/today.jsx");
+    const saved = window.SEED.CONSULTATION_SLOTS;
+    // 23/07/2026 14:00 LOCAL, 90 min → ocupa 14:00, 14:30 e 15:00.
+    window.SEED.CONSULTATION_SLOTS = [{ user: "ana", at: "2026-07-23T14:00:00", minutes: 90 }];
+    const busy = busyView(new Set(), "ana");
+    const livre = busyView(new Set(), "leonardo");
+    const conflita = (v, view) => callSlotKeys(v).some((k) => view.has(k));
+    const check = (name, got, want) => { if (got !== want) throw new Error(`${name}: ${got} ≠ ${want}`); };
+    check("14:00 ocupado", conflita("2026-07-23T14:00", busy), true);
+    check("15:00 ocupado (duração de 90 min)", conflita("2026-07-23T15:00", busy), true);
+    // call das 13:30 dura 1h e encosta nas 14:00 → conflita
+    check("13:30 encosta na consulta", conflita("2026-07-23T13:30", busy), true);
+    check("16:00 livre", conflita("2026-07-23T16:00", busy), false);
+    check("outro dia livre", conflita("2026-07-24T14:00", busy), false);
+    check("agenda de outra pessoa livre", conflita("2026-07-23T14:00", livre), false);
+    // o motivo aparece pro SDR não procurar uma call que não existe
+    const info = busy.info(callSlotKeys("2026-07-23T14:00")[0]);
+    check("motivo", info && info.reason, "consulta da mentoria");
+    window.SEED.CONSULTATION_SLOTS = saved;
+    console.log("✓ agenda-consulta");
+  } catch (err) {
+    console.error(`✗ agenda-consulta: ${err.message}`);
+    failed++;
+  }
 } finally {
   await server.close();
 }

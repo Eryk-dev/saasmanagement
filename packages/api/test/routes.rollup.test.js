@@ -69,3 +69,37 @@ test("ao registrar 1 cliente (arr=4200) → customers:1, arr:4200, mrr:350 em to
 
   await app.close();
 });
+
+// A consulta da mentoria (UniqueKids) tem que ocupar a agenda de quem atende,
+// senão dá pra marcar call de venda por cima do encontro de um cliente. O
+// bootstrap manda SÓ a ocupação: nome do cliente, da criança e telefone ficam na
+// tela Consultas, que tem guard próprio.
+test("bootstrap: consulta vira ocupação de agenda, sem dado da família", async () => {
+  const repo2 = makeMemRepo();
+  await repo2.create("products", { id: "uniquekids", name: "UniqueKids" });
+  await repo2.create("consultations", {
+    id: "cs1", saas: "uniquekids", owner: "ana", at: "2026-07-23T14:00:00.000Z", durationMin: 90,
+    clientName: "Família Silva", childName: "Joana", phone: "5541999999999", status: "scheduled",
+  });
+  await repo2.create("consultations", { id: "cs2", saas: "uniquekids", owner: "ana", at: "2026-07-24T14:00:00.000Z", status: "canceled" });
+  await repo2.create("consultations", { id: "cs3", saas: "uniquekids", owner: "ana", at: "", status: "scheduled" }); // sem horário
+  const app2 = Fastify(); registerRoutes(app2, repo2);
+
+  const slots = (await app2.inject({ url: "/api/bootstrap" })).json().CONSULTATION_SLOTS;
+  assert.deepEqual(slots, [{ user: "ana", at: "2026-07-23T14:00:00.000Z", minutes: 90 }]);
+  // cancelada e sem horário não ocupam nada
+  assert.equal(slots.length, 1);
+  // e o PII não pode viajar no bootstrap de todo mundo
+  const raw = JSON.stringify(slots);
+  for (const leak of ["Silva", "Joana", "5541999999999"]) assert.ok(!raw.includes(leak), `vazou ${leak}`);
+  await app2.close();
+});
+
+test("bootstrap: consulta sem duração ocupa 1h (mesma régua da call)", async () => {
+  const repo3 = makeMemRepo();
+  await repo3.create("products", { id: "uniquekids", name: "UniqueKids" });
+  await repo3.create("consultations", { id: "cs1", saas: "uniquekids", owner: "ana", at: "2026-07-23T14:00:00.000Z", status: "scheduled" });
+  const app3 = Fastify(); registerRoutes(app3, repo3);
+  assert.equal((await app3.inject({ url: "/api/bootstrap" })).json().CONSULTATION_SLOTS[0].minutes, 60);
+  await app3.close();
+});
