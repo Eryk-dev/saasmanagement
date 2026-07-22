@@ -840,8 +840,8 @@ export function IntegrationBriefCard({ brief, phone, deal, onSend = null }) {
 // Atalhos da call — pro operador que abre o roteiro de uma call agendada: reúne
 // num lugar só o LINK da chamada (entrar · copiar · mandar pro cliente no
 // WhatsApp já com o link no texto) e a PROPOSTA (abrir/editar a existente ou
-// gerar na hora). Sem link ainda? cria o Meet (Google) ou a sala Jitsi, na
-// mesma regra do drawer. `wa` = base do WhatsApp do lead (waLink(l.phone));
+// gerar na hora). Sem link ainda? cria o Meet (Google) na agenda, na mesma
+// regra do drawer. `wa` = base do WhatsApp do lead (waLink(l.phone));
 // `onPatch` grava no lead (sincroniza a fila e persiste). Proposta é só do
 // closer na call — na tarefa de confirmação do SDR ela some.
 function CallShortcuts({ l, item, wa, onPatch }) {
@@ -854,11 +854,11 @@ function CallShortcuts({ l, item, wa, onPatch }) {
   const googleOn = !!window.SEED?.CONFIG?.google?.connected;
 
   async function makeLink() {
+    if (!googleOn) { setErr("conecte o Google em Ajustes pra criar o Meet da call"); return; }
     setBusy("meet"); setErr("");
     try {
       // O servidor já grava o callUrl no lead; o patch só espelha aqui e na fila.
-      if (googleOn) { const r = await api.createMeet(l.id); onPatch({ callUrl: r.callUrl, meetEventId: r.eventId }); }
-      else onPatch({ callUrl: `https://meet.jit.si/LeverAds-${Math.random().toString(36).slice(2, 10)}` });
+      const r = await api.createMeet(l.id); onPatch({ callUrl: r.callUrl, meetEventId: r.eventId });
     } catch (e) { setErr(e?.message || "falha ao criar o link da call"); }
     setBusy("");
   }
@@ -885,11 +885,13 @@ function CallShortcuts({ l, item, wa, onPatch }) {
             )}
             {!wa && <span className="mono dim" style={{ fontSize: 10 }}>sem telefone pra mandar no Whats</span>}
           </div>
-        ) : (
+        ) : googleOn ? (
           <button onClick={makeLink} disabled={busy === "meet"} style={{ ...chip, alignSelf: "flex-start" }}
-            title={googleOn ? "Cria o evento com Meet na agenda e o link da call" : "Cria uma sala Jitsi instantânea pra call"}>
-            {busy === "meet" ? "criando…" : googleOn ? "🎥 criar link (Meet)" : "🎥 criar link da call"}
+            title="Cria o evento com Meet na agenda e o link da call">
+            {busy === "meet" ? "criando…" : "🎥 criar link (Meet)"}
           </button>
+        ) : (
+          <span className="mono dim" style={{ fontSize: 10.5 }}>conecte o Google em Ajustes pra criar o Meet da call</span>
         )}
       </div>
 
