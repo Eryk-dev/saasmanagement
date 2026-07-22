@@ -5,8 +5,8 @@ import { AnaliseView } from "./pipeline.jsx";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 
-// Análise do pipeline — tela própria (saiu da aba do Pipeline pro menu Análises).
-// Reusa o AnaliseView do pipeline: pace de caixa + forecast + funil, do produto
+// Análise de Pace — tela própria (saiu da aba do Pipeline pro menu Análises).
+// Reusa o AnaliseView do pipeline: pace da meta + forecast + funil, do produto
 // ativo. Só leitura (dashboards), não abre lead.
 function AnaliseScreen() {
   const { version } = useData();
@@ -19,7 +19,7 @@ function AnaliseScreen() {
   if (!s) return <EmptyState title="Sem produto ativo" hint="Escolha um produto no seletor da barra lateral." />;
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead title="Análise do pipeline" sub="pace de caixa · forecast · funil do produto ativo" />
+      <PageHead title="Análise de Pace" sub="pace da meta · forecast · funil do produto ativo" />
       <AnaliseView s={s} leads={leads} />
     </div>
   );
