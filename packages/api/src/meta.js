@@ -445,6 +445,36 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       return { spec: c.object_story_spec || null, urlTags: c.url_tags || "" };
     },
 
+    // Mídia do criativo de UM anúncio — pra pré-visualizar o vídeo/imagem na
+    // tabela de Anúncios. A Graph não dá a URL do vídeo direto no ad: pega o
+    // object_story_spec (traz video_id ou imagem) e, pro vídeo, busca o `source`
+    // (mp4, URL temporária) numa 2ª chamada. Retorna { type, videoUrl, imageUrl,
+    // thumbnail, title }. type: "video" | "image" | "none".
+    async adCreativeMedia(adId) {
+      if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
+      const params = new URLSearchParams({
+        fields: "name,creative{object_story_spec,thumbnail_url,image_url,video_id}",
+        access_token: accessToken,
+      });
+      const body = await get(`${GRAPH}/${adId}?${params}`);
+      const c = body.creative || {};
+      const spec = c.object_story_spec || {};
+      const vd = spec.video_data || {};
+      const ld = spec.link_data || {};
+      const videoId = String(vd.video_id || c.video_id || "");
+      const thumbnail = vd.image_url || ld.picture || c.thumbnail_url || c.image_url || "";
+      const imageUrl = ld.image_url || c.image_url || "";
+      let videoUrl = "";
+      if (videoId) {
+        try {
+          const v = await get(`${GRAPH}/${videoId}?fields=source&access_token=${encodeURIComponent(accessToken)}`);
+          videoUrl = v.source || "";
+        } catch { /* sem permissão de vídeo: sobra o thumbnail */ }
+      }
+      const type = videoUrl ? "video" : (imageUrl || thumbnail) ? "image" : "none";
+      return { type, videoUrl, imageUrl: imageUrl || thumbnail, thumbnail, title: body.name || "" };
+    },
+
     // Cria um criativo NOVO a partir do object_story_spec de origem, trocando só
     // o vídeo (video_id + thumbnail) e mantendo todo o resto do spec.
     async createVideoCreativeFromSpec(adAccountId, { name, sourceSpec, videoId, imageUrl, urlTags }) {
@@ -516,6 +546,7 @@ export const meta = {
   copyAdSet: (id, o) => inst().copyAdSet(id, o),
   renameObject: (id, n) => inst().renameObject(id, n),
   getAdCreativeSpec: (id) => inst().getAdCreativeSpec(id),
+  adCreativeMedia: (id) => inst().adCreativeMedia(id),
   createVideoCreativeFromSpec: (a, o) => inst().createVideoCreativeFromSpec(a, o),
   updateAd: (id, o) => inst().updateAd(id, o),
   setObjectStatus: (id, s) => inst().setObjectStatus(id, s),

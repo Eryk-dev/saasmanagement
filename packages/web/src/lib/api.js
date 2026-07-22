@@ -82,6 +82,8 @@ export const api = {
   // Gerenciamento de campanha Meta (status/orçamento direto do cockpit).
   metaAdsets: (campaignId) => req("GET", `/api/marketing/campaigns/${campaignId}/adsets`),
   adObjects: (saas) => req("GET", `/api/marketing/${saas}/adobjects`),
+  // Mídia do criativo de um anúncio (vídeo/imagem) pra pré-visualizar.
+  adCreative: (saas, adId) => req("GET", `/api/marketing/${saas}/ad/${adId}/creative`),
   metaObjectStatus: (id, status) => req("POST", `/api/marketing/objects/${id}/status`, { status }),
   metaObjectBudget: (id, dailyBudget) => req("POST", `/api/marketing/objects/${id}/budget`, { dailyBudget }),
   creativeDefaults: (saas) => req("GET", `/api/marketing/${saas}/creative-defaults`),
