@@ -51,6 +51,10 @@ export const META_CATALOG = [
       // colore. A conversão sobre as AGENDADAS não é campo: é conta
       // (comparecimento × esta), senão dá pra configurar duas que se contradizem.
       { metric: "conversaoCall", kind: "rate", label: "Call → ganho", unit: "%", hint: "das calls que aconteceram", default: pct(RATE_BENCHMARKS.closeRate) },
+      // Volume de call do closer: as que ACONTECERAM (o no-show é cobrado no
+      // comparecimento do SDR). Fica logo abaixo da taxa porque é o denominador
+      // dela — as duas juntas explicam os ganhos.
+      { metric: "callsShown", kind: "flow", label: "Calls realizadas no mês", unit: "n", hint: "sem contar os no-show", default: null, team: true },
       { metric: "won", kind: "flow", label: "Ganhos no mês", unit: "n", default: null, team: true },
       { metric: "revenue", kind: "flow", label: "Receita no mês", unit: "R$", default: null, team: true },
       { metric: "ticket", kind: "avg", label: "Ticket médio", unit: "R$", default: null },
@@ -143,6 +147,7 @@ export function deriveGoalsFromPace(pace) {
     // Cadeia travada não entrega meia derivação: preencher só a receita deixaria
     // o resto das vagas incoerente, que é justamente o que essa tela conserta.
     goals: blockedBy ? [] : [
+      { role: "closer", metric: "callsShown", target: callsShown },
       { role: "closer", metric: "won", target: won },
       { role: "closer", metric: "revenue", target: target },
       { role: "closer", metric: "ticket", target: ticket },
