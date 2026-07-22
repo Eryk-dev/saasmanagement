@@ -112,3 +112,76 @@ test("adCreativeMedia: vídeo → busca o source (2ª chamada); imagem → sem 2
   const n = await makeMeta({ fetch: fn, accessToken: "t" }).adCreativeMedia("ad_3");
   assert.equal(n.type, "none");
 });
+
+// ── Upload de vídeo em pedaços ──────────────────────────────────────────────
+// A borda da Meta recusa POST único de vídeo grande com 413 e corpo VAZIO (foi
+// o que derrubou o upload de 143 MB do time). Acima de 20 MB o client usa o
+// protocolo start/transfer/finish, que a Meta guia pelos offsets.
+
+test("uploadVideo: vídeo grande sobe em pedaços (start/transfer/finish) e devolve o id da sessão", async () => {
+  const size = 25 * 1024 * 1024;   // acima do limiar
+  const chunk = 8 * 1024 * 1024;
+  const calls = [];
+  const f = async (url, opts) => {
+    const fd = opts.body;
+    const phase = fd.get("upload_phase");
+    const piece = fd.get("video_file_chunk");
+    calls.push({ phase, start: Number(fd.get("start_offset") || 0), bytes: piece?.size ?? null, title: fd.get("title") });
+    let out;
+    if (phase === "start") out = { video_id: "v_big", upload_session_id: "s1", start_offset: "0", end_offset: String(chunk) };
+    else if (phase === "transfer") {
+      const next = Number(fd.get("start_offset")) + piece.size;
+      out = { start_offset: String(next), end_offset: String(Math.min(next + chunk, size)) };
+    } else out = { success: true };
+    return { status: 200, text: async () => JSON.stringify(out) };
+  };
+  const meta = makeMeta({ fetch: f, accessToken: "t" });
+
+  const progress = [];
+  const id = await meta.uploadVideo("act_1", {
+    buffer: Buffer.alloc(size), filename: "grande.mp4", title: "1330 [A]",
+    onProgress: (p) => progress.push(p),
+  });
+
+  assert.equal(id, "v_big");                                   // id vem da fase start
+  assert.equal(calls[0].phase, "start");
+  assert.equal(calls.at(-1).phase, "finish");
+  assert.equal(calls.at(-1).title, "1330 [A]");                // título só no fim
+  const transfers = calls.filter((c) => c.phase === "transfer");
+  assert.equal(transfers.length, 4);                           // 25 MB em pedaços de 8
+  assert.deepEqual(transfers.map((t) => t.start), [0, chunk, chunk * 2, chunk * 3]);
+  assert.equal(transfers.reduce((s, t) => s + t.bytes, 0), size); // o arquivo inteiro, sem sobra
+  assert.equal(progress.at(-1), 1);
+});
+
+test("uploadVideo: pedaço que falha é reenviado do MESMO offset", async () => {
+  const size = 25 * 1024 * 1024;
+  const chunk = 20 * 1024 * 1024;
+  const seen = [];
+  let failed = false;
+  const f = async (url, opts) => {
+    const fd = opts.body;
+    const phase = fd.get("upload_phase");
+    if (phase === "start") return { status: 200, text: async () => JSON.stringify({ video_id: "v2", upload_session_id: "s2", start_offset: "0", end_offset: String(chunk) }) };
+    if (phase === "finish") return { status: 200, text: async () => JSON.stringify({ success: true }) };
+    const start = Number(fd.get("start_offset"));
+    seen.push(start);
+    if (start === 0 && !failed) { failed = true; return { status: 500, text: async () => JSON.stringify({ error: { message: "oops" } }) }; }
+    const next = start + fd.get("video_file_chunk").size;
+    return { status: 200, text: async () => JSON.stringify({ start_offset: String(next), end_offset: String(Math.min(next + chunk, size)) }) };
+  };
+  const meta = makeMeta({ fetch: f, accessToken: "t", sleep: async () => {} });
+  assert.equal(await meta.uploadVideo("act_1", { buffer: Buffer.alloc(size) }), "v2");
+  assert.deepEqual(seen, [0, 0, chunk]); // repetiu o offset 0 e seguiu
+});
+
+test("uploadVideo: vídeo pequeno continua num POST só", async () => {
+  const calls = [];
+  const f = async (url, opts) => {
+    calls.push(opts.body.get("upload_phase"));
+    return { status: 200, text: async () => JSON.stringify({ id: "v_small" }) };
+  };
+  const meta = makeMeta({ fetch: f, accessToken: "t" });
+  assert.equal(await meta.uploadVideo("act_1", { buffer: Buffer.alloc(1024), filename: "p.mp4" }), "v_small");
+  assert.deepEqual(calls, [null]); // sem fases: caminho direto
+});

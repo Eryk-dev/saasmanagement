@@ -409,7 +409,8 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         }
 
         job.step = "subindo o vídeo pra Meta";
-        const videoId = await meta.uploadVideo(product.metaAdAccount, { path: spool.path, filename: data.filename, title: name });
+        const onProgress = (p) => { job.step = `subindo o vídeo pra Meta · ${Math.round(p * 100)}%`; };
+        const videoId = await meta.uploadVideo(product.metaAdAccount, { path: spool.path, filename: data.filename, title: name, onProgress });
         job.step = "esperando a Meta processar o vídeo";
         const imageUrl = await meta.videoThumbnail(videoId);
         job.step = "criando o criativo e o anúncio";
@@ -485,7 +486,8 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       try {
         // 1. sobe o vídeo novo + a thumbnail (a Meta exige uma).
         job.step = "subindo o vídeo pra Meta";
-        const videoId = await meta.uploadVideo(product.metaAdAccount, { path: spool.path, filename: data.filename, title: finalName });
+        const onProgress = (p) => { job.step = `subindo o vídeo pra Meta · ${Math.round(p * 100)}%`; };
+        const videoId = await meta.uploadVideo(product.metaAdAccount, { path: spool.path, filename: data.filename, title: finalName, onProgress });
         job.step = "esperando a Meta processar o vídeo";
         const imageUrl = await meta.videoThumbnail(videoId);
         // 2. duplica o conjunto de origem (deep copy leva o anúncio), pausado.

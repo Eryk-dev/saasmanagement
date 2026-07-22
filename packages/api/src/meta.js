@@ -10,6 +10,9 @@
 import { openAsBlob } from "node:fs";
 
 const GRAPH = "https://graph.facebook.com/v23.0";
+// Acima disso o vídeo sobe em pedaços (upload_phase start/transfer/finish). O
+// POST único é mais rápido e continua valendo pros criativos pequenos.
+const CHUNK_THRESHOLD = 20 * 1024 * 1024;
 
 export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const configured = () => !!accessToken;
@@ -347,13 +350,62 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
     // `path` (arquivo em disco) é o caminho preferido: openAsBlob entrega um
     // Blob preguiçoso que o fetch lê em pedaços, então um vídeo de 150 MB não
     // ocupa memória nenhuma. `buffer` continua aceito pra chamadas pequenas.
-    async uploadVideo(adAccountId, { buffer, path, filename = "video.mp4", title }) {
+    // Acima de CHUNK_THRESHOLD vai em PEDAÇOS: a borda da Meta recusa POST
+    // único de vídeo grande com "413" e corpo vazio (foi o que derrubou o
+    // upload de 143 MB). `onProgress(0..1)` alimenta a barra da tela.
+    async uploadVideo(adAccountId, { buffer, path, filename = "video.mp4", title, onProgress }) {
       if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
+      const blob = path ? await openAsBlob(path) : new Blob([buffer]);
+      const url = `${GRAPH}/${acct(adAccountId)}/advideos`;
+
+      if (blob.size > CHUNK_THRESHOLD) {
+        const send = async (fields, file) => {
+          const fd = new FormData();
+          fd.append("access_token", accessToken);
+          for (const [k, v] of Object.entries(fields)) fd.append(k, String(v));
+          if (file) fd.append("video_file_chunk", file, filename);
+          const res = await f(url, { method: "POST", body: fd });
+          const text = await res.text();
+          let body;
+          try { body = JSON.parse(text); } catch { body = {}; }
+          if (res.status >= 400 || body.error) {
+            const msg = body.error?.message || text.slice(0, 300) || `sem detalhe (fase ${fields.upload_phase})`;
+            throw new Error(`Meta API -> ${res.status}: ${msg}`);
+          }
+          return body;
+        };
+
+        const started = await send({ upload_phase: "start", file_size: blob.size });
+        const sessionId = started.upload_session_id;
+        const videoId = String(started.video_id || "");
+        if (!sessionId || !videoId) throw new Error("Meta API: início do upload em pedaços não retornou sessão");
+        // A Meta dita os offsets de cada pedaço; slice() do blob de arquivo é
+        // preguiçoso, então nada disso passa pela memória.
+        let start = Number(started.start_offset || 0);
+        let end = Number(started.end_offset || 0);
+        while (start < end) {
+          let sent = null;
+          for (let attempt = 1; !sent; attempt++) {
+            try {
+              sent = await send({ upload_phase: "transfer", upload_session_id: sessionId, start_offset: start }, blob.slice(start, end));
+            } catch (err) {
+              if (attempt >= 3) throw err; // pedaço tem que reenviar do MESMO offset
+              await sleep(2000 * attempt);
+            }
+          }
+          start = Number(sent.start_offset);
+          end = Number(sent.end_offset);
+          if (onProgress) onProgress(Math.min(1, start / blob.size));
+        }
+        await send({ upload_phase: "finish", upload_session_id: sessionId, ...(title ? { title } : {}) });
+        return videoId;
+      }
+
       const fd = new FormData();
       fd.append("access_token", accessToken);
       if (title) fd.append("title", title);
-      fd.append("source", path ? await openAsBlob(path) : new Blob([buffer]), filename);
-      const res = await f(`${GRAPH}/${acct(adAccountId)}/advideos`, { method: "POST", body: fd });
+      fd.append("source", blob, filename);
+      const res = await f(url, { method: "POST", body: fd });
       const text = await res.text();
       let body;
       try { body = JSON.parse(text); } catch { body = {}; }
@@ -366,8 +418,10 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
     },
 
     // Thumbnail do vídeo (obrigatória no creative). Só existe depois que a Meta
-    // processa o upload, então faz poll até aparecer (ou estourar o prazo).
-    async videoThumbnail(videoId, { timeoutMs = 180000, intervalMs = 5000 } = {}) {
+    // processa o upload, então faz poll até aparecer (ou estourar o prazo). Dez
+    // minutos porque vídeo de 150 MB demora a ser processado — e quem espera é
+    // um trabalho em background, não uma requisição aberta.
+    async videoThumbnail(videoId, { timeoutMs = 600000, intervalMs = 5000 } = {}) {
       if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
       const deadline = Date.now() + timeoutMs;
       for (;;) {
