@@ -87,6 +87,53 @@ const fontHref = (font) => {
   return `https://fonts.googleapis.com/css2?family=${enc}:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap`;
 };
 
+// Matemática do progresso ("etapa 02 de 08"). Fica separada porque é a parte
+// que erra fácil e o teste roda ela isolada. Com desvio no form, o total NÃO é
+// o número de perguntas: é o tamanho do CAMINHO desta pessoa. Contando tudo, o
+// ramo de quem não vende anunciava 8 etapas numa jornada de 5.
+export const PROGRESS_JS = `
+  // Destino projetado de uma tela: a resposta quando existe; quando a pessoa
+  // ainda não chegou ali, assume a PRIMEIRA opção (é o caminho principal, e é
+  // melhor prometer o provável do que a soma de todos os ramos).
+  function projectedTo(si) {
+    var idxs = STEPS[si];
+    for (var k = 0; k < idxs.length; k++) {
+      var q = QS[idxs[k]];
+      if (q.type === 'select') {
+        var opts = q.options || [];
+        var opt = null;
+        for (var j = 0; j < opts.length; j++) if (opts[j].value === answers[q.key]) opt = opts[j];
+        if (!opt && !(q.key in answers) && opts.length) opt = opts[0];
+        if (opt && opt.to) return opt.to;
+      }
+      if (q.to) return q.to;
+    }
+    return '';
+  }
+
+  // Quantas telas de verdade ainda vêm DEPOIS de si (insight não conta).
+  function stepsAhead(si) {
+    var n = 0, seen = {}, s = si;
+    while (s >= 0 && s < STEPS.length && !seen[s]) {
+      seen[s] = 1;
+      var to = projectedTo(s);
+      if (to === '_end' || to === '_reject') break;
+      var ni = (to && stepOfKey[to] != null) ? stepOfKey[to] : (s + 1 < STEPS.length ? s + 1 : -1);
+      if (ni < 0) break;
+      if (!isInsightStep(ni)) n++;
+      s = ni;
+    }
+    return n;
+  }
+
+  // Total do caminho: o que já foi andado + o que ainda vem. Na tela de
+  // boas-vindas (cur = -1) é a projeção do começo.
+  function realTotal() {
+    if (cur < 0) return (STEPS.length && !isInsightStep(0) ? 1 : 0) + stepsAhead(0);
+    return realVisited() + stepsAhead(cur);
+  }
+`;
+
 export function formPageHtml(form, { embed = false, preview = false, pixelId = "", pain = "" } = {}) {
   const t = form.theme || {};
   // Defaults no design system Lever Premium: paper claro, ink navy, teal com
@@ -290,7 +337,7 @@ ${metaPixelHead(pixelId)}
   var stepOfKey = {};
   STEPS.forEach(function (idxs, si) { idxs.forEach(function (qi) { stepOfKey[QS[qi].key] = si; }); });
   var isInsightStep = function (si) { return (QS[STEPS[si][0]].type || 'text') === 'insight'; };
-  var realTotal = STEPS.filter(function (_, si) { return !isInsightStep(si); }).length;
+${PROGRESS_JS}
 
   // Telemetria de funil (drop-off por etapa): eventos anônimos por sessão de
   // visita, deduplicados no client (voltar não recontam) e enviados via
@@ -494,7 +541,7 @@ ${metaPixelHead(pixelId)}
     var brand = el('div', 'brand', window.__LOGO__ || '<span class="brand-name">' + esc(F.name) + '</span>');
     // Direita: progresso (NN / NN).
     var right = el('div', 'top-right');
-    if (showPill) right.appendChild(el('span', 'pill', pad(realVisited()) + ' / ' + pad(realTotal)));
+    if (showPill) right.appendChild(el('span', 'pill', pad(realVisited()) + ' / ' + pad(realTotal())));
     top.appendChild(left);
     top.appendChild(brand);
     top.appendChild(right);
@@ -505,7 +552,8 @@ ${metaPixelHead(pixelId)}
     var wrap = el('div', 'progress');
     wrap.setAttribute('aria-hidden', 'true');
     var r = realVisited();
-    for (var i = 0; i < realTotal; i++) {
+    var total = realTotal();
+    for (var i = 0; i < total; i++) {
       wrap.appendChild(el('i', i < r - 1 ? 'done' : i === r - 1 ? 'active' : ''));
     }
     return wrap;
@@ -535,7 +583,8 @@ ${metaPixelHead(pixelId)}
     // Custo percebido baixinho: relógio + "~30 segundos" vende melhor que a
     // promessa de minutos (e o "pressione Enter" só fazia sentido em desktop).
     var clock = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" style="vertical-align:-1px;margin-right:5px"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
-    row.appendChild(el('p', 'hint', clock + 'leva <b>~30 segundos</b> · ' + realTotal + (realTotal === 1 ? ' etapa rápida' : ' etapas rápidas')));
+    var etapas = realTotal();
+    row.appendChild(el('p', 'hint', clock + 'leva <b>~30 segundos</b> · ' + etapas + (etapas === 1 ? ' etapa rápida' : ' etapas rápidas')));
     s.appendChild(row);
     root.appendChild(s);
   }
@@ -637,7 +686,7 @@ ${metaPixelHead(pixelId)}
     var s = el('div', 'fade');
     s.appendChild(topBar(true, true));
     s.appendChild(progressBars());
-    s.appendChild(el('div', 'eyebrow', 'Etapa ' + pad(realVisited()) + ' de ' + pad(realTotal)));
+    s.appendChild(el('div', 'eyebrow', 'Etapa ' + pad(realVisited()) + ' de ' + pad(realTotal())));
     s.appendChild(el('h1', 'q', fmt(first.label) + (single && first.required ? ' <span class="req">*</span>' : '')));
     if (first.help) s.appendChild(el('div', 'sub', fmt(first.help)));
 
