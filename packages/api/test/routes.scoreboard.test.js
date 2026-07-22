@@ -242,6 +242,26 @@ test("CS: indicações = leads com origem 'Indicação' na janela (nº do time)"
   await app.close();
 });
 
+test("CS: meta de indicação deriva da base (7 × clientes do CS)", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("customers", { id: "c1", saas: "leverads", owner: "u_cs", startedAt: "2026-05-01T10:00:00.000Z" });
+  await repo.create("customers", { id: "c2", saas: "leverads", owner: "u_cs", startedAt: "2026-05-01T10:00:00.000Z" });
+  const cs = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json().cs.find((x) => x.user === "u_cs");
+  assert.equal(cs.goals.referrals.target, 14); // 7 × 2 clientes da carteira
+  assert.equal(cs.goals.referrals.scope, "derived");
+  await app.close();
+});
+
+test("CS: meta de indicação manual (role) vence a derivada da base", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("customers", { id: "c1", saas: "leverads", owner: "u_cs", startedAt: "2026-05-01T10:00:00.000Z" });
+  await repo.create("goals", { id: "g1", saas: "leverads", scope: "role", key: "integrator", metric: "referrals", target: 50, period: "month" });
+  const cs = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json().cs.find((x) => x.user === "u_cs");
+  assert.equal(cs.goals.referrals.target, 50); // manual vence, não reparte (team:false)
+  assert.equal(cs.goals.referrals.scope, "role");
+  await app.close();
+});
+
 test("leadsPrev conta os leads da janela anterior (base da meta dinâmica)", async () => {
   const { app, repo } = await buildApp();
   // 3 leads do SDR na semana passada, 1 na atual

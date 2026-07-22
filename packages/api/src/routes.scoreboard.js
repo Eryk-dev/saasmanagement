@@ -18,6 +18,10 @@ import {
 } from "./metrics-core.js";
 
 const HOUR = 3_600_000;
+// Meta de indicação do CS: cada cliente da carteira precisa render N indicações
+// (regra do Leo). O alvo escala com a BASE — 7 × clientes que o CS atende — em
+// vez de um número fixo, então cresce sozinho conforme a carteira aumenta.
+const REFERRALS_PER_CUSTOMER = 7;
 const median = (arr) => {
   if (!arr.length) return null;
   const s = [...arr].sort((a, b) => a - b);
@@ -77,6 +81,9 @@ export function registerScoreboardRoutes(app, repo) {
     // UniqueKids) não pode diluir a meta do time daqui.
     const inProduct = (u) => !u.saas || u.saas === product.id;
     const headcount = (role) => Math.max(1, users.filter((u) => inProduct(u) && (u.roles || []).includes(role)).length);
+    // Clientes por dono (pro alvo de indicação = 7 × carteira do CS).
+    const custByOwner = new Map();
+    for (const c of customers) if (c.owner) custByOwner.set(c.owner, (custByOwner.get(c.owner) || 0) + 1);
     // Meta DERIVADA da meta de venda do mês: o que a empresa precisa desdobrado
     // pela mesma cadeia da tela Metas (venda ÷ ticket = ganhos, ÷ fechamento =
     // calls, e por aí). Vale como fallback do campo em branco, então trocar a
@@ -93,6 +100,14 @@ export function registerScoreboardRoutes(app, repo) {
       if (u) return { target: Number(u.target) || 0, period: u.period || "month", scope: "user" };
       const r = goals.find((g) => g.scope === "role" && g.key === role && g.metric === metric);
       if (!r) {
+        // Indicação: alvo derivado da BASE — cada cliente precisa render N
+        // indicações (regra do Leo), então o alvo do CS = N × a carteira DELE, e
+        // escala sozinho conforme a base cresce. Manual (user/role) ainda vence.
+        if (metric === "referrals") {
+          const custs = custByOwner.get(userId) || 0;
+          const t = REFERRALS_PER_CUSTOMER * custs;
+          return t > 0 ? { target: t, period: "month", scope: "derived", perCustomer: REFERRALS_PER_CUSTOMER, customers: custs } : null;
+        }
         // Só VOLUME de time se deriva. Ticket e taxa entram na cadeia como
         // premissa (vêm do histórico), então virar meta seria dizer "seu alvo é
         // o que você já faz" — alvo que ninguém persegue.
