@@ -11,38 +11,38 @@ import { paymentUpfront } from "../lib/payments.js";
 const { useState, useMemo } = React;
 const DAY = 86_400_000;
 
-// customer.arr guarda o ANUAL (mensal ×12, semestral ×2 no convertWonLead).
-// O valor do CONTRATO fechado é o arr desfeito desse fator.
-function contractValue(c) {
-  const t = String(c.plan || "").toLowerCase();
-  const factor = t.includes("mensal") ? 12 : t.includes("semestral") ? 2 : 1;
-  return (Number(c.arr) || 0) / factor;
-}
+// customer.arr guarda o valor ANUAL (mensal ×12, semestral ×2 no convertWonLead).
 
-// Em quantas parcelas mensais o contrato entra quando o pagamento é
-// faturado/parcelado (à vista não parcela nada).
-function contractMonths(plan) {
-  const t = String(plan || "").toLowerCase();
-  if (t.includes("semestral")) return 6;
-  if (t.includes("anual")) return 12;
-  return 1; // mensal, serviço único, sem plano: uma entrada só
-}
-
-// Divide o contrato entre caixa (já recebido) e dinheiro futuro (parcelas a
-// receber). À vista/cartão 12x = tudo caixa no fechamento. Faturado/parcelado =
-// uma parcela por mês desde startedAt (a 1ª no fechamento); cliente churnado
-// para de pagar (as parcelas restantes não viram futuro).
+// Divide o ARR ANUAL de um cliente entre já RECEBIDO e A RECEBER, de modo que
+// os dois SEMPRE somem ao Total contratado (ARR). Regras de recebimento:
+//  · à vista / cartão 12x → a empresa recebe o valor do CICLO no fechamento de
+//    cada ciclo. Anual: o ano todo de uma vez. Semestral: 1 semestre agora, o
+//    outro só quando renovar (fica "a receber"). Único/sem plano: tudo agora.
+//  · faturado / parcelado → uma parcela por mês ao longo do ano (12 parcelas).
+// Cliente churnado para de gerar: o que faltava NÃO vira a receber.
 function cashSplit(c, now) {
-  const total = contractValue(c);
-  if (paymentUpfront(c.paymentMethod)) return { cash: total, future: 0 };
-  const months = contractMonths(c.plan);
-  if (months <= 1) return { cash: total, future: 0 };
+  const annual = Number(c.arr) || 0;
+  if (annual <= 0) return { cash: 0, future: 0 };
   const start = c.startedAt ? new Date(c.startedAt).getTime() : now;
   const churnT = c.endedAt ? new Date(c.endedAt).getTime() : null;
   const stop = churnT != null ? Math.min(churnT, now) : now;
-  const paid = Math.min(months, Math.max(0, Math.floor((stop - start) / (30 * DAY)) + 1));
-  const cash = (total / months) * paid;
-  const future = churnT != null && churnT <= now ? 0 : total - cash;
+  const monthsIn = Math.max(1, Math.floor((stop - start) / (30 * DAY)) + 1); // 1ª entrada no fechamento
+  const t = String(c.plan || "").toLowerCase();
+  let cash;
+  if (paymentUpfront(c.paymentMethod)) {
+    if (t.includes("semestral")) {
+      const started = Math.min(2, Math.floor((monthsIn - 1) / 6) + 1); // quantos semestres já começaram
+      cash = (annual / 2) * started;
+    } else if (t.includes("mensal")) {
+      cash = (annual / 12) * Math.min(12, monthsIn);
+    } else {
+      cash = annual; // anual, serviço único, sem plano: recebe tudo no fechamento
+    }
+  } else {
+    cash = (annual / 12) * Math.min(12, monthsIn); // faturado/parcelado: 1 parcela por mês
+  }
+  cash = Math.min(annual, cash);
+  const future = churnT != null && churnT <= now ? 0 : annual - cash;
   return { cash, future };
 }
 
@@ -181,8 +181,8 @@ export function CustomersAnalysis({ customers, isKids = false }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
         <StatTile label="Total contratado" value={money(m.faturado)} delta="valor anual (ARR) dos clientes do período" />
-        <StatTile label="Caixa" value={money(m.caixa)} delta="já recebido (à vista + parcelas vencidas do ciclo)" />
-        <StatTile label="Dinheiro futuro" value={money(m.futuro)} delta="parcelas a receber dos faturados/parcelados" />
+        <StatTile label="Recebido" value={money(m.caixa)} delta="já entrou · à vista + parcelas/ciclos vencidos" />
+        <StatTile label="A receber" value={money(m.futuro)} delta="parcelas e renovações a vencer no ano" />
         <StatTile label="Clientes novos" value={String(m.cohort.length)} delta="entraram no período" />
         <StatTile label="Ticket médio" value={money(m.ticket)} delta="ARR ÷ clientes novos" />
         {!isKids && <StatTile label="Preço mensal médio" value={money(m.mrrMedio)} delta="média do mensal (ARR ÷ 12)" />}

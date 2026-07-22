@@ -22,8 +22,10 @@ export const fmt = {
     if (n == null) return "—";
     const abs = Math.abs(n);
     const s = n < 0 ? "-" : sign && n > 0 ? "+" : "";
-    if (abs >= 1_000_000) return `${s}R$${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 2).replace(".", ",")}M`;
-    if (abs >= 1_000) return `${s}R$${(abs / 1_000).toFixed(abs >= 10_000 ? 0 : 1).replace(".", ",")}k`;
+    if (abs >= 1_000_000) return `${s}R$${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 1 : 2).replace(".", ",")}M`;
+    // Sempre 1 casa em milhares (56k → 56,3k): esconder a fração fazia "R$56k"
+    // parecer redondo quando era 56,3k.
+    if (abs >= 1_000) return `${s}R$${(abs / 1_000).toFixed(1).replace(".", ",")}k`;
     return `${s}R$${abs.toFixed(0)}`;
   },
   pct(n, digits = 0) {
