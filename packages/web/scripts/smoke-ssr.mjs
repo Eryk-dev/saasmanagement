@@ -91,6 +91,8 @@ try {
     ["settings", "/src/screens/settings.jsx", "SettingsScreen", { saasId: "leverads" }, ""],
     ["social", "/src/screens/social.jsx", "SocialScreen", {}, "Comentários"],
     ["deal", "/src/screens/deal.jsx", "LeadDetail", { lead: window.SEED.LEADS[1], onClose() {} }, "Próximo passo"],
+    ["funcionarios", "/src/screens/funcionarios.jsx", "FuncionariosScreen", {}, "Análise de Equipe"],
+    ["aquisicao", "/src/screens/aquisicao.jsx", "AquisicaoScreen", {}, "Análise de Aquisição"],
   ];
   for (const [name, path, exportName, props, mustContain] of cases) {
     try {
@@ -106,6 +108,37 @@ try {
       console.error(`✗ ${name}: ${err.message}`);
       failed++;
     }
+  }
+  // Filtro de período: as datas são a régua de TODA a Visão geral, então a conta
+  // vale um teste de verdade e não só um render. Data fixa (quarta, 22/07/2026).
+  try {
+    const { periodWindow, PRESETS } = await server.ssrLoadModule("/src/components/period-picker.jsx");
+    const now = new Date("2026-07-22T15:00:00");
+    const w = (k, c = null) => periodWindow(k, c, now);
+    const eq = (name, got, want) => {
+      if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${name}: ${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
+    };
+    // Período de CALENDÁRIO corre até hoje; o fechado (passado) vai até o fim.
+    eq("este mês", [w("month").since, w("month").until], ["2026-07-01", "2026-07-22"]);
+    eq("mês passado", [w("lastMonth").since, w("lastMonth").until], ["2026-06-01", "2026-06-30"]);
+    eq("esta semana", [w("week").since, w("week").until], ["2026-07-20", "2026-07-22"]); // segunda
+    eq("semana passada", [w("lastWeek").since, w("lastWeek").until], ["2026-07-13", "2026-07-19"]);
+    eq("hoje", [w("today").since, w("today").until], ["2026-07-22", "2026-07-22"]);
+    eq("ontem", [w("yesterday").since, w("yesterday").until], ["2026-07-21", "2026-07-21"]);
+    eq("7 dias", [w("7d").since, w("7d").until], ["2026-07-16", "2026-07-22"]);
+    // Só dias ÚTEIS (as metas absolutas se distribuem neles): 01→22/07 = 16.
+    eq("úteis do mês", w("month").businessDays, 16);
+    // Janela anterior = MESMA duração colada antes (base das comparações).
+    eq("anterior do mês", [w("month").days, w("month").prevSince, w("month").prevUntil], [22, "2026-06-09", "2026-06-30"]);
+    const c = w("custom", { since: "2026-07-01", until: "2026-07-31" });
+    eq("personalizado", [c.days, c.label], [31, "01/07 a 31/07"]);
+    // Preferência antiga salva no localStorage não pode quebrar a tela.
+    eq("chave desconhecida", w("15d").since, w("30d").since);
+    if (!PRESETS.some((p) => p.key === "month")) throw new Error('falta o atalho "Este mês"');
+    console.log("✓ periodo");
+  } catch (err) {
+    console.error(`✗ periodo: ${err.message}`);
+    failed++;
   }
 } finally {
   await server.close();
