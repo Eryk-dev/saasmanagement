@@ -1,7 +1,7 @@
 import React from "react";
 import { api, clearKey } from "./lib/api.js";
 import { useActiveSaas } from "./lib/workspace.js";
-import { canSeeScreen } from "./lib/users.js";
+import { canSeeScreen, currentUser, userById, userPhoto } from "./lib/users.js";
 // App chrome v3 "Operations Terminal" — grouped nav rail + topbar with live clock.
 // A sidebar veste a MARCA do produto ativo (workspace): logo + nome no topo,
 // seletor de produto no pé (a "bolinha" com o contador abre o menu de troca).
@@ -334,19 +334,28 @@ function CmdK({ onClick }) {
   );
 }
 
-// Menu da conta — usuário REAL logado (gravado no login). Trocar senha + sair.
-// Quem entra por API key não tem usuário: mostra "API key", só com sair.
+// Cargo exibido no menu: as etiquetas de papel do time (Ajustes → Equipe). Não
+// é editável pelo próprio usuário — nome e foto são, o cargo é gestão.
+const ROLE_LABELS = { sdr: "SDR", closer: "Closer", integrator: "Integração", social: "Mídia social", admin: "Admin" };
+const cargoOf = (u) => (u?.roles || []).map((r) => ROLE_LABELS[r] || r).join(" · ") || "sem papel definido";
+
+// Menu da conta — usuário REAL logado (gravado no login). Meu perfil, trocar
+// senha e sair. Quem entra por API key não tem usuário: mostra "API key", só
+// com sair.
 function UserMenu() {
   const [open, setOpen] = useS(false);
   const [pwOpen, setPwOpen] = useS(false);
+  const [profileOpen, setProfileOpen] = useS(false);
   const ref = useR(null);
   useE(() => {
     function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
-  let user = null;
-  try { user = JSON.parse(localStorage.getItem("cockpit_user") || "null"); } catch { /* ignore */ }
+  // localStorage guarda o usuário do MOMENTO do login; o registro do bootstrap
+  // é o fresco (nome/foto trocados em outra sessão aparecem no próximo refresh).
+  const stored = currentUser();
+  const user = stored ? { ...stored, ...(userById(stored.id) || {}) } : null;
 
   async function logout() {
     try { await api.logout(); } catch { /* sessão já pode estar morta */ }
@@ -356,6 +365,7 @@ function UserMenu() {
   }
 
   const name = user?.name || "API key";
+  const photo = user ? userPhoto(user.id) : "";
   return (
     <div ref={ref} style={{ position: "relative" }}>
       <button
@@ -366,7 +376,7 @@ function UserMenu() {
           borderRadius: "var(--r-2)",
           background: open ? "var(--hover)" : "transparent",
         }}>
-        <UserDot name={name} />
+        <UserDot name={name} photo={photo} />
         <span className="hide-mobile" style={{ fontSize: 13, color: "var(--fg-2)", fontWeight: 500 }}>{name}</span>
         <span className="dim" style={{ fontSize: 10 }}>{open ? "▴" : "▾"}</span>
       </button>
@@ -382,13 +392,16 @@ function UserMenu() {
           zIndex: 80,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px" }}>
-            <UserDot name={name} />
+            <UserDot name={name} photo={photo} />
             <div>
               <div style={{ fontSize: 13, color: "var(--fg-1)" }}>{name}</div>
-              <div className="mono dim" style={{ fontSize: 10 }}>{user ? (user.role || "admin") : "acesso por chave"}</div>
+              <div className="mono dim" style={{ fontSize: 10 }}>{user ? cargoOf(user) : "acesso por chave"}</div>
             </div>
           </div>
           <div style={{ borderTop: "1px solid var(--line-1)", marginTop: 2, paddingTop: 2 }}>
+            {user && (
+              <button onClick={() => { setOpen(false); setProfileOpen(true); }} style={menuItemStyle}>Meu perfil…</button>
+            )}
             {user && (
               <button onClick={() => { setOpen(false); setPwOpen(true); }} style={menuItemStyle}>Trocar senha…</button>
             )}
@@ -396,6 +409,7 @@ function UserMenu() {
           </div>
         </div>
       )}
+      {profileOpen && <ProfileModal user={user} onClose={() => setProfileOpen(false)} />}
       {pwOpen && <PasswordModal onClose={() => setPwOpen(false)} />}
     </div>
   );
