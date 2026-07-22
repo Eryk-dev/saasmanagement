@@ -428,3 +428,33 @@ test("vaga com uma pessoa só mantém a meta inteira (não muda o que já valia)
   assert.equal(sb.sdr.find((x) => x.user === "u_sdr").goals.callsBooked.target, 40);
   await app.close();
 });
+
+// Uma taxa de fechamento só. A conversão sobre as calls AGENDADAS é CONTA
+// (comparecimento × fechamento), não meta digitada: com as duas editáveis dava
+// pra configurar 25% das agendadas e 25% das que aconteceram ao mesmo tempo,
+// que é impossível quando o comparecimento não é 100%.
+test("conversão sobre as AGENDADAS é derivada de comparecimento × fechamento", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("goals", { id: "gs", saas: "leverads", scope: "role", key: "sdr", metric: "showRate", target: 75, period: "month" });
+  await repo.create("goals", { id: "gc", saas: "leverads", scope: "role", key: "closer", metric: "conversaoCall", target: 40, period: "month" });
+  await repo.create("leads", { id: "l1", saas: "leverads", owner: "u_sdr", closer: "u_clo", stage: "Novo lead", createdAt: now });
+  await repo.create("leads", { id: "w1", saas: "leverads", closer: "u_clo", stage: "Ganho", amount: 500, createdAt: now, stageSince: now });
+  await repo.create("activities", { id: "st_w1", saas: "leverads", lead: "w1", type: "stage", at: now, meta: { from: "Follow-up", to: "Ganho" } });
+
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  assert.equal(sb.closer.find((x) => x.user === "u_clo").goals.conversaoCall.target, 40);
+  assert.equal(sb.closer.find((x) => x.user === "u_clo").goals.winRateCall.target, 30, "75% × 40%");
+  assert.equal(sb.closer.find((x) => x.user === "u_clo").goals.winRateCall.scope, "derived");
+  assert.equal(sb.sdr.find((x) => x.user === "u_sdr").goals.callWinRate.target, 30, "mesma conta no card do SDR");
+  assert.equal(sb.team.goals.callWinRate.target, 30);
+  assert.equal(sb.team.goals.closeRate.target, 40, "a régua de fechamento da Visão geral enfim tem meta");
+  await app.close();
+});
+
+test("sem meta configurada a derivada cai nos benchmarks (75% × 33%)", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("leads", { id: "l1", saas: "leverads", owner: "u_sdr", stage: "Novo lead", createdAt: now });
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  assert.equal(sb.sdr.find((x) => x.user === "u_sdr").goals.callWinRate.target, 24.75);
+  await app.close();
+});

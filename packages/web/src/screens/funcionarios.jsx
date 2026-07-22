@@ -41,7 +41,9 @@ function FuncionariosScreen({ onNav }) {
   const highlight = topPerformer(people);
   const coaching = people.flatMap((p) => {
     const checks = [
-      p.closer && { label: "Win rate", value: p.closer.winRateCall, target: p.closer.goals?.winRateCall?.target || 25, advice: "revisar ancoragem de preço nas calls" },
+      // Fechamento do closer = calls que ACONTECERAM (o furo é do comparecimento,
+      // cobrado na linha do SDR abaixo) — senão o mesmo número vira dois alertas.
+      p.closer && { label: "Conversão na call", value: p.closer.conversaoCall, target: p.closer.goals?.conversaoCall?.target || 33, advice: "revisar ancoragem de preço nas calls" },
       p.sdr && { label: "Calls → ganho", value: p.sdr.callWinRate, target: p.sdr.goals?.callWinRate?.target || 25, advice: "apertar o follow-up pós-call" },
       p.sdr && { label: "Taxa de agendamento", value: p.sdr.bookingRate, target: p.sdr.goals?.bookingRate?.target || 30, advice: "revisar a abordagem de qualificação" },
       p.cs && { label: "Retenção", value: p.cs.retentionRate, target: p.cs.goals?.retentionRate?.target || 95, advice: "revisar os pontos de risco do onboarding" },

@@ -369,7 +369,8 @@ const SDR_BENCHMARK_GOALS = [
   { metric: "contactRate", target: 80 }, // reach: % dos leads novos contatados
   { metric: "bookingRate", target: 30 }, // % dos leads que viram call agendada
   { metric: "showRate", target: 75 },    // % das calls em que a pessoa compareceu
-  { metric: "callWinRate", target: 25 }, // % das calls que fecharam
+  // callWinRate (ganhos ÷ agendadas) saiu: é CONTA de showRate × conversaoCall,
+  // não meta digitada (ver ensureCloseRateUnica).
 ];
 
 export async function ensureSdrGoals(repo) {
@@ -398,8 +399,9 @@ export async function ensureSdrGoals(repo) {
 // geral). Receita/Ganhos são QUOTA absoluta e o Leo define na mão, então não
 // semeamos. Marcador closerGoalsV1 respeita edição manual.
 const CLOSER_BENCHMARK_GOALS = [
-  { metric: "proposalWinRate", target: 30 }, // proposta → ganho
-  { metric: "winRateCall", target: 25 },     // call → ganho
+  // Uma taxa de fechamento só, sobre as calls que ACONTECERAM. `proposalWinRate`
+  // saiu (não alimentava nada) e `winRateCall` virou conta (ensureCloseRateUnica).
+  { metric: "conversaoCall", target: 33 },
 ];
 
 export async function ensureCloserGoals(repo) {
@@ -420,6 +422,48 @@ export async function ensureCloserGoals(repo) {
     await repo.update("products", product.id, { closerGoalsV1: true });
   }
   return created;
+}
+
+// UMA taxa de fechamento (22/07). O card do closer tinha "Call → ganho" e
+// "Proposta → ganho" que não conversavam: a segunda não alimentava NADA, e a
+// primeira era lida com dois denominadores (o placar sobre as AGENDADAS, o pace
+// sobre as que COMPARECERAM). Agora existe só `conversaoCall` = ganhos ÷ calls
+// que aconteceram; a conversão sobre as agendadas virou conta.
+//
+// A conversão de valor é o pulo do gato: 25% das agendadas com 75% de
+// comparecimento são 33% das que aconteceram. Divide pela meta de showRate do
+// produto (ou pelo benchmark) pra a régua do time não mudar de altura sozinha.
+export async function ensureCloseRateUnica(repo) {
+  let changed = 0;
+  const goals = await repo.list("goals");
+  for (const product of await repo.list("products")) {
+    if (product.closeRateUnicaV1) continue;
+    const mine = goals.filter((g) => !g.saas || g.saas === product.id);
+    const showGoal = Number(mine.find((g) => g.scope === "role" && g.key === "sdr" && g.metric === "showRate")?.target);
+    const show = showGoal > 0 ? showGoal / 100 : 0.75;
+    for (const old of mine.filter((g) => g.metric === "winRateCall")) {
+      const booked = Number(old.target);
+      const already = mine.find((g) => g.scope === old.scope && g.key === old.key && g.metric === "conversaoCall");
+      if (booked > 0 && !already) {
+        const target = Math.min(100, Math.round(booked / show));
+        await repo.create("goals", {
+          id: `goal_${product.id}_${old.scope}_${old.key}_conversaoCall`,
+          saas: product.id, scope: old.scope, key: old.key,
+          metric: "conversaoCall", target, period: old.period || "month",
+        });
+        changed++;
+      }
+      await repo.remove("goals", old.id); changed++;
+    }
+    // Métricas que deixaram de existir: a de proposta não alimentava nada e a
+    // callWinRate agora é derivada — deixá-las no banco só faria a tela de Metas
+    // ressuscitar campo removido.
+    for (const dead of mine.filter((g) => g.metric === "proposalWinRate" || g.metric === "callWinRate")) {
+      await repo.remove("goals", dead.id); changed++;
+    }
+    await repo.update("products", product.id, { closeRateUnicaV1: true });
+  }
+  return changed;
 }
 
 // Demanda de CONTEÚDO do Mídia social (fase de aprendizado: volume/consistência
@@ -739,6 +783,12 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] ${n} meta(s) de closer (qualidade) semeada(s)`);
   } catch (err) {
     console.error("[migration] ensureCloserGoals falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureCloseRateUnica(repo);
+    if (n) console.log(`[migration] ${n} meta(s) de fechamento unificadas em conversaoCall`);
+  } catch (err) {
+    console.error("[migration] ensureCloseRateUnica falhou:", err?.message || err);
   }
   try {
     const n = await ensureSocialGoals(repo);

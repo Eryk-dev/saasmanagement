@@ -129,7 +129,7 @@ test("sem histórico usa metas configuradas e depois os benchmarks", async () =>
     ["g1", "sdr", "contactRate", 90],
     ["g2", "sdr", "bookingRate", 40],
     ["g3", "sdr", "showRate", 80],
-    ["g4", "closer", "winRateCall", 20],
+    ["g4", "closer", "conversaoCall", 20],
     ["g5", "closer", "ticket", 10000],
   ]) await repo.create("goals", { id, saas: "leverads", scope: "role", key, metric, target });
 
@@ -203,7 +203,8 @@ test("conversão histórica zerada bloqueia o desdobramento sem gerar infinito",
   assert.equal(r.conversions.contactRate.value, 0);
   assert.equal(r.plan.blockedBy, "contactRate");
   assert.equal(r.plan.leads.remaining, null);
-  assert.equal(r.plan.contacts.remaining, 214);
+  // 12 ganhos ÷ 33% de fechamento = 37 calls ÷ 75% = 50 agendadas ÷ 30% = 167.
+  assert.equal(r.plan.contacts.remaining, 167);
   assert.equal(r.plan.wins.remaining, 12);
 
   await app.close();

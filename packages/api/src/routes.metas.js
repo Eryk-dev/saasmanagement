@@ -9,7 +9,11 @@
 // venda do mês (caixa), gravada em product.monthlyCashTarget — é ela que a
 // faixa "Meta do mês" da Visão geral e a Análise do pipeline perseguem.
 
-import { DEFAULT_CASH_TARGET, computePipelinePace } from "./routes.pipeline-pace.js";
+import { DEFAULT_CASH_TARGET, RATE_BENCHMARKS, computePipelinePace } from "./routes.pipeline-pace.js";
+
+// Benchmark do pace (0..1) vira o "padrão" em % que a tela mostra: um número só
+// pros dois lados.
+const pct = (r) => Math.round(r * 100);
 
 // Catálogo das métricas por vaga: rótulo, unidade e o benchmark padrão (o valor
 // que a Visão geral usa quando não há meta configurada). `default: null` = sem
@@ -24,10 +28,9 @@ export const META_CATALOG = [
   {
     role: "sdr", label: "SDR", hint: "prospecção e agendamento",
     metrics: [
-      { metric: "contactRate", label: "Taxa de contato", unit: "%", default: 80 },
-      { metric: "bookingRate", label: "Taxa de agendamento", unit: "%", default: 30 },
-      { metric: "showRate", label: "Comparecimento na call", unit: "%", default: 75 },
-      { metric: "callWinRate", label: "Conversão pós-call", unit: "%", default: 25 },
+      { metric: "contactRate", label: "Taxa de contato", unit: "%", hint: "dos leads novos, quantos você alcança", default: pct(RATE_BENCHMARKS.contactRate) },
+      { metric: "bookingRate", label: "Taxa de agendamento", unit: "%", hint: "dos contatados, quantos marcam call", default: pct(RATE_BENCHMARKS.bookingRate) },
+      { metric: "showRate", label: "Comparecimento na call", unit: "%", hint: "das agendadas, quantas acontecem", default: pct(RATE_BENCHMARKS.showRate) },
       { metric: "contacts", label: "Contatos no mês", unit: "n", default: null, team: true },
       { metric: "callsBooked", label: "Calls agendadas", unit: "n", default: null, team: true },
     ],
@@ -35,8 +38,11 @@ export const META_CATALOG = [
   {
     role: "closer", label: "Closer", hint: "call, proposta e fechamento",
     metrics: [
-      { metric: "winRateCall", label: "Call → ganho", unit: "%", default: 25 },
-      { metric: "proposalWinRate", label: "Proposta → ganho", unit: "%", default: 30 },
+      // UMA taxa de fechamento, sobre as calls que ACONTECERAM. É a mesma que o
+      // placar mede, que o pace usa na cadeia e que a régua da Visão geral
+      // colore. A conversão sobre as AGENDADAS não é campo: é conta
+      // (comparecimento × esta), senão dá pra configurar duas que se contradizem.
+      { metric: "conversaoCall", label: "Call → ganho", unit: "%", hint: "das calls que aconteceram", default: pct(RATE_BENCHMARKS.closeRate) },
       { metric: "won", label: "Ganhos no mês", unit: "n", default: null, team: true },
       { metric: "revenue", label: "Receita no mês", unit: "R$", default: null, team: true },
       { metric: "ticket", label: "Ticket médio", unit: "R$", default: null },

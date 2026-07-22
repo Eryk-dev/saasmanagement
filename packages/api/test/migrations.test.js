@@ -4,7 +4,7 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   ensureIntegrationStage, migrateLeverAdsCrmFunnel, migrateLeverAdsSdrCadence, migrateNutricaoSevenDays, ensureFunnelKinds,
   migrateGanhoAntesIntegracao, backfillWonAt, backfillPostSaleCustomers,
-  ensureLossReasons, ensureNoShowReason, ensureSdrGoals, ensureCloserGoals, ensureSocialGoals, ensureUserRoles, ensureUserSaasScope, ensureUserScreens, DEFAULT_LOSS_REASONS,
+  ensureLossReasons, ensureNoShowReason, ensureSdrGoals, ensureCloserGoals, ensureCloseRateUnica, ensureSocialGoals, ensureUserRoles, ensureUserSaasScope, ensureUserScreens, DEFAULT_LOSS_REASONS,
 } from "../src/migrations.js";
 
 const FUNNEL = [
@@ -223,9 +223,9 @@ test("ensureSdrGoals semeia metas de taxa só em funil com call, uma vez, sem du
   // meta de contactRate já existente (edição manual) não é duplicada
   await repo.create("goals", { id: "g0", saas: "lev", scope: "role", key: "sdr", metric: "contactRate", target: 90, period: "month" });
 
-  assert.equal(await ensureSdrGoals(repo), 3); // bookingRate/showRate/callWinRate (contactRate já tinha)
+  assert.equal(await ensureSdrGoals(repo), 2); // bookingRate/showRate (contactRate já tinha; callWinRate agora é conta)
   const gl = (await repo.list("goals")).filter((g) => g.saas === "lev" && g.key === "sdr");
-  assert.deepEqual(gl.map((g) => g.metric).sort(), ["bookingRate", "callWinRate", "contactRate", "showRate"]);
+  assert.deepEqual(gl.map((g) => g.metric).sort(), ["bookingRate", "contactRate", "showRate"]);
   assert.equal(gl.find((g) => g.metric === "contactRate").target, 90); // preserva a manual
   assert.equal(gl.find((g) => g.metric === "bookingRate").target, 30);
   assert.equal((await repo.list("goals")).filter((g) => g.saas === "semcall").length, 0); // sem call, nada
@@ -238,10 +238,10 @@ test("ensureCloserGoals semeia metas de qualidade só em funil com call, uma vez
   await repo.create("products", { id: "lev", funnel: [{ stage: "Call agendada", kind: "call" }] });
   await repo.create("products", { id: "semcall", funnel: [{ stage: "Novo", kind: "novo" }] });
 
-  assert.equal(await ensureCloserGoals(repo), 2); // proposalWinRate + winRateCall
+  assert.equal(await ensureCloserGoals(repo), 1); // uma taxa de fechamento só
   const gl = (await repo.list("goals")).filter((g) => g.saas === "lev" && g.key === "closer");
-  assert.deepEqual(gl.map((g) => g.metric).sort(), ["proposalWinRate", "winRateCall"]);
-  assert.equal(gl.find((g) => g.metric === "proposalWinRate").target, 30);
+  assert.deepEqual(gl.map((g) => g.metric).sort(), ["conversaoCall"]);
+  assert.equal(gl.find((g) => g.metric === "conversaoCall").target, 33);
   assert.equal((await repo.list("goals")).filter((g) => g.saas === "semcall").length, 0);
   assert.equal(await ensureCloserGoals(repo), 0); // idempotente (marcador closerGoalsV1)
 });
@@ -518,4 +518,33 @@ test("backfillPostSaleCustomers: card já na entrega vira cliente; ordem antiga 
   ] });
   await antigo.create("leads", { id: "x1", saas: "leverads", stage: "Integração", amount: 1000 });
   assert.equal(await backfillPostSaleCustomers(antigo), 0);
+});
+
+// "Call → ganho" era lida com DOIS denominadores (placar sobre as agendadas,
+// pace sobre as que compareceram) e "Proposta → ganho" não alimentava nada.
+test("ensureCloseRateUnica converte winRateCall em conversaoCall pelo comparecimento e limpa as mortas", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "lev" });
+  await repo.create("goals", { id: "g1", saas: "lev", scope: "role", key: "sdr", metric: "showRate", target: 75, period: "month" });
+  await repo.create("goals", { id: "g2", saas: "lev", scope: "role", key: "closer", metric: "winRateCall", target: 25, period: "month" });
+  await repo.create("goals", { id: "g3", saas: "lev", scope: "role", key: "closer", metric: "proposalWinRate", target: 30, period: "month" });
+  await repo.create("goals", { id: "g4", saas: "lev", scope: "role", key: "sdr", metric: "callWinRate", target: 25, period: "month" });
+  await repo.create("goals", { id: "g5", saas: "lev", scope: "user", key: "leo", metric: "winRateCall", target: 30, period: "month" });
+
+  assert.ok(await ensureCloseRateUnica(repo) > 0);
+  const gl = await repo.list("goals");
+  // 25% das AGENDADAS com 75% de comparecimento = 33% das que aconteceram.
+  assert.equal(gl.find((g) => g.scope === "role" && g.metric === "conversaoCall").target, 33);
+  assert.equal(gl.find((g) => g.scope === "user" && g.metric === "conversaoCall").target, 40); // 30 ÷ 0,75
+  // as que saíram do catálogo não podem sobrar no banco
+  assert.deepEqual(gl.map((g) => g.metric).sort(), ["conversaoCall", "conversaoCall", "showRate"]);
+  assert.equal(await ensureCloseRateUnica(repo), 0); // idempotente (closeRateUnicaV1)
+});
+
+test("ensureCloseRateUnica sem meta de comparecimento usa o benchmark de 75%", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "lev" });
+  await repo.create("goals", { id: "g2", saas: "lev", scope: "role", key: "closer", metric: "winRateCall", target: 15, period: "month" });
+  await ensureCloseRateUnica(repo);
+  assert.equal((await repo.list("goals")).find((g) => g.metric === "conversaoCall").target, 20); // 15 ÷ 0,75
 });
