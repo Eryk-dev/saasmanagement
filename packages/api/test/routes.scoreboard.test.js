@@ -219,6 +219,25 @@ test("CS: responsável do papel aparece mesmo sem conta (pra ver a meta)", async
   await app.close();
 });
 
+test("SDR e closer do papel aparecem mesmo com 0 atividade na janela (pra ver a meta)", async () => {
+  // Janela vazia (jun/2026, antes de todo o dataset): o SDR e o closer não têm
+  // lead/call/ganho ali. Antes o placar os SUMIA (filtro por atividade), então
+  // o "Desempenho do time" perdia o SDR no filtro Hoje. Agora o membro do papel
+  // fica (igual ao CS), mostrando zeros e a meta.
+  const { app } = await buildApp();
+  const empty = "?since=2026-06-01&until=2026-06-30";
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${empty}` })).json();
+  const sdr = sb.sdr.find((x) => x.user === "u_sdr");
+  assert.ok(sdr, "o SDR aparece mesmo sem atividade na janela");
+  assert.equal(sdr.leadsNew, 0);
+  assert.equal(sdr.callsBooked, 0);
+  const clo = sb.closer.find((x) => x.user === "u_clo");
+  assert.ok(clo, "o closer aparece mesmo sem atividade na janela");
+  assert.equal(clo.calls, 0);
+  assert.equal(clo.won, 0);
+  await app.close();
+});
+
 test("Mídia social: papel aparece com a demanda de conteúdo (produção 0 por ora)", async () => {
   const { app, repo } = await buildApp();
   await repo.create("users", { id: "u_soc", name: "Vini Vídeo", roles: ["social"] });
