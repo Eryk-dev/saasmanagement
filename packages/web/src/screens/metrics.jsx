@@ -1301,8 +1301,9 @@ function PlacementTable({ placements, money }) {
 // dor/anúncio não trouxe ninguém da grade.
 const GRADES = ["S", "A", "B", "C", "D", "E"];
 // Clientes A/B/C numa célula só, uma linha por grade ("2 A · R$ 43,00 cada") —
-// o MESMO formato da coluna Clientes ABC da tabela de anúncios.
-function AbcCell({ abc, abcCost, money }) {
+// o MESMO formato da coluna Clientes ABC da tabela de anúncios. Exportado pra
+// o teste A/B dos Formulários usar a MESMA célula (sem custo lá).
+export function AbcCell({ abc, abcCost, money }) {
   return (
     <span className="tnum" style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1, fontSize: 11.5 }}>
       {abc && GRADES.some((g) => abc[g] > 0)

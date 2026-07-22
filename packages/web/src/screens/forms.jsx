@@ -8,6 +8,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { useAttribution } from "../lib/pains.js";
 import { InsightsList } from "../components/insights.jsx";
 import { sourceLabel } from "../lib/sources.js";
+import { AbcCell } from "./metrics.jsx";
 import { PageHead, Card } from "../components/viz.jsx";
 // Form builder — formulários de captação por SaaS, estilo Typeform: uma pergunta
 // por vez, branching por opção, tema por marca. Lista → editor (com preview
@@ -59,9 +60,9 @@ const slug = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
 
 // Tabela do teste A/B no card — mesmo desenho da "Por dor" (Publicidade):
 // grid fracionário, número forte + contexto pequeno na linha de baixo.
-const AB_GRID = "minmax(240px, 2.4fr) .5fr .8fr .8fr .5fr .5fr .5fr .5fr .5fr .5fr .75fr .8fr .85fr";
-// Colunas de qualidade do lead no A/B — 5 níveis (A maior … E menor).
-const AB_GRADES = ["S", "A", "B", "C", "D", "E"];
+// Uma coluna só "Clientes ABC" (mesma célula da Publicidade), no lugar das 6
+// colunas separadas por grade.
+const AB_GRID = "minmax(240px, 2.4fr) .5fr .8fr .8fr minmax(120px, 1fr) .75fr .8fr .85fr";
 
 // Célula numérica: contagem em negrito em cima, subtexto (%) embaixo; zero
 // vira "—" — zero cinza repetido em toda célula é o que deixava a leitura ruim.
@@ -264,15 +265,13 @@ function FormsScreen({ saasId }) {
                               (visitas → começar → lead), potencial (cliente A/B/C), call
                               agendada e fechamento (ganhos + receita). */}
                           <div className="tbl-x" style={{ border: "1px solid var(--line-faint)", borderRadius: "var(--r-3)", overflow: "auto" }}>
-                            <div style={{ minWidth: 1290 }}>
+                            <div style={{ minWidth: 1010 }}>
                               <div style={{ display: "grid", gridTemplateColumns: AB_GRID, gap: 12, padding: "10px 18px", fontSize: 10.5, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", background: "var(--bg-inset)" }}>
                                 <span title="texto da welcome que o lead viu">Headline</span>
                                 <span style={{ textAlign: "right" }} title="sessões únicas que viram a variante">Visitas</span>
                                 <span style={{ textAlign: "right" }} title="clicaram em começar · % das visitas">Começaram</span>
                                 <span style={{ textAlign: "right" }} title="finalizaram o form · % das visitas">Leads</span>
-                                {AB_GRADES.map((g) => (
-                                  <span key={g} style={{ textAlign: "right", color: GRADE_STYLE[g].ink }} title={`clientes potencial ${g} que chegaram`}>Cliente {g}</span>
-                                ))}
+                                <span style={{ textAlign: "right" }} title="clientes por potencial (A/B/C) que a variante trouxe, na mesma leitura da Publicidade">Clientes ABC</span>
                                 <span style={{ textAlign: "right" }} title="leads com call agendada com o closer · % dos leads">Call</span>
                                 <span style={{ textAlign: "right" }} title="viraram contrato (Ganho) · % dos leads">Fecharam</span>
                                 <span style={{ textAlign: "right" }} title="soma do valor dos contratos fechados">Receita</span>
@@ -301,7 +300,7 @@ function FormsScreen({ saasId }) {
                                         <span className="tnum" style={{ textAlign: "right" }}>{window.fmt.int(v.views)}</span>
                                         <AbNum count={v.starts} sub={`${pct(v.starts, v.views)} das visitas`} />
                                         <AbNum count={vLeads} sub={`${pct(v.submits, v.views)} das visitas`} />
-                                        {AB_GRADES.map((code) => <AbNum key={code} count={gr[code] || 0} ink={GRADE_STYLE[code].ink} />)}
+                                        <span style={{ justifySelf: "end" }}><AbcCell abc={gr} abcCost={null} money={window.fmt.money} /></span>
                                         <AbNum count={v.calls || 0} sub={`${pct(v.calls || 0, vLeads || 0)} dos leads`} />
                                         <AbNum count={v.won || 0} sub={`${pct(v.won || 0, vLeads || 0)} dos leads`} ink="var(--pos)" />
                                         <span className="tnum" style={{ textAlign: "right", fontWeight: 600, color: v.revenue ? "var(--fg-1)" : "var(--fg-4)" }}>{v.revenue ? window.fmt.money(v.revenue) : "—"}</span>
