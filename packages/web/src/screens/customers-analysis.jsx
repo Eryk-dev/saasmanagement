@@ -46,6 +46,9 @@ function cashSplit(c, now) {
   return { cash, future };
 }
 
+// Ciclo da assinatura → rótulo (mesma régua da lista/card do cliente).
+const CYCLE_LABEL = { monthly: "mensal", quarterly: "trimestral", semiannual: "semestral", annual: "anual" };
+
 function planBucket(plan) {
   const t = String(plan || "").toLowerCase();
   // Mentoria: o pacote comprado É a categoria (4 e 8 consultas contam separado).
@@ -53,11 +56,12 @@ function planBucket(plan) {
   if (pack) return `Mentoria · ${pack[1]} consultas`;
   if (t.includes("único") || t.includes("unico")) return "Serviço único";
   if (t.includes("semestral")) return "Semestral";
+  if (t.includes("trimestral")) return "Trimestral";
   if (t.includes("mensal")) return "Mensal";
   if (t.includes("anual")) return "Anual";
   return "sem plano";
 }
-const PLAN_ORDER = ["Anual", "Semestral", "Serviço único", "Mensal", "sem plano"];
+const PLAN_ORDER = ["Anual", "Semestral", "Trimestral", "Serviço único", "Mensal", "sem plano"];
 
 const SHORTCUTS = [
   { key: "tudo", label: "Tudo" },
@@ -80,9 +84,22 @@ function shortcutRange(key, now) {
 // de assinatura (preço mensal médio e LTV, que derivam de MRR ÷ churn) não
 // significam nada ali e saem — o resto (faturado, caixa, futuro, ticket, churn
 // de famílias) vale igual.
-export function CustomersAnalysis({ customers, isKids = false }) {
+export function CustomersAnalysis({ customers, subs = [], isKids = false }) {
   const money = window.fmt.money;
   const [shortcut, setShortcut] = useState("tudo");
+
+  // Plano do cliente como o card/lista mostram: a ASSINATURA manda (ciclo →
+  // anual/semestral/…), o campo c.plan é só o fallback. Assim "sem plano" só
+  // sobra pra quem realmente não tem nem assinatura nem plano preenchido.
+  const planOf = useMemo(() => {
+    const byCustomer = new Map();
+    for (const s of subs) {
+      const cur = byCustomer.get(s.customer);
+      // prioriza a ativa/past_due (mesma escolha do mainSub da lista)
+      if (!cur || (s.status === "active" || s.status === "past_due")) byCustomer.set(s.customer, s);
+    }
+    return (c) => CYCLE_LABEL[byCustomer.get(c.id)?.cycle] || c.plan || "";
+  }, [subs]);
   const [fromInput, setFromInput] = useState("");
   const [toInput, setToInput] = useState("");
   const custom = shortcut === "custom";
@@ -122,7 +139,7 @@ export function CustomersAnalysis({ customers, isKids = false }) {
 
     const planos = new Map();
     for (const c of cohort) {
-      const b = planBucket(c.plan);
+      const b = planBucket(planOf(c));
       planos.set(b, (planos.get(b) || 0) + 1);
     }
 
@@ -148,7 +165,7 @@ export function CustomersAnalysis({ customers, isKids = false }) {
     const ltv = lifeMonths != null && mrrMedio > 0 ? mrrMedio * lifeMonths : null;
 
     return { cohort, faturado, caixa, futuro, mrrMedio, ticket, planos, churned, baseStart, churnPct, lifeMonths, ltv };
-  }, [customers, shortcut, custom, fromInput, toInput]);
+  }, [customers, shortcut, custom, fromInput, toInput, planOf]);
 
   const pct = (v) => `${Math.round(v * 100)}%`;
   const dateField = {

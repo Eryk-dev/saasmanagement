@@ -179,7 +179,7 @@ function CustomersScreen({ initialTab = "base" }) {
           />
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, alignItems: "start" }}>
-            <CustomersAnalysis customers={customers} isKids={isKidsWorkspace} />
+            <CustomersAnalysis customers={customers} subs={subs} isKids={isKidsWorkspace} />
 
             {!isKidsWorkspace && (
               <Card title="Clientes por nível" hint="categoria (A/B/C…) da carteira ativa, pela grade do lead">
