@@ -1550,10 +1550,21 @@ export function busyView(concreteKeys, userId) {
   // compromisso com mais de uma pessoa ocupa a agenda de todas).
   const blocks = ((typeof window !== "undefined" && window.SEED?.AGENDA_BLOCKS) || [])
     .filter((b) => b.user === userId || (Array.isArray(b.users) && b.users.includes(userId)));
+  // Consulta da mentoria (UniqueKids) ocupa a agenda de quem atende igual a uma
+  // call: quem faz o encontro do cliente não pode receber call de venda por
+  // cima. Entra AQUI (e não em callBusyKeys) pra valer em toda grade — call,
+  // follow-up e integração — sem cada uma ter que lembrar.
+  const consultKeys = new Set();
+  for (const c of (typeof window !== "undefined" && window.SEED?.CONSULTATION_SLOTS) || []) {
+    if (c.user !== userId) continue;
+    const d = new Date(c.at);
+    if (Number.isFinite(d.getTime())) for (const k of occupySlots(d, c.minutes)) consultKeys.add(k);
+  }
   return {
-    has: (key) => concreteKeys.has(key) || !!matchBlock(blocks, key),
+    has: (key) => concreteKeys.has(key) || consultKeys.has(key) || !!matchBlock(blocks, key),
     info: (key) => {
       if (concreteKeys.has(key)) return { kind: "call" };
+      if (consultKeys.has(key)) return { kind: "block", reason: "consulta da mentoria" };
       const b = matchBlock(blocks, key);
       // Compromisso (kind "event") ocupa igual; o tooltip mostra o título dele.
       return b ? { kind: "block", reason: b.title || b.reason || "" } : null;

@@ -338,7 +338,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // faturamento/clientes não podem chegar no navegador de quem não vê as telas.
   app.get("/api/bootstrap", async (req) => {
     const can = (screen) => canScreen(req.authUser, screen);
-    const [products, customers, attention, leads, nps, lbMonth, lbAll, goals, portfolio, people, agendaBlocks] =
+    const [products, customers, attention, leads, nps, lbMonth, lbAll, goals, portfolio, people, agendaBlocks, consultations] =
       await Promise.all([
         repo.list("products"),
         repo.list("customers"),
@@ -351,6 +351,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         computePortfolio(repo),
         peopleObject(repo),
         repo.list("agenda_blocks"),
+        repo.list("consultations").catch(() => []),
       ]);
     // Sem nenhuma tela financeira, os números de receita saem até do catálogo
     // de produtos (o funil/config continua — o pipeline precisa dele).
@@ -366,6 +367,14 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       CUSTOMERS: can("customers") ? customers : [],
       LEADS: can("pipeline") || can("today") || can("analise") ? leads : [], // Meu dia e Análise do pipeline = views dos mesmos leads
       AGENDA_BLOCKS: agendaBlocks, // bloqueios de horário por pessoa (tela Agenda) — alimentam a "agenda ocupada" ao marcar call/integração
+      // Consulta da mentoria ocupa a agenda de quem atende: sem isso dava pra
+      // marcar call de venda por cima do encontro de um cliente. Vai SÓ a
+      // ocupação (quem/quando/quanto dura) — nome do cliente, da criança e
+      // telefone ficam na tela Consultas, que tem guard próprio, senão o
+      // bootstrap de todo mundo carregaria dado de família.
+      CONSULTATION_SLOTS: (consultations || [])
+        .filter((c) => c.at && c.owner && c.status !== "canceled")
+        .map((c) => ({ user: c.owner, at: c.at, minutes: Number(c.durationMin) > 0 ? Number(c.durationMin) : 60 })),
 
       NPS: can("customers") ? nps : [],
       LEADERBOARD_MONTH: can("overview") ? lbMonth : [],

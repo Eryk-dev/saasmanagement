@@ -78,9 +78,15 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   // 14h colide tanto com uma call das 14h quanto com uma das 14h30. Checar só o
   // primeiro slot deixaria a segunda passar.
   const callConflict = (v) => callSlotKeys(v).some((k) => callBusy.has(k));
-  const callBusyMsg = lead.callAt && callConflict(lead.callAt)
-    ? `${displayName(lead.closer) || "o closer"} já tem call nesse horário`
-    : "";
+  // O que está ocupando importa: "já tem call" numa consulta da mentoria mandaria
+  // o SDR procurar uma call que não existe.
+  const callConflictInfo = (v) => {
+    for (const k of callSlotKeys(v)) { const i = callBusy.info(k); if (i) return i; }
+    return null;
+  };
+  const conflictAt = lead.callAt ? callConflictInfo(lead.callAt) : null;
+  const callBusyMsg = !conflictAt ? ""
+    : `${displayName(lead.closer) || "o closer"} já tem ${conflictAt.kind === "call" ? "call" : (conflictAt.reason || "compromisso")} nesse horário`;
 
   function patch(p) {
     dirty.current = true;
