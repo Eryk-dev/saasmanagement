@@ -18,13 +18,17 @@ function scaledGoal(goal, days) {
   return Math.max(1, Math.round(goal.target * ((days || 30.4) / base)));
 }
 
-// Meta de calls agendadas DERIVADA do volume: leads do período anterior × meta
-// de taxa de agendamento; sem isso, cai numa meta absoluta de callsBooked.
+// Meta de calls agendadas: a CONFIGURADA vence (a tela Metas a deriva do pace,
+// já repartida entre os SDRs, então é ela que fecha com a meta da empresa). Sem
+// meta configurada, cai no alvo dinâmico: leads do período anterior × meta de
+// taxa de agendamento.
 function bookingTarget(p, days) {
+  const fixed = scaledGoal(p.sdr?.goals?.callsBooked, days);
+  if (fixed) return fixed;
   const rate = p.sdr?.goals?.bookingRate?.target;
   const base = p.sdr?.leadsPrev ?? p.sdr?.leadsNew;
   if (rate > 0 && base > 0) return Math.round((base * rate) / 100);
-  return scaledGoal(p.sdr?.goals?.callsBooked, days);
+  return null;
 }
 
 export function PersonMetric({ metric }) {
@@ -94,6 +98,7 @@ export function metricsFor(p, days) {
   ];
   if (p.sdr) return [
     { label: "Calls agendadas", value: p.sdr.callsBooked, target: bookingTarget(p, days), fmt: asInt },
+    { label: "Contatos", value: p.sdr.contacted, target: scaledGoal(p.sdr.goals?.contacts, days), fmt: asInt },
     { label: "Taxa de agendamento", value: p.sdr.bookingRate, target: p.sdr.goals?.bookingRate?.target, good: 30, fmt: asRate, rate: true },
     { label: "Calls → ganho", value: p.sdr.callWinRate, target: p.sdr.goals?.callWinRate?.target, good: 25, fmt: asRate, rate: true },
   ];
