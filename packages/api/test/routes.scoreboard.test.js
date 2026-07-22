@@ -315,6 +315,45 @@ test("Funil do TIME: histórico pré-cockpit (product.paceAdjust) soma ao funil 
   await app.close();
 });
 
+// O pré-cockpit compensa leads trabalhados ANTES do time registrar atividade no
+// cockpit. Numa janela recente (que começa no/depois do 1º registro), o funil
+// tem que seguir o filtro e mostrar só o dado real — senão "ontem" aparecia com
+// contatados > leads. Época = 1º dia com atividade do produto (aqui, 07-10).
+test("Funil do TIME: janela recente (a partir do 1º registro) NÃO soma o pré-cockpit", async () => {
+  const { app, repo } = await buildApp();
+  await repo.update("products", "leverads", { paceAdjust: { contacted: 80, booked: 10, shown: 10, won: 7 } });
+  await repo.create("leads", { id: "a1", saas: "leverads", stage: "Ganho", amount: 500, createdAt: now, stageSince: now });
+  await repo.create("activities", { id: "tq_a1", saas: "leverads", lead: "a1", type: "whatsapp", author: "u_sdr", at: now });
+  await repo.create("activities", { id: "st_a1", saas: "leverads", lead: "a1", type: "stage", author: "u_sdr", at: now, meta: { from: "Qualificando", to: "Call agendada" } });
+  await repo.create("activities", { id: "wa1", saas: "leverads", lead: "a1", type: "stage", author: "u_clo", at: now, meta: { from: "Call agendada", to: "Ganho" } });
+
+  // Janela que começa NO dia do 1º registro (07-10): não alcança o pré-cockpit.
+  const t = (await app.inject({ url: `/api/scoreboard/leverads?since=2026-07-10&until=2026-07-31` })).json().team;
+  assert.equal(t.paceAdjust, null);   // ajuste some quando a janela não alcança a época
+  assert.equal(t.contacted, 1);       // só o real (sem +80)
+  assert.equal(t.callsBooked, 1);     // sem +10
+  assert.equal(t.shown, 1);           // sem +10
+  assert.equal(t.wonFromCalls, 1);    // sem +7
+  await app.close();
+});
+
+// A data de corte pode ser fixada em product.paceAdjust.before (vence a época
+// derivada): útil quando há atividade backdated que mexeria no 1º registro.
+test("Funil do TIME: paceAdjust.before fixa a data de corte do histórico", async () => {
+  const { app, repo } = await buildApp();
+  await repo.update("products", "leverads", { paceAdjust: { contacted: 80, before: "2026-07-05" } });
+  await repo.create("leads", { id: "a1", saas: "leverads", stage: "Qualificando", createdAt: now, stageSince: now });
+  await repo.create("activities", { id: "tq_a1", saas: "leverads", lead: "a1", type: "whatsapp", author: "u_sdr", at: now });
+
+  // since=07-01 < before(07-05) → aplica; since=07-05 (==before) → não aplica.
+  const applied = (await app.inject({ url: `/api/scoreboard/leverads?since=2026-07-01&until=2026-07-31` })).json().team;
+  assert.equal(applied.contacted, 81);           // 1 + 80
+  const skipped = (await app.inject({ url: `/api/scoreboard/leverads?since=2026-07-05&until=2026-07-31` })).json().team;
+  assert.equal(skipped.paceAdjust, null);
+  assert.equal(skipped.contacted, 1);            // só o real
+  await app.close();
+});
+
 test("404 pra produto inexistente", async () => {
   const { app } = await buildApp();
   assert.equal((await app.inject({ url: "/api/scoreboard/nada" })).statusCode, 404);
