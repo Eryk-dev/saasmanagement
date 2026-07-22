@@ -158,3 +158,47 @@ test("catálogo marca quais metas são do TIME (repartem) e quais são de cada u
   assert.equal(m("sdr", "bookingRate").team, undefined, "taxa não se reparte");
   assert.equal(m("integrator", "nps").team, undefined, "índice não se reparte");
 });
+
+// ── Meta por MÊS (agenda) + campo vazio seguindo a meta ─────────────────────
+// O Leo configura agosto hoje; quando vira o mês, a plataforma inteira passa a
+// perseguir o número novo sem ninguém mexer em nada.
+const { cashTargetFor } = await import("../src/routes.pipeline-pace.js");
+
+test("meta por mês: o mês configurado vence o padrão, e o padrão vence o do sistema", () => {
+  const p = { monthlyCashTarget: 120000, monthlyCashTargets: { "2026-08": 150000, "2026-09": 0 } };
+  assert.deepEqual(cashTargetFor(p, "2026-08"), { target: 150000, configured: true, source: "month" });
+  assert.deepEqual(cashTargetFor(p, "2026-07"), { target: 120000, configured: true, source: "default" });
+  assert.deepEqual(cashTargetFor(p, "2026-09"), { target: 120000, configured: true, source: "default" }, "zero no mapa não zera a meta");
+  assert.deepEqual(cashTargetFor({}, "2026-07"), { target: 120000, configured: false, source: "system" });
+});
+
+test("agenda de meses: GET lista os próximos e o PUT grava, apaga e ignora lixo", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [], monthlyCashTarget: 120000 });
+  const app = Fastify();
+  registerMetasRoutes(app, repo);
+
+  const antes = (await app.inject({ url: "/api/metas/leverads" })).json();
+  assert.equal(antes.company.months.length, 6, "mês corrente + 5");
+  assert.equal(antes.company.months[0].current, true);
+  assert.equal(antes.company.months[0].target, null, "sem valor próprio ainda");
+  assert.equal(antes.company.months[0].effective, 120000, "mas segue o padrão");
+
+  const m1 = antes.company.months[1].month;
+  const r = await app.inject({
+    method: "PUT", url: "/api/metas/leverads",
+    payload: { goals: [], company: { months: { [m1]: 150000, "2026-13": 999, "mês": 1 } } },
+  });
+  assert.equal(r.statusCode, 200);
+  const depois = (await app.inject({ url: "/api/metas/leverads" })).json();
+  assert.equal(depois.company.months[1].target, 150000);
+  assert.equal(depois.company.months[1].source, "month");
+  const prod = await repo.get("products", "leverads");
+  assert.deepEqual(Object.keys(prod.monthlyCashTargets), [m1], "mês inválido não entra");
+
+  // apagar o mês devolve ele pro padrão
+  await app.inject({ method: "PUT", url: "/api/metas/leverads", payload: { goals: [], company: { months: { [m1]: "" } } } });
+  const limpo = (await app.inject({ url: "/api/metas/leverads" })).json();
+  assert.equal(limpo.company.months[1].target, null);
+  assert.equal(limpo.company.months[1].effective, 120000);
+});

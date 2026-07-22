@@ -12,6 +12,20 @@ import {
 // editável na tela Metas → Empresa). Exportada pra tela de Metas mostrar o padrão.
 export const DEFAULT_CASH_TARGET = 120_000;
 
+// Meta de venda DAQUELE mês. `product.monthlyCashTargets` é um mapa
+// "AAAA-MM" → valor: o Leo configura os meses seguintes com antecedência e,
+// quando o mês vira, a plataforma inteira (faixa da Visão geral, pace, metas
+// derivadas das vagas) passa a perseguir o número novo sem ninguém mexer em
+// nada. Sem valor pro mês, vale o padrão do produto; sem padrão, o do sistema.
+export function cashTargetFor(product, month) {
+  const byMonth = product?.monthlyCashTargets;
+  const doMes = byMonth && typeof byMonth === "object" ? Number(byMonth[month]) : NaN;
+  if (Number.isFinite(doMes) && doMes > 0) return { target: doMes, configured: true, source: "month" };
+  const padrao = Number(product?.monthlyCashTarget);
+  if (Number.isFinite(padrao) && padrao > 0) return { target: padrao, configured: true, source: "default" };
+  return { target: DEFAULT_CASH_TARGET, configured: false, source: "system" };
+}
+
 // Benchmark de cada taxa do funil (SaaS inbound morno), usado quando não há
 // histórico nem meta. Mora AQUI porque é a cadeia do pace que aplica, e o
 // catálogo da tela Metas importa daqui — um número só por taxa, senão a tela
@@ -122,8 +136,9 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   const collectedToday = round2(paidMonth
     .filter((i) => dayKey(i.paidAt) === today)
     .reduce((a, i) => a + (Number(i.amount) || 0), 0));
-  const targetConfigured = Number(product.monthlyCashTarget) > 0;
-  const target = targetConfigured ? Number(product.monthlyCashTarget) : DEFAULT_CASH_TARGET;
+  const alvo = cashTargetFor(product, month);
+  const targetConfigured = alvo.configured;
+  const target = alvo.target;
   const gap = round2(Math.max(0, target - collected));
   const expectedToDate = round2(target * (calendar.elapsed / Math.max(1, calendar.total)));
   const actualDailyPace = calendar.elapsed > 0 ? round2(collected / calendar.elapsed) : 0;

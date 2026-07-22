@@ -9,7 +9,8 @@
 // venda do mês (caixa), gravada em product.monthlyCashTarget — é ela que a
 // faixa "Meta do mês" da Visão geral e a Análise do pipeline perseguem.
 
-import { DEFAULT_CASH_TARGET, RATE_BENCHMARKS, computePipelinePace } from "./routes.pipeline-pace.js";
+import { DEFAULT_CASH_TARGET, RATE_BENCHMARKS, computePipelinePace, cashTargetFor } from "./routes.pipeline-pace.js";
+import { monthKey } from "./metrics-core.js";
 
 // Benchmark do pace (0..1) vira o "padrão" em % que a tela mostra: um número só
 // pros dois lados.
@@ -91,6 +92,9 @@ const ROLES = new Set(META_CATALOG.map((r) => r.role));
 // várias metas no mesmo tick, e torna o upsert idempotente por construção.
 const goalId = (saas, scope, key, metric) => `goal_${saas}_${scope}_${key}_${metric}`;
 
+// Quantos meses à frente a tela deixa configurar (mês corrente + 5).
+const MONTHS_AHEAD = 6;
+
 // Desdobramento da meta do MÊS CHEIO pela cadeia do pace. O `plan` do pace
 // persegue o que FALTA (gap ÷ dias restantes) porque serve pra tocar o dia; a
 // meta é do mês inteiro, então aqui a conta parte do alvo cheio — mas pelas
@@ -152,9 +156,21 @@ export function registerMetasRoutes(app, repo) {
       const g = goals.find((x) => x.scope === "role" && x.key === role && x.metric === metric);
       return g ? Number(g.target) : null;
     };
+    // Derivação da meta do mês (cadeia do pace) — best-effort, ver mais abaixo.
+    let derived = null;
+    try { derived = deriveGoalsFromPace(await computePipelinePace(repo, product)); }
+    catch { derived = null; }
+    const derivedByMetric = Object.fromEntries((derived?.goals || []).map((g) => [`${g.role}.${g.metric}`, g.target]));
     const roles = META_CATALOG.map((r) => ({
       role: r.role, label: r.label, hint: r.hint,
-      metrics: r.metrics.map((m) => ({ ...m, target: roleTarget(r.role, m.metric) })),
+      metrics: r.metrics.map((m) => ({
+        ...m,
+        target: roleTarget(r.role, m.metric),
+        // O que a meta do mês EXIGE dessa métrica. Campo vazio na tela passa a
+        // valer esse número (o placar usa o mesmo fallback), então nenhuma vaga
+        // fica sem régua e nenhuma régua contradiz a meta da empresa.
+        derived: derivedByMetric[`${r.role}.${m.metric}`] ?? null,
+      })),
     }));
     // Time do produto com papel (pros overrides por pessoa).
     const users = (await repo.list("users").catch(() => []))
@@ -165,18 +181,31 @@ export function registerMetasRoutes(app, repo) {
     const userGoals = goals
       .filter((g) => g.scope === "user" && ALL_METRICS.has(g.metric))
       .map((g) => ({ key: g.key, metric: g.metric, target: Number(g.target) }));
-    // Meta da empresa: venda do mês em caixa (null = rodando no padrão).
+    // Meta da empresa: o padrão (vale pra qualquer mês sem valor próprio) e a
+    // agenda dos PRÓXIMOS meses. Configurar agosto hoje faz a plataforma inteira
+    // virar de meta sozinha no dia 1º, sem ninguém lembrar de mexer.
+    const mesAtual = monthKey(new Date());
+    const proximosMeses = [];
+    for (let i = 0; i < MONTHS_AHEAD; i++) {
+      const d = new Date(`${mesAtual}-01T12:00:00Z`);
+      d.setUTCMonth(d.getUTCMonth() + i);
+      const m = d.toISOString().slice(0, 7);
+      const alvo = cashTargetFor(product, m);
+      proximosMeses.push({
+        month: m,
+        target: Number(product.monthlyCashTargets?.[m]) > 0 ? Number(product.monthlyCashTargets[m]) : null,
+        effective: alvo.target,     // o que vale hoje pra esse mês (com fallback)
+        source: alvo.source,        // month | default | system
+        current: m === mesAtual,
+      });
+    }
     const company = {
       cashTarget: Number(product.monthlyCashTarget) > 0 ? Number(product.monthlyCashTarget) : null,
       cashTargetDefault: DEFAULT_CASH_TARGET,
+      months: proximosMeses,
     };
     // Quantas pessoas em cada vaga (o placar reparte a meta de time entre elas).
     const people = Object.fromEntries([...ROLES].map((role) => [role, users.filter((u) => u.roles.includes(role)).length]));
-    // O que a meta do mês exige, desdobrado pela cadeia do pace. Best-effort: se
-    // o pace falhar, a tela continua editável (só sem o botão de derivar).
-    let derived = null;
-    try { derived = deriveGoalsFromPace(await computePipelinePace(repo, product)); }
-    catch { derived = null; }
     return { saas: product.id, roles, users, userGoals, company, people, derived };
   });
 
@@ -192,12 +221,27 @@ export function registerMetasRoutes(app, repo) {
     if (!incoming) return reply.code(400).send({ error: "goals deve ser uma lista" });
 
     let companySaved = false;
-    if (req.body?.company && typeof req.body.company === "object" && "cashTarget" in req.body.company) {
-      const num = Number(String(req.body.company.cashTarget ?? "").trim()); // "" → NaN (não 0)
-      const next = Number.isFinite(num) && num > 0 ? num : null;
-      if (next !== (Number(product.monthlyCashTarget) > 0 ? Number(product.monthlyCashTarget) : null)) {
-        await repo.update("products", product.id, { monthlyCashTarget: next });
+    const empresa = req.body?.company;
+    if (empresa && typeof empresa === "object") {
+      const patch = {};
+      if ("cashTarget" in empresa) {
+        const num = Number(String(empresa.cashTarget ?? "").trim()); // "" → NaN (não 0)
+        const next = Number.isFinite(num) && num > 0 ? num : null;
+        if (next !== (Number(product.monthlyCashTarget) > 0 ? Number(product.monthlyCashTarget) : null)) patch.monthlyCashTarget = next;
       }
+      // Agenda de metas por mês: "AAAA-MM" → valor. Vazio/zero apaga o mês (ele
+      // volta a seguir o padrão), e mês fora do formato é ignorado.
+      if (empresa.months && typeof empresa.months === "object") {
+        const mapa = { ...(product.monthlyCashTargets || {}) };
+        for (const [mes, valor] of Object.entries(empresa.months)) {
+          if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) continue; // mês 13 não existe
+          const num = Number(String(valor ?? "").trim());
+          if (Number.isFinite(num) && num > 0) mapa[mes] = num;
+          else delete mapa[mes];
+        }
+        patch.monthlyCashTargets = mapa;
+      }
+      if (Object.keys(patch).length) await repo.update("products", product.id, patch);
       companySaved = true;
     }
 
