@@ -19,7 +19,7 @@
 // aqui (ou em stages.js) primeiro; o metrics-consistency.test.js roda as
 // telas sobre o mesmo dataset e quebra se alguém divergir.
 
-import { kindOf, isLoss, isNoShowStage, isWonLead, wonAtOf } from "./stages.js";
+import { kindOf, isLoss, isNoShowStage, isWonLead, wonAtOf, TOUCH_TYPES } from "./stages.js";
 
 export { isWonLead, wonAtOf }; // a régua oficial de ganho, num import só
 
@@ -115,6 +115,38 @@ export function callOutcome(product, list, actsOf) {
     else if (advanced || lost) shown++;
   }
   return { shown, noShow, won };
+}
+
+// ── Funil de conversão do produto (base ÚNICA das telas) ─────────────────────
+// Contagens do funil COORTE na janela (leads criados nela): contatados →
+// agendaram call → compareceram → fecharam, + ganhos e receita. É a MESMA base
+// da Visão geral (Conversões do funil) e da Análise de Pace, pra as duas telas
+// nunca divergirem. O funil ENCADEIA — cada denominador é o passo anterior.
+//   actsOf: (leadId) => activities ordenadas;  winLeadsIn(inWin) => leads ganhos
+// `adjust` (product.paceAdjust) soma HISTÓRICO PRÉ-COCKPIT (dados reais de antes
+// do registro no sistema): { leads, contacted, booked, shown, won } — só somas
+// positivas; noShow e ganhos totais (revenue) não entram no ajuste.
+export function funnelCounts(product, { leads, actsOf, inWin, winLeadsIn, adjust } = {}) {
+  const recentLeads = leads.filter((l) => inWin(l.createdAt));
+  const recentIds = new Set(recentLeads.map((l) => l.id));
+  const contacted = recentLeads.filter((l) => (actsOf(l.id) || []).some((a) => TOUCH_TYPES.has(a.type)));
+  const booked = bookedLeadsIn(product, leads, actsOf, inWin).filter((l) => recentIds.has(l.id));
+  const outcome = callOutcome(product, booked, actsOf);
+  const wonLeads = winLeadsIn ? winLeadsIn(inWin) : [];
+  const a = adjust && typeof adjust === "object" ? adjust : {};
+  const adjN = (k) => { const n = Math.floor(Number(a[k])); return Number.isFinite(n) && n > 0 ? n : 0; };
+  const adjApplied = ["leads", "contacted", "booked", "shown", "won"].reduce((o, k) => (adjN(k) ? { ...o, [k]: adjN(k) } : o), null);
+  return {
+    leads: recentLeads.length + adjN("leads"),
+    contacted: contacted.length + adjN("contacted"),
+    booked: booked.length + adjN("booked"),
+    shown: outcome.shown + adjN("shown"),
+    noShow: outcome.noShow,
+    won: outcome.won + adjN("won"),   // ganhos DA SAFRA de calls (+ pré-cockpit) — o que encadeia
+    wonTotal: wonLeads.length,         // ganhos totais no período (todos, por transição)
+    revenue: tcvOf(wonLeads),
+    adjust: adjApplied,
+  };
 }
 
 // ── Dinheiro ─────────────────────────────────────────────────────────────────
