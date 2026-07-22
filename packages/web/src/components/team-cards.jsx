@@ -11,19 +11,22 @@ export const asInt = (value) => window.fmt.int(Number(value) || 0);
 export const asMoney = (value) => window.fmt.money(Number(value) || 0);
 export const asRate = (value) => value == null ? "—" : `${String(Math.round(value * 10) / 10).replace(".", ",")}%`;
 
-// Meta absoluta (mensal/semanal) reescalada pra QUANTIDADE DE DIAS da janela.
-function scaledGoal(goal, days) {
-  if (!goal?.target) return null;
-  const base = goal.period === "week" ? 7 : 30.4;
-  return Math.max(1, Math.round(goal.target * ((days || 30.4) / base)));
+// Meta absoluta (mensal/semanal) reescalada pros DIAS ÚTEIS da janela. O time
+// não opera no fim de semana, então a meta se distribui só nos dias úteis (base
+// = 21,75 úteis/mês ≈ 261/12; 5 úteis/semana) — cada dia útil carrega a fatia do
+// fim de semana. Janela sem dia útil (ex.: "ontem" num domingo) não cobra meta.
+function scaledGoal(goal, bizDays) {
+  if (!goal?.target || !(bizDays > 0)) return null;
+  const base = goal.period === "week" ? 5 : 21.75;
+  return Math.max(1, Math.round(goal.target * (bizDays / base)));
 }
 
 // Meta de calls agendadas: a CONFIGURADA vence (a tela Metas a deriva do pace,
 // já repartida entre os SDRs, então é ela que fecha com a meta da empresa). Sem
 // meta configurada, cai no alvo dinâmico: leads do período anterior × meta de
 // taxa de agendamento.
-function bookingTarget(p, days) {
-  const fixed = scaledGoal(p.sdr?.goals?.callsBooked, days);
+function bookingTarget(p, bizDays) {
+  const fixed = scaledGoal(p.sdr?.goals?.callsBooked, bizDays);
   if (fixed) return fixed;
   const rate = p.sdr?.goals?.bookingRate?.target;
   const base = p.sdr?.leadsPrev ?? p.sdr?.leadsNew;
@@ -78,44 +81,45 @@ export const topPerformer = (people) => [...people].sort((a, b) => ((b.closer?.r
 
 // As métricas mostradas no cartão dependem do papel. Uma pessoa que é SDR E
 // closer mostra o topo (agendamento) e o fundo (receita) do funil; um CS que
-// também fecha mostra os dois lados pra nenhum sumir.
-export function metricsFor(p, days) {
+// também fecha mostra os dois lados pra nenhum sumir. bizDays = dias ÚTEIS da
+// janela (as metas absolutas não contam fim de semana).
+export function metricsFor(p, bizDays) {
   if (p.sdr && p.closer) return [
-    { label: "Calls agendadas", value: p.sdr.callsBooked, target: bookingTarget(p, days), fmt: asInt },
-    { label: "Receita", value: p.closer.revenue, target: scaledGoal(p.closer.goals?.revenue, days), fmt: asMoney },
+    { label: "Calls agendadas", value: p.sdr.callsBooked, target: bookingTarget(p, bizDays), fmt: asInt },
+    { label: "Receita", value: p.closer.revenue, target: scaledGoal(p.closer.goals?.revenue, bizDays), fmt: asMoney },
     { label: "Conversão na call", value: p.closer.conversaoCall, target: p.closer.goals?.conversaoCall?.target, good: 40, fmt: asRate, rate: true },
   ];
   if (p.closer && p.cs) return [
-    { label: "Ganhos", value: p.closer.won, target: scaledGoal(p.closer.goals?.won, days), fmt: asInt },
-    { label: "Receita", value: p.closer.revenue, target: scaledGoal(p.closer.goals?.revenue, days), fmt: asMoney },
+    { label: "Ganhos", value: p.closer.won, target: scaledGoal(p.closer.goals?.won, bizDays), fmt: asInt },
+    { label: "Receita", value: p.closer.revenue, target: scaledGoal(p.closer.goals?.revenue, bizDays), fmt: asMoney },
     { label: "Contas ativas", value: p.cs.activeAccounts, fmt: asInt },
     { label: "Retenção", value: p.cs.retentionRate, target: p.cs.goals?.retentionRate?.target, good: 95, fmt: asRate, rate: true },
   ];
   if (p.closer) return [
-    { label: "Ganhos", value: p.closer.won, target: scaledGoal(p.closer.goals?.won, days), fmt: asInt },
-    { label: "Receita", value: p.closer.revenue, target: scaledGoal(p.closer.goals?.revenue, days), fmt: asMoney },
+    { label: "Ganhos", value: p.closer.won, target: scaledGoal(p.closer.goals?.won, bizDays), fmt: asInt },
+    { label: "Receita", value: p.closer.revenue, target: scaledGoal(p.closer.goals?.revenue, bizDays), fmt: asMoney },
     { label: "Win rate", value: p.closer.winRateCall, target: p.closer.goals?.winRateCall?.target, good: 25, fmt: asRate, rate: true },
   ];
   if (p.sdr) return [
-    { label: "Calls agendadas", value: p.sdr.callsBooked, target: bookingTarget(p, days), fmt: asInt },
-    { label: "Contatos", value: p.sdr.contacted, target: scaledGoal(p.sdr.goals?.contacts, days), fmt: asInt },
+    { label: "Calls agendadas", value: p.sdr.callsBooked, target: bookingTarget(p, bizDays), fmt: asInt },
+    { label: "Contatos", value: p.sdr.contacted, target: scaledGoal(p.sdr.goals?.contacts, bizDays), fmt: asInt },
     { label: "Taxa de agendamento", value: p.sdr.bookingRate, target: p.sdr.goals?.bookingRate?.target, good: 30, fmt: asRate, rate: true },
     { label: "Calls → ganho", value: p.sdr.callWinRate, target: p.sdr.goals?.callWinRate?.target, good: 25, fmt: asRate, rate: true },
   ];
   if (p.cs) return [
     { label: "Contas ativas", value: p.cs.activeAccounts, fmt: asInt },
-    { label: "Novas no período", value: p.cs.newAccounts, target: scaledGoal(p.cs.goals?.newAccounts, days), fmt: asInt },
+    { label: "Novas no período", value: p.cs.newAccounts, target: scaledGoal(p.cs.goals?.newAccounts, bizDays), fmt: asInt },
     { label: "Retenção", value: p.cs.retentionRate, target: p.cs.goals?.retentionRate?.target, good: 95, fmt: asRate, rate: true },
   ];
   return [
-    { label: "Posts", value: p.social?.postsPerMonth, target: scaledGoal(p.social?.goals?.postsPerMonth, days), fmt: asInt },
-    { label: "Stories", value: p.social?.storiesPerMonth, target: scaledGoal(p.social?.goals?.storiesPerMonth, days), fmt: asInt },
-    { label: "Ads", value: p.social?.adsPerMonth, target: scaledGoal(p.social?.goals?.adsPerMonth, days), fmt: asInt },
+    { label: "Posts", value: p.social?.postsPerMonth, target: scaledGoal(p.social?.goals?.postsPerMonth, bizDays), fmt: asInt },
+    { label: "Stories", value: p.social?.storiesPerMonth, target: scaledGoal(p.social?.goals?.storiesPerMonth, bizDays), fmt: asInt },
+    { label: "Ads", value: p.social?.adsPerMonth, target: scaledGoal(p.social?.goals?.adsPerMonth, bizDays), fmt: asInt },
   ];
 }
 
 // Grade de cartões (um por pessoa). Clicar num cartão chama onPerson(userId).
-export function TeamCards({ people, days, onPerson, highlight }) {
+export function TeamCards({ people, bizDays, onPerson, highlight }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
       {people.map((person) => (
@@ -129,7 +133,7 @@ export function TeamCards({ people, days, onPerson, highlight }) {
             {person.user === highlight && <span className="chip accent">destaque</span>}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 18 }}>
-            {metricsFor(person, days).map((metric) => <PersonMetric key={metric.label} metric={metric} />)}
+            {metricsFor(person, bizDays).map((metric) => <PersonMetric key={metric.label} metric={metric} />)}
           </div>
         </section>
       ))}

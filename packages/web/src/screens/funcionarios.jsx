@@ -61,7 +61,7 @@ function FuncionariosScreen({ onNav }) {
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         {score == null && <div className="dim" style={{ fontSize: 12.5 }}>carregando…</div>}
         {score != null && !people.length && <EmptyState title="Sem atividade no período" hint="O desempenho por pessoa aparece quando o time movimenta leads e clientes." />}
-        {people.length > 0 && <TeamCards people={people} days={win.days} onPerson={openPerson} highlight={highlight} />}
+        {people.length > 0 && <TeamCards people={people} bizDays={win.businessDays} onPerson={openPerson} highlight={highlight} />}
 
         {people.length > 0 && (
           <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
