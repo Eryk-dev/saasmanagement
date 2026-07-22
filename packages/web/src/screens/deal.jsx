@@ -443,8 +443,8 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
             <span style={{ marginLeft: "auto", fontSize: 10, flexShrink: 0, textTransform: "none", letterSpacing: 0 }}>{showCall ? "▴ recolher" : "▾ vídeo · convidados"}</span>
           </button>
           {showCall && (<>
-          {/* Link de videochamada: sala Jitsi com slug aleatório (sem conta, abre
-              no navegador/celular), salva no lead e vai pro Whats com 1 clique. */}
+          {/* Link de videochamada: evento com Meet na agenda (Google), salvo no
+              lead e mandado pro Whats com 1 clique. */}
           <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0, flexWrap: "wrap" }}>
             <span className="mono dim" style={rowLabel}>Videochamada</span>
             {lead.callUrl ? (
@@ -501,47 +501,37 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   </button>
                 )}
                 <button className="mono dim" style={{ fontSize: 11, flexShrink: 0 }}
-                  title={lead.callUrl.includes("meet.google.com") ? "Criar OUTRO evento com Meet na agenda" : "Gerar um link novo (o antigo deixa de valer pra você)"}
+                  title="Criar outro evento com Meet na agenda"
                   onClick={async () => {
-                    if (lead.callUrl.includes("meet.google.com") && window.SEED?.CONFIG?.google?.connected) {
-                      try {
-                        const r = await api.createMeet(lead.id);
-                        dirty.current = true;
-                        setLead((prev) => ({ ...prev, callUrl: r.callUrl, meetEventId: r.eventId }));
-                      } catch (e) { window.alert(e.message || "Falha ao criar o Meet."); }
-                    } else {
-                      patch({ callUrl: `https://meet.jit.si/LeverAds-${Math.random().toString(36).slice(2, 10)}` });
-                    }
+                    if (!window.SEED?.CONFIG?.google?.connected) { window.alert("Conecte o Google em Ajustes pra criar o Meet da call."); return; }
+                    try {
+                      const r = await api.createMeet(lead.id);
+                      dirty.current = true;
+                      setLead((prev) => ({ ...prev, callUrl: r.callUrl, meetEventId: r.eventId }));
+                    } catch (e) { window.alert(e.message || "Falha ao criar o Meet."); }
                   }}>
                   ↻
                 </button>
               </>
+            ) : window.SEED?.CONFIG?.google?.connected ? (
+              <button
+                onClick={async () => {
+                  try {
+                    const r = await api.createMeet(lead.id);
+                    dirty.current = true;
+                    setLead((prev) => ({ ...prev, callUrl: r.callUrl, meetEventId: r.eventId }));
+                    const cfg = r.meetConfig || {};
+                    const faltou = [!cfg.open && "entrada sem aprovação", !cfg.recording && "gravação automática", !cfg.transcription && "transcrição automática"].filter(Boolean);
+                    const motivo = cfg.errors ? ` Motivo do Google: ${Object.values(cfg.errors)[0]}` : "";
+                    if (faltou.length) window.alert(`Meet criado ✓ Mas não deu pra ativar: ${faltou.join(", ")}.${motivo}`);
+                  } catch (e) { window.alert(e.message || "Falha ao criar o Meet."); }
+                }}
+                title="Evento com Meet na agenda: convida o lead (se tiver e-mail) e os convidados extras; sala aberta com gravação e transcrição automáticas quando o plano permite"
+                style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 11.5, fontWeight: 600 }}>
+                🎥 criar Meet na agenda
+              </button>
             ) : (
-              <>
-                {window.SEED?.CONFIG?.google?.connected && (
-                  <button
-                    onClick={async () => {
-                      try {
-                        const r = await api.createMeet(lead.id);
-                        dirty.current = true;
-                        setLead((prev) => ({ ...prev, callUrl: r.callUrl, meetEventId: r.eventId }));
-                        const cfg = r.meetConfig || {};
-                        const faltou = [!cfg.open && "entrada sem aprovação", !cfg.recording && "gravação automática", !cfg.transcription && "transcrição automática"].filter(Boolean);
-                        const motivo = cfg.errors ? ` Motivo do Google: ${Object.values(cfg.errors)[0]}` : "";
-                        if (faltou.length) window.alert(`Meet criado ✓ Mas não deu pra ativar: ${faltou.join(", ")}.${motivo}`);
-                      } catch (e) { window.alert(e.message || "Falha ao criar o Meet."); }
-                    }}
-                    title="Evento com Meet na agenda: convida o lead (se tiver e-mail) e os convidados extras; sala aberta com gravação e transcrição automáticas quando o plano permite"
-                    style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 11.5, fontWeight: 600 }}>
-                    🎥 criar Meet na agenda
-                  </button>
-                )}
-                <button onClick={() => patch({ callUrl: `https://meet.jit.si/LeverAds-${Math.random().toString(36).slice(2, 10)}` })}
-                  title={window.SEED?.CONFIG?.google?.connected ? "Alternativa sem agenda: sala Jitsi instantânea" : "Sala Jitsi instantânea (conecte o Google em Ajustes pra criar Meet na agenda)"}
-                  style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600 }}>
-                  {window.SEED?.CONFIG?.google?.connected ? "sala Jitsi" : "🎥 criar link da call"}
-                </button>
-              </>
+              <span className="mono dim" style={{ fontSize: 11 }}>conecte o Google em Ajustes pra criar o Meet da call</span>
             )}
           </div>
           {window.SEED?.CONFIG?.google?.connected && (
