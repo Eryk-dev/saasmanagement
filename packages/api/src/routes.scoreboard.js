@@ -9,7 +9,7 @@
 // novas + cancelamentos com data) — cresce quando o billing registrar o evento.
 
 import { cadenceOf, firstStage, isLoss, TOUCH_TYPES } from "./stages.js";
-import { TEAM_METRICS } from "./routes.metas.js";
+import { TEAM_METRICS, META_CATALOG } from "./routes.metas.js";
 import { RATE_BENCHMARKS } from "./routes.pipeline-pace.js";
 import {
   DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead,
@@ -308,6 +308,8 @@ export function registerScoreboardRoutes(app, repo) {
       leadsNew: fc.leads,
       contacted: fc.contacted,
       callsBooked: fc.booked,
+      // Taxa de contato = dos leads novos, quantos o time alcançou.
+      contactRate: fc.leads > 0 ? round2((fc.contacted / fc.leads) * 100) : null,
       // Taxa de agendamento = calls agendadas ÷ leads contatados.
       bookingRate: fc.contacted > 0 ? round2((fc.booked / fc.contacted) * 100) : null,
       shown: fc.shown,
@@ -333,6 +335,59 @@ export function registerScoreboardRoutes(app, repo) {
       },
     };
 
-    return { saas: product.id, since, until, sdr, closer, cs, social, team };
+    // ── Metas × realizado do TIME ─────────────────────────────────────────────
+    // A tela Metas define, a Visão geral cobra. Sai daqui (e não de uma soma no
+    // front) porque o realizado tem que ser o MESMO número que os cartões por
+    // pessoa mostram — duas contagens do mesmo trabalho é como a Visão geral
+    // acabava divergindo da Metas. Só entra meta CONFIGURADA (target > 0): campo
+    // em branco na tela não vira linha aqui.
+    const sumOf = (rows, field) => rows.reduce((a, r) => a + (Number(r[field]) || 0), 0);
+    const avgOf = (rows, field) => {
+      const xs = rows.map((r) => Number(r[field])).filter((n) => Number.isFinite(n));
+      return xs.length ? round2(xs.reduce((a, n) => a + n, 0) / xs.length) : null;
+    };
+    // Retenção e NPS do time saem da base INTEIRA do produto, não da média das
+    // médias por pessoa (quem cuida de 1 conta pesaria igual a quem cuida de 20).
+    const churnedTeam = subs.filter((s) => s.status === "canceled" && inWin(s.canceledAt)
+      && customers.some((c) => c.id === s.customer)).length;
+    const baseTeam = customers.length + churnedTeam;
+    const npsTeam = npsSaas.filter((n) => Number.isFinite(Number(n.score))).map((n) => Number(n.score));
+    const teamValue = {
+      sdr: {
+        contactRate: team.contactRate, bookingRate: team.bookingRate, showRate: team.showRate,
+        contacts: team.contacted, callsBooked: team.callsBooked,
+      },
+      closer: {
+        conversaoCall: team.closeRate, won: team.won, revenue: team.revenue,
+        ticket: team.won > 0 ? round2(team.revenue / team.won) : null,
+      },
+      integrator: {
+        retentionRate: baseTeam > 0 ? round2(((baseTeam - churnedTeam) / baseTeam) * 100) : null,
+        nps: npsTeam.length ? round2(npsTeam.reduce((a, n) => a + n, 0) / npsTeam.length) : null,
+        newAccounts: sumOf(cs, "newAccounts"), activeAccounts: customers.length,
+      },
+      social: {
+        postsPerMonth: sumOf(social, "postsPerMonth"), storiesPerMonth: sumOf(social, "storiesPerMonth"),
+        adsPerMonth: sumOf(social, "adsPerMonth"), followerGrowth: sumOf(social, "followerGrowth"),
+        reachMonth: sumOf(social, "reachMonth"), engagementRate: avgOf(social, "engagementRate"),
+      },
+    };
+    const targets = META_CATALOG.flatMap((cat) => cat.metrics.flatMap((m) => {
+      const goal = goals.find((g) => g.scope === "role" && g.key === cat.role && g.metric === m.metric);
+      const target = Number(goal?.target);
+      if (!(target > 0)) return [];
+      return [{
+        role: cat.role, roleLabel: cat.label, metric: m.metric,
+        label: m.label, hint: m.hint || "", unit: m.unit,
+        // `kind` diz se a meta do MÊS pode ser reescalada pra janela (só `flow`);
+        // `people` é o rateio que cada um persegue.
+        kind: m.kind, team: !!m.team,
+        target, period: goal.period || "month",
+        people: m.team ? headcount(cat.role) : 1,
+        value: teamValue[cat.role]?.[m.metric] ?? null,
+      }];
+    }));
+
+    return { saas: product.id, since, until, sdr, closer, cs, social, team, targets };
   });
 }

@@ -478,3 +478,42 @@ test("sem meta configurada a derivada cai nos benchmarks (75% × 33%)", async ()
   assert.equal(sb.sdr.find((x) => x.user === "u_sdr").goals.callWinRate.target, 24.75);
   await app.close();
 });
+
+// A Visão geral cobra o que a tela Metas define: cada meta configurada com o
+// realizado do TIME na janela. Só entra meta preenchida — campo em branco na
+// tela não pode virar linha cobrando zero.
+test("targets: toda meta configurada vem com o realizado do time e o rateio", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("users", { id: "u_clo2", name: "Cida Closer", roles: ["closer"] });
+  for (const [id, key, metric, target] of [
+    ["g1", "closer", "won", 24],
+    ["g2", "closer", "revenue", 120000],
+    ["g3", "closer", "conversaoCall", 40],
+    ["g4", "sdr", "contacts", 300],
+    ["g5", "sdr", "showRate", 75],
+  ]) await repo.create("goals", { id, saas: "leverads", scope: "role", key, metric, target, period: "month" });
+
+  // 1 lead contatado que virou call, compareceu e fechou por R$ 500.
+  await repo.create("leads", { id: "w1", saas: "leverads", owner: "u_sdr", closer: "u_clo", stage: "Ganho", amount: 500, createdAt: now, stageSince: now });
+  await repo.create("activities", { id: "t_w1", saas: "leverads", lead: "w1", type: "call", author: "u_sdr", at: now });
+  await repo.create("activities", { id: "b_w1", saas: "leverads", lead: "w1", type: "stage", at: now, meta: { from: "Qualificando", to: "Call agendada" } });
+  await repo.create("activities", { id: "st_w1", saas: "leverads", lead: "w1", type: "stage", at: now, meta: { from: "Follow-up", to: "Ganho" } });
+
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  const by = Object.fromEntries(sb.targets.map((t) => [t.metric, t]));
+  assert.deepEqual(Object.keys(by).sort(), ["contacts", "conversaoCall", "revenue", "showRate", "won"]);
+  // meta vem em base MENSAL (quem reescala pra janela é a tela, pelos dias úteis)
+  assert.equal(by.won.target, 24);
+  assert.equal(by.won.value, 1, "realizado do time no período");
+  assert.equal(by.won.people, 2, "24 do time = 12 por closer");
+  assert.equal(by.won.kind, "flow", "só fluxo pode ser reescalado pra janela");
+  assert.equal(by.revenue.value, 500);
+  assert.equal(by.conversaoCall.kind, "rate");
+  assert.equal(by.conversaoCall.people, 1, "taxa não se reparte");
+  assert.equal(by.conversaoCall.value, sb.team.closeRate, "mesma régua do funil da Visão geral");
+  assert.equal(by.contacts.value, sb.team.contacted, "mesmo número do funil, não uma 2ª contagem");
+  assert.equal(by.showRate.value, sb.team.showRate);
+  // metas não configuradas (ticket, NPS, posts…) ficam de fora
+  assert.equal(by.ticket, undefined);
+  await app.close();
+});
