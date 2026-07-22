@@ -746,3 +746,17 @@ test("contador: total é o tamanho do CAMINHO, não o número de perguntas", asy
   // e a promessa da tela de boas-vindas não pode ser a soma dos ramos
   assert.equal(progresso(qs, {}, null).total, 7);
 });
+
+test("mergeLeadQuestions limpa o rótulo pro card (asterisco e prefixo de condução)", async () => {
+  const { mergeLeadQuestions } = await import("../src/forms.js");
+  const form = { questions: [
+    { key: "vende_marketplace", label: "Antes de tudo: você *já vende* em marketplace?", options: [{ value: "sim" }] },
+    { key: "niche", label: "Pra começar: qual o *segmento* principal?", options: [] },
+  ] };
+  const out = mergeLeadQuestions([], form);
+  assert.equal(out[0].label, "Você já vende em marketplace?", "sem asterisco, sem 'Antes de tudo:', com maiúscula");
+  assert.equal(out[1].label, "Qual o segmento principal?");
+  // rótulo já curado na mão continua vencendo
+  const curado = mergeLeadQuestions([{ key: "niche", label: "Qual seu principal nicho?", options: [] }], form);
+  assert.equal(curado.find((q) => q.key === "niche").label, "Qual seu principal nicho?");
+});

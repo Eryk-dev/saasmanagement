@@ -136,7 +136,12 @@ export function mergeLeadQuestions(existing, form) {
       const i = idxByKey.get(q.key);
       out[i] = { ...out[i], options: options.length ? options : out[i].options };
     } else {
-      out.push({ key: q.key, label: q.label || q.key, options });
+      // O asterisco é ênfase da PÁGINA do form ("você *já vende*?"); no card do
+      // lead ele apareceria cru. A pergunta chega limpa e sem o "Antes de tudo:"
+      // que só existe pra conduzir quem está respondendo.
+      const limpo = String(q.label || q.key).replace(/\*/g, "").replace(/^[^:]{0,24}:\s*/, "").trim();
+      const label = limpo ? limpo[0].toUpperCase() + limpo.slice(1) : "";
+      out.push({ key: q.key, label: label || q.key, options });
       idxByKey.set(q.key, out.length - 1);
     }
   }

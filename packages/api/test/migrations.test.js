@@ -614,6 +614,23 @@ test("migração leva as perguntas novas pro painel do lead (senão o card fica 
   assert.equal(porChave.niche.label, "Qual seu principal nicho?", "não estraga o que já estava curado");
 });
 
+test("form já migrado num deploy anterior AINDA sincroniza o painel do lead", async () => {
+  // Reprodução do que aconteceu em produção: o formulário subiu com as
+  // perguntas novas (marcador posto), mas o produto ficou com a lista velha,
+  // então o card da Mentoria abria sem NENHUMA das respostas dadas.
+  const repo = makeMemRepo();
+  await repo.create("forms", { ...FORM_REAL });
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [], leadQuestions: [{ key: "niche", label: "Nicho?", options: [] }] });
+  await migrateFormVendeMarketplace(repo);                       // 1º deploy: edita o form
+  await repo.update("products", "leverads", { leadQuestions: [{ key: "niche", label: "Nicho?", options: [] }] }); // painel volta a ficar velho
+
+  assert.equal(await migrateFormVendeMarketplace(repo), false, "não reedita o formulário");
+  const lq = (await repo.get("products", "leverads")).leadQuestions.map((q) => q.key);
+  assert.ok(lq.includes("vende_marketplace"), "mas o painel do lead é sincronizado mesmo assim");
+  assert.ok(lq.includes("aprender_interesse"));
+  assert.ok(lq.includes("aprender_verba"));
+});
+
 test("migração é one-shot e não duplica a pergunta", async () => {
   const repo = makeMemRepo();
   await repo.create("forms", { ...FORM_REAL });
