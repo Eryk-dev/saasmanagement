@@ -14,7 +14,7 @@ import { RATE_BENCHMARKS, computePipelinePace } from "./routes.pipeline-pace.js"
 import {
   DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead,
   bookedLeadsIn as coreBooked, callOutcome as coreCallOutcome,
-  winsIn, customerStartMap, funnelCounts, waContactedLeadIds,
+  winsIn, customerStartMap, funnelCounts, waContactedLeadIds, isReferralLead,
 } from "./metrics-core.js";
 
 const HOUR = 3_600_000;
@@ -39,7 +39,7 @@ export function registerScoreboardRoutes(app, repo) {
     const hasPrev = /^\d{4}-\d{2}-\d{2}$/.test(prevSince) && /^\d{4}-\d{2}-\d{2}$/.test(prevUntil);
     const inPrev = (iso) => iso && dayKey(iso) >= prevSince && dayKey(iso) <= prevUntil;
 
-    const [allLeads, allActs, allCustomers, proposals, subs, users, goalsAll, npsAll, waMessages] = await Promise.all([
+    const [allLeads, allActs, allCustomers, proposals, subs, users, goalsAll, npsAll, waMessages, invoicesAll] = await Promise.all([
       repo.list("leads"),
       repo.list("activities"),
       repo.list("customers"),
@@ -49,6 +49,7 @@ export function registerScoreboardRoutes(app, repo) {
       repo.list("goals"),
       repo.list("nps").catch(() => []),
       repo.list("wa_messages").catch(() => []),
+      repo.list("invoices").catch(() => []),
     ]);
     // Lead interno (teste) fora de tudo — régua oficial do metrics-core.
     const leads = allLeads.filter((l) => l.saas === product.id && isRealLead(l));
@@ -292,6 +293,13 @@ export function registerScoreboardRoutes(app, repo) {
     const csRole = new Set(withRole("integrator")); // membros do papel CS sempre aparecem (pra ver a meta)
     const csIds = [...new Set([...csRole, ...customers.map((c) => c.owner).filter(Boolean)])];
     const npsSaas = npsAll.filter((n) => !n.saas || n.saas === product.id);
+    // Upsells do produto: fatura kind:"upsell" (o botão do card do cliente cria uma
+    // fatura PAGA, então já entra no caixa pela régua existente). Atribuídos ao CS
+    // pelo DONO do cliente, igual ao resto do bloco.
+    const upsellInvoices = invoicesAll.filter((i) => i.saas === product.id && i.kind === "upsell");
+    // Indicações recebidas na janela: nº do TIME (sem atribuição fina por pessoa,
+    // decisão do Leo). Mesmo número em cada card de CS — a régua isReferralLead.
+    const teamReferrals = leads.filter((l) => isReferralLead(l) && inWin(l.createdAt)).length;
     const cs = csIds.map((uid) => {
       const mine = customers.filter((c) => c.owner === uid);
       const mineIds = new Set(mine.map((c) => c.id));
@@ -305,15 +313,21 @@ export function registerScoreboardRoutes(app, repo) {
       // NPS médio das contas dele (coleção nps: { customer, score }). Sem dado → null.
       const scores = npsSaas.filter((n) => mineIds.has(n.customer) && Number.isFinite(Number(n.score))).map((n) => Number(n.score));
       const nps = scores.length ? round2(scores.reduce((a, s) => a + s, 0) / scores.length) : null;
+      // Upsells dele = faturas de upsell dos clientes dele na janela (pela data de
+      // pagamento, que é quando entrou no caixa). Conta e soma de R$.
+      const myUpsells = upsellInvoices.filter((i) => mineIds.has(i.customer) && inWin(i.paidAt || i.createdAt || i.dueDate));
+      const upsells = myUpsells.length;
+      const upsellRevenue = round2(myUpsells.reduce((a, i) => a + (Number(i.amount) || 0), 0));
       return {
         user: uid, name: nameOf(uid),
-        targets: personTargets(uid, "integrator", { retentionRate, nps, newAccounts, activeAccounts: mine.length }),
+        targets: personTargets(uid, "integrator", { retentionRate, nps, newAccounts, activeAccounts: mine.length, upsells, referrals: teamReferrals }),
         activeAccounts: mine.length,
         newAccounts,
         churned,
         retentionRate,
         nps, npsCount: scores.length,
-        goals: goalMap(uid, "integrator", ["newAccounts", "activeAccounts", "retentionRate", "nps"]),
+        upsells, upsellRevenue, referrals: teamReferrals,
+        goals: goalMap(uid, "integrator", ["newAccounts", "activeAccounts", "retentionRate", "nps", "upsells", "referrals"]),
       };
     }).filter((p) => p.activeAccounts > 0 || p.newAccounts > 0 || csRole.has(p.user)) // responsável aparece mesmo sem conta (pra ver a meta)
       .sort((a, b) => b.activeAccounts - a.activeAccounts);

@@ -210,6 +210,38 @@ test("CS: retenção cai com churn na janela e NPS médio das contas do owner", 
   await app.close();
 });
 
+test("CS: upsell (fatura kind:upsell) conta e soma R$ pelo dono do cliente", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("customers", { id: "c1", saas: "leverads", owner: "u_cs", startedAt: "2026-05-01T10:00:00.000Z" });
+  await repo.create("customers", { id: "c2", saas: "leverads", owner: "outro", startedAt: "2026-05-01T10:00:00.000Z" });
+  // upsell na janela, cliente do u_cs → conta e soma
+  await repo.create("invoices", { id: "u1", saas: "leverads", customer: "c1", kind: "upsell", status: "paid", amount: 1200, paidAt: "2026-07-08T12:00:00.000Z" });
+  // upsell FORA da janela → não conta
+  await repo.create("invoices", { id: "u2", saas: "leverads", customer: "c1", kind: "upsell", status: "paid", amount: 999, paidAt: "2026-06-01T12:00:00.000Z" });
+  // fatura normal (renewal) na janela → não é upsell
+  await repo.create("invoices", { id: "r1", saas: "leverads", customer: "c1", kind: "renewal", status: "paid", amount: 500, paidAt: "2026-07-09T12:00:00.000Z" });
+  // upsell de cliente de OUTRO dono → não entra no card do u_cs
+  await repo.create("invoices", { id: "u3", saas: "leverads", customer: "c2", kind: "upsell", status: "paid", amount: 700, paidAt: "2026-07-08T12:00:00.000Z" });
+
+  const cs = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json().cs.find((x) => x.user === "u_cs");
+  assert.equal(cs.upsells, 1);
+  assert.equal(cs.upsellRevenue, 1200);
+  await app.close();
+});
+
+test("CS: indicações = leads com origem 'Indicação' na janela (nº do time)", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("customers", { id: "c1", saas: "leverads", owner: "u_cs", startedAt: "2026-05-01T10:00:00.000Z" });
+  await repo.create("leads", { id: "r1", saas: "leverads", owner: "u_sdr", stage: "Novo lead", source: "Indicação", createdAt: now });
+  await repo.create("leads", { id: "r2", saas: "leverads", owner: "u_sdr", stage: "Novo lead", utm: { source: "indicacao" }, createdAt: now });
+  await repo.create("leads", { id: "r3", saas: "leverads", owner: "u_sdr", stage: "Novo lead", source: "Form · Diagnóstico", createdAt: now }); // não é indicação
+  await repo.create("leads", { id: "r4", saas: "leverads", owner: "u_sdr", stage: "Novo lead", source: "Indicação", createdAt: "2026-06-01T10:00:00.000Z" }); // fora da janela
+
+  const cs = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json().cs.find((x) => x.user === "u_cs");
+  assert.equal(cs.referrals, 2); // r1 (source) + r2 (utm), r3 não conta, r4 fora da janela
+  await app.close();
+});
+
 test("leadsPrev conta os leads da janela anterior (base da meta dinâmica)", async () => {
   const { app, repo } = await buildApp();
   // 3 leads do SDR na semana passada, 1 na atual
