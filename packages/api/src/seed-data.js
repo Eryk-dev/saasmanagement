@@ -33,6 +33,7 @@ export const COLLECTIONS = {
   invoices: [],
   users: [],
   sessions: [],
+  user_assets: [], // foto de perfil (base64, 1 por usuário, servida em /public/users/:id)
   ad_insights: [],
   expenses: [],
   tasks: [],

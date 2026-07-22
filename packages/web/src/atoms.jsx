@@ -1,4 +1,5 @@
 import React from "react";
+import { userPhoto } from "./lib/users.js";
 // Shared atomic components — pure visuals, no business logic.
 // Exposed on window for cross-script use.
 
@@ -133,19 +134,33 @@ function SeverityDot({ s }) {
 }
 
 // ───────────────────────────────────────────────────── Avatar
-function Avatar({ id, name, size = 22 }) {
+// Foto de perfil quando o usuário subiu uma (resolvida pelo id no time carregado
+// no boot); iniciais como fallback. `photo` explícito atende quem já tem a URL
+// em mãos (o preview do "Meu perfil" antes de salvar).
+function Avatar({ id, name, size = 22, photo }) {
+  const src = photo !== undefined ? photo : userPhoto(id);
   const initials = (name || id || "?")
     .split(" ").map(s => s[0]).join("").slice(0, 2).toUpperCase();
+  const base = {
+    display: "inline-flex", alignItems: "center", justifyContent: "center",
+    width: size, height: size, borderRadius: 999,
+    background: "var(--bg-2)",
+    border: "1px solid var(--line-1)",
+    flex: "0 0 auto",
+  };
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt={name || id || ""}
+        title={name || id}
+        style={{ ...base, objectFit: "cover" }}
+      />
+    );
+  }
   return (
     <span
-      style={{
-        display: "inline-flex", alignItems: "center", justifyContent: "center",
-        width: size, height: size, borderRadius: 999,
-        fontSize: size * 0.4, fontWeight: 600,
-        background: "var(--bg-2)",
-        color: "var(--fg-2)",
-        border: "1px solid var(--line-1)",
-      }}
+      style={{ ...base, fontSize: size * 0.4, fontWeight: 600, color: "var(--fg-2)" }}
       title={name || id}
     >
       {initials}

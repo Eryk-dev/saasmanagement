@@ -4,6 +4,7 @@
 // arrays hardcoded (CLOSERS/INTEGRATORS) do pipeline.jsx.
 
 import { getActiveSaasId } from "./workspace.js";
+import { assetUrl } from "./api.js";
 
 const usersList = () => (Array.isArray(window.SEED?.USERS) ? window.SEED.USERS : []);
 
@@ -45,6 +46,13 @@ export function displayName(id) {
   const p = window.SEED?.PEOPLE?.[id];
   if (p) return p.name || id;
   return String(id);
+}
+
+// Foto de perfil do usuário (registro FRESCO do bootstrap, não o localStorage do
+// login): "" quando não tem — quem chama cai nas iniciais.
+export function userPhoto(id) {
+  if (!id) return "";
+  return assetUrl(userById(id)?.photo || "");
 }
 
 // Matiz determinística por id — MESMO hash do Avatar (atoms.jsx), pra cor do
