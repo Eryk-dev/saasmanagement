@@ -216,3 +216,14 @@ test("erro da Graph chega no chamador com o motivo de gente junto", async () => 
     (e) => e.message === "Meta API -> 400: Invalid parameter · Não dá pra copiar um conjunto arquivado · [código 100/1487390]",
   );
 });
+
+// Esta é a rede que faltava: `adsOfAdSet` foi pra fábrica e não pra fachada de
+// produção, então os testes (que injetam meta falso) passavam e a tela dizia
+// "meta.adsOfAdSet is not a function". A fachada agora repassa tudo — e este
+// teste falha se alguém voltar a escrever a lista à mão e esquecer uma linha.
+test("fachada de produção expõe TODO método da fábrica", async () => {
+  const mod = await import("../src/meta.js");
+  const daFabrica = Object.keys(makeMeta({ accessToken: "t" }));
+  assert.ok(daFabrica.length > 15);
+  assert.deepEqual(daFabrica.filter((k) => typeof mod.meta[k] !== "function"), []);
+});
