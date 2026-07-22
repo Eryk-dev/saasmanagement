@@ -27,6 +27,7 @@ const TIER_VOLUME = { "0-10": 0, "10-50": 1, "50-200": 2, "200+": 3 }; // legado
 // 5 níveis (A maior … E menor), gradiente verde→cinza. `key` = a própria letra
 // (o TIER_ORDER do Meu dia ordena por ela; "sem" = lead que não respondeu).
 export const GRADE_STYLE = {
+  S: { key: "S", grade: "S", label: "cliente S", tone: "#7c3aed", ink: "#6d28d9", badgeFg: "#fff" },
   A: { key: "A", grade: "A", label: "cliente A", tone: "#16a34a", ink: "#15803d", badgeFg: "#fff" },
   B: { key: "B", grade: "B", label: "cliente B", tone: "#65a30d", ink: "#4d7c0f", badgeFg: "#fff" },
   C: { key: "C", grade: "C", label: "cliente C", tone: "#eab308", ink: "#a16207", badgeFg: "#463500" },
@@ -43,8 +44,8 @@ const GRADE_GRID = [
   ["E", "D", "D", "C", "C"], // 1 conta
   ["D", "C", "C", "B", "B"], // 2 contas
   ["C", "B", "B", "A", "A"], // 3-5 contas
-  ["B", "B", "A", "A", "A"], // 6-10 contas
-  ["A", "A", "A", "A", "A"], // 10+ contas
+  ["B", "B", "A", "S", "S"], // 6-10 contas
+  ["A", "A", "A", "S", "S"], // 10+ contas
 ];
 export function leadTier(l) {
   const acc = TIER_ACCOUNTS[l?.accounts];
