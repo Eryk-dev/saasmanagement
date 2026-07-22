@@ -395,7 +395,17 @@ function MetricsScreen() {
 
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         {note && (
-          <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>
+          // Banner, não uma linha solta: quem sobe uma leva de vídeo espera
+          // minutos e volta pra tela querendo saber, de longe, se deu certo.
+          <div style={{
+            display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 13px", borderRadius: "var(--r-2)",
+            background: note.ok ? "var(--pos-soft)" : "var(--neg-soft)",
+            border: `1px solid color-mix(in srgb, ${note.ok ? "var(--pos)" : "var(--neg)"} 35%, transparent)`,
+          }}>
+            <span style={{ color: note.ok ? "var(--pos)" : "var(--neg)", fontSize: 14, lineHeight: 1.35 }}>{note.ok ? "✓" : "✕"}</span>
+            <div style={{ flex: 1, fontSize: 12.5, lineHeight: 1.5, color: "var(--fg-1)" }}>{note.text}</div>
+            <button onClick={() => setNote(null)} title="dispensar" style={{ color: "var(--fg-3)", fontSize: 13, lineHeight: 1, padding: 2 }}>✕</button>
+          </div>
         )}
 
         {cloneAd && (
@@ -1450,6 +1460,45 @@ function PainTable({ pains, money }) {
 // campanha [dor] é resolvida sozinha → escolhe o conjunto de origem pra clonar
 // → sobe o vídeo. O servidor duplica o conjunto (leva público/orçamento/copy/
 // anúncio), renomeia pra "<número do arquivo> [dor]" e troca só o vídeo. Pausado.
+// Subir uma leva de vídeos leva MINUTOS, e ninguém fica olhando a tela nesse
+// tempo. Então o fim do trabalho avisa em três frentes: notificação do sistema
+// (se o navegador deixar), título da aba piscando enquanto ela não volta ao
+// foco, e um bipe curto. O banner verde na tela é o registro que fica.
+function avisarConclusao(ok, falhas) {
+  const titulo = falhas ? `${ok} criados, ${falhas} falharam` : ok === 1 ? "Anúncio criado" : `${ok} anúncios criados`;
+  const corpo = falhas ? "confira a fila na tela de Publicidade" : "nascem pausados: revise e ative no Gerenciador";
+
+  try {
+    if (window.Notification?.permission === "granted") new Notification(titulo, { body: corpo });
+    else if (window.Notification?.permission === "default") {
+      Notification.requestPermission().then((p) => { if (p === "granted") new Notification(titulo, { body: corpo }); });
+    }
+  } catch { /* navegador sem suporte ou bloqueado: sobram o título e o som */ }
+
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = falhas ? 320 : 660;
+    gain.gain.setValueAtTime(0.05, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.35);
+    setTimeout(() => ctx.close(), 600);
+  } catch { /* sem áudio, sem problema */ }
+
+  if (document.hidden) {
+    const original = document.title;
+    const marca = `${falhas ? "⚠" : "✓"} ${titulo}`;
+    let liga = true;
+    const t = setInterval(() => { document.title = (liga = !liga) ? original : marca; }, 1200);
+    const parar = () => { clearInterval(t); document.title = original; document.removeEventListener("visibilitychange", parar); };
+    document.addEventListener("visibilitychange", parar);
+    setTimeout(parar, 120000); // não pisca pra sempre se a aba nunca voltar
+  }
+}
+
 // Barra do upload + passo do servidor. Vídeo de 150 MB leva minutos; sem isso a
 // tela fica idêntica a travada e o time sobe o mesmo vídeo duas vezes.
 function JobProgress({ pct, step }) {
@@ -1464,6 +1513,36 @@ function JobProgress({ pct, step }) {
   );
 }
 
+// A fila da leva: uma linha por vídeo, com o estado de cada um. Numa leva de
+// cinco, o que importa é enxergar qual está subindo, quais já nasceram e qual
+// falhou — sem isso, um erro no meio some no meio dos outros.
+function FilaDeVideos({ itens, pain }) {
+  const cor = { fila: "var(--fg-4)", enviando: "var(--fg-2)", servidor: "var(--fg-2)", ok: "var(--pos)", erro: "var(--neg)" };
+  const marca = { fila: "•", enviando: "↑", servidor: "◍", ok: "✓", erro: "✕" };
+  return (
+    <div style={{ border: "1px solid var(--line-faint)", borderRadius: "var(--r-1)", overflow: "hidden" }}>
+      {itens.map((it, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 10px", borderTop: i ? "1px solid var(--line-faint)" : "none", fontSize: 12 }}>
+          <span style={{ color: cor[it.estado], width: 12, textAlign: "center" }}>{marca[it.estado]}</span>
+          <span className="mono" style={{ color: "var(--fg-2)", minWidth: 70 }}>{it.numero ? `${it.numero} [${pain}]` : it.nome}</span>
+          <span className="dim" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11.5 }}>
+            {it.estado === "fila" && "na fila"}
+            {it.estado === "enviando" && `enviando · ${Math.round(it.pct * 100)}%`}
+            {it.estado === "servidor" && (it.passo || "processando na Meta…")}
+            {it.estado === "ok" && (it.passo ? `criado, mas ATENÇÃO: ${it.passo}` : "criado pausado")}
+            {it.estado === "erro" && it.erro}
+          </span>
+          {it.estado === "enviando" && (
+            <span style={{ width: 60, height: 3, borderRadius: 2, background: "var(--line-2)", overflow: "hidden" }}>
+              <span style={{ display: "block", height: "100%", width: `${Math.round(it.pct * 100)}%`, background: "var(--accent)", transition: "width .2s" }} />
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
   const [defaults, setDefaults] = useState(null); // { painMap }
   const [pain, setPain] = useState("");           // código escolhido ou "_new"
@@ -1471,12 +1550,11 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
   const [campaignId, setCampaignId] = useState("");
   const [adsets, setAdsets] = useState(null);
   const [sourceAdsetId, setSourceAdsetId] = useState("");
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);       // a leva: um anúncio por vídeo
   const [numOverride, setNumOverride] = useState("");
   const [budget, setBudget] = useState("");     // orçamento diário do conjunto novo
   const [busy, setBusy] = useState(false);
-  const [pct, setPct] = useState(0);            // progresso do upload (0..1)
-  const [step, setStep] = useState("");         // passo do trabalho no servidor
+  const [queue, setQueue] = useState([]);       // acompanhamento por vídeo
 
   useEffect(() => {
     api.creativeDefaults(product.id).then(setDefaults).catch(() => setDefaults({ painMap: {} }));
@@ -1511,33 +1589,64 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
     setBudget(sourceAdset?.dailyBudget != null ? String(sourceAdset.dailyBudget).replace(".", ",") : "");
   }, [sourceAdsetId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const detectedNumber = numOverride.trim() || (file ? fileNumberOf(file.name) : "");
-  const finalName = painCodeSel && detectedNumber ? `${detectedNumber} [${painCodeSel}]` : "";
-  const valid = painCodeSel && (pain !== "_new" || painLabelSel) && campaignId && sourceAdsetId && file && detectedNumber && !busy;
+  // Número por vídeo: sai do nome do arquivo. O campo avulso só faz sentido com
+  // UM vídeo — numa leva, cada arquivo traz o seu.
+  const numberOf = (f) => (files.length === 1 ? numOverride.trim() || fileNumberOf(f.name) : fileNumberOf(f.name));
+  const semNumero = files.filter((f) => !numberOf(f));
+  const grandes = files.filter((f) => tooBig(f));
+  const finalName = painCodeSel && files.length === 1 && numberOf(files[0]) ? `${numberOf(files[0])} [${painCodeSel}]` : "";
+  const valid = painCodeSel && (pain !== "_new" || painLabelSel) && campaignId && sourceAdsetId
+    && files.length > 0 && !semNumero.length && !grandes.length && !busy;
 
+  // Um anúncio por vídeo. O ENVIO é sequencial (a banda de subida é uma só e
+  // dois uploads juntos só se atrapalham), mas o trabalho na Meta segue no
+  // servidor: enquanto o 2º vídeo sobe, o 1º já está sendo processado lá.
   async function submit() {
-    const big = tooBig(file);
-    if (big) return onError(big);
-    setBusy(true); setPct(0); setStep("");
-    try {
-      const fd = new FormData();
-      fd.append("painCode", painCodeSel);
-      if (painLabelSel) fd.append("painLabel", painLabelSel);
-      fd.append("sourceAdsetId", sourceAdsetId);
-      if (numOverride.trim()) fd.append("number", numOverride.trim());
-      if (budget.trim()) fd.append("dailyBudget", budget.trim());
-      fd.append("video", file, file.name);
-      const { jobId } = await api.adFromVideo(product.id, fd, setPct);
-      setStep("a Meta está processando o vídeo");
-      const job = await waitForVideoJob(jobId, setStep);
-      const orc = job.result?.dailyBudget ? ` · orçamento R$ ${String(job.result.dailyBudget).replace(".", ",")}/dia` : "";
-      onDone(job.warning
-        ? `Anúncio "${job.result.adsetName}" criado PAUSADO, mas ATENÇÃO: ${job.warning}`
-        : `Anúncio "${job.result.adsetName}" criado PAUSADO (conjunto clonado + vídeo trocado)${orc} — revise e ative no Gerenciador.`);
-    } catch (e) {
-      onError(e.message || "Falha ao criar o anúncio.");
+    setBusy(true);
+    const inicial = files.map((f) => ({ file: f, nome: f.name, numero: numberOf(f), estado: "fila", pct: 0, passo: "", erro: "", resultado: null }));
+    setQueue(inicial);
+    const patch = (i, p) => setQueue((prev) => prev.map((it, k) => (k === i ? { ...it, ...p } : it)));
+
+    const acompanhando = [];
+    for (let i = 0; i < inicial.length; i++) {
+      const item = inicial[i];
+      try {
+        patch(i, { estado: "enviando" });
+        const fd = new FormData();
+        fd.append("painCode", painCodeSel);
+        if (painLabelSel) fd.append("painLabel", painLabelSel);
+        fd.append("sourceAdsetId", sourceAdsetId);
+        fd.append("number", item.numero);
+        if (budget.trim()) fd.append("dailyBudget", budget.trim());
+        fd.append("video", item.file, item.file.name);
+        const { jobId } = await api.adFromVideo(product.id, fd, (p) => patch(i, { pct: p }));
+        patch(i, { estado: "servidor", pct: 1, passo: "na fila do servidor" });
+        acompanhando.push(
+          waitForVideoJob(jobId, (passo) => patch(i, { passo }))
+            .then((job) => { patch(i, { estado: "ok", resultado: job.result, passo: job.warning || "" }); return { ok: true, job }; })
+            .catch((e) => { patch(i, { estado: "erro", erro: e.message }); return { ok: false, nome: item.nome, erro: e.message }; }),
+        );
+      } catch (e) {
+        patch(i, { estado: "erro", erro: e.message });
+        acompanhando.push(Promise.resolve({ ok: false, nome: item.nome, erro: e.message }));
+      }
     }
-    setBusy(false); setPct(0); setStep("");
+
+    const r = await Promise.all(acompanhando);
+    setBusy(false);
+    const feitos = r.filter((x) => x.ok);
+    const falhas = r.filter((x) => !x.ok);
+    const avisos = feitos.filter((x) => x.job.warning).map((x) => x.job.warning);
+    avisarConclusao(feitos.length, falhas.length);
+    if (falhas.length) {
+      onError(`${feitos.length} de ${r.length} anúncios criados. Falharam: ${falhas.map((f) => `${f.nome} (${f.erro})`).join(" · ")}`);
+      return; // painel fica aberto com a fila, pra ver o que caiu e repetir só isso
+    }
+    const nomes = feitos.map((x) => x.job.result.adsetName).join(", ");
+    const orc = budget.trim() ? ` com R$ ${budget.trim()}/dia` : "";
+    onDone(feitos.length === 1
+      ? `Anúncio "${nomes}" criado PAUSADO${orc}${avisos.length ? ` — ATENÇÃO: ${avisos.join(" · ")}` : " — revise e ative no Gerenciador."}`
+      : `${feitos.length} anúncios criados PAUSADOS${orc}: ${nomes}${avisos.length ? ` — ATENÇÃO: ${avisos.join(" · ")}` : " — revise e ative no Gerenciador."}`);
   }
 
   const lbl = { display: "flex", flexDirection: "column", gap: 4 };
@@ -1545,12 +1654,13 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
   const inp = { height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
 
   return (
-    <Card title="Criar anúncio" hint="clona o conjunto da dor e troca só o vídeo · nasce pausado com o nome «número [dor]»">
+    <Card title="Criar anúncio" hint="clona o conjunto da dor e troca só o vídeo · um anúncio por vídeo, todos pausados com o nome «número [dor]»">
       <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
           <label style={lbl}>
-            <span className="mono" style={cap}>1 · Vídeo</span>
-            <input type="file" accept="video/*" onChange={(e) => setFile(e.target.files?.[0] || null)}
+            <span className="mono" style={cap}>1 · Vídeos (pode escolher vários)</span>
+            <input type="file" accept="video/*" multiple disabled={busy}
+              onChange={(e) => { setFiles([...(e.target.files || [])]); setQueue([]); }}
               style={{ ...inp, paddingTop: 4, height: 30 }} />
           </label>
           <label style={lbl}>
@@ -1562,12 +1672,20 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
             </select>
           </label>
           <label style={lbl}>
-            <span className="mono" style={cap}>Número (do arquivo)</span>
-            <input type="text" placeholder={file ? (fileNumberOf(file.name) || "sem número no nome") : "sobe o vídeo"}
-              value={numOverride} onChange={(e) => setNumOverride(e.target.value.replace(/[^\w-]/g, ""))}
-              style={{ ...inp, fontFamily: "var(--mono)" }} />
+            <span className="mono" style={cap}>Número {files.length > 1 ? "(cada arquivo traz o seu)" : "(do arquivo)"}</span>
+            <input type="text" disabled={files.length > 1}
+              placeholder={files.length > 1 ? `${files.length} vídeos: número de cada nome` : files.length === 1 ? (fileNumberOf(files[0].name) || "sem número no nome") : "sobe o vídeo"}
+              value={files.length > 1 ? "" : numOverride} onChange={(e) => setNumOverride(e.target.value.replace(/[^\w-]/g, ""))}
+              style={{ ...inp, fontFamily: "var(--mono)", opacity: files.length > 1 ? 0.6 : 1 }} />
           </label>
         </div>
+
+        {(semNumero.length > 0 || grandes.length > 0) && (
+          <div className="mono" style={{ fontSize: 11.5, color: "var(--neg)", lineHeight: 1.6 }}>
+            {semNumero.length > 0 && <div>sem número no nome (renomeie pra «1330.mp4»): {semNumero.map((f) => f.name).join(", ")}</div>}
+            {grandes.length > 0 && <div>acima de 500 MB: {grandes.map((f) => f.name).join(", ")}</div>}
+          </div>
+        )}
 
         {pain === "_new" && (
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -1611,15 +1729,17 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <button onClick={submit} disabled={!valid}
             style={{ height: 32, padding: "0 16px", borderRadius: "var(--r-1)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600, opacity: !valid ? 0.55 : 1 }}>
-            {busy ? "Trabalhando… não feche a tela" : "Criar anúncio pausado"}
+            {busy ? "Trabalhando… pode deixar rodando" : files.length > 1 ? `Criar ${files.length} anúncios pausados` : "Criar anúncio pausado"}
           </button>
-          <button onClick={onClose} disabled={busy} style={{ height: 32, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>cancelar</button>
-          {busy
-            ? <JobProgress pct={pct} step={step} />
-            : finalName && <span className="mono dim" style={{ fontSize: 11.5 }}>nome final do conjunto e do anúncio: <b style={{ color: "var(--fg-2)" }}>{finalName}</b></span>}
+          <button onClick={onClose} disabled={busy} style={{ height: 32, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>{queue.length && !busy ? "fechar" : "cancelar"}</button>
+          {!busy && finalName && <span className="mono dim" style={{ fontSize: 11.5 }}>nome final do conjunto e do anúncio: <b style={{ color: "var(--fg-2)" }}>{finalName}</b></span>}
+          {busy && <span className="mono dim" style={{ fontSize: 11.5 }}>aviso na tela e no navegador quando terminar</span>}
         </div>
+
+        {queue.length > 0 && <FilaDeVideos itens={queue} pain={painCodeSel} />}
+
         <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.5 }}>
-          clona o conjunto escolhido (mantém público, posicionamento, copy e CTA), troca só o vídeo pelo que você subiu, renomeia conjunto e anúncio pra «número [dor]» e aplica o orçamento diário acima (vazio mantém o do conjunto de origem). Nada gasta até você ativar no Gerenciador.
+          cada vídeo vira um anúncio: clona o conjunto escolhido (mantém público, posicionamento, copy e CTA), troca só o vídeo, nomeia conjunto e anúncio como «número [dor]» e aplica o orçamento diário acima (vazio mantém o do conjunto de origem). Os vídeos sobem um de cada vez, pra Meta não recusar por excesso de chamadas. Nada gasta até você ativar no Gerenciador.
         </div>
       </div>
     </Card>
@@ -1679,8 +1799,10 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
       const { jobId } = await api.uploadCreative(product.id, fd, setPct);
       setStep("a Meta está processando o vídeo");
       const job = await waitForVideoJob(jobId, setStep);
+      avisarConclusao(1, 0);
       onDone(`Anúncio "${job.result.name}" criado PAUSADO — revise e ative no Gerenciador.`);
     } catch (e) {
+      avisarConclusao(0, 1);
       onError(e.message || "Falha ao criar o criativo.");
     }
     setBusy(false); setPct(0); setStep("");
