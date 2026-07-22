@@ -170,7 +170,7 @@ function App() {
     aquisicao:   ["Análises", "Aquisição"],
     calls:       ["Análises", "Pitch"],
     integrations: ["Análises", "Integração"],
-    analise:     ["Análises", "Análise do pipeline"],
+    analise:     ["Análises", "Análise de Pace"],
     funcionarios: ["Análises", "Funcionários"],
     tasks:       ["Geral", "Tarefas"],
     mindmaps:    ["Geral", "Mapas mentais"],

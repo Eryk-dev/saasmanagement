@@ -608,7 +608,7 @@ function TeamPerformance({ score, days, pLabel, onPerson, product }) {
 }
 
 // ── Meta do mês (pace de caixa) ──────────────────────────────────────────────
-// A manchete da Análise do pipeline aqui no topo: "estamos no caminho?". Caixa
+// A manchete da Análise de Pace aqui no topo: "estamos no caminho?". Caixa
 // = faturas pagas no mês (mesma conta do /api/pipeline-pace); o desdobramento
 // do gap (ganhos → calls → agendamentos → contatos → leads) vem pronto no plan.
 const PACE_STATUS = {

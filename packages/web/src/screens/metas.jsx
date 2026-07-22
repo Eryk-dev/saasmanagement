@@ -116,7 +116,7 @@ function MetasScreen() {
                 <span className="dim" style={{ fontSize: 12 }}>a meta que o negócio persegue no mês</span>
               </div>
               <div className="dim" style={{ fontSize: 12.5, marginBottom: 14 }}>
-                a faixa "Meta do mês" da Visão geral e a Análise do pipeline seguem essa meta pelo VENDIDO no mês (contrato cheio; cartão em 12x conta inteiro) e desdobram o que falta em ganhos, calls, contatos e leads por dia. O caixa e o dinheiro futuro ficam na aba Clientes.
+                a faixa "Meta do mês" da Visão geral e a Análise de Pace seguem essa meta pelo VENDIDO no mês (contrato cheio; cartão em 12x conta inteiro) e desdobram o que falta em ganhos, calls, contatos e leads por dia. O caixa e o dinheiro futuro ficam na aba Clientes.
               </div>
               <label style={{ display: "flex", alignItems: "center", gap: 10, maxWidth: 440 }}>
                 <span style={{ flex: 1, fontSize: 13.5, color: "var(--fg-2)" }}>Meta de venda do mês</span>
