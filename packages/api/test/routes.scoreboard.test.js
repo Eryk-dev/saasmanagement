@@ -320,3 +320,53 @@ test("404 pra produto inexistente", async () => {
   assert.equal((await app.inject({ url: "/api/scoreboard/nada" })).statusCode, 404);
   await app.close();
 });
+
+// Meta de vaga = alvo do TIME: o placar cobra a parte de cada um, senão 2
+// closers com "24 ganhos" perseguem 48 e a empresa só precisa de 24.
+test("meta de VAGA é do time e reparte entre as pessoas; taxa e ticket não se repartem", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("users", { id: "u_clo2", name: "Cida Closer", roles: ["closer"] }); // 2 closers
+  await repo.create("users", { id: "u_kids", name: "Ana Kids", roles: ["closer"], saas: "uniquekids" }); // outro produto: não dilui
+  // 24 ganhos e R$ 120k do TIME; ticket e win rate são de cada um.
+  await repo.create("goals", { id: "gw", saas: "leverads", scope: "role", key: "closer", metric: "won", target: 24, period: "month" });
+  await repo.create("goals", { id: "gr", saas: "leverads", scope: "role", key: "closer", metric: "revenue", target: 120000, period: "month" });
+  await repo.create("goals", { id: "gt", saas: "leverads", scope: "role", key: "closer", metric: "ticket", target: 5000, period: "month" });
+  await repo.create("goals", { id: "gwr", saas: "leverads", scope: "role", key: "closer", metric: "winRateCall", target: 25, period: "month" });
+  await repo.create("leads", { id: "w1", saas: "leverads", closer: "u_clo", stage: "Ganho", amount: 500, createdAt: now, stageSince: now });
+  await repo.create("activities", { id: "st_w1", saas: "leverads", lead: "w1", type: "stage", at: now, meta: { from: "Follow-up", to: "Ganho" } });
+
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  const c = sb.closer.find((x) => x.user === "u_clo");
+  assert.equal(c.goals.won.target, 12, "24 do time ÷ 2 closers");
+  assert.equal(c.goals.won.teamTarget, 24);
+  assert.equal(c.goals.won.people, 2, "closer de outro produto fica de fora do rateio");
+  assert.equal(c.goals.revenue.target, 60000);
+  assert.equal(c.goals.ticket.target, 5000, "média não se reparte");
+  assert.equal(c.goals.winRateCall.target, 25, "taxa não se reparte");
+  await app.close();
+});
+
+test("meta por PESSOA passa inteira (já é individual) e não vira rateio", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("users", { id: "u_clo2", name: "Cida Closer", roles: ["closer"] });
+  await repo.create("goals", { id: "gw", saas: "leverads", scope: "role", key: "closer", metric: "won", target: 24, period: "month" });
+  await repo.create("goals", { id: "gu", saas: "leverads", scope: "user", key: "u_clo", metric: "won", target: 20, period: "month" });
+  await repo.create("leads", { id: "w1", saas: "leverads", closer: "u_clo", stage: "Ganho", amount: 500, createdAt: now, stageSince: now });
+  await repo.create("activities", { id: "st_w1", saas: "leverads", lead: "w1", type: "stage", at: now, meta: { from: "Follow-up", to: "Ganho" } });
+
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  const c = sb.closer.find((x) => x.user === "u_clo");
+  assert.equal(c.goals.won.target, 20);
+  assert.equal(c.goals.won.scope, "user");
+  assert.equal(c.goals.won.teamTarget, undefined);
+  await app.close();
+});
+
+test("vaga com uma pessoa só mantém a meta inteira (não muda o que já valia)", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("goals", { id: "gb", saas: "leverads", scope: "role", key: "sdr", metric: "callsBooked", target: 40, period: "month" });
+  await repo.create("leads", { id: "l1", saas: "leverads", owner: "u_sdr", stage: "Novo lead", createdAt: now });
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  assert.equal(sb.sdr.find((x) => x.user === "u_sdr").goals.callsBooked.target, 40);
+  await app.close();
+});

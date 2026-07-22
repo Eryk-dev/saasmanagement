@@ -101,3 +101,59 @@ test("PUT inválido = 400; produto inexistente = 404", async () => {
   assert.equal((await app.inject({ method: "PUT", url: "/api/metas/leverads", payload: { goals: "x" } })).statusCode, 400);
   assert.equal((await app.inject({ method: "GET", url: "/api/metas/naoexiste" })).statusCode, 404);
 });
+
+// A meta de cada vaga tem que descer da meta da EMPRESA, senão o placar cobra
+// um número que não fecha com o mês. Mesma cadeia e mesmas taxas do pace.
+test("derived: a meta do mês desce pela cadeia do pace e vira alvo de time", async () => {
+  const { app, repo } = await buildApp();
+  await repo.update("products", "leverads", { monthlyCashTarget: 120000 });
+  // Sem histórico, as taxas caem no benchmark (80/30/75/25) e o ticket vem da
+  // meta configurada — é o cenário de quem está começando.
+  await repo.create("goals", { id: "g_ticket", saas: "leverads", scope: "role", key: "closer", metric: "ticket", target: 5000, period: "month" });
+
+  const r = (await app.inject({ method: "GET", url: "/api/metas/leverads" })).json();
+  const d = r.derived;
+  assert.equal(d.blockedBy, null);
+  assert.equal(d.target, 120000);
+  assert.equal(d.ticket, 5000);
+  assert.equal(d.won, 24);          // 120000 ÷ 5000
+  assert.equal(d.callsShown, 96);   // 24 ÷ 25% de fechamento
+  assert.equal(d.callsBooked, 128); // 96 ÷ 75% de comparecimento
+  assert.equal(d.contacts, 427);    // 128 ÷ 30% de agendamento
+  assert.equal(d.leads, 534);       // 427 ÷ 80% de contato
+
+  // O que o botão grava: só VOLUME (taxa continua digitada, senão vira circular).
+  const byMetric = Object.fromEntries(d.goals.map((g) => [g.metric, g]));
+  assert.deepEqual(Object.keys(byMetric).sort(), ["callsBooked", "contacts", "newAccounts", "revenue", "ticket", "won"]);
+  assert.equal(byMetric.won.target, 24);
+  assert.equal(byMetric.won.role, "closer");
+  assert.equal(byMetric.revenue.target, 120000);
+  assert.equal(byMetric.callsBooked.role, "sdr");
+  assert.equal(byMetric.newAccounts.target, 24); // conta nova = ganho
+  assert.ok(!("contactRate" in byMetric), "taxa não é derivada");
+
+  // Quantas pessoas por vaga (o placar reparte a meta de time entre elas).
+  assert.equal(r.people.closer, 2); // leo + jon
+  assert.equal(r.people.sdr, 1);    // jon
+});
+
+test("derived: sem ticket a cadeia não fecha e a tela avisa em vez de chutar", async () => {
+  const { app, repo } = await buildApp();
+  await repo.update("products", "leverads", { monthlyCashTarget: 120000 });
+  const d = (await app.inject({ method: "GET", url: "/api/metas/leverads" })).json().derived;
+  assert.equal(d.blockedBy, "ticket");
+  assert.equal(d.won, null);
+  assert.deepEqual(d.goals, []);
+});
+
+test("catálogo marca quais metas são do TIME (repartem) e quais são de cada um", async () => {
+  const { app } = await buildApp();
+  const r = (await app.inject({ method: "GET", url: "/api/metas/leverads" })).json();
+  const m = (role, metric) => r.roles.find((x) => x.role === role).metrics.find((y) => y.metric === metric);
+  assert.equal(m("closer", "won").team, true);
+  assert.equal(m("closer", "revenue").team, true);
+  assert.equal(m("closer", "ticket").team, undefined, "média não se reparte");
+  assert.equal(m("sdr", "contacts").team, true);
+  assert.equal(m("sdr", "bookingRate").team, undefined, "taxa não se reparte");
+  assert.equal(m("integrator", "nps").team, undefined, "índice não se reparte");
+});

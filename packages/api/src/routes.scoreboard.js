@@ -9,6 +9,7 @@
 // novas + cancelamentos com data) — cresce quando o billing registrar o evento.
 
 import { cadenceOf, firstStage, isLoss, TOUCH_TYPES } from "./stages.js";
+import { TEAM_METRICS } from "./routes.metas.js";
 import {
   DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead,
   bookedLeadsIn as coreBooked, callOutcome as coreCallOutcome,
@@ -61,12 +62,28 @@ export function registerScoreboardRoutes(app, repo) {
     for (const arr of actsByLead.values()) arr.sort((x, y) => String(x.at || "").localeCompare(String(y.at || "")));
 
     // Meta por métrica: user-scope vence role-scope; período default "month".
+    //
+    // Meta de VAGA é o alvo do TIME (é assim que ela fecha com a meta da empresa:
+    // a Metas deriva "24 ganhos no mês" da meta de venda ÷ ticket). O placar cobra
+    // a PARTE de cada um, então divide pelas pessoas da vaga: 2 closers = 12 pra
+    // cada, somando os 24. Só as métricas de volume (TEAM_METRICS) se repartem —
+    // taxa é a mesma pra todo mundo e ticket/NPS são média/índice. Meta por PESSOA
+    // já é individual: passa inteira.
     const goals = goalsAll.filter((g) => !g.saas || g.saas === product.id);
+    // Escopo de produto no headcount: quem atende só outro produto (ex.: Ana na
+    // UniqueKids) não pode diluir a meta do time daqui.
+    const headcount = (role) => Math.max(1, users.filter((u) => (!u.saas || u.saas === product.id) && (u.roles || []).includes(role)).length);
     const goalFor = (userId, role, metric) => {
       const u = goals.find((g) => g.scope === "user" && g.key === userId && g.metric === metric);
-      if (u) return { target: Number(u.target) || 0, period: u.period || "month" };
+      if (u) return { target: Number(u.target) || 0, period: u.period || "month", scope: "user" };
       const r = goals.find((g) => g.scope === "role" && g.key === role && g.metric === metric);
-      return r ? { target: Number(r.target) || 0, period: r.period || "month" } : null;
+      if (!r) return null;
+      const total = Number(r.target) || 0;
+      const period = r.period || "month";
+      if (!TEAM_METRICS.has(metric)) return { target: total, period, scope: "role" };
+      const people = headcount(role);
+      // teamTarget/people ficam no payload pra UI poder dizer "12 dos 24 do time".
+      return { target: round2(total / people), period, scope: "role", teamTarget: total, people };
     };
     const nameOf = (id) => users.find((u) => u.id === id)?.name || id;
     const withRole = (role) => users.filter((u) => (u.roles || []).includes(role)).map((u) => u.id);
@@ -149,7 +166,7 @@ export function registerScoreboardRoutes(app, repo) {
         callWinRate: callsBooked > 0 ? round2((wonFromCalls / callsBooked) * 100) : null,
         // Metas por TAXA (o alvo absoluto de calls sai de leads × bookingRate na
         // UI); callsBooked absoluto fica de fallback se alguém preferir fixo.
-        goals: goalMap(uid, "sdr", ["contactRate", "bookingRate", "showRate", "callWinRate", "callsBooked"]),
+        goals: goalMap(uid, "sdr", ["contactRate", "bookingRate", "showRate", "callWinRate", "callsBooked", "contacts"]),
       };
     }).filter((p) => p.leadsNew > 0 || p.callsBooked > 0 || p.contacted > 0)
       .sort((a, b) => b.callsBooked - a.callsBooked);

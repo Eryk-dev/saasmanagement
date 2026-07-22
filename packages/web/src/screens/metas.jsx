@@ -12,6 +12,53 @@ const { useState: useS, useEffect: useE } = React;
 
 const rk = (role, metric) => `${role}:${metric}`;
 
+const money = (n) => `R$ ${Math.round(n).toLocaleString("pt-BR")}`;
+const pct = (v) => `${Math.round(v * 1000) / 10}%`.replace(".", ",");
+const int = (n) => Math.round(n).toLocaleString("pt-BR");
+
+// De onde veio cada número — sem isso a cadeia parece chute.
+const RATE_SOURCE = {
+  history: "medido nos últimos 30 dias",
+  calibrated: "calibrado pela ponta a ponta real",
+  goal: "da meta configurada",
+  benchmark: "padrão do mercado",
+};
+const TICKET_SOURCE = {
+  initial_payments: "1ª fatura paga de cada cliente",
+  paid_invoices: "faturas pagas recentes",
+  won_tcv: "valor dos ganhos recentes",
+  configured_ticket: "o ticket que você configurou",
+};
+const BLOCKED = {
+  ticket: "sem ticket médio ainda (nenhuma fatura paga nem valor lançado nos ganhos): preencha o Ticket médio no card do Closer e a cadeia passa a fechar.",
+  closeRate: "a conversão da call está zerada, sem histórico e sem meta: preencha Call → ganho no card do Closer.",
+  showRate: "o comparecimento está zerado, sem histórico e sem meta: preencha Comparecimento na call no card do SDR.",
+  bookingRate: "a taxa de agendamento está zerada, sem histórico e sem meta: preencha Taxa de agendamento no card do SDR.",
+  contactRate: "a taxa de contato está zerada, sem histórico e sem meta: preencha Taxa de contato no card do SDR.",
+};
+const blockedText = (k) => BLOCKED[k] || "faltam dados pra desdobrar a meta.";
+
+// A cadeia da meta, passo a passo, com quantos cabem a cada pessoa da vaga.
+function chainRows(d, people = {}) {
+  const share = (total, role) => {
+    const n = people?.[role] || 0;
+    return n > 1 ? `${int(total / n)} por pessoa · ${n} na vaga` : null;
+  };
+  return [
+    { label: "Meta de venda do mês", value: money(d.target) },
+    { label: "Ticket médio", note: TICKET_SOURCE[d.ticketSource] || "", value: `÷ ${money(d.ticket)}` },
+    { label: "Ganhos no mês", note: share(d.won, "closer"), value: int(d.won) },
+    { label: "Conversão da call", note: RATE_SOURCE[d.rates.closeRateSource] || "", value: `÷ ${pct(d.rates.closeRate)}` },
+    { label: "Calls realizadas no mês", value: int(d.callsShown) },
+    { label: "Comparecimento", note: RATE_SOURCE[d.rates.showRateSource] || "", value: `÷ ${pct(d.rates.showRate)}` },
+    { label: "Calls agendadas no mês", note: share(d.callsBooked, "sdr"), value: int(d.callsBooked) },
+    { label: "Taxa de agendamento", note: RATE_SOURCE[d.rates.bookingRateSource] || "", value: `÷ ${pct(d.rates.bookingRate)}` },
+    { label: "Contatos no mês", note: share(d.contacts, "sdr"), value: int(d.contacts) },
+    { label: "Taxa de contato", note: RATE_SOURCE[d.rates.contactRateSource] || "", value: `÷ ${pct(d.rates.contactRate)}` },
+    { label: "Leads no mês", note: "entrada do funil: quem entrega é o marketing, então não vira meta de vaga", value: int(d.leads) },
+  ];
+}
+
 function MetasScreen() {
   const [product] = useActiveSaas();
   const [data, setData] = useS(null);
@@ -49,6 +96,16 @@ function MetasScreen() {
   const allMetrics = Object.entries(metricInfo);
 
   function setRole(role, metric, v) { setRoleVals((p) => ({ ...p, [rk(role, metric)]: v })); }
+
+  // Preenche os campos de VOLUME com o desdobramento da meta do mês (não salva:
+  // o Leo confere e clica em salvar). As taxas ficam como estão — são a ambição
+  // que ALIMENTA a cadeia, não resultado dela.
+  function applyDerived() {
+    const list = data?.derived?.goals || [];
+    if (!list.length) return;
+    setRoleVals((p) => ({ ...p, ...Object.fromEntries(list.map((g) => [rk(g.role, g.metric), String(Math.round(g.target))])) }));
+    setNote({ ok: true, text: "campos preenchidos pelo pace · confira e clique em salvar metas" });
+  }
   function addOverride() {
     const firstUser = data?.users?.[0]?.id || "";
     setOverrides((p) => [...p, { key: firstUser, metric: allMetrics[0]?.[0] || "", target: "" }]);
@@ -91,6 +148,15 @@ function MetasScreen() {
   const kicker = { fontSize: 11, fontWeight: 600, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" };
   const inp = { height: 38, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
   const nameOf = (id) => data?.users?.find((u) => u.id === id)?.name || id;
+  // "12 por pessoa · 2 na vaga" — só faz sentido em métrica de time com mais de
+  // uma pessoa na vaga (taxa e ticket não se repartem).
+  const shareHint = (m, role) => {
+    const n = Number(roleVals[rk(role, m.metric)]);
+    const people = data?.people?.[role] || 0;
+    if (!m.team || !(n > 0) || people <= 1) return null;
+    const per = n / people;
+    return `${m.unit === "R$" ? money(per) : int(per)} por pessoa · ${people} na vaga`;
+  };
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, maxWidth: 1080, width: "100%" }}>
@@ -130,6 +196,39 @@ function MetasScreen() {
               </label>
             </div>
 
+            {/* Pace: o que a meta do mês exige, pela mesma cadeia da Análise */}
+            {data.derived && (
+              <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: 24 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em" }}>Pace</span>
+                  <span className="dim" style={{ fontSize: 12 }}>o que a meta do mês exige de cada etapa</span>
+                  {!data.derived.blockedBy && (
+                    <button onClick={applyDerived} style={{ marginLeft: "auto", height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>
+                      derivar metas do pace
+                    </button>
+                  )}
+                </div>
+                <div className="dim" style={{ fontSize: 12.5, marginBottom: 16 }}>
+                  a meta de venda desce pela MESMA cadeia e pelas mesmas taxas da Análise de Pace, então os dois lugares contam a mesma história. O botão preenche só os VOLUMES (ganhos, receita, calls, contatos); as taxas continuam suas, porque são a ambição que move a cadeia, não o retrato dela.
+                </div>
+                {data.derived.blockedBy ? (
+                  <div className="mono" style={{ fontSize: 12.5, color: "var(--warn)" }}>{blockedText(data.derived.blockedBy)}</div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                    {chainRows(data.derived, data.people).map((row, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "9px 0", borderTop: i ? "1px solid var(--line-1)" : "none" }}>
+                        <span style={{ flex: 1, fontSize: 13.5, color: "var(--fg-2)" }}>
+                          {row.label}
+                          {row.note && <span className="dim" style={{ fontSize: 11.5, marginLeft: 8 }}>{row.note}</span>}
+                        </span>
+                        <span className="tnum" style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap" }}>{row.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Metas por vaga */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 14 }}>
               {data.roles.map((r) => (
@@ -141,7 +240,12 @@ function MetasScreen() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {r.metrics.map((m) => (
                       <label key={m.metric} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{ flex: 1, fontSize: 13.5, color: "var(--fg-2)" }}>{m.label}</span>
+                        <span style={{ flex: 1, fontSize: 13.5, color: "var(--fg-2)", minWidth: 0 }}>
+                          {m.label}
+                          {/* Meta de volume é do TIME: mostra a parte de cada um,
+                              que é o que o placar vai cobrar da pessoa. */}
+                          {shareHint(m, r.role) && <span className="dim" style={{ display: "block", fontSize: 11.5 }}>{shareHint(m, r.role)}</span>}
+                        </span>
                         <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                           {m.unit === "R$" && <span className="mono dim" style={{ fontSize: 12 }}>R$</span>}
                           <input type="number" min="0" step={m.unit === "%" ? "1" : "0.01"} inputMode="decimal"
