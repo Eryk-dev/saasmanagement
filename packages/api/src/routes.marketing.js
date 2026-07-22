@@ -11,6 +11,11 @@
 //   &utm_term={{adset.id}}&utm_content={{ad.id}}
 // O match aceita id OU nome, então utm_campaign={{campaign.name}} também vale.
 
+import { createWriteStream } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { pipeline } from "node:stream/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { meta as defaultMeta } from "./meta.js";
 import { stagePassCounts } from "./routes.funnel-metrics.js";
 import { isWonLead, kindOf } from "./stages.js";
@@ -29,6 +34,57 @@ const dayStr = dayKey;
 // dinâmico é normalizado na ingestão (normalizeMetaSource, routes.forms.js).
 export const CREATIVE_URL_TAGS =
   "utm_source=meta&utm_medium=paid&utm_placement={{site_source_name}}&utm_campaign={{campaign.id}}&utm_term={{adset.id}}&utm_content={{ad.id}}";
+
+// ── Trabalhos de vídeo (upload → Meta) ──────────────────────────────────────
+// Subir criativo é LENTO: um vídeo de 150 MB leva minutos pra chegar, a Meta
+// ainda processa (thumbnail só existe depois) e o clone do conjunto vem por
+// cima. Segurar a requisição aberta esse tempo todo esbarrava no timeout do
+// proxy e devolvia 502 na cara do usuário mesmo quando a Meta tinha aceitado.
+// Agora a rota grava o vídeo em DISCO, responde 202 com um jobId e o trabalho
+// segue no servidor; o front acompanha por polling em /api/marketing/job/:id.
+const videoJobs = new Map();
+const JOB_TTL_MS = 60 * 60 * 1000;
+let jobSeq = 0;
+
+function newJob(saas, kind) {
+  for (const [k, j] of videoJobs) if (Date.now() - j.startedMs > JOB_TTL_MS) videoJobs.delete(k);
+  const job = {
+    id: `vj${Date.now().toString(36)}${(++jobSeq).toString(36)}`,
+    saas, kind, status: "running", step: "recebendo o vídeo", warning: null, error: null,
+    startedAt: new Date().toISOString(), startedMs: Date.now(),
+  };
+  videoJobs.set(job.id, job);
+  return job;
+}
+
+// Grava o arquivo do multipart em disco SEM passar pela memória. Um vídeo de
+// 150 MB em Buffer (mais a cópia que o fetch faz pra montar o multipart da
+// Meta) estoura a memória do container — o processo morre e o nginx responde
+// 502 sem log nenhum. Em disco, o consumo fica em alguns KB.
+async function spoolToDisk(data) {
+  const dir = await mkdtemp(join(tmpdir(), "cockpit-video-"));
+  const path = join(dir, "upload.bin");
+  try {
+    await pipeline(data.file, createWriteStream(path));
+  } catch (err) {
+    await rm(dir, { recursive: true, force: true });
+    throw err;
+  }
+  if (data.file.truncated) {
+    await rm(dir, { recursive: true, force: true });
+    throw new Error("vídeo acima do limite de 500 MB");
+  }
+  return { path, cleanup: () => rm(dir, { recursive: true, force: true }).catch(() => {}) };
+}
+
+// Orçamento diário digitado pelo usuário ("120", "120,50", "R$ 120") em número.
+// Vazio = manter o orçamento que veio do conjunto clonado.
+function parseBudget(raw) {
+  const s = String(raw ?? "").replace(/[^\d,.]/g, "").replace(/\.(?=\d{3}\b)/g, "").replace(",", ".");
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 // Código da dor na nomenclatura do anúncio: "[X]" em QUALQUER posição do nome
 // ("[A] v3 depoimento" ou "1303 [B]"). Código = 1-3 alfanuméricos — colchete
@@ -331,40 +387,59 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     }
     if (code && !painCode(name)) name = `[${code}] ${name}`; // garante a convenção no nome
 
+    let spool;
     try {
-      const buffer = await data.toBuffer();
-      // Página que assina o anúncio: config do produto ou descoberta dos atuais.
-      let pageId = product.metaPageId;
-      let instagramUserId = product.metaIgUser || null;
-      if (!pageId) {
-        const d = await meta.discoverCreativeDefaults(product.metaAdAccount);
-        if (!d) return reply.code(400).send({ error: "não achei a página dos anúncios atuais — configure metaPageId no produto" });
-        pageId = d.pageId;
-        instagramUserId = d.instagramUserId;
-        await repo.update("products", product.id, { metaPageId: pageId, metaIgUser: instagramUserId });
-      }
-
-      const videoId = await meta.uploadVideo(product.metaAdAccount, { buffer, filename: data.filename, title: name });
-      const imageUrl = await meta.videoThumbnail(videoId);
-      const creativeId = await meta.createAdCreative(product.metaAdAccount, {
-        name, pageId, instagramUserId, videoId, imageUrl,
-        message, title, linkUrl: link, ctaType, urlTags: CREATIVE_URL_TAGS,
-      });
-      const ad = await meta.createAd(product.metaAdAccount, { adsetId, creativeId, name });
-
-      // Aprendizados pro próximo criativo: dor nova entra no mapa, link vira default.
-      const patch = {};
-      if (code && painLabel && (product.painMap || {})[code] !== painLabel) {
-        patch.painMap = { ...(product.painMap || {}), [code]: painLabel };
-      }
-      if (link && link !== product.metaLink) patch.metaLink = link;
-      if (Object.keys(patch).length) await repo.update("products", product.id, patch);
-
-      return { ok: true, adId: ad.id, creativeId, videoId, name, status: ad.status };
+      spool = await spoolToDisk(data);
     } catch (err) {
-      req.log.warn({ err: err.message }, "Meta: criação de criativo falhou");
-      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+      return reply.code(413).send({ error: String(err.message || err) });
     }
+
+    const job = newJob(product.id, "creative");
+    const run = async () => {
+      try {
+        // Página que assina o anúncio: config do produto ou descoberta dos atuais.
+        let pageId = product.metaPageId;
+        let instagramUserId = product.metaIgUser || null;
+        if (!pageId) {
+          const d = await meta.discoverCreativeDefaults(product.metaAdAccount);
+          if (!d) throw new Error("não achei a página dos anúncios atuais — configure metaPageId no produto");
+          pageId = d.pageId;
+          instagramUserId = d.instagramUserId;
+          await repo.update("products", product.id, { metaPageId: pageId, metaIgUser: instagramUserId });
+        }
+
+        job.step = "subindo o vídeo pra Meta";
+        const videoId = await meta.uploadVideo(product.metaAdAccount, { path: spool.path, filename: data.filename, title: name });
+        job.step = "esperando a Meta processar o vídeo";
+        const imageUrl = await meta.videoThumbnail(videoId);
+        job.step = "criando o criativo e o anúncio";
+        const creativeId = await meta.createAdCreative(product.metaAdAccount, {
+          name, pageId, instagramUserId, videoId, imageUrl,
+          message, title, linkUrl: link, ctaType, urlTags: CREATIVE_URL_TAGS,
+        });
+        const ad = await meta.createAd(product.metaAdAccount, { adsetId, creativeId, name });
+
+        // Aprendizados pro próximo criativo: dor nova entra no mapa, link vira default.
+        const patch = {};
+        if (code && painLabel && (product.painMap || {})[code] !== painLabel) {
+          patch.painMap = { ...(product.painMap || {}), [code]: painLabel };
+        }
+        if (link && link !== product.metaLink) patch.metaLink = link;
+        if (Object.keys(patch).length) await repo.update("products", product.id, patch);
+
+        job.status = "done";
+        job.step = "pronto";
+        job.result = { adId: ad.id, creativeId, videoId, name, status: ad.status };
+      } catch (err) {
+        app.log.warn({ err: err.message }, "Meta: criação de criativo falhou");
+        job.status = "error";
+        job.error = String(err.message || err).slice(0, 300);
+      } finally {
+        await spool.cleanup();
+      }
+    };
+    run(); // sem await: a resposta sai agora, o trabalho segue no servidor
+    return reply.code(202).send({ ok: true, jobId: job.id, name });
   });
 
   // Criar anúncio CLONANDO um conjunto: o fluxo do Leo. A dor aponta a campanha,
@@ -394,37 +469,80 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const number = numberOverride || fileNumber(data.filename);
     if (!number) return reply.code(400).send({ error: "não achei número no nome do arquivo (ex.: 1303.mp4) — renomeie o vídeo ou informe o número" });
     const finalName = `${number} [${code}]`;
+    // Orçamento diário do conjunto NOVO (opcional): o clone nasce com o
+    // orçamento do conjunto de origem, e é comum querer testar com outro valor.
+    const dailyBudget = parseBudget(field("dailyBudget"));
 
+    let spool;
     try {
-      const buffer = await data.toBuffer();
-      // 1. sobe o vídeo novo + a thumbnail (a Meta exige uma).
-      const videoId = await meta.uploadVideo(product.metaAdAccount, { buffer, filename: data.filename, title: finalName });
-      const imageUrl = await meta.videoThumbnail(videoId);
-      // 2. duplica o conjunto de origem (deep copy leva o anúncio), pausado.
-      const copy = await meta.copyAdSet(sourceAdsetId, { statusOption: "PAUSED" });
-      if (!copy.adIds.length) return reply.code(422).send({ error: "o conjunto de origem não tem anúncio pra clonar — escolha um conjunto que já tenha um anúncio de vídeo" });
-      // 3. renomeia o conjunto clonado.
-      await meta.renameObject(copy.adsetId, finalName);
-      // 4. troca o vídeo em cada anúncio clonado preservando o spec (copy, título,
-      //    CTA, link, página, IG e as UTMs de atribuição).
-      const ads = [];
-      for (const adId of copy.adIds) {
-        const { spec, urlTags } = await meta.getAdCreativeSpec(adId);
-        const creativeId = await meta.createVideoCreativeFromSpec(product.metaAdAccount, {
-          name: finalName, sourceSpec: spec, videoId, imageUrl, urlTags: urlTags || CREATIVE_URL_TAGS,
-        });
-        await meta.updateAd(adId, { name: finalName, creativeId });
-        ads.push({ id: adId, name: finalName });
-      }
-      // 5. dor nova aprendida entra no mapa do produto.
-      if (code && painLabel && (product.painMap || {})[code] !== painLabel) {
-        await repo.update("products", product.id, { painMap: { ...(product.painMap || {}), [code]: painLabel } });
-      }
-      return { ok: true, adsetId: copy.adsetId, adsetName: finalName, ads, number, code, status: "PAUSED" };
+      spool = await spoolToDisk(data);
     } catch (err) {
-      req.log.warn({ err: err.message }, "Meta: ad-from-video falhou");
-      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+      return reply.code(413).send({ error: String(err.message || err) });
     }
+
+    const job = newJob(product.id, "clone");
+    const run = async () => {
+      try {
+        // 1. sobe o vídeo novo + a thumbnail (a Meta exige uma).
+        job.step = "subindo o vídeo pra Meta";
+        const videoId = await meta.uploadVideo(product.metaAdAccount, { path: spool.path, filename: data.filename, title: finalName });
+        job.step = "esperando a Meta processar o vídeo";
+        const imageUrl = await meta.videoThumbnail(videoId);
+        // 2. duplica o conjunto de origem (deep copy leva o anúncio), pausado.
+        job.step = "clonando o conjunto de origem";
+        const copy = await meta.copyAdSet(sourceAdsetId, { statusOption: "PAUSED" });
+        if (!copy.adIds.length) throw new Error("o conjunto de origem não tem anúncio pra clonar — escolha um conjunto que já tenha um anúncio de vídeo");
+        // 3. renomeia o conjunto clonado.
+        await meta.renameObject(copy.adsetId, finalName);
+        // 4. orçamento diário pedido (se veio). Falha aqui NÃO invalida o
+        //    anúncio — campanha com orçamento na campanha (CBO) recusa
+        //    orçamento no conjunto, e o time precisa saber disso sem perder o
+        //    trabalho já feito.
+        if (dailyBudget) {
+          job.step = "ajustando o orçamento do conjunto";
+          try {
+            await meta.setObjectBudget(copy.adsetId, dailyBudget);
+          } catch (err) {
+            job.warning = `anúncio criado, mas o orçamento de R$ ${dailyBudget} não colou: ${String(err.message || err).slice(0, 200)}`;
+          }
+        }
+        // 5. troca o vídeo em cada anúncio clonado preservando o spec (copy, título,
+        //    CTA, link, página, IG e as UTMs de atribuição).
+        job.step = "trocando o vídeo do anúncio";
+        const ads = [];
+        for (const adId of copy.adIds) {
+          const { spec, urlTags } = await meta.getAdCreativeSpec(adId);
+          const creativeId = await meta.createVideoCreativeFromSpec(product.metaAdAccount, {
+            name: finalName, sourceSpec: spec, videoId, imageUrl, urlTags: urlTags || CREATIVE_URL_TAGS,
+          });
+          await meta.updateAd(adId, { name: finalName, creativeId });
+          ads.push({ id: adId, name: finalName });
+        }
+        // 6. dor nova aprendida entra no mapa do produto.
+        if (code && painLabel && (product.painMap || {})[code] !== painLabel) {
+          await repo.update("products", product.id, { painMap: { ...(product.painMap || {}), [code]: painLabel } });
+        }
+        job.status = "done";
+        job.step = "pronto";
+        job.result = { adsetId: copy.adsetId, adsetName: finalName, ads, number, code, dailyBudget, status: "PAUSED" };
+      } catch (err) {
+        app.log.warn({ err: err.message }, "Meta: ad-from-video falhou");
+        job.status = "error";
+        job.error = String(err.message || err).slice(0, 300);
+      } finally {
+        await spool.cleanup();
+      }
+    };
+    run(); // sem await: a resposta sai agora, o trabalho segue no servidor
+    return reply.code(202).send({ ok: true, jobId: job.id, name: finalName });
+  });
+
+  // Acompanhamento do trabalho de vídeo (polling do front). Some depois de 1h.
+  app.get("/api/marketing/job/:id", async (req, reply) => {
+    const job = videoJobs.get(req.params.id);
+    if (!job) return reply.code(404).send({ error: "não achei esse trabalho (o servidor reiniciou?) — confira no Gerenciador antes de subir de novo" });
+    const { startedMs, ...rest } = job; // eslint-disable-line no-unused-vars
+    return rest;
   });
 
   // Métricas do período — spend da Meta cruzado com os leads/funil do Cockpit.

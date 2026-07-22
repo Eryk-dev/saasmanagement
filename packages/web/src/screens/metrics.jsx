@@ -29,6 +29,27 @@ const tooBig = (file) => file && file.size > MAX_VIDEO
   ? `vídeo de ${(file.size / 1024 / 1024).toFixed(0)} MB — o limite é 500 MB, comprima antes de subir`
   : "";
 
+// A API responde o upload com um jobId e segue conversando com a Meta em
+// background (subir + processar + clonar passa de 3 minutos, e requisição
+// aberta esse tempo todo morre no timeout do proxy). Aqui só acompanhamos.
+async function waitForVideoJob(jobId, onStep) {
+  const deadline = Date.now() + 25 * 60 * 1000;
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 3000));
+    let job;
+    try {
+      job = await api.adVideoJob(jobId);
+    } catch (e) {
+      if (e.status === 404) throw new Error("perdi o acompanhamento (o servidor reiniciou) — confira no Gerenciador da Meta antes de subir de novo");
+      throw e;
+    }
+    if (job.status === "done") return job;
+    if (job.status === "error") throw new Error(job.error || "o servidor não conseguiu terminar");
+    onStep(job.step || "processando");
+    if (Date.now() > deadline) throw new Error("passou de 25 minutos sem terminar — confira no Gerenciador da Meta antes de subir de novo");
+  }
+}
+
 const DAY = 86_400_000;
 // Dia LOCAL do navegador (Brasil), não UTC — às 21h de Brasília o toISOString
 // já vira o dia seguinte e o filtro "hoje" apontava pra um dia sem dados.
@@ -1385,6 +1406,20 @@ function PainTable({ pains, money }) {
 // campanha [dor] é resolvida sozinha → escolhe o conjunto de origem pra clonar
 // → sobe o vídeo. O servidor duplica o conjunto (leva público/orçamento/copy/
 // anúncio), renomeia pra "<número do arquivo> [dor]" e troca só o vídeo. Pausado.
+// Barra do upload + passo do servidor. Vídeo de 150 MB leva minutos; sem isso a
+// tela fica idêntica a travada e o time sobe o mesmo vídeo duas vezes.
+function JobProgress({ pct, step }) {
+  const sending = pct > 0 && pct < 1;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 11.5, color: "var(--fg-3)" }}>
+      <span style={{ width: 90, height: 4, borderRadius: 2, background: "var(--line-2)", overflow: "hidden" }}>
+        <span style={{ display: "block", height: "100%", width: `${Math.round((sending ? pct : 1) * 100)}%`, background: "var(--accent)", transition: "width .2s" }} />
+      </span>
+      <span className="mono">{sending ? `enviando o vídeo · ${Math.round(pct * 100)}%` : (step || "processando na Meta…")}</span>
+    </span>
+  );
+}
+
 function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
   const [defaults, setDefaults] = useState(null); // { painMap }
   const [pain, setPain] = useState("");           // código escolhido ou "_new"
@@ -1394,7 +1429,10 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
   const [sourceAdsetId, setSourceAdsetId] = useState("");
   const [file, setFile] = useState(null);
   const [numOverride, setNumOverride] = useState("");
+  const [budget, setBudget] = useState("");     // orçamento diário do conjunto novo
   const [busy, setBusy] = useState(false);
+  const [pct, setPct] = useState(0);            // progresso do upload (0..1)
+  const [step, setStep] = useState("");         // passo do trabalho no servidor
 
   useEffect(() => {
     api.creativeDefaults(product.id).then(setDefaults).catch(() => setDefaults({ painMap: {} }));
@@ -1422,6 +1460,13 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
       .catch((e) => { setAdsets([]); onError(e.message || "Falha ao listar conjuntos."); });
   }, [campaignId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Orçamento nasce com o do conjunto de origem — o valor que o clone teria de
+  // qualquer jeito. Editar aqui é o atalho pra testar a dor com outro budget.
+  const sourceAdset = (adsets || []).find((s) => s.id === sourceAdsetId) || null;
+  useEffect(() => {
+    setBudget(sourceAdset?.dailyBudget != null ? String(sourceAdset.dailyBudget).replace(".", ",") : "");
+  }, [sourceAdsetId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const detectedNumber = numOverride.trim() || (file ? fileNumberOf(file.name) : "");
   const finalName = painCodeSel && detectedNumber ? `${detectedNumber} [${painCodeSel}]` : "";
   const valid = painCodeSel && (pain !== "_new" || painLabelSel) && campaignId && sourceAdsetId && file && detectedNumber && !busy;
@@ -1429,20 +1474,26 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
   async function submit() {
     const big = tooBig(file);
     if (big) return onError(big);
-    setBusy(true);
+    setBusy(true); setPct(0); setStep("");
     try {
       const fd = new FormData();
       fd.append("painCode", painCodeSel);
       if (painLabelSel) fd.append("painLabel", painLabelSel);
       fd.append("sourceAdsetId", sourceAdsetId);
       if (numOverride.trim()) fd.append("number", numOverride.trim());
+      if (budget.trim()) fd.append("dailyBudget", budget.trim());
       fd.append("video", file, file.name);
-      const r = await api.adFromVideo(product.id, fd);
-      onDone(`Anúncio "${r.adsetName}" criado PAUSADO (conjunto clonado + vídeo trocado) — revise e ative no Gerenciador.`);
+      const { jobId } = await api.adFromVideo(product.id, fd, setPct);
+      setStep("a Meta está processando o vídeo");
+      const job = await waitForVideoJob(jobId, setStep);
+      const orc = job.result?.dailyBudget ? ` · orçamento R$ ${String(job.result.dailyBudget).replace(".", ",")}/dia` : "";
+      onDone(job.warning
+        ? `Anúncio "${job.result.adsetName}" criado PAUSADO, mas ATENÇÃO: ${job.warning}`
+        : `Anúncio "${job.result.adsetName}" criado PAUSADO (conjunto clonado + vídeo trocado)${orc} — revise e ative no Gerenciador.`);
     } catch (e) {
       onError(e.message || "Falha ao criar o anúncio.");
     }
-    setBusy(false);
+    setBusy(false); setPct(0); setStep("");
   }
 
   const lbl = { display: "flex", flexDirection: "column", gap: 4 };
@@ -1505,18 +1556,26 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
               {(adsets || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </label>
+          <label style={lbl}>
+            <span className="mono" style={cap}>5 · Orçamento diário do conjunto (R$)</span>
+            <input type="text" inputMode="decimal" placeholder={sourceAdset ? (sourceAdset.dailyBudget != null ? "igual ao de origem" : "orçamento na campanha (CBO)") : "escolha o conjunto"}
+              value={budget} onChange={(e) => setBudget(e.target.value.replace(/[^\d.,]/g, ""))}
+              style={{ ...inp, fontFamily: "var(--mono)" }} />
+          </label>
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <button onClick={submit} disabled={!valid}
             style={{ height: 32, padding: "0 16px", borderRadius: "var(--r-1)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600, opacity: !valid ? 0.55 : 1 }}>
-            {busy ? "Subindo vídeo e clonando… (pode levar uns minutos)" : "Criar anúncio pausado"}
+            {busy ? "Trabalhando… não feche a tela" : "Criar anúncio pausado"}
           </button>
           <button onClick={onClose} disabled={busy} style={{ height: 32, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>cancelar</button>
-          {finalName && <span className="mono dim" style={{ fontSize: 11.5 }}>nome final do conjunto e do anúncio: <b style={{ color: "var(--fg-2)" }}>{finalName}</b></span>}
+          {busy
+            ? <JobProgress pct={pct} step={step} />
+            : finalName && <span className="mono dim" style={{ fontSize: 11.5 }}>nome final do conjunto e do anúncio: <b style={{ color: "var(--fg-2)" }}>{finalName}</b></span>}
         </div>
         <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.5 }}>
-          clona o conjunto escolhido (mantém público, orçamento, posicionamento, copy e CTA), troca só o vídeo pelo que você subiu e renomeia conjunto e anúncio pra «número [dor]». Nada gasta até você ativar no Gerenciador.
+          clona o conjunto escolhido (mantém público, posicionamento, copy e CTA), troca só o vídeo pelo que você subiu, renomeia conjunto e anúncio pra «número [dor]» e aplica o orçamento diário acima (vazio mantém o do conjunto de origem). Nada gasta até você ativar no Gerenciador.
         </div>
       </div>
     </Card>
@@ -1537,6 +1596,8 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
   const [cta, setCta] = useState("LEARN_MORE");
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [pct, setPct] = useState(0);
+  const [step, setStep] = useState("");
 
   useEffect(() => {
     api.creativeDefaults(product.id)
@@ -1560,7 +1621,7 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
   async function submit() {
     const big = tooBig(file);
     if (big) return onError(big);
-    setBusy(true);
+    setBusy(true); setPct(0); setStep("");
     try {
       const fd = new FormData();
       fd.append("adsetId", adsetId);
@@ -1571,12 +1632,14 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
       fd.append("ctaType", cta);
       if (painCodeSel) { fd.append("painCode", painCodeSel); fd.append("painLabel", painLabelSel); }
       fd.append("video", file, file.name);
-      const r = await api.uploadCreative(product.id, fd);
-      onDone(`Anúncio "${r.name}" criado PAUSADO — revise e ative no Gerenciador.`);
+      const { jobId } = await api.uploadCreative(product.id, fd, setPct);
+      setStep("a Meta está processando o vídeo");
+      const job = await waitForVideoJob(jobId, setStep);
+      onDone(`Anúncio "${job.result.name}" criado PAUSADO — revise e ative no Gerenciador.`);
     } catch (e) {
       onError(e.message || "Falha ao criar o criativo.");
     }
-    setBusy(false);
+    setBusy(false); setPct(0); setStep("");
   }
 
   const lbl = { display: "flex", flexDirection: "column", gap: 4 };
@@ -1669,12 +1732,14 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button onClick={submit} disabled={!valid || busy}
             style={{ height: 32, padding: "0 16px", borderRadius: "var(--r-1)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600, opacity: !valid || busy ? 0.55 : 1 }}>
-            {busy ? "Enviando vídeo… (pode levar uns minutos)" : "Criar anúncio pausado"}
+            {busy ? "Trabalhando… não feche a tela" : "Criar anúncio pausado"}
           </button>
           <button onClick={onClose} disabled={busy} style={{ height: 32, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>cancelar</button>
-          {painCodeSel && name.trim() && (
-            <span className="mono dim" style={{ fontSize: 11.5 }}>nome final: [{painCodeSel}] {name.trim()}</span>
-          )}
+          {busy
+            ? <JobProgress pct={pct} step={step} />
+            : painCodeSel && name.trim() && (
+              <span className="mono dim" style={{ fontSize: 11.5 }}>nome final: [{painCodeSel}] {name.trim()}</span>
+            )}
         </div>
       </div>
     </Card>

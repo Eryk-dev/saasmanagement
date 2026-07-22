@@ -34,28 +34,41 @@ async function req(method, path, body) {
   return res.status === 204 ? null : res.json();
 }
 
-// POST multipart (vídeo/áudio/imagem) — fetch cru: o browser define o boundary.
-// Erro vira mensagem legível: quando quem responde é o proxy (413 do nginx, 502
-// de gateway) o corpo é HTML, e jogar essa página na tela não diz nada ao time.
-async function upload(path, formData) {
-  const headers = {};
-  const key = getKey();
-  if (key) headers["x-api-key"] = key;
-  const res = await fetch(`${BASE}${path}`, { method: "POST", headers, body: formData });
-  const text = await res.text().catch(() => "");
-  if (!res.ok) {
-    let msg = "";
-    try { msg = JSON.parse(text).error || ""; } catch { /* não é JSON: veio do proxy */ }
-    if (!msg) {
-      msg = res.status === 413
-        ? "arquivo grande demais pro servidor (limite 512 MB) — comprima o vídeo e tente de novo"
-        : `HTTP ${res.status} (resposta do proxy, não da API)`;
+// Quando quem responde é o proxy (nginx/Traefik), o corpo é HTML: jogar essa
+// página na tela não diz nada ao time. Traduz os casos que aparecem de verdade.
+function proxyMessage(status) {
+  if (status === 413) return "arquivo grande demais pro servidor (limite 512 MB) — comprima o vídeo e tente de novo";
+  if (status === 502 || status === 504) return "o proxy cortou a conexão antes da API responder — se o vídeo já tinha subido, confira no Gerenciador antes de repetir";
+  return `HTTP ${status} (resposta do proxy, não da API)`;
+}
+
+// POST multipart (vídeo/áudio/imagem) via XHR — não é preciosismo: fetch não
+// expõe progresso de upload, e mandar 150 MB com o botão travado e nenhum sinal
+// na tela é indistinguível de travado. `onProgress` recebe 0..1.
+function upload(path, formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${BASE}${path}`);
+    const key = getKey();
+    if (key) xhr.setRequestHeader("x-api-key", key);
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
     }
-    const err = new Error(msg);
-    err.status = res.status;
-    throw err;
-  }
-  return JSON.parse(text);
+    xhr.onload = () => {
+      let body = null;
+      try { body = JSON.parse(xhr.responseText); } catch { /* veio do proxy, não da API */ }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        if (body) return resolve(body);
+        return reject(new Error("resposta inesperada do servidor (não veio JSON)"));
+      }
+      const err = new Error(body?.error || proxyMessage(xhr.status));
+      err.status = xhr.status;
+      reject(err);
+    };
+    xhr.onerror = () => reject(new Error("a conexão caiu durante o upload — tente de novo"));
+    xhr.onabort = () => reject(new Error("upload cancelado"));
+    xhr.send(formData);
+  });
 }
 
 // URL do stream de mudanças (SSE). EventSource não manda headers — a key/token
@@ -223,10 +236,14 @@ export const api = {
   // Análise de integração: sentimento, pendências recorrentes e integrações recentes.
   // integrator opcional (undefined = todos; "" = sem integrador) separa por integrador.
   integrationAnalysis: (saas, integrator) => req("GET", `/api/integrations/${saas}/summary${integrator != null ? `?integrator=${encodeURIComponent(integrator)}` : ""}`),
-  // Upload multipart (vídeo) — fetch cru: o browser define o boundary do form.
-  uploadCreative: (saas, formData) => upload(`/api/marketing/${saas}/creatives`, formData),
-  // Criar anúncio clonando um conjunto e trocando o vídeo (multipart, mesmo padrão).
-  adFromVideo: (saas, formData) => upload(`/api/marketing/${saas}/ad-from-video`, formData),
+  // Upload de vídeo → { jobId }: a API responde assim que o arquivo chega e
+  // toca a Meta em background (subir + processar + clonar leva minutos, e
+  // requisição aberta esse tempo todo morre no proxy). O acompanhamento é o
+  // adVideoJob abaixo.
+  uploadCreative: (saas, formData, onProgress) => upload(`/api/marketing/${saas}/creatives`, formData, onProgress),
+  // Criar anúncio clonando um conjunto e trocando o vídeo (mesmo padrão).
+  adFromVideo: (saas, formData, onProgress) => upload(`/api/marketing/${saas}/ad-from-video`, formData, onProgress),
+  adVideoJob: (jobId) => req("GET", `/api/marketing/job/${jobId}`),
   // Gasto com IA (OpenRouter/OpenAI/Anthropic), agregado em USD.
   aiCosts: (days) => req("GET", `/api/ai-costs${days ? `?days=${days}` : ""}`),
   // Custos operacionais do mês (ads + IA automáticos + lançamentos manuais).
