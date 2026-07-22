@@ -155,16 +155,25 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   const recentLeads = leads.filter((l) => inRange(l.createdAt, since30));
   const recentLeadIds = new Set(recentLeads.map((l) => l.id));
   const contacted = recentLeads.filter((l) => (actsByLead.get(l.id) || []).some((a) => TOUCH_TYPES.has(a.type)));
+  // Uma safra de calls só (as agendadas na janela) e a resolução dela — o funil
+  // inteiro corre sobre a MESMA base: contato → agendamento → comparecimento →
+  // call→ganho encadeiam. Antes cada taxa usava uma contagem de call diferente
+  // (44 agendadas, 33 resolvidas, 76 por callAt) e o número não fechava.
   const booked = bookedLeadsIn(product, leads, actsOf, (iso) => inRange(iso, since30));
   const bookedFromRecentLeads = booked.filter((l) => recentLeadIds.has(l.id));
-  const { shown, noShow } = callOutcome(product, booked, actsOf);
-  const callsRecent = leads.filter((l) => inRange(l.callAt, since30));
+  // Resolve a MESMA safra que o agendamento conta (bookedFromRecentLeads), pra
+  // o funil encadear exato: agendadas N → dessas, quantas compareceram/fecharam.
+  const callOut = callOutcome(product, bookedFromRecentLeads, actsOf); // { shown, noShow, won }
   const wonRecent = winLeadsIn((iso) => inRange(iso, since30));
   const conversions = {
     contactRate: resolvedRate(contacted.length, recentLeads.length, goalRate(goals, "sdr", "contactRate"), 0.8),
     bookingRate: resolvedRate(bookedFromRecentLeads.length, contacted.length, goalRate(goals, "sdr", "bookingRate"), 0.3),
-    showRate: resolvedRate(shown, shown + noShow, goalRate(goals, "sdr", "showRate"), 0.75),
-    closeRate: resolvedRate(wonRecent.length, callsRecent.length, goalRate(goals, "closer", "winRateCall"), 0.25),
+    showRate: resolvedRate(callOut.shown, callOut.shown + callOut.noShow, goalRate(goals, "sdr", "showRate"), 0.75),
+    // Call REALIZADA → ganho: dos que compareceram, quantos fecharam (a MESMA
+    // safra). É a mesma "conversão na call" do placar; o gap pra ponta a ponta
+    // real (lead→ganho) é a truncagem da janela (call recente ainda não fechou),
+    // e a calibração abaixo corrige o plano.
+    closeRate: resolvedRate(callOut.won, callOut.shown, goalRate(goals, "closer", "winRateCall"), 0.25),
   };
 
   // CPL real dos últimos 30 dias (mesma régua do /api/marketing): spend do
@@ -183,8 +192,8 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   // multiplica na cadeia: o produto das 4 dava ~metade da ponta a ponta real e
   // o plano pedia 2-3x mais lead/investimento do que a história mostra. Com
   // amostra decente, o fechamento é CALIBRADO pra cadeia fechar exatamente na
-  // ponta a ponta (a folga vai toda pro fechamento, a taxa mais poluída, já que
-  // o denominador de callsRecent também conta callAt de follow-up).
+  // ponta a ponta (a folga vai toda pro fechamento, a taxa mais truncada: call
+  // agendada na janela ainda não teve tempo de virar ganho).
   const chainProb = round4(clampRate(conversions.contactRate.value * conversions.bookingRate.value
     * conversions.showRate.value * conversions.closeRate.value));
   conversions.leadToWin = resolvedRate(wonRecent.length, leads30, null, chainProb);

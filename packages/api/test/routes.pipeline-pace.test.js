@@ -106,13 +106,13 @@ test("pace usa faturas pagas, dias úteis e desdobra o gap pelas conversões rea
   assert.deepEqual(r.conversions.contactRate, { value: 0.8, source: "history", numerator: 8, denominator: 10 });
   assert.deepEqual(r.conversions.bookingRate, { value: 0.375, source: "history", numerator: 3, denominator: 8 });
   assert.equal(r.conversions.showRate.value, 0.6667);
-  assert.equal(r.conversions.closeRate.value, 0.25);
+  assert.equal(r.conversions.closeRate.value, 0.5); // call REALIZADA → ganho: 1 ganho ÷ 2 compareceram (mesma safra)
 
   assert.equal(r.plan.wins.remaining, 4);
-  assert.equal(r.plan.calls.remaining, 16);
-  assert.equal(r.plan.callsBooked.remaining, 24);
-  assert.equal(r.plan.leads.remaining, 80);
-  assert.equal(r.plan.contacts.remaining, 64);
+  assert.equal(r.plan.calls.remaining, 8);          // 4 / 0,5 (fechamento efetivo, não calibrado aqui)
+  assert.equal(r.plan.callsBooked.remaining, 12);   // 8 / 0,6667
+  assert.equal(r.plan.leads.remaining, 40);         // 32 / 0,8
+  assert.equal(r.plan.contacts.remaining, 32);      // 12 / 0,375
   assert.equal(r.plan.contacts.today, 2);
   assert.equal(r.plan.callsBooked.today, 1);
   assert.equal(r.plan.calls.today, 1);
@@ -179,7 +179,7 @@ test("ponta a ponta real calibra o fechamento e o plano fecha consistente", asyn
 
   const r = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
   assert.deepEqual(r.conversions.leadToWin, { value: 0.08, source: "history", numerator: 2, denominator: 25 });
-  assert.equal(r.conversions.closeRate.value, 0.2); // 2 ganhos / 10 calls na janela (truncada)
+  assert.equal(r.conversions.closeRate.value, 0.6667); // realizada → ganho: 2 ganhos ÷ 3 compareceram (as calls antigas não poluem mais)
   // efetivo = ponta a ponta ÷ (contato × agendamento × comparecimento) = 0,08 / 0,15
   assert.deepEqual(r.conversions.closeRateEffective, { value: 0.5333, source: "calibrated" });
   // gap do VENDIDO = 120k − 8k já vendidos = 112k; ÷ ticket 4k = 28 ganhos →
