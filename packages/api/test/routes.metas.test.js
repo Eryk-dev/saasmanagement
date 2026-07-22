@@ -124,8 +124,9 @@ test("derived: a meta do mês desce pela cadeia do pace e vira alvo de time", as
 
   // O que o botão grava: só VOLUME (taxa continua digitada, senão vira circular).
   const byMetric = Object.fromEntries(d.goals.map((g) => [g.metric, g]));
-  assert.deepEqual(Object.keys(byMetric).sort(), ["callsBooked", "contacts", "newAccounts", "revenue", "ticket", "won"]);
+  assert.deepEqual(Object.keys(byMetric).sort(), ["callsBooked", "callsShown", "contacts", "newAccounts", "revenue", "ticket", "won"]);
   assert.equal(byMetric.won.target, 24);
+  assert.equal(byMetric.callsShown.target, 73, "as calls que precisam ACONTECER pra dar 24 ganhos");
   assert.equal(byMetric.won.role, "closer");
   assert.equal(byMetric.revenue.target, 120000);
   assert.equal(byMetric.callsBooked.role, "sdr");

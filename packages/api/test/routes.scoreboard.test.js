@@ -566,3 +566,23 @@ test("Ana (só UniqueKids) não entra no placar da LeverAds", async () => {
   assert.equal(sb.closer.find((x) => x.user === "u_clo").targets.find((t) => t.metric === "won").target, 24);
   await app.close();
 });
+
+test("closer: calls REALIZADAS entram como meta e o realizado ignora o no-show", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("goals", { id: "g1", saas: "leverads", scope: "role", key: "closer", metric: "callsShown", target: 73, period: "month" });
+  const mk = async (id, stage, extra) => {
+    await repo.create("leads", { id, saas: "leverads", closer: "u_clo", createdAt: now, callAt: now, stage, ...extra });
+  };
+  await mk("c1", "Follow-up", {});                                              // aconteceu
+  await mk("c2", "Perdido", { lostReason: "preco", stageSince: now });          // aconteceu (perdeu por outro motivo)
+  await mk("c3", "Perdido", { lostReason: "nao_compareceu", stageSince: now }); // NÃO aconteceu
+
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  const row = sb.closer.find((x) => x.user === "u_clo");
+  const t = row.targets.find((x) => x.metric === "callsShown");
+  assert.equal(row.calls, 3, "3 agendadas");
+  assert.equal(t.value, 2, "só as que aconteceram (o no-show é do comparecimento do SDR)");
+  assert.equal(t.target, 73, "1 closer: a meta do time é dele inteira");
+  assert.equal(t.kind, "flow", "acumula, então reescala pra janela");
+  await app.close();
+});

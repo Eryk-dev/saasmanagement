@@ -271,6 +271,7 @@ export function registerScoreboardRoutes(app, repo) {
         user: uid, name: nameOf(uid),
         targets: personTargets(uid, "closer", {
           conversaoCall: callsShown > 0 ? round2((wonN / callsShown) * 100) : null,
+          callsShown,
           won: wonN, revenue: round2(revenue), ticket: wonN > 0 ? round2(revenue / wonN) : null,
         }),
         calls, callsShown,
