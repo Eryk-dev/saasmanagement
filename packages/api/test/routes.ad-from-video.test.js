@@ -32,7 +32,9 @@ function fakeMeta(overrides = {}) {
     configured: () => true,
     async uploadVideo(acct, o) { calls.push(["uploadVideo", acct, o.filename, o.title]); return "vid_1"; },
     async videoThumbnail(id) { calls.push(["videoThumbnail", id]); return "https://thumb"; },
-    async copyAdSet(id, o) { calls.push(["copyAdSet", id, o]); return { adsetId: "as_copy", adIds: ["ad_copy"] }; },
+    async adsOfAdSet(id) { calls.push(["adsOfAdSet", id]); return [{ id: "ad_src", name: "1300 [A]" }]; },
+    async createAd(acct, o) { calls.push(["createAd", acct, o]); return { id: "ad_novo", status: "PAUSED" }; },
+    async copyAdSet(id, o) { calls.push(["copyAdSet", id, o]); return { adsetId: "as_copy", adIds: [] }; },
     async renameObject(id, name) { calls.push(["renameObject", id, name]); return { id, name }; },
     async getAdCreativeSpec(id) { calls.push(["getAdCreativeSpec", id]); return { spec: { page_id: "1", video_data: { video_id: "v_old" } }, urlTags: "" }; },
     async createVideoCreativeFromSpec(acct, o) { calls.push(["createVideoCreativeFromSpec", acct, o]); return "cr_new"; },
@@ -80,20 +82,24 @@ test("clona conjunto, renomeia «1303 [B]» e troca só o vídeo; nasce pausado"
   assert.equal(b.number, "1303");
   assert.equal(b.code, "B");
   assert.equal(b.status, "PAUSED");
-  assert.deepEqual(b.ads, [{ id: "ad_copy", name: "1303 [B]" }]);
+  assert.deepEqual(b.ads, [{ id: "ad_novo", name: "1303 [B]" }]);
 
-  // sequência: copyAdSet pausado → rename → getSpec → createCreative → updateAd
+  // O conjunto é copiado SEM os anúncios e o anúncio novo é montado por cima:
+  // cópia profunda recria o criativo antigo e a Meta recusa criativo com o
+  // campo de "melhorias padrão" que ela mesma descontinuou (100/3858504).
   const seq = meta.calls.map((c) => c[0]);
-  assert.deepEqual(seq, ["uploadVideo", "videoThumbnail", "copyAdSet", "renameObject", "getAdCreativeSpec", "createVideoCreativeFromSpec", "updateAd"]);
-  assert.deepEqual(meta.calls.find((c) => c[0] === "copyAdSet")[2], { statusOption: "PAUSED" });
+  assert.deepEqual(seq, ["adsOfAdSet", "getAdCreativeSpec", "uploadVideo", "videoThumbnail", "copyAdSet", "renameObject", "createVideoCreativeFromSpec", "createAd"]);
+  assert.deepEqual(meta.calls.find((c) => c[0] === "copyAdSet")[2], { statusOption: "PAUSED", deepCopy: false });
+  assert.equal(meta.calls.find((c) => c[0] === "getAdCreativeSpec")[1], "ad_src"); // spec vem do anúncio DE ORIGEM
   assert.equal(meta.calls.find((c) => c[0] === "renameObject")[2], "1303 [B]");
   const create = meta.calls.find((c) => c[0] === "createVideoCreativeFromSpec")[2];
   assert.equal(create.videoId, "vid_1");
   assert.equal(create.imageUrl, "https://thumb");
   assert.match(create.urlTags, /utm_source=meta/); // sem url_tags de origem → usa a convenção
-  const upd = meta.calls.find((c) => c[0] === "updateAd");
-  assert.equal(upd[2].creativeId, "cr_new");
-  assert.equal(upd[2].name, "1303 [B]");
+  const novo = meta.calls.find((c) => c[0] === "createAd")[2];
+  assert.equal(novo.adsetId, "as_copy");   // no conjunto NOVO, não no de origem
+  assert.equal(novo.creativeId, "cr_new");
+  assert.equal(novo.name, "1303 [B]");
 
   // dor nova entrou no mapa do produto
   const prod = await repo.get("products", "leverads");
@@ -140,7 +146,7 @@ test("orçamento recusado pela Meta vira aviso, não derruba o anúncio", async 
   assert.equal(job.status, "done");
   assert.match(job.warning, /orçamento de R\$ 200 não colou/);
   assert.equal(job.result.adsetName, "1331 [A]");
-  assert.ok(meta.calls.some((c) => c[0] === "updateAd")); // seguiu até o fim
+  assert.ok(meta.calls.some((c) => c[0] === "createAd")); // seguiu até o fim
 });
 
 test("sem número (nem no arquivo nem avulso) = 400; conjunto sem anúncio = trabalho com erro", async () => {
@@ -150,11 +156,12 @@ test("sem número (nem no arquivo nem avulso) = 400; conjunto sem anúncio = tra
   assert.equal(r1.statusCode, 400);
   assert.match(r1.json().error, /número/);
 
-  const metaEmpty = fakeMeta({ async copyAdSet() { return { adsetId: "as_copy", adIds: [] }; } });
+  const metaEmpty = fakeMeta({ async adsOfAdSet() { return []; } });
   const { app: app2 } = await buildApp(metaEmpty);
   const { job } = await submit(app2, { painCode: "A", sourceAdsetId: "as_src" }, { name: "1303.mp4" });
   assert.equal(job.status, "error");
   assert.match(job.error, /não tem anúncio/);
+  assert.match(job.error, /lendo o anúncio de origem/); // o erro diz em que passo morreu
 });
 
 test("trabalho inexistente responde 404 legível (o servidor pode ter reiniciado)", async () => {

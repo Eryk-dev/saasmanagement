@@ -434,7 +434,9 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       } catch (err) {
         app.log.warn({ err: err.message }, "Meta: criação de criativo falhou");
         job.status = "error";
-        job.error = String(err.message || err).slice(0, 300);
+        // O passo em que morreu é metade do diagnóstico: "Invalid parameter"
+        // sozinho não diz se foi o clone, o orçamento ou a troca do vídeo.
+        job.error = `falhou em «${job.step}»: ${String(err.message || err).slice(0, 400)}`;
       } finally {
         await spool.cleanup();
       }
@@ -484,19 +486,29 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const job = newJob(product.id, "clone");
     const run = async () => {
       try {
-        // 1. sobe o vídeo novo + a thumbnail (a Meta exige uma).
+        // 1. lê o anúncio de ORIGEM antes de mexer em qualquer coisa: é dele
+        //    que sai a copy, o título, o CTA, o link, a página e o Instagram.
+        job.step = "lendo o anúncio de origem";
+        const sourceAds = await meta.adsOfAdSet(sourceAdsetId);
+        if (!sourceAds.length) throw new Error("o conjunto de origem não tem anúncio pra copiar — escolha um conjunto que já tenha um anúncio de vídeo");
+        const { spec, urlTags } = await meta.getAdCreativeSpec(sourceAds[0].id);
+        // 2. sobe o vídeo novo + a thumbnail (a Meta exige uma).
         job.step = "subindo o vídeo pra Meta";
         const onProgress = (p) => { job.step = `subindo o vídeo pra Meta · ${Math.round(p * 100)}%`; };
         const videoId = await meta.uploadVideo(product.metaAdAccount, { path: spool.path, filename: data.filename, title: finalName, onProgress });
         job.step = "esperando a Meta processar o vídeo";
         const imageUrl = await meta.videoThumbnail(videoId);
-        // 2. duplica o conjunto de origem (deep copy leva o anúncio), pausado.
+        // 3. duplica o conjunto de origem SEM os anúncios. Cópia profunda é um
+        //    caminho morto: ela recria o criativo do anúncio antigo e a Meta
+        //    recusa criativo com o campo de "melhorias padrão", que ela mesma
+        //    descontinuou ("standard enhancements has been deprecated",
+        //    código 100/3858504). Copiamos o conjunto (público, orçamento,
+        //    posicionamento, otimização) e montamos o anúncio novo por cima.
         job.step = "clonando o conjunto de origem";
-        const copy = await meta.copyAdSet(sourceAdsetId, { statusOption: "PAUSED" });
-        if (!copy.adIds.length) throw new Error("o conjunto de origem não tem anúncio pra clonar — escolha um conjunto que já tenha um anúncio de vídeo");
-        // 3. renomeia o conjunto clonado.
+        const copy = await meta.copyAdSet(sourceAdsetId, { statusOption: "PAUSED", deepCopy: false });
+        // 4. renomeia o conjunto clonado.
         await meta.renameObject(copy.adsetId, finalName);
-        // 4. orçamento diário pedido (se veio). Falha aqui NÃO invalida o
+        // 5. orçamento diário pedido (se veio). Falha aqui NÃO invalida o
         //    anúncio — campanha com orçamento na campanha (CBO) recusa
         //    orçamento no conjunto, e o time precisa saber disso sem perder o
         //    trabalho já feito.
@@ -508,19 +520,15 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
             job.warning = `anúncio criado, mas o orçamento de R$ ${dailyBudget} não colou: ${String(err.message || err).slice(0, 200)}`;
           }
         }
-        // 5. troca o vídeo em cada anúncio clonado preservando o spec (copy, título,
-        //    CTA, link, página, IG e as UTMs de atribuição).
-        job.step = "trocando o vídeo do anúncio";
-        const ads = [];
-        for (const adId of copy.adIds) {
-          const { spec, urlTags } = await meta.getAdCreativeSpec(adId);
-          const creativeId = await meta.createVideoCreativeFromSpec(product.metaAdAccount, {
-            name: finalName, sourceSpec: spec, videoId, imageUrl, urlTags: urlTags || CREATIVE_URL_TAGS,
-          });
-          await meta.updateAd(adId, { name: finalName, creativeId });
-          ads.push({ id: adId, name: finalName });
-        }
-        // 6. dor nova aprendida entra no mapa do produto.
+        // 6. anúncio novo no conjunto clonado: mesmo spec da origem, só o vídeo
+        //    (e a thumbnail dele) mudam. Nasce PAUSADO.
+        job.step = "criando o anúncio com o vídeo novo";
+        const creativeId = await meta.createVideoCreativeFromSpec(product.metaAdAccount, {
+          name: finalName, sourceSpec: spec, videoId, imageUrl, urlTags: urlTags || CREATIVE_URL_TAGS,
+        });
+        const ad = await meta.createAd(product.metaAdAccount, { adsetId: copy.adsetId, creativeId, name: finalName });
+        const ads = [{ id: String(ad.id), name: finalName }];
+        // 7. dor nova aprendida entra no mapa do produto.
         if (code && painLabel && (product.painMap || {})[code] !== painLabel) {
           await repo.update("products", product.id, { painMap: { ...(product.painMap || {}), [code]: painLabel } });
         }
@@ -530,7 +538,9 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       } catch (err) {
         app.log.warn({ err: err.message }, "Meta: ad-from-video falhou");
         job.status = "error";
-        job.error = String(err.message || err).slice(0, 300);
+        // O passo em que morreu é metade do diagnóstico: "Invalid parameter"
+        // sozinho não diz se foi o clone, o orçamento ou a troca do vídeo.
+        job.error = `falhou em «${job.step}»: ${String(err.message || err).slice(0, 400)}`;
       } finally {
         await spool.cleanup();
       }
