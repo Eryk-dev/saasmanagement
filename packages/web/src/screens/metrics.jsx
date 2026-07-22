@@ -1064,7 +1064,10 @@ function CreativeModal({ saas, ad, onClose }) {
     return () => { alive = false; };
   }, [saas, ad.id]);
   const media = st.media;
-  const box = { width: "100%", borderRadius: "var(--r-2)", maxHeight: "70dvh" };
+  // Fundo CLARO (não preto): se o vídeo não carregar, o modal não fica uma tela
+  // preta — mostra a superfície do tema e o poster. Sem autoplay.
+  const box = { width: "100%", maxHeight: "64dvh", borderRadius: "var(--r-2)", background: "var(--bg-2)" };
+  const mediaUrl = media?.videoUrl || media?.imageUrl || "";
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 95, background: "color-mix(in srgb, var(--bg-0) 62%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(520px, 100%)", maxHeight: "88dvh", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 18 }}>
@@ -1075,9 +1078,20 @@ function CreativeModal({ saas, ad, onClose }) {
         </div>
         {st.loading && <div className="mono dim" style={{ fontSize: 12, padding: "32px 0", textAlign: "center" }}>carregando criativo…</div>}
         {st.error && <div className="mono" style={{ fontSize: 12, color: "var(--neg)", padding: "8px 0" }}>{st.error}</div>}
-        {media?.type === "video" && <video src={media.videoUrl} poster={media.thumbnail || undefined} controls autoPlay playsInline style={{ ...box, background: "#000" }} />}
-        {media?.type === "image" && <img src={media.imageUrl} alt={ad.name || ""} style={{ ...box, objectFit: "contain" }} />}
+        {media?.type === "video" && (
+          <video src={media.videoUrl} poster={media.thumbnail || undefined} controls playsInline preload="metadata"
+            onError={() => setSt((s) => ({ ...s, mediaError: true }))} style={box} />
+        )}
+        {media?.type === "image" && (
+          <img src={media.imageUrl} alt={ad.name || ""} onError={() => setSt((s) => ({ ...s, mediaError: true }))}
+            style={{ ...box, objectFit: "contain" }} />
+        )}
         {media?.type === "none" && <div className="mono dim" style={{ fontSize: 12, padding: "24px 0", textAlign: "center" }}>sem mídia disponível pra este anúncio</div>}
+        {mediaUrl && (
+          <a href={mediaUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginTop: 10, fontSize: 12.5, color: "var(--accent)" }}>
+            abrir em nova aba ↗{st.mediaError ? " · não carregou aqui" : ""}
+          </a>
+        )}
       </div>
     </div>
   );
