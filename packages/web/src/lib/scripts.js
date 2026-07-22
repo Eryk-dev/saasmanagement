@@ -519,6 +519,17 @@ export function scriptChecklist(saasCfg, lead) {
     value: answerLabel(saasCfg, lead, q.key),
     raw: lead?.[q.key] ?? "",
   });
+  const respondeu = (k) => { const v = lead?.[k]; return !(v == null || (Array.isArray(v) ? !v.length : String(v).trim() === "")); };
+  // Lead que entrou por uma SAÍDA do formulário (ex.: ainda não vende em
+  // marketplace, foi pra Mentoria) respondeu OUTRO ramo de perguntas. Cobrar
+  // dele o checklist de venda ("quantas contas você opera?") não faz sentido:
+  // o card mostra o que ele de fato respondeu.
+  if (lead?.formExit) {
+    const doRamo = qs.filter((q) => respondeu(q.key)).map(fromQuestion);
+    doRamo.push({ key: "email", label: "E-mail", type: "text", options: [], value: lead?.email || "", raw: lead?.email || "" });
+    return doRamo;
+  }
+
   const items = [];
   const seen = new Set(["email"]);
   for (const k of CHECKLIST_ORDER) {
@@ -529,8 +540,10 @@ export function scriptChecklist(saasCfg, lead) {
       items.push(fromQuestion(byKey[k]));
     }
   }
-  // Perguntas extras do produto (fora da ordem canônica) entram antes do e-mail.
-  for (const q of qs) if (!seen.has(q.key)) items.push(fromQuestion(q));
+  // Perguntas extras do produto (fora da ordem canônica) entram antes do
+  // e-mail, e SÓ quando respondidas: as perguntas do ramo de quem não vende
+  // moram na mesma lista e virariam três campos vazios em todo lead de venda.
+  for (const q of qs) if (!seen.has(q.key) && respondeu(q.key)) items.push(fromQuestion(q));
   items.push({ key: "email", label: "E-mail (convite da call) · por último", type: "text", options: [], value: lead?.email || "", raw: lead?.email || "" });
   return items;
 }

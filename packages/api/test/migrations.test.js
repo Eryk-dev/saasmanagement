@@ -596,6 +596,24 @@ test("migração: pergunta de corte abre o form e o fluxo de quem já vende não
   assert.equal(submissionExit(f.questions, semInteresse), "sem_interesse");
 });
 
+test("migração leva as perguntas novas pro painel do lead (senão o card fica vazio)", async () => {
+  const repo = makeMemRepo();
+  await repo.create("forms", { ...FORM_REAL });
+  await repo.create("products", {
+    id: "leverads", name: "LeverAds", funnel: [],
+    leadQuestions: [{ key: "niche", label: "Qual seu principal nicho?", options: [] }],
+  });
+  await migrateFormVendeMarketplace(repo);
+
+  const lq = (await repo.get("products", "leverads")).leadQuestions;
+  const porChave = Object.fromEntries(lq.map((q) => [q.key, q]));
+  assert.ok(porChave.vende_marketplace, "a pergunta de corte precisa aparecer no card");
+  assert.ok(porChave.aprender_interesse);
+  assert.ok(porChave.aprender_verba);
+  assert.deepEqual(porChave.aprender_verba.options.map((o) => o.value), ["ate-1k", "1k-5k", "5k-20k", "20k+", "nao-sei"]);
+  assert.equal(porChave.niche.label, "Qual seu principal nicho?", "não estraga o que já estava curado");
+});
+
 test("migração é one-shot e não duplica a pergunta", async () => {
   const repo = makeMemRepo();
   await repo.create("forms", { ...FORM_REAL });
