@@ -376,6 +376,7 @@ ${metaPixelHead(pixelId)}
   var root = document.getElementById('root');
   var insightTimer = null;
   var rejected = false; // caiu numa saída de NÃO-qualificado (branch _reject)
+  var exitKey = '';     // saída lateral carregada por uma opção do caminho
 
   function isBlank(v) { return v == null || (Array.isArray(v) ? v.length === 0 : String(v).trim() === ''); }
   function realVisited() {
@@ -399,6 +400,24 @@ ${metaPixelHead(pixelId)}
       if (q.to) return q.to;
     }
     return '';
+  }
+
+  // Saída lateral do caminho: a última marcada pelas opções respondidas. Vale a
+  // pena calcular do zero (e não acumular numa variável) porque a pessoa pode
+  // voltar e trocar a resposta — acumulado, "ainda não vendo" ficaria grudado.
+  function exitOfTrail() {
+    var out = '';
+    for (var i = 0; i < trail.length; i++) {
+      var idxs = STEPS[trail[i]] || [];
+      for (var k = 0; k < idxs.length; k++) {
+        var q = QS[idxs[k]];
+        if (q.type !== 'select') continue;
+        for (var j = 0; j < (q.options || []).length; j++) {
+          if (q.options[j].value === answers[q.key] && q.options[j].exit) out = q.options[j].exit;
+        }
+      }
+    }
+    return out;
   }
 
   // Próxima tela a partir de si. -1 = fim do form (terminal _end/_reject ou
@@ -677,7 +696,7 @@ ${metaPixelHead(pixelId)}
 
   function jumpFrom(si) {
     var ni = nextStep(si);
-    if (ni === -1) { rejected = (toOf(si) === '_reject'); return submit(); }
+    if (ni === -1) { rejected = (toOf(si) === '_reject'); exitKey = exitOfTrail(); return submit(); }
     cur = ni;
     trail.push(ni);
     render();
@@ -713,7 +732,9 @@ ${metaPixelHead(pixelId)}
     // Pixel "Lead" dispara JÁ AQUI (antes do POST) com o eventID — assim o ping
     // acontece mesmo se a aba fechar antes da rede responder. No-op sem pixel.
     // NÃO dispara pra desqualificado (espelha o skip do CAPI no servidor).
-    if (!rejected) {
+    // Saída lateral também NÃO dispara: contar como conversão ensina a Meta a
+    // buscar mais gente fora do perfil (o problema que a pergunta veio resolver).
+    if (!rejected && !exitKey) {
       try { if (window.fbq) window.fbq('track', 'Lead', { content_name: F.name || '' }, { eventID: eventId }); } catch (e) {}
     }
     var payload = {
@@ -739,7 +760,7 @@ ${metaPixelHead(pixelId)}
       mode = 'done'; cur = -1; render();
       // Encaminhamento só na tela positiva (desqualificado não vai). O WhatsApp
       // com o resumo do lead tem prioridade sobre o redirect de URL.
-      var tk = (!rejected && F.thanks) || null;
+      var tk = (!rejected && !exitKey && F.thanks) || null;
       var waNum = tk ? waDigits(tk.whatsapp) : '';
       var waText = waNum && tk.whatsappPrefill ? interpWa(tk.whatsappPrefill) : '';
       if (waText && tk.whatsappAuto) {
@@ -757,16 +778,17 @@ ${metaPixelHead(pixelId)}
   function renderDone() {
     // Desqualificado: usa a tela reject (copy de descarte, ícone neutro, sem
     // redirect). Caso contrário, a tela thanks positiva de sempre.
-    var t = (rejected ? F.reject : F.thanks) || {};
+    var saida = exitKey && F.exits ? F.exits[exitKey] : null;
+    var t = (saida || (rejected ? F.reject : F.thanks)) || {};
     var s = el('div', 'fade');
     s.appendChild(topBar(false, false));
     var wrap = el('div', 'done-wrap');
     // Check verde no sucesso; traço neutro no descarte.
-    var icon = rejected
+    var icon = (rejected || exitKey)
       ? '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>'
       : '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>';
     wrap.appendChild(el('div', rejected ? 'success-icon neg' : 'success-icon', icon));
-    var defTitle = rejected ? 'Obrigado pelo seu interesse!' : 'Recebido! Obrigado.';
+    var defTitle = (rejected || exitKey) ? 'Obrigado pelo seu interesse!' : 'Recebido! Obrigado.';
     wrap.appendChild(el('h1', 'q', fmt(t.title || defTitle)));
     if (t.subtitle) wrap.appendChild(el('div', 'sub', fmt(t.subtitle)));
     // CTA WhatsApp opcional: "fale com o time agora". Mostra quando o form tem número.
@@ -774,7 +796,7 @@ ${metaPixelHead(pixelId)}
     if (waNum) {
       // Mensagem que o LEAD manda pro time (resumo da operação dele), pré-preenchida
       // no wa.me. Sem template configurado, mantém o botão "falar com o time" antigo.
-      var waText = (!rejected && t.whatsappPrefill) ? interpWa(t.whatsappPrefill) : '';
+      var waText = (!rejected && !exitKey && t.whatsappPrefill) ? interpWa(t.whatsappPrefill) : '';
       var waMsg = t.whatsappMsg || (waText
         ? 'Toque pra falar com o nosso time no WhatsApp, já com o resumo do seu perfil.'
         : 'Caso tenha ficado com alguma dúvida, você pode falar com nosso time agora.');
@@ -787,7 +809,7 @@ ${metaPixelHead(pixelId)}
       wa.rel = 'noopener noreferrer';
       wrap.appendChild(wa);
     }
-    if (!rejected && t.redirectUrl) wrap.appendChild(el('div', 'sub', 'Redirecionando…'));
+    if (!rejected && !exitKey && t.redirectUrl) wrap.appendChild(el('div', 'sub', 'Redirecionando…'));
     s.appendChild(wrap);
     root.appendChild(s);
   }

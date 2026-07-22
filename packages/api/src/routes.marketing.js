@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { meta as defaultMeta, onMetaThrottle } from "./meta.js";
 import { stagePassCounts } from "./routes.funnel-metrics.js";
 import { isWonLead, kindOf } from "./stages.js";
-import { dayKey } from "./metrics-core.js";
+import { dayKey, isRealLead } from "./metrics-core.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 
 const DAY_MS = 86400000;
@@ -632,7 +632,13 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       .filter((r) => r.saas === product.id && r.date >= since && r.date <= until)
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
     const leads = (await repo.list("leads"))
-      .filter((l) => l.saas === product.id && !l.internal && l.createdAt && dayStr(l.createdAt) >= since && dayStr(l.createdAt) <= until);
+      .filter((l) => l.saas === product.id && isRealLead(l) && l.createdAt && dayStr(l.createdAt) >= since && dayStr(l.createdAt) <= until);
+    // Quem saiu por uma saída lateral do form (ex.: ainda não vende) fica FORA
+    // das contagens acima (senão o CPL fica barato por encher de quem não
+    // compra) e vira um número próprio: é o diagnóstico do anúncio, não do form.
+    const foraDoPerfil = (await repo.list("leads")).filter(
+      (l) => l.saas === product.id && !l.internal && l.formExit && l.createdAt && dayStr(l.createdAt) >= since && dayStr(l.createdAt) <= until,
+    ).length;
 
     // Visitas no form (páginas públicas do produto, sessões únicas no período):
     // o topo REAL do funil de aquisição, antes do lead existir.
@@ -797,6 +803,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         spend: Math.round(spend * 100) / 100,
         impressions, clicks, metaLeads,
         leads: leads.length,
+        foraDoPerfil,   // envios que saíram do funil de venda (ainda não vendem)
         formViews: formSessions("view"),   // visitas no form no período
         formStarts: formSessions("start"), // clicaram em começar
         cpl: per(leads.length),          // custo por lead REAL (criados no Cockpit)

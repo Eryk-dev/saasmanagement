@@ -548,3 +548,59 @@ test("ensureCloseRateUnica sem meta de comparecimento usa o benchmark de 75%", a
   await ensureCloseRateUnica(repo);
   assert.equal((await repo.list("goals")).find((g) => g.metric === "conversaoCall").target, 20); // 15 ÷ 0,75
 });
+
+// ── Pergunta de corte no form + saídas laterais ─────────────────────────────
+const { migrateFormVendeMarketplace } = await import("../src/migrations.js");
+const { submissionExit, computePath } = await import("../src/forms.js");
+
+const FORM_REAL = {
+  id: "fo_diagnostico_leverads",
+  name: "Diagnóstico LeverAds",
+  saas: "leverads",
+  status: "published",
+  mapping: { name: "nome", phone: "whatsapp" },
+  questions: [
+    { key: "niche", label: "Segmento?", type: "select", options: [{ value: "autopecas" }, { value: "outros" }] },
+    { key: "accounts", label: "Contas?", type: "select", options: [{ value: "1" }, { value: "2", to: "listings" }] },
+    { key: "plan_expand", label: "Pretende abrir?", type: "select", options: [{ value: "sim-3m" }] },
+    { key: "listings", label: "Anúncios?", type: "select", options: [{ value: "0-100" }] },
+    { key: "nome", label: "Nome?", type: "text" },
+    { key: "whatsapp", label: "WhatsApp?", type: "phone" },
+  ],
+};
+
+test("migração: pergunta de corte abre o form e o fluxo de quem já vende não muda", async () => {
+  const repo = makeMemRepo();
+  await repo.create("forms", { ...FORM_REAL });
+  assert.equal(await migrateFormVendeMarketplace(repo), true);
+  const f = await repo.get("forms", "fo_diagnostico_leverads");
+
+  assert.equal(f.questions[0].key, "vende_marketplace");   // primeira de todas
+  assert.equal(f.exits.mentoria.stage, "Mentoria");
+
+  // quem já vende passa exatamente pelas perguntas de antes
+  const vendedor = { vende_marketplace: "sim", niche: "autopecas", accounts: "2", listings: "0-100", nome: "Ana", whatsapp: "41999998888" };
+  const caminho = computePath(f.questions, vendedor).map((q) => q.key);
+  assert.deepEqual(caminho, ["vende_marketplace", "niche", "accounts", "listings", "nome", "whatsapp"]);
+  assert.equal(submissionExit(f.questions, vendedor), "");  // segue como venda
+
+  // quem não vende cai no ramo novo e reusa as perguntas de contato
+  const iniciante = { vende_marketplace: "nao", aprender_interesse: "sim", aprender_verba: "1k-5k", nome: "Bia", whatsapp: "41999997777" };
+  assert.deepEqual(computePath(f.questions, iniciante).map((q) => q.key),
+    ["vende_marketplace", "aprender_interesse", "aprender_verba", "nome", "whatsapp"]);
+  assert.equal(submissionExit(f.questions, iniciante), "mentoria");
+
+  // quem não quer aprender para antes do contato
+  const semInteresse = { vende_marketplace: "nao", aprender_interesse: "nao" };
+  assert.deepEqual(computePath(f.questions, semInteresse).map((q) => q.key), ["vende_marketplace", "aprender_interesse"]);
+  assert.equal(submissionExit(f.questions, semInteresse), "sem_interesse");
+});
+
+test("migração é one-shot e não duplica a pergunta", async () => {
+  const repo = makeMemRepo();
+  await repo.create("forms", { ...FORM_REAL });
+  await migrateFormVendeMarketplace(repo);
+  const antes = (await repo.get("forms", "fo_diagnostico_leverads")).questions.length;
+  assert.equal(await migrateFormVendeMarketplace(repo), false);
+  assert.equal((await repo.get("forms", "fo_diagnostico_leverads")).questions.length, antes);
+});

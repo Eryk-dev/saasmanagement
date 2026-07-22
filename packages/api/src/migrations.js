@@ -711,7 +711,100 @@ export async function ensureUserScreens(repo) {
 
 // Orquestrador chamado no boot. Cada migração é isolada num try/catch pra que
 // uma falha não derrube o start da API.
+// ── Form: pergunta de corte "já vende em marketplace?" (jul/2026) ───────────
+// Estava chegando gente que nem vende em marketplace. Duas coisas resolvem isso
+// ao mesmo tempo: perguntar logo de cara (quem não vende sai do fluxo de venda)
+// e NÃO contar essa saída como conversão — contar ensinaria a Meta a caçar mais
+// gente fora do perfil, que é a raiz do problema.
+//
+// Quem não vende vai pra uma conversa própria (interesse em aprender + verba) e
+// nasce na coluna Mentoria, sem dono: o produto pra essa fila ainda vai existir.
+// Migração porque o dado (perguntas) só faz sentido com o código que entende
+// `exit` — deploy atômico, igual à troca de tema do form.
+export async function migrateFormVendeMarketplace(repo) {
+  const form = await repo.get("forms", "fo_diagnostico_leverads");
+  if (!form || form.vendeMarketplaceV1) return false;
+  const qs = [...(form.questions || [])];
+  if (qs.some((q) => q.key === "vende_marketplace")) {
+    await repo.update("forms", form.id, { vendeMarketplaceV1: true });
+    return false;
+  }
+
+  const vende = {
+    key: "vende_marketplace",
+    label: "Antes de tudo: você *já vende* em marketplace?",
+    type: "select",
+    required: true,
+    options: [
+      { value: "sim", label: "Sim, já vendo" },
+      // Sai do fluxo de venda e carrega a saída "mentoria" até o fim (as
+      // perguntas de contato são as MESMAS, então o mapping continua valendo).
+      { value: "nao", label: "Ainda não vendo", to: "aprender_interesse", exit: "mentoria" },
+    ],
+  };
+  const aprender = {
+    key: "aprender_interesse",
+    label: "Você tem interesse em *aprender e começar a vender*?",
+    type: "select",
+    required: true,
+    options: [
+      { value: "sim", label: "Sim, quero começar", to: "aprender_verba" },
+      // Disse não duas vezes: acaba aqui, sem pedir contato de quem não quer.
+      { value: "nao", label: "Não, só estava olhando", to: "_end", exit: "sem_interesse" },
+    ],
+  };
+  const verba = {
+    key: "aprender_verba",
+    label: "Qual sua *verba pra começar*?",
+    type: "select",
+    required: true,
+    to: "nome", // volta pras perguntas de contato do fluxo normal
+    options: [
+      { value: "ate-1k", label: "Até R$ 1 mil" },
+      { value: "1k-5k", label: "R$ 1 mil a R$ 5 mil" },
+      { value: "5k-20k", label: "R$ 5 mil a R$ 20 mil" },
+      { value: "20k+", label: "Mais de R$ 20 mil" },
+      { value: "nao-sei", label: "Ainda não sei" },
+    ],
+  };
+
+  // A pergunta nova abre o form; as do ramo novo ficam DEPOIS do contato, então
+  // o fluxo de quem já vende não muda em nada.
+  const contato = new Set([form.mapping?.name, form.mapping?.phone].filter(Boolean));
+  const novas = [vende, ...qs, aprender, verba];
+  // O último passo do fluxo principal precisa terminar explicitamente, senão
+  // cairia nas perguntas do ramo novo que ficam logo abaixo dele.
+  const idxUltimoContato = novas.map((q, i) => (contato.has(q.key) ? i : -1)).filter((i) => i >= 0).pop();
+  if (idxUltimoContato != null) novas[idxUltimoContato] = { ...novas[idxUltimoContato], to: "_end" };
+
+  await repo.update("forms", form.id, {
+    questions: novas,
+    exits: {
+      ...(form.exits || {}),
+      mentoria: {
+        label: "Ainda não vende em marketplace",
+        stage: "Mentoria",
+        title: "Anotado! Você está *no começo da jornada*.",
+        subtitle: "A LeverAds é pra quem já vende e quer escalar, então hoje ela não te serve. Estamos montando algo pra quem está começando: guardamos seu contato e te chamamos quando abrir.",
+      },
+      sem_interesse: {
+        label: "Não quer começar a vender",
+        title: "Tudo certo, obrigado por responder.",
+        subtitle: "Se um dia quiser vender em marketplace, a gente está por aqui.",
+      },
+    },
+    vendeMarketplaceV1: true,
+  });
+  return true;
+}
+
 export async function runStartupMigrations(repo) {
+  try {
+    const changed = await migrateFormVendeMarketplace(repo);
+    if (changed) console.log('[migration] form do diagnóstico ganhou a pergunta "já vende em marketplace?" + saídas laterais');
+  } catch (err) {
+    console.error("[migration] migrateFormVendeMarketplace falhou:", err?.message || err);
+  }
   try {
     const changed = await ensureIntegrationStage(repo);
     if (changed) console.log('[migration] estágio "Integração" garantido no funil do leverads');
