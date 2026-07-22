@@ -103,7 +103,12 @@ export function CustomersAnalysis({ customers, isKids = false }) {
     // Cohort = clientes que ENTRARAM no período (em "Tudo", a base inteira,
     // incluindo cadastros antigos sem startedAt).
     const cohort = customers.filter((c) => (c.startedAt ? inPeriod(c.startedAt) : fromT == null));
-    const faturado = cohort.reduce((a, c) => a + contractValue(c), 0);
+    // Total contratado = soma do valor ANUAL (arr) de todos os clientes — o
+    // valor real da carteira. Antes usava contractValue (arr ÷ ciclo), que
+    // contava semestral pela metade e mensal por 1/12, encolhendo o total e
+    // divergindo da meta vendida. O contractValue segue só no caixa/futuro
+    // (ali importa o valor de UMA parcela do ciclo, não o anual).
+    const faturado = cohort.reduce((a, c) => a + (Number(c.arr) || 0), 0);
     // Caixa × dinheiro futuro dos contratos do período (parcelados entram mês a mês).
     let caixa = 0, futuro = 0;
     for (const c of cohort) {
@@ -175,11 +180,11 @@ export function CustomersAnalysis({ customers, isKids = false }) {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-        <StatTile label="Total contratado" value={money(m.faturado)} delta="contratos fechados no período" />
-        <StatTile label="Caixa" value={money(m.caixa)} delta="já recebido (à vista + parcelas vencidas)" />
+        <StatTile label="Total contratado" value={money(m.faturado)} delta="valor anual (ARR) dos clientes do período" />
+        <StatTile label="Caixa" value={money(m.caixa)} delta="já recebido (à vista + parcelas vencidas do ciclo)" />
         <StatTile label="Dinheiro futuro" value={money(m.futuro)} delta="parcelas a receber dos faturados/parcelados" />
         <StatTile label="Clientes novos" value={String(m.cohort.length)} delta="entraram no período" />
-        <StatTile label="Ticket médio" value={money(m.ticket)} delta="contratado ÷ clientes novos" />
+        <StatTile label="Ticket médio" value={money(m.ticket)} delta="ARR ÷ clientes novos" />
         {!isKids && <StatTile label="Preço mensal médio" value={money(m.mrrMedio)} delta="média do mensal (ARR ÷ 12)" />}
         <StatTile label="Churn" tone={m.churned.length > 0 ? "down" : "flat"}
           value={m.churnPct == null ? "—" : pct(m.churnPct)}
