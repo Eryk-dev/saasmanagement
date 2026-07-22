@@ -665,3 +665,84 @@ test("a página pública recebe as saídas e o exit das opções", async () => {
   assert.match(html, /exitOfTrail/);           // o renderer sabe calcular a saída
   assert.match(html, /!rejected && !exitKey/); // e não dispara o Pixel nela
 });
+
+// ── Contador de etapas ("02 de 08") ─────────────────────────────────────────
+// Com desvio, o total NÃO é o número de perguntas do form: é o tamanho do
+// caminho DAQUELA pessoa. Contando tudo, quem não vende via "02 / 08" numa
+// jornada de 5 telas. A conta roda aqui isolada, com o form de verdade.
+const { PROGRESS_JS } = await import("../src/form-page.js");
+const { migrateFormVendeMarketplace } = await import("../src/migrations.js");
+
+// O form do diagnóstico como está em produção (antes da migração).
+const FORM_DIAGNOSTICO = {
+  id: "fo_diagnostico_leverads", name: "Diagnóstico LeverAds", saas: "leverads", status: "published",
+  mapping: { name: "nome", phone: "whatsapp" },
+  questions: [
+    { key: "niche", label: "Segmento?", type: "select", options: [{ value: "autopecas" }, { value: "outros" }] },
+    { key: "accounts", label: "Contas?", type: "select", options: [{ value: "1" }, { value: "2", to: "listings" }] },
+    { key: "plan_expand", label: "Pretende abrir?", type: "select", options: [{ value: "sim-3m" }] },
+    { key: "listings", label: "Anúncios?", type: "select", options: [{ value: "0-100" }] },
+    { key: "nome", label: "Nome?", type: "text" },
+    { key: "whatsapp", label: "WhatsApp?", type: "phone" },
+  ],
+};
+
+function progresso(questions, answers, curKey) {
+  const QS = questions;
+  const STEPS = [];
+  QS.forEach((q, i) => {
+    const isInsight = (q.type || "text") === "insight";
+    const prev = STEPS[STEPS.length - 1];
+    const prevIsInsight = prev && (QS[prev[0]].type || "text") === "insight";
+    if (!prev || isInsight || prevIsInsight || !q.stack) STEPS.push([i]);
+    else prev.push(i);
+  });
+  const stepOfKey = {};
+  STEPS.forEach((idxs, si) => idxs.forEach((qi) => { stepOfKey[QS[qi].key] = si; }));
+  const isInsightStep = (si) => (QS[STEPS[si][0]].type || "text") === "insight";
+  const cur = curKey == null ? -1 : stepOfKey[curKey];
+  // trail = telas já visitadas até a atual, seguindo as respostas dadas
+  const trail = [];
+  let s = 0;
+  const guard = new Set();
+  while (s >= 0 && s < STEPS.length && !guard.has(s)) {
+    guard.add(s); trail.push(s);
+    if (s === cur) break;
+    const q = QS[STEPS[s][0]];
+    const opt = (q.options || []).find((o) => o.value === answers[q.key]);
+    const to = (opt && opt.to) || q.to || "";
+    if (to === "_end" || to === "_reject") break;
+    s = to && stepOfKey[to] != null ? stepOfKey[to] : s + 1;
+  }
+  const realVisited = () => trail.filter((si) => !isInsightStep(si)).length;
+  const fn = new Function("QS", "STEPS", "stepOfKey", "isInsightStep", "answers", "cur", "realVisited",
+    PROGRESS_JS + "\n return { total: realTotal(), atual: realVisited() };");
+  return fn(QS, STEPS, stepOfKey, isInsightStep, answers, cur, realVisited);
+}
+
+test("contador: total é o tamanho do CAMINHO, não o número de perguntas", async () => {
+  const repo = makeMemRepo();
+  await repo.create("forms", { ...FORM_DIAGNOSTICO });
+  await migrateFormVendeMarketplace(repo);
+  const qs = (await repo.get("forms", "fo_diagnostico_leverads")).questions;
+  assert.equal(qs.length, 9, "o form inteiro tem 9 perguntas (os dois ramos somados)");
+
+  // quem NÃO vende: vende → interesse → verba → nome → whatsapp = 5 telas
+  const naoVende = { vende_marketplace: "nao", aprender_interesse: "sim", aprender_verba: "1k-5k" };
+  assert.deepEqual(progresso(qs, naoVende, "aprender_interesse"), { total: 5, atual: 2 });
+  assert.deepEqual(progresso(qs, naoVende, "aprender_verba"), { total: 5, atual: 3 });
+  assert.deepEqual(progresso(qs, naoVende, "nome"), { total: 5, atual: 4 });
+  assert.deepEqual(progresso(qs, naoVende, "whatsapp"), { total: 5, atual: 5 });
+
+  // quem vende com 2+ contas pula a de expansão: 6 telas
+  const vende = { vende_marketplace: "sim", niche: "autopecas", accounts: "2" };
+  assert.deepEqual(progresso(qs, vende, "accounts"), { total: 6, atual: 3 });
+  assert.deepEqual(progresso(qs, vende, "whatsapp"), { total: 6, atual: 6 });
+
+  // quem vende com 1 conta responde a de expansão: 7 telas
+  const umaConta = { vende_marketplace: "sim", niche: "autopecas", accounts: "1" };
+  assert.deepEqual(progresso(qs, umaConta, "plan_expand"), { total: 7, atual: 4 });
+
+  // e a promessa da tela de boas-vindas não pode ser a soma dos ramos
+  assert.equal(progresso(qs, {}, null).total, 7);
+});
