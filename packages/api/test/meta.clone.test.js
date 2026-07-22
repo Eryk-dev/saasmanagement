@@ -227,3 +227,50 @@ test("fachada de produção expõe TODO método da fábrica", async () => {
   assert.ok(daFabrica.length > 15);
   assert.deepEqual(daFabrica.filter((k) => typeof mod.meta[k] !== "function"), []);
 });
+
+// ── Limite de chamadas da conta ─────────────────────────────────────────────
+// É temporário e some sozinho, mas derrubava a leva: subir 5 criativos
+// multiplica as chamadas e o 2º pegava "User request limit reached". Agora
+// espera e tenta de novo, em vez de perder o vídeo que já subiu.
+
+const limite = (code = 17) => ({
+  status: 400,
+  text: async () => JSON.stringify({ error: { message: "User request limit reached", code, is_transient: true, error_user_msg: "There have been too many calls from this ad-account." } }),
+});
+
+test("limite de chamadas: espera e tenta de novo até passar", async () => {
+  let chamadas = 0;
+  const esperas = [];
+  const f = async () => (++chamadas <= 2 ? limite() : { status: 200, text: async () => JSON.stringify({ data: [{ id: "as1", name: "1331 [A]" }] }) });
+  const meta = makeMeta({ fetch: f, accessToken: "t", sleep: async (ms) => esperas.push(ms) });
+  const out = await meta.listAdsets("c1");
+  assert.equal(out[0].id, "as1");
+  assert.equal(chamadas, 3);                     // duas recusas + a que passou
+  assert.deepEqual(esperas, [30_000, 60_000]);   // espera crescente
+});
+
+test("limite de chamadas: avisa quem está acompanhando a cada espera", async () => {
+  const avisos = [];
+  let chamadas = 0;
+  const f = async () => (++chamadas === 1 ? limite(613) : { status: 200, text: async () => JSON.stringify({ data: [] }) });
+  const meta = makeMeta({ fetch: f, accessToken: "t", sleep: async () => {}, onThrottle: (i) => avisos.push(i) });
+  await meta.listAdsets("c1");
+  assert.deepEqual(avisos, [{ waitMs: 30_000, attempt: 1, total: 4 }]);
+});
+
+test("limite de chamadas: desiste depois das tentativas, com recado claro", async () => {
+  const meta = makeMeta({ fetch: async () => limite(), accessToken: "t", sleep: async () => {} });
+  await assert.rejects(() => meta.listAdsets("c1"), (e) => {
+    assert.equal(e.rateLimited, true);
+    assert.match(e.message, /segue no limite depois de 4 tentativas/);
+    return true;
+  });
+});
+
+test("erro que NÃO é limite falha de primeira (não fica tentando à toa)", async () => {
+  let chamadas = 0;
+  const f = async () => { chamadas++; return { status: 400, text: async () => JSON.stringify({ error: { message: "Invalid parameter", code: 100 } }) }; };
+  const meta = makeMeta({ fetch: f, accessToken: "t", sleep: async () => {} });
+  await assert.rejects(() => meta.listAdsets("c1"), /Invalid parameter/);
+  assert.equal(chamadas, 1);
+});

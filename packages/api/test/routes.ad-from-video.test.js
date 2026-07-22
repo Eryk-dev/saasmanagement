@@ -183,3 +183,71 @@ test("dor obrigatória e conjunto de origem obrigatório", async () => {
   assert.equal(r2.statusCode, 400);
   assert.match(r2.json().error, /conjunto de origem/);
 });
+
+// ── Fila da leva ────────────────────────────────────────────────────────────
+// Subir vários de uma vez é o fluxo do Leo (uma leva de criativos da mesma
+// dor). Em PARALELO isso multiplica as chamadas na Meta e a conta bate o limite
+// ("Ad Account Has Too Many API Calls"), derrubando a leva inteira. Então o
+// servidor processa um por vez, por produto.
+test("leva de vídeos: o servidor processa um por vez e avisa a posição na fila", async () => {
+  let emVoo = 0, maxEmVoo = 0;
+  const ordem = [];
+  const meta = fakeMeta({
+    async uploadVideo(_a, o) {
+      emVoo += 1; maxEmVoo = Math.max(maxEmVoo, emVoo);
+      await new Promise((r) => setTimeout(r, 40));
+      ordem.push(o.title);
+      emVoo -= 1;
+      return "vid_1";
+    },
+  });
+  const { app } = await buildApp(meta);
+
+  const post = (n) => {
+    const mp = buildMultipart({ painCode: "A", sourceAdsetId: "as_src", number: String(n) }, { name: `${n}.mp4` });
+    return app.inject({ method: "POST", url: "/api/marketing/leverads/ad-from-video", headers: { "content-type": mp.contentType }, payload: mp.body });
+  };
+  const enviados = await Promise.all([post(1301), post(1302), post(1303)]);
+  // As três requisições chegam concorrentes: a ORDEM de entrada não é dada,
+  // mas cada uma sabe quantas tem na frente, e são 0, 1 e 2 — sem empate.
+  const entrada = enviados.map((r) => ({ nome: r.json().name, queued: r.json().queued, jobId: r.json().jobId }));
+  assert.deepEqual(entrada.map((e) => e.queued).sort(), [0, 1, 2]);
+
+  const jobs = [];
+  for (const e of entrada) {
+    for (let i = 0; i < 400; i++) {
+      const j = (await app.inject({ url: `/api/marketing/job/${e.jobId}` })).json();
+      if (j.status !== "running") { jobs.push(j); break; }
+      await new Promise((x) => setTimeout(x, 5));
+    }
+  }
+  assert.deepEqual(jobs.map((j) => j.status), ["done", "done", "done"]);
+  assert.equal(maxEmVoo, 1, "dois vídeos subiram pra Meta ao mesmo tempo");
+  // Quem entrou primeiro na fila é quem subiu primeiro.
+  assert.deepEqual(ordem, [...entrada].sort((a, b) => a.queued - b.queued).map((e) => e.nome));
+});
+
+test("leva: vídeo que falha não trava os outros da fila", async () => {
+  const meta = fakeMeta({
+    async uploadVideo(_a, o) {
+      if (o.title.startsWith("1302")) throw new Error("Meta API -> 400: vídeo corrompido");
+      return "vid_1";
+    },
+  });
+  const { app } = await buildApp(meta);
+  const post = (n) => {
+    const mp = buildMultipart({ painCode: "A", sourceAdsetId: "as_src", number: String(n) }, { name: `${n}.mp4` });
+    return app.inject({ method: "POST", url: "/api/marketing/leverads/ad-from-video", headers: { "content-type": mp.contentType }, payload: mp.body });
+  };
+  const res = await Promise.all([post(1301), post(1302), post(1303)]);
+  const jobs = [];
+  for (const r of res) {
+    for (let i = 0; i < 400; i++) {
+      const j = (await app.inject({ url: `/api/marketing/job/${r.json().jobId}` })).json();
+      if (j.status !== "running") { jobs.push(j); break; }
+      await new Promise((x) => setTimeout(x, 5));
+    }
+  }
+  assert.deepEqual(jobs.map((j) => j.status), ["done", "error", "done"]);
+  assert.match(jobs[1].error, /corrompido/);
+});

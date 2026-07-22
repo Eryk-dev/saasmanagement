@@ -16,7 +16,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { meta as defaultMeta } from "./meta.js";
+import { meta as defaultMeta, onMetaThrottle } from "./meta.js";
 import { stagePassCounts } from "./routes.funnel-metrics.js";
 import { isWonLead, kindOf } from "./stages.js";
 import { dayKey } from "./metrics-core.js";
@@ -56,6 +56,32 @@ function newJob(saas, kind) {
   };
   videoJobs.set(job.id, job);
   return job;
+}
+
+// Fila POR PRODUTO: um vídeo de cada vez. Subir cinco de uma vez em paralelo
+// multiplica as chamadas na Meta e a conta bate o limite ("Ad Account Has Too
+// Many API Calls"), que derruba a leva inteira; enfileirado, cada um sobe
+// inteiro e o seguinte começa em seguida. O usuário acompanha a posição.
+const videoQueues = new Map(); // saas -> promessa do último elo da fila
+
+function enqueueVideoJob(saas, job, run) {
+  // Quantos na frente vem dos trabalhos EM ANDAMENTO, não de um contador
+  // paralelo: contador atrasa um tique em relação ao fim do trabalho e a
+  // pessoa vê "1 na frente" com a fila já vazia.
+  const naFrente = [...videoJobs.values()].filter((j) => j.saas === saas && j.status === "running" && j.id !== job.id).length;
+  job.queued = naFrente;
+  if (naFrente > 0) job.step = `na fila · ${naFrente} vídeo${naFrente > 1 ? "s" : ""} na frente`;
+  const chain = (videoQueues.get(saas) || Promise.resolve()).catch(() => {}).then(async () => {
+    job.queued = 0;
+    job.step = "começando";
+    // Enquanto ESTE trabalho roda (um por vez), a espera imposta pela Meta
+    // aparece na tela em vez de parecer travado.
+    onMetaThrottle(({ waitMs, attempt, total }) => {
+      job.step = `a Meta pediu pra esperar (${attempt}/${total}) · nova tentativa em ${Math.round(waitMs / 1000)}s`;
+    });
+    try { await run(); } finally { onMetaThrottle(null); }
+  });
+  videoQueues.set(saas, chain);
 }
 
 // Grava o arquivo do multipart em disco SEM passar pela memória. Um vídeo de
@@ -183,6 +209,9 @@ export function startMarketingAutoSync(repo, { meta = defaultMeta, intervalMs = 
       const products = (await repo.list("products")).filter((p) => p.metaAdAccount);
       const range = { since: dayStr(Date.now() - DAY_MS), until: dayStr(Date.now()) };
       for (const p of products) {
+        // Enquanto uma leva de vídeos sobe, o sync fica fora do caminho: as duas
+        // coisas dividem a MESMA cota da conta na Meta, e o sync pode esperar.
+        if ([...videoJobs.values()].some((j) => j.saas === p.id && j.status === "running")) continue;
         try {
           await syncProductInsights(repo, meta, p, range);
         } catch (err) {
@@ -442,8 +471,9 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         await spool.cleanup();
       }
     };
-    run(); // sem await: a resposta sai agora, o trabalho segue no servidor
-    return reply.code(202).send({ ok: true, jobId: job.id, name });
+    // Sem await: a resposta sai agora e o trabalho entra na fila do produto.
+    enqueueVideoJob(product.id, job, run);
+    return reply.code(202).send({ ok: true, jobId: job.id, name, queued: job.queued });
   });
 
   // Criar anúncio CLONANDO um conjunto: o fluxo do Leo. A dor aponta a campanha,
@@ -546,8 +576,9 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         await spool.cleanup();
       }
     };
-    run(); // sem await: a resposta sai agora, o trabalho segue no servidor
-    return reply.code(202).send({ ok: true, jobId: job.id, name: finalName });
+    // Sem await: a resposta sai agora e o trabalho entra na fila do produto.
+    enqueueVideoJob(product.id, job, run);
+    return reply.code(202).send({ ok: true, jobId: job.id, name: finalName, queued: job.queued });
   });
 
   // Acompanhamento do trabalho de vídeo (polling do front). Some depois de 1h.

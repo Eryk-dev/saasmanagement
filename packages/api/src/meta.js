@@ -32,42 +32,63 @@ export function metaErrorText(error, fallback = "") {
   return parts.join(" · ") || fallback;
 }
 
-export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+// Limite de chamadas da conta. É TEMPORÁRIO e some sozinho em minutos, mas
+// derrubava a leva inteira: subir 5 criativos multiplica as chamadas e o 2º já
+// pegava "User request limit reached". Códigos da Graph pra isso: 4 e 17 (app e
+// usuário), 32 (página), 613 e 80000+ (limites por recurso).
+const RATE_LIMIT_CODES = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 80005, 80006, 80008, 80009, 80014]);
+function isRateLimited(error) {
+  if (!error) return false;
+  if (RATE_LIMIT_CODES.has(Number(error.code))) return true;
+  return error.is_transient === true && /limit|too many/i.test(String(error.message || ""));
+}
+// Espera crescente: a conta libera em minutos, e quem espera é um trabalho em
+// background — travar 7 minutos é muito melhor que perder o vídeo já enviado.
+const RETRY_WAITS_MS = [30_000, 60_000, 120_000, 240_000];
+
+// Quem estiver tocando um trabalho pode ouvir as esperas pra mostrar na tela.
+let throttleListener = null;
+export function onMetaThrottle(fn) { throttleListener = fn; }
+
+export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), onThrottle = (i) => throttleListener?.(i) } = {}) {
   const configured = () => !!accessToken;
   const acct = (id) => (String(id).startsWith("act_") ? String(id) : `act_${id}`);
 
-  async function get(url) {
-    const res = await f(url);
-    const text = await res.text();
-    let body;
-    try { body = JSON.parse(text); } catch { body = {}; }
-    if (res.status >= 400 || body.error) {
+  // Uma resposta da Graph vira objeto ou erro legível. Limite de chamadas não
+  // vira erro na hora: espera e tenta de novo, porque passa sozinho.
+  async function call(doFetch) {
+    for (let tentativa = 0; ; tentativa++) {
+      const res = await doFetch();
+      const text = await res.text();
+      let body;
+      try { body = JSON.parse(text); } catch { body = {}; }
+      if (res.status < 400 && !body.error) return body;
+
+      if (isRateLimited(body.error) && tentativa < RETRY_WAITS_MS.length) {
+        const waitMs = RETRY_WAITS_MS[tentativa];
+        onThrottle?.({ waitMs, attempt: tentativa + 1, total: RETRY_WAITS_MS.length });
+        await sleep(waitMs);
+        continue;
+      }
       const msg = metaErrorText(body.error, text.slice(0, 300));
       const err = new Error(`Meta API -> ${res.status}: ${msg}`);
       err.status = res.status;
+      err.rateLimited = isRateLimited(body.error);
+      if (err.rateLimited) err.message += " — a conta segue no limite depois de 4 tentativas; espere alguns minutos";
       throw err;
     }
-    return body;
   }
+
+  const get = (url) => call(() => f(url));
 
   // Escrita (status/orçamento): POST form-encoded no nó, como a Graph espera.
   async function post(path, params) {
     if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
-    const res = await f(`${GRAPH}/${path}`, {
+    return call(() => f(`${GRAPH}/${path}`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ ...params, access_token: accessToken }).toString(),
-    });
-    const text = await res.text();
-    let body;
-    try { body = JSON.parse(text); } catch { body = {}; }
-    if (res.status >= 400 || body.error) {
-      const msg = metaErrorText(body.error, text.slice(0, 300));
-      const err = new Error(`Meta API -> ${res.status}: ${msg}`);
-      err.status = res.status;
-      throw err;
-    }
-    return body;
+    }));
   }
 
   return {
@@ -377,21 +398,13 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       const url = `${GRAPH}/${acct(adAccountId)}/advideos`;
 
       if (blob.size > CHUNK_THRESHOLD) {
-        const send = async (fields, file) => {
+        const send = (fields, file) => call(() => {
           const fd = new FormData();
           fd.append("access_token", accessToken);
           for (const [k, v] of Object.entries(fields)) fd.append(k, String(v));
           if (file) fd.append("video_file_chunk", file, filename);
-          const res = await f(url, { method: "POST", body: fd });
-          const text = await res.text();
-          let body;
-          try { body = JSON.parse(text); } catch { body = {}; }
-          if (res.status >= 400 || body.error) {
-            const msg = metaErrorText(body.error, text.slice(0, 300) || `sem detalhe (fase ${fields.upload_phase})`);
-            throw new Error(`Meta API -> ${res.status}: ${msg}`);
-          }
-          return body;
-        };
+          return f(url, { method: "POST", body: fd });
+        });
 
         const started = await send({ upload_phase: "start", file_size: blob.size });
         const sessionId = started.upload_session_id;
@@ -419,17 +432,13 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
         return videoId;
       }
 
-      const fd = new FormData();
-      fd.append("access_token", accessToken);
-      if (title) fd.append("title", title);
-      fd.append("source", blob, filename);
-      const res = await f(url, { method: "POST", body: fd });
-      const text = await res.text();
-      let body;
-      try { body = JSON.parse(text); } catch { body = {}; }
-      if (res.status >= 400 || body.error) {
-        throw new Error(`Meta API -> ${res.status}: ${metaErrorText(body.error, text.slice(0, 300))}`);
-      }
+      const body = await call(() => {
+        const fd = new FormData();
+        fd.append("access_token", accessToken);
+        if (title) fd.append("title", title);
+        fd.append("source", blob, filename);
+        return f(url, { method: "POST", body: fd });
+      });
       if (!body.id) throw new Error("Meta API: upload de vídeo não retornou id");
       return String(body.id);
     },
