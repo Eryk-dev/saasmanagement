@@ -6,6 +6,7 @@
 import { normalizeFunnel, kindOf, isPostSaleStage } from "./stages.js";
 import { createClosedSubscription } from "./billing.js";
 import { FLASHCARD_DEFAULTS } from "./routes.flashcards.js";
+import { mergeLeadQuestions } from "./forms.js";
 
 // Garante o estágio "Integração" no funil do produto `leverads`, posicionado
 // entre "Negociação" e "Ganho". Integração é pós-venda: negócio já fechado,
@@ -727,6 +728,7 @@ export async function migrateFormVendeMarketplace(repo) {
   const qs = [...(form.questions || [])];
   if (qs.some((q) => q.key === "vende_marketplace")) {
     await repo.update("forms", form.id, { vendeMarketplaceV1: true });
+    await sincronizaPainelDoLead(repo, { ...form, questions: qs });
     return false;
   }
 
@@ -795,7 +797,20 @@ export async function migrateFormVendeMarketplace(repo) {
     },
     vendeMarketplaceV1: true,
   });
+  // O card do lead monta o painel de respostas a partir de product.leadQuestions
+  // (não do form). Sem isto, quem cai na Mentoria abre o card e não vê NADA do
+  // que respondeu: as perguntas existiriam só dentro do formulário.
+  await sincronizaPainelDoLead(repo, { ...form, questions: novas });
   return true;
+}
+
+async function sincronizaPainelDoLead(repo, form) {
+  const product = await repo.get("products", form.saas || "leverads");
+  if (!product) return;
+  const next = mergeLeadQuestions(product.leadQuestions, form);
+  if (JSON.stringify(next) !== JSON.stringify(product.leadQuestions || [])) {
+    await repo.update("products", product.id, { leadQuestions: next });
+  }
 }
 
 export async function runStartupMigrations(repo) {
