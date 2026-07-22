@@ -724,11 +724,16 @@ export async function ensureUserScreens(repo) {
 // `exit` — deploy atômico, igual à troca de tema do form.
 export async function migrateFormVendeMarketplace(repo) {
   const form = await repo.get("forms", "fo_diagnostico_leverads");
-  if (!form || form.vendeMarketplaceV1) return false;
+  if (!form) return false;
   const qs = [...(form.questions || [])];
-  if (qs.some((q) => q.key === "vende_marketplace")) {
-    await repo.update("forms", form.id, { vendeMarketplaceV1: true });
+  // A sincronização do painel do lead roda SEMPRE (é idempotente e só grava
+  // quando muda). Prendê-la ao marcador da migração foi o erro que deixou a
+  // produção com o formulário novo e o card velho: o marcador já estava posto
+  // do deploy anterior, então a sincronização nunca chegava a acontecer e quem
+  // caía na Mentoria abria o card sem nenhuma das respostas que deu.
+  if (form.vendeMarketplaceV1 || qs.some((q) => q.key === "vende_marketplace")) {
     await sincronizaPainelDoLead(repo, { ...form, questions: qs });
+    if (!form.vendeMarketplaceV1) await repo.update("forms", form.id, { vendeMarketplaceV1: true });
     return false;
   }
 
