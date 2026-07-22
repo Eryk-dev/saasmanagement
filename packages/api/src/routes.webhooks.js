@@ -10,6 +10,7 @@ import { repo as defaultRepo } from "./db.js";
 import { CREATE_DEFAULTS } from "./routes.js";
 import { firstStage } from "./stages.js";
 import { initialNextActionAt, logActivity, autoLeadOwner } from "./lead-flow.js";
+import { NOT_CONFIGURED } from "./http-status.js";
 
 // "tarefas diárias" com tolerância a acento/plural (título do item ou do produto).
 const RE_TAREFAS = /tarefas?\s*di[aá]ri/i;
@@ -150,7 +151,7 @@ export function registerWebhookRoutes(app, repo = defaultRepo, opts = {}) {
         || "";
       if (!secret) {
         req.log?.error("shopify webhook uniquekids: segredo não configurado (SHOPIFY_WEBHOOK_SECRET_UNIQUEKIDS)");
-        return reply.code(503).send("not configured");
+        return reply.code(NOT_CONFIGURED).send("not configured");
       }
       // 1) Autenticidade.
       if (!verifyShopifyHmac(req.rawBody, req.headers["x-shopify-hmac-sha256"], secret)) {

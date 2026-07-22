@@ -125,7 +125,7 @@ test("sync sem Meta configurada → 503; sem ad account → 400; saas inexistent
   const repo = makeMemRepo();
   const app = Fastify();
   registerRoutes(app, repo, { meta: makeMeta({}) }); // sem token
-  assert.equal((await app.inject({ method: "POST", url: "/api/marketing/sync", payload: {} })).statusCode, 503);
+  assert.equal((await app.inject({ method: "POST", url: "/api/marketing/sync", payload: {} })).statusCode, 424);
   assert.equal((await app.inject({ method: "GET", url: "/api/marketing/nao-existe" })).statusCode, 404);
   await app.close();
 
@@ -582,7 +582,7 @@ test("adobjects: três níveis vivos, arquivados fora, falha parcial não derrub
   // guards: sem token → 503; sem conta → 400
   const off = Fastify();
   registerRoutes(off, repo, { meta: makeMeta({}) });
-  assert.equal((await off.inject({ url: "/api/marketing/leverads/adobjects" })).statusCode, 503);
+  assert.equal((await off.inject({ url: "/api/marketing/leverads/adobjects" })).statusCode, 424);
   await off.close();
   const repo2 = makeMemRepo();
   await repo2.create("products", { id: "p1", name: "P1" });

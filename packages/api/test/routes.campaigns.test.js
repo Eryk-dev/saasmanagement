@@ -84,7 +84,7 @@ test("rotas de gerenciamento: lista, valida e repassa erros da Meta", async () =
 
 test("rotas de gerenciamento: 503 sem token e 502 quando a Meta falha", async () => {
   const off = await buildApp({ configured: () => false });
-  assert.equal((await off.inject({ method: "GET", url: "/api/marketing/leverads/campaigns" })).statusCode, 503);
+  assert.equal((await off.inject({ method: "GET", url: "/api/marketing/leverads/campaigns" })).statusCode, 424);
   await off.close();
 
   const broken = await buildApp({
@@ -92,9 +92,9 @@ test("rotas de gerenciamento: 503 sem token e 502 quando a Meta falha", async ()
     listCampaigns: async () => { throw new Error("Meta API -> 400: (#100) permissao"); },
     setObjectStatus: async () => { throw new Error("Meta API -> 400: sem ads_management"); },
   });
-  assert.equal((await broken.inject({ method: "GET", url: "/api/marketing/leverads/campaigns" })).statusCode, 502);
+  assert.equal((await broken.inject({ method: "GET", url: "/api/marketing/leverads/campaigns" })).statusCode, 424);
   const res = await broken.inject({ method: "POST", url: "/api/marketing/campaigns/c1/status", payload: { status: "PAUSED" } });
-  assert.equal(res.statusCode, 502);
+  assert.equal(res.statusCode, 424);
   assert.ok(res.json().error.includes("ads_management"));
   await broken.close();
 });

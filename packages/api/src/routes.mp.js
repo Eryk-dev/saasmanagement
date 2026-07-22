@@ -11,6 +11,7 @@
 
 import { mp as defaultMp, parseWebhookPayload } from "./mp.js";
 import { CYCLE_MONTHS, syncCustomerArr } from "./billing.js";
+import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 
 const CYCLE_LABEL = { monthly: "mensal", quarterly: "trimestral", semiannual: "semestral", annual: "anual" };
 
@@ -84,7 +85,7 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
 
   // Gera o link de pagamento recorrente (preapproval pending → init_point).
   app.post("/api/subscriptions/:id/mp/link", async (req, reply) => {
-    if (!mp.configured()) return reply.code(503).send({ error: "Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN)" });
+    if (!mp.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN)" });
     const sub = await repo.get("subscriptions", req.params.id);
     if (!sub) return reply.code(404).send({ error: "Not found" });
     const customer = await repo.get("customers", sub.customer);
@@ -113,7 +114,7 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
       return { ok: true, initPoint: pre.init_point, preapprovalId: pre.id, subscription: updated };
     } catch (err) {
       req.log.warn({ sub: sub.id, err: err.message }, "MP: falha ao criar preapproval");
-      return reply.code(502).send({ error: "MP recusou a criação do link", detail: String(err.message || err).slice(0, 300) });
+      return reply.code(UPSTREAM_FAILED).send({ error: "MP recusou a criação do link", detail: String(err.message || err).slice(0, 300) });
     }
   });
 

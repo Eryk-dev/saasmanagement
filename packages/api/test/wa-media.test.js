@@ -131,7 +131,7 @@ test("media de mensagem sem mídia → 404; id expirado na Graph → 502 legíve
 
   await repo.create("wa_messages", { id: "aud1", thread: "5541999", direction: "in", text: "🎤 áudio", media: { kind: "audio", id: "EXP", mime: "audio/ogg" }, waPhoneId: "PN1" });
   const exp = await app.inject({ method: "GET", url: "/api/whatsapp/media/aud1" });
-  assert.equal(exp.statusCode, 502);
+  assert.equal(exp.statusCode, 424);
   assert.match(exp.json().error, /expirado/);
   await app.close();
 });

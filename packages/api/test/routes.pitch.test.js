@@ -134,7 +134,7 @@ test("guards: IA off = 503; produto inexistente = 404; sem calls resumidas = 422
 
   const offApp = Fastify();
   registerPitchRoutes(offApp, repo, { anthropic: { configured: () => false } });
-  assert.equal((await offApp.inject({ method: "POST", url: "/api/pitch/leverads/improve", payload: {} })).statusCode, 503);
+  assert.equal((await offApp.inject({ method: "POST", url: "/api/pitch/leverads/improve", payload: {} })).statusCode, 424);
   await offApp.close();
 
   const app = Fastify();

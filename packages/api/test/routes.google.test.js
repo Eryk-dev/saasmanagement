@@ -90,7 +90,7 @@ test("rotas: status/auth-url/callback com state + POST /leads/:id/meet grava cal
   // ainda não conectado
   let st = (await app.inject({ url: "/api/google/status" })).json();
   assert.deepEqual(st, { configured: true, connected: false, account: "", driveReadonly: false });
-  assert.equal((await app.inject({ method: "POST", url: "/api/leads/le1/meet" })).statusCode, 503);
+  assert.equal((await app.inject({ method: "POST", url: "/api/leads/le1/meet" })).statusCode, 424);
 
   // auth-url emite state; callback com state desconhecido é 400
   const { url } = (await app.inject({ url: "/api/google/auth-url" })).json();
@@ -163,8 +163,8 @@ test("sem GOOGLE_CLIENT_ID/SECRET: auth-url e meet respondem 503 com instrução
   await repo.create("leads", { id: "le1", saas: "leverads", name: "Ana" });
   const app = Fastify();
   registerRoutes(app, repo, { google: makeGoogle({ repo }) });
-  assert.equal((await app.inject({ url: "/api/google/auth-url" })).statusCode, 503);
-  assert.equal((await app.inject({ method: "POST", url: "/api/leads/le1/meet" })).statusCode, 503);
+  assert.equal((await app.inject({ url: "/api/google/auth-url" })).statusCode, 424);
+  assert.equal((await app.inject({ method: "POST", url: "/api/leads/le1/meet" })).statusCode, 424);
   const st = (await app.inject({ url: "/api/google/status" })).json();
   assert.equal(st.configured, false);
   await app.close();

@@ -54,7 +54,7 @@ test("mark: valida entrada e existência (400/404)", async () => {
 test("send-email: 503 sem Gmail; com mailer envia, pula opt-out/sem-email, loga e marca", async () => {
   // Gate: mailer não pronto → 503.
   const notReady = await buildApp({ mailer: { ready: async () => false, send: async () => {} } });
-  assert.equal((await notReady.app.inject({ method: "POST", url: "/api/campaigns/cmp1/send-email", payload: { leadIds: ["l1"] } })).statusCode, 503);
+  assert.equal((await notReady.app.inject({ method: "POST", url: "/api/campaigns/cmp1/send-email", payload: { leadIds: ["l1"] } })).statusCode, 424);
 
   // Mailer pronto: coleta os envios.
   const outbox = [];

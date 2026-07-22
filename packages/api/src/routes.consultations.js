@@ -5,6 +5,7 @@
 import { makeConsultationSummarizer, syncConsultationCalendar, formatConsultationText } from "./consultations.js";
 import { publicManual, sameFamily } from "./deliverables.js";
 import { manualPageHtml } from "./manual-page.js";
+import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 
 const TZ = "America/Sao_Paulo";
 
@@ -15,8 +16,8 @@ export function registerConsultationRoutes(app, repo, { google, googleUser, anth
   // transcrição automáticas), convite pro e-mail do cliente quando houver, e
   // re-espelho na agenda pessoal da responsável já com o link.
   app.post("/api/consultations/:id/meet", async (req, reply) => {
-    if (!google?.configured?.()) return reply.code(503).send({ error: "Google não configurado (GOOGLE_CLIENT_ID/SECRET)" });
-    if (!(await google.connected())) return reply.code(503).send({ error: "Google não conectado — Ajustes → Integrações → Conectar Google" });
+    if (!google?.configured?.()) return reply.code(NOT_CONFIGURED).send({ error: "Google não configurado (GOOGLE_CLIENT_ID/SECRET)" });
+    if (!(await google.connected())) return reply.code(NOT_CONFIGURED).send({ error: "Google não conectado — Ajustes → Integrações → Conectar Google" });
     const c = await repo.get("consultations", req.params.id);
     if (!c) return reply.code(404).send({ error: "Not found" });
     if (!c.at) return reply.code(400).send({ error: "consulta sem dia/horário" });
@@ -75,20 +76,20 @@ export function registerConsultationRoutes(app, repo, { google, googleUser, anth
       return { ok: true, meetUrl, eventId, htmlLink, attendees, meetConfig };
     } catch (err) {
       req.log.warn({ err: err.message, consultation: c.id }, "Google: criação do Meet da consulta falhou");
-      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+      return reply.code(UPSTREAM_FAILED).send({ error: String(err.message || err).slice(0, 300) });
     }
   });
 
   // Resumo manual da consulta (o poller faz sozinho; isto é o botão).
   app.post("/api/consultations/:id/summary", async (req, reply) => {
-    if (!anthropic?.configured?.()) return reply.code(503).send({ error: "IA não configurada no servidor" });
+    if (!anthropic?.configured?.()) return reply.code(NOT_CONFIGURED).send({ error: "IA não configurada no servidor" });
     try {
       const r = await summarizer.summarize(req.params.id, { force: !!req.body?.force });
       if (!r.ok && r.reason === "not_found") return reply.code(404).send({ error: "Not found" });
       return r;
     } catch (err) {
       req.log.warn({ err: err.message, consultation: req.params.id }, "resumo da consulta falhou");
-      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+      return reply.code(UPSTREAM_FAILED).send({ error: String(err.message || err).slice(0, 300) });
     }
   });
 
@@ -96,7 +97,7 @@ export function registerConsultationRoutes(app, repo, { google, googleUser, anth
   // (resumos IA + notas da Ana) e pede pra IA propor o conteúdo das seções.
   // Sobrescreve o content das seções retornadas (a Ana revisa e edita depois).
   app.post("/api/deliverables/:id/compose", async (req, reply) => {
-    if (!anthropic?.configured?.()) return reply.code(503).send({ error: "IA não configurada no servidor" });
+    if (!anthropic?.configured?.()) return reply.code(NOT_CONFIGURED).send({ error: "IA não configurada no servidor" });
     const m = await repo.get("deliverables", req.params.id);
     if (!m) return reply.code(404).send({ error: "Not found" });
 
@@ -131,7 +132,7 @@ export function registerConsultationRoutes(app, repo, { google, googleUser, anth
       return { ok: true, updatedKeys: [...byKey.keys()], sections: updated.sections };
     } catch (err) {
       req.log.warn({ err: err.message, deliverable: m.id }, "compor manual falhou");
-      return reply.code(502).send({ error: String(err.message || err).slice(0, 300) });
+      return reply.code(UPSTREAM_FAILED).send({ error: String(err.message || err).slice(0, 300) });
     }
   });
 

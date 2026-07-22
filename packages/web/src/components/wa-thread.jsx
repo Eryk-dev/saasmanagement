@@ -54,7 +54,9 @@ function MediaBubble({ msg, out }) {
     setLoad(true);
     api.waMedia(msg.id)
       .then((blob) => setUrl(URL.createObjectURL(blob)))
-      .catch((e) => setErr(e?.status === 502 ? "áudio expirado no WhatsApp" : "não deu pra carregar"))
+      // 424 = a Graph recusou (mídia expirada). Era 502, mas 5xx nunca chegava
+      // aqui: o proxy do EasyPanel troca o corpo pela página dele.
+      .catch((e) => setErr(e?.status === 424 ? "áudio expirado no WhatsApp" : "não deu pra carregar"))
       .finally(() => setLoad(false));
   }, [msg.id]);
 

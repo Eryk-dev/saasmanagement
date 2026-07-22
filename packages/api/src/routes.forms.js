@@ -14,6 +14,7 @@ import { formPageHtml, EMBED_JS } from "./form-page.js";
 import { CREATE_DEFAULTS, dispatchProposal, publicBase } from "./routes.js";
 import { stageByKind, firstStage } from "./stages.js";
 import { logActivity, initialNextActionAt, autoLeadOwner } from "./lead-flow.js";
+import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 
 const clientIp = (req) =>
   String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.ip || "?";
@@ -420,7 +421,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
   app.post("/api/forms/:id/suggest-welcome", async (req, reply) => {
     const form = await repo.get("forms", req.params.id);
     if (!form) return reply.code(404).send({ error: "Not found" });
-    if (!anthropic?.configured()) return reply.code(503).send({ error: "IA não configurada (OPENROUTER_API_KEY ou ANTHROPIC_API_KEY)" });
+    if (!anthropic?.configured()) return reply.code(NOT_CONFIGURED).send({ error: "IA não configurada (OPENROUTER_API_KEY ou ANTHROPIC_API_KEY)" });
     const product = form.saas ? await repo.get("products", form.saas) : null;
     const w = form.welcome || {};
     const tested = [
@@ -438,7 +439,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
       return suggestion;
     } catch (err) {
       req.log?.warn?.({ err }, "suggest-welcome falhou");
-      return reply.code(502).send({ error: String(err?.message || err).slice(0, 300) });
+      return reply.code(UPSTREAM_FAILED).send({ error: String(err?.message || err).slice(0, 300) });
     }
   });
 
