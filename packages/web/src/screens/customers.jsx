@@ -12,6 +12,7 @@ import { EntityForm } from "../components/EntityForm.jsx";
 import { WhatsappChat } from "../components/whatsapp-chat.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { leadTier, waLink, GRADE_STYLE } from "../lib/ui.js";
+import { scriptChecklist } from "../lib/scripts.js";
 import { displayName } from "../lib/users.js";
 import { paymentLabel, PAYMENT_METHODS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf } from "../lib/payments.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
@@ -379,6 +380,42 @@ function useFormName(saas, formId) {
 // pagamento e responsáveis). O lápis liga a edição INLINE dos campos do
 // cadastro do cliente (nome, contato, e-mail, WhatsApp, plano, pagamento,
 // valor e cliente desde), sem trocar de janela; o que vem do lead é leitura.
+// Respostas do formulário de diagnóstico (campos do lead), editáveis do popup
+// do cliente — mesmo checklist do drawer do pipeline (scriptChecklist). Alterar
+// aqui persiste no lead e recalcula o Potencial/Nível do cliente.
+function FormAnswersCard({ lead, product, onPatch }) {
+  if (!lead) return null;
+  const saasCfg = (window.SEED?.SAAS || []).find((x) => x.id === (lead.saas || product?.id)) || product;
+  const items = scriptChecklist(saasCfg, lead);
+  if (!items.length) return null;
+  return (
+    <div style={BOX}>
+      <div className="mono" style={SECTION_LABEL}>Respostas do formulário</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {items.map((c) => (
+          <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "5px 9px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.raw ? "var(--bg-1)" : "var(--warn-soft)" }}>
+            <span style={{ color: c.raw ? "var(--pos)" : "var(--warn)", flexShrink: 0, fontSize: 12 }}>{c.raw ? "✓" : "○"}</span>
+            <span className="dim" style={{ flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.35 }}>{c.label}</span>
+            {c.type === "select" ? (
+              <select value={c.raw || ""} onChange={(e) => onPatch({ [c.key]: e.target.value })}
+                style={{ flexShrink: 0, maxWidth: "50%", height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12, fontWeight: 500 }}>
+                <option value="">selecionar…</option>
+                {c.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                {c.raw && !c.options.some((o) => o.value === c.raw) && <option value={c.raw}>{c.raw}</option>}
+              </select>
+            ) : (
+              <input key={lead.id + c.key} type="text" defaultValue={c.raw || ""} placeholder="preencher…"
+                onBlur={(e) => { if (e.target.value !== (c.raw || "")) onPatch({ [c.key]: e.target.value }); }}
+                onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                style={{ flexShrink: 0, width: "50%", height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontWeight: 500 }} />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CustomerFacts({ customer, lead, product, onPatch }) {
   const [edit, setEdit] = useState(false);
   const saasId = customer.saas || product?.id;
@@ -481,6 +518,16 @@ function CustomerFacts({ customer, lead, product, onPatch }) {
 function CustomerModal({ customer, lead, product, subs, invoices, planLabel, lastContact, onComplete, onPatch, onClose }) {
   const { refresh } = useData();
   const [editing, setEditing] = useState(false);
+  // Edição das RESPOSTAS DO FORMULÁRIO (campos do lead) direto do popup: otimista
+  // no objeto do lead (do SEED) + PATCH; o bump re-renderiza o popro pra o
+  // Potencial/Nível recalcularem na hora.
+  const [, bumpLead] = React.useReducer((x) => x + 1, 0);
+  function patchLead(p) {
+    if (!lead) return;
+    Object.assign(lead, p);
+    bumpLead();
+    api.update("leads", lead.id, p).catch(() => {});
+  }
   React.useEffect(() => {
     const h = (e) => { if (e.key === "Escape") (editing ? setEditing(false) : onClose()); };
     window.addEventListener("keydown", h);
@@ -576,6 +623,11 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 14, alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
         <CustomerFacts customer={customer} lead={lead} product={product} onPatch={onPatch ? (p) => onPatch(customer, p) : null} />
+
+        {/* Respostas do formulário (campos do lead) — editáveis daqui; mudou o
+            nicho/contas/anúncios, o Potencial e o Nível recalculam. Só quando
+            há lead com perguntas (mentoria/produto B2C sem grade não mostra). */}
+        {!isKids && <FormAnswersCard lead={lead} product={product} onPatch={patchLead} />}
 
         {/* Mentoria não é recorrência: pra cliente Kids o bloco de assinaturas
             sai (o pagamento fica em Dados do cliente e nas faturas). */}
