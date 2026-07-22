@@ -610,7 +610,7 @@ test("migração leva as perguntas novas pro painel do lead (senão o card fica 
   assert.ok(porChave.vende_marketplace, "a pergunta de corte precisa aparecer no card");
   assert.ok(porChave.aprender_interesse);
   assert.ok(porChave.aprender_verba);
-  assert.deepEqual(porChave.aprender_verba.options.map((o) => o.value), ["ate-1k", "1k-5k", "5k-20k", "20k+", "nao-sei"]);
+  assert.deepEqual(porChave.aprender_verba.options.map((o) => o.value), ["ate-1k", "1k-5k", "5k-20k", "20k+"]);
   assert.equal(porChave.niche.label, "Qual seu principal nicho?", "não estraga o que já estava curado");
 });
 
@@ -629,6 +629,25 @@ test("form já migrado num deploy anterior AINDA sincroniza o painel do lead", a
   assert.ok(lq.includes("vende_marketplace"), "mas o painel do lead é sincronizado mesmo assim");
   assert.ok(lq.includes("aprender_interesse"));
   assert.ok(lq.includes("aprender_verba"));
+});
+
+test("verba não tem saída fácil: «ainda não sei» sai do form e do painel do lead", async () => {
+  const repo = makeMemRepo();
+  await repo.create("forms", { ...FORM_REAL });
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [] });
+  await migrateFormVendeMarketplace(repo);
+  const opts = (f) => f.questions.find((q) => q.key === "aprender_verba").options.map((o) => o.value);
+  assert.deepEqual(opts(await repo.get("forms", "fo_diagnostico_leverads")), ["ate-1k", "1k-5k", "5k-20k", "20k+"]);
+
+  // e some de um formulário que já estava no ar com a opção antiga
+  const comAntiga = await repo.get("forms", "fo_diagnostico_leverads");
+  comAntiga.questions = comAntiga.questions.map((q) => (q.key === "aprender_verba"
+    ? { ...q, options: [...q.options, { value: "nao-sei", label: "Ainda não sei" }] } : q));
+  await repo.update("forms", comAntiga.id, { questions: comAntiga.questions });
+  await migrateFormVendeMarketplace(repo);
+  assert.deepEqual(opts(await repo.get("forms", "fo_diagnostico_leverads")), ["ate-1k", "1k-5k", "5k-20k", "20k+"]);
+  const lq = (await repo.get("products", "leverads")).leadQuestions.find((q) => q.key === "aprender_verba");
+  assert.deepEqual(lq.options.map((o) => o.value), ["ate-1k", "1k-5k", "5k-20k", "20k+"], "o card também");
 });
 
 test("migração é one-shot e não duplica a pergunta", async () => {

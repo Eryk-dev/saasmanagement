@@ -732,7 +732,9 @@ export async function migrateFormVendeMarketplace(repo) {
   // do deploy anterior, então a sincronização nunca chegava a acontecer e quem
   // caía na Mentoria abria o card sem nenhuma das respostas que deu.
   if (form.vendeMarketplaceV1 || qs.some((q) => q.key === "vende_marketplace")) {
-    await sincronizaPainelDoLead(repo, { ...form, questions: qs });
+    const ajustadas = semRespostaEvasiva(qs);
+    if (JSON.stringify(ajustadas) !== JSON.stringify(qs)) await repo.update("forms", form.id, { questions: ajustadas });
+    await sincronizaPainelDoLead(repo, { ...form, questions: ajustadas });
     if (!form.vendeMarketplaceV1) await repo.update("forms", form.id, { vendeMarketplaceV1: true });
     return false;
   }
@@ -771,7 +773,8 @@ export async function migrateFormVendeMarketplace(repo) {
       { value: "1k-5k", label: "R$ 1 mil a R$ 5 mil" },
       { value: "5k-20k", label: "R$ 5 mil a R$ 20 mil" },
       { value: "20k+", label: "Mais de R$ 20 mil" },
-      { value: "nao-sei", label: "Ainda não sei" },
+      // Sem "ainda não sei" de propósito: a verba é o que qualifica essa fila,
+      // e a saída fácil esvaziava a pergunta (decisão do Leo em 22/07).
     ],
   };
 
@@ -807,6 +810,14 @@ export async function migrateFormVendeMarketplace(repo) {
   // que respondeu: as perguntas existiriam só dentro do formulário.
   await sincronizaPainelDoLead(repo, { ...form, questions: novas });
   return true;
+}
+
+// Tira a saída fácil da pergunta de verba. Idempotente: roda em todo boot, então
+// vale também pra quem já tinha o formulário com a opção antiga.
+function semRespostaEvasiva(questions) {
+  return questions.map((q) => (q.key === "aprender_verba" && (q.options || []).some((o) => o.value === "nao-sei")
+    ? { ...q, options: q.options.filter((o) => o.value !== "nao-sei") }
+    : q));
 }
 
 async function sincronizaPainelDoLead(repo, form) {
