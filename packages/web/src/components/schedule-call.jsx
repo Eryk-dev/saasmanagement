@@ -1,5 +1,6 @@
 import React from "react";
 import { api } from "../lib/api.js";
+import { useData } from "../data.jsx";
 import { usersByRole, currentUser, displayName } from "../lib/users.js";
 import { stageKind, KINDS } from "../lib/funnel.js";
 import { SlotGrid, nextBusinessDays, busyView, callBusyKeys, destinationsFor, setupType } from "../screens/today.jsx";
@@ -41,6 +42,10 @@ function NextActionModal({ leadId, onScheduled, onClose }) {
   const closers = usersByRole("closer").filter((u) => !u.saas || u.saas === saasCfg?.id);
 
   const meId = currentUser()?.id || "";
+  // Depois de mover o card, recarrega o SEED na hora: a fila do inbox (Minhas
+  // atividades) lê window.SEED.LEADS e só se atualizava no tick da SSE — um
+  // lead desqualificado ficava aparecendo na fila até o próximo refresh.
+  const { refresh } = useData();
   const [dest, setDest] = useS(null);         // destino que pede AGENDA (call/follow-up)
   const [gateMove, setGateMove] = useS(null); // destino com gate (ganho/perda/handoff)
   const [closer, setCloser] = useS(() => lead?.closer || (closers.some((c) => c.id === meId) ? meId : (closers[0]?.id || "")));
@@ -88,6 +93,7 @@ function NextActionModal({ leadId, onScheduled, onClose }) {
     setBusy(true); setErr("");
     try {
       await api.update("leads", lead.id, { stage: d.stage });
+      refresh();
       setDone({ moved: d.stage });
     } catch (e) { setErr(e?.message || "não deu pra mover"); }
     finally { setBusy(false); }
@@ -100,6 +106,7 @@ function NextActionModal({ leadId, onScheduled, onClose }) {
     setBusy(true); setErr("");
     try {
       await api.logActivity({ saas: lead.saas, lead: lead.id, type: "whatsapp", text: "tentativa de contato (inbox)", author: currentUser()?.id || "" });
+      refresh(); // toque re-agenda o GPS no servidor, mas o evento é "activities" (a SSE ignora) — recarrega na mão pra fila andar
       setDone({ retry: true, moved: d.promote ? d.stage : (lead.stage || d.stage) });
     } catch (e) { setErr(e?.message || "não deu pra registrar a tentativa"); }
     finally { setBusy(false); }
@@ -115,6 +122,7 @@ function NextActionModal({ leadId, onScheduled, onClose }) {
     };
     try {
       await api.update("leads", lead.id, patch);
+      refresh();
       let callUrl = "";
       if (withInvite) {
         try {
@@ -271,7 +279,7 @@ function NextActionModal({ leadId, onScheduled, onClose }) {
         saasCfg={saasCfg}
         onCancel={() => setGateMove(null)}
         onConfirm={(mp, extra) => {
-          applyGatedMove(mp, extra, lead.id).catch((err2) => console.warn("movimento não persistido:", err2.message));
+          applyGatedMove(mp, extra, lead.id).then(refresh).catch((err2) => console.warn("movimento não persistido:", err2.message));
           setGateMove(null);
           setDone({ moved: gateMove.toStage });
         }}

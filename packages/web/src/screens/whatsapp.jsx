@@ -776,6 +776,9 @@ function LeadSideCard({ leadId, version, onOpenLead, leadStarted = null }) {
   // Edição otimista: o valor digitado vale na hora; o tick do SSE traz o SEED
   // atualizado e zera a camada local (aí o dado já é o do servidor).
   const [edits, setEdits] = React.useState({});
+  // Depois de mover o card (ex.: desqualificar), recarrega o SEED na hora pra a
+  // fila do inbox (Minhas atividades) largar o lead sem esperar o tick da SSE.
+  const { refresh } = useData();
   // Mover de etapa com gate (ganho/perdido/handoff pedem input) — mesmo modal
   // do pipeline; o PATCH passa pelo applyStageMove do servidor, então Minhas
   // atividades/Pipeline/Agenda refletem sozinhos via SSE.
@@ -842,7 +845,7 @@ function LeadSideCard({ leadId, version, onOpenLead, leadStarted = null }) {
           onCancel={() => setPendingMove(null)}
           onConfirm={(mp, extra) => {
             setEdits((prev) => ({ ...prev, ...mp }));
-            applyGatedMove(mp, extra, base.id).catch((err) => console.warn("movimento não persistido:", err.message));
+            applyGatedMove(mp, extra, base.id).then(refresh).catch((err) => console.warn("movimento não persistido:", err.message));
             setPendingMove(null);
           }}
         />
