@@ -89,6 +89,29 @@ test("ganho oficial: scoreboard, pace, custos %, marketing e funil contam os MES
   await app.close();
 });
 
+test("duas perguntas, dois números DE PROPÓSITO: fechado no período (scoreboard) ≠ coorte (funil/aquisição)", async () => {
+  const { app, repo } = await buildApp();
+  // Lead que ENTROU antes da janela (30/06) e FECHOU dentro dela (05/07). O
+  // scoreboard/pace conta ("quantos FECHAMOS no período", pela data do ganho) —
+  // é a régua do Resultado do mês. O funil e a Aquisição NÃO ("dos leads que
+  // ENTRARAM no período, quantos fecharam" = coorte) — é a régua de eficiência
+  // da aquisição (ROAS/CAC). As duas contas são CERTAS, respondem perguntas
+  // diferentes; a tela rotula os dois lados (#492). Este teste TRAVA a diferença
+  // pra ninguém "unificar" achando que é bug e quebrar um dos lados.
+  await repo.create("leads", { id: "cross", saas: "leverads", closer: "leo", stage: "Ganho", amount: 1000, createdAt: "2026-06-30T12:00:00.000Z", stageSince: "2026-07-05T12:00:00.000Z" });
+
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${MONTH}` })).json();
+  const mkt = (await app.inject({ url: `/api/marketing/leverads${MONTH}` })).json();
+  const funnel = (await app.inject({ url: `/api/funnel/leverads${MONTH}` })).json();
+
+  assert.equal(sb.team.won, 3);          // fechados no período: os 2 do dataset + o cross
+  assert.equal(sb.team.revenue, 9000);   // 8.000 + 1.000
+  assert.equal(mkt.totals.won, 2);       // coorte: o cross entrou ANTES, fica fora
+  assert.equal(mkt.totals.revenue, 8000);
+  assert.equal(funnel.wonCount, 2);      // mesma régua de coorte da Aquisição
+  await app.close();
+});
+
 test("lead interno e dia do negócio: mesmas contagens de leads em todas as janelas", async () => {
   const { app } = await buildApp();
   // Mês inteiro: 4 leads reais (ghost interno fora) — scoreboard, marketing e funil iguais.
