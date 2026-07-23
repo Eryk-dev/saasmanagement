@@ -109,6 +109,28 @@ try {
       failed++;
     }
   }
+  // Item de agenda "Dia inteiro" (allDay): tem que ocupar o DIA TODO na grade de
+  // horários, pra não caber call de venda nesse dia. matchBlock já trata allDay;
+  // aqui garante que busyView marca qualquer slot do dia.
+  try {
+    const { busyView } = await server.ssrLoadModule("/src/screens/today.jsx");
+    const saved = window.SEED.AGENDA_BLOCKS;
+    window.SEED.AGENDA_BLOCKS = [{ id: "b1", user: "ana", kind: "event", recur: "once", date: "2026-07-28", allDay: true, fromHour: 0, toHour: 24, title: "Forum ECOM" }];
+    const busy = busyView(new Set(), "ana");
+    const check = (name, got, want) => { if (got !== want) throw new Error(`${name}: ${got} ≠ ${want}`); };
+    check("08h ocupado", busy.has("2026-07-28-08-00"), true);
+    check("14h30 ocupado", busy.has("2026-07-28-14-30"), true);
+    check("19h ocupado", busy.has("2026-07-28-19-00"), true);
+    check("outro dia livre", busy.has("2026-07-29-14-00"), false);
+    check("outra pessoa livre", busyView(new Set(), "leonardo").has("2026-07-28-14-00"), false);
+    check("motivo do bloqueio", busy.info("2026-07-28-14-00")?.reason, "Forum ECOM");
+    window.SEED.AGENDA_BLOCKS = saved;
+    console.log("✓ agenda-dia-inteiro");
+  } catch (err) {
+    console.error(`✗ agenda-dia-inteiro: ${err.message}`);
+    failed++;
+  }
+
   // Filtro de período: as datas são a régua de TODA a Visão geral, então a conta
   // vale um teste de verdade e não só um render. Data fixa (quarta, 22/07/2026).
   try {
