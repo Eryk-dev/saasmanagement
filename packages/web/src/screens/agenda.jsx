@@ -157,20 +157,25 @@ export function AgendaScreen({ onOpenLead }) {
   // Recorrência abrangente: `weekdaysSel` = dias da semana alvo (null = pontual);
   // cada dia vira um registro weekly. Devolve string de erro ou null quando ok.
   function saveItem(form, existing) {
-    const { kind, text, usersSel, date, from, to, weekdaysSel } = form;
+    const { kind, text, usersSel, date, weekdaysSel } = form;
+    const allDay = !!form.allDay;
+    // Dia inteiro: ocupa o dia todo (fromHour/toHour cobrem a grade); o render e o
+    // matchBlock já tratam allDay. Sem allDay, usa o intervalo escolhido.
+    const from = allDay ? 0 : form.from;
+    const to = allDay ? 24 : form.to;
     if (!usersSel.length) return "Escolha pelo menos uma pessoa.";
-    if (!(to > from)) return "O fim precisa ser depois do início.";
+    if (!allDay && !(to > from)) return "O fim precisa ser depois do início.";
     if (!weekdaysSel && !date) return "Escolha a data.";
     if (weekdaysSel && !weekdaysSel.length) return "Escolha pelo menos um dia da semana.";
     if (kind === "event" && !text.trim()) return "Dê um título pro compromisso.";
     if (!weekdaysSel) {
       for (const u of usersSel) {
         const hit = liveConflict(u, date, from, to);
-        if (hit) return `${displayName(u)} já tem ${hit} nesse horário. Remarque antes.`;
+        if (hit) return `${displayName(u)} já tem ${hit} nesse ${allDay ? "dia" : "horário"}. Remarque antes.`;
       }
     }
     const base = {
-      saas: saasId, user: usersSel[0], users: usersSel, kind, allDay: false, fromHour: from, toHour: to,
+      saas: saasId, user: usersSel[0], users: usersSel, kind, allDay, fromHour: from, toHour: to,
       title: kind === "event" ? text.trim() : "",
       reason: kind === "block" ? text.trim() : "",
     };
@@ -291,6 +296,7 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
     const d = b ? Math.round((Number(b.toHour) - Number(b.fromHour)) * 60) : 60;
     return d > 0 ? d : 60;
   });
+  const [allDay, setAllDay] = useS(!!b?.allDay);
   // Recorrência: "once" | "weekly" (dia da data) | "weekdays" | "daily" | "custom".
   const [recur, setRecur] = useS(b ? (b.recur === "weekly" ? "weekly" : "once") : "once");
   const [customWds, setCustomWds] = useS(() => (b?.recur === "weekly" ? [Number(b.weekday)] : [1, 3, 5]));
@@ -315,7 +321,7 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
       : recur === "weekdays" ? [1, 2, 3, 4, 5]
       : recur === "daily" ? [0, 1, 2, 3, 4, 5, 6]
       : [...customWds].sort();
-    const e = onSave({ kind, text, usersSel: sel, date, from, to, weekdaysSel }, b || null);
+    const e = onSave({ kind, text, usersSel: sel, date, from, to, weekdaysSel, allDay }, b || null);
     if (e) setErr(e); else onClose();
   };
 
@@ -377,6 +383,12 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ ...field, width: "100%" }} />
         </div>
 
+        {/* Dia inteiro: bloqueia/ocupa o dia todo — esconde início/duração. */}
+        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: "var(--fg-2)" }}>
+          <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} style={{ accentColor: "var(--accent)", width: 15, height: 15, cursor: "pointer" }} />
+          Dia inteiro
+        </label>
+        {!allDay && (<>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div>
             <span style={label}>Começa às</span>
@@ -393,6 +405,7 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
           </div>
         </div>
         <div className="mono dim" style={{ fontSize: 11, marginTop: -6 }}>termina às {fmtH(to)}</div>
+        </>)}
 
         <div>
           <span style={label}>Repete</span>
