@@ -4,7 +4,7 @@ import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
-import { PeriodPicker, periodWindow } from "../components/period-picker.jsx";
+import { PeriodPicker, usePeriod } from "../components/period-picker.jsx";
 
 // Aquisição — os NÚMEROS QUE IMPORTAM de Publicidade + Formulários num lugar só:
 // o funil de aquisição (investido → impressões → cliques → visitas no form →
@@ -24,11 +24,8 @@ const shortDay = (iso) => { const d = new Date(`${iso}T00:00:00`); return d.toLo
 function AquisicaoScreen() {
   const { version } = useData();
   const [product] = useActiveSaas();
-  const [period, setPeriod] = useState(() => { try { return localStorage.getItem("cockpit_aq_period") || "30d"; } catch { return "30d"; } });
-  const setP = (p) => { setPeriod(p); try { localStorage.setItem("cockpit_aq_period", p); } catch { /* ignore */ } };
-  const [custom, setCustom] = useState(() => { try { return JSON.parse(localStorage.getItem("cockpit_aq_custom")) || { since: "", until: "" }; } catch { return { since: "", until: "" }; } });
-  const setC = (c) => { setCustom(c); try { localStorage.setItem("cockpit_aq_custom", JSON.stringify(c)); } catch { /* ignore */ } };
-  const win = useMemo(() => periodWindow(period, custom), [period, custom.since, custom.until]);
+  // Janela GLOBAL do cockpit (a mesma da Visão geral e da Equipe).
+  const { period, custom, setPeriod: setP, setCustom: setC, win } = usePeriod();
   const [mkt, setMkt] = useState(null);
   const [biz, setBiz] = useState(null);
 

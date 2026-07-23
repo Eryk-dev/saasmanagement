@@ -10,7 +10,7 @@ import { displayName, currentUser, isAdminUser, canSeeScreen } from "../lib/user
 import { leadTier } from "../lib/ui.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { buildPeople, TeamCards, topPerformer } from "../components/team-cards.jsx";
-import { PeriodPicker, periodWindow, PRESETS } from "../components/period-picker.jsx";
+import { PeriodPicker, usePeriod } from "../components/period-picker.jsx";
 // Visão geral — cockpit de GESTÃO. Responde: como está o negócio (receita, CAC,
 // ROAS) e como está o DESEMPENHO de cada papel (SDR/closer/CS), pessoa a pessoa,
 // contra a meta. A execução ("quem contatar agora") mora no Meu dia, não aqui.
@@ -37,11 +37,9 @@ function OverviewScreen({ onNav, onOpenLead }) {
   const [wa, setWa] = useState(null); // inbox do WhatsApp (números globais do time)
   // Período do TOPO governa os tiles de aquisição e o gráfico. Snapshots
   // financeiros (MRR, Clientes, Resultado do mês) seguem a cadência própria.
-  const [period, setPeriod] = useState(() => { try { return localStorage.getItem("cockpit_ov_period") || "30d"; } catch { return "30d"; } });
-  const setPeriodP = (p) => { setPeriod(p); try { localStorage.setItem("cockpit_ov_period", p); } catch { /* ignore */ } };
-  const [custom, setCustom] = useState(() => { try { return JSON.parse(localStorage.getItem("cockpit_ov_custom")) || { since: "", until: "" }; } catch { return { since: "", until: "" }; } });
-  const setCustomP = (c) => { setCustom(c); try { localStorage.setItem("cockpit_ov_custom", JSON.stringify(c)); } catch { /* ignore */ } };
-  const win = useMemo(() => periodWindow(period, custom), [period, custom.since, custom.until]);
+  // Janela GLOBAL do cockpit (period-picker.usePeriod): a MESMA de Aquisição e
+  // Equipe, num localStorage só — mudou aqui, mudou lá.
+  const { period, custom, setPeriod, setCustom, win } = usePeriod();
   const pLabel = win.label;
   const pShort = win.short;
 
@@ -104,9 +102,14 @@ function OverviewScreen({ onNav, onOpenLead }) {
   const leadsPrev = leads.filter((l) => inPrevPeriod(l.createdAt)).length;
   const leadsDeltaPct = leadsPrev > 0 ? Math.round(((leadsPeriod - leadsPrev) / leadsPrev) * 100) : null;
 
-  // Resultado usa o MÊS (custos são mensais), não a janela do topo.
+  // Resultado usa o MÊS (custos são mensais), não a janela do topo. O ganho do
+  // mês vem da FONTE ÚNICA — pace.context.tcvMonth (metrics-core), a MESMA conta
+  // da faixa "Meta do mês" — pra Resultado e Meta nunca divergirem. Só cai no
+  // cálculo local (mesma régua isWonLead+wonAt) enquanto o pace não chegou.
   const thisMonth = (iso) => iso && dstr(iso).slice(0, 7) === dstr(new Date(now)).slice(0, 7);
-  const wonValueMonth = leads.filter((l) => isWonLead(product, l) && thisMonth(wonAtOf(l))).reduce((a, l) => a + (l.amount || 0), 0);
+  const wonValueMonth = pace?.context?.tcvMonth != null
+    ? pace.context.tcvMonth
+    : leads.filter((l) => isWonLead(product, l) && thisMonth(wonAtOf(l))).reduce((a, l) => a + (l.amount || 0), 0);
   // Resultado do mês = ganhos do mês menos os custos operacionais (mensais).
   const result = costs ? wonValueMonth - (costs.total || 0) : null;
 
@@ -177,7 +180,7 @@ function OverviewScreen({ onNav, onOpenLead }) {
     return (
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
         <PageHead title="Suas metas" sub={today}>
-          <PeriodPicker period={period} custom={custom} onChange={(p, c) => { setPeriodP(p); setCustomP(c || { since: "", until: "" }); }} />
+          <PeriodPicker period={period} custom={custom} onChange={(p, c) => { setPeriod(p); setCustom(c); }} />
         </PageHead>
         <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
           <PaceStrip pace={pace} links={false} />
@@ -526,4 +529,4 @@ function FunnelConversions({ team, pLabel }) {
   );
 }
 
-export { OverviewScreen, TeamPerformance, PaceStrip, FunnelConversions, periodWindow, PRESETS };
+export { OverviewScreen, TeamPerformance, PaceStrip, FunnelConversions };
