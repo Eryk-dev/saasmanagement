@@ -213,6 +213,7 @@ function OverviewScreen({ onNav, onOpenLead }) {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
           <StatTile label="Resultado do mês" value={result != null ? window.fmt.money(result) : "…"}
             delta={costs ? `${window.fmt.money(wonValueMonth)} ganhos · ${window.fmt.money(costs.total || 0)} custos` : "ganhos menos custos"}
+            title="Ganhos FECHADOS no mês corrente (pela data do fechamento) menos os custos operacionais do mês — a mesma conta da faixa 'Meta do mês'. Difere do 'ganhos' da Aquisição, que é a coorte dos leads do período."
             tone={result == null ? "flat" : result >= 0 ? "up" : "down"} />
           <StatTile label="MRR" value={window.fmt.money(product.mrr || 0)} delta={activeCustomers ? "base de " + window.fmt.money(product.arr || 0) + " ARR" : "sem receita ainda"} tone="flat" />
           <StatTile label="Clientes ativos" value={String(activeCustomers)} />
