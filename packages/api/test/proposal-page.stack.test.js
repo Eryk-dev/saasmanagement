@@ -62,3 +62,24 @@ test("sem stageFeatures o layout de 2 colunas segue com tudo visível (sem regre
   // sem o flag no slide, o className stretch nunca é aplicado no cliente.
   assert.doesNotMatch(html, /"stageFeatures":true/, "deck não opta pelo encadeamento");
 });
+
+test("price2: item com desconto embute o preço off + regra de risco na 2ª oferta", () => {
+  const html = render({
+    key: "v", type: "pricing", revealPrice: true, stageFeatures: true, featuresTitle: "No pacote",
+    features: [{ label: "LeverAds", price: "7.188", price2: "5.750,40" }],
+    currency: false, price: "115.988", offer2: { planTag: "20% OFF", price: "92.790,40" },
+  });
+  assert.match(html, /stack-price-off/, "span do preço com desconto");
+  assert.match(html, /\.offer2-on \.stack-row \.stack-price \{/, "risca o cheio na 2ª oferta");
+  assert.match(html, /f\.price2 != null/, "branch price2 no featLi");
+  assert.match(html, /"price2":"5\.750,40"/, "dado do preço com desconto");
+});
+
+test("item sem price2 não gera o preço off (compat)", () => {
+  const html = render({
+    key: "v", type: "pricing", revealPrice: true, featuresTitle: "x",
+    features: [{ label: "LeverWMS", price: "58.800" }], price: "115.988",
+  });
+  assert.match(html, /"price":"58\.800"/);
+  assert.doesNotMatch(html, /"price2":/, "sem price2 no dado");
+});
