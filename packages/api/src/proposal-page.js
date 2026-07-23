@@ -70,7 +70,7 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
     --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   }
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html { scroll-behavior: smooth; }
+  html { scroll-behavior: smooth; overflow-anchor: none; }
   body { font-family: var(--font-display); background: var(--bg); color: var(--fg);
     -webkit-font-smoothing: antialiased; min-height: 100vh; line-height: 1.5; overflow-x: hidden; }
   img { max-width: 100%; display: block; }
@@ -745,8 +745,13 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
   // Resolve um caminho de interpolação. calc./state. viram spans dinâmicos; uma
   // resposta que mapeia o campo editável de contas/volume também vira span de
   // estado (faixa) — assim "X contas" aparece e é clicável onde quer que esteja.
-  function interpPath(path) {
-    if (path.indexOf('calc.') === 0 || path.indexOf('state.') === 0) return '<span data-fill="' + path + '"></span>';
+  // fallback (opcional) = texto usado quando o campo resolve VAZIO. Vem da sintaxe
+  // {{campo||texto}} — ex.: {{lead.company||suas vendas}} evita o "**" quando o
+  // lead não tem empresa. Em modo closer vira data-fallback (o fillDynamic aplica).
+  function interpPath(path, fallback) {
+    var fb = fallback == null ? '' : String(fallback);
+    var fbAttr = fb ? ' data-fallback="' + esc(fb) + '"' : '';
+    if (path.indexOf('calc.') === 0 || path.indexOf('state.') === 0) return '<span data-fill="' + path + '"' + fbAttr + '></span>';
     if (CALC.seatsKey && path === 'answers.' + CALC.seatsKey) return '<span data-fill="state.accounts"></span>';
     if (CALC.volumeKey && path === 'answers.' + CALC.volumeKey) return '<span data-fill="state.volume"></span>';
     // No modo closer (editable) lead.* e answers.* também viram spans dinâmicos
@@ -755,21 +760,30 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     // answers.* podem ter rótulo humano em calc.answerLabels[key] (ex.: niche
     // "autopecas" → "Autopeças"); cai no valor cru quando não há mapa.
     if (path.indexOf('answers.') === 0) {
-      if (P.editable) return '<span data-fill="' + path + '"></span>';
+      if (P.editable) return '<span data-fill="' + path + '"' + fbAttr + '></span>';
       var akey = path.slice(8);
       var raw = getPath(DATA, path);
       var map = (CALC.answerLabels || {})[akey];
-      return esc(String(map && map[raw] != null ? map[raw] : raw));
+      var aval = (map && map[raw] != null) ? map[raw] : (raw == null ? '' : raw);
+      aval = String(aval);
+      return esc(aval !== '' ? aval : fb);
     }
-    if (path.indexOf('lead.') === 0 && P.editable) return '<span data-fill="' + path + '"></span>';
-    return esc(String(getPath(DATA, path)));
+    if (path.indexOf('lead.') === 0 && P.editable) return '<span data-fill="' + path + '"' + fbAttr + '></span>';
+    var v = getPath(DATA, path);
+    v = (v == null ? '' : String(v));
+    return esc(v !== '' ? v : fb);
   }
   // Interpolação: {{calc.x}}/{{state.x}} viram spans dinâmicos (recalculados pelo
   // painel do closer); {{lead.x}}/{{answers.x}} resolvem na construção.
+  // {{campo||fallback}} usa o fallback quando o campo está vazio.
   function fmt(s) {
     var out = esc(s);
-    out = out.replace(/\\{\\{\\s*([a-zA-Z0-9_.]+)\\s*\\}\\}/g, function (_, path) { return interpPath(path); });
-    out = out.replace(/\\*([^*]+)\\*/g, '<em>$1</em>');
+    out = out.replace(/\\{\\{\\s*([a-zA-Z0-9_.]+)\\s*(?:\\|\\|\\s*([^}]*?))?\\s*\\}\\}/g, function (_, path, fb) { return interpPath(path, fb); });
+    // Ênfase *texto* → <em>. Se o campo interpolado veio VAZIO (ex.: lead sem
+    // empresa em "escalar a *{{lead.company}}*"), a ênfase fica vazia: remove ela
+    // E o artigo solto que sobrou antes ("escalar a  sem" → "escalar sem"), pra
+    // nunca aparecer "**" na capa. Ênfase com conteúdo preserva artigo e espaço.
+    out = out.replace(/(\\s+\\b[ao]s?\\s+)?\\*([^*]*)\\*/g, function (_, pre, inner) { return inner ? (pre || '') + '<em>' + inner + '</em>' : ''; });
     return out;
   }
   // answers com rótulo humano (answerLabels) pra preencher os spans do modo closer.
@@ -786,7 +800,9 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     var calc = compute();
     var D = { calc: calc, state: state, lead: DATA.lead || {}, answers: answersDisplay() };
     document.querySelectorAll('[data-fill]').forEach(function (el) {
-      el.textContent = String(getPath(D, el.getAttribute('data-fill')));
+      var v = getPath(D, el.getAttribute('data-fill'));
+      var s = (v == null ? '' : String(v));
+      el.textContent = s !== '' ? s : (el.getAttribute('data-fallback') || '');
     });
     fitSlides(); // números mudam altura do conteúdo — re-encaixa nos slides
   }
@@ -1551,6 +1567,12 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       w.appendChild(go);
       sec.appendChild(w);
       root.insertBefore(sec, root.firstChild);
+      // Inserir a "tela zero" ANTES da capa dispara o scroll anchoring do navegador
+      // (ele rola pra baixo pra manter a capa onde estava), então a apresentação
+      // abria NA CAPA e o closer nao via o setup. O overflow-anchor:none no html ja
+      // desliga isso; o scrollTo garante o topo mesmo com layout tardio (fitSlides).
+      window.scrollTo(0, 0);
+      requestAnimationFrame(function () { window.scrollTo(0, 0); });
     }
     buildSetup();
   }
