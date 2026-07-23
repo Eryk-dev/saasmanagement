@@ -12,6 +12,7 @@ import { useAttribution, leadPain } from "../lib/pains.js";
 import { sourceLabel } from "../lib/sources.js";
 import { resolveScript, scriptTokens, scriptSegments, scriptChecklist } from "../lib/scripts.js";
 import { CallSummaryCard, IntegrationBriefCard, callBusyKeys, callSlotKeys } from "./today.jsx";
+import { CustomProposalModal } from "../components/custom-proposal.jsx";
 import { useData } from "../data.jsx";
 // Lead detail drawer — slides over the pipeline when a card is opened.
 // (Funil unificado: o card do pipeline é um lead, então o detalhe é do lead.)
@@ -68,6 +69,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   const [showTimeline, setShowTimeline] = React.useState(false); // timeline recolhida por padrão
   const [showGps, setShowGps] = React.useState(false);   // Próximo passo: a linha grande fica sempre visível; isto abre os editores
   const [showCall, setShowCall] = React.useState(false); // "Detalhes da call" (vídeo/convidados) recolhido por padrão
+  const [customProp, setCustomProp] = React.useState(false); // modal da proposta personalizada
   const [showEntrega, setShowEntrega] = React.useState(false); // "Entrega" (briefing/vídeo integração) recolhido
   const [showFrom, setShowFrom] = React.useState(false); // atribuição do anúncio recolhida
   const [pendingMove, setPendingMove] = React.useState(null); // { toStage, gate }
@@ -304,6 +306,20 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   proposta ↗
                 </a>
               )}
+              {/* Proposta PERSONALIZADA: pra quem fechou solução sob medida numa
+                  conversa. Capa + o combinado (entregáveis + valor), no layout
+                  do deck. Independe da proposta automática acima. */}
+              {lead.customProposalUrl && (
+                <a href={cockpitProposalUrl(lead.customProposalUrl)} target="_blank" rel="noreferrer"
+                  className="chip" title="Abrir a proposta personalizada como o cliente vê"
+                  style={{ color: "var(--accent)", borderColor: "var(--accent-line)", background: "var(--accent-soft)", fontWeight: 600, textDecoration: "none" }}>
+                  personalizada ↗
+                </a>
+              )}
+              <button onClick={() => setCustomProp(true)} className="chip" title="Montar/editar uma proposta personalizada (objetiva)"
+                style={{ cursor: "pointer" }}>
+                {lead.customProposalUrl ? "editar personalizada" : "+ proposta personalizada"}
+              </button>
             </div>
           </div>
           <button onClick={close} className="mono dim" style={{ fontSize: 16, flexShrink: 0 }}>✕</button>
@@ -835,6 +851,14 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               applyGatedMove(p, extra, lead.id).then(refetchTimeline).catch((err) => console.warn("movimento não persistido:", err.message));
               setPendingMove(null);
             }}
+          />
+        )}
+
+        {customProp && (
+          <CustomProposalModal
+            lead={lead}
+            onClose={() => setCustomProp(false)}
+            onSaved={(r) => { dirty.current = true; setLead((prev) => ({ ...prev, customProposalId: r.id, customProposalUrl: r.url })); }}
           />
         )}
       </div>

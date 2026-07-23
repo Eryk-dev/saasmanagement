@@ -234,6 +234,87 @@ export async function shareProposalOffer(repo, parent, offer, { baseUrl = "" } =
   return { ok: true, proposal: saved, url: `${baseUrl}/p/${saved.id}`, offer: n, label: picked.label };
 }
 
+// ── Proposta PERSONALIZADA (objetiva) ───────────────────────────────────────
+// Cliente que fechou soluções sob medida numa conversa: o closer não monta o
+// deck inteiro, só transcreve o COMBINADO (entregáveis) e o VALOR. Duas telas no
+// MESMO layout da apresentação (herda o tema do template publicado): capa +
+// "o combinado" (entregáveis + valor). Sem escada de ofertas, sem reveal, sem
+// calculadora — é objetiva, já está fechado.
+//
+// A `spec` (título/subtítulo/entregáveis/valor/ciclo) é a fonte da verdade: fica
+// gravada na proposta pra reabrir o formulário, e os slides são derivados dela a
+// cada save. Editar = regravar a spec no mesmo id (link estável).
+
+const BRL = (n) => new Intl.NumberFormat("pt-BR").format(Math.round(Number(n) || 0));
+
+// Sufixo do preço por ciclo. O número é o que o closer digitou (o significado é
+// dele); o ciclo só rotula. Mantido curto pra caber no card de preço.
+const CYCLE_LABELS = {
+  avista: { per: "", cycles: "pagamento único" },
+  mensal: { per: "/ mês", cycles: "cobrança mensal" },
+  parcelado: { per: "", cycles: "parcelado" },
+};
+
+export function sanitizeCustomSpec(raw = {}) {
+  const cycle = ["avista", "mensal", "parcelado"].includes(raw.cycle) ? raw.cycle : "avista";
+  const deliverables = (Array.isArray(raw.deliverables) ? raw.deliverables : [])
+    .map((d) => String(d || "").trim()).filter(Boolean).slice(0, 20);
+  return {
+    title: String(raw.title || "").trim().slice(0, 120) || "Proposta personalizada",
+    subtitle: String(raw.subtitle || "").trim().slice(0, 240),
+    deliverables,
+    // Valor cru (só dígitos): o closer digita "6.000" ou "6000"; guardamos o
+    // número e formatamos na hora de exibir.
+    price: String(raw.price ?? "").replace(/[^\d]/g, ""),
+    priceCaption: String(raw.priceCaption || "").trim().slice(0, 80), // sobrescreve o rótulo do ciclo, se quiser
+    cycle,
+  };
+}
+
+// spec → os dois slides no layout do deck.
+export function customSlides(spec, lead = {}) {
+  const s = sanitizeCustomSpec(spec);
+  const company = String(lead.company || "").trim();
+  const cyc = CYCLE_LABELS[s.cycle] || CYCLE_LABELS.avista;
+  const hero = {
+    key: "capa", type: "hero",
+    tag: company || "Proposta sob medida",
+    title: s.title,
+    ...(s.subtitle ? { subtitle: s.subtitle } : {}),
+  };
+  const combinado = {
+    key: "combinado", type: "pricing",
+    eyebrow: "O combinado",
+    title: "O que vamos entregar",
+    featuresTitle: "Entregáveis",
+    features: s.deliverables.length ? s.deliverables : ["A combinar"],
+    planTag: "Investimento",
+    // Sem valor, o card de preço não entra (proposta só de escopo).
+    ...(s.price ? {
+      price: BRL(s.price),
+      per: cyc.per,
+      cycles: s.priceCaption || cyc.cycles,
+    } : { price: "a combinar", per: "", cycles: s.priceCaption || "" }),
+  };
+  return [hero, combinado];
+}
+
+// Objeto de proposta (sem persistir) pronto pro renderer/preview.
+export function buildCustomProposal(lead, spec, { theme = {} } = {}) {
+  const s = sanitizeCustomSpec(spec);
+  return {
+    name: s.title,
+    theme: theme || {},
+    slides: customSlides(s, lead),
+    calc: {},
+    acceptStage: "",
+    data: splitLeadData(lead),
+    state: {},
+    spec: s,
+    showAll: true, // versão do cliente: tudo visível, nada espera comando
+  };
+}
+
 // Provider nativo do dispatcher de POST /api/leads/:id/proposal. Mesmo contrato
 // best-effort do runProposal do Levercopy: nunca lança; { ok, skipped?, error? }.
 export async function runNativeProposal(repo, lead, opts = {}) {
