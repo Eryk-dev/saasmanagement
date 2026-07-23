@@ -346,8 +346,10 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
      ativada (Shift). Aí risca o cheio e mostra o com desconto ao lado. */
   .stack-prices { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
   .stack-price-off { display: none; }
-  .offer2-on .stack-row .stack-price { text-decoration: line-through; color: var(--ink-3); opacity: .55; font-size: clamp(18px, 2.2vw, 24px); }
-  .offer2-on .stack-row .stack-price-off { display: inline-block; font-family: var(--font-display); font-weight: 500; font-size: clamp(26px, 3.4vw, 36px); letter-spacing: -.02em; color: var(--accent); line-height: 1; }
+  /* Só risca os itens QUE TÊM desconto (.has-off = f.price2 setado). Item sem
+     desconto (ex.: "Tempo de implementação") fica intacto na 2ª oferta. */
+  .offer2-on .stack-row.has-off .stack-price { text-decoration: line-through; color: var(--ink-3); opacity: .55; font-size: clamp(18px, 2.2vw, 24px); }
+  .offer2-on .stack-row.has-off .stack-price-off { display: inline-block; font-family: var(--font-display); font-weight: 500; font-size: clamp(26px, 3.4vw, 36px); letter-spacing: -.02em; color: var(--accent); line-height: 1; }
   /* Coluna de benefícios/entregáveis (lado direito do pricing). */
   .benefits-card { --bg: #051C2C; --fg: #F3FBFF; background: var(--bg); color: var(--fg); border-radius: calc(var(--radius) + 10px); padding: 32px 28px; height: 100%; }
   @media (min-width: 768px) { .benefits-card { padding: 40px 36px; } }
@@ -1164,8 +1166,9 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         if (f && typeof f === 'object' && f.price != null && f.price !== '') {
           // price2 = preço com desconto (aparece riscando o cheio quando a 2ª
           // oferta é ativada; ver CSS .offer2-on .stack-row).
-          var soff = (f.price2 != null && f.price2 !== '') ? '<span class="stack-price-off">' + fmt(f.price2) + '</span>' : '';
-          return '<li class="' + (cls ? cls + ' ' : '') + 'stack-row"><span class="stack-label">' + fmt(f.label != null ? f.label : (f.text || '')) + '</span><span class="stack-prices"><span class="stack-price">' + fmt(f.price) + '</span>' + soff + '</span></li>';
+          var hasOff = f.price2 != null && f.price2 !== '';
+          var soff = hasOff ? '<span class="stack-price-off">' + fmt(f.price2) + '</span>' : '';
+          return '<li class="' + (cls ? cls + ' ' : '') + 'stack-row' + (hasOff ? ' has-off' : '') + '"><span class="stack-label">' + fmt(f.label != null ? f.label : (f.text || '')) + '</span><span class="stack-prices"><span class="stack-price">' + fmt(f.price) + '</span>' + soff + '</span></li>';
         }
         return '<li' + (cls ? ' class="' + cls + '"' : '') + '>' + fmt(typeof f === 'object' ? (f.text || '') : f) + '</li>';
       }
