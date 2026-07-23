@@ -65,7 +65,7 @@ export function confirmStepDone(lead, window, at) {
 
 // Monta a fila: um item por lead trabalhável, no bloco do dia certo e
 // classificado no grupo de prioridade (que define a ordem dentro do bloco).
-function buildQueue(leads, saasCfg, person) {
+function buildQueue(leads, consultas, saasCfg, person) {
   const workable = new Set(workableStages(saasCfg));
   const open = new Set(openStages(saasCfg));
   const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
@@ -190,6 +190,21 @@ function buildQueue(leads, saasCfg, person) {
     else g.proximos.push(item);
   }
 
+  // Consultas 1:1 (UniqueKids) na fila de quem conduz: entram como compromisso
+  // ("appt") no horário marcado, lado a lado com as calls. Só as agendadas e do
+  // dono da vez (mesma pessoa da fila); abrir o card leva ao Meet centralizado
+  // no lead. Passadas do dia já viram histórico e saem da fila (< início de hoje).
+  for (const c of (consultas || [])) {
+    if (!c || c.status !== "scheduled" || !c.at) continue;
+    if (person && c.owner !== person) continue;
+    const t = new Date(String(c.at).length === 16 ? `${c.at}:00` : c.at).getTime();
+    if (!Number.isFinite(t) || t < startToday.getTime()) continue;
+    const item = { consulta: c, kind: "consulta", who: c.owner || "", due: { t, type: "consulta" }, done: false, stage: `Consulta ${c.n || "?"}/${c.packageTotal || 8}`, group: "appt" };
+    if (t <= endToday.getTime()) g.hoje.push(item);
+    else if (t <= endTomorrow.getTime()) g.amanha.push(item);
+    else g.proximos.push(item);
+  }
+
   // Ordem dentro do bloco: prioridade do processo; no empate, novos por chegada
   // (SLA), agendados pelo horário e os sem data pelo potencial.
   const rank = (i) => GROUP_ORDER.indexOf(i.group);
@@ -243,6 +258,18 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   const [leads, setLeads] = useS(() => (window.SEED?.LEADS || []).map((l) => ({ ...l })));
   useE(() => { setLeads((window.SEED?.LEADS || []).map((l) => ({ ...l }))); }, [version]);
 
+  // Consultas 1:1 (UniqueKids) do produto ativo — entram na fila como compromisso
+  // no horário marcado (buildQueue). Fora do SEED (coleção própria), refetch no
+  // tempo real (version). Sem consultas no produto, a fila fica igual.
+  const [consultas, setConsultas] = useS([]);
+  useE(() => {
+    let alive = true;
+    api.list("consultations")
+      .then((rows) => alive && setConsultas((rows || []).filter((c) => c.saas === (saasCfg?.id || activeProduct?.id))))
+      .catch(() => alive && setConsultas([]));
+    return () => { alive = false; };
+  }, [version, saasCfg?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Fila de quem: padrão o usuário logado; admin pode inspecionar a de qualquer um.
   const [person, setPersonState] = useS(() => {
     try { const v = localStorage.getItem("cockpit_today_person"); if (v != null) return v; } catch { /* ignore */ }
@@ -255,13 +282,14 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   const [scriptItem, setScriptItem] = useS(null); // item com o painel de roteiro aberto
   const [igStats, setIgStats] = useS(null); // { configured, count, username } — aviso de social selling
 
-  const q = useM(() => buildQueue(leads, saasCfg, person), [leads, saasCfg, person]);
+  const q = useM(() => buildQueue(leads, consultas, saasCfg, person), [leads, consultas, saasCfg, person]);
   const total = q.hoje.length + q.amanha.length + q.proximos.length + q.semdata.length;
 
   // Próximo item pendente DEPOIS deste na fila de HOJE — o "toque e próximo".
+  // Só entre leads (consultas não entram no fluxo de roteiro/toque).
   function nextAfter(item) {
-    const idx = q.hoje.findIndex((i) => i.l.id === item.l.id);
-    return q.hoje.find((i, j) => j > idx && !i.done && i.l.id !== item.l.id) || null;
+    const idx = q.hoje.findIndex((i) => i.l?.id === item.l.id);
+    return q.hoje.find((i, j) => j > idx && !i.done && i.l && i.l.id !== item.l.id) || null;
   }
 
   // Toque direto da fila: vira activity, o servidor conta a tentativa, re-agenda
@@ -329,13 +357,25 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   }
   const advanceScript = () => setScriptItem(nextAfter(scriptItem));
 
+  // Abrir o card do lead a partir de uma consulta da fila — é lá que o Meet fica
+  // centralizado (entrar/criar/resumir). Casa a consulta com o lead (por leadId
+  // ou pelo cliente). `openRow` roteia: consulta abre o card, lead abre o roteiro.
+  function openConsulta(item) {
+    const c = item.consulta; if (!c) return;
+    const lead = leads.find((x) => x.id === c.leadId)
+      || (c.customerId ? leads.find((x) => x.customerId === c.customerId) : null);
+    if (lead) onOpenLead && onOpenLead(lead);
+  }
+  const openRow = (item) => (item.consulta ? openConsulta(item) : setScriptItem(item));
+
   const users = allUsers().filter((u) => !u.saas || u.saas === saasCfg?.id);
   const firstPending = q.hoje.find((i) => !i.done);
   const pendingToday = q.hoje.filter((i) => !i.done);
   const doneTodayRows = q.hoje.filter((i) => i.done);
   const futureRows = [...q.proximos, ...q.semdata];
-  const queueCounts = Object.fromEntries(users.map((u) => [u.id, buildQueue(leads, saasCfg, u.id).hoje.filter((i) => !i.done).length]));
-  const contactedGoal = Math.max(q.doneToday + pendingToday.length, q.doneToday, 1);
+  const queueCounts = Object.fromEntries(users.map((u) => [u.id, buildQueue(leads, consultas, saasCfg, u.id).hoje.filter((i) => !i.done).length]));
+  // Meta de "Contatados" é de contato (leads): consultas não contam pro placar.
+  const contactedGoal = Math.max(q.doneToday + pendingToday.filter((i) => i.l).length, q.doneToday, 1);
   const callsToday = q.hoje.filter((i) => i.kind === "call" && !i.confirm);
   const callsDone = callsToday.filter((i) => i.done).length;
 
@@ -390,8 +430,8 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                 </div>
                 {pendingToday.length === 0 && <div style={{ padding: "16px var(--inset-x)", borderTop: "1px solid var(--line-faint)", fontSize: 13, color: "var(--fg-3)" }}>Fila de hoje concluída.</div>}
                 {pendingToday.map((item, index) => (
-                  <QueueRow key={item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id} item={item} block="hoje" featured={index === 0}
-                    onScript={() => setScriptItem(item)} onClaim={() => claim(item)} onWhatsapp={onOpenWhatsapp} />
+                  <QueueRow key={item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id} item={item} block="hoje" featured={index === 0}
+                    onScript={() => setScriptItem(item)} onClaim={() => claim(item)} onWhatsapp={onOpenWhatsapp} onOpen={() => openConsulta(item)} />
                 ))}
               </section>
 
@@ -408,8 +448,8 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
               <DayScore contacted={q.doneToday} contactedGoal={contactedGoal} calls={callsDone} callsGoal={Math.max(callsToday.length, 1)} />
-              <CompactSchedule title="Amanhã" rows={q.amanha} onOpen={setScriptItem} />
-              {futureRows.length > 0 && <CompactSchedule title="Próximos dias" rows={futureRows} onOpen={setScriptItem} />}
+              <CompactSchedule title="Amanhã" rows={q.amanha} onOpen={openRow} />
+              {futureRows.length > 0 && <CompactSchedule title="Próximos dias" rows={futureRows} onOpen={openRow} />}
             </div>
           </div>
         )}
@@ -436,11 +476,55 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   );
 }
 
+// Linha de consulta (UniqueKids) na fila: horário, "Consulta n/8", cliente e as
+// ações — entrar no Meet (se já existe) e abrir o card (onde o Meet é criado e
+// resumido). Não participa do fluxo de roteiro/toque dos leads.
+function ConsultaRow({ item, block, featured, onOpen }) {
+  const c = item.consulta;
+  const t = item.due?.t;
+  const now = Date.now();
+  const hhmm = (v) => new Date(v).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  let when;
+  if (t == null) when = { text: "sem hora", tone: "mut" };
+  else if (block === "amanha") when = { text: hhmm(t), tone: "mut" };
+  else if (block === "proximos") when = { text: new Date(t).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), tone: "mut" };
+  else if (t <= now) when = { above: hhmm(t), text: "agora", tone: "neg" };
+  else when = { text: hhmm(t), tone: "pos" };
+  return (
+    <div onClick={onOpen} title="Abrir o card da consulta (Meet, resumo)" style={{
+      display: "flex", alignItems: "center", gap: 14, padding: featured ? "16px var(--inset-x)" : "14px var(--inset-x)",
+      borderTop: "1px solid var(--line-faint)", background: featured ? "var(--accent-soft)" : "transparent", cursor: "pointer", flexWrap: "wrap",
+    }}>
+      <span className="mono tnum" style={{ fontSize: 12.5, width: 44, flexShrink: 0, display: "flex", flexDirection: "column", gap: 1 }}>
+        {when.above && <span style={{ fontSize: 11, color: "var(--fg-4)" }}>{when.above}</span>}
+        <span style={{ color: when.tone === "neg" ? "var(--neg)" : when.tone === "pos" ? "var(--pos)" : "var(--fg-4)" }}>{when.text}</span>
+      </span>
+      <span style={{ width: 118, flexShrink: 0 }}>
+        <span style={{ display: "inline-block", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: "20px", padding: "0 8px", borderRadius: "var(--r-1)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 11.5, fontWeight: 600 }}>Consulta {c.n || "?"}/{c.packageTotal || 8}</span>
+      </span>
+      <div style={{ flex: 1, minWidth: "min(240px, 100%)" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>{c.clientName || "cliente"}</span>
+          {c.childName && <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{c.childName}</span>}
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 3 }}>consulta da mentoria · UniqueKids</div>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+        {c.meetUrl && (
+          <a href={c.meetUrl} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: `1px solid ${featured ? "var(--btn-bg)" : "var(--line-2)"}`, background: featured ? "var(--btn-bg)" : "var(--bg-1)", color: featured ? "var(--btn-fg)" : "var(--fg-2)", fontSize: 12.5, fontWeight: featured ? 600 : 500, textDecoration: "none" }}>Entrar no Meet</a>
+        )}
+        <button onClick={onOpen} style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5 }}>Abrir card</button>
+      </div>
+    </div>
+  );
+}
+
 // Uma linha da fila: sequência, quando, etapa (coluna do funil), ação a fazer,
 // lead com a qualificação compilada e as ações. Clique no corpo abre o ROTEIRO
 // (o painel de execução), não o card de status; o drawer fica no "abrir lead".
-function QueueRow({ item, block, featured, onScript, onClaim, onWhatsapp }) {
-  const { l, kind, due, stage, who, group } = item;
+function QueueRow({ item, block, featured, onScript, onClaim, onWhatsapp, onOpen }) {
+  const { l, consulta, kind, due, stage, who, group } = item;
+  if (consulta) return <ConsultaRow item={item} block={block} featured={featured} onOpen={onOpen} />;
   const now = Date.now();
 
   // Pill de horário. Hoje: atrasado (dias) · agora · HH:mm · novo (idade).
@@ -554,11 +638,11 @@ function CompactSchedule({ title, rows, onOpen }) {
       <div style={{ padding: "0 var(--inset-x) 8px" }}>
         {rows.length === 0 && <div style={{ borderTop: "1px solid var(--line-faint)", padding: "12px 0 14px", fontSize: 12.5, color: "var(--fg-4)" }}>nenhuma atividade</div>}
         {rows.slice(0, 5).map((item) => (
-          <button key={item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id} onClick={() => onOpen(item)} style={{ width: "100%", display: "flex", gap: 10, alignItems: "baseline", padding: "10px 0", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
+          <button key={item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id} onClick={() => onOpen(item)} style={{ width: "100%", display: "flex", gap: 10, alignItems: "baseline", padding: "10px 0", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
             <span className="mono tnum" style={{ fontSize: 12, color: "var(--fg-4)", flexShrink: 0 }}>{timeOf(item)}</span>
             <span style={{ minWidth: 0 }}>
-              <span style={{ display: "block", fontSize: 13.5, fontWeight: 600 }}>{item.l.name}</span>
-              <span style={{ display: "block", fontSize: 12, color: "var(--fg-3)" }}>{ACTION_LABELS[item.kind] || "contato"}{item.l.company ? ` · ${item.l.company}` : ""}</span>
+              <span style={{ display: "block", fontSize: 13.5, fontWeight: 600 }}>{item.consulta ? (item.consulta.clientName || "cliente") : item.l.name}</span>
+              <span style={{ display: "block", fontSize: 12, color: "var(--fg-3)" }}>{item.consulta ? `Consulta ${item.consulta.n || "?"}/${item.consulta.packageTotal || 8} · UniqueKids` : `${ACTION_LABELS[item.kind] || "contato"}${item.l.company ? ` · ${item.l.company}` : ""}`}</span>
             </span>
           </button>
         ))}
