@@ -4,7 +4,7 @@ import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
-import { PeriodPicker, periodWindow } from "../components/period-picker.jsx";
+import { PeriodPicker, usePeriod } from "../components/period-picker.jsx";
 import { buildPeople, TeamCards, topPerformer, asRate } from "../components/team-cards.jsx";
 
 // Funcionários — desempenho por pessoa. Reusa os cartões do time (TeamCards, os
@@ -16,11 +16,8 @@ const { useState, useEffect, useMemo } = React;
 function FuncionariosScreen({ onNav }) {
   const { version } = useData();
   const [product] = useActiveSaas();
-  const [period, setPeriod] = useState(() => { try { return localStorage.getItem("cockpit_func_period") || "30d"; } catch { return "30d"; } });
-  const setP = (p) => { setPeriod(p); try { localStorage.setItem("cockpit_func_period", p); } catch { /* ignore */ } };
-  const [custom, setCustom] = useState(() => { try { return JSON.parse(localStorage.getItem("cockpit_func_custom")) || { since: "", until: "" }; } catch { return { since: "", until: "" }; } });
-  const setC = (c) => { setCustom(c); try { localStorage.setItem("cockpit_func_custom", JSON.stringify(c)); } catch { /* ignore */ } };
-  const win = useMemo(() => periodWindow(period, custom), [period, custom.since, custom.until]);
+  // Janela GLOBAL do cockpit (a mesma da Visão geral e da Aquisição).
+  const { period, custom, setPeriod: setP, setCustom: setC, win } = usePeriod();
   const [score, setScore] = useState(null);
 
   useEffect(() => {
