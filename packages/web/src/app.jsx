@@ -42,6 +42,10 @@ import { useIsMobile } from "./lib/responsive.js";
 
 const { useState: useStA, useEffect: useEA, useCallback: useCbA } = React;
 
+// Telas que respeitam a JANELA GLOBAL: o filtro de período aparece no topo (ao
+// lado da busca) só nelas, e mudar ali reflete em todas de uma vez.
+const PERIOD_SCREENS = new Set(["overview", "aquisicao", "funcionarios"]);
+
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "theme": "light",
   "typeSystem": "balanced",
@@ -205,6 +209,7 @@ function App() {
         <TopBar
           breadcrumb={crumbsFor[scr]}
           onSearch={() => setSearchOpen(true)}
+          showPeriod={PERIOD_SCREENS.has(scr)}
           leading={isMobile && (
             <button onClick={() => setMenuOpen(true)} style={chromeBtnStyleSmall} title="Abrir menu">
               <span className="mono" style={{ fontSize: 14 }}>☰</span>

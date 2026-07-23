@@ -10,7 +10,7 @@ import { displayName, currentUser, isAdminUser, canSeeScreen } from "../lib/user
 import { leadTier } from "../lib/ui.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { buildPeople, TeamCards, topPerformer } from "../components/team-cards.jsx";
-import { PeriodPicker, usePeriod } from "../components/period-picker.jsx";
+import { usePeriod } from "../components/period-picker.jsx";
 // Visão geral — cockpit de GESTÃO. Responde: como está o negócio (receita, CAC,
 // ROAS) e como está o DESEMPENHO de cada papel (SDR/closer/CS), pessoa a pessoa,
 // contra a meta. A execução ("quem contatar agora") mora no Meu dia, não aqui.
@@ -37,9 +37,10 @@ function OverviewScreen({ onNav, onOpenLead }) {
   const [wa, setWa] = useState(null); // inbox do WhatsApp (números globais do time)
   // Período do TOPO governa os tiles de aquisição e o gráfico. Snapshots
   // financeiros (MRR, Clientes, Resultado do mês) seguem a cadência própria.
-  // Janela GLOBAL do cockpit (period-picker.usePeriod): a MESMA de Aquisição e
-  // Equipe, num localStorage só — mudou aqui, mudou lá.
-  const { period, custom, setPeriod, setCustom, win } = usePeriod();
+  // Janela GLOBAL do cockpit (period-picker.usePeriod): o seletor mora no topo
+  // (ao lado da busca); aqui só LEMOS a janela. period/custom entram nas deps do
+  // fetch pra a tela recarregar quando muda no topo.
+  const { period, custom, win } = usePeriod();
   const pLabel = win.label;
   const pShort = win.short;
 
@@ -179,9 +180,7 @@ function OverviewScreen({ onNav, onOpenLead }) {
     const minha = buildPeople(score).find((p) => p.user === eu?.id) || null;
     return (
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-        <PageHead title="Suas metas" sub={today}>
-          <PeriodPicker period={period} custom={custom} onChange={(p, c) => { setPeriod(p); setCustom(c); }} />
-        </PageHead>
+        <PageHead title="Suas metas" sub={today} />
         <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
           <PaceStrip pace={pace} links={false} />
           <Card title={`Suas metas · ${pLabel}`} hint="o que a sua vaga precisa entregar no período · meta de mês reescalada pelos dias úteis">
@@ -203,9 +202,7 @@ function OverviewScreen({ onNav, onOpenLead }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-      <PageHead title="Visão geral" sub={today}>
-        <PeriodPicker period={period} custom={custom} onChange={(p, c) => { setPeriodP(p); setCustomP(c || { since: "", until: "" }); }} />
-      </PageHead>
+      <PageHead title="Visão geral" sub={today} />
 
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         <PaceStrip pace={pace} onNav={onNav} />

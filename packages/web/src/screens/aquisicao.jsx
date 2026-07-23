@@ -4,7 +4,7 @@ import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
-import { PeriodPicker, usePeriod } from "../components/period-picker.jsx";
+import { usePeriod } from "../components/period-picker.jsx";
 
 // Aquisição — os NÚMEROS QUE IMPORTAM de Publicidade + Formulários num lugar só:
 // o funil de aquisição (investido → impressões → cliques → visitas no form →
@@ -24,8 +24,8 @@ const shortDay = (iso) => { const d = new Date(`${iso}T00:00:00`); return d.toLo
 function AquisicaoScreen() {
   const { version } = useData();
   const [product] = useActiveSaas();
-  // Janela GLOBAL do cockpit (a mesma da Visão geral e da Equipe).
-  const { period, custom, setPeriod: setP, setCustom: setC, win } = usePeriod();
+  // Janela GLOBAL do cockpit (seletor no topo; aqui só lemos a janela).
+  const { period, custom, win } = usePeriod();
   const [mkt, setMkt] = useState(null);
   const [biz, setBiz] = useState(null);
 
@@ -58,9 +58,7 @@ function AquisicaoScreen() {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-      <PageHead title="Análise de Aquisição" sub="investimento em anúncios + conversão dos formulários · o funil de aquisição">
-        <PeriodPicker period={period} custom={custom} onChange={(p, c) => { setP(p); setC(c || { since: "", until: "" }); }} />
-      </PageHead>
+      <PageHead title="Análise de Aquisição" sub="investimento em anúncios + conversão dos formulários · o funil de aquisição" />
 
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         {loading ? (

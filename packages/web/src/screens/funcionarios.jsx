@@ -4,7 +4,7 @@ import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
-import { PeriodPicker, usePeriod } from "../components/period-picker.jsx";
+import { usePeriod } from "../components/period-picker.jsx";
 import { buildPeople, TeamCards, topPerformer, asRate } from "../components/team-cards.jsx";
 
 // Funcionários — desempenho por pessoa. Reusa os cartões do time (TeamCards, os
@@ -17,7 +17,7 @@ function FuncionariosScreen({ onNav }) {
   const { version } = useData();
   const [product] = useActiveSaas();
   // Janela GLOBAL do cockpit (a mesma da Visão geral e da Aquisição).
-  const { period, custom, setPeriod: setP, setCustom: setC, win } = usePeriod();
+  const { period, custom, win } = usePeriod(); // seletor no topo; aqui só lemos a janela
   const [score, setScore] = useState(null);
 
   useEffect(() => {
@@ -52,9 +52,7 @@ function FuncionariosScreen({ onNav }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-      <PageHead title="Análise de Equipe" sub="desempenho por pessoa · placar por papel (SDR · closer · CS)">
-        <PeriodPicker period={period} custom={custom} onChange={(p, c) => { setP(p); setC(c || { since: "", until: "" }); }} />
-      </PageHead>
+      <PageHead title="Análise de Equipe" sub="desempenho por pessoa · placar por papel (SDR · closer · CS)" />
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         {score == null && <div className="dim" style={{ fontSize: 12.5 }}>carregando…</div>}
         {score != null && !people.length && <EmptyState title="Sem atividade no período" hint="O desempenho por pessoa aparece quando o time movimenta leads e clientes." />}
