@@ -65,11 +65,13 @@ export function FilterTab({ active, count, children, onClick, style }) {
   );
 }
 
-export function StatTile({ label, value, small, delta, tone = "flat" }) {
+export function StatTile({ label, value, small, delta, tone = "flat", title }) {
   const valueColor = tone === "down" ? "var(--neg)" : "var(--fg-1)";
   return (
-    <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px var(--inset-x)", minWidth: 0, minHeight: 116 }}>
-      <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--fg-3)", marginBottom: 6 }}>{label}</div>
+    <section title={title} style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px var(--inset-x)", minWidth: 0, minHeight: 116 }}>
+      <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--fg-3)", marginBottom: 6, display: "flex", alignItems: "center", gap: 5 }}>
+        {label}{title && <span className="dim" style={{ fontSize: 10.5, cursor: "help" }} title={title}>ⓘ</span>}
+      </div>
       <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 30, fontWeight: 700, letterSpacing: "-0.025em", whiteSpace: "nowrap", color: valueColor }}>
         {value}{small && <span style={{ fontSize: 14, fontWeight: 500, color: "var(--fg-3)", marginLeft: 4 }}>{small}</span>}
       </div>
