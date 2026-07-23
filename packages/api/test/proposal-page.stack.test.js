@@ -70,7 +70,7 @@ test("price2: item com desconto embute o preço off + regra de risco na 2ª ofer
     currency: false, price: "115.988", offer2: { planTag: "20% OFF", price: "92.790,40" },
   });
   assert.match(html, /stack-price-off/, "span do preço com desconto");
-  assert.match(html, /\.offer2-on \.stack-row \.stack-price \{/, "risca o cheio na 2ª oferta");
+  assert.match(html, /\.offer2-on \.stack-row\.has-off \.stack-price \{/, "risca só itens com desconto (has-off)");
   assert.match(html, /f\.price2 != null/, "branch price2 no featLi");
   assert.match(html, /"price2":"5\.750,40"/, "dado do preço com desconto");
 });
@@ -94,4 +94,15 @@ test("payments: opções de pagamento com ícone abaixo do valor; per vazio não
   assert.match(html, /\.pay-row \{/, "CSS pay-row");
   assert.match(html, /o\.payments/, "branch payments no priceCardHtml");
   assert.match(html, /o\.per != null/, "per vazio explícito não cai em /mês");
+});
+
+test("has-off: só item com price2 recebe a classe (o sem desconto não risca)", () => {
+  const html = render({
+    key: "v", type: "pricing", revealPrice: true, stageFeatures: true, featuresTitle: "x",
+    features: [{ label: "Prod", price: "10", price2: "8" }, { label: "Tempo", price: "45~90 dias" }],
+    currency: false, price: "120", offer2: { planTag: "20% OFF", price: "96" },
+  });
+  // motor client-side: confere a lógica no source + o CSS escopado
+  assert.match(html, /hasOff \? ' has-off'/, "featLi marca has-off quando há price2");
+  assert.match(html, /\.offer2-on \.stack-row\.has-off/, "risco escopado por has-off no CSS");
 });
