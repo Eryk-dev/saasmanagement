@@ -83,3 +83,15 @@ test("item sem price2 não gera o preço off (compat)", () => {
   assert.match(html, /"price":"58\.800"/);
   assert.doesNotMatch(html, /"price2":/, "sem price2 no dado");
 });
+
+test("payments: opções de pagamento com ícone abaixo do valor; per vazio não vira /mês", () => {
+  const html = render({
+    key: "v", type: "pricing", revealPrice: true, featuresTitle: "x",
+    features: [{ label: "A", price: "7" }], currency: false, price: "120.788", per: "",
+    payments: [{ icon: "card", text: "12× de 10.065,67 sem juros" }, { icon: "pix", text: "10% no Pix: 108.709,20" }],
+  });
+  assert.match(html, /price-pay/, "bloco de pagamento");
+  assert.match(html, /\.pay-row \{/, "CSS pay-row");
+  assert.match(html, /o\.payments/, "branch payments no priceCardHtml");
+  assert.match(html, /o\.per != null/, "per vazio explícito não cai em /mês");
+});
