@@ -59,6 +59,17 @@ const localToIso = (v) => {
 // Catálogo de atribuição e dor do criativo: helpers compartilhados com o
 // pipeline (lib/pains.js) — cache por SaaS no módulo.
 
+// Consulta (UniqueKids · mentoria R.O.T.I.N.A) — rótulos do painel de Meet que o
+// card do lead centraliza pra quem tem uma consulta marcada (entra na sala, cria
+// o Meet ou resume por aqui, sem abrir a tela de Consultas).
+const CONSULTA_STATUS = { scheduled: "agendada", done: "realizada", no_show: "faltou", canceled: "cancelada" };
+function consultaWhen(at) {
+  if (!at) return "sem horário";
+  const d = new Date(String(at).length === 16 ? `${at}:00` : at);
+  if (Number.isNaN(d.getTime())) return String(at);
+  return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(", ", " · ");
+}
+
 function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   const { refresh, version } = useData();
   // Cópia local: as ações rápidas (etapa, próximo contato) editam aqui e
@@ -76,6 +87,8 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   // Timeline: fetch por lead (fora do bootstrap) + refetch quando o tempo real
   // avisa (version) — o drawer vive fora da árvore remontada do App.
   const [activities, setActivities] = React.useState(null);
+  const [consultas, setConsultas] = React.useState(null); // consultas (UniqueKids) ligadas a este lead/cliente
+  const [cBusy, setCBusy] = React.useState(""); // "meet" | "sum" enquanto a ação roda
   React.useEffect(() => { setLead(initial); setPendingMove(null); }, [initial?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   React.useEffect(() => {
     if (!initial?.id) return;
@@ -83,6 +96,27 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
     api.listActivities(initial.id).then((a) => alive && setActivities(a)).catch(() => alive && setActivities([]));
     return () => { alive = false; };
   }, [initial?.id, version]);
+  // Consultas 1:1 ligadas a este lead OU cliente (UniqueKids) — pra centralizar o
+  // Meet e o resumo da mentoria no próprio card, sem abrir a tela de Consultas.
+  React.useEffect(() => {
+    if (!initial?.id) return;
+    let alive = true;
+    api.list("consultations")
+      .then((rows) => alive && setConsultas((rows || []).filter((c) =>
+        (c.leadId && c.leadId === initial.id) || (initial.customerId && c.customerId && c.customerId === initial.customerId))))
+      .catch(() => alive && setConsultas([]));
+    return () => { alive = false; };
+  }, [initial?.id, initial?.customerId, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A consulta em foco no card: a próxima agendada (ou a última, se já passaram).
+  const consulta = React.useMemo(() => {
+    const list = consultas || [];
+    if (!list.length) return null;
+    const now = Date.now();
+    const upcoming = list.filter((c) => c.status === "scheduled" && c.at)
+      .sort((a, b) => new Date(a.at) - new Date(b.at));
+    return upcoming.find((c) => new Date(c.at).getTime() >= now - 2 * 3600 * 1000) || upcoming[0]
+      || list.slice().sort((a, b) => (Number(b.n) || 0) - (Number(a.n) || 0))[0] || null;
+  }, [consultas]);
   if (!lead) return null;
   const wa = waLink(lead.phone);
   const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === lead.saas);
@@ -131,6 +165,18 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
     api.listActivities(lead.id).then(setActivities).catch(() => {});
     // o toque pode ter re-agendado o GPS no servidor — ressincroniza o lead
     api.get("leads", lead.id).then((fresh) => setLead((prev) => ({ ...prev, ...fresh }))).catch(() => {});
+  }
+  // Ação da consulta (criar Meet / resumir) direto do card: roda, recarrega as
+  // consultas do lead e mostra o erro sem quebrar o drawer.
+  async function consultaAction(key, run) {
+    setCBusy(key);
+    try {
+      await run();
+      const rows = await api.list("consultations");
+      setConsultas((rows || []).filter((c) =>
+        (c.leadId && c.leadId === lead.id) || (lead.customerId && c.customerId && c.customerId === lead.customerId)));
+    } catch (e) { window.alert(e?.message || "não deu certo"); }
+    finally { setCBusy(""); }
   }
 
   // Último resumo de call por IA (activity call_summary) pra mostrar o card rico
@@ -775,6 +821,47 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
             {/* UniqueKids: sugestão de solução da rotina (IA · método R.O.T.I.N.A),
                 gerada do desafio + exemplo e editável pela Ana. Só aparece quando há desafio. */}
             {(lead.desafio || lead.desafio_exemplo) && <RoutineSuggestion lead={lead} patch={patch} />}
+
+        {/* Consulta (UniqueKids): centraliza o Meet e o resumo da mentoria no
+            card do lead — quem tem consulta marcada entra na sala, cria o Meet ou
+            resume por aqui, sem precisar abrir a tela de Consultas. */}
+        {consulta && (
+          <div style={{ ...box, display: "flex", flexDirection: "column", gap: 9 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+              <span className="mono" style={{ ...kicker, flexShrink: 0 }}>Consulta {consulta.n || "?"}/{consulta.packageTotal || 8}</span>
+              <span style={{ fontSize: 13, fontWeight: 700 }}>{consultaWhen(consulta.at)}</span>
+              <span style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{CONSULTA_STATUS[consulta.status] || consulta.status || ""}</span>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              {consulta.meetUrl ? (
+                <a href={consulta.meetUrl} target="_blank" rel="noreferrer"
+                  style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, #fff)", fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}>Entrar no Meet ↗</a>
+              ) : (
+                <button disabled={!!cBusy || !consulta.at}
+                  onClick={() => consultaAction("meet", () => api.consultationMeet(consulta.id))}
+                  title={consulta.at ? "cria o Meet no horário da consulta e envia o convite por e-mail" : "a consulta está sem horário"}
+                  style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>{cBusy === "meet" ? "criando…" : "Criar Meet"}</button>
+              )}
+              <button disabled={!!cBusy || !consulta.meetUrl}
+                onClick={() => consultaAction("sum", () => api.consultationSummary(consulta.id, true))}
+                title="busca a transcrição do Meet e resume (também acontece sozinho após a consulta)"
+                style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 12.5 }}>{cBusy === "sum" ? "resumindo…" : "↻ Resumir com IA"}</button>
+            </div>
+            {!consulta.meetUrl && (
+              <div className="dim" style={{ fontSize: 11 }}>
+                {(consulta.clientEmail?.trim() || lead.email)
+                  ? <>o convite (com o link do Meet) vai por e-mail pra <b>{consulta.clientEmail?.trim() || lead.email}</b></>
+                  : "sem e-mail: o Meet é criado, mas ninguém recebe o convite"}
+              </div>
+            )}
+            {consulta.summary?.resumo && (
+              <div style={{ fontSize: 12, color: "var(--fg-3)", lineHeight: 1.5, borderTop: "1px solid var(--line-1)", paddingTop: 8 }}>
+                <b style={{ color: "var(--fg-2)" }}>Resumo (IA):</b> {consulta.summary.resumo}
+                {!!consulta.summary.tarefas?.length && <div style={{ marginTop: 4 }}><b>Tarefas:</b> {consulta.summary.tarefas.join(" · ")}</div>}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Aviso de número inválido / descadastro (dos webhooks do WhatsApp): o
             operador vê antes de tentar mandar, e os disparos já pulam sozinhos. */}
