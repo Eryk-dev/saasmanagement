@@ -322,6 +322,10 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .price-number .amount { font-family: var(--font-display); font-weight: 500; letter-spacing: -.04em; font-size: clamp(52px, 9vw, 96px); line-height: 1; }
   .price-number .per { font-size: 18px; color: var(--ink-3); margin-left: 6px; }
   .price-sub { margin-top: 14px; font-size: 14px; color: var(--ink-3); line-height: 1.5; }
+  /* Opções de pagamento abaixo do valor (payments): ícone + texto por linha. */
+  .price-pay { margin-top: 18px; display: flex; flex-direction: column; gap: 9px; }
+  .pay-row { display: flex; align-items: center; gap: 10px; font-size: 15px; color: var(--ink-2); }
+  .pay-row svg { color: var(--accent); flex-shrink: 0; }
   .price-cycles { margin-top: 10px; font-family: var(--font-mono); font-size: 12px; color: var(--accent); letter-spacing: .04em; }
   /* Preço-âncora (de R$ X riscado) acima do valor e total riscado na linha de ciclos */
   .price-from { font-family: var(--font-mono); font-size: 16px; color: var(--ink-4); text-decoration: line-through; margin-top: 24px; }
@@ -1199,7 +1203,15 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           '<div class="price-head"><div class="price-tag">' + fmt(o.planTag || '') + '</div>' +
             (o.planPill ? '<span class="pill accent">' + fmt(o.planPill) + '</span>' : '') + '</div>' +
           (o.priceFrom ? '<div class="price-from">de R$ ' + fmt(o.priceFrom) + '</div>' : '') +
-          '<div class="price-number">' + (o.pricePrefix ? '<span class="currency">' + fmt(o.pricePrefix) + '</span>' : '') + (o.currency === false ? '' : '<span class="currency">R$</span>') + '<span class="price-main"><span class="amount">' + fmt(o.price || '{{calc.preco}}') + '</span><span class="per">' + fmt(o.per || '/ mês') + '</span></span></div>' +
+          '<div class="price-number">' + (o.pricePrefix ? '<span class="currency">' + fmt(o.pricePrefix) + '</span>' : '') + (o.currency === false ? '' : '<span class="currency">R$</span>') + '<span class="price-main"><span class="amount">' + fmt(o.price || '{{calc.preco}}') + '</span><span class="per">' + fmt(o.per != null ? o.per : '/ mês') + '</span></span></div>' +
+          // Opções de pagamento abaixo do valor: cada linha um ícone (cartão/pix)
+          // + texto, via o.payments = lista de {icon, text}. Vazio = nada (compat).
+          (Array.isArray(o.payments) && o.payments.length ? '<div class="price-pay">' + o.payments.map(function (pm) {
+            var ic = pm.icon === 'pix'
+              ? '<path d="M12 3l9 9-9 9-9-9 9-9z"/>'
+              : '<rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>';
+            return '<div class="pay-row"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + ic + '</svg><span>' + fmt(pm.text || '') + '</span></div>';
+          }).join('') + '</div>' : '') +
           (o.sub ? '<div class="price-sub">' + fmt(o.sub) + '</div>' : '') +
           '<div class="price-cycles">' + (o.cyclesLabel ? fmt(o.cyclesLabel) + ' ' : '') + (o.cyclesFrom ? '<span class="cycles-from">' + fmt(o.cyclesFrom) + '</span> ' : '') + fmt(o.cycles != null ? o.cycles : '{{calc.precoCiclos}}') + '</div>' +
         '</div>';
