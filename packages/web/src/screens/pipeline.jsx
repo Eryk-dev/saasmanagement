@@ -86,6 +86,16 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     setSortModeState(m);
     try { localStorage.setItem("cockpit_pipeline_sort", m); } catch { /* ignore */ }
   };
+  // Desqualificado é o "cemitério" (leads pra reaproveitar depois): fica OCULTO
+  // por padrão pra não poluir o fluxo, e um botão revela a coluna. O atalho
+  // existia e se perdeu no redesign; voltou aqui. Persistido como os filtros.
+  const [showDiscarded, setShowDiscardedState] = useStP(() => {
+    try { return localStorage.getItem("cockpit_pipeline_discarded") === "1"; } catch { return false; }
+  });
+  const setShowDiscarded = (v) => {
+    setShowDiscardedState(v);
+    try { localStorage.setItem("cockpit_pipeline_discarded", v ? "1" : "0"); } catch { /* ignore */ }
+  };
   // Gate de movimento pendente (handoff / motivo de perda).
   const [pendingMove, setPendingMove] = useStP(null); // { lead, toStage, gate, saasCfg }
 
@@ -112,8 +122,20 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   // (integração/acompanhamento + Ganho).
   const visibleStages = useMP(() => {
     const base = stagesForPhase(s, stages, phase);
-    return base.filter((st) => !["ganho", "perdido", "desqualificado"].includes(stageKind(s, st)));
-  }, [stages.join("|"), phase, activeSaas]);
+    // Ganho e Perdido nunca viram coluna (o Ganho tem o resumo próprio à direita);
+    // Desqualificado só aparece quando o botão "descartados" está ligado.
+    return base.filter((st) => {
+      const k = stageKind(s, st);
+      if (k === "ganho" || k === "perdido") return false;
+      if (k === "desqualificado") return showDiscarded;
+      return true;
+    });
+  }, [stages.join("|"), phase, activeSaas, showDiscarded]);
+  // Quantos no cemitério do produto ativo (pro contador do botão).
+  const discardedCount = useMP(
+    () => saasLeads.filter((l) => stageKind(s, l.stage) === "desqualificado").length,
+    [leads, activeSaas, person],
+  );
   const byStage = useMP(() => {
     const m = {}; stages.forEach(st => m[st] = []);
     saasLeads.forEach(l => {
@@ -185,6 +207,14 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
             <span style={{ width: 1, height: 18, background: "var(--line-1)", margin: "0 4px" }} />
             <span style={{ fontSize: 12, color: "var(--fg-4)" }}>ordenar:</span>
             <SortToggle mode={sortMode} onChange={setSortMode} />
+            {phase !== "closer" && phase !== "cs" && (
+              <>
+                <span style={{ width: 1, height: 18, background: "var(--line-1)", margin: "0 4px" }} />
+                <FilterTab active={showDiscarded} count={discardedCount || undefined} onClick={() => setShowDiscarded(!showDiscarded)}>
+                  {showDiscarded ? "Ocultar descartados" : "Descartados"}
+                </FilterTab>
+              </>
+            )}
           </div>
         )}
 
