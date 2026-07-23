@@ -702,11 +702,14 @@ function MyQueueStrip({ product, version, currentLeadId, onPick, resolved, onCle
       // (Filtrar por fase `sdr` esvaziava a faixa pra closer e CS: os cards
       // deles vêm por `closer`/`integrator`, nunca por `owner`.)
       const byMsg = (i) => !i.done && (i.confirm || (i.kind !== "call" && i.kind !== "integracao"));
-      const mine = buildQueue(leads, saasCfg, me).hoje.filter(byMsg).map((i) => ({ ...i, pool: false }));
+      // buildQueue ganhou o 2º param `consultas` (fila da mentoria no Meu dia); o
+      // inbox trabalha só pendência POR MENSAGEM, então passa [] — sem esse arg a
+      // fila vinha desalinhada (person=undefined) e a faixa sumia do topo do inbox.
+      const mine = buildQueue(leads, [], saasCfg, me).hoje.filter(byMsg).map((i) => ({ ...i, pool: false }));
       // A fila do SDR vem logo abaixo da minha: o inbox é onde ela se resolve,
       // uma conversa atrás da outra, sem trocar de tela.
       const pool = usersByRole("sdr").filter((u) => u.id !== me)
-        .flatMap((u) => buildQueue(leads, saasCfg, u.id).hoje.filter(byMsg).map((i) => ({ ...i, pool: true })));
+        .flatMap((u) => buildQueue(leads, [], saasCfg, u.id).hoje.filter(byMsg).map((i) => ({ ...i, pool: true })));
       const seen = new Set();
       return [...mine, ...pool].filter((i) => {
         const k = i.confirmWindow ? `${i.l.id}-${i.confirmWindow}` : i.l.id;
