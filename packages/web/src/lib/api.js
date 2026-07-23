@@ -144,6 +144,9 @@ export const api = {
   // pronto pro cliente de UMA delas — o que vai no WhatsApp.
   proposalOffers: (id) => req("GET", `/api/leads/${id}/proposal-offers`),
   shareProposal: (id, offer) => req("POST", `/api/leads/${id}/proposal-share`, { offer }),
+  // Proposta personalizada (objetiva): capa + combinado+valor. `preview:true`
+  // devolve { html } sem salvar; senão faz upsert e devolve { id, url }.
+  customProposal: (id, spec) => req("POST", `/api/leads/${id}/proposal/custom`, spec),
   // Builders: preview server-side do rascunho (mesmo HTML da página pública).
   formPreview: (draft) => req("POST", "/api/forms/preview", draft),
   // Funil de drop-off do form: sessões únicas por etapa. `since` (ISO) filtra o período.

@@ -11,7 +11,8 @@ import { registerFormRoutes } from "./routes.forms.js";
 import { registerWebhookRoutes } from "./routes.webhooks.js";
 import { mergeLeadQuestions } from "./forms.js";
 import { registerProposalRoutes } from "./routes.proposals.js";
-import { runNativeProposal, proposalOffers, shareProposalOffer } from "./proposal.js";
+import { runNativeProposal, proposalOffers, shareProposalOffer, buildCustomProposal, publicProposal } from "./proposal.js";
+import { proposalPageHtml } from "./proposal-page.js";
 import { registerBillingRoutes } from "./routes.billing.js";
 import { initSubscription, syncCustomerArr, createClosedSubscription } from "./billing.js";
 import { registerAuthRoutes } from "./auth.js";
@@ -732,6 +733,48 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       req.log.warn({ leadId: lead.id, provider: result.provider, status: result.status, err: result.error }, "proposal generation failed");
     }
     return result;
+  });
+
+  // ── Proposta PERSONALIZADA (objetiva) ─────────────────────────────────────
+  // Cliente que fechou solução sob medida: capa + "o combinado" (entregáveis +
+  // valor), no layout da apresentação (herda o tema do template publicado do
+  // produto). `preview:true` renderiza sem salvar (o modal mostra ao vivo);
+  // senão faz UPSERT idempotente por lead (link estável) e grava o vínculo no
+  // lead sem tocar na proposta automática (proposta_id fica intacto).
+  app.post("/api/leads/:id/proposal/custom", async (req, reply) => {
+    const lead = await repo.get("leads", req.params.id);
+    if (!lead) return reply.code(404).send({ error: "Not found" });
+    const spec = req.body && typeof req.body === "object" ? req.body : {};
+
+    // Tema do template publicado do produto (mesma capa/fonte/logo do deck).
+    const templates = await repo.list("proposal_templates");
+    const template = templates.find((t) => t.saas === lead.saas && t.status === "published");
+    const built = buildCustomProposal(lead, spec, { theme: template?.theme || {} });
+
+    if (spec.preview) {
+      const fake = { id: "preview", ...built, accepted: false };
+      return { html: proposalPageHtml(publicProposal(fake, { editable: false })) };
+    }
+
+    // Upsert por (lead, origin custom): re-salvar mantém o MESMO link e o
+    // tracking de aberturas (igual ao share por oferta).
+    const all = await repo.list("proposals");
+    const existing = all.find((p) => p.lead === lead.id && p.origin === "custom");
+    const record = { saas: lead.saas, lead: lead.id, origin: "custom", template: "", editKey: "", ...built };
+    const saved = existing
+      ? await repo.update("proposals", existing.id, record)
+      : await repo.create("proposals", { ...record, views: 0, viewLog: [], accepted: false, createdAt: new Date().toISOString() });
+
+    const url = `${publicBase(req)}/p/${saved.id}`;
+    await repo.update("leads", lead.id, { customProposalId: saved.id, customProposalUrl: url });
+    try {
+      await logActivity(repo, {
+        saas: lead.saas || "", lead: lead.id, type: "system",
+        meta: { event: existing ? "custom_proposal_updated" : "custom_proposal_created", proposal: saved.id },
+        author: req.authUser?.id || "",
+      });
+    } catch { /* timeline é best-effort */ }
+    return { ok: true, id: saved.id, url };
   });
 
   // ── Mandar a proposta pro cliente (uma por oferta) ────────────────────────
