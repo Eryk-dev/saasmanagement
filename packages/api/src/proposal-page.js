@@ -272,6 +272,15 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .light .band-num { color: color-mix(in oklab, var(--bg) 50%, transparent); }
   .price-wrap { display: grid; grid-template-columns: 1fr; gap: 24px; align-items: start; }
   @media (min-width: 900px) { .price-wrap { grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; } }
+  /* Blocos da MESMA ALTURA (stageFeatures): as duas colunas esticam pra altura
+     da linha e os cards preenchem; o card de preço centra o conteúdo na vertical. */
+  @media (min-width: 900px) {
+    .price-wrap-stretch { align-items: stretch; }
+    .price-wrap-stretch > * { height: 100%; }
+    .price-wrap-stretch .benefits-card { height: 100%; }
+    .price-wrap-stretch .price-reveal, .price-wrap-stretch .price-card { height: 100%; }
+    .price-wrap-stretch .price-card { display: flex; flex-direction: column; justify-content: center; }
+  }
   .plan-opts { display: grid; grid-template-columns: 1fr; gap: 14px; margin-bottom: 28px; }
   @media (min-width: 900px) { .plan-opts { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; } }
   .plan-opt { position: relative; text-align: left; background: var(--bg); color: var(--fg); border: 2px solid transparent;
@@ -1163,7 +1172,12 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
             (g.synth ? '<div class="benefit-synth stage-item">' + fmt(g.synth) + '</div>' : '');
         }).join('');
       } else {
-        benefitsInner = '<ul class="price-list">' + visibleFeats(s.features).map(function (f) { return featLi(f, ''); }).join('') + '</ul>';
+        // stageFeatures: encadeia a lista de features TAMBÉM no layout de duas
+        // colunas (cada item aparece num Espaço, como os grupos). Item oculto
+        // fica opacity:0 (não display:none), então já reserva a altura — o bloco
+        // não "cresce" conforme revela. Sem o flag, features aparecem de uma vez.
+        var stageFeat = staged && s.stageFeatures;
+        benefitsInner = '<ul class="price-list">' + visibleFeats(s.features).map(function (f) { return featLi(f, stageFeat ? 'stage-item' : ''); }).join('') + '</ul>';
       }
       // Esquerda: só o bloco de preço. Direita: benefícios/entregáveis (features).
       // Garantia e payback são opcionais (só entram se preenchidos no template).
@@ -1264,6 +1278,10 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           '</div>' +
           (guaranteeHtml || paybackHtml ? '<div data-reveal style="margin-top:16px">' + guaranteeHtml + paybackHtml + '</div>' : '');
       } else {
+        // Blocos da MESMA ALTURA (o do preço acompanha o das features): stretch
+        // no grid + height:100% nos cards. Só quando encadeia as features (é aí
+        // que a altura fica estável, com os itens ocultos reservando espaço).
+        if (staged && s.stageFeatures) pw.className = 'price-wrap price-wrap-stretch';
         pw.innerHTML =
           (wrapCards ? '<div class="price-reveal' + (hasOffer2 || hasOffer3 ? ' has-offer2' : '') + '">' : '') +
           offersHtml + veilHtml +
@@ -1277,7 +1295,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       if (reveal) {
         // Fila de passos: título+1º item juntos, depois um elemento por comando.
         var steps = [];
-        if (groups) {
+        if (groups || (staged && s.stageFeatures)) {
           var pendTitle = null;
           pw.querySelectorAll('.stage-item').forEach(function (n) {
             if (n.classList.contains('bg-title')) { pendTitle = n; return; }

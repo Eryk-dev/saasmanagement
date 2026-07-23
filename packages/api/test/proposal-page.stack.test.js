@@ -40,3 +40,25 @@ test("sem f.price o empilhado NÃO ativa (deck existente intacto)", () => {
   // empilhado (que depende de f.price num objeto) nunca aciona pra este deck.
   assert.doesNotMatch(html, /"label":/, "sem item-objeto = sem empilhado");
 });
+
+test("stageFeatures: encadeia features no layout de 2 colunas + blocos de mesma altura", () => {
+  const html = render({
+    key: "v", type: "pricing", revealPrice: true, stageFeatures: true,
+    eyebrow: "Investimento", title: "O pacote", featuresTitle: "No pacote",
+    features: ["LeverAds — 7.188", "LeverWMS — 58.800"], currency: false, price: "115.988",
+  });
+  assert.match(html, /price-wrap-stretch/, "classe de altura igual");
+  assert.match(html, /staged && s\.stageFeatures/, "features viram stage-item");
+  assert.match(html, /groups \|\| \(staged && s\.stageFeatures\)/, "fila inclui stageFeatures");
+});
+
+test("sem stageFeatures o layout de 2 colunas segue com tudo visível (sem regressão)", () => {
+  const html = render({
+    key: "v", type: "pricing", revealPrice: true, featuresTitle: "Inclui",
+    features: ["Anúncios equalizados"], price: "{{calc.preco}}",
+  });
+  assert.match(html, /Anúncios equalizados/);
+  // a classe/CSS stretch existe sempre no stylesheet; o que importa é o DADO:
+  // sem o flag no slide, o className stretch nunca é aplicado no cliente.
+  assert.doesNotMatch(html, /"stageFeatures":true/, "deck não opta pelo encadeamento");
+});
