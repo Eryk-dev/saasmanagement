@@ -21,6 +21,12 @@ import { useActiveSaas, pinActiveSaas } from "../lib/workspace.js";
 
 const { useState: useStP, useMemo: useMP, useEffect: useEfP } = React;
 
+// Posição do lead na régua de qualidade (S melhor, E pior, sem qualificação por
+// último). Usa a MESMA leadTier do card, do drawer e do Publicidade — uma régua
+// só pra o número não divergir entre as telas.
+const TIER_RANK = { S: 0, A: 1, B: 2, C: 3, D: 4, E: 5 };
+const tierRank = (l) => TIER_RANK[leadTier(l).grade] ?? 9;
+
 function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   const { SAAS } = window.SEED;
   const { openForm, version } = useData();
@@ -68,6 +74,17 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   const setPerson = (p) => {
     setPersonState(p);
     try { localStorage.setItem("cockpit_pipeline_person", p); } catch { /* ignore */ }
+  };
+  // Ordem dentro de cada coluna: "toque" (cronológica, o que já existia) ou
+  // "qualidade" (melhor cliente no topo). Vale pra TODAS as colunas de uma vez —
+  // o que o Leo quer é ver o cliente bom por cima, não configurar coluna a
+  // coluna. Persistida como o resto dos filtros da tela.
+  const [sortMode, setSortModeState] = useStP(() => {
+    try { const v = localStorage.getItem("cockpit_pipeline_sort"); return v === "qualidade" ? "qualidade" : "toque"; } catch { return "toque"; }
+  });
+  const setSortMode = (m) => {
+    setSortModeState(m);
+    try { localStorage.setItem("cockpit_pipeline_sort", m); } catch { /* ignore */ }
   };
   // Gate de movimento pendente (handoff / motivo de perda).
   const [pendingMove, setPendingMove] = useStP(null); // { lead, toStage, gate, saasCfg }
@@ -165,6 +182,9 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
             <span style={{ width: 1, height: 18, background: "var(--line-1)", margin: "0 4px" }} />
             <span style={{ fontSize: 12, color: "var(--fg-4)" }}>pessoa:</span>
             <PersonFilter person={person} leads={saasAll} onChange={setPerson} me={me} />
+            <span style={{ width: 1, height: 18, background: "var(--line-1)", margin: "0 4px" }} />
+            <span style={{ fontSize: 12, color: "var(--fg-4)" }}>ordenar:</span>
+            <SortToggle mode={sortMode} onChange={setSortMode} />
           </div>
         )}
 
@@ -173,6 +193,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           s={s}
           stages={visibleStages}
           byStage={byStage}
+          sortMode={sortMode}
           highlight={highlight}
           onMove={requestMove}
           selected={selected}
@@ -238,6 +259,19 @@ function PhaseFilter({ phase, counts, onChange }) {
   );
 }
 
+// Ordem das colunas: pelo próximo toque (o atrasado sobe, é a fila de trabalho)
+// ou pela qualidade do cliente (S no topo, é a fila de prioridade comercial).
+function SortToggle({ mode, onChange }) {
+  const opts = [["toque", "Próximo toque"], ["qualidade", "Qualidade"]];
+  return (
+    <div style={{ display: "contents" }}>
+      {opts.map(([k, label]) => (
+        <FilterTab key={k} active={mode === k} onClick={() => onChange(k)}>{label}</FilterTab>
+      ))}
+    </div>
+  );
+}
+
 // Filtro por pessoa: "meus" (dono, closer OU integrador = usuário logado) ou
 // alguém do time. O contador do chip usa a MESMA régua do personMatch do board.
 function PersonFilter({ person, leads, onChange, me }) {
@@ -265,7 +299,7 @@ function PersonFilter({ person, leads, onChange, me }) {
 }
 
 // ─────────────────────────────────────────────── Kanban
-function KanbanBoard({ s, stages, byStage, highlight, onMove, selected, setSelected, onOpenLead, wonLeads, showWon }) {
+function KanbanBoard({ s, stages, byStage, sortMode, highlight, onMove, selected, setSelected, onOpenLead, wonLeads, showWon }) {
   const [dragging, setDragging] = useStP(null);
   // O resumo do Ganho entra na POSIÇÃO que o FUNIL declara pro ganho: logo depois
   // da última etapa VISÍVEL que vem ANTES do ganho na ordem do funil (Follow-up),
@@ -286,6 +320,7 @@ function KanbanBoard({ s, stages, byStage, highlight, onMove, selected, setSelec
             s={s}
             stage={st}
             cards={byStage[st] || []}
+            sortMode={sortMode}
             highlight={highlight === st}
             onDropCard={(id) => { onMove(id, st); setDragging(null); }}
             dragging={dragging}
@@ -317,7 +352,7 @@ function WonSummary({ leads }) {
   );
 }
 
-function KanbanColumn({ s, stage, cards, highlight, onDropCard, dragging, setDragging, selected, setSelected, onOpenLead }) {
+function KanbanColumn({ s, stage, cards, sortMode, highlight, onDropCard, dragging, setDragging, selected, setSelected, onOpenLead }) {
   const [over, setOver] = useStP(false);
   const [expanded, setExpanded] = useStP(false);
   const total = cards.reduce((a, l) => a + (l.amount || 0), 0);
@@ -330,7 +365,14 @@ function KanbanColumn({ s, stage, cards, highlight, onDropCard, dragging, setDra
   };
   const colKind = stageKind(s, stage); // compromisso segue a etapa da coluna (call vs integração)
   const nextTs = (l) => nextTouch(l, { kind: colKind })?.at ?? Infinity;
-  const ordered = [...cards].sort((a, b) => nextTs(a) - nextTs(b) || stageTs(b) - stageTs(a));
+  const byTouch = (a, b) => nextTs(a) - nextTs(b) || stageTs(b) - stageTs(a);
+  // Qualidade: S no topo, E no fim, quem não respondeu a qualificação por
+  // último. Empate na mesma grade cai na ordem de sempre (próximo toque), então
+  // trocar pra "qualidade" reordena por prioridade sem perder a urgência dentro
+  // de cada faixa.
+  const ordered = sortMode === "qualidade"
+    ? [...cards].sort((a, b) => tierRank(a) - tierRank(b) || byTouch(a, b))
+    : [...cards].sort(byTouch);
   const shown = expanded ? ordered : ordered.slice(0, 10);
   const hidden = ordered.length - shown.length;
   return (
