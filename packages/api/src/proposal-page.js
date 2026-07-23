@@ -323,6 +323,12 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .price-list { list-style: none; display: flex; flex-direction: column; gap: 12px; font-size: 16px; color: var(--ink-2); }
   .price-list li { display: flex; gap: 12px; align-items: flex-start; }
   .price-list li::before { content: '✓'; color: var(--accent); font-weight: 700; flex-shrink: 0; }
+  /* Item com preço (featLi com f.price): rótulo em cima, valor grande embaixo,
+     sem o check. Empilhamento do slide de investimento (um por Espaço). */
+  .price-list li.stack-row { flex-direction: column; align-items: flex-start; gap: 4px; padding-bottom: 4px; }
+  .price-list li.stack-row::before { display: none; }
+  .stack-label { color: var(--ink-2); font-size: 16px; }
+  .stack-price { font-family: var(--font-display); font-weight: 500; font-size: clamp(26px, 3.4vw, 36px); letter-spacing: -.02em; color: var(--accent); line-height: 1; }
   /* Coluna de benefícios/entregáveis (lado direito do pricing). */
   .benefits-card { --bg: #051C2C; --fg: #F3FBFF; background: var(--bg); color: var(--fg); border-radius: calc(var(--radius) + 10px); padding: 32px 28px; height: 100%; }
   @media (min-width: 768px) { .benefits-card { padding: 40px 36px; } }
@@ -1132,6 +1138,13 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         });
       }
       function featLi(f, cls) {
+        // Item com PREÇO (f.price): empilhado — rótulo em cima, valor grande
+        // embaixo, sem o check. Usado no slide de investimento quando se quer o
+        // preço de cada produto na lista (encadeado, um por Espaço). Item sem
+        // price segue a lista de benefícios normal (check + texto).
+        if (f && typeof f === 'object' && f.price != null && f.price !== '') {
+          return '<li class="' + (cls ? cls + ' ' : '') + 'stack-row"><span class="stack-label">' + fmt(f.label != null ? f.label : (f.text || '')) + '</span><span class="stack-price">' + fmt(f.price) + '</span></li>';
+        }
         return '<li' + (cls ? ' class="' + cls + '"' : '') + '>' + fmt(typeof f === 'object' ? (f.text || '') : f) + '</li>';
       }
       // Benefícios em grupos encadeados (s.benefitGroups, só com revealPrice):
