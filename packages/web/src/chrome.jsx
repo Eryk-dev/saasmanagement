@@ -2,6 +2,15 @@ import React from "react";
 import { api, clearKey } from "./lib/api.js";
 import { useActiveSaas } from "./lib/workspace.js";
 import { canSeeScreen, currentUser, userById, userPhoto } from "./lib/users.js";
+import { PeriodPicker, usePeriod } from "./components/period-picker.jsx";
+
+// Filtro de período GLOBAL, no topo ao lado da busca: muda a janela do cockpit
+// inteiro de uma vez (lê o store compartilhado do usePeriod). Só aparece nas
+// telas de análise que respeitam o período (App passa `showPeriod`).
+function GlobalPeriod() {
+  const { period, custom, setPeriod, setCustom } = usePeriod();
+  return <PeriodPicker period={period} custom={custom} onChange={(p, c) => { setPeriod(p); setCustom(c); }} />;
+}
 // App chrome v3 "Operations Terminal" — grouped nav rail + topbar with live clock.
 // A sidebar veste a MARCA do produto ativo (workspace): logo + nome no topo,
 // seletor de produto no pé (a "bolinha" com o contador abre o menu de troca).
@@ -270,7 +279,7 @@ function Logo() {
   );
 }
 
-function TopBar({ title, leading, breadcrumb, onSearch }) {
+function TopBar({ title, leading, breadcrumb, onSearch, showPeriod }) {
   return (
     <header style={{
       height: 58,
@@ -299,6 +308,7 @@ function TopBar({ title, leading, breadcrumb, onSearch }) {
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+        {showPeriod && <GlobalPeriod />}
         <span className="hide-mobile" style={{ display: "inline-flex" }}><CmdK onClick={onSearch} /></span>
         {/* No mobile o campo "Buscar lead…" some — a lupa mantém a busca a um toque. */}
         <button onClick={onSearch} className="show-mobile" title="Buscar lead" aria-label="Buscar lead" style={{

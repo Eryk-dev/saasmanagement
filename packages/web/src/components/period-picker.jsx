@@ -11,7 +11,7 @@ import React from "react";
 // é uma semana nova de trabalho) e as datas seguem o dia do NEGÓCIO em
 // America/Sao_Paulo, igual ao resto do cockpit.
 
-const { useState, useEffect, useMemo, useRef, useCallback } = React;
+const { useState, useEffect, useMemo, useRef, useSyncExternalStore } = React;
 const DAY = 86_400_000;
 
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -96,20 +96,33 @@ export function periodWindow(period, custom, now = new Date()) {
   };
 }
 
-// Janela GLOBAL do cockpit: UM período pra todas as telas de análise (Visão
-// geral, Aquisição, Equipe…) conversarem. Antes cada tela guardava o seu num
-// localStorage próprio (cockpit_ov_period, cockpit_aq_period, cockpit_func_period),
-// então mudar a janela numa NÃO mexia nas outras — o mesmo número aparecia em
-// períodos diferentes e parecia divergência. Uma key só resolve; as telas releem
-// no mount (só uma tela renderiza por vez, então não precisa de contexto vivo).
+// Janela GLOBAL do cockpit: UM período pra o cockpit inteiro conversar. Um STORE
+// fora do React (não useState por tela) — o seletor no topo e o corpo de cada
+// tela leem o MESMO valor e re-renderizam JUNTOS quando muda. Antes cada tela
+// tinha o seu período (localStorage próprio), então mudar numa não mexia nas
+// outras nem no seletor. Persiste em UMA key.
 const PERIOD_KEY = "cockpit_period", PERIOD_CUSTOM_KEY = "cockpit_period_custom";
+const loadPeriod = () => { try { return localStorage.getItem(PERIOD_KEY) || "30d"; } catch { return "30d"; } };
+const loadCustom = () => { try { return JSON.parse(localStorage.getItem(PERIOD_CUSTOM_KEY)) || { since: "", until: "" }; } catch { return { since: "", until: "" }; } };
+let _period = loadPeriod();
+let _custom = loadCustom();
+const _subs = new Set();
+const _emit = () => { for (const fn of _subs) fn(); };
+export const periodStore = {
+  subscribe: (fn) => { _subs.add(fn); return () => _subs.delete(fn); },
+  getPeriod: () => _period,
+  getCustom: () => _custom,
+  setPeriod: (p) => { if (p === _period) return; _period = p; try { localStorage.setItem(PERIOD_KEY, p); } catch { /* ignore */ } _emit(); },
+  setCustom: (c) => { _custom = c || { since: "", until: "" }; try { localStorage.setItem(PERIOD_CUSTOM_KEY, JSON.stringify(_custom)); } catch { /* ignore */ } _emit(); },
+};
+
 export function usePeriod() {
-  const [period, setPeriodS] = useState(() => { try { return localStorage.getItem(PERIOD_KEY) || "30d"; } catch { return "30d"; } });
-  const [custom, setCustomS] = useState(() => { try { return JSON.parse(localStorage.getItem(PERIOD_CUSTOM_KEY)) || { since: "", until: "" }; } catch { return { since: "", until: "" }; } });
-  const setPeriod = useCallback((p) => { setPeriodS(p); try { localStorage.setItem(PERIOD_KEY, p); } catch { /* ignore */ } }, []);
-  const setCustom = useCallback((c) => { const v = c || { since: "", until: "" }; setCustomS(v); try { localStorage.setItem(PERIOD_CUSTOM_KEY, JSON.stringify(v)); } catch { /* ignore */ } }, []);
+  // 3º arg (getServerSnapshot) = mesmo getter: no SSR/smoke não há localStorage,
+  // cai no default "30d"/{} sem quebrar.
+  const period = useSyncExternalStore(periodStore.subscribe, periodStore.getPeriod, periodStore.getPeriod);
+  const custom = useSyncExternalStore(periodStore.subscribe, periodStore.getCustom, periodStore.getCustom);
   const win = useMemo(() => periodWindow(period, custom), [period, custom.since, custom.until]);
-  return { period, custom, setPeriod, setCustom, win };
+  return { period, custom, setPeriod: periodStore.setPeriod, setCustom: periodStore.setCustom, win };
 }
 
 // ── Calendário de um mês ─────────────────────────────────────────────────────
