@@ -87,6 +87,13 @@ export function isPostSaleStage(saasCfg, stage) {
 export const isWonLead = (saasCfg, lead) =>
   !!lead?.customerId || isWonStage(saasCfg, lead?.stage) || isPostSaleStage(saasCfg, lead?.stage);
 export const wonAtOf = (lead) => lead?.wonAt || lead?.stageSince || "";
+
+// Lead que conta nas métricas — espelho COMPLETO do isRealLead do metrics-core
+// (api): fora os internos (teste) e as saídas laterais do form (ex.: quem ainda
+// não vende e vai pra Mentoria, `formExit`) — são contato, mas não são lead
+// deste produto. Contagem local de lead SEMPRE por aqui, senão a tela diverge
+// do servidor (o tile de Leads mostrava 308 contra 291 do funil por isso).
+export const isRealLead = (l) => !l?.internal && !l?.formExit;
 export const isTerminalStage = (saasCfg, stage) => isTerminalKind(stageKind(saasCfg, stage));
 
 // Nomes terminais do produto (+ marcador legado "disqualified" que vive fora do

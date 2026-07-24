@@ -4,7 +4,7 @@ import { useData } from "../data.jsx";
 import { PageHead, StatTile, Card } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { nextMilestone, dueLabel } from "../lib/milestones.js";
-import { openStages, isWonLead, wonAtOf, stageKind } from "../lib/funnel.js";
+import { openStages, isWonLead, wonAtOf, stageKind, isRealLead } from "../lib/funnel.js";
 import { bizDay } from "../lib/format.js";
 import { displayName, currentUser, isAdminUser, canSeeScreen } from "../lib/users.js";
 import { leadTier } from "../lib/ui.js";
@@ -92,8 +92,10 @@ function OverviewScreen({ onNav, onOpenLead }) {
     return () => { alive = false; };
   }, [product?.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sem leads internos (teste) — espelho do isRealLead do metrics-core da API.
-  const leads = useMemo(() => (LEADS || []).filter((l) => l.saas === product?.id && !l.internal), [LEADS, product?.id]);
+  // Régua oficial de lead (isRealLead, espelho do metrics-core): sem internos e
+  // sem saídas laterais do form — o tile de Leads, o delta e o gráfico contam
+  // IGUAL ao funil e ao /api/marketing (308 vs 291 vinha do formExit faltando).
+  const leads = useMemo(() => (LEADS || []).filter((l) => l.saas === product?.id && isRealLead(l)), [LEADS, product?.id]);
 
   const now = Date.now();
   const dstr = bizDay; // dia do NEGÓCIO (America/Sao_Paulo) — nunca slice UTC
