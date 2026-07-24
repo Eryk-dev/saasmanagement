@@ -14,7 +14,7 @@ import { RATE_BENCHMARKS, computePipelinePace } from "./routes.pipeline-pace.js"
 import {
   DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead,
   bookedLeadsIn as coreBooked, callOutcome as coreCallOutcome,
-  winsIn, customerStartMap, funnelCounts, waContactedLeadIds, isReferralLead,
+  winsIn, customerStartMap, waContactedLeadIds, isReferralLead,
 } from "./metrics-core.js";
 
 const HOUR = 3_600_000;
@@ -362,16 +362,17 @@ export function registerScoreboardRoutes(app, repo) {
 
     // ── Funil do TIME (produto inteiro, mesma janela) ─────────────────────────
     // A régua de conversão da Visão geral: contatados → agendaram call →
-    // compareceram → ganho, sem recorte por pessoa. É a MESMA base (funnelCounts)
-    // da Análise de Pace, então as duas telas mostram os mesmos números. Inclui
-    // o ajuste de HISTÓRICO PRÉ-COCKPIT (product.paceAdjust). O funil ENCADEIA:
-    // cada denominador é o passo anterior.
-    // O ajuste PRÉ-COCKPIT só entra quando a JANELA alcança a época anterior ao
-    // registro no cockpit. Os leads existem desde antes, mas o time só passou a
-    // logar toque/call/etapa aqui a partir do 1º registro de atividade — então
-    // somar o histórico (product.paceAdjust) numa janela recente (ex.: "ontem")
-    // inflava o funil (contatados > leads). Época = 1º dia com atividade do
-    // produto (ou product.paceAdjust.before, se fixado). Aplica se since < época.
+    // compareceram → ganho, sem recorte por pessoa. Leo (24/07): é o TOTAL DE
+    // ATIVIDADE do período — TODA call agendada/realizada e TODO lead tocado na
+    // janela, NÃO só a "safra" que ENTROU no período. Antes o funil filtrava por
+    // createdAt na janela (coorte), então uma call desta semana de um lead de
+    // semanas atrás não entrava e o topo ficava MENOR que a soma dos cards por
+    // pessoa (que contam a atividade toda). A coorte de aquisição (dos que
+    // entraram → converteram) mora na tela de Aquisição, onde casa com ROAS/CAC.
+    // O funil ENCADEIA: cada denominador é o passo anterior.
+    // Histórico PRÉ-COCKPIT (product.paceAdjust) só entra quando a JANELA alcança
+    // a época anterior ao 1º registro de atividade (senão "ontem" inflava). Época
+    // = 1º dia com atividade do produto (ou product.paceAdjust.before, se fixado).
     let activityEpoch = null;
     for (const a of allActs) {
       if (a.saas !== product.id) continue;
@@ -380,34 +381,53 @@ export function registerScoreboardRoutes(app, repo) {
     }
     const adjCutoff = product.paceAdjust?.before || activityEpoch;
     const teamAdjust = product.paceAdjust && (!adjCutoff || since < adjCutoff) ? product.paceAdjust : null;
+    const adjN = (k) => (teamAdjust && Number(teamAdjust[k]) > 0 ? Math.round(Number(teamAdjust[k])) : 0);
+    const adjApplied = teamAdjust
+      ? ["leads", "contacted", "booked", "shown", "won"].reduce((o, k) => (adjN(k) ? { ...o, [k]: adjN(k) } : o), null)
+      : null;
 
     const teamWonLeads = [...winTransitionsFor(leads).keys()].map((id) => leadById.get(id)).filter(Boolean);
-    // Contato por WhatsApp do cockpit também conta no funil do time (mesma régua
-    // do pipeline-pace: qualquer mensagem enviada pro lead).
-    const waTeam = waContactedLeadIds(waMessages, { saas: product.id });
-    const fc = funnelCounts(product, { leads, actsOf, inWin, winLeadsIn: () => teamWonLeads, adjust: teamAdjust, waContactedIds: waTeam });
+    // Contatados = leads DISTINTOS que o time tocou NA JANELA (toque de cadência
+    // ou mensagem no WhatsApp do cockpit) — atividade no período, não a safra.
+    const teamContactedIds = new Set(waContactedLeadIds(waMessages, { saas: product.id, inWin }));
+    for (const l of leads) {
+      for (const a of actsByLead.get(l.id) || []) {
+        if (inWin(a.at) && TOUCH_TYPES.has(a.type)) { teamContactedIds.add(l.id); break; }
+      }
+    }
+    // Calls agendadas = TODAS as calls que o time marcou na janela (bookedLeadsIn,
+    // a MESMA régua do SDR e da Análise de Pace), sem filtrar pela data de entrada
+    // do lead; realizadas/furo/ganho-das-calls saem do callOutcome dessas.
+    const teamBooked = bookedLeadsIn(leads);
+    const teamOutcome = callOutcome(teamBooked);
+    const leadsNewN = leads.filter((l) => inWin(l.createdAt)).length + adjN("leads");
+    const contactedN = teamContactedIds.size + adjN("contacted");
+    const bookedN = teamBooked.length + adjN("booked");
+    const shownN = teamOutcome.shown + adjN("shown");
+    const wonFromCallsN = teamOutcome.won + adjN("won");
+    const wonN = teamWonLeads.length;
     const team = {
-      leadsNew: fc.leads,
-      contacted: fc.contacted,
-      callsBooked: fc.booked,
+      leadsNew: leadsNewN,
+      contacted: contactedN,
+      callsBooked: bookedN,
       // Taxa de contato = dos leads novos, quantos o time alcançou.
-      contactRate: fc.leads > 0 ? round2((fc.contacted / fc.leads) * 100) : null,
+      contactRate: leadsNewN > 0 ? round2((contactedN / leadsNewN) * 100) : null,
       // Taxa de agendamento = calls agendadas ÷ leads contatados.
-      bookingRate: fc.contacted > 0 ? round2((fc.booked / fc.contacted) * 100) : null,
-      shown: fc.shown,
-      noShow: fc.noShow,
+      bookingRate: contactedN > 0 ? round2((bookedN / contactedN) * 100) : null,
+      shown: shownN,
+      noShow: teamOutcome.noShow,
       // Comparecimento sobre as AGENDADAS (funil encadeado): dos que marcaram, quantos apareceram.
-      showRate: fc.booked > 0 ? round2((fc.shown / fc.booked) * 100) : null,
-      wonFromCalls: fc.won, // ganhos da safra de calls (+ pré-cockpit) — o que encadeia
+      showRate: bookedN > 0 ? round2((shownN / bookedN) * 100) : null,
+      wonFromCalls: wonFromCallsN, // ganhos das calls do período (callOutcome dessas + histórico)
       // Call agendada → ganho (sobre agendadas) e call REALIZADA → ganho (sobre
       // compareceram): o gap denuncia perda por não-comparecimento.
-      callWinRate: fc.booked > 0 ? round2((fc.won / fc.booked) * 100) : null,
-      closeRate: fc.shown > 0 ? round2((fc.won / fc.shown) * 100) : null,
-      won: fc.wonTotal,      // ganhos TOTAIS no período (todos, por transição)
-      revenue: fc.revenue,
-      // Lead → ganho: ganhos do funil ÷ leads (ambos com o histórico pré-cockpit).
-      leadToWin: fc.leads > 0 ? round2((fc.won / fc.leads) * 100) : null,
-      paceAdjust: fc.adjust, // histórico pré-cockpit somado (null quando não há)
+      callWinRate: bookedN > 0 ? round2((wonFromCallsN / bookedN) * 100) : null,
+      closeRate: shownN > 0 ? round2((wonFromCallsN / shownN) * 100) : null,
+      won: wonN,             // ganhos TOTAIS no período (por transição) = soma dos closers
+      revenue: round2(teamWonLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0)),
+      // Lead → ganho: ganhos no período ÷ leads que entraram no período.
+      leadToWin: leadsNewN > 0 ? round2((wonN / leadsNewN) * 100) : null,
+      paceAdjust: adjApplied, // histórico pré-cockpit somado (null quando não há)
       // Metas de TAXA por papel (role-scope) pra colorir a régua na UI.
       goals: {
         bookingRate: goalFor("", "sdr", "bookingRate"),
