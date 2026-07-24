@@ -442,6 +442,9 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .price-stack .benefits-single .benefits-title { margin-bottom: 22px; }
   .benefit-grid { display: grid; grid-template-columns: 1fr; gap: 26px; }
   @media (min-width: 900px) { .benefit-grid { grid-template-columns: repeat(3, 1fr); gap: 0; } }
+  /* Deck com DOIS grupos de benefícios (ex.: Starter): 2 colunas que preenchem o
+     card inteiro — no grid fixo de 3, a terceira ficava um buraco vazio. */
+  @media (min-width: 900px) { .benefit-grid.bg-cols-2 { grid-template-columns: repeat(2, 1fr); } }
   .benefit-group { padding: 4px 0; }
   @media (min-width: 900px) {
     .benefit-group { padding: 0 30px; }
@@ -481,8 +484,11 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .pb-left .pill { position: static; }
   .pb-center { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; gap: 12px;
     padding: 0 40px; margin: 0 8px; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
-  .pb-right { flex: 0 0 auto; text-align: right; }
-  .pb-right .price-cycles { margin: 0; font-size: 13.5px; }
+  /* Pode ENCOLHER (flex-basis auto + min-width 0) e quebra linha: texto de
+     pagamento comprido (12x + PIX) embrulha em várias linhas em vez de vazar
+     pra fora da faixa (overflow hidden cortava "montagem R$ 30 + pla…"). */
+  .pb-right { flex: 0 1 auto; min-width: 0; max-width: 300px; text-align: right; }
+  .pb-right .price-cycles { margin: 0; font-size: 13.5px; line-height: 1.6; white-space: normal; }
   .pb-price.price-number { margin: 0; justify-content: center; align-items: baseline; flex-wrap: nowrap; }
   .pb-price .amount { font-size: clamp(64px, 8.4vw, 116px); }
   .pb-price .currency { font-size: clamp(22px, 3vw, 34px); }
@@ -787,11 +793,17 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       var stPlan = Number(CALC.starter.plan) || 0;
       var stNew = Math.round(Number(state.newPerMonth));
       if (!(stNew > 0)) stNew = Math.round(Number(CALC.starter.defaultNew)) || 10;
+      var stTotal = stCost + stPlan;
+      // Parcela de 12x sem juros (centavos só quando quebra) e PIX à vista com
+      // 10% de desconto — os dois modos de pagamento que a faixa oferece.
+      var stParc = Math.round((stTotal / 12) * 100) / 100;
       out.starterClones = intBR(stN);
-      out.starterSetup = 'R$ ' + intBR(stCost);
-      out.starterPlan = 'R$ ' + intBR(stPlan);
-      out.starterTotal = intBR(stCost + stPlan);
+      out.starterSetup = intBR(stCost);
+      out.starterPlan = intBR(stPlan);
+      out.starterTotal = intBR(stTotal);
       out.starterNew = intBR(stNew);
+      out.starterParcela = stParc % 1 === 0 ? intBR(stParc) : stParc.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      out.starterPix = intBR(Math.round(stTotal * 0.9));
     }
     return out;
   }
@@ -1320,7 +1332,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         pw.innerHTML =
           '<div class="benefits-card benefits-single" data-reveal>' +
             (s.featuresTitle ? '<div class="benefits-title">' + fmt(s.featuresTitle) + '</div>' : '') +
-            '<div class="benefit-grid">' + colsHtml + '</div>' +
+            '<div class="benefit-grid' + (groups.length === 2 ? ' bg-cols-2' : '') + '">' + colsHtml + '</div>' +
           '</div>' +
           // Sem interação (versão do cliente) a faixa entra na animação de
           // scroll dos demais blocos, em vez de simplesmente estar lá.
@@ -1518,10 +1530,14 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
   // validade), escolhe no popover e a página recalcula + auto-salva (PATCH).
   function mountInlineEdit() {
     var token = new URLSearchParams(location.search).get('k') || '';
+    // Preview de template (/p/t/:id) roda o modo closer em DEMONSTRAÇÃO: tela
+    // zero + edição ao vivo funcionam, mas não há proposta pra salvar (id fixo
+    // "preview") — o auto-save vira no-op silencioso em vez de "✕ erro".
+    var demo = !P.id || P.id === 'preview';
     var tag = el('div', 'save-tag', '');
     document.body.appendChild(tag);
     var saveTimer = null;
-    function flash(text, cls) { tag.textContent = text; tag.className = 'save-tag show' + (cls ? ' ' + cls : ''); }
+    function flash(text, cls) { if (demo) return; tag.textContent = text; tag.className = 'save-tag show' + (cls ? ' ' + cls : ''); }
     function doSave() {
       flash('salvando…', '');
       fetch('/public/proposals/' + encodeURIComponent(P.id), {
@@ -1533,6 +1549,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     }
     function scheduleSave() {
       state.frozen = true;
+      if (demo) return; // preview: edita e recalcula ao vivo, sem persistir
       if (saveTimer) clearTimeout(saveTimer);
       flash('salvando…', '');
       saveTimer = setTimeout(doSave, 600);

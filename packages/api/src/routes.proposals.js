@@ -64,7 +64,11 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     if (!t) {
       return reply.code(404).type("text/html").send("<!doctype html><meta charset=utf-8><title>404</title><p style='font-family:system-ui;padding:40px'>Template não encontrado.</p>");
     }
-    return reply.type("text/html").header("cache-control", "no-store").send(proposalPageHtml(publicProposal(previewFromTemplate(t)), { previewBanner: true }));
+    // editable: o preview roda o modo closer em demonstração — tela zero (setup)
+    // antes da capa + edição ao vivo, sem salvar nada (a página detecta o id
+    // "preview" e desliga o auto-save). Assim dá pra testar o deck inteiro,
+    // inclusive o preço calculado do Starter, sem gerar proposta.
+    return reply.type("text/html").header("cache-control", "no-store").send(proposalPageHtml(publicProposal(previewFromTemplate(t), { editable: true }), { previewBanner: true }));
   });
 
   app.get("/p/:id", async (req, reply) => {
