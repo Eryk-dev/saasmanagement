@@ -648,7 +648,7 @@ test("leadGrade: matriz de 5 níveis (tabela contas × anúncios, redesenho 21/0
   const g = (accounts, listings) => leadGrade({ accounts, listings });
   // Matriz completa (linha = contas, coluna = anúncios) — bate com o desenho do Leo.
   const GRID = {
-    "1":    ["E", "D", "D", "C", "C"],
+    "1":    ["E", "D", "C", "C", "C"], // 500-2k anúncios já é C (decisão do Leo, 24/07)
     "2":    ["D", "C", "C", "B", "B"],
     "3-5":  ["C", "B", "B", "A", "A"],
     "6-10": ["B", "B", "A", "S", "S"],
