@@ -8,6 +8,7 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor } from "../lib/funnel.js";
 import { allUsers, currentUser, displayName, userById, usersByRole } from "../lib/users.js";
+import { useProposalTemplates } from "../components/ProposalActions.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 import { resolveScript, scriptTokens, scriptSegments, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor } from "../lib/scripts.js";
@@ -996,6 +997,9 @@ function ProposalBlock({ l, wa, item, onPatch }) {
   const [busy, setBusy] = useS("");
   const [err, setErr] = useS("");
   const [sent, setSent] = useS(null); // { offer, url } da última enviada
+  const templates = useProposalTemplates(l.saas);
+  const altDecks = templates.filter((t) => t.selectable); // ex.: Starter (D/E)
+  const [tpl, setTpl] = useS(""); // "" = deck padrão (publicado)
 
   const cfg = window.SEED?.CONFIG?.levercopy;
   const eligible = !item?.confirm && (
@@ -1020,7 +1024,7 @@ function ProposalBlock({ l, wa, item, onPatch }) {
   async function genProposal() {
     setBusy("gen"); setErr("");
     try {
-      const r = await api.generateProposal(l.id, {});
+      const r = await api.generateProposal(l.id, { template: tpl });
       if (!r || r.ok === false) setErr("não deu pra gerar a proposta");
       else if (r.lead) onPatch({ proposalUrl: r.lead.proposalUrl, proposal_edit_url: r.lead.proposal_edit_url, proposta_id: r.lead.proposta_id });
     } catch { setErr("não deu pra gerar a proposta"); }
@@ -1054,9 +1058,18 @@ function ProposalBlock({ l, wa, item, onPatch }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
       <span style={rowLabel}>Proposta</span>
       {!l.proposalUrl ? (
-        <button onClick={genProposal} disabled={busy === "gen"} style={{ ...chip, alignSelf: "flex-start", borderColor: "var(--accent-line)", color: "var(--accent)" }}>
-          {busy === "gen" ? "gerando…" : "gerar proposta"}
-        </button>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          {altDecks.length > 0 && (
+            <select value={tpl} onChange={(e) => setTpl(e.target.value)} disabled={busy === "gen"} title="Qual apresentação gerar"
+              style={{ height: 28, padding: "0 7px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5 }}>
+              <option value="">Padrão</option>
+              {altDecks.map((t) => <option key={t.id} value={t.id}>{t.pickLabel || t.name || t.id}</option>)}
+            </select>
+          )}
+          <button onClick={genProposal} disabled={busy === "gen"} style={{ ...chip, alignSelf: "flex-start", borderColor: "var(--accent-line)", color: "var(--accent)" }}>
+            {busy === "gen" ? "gerando…" : "gerar proposta"}
+          </button>
+        </div>
       ) : (
         <>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>

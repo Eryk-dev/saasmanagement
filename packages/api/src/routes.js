@@ -727,8 +727,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     if (!lead) return reply.code(404).send({ error: "Not found" });
     const auto = req.query.auto === "1" || req.query.auto === "true";
     const force = req.query.force === "1" || req.query.force === "true";
+    const template = String(req.query.template || "").trim();
 
-    const result = await dispatchProposal(repo, lead, { auto, force, baseUrl: publicBase(req) });
+    const result = await dispatchProposal(repo, lead, { auto, force, template, baseUrl: publicBase(req) });
     if (!result.ok && result.error) {
       req.log.warn({ leadId: lead.id, provider: result.provider, status: result.status, err: result.error }, "proposal generation failed");
     }
@@ -945,7 +946,7 @@ async function syncLeadQuestions(repo, form) {
 // Provider: `product.proposalProvider` explícito vence; sem ele, usa 'native'
 // quando o SaaS tem template publicado, senão 'levercopy' (preserva o caminho
 // de produção do LeverAds até existir template nativo).
-export async function dispatchProposal(repo, lead, { auto = false, force = false, baseUrl = "" } = {}) {
+export async function dispatchProposal(repo, lead, { auto = false, force = false, template = "", baseUrl = "" } = {}) {
   const product = await repo.get("products", lead.saas);
   let provider = product?.proposalProvider;
   if (provider !== "native" && provider !== "levercopy") {
@@ -953,7 +954,7 @@ export async function dispatchProposal(repo, lead, { auto = false, force = false
     provider = templates.some((t) => t.saas === lead.saas && t.status === "published") ? "native" : "levercopy";
   }
   const result = provider === "native"
-    ? await runNativeProposal(repo, lead, { auto, force, baseUrl: baseUrl || publicBase() })
+    ? await runNativeProposal(repo, lead, { auto, force, template, baseUrl: baseUrl || publicBase() })
     : await runProposal(repo, lead, { auto, force });
   return { provider, ...result };
 }
