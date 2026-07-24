@@ -26,6 +26,9 @@ async function build(product = {}) {
     monthlyCashTarget: 120000,
     ...product,
   });
+  // Contato = ação HUMANA (autor na collection users): os toques dos fixtures
+  // levam author "sdr" pra contarem como contato do time.
+  await repo.create("users", { id: "sdr", name: "SDR", roles: ["sdr"] });
   const app = Fastify();
   registerRoutes(app, repo, { pipelinePace: { now: () => NOW } });
   return { app, repo };
@@ -68,6 +71,7 @@ test("pace usa faturas pagas, dias úteis e desdobra o gap pelas conversões rea
       saas: "leverads",
       lead: `l${i}`,
       type: "whatsapp",
+      author: "sdr",
       at: i <= 2 ? "2026-07-13T13:30:00.000Z" : "2026-07-06T13:30:00.000Z",
     });
   }
@@ -166,7 +170,7 @@ test("ponta a ponta real calibra o fechamento e o plano fecha consistente", asyn
   await repo.update("leads", "l5", { stage: "Call agendada", callAt: "2026-07-12T15:00:00.000Z" });
   // 10 tocados (contato 10/25 = 40%), 5 agendados entre eles (50%)
   for (let i = 1; i <= 10; i++) {
-    await repo.create("activities", { id: `t${i}`, saas: "leverads", lead: `l${i}`, type: "whatsapp", at: "2026-07-03T13:00:00.000Z" });
+    await repo.create("activities", { id: `t${i}`, saas: "leverads", lead: `l${i}`, type: "whatsapp", author: "sdr", at: "2026-07-03T13:00:00.000Z" });
   }
   for (let i = 1; i <= 5; i++) {
     await repo.create("activities", { id: `bk${i}`, saas: "leverads", lead: `l${i}`, type: "stage", meta: { from: "Novo lead", to: "Call agendada" }, at: "2026-07-05T14:00:00.000Z" });
@@ -228,7 +232,7 @@ test("paceAdjust: histórico pré-cockpit soma ao funil, que encadeia (cada deno
   // compareceram, l1 fechou.
   for (let i = 1; i <= 10; i++) {
     await repo.create("leads", { id: `l${i}`, saas: "leverads", stage: "Novo lead", createdAt: "2026-07-05T12:00:00.000Z" });
-    if (i <= 8) await repo.create("activities", { id: `t${i}`, saas: "leverads", lead: `l${i}`, type: "whatsapp", at: "2026-07-06T12:00:00.000Z" });
+    if (i <= 8) await repo.create("activities", { id: `t${i}`, saas: "leverads", lead: `l${i}`, type: "whatsapp", author: "sdr", at: "2026-07-06T12:00:00.000Z" });
   }
   await repo.update("leads", "l1", { stage: "Ganho", stageSince: "2026-07-10T12:00:00.000Z", amount: 5000 });
   await repo.update("leads", "l2", { stage: "Proposta" });

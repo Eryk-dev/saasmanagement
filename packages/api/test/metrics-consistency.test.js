@@ -158,3 +158,54 @@ test("caixa do mês: faturas pagas + a receber, a mesma conta da faixa de meta",
   assert.equal(pace.cash.forecastWithReceivables, 25000);
   await app.close();
 });
+
+// A régua ÚNICA do Leo (24/07): o funil da Visão geral é a SOMA dos cards —
+// contatados pelo autor do 1º contato HUMANO (automação fora do total), calls
+// pela data da call (callAt) por closer, e o histórico pré-cockpit morando nas
+// PESSOAS (contatos no SDR, agendadas/comparecimentos divididos entre os
+// closers; ganhos seguem os registros preenchidos). Se alguém mudar a régua de
+// um lado só, este teste quebra antes de virar tela divergente.
+test("funil da Visão geral = soma dos cards (contato humano, automação fora, histórico nas pessoas)", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL, paceAdjust: { contacted: 80, booked: 10, shown: 10, won: 7 } });
+  await repo.create("users", { id: "sdr1", name: "SDR", roles: ["sdr"] });
+  await repo.create("users", { id: "clo1", name: "Closer 1", roles: ["closer"] });
+  await repo.create("users", { id: "clo2", name: "Closer 2", roles: ["closer"] });
+  const at = "2026-07-10T12:00:00.000Z";
+  // A: o SDR contatou primeiro, virou call do closer 1 e a call aconteceu.
+  await repo.create("leads", { id: "A", saas: "leverads", owner: "sdr1", closer: "clo1", stage: "Follow-up", createdAt: at, callAt: at });
+  await repo.create("activities", { id: "tA", saas: "leverads", lead: "A", type: "whatsapp", author: "sdr1", at });
+  // B: follow-up do closer 2, call furada (etapa No show).
+  await repo.create("leads", { id: "B", saas: "leverads", closer: "clo2", stage: "No show", createdAt: at, callAt: at });
+  await repo.create("activities", { id: "tB", saas: "leverads", lead: "B", type: "call", author: "clo2", at });
+  // C: só a automação alcançou — fica FORA do total de contatados.
+  await repo.create("leads", { id: "C", saas: "leverads", stage: "Novo lead", createdAt: at });
+  await repo.create("wa_messages", { id: "wC", saas: "leverads", leadId: "C", direction: "out", author: "fluxo-ligacao", at });
+  // D: contato do closer 1 e venda dele (registro preenchido; ganho sem rateio).
+  await repo.create("leads", { id: "D", saas: "leverads", closer: "clo1", stage: "Ganho", amount: 2000, createdAt: at, callAt: at, stageSince: at });
+  await repo.create("activities", { id: "tD", saas: "leverads", lead: "D", type: "whatsapp", author: "clo1", at });
+
+  const app = Fastify();
+  registerRoutes(app, repo, { pipelinePace: { now: () => NOW } });
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${MONTH}` })).json();
+
+  // Contatados: 3 humanos + 80 do histórico (no SDR); soma dos autores = total.
+  assert.equal(sb.team.contacted, 83);
+  assert.equal(sb.team.contactedBy.reduce((a, p) => a + p.leads, 0), sb.team.contacted);
+  assert.deepEqual(sb.team.contactedBy.find((p) => p.user === "sdr1"), { user: "sdr1", name: "SDR", leads: 81 });
+  assert.equal(sb.team.automationReached, 1);       // C, alcançado só pela automação
+  const sdrCard = sb.sdr.find((p) => p.user === "sdr1");
+  assert.equal(sdrCard.contacted, 81, "card do SDR = bucket dele no funil (com o histórico)");
+
+  // Calls agendadas/realizadas: funil = soma dos closers (10 e 10 do histórico, 5/5 pra cada).
+  const c1 = sb.closer.find((p) => p.user === "clo1");
+  const c2 = sb.closer.find((p) => p.user === "clo2");
+  assert.equal(sb.team.callsBooked, 13);            // 3 reais + 10 do histórico
+  assert.equal(c1.calls + c2.calls, sb.team.callsBooked);
+  assert.equal(sb.team.shown, 12);                  // 2 reais + 10 do histórico
+  assert.equal(c1.callsShown + c2.callsShown, sb.team.shown);
+  // Ganhos NÃO ganham rateio: seguem o que está preenchido no lead/cliente.
+  assert.equal(sb.team.won, 1);
+  assert.equal(c1.won + c2.won, sb.team.won);
+  await app.close();
+});

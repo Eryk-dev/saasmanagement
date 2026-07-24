@@ -535,7 +535,7 @@ function FunnelConversions({ team, pLabel }) {
           <>
             {team.paceAdjust && (
               <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", fontSize: 11.5, color: "var(--fg-3)" }}>
-                <b>Inclui histórico pré-cockpit</b> (dados reais de antes do registro):{" "}
+                <b>Inclui histórico pré-cockpit</b> (dados reais de antes do registro, somados no SDR e nos closers; ganhos seguem os registros):{" "}
                 {[
                   team.paceAdjust.leads && `+${team.paceAdjust.leads} leads`,
                   team.paceAdjust.contacted && `+${team.paceAdjust.contacted} contatos`,
@@ -572,15 +572,16 @@ function FunnelConversions({ team, pLabel }) {
                 <b className="tnum">{int(team.won)}</b>
                 {team.revenue > 0 && <span style={{ color: "var(--fg-4)" }}> · {money(team.revenue)}</span>}
               </span>
-              {/* A abertura dos Contatados: o total é do TIME (SDR + closers +
-                  inbox), então sem isso ele parece brigar com o card do SDR.
-                  Cada lead vai pra quem fez o 1º toque do período — a soma
-                  fecha com o total (histórico pré-cockpit fora, no aviso). */}
+              {/* A abertura dos Contatados (régua única, 24/07): contato = ação
+                  HUMANA, cada lead no autor do 1º contato do período, e o
+                  histórico pré-cockpit já somado nas pessoas — a soma daqui
+                  fecha EXATA com o tile e com o card de cada um. Automação
+                  (fluxo de ligação, drip) fica fora do total, só informativa. */}
               {team.contactedBy?.length > 0 && (
-                <span title="dos Contatados: cada lead atribuído a quem fez o PRIMEIRO toque ou mensagem do período. O card de cada pessoa conta o trabalho DELA (inclui mover etapa), então pode diferir um pouco daqui. Histórico pré-cockpit fica fora, no aviso acima.">
+                <span title="dos Contatados: cada lead vai pra quem fez o PRIMEIRO contato humano do período (toque ou mensagem). Mensagem automática não conta no total. O histórico pré-cockpit já está somado no SDR e nos closers, então a soma fecha com o tile.">
                   <span style={{ color: "var(--fg-3)" }}>Quem contatou </span>
                   <b className="tnum">{team.contactedBy.map((p) => `${p.name} ${int(p.leads)}`).join(" · ")}</b>
-                  {team.paceAdjust?.contacted > 0 && <span style={{ color: "var(--fg-4)" }}> · +{int(team.paceAdjust.contacted)} histórico</span>}
+                  {team.automationReached > 0 && <span style={{ color: "var(--fg-4)" }}> · automação alcançou {int(team.automationReached)} (fora do total)</span>}
                 </span>
               )}
             </div>
