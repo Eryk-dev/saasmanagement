@@ -89,8 +89,14 @@ export async function linkThreadToLead(repo, tid, lead) {
 // o webhook). Resolve o lead pelo telefone se leadId não veio. Retorna o id da
 // mensagem, ou null se foi deduplicada.
 export async function recordMessage(repo, { id, phone, direction, text = "", at, status = "", from = "", author = "", leadId, saas, contactName = "", waPhoneId = "", saasHint = "", media = null }) {
-  const tid = digits(phone || from);
-  if (!tid) return null;
+  const rawTid = digits(phone || from);
+  if (!rawTid) return null;
+  // Casa com a thread JÁ existente pela chave NORMALIZADA (tolerante ao 9 e ao
+  // 55, ver waMatchKey), NÃO só pelo id exato dos dígitos. Sem isso, o mesmo
+  // contato em duas grafias (com/sem o nono dígito) virava DUAS conversas no
+  // inbox. `tid` é sempre o id CANÔNICO — o da thread existente quando há uma.
+  const existingThread = await findThreadByPhone(repo, rawTid);
+  const tid = existingThread ? existingThread.id : rawTid;
   const msgId = id || "wm_" + randomUUID();
   if (await repo.get("wa_messages", msgId)) return null; // dedup
 
@@ -103,7 +109,7 @@ export async function recordMessage(repo, { id, phone, direction, text = "", at,
   // Conversa NOVA, entrando, e nenhum lead com esse número: pode ser o lead do
   // form escrevendo de outro aparelho. Só na primeira mensagem da thread — é
   // exatamente o momento do redirect do form.
-  if (lid == null && direction === "in" && !(await repo.get("wa_threads", tid))) {
+  if (lid == null && direction === "in" && !existingThread) {
     const byForm = await findLeadByFormMessage(repo, { text, saas: sa || saasHint, at });
     if (byForm) {
       lid = byForm.id;
@@ -126,7 +132,7 @@ export async function recordMessage(repo, { id, phone, direction, text = "", at,
     ...(media && media.id ? { media: { kind: media.kind || "", id: String(media.id), mime: media.mime || "", filename: media.filename || "" } } : {}),
   });
 
-  const prev = await repo.get("wa_threads", tid);
+  const prev = existingThread;
   const patch = {
     id: tid, phone: tid,
     name: contactName || prev?.name || "",
