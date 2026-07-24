@@ -232,6 +232,30 @@ test("PATCH /public/proposals/:id — k errado 401; k certo atualiza só o estad
   await app.close();
 });
 
+test("PATCH: números do deck Starter (cloneCount/newPerMonth) persistem no estado", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("leads", { ...LEAD });
+  await app.inject({ method: "POST", url: "/api/leads/le_p1/proposal" });
+  const { proposta_id } = await repo.get("leads", "le_p1");
+  const { editKey } = await repo.get("proposals", proposta_id);
+
+  const ok = await app.inject({
+    method: "PATCH", url: `/public/proposals/${proposta_id}`,
+    payload: { k: editKey, cloneCount: 300, newPerMonth: 15 },
+  });
+  assert.equal(ok.statusCode, 200);
+  const p = await repo.get("proposals", proposta_id);
+  assert.equal(p.state.cloneCount, 300);
+  assert.equal(p.state.newPerMonth, 15);
+
+  // valor inválido não corrompe o estado (negativo/NaN ignorados)
+  await app.inject({ method: "PATCH", url: `/public/proposals/${proposta_id}`, payload: { k: editKey, cloneCount: -5, newPerMonth: "x" } });
+  const p2 = await repo.get("proposals", proposta_id);
+  assert.equal(p2.state.cloneCount, 300);
+  assert.equal(p2.state.newPerMonth, 15);
+  await app.close();
+});
+
 test("PATCH: faixa de contas é autoritativa — deriva seats do topo (seatsMap)", async () => {
   const { app, repo } = await buildApp();
   await repo.create("leads", { ...LEAD });

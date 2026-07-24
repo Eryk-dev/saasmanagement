@@ -743,7 +743,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       if (pm != null) cycles.push(CYCLE_NAME[k] + ' R$ ' + moneyBR(pm) + '/mês');
     });
 
-    return {
+    var out = {
       assentos: state.seats, contasDestino: dest, volume: state.volume,
       minPorAnuncio: minPerAd, minCopia: Number(c.minCopy) || 10, minCompat: Number(c.minCompatEdit) || 2,
       horaCusto: hourly.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
@@ -767,6 +767,33 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       parcelado: months > 1 ? months + 'x de R$ ' + moneyBR(price) + ' sem juros' : 'cobrança mensal',
       roi: Math.max(1, Math.round(hiddenMonth / (price || 1))),
     };
+    // ── Starter (clientes D/E): preço por CLONE em degraus + plano semestral ──
+    // calc.starter = { tiers: [[100,3],[500,2],[2000,1]], plan: 999 }. Degraus
+    // PROGRESSIVOS (os 100 primeiros a R$3, os próximos a R$2...), senão clonar
+    // 101 sairia mais barato que clonar 100. Acima do último degrau mantém o
+    // último preço. cloneCount/newPerMonth vêm do setup do closer (tela zero);
+    // sem eles, cloneCount cai no meio da faixa de anúncios do form (volumeMid).
+    if (CALC.starter) {
+      var stTiers = CALC.starter.tiers || [[100, 3], [500, 2], [2000, 1]];
+      var stN = Math.round(Number(state.cloneCount));
+      if (!(stN > 0)) stN = Math.round(Number((CALC.volumeMid || {})[state.volume])) || Math.round(Number(CALC.starter.defaultClones)) || 0;
+      var stCost = 0, stPrev = 0, stUnit = 0;
+      for (var sti = 0; sti < stTiers.length; sti++) {
+        var stLim = Number(stTiers[sti][0]); stUnit = Number(stTiers[sti][1]);
+        if (stN > stPrev) stCost += (Math.min(stN, stLim) - stPrev) * stUnit;
+        stPrev = stLim;
+      }
+      if (stN > stPrev) stCost += (stN - stPrev) * stUnit;
+      var stPlan = Number(CALC.starter.plan) || 0;
+      var stNew = Math.round(Number(state.newPerMonth));
+      if (!(stNew > 0)) stNew = Math.round(Number(CALC.starter.defaultNew)) || 10;
+      out.starterClones = intBR(stN);
+      out.starterSetup = 'R$ ' + intBR(stCost);
+      out.starterPlan = 'R$ ' + intBR(stPlan);
+      out.starterTotal = intBR(stCost + stPlan);
+      out.starterNew = intBR(stNew);
+    }
+    return out;
   }
 
   // Resolve um caminho de interpolação. calc./state. viram spans dinâmicos; uma
@@ -1499,7 +1526,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       flash('salvando…', '');
       fetch('/public/proposals/' + encodeURIComponent(P.id), {
         method: 'PATCH', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ k: token, accounts: state.accounts, volume: state.volume, cycle: state.cycle, customPriceCents: state.customPriceCents, validUntil: state.validUntil, frozen: true, company: DATA.lead.company, name: DATA.lead.name, niche: DATA.answers.niche })
+        body: JSON.stringify({ k: token, accounts: state.accounts, volume: state.volume, cycle: state.cycle, customPriceCents: state.customPriceCents, validUntil: state.validUntil, frozen: true, company: DATA.lead.company, name: DATA.lead.name, niche: DATA.answers.niche, cloneCount: state.cloneCount, newPerMonth: state.newPerMonth })
       }).then(function (r) { if (!r.ok) throw new Error('falha'); return r.json(); })
         .then(function () { flash('salvo ✓', 'ok'); setTimeout(function () { tag.className = 'save-tag'; }, 1600); })
         .catch(function () { flash('✕ erro ao salvar', 'err'); });
@@ -1576,6 +1603,18 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         inp.addEventListener('input', function () { DATA.answers.niche = inp.value; done(); });
         wrap.appendChild(sel); wrap.appendChild(inp);
         ctl = wrap;
+      } else if (field === 'cloneCount' || field === 'newPerMonth') {
+        // Números do Starter (deck por clone): quantos anúncios clonar hoje e o
+        // ritmo de anúncios novos/mês — alimentam o preço calculado do slide de
+        // investimento (calc.starterSetup/starterTotal). O valor inicial espelha
+        // o fallback do compute(), pra o campo mostrar o que a conta está usando.
+        ctl = document.createElement('input'); ctl.type = 'number'; ctl.min = '0'; ctl.step = '1';
+        var curNum = Math.round(Number(state[field]));
+        if (!(curNum > 0) && field === 'cloneCount') curNum = Math.round(Number((CALC.volumeMid || {})[state.volume])) || 0;
+        if (!(curNum > 0) && field === 'newPerMonth') curNum = Math.round(Number((CALC.starter || {}).defaultNew)) || 10;
+        ctl.value = curNum > 0 ? curNum : '';
+        ctl.placeholder = field === 'cloneCount' ? 'ex.: 120' : 'ex.: 10';
+        ctl.addEventListener('input', function () { var vn = parseInt(ctl.value, 10); state[field] = vn > 0 ? vn : 0; done(); });
       }
       if (ctl && (ctl.tagName === 'SELECT' || ctl.tagName === 'INPUT')) ctl.classList.add('setup-input');
       return ctl;
@@ -1605,6 +1644,8 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       if (CALC.seatsMap && Object.keys(CALC.seatsMap).length) fields.push(['accounts', 'Contas']);
       if (CALC.volumeMid && Object.keys(CALC.volumeMid).length) fields.push(['volume', 'Anúncios']);
       if (CALC.answerLabels && CALC.answerLabels.staff && Object.keys(CALC.answerLabels.staff).length) fields.push(['staff', 'Equipe']);
+      // Deck Starter (por clone): os dois números que precificam a oferta no final.
+      if (CALC.starter) fields.push(['cloneCount', 'Anúncios pra clonar'], ['newPerMonth', 'Anúncios novos / mês']);
       fields.forEach(function (f) {
         var ctl = control(f[0], function () { fillDynamic(); scheduleSave(); });
         if (!ctl) return;
