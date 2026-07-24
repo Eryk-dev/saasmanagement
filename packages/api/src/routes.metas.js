@@ -117,7 +117,14 @@ const MONTHS_AHEAD = 6;
 // não retrato do que já acontece.
 export function deriveGoalsFromPace(pace) {
   const through = (n, rate) => (n != null && rate > 0 ? Math.ceil(n / rate) : null);
-  const target = pace.sale.target;
+  // Persegue a META ATUAL: batida a base, o pace re-ancora na próxima super meta
+  // (sale.chaseTarget), e o card Pace da tela Metas mostra o que ESSE teto exige.
+  // Abaixo de 100% o chaseTarget é a própria base, então nada muda. Passado de
+  // 200% (chaseTarget null) cai na base — não há teto acima pra desdobrar.
+  const base = pace.sale.target;
+  const target = pace.sale.chaseTarget != null ? pace.sale.chaseTarget : base;
+  const superMode = target > base;
+  const chasePct = pace.sale.chasePct || null;
   const ticket = Number(pace.context.averageEntry) > 0 ? Number(pace.context.averageEntry) : null;
   const c = pace.conversions;
   const won = ticket ? Math.ceil(target / ticket) : null;
@@ -133,7 +140,8 @@ export function deriveGoalsFromPace(pace) {
     : !(c.contactRate.value > 0) ? "contactRate"
     : null;
   return {
-    target, ticket, ticketSource: pace.context.averageEntrySource || "",
+    target, base, superMode, chasePct,
+    ticket, ticketSource: pace.context.averageEntrySource || "",
     won, callsShown, callsBooked, contacts,
     leads, // entrada do funil: é o marketing que entrega, então não vira meta de vaga
     rates: {
