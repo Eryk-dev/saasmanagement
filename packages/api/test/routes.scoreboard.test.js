@@ -409,6 +409,31 @@ test("Funil do TIME: conta a atividade do período, não só a safra que entrou"
   await app.close();
 });
 
+// O total de Contatados é do TIME INTEIRO (SDR + closers + inbox), então a tela
+// abre a composição: cada lead vai pra quem fez o 1º toque/mensagem do período,
+// e a soma dos autores fecha EXATA com o total (sem o histórico pré-cockpit).
+test("Funil do TIME: contactedBy atribui cada lead ao autor do 1º contato do período", async () => {
+  const { app, repo } = await buildApp();
+  // l1: SDR tocou às 9h, closer ligou às 10h → conta 1x, atribuído ao SDR.
+  await repo.create("leads", { id: "l1", saas: "leverads", owner: "u_sdr", stage: "Qualificando", createdAt: now });
+  await repo.create("activities", { id: "c1", saas: "leverads", lead: "l1", type: "whatsapp", author: "u_sdr", at: "2026-07-10T09:00:00.000Z" });
+  await repo.create("activities", { id: "c2", saas: "leverads", lead: "l1", type: "call", author: "u_clo", at: "2026-07-10T10:00:00.000Z" });
+  // l2: só o closer ligou (follow-up dele).
+  await repo.create("leads", { id: "l2", saas: "leverads", owner: "u_sdr", stage: "Follow-up", createdAt: now });
+  await repo.create("activities", { id: "c3", saas: "leverads", lead: "l2", type: "call", author: "u_clo", at: "2026-07-10T11:00:00.000Z" });
+  // l3: só mensagem ENVIADA no inbox pelo closer (sem atividade na timeline).
+  await repo.create("leads", { id: "l3", saas: "leverads", owner: "", stage: "Novo lead", createdAt: now });
+  await repo.create("wa_messages", { id: "w1", saas: "leverads", leadId: "l3", direction: "out", author: "u_clo", at: "2026-07-10T12:00:00.000Z" });
+
+  const t = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json().team;
+  assert.equal(t.contacted, 3);
+  assert.deepEqual(t.contactedBy, [
+    { user: "u_clo", name: "Caio Closer", leads: 2 },
+    { user: "u_sdr", name: "Sara SDR", leads: 1 },
+  ]); // soma (2 + 1) = contatados
+  await app.close();
+});
+
 test("Funil do TIME: histórico pré-cockpit (product.paceAdjust) soma ao funil da Visão geral", async () => {
   const { app, repo } = await buildApp();
   await repo.update("products", "leverads", { paceAdjust: { contacted: 80, booked: 10, shown: 10, won: 7 } });
