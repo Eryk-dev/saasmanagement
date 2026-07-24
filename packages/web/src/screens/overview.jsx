@@ -387,10 +387,14 @@ function PaceStrip({ pace, onNav, links = true }) {
   const scaleMax = superMode ? SCALE_TOP : 1;
   const pct = Math.min(100, Math.round((Math.min(ratio, scaleMax) / scaleMax) * 100));
   const expPct = Math.min(100, Math.round((Math.min(c.expectedProgress || 0, scaleMax) / scaleMax) * 100));
-  // Faixa alcançada (a maior super meta batida) e a próxima a perseguir.
-  const tiers = SUPER_METAS.map((m) => ({ m, value: c.target * m, hit: ratio >= m }));
+  // Super metas vêm do servidor (mesma régua do pace); o front só desenha. Fica
+  // em `tiers` no formato que a barra usa. `chasePct` e `hasChase` dizem qual
+  // teto o pace persegue agora e se ainda há o que perseguir.
+  const tiers = (c.superMetas || SUPER_METAS.map((m) => ({ pct: Math.round(m * 100), value: c.target * m, hit: ratio >= m })))
+    .map((t) => ({ m: (t.pct || 0) / 100, value: t.value, hit: t.hit }));
   const topHit = [...tiers].reverse().find((t) => t.hit) || null;
-  const next = tiers.find((t) => !t.hit) || null;
+  const chasePct = c.chasePct || null;
+  const hasChase = (c.chaseGap || 0) > 0;
   const badgeText = topHit ? `super meta ${Math.round(topHit.m * 100)}%` : done ? "meta batida" : st.label;
   const badgeTone = topHit ? "var(--pos)" : st.tone;
   const plan = pace.plan || {};
@@ -454,18 +458,19 @@ function PaceStrip({ pace, onNav, links = true }) {
             <b className="tnum">{money(c.projected)}</b>
             {links && <button onClick={() => onNav && onNav("customers")} style={{ marginLeft: 12, fontSize: 12, fontWeight: 500, color: "var(--accent)" }}>caixa e dinheiro futuro → Clientes</button>}
           </div>
-          {done && (
-            next
-              ? <div style={{ fontSize: 12.5, color: "var(--fg-2)" }}>
-                  {topHit ? `Super meta ${Math.round(topHit.m * 100)}% batida. ` : "Meta batida. "}
-                  <b className="tnum">{money(Math.max(0, next.value - c.sold))}</b>
-                  <span style={{ color: "var(--fg-3)" }}> pra super meta {Math.round(next.m * 100)}%.</span>
-                </div>
-              : <div style={{ fontSize: 12.5, color: "var(--pos)", fontWeight: 600 }}>Super meta 200% batida. Mês histórico.</div>
+          {/* Bater a base virou super meta batida + o pace re-ancorado na
+              PRÓXIMA super meta: o desdobramento (ganhos/calls/contatos) passa a
+              perseguir esse teto, em vez de sumir com "meta batida". */}
+          {superMode && topHit && (
+            <div style={{ fontSize: 12.5, color: "var(--pos)", fontWeight: 600, marginBottom: hasChase ? 8 : 0 }}>
+              Super meta {Math.round(topHit.m * 100)}% batida.{!hasChase && " Mês histórico."}
+            </div>
           )}
-          {!done && havePlan && (
+          {hasChase && havePlan && (
             <>
-              <div className="mono" style={{ fontSize: 9.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-4)", marginBottom: 6 }}>Pra bater a meta faltam</div>
+              <div className="mono" style={{ fontSize: 9.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-4)", marginBottom: 6 }}>
+                {superMode ? `Pra bater a super meta ${chasePct}% faltam` : "Pra bater a meta faltam"}
+              </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {steps.map((s) => (
                   <span key={s.key} title={s.perDay != null ? `${fmtPerDay(s.perDay)}/dia útil · hoje: ${int(s.today || 0)}` : undefined}
@@ -477,10 +482,13 @@ function PaceStrip({ pace, onNav, links = true }) {
               </div>
             </>
           )}
-          {!done && !havePlan && (
+          {hasChase && !havePlan && (
             <div style={{ fontSize: 12, color: "var(--fg-4)" }}>
               não dá pra desdobrar a meta ainda: {PACE_BLOCKED[plan.blockedBy] || "sem histórico suficiente"}.
             </div>
+          )}
+          {done && !superMode && !hasChase && (
+            <div style={{ fontSize: 12.5, color: "var(--pos)", fontWeight: 600 }}>Meta do mês batida.</div>
           )}
           {links && <button onClick={() => onNav && onNav("analise")} style={{ marginTop: 10, fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>Ver análise completa →</button>}
         </div>
