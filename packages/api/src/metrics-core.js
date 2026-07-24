@@ -140,21 +140,40 @@ export function callOutcome(product, list, actsOf) {
 // `adjust` (product.paceAdjust) soma HISTÓRICO PRÉ-COCKPIT (dados reais de antes
 // do registro no sistema): { leads, contacted, booked, shown, won } — só somas
 // positivas; noShow e ganhos totais (revenue) não entram no ajuste.
-// Leads contatados por MENSAGEM enviada no WhatsApp do cockpit. O inbox é
-// separado das activities DE PROPÓSITO (chat ≠ toque de cadência, não re-agenda
-// o GPS), mas a mensagem ENVIADA conta como contato no funil/placar. Devolve o
-// Set de leadIds com ≥1 mensagem `out`. Opções: `author` (só de um usuário, pro
-// placar por pessoa) e `inWin` (só na janela). Sem elas, qualquer envio conta.
-export function waContactedLeadIds(waMessages, { saas, author, inWin } = {}) {
-  const ids = new Set();
+// ── Contato com ATRIBUIÇÃO (a régua ÚNICA de "contatados") ───────────────────
+// Decisões do Leo (24/07): contato = ação HUMANA — toque de cadência
+// (whatsapp/call/email/meeting) ou mensagem ENVIADA no inbox por gente do time
+// (`humanIds` = ids da collection users). Automação (fluxo de ligação, drip,
+// envio por chave "cockpit") NÃO conta no total: sai em `automationReached`
+// (leads distintos que ela alcançou, informativo). Cada lead vai pro autor do
+// PRIMEIRO contato humano da janela, então a soma dos autores fecha EXATA com
+// o total — é o que deixa o funil da Visão geral ser a soma dos cards.
+// O inbox segue separado das activities DE PROPÓSITO (chat ≠ toque de cadência,
+// não re-agenda o GPS), mas a mensagem enviada conta como contato aqui.
+// Devolve { leadIds, byAuthor (Map autor → leads distintos), automationReached }.
+export function contactAttribution({ leads, actsOf, waMessages, saas, inWin, humanIds } = {}) {
+  const first = new Map();       // leadId → { at, author } do 1º contato humano
+  const autoReached = new Set(); // leads que a automação tocou (mesmo que gente também)
+  const record = (id, at, author) => {
+    if (!humanIds?.has(author || "")) { autoReached.add(id); return; }
+    const cur = first.get(id);
+    if (!cur || String(at || "") < String(cur.at || "")) first.set(id, { at: at || "", author });
+  };
+  const knownIds = new Set((leads || []).map((l) => l.id));
   for (const m of waMessages || []) {
     if (m.direction !== "out" || !m.leadId || !m.author) continue;
     if (saas && m.saas && m.saas !== saas) continue;
-    if (author && m.author !== author) continue;
-    if (inWin && !inWin(m.at)) continue;
-    ids.add(m.leadId);
+    if (!knownIds.has(m.leadId) || !inWin(m.at)) continue;
+    record(m.leadId, m.at, m.author);
   }
-  return ids;
+  for (const l of leads || []) {
+    for (const a of actsOf(l.id) || []) {
+      if (inWin(a.at) && TOUCH_TYPES.has(a.type)) record(l.id, a.at, a.author);
+    }
+  }
+  const byAuthor = new Map();
+  for (const { author } of first.values()) byAuthor.set(author, (byAuthor.get(author) || 0) + 1);
+  return { leadIds: new Set(first.keys()), byAuthor, automationReached: autoReached.size };
 }
 
 export function funnelCounts(product, { leads, actsOf, inWin, winLeadsIn, adjust, waContactedIds } = {}) {

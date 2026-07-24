@@ -13,8 +13,8 @@ import { TEAM_METRICS, META_CATALOG, deriveGoalsFromPace } from "./routes.metas.
 import { RATE_BENCHMARKS, computePipelinePace } from "./routes.pipeline-pace.js";
 import {
   DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead,
-  bookedLeadsIn as coreBooked, callOutcome as coreCallOutcome,
-  winsIn, customerStartMap, waContactedLeadIds, isReferralLead,
+  callOutcome as coreCallOutcome,
+  winsIn, customerStartMap, contactAttribution, isReferralLead,
 } from "./metrics-core.js";
 
 const HOUR = 3_600_000;
@@ -168,10 +168,49 @@ export function registerScoreboardRoutes(app, repo) {
     // oficial da venda como fato do lead (isWonLead + wonAt), com fallback pro
     // lead legado sem carimbo (startedAt do cliente vinculado).
     const actsOf = (id) => actsByLead.get(id) || [];
-    const bookedLeadsIn = (list) => coreBooked(product, list, actsOf, inWin);
     const callOutcome = (list) => coreCallOutcome(product, list, actsOf);
     const customerStartByLead = customerStartMap(customers);
     const winTransitionsFor = (list) => winsIn(product, list, inWin, customerStartByLead);
+
+    // ── Histórico pré-cockpit e atribuição de contato (régua única) ───────────
+    // O ajuste (product.paceAdjust) só entra quando a JANELA alcança a época
+    // anterior ao 1º registro de atividade (senão "ontem" inflava). Época = 1º
+    // dia com atividade do produto (ou product.paceAdjust.before, se fixado).
+    let activityEpoch = null;
+    for (const a of allActs) {
+      if (a.saas !== product.id) continue;
+      const d = dayKey(a.at);
+      if (d && (!activityEpoch || d < activityEpoch)) activityEpoch = d;
+    }
+    const adjCutoff = product.paceAdjust?.before || activityEpoch;
+    const teamAdjust = product.paceAdjust && (!adjCutoff || since < adjCutoff) ? product.paceAdjust : null;
+    const adjN = (k) => (teamAdjust && Number(teamAdjust[k]) > 0 ? Math.round(Number(teamAdjust[k])) : 0);
+    const adjApplied = teamAdjust
+      ? ["leads", "contacted", "booked", "shown", "won"].reduce((o, k) => (adjN(k) ? { ...o, [k]: adjN(k) } : o), null)
+      : null;
+    // O histórico mora nas PESSOAS (decisão do Leo, 24/07): os contatos antigos
+    // foram trabalho do SDR e as calls dos closers, então o ajuste soma nos
+    // VOLUMES dos cards deles (e nos buckets do funil) — o funil segue sendo a
+    // soma dos cards também no histórico. Taxa nenhuma usa o histórico (não há
+    // registro do resultado daquelas calls). Ganhos antigos ficam FORA dos
+    // cards: seguem o que está preenchido nos registros (lead.closer/cliente).
+    const histShare = (total, ids) => {
+      const map = new Map();
+      if (!(total > 0) || !ids.length) return map;
+      const base = Math.floor(total / ids.length);
+      let rest = total - base * ids.length;
+      for (const id of [...ids].sort()) map.set(id, base + (rest-- > 0 ? 1 : 0));
+      return map;
+    };
+    const contactedHist = histShare(adjN("contacted"), withRole("sdr"));
+    const bookedHist = histShare(adjN("booked"), withRole("closer"));
+    const shownHist = histShare(adjN("shown"), withRole("closer"));
+    // Contato = ação HUMANA, cada lead no autor do 1º contato da janela — a
+    // régua única do metrics-core (a automação fica de fora do total, visível
+    // em automationReached). Funil e cards leem DESTA atribuição.
+    const humanIds = new Set(users.map((u) => u.id));
+    const contact = contactAttribution({ leads, actsOf, waMessages, saas: product.id, inWin, humanIds });
+    const contactsOf = (uid) => contact.byAuthor.get(uid) || 0;
 
     // ── SDR (agrupado por owner) ──────────────────────────────────────────────
     const slaMs = (Number(cadenceOf(product, firstStage(product)).firstTouchHours) || 48) * HOUR;
@@ -191,10 +230,11 @@ export function registerScoreboardRoutes(app, repo) {
           breached++;
         }
       }
-      // Calls agendadas = leads DISTINTOS desse SDR que atingiram estágio de kind
-      // `call` na janela (a moeda de handoff; a atribuição é sempre do owner,
-      // mesmo que o closer tenha movido o card — decisão do processo).
-      const booked = bookedLeadsIn(mine);
+      // Calls agendadas = calls dos leads DELE (owner) pela DATA DA CALL — a
+      // MESMA régua do funil e dos closers (callAt na janela; régua única,
+      // decisão do Leo 24/07). A atribuição é sempre do owner, mesmo que o
+      // closer tenha movido o card.
+      const booked = mine.filter((l) => inWin(l.callAt));
       const callsBooked = booked.length;
 
       // Show-rate e calls→ganho sobre o cohort de calls agendadas (callOutcome).
@@ -202,42 +242,35 @@ export function registerScoreboardRoutes(app, repo) {
       const resolved = shown + noShow;
       const leadsNew = cohort.length;
       const leadsPrev = hasPrev ? mine.filter((l) => inPrev(l.createdAt)).length : null;
-      // Contatados = TRABALHO DO DIA: leads que o SDR trabalhou no Meu dia no
-      // período — registrou um toque OU atualizou o status (mudou de etapa). Vale
-      // pra QUALQUER lead dele (não só a safra que entrou hoje), porque o fluxo é
-      // fila rolante. Só a ação DELE conta (author = uid), não o move do closer
-      // num lead que por acaso é dele. Distinto por lead.
+      // Contatados = a MESMA régua do funil (24/07): leads cujo 1º contato
+      // humano da janela foi DELE (contactAttribution — vale qualquer lead, não
+      // só os que têm ele de owner) + a parte dele do histórico pré-cockpit.
+      // Mover etapa deixou de contar como contato; as TAXAS usam só o orgânico.
+      const contactedOrganic = contactsOf(uid);
+      const contacted = contactedOrganic + (contactedHist.get(uid) || 0);
       // Remarcações = calls que o cliente pediu pra mudar de horário na confirmação
       // e o SDR remarcou (toque com meta.event="reschedule"). Conta EVENTOS (um lead
-      // pode remarcar mais de uma vez), e o próprio toque já credita "contatado".
-      const contactedIds = new Set();
+      // pode remarcar mais de uma vez).
       let reschedules = 0;
-      // Mensagem que ELE enviou no WhatsApp do cockpit, na janela, conta como
-      // contato (o inbox virou a ferramenta do SDR). Não vira toque de cadência.
-      const waMine = waContactedLeadIds(waMessages, { saas: product.id, author: uid, inWin });
       for (const l of mine) {
         for (const a of actsByLead.get(l.id) || []) {
-          if (!inWin(a.at) || a.author !== uid) continue;
-          if (a.meta?.event === "reschedule") reschedules++;
-          if (TOUCH_TYPES.has(a.type) || a.type === "stage") contactedIds.add(l.id);
+          if (inWin(a.at) && a.author === uid && a.meta?.event === "reschedule") reschedules++;
         }
-        if (waMine.has(l.id)) contactedIds.add(l.id);
       }
-      const contacted = contactedIds.size;
       // Taxa de contato DELE: da safra que entrou na janela, quantos alcançou.
-      const contactRate = leadsNew > 0 ? round2((contacted / leadsNew) * 100) : null;
+      const contactRate = leadsNew > 0 ? round2((contactedOrganic / leadsNew) * 100) : null;
+      // Taxa de agendamento = das pessoas que ele contatou, quantas viraram call.
+      const bookingRate = contactedOrganic > 0 ? round2((callsBooked / contactedOrganic) * 100) : null;
       return {
         user: uid, name: nameOf(uid),
         contactRate,
-        targets: personTargets(uid, "sdr", { contactRate, bookingRate: contacted > 0 ? round2((booked.length / contacted) * 100) : null, showRate: resolved > 0 ? round2((shown / resolved) * 100) : null, contacts: contacted, callsBooked }),
+        targets: personTargets(uid, "sdr", { contactRate, bookingRate, showRate: resolved > 0 ? round2((shown / resolved) * 100) : null, contacts: contacted, callsBooked }),
         leadsNew,
         leadsPrev, // leads da janela anterior (base da meta dinâmica de calls)
         contacted,
         reschedules,
         callsBooked,
-        // Taxa de agendamento = conversão do dia: das pessoas que ele contatou,
-        // quantas viraram call (calls agendadas ÷ contatados).
-        bookingRate: contacted > 0 ? round2((callsBooked / contacted) * 100) : null,
+        bookingRate,
         firstTouchMedianH: median(touchHours),
         withinSla: touchHours.filter((h) => h <= slaMs / HOUR).length,
         breached, // novos que estouraram o SLA e seguem sem toque
@@ -264,10 +297,15 @@ export function registerScoreboardRoutes(app, repo) {
       const mine = leads.filter((l) => l.closer === uid);
       // Calls agendadas (pela data da call) e quantas ACONTECERAM (compareceram):
       // avançou pra frente OU perdeu por outro motivo; no-show não conta.
+      // A parte DELE do histórico pré-cockpit (calls antigas divididas entre os
+      // closers — decisão do Leo, 24/07) soma nos VOLUMES; taxas ficam no
+      // orgânico (aquelas calls não têm registro de resultado).
       const callLeads = mine.filter((l) => inWin(l.callAt));
-      const calls = callLeads.length;
+      const callsOrganic = callLeads.length;
+      const calls = callsOrganic + (bookedHist.get(uid) || 0);
       // Compareceu/furo pela MESMA régua da safra (callOutcome do metrics-core).
-      const callsShown = callOutcome(callLeads).shown;
+      const shownOrganic = callOutcome(callLeads).shown;
+      const callsShown = shownOrganic + (shownHist.get(uid) || 0);
       // GANHO do closer = venda na janela pela régua oficial (isWonLead +
       // wonAt, metrics-core). O valor do negócio é lançado no fechamento
       // (ver stage-move/DestinoSection).
@@ -282,21 +320,23 @@ export function registerScoreboardRoutes(app, repo) {
       const reasonCount = {};
       for (const l of lost) { const r = l.lostReason || "nao_informado"; reasonCount[r] = (reasonCount[r] || 0) + 1; }
       const lossReasons = Object.entries(reasonCount).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
+      // Conversão na call = ganhos ÷ calls que ACONTECERAM (habilidade de fechar,
+      // limpa de no-show). Win rate = ganhos ÷ calls AGENDADAS (inclui no-show):
+      // o gap entre as duas denuncia perda por não-comparecimento. Sempre sobre
+      // o ORGÂNICO — o histórico só soma volume.
+      const conversao = shownOrganic > 0 ? round2((wonN / shownOrganic) * 100) : null;
       return {
         user: uid, name: nameOf(uid),
         targets: personTargets(uid, "closer", {
-          conversaoCall: callsShown > 0 ? round2((wonN / callsShown) * 100) : null,
+          conversaoCall: conversao,
           callsShown,
           won: wonN, revenue: round2(revenue), ticket: wonN > 0 ? round2(revenue / wonN) : null,
         }),
         calls, callsShown,
         won: wonN, revenue: round2(revenue), lost: lost.length,
-        // Conversão na call = ganhos ÷ calls que ACONTECERAM (habilidade de fechar,
-        // limpa de no-show). Win rate = ganhos ÷ calls AGENDADAS (inclui no-show):
-        // o gap entre as duas denuncia perda por não-comparecimento.
-        conversaoCall: callsShown > 0 ? round2((wonN / callsShown) * 100) : null,
-        winRateCall: calls > 0 ? round2((wonN / calls) * 100) : null,
-        revenuePerCall: calls > 0 ? round2(revenue / calls) : null,
+        conversaoCall: conversao,
+        winRateCall: callsOrganic > 0 ? round2((wonN / callsOrganic) * 100) : null,
+        revenuePerCall: callsOrganic > 0 ? round2(revenue / callsOrganic) : null,
         ticket: wonN > 0 ? round2(revenue / wonN) : null,
         cycleDays: median(cycle),
         lossReasons,
@@ -370,52 +410,17 @@ export function registerScoreboardRoutes(app, repo) {
     // pessoa (que contam a atividade toda). A coorte de aquisição (dos que
     // entraram → converteram) mora na tela de Aquisição, onde casa com ROAS/CAC.
     // O funil ENCADEIA: cada denominador é o passo anterior.
-    // Histórico PRÉ-COCKPIT (product.paceAdjust) só entra quando a JANELA alcança
-    // a época anterior ao 1º registro de atividade (senão "ontem" inflava). Época
-    // = 1º dia com atividade do produto (ou product.paceAdjust.before, se fixado).
-    let activityEpoch = null;
-    for (const a of allActs) {
-      if (a.saas !== product.id) continue;
-      const d = dayKey(a.at);
-      if (d && (!activityEpoch || d < activityEpoch)) activityEpoch = d;
-    }
-    const adjCutoff = product.paceAdjust?.before || activityEpoch;
-    const teamAdjust = product.paceAdjust && (!adjCutoff || since < adjCutoff) ? product.paceAdjust : null;
-    const adjN = (k) => (teamAdjust && Number(teamAdjust[k]) > 0 ? Math.round(Number(teamAdjust[k])) : 0);
-    const adjApplied = teamAdjust
-      ? ["leads", "contacted", "booked", "shown", "won"].reduce((o, k) => (adjN(k) ? { ...o, [k]: adjN(k) } : o), null)
-      : null;
-
     const teamWonLeads = [...winTransitionsFor(leads).keys()].map((id) => leadById.get(id)).filter(Boolean);
-    // Contatados = leads DISTINTOS que o time tocou NA JANELA (toque de cadência
-    // ou mensagem no WhatsApp do cockpit) — atividade no período, não a safra.
-    // Guarda também o PRIMEIRO evento de cada lead pra dizer QUEM contatou: o
-    // total é do time inteiro (SDR + closers + inbox), então sem essa abertura o
-    // número parece brigar com o card do SDR. Atribuição pelo 1º autor faz a
-    // soma dos autores fechar EXATA com o total (lead tocado por dois não conta
-    // duas vezes); o histórico pré-cockpit segue à parte (banner).
-    const firstContact = new Map(); // leadId -> { at, author }
-    const contactEvent = (id, at, author) => {
-      const cur = firstContact.get(id);
-      if (!cur || String(at || "") < String(cur.at || "")) firstContact.set(id, { at: at || "", author: author || "" });
-    };
-    for (const m of waMessages) {
-      // Espelha waContactedLeadIds (mensagem ENVIADA, com autor, do produto).
-      if (m.direction !== "out" || !m.leadId || !m.author) continue;
-      if (m.saas && m.saas !== product.id) continue;
-      if (inWin(m.at)) contactEvent(m.leadId, m.at, m.author);
+    // Contatados = a régua única (contactAttribution, lá em cima): leads
+    // DISTINTOS com contato HUMANO na janela, cada um no autor do 1º contato.
+    // O histórico pré-cockpit mora nos buckets das pessoas (80 no SDR etc.),
+    // então a soma do "quem contatou" fecha EXATA com o total do tile.
+    const contactedBy = [...contact.byAuthor.entries()]
+      .map(([user, n]) => ({ user, name: nameOf(user), leads: n + (contactedHist.get(user) || 0) }));
+    for (const [user, n] of contactedHist) {
+      if (!contact.byAuthor.has(user)) contactedBy.push({ user, name: nameOf(user), leads: n });
     }
-    for (const l of leads) {
-      for (const a of actsByLead.get(l.id) || []) {
-        if (inWin(a.at) && TOUCH_TYPES.has(a.type)) contactEvent(l.id, a.at, a.author);
-      }
-    }
-    const teamContactedIds = new Set(firstContact.keys());
-    const contactedByCount = new Map(); // autor do 1º contato -> leads distintos
-    for (const { author } of firstContact.values()) contactedByCount.set(author, (contactedByCount.get(author) || 0) + 1);
-    const contactedBy = [...contactedByCount.entries()]
-      .map(([user, n]) => ({ user, name: user ? nameOf(user) : "automático", leads: n }))
-      .sort((a, b) => b.leads - a.leads);
+    contactedBy.sort((a, b) => b.leads - a.leads);
     // Calls agendadas = TODAS as calls do time com callAt na janela — a MESMA
     // régua dos closers (que contam `mine.filter(inWin(callAt))`), então "Calls
     // realizadas" do funil bate CRAVADO com a soma dos cards. Sem filtrar pela
@@ -423,7 +428,7 @@ export function registerScoreboardRoutes(app, repo) {
     const teamBooked = leads.filter((l) => inWin(l.callAt));
     const teamOutcome = callOutcome(teamBooked);
     const leadsNewN = leads.filter((l) => inWin(l.createdAt)).length + adjN("leads");
-    const contactedN = teamContactedIds.size + adjN("contacted");
+    const contactedN = contact.leadIds.size + adjN("contacted");
     const bookedN = teamBooked.length + adjN("booked");
     const shownN = teamOutcome.shown + adjN("shown");
     const wonFromCallsN = teamOutcome.won + adjN("won");
@@ -450,7 +455,8 @@ export function registerScoreboardRoutes(app, repo) {
       // Lead → ganho: ganhos no período ÷ leads que entraram no período.
       leadToWin: leadsNewN > 0 ? round2((wonN / leadsNewN) * 100) : null,
       paceAdjust: adjApplied, // histórico pré-cockpit somado (null quando não há)
-      contactedBy,            // quem fez o 1º contato de cada lead (soma = contatados sem o histórico)
+      contactedBy,            // quem fez o 1º contato humano de cada lead (soma = total do tile)
+      automationReached: contact.automationReached, // leads que a automação alcançou (fora do total)
       // Metas de TAXA por papel (role-scope) pra colorir a régua na UI.
       goals: {
         bookingRate: goalFor("", "sdr", "bookingRate"),

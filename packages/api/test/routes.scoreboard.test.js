@@ -32,10 +32,10 @@ async function buildApp() {
 const now = "2026-07-10T12:00:00.000Z";
 const win = "?since=2026-07-01&until=2026-07-31";
 
-test("SDR: leads novos, calls agendadas (transição pra kind call) e SLA de 1º toque", async () => {
+test("SDR: leads novos, calls agendadas (pela data da call) e SLA de 1º toque", async () => {
   const { app, repo } = await buildApp();
-  // 2 leads do SDR criados na janela; 1 recebeu toque, 1 nunca
-  await repo.create("leads", { id: "l1", saas: "leverads", owner: "u_sdr", stage: "Call agendada", createdAt: now });
+  // 2 leads do SDR criados na janela; 1 recebeu toque e tem call marcada, 1 nunca
+  await repo.create("leads", { id: "l1", saas: "leverads", owner: "u_sdr", stage: "Call agendada", createdAt: now, callAt: "2026-07-11T15:00:00.000Z" });
   await repo.create("leads", { id: "l2", saas: "leverads", owner: "u_sdr", stage: "Novo lead", createdAt: now });
   await repo.create("activities", { id: "a1", saas: "leverads", lead: "l1", type: "call", author: "u_sdr", at: "2026-07-10T13:00:00.000Z" }); // toque 1h depois
   await repo.create("activities", { id: "a2", saas: "leverads", lead: "l1", type: "stage", author: "u_sdr", at: "2026-07-10T13:05:00.000Z", meta: { from: "Qualificando", to: "Call agendada" } });
@@ -45,9 +45,9 @@ test("SDR: leads novos, calls agendadas (transição pra kind call) e SLA de 1º
   const s = sb.sdr.find((x) => x.user === "u_sdr");
   assert.equal(s.name, "Sara SDR");
   assert.equal(s.leadsNew, 2);
-  assert.equal(s.contacted, 1);            // l1 teve toque/stage DO SDR no período (atividade do dia)
+  assert.equal(s.contacted, 1);            // l1: 1º contato humano do período foi dele
   assert.equal(s.reschedules, 1);          // 1 remarcação na confirmação (evento, credita contato)
-  assert.equal(s.callsBooked, 1);          // 1 transição pra Call agendada
+  assert.equal(s.callsBooked, 1);          // 1 call marcada (callAt na janela, régua única)
   assert.equal(s.bookingRate, 100);        // calls ÷ contatados = 1/1
   assert.equal(s.firstTouchMedianH, 1);    // l1 tocado 1h depois
   assert.equal(s.withinSla, 1);            // dentro das 2h da cadência
@@ -61,14 +61,16 @@ test("contato por WhatsApp do cockpit conta (SDR e funil do time), sem virar ati
   await repo.create("wa_messages", { id: "m1", saas: "leverads", leadId: "lw", direction: "out", author: "u_sdr", at: "2026-07-10T15:00:00.000Z" });
   // Mensagem RECEBIDA (in) do lead não conta como contato NOSSO.
   await repo.create("wa_messages", { id: "m2", saas: "leverads", leadId: "lw", direction: "in", author: "", at: "2026-07-10T15:01:00.000Z" });
-  // Lead de outro SDR-owner por mensagem: não credita o u_sdr.
+  // Autor que NÃO é usuário do time (fluxo de ligação, drip) = automação:
+  // alcança o lead mas não conta como contato do time (decisão do Leo, 24/07).
   await repo.create("leads", { id: "lo", saas: "leverads", owner: "outro", stage: "Qualificando", createdAt: now });
-  await repo.create("wa_messages", { id: "m3", saas: "leverads", leadId: "lo", direction: "out", author: "outro", at: now });
+  await repo.create("wa_messages", { id: "m3", saas: "leverads", leadId: "lo", direction: "out", author: "fluxo-ligacao", at: now });
 
   const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
   const s = sb.sdr.find((x) => x.user === "u_sdr");
   assert.equal(s.contacted, 1);                    // lw contado pela mensagem enviada, sem atividade
-  assert.equal(sb.team.contacted, 2);              // lw + lo no funil do time (qualquer envio)
+  assert.equal(sb.team.contacted, 1);              // só o contato HUMANO (lw); automação fora
+  assert.equal(sb.team.automationReached, 1);      // lo alcançado pela automação, informativo
   // Não criou atividade de cadência (o inbox segue separado da timeline).
   assert.equal((await repo.list("activities")).length, 0);
   await app.close();
@@ -77,9 +79,8 @@ test("contato por WhatsApp do cockpit conta (SDR e funil do time), sem virar ati
 test("SDR: show-rate (não compareceu) e calls→ganho sobre o cohort de calls", async () => {
   const { app, repo } = await buildApp();
   const mk = async (id, stage, extra = {}) => {
-    await repo.create("leads", { id, saas: "leverads", owner: "u_sdr", stage, createdAt: now, ...extra });
-    // transição pra Call agendada na janela (entra no cohort de booked)
-    await repo.create("activities", { id: `st_${id}`, saas: "leverads", lead: id, type: "stage", at: now, meta: { from: "Qualificando", to: "Call agendada" } });
+    // call marcada na janela (callAt = a régua única de call agendada)
+    await repo.create("leads", { id, saas: "leverads", owner: "u_sdr", stage, createdAt: now, callAt: now, ...extra });
   };
   await mk("b1", "Ganho", { amount: 500, stageSince: now });   // compareceu + fechou
   await mk("b2", "Follow-up");                                 // compareceu (avançou), não fechou
@@ -442,13 +443,21 @@ test("Funil do TIME: histórico pré-cockpit (product.paceAdjust) soma ao funil 
   await repo.create("activities", { id: "st_a1", saas: "leverads", lead: "a1", type: "stage", author: "u_sdr", at: now, meta: { from: "Qualificando", to: "Call agendada" } });
   await repo.create("activities", { id: "wa1", saas: "leverads", lead: "a1", type: "stage", author: "u_clo", at: now, meta: { from: "Call agendada", to: "Ganho" } });
 
-  const t = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json().team;
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  const t = sb.team;
   assert.deepEqual(t.paceAdjust, { contacted: 80, booked: 10, shown: 10, won: 7 });
   assert.equal(t.leadsNew, 1);        // 1 lead logado (sem ajuste de leads)
   assert.equal(t.contacted, 81);      // 1 + 80
   assert.equal(t.callsBooked, 11);    // 1 + 10
   assert.equal(t.shown, 11);          // 1 + 10
   assert.equal(t.wonFromCalls, 8);    // 1 + 7
+  // O histórico mora nas PESSOAS (decisão do Leo, 24/07): os 80 contatos no
+  // SDR, agendadas/comparecimentos nos closers — a soma fecha com o funil.
+  assert.equal(sb.sdr.find((x) => x.user === "u_sdr").contacted, 81);           // 1 orgânico + 80
+  assert.deepEqual(t.contactedBy, [{ user: "u_sdr", name: "Sara SDR", leads: 81 }]);
+  const clo = sb.closer.find((x) => x.user === "u_clo");
+  assert.equal(clo.calls, 10);        // 0 orgânico + 10 do histórico (único closer)
+  assert.equal(clo.callsShown, 10);   // 0 orgânico + 10 do histórico
   await app.close();
 });
 
@@ -590,9 +599,8 @@ test("targets por PESSOA: metas da vaga com o realizado dela e a parte do rateio
     ["g5", "sdr", "showRate", 75],
   ]) await repo.create("goals", { id, saas: "leverads", scope: "role", key, metric, target, period: "month" });
 
-  await repo.create("leads", { id: "w1", saas: "leverads", owner: "u_sdr", closer: "u_clo", stage: "Ganho", amount: 500, createdAt: now, stageSince: now });
+  await repo.create("leads", { id: "w1", saas: "leverads", owner: "u_sdr", closer: "u_clo", stage: "Ganho", amount: 500, createdAt: now, callAt: now, stageSince: now });
   await repo.create("activities", { id: "t_w1", saas: "leverads", lead: "w1", type: "call", author: "u_sdr", at: now });
-  await repo.create("activities", { id: "b_w1", saas: "leverads", lead: "w1", type: "stage", at: now, meta: { from: "Qualificando", to: "Call agendada" } });
   await repo.create("activities", { id: "st_w1", saas: "leverads", lead: "w1", type: "stage", at: now, meta: { from: "Follow-up", to: "Ganho" } });
 
   const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
