@@ -498,11 +498,12 @@ export function catalogStageRow(saasCfg, item) {
 }
 
 // Checklist de dados do lead pro painel do roteiro, NA ORDEM DA CONVERSA que o
-// Leo definiu: nicho → empresa → contas → anúncios → expansão → time de
-// marketing → e-mail por último (quando já está tudo confirmado). Cada item sai
-// com type/options pro painel renderizar o campo EDITÁVEL (select com as opções
-// do formulário; texto onde é livre). `key` é o campo do lead a ser gravado.
-const CHECKLIST_ORDER = ["niche", "company", "accounts", "listings", "plan_expand", "staff", "decider"];
+// Leo definiu: nicho → empresa → contas → anúncios → faturamento → expansão →
+// time de marketing → e-mail por último (quando já está tudo confirmado). Cada
+// item sai com type/options pro painel renderizar o campo EDITÁVEL (select com
+// as opções do formulário; texto onde é livre). `key` é o campo do lead a ser
+// gravado (revenue = faixa de faturamento, que o briefing de integração já lê).
+const CHECKLIST_ORDER = ["niche", "company", "accounts", "listings", "revenue", "plan_expand", "staff", "decider"];
 
 export function scriptChecklist(saasCfg, lead) {
   const qs = saasCfg?.leadQuestions || [];
