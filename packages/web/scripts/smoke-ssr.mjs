@@ -109,6 +109,31 @@ try {
       failed++;
     }
   }
+  // Layout da agenda por CLUSTER de sobreposição: um horário cheio NÃO pode
+  // espremer os itens dos outros horários (era o bug — 9 follow-ups às 11h
+  // deixavam a call das 14h com 1/9 da largura).
+  try {
+    const { laneByCluster } = await server.ssrLoadModule("/src/screens/pipeline.jsx");
+    const H = (h) => h * 3600000;
+    // 9 itens no MESMO horário (11h) + 1 sozinho às 14h + 2 sobrepostos às 16h
+    const items = [];
+    for (let i = 0; i < 9; i++) items.push({ id: "a" + i, t: H(11) });
+    items.push({ id: "solo", t: H(14) });
+    items.push({ id: "x", t: H(16) }, { id: "y", t: H(16.5) });
+    const placed = laneByCluster(items, (e) => e.t, (e) => e.t + H(1));
+    const by = Object.fromEntries(placed.map((p) => [p.id, p]));
+    const eq = (name, got, want) => { if (got !== want) throw new Error(`${name}: ${got} ≠ ${want}`); };
+    eq("cluster das 11h tem 9 lanes", by.a0.lanes, 9);
+    eq("item das 14h NÃO é espremido (1 lane, largura cheia)", by.solo.lanes, 1);
+    eq("14h fica no lane 0", by.solo.lane, 0);
+    eq("16h sobreposto divide em 2", by.x.lanes, 2);
+    eq("16h30 pega a 2ª lane", by.y.lane, 1);
+    console.log("✓ agenda-lanes");
+  } catch (err) {
+    console.error(`✗ agenda-lanes: ${err.message}`);
+    failed++;
+  }
+
   // Item de agenda "Dia inteiro" (allDay): tem que ocupar o DIA TODO na grade de
   // horários, pra não caber call de venda nesse dia. matchBlock já trata allDay;
   // aqui garante que busyView marca qualquer slot do dia.

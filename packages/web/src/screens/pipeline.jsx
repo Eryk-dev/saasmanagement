@@ -504,6 +504,34 @@ function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen 
 // `blocking` (opcional, tela Agenda): { blocksFor(d), onSlot(d, hora), onBlock(b) }
 // desenha os bloqueios da pessoa selecionada e liga o clique em horário vazio.
 // `person` (opcional): mostra só os eventos daquele responsável.
+// Distribui itens em faixas por CLUSTER de sobreposição: cada item recebe `lane`
+// (posição) e `lanes` (nº de faixas do SEU cluster). A largura vem do cluster,
+// não do dia — assim um horário lotado não espreme os itens dos outros horários.
+function laneByCluster(items, startOf, endOf) {
+  const sorted = [...items].sort((a, b) => startOf(a) - startOf(b));
+  const out = [];
+  let i = 0;
+  while (i < sorted.length) {
+    let clusterEnd = endOf(sorted[i]);
+    let j = i + 1;
+    while (j < sorted.length && startOf(sorted[j]) < clusterEnd) {
+      clusterEnd = Math.max(clusterEnd, endOf(sorted[j]));
+      j++;
+    }
+    const laneEnds = [];
+    const group = sorted.slice(i, j).map((it) => {
+      let lane = laneEnds.findIndex((t) => t <= startOf(it));
+      if (lane < 0) { lane = laneEnds.length; laneEnds.push(0); }
+      laneEnds[lane] = endOf(it);
+      return { ...it, lane };
+    });
+    const lanes = Math.max(1, laneEnds.length);
+    group.forEach((it) => out.push({ ...it, lanes }));
+    i = j;
+  }
+  return out;
+}
+
 function AgendaView({ leads, consultations = [], onOpenLead, blocking, person }) {
   const [week, setWeek] = useStP(0); // offset em semanas a partir da atual
   const [showTouches, setShowTouchesState] = useStP(() => {
@@ -581,19 +609,15 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
     .filter((u, i, arr) => arr.findIndex(x => x.id === u.id) === i);
   const toneOf = (id) => id ? `oklch(0.55 0.13 ${userTone(id)})` : "var(--fg-4)";
 
-  // Lanes: calls no mesmo horário dividem a largura da coluna (evento dura 1h).
-  const layoutDay = (d) => {
-    const dayEv = events.filter(e => e.t.toDateString() === d.toDateString()).sort((a, b) => a.t - b.t);
-    const laneEnds = [];
-    const placed = dayEv.map(e => {
-      const start = e.t.getTime(), stop = start + 3600000;
-      let lane = laneEnds.findIndex(t => t <= start);
-      if (lane < 0) { lane = laneEnds.length; laneEnds.push(0); }
-      laneEnds[lane] = stop;
-      return { ...e, lane };
-    });
-    return { placed, lanes: Math.max(1, laneEnds.length) };
-  };
+  // Lanes: itens que se SOBREPÕEM dividem a largura. A largura sai do nº de lanes
+  // do CLUSTER de sobreposição, não do dia inteiro — senão um horário cheio (ex.:
+  // 9 follow-ups às 11h) espremia TODO evento do dia, e um compromisso sozinho
+  // às 14h saía com 1/9 da largura. Cada item ganha `lane` (posição) e `lanes`
+  // (nº de lanes do seu cluster).
+  const layoutDay = (d) => ({
+    placed: laneByCluster(events.filter(e => e.t.toDateString() === d.toDateString()),
+      e => e.t.getTime(), e => e.t.getTime() + 3600000),
+  });
 
   const calls = events.filter(e => e.kind === "call" || e.kind === "integração" || e.kind === "consulta").length;
 
@@ -652,7 +676,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
             ))}
           </div>
           {days.map((d, i) => {
-            const { placed, lanes } = layoutDay(d);
+            const { placed } = layoutDay(d);
             const isToday = d.toDateString() === new Date().toDateString();
             return (
               <div key={i}
@@ -670,21 +694,16 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                 }}>
                 {(() => {
                   // Itens da agenda (bloqueios/compromissos, decorados pela tela com
-                  // _tone/_label/_who): lanes próprias quando se sobrepõem (ex.: o
-                  // almoço do time inteiro no mesmo meio-dia).
-                  const laneEnds = [];
-                  const placedBlks = (blocking ? blocking.blocksFor(d) : [])
-                    .map((b) => ({ b, from: b.allDay ? H0 : Math.max(H0, Number(b.fromHour) || 0), to: b.allDay ? H1 : Math.min(H1, Number(b.toHour) || 0) }))
-                    .filter((x) => x.to > x.from)
-                    .sort((a, z) => a.from - z.from)
-                    .map((x) => {
-                      let lane = laneEnds.findIndex((t) => t <= x.from);
-                      if (lane < 0) { lane = laneEnds.length; laneEnds.push(0); }
-                      laneEnds[lane] = x.to;
-                      return { ...x, lane };
-                    });
-                  const bw = 100 / Math.max(1, laneEnds.length);
-                  return placedBlks.map(({ b, from, to, lane }) => {
+                  // _tone/_label/_who): lanes por CLUSTER de sobreposição (ex.: o
+                  // almoço do time inteiro no mesmo meio-dia divide; compromisso
+                  // sozinho ocupa largura cheia, sem ser espremido por outro horário).
+                  const placedBlks = laneByCluster(
+                    (blocking ? blocking.blocksFor(d) : [])
+                      .map((b) => ({ b, from: b.allDay ? H0 : Math.max(H0, Number(b.fromHour) || 0), to: b.allDay ? H1 : Math.min(H1, Number(b.toHour) || 0) }))
+                      .filter((x) => x.to > x.from),
+                    (x) => x.from, (x) => x.to);
+                  return placedBlks.map(({ b, from, to, lane, lanes }) => {
+                    const bw = 100 / lanes;
                     const tone = b._tone || null; // com tom = compromisso; sem = bloqueio vermelho
                     const label = b._label || `bloqueado${b.recur === "weekly" ? " ↻" : ""}${b.reason ? ` · ${b.reason}` : ""}`;
                     return (
@@ -707,7 +726,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                     );
                   });
                 })()}
-                {placed.map(({ l, t, lane, kind, who }) => {
+                {placed.map(({ l, t, lane, lanes, kind, who }) => {
                   const tone = toneOf(who);
                   const isTouch = kind === "toque";
                   // Follow-up: ocupa 20 min na agenda, fundo ESCURO + letra clara
@@ -1367,4 +1386,4 @@ function AnaliseView({ s, leads }) {
   );
 }
 
-export { PipelineScreen, AnaliseView, AgendaView };
+export { PipelineScreen, AnaliseView, AgendaView, laneByCluster };
