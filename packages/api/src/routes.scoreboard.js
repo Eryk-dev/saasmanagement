@@ -389,12 +389,33 @@ export function registerScoreboardRoutes(app, repo) {
     const teamWonLeads = [...winTransitionsFor(leads).keys()].map((id) => leadById.get(id)).filter(Boolean);
     // Contatados = leads DISTINTOS que o time tocou NA JANELA (toque de cadência
     // ou mensagem no WhatsApp do cockpit) — atividade no período, não a safra.
-    const teamContactedIds = new Set(waContactedLeadIds(waMessages, { saas: product.id, inWin }));
+    // Guarda também o PRIMEIRO evento de cada lead pra dizer QUEM contatou: o
+    // total é do time inteiro (SDR + closers + inbox), então sem essa abertura o
+    // número parece brigar com o card do SDR. Atribuição pelo 1º autor faz a
+    // soma dos autores fechar EXATA com o total (lead tocado por dois não conta
+    // duas vezes); o histórico pré-cockpit segue à parte (banner).
+    const firstContact = new Map(); // leadId -> { at, author }
+    const contactEvent = (id, at, author) => {
+      const cur = firstContact.get(id);
+      if (!cur || String(at || "") < String(cur.at || "")) firstContact.set(id, { at: at || "", author: author || "" });
+    };
+    for (const m of waMessages) {
+      // Espelha waContactedLeadIds (mensagem ENVIADA, com autor, do produto).
+      if (m.direction !== "out" || !m.leadId || !m.author) continue;
+      if (m.saas && m.saas !== product.id) continue;
+      if (inWin(m.at)) contactEvent(m.leadId, m.at, m.author);
+    }
     for (const l of leads) {
       for (const a of actsByLead.get(l.id) || []) {
-        if (inWin(a.at) && TOUCH_TYPES.has(a.type)) { teamContactedIds.add(l.id); break; }
+        if (inWin(a.at) && TOUCH_TYPES.has(a.type)) contactEvent(l.id, a.at, a.author);
       }
     }
+    const teamContactedIds = new Set(firstContact.keys());
+    const contactedByCount = new Map(); // autor do 1º contato -> leads distintos
+    for (const { author } of firstContact.values()) contactedByCount.set(author, (contactedByCount.get(author) || 0) + 1);
+    const contactedBy = [...contactedByCount.entries()]
+      .map(([user, n]) => ({ user, name: user ? nameOf(user) : "automático", leads: n }))
+      .sort((a, b) => b.leads - a.leads);
     // Calls agendadas = TODAS as calls do time com callAt na janela — a MESMA
     // régua dos closers (que contam `mine.filter(inWin(callAt))`), então "Calls
     // realizadas" do funil bate CRAVADO com a soma dos cards. Sem filtrar pela
@@ -429,6 +450,7 @@ export function registerScoreboardRoutes(app, repo) {
       // Lead → ganho: ganhos no período ÷ leads que entraram no período.
       leadToWin: leadsNewN > 0 ? round2((wonN / leadsNewN) * 100) : null,
       paceAdjust: adjApplied, // histórico pré-cockpit somado (null quando não há)
+      contactedBy,            // quem fez o 1º contato de cada lead (soma = contatados sem o histórico)
       // Metas de TAXA por papel (role-scope) pra colorir a régua na UI.
       goals: {
         bookingRate: goalFor("", "sdr", "bookingRate"),

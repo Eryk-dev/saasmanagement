@@ -572,6 +572,17 @@ function FunnelConversions({ team, pLabel }) {
                 <b className="tnum">{int(team.won)}</b>
                 {team.revenue > 0 && <span style={{ color: "var(--fg-4)" }}> · {money(team.revenue)}</span>}
               </span>
+              {/* A abertura dos Contatados: o total é do TIME (SDR + closers +
+                  inbox), então sem isso ele parece brigar com o card do SDR.
+                  Cada lead vai pra quem fez o 1º toque do período — a soma
+                  fecha com o total (histórico pré-cockpit fora, no aviso). */}
+              {team.contactedBy?.length > 0 && (
+                <span title="dos Contatados: cada lead atribuído a quem fez o PRIMEIRO toque ou mensagem do período. O card de cada pessoa conta o trabalho DELA (inclui mover etapa), então pode diferir um pouco daqui. Histórico pré-cockpit fica fora, no aviso acima.">
+                  <span style={{ color: "var(--fg-3)" }}>Quem contatou </span>
+                  <b className="tnum">{team.contactedBy.map((p) => `${p.name} ${int(p.leads)}`).join(" · ")}</b>
+                  {team.paceAdjust?.contacted > 0 && <span style={{ color: "var(--fg-4)" }}> · +{int(team.paceAdjust.contacted)} histórico</span>}
+                </span>
+              )}
             </div>
           </>
         )}
