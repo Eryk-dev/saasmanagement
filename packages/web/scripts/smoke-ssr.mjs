@@ -156,6 +156,31 @@ try {
     failed++;
   }
 
+  // Checklist do lead (Dados do lead · edite pra completar): a faixa de
+  // faturamento entra na ORDEM da conversa, logo depois dos anúncios, como
+  // select. Pergunta fora da ordem canônica segue só aparecendo respondida.
+  try {
+    const { scriptChecklist } = await server.ssrLoadModule("/src/lib/scripts.js");
+    const cfg = { leadQuestions: [
+      { key: "accounts", label: "Contas?", options: [{ value: "1", label: "1" }] },
+      { key: "listings", label: "Anúncios?", options: [{ value: "0-100", label: "Até 100" }] },
+      { key: "revenue", label: "Faturamento?", options: [{ value: "0-50k", label: "Até R$ 50 mil/mês" }] },
+      { key: "niche", label: "Nicho?", options: [{ value: "moda", label: "Moda" }] },
+      { key: "aprender_verba", label: "Verba?", options: [{ value: "ate-1k", label: "Até 1 mil" }] },
+    ] };
+    const eq = (name, got, want) => {
+      if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${name}: ${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
+    };
+    const keys = scriptChecklist(cfg, { id: "l1" }).map((c) => c.key);
+    eq("faturamento na ordem, depois dos anúncios", keys, ["niche", "company", "accounts", "listings", "revenue", "email"]);
+    const c = scriptChecklist(cfg, { id: "l1", revenue: "0-50k" }).find((x) => x.key === "revenue");
+    eq("select com a faixa marcada", [c.type, c.raw, c.value], ["select", "0-50k", "Até R$ 50 mil/mês"]);
+    console.log("✓ checklist-faturamento");
+  } catch (err) {
+    console.error(`✗ checklist-faturamento: ${err.message}`);
+    failed++;
+  }
+
   // Filtro de período: as datas são a régua de TODA a Visão geral, então a conta
   // vale um teste de verdade e não só um render. Data fixa (quarta, 22/07/2026).
   try {

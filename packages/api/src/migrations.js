@@ -607,6 +607,42 @@ export async function ensureWaPhoneId(repo) {
   return !product.waPhoneId;
 }
 
+// ── Faixa de faturamento no checklist do SDR (jul/2026) ─────────────────────
+// O form público não pergunta mais faturamento, mas o SDR precisa capturar a
+// faixa NA CONVERSA (qualifica o valor do lead, e o briefing de integração já
+// lê lead.revenue). Insere a pergunta no leadQuestions do leverads logo depois
+// de "listings" (ordem da conversa: anúncios → faturamento; o CHECKLIST_ORDER
+// do painel acompanha). Tokens no formato legado do form ("50k-150k", "1m+"),
+// que o range() do integration-brief já formata. One-shot por
+// revenueQuestionV1: se o dono apagar a pergunta no editor, ela não volta.
+export async function ensureRevenueLeadQuestion(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || product.revenueQuestionV1) return false;
+  const qs = Array.isArray(product.leadQuestions) ? product.leadQuestions.map((q) => ({ ...q })) : null;
+  let inserted = false;
+  if (qs && !qs.some((q) => q && q.key === "revenue")) {
+    const revenue = {
+      key: "revenue", label: "Qual a faixa de faturamento mensal?", type: "select", required: false,
+      options: [
+        { value: "0-50k", label: "Até R$ 50 mil/mês" },
+        { value: "50k-150k", label: "R$ 50 a 150 mil/mês" },
+        { value: "150k-500k", label: "R$ 150 a 500 mil/mês" },
+        { value: "500k-1m", label: "R$ 500 mil a 1 mi/mês" },
+        { value: "1m+", label: "Mais de R$ 1 mi/mês" },
+        { value: "nao-informou", label: "Não quis informar" },
+      ],
+    };
+    const i = qs.findIndex((q) => q && q.key === "listings");
+    qs.splice(i === -1 ? qs.length : i + 1, 0, revenue);
+    inserted = true;
+  }
+  await repo.update("products", "leverads", {
+    ...(inserted ? { leadQuestions: qs } : {}),
+    revenueQuestionV1: true,
+  });
+  return inserted;
+}
+
 // ── Funde conversas duplicadas do inbox (jul/2026) ──────────────────────────
 // O mesmo contato aparecia como DUAS conversas quando o número entrava em duas
 // grafias (com/sem o nono dígito, ver waMatchKey) — visto em prod com o Hilton.
@@ -1017,6 +1053,12 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] WhatsApp: ${n} conversa(s) duplicada(s) fundida(s) no inbox`);
   } catch (err) {
     console.error("[migration] ensureWaThreadDedup falhou:", err?.message || err);
+  }
+  try {
+    const changed = await ensureRevenueLeadQuestion(repo);
+    if (changed) console.log("[migration] pergunta de faixa de faturamento adicionada ao checklist do leverads");
+  } catch (err) {
+    console.error("[migration] ensureRevenueLeadQuestion falhou:", err?.message || err);
   }
   // wonAt ANTES da reordenação: o carimbo precisa existir antes que qualquer
   // card possa sair do Ganho, senão a venda perde a data.
