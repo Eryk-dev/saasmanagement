@@ -282,3 +282,43 @@ test("produto inexistente retorna 404", async () => {
   assert.equal((await app.inject({ url: "/api/pipeline-pace/nao-existe" })).statusCode, 404);
   await app.close();
 });
+
+// ── Super metas: o pace re-ancora na próxima quando a base cai ──────────────
+const { chaseCeiling } = await import("../src/routes.pipeline-pace.js");
+
+test("chaseCeiling: base enquanto não bate; depois 125→150→200; null passado de 200", () => {
+  const T = 120000;
+  assert.equal(chaseCeiling(T, 0), 120000, "nada vendido: persegue a base");
+  assert.equal(chaseCeiling(T, 100000), 120000);
+  assert.equal(chaseCeiling(T, 130000), 150000, "bateu a base: vai pra 125% (150k)");
+  assert.equal(chaseCeiling(T, 160000), 180000, "bateu 125%: vai pra 150% (180k)");
+  assert.equal(chaseCeiling(T, 211106), 240000, "bateu 150%: vai pra 200% (240k)");
+  assert.equal(chaseCeiling(T, 260000), null, "passou de 200%: nada acima");
+});
+
+test("bateu a meta base: o pace persegue a próxima super meta, não zera", async () => {
+  const { app, repo } = await build();
+  // Uma venda que estoura a base (120k) e passa de 150% (180k), mas não de 200%.
+  const won = { id: "w1", saas: "leverads", stage: "Ganho", amount: 211106, wonAt: NOW.toISOString(), createdAt: NOW.toISOString(), isWon: true };
+  await repo.create("leads", won);
+  const d = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
+  const c = d.sale;
+
+  assert.equal(c.gap, 0, "a folga da BASE é zero (marca meta batida na faixa)");
+  assert.deepEqual(c.superMetas.map((s) => [s.pct, s.hit]), [[125, true], [150, true], [200, false]]);
+  assert.equal(c.chaseTarget, 240000, "persegue a super meta de 200%");
+  assert.equal(c.chasePct, 200);
+  assert.ok(c.chaseGap > 28000 && c.chaseGap < 30000, "falta ~29k pra 240k");
+  assert.ok(c.requiredDailyPace > 0, "e o precisa/dia deixa de ser zero");
+  assert.ok(d.plan.wins.remaining > 0, "a cadeia volta a pedir ganhos");
+  assert.equal(d.plan.sold.remaining, c.chaseGap, "o desdobramento persegue o gap da super meta");
+});
+
+test("passou de 200%: não há teto acima, o pace para de cobrar", async () => {
+  const { app, repo } = await build();
+  await repo.create("leads", { id: "w1", saas: "leverads", stage: "Ganho", amount: 260000, wonAt: NOW.toISOString(), createdAt: NOW.toISOString(), isWon: true });
+  const c = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json().sale;
+  assert.equal(c.chaseTarget, null);
+  assert.equal(c.chaseGap, 0);
+  assert.equal(c.superMetas.every((s) => s.hit), true);
+});

@@ -12,6 +12,22 @@ import {
 // editável na tela Metas → Empresa). Exportada pra tela de Metas mostrar o padrão.
 export const DEFAULT_CASH_TARGET = 120_000;
 
+// Super metas: 125%, 150% e 200% da meta base. Batida a meta base, o pace não
+// pode dizer "precisa R$0/dia": ele re-ancora na PRÓXIMA super meta, e o
+// desdobramento (ganhos → calls → contatos) passa a perseguir esse teto novo.
+// A régua bate com a barra da Visão geral (SUPER_METAS no overview.jsx).
+export const SUPER_METAS = [1.25, 1.5, 2];
+
+// Alvo que o PACE persegue agora: a base enquanto ela não cai, senão o primeiro
+// teto de super meta ainda não batido. null = passou de 200% (não há teto
+// acima; nada mais a perseguir). `sold` é o vendido no mês.
+export function chaseCeiling(target, sold) {
+  for (const v of [target, ...SUPER_METAS.map((m) => target * m)]) {
+    if (sold < v) return v;
+  }
+  return null;
+}
+
 // Meta de venda DAQUELE mês. `product.monthlyCashTargets` é um mapa
 // "AAAA-MM" → valor: o Leo configura os meses seguintes com antecedência e,
 // quando o mês vira, a plataforma inteira (faixa da Visão geral, pace, metas
@@ -264,13 +280,24 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   const saleDelta = round2(sold - expectedToDate);
   const salePace = calendar.elapsed > 0 ? round2(sold / calendar.elapsed) : 0;
 
+  // Alvo que o PACE persegue: a base, ou (batida a base) a próxima super meta.
+  // `chaseGap` alimenta o desdobramento e o "precisa/dia" no lugar de `saleGap`,
+  // então bater 120k passa a apontar pra 150k, depois 180k, depois 240k, em vez
+  // de zerar o pace. `saleGap` continua sendo a folga da BASE (é o que marca
+  // "meta batida" na faixa) — os dois convivem.
+  const chaseTarget = chaseCeiling(target, sold);
+  const chaseGap = chaseTarget == null ? 0 : round2(Math.max(0, chaseTarget - sold));
+  const superMetas = SUPER_METAS.map((m) => ({
+    pct: Math.round(m * 100), mult: m, value: round2(target * m), hit: sold >= target * m,
+  }));
+
   const throughRate = (amount, rate) => amount === 0 ? 0 : amount != null && rate > 0 ? Math.ceil(amount / rate) : null;
-  const winsRemaining = saleGap === 0 ? 0 : averageEntry > 0 ? Math.ceil(saleGap / averageEntry) : null;
+  const winsRemaining = chaseGap === 0 ? 0 : averageEntry > 0 ? Math.ceil(chaseGap / averageEntry) : null;
   const callsRemaining = throughRate(winsRemaining, conversions.closeRateEffective.value);
   const bookingsRemaining = throughRate(callsRemaining, conversions.showRate.value);
   const contactsRemaining = throughRate(bookingsRemaining, conversions.bookingRate.value);
   const leadsRemaining = throughRate(contactsRemaining, conversions.contactRate.value);
-  const blockedBy = saleGap === 0 ? null
+  const blockedBy = chaseGap === 0 ? null
     : averageEntry == null ? "averageEntry"
     : conversions.closeRate.value <= 0 ? "closeRate"
     : conversions.showRate.value <= 0 ? "showRate"
@@ -296,10 +323,18 @@ export async function computePipelinePace(repo, product, now = new Date()) {
       sold,
       soldToday,
       gap: saleGap,
+      // Super metas + o teto que o pace persegue agora (base → 125% → 150% →
+      // 200%). chaseTarget null = passou de 200%, não há mais o que perseguir.
+      superMetas,
+      chaseTarget,
+      chaseGap,
+      chasePct: chaseTarget ? Math.round((chaseTarget / target) * 100) : null,
       expectedToDate,
       deltaToPace: saleDelta,
       actualDailyPace: salePace,
-      requiredDailyPace: calendar.remaining > 0 ? round2(saleGap / calendar.remaining) : null,
+      // Ritmo/dia útil pra alcançar o teto vigente (super meta quando a base já
+      // caiu), não a base zerada.
+      requiredDailyPace: calendar.remaining > 0 ? round2(chaseGap / calendar.remaining) : null,
       projected: round2(salePace * calendar.total),
       progress: round4(target > 0 ? sold / target : 0),
       expectedProgress,
@@ -343,7 +378,7 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     conversions,
     plan: {
       blockedBy,
-      sold: planMetric(saleGap, calendar.remaining, soldToday),
+      sold: planMetric(chaseGap, calendar.remaining, soldToday),
       leads: planMetric(leadsRemaining, calendar.remaining, leads.filter((l) => dayKey(l.createdAt) === today).length),
       contacts: planMetric(contactsRemaining, calendar.remaining, todayContacts),
       callsBooked: planMetric(bookingsRemaining, calendar.remaining, todayBooked),
