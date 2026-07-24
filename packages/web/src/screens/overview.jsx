@@ -367,6 +367,12 @@ const PACE_BLOCKED = {
 };
 const fmtPerDay = (v) => Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 
+// Super metas: 125%, 150% e 200% da meta base. Batida a base, a barra passa a
+// medir até 200% (o topo) e a faixa alcançada vira a manchete — bater 120k não
+// pode parecer o mesmo que bater 240k.
+const SUPER_METAS = [1.25, 1.5, 2];
+const SCALE_TOP = 2; // a barra cheia = 200% da meta
+
 function PaceStrip({ pace, onNav, links = true }) {
   // A meta mede o VENDIDO no mês (contrato cheio, bloco `sale` do pace) —
   // decisão do Leo em 20/07; caixa e dinheiro futuro moram na aba Clientes.
@@ -374,8 +380,19 @@ function PaceStrip({ pace, onNav, links = true }) {
   if (!c) return null;
   const st = PACE_STATUS[c.status] || PACE_STATUS.attention;
   const done = (c.gap || 0) === 0;
-  const pct = Math.min(100, Math.round((c.progress || 0) * 100));
-  const expPct = Math.min(100, Math.round((c.expectedProgress || 0) * 100));
+  const ratio = c.progress || 0;                 // real, sem teto (1.76 = 176%)
+  const realPct = Math.round(ratio * 100);
+  // Estourou a meta base: a barra vira a régua das super metas (0 a 200%).
+  const superMode = done && ratio > 1;
+  const scaleMax = superMode ? SCALE_TOP : 1;
+  const pct = Math.min(100, Math.round((Math.min(ratio, scaleMax) / scaleMax) * 100));
+  const expPct = Math.min(100, Math.round((Math.min(c.expectedProgress || 0, scaleMax) / scaleMax) * 100));
+  // Faixa alcançada (a maior super meta batida) e a próxima a perseguir.
+  const tiers = SUPER_METAS.map((m) => ({ m, value: c.target * m, hit: ratio >= m }));
+  const topHit = [...tiers].reverse().find((t) => t.hit) || null;
+  const next = tiers.find((t) => !t.hit) || null;
+  const badgeText = topHit ? `super meta ${Math.round(topHit.m * 100)}%` : done ? "meta batida" : st.label;
+  const badgeTone = topHit ? "var(--pos)" : st.tone;
   const plan = pace.plan || {};
   const steps = [
     { key: "wins", label: "ganhos" },
@@ -391,16 +408,36 @@ function PaceStrip({ pace, onNav, links = true }) {
         <div style={{ flex: "1 1 320px", minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
             <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 27, fontWeight: 700 }}>{money(c.sold)}</span>
-            <span style={{ fontSize: 13, color: "var(--fg-3)" }}>de {money(c.target)} · {pct}%</span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: st.tone, border: `1px solid color-mix(in srgb, ${st.tone} 40%, transparent)`, background: `color-mix(in srgb, ${st.tone} 10%, transparent)`, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap" }}>
-              {done ? "meta batida" : st.label}
+            <span style={{ fontSize: 13, color: "var(--fg-3)" }}>de {money(c.target)} · {realPct}%</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: badgeTone, border: `1px solid color-mix(in srgb, ${badgeTone} 40%, transparent)`, background: `color-mix(in srgb, ${badgeTone} 10%, transparent)`, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap" }}>
+              {badgeText}
             </span>
           </div>
-          <div title={`esperado até hoje: ${money(c.expectedToDate)} (${expPct}%)`}
-            style={{ position: "relative", height: 8, borderRadius: 999, background: "var(--bg-3)", margin: "10px 0 8px", overflow: "hidden" }}>
+          <div title={`esperado até hoje: ${money(c.expectedToDate)}`}
+            style={{ position: "relative", height: 8, borderRadius: 999, background: "var(--bg-3)", margin: "10px 0 8px", overflow: superMode ? "visible" : "hidden" }}>
             <span style={{ position: "absolute", inset: 0, width: `${pct}%`, borderRadius: 999, background: done ? "var(--pos)" : "var(--accent)" }} />
             <span style={{ position: "absolute", top: 0, bottom: 0, left: `${expPct}%`, width: 2, background: "var(--fg-2)", opacity: 0.65 }} />
+            {/* Marcas das super metas na régua de 200%: batida = cheia, a próxima
+                pulsa de leve; a linha de 100% (a meta base) fica mais forte. */}
+            {superMode && (
+              <span style={{ position: "absolute", top: -1, bottom: -1, left: `${(1 / SCALE_TOP) * 100}%`, width: 2, background: "var(--pos)", opacity: 0.9 }} />
+            )}
+            {superMode && tiers.map((t) => (
+              <span key={t.m} title={`super meta ${Math.round(t.m * 100)}% · ${money(t.value)}`}
+                style={{ position: "absolute", top: "50%", left: `${(t.m / SCALE_TOP) * 100}%`, width: 8, height: 8, marginLeft: -4, marginTop: -4, borderRadius: 999,
+                  background: t.hit ? "var(--pos)" : "var(--bg-1)", border: `2px solid ${t.hit ? "var(--pos)" : "var(--line-2)"}` }} />
+            ))}
           </div>
+          {superMode && (
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 11, margin: "0 0 8px" }}>
+              {tiers.map((t) => (
+                <span key={t.m} style={{ display: "inline-flex", alignItems: "center", gap: 5, color: t.hit ? "var(--pos)" : "var(--fg-4)", fontWeight: t.hit ? 600 : 400 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: 999, background: t.hit ? "var(--pos)" : "var(--line-2)" }} />
+                  {Math.round(t.m * 100)}% · {money(t.value)}{t.hit ? " ✓" : ""}
+                </span>
+              ))}
+            </div>
+          )}
           <div style={{ fontSize: 12, color: "var(--fg-3)" }}>
             hoje {money(c.soldToday)} vendidos · ritmo {money(c.actualDailyPace)}/dia útil
             {c.requiredDailyPace != null ? ` · precisa ${money(c.requiredDailyPace)}/dia` : ""} · {int(c.remainingBusinessDays)} dias úteis restantes
@@ -417,7 +454,15 @@ function PaceStrip({ pace, onNav, links = true }) {
             <b className="tnum">{money(c.projected)}</b>
             {links && <button onClick={() => onNav && onNav("customers")} style={{ marginLeft: 12, fontSize: 12, fontWeight: 500, color: "var(--accent)" }}>caixa e dinheiro futuro → Clientes</button>}
           </div>
-          {done && <div style={{ fontSize: 12.5, color: "var(--pos)", fontWeight: 600 }}>Meta do mês batida.</div>}
+          {done && (
+            next
+              ? <div style={{ fontSize: 12.5, color: "var(--fg-2)" }}>
+                  {topHit ? `Super meta ${Math.round(topHit.m * 100)}% batida. ` : "Meta batida. "}
+                  <b className="tnum">{money(Math.max(0, next.value - c.sold))}</b>
+                  <span style={{ color: "var(--fg-3)" }}> pra super meta {Math.round(next.m * 100)}%.</span>
+                </div>
+              : <div style={{ fontSize: 12.5, color: "var(--pos)", fontWeight: 600 }}>Super meta 200% batida. Mês histórico.</div>
+          )}
           {!done && havePlan && (
             <>
               <div className="mono" style={{ fontSize: 9.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-4)", marginBottom: 6 }}>Pra bater a meta faltam</div>
