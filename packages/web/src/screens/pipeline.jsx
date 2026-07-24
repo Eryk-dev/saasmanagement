@@ -967,9 +967,16 @@ function goalMath(data, s, leads) {
   // Fechamento efetivo: calibrado pela ponta a ponta (ganhos÷leads 30d) quando
   // a amostra deixa — a cadeia toda passa a fechar no que a história mostra.
   const rClose = conv.closeRateEffective?.value ?? conv.closeRate.value;
-  const target = Number(data.sale.target) || 0;
+  // Persegue a META ATUAL, não a base: batida a meta, o servidor re-ancora na
+  // próxima super meta (chaseTarget/chaseGap), e a Análise inteira encadeia por
+  // cima desse teto. Abaixo de 100% o chaseTarget É a base, então nada muda.
+  const baseTarget = Number(data.sale.target) || 0;
+  const chaseTarget = data.sale.chaseTarget != null ? Number(data.sale.chaseTarget) : null;
+  const target = chaseTarget != null ? chaseTarget : baseTarget;
+  const superMode = chaseTarget != null && chaseTarget > baseTarget;
+  const chasePct = data.sale.chasePct || null;
   const closed = Number(data.context.tcvMonth) || 0;
-  const gap = Math.max(0, target - closed);
+  const gap = data.sale.chaseGap != null ? Number(data.sale.chaseGap) : Math.max(0, target - closed);
   const ticket = data.context.averageEntry;
   const need = (n, r) => n === 0 ? 0 : n != null && r > 0 ? Math.ceil(n / r) : null;
   const wins = gap === 0 ? 0 : ticket > 0 ? Math.ceil(gap / ticket) : null;
@@ -1009,6 +1016,7 @@ function goalMath(data, s, leads) {
     pipeWins, pipeValue, pipeCount, missingWins, newLeads, blockedBy,
     cpl, investNeeded, investNew,
     daysLeft: data.sale.remainingBusinessDays,
+    baseTarget, superMode, chasePct,
   };
 }
 
@@ -1042,7 +1050,11 @@ function PaceChart({ data, s, leads }) {
   const cumulative = [];
   byDay.reduce((sum, amount, index) => (cumulative[index] = sum + amount), 0);
   if (cumulative.length && cumulative[cumulative.length - 1] === 0 && data.context.tcvMonth > 0) cumulative[cumulative.length - 1] = data.context.tcvMonth;
-  const target = Number(data.sale.target) || 0;
+  // A linha da meta segue a META ATUAL: batida a base, sobe pra super meta que
+  // o pace persegue, então o gráfico não fica com a meta atrás do vendido.
+  const superChase = data.sale.chaseTarget != null && data.sale.chaseTarget > (Number(data.sale.target) || 0);
+  const target = Number(data.sale.chaseTarget || data.sale.target) || 0;
+  const targetLabel = superChase ? `super meta ${data.sale.chasePct}% ${window.fmt.money(target)}` : `meta ${window.fmt.money(target)}`;
   const max = Math.max(1, target, data.context.tcvMonth || 0);
   const H = 190, padL = 64, padR = 16, yTop = 22, yZero = 152;
   const x = (day) => padL + ((day - 1) / Math.max(1, totalDays - 1)) * (w - padL - padR);
@@ -1064,7 +1076,7 @@ function PaceChart({ data, s, leads }) {
           </React.Fragment>
         ))}
         <line x1={x(1)} y1={y(0)} x2={x(totalDays)} y2={y(target)} stroke="var(--line-strong)" strokeWidth="1.5" strokeDasharray="5 4" />
-        <text x={w - padR - 4} y={Math.max(12, y(target) - 8)} textAnchor="end" style={axis}>meta {window.fmt.money(target)}</text>
+        <text x={w - padR - 4} y={Math.max(12, y(target) - 8)} textAnchor="end" style={axis}>{targetLabel}</text>
         {points && <polyline points={points} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
         <circle cx={lastX} cy={lastY} r="3.5" fill="var(--accent)" />
         <text
@@ -1085,10 +1097,13 @@ function AnalysisPaceSummary({ data, s, leads }) {
   const g = goalMath(data, s, leads);
   const closed = Number(data.context.tcvMonth) || 0;
   const pace = data.sale.elapsedBusinessDays > 0 ? (closed / data.sale.elapsedBusinessDays) * data.sale.totalBusinessDays : 0;
-  const target = Number(data.sale.target) || 0;
+  // Tudo comparado com a META ATUAL (super meta quando a base já caiu).
+  const target = g.target;
   const paceVsTarget = target > 0 ? Math.round(((pace / target) - 1) * 100) : null;
   const monthLabel = new Date(`${data.month}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long" });
-  const leadsDelta = g.gap === 0 ? "meta do mês batida"
+  const metaLabel = g.superMode ? `Super meta ${g.chasePct}%` : "Meta do mês";
+  const alvo = g.superMode ? "super meta" : "meta";
+  const leadsDelta = g.gap === 0 ? (g.superMode || closed > g.baseTarget ? "super metas batidas" : "meta do mês batida")
     : g.newLeads == null ? `desdobramento travado em ${g.blockedBy}`
     : g.newLeads === 0 ? "a esteira aberta já cobre o gap"
     : `~${dailyFmt(g.daysLeft > 0 ? g.newLeads / g.daysLeft : null)}/dia útil, além da esteira`;
@@ -1097,8 +1112,8 @@ function AnalysisPaceSummary({ data, s, leads }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
         <StatTile label="Fechado no mês" value={window.fmt.money(closed)} delta={`${data.context.wonMonth} ganhos até dia ${Number(data.today.slice(8, 10))}`} />
         <StatTile label="Pace projetado" value={window.fmt.money(pace)} delta={`ritmo atual até ${data.sale.totalBusinessDays} dias úteis`} />
-        <StatTile label="Meta do mês" value={window.fmt.money(target)} delta={paceVsTarget == null ? "meta não configurada" : `pace ${Math.abs(paceVsTarget)}% ${paceVsTarget >= 0 ? "acima" : "abaixo"} da meta`} />
-        <StatTile label="Leads novos pra meta" value={g.gap === 0 ? "0" : wholeFmt(g.newLeads)} delta={leadsDelta} tone={g.gap === 0 || g.newLeads === 0 ? "pos" : "flat"} />
+        <StatTile label={metaLabel} value={window.fmt.money(target)} delta={paceVsTarget == null ? "meta não configurada" : `pace ${Math.abs(paceVsTarget)}% ${paceVsTarget >= 0 ? "acima" : "abaixo"} da ${alvo}`} />
+        <StatTile label={`Leads novos pra ${alvo}`} value={g.gap === 0 ? "0" : wholeFmt(g.newLeads)} delta={leadsDelta} tone={g.gap === 0 || g.newLeads === 0 ? "pos" : "flat"} />
         <StatTile label="Forecast ponderado" value={window.fmt.money(forecast)} delta="pipeline aberto × probabilidade real (30d)" />
       </div>
       <Card title={`Pace de venda · ${monthLabel}`} hint="vendido (contrato cheio) vs. meta, dia a dia">
@@ -1127,18 +1142,19 @@ function GoalReversePlan({ data, s, leads }) {
   }[data.context.averageEntrySource] || "sem base de ticket";
   const noteLabel = { fontSize: 9.5, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" };
 
+  const alvo = g.superMode ? `super meta ${g.chasePct}%` : "meta";
   if (g.gap === 0) {
     return (
-      <Card title="Engenharia reversa da meta" hint="meta do mês batida">
+      <Card title="Engenharia reversa da meta" hint={g.closed > g.baseTarget ? "todas as super metas batidas" : "meta do mês batida"}>
         <div style={{ padding: "14px 24px 20px", fontSize: 13.5, color: "var(--fg-2)" }}>
-          Fechado {money(g.closed)} de {money(g.target)}. Tudo que a esteira render agora é gordura no mês.
+          Fechado {money(g.closed)}{g.closed > g.baseTarget ? `, ${Math.round((g.closed / g.baseTarget) * 100)}% da meta base` : ` de ${money(g.baseTarget)}`}. Tudo que a esteira render agora é gordura no mês.
         </div>
       </Card>
     );
   }
 
   return (
-    <Card title="Engenharia reversa da meta" hint={`de trás pra frente: o que precisa acontecer pra fechar ${money(g.gap)} até o fim do mês`}>
+    <Card title="Engenharia reversa da meta" hint={`de trás pra frente: o que precisa acontecer pra fechar ${money(g.gap)} até a ${alvo}`}>
       <div style={{ padding: "16px 24px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "stretch", gap: 7, flexWrap: "wrap" }}>
           {g.investNeeded != null && (
@@ -1157,7 +1173,7 @@ function GoalReversePlan({ data, s, leads }) {
           <EquationArrow label={`${rateFmt(conversions.closeRateEffective?.value ?? conversions.closeRate.value)} fecham`} />
           <EquationStep value={g.wins} label="ganhos" />
           <EquationArrow label={`${g.ticket ? money(g.ticket) : "sem ticket"} cada`} />
-          <EquationStep value={g.gap} label="falta pra meta" money />
+          <EquationStep value={g.gap} label={`falta pra ${alvo}`} money />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
