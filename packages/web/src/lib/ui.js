@@ -41,7 +41,7 @@ export const GRADE_STYLE = {
 // leadGrade() (routes.marketing.js) — mudou aqui, muda lá.
 //        ≤100 100-500 500-2k 2-10k 10k+
 export const GRADE_GRID = [
-  ["E", "D", "D", "C", "C"], // 1 conta
+  ["E", "D", "C", "C", "C"], // 1 conta — 500-2k anúncios já é C (decisão do Leo, 24/07)
   ["D", "C", "C", "B", "B"], // 2 contas
   ["C", "B", "B", "A", "A"], // 3-5 contas
   ["B", "B", "A", "S", "S"], // 6-10 contas

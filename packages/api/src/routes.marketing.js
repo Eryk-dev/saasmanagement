@@ -136,7 +136,7 @@ const GRADE_LISTINGS = { "0-100": 0, "100-500": 1, "500-2000": 2, "2000-10000": 
 const GRADE_VOLUME = { "0-10": 0, "10-50": 1, "50-200": 2, "200+": 3 };
 //        ≤100 100-500 500-2k 2-10k 10k+
 const GRADE_GRID = [
-  ["E", "D", "D", "C", "C"], // 1 conta
+  ["E", "D", "C", "C", "C"], // 1 conta — 500-2k anúncios já é C (decisão do Leo, 24/07)
   ["D", "C", "C", "B", "B"], // 2 contas
   ["C", "B", "B", "A", "A"], // 3-5 contas
   ["B", "B", "A", "S", "S"], // 6-10 contas
