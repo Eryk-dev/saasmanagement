@@ -7,6 +7,7 @@ import { normalizeFunnel, kindOf, isPostSaleStage } from "./stages.js";
 import { createClosedSubscription } from "./billing.js";
 import { FLASHCARD_DEFAULTS } from "./routes.flashcards.js";
 import { mergeLeadQuestions } from "./forms.js";
+import { waMatchKey } from "./wa-store.js";
 
 // Garante o estágio "Integração" no funil do produto `leverads`, posicionado
 // entre "Negociação" e "Ganho". Integração é pós-venda: negócio já fechado,
@@ -606,6 +607,61 @@ export async function ensureWaPhoneId(repo) {
   return !product.waPhoneId;
 }
 
+// ── Funde conversas duplicadas do inbox (jul/2026) ──────────────────────────
+// O mesmo contato aparecia como DUAS conversas quando o número entrava em duas
+// grafias (com/sem o nono dígito, ver waMatchKey) — visto em prod com o Hilton.
+// O `recordMessage` já foi corrigido pra casar pela chave normalizada e não
+// abrir uma segunda thread, mas as duplicatas que JÁ existiam continuam na
+// lista; esta migração as consolida.
+//
+// Agrupa por waMatchKey; em cada grupo com mais de uma thread, elege a mais
+// recentemente atualizada como canônica, reaponta as mensagens das outras pra
+// ela, soma o não-lido, preenche os campos que faltarem (leadId/name/saas/
+// waPhoneId) e apaga as duplicatas. Idempotente e auto-curável: sem duplicatas
+// (o caso normal depois do primeiro merge) só faz um list de wa_threads e sai.
+export async function ensureWaThreadDedup(repo) {
+  const threads = await repo.list("wa_threads");
+  const byKey = new Map();
+  for (const t of threads) {
+    const k = waMatchKey(t?.id || t?.phone || "");
+    if (!k) continue;
+    if (!byKey.has(k)) byKey.set(k, []);
+    byKey.get(k).push(t);
+  }
+  const dupGroups = [...byKey.values()].filter((g) => g.length > 1);
+  if (!dupGroups.length) return 0;
+
+  const allMsgs = await repo.list("wa_messages");
+  let merged = 0;
+  for (const group of dupGroups) {
+    // Canônica = a conversa VIVA (última atualização). Empate no updatedAt cai
+    // no id, só pra ser determinístico entre boots.
+    group.sort((a, b) =>
+      String(b?.updatedAt || "").localeCompare(String(a?.updatedAt || "")) ||
+      String(a?.id || "").localeCompare(String(b?.id || "")));
+    const canon = group[0];
+    let unread = Number(canon.unread) || 0;
+    let leadId = canon.leadId ?? null;
+    let name = canon.name || "";
+    let saas = canon.saas || "";
+    let waPhoneId = canon.waPhoneId || "";
+    for (const dup of group.slice(1)) {
+      for (const m of allMsgs) {
+        if (m.thread === dup.id) await repo.update("wa_messages", m.id, { thread: canon.id });
+      }
+      unread += Number(dup.unread) || 0;
+      leadId = leadId ?? dup.leadId ?? null;
+      name = name || dup.name || "";
+      saas = saas || dup.saas || "";
+      waPhoneId = waPhoneId || dup.waPhoneId || "";
+      await repo.remove("wa_threads", dup.id);
+      merged++;
+    }
+    await repo.update("wa_threads", canon.id, { unread, leadId, name, saas, waPhoneId });
+  }
+  return merged;
+}
+
 // ── Ganho ANTES da Integração (jul/2026) ────────────────────────────────────
 // O funil colocava a entrega antes do fechamento (… Follow-up → Integração →
 // Acompanhamento → Ganho), então a venda só era reconhecida no fim da entrega e
@@ -955,6 +1011,12 @@ export async function runStartupMigrations(repo) {
     if (changed) console.log("[migration] WhatsApp: número do env carimbado como waPhoneId do leverads");
   } catch (err) {
     console.error("[migration] ensureWaPhoneId falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureWaThreadDedup(repo);
+    if (n) console.log(`[migration] WhatsApp: ${n} conversa(s) duplicada(s) fundida(s) no inbox`);
+  } catch (err) {
+    console.error("[migration] ensureWaThreadDedup falhou:", err?.message || err);
   }
   // wonAt ANTES da reordenação: o carimbo precisa existir antes que qualquer
   // card possa sair do Ganho, senão a venda perde a data.
