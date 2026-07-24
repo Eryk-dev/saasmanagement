@@ -127,6 +127,9 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     if (Number.isFinite(Number(body.customPriceCents)) && Number(body.customPriceCents) >= 0) state.customPriceCents = Number(body.customPriceCents);
     if (typeof body.validUntil === "string") state.validUntil = body.validUntil.slice(0, 20);
     if (typeof body.frozen === "boolean") state.frozen = body.frozen;
+    // Números do deck Starter (preço por clone): setados na tela zero do closer.
+    if (Number.isFinite(Number(body.cloneCount)) && Number(body.cloneCount) >= 0) state.cloneCount = Math.round(Number(body.cloneCount));
+    if (Number.isFinite(Number(body.newPerMonth)) && Number(body.newPerMonth) >= 0) state.newPerMonth = Math.round(Number(body.newPerMonth));
     // A FAIXA de contas é autoritativa: deriva os assentos do topo da faixa via o
     // seatsMap do snapshot (faixa → nº de contas usado na fórmula de preço/custo).
     const seatsMap = (p.calc && p.calc.seatsMap) || {};
