@@ -352,7 +352,7 @@ test("Funil do TIME: contato humano, agendamento, comparecimento, call→ganho e
   // Contatado = lead com TOQUE (whatsapp/call/…) — a mesma régua da Análise de
   // Pace (funnelCounts); um lead agendado teve toque antes.
   const mkBooked = async (id, stage, extra = {}) => {
-    await repo.create("leads", { id, saas: "leverads", stage, createdAt: now, ...extra });
+    await repo.create("leads", { id, saas: "leverads", stage, createdAt: now, callAt: now, ...extra });
     await repo.create("activities", { id: `tq_${id}`, saas: "leverads", lead: id, type: "whatsapp", author: "u_sdr", at: now });
     await repo.create("activities", { id: `st_${id}`, saas: "leverads", lead: id, type: "stage", author: "u_sdr", at: now, meta: { from: "Qualificando", to: "Call agendada" } });
   };
@@ -394,7 +394,7 @@ test("Funil do TIME: contato humano, agendamento, comparecimento, call→ganho e
 // atividade toda) — é o conserto que o Leo pediu (24/07).
 test("Funil do TIME: conta a atividade do período, não só a safra que entrou", async () => {
   const { app, repo } = await buildApp();
-  await repo.create("leads", { id: "old1", saas: "leverads", stage: "Ganho", amount: 900, createdAt: "2026-05-01T10:00:00.000Z", stageSince: now });
+  await repo.create("leads", { id: "old1", saas: "leverads", stage: "Ganho", amount: 900, createdAt: "2026-05-01T10:00:00.000Z", callAt: now, stageSince: now });
   await repo.create("activities", { id: "tq_old1", saas: "leverads", lead: "old1", type: "whatsapp", author: "u_sdr", at: now });
   await repo.create("activities", { id: "st_old1", saas: "leverads", lead: "old1", type: "stage", author: "u_sdr", at: now, meta: { from: "Qualificando", to: "Call agendada" } });
   await repo.create("activities", { id: "won_old1", saas: "leverads", lead: "old1", type: "stage", author: "u_clo", at: now, meta: { from: "Call agendada", to: "Ganho" } });
@@ -412,7 +412,7 @@ test("Funil do TIME: conta a atividade do período, não só a safra que entrou"
 test("Funil do TIME: histórico pré-cockpit (product.paceAdjust) soma ao funil da Visão geral", async () => {
   const { app, repo } = await buildApp();
   await repo.update("products", "leverads", { paceAdjust: { contacted: 80, booked: 10, shown: 10, won: 7 } });
-  await repo.create("leads", { id: "a1", saas: "leverads", stage: "Ganho", amount: 500, createdAt: now, stageSince: now });
+  await repo.create("leads", { id: "a1", saas: "leverads", stage: "Ganho", amount: 500, createdAt: now, callAt: now, stageSince: now });
   await repo.create("activities", { id: "tq_a1", saas: "leverads", lead: "a1", type: "whatsapp", author: "u_sdr", at: now });
   await repo.create("activities", { id: "st_a1", saas: "leverads", lead: "a1", type: "stage", author: "u_sdr", at: now, meta: { from: "Qualificando", to: "Call agendada" } });
   await repo.create("activities", { id: "wa1", saas: "leverads", lead: "a1", type: "stage", author: "u_clo", at: now, meta: { from: "Call agendada", to: "Ganho" } });
@@ -434,7 +434,7 @@ test("Funil do TIME: histórico pré-cockpit (product.paceAdjust) soma ao funil 
 test("Funil do TIME: janela recente (a partir do 1º registro) NÃO soma o pré-cockpit", async () => {
   const { app, repo } = await buildApp();
   await repo.update("products", "leverads", { paceAdjust: { contacted: 80, booked: 10, shown: 10, won: 7 } });
-  await repo.create("leads", { id: "a1", saas: "leverads", stage: "Ganho", amount: 500, createdAt: now, stageSince: now });
+  await repo.create("leads", { id: "a1", saas: "leverads", stage: "Ganho", amount: 500, createdAt: now, callAt: now, stageSince: now });
   await repo.create("activities", { id: "tq_a1", saas: "leverads", lead: "a1", type: "whatsapp", author: "u_sdr", at: now });
   await repo.create("activities", { id: "st_a1", saas: "leverads", lead: "a1", type: "stage", author: "u_sdr", at: now, meta: { from: "Qualificando", to: "Call agendada" } });
   await repo.create("activities", { id: "wa1", saas: "leverads", lead: "a1", type: "stage", author: "u_clo", at: now, meta: { from: "Call agendada", to: "Ganho" } });

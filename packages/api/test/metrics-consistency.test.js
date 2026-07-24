@@ -48,7 +48,7 @@ async function buildApp() {
   await repo.create("leads", { id: "won_legacy", saas: "leverads", closer: "leo", stage: "Ganho", amount: 3000, createdAt: "2026-07-03T12:00:00.000Z", stageSince: "2026-07-09T12:00:00.000Z" });
   await repo.create("leads", { id: "midnight", saas: "leverads", stage: "Novo lead", createdAt: "2026-07-10T02:30:00.000Z" });
   await repo.create("leads", { id: "ghost", saas: "leverads", internal: true, stage: "Novo lead", createdAt: "2026-07-05T12:00:00.000Z" });
-  await repo.create("leads", { id: "noshow", saas: "leverads", stage: "No show", createdAt: "2026-07-04T12:00:00.000Z" });
+  await repo.create("leads", { id: "noshow", saas: "leverads", stage: "No show", createdAt: "2026-07-04T12:00:00.000Z", callAt: "2026-07-05T14:00:00.000Z" });
   await repo.create("activities", { id: "b1", saas: "leverads", lead: "noshow", type: "stage", author: "leo", at: "2026-07-05T12:00:00.000Z", meta: { from: "Qualificando", to: "Call agendada" } });
 
   await repo.create("invoices", { id: "i1", saas: "leverads", customer: "c1", subscription: "s1", status: "paid", amount: 20000, paidAt: "2026-07-06T15:00:00.000Z" });

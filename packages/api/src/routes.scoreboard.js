@@ -395,10 +395,11 @@ export function registerScoreboardRoutes(app, repo) {
         if (inWin(a.at) && TOUCH_TYPES.has(a.type)) { teamContactedIds.add(l.id); break; }
       }
     }
-    // Calls agendadas = TODAS as calls que o time marcou na janela (bookedLeadsIn,
-    // a MESMA régua do SDR e da Análise de Pace), sem filtrar pela data de entrada
-    // do lead; realizadas/furo/ganho-das-calls saem do callOutcome dessas.
-    const teamBooked = bookedLeadsIn(leads);
+    // Calls agendadas = TODAS as calls do time com callAt na janela — a MESMA
+    // régua dos closers (que contam `mine.filter(inWin(callAt))`), então "Calls
+    // realizadas" do funil bate CRAVADO com a soma dos cards. Sem filtrar pela
+    // data de entrada do lead; realizadas/furo/ganho saem do callOutcome dessas.
+    const teamBooked = leads.filter((l) => inWin(l.callAt));
     const teamOutcome = callOutcome(teamBooked);
     const leadsNewN = leads.filter((l) => inWin(l.createdAt)).length + adjN("leads");
     const contactedN = teamContactedIds.size + adjN("contacted");
