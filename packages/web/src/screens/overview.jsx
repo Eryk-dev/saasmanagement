@@ -475,7 +475,7 @@ function StepRate({ pct, label, num, den, good, ok }) {
 function FunnelConversions({ team, pLabel }) {
   const cw = team ? tiers(team.goals?.callWinRate, 25) : null;
   return (
-    <Card title="Conversões do funil" hint={`${pLabel} · time inteiro · taxa colorida pela meta (Metas) ou benchmark`}>
+    <Card title="Conversões do funil" hint={`${pLabel} · time inteiro · o que ACONTECEU no período (não só quem entrou) · taxa colorida pela meta`}>
       <div style={{ padding: "6px 24px 18px" }}>
         {team == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
         {team != null && (
@@ -500,7 +500,7 @@ function FunnelConversions({ team, pLabel }) {
                 <StepRate pct={team.showRate} label="comparecimento" num={team.shown} den={team.callsBooked} {...tiers(team.goals?.showRate, 75)} />
                 <StepBox value={team.shown} label="Calls realizadas" sub={team.noShow > 0 ? `${int(team.noShow)} no-show` : null} />
                 <StepRate pct={team.closeRate} label="fechamento" num={team.wonFromCalls} den={team.shown} {...tiers(team.goals?.closeRate, 33)} />
-                <StepBox value={team.wonFromCalls} label="Ganhos da safra" sub="das calls do período" />
+                <StepBox value={team.wonFromCalls} label="Ganhos das calls" sub="das calls do período" />
               </div>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 18px", marginTop: 12, fontSize: 12.5 }}>

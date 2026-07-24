@@ -388,6 +388,27 @@ test("Funil do TIME: contato humano, agendamento, comparecimento, call→ganho e
   await app.close();
 });
 
+// A régua do funil é ATIVIDADE no período, não a coorte de entrada: um lead que
+// ENTROU antes da janela mas foi tocado / marcou call / fechou DENTRO dela conta
+// no funil (senão o topo ficava MENOR que a soma dos cards, que contam a
+// atividade toda) — é o conserto que o Leo pediu (24/07).
+test("Funil do TIME: conta a atividade do período, não só a safra que entrou", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("leads", { id: "old1", saas: "leverads", stage: "Ganho", amount: 900, createdAt: "2026-05-01T10:00:00.000Z", stageSince: now });
+  await repo.create("activities", { id: "tq_old1", saas: "leverads", lead: "old1", type: "whatsapp", author: "u_sdr", at: now });
+  await repo.create("activities", { id: "st_old1", saas: "leverads", lead: "old1", type: "stage", author: "u_sdr", at: now, meta: { from: "Qualificando", to: "Call agendada" } });
+  await repo.create("activities", { id: "won_old1", saas: "leverads", lead: "old1", type: "stage", author: "u_clo", at: now, meta: { from: "Call agendada", to: "Ganho" } });
+
+  const t = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json().team;
+  assert.equal(t.leadsNew, 0);      // entrou em maio: fora da janela de leads novos
+  assert.equal(t.contacted, 1);     // mas foi TOCADO na janela → conta na atividade
+  assert.equal(t.callsBooked, 1);   // marcou call na janela → conta
+  assert.equal(t.shown, 1);         // compareceu
+  assert.equal(t.wonFromCalls, 1);  // e fechou pela call
+  assert.equal(t.won, 1);           // ganho no período
+  await app.close();
+});
+
 test("Funil do TIME: histórico pré-cockpit (product.paceAdjust) soma ao funil da Visão geral", async () => {
   const { app, repo } = await buildApp();
   await repo.update("products", "leverads", { paceAdjust: { contacted: 80, booked: 10, shown: 10, won: 7 } });
