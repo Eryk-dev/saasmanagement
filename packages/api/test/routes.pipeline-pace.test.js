@@ -240,14 +240,16 @@ test("paceAdjust: histórico pré-cockpit soma ao funil, que encadeia (cada deno
   for (const i of [1, 2, 3]) await repo.create("activities", { id: `bk${i}`, saas: "leverads", lead: `l${i}`, type: "stage", meta: { from: "Novo lead", to: "Call agendada" }, at: "2026-07-07T12:00:00.000Z" });
 
   const r = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
-  assert.deepEqual(r.paceAdjust, { contacted: 80, booked: 10, shown: 10, won: 7 });
+  // `won` do ajuste é IGNORADO (ganho segue os registros — as vendas
+  // pré-cockpit têm wonAt real, somar de novo contaria em dobro).
+  assert.deepEqual(r.paceAdjust, { contacted: 80, booked: 10, shown: 10 });
   const c = r.conversions;
-  // leads 10 → contatados 8+80=88 → agendados 3+10=13 → compareceram 3+10=13 → ganho 1+7=8
+  // leads 10 → contatados 8+80=88 → agendados 3+10=13 → compareceram 3+10=13 → ganho 1 (sem ajuste)
   assert.deepEqual([c.contactRate.numerator, c.contactRate.denominator], [88, 10]);
   assert.deepEqual([c.bookingRate.numerator, c.bookingRate.denominator], [13, 88]);
   assert.deepEqual([c.showRate.numerator, c.showRate.denominator], [13, 13]);   // comparecimento sobre agendados
-  assert.deepEqual([c.closeRate.numerator, c.closeRate.denominator], [8, 13]);  // ganho sobre compareceram
-  assert.deepEqual([c.leadToWin.numerator, c.leadToWin.denominator], [8, 10]);  // ganho do funil sobre leads
+  assert.deepEqual([c.closeRate.numerator, c.closeRate.denominator], [1, 13]);  // ganho REGISTRADO sobre compareceram
+  assert.deepEqual([c.leadToWin.numerator, c.leadToWin.denominator], [1, 10]);  // ganho do funil sobre leads
   await app.close();
 });
 

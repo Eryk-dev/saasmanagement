@@ -445,12 +445,15 @@ test("Funil do TIME: histórico pré-cockpit (product.paceAdjust) soma ao funil 
 
   const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
   const t = sb.team;
-  assert.deepEqual(t.paceAdjust, { contacted: 80, booked: 10, shown: 10, won: 7 });
+  // `won` do ajuste é IGNORADO (ganho segue os registros, decisão do Leo 24/07:
+  // as vendas pré-cockpit têm wonAt real — somar de novo contaria em dobro).
+  assert.deepEqual(t.paceAdjust, { contacted: 80, booked: 10, shown: 10 });
   assert.equal(t.leadsNew, 1);        // 1 lead logado (sem ajuste de leads)
   assert.equal(t.contacted, 81);      // 1 + 80
   assert.equal(t.callsBooked, 11);    // 1 + 10
   assert.equal(t.shown, 11);          // 1 + 10
-  assert.equal(t.wonFromCalls, 8);    // 1 + 7
+  assert.equal(t.wonFromCalls, 1);    // SEM +7: só a safra registrada
+  assert.equal(t.won, 1);             // ganhos do período = registros = soma dos closers
   // O histórico mora nas PESSOAS (decisão do Leo, 24/07): os 80 contatos no
   // SDR, agendadas/comparecimentos nos closers — a soma fecha com o funil.
   assert.equal(sb.sdr.find((x) => x.user === "u_sdr").contacted, 81);           // 1 orgânico + 80

@@ -204,8 +204,17 @@ test("funil da Visão geral = soma dos cards (contato humano, automação fora, 
   assert.equal(c1.calls + c2.calls, sb.team.callsBooked);
   assert.equal(sb.team.shown, 12);                  // 2 reais + 10 do histórico
   assert.equal(c1.callsShown + c2.callsShown, sb.team.shown);
-  // Ganhos NÃO ganham rateio: seguem o que está preenchido no lead/cliente.
+  // Quem agendou (pelo dono do lead) + histórico = o tile; o card do SDR mostra a fatia dele.
+  assert.equal(sb.team.bookedBy.reduce((a, p) => a + p.leads, 0) + sb.team.paceAdjust.booked, sb.team.callsBooked);
+  assert.equal(sb.team.bookedBy.find((p) => p.user === "sdr1").leads, sdrCard.callsBooked);
+  // Ganhos NÃO ganham rateio nem ajuste: seguem o que está preenchido no
+  // lead/cliente (o won:7 do paceAdjust do fixture é IGNORADO de propósito).
+  assert.equal(sb.team.paceAdjust.won, undefined);
   assert.equal(sb.team.won, 1);
   assert.equal(c1.won + c2.won, sb.team.won);
+  assert.equal(sb.team.wonFromCalls, 1);            // safra sem +7
+  // O % de fechamento da régua usa os DOIS lados que a tela mostra (ganhos do
+  // período ÷ realizadas do período), então bate com os tiles ao redor.
+  assert.equal(sb.team.closeRatePeriod, 8.33);      // 1 ÷ 12
   await app.close();
 });

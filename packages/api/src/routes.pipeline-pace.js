@@ -215,19 +215,20 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   const callOut = callOutcome(product, bookedFromRecentLeads, actsOf); // { shown, noShow, won }
 
   // Ajuste de histórico PRÉ-COCKPIT (product.paceAdjust): dados REAIS de antes do
-  // registro no cockpit (call no telefone, contato por outro canal, venda antiga)
-  // somados às contagens do funil. Somas positivas em { leads, contacted, booked,
-  // shown, won }; zero/ausente = funil só do que o sistema gravou. O funil
-  // ENCADEIA — cada denominador é o passo anterior (contato → agendamento →
-  // comparecimento → call→ganho) — então o histórico entra limpo.
+  // registro no cockpit (call no telefone, contato por outro canal) somados às
+  // contagens do funil. Somas positivas em { leads, contacted, booked, shown };
+  // zero/ausente = funil só do que o sistema gravou. GANHO nunca usa ajuste
+  // (decisão do Leo, 24/07): as vendas pré-cockpit foram registradas com wonAt
+  // real (#293), então um "+won" contaria em dobro. O funil ENCADEIA — cada
+  // denominador é o passo anterior — então o histórico entra limpo.
   const adj = product.paceAdjust && typeof product.paceAdjust === "object" ? product.paceAdjust : {};
   const adjN = (k) => { const n = Math.floor(Number(adj[k])); return Number.isFinite(n) && n > 0 ? n : 0; };
-  const paceAdjust = ["leads", "contacted", "booked", "shown", "won"].reduce((o, k) => (adjN(k) ? { ...o, [k]: adjN(k) } : o), null);
+  const paceAdjust = ["leads", "contacted", "booked", "shown"].reduce((o, k) => (adjN(k) ? { ...o, [k]: adjN(k) } : o), null);
   const nLeads = recentLeads.length + adjN("leads");
   const nContacted = contacted.length + adjN("contacted");
   const nBooked = bookedFromRecentLeads.length + adjN("booked");
   const nShown = callOut.shown + adjN("shown");
-  const nWon = callOut.won + adjN("won");
+  const nWon = callOut.won;
   const conversions = {
     contactRate: resolvedRate(nContacted, nLeads, goalRate(goals, "sdr", "contactRate"), RATE_BENCHMARKS.contactRate),
     bookingRate: resolvedRate(nBooked, nContacted, goalRate(goals, "sdr", "bookingRate"), RATE_BENCHMARKS.bookingRate),

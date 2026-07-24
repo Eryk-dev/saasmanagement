@@ -185,8 +185,12 @@ export function registerScoreboardRoutes(app, repo) {
     const adjCutoff = product.paceAdjust?.before || activityEpoch;
     const teamAdjust = product.paceAdjust && (!adjCutoff || since < adjCutoff) ? product.paceAdjust : null;
     const adjN = (k) => (teamAdjust && Number(teamAdjust[k]) > 0 ? Math.round(Number(teamAdjust[k])) : 0);
+    // GANHO nunca usa ajuste (decisão do Leo, 24/07: "o ganho segue pelo que
+    // foi preenchido no cliente") — as vendas pré-cockpit foram registradas com
+    // wonAt real (#293), então somar um "+won" contaria em dobro. O campo fica
+    // fora da lista mesmo que exista no product.paceAdjust.
     const adjApplied = teamAdjust
-      ? ["leads", "contacted", "booked", "shown", "won"].reduce((o, k) => (adjN(k) ? { ...o, [k]: adjN(k) } : o), null)
+      ? ["leads", "contacted", "booked", "shown"].reduce((o, k) => (adjN(k) ? { ...o, [k]: adjN(k) } : o), null)
       : null;
     // O histórico mora nas PESSOAS (decisão do Leo, 24/07): os contatos antigos
     // foram trabalho do SDR e as calls dos closers, então o ajuste soma nos
@@ -427,11 +431,19 @@ export function registerScoreboardRoutes(app, repo) {
     // data de entrada do lead; realizadas/furo/ganho saem do callOutcome dessas.
     const teamBooked = leads.filter((l) => inWin(l.callAt));
     const teamOutcome = callOutcome(teamBooked);
+    // Quem agendou: as calls pelo DONO do lead (o SDR que prospecta) — é a
+    // abertura do tile, e o card do SDR conta a MESMA fatia. O histórico
+    // pré-cockpit das agendadas mora nos closers (banner + cards deles).
+    const bookedByOwner = new Map();
+    for (const l of teamBooked) bookedByOwner.set(l.owner || "", (bookedByOwner.get(l.owner || "") || 0) + 1);
+    const bookedBy = [...bookedByOwner.entries()]
+      .map(([user, n]) => ({ user, name: user ? nameOf(user) : "sem dono", leads: n }))
+      .sort((a, b) => b.leads - a.leads);
     const leadsNewN = leads.filter((l) => inWin(l.createdAt)).length + adjN("leads");
     const contactedN = contact.leadIds.size + adjN("contacted");
     const bookedN = teamBooked.length + adjN("booked");
     const shownN = teamOutcome.shown + adjN("shown");
-    const wonFromCallsN = teamOutcome.won + adjN("won");
+    const wonFromCallsN = teamOutcome.won; // SEM ajuste: ganho segue os registros
     const wonN = teamWonLeads.length;
     const team = {
       leadsNew: leadsNewN,
@@ -445,18 +457,21 @@ export function registerScoreboardRoutes(app, repo) {
       noShow: teamOutcome.noShow,
       // Comparecimento sobre as AGENDADAS (funil encadeado): dos que marcaram, quantos apareceram.
       showRate: bookedN > 0 ? round2((shownN / bookedN) * 100) : null,
-      wonFromCalls: wonFromCallsN, // ganhos das calls do período (callOutcome dessas + histórico)
-      // Call agendada → ganho (sobre agendadas) e call REALIZADA → ganho (sobre
-      // compareceram): o gap denuncia perda por não-comparecimento.
+      wonFromCalls: wonFromCallsN, // ganhos DA SAFRA (das calls deste período, quantas já viraram venda)
+      // Call agendada → ganho (safra sobre agendadas) e FECHAMENTO DO PERÍODO
+      // (ganhos do período ÷ calls realizadas no período — os DOIS lados são a
+      // soma dos cards, então o % da régua bate com os tiles ao redor).
       callWinRate: bookedN > 0 ? round2((wonFromCallsN / bookedN) * 100) : null,
-      closeRate: shownN > 0 ? round2((wonFromCallsN / shownN) * 100) : null,
+      closeRate: shownN > 0 ? round2((wonFromCallsN / shownN) * 100) : null, // safra (informativo)
+      closeRatePeriod: shownN > 0 ? round2((wonN / shownN) * 100) : null,
       won: wonN,             // ganhos TOTAIS no período (por transição) = soma dos closers
       revenue: round2(teamWonLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0)),
       // Lead → ganho: ganhos no período ÷ leads que entraram no período.
       leadToWin: leadsNewN > 0 ? round2((wonN / leadsNewN) * 100) : null,
-      paceAdjust: adjApplied, // histórico pré-cockpit somado (null quando não há)
+      paceAdjust: adjApplied, // histórico pré-cockpit somado (null quando não há; nunca tem won)
       contactedBy,            // quem fez o 1º contato humano de cada lead (soma = total do tile)
       automationReached: contact.automationReached, // leads que a automação alcançou (fora do total)
+      bookedBy,               // calls do período pelo DONO do lead (o card do SDR mostra a fatia dele)
       // Metas de TAXA por papel (role-scope) pra colorir a régua na UI.
       goals: {
         bookingRate: goalFor("", "sdr", "bookingRate"),
