@@ -318,11 +318,15 @@ export function buildCustomProposal(lead, spec, { theme = {} } = {}) {
 // Provider nativo do dispatcher de POST /api/leads/:id/proposal. Mesmo contrato
 // best-effort do runProposal do Levercopy: nunca lança; { ok, skipped?, error? }.
 export async function runNativeProposal(repo, lead, opts = {}) {
-  const { auto = false, force = false, baseUrl = "" } = opts;
+  const { auto = false, force = false, template: templateId = "", baseUrl = "" } = opts;
   if (auto && !force && lead.proposta_id) return { ok: false, skipped: "already_generated", lead };
 
   const templates = await repo.list("proposal_templates");
-  const template = templates.find((t) => t.saas === lead.saas && t.status === "published");
+  // `templateId` (opcional) permite o closer escolher um deck alternativo (ex.:
+  // Starter pra cliente D/E), inclusive rascunho; sem ele vai o publicado padrão.
+  const template = templateId
+    ? templates.find((t) => t.id === templateId && (!t.saas || t.saas === lead.saas))
+    : templates.find((t) => t.saas === lead.saas && t.status === "published");
   if (!template) return { ok: false, skipped: "no_template" };
 
   const data = splitLeadData(lead);

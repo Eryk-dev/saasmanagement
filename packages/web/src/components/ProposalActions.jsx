@@ -12,6 +12,29 @@ const { useState, useEffect } = React;
 const accentBtnStyle = { ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" };
 const linkBtnStyle = { ...accentBtnStyle, textDecoration: "none" };
 
+// Templates de proposta do produto (pra escolher o deck ao gerar: Padrão × Starter).
+// Cache por saas — o ProposalActions renderiza um por lead no Pipeline, não dá pra
+// buscar a cada card. `selectable` marca os decks alternativos (o publicado é o padrão);
+// backups (rascunho sem a flag) ficam de fora.
+const _tplCache = {};
+export function useProposalTemplates(saas) {
+  const [list, setList] = useState(() => _tplCache[saas] || null);
+  useEffect(() => {
+    if (!saas) return;
+    if (_tplCache[saas]) { setList(_tplCache[saas]); return; }
+    let alive = true;
+    api.list("proposal_templates").then((rows) => {
+      const l = (rows || []).filter((t) => !t.saas || t.saas === saas);
+      _tplCache[saas] = l; if (alive) setList(l);
+    }).catch(() => { _tplCache[saas] = []; if (alive) setList([]); });
+    return () => { alive = false; };
+  }, [saas]);
+  const all = list || _tplCache[saas] || [];
+  // Padrão (publicado) + alternativos marcados; ordena padrão primeiro.
+  return all.filter((t) => t.status === "published" || t.selectable);
+}
+const selectStyle = { height: 24, padding: "0 6px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11 };
+
 // Histórico de aberturas da proposta (só no drawer, showViews): busca o registro
 // da proposta e mostra QUEM abriu (cliente × time), quando e de qual dispositivo.
 function ProposalViews({ proposalId }) {
@@ -51,11 +74,14 @@ function ProposalActions({ l, showViews = false }) {
   const isLevercopy = (!!cfg?.enabled && l.saas === cfg.saas) || hasNative;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(false);
+  const templates = useProposalTemplates(l.saas);
+  const alt = templates.filter((t) => t.selectable); // decks alternativos (ex.: Starter)
+  const [tpl, setTpl] = useState(""); // "" = padrão (deck publicado)
 
   async function gen(force) {
     setBusy(true); setErr(false);
     try {
-      const r = await api.generateProposal(l.id, force ? { force: true } : {});
+      const r = await api.generateProposal(l.id, { force: !!force, template: tpl });
       // Falha (fail-open: 200 com ok:false). Nada mudou no servidor, então NÃO
       // damos refresh — o refresh remonta a tela (key=dataVersion) e apagaria o
       // estado de erro. Mantemos err/busy locais pra mostrar "não gerada" + retry.
@@ -86,6 +112,12 @@ function ProposalActions({ l, showViews = false }) {
   if (isLevercopy) {
     return (
       <span style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+        {alt.length > 0 && (
+          <select value={tpl} onChange={(e) => setTpl(e.target.value)} disabled={busy} title="Qual apresentação gerar" style={selectStyle}>
+            <option value="">Padrão</option>
+            {alt.map((t) => <option key={t.id} value={t.id}>{t.pickLabel || t.name || t.id}</option>)}
+          </select>
+        )}
         <button onClick={() => gen(false)} disabled={busy} style={accentBtnStyle}><span style={{ fontSize: 11 }}>{busy ? "gerando…" : err ? "tentar de novo" : "gerar proposta"}</span></button>
         {err && <span className="mono" style={{ fontSize: 9, color: "var(--neg)" }}>proposta não gerada</span>}
       </span>

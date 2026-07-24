@@ -136,8 +136,8 @@ export const api = {
   moveLead: (id, stage) => req("PATCH", `/api/leads/${id}`, { stage }),
   // Cockpit → Levercopy: gera/re-gera a proposta de um lead. `auto` = gatilho
   // automático (best-effort, respeita idempotência); `force` = re-gerar manual.
-  generateProposal: (id, { auto = false, force = false } = {}) => {
-    const q = [auto && "auto=1", force && "force=1"].filter(Boolean).join("&");
+  generateProposal: (id, { auto = false, force = false, template = "" } = {}) => {
+    const q = [auto && "auto=1", force && "force=1", template && `template=${encodeURIComponent(template)}`].filter(Boolean).join("&");
     return req("POST", `/api/leads/${id}/proposal${q ? `?${q}` : ""}`);
   },
   // Ofertas do deck do lead (a principal + as secretas da escada) e o link
