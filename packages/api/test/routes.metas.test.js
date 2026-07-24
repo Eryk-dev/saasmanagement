@@ -203,3 +203,42 @@ test("agenda de meses: GET lista os próximos e o PUT grava, apaga e ignora lixo
   assert.equal(limpo.company.months[1].target, null);
   assert.equal(limpo.company.months[1].effective, 120000);
 });
+
+// ── Card Pace da tela Metas persegue a META ATUAL (super meta) ──────────────
+const { deriveGoalsFromPace } = await import("../src/routes.metas.js");
+
+const paceStub = (over = {}) => ({
+  sale: { target: 120000, chaseTarget: 120000, chasePct: 100, ...over.sale },
+  context: { averageEntry: 6000, averageEntrySource: "won_tcv", ...over.context },
+  conversions: {
+    closeRateEffective: { value: 0.5, source: "history" },
+    showRate: { value: 0.8, source: "history" },
+    bookingRate: { value: 0.5, source: "history" },
+    contactRate: { value: 0.8, source: "history" },
+  },
+});
+
+test("derivação abaixo de 100%: persegue a base (nada muda)", () => {
+  const d = deriveGoalsFromPace(paceStub());
+  assert.equal(d.target, 120000);
+  assert.equal(d.superMode, false);
+  assert.equal(d.won, 20, "120k ÷ 6k ticket = 20 ganhos");
+});
+
+test("batida a base: a cadeia desce sobre a super meta que o pace persegue", () => {
+  // O pace já re-ancorou em 240k (200%); a tela Metas desdobra ESSE teto.
+  const d = deriveGoalsFromPace(paceStub({ sale: { target: 120000, chaseTarget: 240000, chasePct: 200 } }));
+  assert.equal(d.target, 240000);
+  assert.equal(d.base, 120000);
+  assert.equal(d.superMode, true);
+  assert.equal(d.chasePct, 200);
+  assert.equal(d.won, 40, "240k ÷ 6k = 40 ganhos (o dobro da base)");
+  assert.equal(d.goals.find((g) => g.metric === "revenue").target, 240000);
+  assert.equal(d.goals.find((g) => g.metric === "won").target, 40);
+});
+
+test("passado de 200% (chaseTarget null): cai na base, não há teto acima", () => {
+  const d = deriveGoalsFromPace(paceStub({ sale: { target: 120000, chaseTarget: null, chasePct: null } }));
+  assert.equal(d.target, 120000);
+  assert.equal(d.superMode, false);
+});

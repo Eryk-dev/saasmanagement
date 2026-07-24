@@ -61,7 +61,10 @@ function chainRows(d, people = {}) {
     return n > 1 ? `${int(total / n)} por pessoa · ${n} na vaga` : null;
   };
   return [
-    { label: "Meta de venda do mês", value: money(d.target) },
+    // Batida a base, o pace persegue a próxima super meta e a cadeia inteira
+    // desce por cima dela — o rótulo diz qual teto está sendo desdobrado.
+    { label: d.superMode ? `Super meta ${d.chasePct}% do mês` : "Meta de venda do mês",
+      note: d.superMode ? `meta base ${money(d.base)} já batida` : "", value: money(d.target) },
     { label: "Ticket médio", note: TICKET_SOURCE[d.ticketSource] || "", value: `÷ ${money(d.ticket)}` },
     { label: "Ganhos no mês", note: share(d.won, "closer"), value: int(d.won) },
     { label: "Conversão da call", note: RATE_SOURCE[d.rates.closeRateSource] || "", value: `÷ ${pct(d.rates.closeRate)}` },
@@ -249,7 +252,9 @@ function MetasScreen() {
               <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: 24 }}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
                   <span style={{ fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em" }}>Pace</span>
-                  <span className="dim" style={{ fontSize: 12 }}>o que a meta do mês exige de cada etapa</span>
+                  <span className="dim" style={{ fontSize: 12 }}>
+                    {data.derived.superMode ? `o que a super meta ${data.derived.chasePct}% exige de cada etapa` : "o que a meta do mês exige de cada etapa"}
+                  </span>
                   {!data.derived.blockedBy && (
                     <button onClick={applyDerived} style={{ marginLeft: "auto", height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>
                       derivar metas do pace
@@ -300,7 +305,7 @@ function MetasScreen() {
                               do mês pela cadeia do pace, e reajusta sozinho
                               quando a meta muda (inclusive na virada do mês). */}
                           {roleVals[rk(r.role, m.metric)] === "" && m.derived != null && (
-                            <span style={{ display: "block", fontSize: 11.5, color: "var(--accent)" }}>seguindo a meta do mês: {Math.round(m.derived)}</span>
+                            <span style={{ display: "block", fontSize: 11.5, color: "var(--accent)" }}>seguindo {data.derived?.superMode ? `a super meta ${data.derived.chasePct}%` : "a meta do mês"}: {Math.round(m.derived)}</span>
                           )}
                           {/* Número digitado VENCE (é decisão de gestão), mas
                               quando ele briga com a meta do mês a tela avisa em
@@ -308,7 +313,7 @@ function MetasScreen() {
                           {divergente(roleVals[rk(r.role, m.metric)], m.derived) && (
                             <button type="button" onClick={() => setRole(r.role, m.metric, String(Math.round(m.derived)))}
                               style={{ display: "block", fontSize: 11.5, color: "var(--warn)", textAlign: "left", fontWeight: 600 }}>
-                              a meta do mês pede {Math.round(m.derived)} · usar esse
+                              {data.derived?.superMode ? `a super meta ${data.derived.chasePct}%` : "a meta do mês"} pede {Math.round(m.derived)} · usar esse
                             </button>
                           )}
                         </span>
