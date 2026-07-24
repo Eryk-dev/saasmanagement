@@ -552,26 +552,35 @@ function FunnelConversions({ team, pLabel }) {
                 <StepBox value={team.callsBooked} label="Calls agendadas" />
                 <StepRate pct={team.showRate} label="comparecimento" num={team.shown} den={team.callsBooked} {...tiers(team.goals?.showRate, 75)} />
                 <StepBox value={team.shown} label="Calls realizadas" sub={team.noShow > 0 ? `${int(team.noShow)} no-show` : null} />
-                <StepRate pct={team.closeRate} label="fechamento" num={team.wonFromCalls} den={team.shown} {...tiers(team.goals?.closeRate, 33)} />
-                <StepBox value={team.wonFromCalls} label="Ganhos das calls" sub="das calls do período" />
+                <StepRate pct={team.closeRatePeriod} label="fechamento" num={team.won} den={team.shown} {...tiers(team.goals?.closeRate, 33)} />
+                {/* O fim do funil = ganhos NO PERÍODO (a régua oficial, soma
+                    exata dos closers) — a safra ("das calls deste período,
+                    quantas já fecharam") vive na linha de baixo. */}
+                <StepBox value={team.won} label="Ganhos no período" sub={team.revenue > 0 ? money(team.revenue) : "= soma dos closers"} />
               </div>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 18px", marginTop: 12, fontSize: 12.5 }}>
-              <span title="da safra de calls agendadas no período, quantas já fecharam (inclui no-show no denominador)">
+              <span title="da safra de calls agendadas no período, quantas JÁ viraram venda (safra ainda aberta: call recente não teve tempo de fechar; inclui no-show no denominador)">
                 <span style={{ color: "var(--fg-3)" }}>Call agendada → ganho </span>
                 <b className="tnum" style={{ color: team.callWinRate == null ? "var(--fg-4)" : rateTone(team.callWinRate, cw.good, cw.ok) }}>
                   {team.callWinRate == null ? "—" : pctStr(team.callWinRate)}
                 </b>
+                <span style={{ color: "var(--fg-4)" }}> · {int(team.wonFromCalls)} das calls do período</span>
               </span>
               <span title="ganhos do período ÷ leads criados no período (as safras se misturam: o ganho de hoje costuma ser lead de semanas atrás)">
                 <span style={{ color: "var(--fg-3)" }}>Lead → ganho </span>
                 <b className="tnum">{team.leadToWin == null ? "—" : pctStr(team.leadToWin)}</b>
               </span>
-              <span title="fechamentos no período (transição pra integração/ganho), independente de quando a call foi marcada">
-                <span style={{ color: "var(--fg-3)" }}>Ganhos no período </span>
-                <b className="tnum">{int(team.won)}</b>
-                {team.revenue > 0 && <span style={{ color: "var(--fg-4)" }}> · {money(team.revenue)}</span>}
-              </span>
+              {/* Quem agendou: calls do tile pelo DONO do lead — a MESMA fatia
+                  que o card do SDR mostra; o histórico pré-cockpit das
+                  agendadas está nas calls dos closers (banner). */}
+              {team.bookedBy?.length > 0 && (
+                <span title="calls com data na janela, pelo dono do lead (quem prospecta) — o card do SDR mostra a fatia dele. O histórico pré-cockpit (+agendadas) está somado nos closers.">
+                  <span style={{ color: "var(--fg-3)" }}>Quem agendou </span>
+                  <b className="tnum">{team.bookedBy.map((p) => `${p.name} ${int(p.leads)}`).join(" · ")}</b>
+                  {team.paceAdjust?.booked > 0 && <span style={{ color: "var(--fg-4)" }}> · +{int(team.paceAdjust.booked)} histórico</span>}
+                </span>
+              )}
               {/* A abertura dos Contatados (régua única, 24/07): contato = ação
                   HUMANA, cada lead no autor do 1º contato do período, e o
                   histórico pré-cockpit já somado nas pessoas — a soma daqui
