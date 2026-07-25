@@ -197,19 +197,28 @@ test("funil da Visão geral = soma dos cards (contato humano, automação fora, 
   assert.equal(sb.team.automationReached, 1);       // C, alcançado só pela automação
   const sdrCard = sb.sdr.find((p) => p.user === "sdr1");
   assert.equal(sdrCard.contacted, 83, "card do SDR = o topo do funil inteiro");
+  // Taxa de contato = COBERTURA da safra (dos que ENTRARAM, quantos alcançou),
+  // NUNCA passa de 100% — é o que o rótulo promete. Aqui 4 entraram (A,B,C,D),
+  // 3 tiveram contato humano (C só automação) = 75%. NÃO é 83/4 (workload).
+  assert.equal(sb.team.contactRate, 75);
+  assert.equal(sdrCard.contactRate, sb.team.contactRate, "SDR único = cobertura do funil");
+  assert.ok(sdrCard.contactRate <= 100, "taxa de contato nunca passa de 100%");
 
-  // Calls agendadas/realizadas: funil = soma dos closers (10 e 10 do histórico, 5/5 pra cada).
   const c1 = sb.closer.find((p) => p.user === "clo1");
   const c2 = sb.closer.find((p) => p.user === "clo2");
+  // Calls AGENDADAS são do SDR (agenda = prospecção): o card do SDR = o tile do
+  // funil, com o histórico das agendadas (10). Os closers contam só as calls
+  // que aconteceram COM eles (denominador real do win rate, sem histórico).
   assert.equal(sb.team.callsBooked, 13);            // 3 reais + 10 do histórico
-  assert.equal(c1.calls + c2.calls, sb.team.callsBooked);
+  assert.equal(sdrCard.callsBooked, sb.team.callsBooked, "SDR único = topo do funil também em agendadas");
+  assert.equal(c1.calls + c2.calls, 3, "closers só as agendadas reais deles (sem histórico)");
+  // Calls REALIZADAS: funil = soma dos closers (o histórico de realizadas, 10,
+  // dividido 5/5 entre eles).
   assert.equal(sb.team.shown, 12);                  // 2 reais + 10 do histórico
   assert.equal(c1.callsShown + c2.callsShown, sb.team.shown);
-  // Quem agendou (pelo dono do lead; SEM dono credita no SDR único) + histórico
-  // = o tile; o card do SDR conta a mesma fatia (B e D não têm owner → SDR).
+  // Quem agendou (pelo dono do lead; SEM dono credita no SDR único) + histórico = o tile.
   assert.deepEqual(sb.team.bookedBy, [{ user: "sdr1", name: "SDR", leads: 3 }]);
   assert.equal(sb.team.bookedBy.reduce((a, p) => a + p.leads, 0) + sb.team.paceAdjust.booked, sb.team.callsBooked);
-  assert.equal(sb.team.bookedBy.find((p) => p.user === "sdr1").leads, sdrCard.callsBooked);
   // Comparecimento do SDR único = o MESMO número do funil (das agendadas,
   // quantas aconteceram, com histórico) — antes o card dividia pelas resolvidas.
   assert.equal(sdrCard.showRate, sb.team.showRate);
