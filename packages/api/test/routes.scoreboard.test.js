@@ -491,10 +491,10 @@ test("Funil do TIME: histórico pré-cockpit (product.paceAdjust) soma ao funil 
   assert.deepEqual(t.contactedBy, [{ user: "u_sdr", name: "Sara SDR", leads: 81 }]);
   const clo = sb.closer.find((x) => x.user === "u_clo");
   assert.equal(clo.calls, 0);         // agendadas são do SDR; o closer só as que aconteceram com ele
-  assert.equal(clo.callsShown, 0);    // realizadas do closer = só as REAIS dele (histórico fica no tile do funil)
-  // O histórico de realizadas (10) vive só no TILE do funil (team.shown), não
-  // nos cards — senão a Call→ganho do closer não bateria (calls sem ganho).
-  assert.equal(t.shown, 11);          // 1 real + 10 histórico (tile do funil)
+  // "Calls realizadas" do card MOSTRA o histórico (Leo quer manter o número);
+  // a Call→ganho divide por ele, então o card fecha e o funil = soma deles.
+  assert.equal(clo.callsShown, 10);   // 0 real + 10 do histórico de REALIZADAS
+  assert.equal(t.shown, 11);          // 1 real + 10 histórico = soma dos closers
   await app.close();
 });
 

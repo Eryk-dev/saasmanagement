@@ -209,13 +209,14 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       for (const id of [...ids].sort()) map.set(id, base + (rest-- > 0 ? 1 : 0));
       return map;
     };
-    // Histórico da AGENDA (booked/shown) é da prospecção → soma no SDR, junto do
-    // contato (decisão do Leo, 25/07: o card do SDR = topo do funil, incluindo
-    // as agendadas históricas). Os closers contam só o que aconteceu de verdade
-    // com eles (calls realizadas históricas seguem no bloco `shown` do funil,
-    // não infla o win rate de ninguém).
+    // Histórico da AGENDA: contato e agendadas somam no SDR (o card dele = topo
+    // do funil). As REALIZADAS históricas voltam pros closers (Leo, 25/07:
+    // "mantém as calls realizadas e ajusta só a %") — o número exibido no card
+    // fica cheio e a Call→ganho passa a dividir por ELE (won ÷ realizadas
+    // mostradas), então o card fecha e o funil = soma dos closers.
     const contactedHist = histShare(adjN("contacted"), withRole("sdr"));
     const bookedHist = histShare(adjN("booked"), withRole("sdr"));
+    const shownHist = histShare(adjN("shown"), withRole("closer"));
     // O histórico de REALIZADAS (shown) NÃO entra nos cards dos closers: aquelas
     // calls pré-cockpit não têm ganho registrado, então inflariam "Calls
     // realizadas" sem inflar "Ganhos" e a Call→ganho do card não bateria
@@ -348,13 +349,13 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       // Calls agendadas (pela data da call) e quantas ACONTECERAM (compareceram):
       // avançou pra frente OU perdeu por outro motivo; no-show não conta. As
       // AGENDADAS (agenda) são do SDR — o closer conta só as que aconteceram com
-      // ele (`calls` = orgânico dele). "Calls realizadas" e a Call→ganho usam a
-      // MESMA base (só o real dele), pra o card não se contradizer.
+      // ele (`calls` = orgânico dele). "Calls realizadas" MOSTRA o real + a parte
+      // dele do histórico (o número que o Leo quer manter), e a Call→ganho
+      // divide por ESSE mesmo número, então o card fecha.
       const callLeads = mine.filter((l) => inWin(l.callAt));
       const calls = callLeads.length;
       // Compareceu/furo pela MESMA régua da safra (callOutcome do metrics-core).
-      const callsShown = callOutcome(callLeads).shown;
-      const shownOrganic = callsShown; // conversaoCall e o count usam a MESMA base
+      const callsShown = callOutcome(callLeads).shown + (shownHist.get(uid) || 0);
       // GANHO do closer = venda na janela pela régua oficial (isWonLead +
       // wonAt, metrics-core). O valor do negócio é lançado no fechamento
       // (ver stage-move/DestinoSection).
@@ -369,11 +370,11 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       const reasonCount = {};
       for (const l of lost) { const r = l.lostReason || "nao_informado"; reasonCount[r] = (reasonCount[r] || 0) + 1; }
       const lossReasons = Object.entries(reasonCount).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
-      // Conversão na call = ganhos ÷ calls que ACONTECERAM (habilidade de fechar,
-      // limpa de no-show). Win rate = ganhos ÷ calls AGENDADAS (inclui no-show):
-      // o gap entre as duas denuncia perda por não-comparecimento. Sempre sobre
-      // o ORGÂNICO — o histórico só soma volume.
-      const conversao = shownOrganic > 0 ? round2((wonN / shownOrganic) * 100) : null;
+      // Conversão na call = ganhos ÷ calls REALIZADAS mostradas no card (Leo,
+      // 25/07: a % tem que bater com won ÷ realizadas do próprio card). Divide
+      // pelo MESMO callsShown que aparece — inclui o histórico, que não tem
+      // ganho, então a taxa reflete o recorde real sobre TODAS as calls feitas.
+      const conversao = callsShown > 0 ? round2((wonN / callsShown) * 100) : null;
       return {
         user: uid, name: nameOf(uid),
         targets: personTargets(uid, "closer", {
