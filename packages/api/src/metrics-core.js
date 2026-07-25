@@ -113,22 +113,35 @@ export function bookedLeadsIn(product, leads, actsOf, inWin) {
   return [...ids].map((id) => byId.get(id)).filter(Boolean);
 }
 
-// Resolução da safra de calls: compareceu = avançou pra frente OU perdeu por
-// OUTRO motivo (a call aconteceu); furo = perda "nao_compareceu" OU parado na
-// ETAPA de No show (o fluxo manda o furão pra lá, não pra Perdido); ainda em
-// Call agendada = não resolvido. won = vendeu (isWonLead, a régua oficial).
-export function callOutcome(product, list, actsOf) {
-  let shown = 0, noShow = 0, won = 0;
+// Resolução da safra de calls, com a data de hoje pra separar "não veio" de
+// "ainda vai acontecer" (Leo, 25/07 — o gap agendadas−realizadas não é tudo
+// no-show: parte é call marcada pro futuro):
+//   shown   = a call ACONTECEU: avançou pra frente OU perdeu por OUTRO motivo.
+//   noShow  = não veio: perda "nao_compareceu", etapa de No show, OU call já
+//             VENCIDA (callAt ≤ hoje) parada sem avançar (moveu pra Nutrição
+//             etc. sem virar call real). É o "não compareceram" do funil.
+//   pending = call marcada pro FUTURO (callAt > hoje), ainda não aconteceu —
+//             fora da conta de comparecimento (não é furo, é agenda).
+// Assim agendadas = shown + noShow + pending, e comparecimento = shown ÷
+// (shown+noShow) mede só o que já deveria ter acontecido.
+// `today` (dia do negócio "YYYY-MM-DD"); sem ele, tudo que não aconteceu conta
+// como noShow (comportamento antigo — coorte histórica não tem call futura).
+export function callOutcome(product, list, actsOf, today = null) {
+  let shown = 0, noShow = 0, pending = 0, won = 0;
   for (const l of list) {
     const isW = isWonLead(product, l);
     const lost = isLoss(product, l.stage);
     if (isW) won++;
     const advanced = isW || FORWARD_KINDS.has(kindOf(product, l.stage))
       || (actsOf(l.id) || []).some((a) => a.type === "stage" && FORWARD_KINDS.has(kindOf(product, a.meta?.to)));
-    if ((lost && l.lostReason === "nao_compareceu") || (!isW && isNoShowStage(l.stage))) noShow++;
-    else if (advanced || lost) shown++;
+    if (advanced || (lost && l.lostReason !== "nao_compareceu")) { shown++; continue; }
+    if ((lost && l.lostReason === "nao_compareceu") || (!isW && isNoShowStage(l.stage))) { noShow++; continue; }
+    // Não avançou e não é furo marcado: futuro = ainda vai acontecer; senão,
+    // call vencida que não virou nada = não compareceu.
+    if (today && dayKey(l.callAt) > today) pending++;
+    else noShow++;
   }
-  return { shown, noShow, won };
+  return { shown, noShow, pending, won };
 }
 
 // ── Funil de conversão do produto (base ÚNICA das telas) ─────────────────────

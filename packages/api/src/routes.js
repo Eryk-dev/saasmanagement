@@ -283,7 +283,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Pace de caixa do pipeline: recebido no mês → meta diária por papel.
   registerPipelinePaceRoutes(app, repo, opts.pipelinePace);
   // Placar por pessoa/papel (SDR/closer/CS) — o cockpit de gestão da Visão geral.
-  registerScoreboardRoutes(app, repo);
+  registerScoreboardRoutes(app, repo, opts.scoreboard);
   // Usuários do time: login/logout/me + gestão mínima (rotas dedicadas).
   registerAuthRoutes(app, repo);
   // Google Meet: conectar conta (OAuth) + criar call na agenda do closer.

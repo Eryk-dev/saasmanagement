@@ -560,9 +560,18 @@ function FunnelConversions({ team, pLabel }) {
                     title={`Leads que o time TRABALHOU no período (inclui lead de meses anteriores tocado agora${hist > 0 ? ` + ${int(hist)} do histórico pré-cockpit` : ""}) — por isso pode passar dos ${int(team.leadsNew)} que ENTRARAM na janela. A taxa de contato (${team.contactRate == null ? "—" : pctStr(team.contactRate)}) mede a cobertura da safra: dos que entraram, quantos foram alcançados.`} />;
                 })()}
                 <StepRate pct={team.bookingRate} label="agendamento" num={team.callsBooked} den={team.contacted} {...tiers(team.goals?.bookingRate, 30)} />
-                <StepBox value={team.callsBooked} label="Calls agendadas" />
-                <StepRate pct={team.showRate} label="comparecimento" num={team.shown} den={team.callsBooked} {...tiers(team.goals?.showRate, 75)} />
-                <StepBox value={team.shown} label="Calls realizadas" sub={team.noShow > 0 ? `${int(team.noShow)} no-show` : null} />
+                {/* Agendadas = realizadas + não compareceram + a realizar. O
+                    subtítulo mostra as futuras (ainda vão acontecer) pra o gap
+                    até "realizadas" fechar sem virar tudo no-show. */}
+                <StepBox value={team.callsBooked} label="Calls agendadas"
+                  sub={team.pending > 0 ? `${int(team.pending)} a realizar` : null}
+                  title={`Calls com data na janela. Das que já deveriam ter acontecido, ${int(team.shown)} aconteceram e ${int(team.noShow)} não compareceram${team.pending > 0 ? `; ${int(team.pending)} ainda estão marcadas pro futuro` : ""}.`} />
+                {/* Comparecimento = das que JÁ passaram (realizadas + não
+                    compareceram), quantas aconteceram — não conta as futuras. */}
+                <StepRate pct={team.showRate} label="comparecimento" num={team.shown} den={team.shown + team.noShow} {...tiers(team.goals?.showRate, 75)} />
+                <StepBox value={team.shown} label="Calls realizadas"
+                  sub={team.noShow > 0 ? `${int(team.noShow)} não compareceram` : null}
+                  title={`Calls que aconteceram (avançaram ou fecharam). As ${int(team.noShow)} que não compareceram = agendadas vencidas que não viraram call (no-show ou remarcada pra nutrição), fora as ${int(team.pending || 0)} ainda no futuro.`} />
                 <StepRate pct={team.closeRatePeriod} label="fechamento" num={team.won} den={team.shown} {...tiers(team.goals?.closeRate, 33)} />
                 {/* O fim do funil = ganhos NO PERÍODO (a régua oficial, soma
                     exata dos closers) — a safra ("das calls deste período,

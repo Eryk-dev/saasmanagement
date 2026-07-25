@@ -25,7 +25,9 @@ async function buildApp() {
   await repo.create("users", { id: "u_clo", name: "Caio Closer", roles: ["closer"] });
   await repo.create("users", { id: "u_cs", name: "Cris CS", roles: ["integrator"] });
   const app = Fastify();
-  registerRoutes(app, repo);
+  // "hoje" fixo (28/07) pra o comparecimento separar call vencida de futura de
+  // forma determinística — os fixtures marcam call em 07-10, sempre no passado.
+  registerRoutes(app, repo, { scoreboard: { now: () => new Date("2026-07-28T12:00:00.000Z") } });
   return { app, repo };
 }
 
@@ -91,10 +93,12 @@ test("SDR: show-rate (não compareceu) e calls→ganho sobre o cohort de calls",
   const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
   const s = sb.sdr.find((x) => x.user === "u_sdr");
   assert.equal(s.callsBooked, 5);
-  assert.equal(s.noShow, 1);          // b3
   assert.equal(s.shown, 3);           // b1,b2,b4
-  // Comparecimento = das AGENDADAS (Leo, 25/07): 3 de 5 — a mesma régua do
-  // funil (antes dividia pelas resolvidas e mostrava 75% com o funil em 60%).
+  // Não compareceram = b3 (nao_compareceu) + b5 (call vencida parada em Call
+  // agendada, nunca aconteceu) — Leo (25/07): o gap agendadas−realizadas é isso.
+  assert.equal(s.noShow, 2);
+  assert.equal(s.pending, 0);         // nenhuma call futura (todas em 07-10)
+  // Comparecimento = realizadas ÷ (realizadas + não compareceram) = 3/5 = 60%.
   assert.equal(s.showRate, 60);
   assert.equal(s.showRate, sb.team.showRate); // SDR único = o número do funil
   assert.equal(s.wonFromCalls, 1);    // b1
@@ -378,9 +382,10 @@ test("Funil do TIME: contato humano, agendamento, comparecimento, call→ganho e
   assert.equal(t.contacted, 5);      // t1..t5 têm toque; t6 não
   assert.equal(t.callsBooked, 4);
   assert.equal(t.bookingRate, 80);   // 4 calls ÷ 5 contatados
-  assert.equal(t.shown, 2);          // t1, t2 (t4 segue sem resolução)
-  assert.equal(t.noShow, 1);         // t3
-  assert.equal(t.showRate, 50);      // comparecimento sobre AGENDADAS: 2 ÷ 4 (funil encadeado)
+  assert.equal(t.shown, 2);          // t1, t2 aconteceram
+  assert.equal(t.noShow, 2);         // t3 (nao_compareceu) + t4 (call vencida parada, não veio)
+  assert.equal(t.pending, 0);        // nenhuma call marcada pro futuro
+  assert.equal(t.showRate, 50);      // realizadas ÷ (realizadas + não compareceram) = 2 ÷ 4
   assert.equal(t.wonFromCalls, 1);   // t1
   assert.equal(t.callWinRate, 25);   // 1 ÷ 4 agendadas
   assert.equal(t.closeRate, 50);     // 1 ÷ 2 realizadas
@@ -389,6 +394,28 @@ test("Funil do TIME: contato humano, agendamento, comparecimento, call→ganho e
   assert.equal(t.leadToWin, 16.67);  // 1 ganho ÷ 6 leads criados
   assert.equal(t.paceAdjust, null);  // sem histórico pré-cockpit neste produto
   assert.equal(t.goals.bookingRate.target, 35);
+  await app.close();
+});
+
+// Call marcada pro FUTURO não é no-show (Leo, 25/07): o gap agendadas−realizadas
+// é no-show + futuro; separar deixa o comparecimento medir só o que já passou.
+test("Funil do TIME: call futura conta como agendada PENDENTE, não como no-show", async () => {
+  const { app, repo } = await buildApp(); // hoje = 28/07
+  // call que já aconteceu (compareceu, avançou)
+  await repo.create("leads", { id: "past", saas: "leverads", owner: "u_sdr", stage: "Follow-up", createdAt: now, callAt: "2026-07-20T12:00:00.000Z" });
+  // call marcada pro futuro (30/07): ainda vai acontecer
+  await repo.create("leads", { id: "fut", saas: "leverads", owner: "u_sdr", stage: "Call agendada", createdAt: now, callAt: "2026-07-30T12:00:00.000Z" });
+
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  const t = sb.team;
+  assert.equal(t.callsBooked, 2);   // as duas agendadas (agendadas = realizadas + não-veio + futuro)
+  assert.equal(t.shown, 1);         // só a que já aconteceu
+  assert.equal(t.noShow, 0);        // a futura NÃO é no-show
+  assert.equal(t.pending, 1);       // a futura fica pendente
+  assert.equal(t.showRate, 100);    // 1 ÷ (1 realizada + 0 não-veio) — a futura fora da conta
+  const s = sb.sdr.find((x) => x.user === "u_sdr");
+  assert.equal(s.pending, 1);
+  assert.equal(s.showRate, 100);    // SDR único = o número do funil
   await app.close();
 });
 
