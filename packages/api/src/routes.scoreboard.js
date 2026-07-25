@@ -216,7 +216,11 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     // não infla o win rate de ninguém).
     const contactedHist = histShare(adjN("contacted"), withRole("sdr"));
     const bookedHist = histShare(adjN("booked"), withRole("sdr"));
-    const shownHist = histShare(adjN("shown"), withRole("closer"));
+    // O histórico de REALIZADAS (shown) NÃO entra nos cards dos closers: aquelas
+    // calls pré-cockpit não têm ganho registrado, então inflariam "Calls
+    // realizadas" sem inflar "Ganhos" e a Call→ganho do card não bateria
+    // (Leo, 25/07: "25/8 não é 40"). Fica só no TILE do funil (com o aviso),
+    // que é team-level. O card do closer conta as calls REAIS dele.
     // Contato = ação HUMANA — régua única do metrics-core (a automação fica de
     // fora do total, em automationReached). Com um ÚNICO SDR na vaga, TODO
     // contato humano credita NELE (decisão do Leo, 25/07): o funil de
@@ -344,14 +348,13 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       // Calls agendadas (pela data da call) e quantas ACONTECERAM (compareceram):
       // avançou pra frente OU perdeu por outro motivo; no-show não conta. As
       // AGENDADAS (agenda) são do SDR — o closer conta só as que aconteceram com
-      // ele, então `calls` (denominador do win rate) é o orgânico dele. O
-      // histórico de REALIZADAS (shown) soma no card, pra "Calls realizadas do
-      // mês" do funil = soma dos closers.
+      // ele (`calls` = orgânico dele). "Calls realizadas" e a Call→ganho usam a
+      // MESMA base (só o real dele), pra o card não se contradizer.
       const callLeads = mine.filter((l) => inWin(l.callAt));
       const calls = callLeads.length;
       // Compareceu/furo pela MESMA régua da safra (callOutcome do metrics-core).
-      const shownOrganic = callOutcome(callLeads).shown;
-      const callsShown = shownOrganic + (shownHist.get(uid) || 0);
+      const callsShown = callOutcome(callLeads).shown;
+      const shownOrganic = callsShown; // conversaoCall e o count usam a MESMA base
       // GANHO do closer = venda na janela pela régua oficial (isWonLead +
       // wonAt, metrics-core). O valor do negócio é lançado no fechamento
       // (ver stage-move/DestinoSection).

@@ -13,6 +13,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
+import { round2 } from "../src/metrics-core.js";
 
 const { registerRoutes } = await import("../src/routes.js");
 
@@ -212,10 +213,14 @@ test("funil da Visão geral = soma dos cards (contato humano, automação fora, 
   assert.equal(sb.team.callsBooked, 13);            // 3 reais + 10 do histórico
   assert.equal(sdrCard.callsBooked, sb.team.callsBooked, "SDR único = topo do funil também em agendadas");
   assert.equal(c1.calls + c2.calls, 3, "closers só as agendadas reais deles (sem histórico)");
-  // Calls REALIZADAS: funil = soma dos closers (o histórico de realizadas, 10,
-  // dividido 5/5 entre eles).
-  assert.equal(sb.team.shown, 12);                  // 2 reais + 10 do histórico
-  assert.equal(c1.callsShown + c2.callsShown, sb.team.shown);
+  // Calls REALIZADAS do card do closer = só as REAIS dele (won/realizadas tem
+  // que bater com a Call→ganho — Leo, 25/07). O histórico de realizadas (10)
+  // vive só no TILE do funil, então funil = Σ closers + histórico.
+  assert.equal(sb.team.shown, 12);                  // 2 reais + 10 do histórico (tile)
+  assert.equal(c1.callsShown + c2.callsShown, 2, "só as realizadas reais (A e D pelo clo1)");
+  assert.equal(c1.callsShown + c2.callsShown + sb.team.paceAdjust.shown, sb.team.shown);
+  // Card do closer coerente: won ÷ realizadas mostradas = a Call→ganho exibida.
+  for (const c of [c1, c2]) if (c.callsShown > 0) assert.equal(c.conversaoCall, round2(c.won / c.callsShown * 100), `${c.name}: won/realizadas = conversaoCall`);
   // Quem agendou (pelo dono do lead; SEM dono credita no SDR único) + histórico = o tile.
   assert.deepEqual(sb.team.bookedBy, [{ user: "sdr1", name: "SDR", leads: 3 }]);
   assert.equal(sb.team.bookedBy.reduce((a, p) => a + p.leads, 0) + sb.team.paceAdjust.booked, sb.team.callsBooked);
