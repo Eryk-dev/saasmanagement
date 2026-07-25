@@ -456,13 +456,15 @@ test("Funil do TIME: histórico pré-cockpit (product.paceAdjust) soma ao funil 
   assert.equal(t.shown, 11);          // 1 + 10
   assert.equal(t.wonFromCalls, 1);    // SEM +7: só a safra registrada
   assert.equal(t.won, 1);             // ganhos do período = registros = soma dos closers
-  // O histórico mora nas PESSOAS (decisão do Leo, 24/07): os 80 contatos no
-  // SDR, agendadas/comparecimentos nos closers — a soma fecha com o funil.
-  assert.equal(sb.sdr.find((x) => x.user === "u_sdr").contacted, 81);           // 1 orgânico + 80
+  // Histórico nas PESSOAS (Leo, 24-25/07): contato E agendadas no SDR (o card
+  // dele = topo do funil), realizadas nos closers — a soma fecha com o funil.
+  const sdrC = sb.sdr.find((x) => x.user === "u_sdr");
+  assert.equal(sdrC.contacted, 81);            // 1 orgânico + 80
+  assert.equal(sdrC.callsBooked, 11);          // 1 orgânico + 10 (= tile do funil)
   assert.deepEqual(t.contactedBy, [{ user: "u_sdr", name: "Sara SDR", leads: 81 }]);
   const clo = sb.closer.find((x) => x.user === "u_clo");
-  assert.equal(clo.calls, 10);        // 0 orgânico + 10 do histórico (único closer)
-  assert.equal(clo.callsShown, 10);   // 0 orgânico + 10 do histórico
+  assert.equal(clo.calls, 0);         // agendadas são do SDR; o closer só as que aconteceram com ele
+  assert.equal(clo.callsShown, 10);   // 0 orgânico + 10 do histórico de REALIZADAS
   await app.close();
 });
 

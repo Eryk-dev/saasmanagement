@@ -504,9 +504,9 @@ function PaceStrip({ pace, onNav, links = true }) {
 // a taxa entre cada etapa colorida pela meta do papel (Metas) ou benchmark.
 // Números = leads DISTINTOS do produto na janela do topo (bloco `team` do
 // /api/scoreboard); o recorte por pessoa fica no Desempenho do time.
-function StepBox({ value, label, sub }) {
+function StepBox({ value, label, sub, title }) {
   return (
-    <div style={{ flex: "1 1 108px", minWidth: 104, padding: "10px 12px", textAlign: "center", borderRadius: "var(--r-3)", background: "var(--bg-inset)", border: "1px solid var(--line-1)" }}>
+    <div title={title} style={{ flex: "1 1 108px", minWidth: 104, padding: "10px 12px", textAlign: "center", borderRadius: "var(--r-3)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", cursor: title ? "help" : "default" }}>
       <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 20, fontWeight: 700 }}>{int(value)}</div>
       <div style={{ fontSize: 11.5, color: "var(--fg-3)" }}>{label}</div>
       {sub && <div className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)", marginTop: 2 }}>{sub}</div>}
@@ -548,7 +548,17 @@ function FunnelConversions({ team, pLabel }) {
             )}
             <div className="tbl-x">
               <div style={{ display: "flex", gap: 8, alignItems: "stretch", minWidth: 640 }}>
-                <StepBox value={team.contacted} label="Contatados" sub={`${int(team.leadsNew)} leads novos`} />
+                {(() => {
+                  // Contatados é WORKLOAD (leads trabalhados no período, inclui
+                  // lead de meses anteriores tocado agora + histórico
+                  // pré-cockpit) — por isso passa do "leads novos". O subtítulo
+                  // mostra a composição pra não parecer contradição.
+                  const hist = team.paceAdjust?.contacted || 0;
+                  const period = team.contactedInPeriod ?? Math.max(0, team.contacted - hist);
+                  const sub = hist > 0 ? `${int(period)} no período · ${int(hist)} histórico` : `trabalhados no período`;
+                  return <StepBox value={team.contacted} label="Contatados" sub={sub}
+                    title={`Leads que o time TRABALHOU no período (inclui lead de meses anteriores tocado agora${hist > 0 ? ` + ${int(hist)} do histórico pré-cockpit` : ""}) — por isso pode passar dos ${int(team.leadsNew)} que ENTRARAM na janela. A taxa de contato (${team.contactRate == null ? "—" : pctStr(team.contactRate)}) mede a cobertura da safra: dos que entraram, quantos foram alcançados.`} />;
+                })()}
                 <StepRate pct={team.bookingRate} label="agendamento" num={team.callsBooked} den={team.contacted} {...tiers(team.goals?.bookingRate, 30)} />
                 <StepBox value={team.callsBooked} label="Calls agendadas" />
                 <StepRate pct={team.showRate} label="comparecimento" num={team.shown} den={team.callsBooked} {...tiers(team.goals?.showRate, 75)} />

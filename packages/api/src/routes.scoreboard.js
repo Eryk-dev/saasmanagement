@@ -206,8 +206,13 @@ export function registerScoreboardRoutes(app, repo) {
       for (const id of [...ids].sort()) map.set(id, base + (rest-- > 0 ? 1 : 0));
       return map;
     };
+    // Histórico da AGENDA (booked/shown) é da prospecção → soma no SDR, junto do
+    // contato (decisão do Leo, 25/07: o card do SDR = topo do funil, incluindo
+    // as agendadas históricas). Os closers contam só o que aconteceu de verdade
+    // com eles (calls realizadas históricas seguem no bloco `shown` do funil,
+    // não infla o win rate de ninguém).
     const contactedHist = histShare(adjN("contacted"), withRole("sdr"));
-    const bookedHist = histShare(adjN("booked"), withRole("closer"));
+    const bookedHist = histShare(adjN("booked"), withRole("sdr"));
     const shownHist = histShare(adjN("shown"), withRole("closer"));
     // Contato = ação HUMANA — régua única do metrics-core (a automação fica de
     // fora do total, em automationReached). Com um ÚNICO SDR na vaga, TODO
@@ -223,6 +228,18 @@ export function registerScoreboardRoutes(app, repo) {
     // leem DESTA safra (call sem dono também credita no SDR).
     const teamBooked = leads.filter((l) => inWin(l.callAt));
     const teamOutcome = callOutcome(teamBooked);
+    // COBERTURA da safra (a "taxa de contato" honesta): dos leads que ENTRARAM
+    // na janela, quantos tiveram contato humano — é o que o rótulo promete
+    // ("dos leads novos, quantos você alcança"). Restrita à COORTE, então nunca
+    // passa de 100%. O tile "Contatados" é WORKLOAD (inclui lead antigo
+    // trabalhado agora + histórico pré-cockpit), a TAXA não — daí a divergência
+    // que o Leo viu (347 contatados vs 302 que entraram = "126%" sem sentido).
+    const cohortRate = (list) => {
+      const entered = list.filter((l) => inWin(l.createdAt));
+      const reached = entered.filter((l) => contact.leadIds.has(l.id)).length;
+      return entered.length > 0 ? round2((reached / entered.length) * 100) : null;
+    };
+    const teamContactRate = cohortRate(leads);
 
     // ── SDR (agrupado por owner) ──────────────────────────────────────────────
     const slaMs = (Number(cadenceOf(product, firstStage(product)).firstTouchHours) || 48) * HOUR;
@@ -243,11 +260,13 @@ export function registerScoreboardRoutes(app, repo) {
         }
       }
       // Calls agendadas = calls dos leads DELE (owner) pela DATA DA CALL — a
-      // MESMA régua do funil e dos closers (callAt na janela; régua única,
-      // decisão do Leo 24/07). A atribuição é sempre do owner; call SEM dono
-      // credita no SDR único (decisão do Leo, 25/07 — nada fica "sem dono").
+      // MESMA régua do funil (callAt na janela; régua única, Leo 24/07). Call
+      // SEM dono credita no SDR único (Leo, 25/07). O COUNT mostrado soma a
+      // parte histórica (booked pré-cockpit) pra bater com o tile do funil; as
+      // TAXAS usam só o orgânico (histórico não tem resultado registrado).
       const booked = leads.filter((l) => (l.owner === uid || (!l.owner && uid === soloSdr)) && inWin(l.callAt));
-      const callsBooked = booked.length;
+      const callsBookedOrganic = booked.length;
+      const callsBooked = callsBookedOrganic + (bookedHist.get(uid) || 0);
 
       // Show-rate e calls→ganho sobre o cohort de calls agendadas (callOutcome).
       const { shown, noShow, won: wonFromCalls } = callOutcome(booked);
@@ -268,16 +287,19 @@ export function registerScoreboardRoutes(app, repo) {
           if (inWin(a.at) && a.author === uid && a.meta?.event === "reschedule") reschedules++;
         }
       }
-      // Taxa de contato DELE: da safra que entrou na janela, quantos alcançou.
-      const contactRate = leadsNew > 0 ? round2((contactedOrganic / leadsNew) * 100) : null;
-      // Taxa de agendamento = das pessoas que ele contatou, quantas viraram call.
-      const bookingRate = contactedOrganic > 0 ? round2((callsBooked / contactedOrganic) * 100) : null;
+      // Taxa de contato = COBERTURA da safra (dos leads que ENTRARAM, quantos
+      // alcançou) — nunca passa de 100% (o rótulo diz "dos leads novos, quantos
+      // você alcança"). Pro SDR único é a mesma do funil.
+      const contactRate = uid === soloSdr ? teamContactRate : cohortRate(mine);
+      // Taxa de agendamento = das pessoas que ele contatou, quantas viraram call
+      // (orgânico ÷ orgânico — o histórico só entra no COUNT, não na taxa).
+      const bookingRate = contactedOrganic > 0 ? round2((callsBookedOrganic / contactedOrganic) * 100) : null;
       // Comparecimento = das AGENDADAS, quantas aconteceram — a régua que o
       // hint do catálogo sempre prometeu (a conta antiga dividia pelas
       // RESOLVIDAS e mostrava 98% com o funil em 74; Leo, 25/07: vale o 74).
       // Pro SDR único é o MESMO número do funil: safra do time + histórico.
       const showNum = uid === soloSdr ? teamOutcome.shown + adjN("shown") : shown;
-      const showDen = uid === soloSdr ? teamBooked.length + adjN("booked") : callsBooked;
+      const showDen = uid === soloSdr ? teamBooked.length + adjN("booked") : callsBookedOrganic;
       const showRate = showDen > 0 ? round2((showNum / showDen) * 100) : null;
       return {
         user: uid, name: nameOf(uid),
@@ -296,7 +318,7 @@ export function registerScoreboardRoutes(app, repo) {
         shown, // compareceram (dos leads dele; o % do SDR único usa a safra do time)
         noShow,
         wonFromCalls,
-        callWinRate: callsBooked > 0 ? round2((wonFromCalls / callsBooked) * 100) : null,
+        callWinRate: callsBookedOrganic > 0 ? round2((wonFromCalls / callsBookedOrganic) * 100) : null,
         // Metas por TAXA (o alvo absoluto de calls sai de leads × bookingRate na
         // UI); callsBooked absoluto fica de fallback se alguém preferir fixo.
         goals: { ...goalMap(uid, "sdr", ["contactRate", "bookingRate", "showRate", "callsBooked", "contacts"]), callWinRate: bookedWinGoal(uid, "sdr") },
@@ -314,13 +336,13 @@ export function registerScoreboardRoutes(app, repo) {
     const closer = closerIds.map((uid) => {
       const mine = leads.filter((l) => l.closer === uid);
       // Calls agendadas (pela data da call) e quantas ACONTECERAM (compareceram):
-      // avançou pra frente OU perdeu por outro motivo; no-show não conta.
-      // A parte DELE do histórico pré-cockpit (calls antigas divididas entre os
-      // closers — decisão do Leo, 24/07) soma nos VOLUMES; taxas ficam no
-      // orgânico (aquelas calls não têm registro de resultado).
+      // avançou pra frente OU perdeu por outro motivo; no-show não conta. As
+      // AGENDADAS (agenda) são do SDR — o closer conta só as que aconteceram com
+      // ele, então `calls` (denominador do win rate) é o orgânico dele. O
+      // histórico de REALIZADAS (shown) soma no card, pra "Calls realizadas do
+      // mês" do funil = soma dos closers.
       const callLeads = mine.filter((l) => inWin(l.callAt));
-      const callsOrganic = callLeads.length;
-      const calls = callsOrganic + (bookedHist.get(uid) || 0);
+      const calls = callLeads.length;
       // Compareceu/furo pela MESMA régua da safra (callOutcome do metrics-core).
       const shownOrganic = callOutcome(callLeads).shown;
       const callsShown = shownOrganic + (shownHist.get(uid) || 0);
@@ -353,8 +375,8 @@ export function registerScoreboardRoutes(app, repo) {
         calls, callsShown,
         won: wonN, revenue: round2(revenue), lost: lost.length,
         conversaoCall: conversao,
-        winRateCall: callsOrganic > 0 ? round2((wonN / callsOrganic) * 100) : null,
-        revenuePerCall: callsOrganic > 0 ? round2(revenue / callsOrganic) : null,
+        winRateCall: calls > 0 ? round2((wonN / calls) * 100) : null,
+        revenuePerCall: calls > 0 ? round2(revenue / calls) : null,
         ticket: wonN > 0 ? round2(revenue / wonN) : null,
         cycleDays: median(cycle),
         lossReasons,
@@ -440,11 +462,10 @@ export function registerScoreboardRoutes(app, repo) {
     }
     contactedBy.sort((a, b) => b.leads - a.leads);
     // Quem agendou: as calls pelo DONO do lead (o SDR que prospecta) — o card
-    // do SDR conta a MESMA fatia, e call sem dono credita no SDR único (Leo,
-    // 25/07). O histórico pré-cockpit das agendadas mora nos closers. A safra
-    // (teamBooked/teamOutcome, callAt na janela) está definida lá em cima,
-    // junto da atribuição de contato — "Calls realizadas" do funil bate CRAVADO
-    // com a soma dos cards dos closers.
+    // do SDR conta a MESMA fatia + o histórico das agendadas (também no SDR),
+    // então o card = o tile. Call sem dono credita no SDR único (Leo, 25/07). A
+    // safra (teamBooked/teamOutcome, callAt) está definida lá em cima — "Calls
+    // realizadas" do funil bate com a soma dos cards dos closers (shown).
     const bookedByOwner = new Map();
     for (const l of teamBooked) {
       const dono = l.owner || soloSdr || "";
@@ -461,11 +482,14 @@ export function registerScoreboardRoutes(app, repo) {
     const wonN = teamWonLeads.length;
     const team = {
       leadsNew: leadsNewN,
-      contacted: contactedN,
+      contacted: contactedN,               // WORKLOAD: leads trabalhados no período + histórico
+      contactedInPeriod: contact.leadIds.size, // só o orgânico (sem histórico) — pro subtítulo do tile
       callsBooked: bookedN,
-      // Taxa de contato = dos leads novos, quantos o time alcançou.
-      contactRate: leadsNewN > 0 ? round2((contactedN / leadsNewN) * 100) : null,
-      // Taxa de agendamento = calls agendadas ÷ leads contatados.
+      // Taxa de contato = COBERTURA da safra (dos leads que ENTRARAM, quantos
+      // foram alcançados) — nunca passa de 100%. NÃO é contacted÷leadsNew, que
+      // misturava workload (lead antigo + histórico) com coorte e dava 126%.
+      contactRate: teamContactRate,
+      // Taxa de agendamento = calls agendadas ÷ leads contatados (workload).
       bookingRate: contactedN > 0 ? round2((bookedN / contactedN) * 100) : null,
       shown: shownN,
       noShow: teamOutcome.noShow,
