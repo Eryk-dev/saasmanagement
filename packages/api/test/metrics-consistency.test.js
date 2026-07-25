@@ -56,7 +56,7 @@ async function buildApp() {
   await repo.create("expenses", { id: "e1", saas: "leverads", category: "checkout", pct: 10, month: "2026-07" });
 
   const app = Fastify();
-  registerRoutes(app, repo, { pipelinePace: { now: () => NOW } });
+  registerRoutes(app, repo, { pipelinePace: { now: () => NOW }, scoreboard: { now: () => NOW } });
   return { app, repo };
 }
 
@@ -186,7 +186,7 @@ test("funil da Visão geral = soma dos cards (contato humano, automação fora, 
   await repo.create("activities", { id: "tD", saas: "leverads", lead: "D", type: "whatsapp", author: "clo1", at });
 
   const app = Fastify();
-  registerRoutes(app, repo, { pipelinePace: { now: () => NOW } });
+  registerRoutes(app, repo, { pipelinePace: { now: () => NOW }, scoreboard: { now: () => NOW } });
   const sb = (await app.inject({ url: `/api/scoreboard/leverads${MONTH}` })).json();
 
   // Contatados: 3 humanos + 80 do histórico — TUDO no SDR único (os toques dos

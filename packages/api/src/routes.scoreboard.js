@@ -29,11 +29,14 @@ const median = (arr) => {
   return round2(s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2);
 };
 
-export function registerScoreboardRoutes(app, repo) {
+export function registerScoreboardRoutes(app, repo, { now = () => new Date() } = {}) {
   app.get("/api/scoreboard/:saas", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "Not found" });
     const { since, until } = rangeFromQuery(req.query || {});
+    // Hoje (dia do negócio): separa call já VENCIDA (não veio) de call marcada
+    // pro FUTURO (ainda vai acontecer) no comparecimento — ver callOutcome.
+    const today = dayKey(now());
     const inWin = (iso) => iso && dayKey(iso) >= since && dayKey(iso) <= until;
     // Janela ANTERIOR (semana/mês passado) — base da meta dinâmica de calls do
     // SDR: a meta da semana atual sai do volume de leads da semana passada
@@ -168,7 +171,7 @@ export function registerScoreboardRoutes(app, repo) {
     // oficial da venda como fato do lead (isWonLead + wonAt), com fallback pro
     // lead legado sem carimbo (startedAt do cliente vinculado).
     const actsOf = (id) => actsByLead.get(id) || [];
-    const callOutcome = (list) => coreCallOutcome(product, list, actsOf);
+    const callOutcome = (list) => coreCallOutcome(product, list, actsOf, today);
     const customerStartByLead = customerStartMap(customers);
     const winTransitionsFor = (list) => winsIn(product, list, inWin, customerStartByLead);
 
@@ -269,7 +272,7 @@ export function registerScoreboardRoutes(app, repo) {
       const callsBooked = callsBookedOrganic + (bookedHist.get(uid) || 0);
 
       // Show-rate e calls→ganho sobre o cohort de calls agendadas (callOutcome).
-      const { shown, noShow, won: wonFromCalls } = callOutcome(booked);
+      const { shown, noShow, pending, won: wonFromCalls } = callOutcome(booked);
       const leadsNew = cohort.length;
       const leadsPrev = hasPrev ? mine.filter((l) => inPrev(l.createdAt)).length : null;
       // Contatados = a MESMA régua do funil (24/07): leads cujo 1º contato
@@ -294,12 +297,14 @@ export function registerScoreboardRoutes(app, repo) {
       // Taxa de agendamento = das pessoas que ele contatou, quantas viraram call
       // (orgânico ÷ orgânico — o histórico só entra no COUNT, não na taxa).
       const bookingRate = contactedOrganic > 0 ? round2((callsBookedOrganic / contactedOrganic) * 100) : null;
-      // Comparecimento = das AGENDADAS, quantas aconteceram — a régua que o
-      // hint do catálogo sempre prometeu (a conta antiga dividia pelas
-      // RESOLVIDAS e mostrava 98% com o funil em 74; Leo, 25/07: vale o 74).
-      // Pro SDR único é o MESMO número do funil: safra do time + histórico.
+      // Comparecimento = das que JÁ deveriam ter acontecido (realizadas + não
+      // compareceram), quantas aconteceram — exclui as calls FUTURAS (Leo,
+      // 25/07). Pro SDR único é o MESMO número do funil (safra do time +
+      // histórico, sem as futuras).
       const showNum = uid === soloSdr ? teamOutcome.shown + adjN("shown") : shown;
-      const showDen = uid === soloSdr ? teamBooked.length + adjN("booked") : callsBookedOrganic;
+      const showDen = uid === soloSdr
+        ? teamOutcome.shown + adjN("shown") + teamOutcome.noShow
+        : shown + noShow;
       const showRate = showDen > 0 ? round2((showNum / showDen) * 100) : null;
       return {
         user: uid, name: nameOf(uid),
@@ -316,7 +321,8 @@ export function registerScoreboardRoutes(app, repo) {
         breached, // novos que estouraram o SLA e seguem sem toque
         showRate,
         shown, // compareceram (dos leads dele; o % do SDR único usa a safra do time)
-        noShow,
+        noShow, // não compareceram (call vencida sem acontecer)
+        pending, // agendadas pro futuro (ainda vão acontecer)
         wonFromCalls,
         callWinRate: callsBookedOrganic > 0 ? round2((wonFromCalls / callsBookedOrganic) * 100) : null,
         // Metas por TAXA (o alvo absoluto de calls sai de leads × bookingRate na
@@ -478,6 +484,15 @@ export function registerScoreboardRoutes(app, repo) {
     const contactedN = contact.leadIds.size + adjN("contacted");
     const bookedN = teamBooked.length + adjN("booked");
     const shownN = teamOutcome.shown + adjN("shown");
+    // Não compareceram (call vencida sem virar call real) e a realizar (call
+    // marcada pro futuro) — o histórico pré-cockpit não tem furo nem futuro
+    // (10 agendadas = 10 realizadas), então só o orgânico entra aqui. Fecha:
+    // agendadas (bookedN) = realizadas (shownN) + não-vieram (noShowN) + futuro.
+    const noShowN = teamOutcome.noShow;
+    const pendingN = teamOutcome.pending;
+    // Base do comparecimento = só o que JÁ deveria ter acontecido (exclui as
+    // calls futuras): realizadas + não compareceram.
+    const dueN = shownN + noShowN;
     const wonFromCallsN = teamOutcome.won; // SEM ajuste: ganho segue os registros
     const wonN = teamWonLeads.length;
     const team = {
@@ -492,9 +507,11 @@ export function registerScoreboardRoutes(app, repo) {
       // Taxa de agendamento = calls agendadas ÷ leads contatados (workload).
       bookingRate: contactedN > 0 ? round2((bookedN / contactedN) * 100) : null,
       shown: shownN,
-      noShow: teamOutcome.noShow,
-      // Comparecimento sobre as AGENDADAS (funil encadeado): dos que marcaram, quantos apareceram.
-      showRate: bookedN > 0 ? round2((shownN / bookedN) * 100) : null,
+      noShow: noShowN,       // não compareceram (call vencida sem acontecer) — o gap real
+      pending: pendingN,     // agendadas pro futuro (ainda vão acontecer)
+      // Comparecimento = das que JÁ deveriam ter acontecido, quantas aconteceram
+      // (exclui as futuras): realizadas ÷ (realizadas + não compareceram).
+      showRate: dueN > 0 ? round2((shownN / dueN) * 100) : null,
       wonFromCalls: wonFromCallsN, // ganhos DA SAFRA (das calls deste período, quantas já viraram venda)
       // Call agendada → ganho (safra sobre agendadas) e FECHAMENTO DO PERÍODO
       // (ganhos do período ÷ calls realizadas no período — os DOIS lados são a
