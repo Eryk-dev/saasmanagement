@@ -93,7 +93,10 @@ test("SDR: show-rate (não compareceu) e calls→ganho sobre o cohort de calls",
   assert.equal(s.callsBooked, 5);
   assert.equal(s.noShow, 1);          // b3
   assert.equal(s.shown, 3);           // b1,b2,b4
-  assert.equal(s.showRate, 75);       // compareceram 3 / resolvidos 4 (b1,b2,b3,b4)
+  // Comparecimento = das AGENDADAS (Leo, 25/07): 3 de 5 — a mesma régua do
+  // funil (antes dividia pelas resolvidas e mostrava 75% com o funil em 60%).
+  assert.equal(s.showRate, 60);
+  assert.equal(s.showRate, sb.team.showRate); // SDR único = o número do funil
   assert.equal(s.wonFromCalls, 1);    // b1
   assert.equal(s.callWinRate, 20);    // 1 / 5
   await app.close();
@@ -410,10 +413,10 @@ test("Funil do TIME: conta a atividade do período, não só a safra que entrou"
   await app.close();
 });
 
-// O total de Contatados é do TIME INTEIRO (SDR + closers + inbox), então a tela
-// abre a composição: cada lead vai pra quem fez o 1º toque/mensagem do período,
-// e a soma dos autores fecha EXATA com o total (sem o histórico pré-cockpit).
-test("Funil do TIME: contactedBy atribui cada lead ao autor do 1º contato do período", async () => {
+// Com um ÚNICO SDR na vaga, TODO contato humano credita nele (Leo, 25/07): o
+// funil de prospecção é dele, mesmo quando um closer respondeu o lead. A soma
+// segue fechando exata com o total; com 2+ SDRs volta a atribuição por autor.
+test("Funil do TIME: contactedBy credita tudo no SDR único (closer que tocou conta pro SDR)", async () => {
   const { app, repo } = await buildApp();
   // l1: SDR tocou às 9h, closer ligou às 10h → conta 1x, atribuído ao SDR.
   await repo.create("leads", { id: "l1", saas: "leverads", owner: "u_sdr", stage: "Qualificando", createdAt: now });
@@ -426,12 +429,11 @@ test("Funil do TIME: contactedBy atribui cada lead ao autor do 1º contato do pe
   await repo.create("leads", { id: "l3", saas: "leverads", owner: "", stage: "Novo lead", createdAt: now });
   await repo.create("wa_messages", { id: "w1", saas: "leverads", leadId: "l3", direction: "out", author: "u_clo", at: "2026-07-10T12:00:00.000Z" });
 
-  const t = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json().team;
-  assert.equal(t.contacted, 3);
-  assert.deepEqual(t.contactedBy, [
-    { user: "u_clo", name: "Caio Closer", leads: 2 },
-    { user: "u_sdr", name: "Sara SDR", leads: 1 },
-  ]); // soma (2 + 1) = contatados
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  assert.equal(sb.team.contacted, 3);
+  // u_sdr é o ÚNICO SDR: os toques do closer (l1 também, l2, l3) creditam nele.
+  assert.deepEqual(sb.team.contactedBy, [{ user: "u_sdr", name: "Sara SDR", leads: 3 }]);
+  assert.equal(sb.sdr.find((x) => x.user === "u_sdr").contacted, 3); // card = funil
   await app.close();
 });
 

@@ -209,12 +209,20 @@ export function registerScoreboardRoutes(app, repo) {
     const contactedHist = histShare(adjN("contacted"), withRole("sdr"));
     const bookedHist = histShare(adjN("booked"), withRole("closer"));
     const shownHist = histShare(adjN("shown"), withRole("closer"));
-    // Contato = ação HUMANA, cada lead no autor do 1º contato da janela — a
-    // régua única do metrics-core (a automação fica de fora do total, visível
-    // em automationReached). Funil e cards leem DESTA atribuição.
+    // Contato = ação HUMANA — régua única do metrics-core (a automação fica de
+    // fora do total, em automationReached). Com um ÚNICO SDR na vaga, TODO
+    // contato humano credita NELE (decisão do Leo, 25/07): o funil de
+    // prospecção é dele, mesmo quando um closer respondeu o lead. Com mais de
+    // um SDR volta a atribuição pelo autor do 1º contato.
+    const sdrRoleIds = withRole("sdr");
+    const soloSdr = sdrRoleIds.length === 1 ? sdrRoleIds[0] : null;
     const humanIds = new Set(users.map((u) => u.id));
-    const contact = contactAttribution({ leads, actsOf, waMessages, saas: product.id, inWin, humanIds });
+    const contact = contactAttribution({ leads, actsOf, waMessages, saas: product.id, inWin, humanIds, creditAllTo: soloSdr || undefined });
     const contactsOf = (uid) => contact.byAuthor.get(uid) || 0;
+    // Safra de calls do TIME (callAt na janela) — o funil e o card do SDR único
+    // leem DESTA safra (call sem dono também credita no SDR).
+    const teamBooked = leads.filter((l) => inWin(l.callAt));
+    const teamOutcome = callOutcome(teamBooked);
 
     // ── SDR (agrupado por owner) ──────────────────────────────────────────────
     const slaMs = (Number(cadenceOf(product, firstStage(product)).firstTouchHours) || 48) * HOUR;
@@ -236,14 +244,13 @@ export function registerScoreboardRoutes(app, repo) {
       }
       // Calls agendadas = calls dos leads DELE (owner) pela DATA DA CALL — a
       // MESMA régua do funil e dos closers (callAt na janela; régua única,
-      // decisão do Leo 24/07). A atribuição é sempre do owner, mesmo que o
-      // closer tenha movido o card.
-      const booked = mine.filter((l) => inWin(l.callAt));
+      // decisão do Leo 24/07). A atribuição é sempre do owner; call SEM dono
+      // credita no SDR único (decisão do Leo, 25/07 — nada fica "sem dono").
+      const booked = leads.filter((l) => (l.owner === uid || (!l.owner && uid === soloSdr)) && inWin(l.callAt));
       const callsBooked = booked.length;
 
       // Show-rate e calls→ganho sobre o cohort de calls agendadas (callOutcome).
       const { shown, noShow, won: wonFromCalls } = callOutcome(booked);
-      const resolved = shown + noShow;
       const leadsNew = cohort.length;
       const leadsPrev = hasPrev ? mine.filter((l) => inPrev(l.createdAt)).length : null;
       // Contatados = a MESMA régua do funil (24/07): leads cujo 1º contato
@@ -265,10 +272,17 @@ export function registerScoreboardRoutes(app, repo) {
       const contactRate = leadsNew > 0 ? round2((contactedOrganic / leadsNew) * 100) : null;
       // Taxa de agendamento = das pessoas que ele contatou, quantas viraram call.
       const bookingRate = contactedOrganic > 0 ? round2((callsBooked / contactedOrganic) * 100) : null;
+      // Comparecimento = das AGENDADAS, quantas aconteceram — a régua que o
+      // hint do catálogo sempre prometeu (a conta antiga dividia pelas
+      // RESOLVIDAS e mostrava 98% com o funil em 74; Leo, 25/07: vale o 74).
+      // Pro SDR único é o MESMO número do funil: safra do time + histórico.
+      const showNum = uid === soloSdr ? teamOutcome.shown + adjN("shown") : shown;
+      const showDen = uid === soloSdr ? teamBooked.length + adjN("booked") : callsBooked;
+      const showRate = showDen > 0 ? round2((showNum / showDen) * 100) : null;
       return {
         user: uid, name: nameOf(uid),
         contactRate,
-        targets: personTargets(uid, "sdr", { contactRate, bookingRate, showRate: resolved > 0 ? round2((shown / resolved) * 100) : null, contacts: contacted, callsBooked }),
+        targets: personTargets(uid, "sdr", { contactRate, bookingRate, showRate, contacts: contacted, callsBooked }),
         leadsNew,
         leadsPrev, // leads da janela anterior (base da meta dinâmica de calls)
         contacted,
@@ -278,8 +292,8 @@ export function registerScoreboardRoutes(app, repo) {
         firstTouchMedianH: median(touchHours),
         withinSla: touchHours.filter((h) => h <= slaMs / HOUR).length,
         breached, // novos que estouraram o SLA e seguem sem toque
-        showRate: resolved > 0 ? round2((shown / resolved) * 100) : null,
-        shown, // compareceram (numerador do show-rate; den = shown + noShow)
+        showRate,
+        shown, // compareceram (dos leads dele; o % do SDR único usa a safra do time)
         noShow,
         wonFromCalls,
         callWinRate: callsBooked > 0 ? round2((wonFromCalls / callsBooked) * 100) : null,
@@ -425,17 +439,17 @@ export function registerScoreboardRoutes(app, repo) {
       if (!contact.byAuthor.has(user)) contactedBy.push({ user, name: nameOf(user), leads: n });
     }
     contactedBy.sort((a, b) => b.leads - a.leads);
-    // Calls agendadas = TODAS as calls do time com callAt na janela — a MESMA
-    // régua dos closers (que contam `mine.filter(inWin(callAt))`), então "Calls
-    // realizadas" do funil bate CRAVADO com a soma dos cards. Sem filtrar pela
-    // data de entrada do lead; realizadas/furo/ganho saem do callOutcome dessas.
-    const teamBooked = leads.filter((l) => inWin(l.callAt));
-    const teamOutcome = callOutcome(teamBooked);
-    // Quem agendou: as calls pelo DONO do lead (o SDR que prospecta) — é a
-    // abertura do tile, e o card do SDR conta a MESMA fatia. O histórico
-    // pré-cockpit das agendadas mora nos closers (banner + cards deles).
+    // Quem agendou: as calls pelo DONO do lead (o SDR que prospecta) — o card
+    // do SDR conta a MESMA fatia, e call sem dono credita no SDR único (Leo,
+    // 25/07). O histórico pré-cockpit das agendadas mora nos closers. A safra
+    // (teamBooked/teamOutcome, callAt na janela) está definida lá em cima,
+    // junto da atribuição de contato — "Calls realizadas" do funil bate CRAVADO
+    // com a soma dos cards dos closers.
     const bookedByOwner = new Map();
-    for (const l of teamBooked) bookedByOwner.set(l.owner || "", (bookedByOwner.get(l.owner || "") || 0) + 1);
+    for (const l of teamBooked) {
+      const dono = l.owner || soloSdr || "";
+      bookedByOwner.set(dono, (bookedByOwner.get(dono) || 0) + 1);
+    }
     const bookedBy = [...bookedByOwner.entries()]
       .map(([user, n]) => ({ user, name: user ? nameOf(user) : "sem dono", leads: n }))
       .sort((a, b) => b.leads - a.leads);

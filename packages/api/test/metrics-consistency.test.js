@@ -189,13 +189,14 @@ test("funil da Visão geral = soma dos cards (contato humano, automação fora, 
   registerRoutes(app, repo, { pipelinePace: { now: () => NOW } });
   const sb = (await app.inject({ url: `/api/scoreboard/leverads${MONTH}` })).json();
 
-  // Contatados: 3 humanos + 80 do histórico (no SDR); soma dos autores = total.
+  // Contatados: 3 humanos + 80 do histórico — TUDO no SDR único (os toques dos
+  // closers creditam nele; Leo, 25/07); soma dos autores = total.
   assert.equal(sb.team.contacted, 83);
   assert.equal(sb.team.contactedBy.reduce((a, p) => a + p.leads, 0), sb.team.contacted);
-  assert.deepEqual(sb.team.contactedBy.find((p) => p.user === "sdr1"), { user: "sdr1", name: "SDR", leads: 81 });
+  assert.deepEqual(sb.team.contactedBy, [{ user: "sdr1", name: "SDR", leads: 83 }]);
   assert.equal(sb.team.automationReached, 1);       // C, alcançado só pela automação
   const sdrCard = sb.sdr.find((p) => p.user === "sdr1");
-  assert.equal(sdrCard.contacted, 81, "card do SDR = bucket dele no funil (com o histórico)");
+  assert.equal(sdrCard.contacted, 83, "card do SDR = o topo do funil inteiro");
 
   // Calls agendadas/realizadas: funil = soma dos closers (10 e 10 do histórico, 5/5 pra cada).
   const c1 = sb.closer.find((p) => p.user === "clo1");
@@ -204,9 +205,15 @@ test("funil da Visão geral = soma dos cards (contato humano, automação fora, 
   assert.equal(c1.calls + c2.calls, sb.team.callsBooked);
   assert.equal(sb.team.shown, 12);                  // 2 reais + 10 do histórico
   assert.equal(c1.callsShown + c2.callsShown, sb.team.shown);
-  // Quem agendou (pelo dono do lead) + histórico = o tile; o card do SDR mostra a fatia dele.
+  // Quem agendou (pelo dono do lead; SEM dono credita no SDR único) + histórico
+  // = o tile; o card do SDR conta a mesma fatia (B e D não têm owner → SDR).
+  assert.deepEqual(sb.team.bookedBy, [{ user: "sdr1", name: "SDR", leads: 3 }]);
   assert.equal(sb.team.bookedBy.reduce((a, p) => a + p.leads, 0) + sb.team.paceAdjust.booked, sb.team.callsBooked);
   assert.equal(sb.team.bookedBy.find((p) => p.user === "sdr1").leads, sdrCard.callsBooked);
+  // Comparecimento do SDR único = o MESMO número do funil (das agendadas,
+  // quantas aconteceram, com histórico) — antes o card dividia pelas resolvidas.
+  assert.equal(sdrCard.showRate, sb.team.showRate);
+  assert.equal(sb.team.showRate, 92.31);            // 12 ÷ 13
   // Ganhos NÃO ganham rateio nem ajuste: seguem o que está preenchido no
   // lead/cliente (o won:7 do paceAdjust do fixture é IGNORADO de propósito).
   assert.equal(sb.team.paceAdjust.won, undefined);
