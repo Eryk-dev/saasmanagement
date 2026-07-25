@@ -177,9 +177,12 @@ function AudiencePanel({ audience }) {
   if (!audience || !hasDemo(demo)) return null;
 
   return (
-    <Card title="Quem é o seu público" hint="perfil da audiência no Instagram">
+    <Card title="Quem é o seu público" hint="perfil da audiência no Instagram" style={{ flexShrink: 0 }}>
+      {/* Card não tem padding próprio de conteúdo — sem este wrapper os donuts
+          encostam nas bordas ("estourando os limites"). */}
+      <div style={{ padding: "14px var(--inset-x) 24px" }}>
         {sets.length > 1 && (
-          <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
+          <div style={{ display: "flex", gap: 6, marginBottom: 20 }}>
             {sets.map(([id, label]) => {
               const on = (active?.[0] || sets[0]?.[0]) === id;
               return (
@@ -191,7 +194,7 @@ function AudiencePanel({ audience }) {
           </div>
         )}
         {hasDemo(demo) ? (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 360px))", justifyContent: "center", gap: "26px 30px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 290px), 340px))", justifyContent: "center", gap: "28px 48px" }}>
             {(demo.genders || []).length > 0 && (
               <DonutBlock title="Gênero" segments={toSegments(demo.genders, { topN: 3, label: (k) => GENDER_LABEL[k] || k, palette: GENDER_COLOR })} />
             )}
@@ -206,6 +209,7 @@ function AudiencePanel({ audience }) {
             )}
           </div>
         ) : <div className="mono dim" style={{ fontSize: 12, padding: "8px 0" }}>demografia indisponível (o Instagram só libera com ~100+ seguidores)</div>}
+      </div>
     </Card>
   );
 }
@@ -376,7 +380,11 @@ function SocialScreen() {
             {sum.errors?.media && <div className="mono dim" style={{ fontSize: 11 }}>posts do IG indisponíveis: {sum.errors.media}</div>}
             {sum.errors?.insights && <div className="mono dim" style={{ fontSize: 11 }}>alcance indisponível: {sum.errors.insights}</div>}
 
-            <Card title="Publicações recentes" hint={'o histórico do "criar post" aparece aqui'} style={{ overflow: "hidden" }}>
+            {/* flexShrink 0 é OBRIGATÓRIO: overflow:hidden zera o min-height
+                automático e o flex column do scroll ESMAGA o card quando o
+                conteúdo passa da altura da janela — a tabela era comprimida
+                até sumir e a página "não rolava" pra mostrar o resto. */}
+            <Card title="Publicações recentes" hint={'o histórico do "criar post" aparece aqui'} style={{ overflow: "hidden", flexShrink: 0 }}>
              {/* .tbl-x: as colunas de métricas (todas as que o Instagram libera)
                  rolam na horizontal. */}
              <div className="tbl-x"><div style={{ minWidth: 1500 }}>
