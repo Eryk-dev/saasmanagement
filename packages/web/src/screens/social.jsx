@@ -7,7 +7,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { useData } from "../data.jsx";
 import { CreativeEditor } from "./creative.jsx";
 import { useIsMobile } from "../lib/responsive.js";
-import { AreaLine, fmtNum, HourBars } from "./social-metrics.jsx";
+import { AreaLine, fmtNum } from "./social-metrics.jsx";
 
 // Mídia social — métricas do perfil (Instagram + página do Facebook) e o fluxo
 // de publicação orgânica direto do cockpit:
@@ -174,12 +174,10 @@ function AudiencePanel({ audience }) {
   const [which, setWhich] = React.useState("follower");
   const active = sets.find(([id]) => id === which) || sets[0];
   const demo = active?.[2];
-  const online = audience?.onlineFollowers;
-  if (!audience || (!hasDemo(demo) && !(online || []).length)) return null;
+  if (!audience || !hasDemo(demo)) return null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <Card title="Quem é o seu público" hint="perfil da audiência no Instagram">
+    <Card title="Quem é o seu público" hint="perfil da audiência no Instagram">
         {sets.length > 1 && (
           <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
             {sets.map(([id, label]) => {
@@ -208,21 +206,7 @@ function AudiencePanel({ audience }) {
             )}
           </div>
         ) : <div className="mono dim" style={{ fontSize: 12, padding: "8px 0" }}>demografia indisponível (o Instagram só libera com ~100+ seguidores)</div>}
-      </Card>
-
-      <Card title="Melhor horário pra postar" hint="média de seguidores online por hora">
-        {(online || []).length ? (
-          <>
-            <HourBars hours={online} bestHours={audience.bestHours || []} />
-            {(audience.bestHours || []).length > 0 && (
-              <div style={{ marginTop: 14, fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5 }}>
-                Pico de audiência online por volta de <b>{audience.bestHours.map((h) => `${String(h).padStart(2, "0")}h`).join(" · ")}</b>. Programe os posts pra essa janela pra pegar mais gente na hora.
-              </div>
-            )}
-          </>
-        ) : <div className="mono dim" style={{ fontSize: 12, padding: "8px 0" }}>o Instagram não devolveu os seguidores online desta conta</div>}
-      </Card>
-    </div>
+    </Card>
   );
 }
 
@@ -385,6 +369,10 @@ function SocialScreen() {
               </Card>
             </div>
 
+            {/* Audiência: quem é o público (demografia). Some sozinho se a
+                conta não libera (endpoint à parte). */}
+            <AudiencePanel audience={audience} />
+
             {sum.errors?.media && <div className="mono dim" style={{ fontSize: 11 }}>posts do IG indisponíveis: {sum.errors.media}</div>}
             {sum.errors?.insights && <div className="mono dim" style={{ fontSize: 11 }}>alcance indisponível: {sum.errors.insights}</div>}
 
@@ -418,10 +406,6 @@ function SocialScreen() {
               {!recent.length && <div style={{ padding: "18px 24px", borderTop: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 13 }}>nenhuma publicação ainda</div>}
              </div></div>
             </Card>
-
-            {/* Audiência: quem é o público (demografia) + melhor horário. Some
-                sozinho se a conta não libera (endpoint à parte). */}
-            <AudiencePanel audience={audience} />
           </>
         )}
       </div>
