@@ -150,14 +150,17 @@ export function callOutcome(product, list, actsOf) {
 // o total — é o que deixa o funil da Visão geral ser a soma dos cards.
 // O inbox segue separado das activities DE PROPÓSITO (chat ≠ toque de cadência,
 // não re-agenda o GPS), mas a mensagem enviada conta como contato aqui.
+// `creditAllTo` (decisão do Leo, 25/07): com um ÚNICO SDR na operação, TODO
+// contato humano credita nele — o funil de prospecção é dele, mesmo quando um
+// closer respondeu o lead (o autor real segue nas activities; aqui é o placar).
 // Devolve { leadIds, byAuthor (Map autor → leads distintos), automationReached }.
-export function contactAttribution({ leads, actsOf, waMessages, saas, inWin, humanIds } = {}) {
+export function contactAttribution({ leads, actsOf, waMessages, saas, inWin, humanIds, creditAllTo } = {}) {
   const first = new Map();       // leadId → { at, author } do 1º contato humano
   const autoReached = new Set(); // leads que a automação tocou (mesmo que gente também)
   const record = (id, at, author) => {
     if (!humanIds?.has(author || "")) { autoReached.add(id); return; }
     const cur = first.get(id);
-    if (!cur || String(at || "") < String(cur.at || "")) first.set(id, { at: at || "", author });
+    if (!cur || String(at || "") < String(cur.at || "")) first.set(id, { at: at || "", author: creditAllTo || author });
   };
   const knownIds = new Set((leads || []).map((l) => l.id));
   for (const m of waMessages || []) {

@@ -528,7 +528,6 @@ function StepRate({ pct, label, num, den, good, ok }) {
 }
 
 function FunnelConversions({ team, pLabel }) {
-  const cw = team ? tiers(team.goals?.callWinRate, 25) : null;
   return (
     <Card title="Conversões do funil" hint={`${pLabel} · time inteiro · o que ACONTECEU no período (não só quem entrou) · taxa colorida pela meta`}>
       <div style={{ padding: "6px 24px 18px" }}>
@@ -561,41 +560,11 @@ function FunnelConversions({ team, pLabel }) {
                 <StepBox value={team.won} label="Ganhos no período" sub={team.revenue > 0 ? money(team.revenue) : "= soma dos closers"} />
               </div>
             </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 18px", marginTop: 12, fontSize: 12.5 }}>
-              <span title="da safra de calls agendadas no período, quantas JÁ viraram venda (safra ainda aberta: call recente não teve tempo de fechar; inclui no-show no denominador)">
-                <span style={{ color: "var(--fg-3)" }}>Call agendada → ganho </span>
-                <b className="tnum" style={{ color: team.callWinRate == null ? "var(--fg-4)" : rateTone(team.callWinRate, cw.good, cw.ok) }}>
-                  {team.callWinRate == null ? "—" : pctStr(team.callWinRate)}
-                </b>
-                <span style={{ color: "var(--fg-4)" }}> · {int(team.wonFromCalls)} das calls do período</span>
-              </span>
-              <span title="ganhos do período ÷ leads criados no período (as safras se misturam: o ganho de hoje costuma ser lead de semanas atrás)">
-                <span style={{ color: "var(--fg-3)" }}>Lead → ganho </span>
-                <b className="tnum">{team.leadToWin == null ? "—" : pctStr(team.leadToWin)}</b>
-              </span>
-              {/* Quem agendou: calls do tile pelo DONO do lead — a MESMA fatia
-                  que o card do SDR mostra; o histórico pré-cockpit das
-                  agendadas está nas calls dos closers (banner). */}
-              {team.bookedBy?.length > 0 && (
-                <span title="calls com data na janela, pelo dono do lead (quem prospecta) — o card do SDR mostra a fatia dele. O histórico pré-cockpit (+agendadas) está somado nos closers.">
-                  <span style={{ color: "var(--fg-3)" }}>Quem agendou </span>
-                  <b className="tnum">{team.bookedBy.map((p) => `${p.name} ${int(p.leads)}`).join(" · ")}</b>
-                  {team.paceAdjust?.booked > 0 && <span style={{ color: "var(--fg-4)" }}> · +{int(team.paceAdjust.booked)} histórico</span>}
-                </span>
-              )}
-              {/* A abertura dos Contatados (régua única, 24/07): contato = ação
-                  HUMANA, cada lead no autor do 1º contato do período, e o
-                  histórico pré-cockpit já somado nas pessoas — a soma daqui
-                  fecha EXATA com o tile e com o card de cada um. Automação
-                  (fluxo de ligação, drip) fica fora do total, só informativa. */}
-              {team.contactedBy?.length > 0 && (
-                <span title="dos Contatados: cada lead vai pra quem fez o PRIMEIRO contato humano do período (toque ou mensagem). Mensagem automática não conta no total. O histórico pré-cockpit já está somado no SDR e nos closers, então a soma fecha com o tile.">
-                  <span style={{ color: "var(--fg-3)" }}>Quem contatou </span>
-                  <b className="tnum">{team.contactedBy.map((p) => `${p.name} ${int(p.leads)}`).join(" · ")}</b>
-                  {team.automationReached > 0 && <span style={{ color: "var(--fg-4)" }}> · automação alcançou {int(team.automationReached)} (fora do total)</span>}
-                </span>
-              )}
-            </div>
+            {/* A linha de leitura extra (call agendada → ganho, lead → ganho,
+                quem agendou/contatou, automação) SAIU a pedido do Leo (25/07:
+                "não precisamos mostrar"). Os dados seguem no payload
+                (contactedBy/bookedBy/automationReached/callWinRate/leadToWin)
+                pro teste de consistência e pra voltar fácil se ele quiser. */}
           </>
         )}
       </div>
