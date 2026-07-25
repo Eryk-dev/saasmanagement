@@ -14,6 +14,20 @@ import { loadSeed } from "./data.jsx";
 import { api, setKey } from "./lib/api.js";
 import { ErrorBoundary } from "./components/error-boundary.jsx";
 
+// O cockpit NÃO usa service worker. Um SW zumbi (registrado por site que morou
+// no domínio antes) intercepta a navegação e serve um shell velho do cache pra
+// QUALQUER caminho, mesmo com o servidor atualizado — em 25/07 isso prendeu o
+// navegador do Leo num build antigo. Desregistra qualquer um e limpa os caches
+// dele; o /sw.js mata-zumbi (public/) cobre as abas que nem chegam a rodar
+// este código.
+try {
+  navigator.serviceWorker?.getRegistrations?.().then((rs) => {
+    if (!rs.length) return;
+    rs.forEach((r) => r.unregister());
+    window.caches?.keys?.().then((ks) => ks.forEach((k) => caches.delete(k)));
+  }).catch(() => {});
+} catch { /* navegador sem suporte: nada a limpar */ }
+
 const root = createRoot(document.getElementById("root"));
 
 function Shell({ children }) {
