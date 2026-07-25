@@ -195,3 +195,19 @@ test("igDemographics: parseia país e gênero, ordenado por valor", async () => 
   assert.equal(d.countries[0].value, 200);
   assert.equal(d.genders[0].key, "F");
 });
+
+test("igDemographics: metric/timeframe param manda o recorte (alcançados/engajados)", async () => {
+  const f = fakeFetch([
+    [{ path: "/insights", metric: "reached_audience_demographics", breakdown: "age" }, { data: [{ total_value: { breakdowns: [{ results: [
+      { dimension_values: ["25-34"], value: 90 }, { dimension_values: ["18-24"], value: 40 },
+    ] }] } }] }],
+  ]);
+  const s = makeSocial({ fetch: f, accessToken: "t" });
+  const d = await s.igDemographics("ig1", "reached_audience_demographics", { period: "lifetime", timeframe: "last_30_days" });
+  assert.equal(d.ages[0].key, "25-34");
+  assert.equal(d.ages[0].value, 90);
+  // a chamada de age foi com a métrica e o timeframe passados
+  const ageCall = f.calls.find((c) => c.params.breakdown === "age");
+  assert.equal(ageCall.params.metric, "reached_audience_demographics");
+  assert.equal(ageCall.params.timeframe, "last_30_days");
+});
