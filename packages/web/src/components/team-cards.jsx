@@ -101,12 +101,17 @@ function targetMetric(t, bizDays, p) {
   };
 }
 
+// Métricas escondidas no CARTÃO da pessoa (seguem valendo no resto: funil, tela
+// Metas). Leo (25/07): o card do SDR fica só com as TAXAS — os contadores
+// absolutos (contatos e calls agendadas) saem, o volume já vive no funil.
+const CARD_HIDE = new Set(["contacts", "callsBooked"]);
+
 export function metricsFor(p, bizDays) {
   const rows = ["sdr", "closer", "cs", "social"].flatMap((role) => p[role]?.targets || []);
   // Uma pessoa pode acumular vagas (SDR + closer): a mesma métrica não pode
   // aparecer duas vezes no cartão.
   const seen = new Set();
-  const metrics = rows.filter((t) => !seen.has(t.metric) && seen.add(t.metric)).map((t) => targetMetric(t, bizDays, p));
+  const metrics = rows.filter((t) => !CARD_HIDE.has(t.metric) && !seen.has(t.metric) && seen.add(t.metric)).map((t) => targetMetric(t, bizDays, p));
   // Vaga sem meta nenhuma configurada ainda: mantém o resumo antigo pra o cartão
   // não ficar vazio enquanto o Leo não preenche a tela Metas.
   return metrics.length ? metrics : legacyMetricsFor(p, bizDays);
