@@ -50,10 +50,13 @@ export const META_CATALOG = [
       // placar mede, que o pace usa na cadeia e que a régua da Visão geral
       // colore. A conversão sobre as AGENDADAS não é campo: é conta
       // (comparecimento × esta), senão dá pra configurar duas que se contradizem.
-      { metric: "conversaoCall", kind: "rate", label: "Call → ganho", unit: "%", hint: "das calls que aconteceram", default: pct(RATE_BENCHMARKS.closeRate) },
-      // Volume de call do closer: as que ACONTECERAM (o no-show é cobrado no
-      // comparecimento do SDR). Fica logo abaixo da taxa porque é o denominador
-      // dela — as duas juntas explicam os ganhos.
+      { metric: "conversaoCall", kind: "rate", label: "Call → ganho", unit: "%", hint: "das calls agendadas no mês", default: pct(RATE_BENCHMARKS.closeRate) },
+      // Volume de call do closer no CARD = as AGENDADAS pra ele (Leo, 25/07: o
+      // card do closer segue o tile "Calls agendadas" do funil). É o denominador
+      // da Call→ganho, as duas juntas explicam os ganhos.
+      { metric: "callsScheduled", kind: "flow", label: "Calls agendadas no mês", unit: "n", hint: "as calls marcadas pra ele", default: null, team: true },
+      // Realizadas (compareceram) segue na cadeia do pace/Metas, mas não no
+      // CARD do closer (o card mostra as agendadas).
       { metric: "callsShown", kind: "flow", label: "Calls realizadas no mês", unit: "n", hint: "sem contar os no-show", default: null, team: true },
       { metric: "won", kind: "flow", label: "Ganhos no mês", unit: "n", default: null, team: true },
       { metric: "revenue", kind: "flow", label: "Receita no mês", unit: "R$", default: null, team: true },

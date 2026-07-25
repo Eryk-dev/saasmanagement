@@ -209,19 +209,13 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       for (const id of [...ids].sort()) map.set(id, base + (rest-- > 0 ? 1 : 0));
       return map;
     };
-    // Histórico da AGENDA: contato e agendadas somam no SDR (o card dele = topo
-    // do funil). As REALIZADAS históricas voltam pros closers (Leo, 25/07:
-    // "mantém as calls realizadas e ajusta só a %") — o número exibido no card
-    // fica cheio e a Call→ganho passa a dividir por ELE (won ÷ realizadas
-    // mostradas), então o card fecha e o funil = soma dos closers.
+    // Histórico pré-cockpit repartido entre as pessoas: CONTATO no SDR;
+    // COMPARECIMENTO (shown) nos closers. As agendadas históricas entram na
+    // distribuição do `bookedShare` abaixo (o card do closer mostra "Calls
+    // agendadas" somando o tile do funil — Leo, 25/07: "no funil marca 81,
+    // quero 81 no card dos closers pra ficar alinhado").
     const contactedHist = histShare(adjN("contacted"), withRole("sdr"));
-    const bookedHist = histShare(adjN("booked"), withRole("sdr"));
     const shownHist = histShare(adjN("shown"), withRole("closer"));
-    // O histórico de REALIZADAS (shown) NÃO entra nos cards dos closers: aquelas
-    // calls pré-cockpit não têm ganho registrado, então inflariam "Calls
-    // realizadas" sem inflar "Ganhos" e a Call→ganho do card não bateria
-    // (Leo, 25/07: "25/8 não é 40"). Fica só no TILE do funil (com o aviso),
-    // que é team-level. O card do closer conta as calls REAIS dele.
     // Contato = ação HUMANA — régua única do metrics-core (a automação fica de
     // fora do total, em automationReached). Com um ÚNICO SDR na vaga, TODO
     // contato humano credita NELE (decisão do Leo, 25/07): o funil de
@@ -232,10 +226,33 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     const humanIds = new Set(users.map((u) => u.id));
     const contact = contactAttribution({ leads, actsOf, waMessages, saas: product.id, inWin, humanIds, creditAllTo: soloSdr || undefined });
     const contactsOf = (uid) => contact.byAuthor.get(uid) || 0;
-    // Safra de calls do TIME (callAt na janela) — o funil e o card do SDR único
-    // leem DESTA safra (call sem dono também credita no SDR).
+    // Safra de calls do TIME (callAt na janela) — o funil lê DESTA safra.
     const teamBooked = leads.filter((l) => inWin(l.callAt));
     const teamOutcome = callOutcome(teamBooked);
+    // Alinhar o card do closer ao tile "Calls agendadas" do funil (Leo, 25/07:
+    // "no funil marca 81, quero 81 no card dos closers"). As calls SEM closer
+    // (roteadas pra Nutrição/Mentoria) + o histórico das agendadas se distribuem
+    // entre os closers proporcional às calls REAIS de cada um, então a soma dos
+    // cards fecha com o tile. Maior-resto pra somar exato.
+    const weightedShare = (total, weights) => {
+      const map = new Map();
+      const sum = [...weights.values()].reduce((a, b) => a + b, 0);
+      if (!(total > 0) || sum <= 0) return map;
+      const rema = [];
+      let assigned = 0;
+      for (const [k, w] of weights) { const base = Math.floor((total * w) / sum); map.set(k, base); assigned += base; rema.push([k, (total * w) / sum - base]); }
+      rema.sort((a, b) => b[1] - a[1]);
+      for (let i = 0; i < total - assigned; i++) map.set(rema[i][0], map.get(rema[i][0]) + 1);
+      return map;
+    };
+    const closerBookedReal = new Map();
+    for (const l of teamBooked) if (l.closer) closerBookedReal.set(l.closer, (closerBookedReal.get(l.closer) || 0) + 1);
+    const funnelBookedN = teamBooked.length + adjN("booked");
+    const sumRealBooked = [...closerBookedReal.values()].reduce((a, b) => a + b, 0);
+    // Peso = calls reais de cada closer; se ninguém tem call real ainda (só
+    // histórico/órfãos), reparte igual entre os closers da vaga.
+    const bookedWeights = sumRealBooked > 0 ? closerBookedReal : new Map(withRole("closer").map((id) => [id, 1]));
+    const bookedShare = weightedShare(Math.max(0, funnelBookedN - sumRealBooked), bookedWeights);
     // COBERTURA da safra (a "taxa de contato" honesta): dos leads que ENTRARAM
     // na janela, quantos tiveram contato humano — é o que o rótulo promete
     // ("dos leads novos, quantos você alcança"). Restrita à COORTE, então nunca
@@ -269,12 +286,12 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       }
       // Calls agendadas = calls dos leads DELE (owner) pela DATA DA CALL — a
       // MESMA régua do funil (callAt na janela; régua única, Leo 24/07). Call
-      // SEM dono credita no SDR único (Leo, 25/07). O COUNT mostrado soma a
-      // parte histórica (booked pré-cockpit) pra bater com o tile do funil; as
-      // TAXAS usam só o orgânico (histórico não tem resultado registrado).
+      // SEM dono credita no SDR único (Leo, 25/07). O card do SDR não mostra
+      // mais este número (só as taxas), então segue o orgânico dele; o histórico
+      // das agendadas foi pros CLOSERS (que exibem "Calls agendadas").
       const booked = leads.filter((l) => (l.owner === uid || (!l.owner && uid === soloSdr)) && inWin(l.callAt));
       const callsBookedOrganic = booked.length;
-      const callsBooked = callsBookedOrganic + (bookedHist.get(uid) || 0);
+      const callsBooked = callsBookedOrganic;
 
       // Show-rate e calls→ganho sobre o cohort de calls agendadas (callOutcome).
       const { shown, noShow, pending, won: wonFromCalls } = callOutcome(booked);
@@ -346,15 +363,15 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     const closerIds = [...new Set([...closerRole, ...leads.map((l) => l.closer).filter(Boolean)])];
     const closer = closerIds.map((uid) => {
       const mine = leads.filter((l) => l.closer === uid);
-      // Calls agendadas (pela data da call) e quantas ACONTECERAM (compareceram):
-      // avançou pra frente OU perdeu por outro motivo; no-show não conta. As
-      // AGENDADAS (agenda) são do SDR — o closer conta só as que aconteceram com
-      // ele (`calls` = orgânico dele). "Calls realizadas" MOSTRA o real + a parte
-      // dele do histórico (o número que o Leo quer manter), e a Call→ganho
-      // divide por ESSE mesmo número, então o card fecha.
+      // O card do closer mostra "Calls AGENDADAS no mês" (as marcadas pra ele +
+      // a fatia dele das calls sem closer + histórico, via bookedShare), somando
+      // o tile do funil (Leo, 25/07). A Call→ganho divide por ESSE número (won ÷
+      // agendadas). `calls` = as agendadas REAIS dele (pro win rate cru).
       const callLeads = mine.filter((l) => inWin(l.callAt));
       const calls = callLeads.length;
-      // Compareceu/furo pela MESMA régua da safra (callOutcome do metrics-core).
+      const callsBooked = calls + (bookedShare.get(uid) || 0); // exibido no card, = fatia do tile do funil
+      // Realizadas (compareceram) — vive no tile do funil; o card não mostra,
+      // mas fica no payload pra soma dos closers = funil realizadas.
       const callsShown = callOutcome(callLeads).shown + (shownHist.get(uid) || 0);
       // GANHO do closer = venda na janela pela régua oficial (isWonLead +
       // wonAt, metrics-core). O valor do negócio é lançado no fechamento
@@ -370,19 +387,19 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       const reasonCount = {};
       for (const l of lost) { const r = l.lostReason || "nao_informado"; reasonCount[r] = (reasonCount[r] || 0) + 1; }
       const lossReasons = Object.entries(reasonCount).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
-      // Conversão na call = ganhos ÷ calls REALIZADAS mostradas no card (Leo,
-      // 25/07: a % tem que bater com won ÷ realizadas do próprio card). Divide
-      // pelo MESMO callsShown que aparece — inclui o histórico, que não tem
-      // ganho, então a taxa reflete o recorde real sobre TODAS as calls feitas.
-      const conversao = callsShown > 0 ? round2((wonN / callsShown) * 100) : null;
+      // Call → ganho no card = ganhos ÷ calls AGENDADAS mostradas (Leo, 25/07: a
+      // % bate com won ÷ o número do card). Divide pelo MESMO callsBooked que
+      // aparece; como o card segue as AGENDADAS (não as realizadas), é o win
+      // rate sobre as marcadas (inclui no-show e histórico no denominador).
+      const conversao = callsBooked > 0 ? round2((wonN / callsBooked) * 100) : null;
       return {
         user: uid, name: nameOf(uid),
         targets: personTargets(uid, "closer", {
           conversaoCall: conversao,
-          callsShown,
+          callsScheduled: callsBooked,
           won: wonN, revenue: round2(revenue), ticket: wonN > 0 ? round2(revenue / wonN) : null,
         }),
-        calls, callsShown,
+        calls, callsBooked, callsShown,
         won: wonN, revenue: round2(revenue), lost: lost.length,
         conversaoCall: conversao,
         winRateCall: calls > 0 ? round2((wonN / calls) * 100) : null,
