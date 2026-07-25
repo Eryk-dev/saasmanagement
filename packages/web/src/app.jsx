@@ -16,6 +16,7 @@ import { OffersScreen } from "./screens/offers.jsx";
 import { DisparosScreen } from "./screens/disparos.jsx";
 import { WhatsappInboxScreen } from "./screens/whatsapp.jsx";
 import { WaHotAlert } from "./components/wa-hot-alert.jsx";
+import { UpdateNudge } from "./components/update-nudge.jsx";
 import { AgendaScreen } from "./screens/agenda.jsx";
 import { ConsultasScreen } from "./screens/consultas.jsx";
 import { CallsScreen } from "./screens/calls.jsx";
@@ -271,6 +272,9 @@ function App() {
       <ErrorBoundary variant="modal" label="wa-hot" resetKey="wa-hot" onReset={() => {}}>
         <WaHotAlert onOpenThread={(a) => nav("whatsapp", { waThread: a.thread, waLead: "", waDraft: "" })} />
       </ErrorBoundary>
+
+      {/* Deploy novo no ar → aviso pra recarregar (aba aberta roda JS velho). */}
+      <UpdateNudge />
 
       <CommandSearch
         open={searchOpen}
