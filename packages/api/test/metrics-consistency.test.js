@@ -219,19 +219,19 @@ test("funil da Visão geral = soma dos cards (contato humano, automação fora, 
 
   const c1 = sb.closer.find((p) => p.user === "clo1");
   const c2 = sb.closer.find((p) => p.user === "clo2");
-  // Calls AGENDADAS agora vivem no CARD DO CLOSER (Leo, 25/07: "no funil marca
-  // 81, quero 81 no card dos closers"): a SOMA dos closers = o tile do funil
-  // (calls reais deles + histórico + órfãos sem closer distribuídos). O card do
-  // SDR não mostra mais agendadas (só as taxas).
+  // Calls AGENDADAS são do SDR (agenda = prospecção): o card do SDR = o tile do
+  // funil, com o histórico das agendadas (10). Os closers contam só as calls
+  // que aconteceram COM eles (denominador real do win rate, sem histórico).
   assert.equal(sb.team.callsBooked, 13);            // 3 reais + 10 do histórico
-  assert.equal(c1.callsBooked + c2.callsBooked, sb.team.callsBooked, "soma das agendadas dos closers = tile do funil");
-  assert.equal(c1.calls + c2.calls, 3, "calls REAIS deles (sem histórico/órfão)");
-  assert.equal(sdrCard.callsBooked, 3, "SDR carrega só o orgânico (o histórico das agendadas foi pros closers)");
-  // Realizadas: funil = soma dos closers (histórico incluso), fora do card.
+  assert.equal(sdrCard.callsBooked, sb.team.callsBooked, "SDR único = topo do funil também em agendadas");
+  assert.equal(c1.calls + c2.calls, 3, "closers só as agendadas reais deles (sem histórico)");
+  // Calls REALIZADAS: o card MOSTRA o real + a parte do histórico (Leo quer
+  // MANTER o número, 25/07), e a Call→ganho divide por ELE — então o card fecha
+  // (won ÷ realizadas = a %) E o funil = soma dos closers (histórico incluso).
   assert.equal(sb.team.shown, 12);                  // 2 reais + 10 do histórico
   assert.equal(c1.callsShown + c2.callsShown, sb.team.shown, "funil realizadas = soma dos closers");
-  // Card do closer coerente: won ÷ AGENDADAS mostradas = a Call→ganho exibida.
-  for (const c of [c1, c2]) if (c.callsBooked > 0) assert.equal(c.conversaoCall, round2(c.won / c.callsBooked * 100), `${c.name}: won/agendadas = conversaoCall`);
+  // Card do closer coerente: won ÷ realizadas mostradas = a Call→ganho exibida.
+  for (const c of [c1, c2]) if (c.callsShown > 0) assert.equal(c.conversaoCall, round2(c.won / c.callsShown * 100), `${c.name}: won/realizadas = conversaoCall`);
   // Quem agendou (pelo dono do lead; SEM dono credita no SDR único) + histórico = o tile.
   assert.deepEqual(sb.team.bookedBy, [{ user: "sdr1", name: "SDR", leads: 3 }]);
   assert.equal(sb.team.bookedBy.reduce((a, p) => a + p.leads, 0) + sb.team.paceAdjust.booked, sb.team.callsBooked);
