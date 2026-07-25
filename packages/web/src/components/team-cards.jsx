@@ -103,10 +103,8 @@ function targetMetric(t, bizDays, p) {
 
 // Métricas escondidas no CARTÃO da pessoa (seguem valendo no resto: funil, tela
 // Metas). Leo (25/07): o card do SDR fica só com as TAXAS — os contadores
-// absolutos (contatos e calls agendadas) saem; e o card do closer mostra
-// "Calls agendadas" (callsScheduled) no lugar de "Calls realizadas" (callsShown),
-// pra seguir o tile do funil.
-const CARD_HIDE = new Set(["contacts", "callsBooked", "callsShown"]);
+// absolutos (contatos e calls agendadas) saem, o volume já vive no funil.
+const CARD_HIDE = new Set(["contacts", "callsBooked"]);
 
 export function metricsFor(p, bizDays) {
   const rows = ["sdr", "closer", "cs", "social"].flatMap((role) => p[role]?.targets || []);

@@ -123,14 +123,12 @@ test("Closer: conversão na call, ganhos (handoff), receita, ciclo call→ganho"
   const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
   const c = sb.closer.find((x) => x.user === "u_clo");
   assert.equal(c.calls, 4);             // w1,w2,x1,x2 têm callAt na janela
-  assert.equal(c.callsBooked, 4);       // agendadas exibidas no card (= todas dele, sem órfãos aqui)
-  assert.equal(c.callsShown, 3);        // w1,w2,x1 aconteceram (fica no funil, não no card)
+  assert.equal(c.callsShown, 3);        // w1,w2,x1 aconteceram; x2 é no-show
   assert.equal(c.won, 2);               // w1,w2 transicionaram pra Ganho na janela
   assert.equal(c.revenue, 1000);
   assert.equal(c.ticket, 500);          // 1000/2
-  // Call → ganho no card = won ÷ AGENDADAS mostradas (Leo, 25/07): 2 ÷ 4 = 50%.
-  assert.equal(c.conversaoCall, 50);
-  assert.equal(c.winRateCall, 50);      // 2 ÷ 4 agendadas (mesmo, sem órfão/histórico aqui)
+  assert.equal(c.conversaoCall, 66.67); // 2 ganhos ÷ 3 compareceram
+  assert.equal(c.winRateCall, 50);      // 2 ÷ 4 agendadas
   assert.equal(c.revenuePerCall, 250);  // 1000 ÷ 4
   assert.equal(c.cycleDays, 3);         // mediana call→ganho: 3d, 3d
   assert.equal(c.lost, 2);              // x1, x2
@@ -489,15 +487,13 @@ test("Funil do TIME: histórico pré-cockpit (product.paceAdjust) soma ao funil 
   // dele = topo do funil), realizadas nos closers — a soma fecha com o funil.
   const sdrC = sb.sdr.find((x) => x.user === "u_sdr");
   assert.equal(sdrC.contacted, 81);            // 1 orgânico + 80
-  assert.equal(sdrC.callsBooked, 1);           // só o orgânico (o histórico das agendadas foi pros closers)
+  assert.equal(sdrC.callsBooked, 11);          // 1 orgânico + 10 (= tile do funil)
   assert.deepEqual(t.contactedBy, [{ user: "u_sdr", name: "Sara SDR", leads: 81 }]);
   const clo = sb.closer.find((x) => x.user === "u_clo");
-  assert.equal(clo.calls, 0);         // 0 calls reais dele (a1 não tem closer)
-  // O card do closer mostra "Calls agendadas" = a fatia dele do tile do funil
-  // (aqui único closer: leva os 11 = 1 real órfão + 10 histórico). Call→ganho
-  // divide por ele. Realizadas (10 do histórico) seguem no funil.
-  assert.equal(clo.callsBooked, 11);  // = tile do funil (agendadas)
-  assert.equal(clo.callsShown, 10);   // 0 real + 10 do histórico de REALIZADAS (funil)
+  assert.equal(clo.calls, 0);         // agendadas são do SDR; o closer só as que aconteceram com ele
+  // "Calls realizadas" do card MOSTRA o histórico (Leo quer manter o número);
+  // a Call→ganho divide por ele, então o card fecha e o funil = soma deles.
+  assert.equal(clo.callsShown, 10);   // 0 real + 10 do histórico de REALIZADAS
   assert.equal(t.shown, 11);          // 1 real + 10 histórico = soma dos closers
   await app.close();
 });
@@ -682,22 +678,21 @@ test("Ana (só UniqueKids) não entra no placar da LeverAds", async () => {
   await app.close();
 });
 
-test("closer: card mostra Calls AGENDADAS (Leo 25/07), realizadas segue no funil", async () => {
+test("closer: calls REALIZADAS entram como meta e o realizado ignora o no-show", async () => {
   const { app, repo } = await buildApp();
-  await repo.create("goals", { id: "g1", saas: "leverads", scope: "role", key: "closer", metric: "callsScheduled", target: 73, period: "month" });
+  await repo.create("goals", { id: "g1", saas: "leverads", scope: "role", key: "closer", metric: "callsShown", target: 73, period: "month" });
   const mk = async (id, stage, extra) => {
     await repo.create("leads", { id, saas: "leverads", closer: "u_clo", createdAt: now, callAt: now, stage, ...extra });
   };
   await mk("c1", "Follow-up", {});                                              // aconteceu
   await mk("c2", "Perdido", { lostReason: "preco", stageSince: now });          // aconteceu (perdeu por outro motivo)
-  await mk("c3", "Perdido", { lostReason: "nao_compareceu", stageSince: now }); // NÃO aconteceu (no-show)
+  await mk("c3", "Perdido", { lostReason: "nao_compareceu", stageSince: now }); // NÃO aconteceu
 
   const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
   const row = sb.closer.find((x) => x.user === "u_clo");
-  const t = row.targets.find((x) => x.metric === "callsScheduled");
+  const t = row.targets.find((x) => x.metric === "callsShown");
   assert.equal(row.calls, 3, "3 agendadas");
-  assert.equal(t.value, 3, "o card mostra as AGENDADAS (inclui o no-show c3), = fatia do funil");
-  assert.equal(row.callsShown, 2, "realizadas (sem no-show) segue no payload/funil, fora do card");
+  assert.equal(t.value, 2, "só as que aconteceram (o no-show é do comparecimento do SDR)");
   assert.equal(t.target, 73, "1 closer: a meta do time é dele inteira");
   assert.equal(t.kind, "flow", "acumula, então reescala pra janela");
   await app.close();
