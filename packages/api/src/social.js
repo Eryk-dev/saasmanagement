@@ -512,7 +512,10 @@ export const social = {
   igReachBreakdown: (id, r) => inst().igReachBreakdown(id, r),
   igDailySeries: (id, m, r) => inst().igDailySeries(id, m, r),
   igMedia: (id, o) => inst().igMedia(id, o),
-  igDemographics: (id) => inst().igDemographics(id),
+  // metric/extra REPASSADOS (undefined ativa os defaults da função): sem isso,
+  // "alcançados"/"engajados" caíam no default follower_demographics e os 3
+  // recortes vinham idênticos.
+  igDemographics: (id, metric, extra) => inst().igDemographics(id, metric, extra),
   igOnlineFollowers: (id) => inst().igOnlineFollowers(id),
   pageInfo: (id) => inst().pageInfo(id),
   pageToken: (id) => inst().pageToken(id),
