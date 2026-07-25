@@ -193,7 +193,7 @@ function AudiencePanel({ audience }) {
           </div>
         )}
         {hasDemo(demo) ? (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 288px), 1fr))", gap: "26px 32px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 360px))", justifyContent: "center", gap: "26px 30px" }}>
             {(demo.genders || []).length > 0 && (
               <DonutBlock title="Gênero" segments={toSegments(demo.genders, { topN: 3, label: (k) => GENDER_LABEL[k] || k, palette: GENDER_COLOR })} />
             )}
@@ -385,10 +385,6 @@ function SocialScreen() {
               </Card>
             </div>
 
-            {/* Audiência: quem é o público (demografia) + melhor horário. Some
-                sozinho se a conta não libera (endpoint à parte). */}
-            <AudiencePanel audience={audience} />
-
             {sum.errors?.media && <div className="mono dim" style={{ fontSize: 11 }}>posts do IG indisponíveis: {sum.errors.media}</div>}
             {sum.errors?.insights && <div className="mono dim" style={{ fontSize: 11 }}>alcance indisponível: {sum.errors.insights}</div>}
 
@@ -422,6 +418,10 @@ function SocialScreen() {
               {!recent.length && <div style={{ padding: "18px 24px", borderTop: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 13 }}>nenhuma publicação ainda</div>}
              </div></div>
             </Card>
+
+            {/* Audiência: quem é o público (demografia) + melhor horário. Some
+                sozinho se a conta não libera (endpoint à parte). */}
+            <AudiencePanel audience={audience} />
           </>
         )}
       </div>
