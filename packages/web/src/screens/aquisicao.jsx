@@ -70,10 +70,10 @@ function AquisicaoScreen() {
               <StatTile label="Investido" value={money(t.spend)} delta={t.ctr != null ? `CTR ${dec(t.ctr)}%` : "sem anúncio no período"} />
               <StatTile label="Leads" value={intBR(t.leads)} delta={t.formViews ? `${fmtPct(pct(t.leads, t.formViews))} das visitas` : "no período"} />
               <StatTile label="Custo por lead" value={t.cpl != null ? money(t.cpl) : "—"} delta={t.cplMeta != null ? `Meta: ${money(t.cplMeta)}` : null} />
-              <StatTile label="Ganhos" value={intBR(t.won)} delta={t.leads ? `${fmtPct(pct(t.won, t.leads))} dos leads` : null}
-                title="Dos leads que ENTRARAM neste período, quantos já fecharam (coorte de aquisição). Pode diferir dos 'ganhos fechados no período' da Visão geral, que conta pela data do fechamento — as duas contas são certas, respondem perguntas diferentes." />
+              <StatTile label="Ganhos" value={intBR(t.won)} delta={t.costPerWin != null ? `custo ${money(t.costPerWin)}` : null}
+                title="Negócios FECHADOS neste período, pela data da venda — a mesma régua da Visão geral. O lead pode ter entrado no funil em período anterior; o que manda é quando fechou." />
               <StatTile label="Receita" value={money(t.revenue)} delta={w.cac != null ? `CAC ${money(w.cac)}` : null}
-                title="Receita dos ganhos desses leads (mesma coorte), pra casar com o investido no cálculo de ROAS e CAC." />
+                title="Receita dos negócios fechados no período (pela data da venda), pra casar com o investido no cálculo de ROAS e CAC." />
               <StatTile label="ROAS" value={t.roas != null ? `${dec(t.roas)}x` : "—"} tone={t.roas >= 1 ? "up" : t.roas != null ? "down" : "flat"} delta={t.roas != null ? "receita ÷ investido" : "sem receita/gasto"} />
             </div>
 

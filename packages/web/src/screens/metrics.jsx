@@ -561,8 +561,8 @@ const ADS_COLS = [
   { key: "cpl", label: "CPL", width: "80px", on: true, hint: "investimento ÷ leads reais do cockpit (UTM)" },
   { key: "ctr", label: "CTR link", width: "70px", on: true, hint: "cliques no link ÷ impressões" },
   { key: "cpc", label: "CPC link", width: "85px", on: true, hint: "investido ÷ cliques no link" },
-  { key: "won", label: "Conversões", width: "85px", on: true, hint: "conversões: leads atribuídos (UTM) que viraram ganho" },
-  { key: "revenue", label: "Valor conv.", width: "95px", on: true, hint: "valor convertido: soma do valor dos negócios ganhos" },
+  { key: "won", label: "Conversões", width: "85px", on: true, hint: "conversões: negócios FECHADOS no período (data da venda), atribuídos ao anúncio por UTM" },
+  { key: "revenue", label: "Valor conv.", width: "95px", on: true, hint: "valor convertido: soma dos negócios fechados no período (data da venda)" },
   { key: "play3s", label: "3s play", width: "70px", on: true, hint: "reproduções de 3s ÷ impressões" },
   // Leads/CPL pela ATRIBUIÇÃO DA META (metaLeads do insight) — pra reconciliar
   // com o Gerenciador: a Meta credita pelo modelo dela (clique 7d + view 1d, na
@@ -574,7 +574,7 @@ const ADS_COLS = [
   { key: "linkClicks", label: "Cliques link", width: "90px", on: false, hint: "cliques no link (inline link clicks)" },
   { key: "cpm", label: "CPM", width: "80px", on: false, hint: "custo por mil impressões" },
   { key: "costPerWin", label: "R$ / conversão", width: "105px", on: false, hint: "investimento ÷ conversões do período" },
-  { key: "roas", label: "ROAS", width: "70px", on: false, hint: "receita dos ganhos ÷ investimento" },
+  { key: "roas", label: "ROAS", width: "70px", on: false, hint: "receita dos fechados no período ÷ investimento" },
   { key: "videoP25", label: "Vídeo 25%", width: "85px", on: false, hint: "espectadores que passaram de 25% do vídeo" },
   { key: "videoP50", label: "Vídeo 50%", width: "85px", on: false, hint: "espectadores que passaram da metade do vídeo" },
   { key: "videoP95", label: "Vídeo 95%", width: "85px", on: false, hint: "espectadores que chegaram a 95% do vídeo" },

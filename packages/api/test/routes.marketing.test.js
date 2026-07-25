@@ -385,7 +385,9 @@ test("métricas por dor: agrupa [X] do nome do anúncio, rotula pelo painMap e c
   const mk = (id, content, stage, extra = {}) => repo.create("leads", { id, saas: "leverads", stage, createdAt: now, utm: { campaign: "c1", term: "s1", content }, ...extra });
   // Qualificação → grade: l1 = S (10+ contas · 2-10 mil = topo), l2 = E (1
   // conta, sem listings), l3 = C pelo `volume` legado (sem contas → índice 0).
-  await mk("l1", "a1", "Ganho", { amount: 600, accounts: "10+", listings: "2000-10000" }); // valor pedido pelo modal de fechamento
+  // stageSince = quando virou Ganho: o dinheiro conta pela DATA DA VENDA
+  // (wonAtOf), não pela entrada do lead — sem carimbo nenhum, não há data.
+  await mk("l1", "a1", "Ganho", { amount: 600, accounts: "10+", listings: "2000-10000", stageSince: now }); // valor pedido pelo modal de fechamento
   await mk("l2", "a1", "Inbox", { accounts: "1" });
   await mk("l3", "a3", "Inbox", { volume: "200+" });
 
