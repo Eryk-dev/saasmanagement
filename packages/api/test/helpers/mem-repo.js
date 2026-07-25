@@ -13,6 +13,24 @@ export function makeMemRepo() {
       // Mesma semântica do db.js: ORDER BY id (ordem estável entre produtos).
       return [...col(name).values()].map((r) => ({ ...r })).sort((a, b) => String(a.id).localeCompare(String(b.id)));
     },
+    // Espelha listWhere do db.js: igualdade por chave e faixa { gte, lte, gt, lt }
+    // comparadas como TEXTO (é o que `json->>` faz no Postgres), + projeção.
+    async listWhere(name, where = {}, { fields } = {}) {
+      const CMP = { gte: (a, b) => a >= b, lte: (a, b) => a <= b, gt: (a, b) => a > b, lt: (a, b) => a < b };
+      const rows = (await this.list(name)).filter((r) =>
+        Object.entries(where).every(([key, val]) => {
+          if (val === undefined || val === null || val === "") return true;
+          const got = r[key] === undefined || r[key] === null ? null : String(r[key]);
+          if (typeof val === "object" && !Array.isArray(val)) {
+            return Object.entries(val).every(([op, bound]) =>
+              !CMP[op] || bound === undefined || bound === null || bound === "" ? true : got !== null && CMP[op](got, String(bound)));
+          }
+          return got === String(val);
+        }));
+      if (!Array.isArray(fields)) return rows; // `[]` = só o id (espelha o db.js)
+      const keys = [...new Set(["id", ...fields])];
+      return rows.map((r) => Object.fromEntries(keys.map((k) => [k, r[k] === undefined ? null : r[k]])));
+    },
     async get(name, id) {
       const r = col(name).get(String(id));
       return r ? { ...r } : null;

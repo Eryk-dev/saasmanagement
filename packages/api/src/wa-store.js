@@ -77,7 +77,8 @@ export async function linkThreadToLead(repo, tid, lead) {
   if (!tid || !lead?.id) return null;
   const thread = await repo.get("wa_threads", tid);
   if (thread) await repo.update("wa_threads", tid, { leadId: lead.id, saas: thread.saas || lead.saas || "" });
-  const msgs = (await repo.list("wa_messages")).filter((m) => m.thread === tid && !m.leadId);
+  // `leadId` vazio/ausente continua no JS (o `->>` só compara o que existe).
+  const msgs = (await repo.listWhere("wa_messages", { thread: tid }, { fields: ["leadId", "saas"] })).filter((m) => !m.leadId);
   for (const m of msgs) await repo.update("wa_messages", m.id, { leadId: lead.id, saas: m.saas || lead.saas || "" });
   const patch = {};
   if (waMatchKey(lead.phone) !== waMatchKey(tid)) patch.waPhone = tid; // escreveu de outro número
@@ -353,8 +354,8 @@ export async function waInsights(repo, { days = 30, now = Date.now() } = {}) {
 // Mensagens de uma conversa (mais antiga primeiro).
 export async function listMessages(repo, tid) {
   const id = digits(tid);
-  const all = await repo.list("wa_messages");
-  return all.filter((m) => m.thread === id).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
+  const msgs = await repo.listWhere("wa_messages", { thread: id });
+  return msgs.sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
 }
 
 // Zera o não-lido e marca as recebidas como lidas. Retorna o waMessageId da

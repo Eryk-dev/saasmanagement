@@ -759,8 +759,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
 
     // Upsert por (lead, origin custom): re-salvar mantém o MESMO link e o
     // tracking de aberturas (igual ao share por oferta).
-    const all = await repo.list("proposals");
-    const existing = all.find((p) => p.lead === lead.id && p.origin === "custom");
+    // Só o id — ver proposal.js: varrer todas as propostas pra achar uma linha
+    // era leitura de megabytes por clique do closer.
+    const [existing] = await repo.listWhere("proposals", { lead: lead.id, origin: "custom" }, { fields: [] });
     const record = { saas: lead.saas, lead: lead.id, origin: "custom", template: "", editKey: "", ...built };
     const saved = existing
       ? await repo.update("proposals", existing.id, record)

@@ -27,6 +27,9 @@ const DAY_MS = 86400000;
 // Sem isso, lead criado às 22h de Brasília caía no dia UTC seguinte e sumia do
 // filtro "hoje"; os insights da Meta já vêm datados no fuso da conta (BRT).
 const dayStr = dayKey;
+// "YYYY-MM-DD" ± n dias — só pra montar a janela folgada que vai pro Postgres
+// (o corte exato, no fuso do negócio, continua sendo o dayStr acima).
+const shiftDay = (day, n) => new Date(new Date(`${day}T00:00:00Z`).getTime() + n * DAY_MS).toISOString().slice(0, 10);
 
 // UTMs dos criativos criados pelo cockpit — a MESMA convenção documentada acima,
 // via parâmetros dinâmicos da Meta (resolvidos na entrega do anúncio).
@@ -645,9 +648,15 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
 
     // Visitas no form (páginas públicas do produto, sessões únicas no período):
     // o topo REAL do funil de aquisição, antes do lead existir.
-    const formEvents = (await repo.list("form_events")).filter(
-      (e) => e.saas === product.id && dayStr(e.createdAt) >= since && dayStr(e.createdAt) <= until,
-    );
+    // O corte fino continua em JS (dayStr é o dia do NEGÓCIO, America/Sao_Paulo —
+    // não dá pra comparar o ISO UTC direto). O Postgres corta por uma janela UTC
+    // FOLGADA de um dia pra cada lado: some ~99% das linhas sem mexer na régua.
+    // form_events é a maior tabela do cockpit e `ua`/`utm` não são usados aqui.
+    const formEvents = (await repo.listWhere(
+      "form_events",
+      { saas: product.id, createdAt: { gte: shiftDay(since, -1), lt: shiftDay(until, 2) } },
+      { fields: ["event", "session", "createdAt"] },
+    )).filter((e) => dayStr(e.createdAt) >= since && dayStr(e.createdAt) <= until);
     const formSessions = (ev) => new Set(formEvents.filter((e) => e.event === ev).map((e) => e.session)).size;
 
     const sum = (k) => rows.reduce((a, r) => a + (Number(r[k]) || 0), 0);
@@ -675,8 +684,9 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     // sem histórico cai na aproximação pelo estágio atual (comportamento
     // pré-CRM). Terminais de perda não são progresso.
     const stageActsByLead = new Map();
-    for (const a of await repo.list("activities")) {
-      if (a.saas !== product.id || a.type !== "stage" || !a.lead) continue;
+    // Só as mudanças de estágio DESTE produto (stagePassCounts lê type e meta).
+    for (const a of await repo.listWhere("activities", { saas: product.id, type: "stage" }, { fields: ["lead", "type", "meta"] })) {
+      if (!a.lead) continue;
       if (!stageActsByLead.has(a.lead)) stageActsByLead.set(a.lead, []);
       stageActsByLead.get(a.lead).push(a);
     }

@@ -333,8 +333,13 @@ export function registerFormRoutes(app, repo, opts = {}) {
     if (!form) return reply.code(404).send({ error: "Not found" });
     const since = String(req.query.since || "");
     const until = String(req.query.until || ""); // range fechado (hoje/ontem/data custom)
-    const events = (await repo.list("form_events")).filter(
-      (e) => e.form === form.id && (!since || String(e.createdAt || "") >= since) && (!until || String(e.createdAt || "") <= until),
+    // Filtro no Postgres e só as chaves que o funil usa: form_events é a maior
+    // tabela do cockpit (~19k linhas) e `ua` sozinho é metade do documento —
+    // trazer a tabela inteira aqui era o maior consumidor de egress do projeto.
+    const events = await repo.listWhere(
+      "form_events",
+      { form: form.id, createdAt: { gte: since, lte: until } },
+      { fields: ["session", "event", "key", "variant", "pain", "utm", "createdAt"] },
     );
     const uniq = (pred) => new Set(events.filter(pred).map((e) => e.session)).size;
     const questions = form.questions || [];
@@ -345,8 +350,14 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // Fechamento por variante: submission carimbada → lead → estágio de ganho.
     // É o que elege campeã de verdade (headline que vira CONTRATO, não clique).
     const product = form.saas ? await repo.get("products", form.saas) : null;
+    // `internal` fica no JS: ausente/false/true no documento, o `->>` só compara
+    // o que existe. Form e janela vão pro Postgres.
     const subs = groupKeys.length
-      ? (await repo.list("form_submissions")).filter((x) => x.form === form.id && !x.internal && (!since || String(x.createdAt || "") >= since) && (!until || String(x.createdAt || "") <= until))
+      ? (await repo.listWhere(
+          "form_submissions",
+          { form: form.id, createdAt: { gte: since, lte: until } },
+          { fields: ["lead", "variant", "pain", "internal", "createdAt"] },
+        )).filter((x) => !x.internal)
       : [];
     const leadsById = groupKeys.length ? new Map((await repo.list("leads")).map((l) => [l.id, l])) : new Map();
     const variants = groupKeys.map((gk) => {

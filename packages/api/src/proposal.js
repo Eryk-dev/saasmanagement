@@ -220,8 +220,9 @@ export async function shareProposalOffer(repo, parent, offer, { baseUrl = "" } =
     sharedFrom: parent.id,
     sharedOffer: n,
   };
-  const all = await repo.list("proposals");
-  const existing = all.find((p) => p.sharedFrom === parent.id && Number(p.sharedOffer) === n);
+  // Só o id: a proposta inteira é o documento mais pesado do banco (~8 kB por
+  // linha) e aqui a lista servia só pra achar UMA linha.
+  const [existing] = await repo.listWhere("proposals", { sharedFrom: parent.id, sharedOffer: n }, { fields: [] });
   const saved = existing
     ? await repo.update("proposals", existing.id, snapshot) // mesmo link, mantém views/aceite
     : await repo.create("proposals", {

@@ -194,7 +194,7 @@ export async function runInboundCallFlow(repo, wa, { message, resolvePhoneId, no
 
 async function maybeStart(repo, wa, { thread, resolvePhoneId, now = new Date() }) {
   if (!thread.leadId) return; // só lead conhecido — o form cria o lead antes de mandar pro WhatsApp
-  const inbound = (await repo.list("wa_messages")).filter((m) => m.thread === thread.id && m.direction === "in");
+  const inbound = await repo.listWhere("wa_messages", { thread: thread.id, direction: "in" }, { fields: [] });
   if (inbound.length > 1) return; // não é o 1º contato — conversa já existia
   const lead = await repo.get("leads", thread.leadId);
   if (!lead) return;
