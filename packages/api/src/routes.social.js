@@ -204,9 +204,15 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
     if (!social.configured()) return { configured: false };
     const { igUserId } = await idsFor(product);
     if (!igUserId) return { configured: true, demographics: null, onlineFollowers: null, errors: { setup: "sem Instagram configurado" } };
-    const out = { configured: true, demographics: null, onlineFollowers: null, bestHours: null, errors: {} };
+    const out = { configured: true, demographics: null, reached: null, engaged: null, onlineFollowers: null, bestHours: null, errors: {} };
+    // Três recortes da audiência: quem SEGUE (lifetime), quem ALCANÇAMOS e quem
+    // ENGAJA (últimos 30d). As duas últimas dependem de a conta liberar e ter
+    // volume no período — fail-soft (a tela mostra só os recortes com dado).
+    const tf = { period: "lifetime", timeframe: "last_30_days" };
     await Promise.all([
       social.igDemographics(igUserId).then((d) => { out.demographics = d; }).catch((e) => { out.errors.demographics = e.message; }),
+      social.igDemographics(igUserId, "reached_audience_demographics", tf).then((d) => { out.reached = d; }).catch(() => {}),
+      social.igDemographics(igUserId, "engaged_audience_demographics", tf).then((d) => { out.engaged = d; }).catch(() => {}),
       social.igOnlineFollowers(igUserId).then((h) => { out.onlineFollowers = h; }).catch((e) => { out.errors.online = e.message; }),
     ]);
     // Melhor janela: as 3 horas de pico dos seguidores online.

@@ -7,7 +7,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { useData } from "../data.jsx";
 import { CreativeEditor } from "./creative.jsx";
 import { useIsMobile } from "../lib/responsive.js";
-import { AreaLine, fmtNum } from "./social-metrics.jsx";
+import { AreaLine, fmtNum, BarList, SplitBar, HourBars } from "./social-metrics.jsx";
 
 // Mídia social — métricas do perfil (Instagram + página do Facebook) e o fluxo
 // de publicação orgânica direto do cockpit:
@@ -94,10 +94,93 @@ const DEFAULT_PAINS = [
   "Medo de perder a operação por erro manual",
 ];
 
+// ── Audiência: quem é o público (demografia) + melhor horário ────────────────
+const GENDER_LABEL = { M: "Homens", F: "Mulheres", U: "Não informado" };
+const GENDER_COLOR = ["var(--accent)", "#7C6FF0", "var(--line-2)"];
+const COUNTRY_LABEL = { BR: "Brasil", PT: "Portugal", US: "Estados Unidos", AR: "Argentina", CL: "Chile", CO: "Colômbia", MX: "México", PY: "Paraguai", UY: "Uruguai", ES: "Espanha", IT: "Itália", DE: "Alemanha", FR: "França", GB: "Reino Unido", JP: "Japão", CA: "Canadá", AU: "Austrália", AO: "Angola", MZ: "Moçambique" };
+const AUD_SUBLABEL = { fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", marginBottom: 10 };
+// Anexa % (fatia do total) e corta no topo N — o BarList mostra o valor + o %.
+const withPct = (items, topN) => {
+  const total = (items || []).reduce((s, i) => s + (Number(i.value) || 0), 0) || 1;
+  return (items || []).slice(0, topN).map((i) => ({ key: i.key, value: i.value, pct: Math.round((i.value / total) * 100) }));
+};
+const hasDemo = (d) => !!(d && ((d.genders || []).length || (d.ages || []).length || (d.cities || []).length || (d.countries || []).length));
+
+function AudiencePanel({ audience }) {
+  const sets = [
+    ["follower", "Seguidores", audience?.demographics],
+    ["reached", "Alcançados", audience?.reached],
+    ["engaged", "Engajados", audience?.engaged],
+  ].filter(([, , d]) => hasDemo(d));
+  const [which, setWhich] = React.useState("follower");
+  const active = sets.find(([id]) => id === which) || sets[0];
+  const demo = active?.[2];
+  const online = audience?.onlineFollowers;
+  if (!audience || (!hasDemo(demo) && !(online || []).length)) return null;
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 16 }}>
+      <Card title="Quem é o seu público" hint="perfil da audiência no Instagram">
+        {sets.length > 1 && (
+          <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+            {sets.map(([id, label]) => {
+              const on = (active?.[0] || sets[0]?.[0]) === id;
+              return (
+                <button key={id} onClick={() => setWhich(id)} className="mono"
+                  title={id === "follower" ? "quem te segue" : id === "reached" ? "quem você alcançou nos últimos 30 dias" : "quem interagiu nos últimos 30 dias"}
+                  style={{ fontSize: 11, padding: "4px 11px", borderRadius: 999, cursor: "pointer", border: `1px solid ${on ? "var(--accent-line)" : "var(--line-2)"}`, background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-3)" }}>{label}</button>
+              );
+            })}
+          </div>
+        )}
+        {hasDemo(demo) ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+            {(demo.genders || []).length > 0 && (
+              <div>
+                <div style={AUD_SUBLABEL}>Gênero</div>
+                <SplitBar segments={demo.genders.map((g, i) => ({ label: GENDER_LABEL[g.key] || g.key, value: g.value, color: GENDER_COLOR[i % GENDER_COLOR.length] }))} />
+              </div>
+            )}
+            {(demo.ages || []).length > 0 && (
+              <div><div style={AUD_SUBLABEL}>Faixa etária</div>
+                <BarList items={withPct(demo.ages, 8).map((a) => ({ key: a.key, label: a.key, value: a.value, pct: a.pct }))} labelW={64} />
+              </div>
+            )}
+            {(demo.cities || []).length > 0 && (
+              <div><div style={AUD_SUBLABEL}>Principais cidades</div>
+                <BarList items={withPct(demo.cities, 6).map((c) => ({ key: c.key, label: c.key, value: c.value, pct: c.pct }))} labelW={150} />
+              </div>
+            )}
+            {(demo.countries || []).length > 0 && (
+              <div><div style={AUD_SUBLABEL}>Principais países</div>
+                <BarList items={withPct(demo.countries, 5).map((c) => ({ key: c.key, label: COUNTRY_LABEL[c.key] || c.key, value: c.value, pct: c.pct }))} labelW={130} />
+              </div>
+            )}
+          </div>
+        ) : <div className="mono dim" style={{ fontSize: 12, padding: "8px 0" }}>demografia indisponível (o Instagram só libera com ~100+ seguidores)</div>}
+      </Card>
+
+      <Card title="Melhor horário pra postar" hint="média de seguidores online por hora">
+        {(online || []).length ? (
+          <>
+            <HourBars hours={online} bestHours={audience.bestHours || []} />
+            {(audience.bestHours || []).length > 0 && (
+              <div style={{ marginTop: 14, fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5 }}>
+                Pico de audiência online por volta de <b>{audience.bestHours.map((h) => `${String(h).padStart(2, "0")}h`).join(" · ")}</b>. Programe os posts pra essa janela pra pegar mais gente na hora.
+              </div>
+            )}
+          </>
+        ) : <div className="mono dim" style={{ fontSize: 12, padding: "8px 0" }}>o Instagram não devolveu os seguidores online desta conta</div>}
+      </Card>
+    </div>
+  );
+}
+
 function SocialScreen() {
   const [product] = useActiveSaas();
   const [sum, setSum] = useS(null);
   const [posts, setPosts] = useS([]);
+  const [audience, setAudience] = useS(null); // demografia + melhor horário (endpoint à parte, caro)
   const days = 30;
   const [err, setErr] = useS(null);
   const [wizard, setWizard] = useS(false);
@@ -110,10 +193,13 @@ function SocialScreen() {
   useE(() => {
     if (!product?.id) return;
     let alive = true;
-    setSum(null); setErr(null);
+    setSum(null); setErr(null); setAudience(null);
     Promise.all([api.socialSummary(product.id, days), api.socialPosts(product.id)])
       .then(([s, p]) => { if (alive) { setSum(s); setPosts(p || []); } })
       .catch((e) => alive && setErr(e.message));
+    // Audiência (demografia + melhor horário) carrega em paralelo, sem travar o
+    // painel — são chamadas caras e não dependem do período.
+    api.socialAudience(product.id).then((a) => alive && setAudience(a)).catch(() => {});
     return () => { alive = false; };
   }, [product?.id]);
 
@@ -248,6 +334,10 @@ function SocialScreen() {
                 </div>
               </Card>
             </div>
+
+            {/* Audiência: quem é o público (demografia) + melhor horário. Some
+                sozinho se a conta não libera (endpoint à parte). */}
+            <AudiencePanel audience={audience} />
 
             {sum.errors?.media && <div className="mono dim" style={{ fontSize: 11 }}>posts do IG indisponíveis: {sum.errors.media}</div>}
             {sum.errors?.insights && <div className="mono dim" style={{ fontSize: 11 }}>alcance indisponível: {sum.errors.insights}</div>}

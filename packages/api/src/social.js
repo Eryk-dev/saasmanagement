@@ -218,13 +218,16 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
       }));
     },
 
-    // Demografia dos seguidores (snapshot lifetime): país, cidade, idade, gênero.
-    // Cada quebra é fail-soft; conta com <100 seguidores costuma vir vazia.
-    async igDemographics(igUserId) {
+    // Demografia de uma AUDIÊNCIA por país/cidade/idade/gênero. `metric` escolhe
+    // qual: quem SEGUE (follower_demographics, snapshot lifetime), quem
+    // ALCANÇAMOS (reached_audience_demographics) ou quem ENGAJA
+    // (engaged_audience_demographics) — as duas últimas por `timeframe` (extra).
+    // Cada quebra é fail-soft; conta pequena / sem a métrica vem vazia.
+    async igDemographics(igUserId, metric = "follower_demographics", extra = { period: "lifetime" }) {
       const out = { countries: [], cities: [], ages: [], genders: [] };
       const one = async (breakdown, dest) => {
         try {
-          const body = await get(`${igUserId}/insights`, { metric: "follower_demographics", period: "lifetime", metric_type: "total_value", breakdown });
+          const body = await get(`${igUserId}/insights`, { metric, metric_type: "total_value", breakdown, ...extra });
           const results = body.data?.[0]?.total_value?.breakdowns?.[0]?.results || [];
           out[dest] = results
             .map((r) => ({ key: String(r.dimension_values?.[0] ?? "?"), value: Number(r.value) || 0 }))
