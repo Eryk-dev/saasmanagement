@@ -76,7 +76,8 @@ test("igMedia: usa insights aninhado por post (reach/saved/shares)", async () =>
   assert.match(f.calls[0].params.fields, /insights\.metric\(/);
 });
 
-test("igMedia: vídeo ganha views/tempo médio/skip 3s em chamada própria; foto não", async () => {
+test("igMedia: cada post ganha métricas estendidas (vídeo com reels; foto com views/perfil)", async () => {
+  const VID = "views,ig_reels_avg_watch_time,ig_reels_video_view_total_time,clips_replays_count,reels_skip_rate,profile_visits,follows";
   const f = fakeFetch([
     [{ path: "/media" }, {
       data: [
@@ -84,11 +85,22 @@ test("igMedia: vídeo ganha views/tempo médio/skip 3s em chamada própria; foto
         { id: "i1", media_type: "IMAGE", media_url: "https://cdn/i1.jpg", like_count: 8, comments_count: 0 },
       ],
     }],
-    [{ path: "/v1/insights", metric: "views,ig_reels_avg_watch_time,reels_skip_rate" }, {
+    [{ path: "/v1/insights", metric: VID }, {
       data: [
         { name: "views", values: [{ value: 640 }] },
         { name: "ig_reels_avg_watch_time", values: [{ value: 8200 }] },
+        { name: "ig_reels_video_view_total_time", values: [{ value: 512000 }] },
+        { name: "clips_replays_count", values: [{ value: 45 }] },
         { name: "reels_skip_rate", values: [{ value: 28.5 }] },
+        { name: "profile_visits", values: [{ value: 12 }] },
+        { name: "follows", values: [{ value: 3 }] },
+      ],
+    }],
+    [{ path: "/i1/insights", metric: "views,profile_visits,follows" }, {
+      data: [
+        { name: "views", values: [{ value: 300 }] },
+        { name: "profile_visits", values: [{ value: 5 }] },
+        { name: "follows", values: [{ value: 1 }] },
       ],
     }],
   ]);
@@ -97,14 +109,19 @@ test("igMedia: vídeo ganha views/tempo médio/skip 3s em chamada própria; foto
   const vid = media.find((m) => m.id === "v1"), img = media.find((m) => m.id === "i1");
   assert.equal(vid.views, 640);
   assert.equal(vid.avgWatchMs, 8200);
+  assert.equal(vid.totalWatchMs, 512000);
+  assert.equal(vid.replays, 45);
   assert.equal(vid.skipRate, 28.5);
+  assert.equal(vid.profileVisits, 12);
+  assert.equal(vid.follows, 3);
   assert.equal(vid.videoUrl, "https://cdn/v1.mp4"); // pro front ler a duração
   assert.equal(vid.mediaUrl, "https://cdn/v1.jpg"); // thumb continua sendo a capa
-  assert.equal(img.views, null);
+  // foto AGORA ganha views (métrica unificada) + atividade de perfil; sem reels.
+  assert.equal(img.views, 300);
+  assert.equal(img.profileVisits, 5);
+  assert.equal(img.follows, 1);
   assert.equal(img.skipRate, null);
   assert.equal(img.videoUrl, "");
-  // a foto NÃO gera chamada de insights de vídeo
-  assert.equal(f.calls.filter((c) => c.path.includes("/i1/insights")).length, 0);
 });
 
 test("igMedia: se o skip 3s não existir pra mídia, cai pro conjunto sem ele", async () => {
@@ -142,7 +159,8 @@ test("igMedia: se o combo com insights falhar, cai pros campos básicos", async 
   const media = await s.igMedia("ig1");
   assert.equal(media[0].likes, 5);
   assert.equal(media[0].reach, 0); // sem insights, mas não quebrou
-  assert.equal(n, 2); // tentou com insights, caiu pro básico
+  // combo aninhado (400) → base (200) → 1 chamada estendida por post (200 aqui).
+  assert.equal(n, 3);
 });
 
 test("igOnlineFollowers: média por hora dos dias devolvidos", async () => {

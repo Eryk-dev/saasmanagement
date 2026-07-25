@@ -35,7 +35,7 @@ const KIND_HINTS = {
 // Só os tipos "criados aqui" abrem o editor (e ganham dor + copy por IA).
 const CREATED_HERE = new Set(["image", "carousel", "sequence"]);
 // Colunas da tabela de publicações (header e linhas compartilham o grid).
-const POSTS_GRID = "2fr .7fr .6fr .55fr .55fr .5fr .6fr .5fr .6fr .55fr .7fr";
+const POSTS_GRID = "2fr .7fr .55fr .55fr .55fr .55fr .5fr .55fr .6fr .5fr .55fr .5fr .6fr .55fr .55fr .7fr";
 const fmtPct = (x) => `${(Math.round(x * 10) / 10).toFixed(1).replace(".", ",")}%`;
 // Engajamento do post = interações totais ÷ alcance. null sem dados (posts do
 // histórico local ainda sem espelho no IG) — a célula mostra "—".
@@ -204,6 +204,16 @@ function SocialScreen() {
               <StatTile label="Posts no mês" value={fmtNum(eng?.posts ?? 0)} delta={`de 12 · meta mensal`} />
             </div>
 
+            {/* Segunda faixa: as demais métricas de perfil que o Instagram libera
+                no período (já vêm do igInsights). "–" = a conta não expõe. */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+              <StatTile label="Views · 30 dias" value={fmtNum(ins.views)} delta="visualizações totais" />
+              <StatTile label="Visitas ao perfil" value={fmtNum(ins.profile_views)} delta="no período" />
+              <StatTile label="Contas engajadas" value={fmtNum(ins.accounts_engaged)} delta="curtiram, comentaram, salvaram…" />
+              <StatTile label="Interações · 30 dias" value={fmtNum(ins.total_interactions)} delta="curtidas + coment. + salvos + compart." />
+              <StatTile label="Cliques no link" value={fmtNum((ins.profile_links_taps != null || ins.website_clicks != null) ? (ins.profile_links_taps || 0) + (ins.website_clicks || 0) : null)} delta="no perfil e na bio" />
+            </div>
+
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16 }}>
               <Card title="Crescimento de seguidores" hint="acumulado · 30 dias">
                 <div style={{ padding: "8px 16px 12px" }}>
@@ -243,23 +253,29 @@ function SocialScreen() {
             {sum.errors?.insights && <div className="mono dim" style={{ fontSize: 11 }}>alcance indisponível: {sum.errors.insights}</div>}
 
             <Card title="Publicações recentes" hint={'o histórico do "criar post" aparece aqui'} style={{ overflow: "hidden" }}>
-             {/* .tbl-x: 11 colunas de métricas rolam na horizontal no mobile. */}
-             <div className="tbl-x"><div style={{ minWidth: 880 }}>
+             {/* .tbl-x: as colunas de métricas (todas as que o Instagram libera)
+                 rolam na horizontal. */}
+             <div className="tbl-x"><div style={{ minWidth: 1500 }}>
               <div style={{ display: "grid", gridTemplateColumns: POSTS_GRID, gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
-                <span>Post</span><span>Formato</span><span style={{ textAlign: "right" }}>Alcance</span><span style={{ textAlign: "right" }}>Curtidas</span><span style={{ textAlign: "right" }}>Coment.</span><span style={{ textAlign: "right" }}>Salvos</span><span style={{ textAlign: "right" }}>Compart.</span><span style={{ textAlign: "right" }}>Eng.</span><span style={{ textAlign: "right" }} title="tempo médio assistido ÷ duração do vídeo">Retenção</span><span style={{ textAlign: "right" }} title="% de views que passaram dos 3 primeiros segundos">Play 3s</span><span style={{ textAlign: "right" }}>Publicado</span>
+                <span>Post</span><span>Formato</span><span style={{ textAlign: "right" }} title="contas únicas que viram o conteúdo">Alcance</span><span style={{ textAlign: "right" }} title="visualizações totais (impressões) — vale pra todos os formatos">Views</span><span style={{ textAlign: "right" }}>Curtidas</span><span style={{ textAlign: "right" }}>Coment.</span><span style={{ textAlign: "right" }}>Salvos</span><span style={{ textAlign: "right" }}>Compart.</span><span style={{ textAlign: "right" }} title="interações totais do post (curtidas + comentários + salvos + compartilhamentos)">Interações</span><span style={{ textAlign: "right" }} title="interações totais ÷ alcance">Eng.</span><span style={{ textAlign: "right" }} title="visitas ao perfil vindas deste post">Visitas</span><span style={{ textAlign: "right" }} title="novos seguidores ganhos a partir deste post">Seguiu</span><span style={{ textAlign: "right" }} title="tempo médio assistido ÷ duração do vídeo">Retenção</span><span style={{ textAlign: "right" }} title="% de views que passaram dos 3 primeiros segundos">Play 3s</span><span style={{ textAlign: "right" }} title="quantas vezes o reel foi reassistido">Replays</span><span style={{ textAlign: "right" }}>Publicado</span>
               </div>
               {recent.map((item) => (
                 <div key={item.id} style={{ display: "grid", gridTemplateColumns: POSTS_GRID, gap: 12, padding: "13px 24px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5 }}>
                   {item.permalink ? <a href={item.permalink} target="_blank" rel="noreferrer" style={{ color: "inherit", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{postTitle(item)}</a> : <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{postTitle(item)}</span>}
                   <span><Pill tone="mut">{formatLabel(item)}</Pill></span>
                   <span className="tnum" style={{ textAlign: "right" }}>{item.reach != null ? fmtNum(item.reach) : "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right" }}>{item.views != null ? fmtNum(item.views) : "—"}</span>
                   <span className="tnum" style={{ textAlign: "right" }}>{item.likes != null ? fmtNum(item.likes) : "—"}</span>
                   <span className="tnum" style={{ textAlign: "right" }}>{item.comments != null ? fmtNum(item.comments) : "—"}</span>
                   <span className="tnum" style={{ textAlign: "right" }}>{item.saved != null ? fmtNum(item.saved) : "—"}</span>
                   <span className="tnum" style={{ textAlign: "right" }}>{item.shares != null ? fmtNum(item.shares) : "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right" }}>{item.totalInteractions != null ? fmtNum(item.totalInteractions) : "—"}</span>
                   <span className="tnum" style={{ textAlign: "right" }}>{engRate(item) ?? "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right" }}>{item.profileVisits != null ? fmtNum(item.profileVisits) : "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right" }}>{item.follows != null ? fmtNum(item.follows) : "—"}</span>
                   <span className="tnum" style={{ textAlign: "right" }} title={item.avgWatchMs > 0 ? `tempo médio ${(item.avgWatchMs / 1000).toFixed(1).replace(".", ",")}s${durations[item.id] ? ` de ${Math.round(durations[item.id])}s` : " (duração do vídeo indisponível)"}` : undefined}>{retentionRate(item, durations[item.id]) ?? "—"}</span>
                   <span className="tnum" style={{ textAlign: "right" }} title={item.skipRate != null ? `${fmtPct(Number(item.skipRate))} pularam nos 3 primeiros segundos` : undefined}>{play3sRate(item) ?? "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right" }} title={item.totalWatchMs > 0 ? `tempo total assistido ${Math.round(item.totalWatchMs / 1000)}s` : undefined}>{item.replays != null ? fmtNum(item.replays) : "—"}</span>
                   <span className="tnum" style={{ textAlign: "right", color: "var(--fg-3)" }}>{item.at ? new Date(item.at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "") : "—"}</span>
                 </div>
               ))}
