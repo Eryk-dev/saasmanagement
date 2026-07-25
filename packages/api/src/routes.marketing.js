@@ -18,8 +18,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { meta as defaultMeta, onMetaThrottle } from "./meta.js";
 import { stagePassCounts } from "./routes.funnel-metrics.js";
-import { isWonLead, kindOf } from "./stages.js";
-import { dayKey, isRealLead } from "./metrics-core.js";
+import { kindOf } from "./stages.js";
+import { dayKey, isRealLead, winsIn, customerStartMap } from "./metrics-core.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 
 const DAY_MS = 86400000;
@@ -631,12 +631,15 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const rows = (await repo.list("ad_insights"))
       .filter((r) => r.saas === product.id && r.date >= since && r.date <= until)
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
-    const leads = (await repo.list("leads"))
-      .filter((l) => l.saas === product.id && isRealLead(l) && l.createdAt && dayStr(l.createdAt) >= since && dayStr(l.createdAt) <= until);
+    const leadsAll = await repo.list("leads");
+    // Leads do PRODUTO (a base do dinheiro, sem recorte de janela) e a COORTE
+    // da janela (criados nela — a base de CPL/atribuição de lead).
+    const productLeads = leadsAll.filter((l) => l.saas === product.id && isRealLead(l));
+    const leads = productLeads.filter((l) => l.createdAt && dayStr(l.createdAt) >= since && dayStr(l.createdAt) <= until);
     // Quem saiu por uma saída lateral do form (ex.: ainda não vende) fica FORA
     // das contagens acima (senão o CPL fica barato por encher de quem não
     // compra) e vira um número próprio: é o diagnóstico do anúncio, não do form.
-    const foraDoPerfil = (await repo.list("leads")).filter(
+    const foraDoPerfil = leadsAll.filter(
       (l) => l.saas === product.id && !l.internal && l.formExit && l.createdAt && dayStr(l.createdAt) >= since && dayStr(l.createdAt) <= until,
     ).length;
 
@@ -655,7 +658,15 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const metaLeads = sum("metaLeads");
     const per = (n) => (n > 0 ? Math.round((spend / n) * 100) / 100 : null);
     // Fecho do período inteiro: ganhos + receita (amount dos ganhos) → ROAS geral.
-    const wonAll = leads.filter((l) => isWonLead(product, l));
+    // O ganho é DATADO PELA VENDA (winsIn/wonAtOf, a régua do metrics-core;
+    // fallback: início do cliente vinculado), não pela entrada do lead no
+    // funil — cliente que entrou em junho e fechou em julho conta receita/ROAS
+    // em JULHO (Leo, 25/07). A atribuição (campanha/conjunto/anúncio/dor)
+    // continua pelo UTM do lead, mesmo que ele tenha entrado noutro período.
+    const inWin = (iso) => { const d = dayStr(iso); return d && d >= since && d <= until; };
+    const customerStartByLead = customerStartMap((await repo.list("customers")).filter((c) => c.saas === product.id));
+    const wonIds = winsIn(product, productLeads, inWin, customerStartByLead);
+    const wonAll = productLeads.filter((l) => wonIds.has(l.id));
     const revenueAll = wonAll.reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
     // Custo por etapa: leads que PASSARAM por cada estágio da régua de progresso
@@ -687,14 +698,17 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     // (utm.campaign ↔ campanha, utm.term ↔ conjunto, utm.content ↔ anúncio),
     // por ID ou por NOME. CPL real por nível sai daqui.
     const leadUtm = (l, key) => (l.utm && typeof l.utm === "object" ? String(l.utm[key] || "") : "");
-    const matching = (key, g) => leads.filter((l) => {
+    const utmMatch = (list, key, g) => list.filter((l) => {
       const v = leadUtm(l, key);
       return v && (v === String(g.id || "") || v === String(g.name || ""));
     });
+    const matching = (key, g) => utmMatch(leads, key, g);
     const finishGroup = (key) => (g) => {
       const matched = matching(key, g);
       const n = matched.length;
-      const wonLeads = matched.filter((l) => isWonLead(product, l));
+      // Ganhos do grupo: FECHADOS na janela (data da venda), casados pelo UTM —
+      // o lead pode ter entrado em período anterior e ainda credita aqui.
+      const wonLeads = utmMatch(wonAll, key, g);
       const won = wonLeads.length;
       // Receita = soma do amount dos ganhos atribuídos (o modal de fechamento
       // pede o valor ao mover pra ganho). Com o spend vira ROAS — a resposta
@@ -754,10 +768,10 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const ads = Object.values(byAd).map(finishGroup("content")).sort((a, b) => b.spend - a.spend);
 
     // Quebra por DOR — o código "[A]" no nome do anúncio agrupa spend/leads;
-    // rótulo humano vem de product.painMap. "won" = leads atribuídos ao anúncio
-    // (por UTM content) que estão em estágio de ganho — a resposta pra "qual dor
-    // traz lead que FECHA", não só lead barato. "abc" soma as grades dos leads
-    // atribuídos aos anúncios da dor (cliente A/B/C, régua do leadTier).
+    // rótulo humano vem de product.painMap. "won" = ganhos FECHADOS na janela
+    // (data da venda) atribuídos ao anúncio por UTM content — a resposta pra
+    // "qual dor traz lead que FECHA", não só lead barato. "abc" soma as grades
+    // dos leads atribuídos aos anúncios da dor (cliente A/B/C, régua do leadTier).
     const byPain = {};
     for (const a of ads) {
       const code = painCode(a.name);

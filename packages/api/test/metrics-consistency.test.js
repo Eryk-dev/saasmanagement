@@ -90,15 +90,15 @@ test("ganho oficial: scoreboard, pace, custos %, marketing e funil contam os MES
   await app.close();
 });
 
-test("duas perguntas, dois números DE PROPÓSITO: fechado no período (scoreboard) ≠ coorte (funil/aquisição)", async () => {
+test("dinheiro pela DATA DA VENDA em toda tela; a coorte fica pra leads/CPL e win-rate do funil", async () => {
   const { app, repo } = await buildApp();
   // Lead que ENTROU antes da janela (30/06) e FECHOU dentro dela (05/07). O
-  // scoreboard/pace conta ("quantos FECHAMOS no período", pela data do ganho) —
-  // é a régua do Resultado do mês. O funil e a Aquisição NÃO ("dos leads que
-  // ENTRARAM no período, quantos fecharam" = coorte) — é a régua de eficiência
-  // da aquisição (ROAS/CAC). As duas contas são CERTAS, respondem perguntas
-  // diferentes; a tela rotula os dois lados (#492). Este teste TRAVA a diferença
-  // pra ninguém "unificar" achando que é bug e quebrar um dos lados.
+  // DINHEIRO (ganhos/receita/ROAS) conta pela data da venda em TODAS as telas —
+  // scoreboard, pace E marketing/Aquisição (Leo, 25/07: o cliente de 120k
+  // fechado em julho aparecia em junho na Publicidade e o ROAS do período nem
+  // mexia). A COORTE (dos que entraram, quantos fecharam) segue valendo pra
+  // leads/CPL e pro win-rate do funil da Análise — pergunta de eficiência da
+  // safra, não de caixa. Este teste TRAVA os dois lados na régua certa.
   await repo.create("leads", { id: "cross", saas: "leverads", closer: "leo", stage: "Ganho", amount: 1000, createdAt: "2026-06-30T12:00:00.000Z", stageSince: "2026-07-05T12:00:00.000Z" });
 
   const sb = (await app.inject({ url: `/api/scoreboard/leverads${MONTH}` })).json();
@@ -107,9 +107,21 @@ test("duas perguntas, dois números DE PROPÓSITO: fechado no período (scoreboa
 
   assert.equal(sb.team.won, 3);          // fechados no período: os 2 do dataset + o cross
   assert.equal(sb.team.revenue, 9000);   // 8.000 + 1.000
-  assert.equal(mkt.totals.won, 2);       // coorte: o cross entrou ANTES, fica fora
-  assert.equal(mkt.totals.revenue, 8000);
-  assert.equal(funnel.wonCount, 2);      // mesma régua de coorte da Aquisição
+  assert.equal(mkt.totals.won, 3);       // marketing agora conta o MESMO fechado
+  assert.equal(mkt.totals.revenue, 9000); // ...e a receita/ROAS mexe no período da venda
+  assert.equal(funnel.wonCount, 2);      // win-rate do funil segue a coorte
+  await app.close();
+});
+
+test("ganho fora da janela NÃO conta no marketing (a venda de junho não vaza pra julho recortado)", async () => {
+  const { app } = await buildApp();
+  // Janela que começa DEPOIS das duas vendas do dataset (08 e 09/07): receita
+  // zero — o ganho pertence ao período da VENDA, não à janela inteira nem ao
+  // mês de entrada do lead.
+  const W10 = "?since=2026-07-10&until=2026-07-31";
+  const mkt = (await app.inject({ url: `/api/marketing/leverads${W10}` })).json();
+  assert.equal(mkt.totals.won, 0);
+  assert.equal(mkt.totals.revenue, 0);
   await app.close();
 });
 
