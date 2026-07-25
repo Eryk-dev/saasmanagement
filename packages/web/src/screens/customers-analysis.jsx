@@ -15,14 +15,26 @@ const DAY = 86_400_000;
 
 // Divide o ARR ANUAL de um cliente entre já RECEBIDO e A RECEBER, de modo que
 // os dois SEMPRE somem ao Total contratado (ARR). Regras de recebimento:
+//  · CRONOGRAMA EXPLÍCITO (faturas kind:"installment") → é a VERDADE: recebido =
+//    parcelas pagas, a receber = as em aberto. Cobre acordos sob medida que não
+//    cabem no ciclo padrão (ex.: 40k em 4x + 80.788 em 12x do Galante).
 //  · à vista / cartão 12x → a empresa recebe o valor do CICLO no fechamento de
 //    cada ciclo. Anual: o ano todo de uma vez. Semestral: 1 semestre agora, o
 //    outro só quando renovar (fica "a receber"). Único/sem plano: tudo agora.
 //  · faturado / parcelado → uma parcela por mês ao longo do ano (12 parcelas).
 // Cliente churnado para de gerar: o que faltava NÃO vira a receber.
-function cashSplit(c, now) {
+function cashSplit(c, now, invoices = []) {
   const annual = Number(c.arr) || 0;
   if (annual <= 0) return { cash: 0, future: 0 };
+  // Cronograma explícito vence a heurística: soma o que está pago × em aberto.
+  const schedule = invoices.filter((i) => i.customer === c.id && i.kind === "installment");
+  if (schedule.length) {
+    const round = (n) => Math.round(n * 100) / 100;
+    const cash = round(schedule.filter((i) => i.status === "paid").reduce((a, i) => a + (Number(i.amount) || 0), 0));
+    const churnedNow = c.endedAt && new Date(c.endedAt).getTime() <= now;
+    const future = churnedNow ? 0 : round(schedule.filter((i) => i.status !== "paid").reduce((a, i) => a + (Number(i.amount) || 0), 0));
+    return { cash, future };
+  }
   const start = c.startedAt ? new Date(c.startedAt).getTime() : now;
   const churnT = c.endedAt ? new Date(c.endedAt).getTime() : null;
   const stop = churnT != null ? Math.min(churnT, now) : now;
@@ -84,7 +96,7 @@ function shortcutRange(key, now) {
 // de assinatura (preço mensal médio e LTV, que derivam de MRR ÷ churn) não
 // significam nada ali e saem — o resto (faturado, caixa, futuro, ticket, churn
 // de famílias) vale igual.
-export function CustomersAnalysis({ customers, subs = [], isKids = false }) {
+export function CustomersAnalysis({ customers, subs = [], invoices = [], isKids = false }) {
   const money = window.fmt.money;
   const [shortcut, setShortcut] = useState("tudo");
 
@@ -129,7 +141,7 @@ export function CustomersAnalysis({ customers, subs = [], isKids = false }) {
     // Caixa × dinheiro futuro dos contratos do período (parcelados entram mês a mês).
     let caixa = 0, futuro = 0;
     for (const c of cohort) {
-      const s = cashSplit(c, now);
+      const s = cashSplit(c, now, invoices);
       caixa += s.cash;
       futuro += s.future;
     }
@@ -165,7 +177,7 @@ export function CustomersAnalysis({ customers, subs = [], isKids = false }) {
     const ltv = lifeMonths != null && mrrMedio > 0 ? mrrMedio * lifeMonths : null;
 
     return { cohort, faturado, caixa, futuro, mrrMedio, ticket, planos, churned, baseStart, churnPct, lifeMonths, ltv };
-  }, [customers, shortcut, custom, fromInput, toInput, planOf]);
+  }, [customers, invoices, shortcut, custom, fromInput, toInput, planOf]);
 
   const pct = (v) => `${Math.round(v * 100)}%`;
   const dateField = {
