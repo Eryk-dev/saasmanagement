@@ -151,7 +151,8 @@ test("catálogo marca quais metas são do TIME (repartem) e quais são de cada u
   const { app } = await buildApp();
   const r = (await app.inject({ method: "GET", url: "/api/metas/leverads" })).json();
   const m = (role, metric) => r.roles.find((x) => x.role === role).metrics.find((y) => y.metric === metric);
-  assert.equal(m("closer", "conversaoCall").hint, "das calls que aconteceram", "denominador escrito por extenso");
+  assert.equal(m("closer", "conversaoCall").hint, "das calls agendadas no mês", "denominador escrito por extenso");
+  assert.equal(m("closer", "callsScheduled").team, true, "calls agendadas do closer repartem no time");
   assert.equal(m("closer", "won").team, true);
   assert.equal(m("closer", "revenue").team, true);
   assert.equal(m("closer", "ticket").team, undefined, "média não se reparte");
