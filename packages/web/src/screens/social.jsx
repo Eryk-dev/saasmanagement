@@ -7,7 +7,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { useData } from "../data.jsx";
 import { CreativeEditor } from "./creative.jsx";
 import { useIsMobile } from "../lib/responsive.js";
-import { AreaLine, fmtNum, BarList, SplitBar, HourBars } from "./social-metrics.jsx";
+import { AreaLine, fmtNum, HourBars } from "./social-metrics.jsx";
 
 // Mídia social — métricas do perfil (Instagram + página do Facebook) e o fluxo
 // de publicação orgânica direto do cockpit:
@@ -99,12 +99,71 @@ const GENDER_LABEL = { M: "Homens", F: "Mulheres", U: "Não informado" };
 const GENDER_COLOR = ["var(--accent)", "#7C6FF0", "var(--line-2)"];
 const COUNTRY_LABEL = { BR: "Brasil", PT: "Portugal", US: "Estados Unidos", AR: "Argentina", CL: "Chile", CO: "Colômbia", MX: "México", PY: "Paraguai", UY: "Uruguai", ES: "Espanha", IT: "Itália", DE: "Alemanha", FR: "França", GB: "Reino Unido", JP: "Japão", CA: "Canadá", AU: "Austrália", AO: "Angola", MZ: "Moçambique" };
 const AUD_SUBLABEL = { fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", marginBottom: 10 };
-// Anexa % (fatia do total) e corta no topo N — o BarList mostra o valor + o %.
-const withPct = (items, topN) => {
-  const total = (items || []).reduce((s, i) => s + (Number(i.value) || 0), 0) || 1;
-  return (items || []).slice(0, topN).map((i) => ({ key: i.key, value: i.value, pct: Math.round((i.value / total) * 100) }));
-};
 const hasDemo = (d) => !!(d && ((d.genders || []).length || (d.ages || []).length || (d.cities || []).length || (d.countries || []).length));
+// Paleta das fatias dos donuts; "Outros" usa a linha neutra. Cores escolhidas
+// pra ler bem no tema claro e no escuro.
+const DONUT_RAMP = ["var(--accent)", "#7C6FF0", "#E8A13A", "#4C8DD6", "#E4677E", "#3FAE7C", "#C98BDB"];
+// Vira os itens (key/value já ordenados pelo maior) em fatias com % e cor,
+// somando o resto em "Outros" — pro donut não virar confete de fatias mínimas.
+const toSegments = (items, { topN = 5, label = (k) => k, othersLabel = "Outros", palette = DONUT_RAMP } = {}) => {
+  const all = (items || []).map((i) => ({ key: i.key, value: Number(i.value) || 0 })).filter((i) => i.value > 0);
+  const total = all.reduce((s, i) => s + i.value, 0) || 1;
+  const top = all.slice(0, topN);
+  const rest = all.slice(topN).reduce((s, i) => s + i.value, 0);
+  const segs = top.map((i, idx) => ({ label: label(i.key), value: i.value, pct: Math.round((i.value / total) * 100), color: palette[idx % palette.length] }));
+  if (rest > 0) segs.push({ label: othersLabel, value: rest, pct: Math.round((rest / total) * 100), color: "var(--line-2)" });
+  return segs;
+};
+// Donut SVG: anel de fatias (dasharray por fatia) com furo no meio destacando a
+// maior. Gira -90° pra começar no topo; a legenda fica ao lado (DonutBlock).
+function Donut({ segments, size = 116, thickness = 17 }) {
+  const total = segments.reduce((s, x) => s + (Number(x.value) || 0), 0) || 1;
+  const r = (size - thickness) / 2, c = 2 * Math.PI * r;
+  const top = segments[0];
+  let offset = 0;
+  return (
+    <div style={{ position: "relative", width: size, height: size, flex: "0 0 auto" }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: "rotate(-90deg)" }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--bg-2)" strokeWidth={thickness} />
+        {segments.map((seg, i) => {
+          const len = ((Number(seg.value) || 0) / total) * c;
+          const dash = Math.max(0, len - 2); // gap de 2px entre fatias, pra separar
+          const node = <circle key={i} cx={size / 2} cy={size / 2} r={r} fill="none" stroke={seg.color} strokeWidth={thickness} strokeDasharray={`${dash} ${c - dash}`} strokeDashoffset={-offset} />;
+          offset += len;
+          return node;
+        })}
+      </svg>
+      {top && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, padding: "0 14px" }}>
+          <span className="tnum" style={{ fontSize: 21, fontWeight: 700, lineHeight: 1, color: "var(--fg-1)" }}>{top.pct}%</span>
+          <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--fg-4)", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(top.label).split(",")[0]}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+// Donut + legenda (rótulo · valor · %); cada linha da legenda ecoa a cor da fatia.
+function DonutBlock({ title, segments }) {
+  if (!segments.length) return null;
+  return (
+    <div>
+      <div style={AUD_SUBLABEL}>{title}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+        <Donut segments={segments} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 7, minWidth: 0, flex: 1 }}>
+          {segments.map((s, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+              <span style={{ width: 9, height: 9, borderRadius: 3, background: s.color, flex: "0 0 auto" }} />
+              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--fg-2)" }} title={s.label}>{s.label}</span>
+              <b className="tnum" style={{ flex: "0 0 auto" }}>{fmtNum(s.value)}</b>
+              <span className="tnum" style={{ color: "var(--fg-4)", width: 32, textAlign: "right", flex: "0 0 auto" }}>{s.pct}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function AudiencePanel({ audience }) {
   const sets = [
@@ -119,10 +178,10 @@ function AudiencePanel({ audience }) {
   if (!audience || (!hasDemo(demo) && !(online || []).length)) return null;
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 16 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <Card title="Quem é o seu público" hint="perfil da audiência no Instagram">
         {sets.length > 1 && (
-          <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+          <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
             {sets.map(([id, label]) => {
               const on = (active?.[0] || sets[0]?.[0]) === id;
               return (
@@ -134,27 +193,18 @@ function AudiencePanel({ audience }) {
           </div>
         )}
         {hasDemo(demo) ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 288px), 1fr))", gap: "26px 32px" }}>
             {(demo.genders || []).length > 0 && (
-              <div>
-                <div style={AUD_SUBLABEL}>Gênero</div>
-                <SplitBar segments={demo.genders.map((g, i) => ({ label: GENDER_LABEL[g.key] || g.key, value: g.value, color: GENDER_COLOR[i % GENDER_COLOR.length] }))} />
-              </div>
+              <DonutBlock title="Gênero" segments={toSegments(demo.genders, { topN: 3, label: (k) => GENDER_LABEL[k] || k, palette: GENDER_COLOR })} />
             )}
             {(demo.ages || []).length > 0 && (
-              <div><div style={AUD_SUBLABEL}>Faixa etária</div>
-                <BarList items={withPct(demo.ages, 8).map((a) => ({ key: a.key, label: a.key, value: a.value, pct: a.pct }))} labelW={64} />
-              </div>
+              <DonutBlock title="Faixa etária" segments={toSegments(demo.ages, { topN: 6 })} />
             )}
             {(demo.cities || []).length > 0 && (
-              <div><div style={AUD_SUBLABEL}>Principais cidades</div>
-                <BarList items={withPct(demo.cities, 6).map((c) => ({ key: c.key, label: c.key, value: c.value, pct: c.pct }))} labelW={150} />
-              </div>
+              <DonutBlock title="Principais cidades" segments={toSegments(demo.cities, { topN: 5, label: (k) => String(k).split(",")[0] })} />
             )}
             {(demo.countries || []).length > 0 && (
-              <div><div style={AUD_SUBLABEL}>Principais países</div>
-                <BarList items={withPct(demo.countries, 5).map((c) => ({ key: c.key, label: COUNTRY_LABEL[c.key] || c.key, value: c.value, pct: c.pct }))} labelW={130} />
-              </div>
+              <DonutBlock title="Principais países" segments={toSegments(demo.countries, { topN: 4, label: (k) => COUNTRY_LABEL[k] || k })} />
             )}
           </div>
         ) : <div className="mono dim" style={{ fontSize: 12, padding: "8px 0" }}>demografia indisponível (o Instagram só libera com ~100+ seguidores)</div>}
