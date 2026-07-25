@@ -143,50 +143,47 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
     // edge de mídia; se a Graph recusar o combo, cai pros campos básicos.
     async igMedia(igUserId, { limit = 12 } = {}) {
       const base = "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,children{media_url,thumbnail_url}";
-      let data;
-      try {
-        data = (await get(`${igUserId}/media`, { fields: `${base},insights.metric(reach,saved,shares,total_interactions)`, limit: String(limit) })).data || [];
-      } catch {
-        data = (await get(`${igUserId}/media`, { fields: base, limit: String(limit) })).data || [];
+      // Insights por post pedidos NUMA CHAMADA SÓ (aninhados no edge de mídia),
+      // do conjunto rico ao mínimo — a Graph derruba a resposta inteira se UMA
+      // métrica não valer pra algum post do lote (mídia antiga rejeita views/
+      // visitas). O combo evita UMA CHAMADA POR POST, que multiplicava as
+      // requisições, estourava o rate limit da Graph e esvaziava a tabela.
+      const comboChain = [
+        "reach,saved,shares,total_interactions,views,profile_visits,follows",
+        "reach,saved,shares,total_interactions,views",
+        "reach,saved,shares,total_interactions",
+      ];
+      let data = null;
+      for (const combo of comboChain) {
+        try { data = (await get(`${igUserId}/media`, { fields: `${base},insights.metric(${combo})`, limit: String(limit) })).data || []; break; }
+        catch { /* tenta o combo menor */ }
       }
-      // Métricas ESTENDIDAS por post (as que não entram no combo aninhado acima):
-      // views (métrica unificada, todos os formatos), visitas ao perfil e novos
-      // seguidores vindos do post, e — só vídeo/reels — tempo médio e total
-      // assistido, replays e skip nos 3s. Uma chamada por post, fail-soft com
-      // CADEIA de fallback: a Graph derruba o lote inteiro se UMA métrica não
-      // valer pro tipo da mídia (foto rejeita métrica de reel; mídia antiga
-      // rejeita views/visitas), então tenta do conjunto rico pro mínimo.
-      const extChains = (isVid) => isVid
-        ? ["views,ig_reels_avg_watch_time,ig_reels_video_view_total_time,clips_replays_count,reels_skip_rate,profile_visits,follows",
-           "views,ig_reels_avg_watch_time,ig_reels_video_view_total_time,clips_replays_count,reels_skip_rate",
-           "views,ig_reels_avg_watch_time,ig_reels_video_view_total_time,clips_replays_count",
-           "views,ig_reels_avg_watch_time,reels_skip_rate",
-           "views,ig_reels_avg_watch_time",
-           "views"]
-        : ["views,profile_visits,follows",
-           "views,profile_visits",
-           "views"];
-      const ext = {};
-      await Promise.all(data.map(async (m) => {
-        const isVid = m.media_type === "VIDEO";
-        for (const metric of extChains(isVid)) {
+      if (!data) data = (await get(`${igUserId}/media`, { fields: base, limit: String(limit) })).data || []; // sem insights
+      // Métricas de VÍDEO/REELS (tempo médio/total assistido, replays, skip 3s)
+      // NÃO entram no combo aninhado — foto rejeita métrica de reel e derrubaria
+      // o lote — então cada vídeo ganha uma chamada própria, paralela e fail-soft,
+      // com cadeia decrescente (mídia antiga não tem replays/skip).
+      const video = {};
+      await Promise.all(data.filter((m) => m.media_type === "VIDEO").map(async (m) => {
+        for (const metric of ["ig_reels_avg_watch_time,ig_reels_video_view_total_time,clips_replays_count,reels_skip_rate", "ig_reels_avg_watch_time,reels_skip_rate", "ig_reels_avg_watch_time"]) {
           try {
             const body = await get(`${m.id}/insights`, { metric });
             const val = (name) => {
               const v = (body.data || []).find((x) => x.name === name)?.values?.[0]?.value;
               return v == null || !Number.isFinite(Number(v)) ? null : Number(v);
             };
-            ext[m.id] = {
-              views: val("views"), avgWatchMs: val("ig_reels_avg_watch_time"),
-              totalWatchMs: val("ig_reels_video_view_total_time"), replays: val("clips_replays_count"),
-              skipRate: val("reels_skip_rate"), profileVisits: val("profile_visits"), follows: val("follows"),
-            };
+            video[m.id] = { avgWatchMs: val("ig_reels_avg_watch_time"), totalWatchMs: val("ig_reels_video_view_total_time"), replays: val("clips_replays_count"), skipRate: val("reels_skip_rate") };
             return;
-          } catch { /* tenta a próxima cadeia; sem nenhuma, segue sem as estendidas */ }
+          } catch { /* tenta o conjunto menor; sem ele, segue sem métricas de vídeo */ }
         }
       }));
       const child = (m) => m.children?.data?.[0];
-      const ins = (m, name) => Number((m.insights?.data || []).find((x) => x.name === name)?.values?.[0]?.value) || 0;
+      // Insight aninhado: número (inclusive 0) quando presente, null quando o
+      // combo caiu pro conjunto sem essa métrica (o front mostra "–", não 0).
+      const ins = (m, name) => {
+        const v = (m.insights?.data || []).find((x) => x.name === name)?.values?.[0]?.value;
+        return v == null || !Number.isFinite(Number(v)) ? null : Number(v);
+      };
       return data.map((m) => ({
         id: m.id,
         caption: m.caption || "",
@@ -198,20 +195,21 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
         at: m.timestamp || "",
         likes: Number(m.like_count) || 0,
         comments: Number(m.comments_count) || 0,
-        reach: ins(m, "reach"),
-        saved: ins(m, "saved"),
-        shares: ins(m, "shares"),
-        totalInteractions: ins(m, "total_interactions"),
-        // Estendidas (igMedia acima): views vale pra TODO formato; visitas ao
-        // perfil e novos seguidores dependem da conta liberar; tempo médio/total,
-        // replays e skip nos 3s só vêm de vídeo/reels. null onde indisponível.
-        views: ext[m.id]?.views ?? null,
-        avgWatchMs: ext[m.id]?.avgWatchMs ?? null,
-        totalWatchMs: ext[m.id]?.totalWatchMs ?? null,
-        replays: ext[m.id]?.replays ?? null,
-        skipRate: ext[m.id]?.skipRate ?? null,
-        profileVisits: ext[m.id]?.profileVisits ?? null,
-        follows: ext[m.id]?.follows ?? null,
+        reach: ins(m, "reach") ?? 0,
+        saved: ins(m, "saved") ?? 0,
+        shares: ins(m, "shares") ?? 0,
+        totalInteractions: ins(m, "total_interactions") ?? 0,
+        // views/visitas/novos seguidores vêm do MESMO combo (sem chamada extra);
+        // null quando o combo caiu pro conjunto sem elas (mídia/conta não expõe).
+        views: ins(m, "views"),
+        profileVisits: ins(m, "profile_visits"),
+        follows: ins(m, "follows"),
+        // reels só: tempo médio/total assistido, replays e skip nos 3s (chamada
+        // por vídeo). null nos demais formatos.
+        avgWatchMs: video[m.id]?.avgWatchMs ?? null,
+        totalWatchMs: video[m.id]?.totalWatchMs ?? null,
+        replays: video[m.id]?.replays ?? null,
+        skipRate: video[m.id]?.skipRate ?? null,
         // URL do arquivo de vídeo: o front lê a duração dos metadados dele pra
         // calcular retenção (a Graph não expõe duração).
         videoUrl: m.media_type === "VIDEO" ? (m.media_url || "") : "",

@@ -76,55 +76,62 @@ test("igMedia: usa insights aninhado por post (reach/saved/shares)", async () =>
   assert.match(f.calls[0].params.fields, /insights\.metric\(/);
 });
 
-test("igMedia: cada post ganha métricas estendidas (vídeo com reels; foto com views/perfil)", async () => {
-  const VID = "views,ig_reels_avg_watch_time,ig_reels_video_view_total_time,clips_replays_count,reels_skip_rate,profile_visits,follows";
+test("igMedia: combo aninhado traz views/visitas/seguiu pra todo post; vídeo ganha reels à parte", async () => {
+  const REELS = "ig_reels_avg_watch_time,ig_reels_video_view_total_time,clips_replays_count,reels_skip_rate";
+  // insights aninhado no post: base + views/visitas/seguiu (métricas do combo).
+  const nested = (over) => ({ data: [
+    { name: "reach", values: [{ value: 1000 }] },
+    { name: "saved", values: [{ value: 5 }] },
+    { name: "shares", values: [{ value: 2 }] },
+    { name: "total_interactions", values: [{ value: 40 }] },
+    ...over,
+  ] });
   const f = fakeFetch([
     [{ path: "/media" }, {
       data: [
-        { id: "v1", media_type: "VIDEO", media_url: "https://cdn/v1.mp4", thumbnail_url: "https://cdn/v1.jpg", like_count: 3, comments_count: 1 },
-        { id: "i1", media_type: "IMAGE", media_url: "https://cdn/i1.jpg", like_count: 8, comments_count: 0 },
+        { id: "v1", media_type: "VIDEO", media_url: "https://cdn/v1.mp4", thumbnail_url: "https://cdn/v1.jpg", like_count: 3, comments_count: 1,
+          insights: nested([{ name: "views", values: [{ value: 640 }] }, { name: "profile_visits", values: [{ value: 12 }] }, { name: "follows", values: [{ value: 3 }] }]) },
+        { id: "i1", media_type: "IMAGE", media_url: "https://cdn/i1.jpg", like_count: 8, comments_count: 0,
+          insights: nested([{ name: "views", values: [{ value: 300 }] }, { name: "profile_visits", values: [{ value: 5 }] }, { name: "follows", values: [{ value: 1 }] }]) },
       ],
     }],
-    [{ path: "/v1/insights", metric: VID }, {
+    [{ path: "/v1/insights", metric: REELS }, {
       data: [
-        { name: "views", values: [{ value: 640 }] },
         { name: "ig_reels_avg_watch_time", values: [{ value: 8200 }] },
         { name: "ig_reels_video_view_total_time", values: [{ value: 512000 }] },
         { name: "clips_replays_count", values: [{ value: 45 }] },
         { name: "reels_skip_rate", values: [{ value: 28.5 }] },
-        { name: "profile_visits", values: [{ value: 12 }] },
-        { name: "follows", values: [{ value: 3 }] },
-      ],
-    }],
-    [{ path: "/i1/insights", metric: "views,profile_visits,follows" }, {
-      data: [
-        { name: "views", values: [{ value: 300 }] },
-        { name: "profile_visits", values: [{ value: 5 }] },
-        { name: "follows", values: [{ value: 1 }] },
       ],
     }],
   ]);
   const s = makeSocial({ fetch: f, accessToken: "t" });
   const media = await s.igMedia("ig1");
   const vid = media.find((m) => m.id === "v1"), img = media.find((m) => m.id === "i1");
+  // views/visitas/seguiu vêm do combo aninhado (1 chamada) pra vídeo E foto
   assert.equal(vid.views, 640);
+  assert.equal(vid.profileVisits, 12);
+  assert.equal(vid.follows, 3);
+  assert.equal(img.views, 300);
+  assert.equal(img.profileVisits, 5);
+  assert.equal(img.follows, 1);
+  // reels (tempo médio/total, replays, skip 3s) só do vídeo, por chamada própria
   assert.equal(vid.avgWatchMs, 8200);
   assert.equal(vid.totalWatchMs, 512000);
   assert.equal(vid.replays, 45);
   assert.equal(vid.skipRate, 28.5);
-  assert.equal(vid.profileVisits, 12);
-  assert.equal(vid.follows, 3);
   assert.equal(vid.videoUrl, "https://cdn/v1.mp4"); // pro front ler a duração
   assert.equal(vid.mediaUrl, "https://cdn/v1.jpg"); // thumb continua sendo a capa
-  // foto AGORA ganha views (métrica unificada) + atividade de perfil; sem reels.
-  assert.equal(img.views, 300);
-  assert.equal(img.profileVisits, 5);
-  assert.equal(img.follows, 1);
+  // foto não tem reels
+  assert.equal(img.avgWatchMs, null);
+  assert.equal(img.replays, null);
   assert.equal(img.skipRate, null);
   assert.equal(img.videoUrl, "");
+  // 1 chamada só de /media pro lote (combo aninhado), SEM chamada por foto
+  assert.equal(f.calls.filter((c) => c.path.includes("/media")).length, 1);
+  assert.equal(f.calls.filter((c) => c.path.includes("/i1/insights")).length, 0);
 });
 
-test("igMedia: se o skip 3s não existir pra mídia, cai pro conjunto sem ele", async () => {
+test("igMedia: se o skip 3s não existir pro vídeo, cai pro conjunto sem ele", async () => {
   const f = async (url) => {
     const u = new URL(String(url));
     const p = Object.fromEntries(u.searchParams);
@@ -135,18 +142,16 @@ test("igMedia: se o skip 3s não existir pra mídia, cai pro conjunto sem ele", 
       return { status: 400, text: async () => JSON.stringify({ error: { message: "metric inválida" } }) };
     }
     return { status: 200, text: async () => JSON.stringify({ data: [
-      { name: "views", values: [{ value: 90 }] },
       { name: "ig_reels_avg_watch_time", values: [{ value: 4000 }] },
     ] }) };
   };
   const s = makeSocial({ fetch: f, accessToken: "t" });
   const media = await s.igMedia("ig1");
-  assert.equal(media[0].views, 90);
   assert.equal(media[0].avgWatchMs, 4000);
-  assert.equal(media[0].skipRate, null); // sem skip, mas não zerou o resto
+  assert.equal(media[0].skipRate, null); // sem skip, mas não zerou o tempo médio
 });
 
-test("igMedia: se o combo com insights falhar, cai pros campos básicos", async () => {
+test("igMedia: se todo combo aninhado falhar, cai pros campos básicos", async () => {
   let n = 0;
   const f = async (url) => {
     n++;
@@ -159,8 +164,8 @@ test("igMedia: se o combo com insights falhar, cai pros campos básicos", async 
   const media = await s.igMedia("ig1");
   assert.equal(media[0].likes, 5);
   assert.equal(media[0].reach, 0); // sem insights, mas não quebrou
-  // combo aninhado (400) → base (200) → 1 chamada estendida por post (200 aqui).
-  assert.equal(n, 3);
+  // 3 combos aninhados (400) → base sem insights (200); foto não tem chamada de vídeo.
+  assert.equal(n, 4);
 });
 
 test("igOnlineFollowers: média por hora dos dias devolvidos", async () => {
