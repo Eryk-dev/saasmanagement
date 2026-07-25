@@ -149,23 +149,40 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
       } catch {
         data = (await get(`${igUserId}/media`, { fields: base, limit: String(limit) })).data || [];
       }
-      // Métricas de vídeo (views, tempo médio assistido, skip nos 3 primeiros
-      // segundos) não entram no combo aninhado acima — foto rejeita métrica de
-      // reel e a Graph derruba o lote inteiro — então cada vídeo ganha uma
-      // chamada própria, em paralelo e fail-soft; se o skip_rate não existir
-      // pra mídia (vídeo antigo, pré-reels), tenta o conjunto sem ele.
-      const video = {};
-      await Promise.all(data.filter((m) => m.media_type === "VIDEO").map(async (m) => {
-        for (const metric of ["views,ig_reels_avg_watch_time,reels_skip_rate", "views,ig_reels_avg_watch_time"]) {
+      // Métricas ESTENDIDAS por post (as que não entram no combo aninhado acima):
+      // views (métrica unificada, todos os formatos), visitas ao perfil e novos
+      // seguidores vindos do post, e — só vídeo/reels — tempo médio e total
+      // assistido, replays e skip nos 3s. Uma chamada por post, fail-soft com
+      // CADEIA de fallback: a Graph derruba o lote inteiro se UMA métrica não
+      // valer pro tipo da mídia (foto rejeita métrica de reel; mídia antiga
+      // rejeita views/visitas), então tenta do conjunto rico pro mínimo.
+      const extChains = (isVid) => isVid
+        ? ["views,ig_reels_avg_watch_time,ig_reels_video_view_total_time,clips_replays_count,reels_skip_rate,profile_visits,follows",
+           "views,ig_reels_avg_watch_time,ig_reels_video_view_total_time,clips_replays_count,reels_skip_rate",
+           "views,ig_reels_avg_watch_time,ig_reels_video_view_total_time,clips_replays_count",
+           "views,ig_reels_avg_watch_time,reels_skip_rate",
+           "views,ig_reels_avg_watch_time",
+           "views"]
+        : ["views,profile_visits,follows",
+           "views,profile_visits",
+           "views"];
+      const ext = {};
+      await Promise.all(data.map(async (m) => {
+        const isVid = m.media_type === "VIDEO";
+        for (const metric of extChains(isVid)) {
           try {
             const body = await get(`${m.id}/insights`, { metric });
             const val = (name) => {
               const v = (body.data || []).find((x) => x.name === name)?.values?.[0]?.value;
               return v == null || !Number.isFinite(Number(v)) ? null : Number(v);
             };
-            video[m.id] = { views: val("views"), avgWatchMs: val("ig_reels_avg_watch_time"), skipRate: val("reels_skip_rate") };
+            ext[m.id] = {
+              views: val("views"), avgWatchMs: val("ig_reels_avg_watch_time"),
+              totalWatchMs: val("ig_reels_video_view_total_time"), replays: val("clips_replays_count"),
+              skipRate: val("reels_skip_rate"), profileVisits: val("profile_visits"), follows: val("follows"),
+            };
             return;
-          } catch { /* tenta o conjunto menor; sem ele, segue sem métricas de vídeo */ }
+          } catch { /* tenta a próxima cadeia; sem nenhuma, segue sem as estendidas */ }
         }
       }));
       const child = (m) => m.children?.data?.[0];
@@ -185,12 +202,18 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
         saved: ins(m, "saved"),
         shares: ins(m, "shares"),
         totalInteractions: ins(m, "total_interactions"),
-        // Só vídeo tem: views, tempo médio (ms), % de skip nos 3s e a URL do
-        // arquivo (o front lê a duração dos metadados dele pra calcular
-        // retenção — a Graph não expõe duração). null/"" nos demais formatos.
-        views: video[m.id]?.views ?? null,
-        avgWatchMs: video[m.id]?.avgWatchMs ?? null,
-        skipRate: video[m.id]?.skipRate ?? null,
+        // Estendidas (igMedia acima): views vale pra TODO formato; visitas ao
+        // perfil e novos seguidores dependem da conta liberar; tempo médio/total,
+        // replays e skip nos 3s só vêm de vídeo/reels. null onde indisponível.
+        views: ext[m.id]?.views ?? null,
+        avgWatchMs: ext[m.id]?.avgWatchMs ?? null,
+        totalWatchMs: ext[m.id]?.totalWatchMs ?? null,
+        replays: ext[m.id]?.replays ?? null,
+        skipRate: ext[m.id]?.skipRate ?? null,
+        profileVisits: ext[m.id]?.profileVisits ?? null,
+        follows: ext[m.id]?.follows ?? null,
+        // URL do arquivo de vídeo: o front lê a duração dos metadados dele pra
+        // calcular retenção (a Graph não expõe duração).
         videoUrl: m.media_type === "VIDEO" ? (m.media_url || "") : "",
       }));
     },
