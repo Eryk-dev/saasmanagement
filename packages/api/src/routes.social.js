@@ -19,6 +19,7 @@ import { social as defaultSocial } from "./social.js";
 import { meta as defaultMeta } from "./meta.js";
 import { publicBase } from "./routes.js";
 import { upsertComment, syncComments, listComments, commentInsights, invalidateSync, postTitleOf } from "./social-comments.js";
+import { syncStories, listStories } from "./social-stories.js";
 import { UPSTREAM_FAILED } from "./http-status.js";
 
 const IMG_MAX = 15 * 1024 * 1024;   // PNG de 1080×1920 fica bem abaixo disso
@@ -233,6 +234,25 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
         .map((x) => x.h)
         .sort((a, b) => a - b);
     }
+    return out;
+  });
+
+  // ── Stories: captura (a Graph só entrega insight de story VIVO) + histórico ─
+  app.get("/api/social/stories", async (req, reply) => {
+    const product = await productOr404(req, reply);
+    if (!product) return;
+    const out = { configured: social.configured(), stories: [], errors: {} };
+    if (social.configured()) {
+      const { igUserId } = await idsFor(product);
+      if (igUserId) {
+        try {
+          const r = await syncStories(repo, social, { saas: product.id, igUserId, force: String(req.query?.sync || "") === "1" });
+          Object.assign(out.errors, r.errors || {});
+        } catch (e) { out.errors.stories = e.message; }
+      }
+    }
+    // O histórico sai do banco mesmo com a captura falhando.
+    out.stories = await listStories(repo, { saas: product.id, limit: 12 });
     return out;
   });
 

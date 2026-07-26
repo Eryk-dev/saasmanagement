@@ -239,6 +239,56 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
       return out;
     },
 
+    // Stories ATIVOS (últimas 24h) com métricas. A Graph só expõe insight de
+    // story enquanto ele vive — capturar agora ou nunca (a persistência fica
+    // com o social-stories.js). Combo de métricas com fallback + navegação
+    // (avançou/voltou/saiu) num breakdown próprio, ambos fail-soft.
+    async igStories(igUserId) {
+      const base = "id,media_type,media_url,thumbnail_url,permalink,timestamp,caption";
+      const body = await get(`${igUserId}/stories`, { fields: base, limit: "50" });
+      const out = [];
+      for (const m of body.data || []) {
+        const metrics = {};
+        for (const combo of [
+          "reach,views,replies,shares,total_interactions,profile_visits,follows",
+          "reach,views,replies,shares,total_interactions",
+          "reach,replies",
+          "reach",
+        ]) {
+          try {
+            const b = await get(`${m.id}/insights`, { metric: combo });
+            for (const x of b.data || []) metrics[x.name] = Number(x.values?.[0]?.value) || 0;
+            break;
+          } catch { /* conta/story sem a métrica: tenta o conjunto menor */ }
+        }
+        try {
+          const b = await get(`${m.id}/insights`, { metric: "navigation", metric_type: "total_value", breakdown: "story_navigation_action_type" });
+          const res = b.data?.[0]?.total_value?.breakdowns?.[0]?.results || [];
+          for (const r of res) metrics[`nav_${String(r.dimension_values?.[0] || "").toLowerCase()}`] = Number(r.value) || 0;
+        } catch { /* navegação indisponível: segue sem */ }
+        out.push({
+          id: String(m.id),
+          at: m.timestamp || "",
+          caption: m.caption || "",
+          type: m.media_type || "",
+          mediaUrl: m.thumbnail_url || m.media_url || "",
+          permalink: m.permalink || "",
+          reach: metrics.reach ?? null,
+          views: metrics.views ?? null,
+          replies: metrics.replies ?? null,
+          shares: metrics.shares ?? null,
+          totalInteractions: metrics.total_interactions ?? null,
+          profileVisits: metrics.profile_visits ?? null,
+          follows: metrics.follows ?? null,
+          navForward: metrics.nav_tap_forward ?? null,
+          navBack: metrics.nav_tap_back ?? null,
+          navExit: metrics.nav_tap_exit ?? null,        // fechou os stories
+          navNext: metrics.nav_swipe_forward ?? null,   // pulou pra PRÓXIMA conta
+        });
+      }
+      return out;
+    },
+
     // Ganhos × perdas de seguidor no período (follows_and_unfollows): o
     // crescimento líquido esconde churn — aqui vem o bruto dos dois lados.
     async igFollowsBreakdown(igUserId, { since, until } = {}) {

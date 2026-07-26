@@ -36,6 +36,8 @@ const KIND_HINTS = {
 const CREATED_HERE = new Set(["image", "carousel", "sequence"]);
 // Colunas da tabela de publicações (header e linhas compartilham o grid).
 const POSTS_GRID = "2fr .7fr .55fr .55fr .55fr .55fr .5fr .55fr .6fr .5fr .55fr .5fr .6fr .55fr .55fr .7fr";
+// Colunas da tabela de stories (histórico capturado).
+const STORIES_GRID = "1.5fr .55fr .55fr .65fr .6fr .55fr .55fr .6fr .55fr .5fr .5fr .85fr";
 const fmtPct = (x) => `${(Math.round(x * 10) / 10).toFixed(1).replace(".", ",")}%`;
 // Engajamento do post = interações totais ÷ alcance. null sem dados (posts do
 // histórico local ainda sem espelho no IG) — a célula mostra "—".
@@ -223,6 +225,7 @@ function SocialScreen() {
   const [sum, setSum] = useS(null);
   const [posts, setPosts] = useS([]);
   const [audience, setAudience] = useS(null); // demografia + melhor horário (endpoint à parte, caro)
+  const [stories, setStories] = useS([]);     // histórico capturado (endpoint à parte, dispara a captura)
   const days = 30;
   const [err, setErr] = useS(null);
   const [wizard, setWizard] = useS(false);
@@ -242,6 +245,9 @@ function SocialScreen() {
     // Audiência (demografia + melhor horário) carrega em paralelo, sem travar o
     // painel — são chamadas caras e não dependem do período.
     api.socialAudience(product.id).then((a) => alive && setAudience(a)).catch(() => {});
+    // Stories: a chamada também DISPARA a captura dos que estão no ar (a Graph
+    // só entrega métrica de story vivo — abrir a tela é o gatilho).
+    api.socialStories(product.id).then((r) => alive && setStories(r?.stories || [])).catch(() => {});
     return () => { alive = false; };
   }, [product?.id]);
 
@@ -456,6 +462,34 @@ function SocialScreen() {
                 </div>
               ))}
               {!recent.length && <div style={{ padding: "18px 24px", borderTop: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 13 }}>nenhuma publicação ainda</div>}
+             </div></div>
+            </Card>
+
+            {/* Stories capturados: o Instagram só entrega métrica de story VIVO
+                (24h) — o cockpit fotografa quando a tela abre e guarda o
+                histórico. flexShrink 0 pelo mesmo motivo da tabela de posts. */}
+            <Card title="Stories" hint="capturados enquanto no ar · histórico" style={{ overflow: "hidden", flexShrink: 0 }}>
+             <div className="tbl-x"><div style={{ minWidth: 1150 }}>
+              <div style={{ display: "grid", gridTemplateColumns: STORIES_GRID, gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+                <span>Story</span><span style={{ textAlign: "right" }}>Alcance</span><span style={{ textAlign: "right" }}>Views</span><span style={{ textAlign: "right" }} title="respostas por DM">Respostas</span><span style={{ textAlign: "right" }}>Compart.</span><span style={{ textAlign: "right" }} title="visitas ao perfil vindas do story">Visitas</span><span style={{ textAlign: "right" }} title="novos seguidores vindos do story">Seguiu</span><span style={{ textAlign: "right" }} title="toques pra avançar">Avançou</span><span style={{ textAlign: "right" }} title="toques pra voltar (reassistiu)">Voltou</span><span style={{ textAlign: "right" }} title="fechou os stories aqui">Saiu</span><span style={{ textAlign: "right" }} title="pulou pra próxima conta">Pulou</span><span style={{ textAlign: "right" }}>Publicado</span>
+              </div>
+              {stories.map((s) => (
+                <div key={s.id} style={{ display: "grid", gridTemplateColumns: STORIES_GRID, gap: 12, padding: "13px 24px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5 }}>
+                  <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(s.caption || "").split("\n")[0].trim() || `Story · ${s.type === "VIDEO" ? "vídeo" : "imagem"}`}</span>
+                  <span className="tnum" style={{ textAlign: "right" }}>{s.reach != null ? fmtNum(s.reach) : "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right" }}>{s.views != null ? fmtNum(s.views) : "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right" }}>{s.replies != null ? fmtNum(s.replies) : "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right" }}>{s.shares != null ? fmtNum(s.shares) : "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right" }}>{s.profileVisits != null ? fmtNum(s.profileVisits) : "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right" }}>{s.follows != null ? fmtNum(s.follows) : "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right" }}>{s.navForward != null ? fmtNum(s.navForward) : "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right" }}>{s.navBack != null ? fmtNum(s.navBack) : "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right" }}>{s.navExit != null ? fmtNum(s.navExit) : "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right" }}>{s.navNext != null ? fmtNum(s.navNext) : "—"}</span>
+                  <span className="tnum" style={{ textAlign: "right", color: "var(--fg-3)" }}>{s.at ? new Date(s.at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "") : "—"}</span>
+                </div>
+              ))}
+              {!stories.length && <div style={{ padding: "18px 24px", borderTop: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 13 }}>nenhum story capturado ainda · o cockpit fotografa os que estiverem no ar quando a tela abre</div>}
              </div></div>
             </Card>
           </>
