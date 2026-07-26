@@ -148,6 +148,7 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
       configured: true, days, igUserId, pageId, aiConfigured: !!anthropic?.configured?.(), pains,
       account: null, insights: null, reachBreakdown: null,
       followerSeries: null, reachSeries: null, followerGrowth: null,
+      followsBreakdown: null, interactionTypes: null, reachByFormat: null, linkTaps: null,
       engagement: null, formats: [], insightsText: [], media: [], page: null, errors: {},
     };
     if (!igUserId && !pageId) {
@@ -164,6 +165,14 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
         social.igReachBreakdown(igUserId, range).then((r) => { out.reachBreakdown = r; }).catch(() => {}),
         social.igDailySeries(igUserId, "follower_count", range).then((s) => { out.followerSeries = s; }).catch(() => {}),
         social.igDailySeries(igUserId, "reach", range).then((s) => { out.reachSeries = s; }).catch(() => {}),
+        // Raio-x do período: ganho×perda de seguidor, interações por tipo,
+        // alcance oficial por formato (com story) e cliques por botão. Tudo
+        // fail-soft — conta que não expõe (ou client de teste sem o método)
+        // fica sem o bloco, não sem a tela.
+        Promise.resolve().then(() => social.igFollowsBreakdown(igUserId, range)).then((f) => { out.followsBreakdown = f; }).catch(() => {}),
+        Promise.resolve().then(() => social.igInteractionTypes(igUserId, range)).then((t) => { out.interactionTypes = t; }).catch(() => {}),
+        Promise.resolve().then(() => social.igReachByFormat(igUserId, range)).then((f) => { out.reachByFormat = f; }).catch(() => {}),
+        Promise.resolve().then(() => social.igLinkTapsByType(igUserId, range)).then((l) => { out.linkTaps = l; }).catch(() => {}),
       ]);
       if (out.followerSeries) out.followerGrowth = out.followerSeries.reduce((s, v) => s + v.value, 0);
 
