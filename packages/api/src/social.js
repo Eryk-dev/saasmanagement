@@ -239,6 +239,67 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
       return out;
     },
 
+    // Ganhos × perdas de seguidor no período (follows_and_unfollows): o
+    // crescimento líquido esconde churn — aqui vem o bruto dos dois lados.
+    async igFollowsBreakdown(igUserId, { since, until } = {}) {
+      const body = await get(`${igUserId}/insights`, {
+        metric: "follows_and_unfollows", metric_type: "total_value", breakdown: "follow_type",
+        period: "day", ...(since ? { since } : {}), ...(until ? { until } : {}),
+      });
+      const results = body.data?.[0]?.total_value?.breakdowns?.[0]?.results || [];
+      const out = { follows: 0, unfollows: 0 };
+      for (const r of results) {
+        const k = String(r.dimension_values?.[0] || "").toUpperCase();
+        if (k === "FOLLOWER") out.follows = Number(r.value) || 0;
+        else if (k === "UNFOLLOWER" || k === "NON_FOLLOWER") out.unfollows = Number(r.value) || 0;
+      }
+      return out;
+    },
+
+    // Interações do período POR TIPO (curtidas, comentários, salvos, compart.,
+    // respostas de story) — combo com fallback: conta que não expõe uma métrica
+    // derruba o lote inteiro, então tenta do conjunto rico ao mínimo.
+    async igInteractionTypes(igUserId, { since, until } = {}) {
+      for (const metric of ["likes,comments,saves,shares,replies", "likes,comments,saves,shares", "likes,comments,shares"]) {
+        try {
+          const body = await get(`${igUserId}/insights`, {
+            metric, metric_type: "total_value", period: "day",
+            ...(since ? { since } : {}), ...(until ? { until } : {}),
+          });
+          const out = {};
+          for (const m of body.data || []) out[m.name] = Number(m.total_value?.value) || 0;
+          return out;
+        } catch { /* tenta o conjunto menor */ }
+      }
+      return null;
+    },
+
+    // Alcance do período POR FORMATO (feed/reels/story/anúncio) — o número
+    // OFICIAL da conta. A média derivada dos posts não enxerga story nem ad.
+    async igReachByFormat(igUserId, { since, until } = {}) {
+      const body = await get(`${igUserId}/insights`, {
+        metric: "reach", metric_type: "total_value", breakdown: "media_product_type",
+        period: "day", ...(since ? { since } : {}), ...(until ? { until } : {}),
+      });
+      const results = body.data?.[0]?.total_value?.breakdowns?.[0]?.results || [];
+      return results
+        .map((r) => ({ key: String(r.dimension_values?.[0] || "?"), value: Number(r.value) || 0 }))
+        .sort((a, b) => b.value - a.value);
+    },
+
+    // Cliques no perfil POR BOTÃO (site, e-mail, ligação…): abre o número que a
+    // tela mostrava somado em "Cliques no link".
+    async igLinkTapsByType(igUserId, { since, until } = {}) {
+      const body = await get(`${igUserId}/insights`, {
+        metric: "profile_links_taps", metric_type: "total_value", breakdown: "contact_button_type",
+        period: "day", ...(since ? { since } : {}), ...(until ? { until } : {}),
+      });
+      const results = body.data?.[0]?.total_value?.breakdowns?.[0]?.results || [];
+      return results
+        .map((r) => ({ key: String(r.dimension_values?.[0] || "?"), value: Number(r.value) || 0 }))
+        .sort((a, b) => b.value - a.value);
+    },
+
     // Melhor horário pra postar: média de seguidores online por hora (0..23),
     // agregada dos dias que a Graph devolve. null quando indisponível.
     async igOnlineFollowers(igUserId) {

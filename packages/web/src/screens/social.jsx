@@ -96,6 +96,10 @@ const DEFAULT_PAINS = [
 
 // ── Audiência: quem é o público (demografia) + melhor horário ────────────────
 const GENDER_LABEL = { M: "Homens", F: "Mulheres", U: "Não informado" };
+// Rótulos dos breakdowns de perfil (raio-x dos 30 dias).
+const REACH_FORMAT_LABEL = { FEED: "Feed", POST: "Feed", REELS: "Reels", REEL: "Reels", STORY: "Story", AD: "Anúncio", CAROUSEL_CONTAINER: "Carrossel", IGTV: "IGTV", LIVE: "Live" };
+const INTERACTION_LABEL = { likes: "Curtidas", comments: "Comentários", saves: "Salvos", shares: "Compartilhamentos", replies: "Respostas de story" };
+const TAP_LABEL = { WEBSITE: "site", EMAIL: "e-mail", CALL: "ligação", TEXT: "mensagem", DIRECTION: "rotas", BOOK_NOW: "reserva", INSTANT_EXPERIENCE: "experiência", UNDEFINED: "outros" };
 const GENDER_COLOR = ["var(--accent)", "#7C6FF0", "var(--line-2)"];
 const COUNTRY_LABEL = { BR: "Brasil", PT: "Portugal", US: "Estados Unidos", AR: "Argentina", CL: "Chile", CO: "Colômbia", MX: "México", PY: "Paraguai", UY: "Uruguai", ES: "Espanha", IT: "Itália", DE: "Alemanha", FR: "França", GB: "Reino Unido", JP: "Japão", CA: "Canadá", AU: "Austrália", AO: "Angola", MZ: "Moçambique" };
 const AUD_SUBLABEL = { fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", marginBottom: 10 };
@@ -147,7 +151,7 @@ function DonutBlock({ title, segments }) {
   if (!segments.length) return null;
   return (
     <div>
-      <div style={AUD_SUBLABEL}>{title}</div>
+      {title ? <div style={AUD_SUBLABEL}>{title}</div> : null}
       <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
         <Donut segments={segments} />
         <div style={{ display: "flex", flexDirection: "column", gap: 7, minWidth: 0, flex: 1 }}>
@@ -269,7 +273,19 @@ function SocialScreen() {
   const reachTotal = (Number(rb?.follower) || 0) + (Number(rb?.nonFollower) || 0);
   const followerPct = reachTotal ? Math.round((rb.follower / reachTotal) * 100) : 0;
   const nonFollowerPct = reachTotal ? 100 - followerPct : 0;
-  const formatMax = Math.max(1, ...(sum?.formats || []).map((f) => Number(f.avgReach) || 0));
+  // Alcance por formato: preferimos o OFICIAL da conta (reachByFormat, inclui
+  // story/anúncio); a barra escala pelo maior valor da lista MOSTRADA.
+  const officialFormats = (sum?.reachByFormat || [])
+    .filter((f) => Number(f.value) > 0)
+    .map((f) => ({ label: REACH_FORMAT_LABEL[f.key] || String(f.key).toLowerCase(), value: Number(f.value) || 0 }));
+  const formatMax = Math.max(1, ...(officialFormats.length
+    ? officialFormats.map((f) => f.value)
+    : (sum?.formats || []).map((f) => Number(f.avgReach) || 0)));
+  // Interações do período por tipo → donut (mesma linguagem da audiência).
+  const interactionSegs = toSegments(
+    Object.entries(sum?.interactionTypes || {}).map(([key, value]) => ({ key, value })).sort((a, b) => b.value - a.value),
+    { topN: 5, label: (k) => INTERACTION_LABEL[k] || k },
+  );
   const recent = (sum?.media?.length ? sum.media : posts).slice(0, 6);
   const durations = useVideoDurations(recent);
   const formatLabel = (item) => item.format
@@ -343,6 +359,13 @@ function SocialScreen() {
                 <div style={{ padding: "8px 16px 12px" }}>
                   <AreaLine series={sum.followerSeries || []} cumulative valueLabel="seguidores" />
                 </div>
+                {/* Bruto do período: o líquido do gráfico esconde o churn. */}
+                {sum.followsBreakdown && (sum.followsBreakdown.follows > 0 || sum.followsBreakdown.unfollows > 0) && (
+                  <div style={{ padding: "0 24px 18px", fontSize: 13, color: "var(--fg-2)", display: "flex", gap: 18, flexWrap: "wrap" }}>
+                    <span><b className="tnum" style={{ color: "var(--pos)" }}>+{fmtNum(sum.followsBreakdown.follows)}</b> seguiram</span>
+                    <span><b className="tnum" style={{ color: "var(--neg)" }}>−{fmtNum(sum.followsBreakdown.unfollows)}</b> deixaram de seguir</span>
+                  </div>
+                )}
               </Card>
 
               <Card title="Alcance: seguidores × não-seguidores" hint="quanto do alcance é gente nova">
@@ -356,21 +379,42 @@ function SocialScreen() {
                       <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: color }} />{label} <b className="tnum">{fmtNum(value)}</b> <span className="tnum" style={{ color: "var(--fg-4)", fontSize: 12 }}>{pct}%</span></span>
                     ))}
                   </div>
-                  <div style={{ marginTop: 20 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", marginBottom: 10 }}>Alcance médio por formato</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {(sum.formats || []).map((f) => (
-                        <div key={f.label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <span style={{ width: 80, fontSize: 12.5, color: "var(--fg-3)" }}>{f.label}</span>
-                          <div style={{ flex: 1, height: 14, background: "var(--bg-2)", borderRadius: 4, overflow: "hidden" }}><div style={{ width: `${Math.max(3, ((Number(f.avgReach) || 0) / formatMax) * 100)}%`, height: "100%", background: "var(--accent)", borderRadius: 4 }} /></div>
-                          <span className="tnum" style={{ width: 66, textAlign: "right", fontSize: 12.5, fontWeight: 600 }}>{fmtNum(f.avgReach)}</span>
-                        </div>
-                      ))}
-                      {!sum.formats?.length && <span style={{ color: "var(--fg-4)", fontSize: 12.5 }}>sem dados por formato</span>}
+                  {/* Preferência pro número OFICIAL da conta por formato (inclui
+                      story e anúncio); sem ele, cai na média derivada dos posts. */}
+                  {(officialFormats.length > 0 || sum.formats?.length > 0) && (
+                    <div style={{ marginTop: 20 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", marginBottom: 10 }}>
+                        {officialFormats.length ? "Alcance por formato · 30 dias" : "Alcance médio por formato"}
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {(officialFormats.length ? officialFormats : (sum.formats || []).map((f) => ({ label: f.label, value: f.avgReach }))).map((f) => (
+                          <div key={f.label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <span style={{ width: 80, fontSize: 12.5, color: "var(--fg-3)" }}>{f.label}</span>
+                            <div style={{ flex: 1, height: 14, background: "var(--bg-2)", borderRadius: 4, overflow: "hidden" }}><div style={{ width: `${Math.max(3, ((Number(f.value) || 0) / formatMax) * 100)}%`, height: "100%", background: "var(--accent)", borderRadius: 4 }} /></div>
+                            <span className="tnum" style={{ width: 66, textAlign: "right", fontSize: 12.5, fontWeight: 600 }}>{fmtNum(f.value)}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </Card>
+
+              {/* Raio-x das interações: o total do tile aberto por tipo, e os
+                  cliques do perfil por botão. Some sem dado (conta não expõe). */}
+              {interactionSegs.length > 0 && (
+                <Card title="Interações · por tipo" hint="30 dias">
+                  <div style={{ padding: "14px 24px 20px" }}>
+                    <DonutBlock title="" segments={interactionSegs} />
+                    {(sum.linkTaps || []).length > 0 && (
+                      <div style={{ marginTop: 16, fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.6 }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", marginRight: 8 }}>Cliques no perfil</span>
+                        {sum.linkTaps.slice(0, 4).map((t) => `${TAP_LABEL[t.key] || String(t.key).toLowerCase()} ${fmtNum(t.value)}`).join(" · ")}
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              )}
             </div>
 
             {/* Audiência: quem é o público (demografia). Some sozinho se a

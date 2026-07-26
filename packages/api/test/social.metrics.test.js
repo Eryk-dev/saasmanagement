@@ -168,6 +168,53 @@ test("igMedia: se todo combo aninhado falhar, cai pros campos básicos", async (
   assert.equal(n, 4);
 });
 
+test("igFollowsBreakdown: separa quem seguiu de quem deixou de seguir", async () => {
+  const f = fakeFetch([
+    [{ path: "/insights", metric: "follows_and_unfollows", breakdown: "follow_type" }, {
+      data: [{ total_value: { breakdowns: [{ results: [
+        { dimension_values: ["FOLLOWER"], value: 275 },
+        { dimension_values: ["UNFOLLOWER"], value: 7 },
+      ] }] } }],
+    }],
+  ]);
+  const s = makeSocial({ fetch: f, accessToken: "t" });
+  const r = await s.igFollowsBreakdown("ig1", { since: "2026-06-27", until: "2026-07-26" });
+  assert.deepEqual(r, { follows: 275, unfollows: 7 });
+});
+
+test("igInteractionTypes: sem replies na conta, cai pro conjunto menor", async () => {
+  const f = async (url) => {
+    const u = new URL(String(url));
+    const metric = u.searchParams.get("metric") || "";
+    if (metric.includes("replies")) return { status: 400, text: async () => JSON.stringify({ error: { message: "metric inválida" } }) };
+    return { status: 200, text: async () => JSON.stringify({ data: [
+      { name: "likes", total_value: { value: 666 } },
+      { name: "comments", total_value: { value: 27 } },
+      { name: "saves", total_value: { value: 125 } },
+      { name: "shares", total_value: { value: 146 } },
+    ] }) };
+  };
+  const s = makeSocial({ fetch: f, accessToken: "t" });
+  const r = await s.igInteractionTypes("ig1", { since: "2026-06-27", until: "2026-07-26" });
+  assert.deepEqual(r, { likes: 666, comments: 27, saves: 125, shares: 146 });
+});
+
+test("igReachByFormat: parseia o breakdown por formato, ordenado", async () => {
+  const f = fakeFetch([
+    [{ path: "/insights", metric: "reach", breakdown: "media_product_type" }, {
+      data: [{ total_value: { breakdowns: [{ results: [
+        { dimension_values: ["REEL"], value: 967 },
+        { dimension_values: ["AD"], value: 70493 },
+        { dimension_values: ["STORY"], value: 820 },
+      ] }] } }],
+    }],
+  ]);
+  const s = makeSocial({ fetch: f, accessToken: "t" });
+  const r = await s.igReachByFormat("ig1", { since: "2026-06-27", until: "2026-07-26" });
+  assert.deepEqual(r.map((x) => x.key), ["AD", "REEL", "STORY"]);
+  assert.equal(r[0].value, 70493);
+});
+
 test("igOnlineFollowers: média por hora dos dias devolvidos", async () => {
   const f = fakeFetch([
     [{ path: "/insights", metric: "online_followers" }, {
