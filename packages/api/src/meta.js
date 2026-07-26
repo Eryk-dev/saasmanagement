@@ -365,20 +365,47 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       return null;
     },
 
-    // Mídias do Instagram usadas nos anúncios da conta, inclusive as de "dark
-    // post", que não aparecem no /media do perfil. É por elas que se chega aos
-    // comentários de anúncio no IG (o equivalente do /ads_posts da página).
-    async adInstagramMedia(adAccountId, { limit = 25 } = {}) {
+    // Anúncios da conta na ORDEM da varredura de comentários: ATIVOS primeiro,
+    // depois os mais recentes — comentário chega onde o gasto está. Sem essa
+    // ordem, o corte pegava os 25 primeiros anúncios da conta (antigos) e as
+    // mídias que realmente recebem comentário ficavam DE FORA da varredura.
+    async adsForScan(adAccountId, { limit = 200 } = {}) {
       if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
       const params = new URLSearchParams({
-        fields: "creative{effective_instagram_media_id}",
+        fields: "effective_status,created_time,creative{effective_instagram_media_id,effective_object_story_id}",
         limit: String(limit),
         access_token: accessToken,
       });
       const body = await get(`${GRAPH}/${acct(adAccountId)}/ads?${params}`);
+      return (body.data || []).slice().sort((a, b) => {
+        const act = (x) => (x.effective_status === "ACTIVE" ? 0 : 1);
+        return act(a) - act(b) || String(b.created_time || "").localeCompare(String(a.created_time || ""));
+      });
+    },
+
+    // Mídias do Instagram usadas nos anúncios da conta, inclusive as de "dark
+    // post", que não aparecem no /media do perfil. É por elas que se chega aos
+    // comentários de anúncio no IG (o equivalente do story id da página).
+    // Ordem = adsForScan (ativos primeiro); quem chama corta no teto dele.
+    async adInstagramMedia(adAccountId, opts = {}) {
+      const rows = await this.adsForScan(adAccountId, opts);
       const out = [];
-      for (const ad of body.data || []) {
+      for (const ad of rows) {
         const id = ad.creative?.effective_instagram_media_id;
+        if (id && !out.includes(String(id))) out.push(String(id));
+      }
+      return out;
+    },
+
+    // Posts de PÁGINA usados nos anúncios (effective_object_story_id) — o
+    // caminho confiável pros dark posts do Facebook: o /ads_posts da página
+    // volta vazio nesta conta, e é nos posts de anúncio que caem quase todos
+    // os comentários do FB. Mesma ordem de prioridade do adInstagramMedia.
+    async adPagePosts(adAccountId, opts = {}) {
+      const rows = await this.adsForScan(adAccountId, opts);
+      const out = [];
+      for (const ad of rows) {
+        const id = ad.creative?.effective_object_story_id;
         if (id && !out.includes(String(id))) out.push(String(id));
       }
       return out;
