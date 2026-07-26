@@ -239,6 +239,62 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
       return out;
     },
 
+    // Mídias em que a conta foi MARCADA por terceiros (prova social/UGC).
+    async igTaggedMedia(igUserId, { limit = 8 } = {}) {
+      const body = await get(`${igUserId}/tags`, {
+        fields: "id,caption,media_type,media_url,permalink,timestamp,username,like_count,comments_count",
+        limit: String(limit),
+      });
+      return (body.data || []).map((m) => ({
+        id: String(m.id), caption: m.caption || "", type: m.media_type || "",
+        mediaUrl: m.media_url || "", permalink: m.permalink || "", at: m.timestamp || "",
+        username: m.username || "", likes: Number(m.like_count) || 0, comments: Number(m.comments_count) || 0,
+      }));
+    },
+
+    // Espião de concorrente (business_discovery): dados PÚBLICOS de outra conta
+    // business/creator — seguidores, nº de posts e engajamento dos recentes.
+    // Alcance deles é privado; curtida+comentário público já diz muito.
+    async igBusinessDiscovery(igUserId, username) {
+      const u = String(username || "").replace(/^@/, "").replace(/[^A-Za-z0-9._]/g, "");
+      if (!u) throw new Error("conta inválida");
+      const fields = `business_discovery.username(${u}){username,name,followers_count,media_count,media.limit(12){like_count,comments_count,timestamp}}`;
+      const body = await get(`${igUserId}`, { fields });
+      const d = body.business_discovery;
+      if (!d) throw new Error("conta não encontrada ou não é business/creator");
+      return {
+        username: d.username || u, name: d.name || "",
+        followers: Number(d.followers_count) || 0, mediaCount: Number(d.media_count) || 0,
+        recent: (d.media?.data || []).map((m) => ({
+          likes: Number(m.like_count) || 0, comments: Number(m.comments_count) || 0, at: m.timestamp || "",
+        })),
+      };
+    },
+
+    // Hashtag → id (a Meta limita a 30 hashtags ÚNICAS por semana por conta;
+    // repetir as mesmas não consome cota nova).
+    async igHashtagSearch(igUserId, name) {
+      const q = String(name || "").replace(/^#/, "").replace(/[^\p{L}\p{N}_]/gu, "");
+      if (!q) throw new Error("hashtag inválida");
+      const body = await get("ig_hashtag_search", { user_id: igUserId, q });
+      const id = body.data?.[0]?.id;
+      if (!id) throw new Error("hashtag não encontrada");
+      return { id: String(id), name: q };
+    },
+
+    // Top mídias públicas de uma hashtag (as que o IG destaca agora).
+    async igHashtagTopMedia(igUserId, hashtagId, { limit = 9 } = {}) {
+      const body = await get(`${hashtagId}/top_media`, {
+        user_id: igUserId,
+        fields: "id,caption,like_count,comments_count,permalink,media_type,timestamp",
+        limit: String(limit),
+      });
+      return (body.data || []).map((m) => ({
+        id: String(m.id), caption: m.caption || "", permalink: m.permalink || "",
+        likes: Number(m.like_count) || 0, comments: Number(m.comments_count) || 0, at: m.timestamp || "",
+      }));
+    },
+
     // Stories ATIVOS (últimas 24h) com métricas. A Graph só expõe insight de
     // story enquanto ele vive — capturar agora ou nunca (a persistência fica
     // com o social-stories.js). Combo de métricas com fallback + navegação

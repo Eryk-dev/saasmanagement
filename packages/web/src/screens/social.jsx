@@ -220,6 +220,123 @@ function AudiencePanel({ audience }) {
   );
 }
 
+// ── Radar do mercado: concorrentes, quem marcou a conta e hashtags ──────────
+// Listas (igCompetitors/igHashtags) moram no PRODUTO e são editáveis aqui
+// mesmo; o radar recarrega a cada mudança. Tudo fail-soft por item.
+function DiscoveryPanel({ product, sum }) {
+  const [disc, setDisc] = React.useState(null);
+  const [comps, setComps] = React.useState(() => (Array.isArray(product?.igCompetitors) ? product.igCompetitors : []));
+  const [tags, setTags] = React.useState(() => (Array.isArray(product?.igHashtags) ? product.igHashtags : []));
+  const [compIn, setCompIn] = React.useState("");
+  const [tagIn, setTagIn] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const load = React.useCallback(() => {
+    if (!product?.id) return;
+    api.socialDiscovery(product.id).then(setDisc).catch(() => setDisc(null));
+  }, [product?.id]);
+  React.useEffect(() => { setDisc(null); load(); }, [load]);
+
+  async function save(patch, apply) {
+    if (busy) return;
+    setBusy(true);
+    try { await api.update("products", product.id, patch); apply(); setDisc(null); load(); }
+    catch { /* mantém a lista anterior */ }
+    setBusy(false);
+  }
+  const addComp = () => {
+    const u = compIn.trim().replace(/^@/, "");
+    if (!u || comps.includes(u)) { setCompIn(""); return; }
+    const next = [...comps, u].slice(0, 6);
+    save({ igCompetitors: next }, () => { setComps(next); setCompIn(""); });
+  };
+  const rmComp = (u) => { const next = comps.filter((x) => x !== u); save({ igCompetitors: next }, () => setComps(next)); };
+  const addTag = () => {
+    const h = tagIn.trim().replace(/^#/, "");
+    if (!h || tags.includes(h)) { setTagIn(""); return; }
+    const next = [...tags, h].slice(0, 5);
+    save({ igHashtags: next }, () => { setTags(next); setTagIn(""); });
+  };
+  const rmTag = (h) => { const next = tags.filter((x) => x !== h); save({ igHashtags: next }, () => setTags(next)); };
+
+  const inputStyle = { flex: 1, minWidth: 0, fontSize: 12.5, padding: "6px 10px", border: "1px solid var(--line-2)", borderRadius: 8, background: "var(--bg-1)", color: "var(--fg-1)" };
+  const addBtn = { fontSize: 12.5, fontWeight: 600, padding: "6px 12px", borderRadius: 8, border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)", cursor: "pointer" };
+  const rowStyle = { display: "flex", alignItems: "center", gap: 8, fontSize: 13, padding: "7px 0", borderTop: "1px solid var(--line-faint)" };
+  const dim = { color: "var(--fg-4)", fontSize: 12 };
+
+  // Linha "nós" pro comparativo (dados que a tela já tem).
+  const eng = sum?.engagement;
+  const us = {
+    username: sum?.account?.username || "nós", followers: sum?.account?.followers_count,
+    avgLikes: eng?.avgLikes, avgComments: eng?.avgComments,
+    postsPerWeek: eng?.posts != null ? Math.round((eng.posts / 4.35) * 10) / 10 : null,
+  };
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 16 }}>
+      <Card title="Concorrentes" hint="dados públicos · curtidas e comentários por post">
+        <div style={{ padding: "10px var(--inset-x) 18px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1.4fr .8fr .7fr .7fr .6fr 24px", gap: 8, fontSize: 10.5, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--fg-4)", padding: "4px 0" }}>
+            <span>Conta</span><span style={{ textAlign: "right" }}>Seguidores</span><span style={{ textAlign: "right" }}>Curt./post</span><span style={{ textAlign: "right" }}>Com./post</span><span style={{ textAlign: "right" }}>Posts/sem</span><span />
+          </div>
+          {[{ ...us, us: true }, ...(disc?.competitors || [])].map((c) => (
+            <div key={c.username} style={{ ...rowStyle, display: "grid", gridTemplateColumns: "1.4fr .8fr .7fr .7fr .6fr 24px" }}>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: c.us ? 700 : 500, color: c.us ? "var(--accent)" : "var(--fg-1)" }}>@{c.username}</span>
+              {c.error
+                ? <span style={{ ...dim, gridColumn: "span 4" }}>não é conta business ou não existe</span>
+                : <>
+                    <span className="tnum" style={{ textAlign: "right" }}>{c.followers != null ? fmtNum(c.followers) : "—"}</span>
+                    <span className="tnum" style={{ textAlign: "right" }}>{c.avgLikes != null ? fmtNum(c.avgLikes) : "—"}</span>
+                    <span className="tnum" style={{ textAlign: "right" }}>{c.avgComments != null ? String(c.avgComments).replace(".", ",") : "—"}</span>
+                    <span className="tnum" style={{ textAlign: "right" }}>{c.postsPerWeek != null ? String(c.postsPerWeek).replace(".", ",") : "—"}</span>
+                  </>}
+              {c.us ? <span /> : <button onClick={() => rmComp(c.username)} title="remover" style={{ border: "none", background: "none", color: "var(--fg-4)", cursor: "pointer", fontSize: 13 }}>✕</button>}
+            </div>
+          ))}
+          {!comps.length && <div style={{ ...dim, padding: "8px 0" }}>adicione contas concorrentes pra comparar (precisa ser conta business)</div>}
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <input value={compIn} onChange={(e) => setCompIn(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addComp()} placeholder="@concorrente" style={inputStyle} />
+            <button onClick={addComp} disabled={busy} style={addBtn}>Adicionar</button>
+          </div>
+        </div>
+      </Card>
+
+      <Card title="Marcaram você" hint="posts de terceiros marcando a conta">
+        <div style={{ padding: "10px var(--inset-x) 18px" }}>
+          {(disc?.tagged || []).slice(0, 6).map((t) => (
+            <div key={t.id} style={rowStyle}>
+              <span style={{ fontWeight: 600, flex: "0 0 auto" }}>@{t.username || "?"}</span>
+              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--fg-3)" }}>{(t.caption || "").split("\n")[0] || "sem legenda"}</span>
+              <span className="tnum" style={dim}>{fmtNum(t.likes)} ♥</span>
+              {t.permalink && <a href={t.permalink} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--accent)" }}>abrir</a>}
+            </div>
+          ))}
+          {disc && !(disc.tagged || []).length && <div style={{ ...dim, padding: "8px 0" }}>ninguém marcou a conta ainda</div>}
+          {!disc && <div style={{ ...dim, padding: "8px 0" }}>carregando…</div>}
+        </div>
+      </Card>
+
+      <Card title="Hashtags" hint="top posts públicos · até 5 monitoradas">
+        <div style={{ padding: "10px var(--inset-x) 18px" }}>
+          {(disc?.hashtags || []).map((h) => (
+            <div key={h.name} style={rowStyle}>
+              <span style={{ fontWeight: 600, flex: "0 0 auto" }}>#{h.name}</span>
+              {h.error
+                ? <span style={{ ...dim, flex: 1 }}>indisponível</span>
+                : <span style={{ ...dim, flex: 1 }}>top {h.top} · mediana <b className="tnum" style={{ color: "var(--fg-2)" }}>{fmtNum(h.medianLikes)}</b> curtidas · pico <b className="tnum" style={{ color: "var(--fg-2)" }}>{fmtNum(h.maxLikes)}</b></span>}
+              <button onClick={() => rmTag(h.name)} title="remover" style={{ border: "none", background: "none", color: "var(--fg-4)", cursor: "pointer", fontSize: 13 }}>✕</button>
+            </div>
+          ))}
+          {!tags.length && <div style={{ ...dim, padding: "8px 0" }}>monitore hashtags do teu nicho (ex.: mercadolivre)</div>}
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <input value={tagIn} onChange={(e) => setTagIn(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addTag()} placeholder="#hashtag" style={inputStyle} />
+            <button onClick={addTag} disabled={busy} style={addBtn}>Adicionar</button>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function SocialScreen() {
   const [product] = useActiveSaas();
   const [sum, setSum] = useS(null);
@@ -492,6 +609,9 @@ function SocialScreen() {
               {!stories.length && <div style={{ padding: "18px 24px", borderTop: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 13 }}>nenhum story capturado ainda · o cockpit fotografa os que estiverem no ar quando a tela abre</div>}
              </div></div>
             </Card>
+
+            {/* Radar do mercado: concorrentes, marcações e hashtags. */}
+            <DiscoveryPanel key={product?.id} product={product} sum={sum} />
           </>
         )}
       </div>
