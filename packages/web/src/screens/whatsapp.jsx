@@ -366,17 +366,34 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
     : unreadLabel;
 
   const [newTpl, setNewTpl] = React.useState(false);
+  // Canal do inbox: WhatsApp (fluxo completo, com leads/fila) ou as DMs de
+  // Instagram/Messenger (lidas e respondidas pela página).
+  const [channel, setChannel] = React.useState("whatsapp");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-      <PageHead title="WhatsApp" sub={sub}>
-        <button onClick={() => setNewTpl(true)} title="cria um template aprovado da Meta (reabre conversa fora das 24h)"
-          style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>
-          Criar template
-        </button>
+      <PageHead title="Inbox" sub={channel === "whatsapp" ? sub : channel === "instagram" ? "direct do Instagram · respondido pela página" : "Messenger da página"}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {[["whatsapp", "WhatsApp"], ["instagram", "Instagram"], ["facebook", "Facebook"]].map(([id, label]) => (
+            <button key={id} onClick={() => setChannel(id)}
+              style={{ height: 32, padding: "0 13px", border: "1px solid " + (channel === id ? "var(--accent-line)" : "var(--line-2)"), borderRadius: "var(--r-2)",
+                background: channel === id ? "var(--accent-soft)" : "var(--bg-1)", color: channel === id ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+              {label}
+            </button>
+          ))}
+          {channel === "whatsapp" && (
+            <button onClick={() => setNewTpl(true)} title="cria um template aprovado da Meta (reabre conversa fora das 24h)"
+              style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>
+              Criar template
+            </button>
+          )}
+        </div>
       </PageHead>
       {newTpl && <WaTemplateCreator onClose={() => setNewTpl(false)} />}
 
+      {channel !== "whatsapp" && <DmInbox key={`${product?.id}:${channel}`} network={channel} saas={product?.id} isMobile={isMobile} />}
+
+      {channel === "whatsapp" && <>
       <WaHealthBanner />
 
       {/* A fila do dia mora no topo, acima das métricas: é o "o que fazer
@@ -618,6 +635,131 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
             leadStarted={msgsReady && msgs.length ? msgs[0].direction === "in" : null} />
         )}
       </div>
+      </>}
+    </div>
+  );
+}
+
+// ── DMs de Instagram/Messenger: lista + conversa + resposta ─────────────────
+// Leitura direta da Graph a cada abertura (sem espelho local): quem escreve é
+// pouco e a página é a dona da conversa. Envio respeita a janela de 24h da
+// Meta — fora dela o erro dela aparece embaixo do campo.
+function DmInbox({ network, saas, isMobile }) {
+  const [threads, setThreads] = React.useState(null);
+  const [err, setErr] = React.useState("");
+  const [sel, setSel] = React.useState(null);      // thread selecionada (objeto)
+  const [msgs, setMsgs] = React.useState(null);
+  const [draft, setDraft] = React.useState("");
+  const [sendErr, setSendErr] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const endRef = React.useRef(null);
+
+  React.useEffect(() => {
+    let alive = true;
+    setThreads(null); setErr(""); setSel(null); setMsgs(null);
+    if (!saas) return undefined;
+    api.socialDms(saas, network)
+      .then((r) => { if (!alive) return; setThreads(r?.threads || []); if (r?.errors?.setup) setErr(r.errors.setup); })
+      .catch((e) => alive && setErr(e.message));
+    return () => { alive = false; };
+  }, [saas, network]);
+
+  React.useEffect(() => {
+    let alive = true;
+    setMsgs(null); setSendErr("");
+    if (!sel) return undefined;
+    api.socialDmMessages(saas, sel.id).then((r) => alive && setMsgs(r?.messages || [])).catch((e) => alive && setSendErr(e.message));
+    return () => { alive = false; };
+  }, [saas, sel?.id]);
+
+  React.useEffect(() => { endRef.current?.scrollIntoView?.({ block: "end" }); }, [msgs?.length]);
+
+  async function send() {
+    const text = draft.trim();
+    if (!text || !sel?.recipientId || busy) return;
+    setBusy(true); setSendErr("");
+    try {
+      await api.socialDmSend(saas, { recipientId: sel.recipientId, text });
+      setDraft("");
+      const r = await api.socialDmMessages(saas, sel.id);
+      setMsgs(r?.messages || []);
+    } catch (e) { setSendErr(e.message || "não deu pra enviar"); }
+    setBusy(false);
+  }
+
+  const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" };
+  const label = network === "instagram" ? "Instagram" : "Messenger";
+
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 16, padding: "16px var(--pad-x) 56px" }}>
+      {(!isMobile || !sel) && (
+        <div style={{ ...box, width: isMobile ? "100%" : 340, flexShrink: isMobile ? 1 : 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+          <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--line-1)", fontSize: 12.5, color: "var(--fg-3)", fontWeight: 600 }}>
+            Conversas do {label}
+          </div>
+          <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+            {threads === null && !err && <div className="mono dim" style={{ padding: 16, fontSize: 12 }}>carregando…</div>}
+            {err && <div style={{ padding: 16, fontSize: 12.5, color: "var(--fg-3)", lineHeight: 1.5 }}>{err}</div>}
+            {(threads || []).map((t) => (
+              <button key={t.id} onClick={() => setSel(t)}
+                style={{ display: "block", width: "100%", textAlign: "left", padding: "11px 14px", border: "none", cursor: "pointer",
+                  borderBottom: "1px solid var(--line-faint)", background: sel?.id === t.id ? "var(--accent-soft)" : "transparent" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontWeight: 650, fontSize: 13.5, color: "var(--fg-1)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {t.username ? `@${t.username}` : t.name}
+                  </span>
+                  {t.unread > 0 && <span className="tnum" style={{ fontSize: 10.5, fontWeight: 700, background: "var(--accent)", color: "var(--accent-fg)", borderRadius: 999, padding: "1px 7px" }}>{t.unread}</span>}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--fg-4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{t.snippet || "…"}</div>
+              </button>
+            ))}
+            {threads !== null && !err && !(threads || []).length && (
+              <div style={{ padding: 16, fontSize: 12.5, color: "var(--fg-4)" }}>nenhuma conversa no {label} ainda</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {(!isMobile || sel) && (
+        <div style={{ ...box, flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+          {!sel && <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--fg-4)", fontSize: 13 }}>escolha uma conversa</div>}
+          {sel && (
+            <>
+              <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 10 }}>
+                {isMobile && <button onClick={() => setSel(null)} style={{ border: "none", background: "none", color: "var(--accent)", fontSize: 13, cursor: "pointer", padding: 0 }}>‹ conversas</button>}
+                <span style={{ fontWeight: 650, fontSize: 14 }}>{sel.username ? `@${sel.username}` : sel.name}</span>
+                <span className="mono dim" style={{ fontSize: 11 }}>{label}</span>
+              </div>
+              <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+                {msgs === null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
+                {(msgs || []).map((m) => (
+                  <div key={m.id} style={{ alignSelf: m.ours ? "flex-end" : "flex-start", maxWidth: "78%",
+                    background: m.ours ? "var(--accent-soft)" : "var(--bg-2)", border: "1px solid " + (m.ours ? "var(--accent-line)" : "var(--line-1)"),
+                    borderRadius: 12, padding: "8px 12px", fontSize: 13.5, lineHeight: 1.45, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                    {m.text || (m.hasAttachment ? "[mídia]" : "")}
+                    <div className="tnum" style={{ fontSize: 10.5, color: "var(--fg-4)", marginTop: 3, textAlign: m.ours ? "right" : "left" }}>
+                      {m.at ? new Date(m.at).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "") : ""}
+                    </div>
+                  </div>
+                ))}
+                <div ref={endRef} />
+              </div>
+              <div style={{ borderTop: "1px solid var(--line-1)", padding: "10px 14px" }}>
+                {sendErr && <div style={{ fontSize: 12, color: "var(--neg)", marginBottom: 8 }}>{sendErr}</div>}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()}
+                    placeholder={`responder no ${label}…`}
+                    style={{ flex: 1, minWidth: 0, padding: "9px 12px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 }} />
+                  <button onClick={send} disabled={busy || !draft.trim()}
+                    style={{ padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--accent)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: busy || !draft.trim() ? 0.6 : 1 }}>
+                    Enviar
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

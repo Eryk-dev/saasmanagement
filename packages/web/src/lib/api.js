@@ -296,6 +296,9 @@ export const api = {
   socialAudience: (saas) => req("GET", `/api/social/audience?saas=${encodeURIComponent(saas)}`),
   socialStories: (saas) => req("GET", `/api/social/stories?saas=${encodeURIComponent(saas)}`),
   socialDiscovery: (saas) => req("GET", `/api/social/discovery?saas=${encodeURIComponent(saas)}`),
+  socialDms: (saas, network) => req("GET", `/api/social/dms?saas=${encodeURIComponent(saas)}&network=${encodeURIComponent(network)}`),
+  socialDmMessages: (saas, id) => req("GET", `/api/social/dms/messages?saas=${encodeURIComponent(saas)}&id=${encodeURIComponent(id)}`),
+  socialDmSend: (saas, body) => req("POST", `/api/social/dms/send?saas=${encodeURIComponent(saas)}`, body),
   socialPosts: (saas) => req("GET", `/api/social/posts?saas=${encodeURIComponent(saas)}`),
   // Links de pagamento das ofertas (ferramenta) — leitura e edição pra todo o time.
   offers: (saas) => req("GET", `/api/offers/${encodeURIComponent(saas)}`),

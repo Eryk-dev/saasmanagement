@@ -256,6 +256,61 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
     return out;
   });
 
+  // ── DMs: Instagram Direct + Messenger (aba do Inbox) ──────────────────────
+  // As conversas dos dois canais moram na PÁGINA (platform=instagram|messenger)
+  // e são lidas/respondidas com o token de página. Erro da Meta sai 422 (o
+  // proxy engole o corpo de 5xx).
+  const dmPlatform = (q) => (String(q || "") === "facebook" ? "messenger" : "instagram");
+  app.get("/api/social/dms", async (req, reply) => {
+    const product = await productOr404(req, reply);
+    if (!product) return;
+    if (!social.configured()) return { configured: false, threads: [] };
+    const { igUserId, pageId } = await idsFor(product);
+    if (!pageId) return { configured: true, threads: [], errors: { setup: "sem página do Facebook configurada no produto" } };
+    try {
+      const token = await social.pageToken(pageId);
+      const list = await social.dmConversations(pageId, { platform: dmPlatform(req.query?.network), limit: 25, token });
+      const ours = new Set([String(pageId), String(igUserId || "")]);
+      return {
+        configured: true,
+        threads: list.map((c) => {
+          const other = c.participants.find((p) => p.id && !ours.has(p.id)) || c.participants[0] || {};
+          return {
+            id: c.id, name: other.name || other.username || "conversa", username: other.username || "",
+            recipientId: other.id || "", updatedAt: c.updatedAt, unread: c.unread, snippet: c.snippet,
+          };
+        }),
+      };
+    } catch (e) { reply.code(422); return { error: e.message }; }
+  });
+
+  app.get("/api/social/dms/messages", async (req, reply) => {
+    const product = await productOr404(req, reply);
+    if (!product) return;
+    const convId = String(req.query?.id || "");
+    if (!convId) { reply.code(400); return { error: "id da conversa obrigatório" }; }
+    const { igUserId, pageId } = await idsFor(product);
+    try {
+      const token = await social.pageToken(pageId);
+      const ours = new Set([String(pageId), String(igUserId || "")]);
+      const messages = (await social.dmMessages(convId, { pageId, limit: 30, token }))
+        .map((m) => ({ ...m, ours: ours.has(m.fromId) }));
+      return { messages };
+    } catch (e) { reply.code(422); return { error: e.message }; }
+  });
+
+  app.post("/api/social/dms/send", async (req, reply) => {
+    const product = await productOr404(req, reply);
+    if (!product) return;
+    const { recipientId, text } = req.body || {};
+    if (!recipientId || !String(text || "").trim()) { reply.code(400); return { error: "destinatário e texto obrigatórios" }; }
+    const { pageId } = await idsFor(product);
+    try {
+      const r = await social.dmSend(pageId, { recipientId, text: String(text).trim() });
+      return { ok: true, id: r.id };
+    } catch (e) { reply.code(422); return { error: e.message }; } // fora da janela de 24h etc.
+  });
+
   // ── Descoberta: marcações, concorrentes e hashtags ────────────────────────
   // Radar de mercado da tela social. Concorrentes (product.igCompetitors) via
   // business_discovery (dados públicos de conta business) e hashtags
