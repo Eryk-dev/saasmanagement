@@ -32,7 +32,7 @@ const NAV = [
   { id: "proposals",  label: "Propostas",      icon: "▥",  group: "comercial" },
   { id: "offers",     label: "Link pagamento", icon: "◇",  group: "comercial" },
   { id: "agenda",     label: "Agenda",         icon: "▦",  group: "comercial" },
-  { id: "whatsapp",   label: "WhatsApp",       icon: "✆",  group: "comercial" },
+  { id: "whatsapp",   label: "Inbox",          icon: "✆",  group: "comercial" }, // WhatsApp + DMs de IG/Messenger
 
   { id: "social",     label: "Redes sociais",  icon: "◍",  group: "marketing" },
   { id: "metrics",    label: "Publicidade",    icon: "∿",  group: "marketing" },

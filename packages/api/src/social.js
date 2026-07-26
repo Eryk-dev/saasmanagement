@@ -239,6 +239,54 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
       return out;
     },
 
+    // ── DMs (Instagram Direct e Messenger) via a página ─────────────────────
+    // As conversas dos DOIS canais vivem na página do Facebook (platform=
+    // instagram|messenger), lidas e respondidas com o token de página.
+    async dmConversations(pageId, { platform = "instagram", limit = 25, token } = {}) {
+      const access_token = token || (await this.pageToken(pageId));
+      const body = await get(`${pageId}/conversations`, {
+        platform, fields: "id,participants,updated_time,unread_count,snippet", limit: String(limit), access_token,
+      });
+      return (body.data || []).map((c) => ({
+        id: String(c.id),
+        participants: (c.participants?.data || []).map((p) => ({ id: String(p.id || ""), name: p.name || p.username || "", username: p.username || "" })),
+        updatedAt: c.updated_time ? new Date(c.updated_time).toISOString() : "",
+        unread: Number(c.unread_count) || 0,
+        snippet: c.snippet || "",
+      }));
+    },
+
+    // Mensagens de uma conversa (mais novas primeiro na Graph; devolvemos em
+    // ordem cronológica pra tela).
+    async dmMessages(conversationId, { pageId, limit = 25, token } = {}) {
+      const access_token = token || (await this.pageToken(pageId));
+      const body = await get(`${conversationId}/messages`, {
+        fields: "id,from,to,message,created_time,attachments{mime_type,file_url,image_data}", limit: String(limit), access_token,
+      });
+      return (body.data || []).map((m) => ({
+        id: String(m.id),
+        fromId: String(m.from?.id || ""),
+        fromName: m.from?.name || m.from?.username || "",
+        text: m.message || "",
+        hasAttachment: !!(m.attachments?.data || []).length,
+        at: m.created_time ? new Date(m.created_time).toISOString() : "",
+      })).reverse();
+    },
+
+    // Responde uma DM (IG ou Messenger — o recipient id decide). Fora da
+    // janela de 24h da última mensagem do cliente a Meta recusa; o erro dela
+    // sobe pra virar 4xx na rota (o proxy engole 5xx).
+    async dmSend(pageId, { recipientId, text, token } = {}) {
+      const access_token = token || (await this.pageToken(pageId));
+      const body = await post(`${pageId}/messages`, {
+        recipient: JSON.stringify({ id: String(recipientId) }),
+        message: JSON.stringify({ text: String(text || "") }),
+        messaging_type: "RESPONSE",
+        access_token,
+      });
+      return { id: String(body.message_id || body.id || "") };
+    },
+
     // Mídias em que a conta foi MARCADA por terceiros (prova social/UGC).
     async igTaggedMedia(igUserId, { limit = 8 } = {}) {
       const body = await get(`${igUserId}/tags`, {

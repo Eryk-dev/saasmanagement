@@ -38,6 +38,7 @@ const ROUTE_SCREENS = [
   // SDR alcança pela fila (today) sem ter a tela de Mídia social. Precede
   // /api/social (primeiro match vence).
   ["/api/social/new-followers", ["today", "pipeline", "overview", "social"]],
+  ["/api/social/dms", ["whatsapp", "social"]], // DMs de IG/Messenger no Inbox (tela whatsapp)
   ["/api/social", ["social"]],
   ["/api/marketing", ["metrics", "aquisicao"]],
   ["/api/metrics/", ["metrics", "aquisicao"]],

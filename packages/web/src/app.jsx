@@ -165,6 +165,7 @@ function App() {
     proposals:   ["Comercial", "Propostas"],
     offers:      ["Comercial", "Link pagamento"],
     agenda:      ["Comercial", "Agenda"],
+    whatsapp:    ["Comercial", "Inbox"],
     consultas:   ["Comercial", "Consultas"],
     social:      ["Marketing", "Redes sociais"],
     metrics:     ["Marketing", "Publicidade"],
