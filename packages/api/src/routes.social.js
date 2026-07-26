@@ -345,13 +345,15 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
     const organic = await social.igMedia(igUserId, { limit }).catch(() => []);
     if (!product.metaAdAccount || typeof meta.adInstagramMedia !== "function") return organic;
     let adIds = [];
-    try { adIds = await meta.adInstagramMedia(product.metaAdAccount, { limit: 25 }); }
+    try { adIds = await meta.adInstagramMedia(product.metaAdAccount, { limit: 200 }); }
     catch { return organic; } // sem permissão de ads: segue só com o orgânico
     const seen = new Set(organic.map((p) => String(p.id)));
-    // Cada mídia custa uma chamada pra pegar legenda/permalink, então limita.
-    const extra = await Promise.all(adIds.filter((id) => !seen.has(String(id))).slice(0, limit)
-      .map((id) => social.igMediaInfo(id).catch(() => null)));
-    return [...organic, ...extra.filter(Boolean)];
+    // Entradas "bare": só o id — a legenda/permalink é buscada pelo sync
+    // APENAS quando a mídia tem comentário. O teto de 40 segura a varredura;
+    // a ordem já vem priorizada (ativos primeiro) do adInstagramMedia.
+    const extra = adIds.filter((id) => !seen.has(String(id))).slice(0, 40)
+      .map((id) => ({ id: String(id), bare: true }));
+    return [...organic, ...extra];
   }
 
   // Produto dono de um id da Meta (IG user id ou page id) — o webhook só manda
@@ -461,12 +463,20 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
       if (!igUserId && !pageId) out.errors.setup = "sem Instagram/página configurados no produto";
       else {
         try {
-          const [posts, igUsername] = await Promise.all([
+          // Posts de anúncio do FB (story ids): mesmo teto e prioridade das
+          // mídias do IG. Falha aqui não derruba a varredura do resto.
+          let fbAdsError = "";
+          const [posts, igUsername, fbAdPostIds] = await Promise.all([
             igUserId ? igPostsForScan(product, igUserId) : [],
             igUsernameFor(product, igUserId),
+            pageId && product.metaAdAccount && typeof meta.adPagePosts === "function"
+              ? meta.adPagePosts(product.metaAdAccount, { limit: 200 })
+                  .then((ids) => ids.slice(0, 40))
+                  .catch((e) => { fbAdsError = e.message; return []; })
+              : [],
           ]);
           const r = await syncComments(repo, social, {
-            saas: product.id, igUserId, pageId, igUsername, posts,
+            saas: product.id, igUserId, pageId, igUsername, posts, fbAdPostIds, fbAdsError,
             force: String(req.query?.sync || "") === "1",
           });
           Object.assign(out.errors, r.errors || {});

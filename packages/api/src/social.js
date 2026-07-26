@@ -366,6 +366,19 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
       }));
     },
 
+    // Metadados de UM post da página (legenda/permalink). Buscado só quando um
+    // post de anúncio TEM comentário — evita uma chamada por post varrido.
+    async fbPostInfo(postId, { token, pageId } = {}) {
+      const access_token = token || (await this.pageToken(pageId));
+      const p = await get(`${postId}`, { fields: "id,message,created_time,permalink_url", access_token });
+      return {
+        id: String(p.id),
+        caption: p.message || "",
+        permalink: p.permalink_url || "",
+        at: p.created_time ? new Date(p.created_time).toISOString() : "",
+      };
+    },
+
     // Comentários de um post da página, com as respostas aninhadas. `from` só
     // vem preenchido com pages_read_user_content; sem ele a Meta devolve o
     // comentário sem autor, e aí o card mostra "alguém".
@@ -505,31 +518,15 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
 // ESM rodam antes do dotenv.config() do index.js.
 let _social = null;
 const inst = () => (_social ??= makeSocial({ accessToken: process.env.META_ACCESS_TOKEN || "" }));
-export const social = {
-  configured: () => inst().configured(),
-  igAccount: (id) => inst().igAccount(id),
-  igInsights: (id, r) => inst().igInsights(id, r),
-  igReachBreakdown: (id, r) => inst().igReachBreakdown(id, r),
-  igDailySeries: (id, m, r) => inst().igDailySeries(id, m, r),
-  igMedia: (id, o) => inst().igMedia(id, o),
-  // metric/extra REPASSADOS (undefined ativa os defaults da função): sem isso,
-  // "alcançados"/"engajados" caíam no default follower_demographics e os 3
-  // recortes vinham idênticos.
-  igDemographics: (id, metric, extra) => inst().igDemographics(id, metric, extra),
-  igOnlineFollowers: (id) => inst().igOnlineFollowers(id),
-  pageInfo: (id) => inst().pageInfo(id),
-  pageToken: (id) => inst().pageToken(id),
-  igComments: (id, o) => inst().igComments(id, o),
-  igReplyComment: (id, m) => inst().igReplyComment(id, m),
-  igHideComment: (id, h) => inst().igHideComment(id, h),
-  igDeleteComment: (id) => inst().igDeleteComment(id),
-  igMediaInfo: (id) => inst().igMediaInfo(id),
-  fbPosts: (id, o) => inst().fbPosts(id, o),
-  fbAdsPosts: (id, o) => inst().fbAdsPosts(id, o),
-  fbComments: (id, o) => inst().fbComments(id, o),
-  fbReplyComment: (id, m, o) => inst().fbReplyComment(id, m, o),
-  fbHideComment: (id, h, o) => inst().fbHideComment(id, h, o),
-  fbDeleteComment: (id, o) => inst().fbDeleteComment(id, o),
-  publishInstagram: (id, o) => inst().publishInstagram(id, o),
-  publishFacebook: (id, o) => inst().publishFacebook(id, o),
-};
+// Proxy no lugar da tabela escrita à mão (mesmo padrão do meta.js): a lista
+// manual ENGOLIA argumento novo — foi assim que Alcançados/Engajados voltavam
+// com dados de Seguidores (#544, igDemographics sem metric/extra). O Proxy
+// repassa tudo, então não há mais lista pra ficar desatualizada.
+export const social = new Proxy({}, {
+  get: (_t, prop) => {
+    const target = inst();
+    const value = target[prop];
+    return typeof value === "function" ? value.bind(target) : value;
+  },
+  has: (_t, prop) => prop in inst(),
+});

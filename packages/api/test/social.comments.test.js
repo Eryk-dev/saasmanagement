@@ -242,15 +242,15 @@ test("syncComments: throttle — sem force, a segunda varredura no mesmo minuto 
   assert.equal(hits, 1);
 });
 
-test("syncComments: varre o mural E os posts de anúncio, sem repetir o que vem nos dois", async () => {
+test("syncComments: varre o mural E os posts de anúncio (story ids), sem repetir e com título preguiçoso", async () => {
   const repo = makeMemRepo();
   invalidateSync("leverads");
-  const scanned = [];
+  const scanned = [], infoFetched = [];
   const social = {
     async pageToken() { return "tok"; },
     async fbPosts() { return [{ id: "p1", caption: "post do mural" }]; },
-    // O anúncio que impulsiona p1 volta nos dois edges; p2 é dark post, só aqui.
-    async fbAdsPosts() { return [{ id: "p1", caption: "post do mural" }, { id: "p2", caption: "anúncio" }]; },
+    // Metadados só são buscados pro post de anúncio COM comentário.
+    async fbPostInfo(id) { infoFetched.push(id); return { id, caption: "anúncio", permalink: "https://fb/p2" }; },
     async fbComments(postId) {
       scanned.push(postId);
       return postId === "p2"
@@ -258,26 +258,46 @@ test("syncComments: varre o mural E os posts de anúncio, sem repetir o que vem 
         : [];
     },
   };
-  const r = await syncComments(repo, social, { saas: "leverads", pageId: "pg1", force: true });
-  assert.deepEqual(scanned.sort(), ["p1", "p2"], "cada post é varrido uma vez só");
+  // O anúncio que impulsiona p1 volta nos dois lados; p2 é dark post, só via story id.
+  const r = await syncComments(repo, social, { saas: "leverads", pageId: "pg1", fbAdPostIds: ["p1", "p2", "p3"], force: true });
+  assert.deepEqual(scanned.sort(), ["p1", "p2", "p3"], "cada post é varrido uma vez só");
+  assert.deepEqual(infoFetched, ["p2"], "metadados só pro post com comentário");
   const row = await repo.get("social_comments", "fc2");
   assert.equal(row.saas, "leverads");
   assert.equal(row.postTitle, "anúncio");
+  assert.equal(row.permalink, "https://fb/p2");
   assert.ok(!r.errors.facebook);
 });
 
-test("syncComments: /ads_posts sem permissão não derruba a leitura do mural", async () => {
+test("syncComments: enumeração de anúncios falhou → erro reportado sem derrubar o mural", async () => {
   const repo = makeMemRepo();
   invalidateSync("leverads");
   const social = {
     async pageToken() { return "tok"; },
     async fbPosts() { return [{ id: "p1", caption: "post do mural" }]; },
-    async fbAdsPosts() { throw new Error("(#200) sem permissão pra ads_posts"); },
     async fbComments() { return [{ id: "fc1", text: "oi", author: "ana", authorId: "u1", at: "2026-07-19T10:00:00.000Z" }]; },
   };
-  const r = await syncComments(repo, social, { saas: "leverads", pageId: "pg1", force: true });
+  const r = await syncComments(repo, social, { saas: "leverads", pageId: "pg1", fbAdsError: "(#200) sem permissão pra ads", force: true });
   assert.match(r.errors.facebookAds, /sem permissão/);
   assert.ok(await repo.get("social_comments", "fc1"), "o mural tem que entrar mesmo sem os anúncios");
+});
+
+test("syncComments: mídia de anúncio IG 'bare' ganha título só quando tem comentário", async () => {
+  const repo = makeMemRepo();
+  invalidateSync("leverads");
+  const infoFetched = [];
+  const social = {
+    async igComments(id) {
+      return id === "adm1" ? [{ id: "ic9", text: "quanto custa?", author: "ana", at: "2026-07-19T10:00:00.000Z" }] : [];
+    },
+    async igMediaInfo(id) { infoFetched.push(id); return { id, caption: "anúncio quente", permalink: "https://ig/adm1" }; },
+  };
+  const posts = [{ id: "m1", caption: "orgânico" }, { id: "adm1", bare: true }, { id: "adm2", bare: true }];
+  await syncComments(repo, social, { saas: "leverads", igUserId: "ig1", posts, force: true });
+  assert.deepEqual(infoFetched, ["adm1"], "igMediaInfo só pra mídia com comentário");
+  const row = await repo.get("social_comments", "ic9");
+  assert.equal(row.postTitle, "anúncio quente");
+  assert.equal(row.permalink, "https://ig/adm1");
 });
 
 test("syncComments: as mídias de anúncio do IG não são cortadas pelo teto dos recentes", async () => {

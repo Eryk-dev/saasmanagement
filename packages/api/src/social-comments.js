@@ -17,7 +17,10 @@
 // "Pendente" = comentário de OUTRA pessoa, não oculto, sem resposta nossa
 // abaixo dele e não marcado como resolvido à mão. É a fila de trabalho da tela.
 
-const SYNC_MIN_MS = 60_000; // varredura completa no máximo 1×/min por produto
+// Varredura completa no máximo 1×/5min por produto: com as mídias de anúncio
+// na ronda (até ~40 por rede), 1×/min estourava o rate limit da Graph. O
+// webhook cobre o tempo real; a varredura é reconciliação.
+const SYNC_MIN_MS = 300_000;
 const lastSync = new Map(); // saas → timestamp da última varredura
 
 export const firstLine = (s) => String(s || "").split("\n")[0].trim();
@@ -66,29 +69,36 @@ export async function upsertComment(repo, c) {
 // Varre os posts recentes das duas redes e reconcilia a collection.
 // `force` ignora o throttle (botão "atualizar" da tela). Devolve o que rodou
 // pra tela poder dizer "não deu pra ler o Facebook" sem sumir com o resto.
-export async function syncComments(repo, social, { saas, igUserId, pageId, igUsername = "", posts = [], force = false, limit = 8 } = {}) {
+export async function syncComments(repo, social, { saas, igUserId, pageId, igUsername = "", posts = [], fbAdPostIds = [], fbAdsError = "", force = false, limit = 8 } = {}) {
   const now = Date.now();
   const last = lastSync.get(saas) || 0;
   if (!force && now - last < SYNC_MIN_MS) return { skipped: true, errors: {} };
   lastSync.set(saas, now);
 
   const errors = {};
+  if (fbAdsError) errors.facebookAds = fbAdsError; // enumeração de anúncios falhou (quem chama reporta)
   let found = 0;
 
   // ── Instagram ──────────────────────────────────────────────────────────────
   // `posts` já vem curado por quem chama (recentes do perfil + mídias de
-  // anúncio, ver igPostsForScan). O corte aqui é só um teto de segurança: se
-  // fosse `limit`, as mídias de anúncio, que vêm depois das orgânicas, seriam
-  // justamente as descartadas.
+  // anúncio, ver igPostsForScan). Entrada `{ id, bare: true }` = mídia de
+  // anúncio sem metadados: a legenda/permalink só é buscada QUANDO a mídia tem
+  // comentário (senão seria uma chamada extra por mídia varrida). O corte aqui
+  // é só um teto de segurança contra lista descontrolada.
   if (igUserId) {
-    const recent = posts.slice(0, limit * 2);
+    const recent = posts.slice(0, 60);
     await Promise.all(recent.map(async (p) => {
       try {
         const list = await social.igComments(p.id, { limit: 50 });
+        if (!list.length) return;
+        let info = p;
+        if (p.bare && typeof social.igMediaInfo === "function") {
+          info = (await social.igMediaInfo(p.id).catch(() => null)) || p;
+        }
         for (const c of list) {
           await upsertComment(repo, {
             ...c, saas, network: "instagram",
-            postId: p.id, postTitle: postTitleOf(p.caption, "Publicação sem legenda"), permalink: p.permalink || "",
+            postId: p.id, postTitle: postTitleOf(info.caption, "Publicação sem legenda"), permalink: info.permalink || "",
             // A própria conta comentando = resposta nossa. É assim que o
             // "pendente" some quando alguém respondeu pelo app do Instagram.
             ours: !!igUsername && String(c.author || "").toLowerCase() === String(igUsername).toLowerCase(),
@@ -106,18 +116,14 @@ export async function syncComments(repo, social, { saas, igUserId, pageId, igUse
   if (pageId) {
     try {
       const token = await social.pageToken(pageId);
-      // Mural + anúncios. O /posts só traz o que foi publicado no mural, então
-      // sem o /ads_posts o comentário de anúncio (o mais comum com a campanha
-      // no ar) nunca entraria na fila. Falha do lado dos anúncios não derruba
-      // a leitura do orgânico.
-      const [organic, ads] = await Promise.all([
-        social.fbPosts(pageId, { limit, token }),
-        typeof social.fbAdsPosts === "function"
-          ? social.fbAdsPosts(pageId, { limit, token }).catch((e) => { errors.facebookAds = e.message; return []; })
-          : [],
-      ]);
+      // Mural + posts de ANÚNCIO (fbAdPostIds = effective_object_story_id dos
+      // anúncios, vindos de quem chama). O /posts só traz o mural, e o
+      // /ads_posts da página volta VAZIO nesta conta — sem os story ids, o
+      // comentário de anúncio (a maior parte do volume com campanha no ar)
+      // nunca entraria na fila.
+      const organic = await social.fbPosts(pageId, { limit, token });
       const seen = new Set();
-      const fbPosts = [...organic, ...ads].filter((p) => {
+      const fbPosts = [...organic, ...fbAdPostIds.map((id) => ({ id: String(id), bare: true }))].filter((p) => {
         const id = String(p.id || "");
         if (!id || seen.has(id)) return false; // anúncio que impulsiona um post do mural vem nos dois
         seen.add(id);
@@ -126,10 +132,15 @@ export async function syncComments(repo, social, { saas, igUserId, pageId, igUse
       await Promise.all(fbPosts.map(async (p) => {
         try {
           const list = await social.fbComments(p.id, { limit: 50, token });
+          if (!list.length) return;
+          let info = p;
+          if (p.bare && typeof social.fbPostInfo === "function") {
+            info = (await social.fbPostInfo(p.id, { token }).catch(() => null)) || p;
+          }
           for (const c of list) {
             await upsertComment(repo, {
               ...c, saas, network: "facebook",
-              postId: p.id, postTitle: postTitleOf(p.caption, "Publicação sem texto"), permalink: p.permalink || "",
+              postId: p.id, postTitle: postTitleOf(info.caption, "Publicação sem texto"), permalink: info.permalink || "",
               // Na página, "nosso" é o comentário assinado pela PRÓPRIA página.
               ours: String(c.authorId || "") === String(pageId),
               source: "sync",
