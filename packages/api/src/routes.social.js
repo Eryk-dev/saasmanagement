@@ -256,6 +256,53 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
     return out;
   });
 
+  // ── Descoberta: marcações, concorrentes e hashtags ────────────────────────
+  // Radar de mercado da tela social. Concorrentes (product.igCompetitors) via
+  // business_discovery (dados públicos de conta business) e hashtags
+  // (product.igHashtags; a Meta limita 30 ÚNICAS/semana — repetir não gasta).
+  app.get("/api/social/discovery", async (req, reply) => {
+    const product = await productOr404(req, reply);
+    if (!product) return;
+    if (!social.configured()) return { configured: false };
+    const { igUserId } = await idsFor(product);
+    const out = { configured: true, tagged: [], competitors: [], hashtags: [], errors: {} };
+    if (!igUserId) { out.errors.setup = "sem Instagram configurado"; return out; }
+    const comps = Array.isArray(product.igCompetitors) ? product.igCompetitors.slice(0, 6) : [];
+    const tags = Array.isArray(product.igHashtags) ? product.igHashtags.slice(0, 5) : [];
+    // Posts/semana estimado pelo espaçamento dos recentes públicos.
+    const postsPerWeek = (recent) => {
+      const ts = recent.map((m) => new Date(m.at || 0).getTime()).filter(Boolean).sort((a, b) => a - b);
+      if (ts.length < 2) return null;
+      const weeks = Math.max(1 / 7, (ts[ts.length - 1] - ts[0]) / 604800000);
+      return Math.round((ts.length / weeks) * 10) / 10;
+    };
+    await Promise.all([
+      Promise.resolve().then(() => social.igTaggedMedia(igUserId, { limit: 8 }))
+        .then((t) => { out.tagged = t; }).catch((e) => { out.errors.tagged = e.message; }),
+      ...comps.map((u) => Promise.resolve().then(() => social.igBusinessDiscovery(igUserId, u)).then((d) => {
+        const n = d.recent.length || 1;
+        out.competitors.push({
+          username: d.username, name: d.name, followers: d.followers, mediaCount: d.mediaCount,
+          avgLikes: Math.round(d.recent.reduce((s, m) => s + m.likes, 0) / n),
+          avgComments: Math.round((d.recent.reduce((s, m) => s + m.comments, 0) / n) * 10) / 10,
+          postsPerWeek: postsPerWeek(d.recent),
+        });
+      }).catch((e) => { out.competitors.push({ username: String(u).replace(/^@/, ""), error: e.message }); })),
+      ...tags.map((h) => Promise.resolve().then(async () => {
+        const tag = await social.igHashtagSearch(igUserId, h);
+        const top = await social.igHashtagTopMedia(igUserId, tag.id, { limit: 9 });
+        const likes = top.map((m) => m.likes).sort((a, b) => a - b);
+        out.hashtags.push({
+          name: tag.name, top: top.length,
+          medianLikes: likes.length ? likes[Math.floor(likes.length / 2)] : 0,
+          maxLikes: likes[likes.length - 1] || 0,
+        });
+      }).catch((e) => { out.hashtags.push({ name: String(h).replace(/^#/, ""), error: e.message }); })),
+    ]);
+    out.competitors.sort((a, b) => (b.followers || 0) - (a.followers || 0));
+    return out;
+  });
+
   // ── Upload de mídia (multipart) → asset com URL pública ──────────────────
   app.post("/api/social/assets", async (req, reply) => {
     const data = await req.file();
