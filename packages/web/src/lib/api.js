@@ -294,6 +294,7 @@ export const api = {
   // de social selling do Meu dia (o IG não expõe a lista de quem seguiu).
   newFollowers: (saas) => req("GET", `/api/social/new-followers/${encodeURIComponent(saas)}`),
   socialAudience: (saas) => req("GET", `/api/social/audience?saas=${encodeURIComponent(saas)}`),
+  socialStories: (saas) => req("GET", `/api/social/stories?saas=${encodeURIComponent(saas)}`),
   socialPosts: (saas) => req("GET", `/api/social/posts?saas=${encodeURIComponent(saas)}`),
   // Links de pagamento das ofertas (ferramenta) — leitura e edição pra todo o time.
   offers: (saas) => req("GET", `/api/offers/${encodeURIComponent(saas)}`),

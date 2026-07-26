@@ -46,6 +46,7 @@ export const COLLECTIONS = {
   social_assets: [], // mídia pra publicação social (bytes base64, servida em /public/social/:id)
   social_posts: [],  // histórico de publicações orgânicas feitas pelo cockpit
   social_comments: [], // comentários de IG/página do FB: fila e respostas (social-comments.js)
+  social_stories: [],  // stories capturados enquanto vivos (24h) com métricas (social-stories.js)
   wa_threads: [],    // inbox de WhatsApp: índice de conversas, 1 por número (wa-store.js)
   wa_messages: [],   // inbox de WhatsApp: TODAS as mensagens in/out (wa-store.js)
   wa_alerts: [],     // alertas quentes do fluxo de ligação: lead respondeu → pop-up pro SDR (wa-call-flow.js)
