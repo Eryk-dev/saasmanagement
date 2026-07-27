@@ -51,21 +51,24 @@ test("client: erro da Meta (fora das 24h) propaga status/code", async () => {
 
 // Cliente fake pras rotas (sem rede): registra o que foi enviado.
 function fakeWa(opts = {}) {
-  const sent = [], read = [], created = [];
+  const sent = [], read = [], created = [], tplSent = [], uploads = [];
   return {
-    sent, read, created,
+    sent, read, created, tplSent, uploads,
     configured: () => opts.configured !== false,
     verifyWebhook: (mode, tok, ch) => (mode === "subscribe" && tok === "vt" ? String(ch) : null),
     async sendText(to, text) { if (opts.throw) throw Object.assign(new Error("re-engagement"), { code: 131047 }); sent.push({ to, text }); return { messageId: "wamid.SENT" + sent.length }; },
-    async sendTemplate() { return { messageId: "wamid.T" }; },
+    async sendTemplate(to, name, lang, components) { tplSent.push({ to, name, lang, components }); return { messageId: "wamid.T" + tplSent.length }; },
     async markRead(id) { read.push(id); },
     async tokenWabaIds() { return ["WABA1"]; },
     async createTemplate(wabaId, spec) { created.push({ wabaId, spec }); return { id: "tpl_1", status: "PENDING", category: spec.category }; },
+    async listTemplates() { return opts.templates || []; },
+    async uploadMedia(buf, { mime, filename }) { uploads.push({ size: buf.length, mime, filename }); return "MEDIA9"; },
   };
 }
 
 async function appWith(repo, wa) {
   const app = Fastify();
+  await app.register((await import("@fastify/multipart")).default);
   registerWhatsappRoutes(app, repo, { whatsapp: wa });
   await app.ready();
   return app;
@@ -505,4 +508,80 @@ test("POST /whatsapp/templates: variável sem exemplo → 400; sem nome/corpo �
   assert.equal(semNome.statusCode, 400);
   const semCorpo = await app.inject({ method: "POST", url: "/api/whatsapp/templates", payload: { name: "x_tpl" } });
   assert.equal(semCorpo.statusCode, 400);
+});
+
+test("client: listTemplates — header de imagem é suportado; vídeo/variável fora do corpo não", async () => {
+  const f = okFetch({ data: [
+    { name: "plain", language: "pt_BR", category: "UTILITY", components: [{ type: "BODY", text: "Oi {{1}}" }] },
+    { name: "foto", language: "pt_BR", category: "MARKETING", components: [
+      { type: "HEADER", format: "IMAGE", example: { header_handle: ["https://scontent/x"] } },
+      { type: "BODY", text: "Oiii {{1}}, resultados de clientes" },
+    ] },
+    { name: "video", language: "pt_BR", components: [{ type: "HEADER", format: "VIDEO" }, { type: "BODY", text: "corpo" }] },
+    { name: "head_var", language: "pt_BR", components: [{ type: "HEADER", format: "TEXT", text: "Olá {{1}}" }, { type: "BODY", text: "corpo" }] },
+    { name: "botao_var", language: "pt_BR", components: [{ type: "BODY", text: "corpo" }, { type: "BUTTONS", buttons: [{ type: "URL", url: "https://x/{{1}}" }] }] },
+  ] });
+  const wa = makeWhatsapp({ fetch: f, token: "tok", phoneNumberId: "PN1" });
+  const list = await wa.listTemplates("WABA1");
+  const by = Object.fromEntries(list.map((t) => [t.name, t]));
+  assert.equal(by.plain.supported, true);
+  assert.equal(by.plain.header, "");
+  assert.equal(by.foto.supported, true);
+  assert.equal(by.foto.header, "image");
+  assert.equal(by.foto.params, 1);
+  assert.equal(by.video.supported, false);
+  assert.equal(by.head_var.supported, false);
+  assert.equal(by.botao_var.supported, false);
+});
+
+test("send-template com header de imagem: sem a foto → 400; com ela manda o parâmetro do header e grava a bolha com a mídia", async () => {
+  const wa = fakeWa({ templates: [
+    { name: "nutricao_1", language: "pt_BR", category: "MARKETING", body: "Oiii {{1}}, resultados", params: 1, header: "image", supported: true },
+  ] });
+  const repo = makeMemRepo();
+  const app = await appWith(repo, wa);
+
+  const sem = await app.inject({ method: "POST", url: "/api/whatsapp/threads/5541992516545/send-template", payload: { name: "nutricao_1", params: ["Allan"] } });
+  assert.equal(sem.statusCode, 400);
+  assert.match(sem.json().error, /imagem no cabeçalho/);
+
+  const com = await app.inject({ method: "POST", url: "/api/whatsapp/threads/5541992516545/send-template", payload: { name: "nutricao_1", params: ["Allan"], headerMediaId: "MEDIA9" } });
+  assert.equal(com.statusCode, 200);
+  assert.equal(wa.tplSent.length, 1);
+  assert.deepEqual(wa.tplSent[0].components[0], { type: "header", parameters: [{ type: "image", image: { id: "MEDIA9" } }] });
+  assert.deepEqual(wa.tplSent[0].components[1], { type: "body", parameters: [{ type: "text", text: "Allan" }] });
+
+  // A bolha guarda foto + texto renderizado (captioned mostra os dois juntos).
+  const msg = (await repo.list("wa_messages")).find((m) => m.id === "wamid.T1");
+  assert.equal(msg.text, "Oiii Allan, resultados");
+  assert.equal(msg.media.kind, "image");
+  assert.equal(msg.media.id, "MEDIA9");
+  assert.equal(msg.media.captioned, true);
+});
+
+test("POST /threads/:id/template-media: sobe a foto e devolve o media id (sem enviar mensagem); tipo errado → 400", async () => {
+  const repo = makeMemRepo();
+  const wa = fakeWa();
+  const app = await appWith(repo, wa);
+  const boundary = "----tplmedia";
+  const part = (mime) => Buffer.concat([
+    Buffer.from(`--${boundary}\r\ncontent-disposition: form-data; name="file"; filename="print.png"\r\ncontent-type: ${mime}\r\n\r\n`),
+    Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+  const ok = await app.inject({
+    method: "POST", url: "/api/whatsapp/threads/5541992516545/template-media",
+    headers: { "content-type": `multipart/form-data; boundary=${boundary}` }, payload: part("image/png"),
+  });
+  assert.equal(ok.statusCode, 200);
+  assert.equal(ok.json().mediaId, "MEDIA9");
+  assert.equal(wa.uploads.length, 1);
+  assert.equal(wa.uploads[0].mime, "image/png");
+  assert.equal((await repo.list("wa_messages")).length, 0); // upload NÃO vira mensagem
+
+  const pdf = await app.inject({
+    method: "POST", url: "/api/whatsapp/threads/5541992516545/template-media",
+    headers: { "content-type": `multipart/form-data; boundary=${boundary}` }, payload: part("application/pdf"),
+  });
+  assert.equal(pdf.statusCode, 400);
 });

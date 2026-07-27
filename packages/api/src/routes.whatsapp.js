@@ -535,19 +535,51 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     if (params.slice(0, tpl.params).filter(Boolean).length < tpl.params) {
       return reply.code(400).send({ error: `preencha ${tpl.params === 1 ? "a variável" : `as ${tpl.params} variáveis`} do template` });
     }
-    const components = tpl.params > 0
-      ? [{ type: "body", parameters: params.slice(0, tpl.params).map((t) => ({ type: "text", text: t })) }]
-      : [];
+    // Template com IMAGEM no cabeçalho: a Meta exige o parâmetro do header no
+    // envio (sem ele recusa com #132012) — a foto sobe antes pelo
+    // /template-media e o id chega aqui.
+    const headerMediaId = String(req.body?.headerMediaId || "").trim();
+    if (tpl.header === "image" && !headerMediaId) {
+      return reply.code(400).send({ error: "esse template tem imagem no cabeçalho — anexe a foto (JPG/PNG) antes de enviar" });
+    }
+    const components = [];
+    if (tpl.header === "image") components.push({ type: "header", parameters: [{ type: "image", image: { id: headerMediaId } }] });
+    if (tpl.params > 0) components.push({ type: "body", parameters: params.slice(0, tpl.params).map((t) => ({ type: "text", text: t })) });
     const rendered = tpl.body.replace(/\{\{\s*(\d+)\s*\}\}/g, (_, n) => params[Number(n) - 1] || "");
     try {
       const { messageId } = await wa.sendTemplate(thread?.phone || phone, tpl.name, tpl.language, components, { phoneId });
       await recordMessage(repo, {
         id: messageId, phone: thread?.phone || phone, direction: "out", text: rendered,
         status: "sent", author: req.authUser?.id || "cockpit", waPhoneId: phoneId || "", saas: thread?.saas || "",
+        // captioned = a bolha mostra a foto E o texto (mídia solta mostra só a mídia)
+        ...(tpl.header === "image" ? { media: { kind: "image", id: headerMediaId, mime: "", filename: "", captioned: true } } : {}),
       });
       await markFirstContact(repo, thread?.leadId || (await findLeadByPhone(repo, thread?.phone || phone))?.id, req.authUser?.id);
       try { await closeThreadAlerts(repo, threadId(phone), req.authUser?.id || "cockpit"); } catch { /* alerta não trava o envio */ }
       return { ok: true, messageId };
+    } catch (err) { return sendErrorReply(reply, err); }
+  });
+
+  // Foto do CABEÇALHO de template: sobe no número da conversa e devolve o media
+  // id — o send-template manda esse id no parâmetro do header. Separado do
+  // /media porque aqui NÃO sai mensagem nenhuma (o envio é do template).
+  app.post("/api/whatsapp/threads/:id/template-media", async (req, reply) => {
+    const phone = threadId(req.params.id);
+    if (!phone) return reply.code(400).send({ error: "número inválido" });
+    const file = await req.file();
+    if (!file) return reply.code(400).send({ error: "envie a imagem (multipart, campo file)" });
+    const buf = await file.toBuffer();
+    if (!buf.length) return reply.code(400).send({ error: "arquivo vazio" });
+    if (buf.length > 5 * 1024 * 1024) return reply.code(413).send({ error: "imagem acima de 5MB (limite do WhatsApp pra foto)" });
+    const mime = String(file.mimetype || "").toLowerCase();
+    if (!["image/jpeg", "image/png"].includes(mime)) return reply.code(400).send({ error: "o cabeçalho do template só aceita JPG ou PNG" });
+    const thread = await findThreadByPhone(repo, phone);
+    const phoneId = await resolvePhoneId({ thread });
+    if (phoneId === null) return noNumberReply(reply, thread?.saas || "");
+    if (!wa.configured(phoneId)) return reply.code(NOT_CONFIGURED).send({ error: "WhatsApp não configurado no servidor" });
+    try {
+      const mediaId = await wa.uploadMedia(buf, { mime, filename: file.filename || "foto.jpg", phoneId });
+      return { ok: true, mediaId };
     } catch (err) { return sendErrorReply(reply, err); }
   });
 
