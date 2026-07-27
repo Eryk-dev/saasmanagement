@@ -30,6 +30,33 @@ export const CLOSED_PLANS = [
 
 export const closedPlanLabel = (id) => CLOSED_PLANS.find((p) => p.id === id)?.label || (id === "mensal" ? "Mensal" : "");
 
+// Como o pagamento SAIU no Mercado Pago (payment_type_id/payment_method_id do
+// /v1/payments) — diferente de PAYMENT_METHODS (o combinado do fechamento):
+// aqui é o FATO, a forma com que o dinheiro realmente entrou. Vale pro espelho
+// (mp_payments: method/methodType/installments) e pra fatura baixada
+// (paidMethod/paidMethodType/paidInstallments).
+const MP_TYPE_LABEL = {
+  bank_transfer: "PIX", ticket: "Boleto", credit_card: "Cartão de crédito",
+  debit_card: "Cartão de débito", account_money: "Saldo MP", prepaid_card: "Cartão pré-pago",
+};
+export function mpMethodLabel(p = {}) {
+  const method = p.paidMethod ?? p.method ?? "";
+  const type = p.paidMethodType ?? p.methodType ?? "";
+  const inst = Number(p.paidInstallments ?? p.installments) || 1;
+  const base = method === "pix" ? "PIX" : MP_TYPE_LABEL[type] || method || "";
+  return base ? (inst > 1 ? `${base} · ${inst}x` : base) : "";
+}
+export const MP_PAY_STATUS = {
+  approved: { label: "pago", tone: "pos" },
+  pending: { label: "pendente", tone: "warn" },
+  in_process: { label: "em análise", tone: "warn" },
+  authorized: { label: "autorizado", tone: "warn" },
+  rejected: { label: "recusado", tone: "neg" },
+  cancelled: { label: "cancelado", tone: "mut" },
+  refunded: { label: "estornado", tone: "neg" },
+  charged_back: { label: "chargeback", tone: "neg" },
+};
+
 // UniqueKids não vende plano recorrente: vende PACOTE de consultas da mentoria
 // (o que o cliente comprou é o tamanho da jornada). Vale como rótulo do
 // customer.plan e como opção no gate de fechamento e no cadastro do cliente.

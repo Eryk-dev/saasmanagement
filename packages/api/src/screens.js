@@ -51,7 +51,9 @@ const ROUTE_SCREENS = [
   ["/api/activities", ["pipeline", "today"]],
   ["/api/customers", ["customers"]],
   ["/api/subscriptions", ["customers"]], // inclui /change e /mp/link
-  ["/api/invoices", ["customers"]],      // inclui /pay
+  ["/api/invoices", ["customers"]],      // inclui /pay e /mp/link
+  ["/api/mp/", ["customers"]],           // financeiro: espelho de pagamentos do MP (payments/sync/link)
+  ["/api/mp_payments", ["customers"]],   // CRUD genérico do espelho (mesma tela dos clientes)
   ["/api/plans", ["customers"]],
   ["/api/nps", ["customers"]],
   ["/api/billing/", ["customers"]],

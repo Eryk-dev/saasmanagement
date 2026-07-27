@@ -18,6 +18,7 @@ import { startDripSequences } from "./drip-runner.js";
 import { startTrainingReminder } from "./training-reminder.js";
 import { startShopifySync } from "./routes.webhooks.js";
 import { makeShopify } from "./shopify.js";
+import { startMpSync } from "./mp-payments.js";
 import { ensureDefaultAdmins, makeAuthHook } from "./auth.js";
 import { makeScreenGuardHook } from "./screens.js";
 import { runStartupMigrations } from "./migrations.js";
@@ -99,6 +100,10 @@ try {
     }),
     log: app.log,
   });
+  // Reconciliação do Mercado Pago (financeiro): espelha os pagamentos da conta
+  // e dá baixa nas faturas — funciona mesmo SEM o webhook configurado no painel
+  // (1º tick faz o backfill de 400 dias). No-op sem MERCADOPAGO_ACCESS_TOKEN.
+  startMpSync(repo, { log: app.log });
 } catch (err) {
   app.log.error(err);
   process.exit(1);

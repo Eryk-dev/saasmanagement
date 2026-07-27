@@ -421,6 +421,15 @@ export const api = {
   runBilling: () => req("POST", "/api/billing/run", {}),
   // Mercado Pago: gera o link de autorização da assinatura (preapproval).
   mpLink: (subId, payerEmail) => req("POST", `/api/subscriptions/${subId}/mp/link`, payerEmail ? { payerEmail } : {}),
+  // Financeiro MP: espelho de pagamentos da conta + cobrança avulsa no cliente.
+  mpPayments: (query = {}) => {
+    const qs = new URLSearchParams(Object.fromEntries(Object.entries(query).filter(([, v]) => v))).toString();
+    return req("GET", `/api/mp/payments${qs ? `?${qs}` : ""}`);
+  },
+  mpSyncNow: () => req("POST", "/api/mp/sync", {}),
+  mpLinkPayment: (id, customer) => req("POST", `/api/mp/payments/${id}/link`, { customer }),
+  createCharge: (customerId, body) => req("POST", `/api/customers/${customerId}/charge`, body),
+  invoiceMpLink: (id, body = {}) => req("POST", `/api/invoices/${id}/mp/link`, body),
   // Marketing (Meta Ads): sync de insights + métricas cruzadas com o funil.
   marketingSync: (body = {}) => req("POST", "/api/marketing/sync", body),
   marketingMetrics: (saas, { since, until } = {}) => {
