@@ -215,22 +215,30 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
   }
 
   // Templates APROVADOS da conta (WABA) — alimentam o composer fora da janela
-  // de 24h. Devolve o corpo e quantas variáveis numeradas ({{1}}…{{N}}) ele tem;
-  // template com variável fora do corpo (header/botão) ou nomeada fica marcado
-  // `supported:false` — o v1 do composer só preenche corpo numerado.
+  // de 24h. Devolve o corpo e quantas variáveis numeradas ({{1}}…{{N}}) ele tem.
+  // Cabeçalho de IMAGEM é suportado (`header:"image"` — o composer anexa a foto
+  // e o envio manda o parâmetro do header; sem ele a Meta recusa com #132012).
+  // Variável nomeada, variável em botão/rodapé e header de vídeo/documento
+  // ficam `supported:false` — o composer só preenche corpo numerado + foto.
   async function listTemplates(wabaId) {
     const body = await get(`${wabaId}/message_templates?status=APPROVED&limit=100&fields=name,language,status,category,components`);
     return (body.data || []).map((t) => {
       const comps = t.components || [];
       const bodyC = comps.find((c) => String(c.type || "").toUpperCase() === "BODY");
+      const headC = comps.find((c) => String(c.type || "").toUpperCase() === "HEADER");
+      const headerFormat = String(headC?.format || "").toUpperCase();
       const bodyText = bodyC?.text || "";
       const nums = (bodyText.match(/\{\{\s*(\d+)\s*\}\}/g) || []).map((s) => Number(s.replace(/\D/g, "")));
-      const otherVars = comps.some((c) => c !== bodyC && /\{\{/.test(JSON.stringify(c)));
+      const otherVars = comps.some((c) => c !== bodyC && c !== headC && /\{\{/.test(JSON.stringify(c)));
       const named = /\{\{\s*[a-z_]/i.test(bodyText);
+      // Header TEXT fixo não pede parâmetro no envio; TEXT com variável e mídia
+      // que não seja imagem o composer ainda não preenche.
+      const headerOk = !headC || headerFormat === "IMAGE" || (headerFormat === "TEXT" && !/\{\{/.test(headC.text || ""));
       return {
         name: t.name, language: t.language, category: t.category || "",
         body: bodyText, params: nums.length ? Math.max(...nums) : 0,
-        supported: !!bodyText && !otherVars && !named,
+        header: headerFormat === "IMAGE" ? "image" : "",
+        supported: !!bodyText && !otherVars && !named && headerOk,
       };
     }).filter((t) => t.body);
   }

@@ -129,8 +129,9 @@ export async function recordMessage(repo, { id, phone, direction, text = "", at,
     ...(waPhoneId ? { waPhoneId } : {}),
     // Mídia (áudio/imagem/vídeo/documento): guarda o id da Meta pra baixar sob
     // demanda no player (a Graph só entrega o binário com o token; ver a rota
-    // /api/whatsapp/media/:id). `kind`/`mime`/`filename` bastam pra UI decidir.
-    ...(media && media.id ? { media: { kind: media.kind || "", id: String(media.id), mime: media.mime || "", filename: media.filename || "" } } : {}),
+    // /api/whatsapp/media/:id). `kind`/`mime`/`filename` bastam pra UI decidir;
+    // `captioned` = a bolha mostra a mídia E o texto (template com foto no header).
+    ...(media && media.id ? { media: { kind: media.kind || "", id: String(media.id), mime: media.mime || "", filename: media.filename || "", ...(media.captioned ? { captioned: true } : {}) } } : {}),
   });
 
   const prev = existingThread;

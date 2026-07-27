@@ -117,7 +117,14 @@ export function WaBubbles({ messages, emptyHint }) {
                 padding: "7px 10px", borderRadius: 10, fontSize: 12.5, lineHeight: 1.4, whiteSpace: "pre-wrap", overflowWrap: "break-word",
                 background: out ? "var(--wa-out, #d6f5cf)" : "var(--bg-3)", color: out ? "#0c2318" : "var(--fg-1)",
                 borderBottomRightRadius: out ? 3 : 10, borderBottomLeftRadius: out ? 10 : 3,
-              }}>{m.media?.id ? <MediaBubble msg={m} out={out} /> : m.text}</div>
+              }}>{m.media?.id ? (
+                // captioned = template com foto no cabeçalho: mostra a imagem E o
+                // texto renderizado (mídia solta continua só a mídia).
+                <>
+                  <MediaBubble msg={m} out={out} />
+                  {m.media?.captioned && m.text ? <div style={{ marginTop: 6 }}>{m.text}</div> : null}
+                </>
+              ) : m.text}</div>
               <div className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)", marginTop: 2, display: "flex", gap: 4, justifyContent: out ? "flex-end" : "flex-start" }}>
                 {hhmm(m.at)}{out && <StatusTicks status={m.status} error={m.error} />}
               </div>
@@ -139,6 +146,7 @@ export function WaTemplateComposer({ threadId, contactName = "", onSent }) {
   const [loadErr, setLoadErr] = React.useState("");
   const [sel, setSel] = React.useState("");
   const [params, setParams] = React.useState([]);
+  const [headerFile, setHeaderFile] = React.useState(null); // foto do cabeçalho (template com header de imagem)
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState("");
 
@@ -162,16 +170,26 @@ export function WaTemplateComposer({ threadId, contactName = "", onSent }) {
   React.useEffect(() => {
     if (!tpl) return;
     setParams(Array.from({ length: tpl.params }, (_, i) => (i === 0 ? firstName : "")));
+    setHeaderFile(null);
   }, [tpl?.name]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Thumbnail da foto anexada no preview (revoga o object URL ao trocar).
+  const headerUrl = React.useMemo(() => (headerFile ? URL.createObjectURL(headerFile) : ""), [headerFile]);
+  React.useEffect(() => () => { if (headerUrl) URL.revokeObjectURL(headerUrl); }, [headerUrl]);
+
+  const needsImage = tpl?.header === "image";
   const preview = tpl ? tpl.body.replace(/\{\{\s*(\d+)\s*\}\}/g, (_, n) => params[Number(n) - 1] || `{{${n}}}`) : "";
-  const ready = tpl && params.slice(0, tpl.params).every((p) => String(p || "").trim());
+  const ready = tpl && params.slice(0, tpl.params).every((p) => String(p || "").trim()) && (!needsImage || headerFile);
 
   async function send() {
     if (!ready || busy) return;
     setBusy(true); setErr("");
     try {
-      await api.waThreadSendTemplate(threadId, { name: tpl.name, language: tpl.language, params });
+      // Template com imagem no cabeçalho: sobe a foto primeiro e manda o id
+      // junto (a Meta exige o parâmetro do header no envio).
+      let headerMediaId;
+      if (needsImage) ({ mediaId: headerMediaId } = await api.waThreadTemplateMedia(threadId, headerFile));
+      await api.waThreadSendTemplate(threadId, { name: tpl.name, language: tpl.language, params, headerMediaId });
       onSent && onSent();
     } catch (e) { setErr(e?.message || "não foi possível enviar"); }
     finally { setBusy(false); }
@@ -208,7 +226,20 @@ export function WaTemplateComposer({ threadId, contactName = "", onSent }) {
                 style={{ ...field, width: 130 }} />
             ))}
           </div>
+          {needsImage && (
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--fg-2)", cursor: "pointer" }}>
+              <span style={{ ...field, display: "inline-flex", alignItems: "center", padding: "0 10px", fontWeight: 600 }}>
+                {headerFile ? "📷 trocar a foto" : "📷 anexar a foto do cabeçalho"}
+              </span>
+              <input type="file" accept="image/jpeg,image/png" style={{ display: "none" }}
+                onChange={(e) => { setHeaderFile(e.target.files?.[0] || null); e.target.value = ""; }} />
+              {headerFile
+                ? <span className="mono dim" style={{ fontSize: 10.5 }}>{headerFile.name}</span>
+                : <span className="mono dim" style={{ fontSize: 10.5 }}>esse template tem imagem no cabeçalho (JPG/PNG)</span>}
+            </label>
+          )}
           <div style={{ padding: "7px 10px", borderRadius: 10, fontSize: 12.5, lineHeight: 1.4, whiteSpace: "pre-wrap", overflowWrap: "break-word", background: "var(--wa-out, #d6f5cf)", color: "#0c2318", alignSelf: "flex-start", maxWidth: "100%" }}>
+            {headerUrl && <img src={headerUrl} alt="cabeçalho" style={{ maxWidth: 220, maxHeight: 160, borderRadius: 8, display: "block", marginBottom: 6 }} />}
             {preview}
           </div>
           {err && <div style={{ fontSize: 11, color: "#e5484d" }}>{err}</div>}

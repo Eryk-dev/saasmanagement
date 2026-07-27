@@ -229,7 +229,25 @@ export const api = {
   // Cria/submete um template pra aprovação da Meta (nasce PENDING; aprovado,
   // entra no composer sozinho). { name, category, language, body, example[] }.
   waCreateTemplate: (payload) => req("POST", "/api/whatsapp/templates", payload),
-  waThreadSendTemplate: (id, { name, language, params }) => req("POST", `/api/whatsapp/threads/${id}/send-template`, { name, language, params }),
+  waThreadSendTemplate: (id, { name, language, params, headerMediaId }) => req("POST", `/api/whatsapp/threads/${id}/send-template`, { name, language, params, headerMediaId }),
+  // Foto do cabeçalho de template: sobe no número da conversa e devolve o media
+  // id pra mandar no send-template (headerMediaId). Não envia mensagem nenhuma.
+  waThreadTemplateMedia: async (threadId, file) => {
+    const fd = new FormData();
+    fd.append("file", file, file.name || "foto.jpg");
+    const key = getKey();
+    const res = await fetch(`${BASE}/api/whatsapp/threads/${encodeURIComponent(threadId)}/template-media`, {
+      method: "POST", headers: key ? { "x-api-key": key } : {}, body: fd,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      let msg = text; try { msg = JSON.parse(text).error || text; } catch { /* texto cru */ }
+      const err = new Error(String(msg).slice(0, 240) || `upload da foto -> ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    return res.json();
+  },
   // Ligação pelo cockpit (Calling API): inicia com a oferta SDP do browser,
   // faz poll do estado (o answer chega via webhook) e encerra.
   waCallStart: (id, sdp) => req("POST", `/api/whatsapp/threads/${id}/call`, { sdp }),
