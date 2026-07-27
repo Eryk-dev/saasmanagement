@@ -559,29 +559,52 @@ test("send-template com header de imagem: sem a foto → 400; com ela manda o pa
   assert.equal(msg.media.captioned, true);
 });
 
-test("POST /threads/:id/template-media: sobe a foto e devolve o media id (sem enviar mensagem); tipo errado → 400", async () => {
-  const repo = makeMemRepo();
-  const wa = fakeWa();
-  const app = await appWith(repo, wa);
-  const boundary = "----tplmedia";
-  const part = (mime) => Buffer.concat([
-    Buffer.from(`--${boundary}\r\ncontent-disposition: form-data; name="file"; filename="print.png"\r\ncontent-type: ${mime}\r\n\r\n`),
-    Buffer.from([0x89, 0x50, 0x4e, 0x47]),
-    Buffer.from(`\r\n--${boundary}--\r\n`),
-  ]);
-  const ok = await app.inject({
-    method: "POST", url: "/api/whatsapp/threads/5541992516545/template-media",
-    headers: { "content-type": `multipart/form-data; boundary=${boundary}` }, payload: part("image/png"),
-  });
-  assert.equal(ok.statusCode, 200);
-  assert.equal(ok.json().mediaId, "MEDIA9");
-  assert.equal(wa.uploads.length, 1);
-  assert.equal(wa.uploads[0].mime, "image/png");
-  assert.equal((await repo.list("wa_messages")).length, 0); // upload NÃO vira mensagem
+const TPL_BOUNDARY = "----tplmedia";
+const tplPart = (mime) => Buffer.concat([
+  Buffer.from(`--${TPL_BOUNDARY}\r\ncontent-disposition: form-data; name="file"; filename="print.png"\r\ncontent-type: ${mime}\r\n\r\n`),
+  Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+  Buffer.from(`\r\n--${TPL_BOUNDARY}--\r\n`),
+]);
+const tplHeaders = { "content-type": `multipart/form-data; boundary=${TPL_BOUNDARY}` };
 
-  const pdf = await app.inject({
-    method: "POST", url: "/api/whatsapp/threads/5541992516545/template-media",
-    headers: { "content-type": `multipart/form-data; boundary=${boundary}` }, payload: part("application/pdf"),
-  });
+test("PUT/GET /whatsapp/template-media/:name: salva a foto padrão, devolve o binário; tipo errado → 400", async () => {
+  const repo = makeMemRepo();
+  const app = await appWith(repo, fakeWa());
+
+  const antes = await app.inject({ method: "GET", url: "/api/whatsapp/template-media/nutricao_1" });
+  assert.equal(antes.statusCode, 404); // sem padrão ainda
+
+  const put = await app.inject({ method: "PUT", url: "/api/whatsapp/template-media/nutricao_1", headers: tplHeaders, payload: tplPart("image/png") });
+  assert.equal(put.statusCode, 200);
+  const saved = await repo.get("wa_template_media", "nutricao_1");
+  assert.equal(saved.mime, "image/png");
+  assert.equal((await repo.list("wa_messages")).length, 0); // salvar NÃO vira mensagem
+
+  const get = await app.inject({ method: "GET", url: "/api/whatsapp/template-media/nutricao_1" });
+  assert.equal(get.statusCode, 200);
+  assert.equal(get.headers["content-type"], "image/png");
+  assert.deepEqual(get.rawPayload, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
+  const pdf = await app.inject({ method: "PUT", url: "/api/whatsapp/template-media/nutricao_1", headers: tplHeaders, payload: tplPart("application/pdf") });
   assert.equal(pdf.statusCode, 400);
+});
+
+test("send-template usa a foto PADRÃO salva: sobe pra Meta, manda o header e cacheia a bolha", async () => {
+  const wa = fakeWa({ templates: [
+    { name: "nutricao_1", language: "pt_BR", category: "MARKETING", body: "Oiii {{1}}, resultados", params: 1, header: "image", supported: true },
+  ] });
+  const repo = makeMemRepo();
+  const app = await appWith(repo, wa);
+  await app.inject({ method: "PUT", url: "/api/whatsapp/template-media/nutricao_1", headers: tplHeaders, payload: tplPart("image/png") });
+
+  const res = await app.inject({ method: "POST", url: "/api/whatsapp/threads/5541992516545/send-template", payload: { name: "nutricao_1", params: ["Allan"] } });
+  assert.equal(res.statusCode, 200);
+  assert.equal(wa.uploads.length, 1); // a padrão subiu pro número na hora do envio
+  assert.equal(wa.uploads[0].mime, "image/png");
+  assert.deepEqual(wa.tplSent[0].components[0], { type: "header", parameters: [{ type: "image", image: { id: "MEDIA9" } }] });
+  const msg = (await repo.list("wa_messages")).find((m) => m.id === "wamid.T1");
+  assert.equal(msg.media.captioned, true);
+  assert.equal(msg.media.mime, "image/png");
+  const cached = await repo.get("wa_media", "wamid.T1"); // bolha não depende do id da Meta
+  assert.equal(cached.mime, "image/png");
 });
