@@ -11,9 +11,11 @@
 
 import { mp as defaultMp, parseWebhookPayload } from "./mp.js";
 import { CYCLE_MONTHS, syncCustomerArr } from "./billing.js";
+import { ingestMpPayment, runMpSync, settleInvoice } from "./mp-payments.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 
 const CYCLE_LABEL = { monthly: "mensal", quarterly: "trimestral", semiannual: "semestral", annual: "anual" };
+const KIND_LABEL = { renewal: "renovação", prorata: "pró-rata", upsell: "upsell", manual: "cobrança", installment: "parcela" };
 
 // Baixa automática de uma cobrança do MP: paga a fatura aberta/vencida mais
 // antiga da assinatura (ou registra uma paga, se não houver) e recupera o
@@ -118,6 +120,133 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
     }
   });
 
+  // ── Financeiro (espelho de pagamentos + cobrança avulsa) ─────────────────
+  // notification_url só vale com base pública https (MP recusa localhost).
+  const notificationUrl = PUBLIC_BASE.startsWith("https://") ? `${PUBLIC_BASE}/public/mp/webhook` : undefined;
+
+  // Lista do espelho pra aba Financeiro. Pagamento sem saas = não identificado:
+  // aparece em qualquer produto até alguém vincular.
+  app.get("/api/mp/payments", async (req) => {
+    const q = req.query || {};
+    let items = await repo.list("mp_payments");
+    if (q.saas) items = items.filter((p) => !p.saas || p.saas === q.saas);
+    if (q.status) items = items.filter((p) => p.status === q.status);
+    if (q.customer) items = items.filter((p) => p.customer === q.customer);
+    if (q.from) items = items.filter((p) => String(p.dateCreated || "") >= q.from);
+    if (q.to) items = items.filter((p) => String(p.dateCreated || "") <= q.to);
+    items.sort((a, b) => String(b.dateCreated || "").localeCompare(String(a.dateCreated || "")));
+    const sync = await repo.get("app_config", "mp_sync");
+    return {
+      payments: items,
+      sync: sync ? { lastAt: sync.lastAt, lastSeen: sync.lastSeen } : null,
+      configured: mp.configured(),
+    };
+  });
+
+  // Sincronizar agora (botão da UI) — mesma passada do poller.
+  app.post("/api/mp/sync", async (req, reply) => {
+    if (!mp.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN)" });
+    try {
+      return await runMpSync(repo, mp, { discord, log: req.log });
+    } catch (err) {
+      req.log.warn({ err: err.message }, "MP: sync manual falhou");
+      return reply.code(UPSTREAM_FAILED).send({ error: "MP não respondeu a busca de pagamentos", detail: String(err.message || err).slice(0, 300) });
+    }
+  });
+
+  // Vínculo manual pagamento ↔ cliente (pros que não casaram sozinhos). Com
+  // valor exato batendo numa única fatura aberta, a baixa acontece junto.
+  app.post("/api/mp/payments/:id/link", async (req, reply) => {
+    const p = await repo.get("mp_payments", req.params.id);
+    if (!p) return reply.code(404).send({ error: "Not found" });
+    const customerId = String(req.body?.customer || "");
+    const invoices = await repo.list("invoices");
+    const settled = invoices.find((i) => i.mpPaymentId === p.mpId) || null;
+    if (!customerId) {
+      if (settled) return reply.code(400).send({ error: "pagamento já deu baixa numa fatura — não dá pra desvincular" });
+      const cleared = await repo.update("mp_payments", p.id, { customer: "", lead: "", subscription: "", invoice: "", saas: "", matchedBy: "" });
+      return { ok: true, payment: cleared };
+    }
+    const customer = await repo.get("customers", customerId);
+    if (!customer) return reply.code(400).send({ error: "cliente não encontrado" });
+    const patch = { customer: customer.id, saas: customer.saas || p.saas || "", lead: "", matchedBy: "manual" };
+    let settledInv = null;
+    if (p.status === "approved" && !settled) {
+      const cand = invoices.filter((i) =>
+        i.customer === customer.id && (i.status === "open" || i.status === "overdue")
+        && Math.abs(Number(i.amount) - Number(p.amount)) < 0.01);
+      if (cand.length === 1) {
+        settledInv = await settleInvoice(repo, cand[0], {
+          id: p.mpId, date_approved: p.dateApproved, date_created: p.dateCreated,
+          payment_method_id: p.method, payment_type_id: p.methodType, installments: p.installments,
+        }, { discord, log: req.log });
+        patch.invoice = settledInv.id;
+      }
+    }
+    const updated = await repo.update("mp_payments", p.id, patch);
+    return { ok: true, payment: updated, invoice: settledInv?.id || null };
+  });
+
+  // Cobrança avulsa anexada ao cliente: fatura (registro no billing) + link de
+  // pagamento (checkout preference) com external_reference = id da fatura — o
+  // webhook/poller dá a baixa sozinho quando o cliente pagar.
+  app.post("/api/customers/:id/charge", async (req, reply) => {
+    if (!mp.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN)" });
+    const customer = await repo.get("customers", req.params.id);
+    if (!customer) return reply.code(404).send({ error: "Not found" });
+    const amount = Math.round(Number(req.body?.amount) * 100) / 100;
+    if (!(amount > 0)) return reply.code(400).send({ error: "valor da cobrança deve ser positivo" });
+    const product = customer.saas ? await repo.get("products", customer.saas) : null;
+    const title = String(req.body?.title || "").trim()
+      || [product?.name || customer.saas, "cobrança"].filter(Boolean).join(" · ");
+    const nowIso = new Date().toISOString();
+    const invoice = await repo.create("invoices", {
+      customer: customer.id, saas: customer.saas || "", amount,
+      kind: req.body?.kind === "upsell" ? "upsell" : "manual", status: "open",
+      title, dueDate: req.body?.dueDate || nowIso, createdAt: nowIso,
+    });
+    try {
+      const pref = await mp.createCheckoutPreference({
+        title, amount, externalReference: invoice.id,
+        payerEmail: customer.email || undefined,
+        backUrl: PUBLIC_BASE, notificationUrl,
+        maxInstallments: Number(req.body?.maxInstallments) || undefined,
+      });
+      const updated = await repo.update("invoices", invoice.id, { mpPrefId: pref.id, mpInitPoint: pref.init_point || null });
+      return { ok: true, invoice: updated, url: pref.init_point || null };
+    } catch (err) {
+      await repo.remove("invoices", invoice.id); // fatura sem link não fica órfã
+      req.log.warn({ customer: customer.id, err: err.message }, "MP: falha ao criar link de cobrança");
+      return reply.code(UPSTREAM_FAILED).send({ error: "MP recusou a criação do link de cobrança", detail: String(err.message || err).slice(0, 300) });
+    }
+  });
+
+  // Link de pagamento pra uma fatura JÁ existente (renovação em aberto etc).
+  app.post("/api/invoices/:id/mp/link", async (req, reply) => {
+    if (!mp.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN)" });
+    const invoice = await repo.get("invoices", req.params.id);
+    if (!invoice) return reply.code(404).send({ error: "Not found" });
+    if (invoice.status === "paid") return reply.code(400).send({ error: "fatura já está paga" });
+    if (!(Number(invoice.amount) > 0)) return reply.code(400).send({ error: "fatura sem valor" });
+    const customer = invoice.customer ? await repo.get("customers", invoice.customer) : null;
+    const product = invoice.saas ? await repo.get("products", invoice.saas) : null;
+    const title = String(req.body?.title || "").trim()
+      || [product?.name || invoice.saas, invoice.title || KIND_LABEL[invoice.kind] || "fatura"].filter(Boolean).join(" · ");
+    try {
+      const pref = await mp.createCheckoutPreference({
+        title, amount: Number(invoice.amount), externalReference: invoice.id,
+        payerEmail: customer?.email || undefined,
+        backUrl: PUBLIC_BASE, notificationUrl,
+        maxInstallments: Number(req.body?.maxInstallments) || undefined,
+      });
+      const updated = await repo.update("invoices", invoice.id, { mpPrefId: pref.id, mpInitPoint: pref.init_point || null });
+      return { ok: true, invoice: updated, url: pref.init_point || null };
+    } catch (err) {
+      req.log.warn({ invoice: invoice.id, err: err.message }, "MP: falha ao criar link da fatura");
+      return reply.code(UPSTREAM_FAILED).send({ error: "MP recusou a criação do link", detail: String(err.message || err).slice(0, 300) });
+    }
+  });
+
   // Webhook do MP (configurar no painel: https://<host>/public/mp/webhook).
   app.post("/public/mp/webhook", async (req, reply) => {
     const { topic, dataId } = parseWebhookPayload(req.body);
@@ -180,24 +309,20 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
       return { received: true, ...result };
     }
 
-    // ── pagamento avulso aprovado (external_reference = id da assinatura) ───
+    // ── pagamento (avulso ou de link) — TODO status entra no espelho ────────
+    // O ingest casa por fatura/assinatura/e-mail, baixa a fatura se aprovado
+    // (idempotente por mpPaymentId, payer cross-check no caso de assinatura) e
+    // deixa o resto visível na aba Financeiro pro vínculo manual.
     if (topic === "payment") {
       let pmt;
       try { pmt = await mp.getPayment(dataId); }
       catch { return { received: true, error: "fetch_failed" }; }
-      if (pmt.status !== "approved") return { received: true, ignored: `status ${pmt.status}` };
-      const sub = pmt.external_reference ? await repo.get("subscriptions", pmt.external_reference) : null;
-      if (!sub) return { received: true, ignored: "non-subscription payment" };
-      if (payerMismatch(sub, pmt.payer?.email)) {
-        req.log.error({ sub: sub.id, dataId }, "MP webhook: payer mismatch no payment — DROPPED");
-        return { received: true, ignored: "payer mismatch" };
-      }
-      const result = await applyMpPayment(repo, sub, {
-        mpPaymentId: String(pmt.id),
-        amount: pmt.transaction_amount,
-      });
-      await notifyPaid(sub, result);
-      return { received: true, ...result };
+      const r = await ingestMpPayment(repo, pmt, { discord, log: req.log });
+      return {
+        received: true, ok: true, payment: r.payment.id, matched: r.matched,
+        ...(r.settledNow ? { invoice: r.settledNow } : {}),
+        ...(r.alreadySettled ? { duplicate: true } : {}),
+      };
     }
 
     return { received: true, ignored: `topic ${topic}` };

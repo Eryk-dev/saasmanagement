@@ -7,6 +7,7 @@ import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/mile
 import { ActivityList } from "../components/timeline.jsx";
 import { CallSummaryCard, IntegrationBriefCard } from "./today.jsx";
 import { SubscriptionsScreen } from "./subscriptions.jsx";
+import { FinanceTab } from "./finance.jsx";
 import { CustomersAnalysis } from "./customers-analysis.jsx";
 import { EntityForm } from "../components/EntityForm.jsx";
 import { WhatsappChat } from "../components/whatsapp-chat.jsx";
@@ -14,7 +15,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { leadTier, waLink, GRADE_STYLE, GRADE_GRID, GRADE_ACCOUNTS, GRADE_LISTINGS } from "../lib/ui.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { displayName } from "../lib/users.js";
-import { paymentLabel, PAYMENT_METHODS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf } from "../lib/payments.js";
+import { paymentLabel, PAYMENT_METHODS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel } from "../lib/payments.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 // Clientes — a base ativa do produto em dois blocos: a tabela de clientes e,
 // ao lado, "Próximas ações" (o próximo marco de retenção de cada cliente,
@@ -169,11 +170,12 @@ function CustomersScreen({ initialTab = "base" }) {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Clientes"
         sub={`${activeCustomers.length} ${activeCustomers.length === 1 ? "ativo" : "ativos"} · ${isKidsWorkspace ? `${money(totalContratado)} contratado` : `MRR ${money(totalMrr)}`}`}>
-        <Segmented value={tab} onChange={setTab} options={[{ value: "base", label: "Clientes" }, { value: "billing", label: "Assinaturas" }]} />
+        <Segmented value={tab} onChange={setTab} options={[{ value: "base", label: "Clientes" }, { value: "billing", label: "Assinaturas" }, { value: "fin", label: "Financeiro" }]} />
         {tab === "base" && <PrimaryButton onClick={() => openForm("customers", { saas: product.id })}>+ novo cliente</PrimaryButton>}
       </PageHead>
 
       {tab === "billing" && <SubscriptionsScreen saasId={product.id} />}
+      {tab === "fin" && <FinanceTab product={product} />}
 
       {tab === "base" && (
       <div style={{ padding: "16px var(--pad-x) 56px" }}>
@@ -641,6 +643,47 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
     } finally { setUpSaving(false); }
   }
 
+  // Cobrança avulsa pelo Mercado Pago: fatura + link de pagamento anexados ao
+  // cliente numa tacada (POST /charge). O link vai pro clipboard; a baixa é
+  // automática quando o cliente pagar (webhook/poller casam pelo id da fatura).
+  const mpOn = !!window.SEED?.CONFIG?.mp?.configured;
+  const [chargeOpen, setChargeOpen] = useState(false);
+  const [chVal, setChVal] = useState("");
+  const [chTitle, setChTitle] = useState("");
+  const [chInst, setChInst] = useState("12");
+  const [chSaving, setChSaving] = useState(false);
+  const [finMsg, setFinMsg] = useState(null);
+  function flashFin(msg) { setFinMsg(msg); setTimeout(() => setFinMsg(null), 4200); }
+  async function copyLink(url, okMsg) {
+    if (!url) return;
+    try { await navigator.clipboard.writeText(url); flashFin(okMsg); }
+    catch { window.prompt("Link de pagamento:", url); }
+  }
+  async function saveCharge() {
+    const amount = Number(chVal);
+    if (!(amount > 0) || chSaving) return;
+    setChSaving(true);
+    try {
+      const r = await api.createCharge(customer.id, {
+        amount, title: chTitle.trim(), maxInstallments: Number(chInst) || undefined,
+      });
+      setChargeOpen(false); setChVal(""); setChTitle("");
+      await copyLink(r.url, "link de cobrança copiado — manda pro cliente; a baixa é automática quando pagar");
+      refresh();
+    } catch (err) { flashFin(err.message || "MP recusou a cobrança"); }
+    finally { setChSaving(false); }
+  }
+  // Link de pagamento de uma fatura já existente (aberta/vencida): copia o que
+  // já tem ou gera na hora.
+  async function invoiceLink(inv) {
+    if (inv.mpInitPoint) return copyLink(inv.mpInitPoint, "link da fatura copiado");
+    try {
+      const r = await api.invoiceMpLink(inv.id);
+      await copyLink(r.url, "link criado e copiado");
+      refresh();
+    } catch (err) { flashFin(err.message || "MP recusou o link"); }
+  }
+
   const summary = isKids ? [
     { label: "Pacote", value: consultPackageLabel(consultTotal) },
     { label: "Tempo de casa", value: tenureLabel(customer) || "defina o início" },
@@ -740,7 +783,38 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
               style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
               {upsellOpen ? "cancelar" : "+ upsell"}
             </button>
+            {mpOn && (
+              <button onClick={() => setChargeOpen((v) => !v)}
+                title="Gerar uma cobrança pelo Mercado Pago: cria a fatura e o link de pagamento anexado ao cliente. A baixa é automática quando pagar."
+                style={{ height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--accent-line, var(--line-2))", background: "var(--bg-1)", color: "var(--accent)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
+                {chargeOpen ? "cancelar" : "+ cobrança"}
+              </button>
+            )}
           </div>
+          {finMsg && <div className="mono" style={{ fontSize: 10.5, color: "var(--accent)", padding: "0 0 8px" }}>{finMsg}</div>}
+          {chargeOpen && (
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "2px 0 10px" }}>
+              <span className="mono dim" style={{ fontSize: 12 }}>R$</span>
+              <input type="number" min="0" step="0.01" inputMode="decimal" autoFocus value={chVal}
+                onChange={(e) => setChVal(e.target.value)} placeholder="valor"
+                onKeyDown={(e) => e.key === "Enter" && saveCharge()}
+                className="tnum" style={{ height: 28, width: 96, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, textAlign: "right" }} />
+              <input type="text" value={chTitle} onChange={(e) => setChTitle(e.target.value)} placeholder="descrição (aparece no checkout)"
+                onKeyDown={(e) => e.key === "Enter" && saveCharge()}
+                style={{ height: 28, flex: "1 1 150px", minWidth: 120, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }} />
+              <label className="mono dim" style={{ fontSize: 10.5, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                até
+                <select value={chInst} onChange={(e) => setChInst(e.target.value)}
+                  style={{ height: 28, padding: "0 4px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12 }}>
+                  {[1, 2, 3, 6, 10, 12].map((n) => <option key={n} value={n}>{n}x</option>)}
+                </select>
+              </label>
+              <button onClick={saveCharge} disabled={!(Number(chVal) > 0) || chSaving}
+                style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "none", background: "var(--accent)", color: "#fff", fontSize: 12.5, fontWeight: 600, opacity: !(Number(chVal) > 0) || chSaving ? 0.5 : 1 }}>
+                {chSaving ? "gerando…" : "gerar link"}
+              </button>
+            </div>
+          )}
           {upsellOpen && (
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "2px 0 10px" }}>
               <span className="mono dim" style={{ fontSize: 12 }}>R$</span>
@@ -756,12 +830,21 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
               </button>
             </div>
           )}
-          {invoices.slice(0, 4).map((i) => (
-            <div key={i.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", fontSize: 13 }}>
-              <span style={{ color: "var(--fg-2)" }}>
-                {i.dueDate ? new Date(i.dueDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "") : ""} · {i.kind || "fatura"}
+          {invoices.slice(0, 6).map((i) => (
+            <div key={i.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 13 }}>
+              <span style={{ color: "var(--fg-2)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {i.dueDate ? new Date(i.dueDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "") : ""} · {i.title || i.kind || "fatura"}
+                {/* como o dinheiro entrou de verdade (carimbado pela baixa do MP) */}
+                {i.status === "paid" && mpMethodLabel(i) ? <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)" }}> · {mpMethodLabel(i)}</span> : null}
               </span>
-              <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+              <span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+                {mpOn && i.status !== "paid" && (
+                  <button onClick={() => invoiceLink(i)}
+                    title={i.mpInitPoint ? "copiar o link de pagamento desta fatura" : "gerar o link de pagamento desta fatura no Mercado Pago"}
+                    style={{ height: 20, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--accent)", fontSize: 10.5 }}>
+                    {i.mpInitPoint ? "copiar link" : "link MP"}
+                  </button>
+                )}
                 <span className="tnum mono" style={{ fontWeight: 500 }}>{money(i.amount || 0)}</span>
                 <Pill tone={i.status === "paid" ? "pos" : i.status === "overdue" ? "neg" : "warn"}>
                   {i.status === "paid" ? "paga" : i.status === "overdue" ? "vencida" : "aberta"}

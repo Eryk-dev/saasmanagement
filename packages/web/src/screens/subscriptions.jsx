@@ -3,6 +3,7 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
 import { EmptyState, PrimaryButton } from "../atoms.jsx";
+import { mpMethodLabel } from "../lib/payments.js";
 // Assinaturas (fase 5) — Cockpit como system-of-record de billing: assinaturas,
 // faturas (renovação/pró-rata/dunning) e planos por SaaS. O pagamento em si fica
 // no MP/app (fase 4) — aqui a fatura recebe baixa manual ("marcar paga").
@@ -69,6 +70,20 @@ function SubscriptionsScreen({ saasId }) {
     await api.payInvoice(inv.id);
     flash("fatura baixada");
     await refresh();
+  }
+  // Link de pagamento da fatura (checkout MP, avulso): copia o que já existe ou
+  // gera um. O pagamento baixa a fatura sozinho (external_reference = fatura).
+  async function invLink(inv) {
+    const copy = async (url, msg) => {
+      try { await navigator.clipboard.writeText(url); flash(msg); }
+      catch { window.prompt("Link de pagamento:", url); }
+    };
+    if (inv.mpInitPoint) return copy(inv.mpInitPoint, "link da fatura copiado");
+    try {
+      const r = await api.invoiceMpLink(inv.id);
+      if (r.url) await copy(r.url, "link criado e copiado — manda pro cliente; a baixa é automática");
+      await load();
+    } catch (err) { flash(`MP: ${err.message}`); }
   }
   // Gera (ou copia) o link de autorização do MP. O cliente abre, autoriza, e o
   // webhook ativa a assinatura + dá baixa nas faturas sozinho.
@@ -189,22 +204,31 @@ function SubscriptionsScreen({ saasId }) {
             <EmptyState title="Nenhuma fatura" hint="Faturas nascem da assinatura: 1ª do ciclo na criação, renovações e pró-rata de upgrade pelo motor de billing." />
           ) : (
             <Table
-              cols="1.4fr 0.8fr 0.8fr 0.9fr 0.9fr 0.8fr 120px"
+              cols="1.4fr 0.9fr 0.8fr 0.9fr 0.9fr 0.8fr 200px"
               head={["Cliente", "Tipo", "Valor", "Vencimento", "Status", "Paga em", ""]}
             >
               {[...invoices].sort((a, b) => String(b.dueDate || "").localeCompare(String(a.dueDate || ""))).map((i) => {
                 const st = INV_STATUS[i.status] || { label: i.status, cls: "" };
                 return (
-                  <div key={i.id} style={rowStyle("1.4fr 0.8fr 0.8fr 0.9fr 0.9fr 0.8fr 120px")}>
+                  <div key={i.id} style={rowStyle("1.4fr 0.9fr 0.8fr 0.9fr 0.9fr 0.8fr 200px")}>
                     <span style={{ fontWeight: 500 }}>{customerName(i.customer)}</span>
-                    <span className="mono dim" style={{ fontSize: 11 }}>{({ renewal: "renovação", prorata: "pró-rata", manual: "manual" })[i.kind] || i.kind}</span>
+                    <span className="mono dim" style={{ fontSize: 11 }}>
+                      {i.title || ({ renewal: "renovação", prorata: "pró-rata", upsell: "upsell", manual: "manual" })[i.kind] || i.kind}
+                      {/* como o dinheiro entrou de verdade (baixa via MP) */}
+                      {i.status === "paid" && mpMethodLabel(i) ? <span style={{ display: "block", fontSize: 9, color: "var(--pos)" }}>{mpMethodLabel(i)}</span> : null}
+                    </span>
                     <span className="mono tnum" style={{ fontSize: 12 }}>{window.fmt.money(i.amount || 0)}</span>
                     <span className="mono dim tnum" style={{ fontSize: 12 }}>{fmtDate(i.dueDate)}</span>
                     <span><span className={"chip " + st.cls} style={{ height: 20 }}>{st.label}</span></span>
                     <span className="mono dim tnum" style={{ fontSize: 12 }}>{fmtDate(i.paidAt)}</span>
-                    <span style={{ display: "inline-flex", justifyContent: "flex-end" }}>
+                    <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                      {i.status !== "paid" && mpConfigured && (
+                        <button onClick={() => invLink(i)} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }} title={i.mpInitPoint ? "copiar o link de pagamento desta fatura" : "gerar link de pagamento avulso desta fatura no MP"}>
+                          <span style={{ fontSize: 11 }}>{i.mpInitPoint ? "copiar link" : "link MP"}</span>
+                        </button>
+                      )}
                       {i.status !== "paid" && (
-                        <button onClick={() => pay(i)} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}><span style={{ fontSize: 11 }}>marcar paga</span></button>
+                        <button onClick={() => pay(i)} style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>marcar paga</span></button>
                       )}
                     </span>
                   </div>

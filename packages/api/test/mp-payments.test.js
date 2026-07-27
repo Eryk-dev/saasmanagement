@@ -1,0 +1,252 @@
+// Financeiro Mercado Pago — espelho de pagamentos (mp_payments), cobrança
+// avulsa anexada ao cliente e reconciliação. Cobre: casamento por fatura/
+// assinatura/e-mail, baixa idempotente com "como pagou" carimbado, rollback da
+// cobrança quando o MP recusa, vínculo manual e o sync paginado.
+
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
+import Fastify from "fastify";
+import { makeMemRepo } from "./helpers/mem-repo.js";
+
+const { registerRoutes } = await import("../src/routes.js");
+const { makeMp } = await import("../src/mp.js");
+const { ingestMpPayment, runMpSync } = await import("../src/mp-payments.js");
+
+const SECRET = "test-webhook-secret";
+
+function makeFakeFetch(routes) {
+  const calls = [];
+  const f = async (url, init = {}) => {
+    const path = new URL(url).pathname;
+    const key = `${init.method || "GET"} ${path}`;
+    calls.push({ key, url, body: init.body ? JSON.parse(init.body) : undefined });
+    const hit = routes[key];
+    if (!hit) return { status: 404, text: async () => JSON.stringify({ error: `no fake for ${key}` }) };
+    const body = typeof hit === "function" ? hit(calls[calls.length - 1]) : hit;
+    return { status: 200, text: async () => JSON.stringify(body) };
+  };
+  f.calls = calls;
+  return f;
+}
+
+function buildApp(repo, mpRoutes = {}) {
+  const fakeFetch = makeFakeFetch(mpRoutes);
+  const mp = makeMp({ fetch: fakeFetch, accessToken: "test-token", webhookSecret: SECRET });
+  const app = Fastify();
+  registerRoutes(app, repo, { mp });
+  return { app, mp, fakeFetch };
+}
+
+function sign(dataId, requestId = "req-1", ts = "1700000000") {
+  const manifest = `id:${dataId};request-id:${requestId};ts:${ts};`;
+  const v1 = createHmac("sha256", SECRET).update(manifest).digest("hex");
+  return { "x-signature": `ts=${ts},v1=${v1}`, "x-request-id": requestId };
+}
+
+async function seedCustomer(repo) {
+  await repo.create("products", { id: "leverads", name: "LeverAds" });
+  return repo.create("customers", { id: "c1", name: "Cliente Real", saas: "leverads", email: "payer@x.com", arr: 0 });
+}
+
+// Pagamento cru do MP (shape do /v1/payments) com overrides.
+const mpPmt = (over = {}) => ({
+  id: 777, status: "approved", status_detail: "accredited",
+  transaction_amount: 500, installments: 1,
+  payment_method_id: "pix", payment_type_id: "bank_transfer",
+  payer: { email: "payer@x.com", first_name: "Cliente", last_name: "Real" },
+  description: "Pagamento", external_reference: "",
+  date_created: "2026-07-20T10:00:00.000Z", date_approved: "2026-07-20T10:01:00.000Z",
+  ...over,
+});
+
+test("charge: cria fatura aberta + link do MP com external_reference = fatura", async () => {
+  const repo = makeMemRepo();
+  const { app, fakeFetch } = buildApp(repo, {
+    "POST /checkout/preferences": { id: "pref_1", init_point: "https://mp.com/p/1" },
+  });
+  await seedCustomer(repo);
+
+  const res = await app.inject({
+    method: "POST", url: "/api/customers/c1/charge",
+    payload: { amount: 500, title: "Setup do projeto", maxInstallments: 12 },
+  });
+  assert.equal(res.statusCode, 200);
+  const { invoice, url } = res.json();
+  assert.equal(url, "https://mp.com/p/1");
+  assert.equal(invoice.status, "open");
+  assert.equal(invoice.amount, 500);
+  assert.equal(invoice.mpPrefId, "pref_1");
+  assert.equal(invoice.mpInitPoint, "https://mp.com/p/1");
+
+  const call = fakeFetch.calls.find((c) => c.key === "POST /checkout/preferences");
+  assert.equal(call.body.external_reference, invoice.id);
+  assert.equal(call.body.items[0].unit_price, 500);
+  assert.equal(call.body.items[0].title, "Setup do projeto");
+  assert.equal(call.body.payer.email, "payer@x.com");
+  assert.equal(call.body.payment_methods.installments, 12);
+
+  await app.close();
+});
+
+test("charge: MP recusou → 424 e a fatura NÃO fica órfã", async () => {
+  const repo = makeMemRepo();
+  const { app } = buildApp(repo, {}); // sem fake → 404 do MP
+  await seedCustomer(repo);
+
+  const res = await app.inject({ method: "POST", url: "/api/customers/c1/charge", payload: { amount: 300 } });
+  assert.equal(res.statusCode, 424);
+  assert.equal((await repo.list("invoices")).length, 0);
+
+  await app.close();
+});
+
+test("webhook payment com external_reference = fatura: baixa com forma/parcelas; redelivery não baixa 2x", async () => {
+  const repo = makeMemRepo();
+  await seedCustomer(repo);
+  const inv = await repo.create("invoices", {
+    customer: "c1", saas: "leverads", amount: 500, kind: "manual", status: "open",
+    dueDate: "2026-07-19T00:00:00.000Z", createdAt: "2026-07-19T00:00:00.000Z",
+  });
+  const { app } = buildApp(repo, {
+    "GET /v1/payments/777": mpPmt({ external_reference: inv.id, payment_method_id: "master", payment_type_id: "credit_card", installments: 12 }),
+  });
+
+  const payload = { type: "payment", data: { id: "777" } };
+  const first = await app.inject({ method: "POST", url: "/public/mp/webhook", payload, headers: sign("777") });
+  assert.equal(first.statusCode, 200);
+  assert.equal(first.json().invoice, inv.id);
+
+  const paid = await repo.get("invoices", inv.id);
+  assert.equal(paid.status, "paid");
+  assert.equal(paid.mpPaymentId, "777");
+  assert.equal(paid.paidMethod, "master");
+  assert.equal(paid.paidMethodType, "credit_card");
+  assert.equal(paid.paidInstallments, 12);
+  assert.equal(paid.paidAt, "2026-07-20T10:01:00.000Z"); // data REAL da aprovação
+
+  // espelho casado com cliente + fatura
+  const mirror = await repo.get("mp_payments", "mpp_777");
+  assert.equal(mirror.customer, "c1");
+  assert.equal(mirror.invoice, inv.id);
+  assert.equal(mirror.matchedBy, "reference");
+
+  // redelivery → idempotente
+  const dup = await app.inject({ method: "POST", url: "/public/mp/webhook", payload, headers: sign("777") });
+  assert.equal(dup.json().duplicate, true);
+  assert.equal((await repo.list("invoices")).filter((i) => i.status === "paid").length, 1);
+
+  await app.close();
+});
+
+test("ingest: pendente entra no espelho SEM baixar; aprovado depois baixa a mesma fatura", async () => {
+  const repo = makeMemRepo();
+  await seedCustomer(repo);
+  const inv = await repo.create("invoices", { customer: "c1", saas: "leverads", amount: 250, kind: "manual", status: "open" });
+
+  await ingestMpPayment(repo, mpPmt({ id: 888, status: "pending", status_detail: "pending_waiting_transfer", transaction_amount: 250, external_reference: inv.id, date_approved: "" }));
+  assert.equal((await repo.get("invoices", inv.id)).status, "open");
+  let mirror = await repo.get("mp_payments", "mpp_888");
+  assert.equal(mirror.status, "pending");
+  assert.equal(mirror.customer, "c1"); // já casa, só não baixa
+
+  const r = await ingestMpPayment(repo, mpPmt({ id: 888, status: "approved", transaction_amount: 250, external_reference: inv.id }));
+  assert.equal(r.settledNow, inv.id);
+  assert.equal((await repo.get("invoices", inv.id)).status, "paid");
+  mirror = await repo.get("mp_payments", "mpp_888");
+  assert.equal(mirror.status, "approved");
+  assert.equal(mirror.invoice, inv.id);
+});
+
+test("ingest por e-mail: baixa SÓ com valor exato numa única fatura aberta; senão casa sem baixar", async () => {
+  const repo = makeMemRepo();
+  await seedCustomer(repo);
+  const inv = await repo.create("invoices", { customer: "c1", saas: "leverads", amount: 599, kind: "renewal", status: "open" });
+
+  // valor bate com a única fatura aberta → baixa
+  const hit = await ingestMpPayment(repo, mpPmt({ id: 900, transaction_amount: 599 }));
+  assert.equal(hit.settledNow, inv.id);
+  assert.equal((await repo.get("mp_payments", "mpp_900")).matchedBy, "email");
+
+  // valor não bate com nada aberto → casa com o cliente mas fica sem fatura
+  const miss = await ingestMpPayment(repo, mpPmt({ id: 901, transaction_amount: 100 }));
+  assert.equal(miss.settledNow, null);
+  assert.equal(miss.matched, true);
+  const mirror = await repo.get("mp_payments", "mpp_901");
+  assert.equal(mirror.customer, "c1");
+  assert.equal(mirror.invoice, "");
+
+  // pagador desconhecido → não identificado
+  const ghost = await ingestMpPayment(repo, mpPmt({ id: 902, payer: { email: "quem@e.esse" } }));
+  assert.equal(ghost.matched, false);
+});
+
+test("vínculo manual: casa o pagamento com o cliente e baixa a fatura de valor exato", async () => {
+  const repo = makeMemRepo();
+  await seedCustomer(repo);
+  const inv = await repo.create("invoices", { customer: "c1", saas: "leverads", amount: 350, kind: "manual", status: "open" });
+  await ingestMpPayment(repo, mpPmt({ id: 950, transaction_amount: 350, payer: { email: "outro@email.com" } }));
+  assert.equal((await repo.get("mp_payments", "mpp_950")).customer, "");
+
+  const { app } = buildApp(repo, {});
+  const res = await app.inject({ method: "POST", url: "/api/mp/payments/mpp_950/link", payload: { customer: "c1" } });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.json().invoice, inv.id);
+  const mirror = await repo.get("mp_payments", "mpp_950");
+  assert.equal(mirror.matchedBy, "manual");
+  assert.equal((await repo.get("invoices", inv.id)).status, "paid");
+
+  // desvincular depois da baixa é recusado (histórico não se desfaz)
+  const undo = await app.inject({ method: "POST", url: "/api/mp/payments/mpp_950/link", payload: {} });
+  assert.equal(undo.statusCode, 400);
+
+  await app.close();
+});
+
+test("runMpSync: pagina a busca, ingere tudo, carimba app_config e é idempotente", async () => {
+  const repo = makeMemRepo();
+  await seedCustomer(repo);
+  await repo.create("invoices", { customer: "c1", saas: "leverads", amount: 599, kind: "renewal", status: "open" });
+
+  const { mp, fakeFetch } = buildApp(repo, {
+    "GET /v1/payments/search": {
+      paging: { total: 2 },
+      results: [
+        mpPmt({ id: 1001, transaction_amount: 599 }),
+        mpPmt({ id: 1002, status: "rejected", status_detail: "cc_rejected", transaction_amount: 120, date_approved: "" }),
+      ],
+    },
+  });
+
+  const r1 = await runMpSync(repo, mp);
+  assert.equal(r1.seen, 2);
+  assert.equal(r1.settled, 1); // a de 599 bateu com a fatura aberta
+  assert.equal((await repo.list("mp_payments")).length, 2);
+  assert.ok((await repo.get("app_config", "mp_sync")).lastAt);
+
+  // busca com janela (range por date_created)
+  const call = fakeFetch.calls.find((c) => c.key === "GET /v1/payments/search");
+  assert.match(call.url, /range=date_created/);
+
+  // segunda passada: nada muda, nada baixa de novo
+  const r2 = await runMpSync(repo, mp);
+  assert.equal(r2.settled, 0);
+  assert.equal((await repo.list("mp_payments")).length, 2);
+});
+
+test("GET /api/mp/payments: filtro por saas mantém os não identificados visíveis", async () => {
+  const repo = makeMemRepo();
+  await seedCustomer(repo);
+  await ingestMpPayment(repo, mpPmt({ id: 2001 }));                                     // casa (saas leverads)
+  await ingestMpPayment(repo, mpPmt({ id: 2002, payer: { email: "quem@e.esse" } }));    // não identificado
+  await repo.create("mp_payments", { id: "mpp_2003", mpId: "2003", saas: "uniquekids", status: "approved", amount: 10, dateCreated: "2026-07-01" });
+
+  const { app } = buildApp(repo, {});
+  const res = await app.inject({ method: "GET", url: "/api/mp/payments?saas=leverads" });
+  const ids = res.json().payments.map((p) => p.id);
+  assert.ok(ids.includes("mpp_2001"));
+  assert.ok(ids.includes("mpp_2002")); // sem saas = aparece pra vincular
+  assert.ok(!ids.includes("mpp_2003")); // de outro produto, não
+
+  await app.close();
+});

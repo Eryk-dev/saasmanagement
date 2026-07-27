@@ -841,14 +841,63 @@ function IntegrationsSettings({ s }) {
     } catch (e) { window.alert(e.message || "Configure GOOGLE_CLIENT_ID/SECRET no servidor primeiro."); }
   }
 
+  // Mercado Pago: token global no env; daqui dá pra ver o estado, copiar a URL
+  // do webhook (tempo real, opcional — o poller de 10 min cobre sem ele) e
+  // forçar uma sincronização dos pagamentos agora.
+  const mpWebhookOn = !!window.SEED?.CONFIG?.mp?.webhook;
+  const mpWebhookUrl = `${(import.meta.env.VITE_API_BASE || window.location.origin).replace(/\/+$/, "")}/public/mp/webhook`;
+  const [mpMsg, setMpMsg] = useStS(null);
+  const [mpBusy, setMpBusy] = useStS(false);
+  async function mpSync() {
+    if (mpBusy) return;
+    setMpBusy(true); setMpMsg(null);
+    try {
+      const r = await api.mpSyncNow();
+      setMpMsg(`ok: ${r.seen} pagamento(s) vistos · ${r.matched} casados com clientes · ${r.settled} fatura(s) baixada(s)`);
+    } catch (e) { setMpMsg(e.message || "MP não respondeu"); }
+    finally { setMpBusy(false); }
+  }
+
   const items = [
-    { k: "Mercado Pago", desc: "assinaturas (preapproval) + baixa automática de fatura via webhook", on: mpOn, off: "configurar MERCADOPAGO_ACCESS_TOKEN" },
     { k: "E-mail", desc: "envio de proposta + notificações (Resend/SMTP)", on: false, off: "em breve" },
     { k: "Webhook", desc: "POST em eventos: lead novo, proposta vista/aceita", on: false, off: "em breve" },
   ];
   return (
     <div>
       <SettingHeader title="Integrações" sub="tokens vivem no env do servidor · a conta de anúncio da Meta é por SaaS (abaixo)" />
+
+      {/* Mercado Pago: financeiro (espelho de pagamentos + cobranças + assinaturas) */}
+      <div style={{ padding: "14px 16px", border: mpOn ? "1px solid var(--line-1)" : "1px dashed var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", marginBottom: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>Mercado Pago</div>
+            <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>
+              financeiro: espelho de quem pagou e como (aba Financeiro em Clientes) + cobrança avulsa com link + assinaturas (preapproval) + baixa automática de fatura
+            </div>
+          </div>
+          <span className={"chip " + (mpOn ? "pos" : "")} style={{ height: 22 }}>{mpOn ? "conectado" : "configurar MERCADOPAGO_ACCESS_TOKEN"}</span>
+        </div>
+        {mpOn && (
+          <>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
+              <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>webhook (tempo real, opcional)</span>
+              <code className="mono" style={{ fontSize: 11, padding: "4px 8px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-2)", overflowWrap: "anywhere" }}>{mpWebhookUrl}</code>
+              <button onClick={() => { try { navigator.clipboard.writeText(mpWebhookUrl); setMpMsg("URL copiada — cole no painel MP → Webhooks (evento Pagamentos)"); } catch { window.prompt("URL do webhook:", mpWebhookUrl); } }}
+                style={{ height: 24, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11 }}>copiar</button>
+              <span className={"chip " + (mpWebhookOn ? "pos" : "")} style={{ height: 20 }} title={mpWebhookOn ? "MERCADOPAGO_WEBHOOK_SECRET definido: eventos assinados" : "sem MERCADOPAGO_WEBHOOK_SECRET: o webhook recusa eventos; o poller de 10 min segue cobrindo tudo"}>
+                {mpWebhookOn ? "assinatura ok" : "sem secret"}
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+              <button onClick={mpSync} disabled={mpBusy} style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, opacity: mpBusy ? 0.6 : 1 }}>
+                {mpBusy ? "sincronizando…" : "↻ sincronizar pagamentos agora"}
+              </button>
+              <span className="mono dim" style={{ fontSize: 10.5 }}>o servidor sincroniza sozinho a cada 10 min (1º boot varre 400 dias)</span>
+            </div>
+            {mpMsg && <div className="mono" style={{ fontSize: 10.5, color: "var(--accent)", marginTop: 8 }}>{mpMsg}</div>}
+          </>
+        )}
+      </div>
 
       {/* Meta Ads: status global + ad account deste SaaS */}
       <div style={{ padding: "14px 16px", border: metaOn ? "1px solid var(--line-1)" : "1px dashed var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", marginBottom: 10 }}>

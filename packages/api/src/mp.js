@@ -80,6 +80,37 @@ export function makeMp({ fetch: f = globalThis.fetch, accessToken, webhookSecret
     refundPayment: (id, { amount } = {}) =>
       request("POST", `/v1/payments/${id}/refunds`, amount == null ? {} : { amount: Math.round(Number(amount) * 100) / 100 }),
 
+    // Busca paginada dos pagamentos da conta (financeiro). Datas ISO; o range é
+    // por date_created pra pegar boleto/PIX pendente além dos aprovados.
+    searchPayments({ begin, end, limit = 50, offset = 0 } = {}) {
+      const q = new URLSearchParams({ sort: "date_created", criteria: "desc", limit: String(limit), offset: String(offset) });
+      if (begin) {
+        q.set("range", "date_created");
+        q.set("begin_date", begin);
+        q.set("end_date", end || new Date().toISOString());
+      }
+      return request("GET", `/v1/payments/search?${q.toString()}`);
+    },
+
+    // Cobrança avulsa (checkout preference → init_point). external_reference
+    // carrega o id da FATURA do Cockpit — o webhook/poller dá a baixa sozinho.
+    createCheckoutPreference({ title, amount, externalReference, payerEmail, backUrl, notificationUrl, maxInstallments }) {
+      if (!(Number(amount) > 0)) throw new Error(`amount deve ser positivo, got ${amount}`);
+      return request("POST", "/checkout/preferences", {
+        items: [{
+          title: String(title || "Cobrança"),
+          quantity: 1,
+          unit_price: Math.round(Number(amount) * 100) / 100,
+          currency_id: SUB_CURRENCY,
+        }],
+        ...(payerEmail ? { payer: { email: payerEmail } } : {}),
+        external_reference: externalReference,
+        ...(backUrl ? { back_urls: { success: backUrl, pending: backUrl, failure: backUrl } } : {}),
+        ...(notificationUrl ? { notification_url: notificationUrl } : {}),
+        ...(Number(maxInstallments) > 0 ? { payment_methods: { installments: Number(maxInstallments) } } : {}),
+      });
+    },
+
     // Webhook v2: header `x-signature: ts=...,v1=hex`; manifest assinado é
     // `id:DATA_ID;request-id:REQUEST_ID;ts:TS;` com HMAC-SHA256 do secret.
     verifyWebhookSignature(xSignature, xRequestId, dataId) {

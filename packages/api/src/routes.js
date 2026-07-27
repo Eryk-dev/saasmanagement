@@ -387,7 +387,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       CONFIG: {
         levercopy: integrationStatus(),
         proposals: { nativeSaas: (await repo.list("proposal_templates")).filter((t) => t.status === "published").map((t) => t.saas) },
-        mp: { configured: mpClient.configured() },
+        mp: { configured: mpClient.configured(), webhook: mpClient.hasWebhookSecret() },
         meta: { configured: metaClient.configured() },
         google: { configured: googleClient.configured(), connected: await googleClient.connected(), account: await googleClient.account(), gmail: await googleClient.gmailReady() },
         ai: { configured: anthropicClient.configured() },
