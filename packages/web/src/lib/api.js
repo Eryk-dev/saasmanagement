@@ -230,14 +230,20 @@ export const api = {
   // entra no composer sozinho). { name, category, language, body, example[] }.
   waCreateTemplate: (payload) => req("POST", "/api/whatsapp/templates", payload),
   waThreadSendTemplate: (id, { name, language, params, headerMediaId }) => req("POST", `/api/whatsapp/threads/${id}/send-template`, { name, language, params, headerMediaId }),
-  // Foto do cabeçalho de template: sobe no número da conversa e devolve o media
-  // id pra mandar no send-template (headerMediaId). Não envia mensagem nenhuma.
-  waThreadTemplateMedia: async (threadId, file) => {
+  // Foto PADRÃO do template (header de imagem): o composer preenche sozinho e
+  // o servidor sobe ela a cada envio. Sem foto salva devolve null (não é erro).
+  waTemplateDefaultMedia: async (name) => {
+    const key = getKey();
+    const res = await fetch(`${BASE}/api/whatsapp/template-media/${encodeURIComponent(name)}`, { headers: key ? { "x-api-key": key } : {} });
+    if (!res.ok) return null;
+    return res.blob();
+  },
+  waTemplateDefaultMediaSave: async (name, file) => {
     const fd = new FormData();
     fd.append("file", file, file.name || "foto.jpg");
     const key = getKey();
-    const res = await fetch(`${BASE}/api/whatsapp/threads/${encodeURIComponent(threadId)}/template-media`, {
-      method: "POST", headers: key ? { "x-api-key": key } : {}, body: fd,
+    const res = await fetch(`${BASE}/api/whatsapp/template-media/${encodeURIComponent(name)}`, {
+      method: "PUT", headers: key ? { "x-api-key": key } : {}, body: fd,
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");

@@ -173,23 +173,39 @@ export function WaTemplateComposer({ threadId, contactName = "", onSent }) {
     setHeaderFile(null);
   }, [tpl?.name]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Thumbnail da foto anexada no preview (revoga o object URL ao trocar).
-  const headerUrl = React.useMemo(() => (headerFile ? URL.createObjectURL(headerFile) : ""), [headerFile]);
-  React.useEffect(() => () => { if (headerUrl) URL.revokeObjectURL(headerUrl); }, [headerUrl]);
-
   const needsImage = tpl?.header === "image";
+
+  // Foto PADRÃO do template (salva no cockpit): preenche o composer sozinha —
+  // anexar outra troca e vira a padrão dos próximos envios.
+  const [defaultUrl, setDefaultUrl] = React.useState(""); // "" = sem padrão · url = tem
+  React.useEffect(() => {
+    setDefaultUrl("");
+    if (!needsImage || !tpl?.name) return;
+    let alive = true, url = "";
+    api.waTemplateDefaultMedia(tpl.name).then((blob) => {
+      if (!alive || !blob) return;
+      url = URL.createObjectURL(blob);
+      setDefaultUrl(url);
+    });
+    return () => { alive = false; if (url) URL.revokeObjectURL(url); };
+  }, [needsImage, tpl?.name]);
+
+  // Thumbnail no preview: a foto recém-anexada vence a padrão.
+  const pickedUrl = React.useMemo(() => (headerFile ? URL.createObjectURL(headerFile) : ""), [headerFile]);
+  React.useEffect(() => () => { if (pickedUrl) URL.revokeObjectURL(pickedUrl); }, [pickedUrl]);
+  const headerUrl = pickedUrl || defaultUrl;
+
   const preview = tpl ? tpl.body.replace(/\{\{\s*(\d+)\s*\}\}/g, (_, n) => params[Number(n) - 1] || `{{${n}}}`) : "";
-  const ready = tpl && params.slice(0, tpl.params).every((p) => String(p || "").trim()) && (!needsImage || headerFile);
+  const ready = tpl && params.slice(0, tpl.params).every((p) => String(p || "").trim()) && (!needsImage || headerFile || defaultUrl);
 
   async function send() {
     if (!ready || busy) return;
     setBusy(true); setErr("");
     try {
-      // Template com imagem no cabeçalho: sobe a foto primeiro e manda o id
-      // junto (a Meta exige o parâmetro do header no envio).
-      let headerMediaId;
-      if (needsImage) ({ mediaId: headerMediaId } = await api.waThreadTemplateMedia(threadId, headerFile));
-      await api.waThreadSendTemplate(threadId, { name: tpl.name, language: tpl.language, params, headerMediaId });
+      // Foto nova anexada vira a padrão do template; o servidor sobe a padrão
+      // salva a cada envio (a Meta exige o parâmetro do header no disparo).
+      if (needsImage && headerFile) await api.waTemplateDefaultMediaSave(tpl.name, headerFile);
+      await api.waThreadSendTemplate(threadId, { name: tpl.name, language: tpl.language, params });
       onSent && onSent();
     } catch (e) { setErr(e?.message || "não foi possível enviar"); }
     finally { setBusy(false); }
@@ -229,13 +245,15 @@ export function WaTemplateComposer({ threadId, contactName = "", onSent }) {
           {needsImage && (
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--fg-2)", cursor: "pointer" }}>
               <span style={{ ...field, display: "inline-flex", alignItems: "center", padding: "0 10px", fontWeight: 600 }}>
-                {headerFile ? "📷 trocar a foto" : "📷 anexar a foto do cabeçalho"}
+                {headerFile || defaultUrl ? "📷 trocar a foto" : "📷 anexar a foto do cabeçalho"}
               </span>
               <input type="file" accept="image/jpeg,image/png" style={{ display: "none" }}
                 onChange={(e) => { setHeaderFile(e.target.files?.[0] || null); e.target.value = ""; }} />
-              {headerFile
-                ? <span className="mono dim" style={{ fontSize: 10.5 }}>{headerFile.name}</span>
-                : <span className="mono dim" style={{ fontSize: 10.5 }}>esse template tem imagem no cabeçalho (JPG/PNG)</span>}
+              <span className="mono dim" style={{ fontSize: 10.5 }}>
+                {headerFile ? `${headerFile.name} · vira a padrão dos próximos envios`
+                  : defaultUrl ? "foto padrão salva · vai junto sozinha"
+                  : "esse template tem imagem no cabeçalho (JPG/PNG); fica salva pros próximos"}
+              </span>
             </label>
           )}
           <div style={{ padding: "7px 10px", borderRadius: 10, fontSize: 12.5, lineHeight: 1.4, whiteSpace: "pre-wrap", overflowWrap: "break-word", background: "var(--wa-out, #d6f5cf)", color: "#0c2318", alignSelf: "flex-start", maxWidth: "100%" }}>
