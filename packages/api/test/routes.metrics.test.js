@@ -78,7 +78,12 @@ test("GET /api/metrics/:saas calcula CAC, conversão, LTV e série mensal", asyn
   const last = m.series[m.series.length - 1];
   // MRR aproximado do mês corrente inclui os 3 clientes (48000/12 = 4000)
   assert.equal(last.mrr, 4000);
-  assert.ok(last.leads >= 1);
+  // Leads do mês CORRENTE da série: os 10 foram criados de 1 a 10 dias atrás,
+  // então no começo do mês parte (ou todos) caem no mês anterior — a conta
+  // certa depende do calendário, não de "pelo menos 1" (quebrava todo dia 1º).
+  const monthKey = new Date().toISOString().slice(0, 7);
+  const inMonth = Array.from({ length: 10 }, (_, i) => iso(i + 1)).filter((d) => d.startsWith(monthKey)).length;
+  assert.equal(last.leads, inMonth);
 
   assert.equal((await app.inject({ method: "GET", url: "/api/metrics/nada" })).statusCode, 404);
   await app.close();

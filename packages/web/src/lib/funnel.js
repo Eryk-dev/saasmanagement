@@ -82,8 +82,10 @@ export function isPostSaleStage(saasCfg, stage) {
 // A venda como FATO do lead (espelho do isWonLead/wonAtOf da API, stages.js).
 // Com o Ganho ANTES da Integração o card segue pra entrega, então medir pela
 // POSIÇÃO faria a receita sumir depois de reconhecida. `customerId` é gravado
-// por convertWonLead e nunca limpo; `wonAt` guarda a data real (o stageSince é
-// recarimbado a cada movimento e jogaria a venda pro mês da etapa seguinte).
+// por convertWonLead; `wonAt` guarda a data real (o stageSince é recarimbado a
+// cada movimento e jogaria a venda pro mês da etapa seguinte). Os dois SÃO
+// limpos quando o card é puxado de volta pro funil aberto (revertWonLead na
+// API desfaz o fechamento e desconta o ganho).
 export const isWonLead = (saasCfg, lead) =>
   !!lead?.customerId || isWonStage(saasCfg, lead?.stage) || isPostSaleStage(saasCfg, lead?.stage);
 export const wonAtOf = (lead) => lead?.wonAt || lead?.stageSince || "";

@@ -370,7 +370,9 @@ function KanbanBoard({ s, stages, byStage, sortMode, highlight, onMove, selected
 function WonSummary({ leads }) {
   const now = new Date();
   const month = now.toISOString().slice(0, 7);
-  const monthLeads = leads.filter((l) => String(l.stageSince || l.updatedAt || "").slice(0, 7) === month);
+  // Mês pela DATA DA VENDA (wonAt), não pelo stageSince: o card anda pra
+  // Integração e recarimba o stageSince, o que jogaria o ganho pro mês errado.
+  const monthLeads = leads.filter((l) => String(wonAtOf(l)).slice(0, 7) === month);
   const total = monthLeads.reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
   const label = now.toLocaleDateString("pt-BR", { month: "long" });
   return (

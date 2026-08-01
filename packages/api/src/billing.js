@@ -78,13 +78,24 @@ const PLAN_MONTHS = { anual: 12, semestral: 6, mensal: 1 };
 const PLAN_CYCLE = { anual: "annual", semestral: "semiannual", mensal: "monthly" };
 const MONTHLY_PAYMENT = new Set(["boleto", "pix_parcelado"]);
 
-export async function createClosedSubscription(repo, { customerId, saas, planClosed, amount, paymentMethod, startAt }, now = new Date()) {
+// Ciclo e preço da assinatura que um fechamento implica. Serviço único (ou
+// valor zerado) não é recorrência → null. Compartilhado entre criar a
+// assinatura no ganho e revisá-la quando o gate reedita plano/valor/pagamento.
+export function closedSubscriptionSpec({ planClosed, amount, paymentMethod } = {}) {
   const months = PLAN_MONTHS[planClosed];
   const value = Number(amount) || 0;
-  if (!customerId || !months || value <= 0) return null;
+  if (!months || value <= 0) return null;
   const monthly = MONTHLY_PAYMENT.has(String(paymentMethod || ""));
-  const cycle = monthly ? "monthly" : PLAN_CYCLE[planClosed];
-  const price = monthly ? Math.round((value / months) * 100) / 100 : value;
+  return {
+    cycle: monthly ? "monthly" : PLAN_CYCLE[planClosed],
+    price: monthly ? Math.round((value / months) * 100) / 100 : value,
+  };
+}
+
+export async function createClosedSubscription(repo, { customerId, saas, planClosed, amount, paymentMethod, startAt }, now = new Date()) {
+  const spec = closedSubscriptionSpec({ planClosed, amount, paymentMethod });
+  if (!customerId || !spec) return null;
+  const { cycle, price } = spec;
   let periodStart = startAt || now.toISOString();
   let periodEnd = addMonths(periodStart, CYCLE_MONTHS[cycle] || 1);
   let guard = 0; // startAt antigo: pula ciclos até o período conter agora
