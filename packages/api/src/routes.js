@@ -14,7 +14,7 @@ import { registerProposalRoutes } from "./routes.proposals.js";
 import { runNativeProposal, proposalOffers, shareProposalOffer, buildCustomProposal, publicProposal } from "./proposal.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { registerBillingRoutes } from "./routes.billing.js";
-import { initSubscription, syncCustomerArr, createClosedSubscription } from "./billing.js";
+import { initSubscription, syncCustomerArr, createClosedSubscription, closedSubscriptionSpec } from "./billing.js";
 import { registerAuthRoutes } from "./auth.js";
 import { registerMpRoutes, mirrorSubscriptionToMp } from "./routes.mp.js";
 import { mp as defaultMpClient } from "./mp.js";
@@ -630,6 +630,12 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         briefer.briefLead(updated.id).catch(() => { /* o poller tenta de novo */ });
       }
     }
+    // Plano/valor/pagamento reeditados num lead que JÁ virou cliente (gate da
+    // Integração ou edição direta) → o fechamento novo re-espelha no cliente e
+    // na assinatura nascidos dele. Best-effort: nunca quebra o PATCH.
+    if (collection === "leads" && updated.customerId && ["amount", "planClosed", "paymentMethod", "consultPackage"].some((k) => k in req.body)) {
+      try { await syncWonLeadDeal(repo, updated); } catch { /* fail-open */ }
+    }
     // Call/integração agendada, reagendada ou reatribuída → espelha na agenda
     // PESSOAL do responsável (closer na call, integrator na integração) que
     // conectou a própria conta Google. Best-effort: nunca quebra o PATCH.
@@ -832,7 +838,15 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
   // sem isso o lead ficaria contando receita sem cliente nem assinatura.
   if (!isWon(product, lead.stage) && !isPostSaleStage(product, lead.stage)) return null;
   const customers = await repo.list("customers");
-  if (customers.some((c) => c.leadId === lead.id)) return null;
+  const existing = customers.find((c) => c.leadId === lead.id);
+  if (existing) {
+    // Re-fechou depois de um desfazer que PRESERVOU o cliente (billing real no
+    // meio): re-vincula o lead ao cliente de sempre em vez de duplicar.
+    if (lead.customerId !== existing.id || !lead.wonAt) {
+      await repo.update("leads", lead.id, { customerId: existing.id, wonAt: lead.wonAt || existing.startedAt || new Date().toISOString() });
+    }
+    return null;
+  }
   if (lead.customerId && customers.some((c) => c.id === lead.customerId)) return null;
   // CS automático: com UM integrador no escopo do produto, ele nasce como owner
   // do cliente — é por customer.owner que o placar de CS agrupa (sem owner o
@@ -926,6 +940,52 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
     } catch { /* best-effort — a conversão local nunca depende da Meta */ }
   }
   return customer;
+}
+
+// Fechamento EDITADO depois do ganho — o gate da Integração deixa conferir e
+// ajustar plano/valor/pagamento com o cliente já criado, então o ajuste precisa
+// chegar no cliente e na assinatura que NASCERAM do fechamento (senão Clientes/
+// MRR ficam com o número velho). Só mexe no cliente vinculado a este lead
+// (customer.leadId); assinatura presa no Mercado Pago (preapproval) ou cliente
+// com 2+ assinaturas é gestão manual — não adivinha.
+export async function syncWonLeadDeal(repo, lead) {
+  if (!lead?.customerId) return null;
+  const customer = await repo.get("customers", lead.customerId);
+  if (!customer || customer.leadId !== lead.id) return null;
+  const patch = {
+    plan: lead.saas === "uniquekids"
+      ? `Mentoria · ${Number(lead.consultPackage) === 4 ? 4 : 8} consultas`
+      : (CLOSED_PLAN_LABEL[lead.planClosed] || customer.plan || ""),
+    ...(lead.paymentMethod ? { paymentMethod: lead.paymentMethod } : {}),
+  };
+  const manualArr = () => Math.round((Number(lead.amount) || 0) * (CLOSED_PLAN_ANNUAL_FACTOR[lead.planClosed] || 1));
+  const spec = closedSubscriptionSpec(lead);
+  const subs = (await repo.list("subscriptions")).filter((s) => s.customer === customer.id && s.status !== "canceled");
+  if (subs.length === 1 && !subs[0].mpPreapprovalId) {
+    if (spec) {
+      if (Number(subs[0].price) !== spec.price || subs[0].cycle !== spec.cycle) {
+        await repo.update("subscriptions", subs[0].id, { price: spec.price, cycle: spec.cycle, pendingChange: null });
+        await syncCustomerArr(repo, customer.id);
+      }
+    } else {
+      // Virou serviço único: encerra a recorrência nascida do fechamento e o
+      // valor do negócio vira o arr direto (cliente sem assinatura = arr manual).
+      await repo.update("subscriptions", subs[0].id, { status: "canceled", canceledAt: new Date().toISOString() });
+      await syncCustomerArr(repo, customer.id);
+      patch.arr = manualArr();
+    }
+  } else if (subs.length === 0) {
+    if (spec) {
+      await createClosedSubscription(repo, {
+        customerId: customer.id, saas: lead.saas,
+        planClosed: lead.planClosed, amount: lead.amount, paymentMethod: lead.paymentMethod,
+        startAt: lead.wonAt || customer.startedAt,
+      });
+    } else {
+      patch.arr = manualArr();
+    }
+  }
+  return repo.update("customers", customer.id, patch);
 }
 
 // Mantém o leadQuestions do produto em dia com as perguntas do form (upsert por

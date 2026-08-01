@@ -110,8 +110,9 @@ export function isWon(product, stageName) {
 // medir pela posição faria a receita sumir justamente depois de reconhecida.
 //
 // `customerId` é o carimbo certo: convertWonLead grava ao criar o cliente
-// (routes.js), é idempotente e NUNCA é limpo, então sobrevive a qualquer
-// movimento posterior do card. Conferido em produção: 10 de 10 ganhos têm.
+// (routes.js), é idempotente e sobrevive ao card andar pra frente (Integração,
+// pós-venda). Só é limpo quando o fechamento é DESFEITO de propósito — card
+// puxado de volta pra etapa aberta do funil (revertWonLead, lead-flow.js).
 //
 // Use ESTA função em tudo que é dinheiro e placar; `isWon` (por estágio) segue
 // valendo pra decidir o que fazer no MOMENTO do movimento (criar cliente,

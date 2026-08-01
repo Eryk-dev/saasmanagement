@@ -29,12 +29,12 @@ export function moveGate(saasCfg, lead, toStage) {
   // não aparece na Agenda nem ocupa slot), então o gate pede a hora ANTES de
   // mover, em vez de deixar o PATCH tomar 422 e o card não sair do lugar.
   if (toKind === "call" && !lead.callAt) return { type: "call", toKind };
-  // Fechamento = passar pra Ganho, OU pra Integração num lead que ainda não
-  // fechou: pede o valor do negócio na hora (é onde a receita do closer é
-  // lançada). Com o Ganho ANTES da Integração o caminho normal já chega na
-  // entrega com valor e customerId, então o modal não reabre no handoff; a
-  // condição segue cobrindo quem for direto pra Integração pulando o Ganho.
-  if ((isWonKind(toKind) || toKind === "integracao") && !(Number(lead.amount) > 0)) return { type: "won", toKind };
+  // Fechamento = passar pra Ganho (pede o valor quando ainda não tem) OU pra
+  // Integração — na Integração o gate abre SEMPRE, pré-preenchido: é a última
+  // porta antes da entrega, então é aqui que o closer confere (ou corrige)
+  // plano, valor e pagamento. Um clique confirma; ajuste re-espelha no cliente
+  // e na assinatura criados no fechamento (syncWonLeadDeal na API).
+  if (toKind === "integracao" || (isWonKind(toKind) && !(Number(lead.amount) > 0))) return { type: "won", toKind };
   return null;
 }
 
@@ -54,9 +54,12 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   const [reason, setReason] = React.useState("");
   const [note, setNote] = React.useState("");
   const [callAt, setCallAt] = React.useState("");
-  const [amount, setAmount] = React.useState("");
+  const [amount, setAmount] = React.useState(Number(lead.amount) > 0 ? String(lead.amount) : "");
   const [payment, setPayment] = React.useState(lead.paymentMethod || "");
   const [planClosed, setPlanClosed] = React.useState(lead.planClosed || "anual");
+  // Indo pra INTEGRAÇÃO com o negócio já valorado: o gate vira conferência de
+  // plano e valor (pré-preenchido, um clique) em vez de fechamento novo.
+  const isAdjust = isWonGate && gate.toKind === "integracao" && Number(lead.amount) > 0;
   // UniqueKids: o ganho É a compra de um pacote de consultas (mentoria 1:1) —
   // o gate captura o tamanho e o servidor cria a jornada inteira na conversão.
   const isKidsWon = isWonGate && lead.saas === "uniquekids";
@@ -113,7 +116,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
           (valor/método/pacote) passa da altura visível — rola em vez de cortar. */}
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(420px, 100%)", maxHeight: "min(88dvh, 100%)", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 18 }}>
         <div style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700 }}>
-          {isLost ? `Mover pra “${toStage}”` : isWonGate ? "Fechar como ganho 🎉" : isOffer ? "Call feita → follow-up" : isCall ? "Marcar a call" : "Passar pro closer"}
+          {isLost ? `Mover pra “${toStage}”` : isAdjust ? "Confirmar plano e valor" : isWonGate ? "Fechar como ganho 🎉" : isOffer ? "Call feita → follow-up" : isCall ? "Marcar a call" : "Passar pro closer"}
         </div>
         <div className="mono" style={{ fontSize: 11, color: "var(--fg-3)", marginTop: 3, marginBottom: 14 }}>
           {lead.name}{lead.company ? ` · ${lead.company}` : ""} → {toStage}
@@ -139,7 +142,9 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
               onKeyDown={(e) => { if (e.key === "Enter") confirm(); }}
               style={field} />
             <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
-              vira a receita da campanha no relatório de marketing e o valor da conversão enviada pra Meta
+              {isAdjust
+                ? "ajustar aqui atualiza o cliente e a assinatura criados no fechamento"
+                : "vira a receita da campanha no relatório de marketing e o valor da conversão enviada pra Meta"}
             </div>
             {/* Mentoria não tem plano recorrente: o PACOTE de consultas é o que
                 foi comprado, então ele substitui o "Plano fechado" no Kids. */}

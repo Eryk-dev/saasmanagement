@@ -83,6 +83,55 @@ export function appointmentAt(product, lead, stage = lead?.stage, now = new Date
   return iso && new Date(iso).getTime() > now.getTime() ? iso : "";
 }
 
+// Kinds da "região de venda" do funil: estar neles (ou ter vindo deles) é o que
+// separa mover um card de DESFAZER um fechamento no applyStageMove.
+const SOLD_KINDS = new Set(["ganho", "integracao", "posvenda"]);
+
+// DESFAZE o fechamento de um lead puxado de volta pro funil aberto: o cliente
+// que NASCEU deste fechamento (link bidirecional customer.leadId, criado pelo
+// convertWonLead) sai da base junto com a assinatura e as faturas automáticas —
+// senão o card volta pro funil mas a venda continua contando em Clientes/MRR.
+// Billing REAL trava a remoção: assinatura com preapproval do Mercado Pago ou
+// fatura com pagamento do MP não são apagadas daqui (o dinheiro existiu; fica
+// pro Financeiro resolver na mão) — nesse caso só o vínculo do lead é limpo.
+export async function revertWonLead(repo, lead, { author = "system" } = {}) {
+  const customers = await repo.list("customers").catch(() => []);
+  const customer = customers.find((c) => c.id === lead.customerId)
+    || customers.find((c) => c.leadId === lead.id) || null;
+  let removed = false;
+  if (customer && customer.leadId === lead.id) {
+    const subs = (await repo.list("subscriptions")).filter((s) => s.customer === customer.id);
+    const invoices = (await repo.list("invoices")).filter((i) =>
+      i.customer === customer.id || subs.some((s) => s.id === i.subscription));
+    const realBilling = subs.some((s) => s.mpPreapprovalId) || invoices.some((i) => i.mpPaymentId);
+    if (!realBilling) {
+      for (const i of invoices) await repo.remove("invoices", i.id);
+      for (const s of subs) await repo.remove("subscriptions", s.id);
+      // UniqueKids: a jornada nasce em lote no fechamento — só some o que ainda
+      // não foi usado (consulta sem data nem registro; manual sem conteúdo).
+      for (const c of (await repo.list("consultations").catch(() => []))) {
+        if (c.customerId === customer.id && !c.at && !c.meetUrl && !c.summary && !c.transcriptUrl) {
+          await repo.remove("consultations", c.id);
+        }
+      }
+      for (const m of (await repo.list("deliverables").catch(() => []))) {
+        const untouched = (m.status || "building") === "building"
+          && !(m.sections || []).some((s) => String(s?.content || "").trim());
+        if (m.customerId === customer.id && untouched) await repo.remove("deliverables", m.id);
+      }
+      await repo.remove("customers", customer.id);
+      removed = true;
+    }
+  }
+  try {
+    await logActivity(repo, {
+      saas: lead.saas || "", lead: lead.id, type: "system", author,
+      meta: { event: "won_reverted", ...(customer ? { customerId: customer.id } : {}), customerRemoved: removed },
+    });
+  } catch { /* timeline é best-effort */ }
+  return { customerId: customer?.id || "", removed };
+}
+
 // Calcula os campos derivados de um movimento de estágio e loga a activity
 // `stage` (o histórico real do funil). Retorna o patch a MESCLAR no PATCH do
 // cliente — campos explícitos do cliente sempre vencem (stageSince do optimistic
@@ -130,6 +179,18 @@ export async function applyStageMove(repo, { lead, toStage, patch = {}, author =
     // Revival (saiu de perdido/ganho pra estágio ativo) limpa a perda antiga,
     // a menos que o cliente mande outra no mesmo PATCH.
     if (patch.lostReason == null && lead.lostReason) { out.lostReason = ""; out.lostNote = ""; }
+    // Card puxado de VOLTA da região de venda (Ganho/Integração/pós-venda) pra
+    // uma etapa aberta do funil: o fechamento é desfeito. A venda é FATO do
+    // lead (customerId/wonAt) e sobreviveria ao movimento — sem limpar, o card
+    // volta pro Follow-up mas segue contando no Ganho do mês, e o cliente
+    // criado na conversão fica vivo em Clientes/MRR. Perda NÃO desfaz (cai no
+    // ramo de cima): churn depois de vender é outra história.
+    const fromKind = kindOf(product, lead.stage);
+    if (SOLD_KINDS.has(fromKind) && !SOLD_KINDS.has(kind) && (lead.customerId || lead.wonAt)) {
+      out.customerId = "";
+      out.wonAt = "";
+      try { await revertWonLead(repo, lead, { author }); } catch { /* nunca trava o movimento */ }
+    }
     if (kind === "ganho") {
       out.nextActionAt = "";
       out.nextActionNote = "";

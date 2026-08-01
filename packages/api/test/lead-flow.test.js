@@ -309,15 +309,20 @@ test("lead ganho manda Purchase pro CAPI com o valor do negócio, uma vez só", 
   assert.equal(purchases[0].fbp, "fb.1.1.2");   // cookies persistidos no submit
   assert.equal(purchases[0].fbc, "fb.1.3.abc"); // melhoram o match do Purchase
 
-  // Reenvio não acontece: o guard de customer do convertWonLead segura.
+  // Puxar de VOLTA pro funil aberto DESFAZ o ganho (revertWonLead): o cliente
+  // nascido do fechamento some. Re-fechar depois é um ganho novo — re-envia o
+  // Purchase com o MESMO eventId (a Meta deduplica, então acidente corrigido
+  // rápido não conta duas vezes lá).
   await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { stage: "Follow-up" } });
+  assert.equal((await repo.list("customers")).filter((c) => c.leadId === "l1").length, 0, "desfazer removeu o cliente");
   await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { stage: "Ganho" } });
-  assert.equal(purchases.length, 1);
+  assert.equal(purchases.length, 2);
+  assert.equal(purchases[1].eventId, "won:l1", "mesmo eventId — deduplica na Meta");
 
   // Lead interno (teste da equipe) não suja o sinal — mas o cliente nasce.
   await repo.create("leads", { id: "l2", saas: "leverads", name: "Bia", stage: "Novo lead", internal: true });
   await app.inject({ method: "PATCH", url: "/api/leads/l2", payload: { stage: "Ganho", amount: 100 } });
-  assert.equal(purchases.length, 1);
+  assert.equal(purchases.length, 2, "lead interno não manda Purchase");
   assert.equal((await repo.list("customers")).length, 2);
   await app.close();
 });
