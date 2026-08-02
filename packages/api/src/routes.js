@@ -967,9 +967,12 @@ export async function syncWonLeadDeal(repo, lead) {
         await repo.update("subscriptions", subs[0].id, { price: spec.price, cycle: spec.cycle, pendingChange: null });
         await syncCustomerArr(repo, customer.id);
       }
-    } else {
-      // Virou serviço único: encerra a recorrência nascida do fechamento e o
-      // valor do negócio vira o arr direto (cliente sem assinatura = arr manual).
+    } else if (lead.planClosed === "unico") {
+      // Virou serviço único DE PROPÓSITO: encerra a recorrência nascida do
+      // fechamento e o valor do negócio vira o arr direto (cliente sem
+      // assinatura = arr manual). Lead SEM planClosed (fechamento legado,
+      // pré-gate de plano) cai fora deste ramo: cancelar a assinatura de um
+      // cliente real por falta de campo seria chute — não se mexe.
       await repo.update("subscriptions", subs[0].id, { status: "canceled", canceledAt: new Date().toISOString() });
       await syncCustomerArr(repo, customer.id);
       patch.arr = manualArr();
@@ -981,7 +984,7 @@ export async function syncWonLeadDeal(repo, lead) {
         planClosed: lead.planClosed, amount: lead.amount, paymentMethod: lead.paymentMethod,
         startAt: lead.wonAt || customer.startedAt,
       });
-    } else {
+    } else if (Number(lead.amount) > 0) {
       patch.arr = manualArr();
     }
   }

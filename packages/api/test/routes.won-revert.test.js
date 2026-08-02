@@ -116,6 +116,18 @@ test("gate da Integração reedita plano/valor → assinatura e cliente acompanh
   assert.equal(customer.paymentMethod, "cartao_12x");
 });
 
+test("lead legado SEM planClosed: editar o valor não cancela a assinatura (só unico explícito cancela)", async () => {
+  const repo = makeMemRepo();
+  await seedWon(repo);
+  await repo.update("leads", "l1", { planClosed: "" }); // fechamento pré-gate de plano (produção de hoje)
+  const app = buildApp(repo);
+  const res = await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { amount: 8000 } });
+  assert.equal(res.statusCode, 200);
+  const sub = await repo.get("subscriptions", "su1");
+  assert.equal(sub.status, "active", "recorrência de cliente real fica de pé");
+  assert.equal(sub.price, 7188, "sem plano definido não se adivinha preço novo");
+});
+
 test("fechamento reeditado pra serviço único encerra a recorrência e o arr vira o valor do negócio", async () => {
   const repo = makeMemRepo();
   await seedWon(repo);
