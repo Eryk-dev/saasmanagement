@@ -134,6 +134,12 @@ export const CREATE_DEFAULTS = {
   // `sent` = progresso por lead ({leadId: {whatsapp, email}}, ISO), mesclado no
   // servidor. channels/email/wa = o que foi composto.
   campaigns: { name: "", saas: "", status: "draft", stages: [], channels: { email: false, whatsapp: true }, email: { subject: "", body: "" }, wa: { text: "" }, sent: {}, createdAt: "", createdBy: "" },
+  // Radar de contas do OUTBOUND (Cold Calling 2.0): conta-alvo prospectada pelo
+  // SDR, com os 8 status de conta do livro (fria/prospectando/nutrir/
+  // oportunidade/encerrada/cliente/sem-perfil/duplicada). "Virar lead" cria um
+  // lead com source "Outbound · radar" + outbound:true (classe ALVO no
+  // metrics-core) e linka aqui em `leadId`.
+  outbound_accounts: { saas: "", name: "", marketplace: "", niche: "", listings: "", reputation: "", city: "", phone: "", email: "", instagram: "", site: "", cnpj: "", notes: "", status: "fria", owner: "", leadId: "", lastTouchAt: "", createdAt: "" },
   // Sequência de nutrição (drip): `trigger.stages` = etapas que auto-inscrevem;
   // `steps` = [{ channel:"email"|"whatsapp", delayDays, subject, body, text }];
   // `exitOn` = condições de saída. status active/paused/draft (só active roda).
@@ -216,6 +222,7 @@ function listFilter(collection, q) {
   if (collection === "tasks") return (t) => (!q.saas || t.saas === q.saas) && (!q.assignee || (t.assignees || (t.assignee ? [t.assignee] : [])).includes(q.assignee)) && (!q.column || t.column === q.column);
   if (collection === "activities") return (a) => (!q.lead || a.lead === q.lead) && (!q.saas || a.saas === q.saas) && (!q.type || a.type === q.type) && (!q.since || String(a.at || "") >= q.since);
   if (collection === "campaigns") return (c) => !q.saas || c.saas === q.saas;
+  if (collection === "outbound_accounts") return (a) => (!q.saas || a.saas === q.saas) && (!q.status || a.status === q.status);
   if (collection === "sequences") return (s) => !q.saas || s.saas === q.saas;
   if (collection === "sequence_enrollments") return (e) => (!q.saas || e.saas === q.saas) && (!q.sequence || e.sequence === q.sequence) && (!q.status || e.status === q.status) && (!q.lead || e.lead === q.lead);
   if (collection === "drip_templates") return (t) => (!q.saas || t.saas === q.saas) && (!q.channel || t.channel === q.channel);
