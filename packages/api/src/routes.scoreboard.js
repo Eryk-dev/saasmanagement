@@ -561,6 +561,9 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     const pipeNoVal = teamBooked.filter((l) => !(Number(l.amount) > 0)).length;
     team.pipelineCreated = {
       count: teamBooked.length,
+      // Requalificadas: das oportunidades da janela, quantas o closer já ACEITOU
+      // (lead.oppAccepted, o aceite do drawer) — a régua do livro pro crédito.
+      accepted: teamBooked.filter((l) => l.oppAccepted).length,
       valueKnown: round2(pipeKnown),
       ticketMedian90: ticket90,
       estimated: round2(pipeKnown + (ticket90 || 0) * pipeNoVal),
