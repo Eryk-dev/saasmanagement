@@ -337,6 +337,7 @@ export const DEFAULT_SCRIPTS = {
       { t: "4. Conta-mãe e acessos", fala: "Essa vira a conta-mãe, a matriz. O que você publicar nela replica pras outras, e o que já está lá a gente clona agora." },
       { t: "5. Primeira clonagem na tela", fala: "Olha rodando: esses anúncios já estão saindo pras outras contas da {{empresa}}. Daqui pra frente é publicar na matriz e deixar replicar." },
       { t: "6. Fechar e combinar o acompanhamento", fala: "Ficou alguma dúvida do que a gente fez agora? Eu te acompanho essa semana, me chama aqui a qualquer hora. Semana que vem eu te procuro pra ver como está o volume." },
+      { t: "7. Plantar a indicação", fala: "Última coisa: em alguns dias você já vê os primeiros números. Quando isso acontecer, vou te pedir duas indicações de lojistas que sofrem com isso que a gente acabou de resolver. Vou te lembrar, combinado?", dica: "Semente plantada aqui, colhida na entrega do 1º resultado (pós-venda). Indicação é a classe de lead com maior conversão." },
     ],
   },
   posvenda: {
@@ -346,7 +347,7 @@ export const DEFAULT_SCRIPTS = {
     passos: [
       { t: "Check-in de resultado", fala: "Oi {{nome}}! Passando pra ver como a {{produto}} está rodando aí na {{empresa}}. Como está sendo pra vocês?" },
       { t: "Virar case", fala: "Posso usar esse resultado da {{empresa}} como case nosso? A gente te marca e divulga a loja junto." },
-      { t: "Pedir indicação", fala: "Você conhece outro lojista que sofre pra replicar anúncio entre contas? Se indicar e fechar, tenho uma condição especial pra você." },
+      { t: "Pedir 2 indicações", fala: "Na integração eu te falei que ia cobrar: quais DOIS lojistas você conhece que sofrem pra replicar anúncio entre contas? Me passa o contato deles que eu cuido bem. Se fechar, tenho uma condição especial pra você.", dica: "Registre cada indicação como lead novo com origem 'Indicação' (vira classe Semente nas métricas e conta na meta de 7 por cliente do CS)." },
     ],
   },
   outro: {
