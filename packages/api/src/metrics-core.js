@@ -75,6 +75,34 @@ const stripAccents = (s) => String(s || "").toLowerCase().normalize("NFD").repla
 export const isReferralLead = (l) =>
   stripAccents(l?.source).includes("indica") || stripAccents(l?.utm?.source).includes("indica");
 
+// ── Classes de lead (Receita Previsível: Sementes · Redes · Alvos) ───────────
+// Cada classe tem ciclo, taxa e previsibilidade próprios, então nunca entram na
+// mesma projeção (Aaron Ross, cap. 6). Semente = veio por indicação/boca a boca
+// (a régua isReferralLead). Alvo = a prospecção outbound foi atrás (lead com
+// flag `outbound`, source contendo "outbound" ou utm.medium "outbound" — é como
+// o radar de contas carimba). Rede = o marketing pescou (tráfego pago, form,
+// social: todo o resto). A soma das 3 classes fecha com o total por construção.
+export const LEAD_CLASSES = ["semente", "rede", "alvo"];
+export function leadClassOf(lead) {
+  if (isReferralLead(lead)) return "semente";
+  const src = stripAccents(lead?.source);
+  if (lead?.outbound || src.includes("outbound") || stripAccents(lead?.utm?.medium) === "outbound") return "alvo";
+  return "rede";
+}
+
+// Contagens por classe numa janela: leads que ENTRARAM (createdAt), ganhos e
+// receita (winAt = Map do winsIn — a régua oficial da venda). Soma das classes
+// = tile de leads/ganhos do período, pro funil por origem nunca divergir.
+export function classCounts(leads, inWin, winAt) {
+  const out = Object.fromEntries(LEAD_CLASSES.map((c) => [c, { leads: 0, won: 0, revenue: 0 }]));
+  for (const l of leads) {
+    const c = out[leadClassOf(l)];
+    if (inWin(l.createdAt)) c.leads++;
+    if (winAt?.has(l.id)) { c.won++; c.revenue = round2(c.revenue + (Number(l.amount) || 0)); }
+  }
+  return out;
+}
+
 // ── Fechamentos numa janela ──────────────────────────────────────────────────
 // Vendas da janela pela régua oficial: isWonLead + data do wonAtOf. Fallback
 // pro lead legado sem carimbo nenhum: startedAt do cliente vinculado (leadId).
@@ -189,7 +217,10 @@ export function contactAttribution({ leads, actsOf, waMessages, saas, inWin, hum
   }
   const byAuthor = new Map();
   for (const { author } of first.values()) byAuthor.set(author, (byAuthor.get(author) || 0) + 1);
-  return { leadIds: new Set(first.keys()), byAuthor, automationReached: autoReached.size };
+  // `firstAt` = leadId → quando foi o 1º contato humano (alimenta o SLA de 1º
+  // toque: minutos entre o cadastro e a resposta do time).
+  const firstAt = new Map([...first].map(([id, v]) => [id, v.at]));
+  return { leadIds: new Set(first.keys()), firstAt, byAuthor, automationReached: autoReached.size };
 }
 
 export function funnelCounts(product, { leads, actsOf, inWin, winLeadsIn, adjust, waContactedIds } = {}) {
@@ -225,6 +256,27 @@ export const cashCollectedIn = (invoices, month) =>
   round2(invoices
     .filter((i) => i.status === "paid" && i.paidAt && monthKey(i.paidAt) === month)
     .reduce((a, i) => a + (Number(i.amount) || 0), 0));
+
+// Caixa numa janela em 3 BALDES (livro: novos negócios · add-ons · renovações).
+// Mesma régua da faixa de meta (fatura paga, por paidAt), só que repartida:
+// kind "upsell" = add-on; cliente que COMEÇOU dentro da janela = receita NOVA;
+// cliente antigo pagando de novo = renovação/recorrência. novos + upsell +
+// renovacao = cashCollectedIn da mesma janela, por construção.
+export function cashBucketsIn(invoices, customers, inWin) {
+  const startBy = new Map(customers.map((c) => [c.id, c.startedAt || ""]));
+  const out = { novos: 0, upsell: 0, renovacao: 0 };
+  for (const i of invoices) {
+    if (i.status !== "paid" || !i.paidAt || !inWin(i.paidAt)) continue;
+    const amt = Number(i.amount) || 0;
+    if (i.kind === "upsell") out.upsell += amt;
+    else if (inWin(startBy.get(i.customer))) out.novos += amt;
+    else out.renovacao += amt;
+  }
+  return {
+    novos: round2(out.novos), upsell: round2(out.upsell), renovacao: round2(out.renovacao),
+    total: round2(out.novos + out.upsell + out.renovacao),
+  };
+}
 
 // A receber até uma data (faturas abertas/vencidas com dueDate ≤ limite).
 export const receivablesUntil = (invoices, untilDay) =>
