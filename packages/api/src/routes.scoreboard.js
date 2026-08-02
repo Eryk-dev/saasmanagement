@@ -8,13 +8,14 @@
 // Sem histórico de churn confiável ainda, então retenção entra magra (contas
 // novas + cancelamentos com data) — cresce quando o billing registrar o evento.
 
-import { cadenceOf, firstStage, isLoss, TOUCH_TYPES } from "./stages.js";
+import { cadenceOf, firstStage, isLoss, kindOf, TOUCH_TYPES } from "./stages.js";
 import { TEAM_METRICS, META_CATALOG, deriveGoalsFromPace } from "./routes.metas.js";
 import { RATE_BENCHMARKS, computePipelinePace } from "./routes.pipeline-pace.js";
 import {
   DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead,
   callOutcome as coreCallOutcome,
   winsIn, customerStartMap, contactAttribution, isReferralLead,
+  classCounts, cashBucketsIn,
 } from "./metrics-core.js";
 
 const HOUR = 3_600_000;
@@ -539,6 +540,63 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
         closeRate: goalFor("", "closer", "conversaoCall"),
       },
     };
+
+    // ── Réguas do Receita Previsível (card "5 métricas" da Visão geral) ───────
+    // 1. Leads por CLASSE (Semente/Rede/Alvo): classes nunca entram na mesma
+    //    projeção (ciclo e taxa próprios). Soma das classes = leads que entraram
+    //    e ganhos do período (a MESMA winTransitionsFor do resto do placar).
+    team.classes = classCounts(leads, inWin, winTransitionsFor(leads));
+    // 2. Caixa do período em 3 baldes (novos · upsell · renovação) — mesma
+    //    régua de fatura paga da faixa de meta, só que repartida.
+    team.cash = cashBucketsIn(invoicesAll.filter((i) => i.saas === product.id), customers, inWin);
+    // 3. Pipeline CRIADO no período ("o indicador mais importante para
+    //    sinalizar a receita", p.218): oportunidade = call agendada na janela
+    //    (quando o bastão passa pro closer). R$ = valor conhecido (amount) +
+    //    ticket mediano dos ganhos de 90d pras oportunidades ainda sem valor.
+    const since90 = dayKey(new Date(now().getTime() - 89 * DAY));
+    const in90 = (iso) => iso && dayKey(iso) >= since90 && dayKey(iso) <= today;
+    const wins90 = winsIn(product, leads, in90, customerStartByLead);
+    const ticket90 = median([...wins90.keys()].map((id) => Number(leadById.get(id)?.amount) || 0).filter((v) => v > 0));
+    const pipeKnown = teamBooked.reduce((a, l) => a + (Number(l.amount) || 0), 0);
+    const pipeNoVal = teamBooked.filter((l) => !(Number(l.amount) > 0)).length;
+    team.pipelineCreated = {
+      count: teamBooked.length,
+      valueKnown: round2(pipeKnown),
+      ticketMedian90: ticket90,
+      estimated: round2(pipeKnown + (ticket90 || 0) * pipeNoVal),
+    };
+    // 4. SLA de 1º TOQUE: minutos do cadastro até o 1º contato humano (mesma
+    //    régua do contactAttribution) nos leads que ENTRARAM na janela. Meta de
+    //    resposta: 5 minutos em horário comercial (lead de madrugada/fim de
+    //    semana entra na mediana com a espera real — a fila abre 8h).
+    const touchMins = [];
+    let within5 = 0;
+    const slaCohort = leads.filter((l) => inWin(l.createdAt));
+    for (const l of slaCohort) {
+      const at = contact.firstAt?.get(l.id);
+      if (!at) continue;
+      const m = (new Date(at) - new Date(l.createdAt)) / 60_000;
+      if (!Number.isFinite(m) || m < 0) continue;
+      touchMins.push(m);
+      if (m <= 5) within5++;
+    }
+    team.firstTouch = {
+      medianMin: touchMins.length ? round2(median(touchMins)) : null,
+      within5m: within5,
+      touched: touchMins.length,
+      cohort: slaCohort.length,
+      pct5m: touchMins.length ? round2((within5 / touchMins.length) * 100) : null,
+    };
+    // 5. ESTAGNADAS (faxina mensal, p.191): oportunidade em etapa ATIVA de
+    //    venda parada há 14+ dias sem mudar de etapa — candidata a reativar,
+    //    reciclar pra nutrição ou desqualificar. Independe da janela do topo.
+    const STALL_KINDS = new Set(["qualificacao", "call", "proposta", "followup"]);
+    const nowMs = now().getTime();
+    const stalledLeads = leads
+      .filter((l) => STALL_KINDS.has(kindOf(product, l.stage)) && l.stageSince && (nowMs - new Date(l.stageSince).getTime()) / DAY > 14)
+      .map((l) => ({ id: l.id, name: l.name || l.nome || l.id, stage: l.stage, days: Math.floor((nowMs - new Date(l.stageSince).getTime()) / DAY) }))
+      .sort((a, b) => b.days - a.days);
+    team.stalled = { count: stalledLeads.length, items: stalledLeads.slice(0, 20) };
 
     return { saas: product.id, since, until, sdr, closer, cs, social, team };
   });

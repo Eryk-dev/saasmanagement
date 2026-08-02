@@ -229,6 +229,8 @@ function OverviewScreen({ onNav, onOpenLead }) {
 
         <FunnelConversions team={score?.team} pLabel={pLabel} />
 
+        <BookRulers team={score?.team} pLabel={pLabel} />
+
         <TeamPerformance score={score} bizDays={win.businessDays} onPerson={openPerson} />
 
         <Card title="Precisa de atenção" hint="riscos primeiro · cada item tem ação">
@@ -586,6 +588,73 @@ function FunnelConversions({ team, pLabel }) {
                 pro teste de consistência e pra voltar fácil se ele quiser. */}
           </>
         )}
+      </div>
+    </Card>
+  );
+}
+
+// ── Receita Previsível · as 5 métricas (ritual de sexta) ─────────────────────
+// O card que o time abre na revisão semanal, direto do livro (p.256-257):
+// leads por CLASSE (Semente/Rede/Alvo — cada uma com ciclo e previsibilidade
+// próprios, nunca na mesma projeção), lead → oportunidade, pipeline CRIADO
+// (nº + R$ adicionado ao funil, "o indicador mais importante para sinalizar a
+// receita"), fechamento do período e o caixa em 3 baldes (novos · upsell ·
+// renovação). Extras de disciplina: SLA de 1º toque (meta 5 min) e as
+// oportunidades estagnadas 14d+ (a faxina mensal). Tudo do MESMO bloco `team`
+// do /api/scoreboard que pinta o funil acima — janela e réguas idênticas.
+const rpPill = { display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 10px", borderRadius: 999, background: "var(--bg-inset)", border: "1px solid var(--line-1)" };
+const fmtMin = (m) => (m == null ? "—" : m >= 90 ? `${String(Math.round(m / 6) / 10).replace(".", ",")} h` : `${String(Math.round(m * 10) / 10).replace(".", ",")} min`);
+
+function RPBox({ value, label, sub, title }) {
+  return (
+    <div title={title} style={{ flex: "1 1 118px", minWidth: 112, padding: "10px 12px", textAlign: "center", borderRadius: "var(--r-3)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", cursor: title ? "help" : "default" }}>
+      <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>{value}</div>
+      <div style={{ fontSize: 11.5, color: "var(--fg-3)" }}>{label}</div>
+      {sub && <div className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)", marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+}
+
+function BookRulers({ team, pLabel }) {
+  if (!team) return null;
+  const cl = team.classes || {};
+  const cash = team.cash || {};
+  const pipe = team.pipelineCreated || {};
+  const ft = team.firstTouch || {};
+  const stalled = team.stalled || {};
+  const classSub = (c) => (c ? `${int(c.won)} ${c.won === 1 ? "ganho" : "ganhos"}${c.revenue > 0 ? ` · ${money(c.revenue)}` : ""}` : null);
+  const leadToOpp = team.leadsNew > 0 ? Math.round((team.callsBooked / team.leadsNew) * 1000) / 10 : null;
+  return (
+    <Card title="Receita Previsível · as 5 métricas" hint={`${pLabel} · ritual de sexta · soma das classes fecha com o funil acima`}>
+      <div style={{ padding: "6px 24px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+        <div className="tbl-x">
+          <div style={{ display: "flex", gap: 8, alignItems: "stretch", minWidth: 780 }}>
+            <RPBox value={int(cl.rede?.leads)} label="Leads · Rede" sub={classSub(cl.rede)}
+              title="A rede que o marketing joga: tráfego pago, form, social. Volume, mas a classe MENOS previsível (depende do leilão)." />
+            <RPBox value={int(cl.semente?.leads)} label="Leads · Semente" sub={classSub(cl.semente)}
+              title="Indicação e boca a boca (origem com 'indicação'). Demora pra cultivar e tem a MAIOR conversão de todas; o pedido de indicação na Integração alimenta aqui." />
+            <RPBox value={int(cl.alvo?.leads)} label="Leads · Alvo" sub={classSub(cl.alvo)}
+              title="Outbound: a prospecção foi atrás (origem/utm 'outbound', radar de contas). A fonte mais previsível e controlável segundo o livro." />
+            <RPBox value={leadToOpp == null ? "—" : pctStr(leadToOpp)} label="Lead → oportunidade" sub={`${int(team.callsBooked)} de ${int(team.leadsNew)}`}
+              title="Dos leads que entraram na janela, quantos viraram oportunidade (call agendada). Métrica 2 do livro." />
+            <RPBox value={int(pipe.count)} label="Pipeline criado" sub={pipe.estimated > 0 ? `≈ ${money(pipe.estimated)} no funil` : "sem valor lançado"}
+              title={`Oportunidades criadas no período e o R$ adicionado ao funil: ${money(pipe.valueKnown || 0)} de valor lançado${pipe.ticketMedian90 ? ` + ticket mediano de 90d (${money(pipe.ticketMedian90)}) nas sem valor` : ""}. O livro chama de "o indicador mais importante para sinalizar a receita".`} />
+            <RPBox value={team.closeRatePeriod == null ? "—" : pctStr(team.closeRatePeriod)} label="Fechamento" sub={`${int(team.won)} ${team.won === 1 ? "ganho" : "ganhos"} · ${money(team.revenue)}`}
+              title="Ganhos do período ÷ calls realizadas — a mesma régua do funil acima." />
+            <RPBox value={money(cash.total || 0)} label="Caixa do período" sub={`novos ${money(cash.novos || 0)} · upsell ${money(cash.upsell || 0)} · renov. ${money(cash.renovacao || 0)}`}
+              title="Fatura paga na janela, repartida em 3 baldes (novos negócios, add-ons, renovação). Receita saudável cresce nos três, não só em novos." />
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 11.5, color: "var(--fg-3)" }}>
+          <span style={rpPill} title="Minutos entre o cadastro e o 1º contato humano (mesma régua de contato do funil). Lead quente esfria em minutos: a meta é responder em 5 min no horário comercial; cadastro de madrugada/fim de semana espera a fila das 8h e entra na mediana com a espera real.">
+            1º toque: <b>{fmtMin(ft.medianMin)}</b>{ft.medianMin != null && " (mediana)"} · <b>{ft.pct5m == null ? "—" : pctStr(ft.pct5m)}</b> em até 5 min
+            <span style={{ color: "var(--fg-4)" }}>· meta 5 min</span>
+          </span>
+          <span style={rpPill} title="Oportunidades em etapa ativa de venda (qualificação, call, proposta, follow-up) paradas há mais de 14 dias sem mudar de etapa. Regra do livro (p.191): faxina mensal — reativar, reciclar pra nutrição ou desqualificar; funil limpo = forecast honesto.">
+            estagnadas 14d+: <b>{int(stalled.count)}</b> {stalled.count === 1 ? "oportunidade parada" : "oportunidades paradas"}
+            <span style={{ color: "var(--fg-4)" }}>· faxina na última sexta do mês</span>
+          </span>
+        </div>
       </div>
     </Card>
   );
