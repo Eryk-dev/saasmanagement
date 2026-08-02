@@ -637,7 +637,7 @@ function BookRulers({ team, pLabel }) {
               title="Outbound: a prospecção foi atrás (origem/utm 'outbound', radar de contas). A fonte mais previsível e controlável segundo o livro." />
             <RPBox value={leadToOpp == null ? "—" : pctStr(leadToOpp)} label="Lead → oportunidade" sub={`${int(team.callsBooked)} de ${int(team.leadsNew)}`}
               title="Dos leads que entraram na janela, quantos viraram oportunidade (call agendada). Métrica 2 do livro." />
-            <RPBox value={int(pipe.count)} label="Pipeline criado" sub={pipe.estimated > 0 ? `≈ ${money(pipe.estimated)} no funil` : "sem valor lançado"}
+            <RPBox value={int(pipe.count)} label="Pipeline criado" sub={`${pipe.estimated > 0 ? `≈ ${money(pipe.estimated)} no funil` : "sem valor lançado"}${pipe.accepted > 0 ? ` · ${int(pipe.accepted)} aceitas` : ""}`}
               title={`Oportunidades criadas no período e o R$ adicionado ao funil: ${money(pipe.valueKnown || 0)} de valor lançado${pipe.ticketMedian90 ? ` + ticket mediano de 90d (${money(pipe.ticketMedian90)}) nas sem valor` : ""}. O livro chama de "o indicador mais importante para sinalizar a receita".`} />
             <RPBox value={team.closeRatePeriod == null ? "—" : pctStr(team.closeRatePeriod)} label="Fechamento" sub={`${int(team.won)} ${team.won === 1 ? "ganho" : "ganhos"} · ${money(team.revenue)}`}
               title="Ganhos do período ÷ calls realizadas — a mesma régua do funil acima." />

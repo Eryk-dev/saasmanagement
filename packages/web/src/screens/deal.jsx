@@ -4,8 +4,8 @@ import { ActivityList, ActivityComposer } from "../components/timeline.jsx";
 import { RoutineSuggestion } from "../components/routine-suggestion.jsx";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 import { leadScoreLabel, leadAge, waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
-import { stageKind, lossReasonLabel, nextTouchPill, workableStages } from "../lib/funnel.js";
-import { displayName, usersByRole } from "../lib/users.js";
+import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind } from "../lib/funnel.js";
+import { displayName, usersByRole, currentUser } from "../lib/users.js";
 import { paymentLabel, closedPlanLabel } from "../lib/payments.js";
 import { api } from "../lib/api.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
@@ -376,6 +376,47 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16, alignItems: "start" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
             <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Cliente</div>
+
+          {/* Requalificação (Receita Previsível): a oportunidade que o SDR
+              passou só CONTA quando o closer requalifica e ACEITA (fit + decisor
+              + quer avançar). Aparece nas etapas do closer enquanto não houver
+              aceite; devolver manda o card de volta pra qualificação com o
+              motivo gravado no lead (o SDR vê no card). */}
+          {isOpen && !lead.customerId && ["call", "proposta", "followup"].includes(kind) && (
+            lead.oppAccepted ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: "var(--r-2)", background: "var(--pos-soft, var(--bg-inset))", border: "1px solid var(--line-1)", fontSize: 11.5, color: "var(--fg-3)" }}>
+                <span style={{ color: "var(--pos)" }}>✓</span>
+                <span>Oportunidade aceita{lead.oppAcceptedBy ? ` por ${displayName(lead.oppAcceptedBy)}` : ""} em {new Date(lead.oppAccepted).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>
+              </div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "9px 10px", borderRadius: "var(--r-2)", background: "var(--warn-soft)", border: "1px solid var(--line-1)" }}>
+                <div style={{ flex: "1 1 180px", minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600 }}>Oportunidade aguardando o seu aceite</div>
+                  <div style={{ fontSize: 11, color: "var(--fg-3)", marginTop: 1 }}>Requalifique: tem fit, o decisor participa e quer o próximo passo?</div>
+                </div>
+                <button onClick={() => patch({ oppAccepted: new Date().toISOString(), oppAcceptedBy: currentUser()?.id || "" })}
+                  style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--pos)", background: "var(--pos)", color: "#fff", fontSize: 12, fontWeight: 600 }}>
+                  ✓ aceitar
+                </button>
+                <button onClick={() => {
+                  const nota = window.prompt("Por que está devolvendo pro SDR? (fica no card)");
+                  if (nota == null) return;
+                  patch({ oppReturned: new Date().toISOString(), oppReturnNote: nota, oppAccepted: "", oppAcceptedBy: "" });
+                  const back = stageByKind(saasCfg, "qualificacao");
+                  if (back?.stage) moveStage(back.stage);
+                }}
+                  style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
+                  devolver pro SDR
+                </button>
+              </div>
+            )
+          )}
+          {/* A devolução fica visível pro SDR retrabalhar com o motivo na mão. */}
+          {lead.oppReturnNote && ["novo", "contato", "qualificacao"].includes(kind) && (
+            <div style={{ padding: "7px 10px", borderRadius: "var(--r-2)", background: "var(--warn-soft)", border: "1px solid var(--line-1)", fontSize: 11.5, color: "var(--fg-2)" }}>
+              <b>Devolvida pelo closer:</b> {lead.oppReturnNote}
+            </div>
+          )}
           {/* Resumo do cliente: dor em destaque + os fatos compilados num grid.
               O lápis abre a edição INLINE dos campos do lead (sem trocar de tela). */}
           <div style={box}>
