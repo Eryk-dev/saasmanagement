@@ -11,6 +11,7 @@ import { leadTier } from "../lib/ui.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { buildPeople, TeamCards, topPerformer } from "../components/team-cards.jsx";
 import { usePeriod } from "../components/period-picker.jsx";
+import { IcpCard } from "../components/icp-card.jsx";
 // Visão geral — cockpit de GESTÃO. Responde: como está o negócio (receita, CAC,
 // ROAS) e como está o DESEMPENHO de cada papel (SDR/closer/CS), pessoa a pessoa,
 // contra a meta. A execução ("quem contatar agora") mora no Meu dia, não aqui.
@@ -197,6 +198,9 @@ function OverviewScreen({ onNav, onOpenLead }) {
               {minha && <TeamCards people={[minha]} bizDays={win.businessDays} highlight={null} onPerson={canSeeScreen("pipeline") ? openPerson : null} />}
             </div>
           </Card>
+          {/* A régua de quem a gente caça fica na frente de TODO MUNDO, não só
+              da gestão: é o SDR/closer que decide em quem gastar o dia. */}
+          <IcpCard />
         </div>
       </div>
     );
@@ -230,6 +234,8 @@ function OverviewScreen({ onNav, onOpenLead }) {
         <FunnelConversions team={score?.team} pLabel={pLabel} />
 
         <BookRulers team={score?.team} pLabel={pLabel} />
+
+        <IcpCard />
 
         <TeamPerformance score={score} bizDays={win.businessDays} onPerson={openPerson} />
 

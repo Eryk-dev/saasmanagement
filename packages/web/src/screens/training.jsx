@@ -6,6 +6,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { useData } from "../data.jsx";
 import { currentUser, isAdminUser } from "../lib/users.js";
 import { FocusShell } from "./training-focus.jsx";
+import { IcpCard } from "../components/icp-card.jsx";
 
 // Treinamentos — flashcards estilo Anki com repetição espaçada (FSRS) POR
 // PESSOA. Três modos: ESTUDAR (baralhos da sua vaga com contadores novo/
@@ -97,6 +98,9 @@ function Study({ saasId, mode, setMode }) {
       <>
         <StartCard decks={data.decks} exam={data.exam} onExam={() => setExam(data.exam)}
           onStudy={(foco) => { setSession(true); setFocus(!!foco); }} />
+        {/* O ICP mora no treino também: decorar quem a gente caça é parte do
+            estudo diário (product.icp — o mesmo cartão da Visão geral). */}
+        <IcpCard compact />
         <DeckList decks={data.decks} />
         <RoleGuides />
       </>
