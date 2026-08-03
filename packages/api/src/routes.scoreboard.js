@@ -13,7 +13,7 @@ import { TEAM_METRICS, META_CATALOG, deriveGoalsFromPace } from "./routes.metas.
 import { RATE_BENCHMARKS, computePipelinePace } from "./routes.pipeline-pace.js";
 import {
   DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead,
-  callOutcome as coreCallOutcome,
+  callOutcome as coreCallOutcome, callCohortIn,
   winsIn, customerStartMap, contactAttribution, isReferralLead,
   classCounts, cashBucketsIn,
 } from "./metrics-core.js";
@@ -172,7 +172,9 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     // oficial da venda como fato do lead (isWonLead + wonAt), com fallback pro
     // lead legado sem carimbo (startedAt do cliente vinculado).
     const actsOf = (id) => actsByLead.get(id) || [];
-    const callOutcome = (list) => coreCallOutcome(product, list, actsOf, today);
+    // `inWin` vai junto: a testemunha (resumo de call) só decide compareceu/
+    // furou quando o resumo é DESTA janela (ver callOutcome no metrics-core).
+    const callOutcome = (list) => coreCallOutcome(product, list, actsOf, today, inWin);
     const customerStartByLead = customerStartMap(customers);
     const winTransitionsFor = (list) => winsIn(product, list, inWin, customerStartByLead);
 
@@ -233,9 +235,11 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     const humanIds = new Set(users.map((u) => u.id));
     const contact = contactAttribution({ leads, actsOf, waMessages, saas: product.id, inWin, humanIds, creditAllTo: soloSdr || undefined });
     const contactsOf = (uid) => contact.byAuthor.get(uid) || 0;
-    // Safra de calls do TIME (callAt na janela) — o funil e o card do SDR único
-    // leem DESTA safra (call sem dono também credita no SDR).
-    const teamBooked = leads.filter((l) => inWin(l.callAt));
+    // Safra de calls do TIME — callAt na janela OU call com transcrição na
+    // janela (callCohortIn): a testemunha resgata a call feita cujo callAt foi
+    // remarcado/limpo depois (Leo, 03/08). O funil e o card do SDR único leem
+    // DESTA safra (call sem dono também credita no SDR).
+    const teamBooked = callCohortIn(leads, actsOf, inWin);
     const teamOutcome = callOutcome(teamBooked);
     // COBERTURA da safra (a "taxa de contato" honesta): dos leads que ENTRARAM
     // na janela, quantos tiveram contato humano — é o que o rótulo promete
@@ -269,11 +273,13 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
         }
       }
       // Calls agendadas = calls dos leads DELE (owner) pela DATA DA CALL — a
-      // MESMA régua do funil (callAt na janela; régua única, Leo 24/07). Call
-      // SEM dono credita no SDR único (Leo, 25/07). O COUNT mostrado soma a
-      // parte histórica (booked pré-cockpit) pra bater com o tile do funil; as
-      // TAXAS usam só o orgânico (histórico não tem resultado registrado).
-      const booked = leads.filter((l) => (l.owner === uid || (!l.owner && uid === soloSdr)) && inWin(l.callAt));
+      // MESMA régua do funil (callAt na janela; régua única, Leo 24/07), com o
+      // resgate da testemunha (callCohortIn: call transcrita na janela conta
+      // mesmo com callAt remarcado/limpo — Leo, 03/08). Call SEM dono credita
+      // no SDR único (Leo, 25/07). O COUNT mostrado soma a parte histórica
+      // (booked pré-cockpit) pra bater com o tile do funil; as TAXAS usam só o
+      // orgânico (histórico não tem resultado registrado).
+      const booked = callCohortIn(leads.filter((l) => l.owner === uid || (!l.owner && uid === soloSdr)), actsOf, inWin);
       const callsBookedOrganic = booked.length;
       const callsBooked = callsBookedOrganic + (bookedHist.get(uid) || 0);
 
@@ -353,7 +359,7 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       // ele (`calls` = orgânico dele). "Calls realizadas" MOSTRA o real + a parte
       // dele do histórico (o número que o Leo quer manter), e a Call→ganho
       // divide por ESSE mesmo número, então o card fecha.
-      const callLeads = mine.filter((l) => inWin(l.callAt));
+      const callLeads = callCohortIn(mine, actsOf, inWin);
       const calls = callLeads.length;
       // Compareceu/furo pela MESMA régua da safra (callOutcome do metrics-core).
       const callsShown = callOutcome(callLeads).shown + (shownHist.get(uid) || 0);
