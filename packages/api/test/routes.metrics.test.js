@@ -5,6 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
+import { dayKey } from "../src/metrics-core.js";
 
 const { registerRoutes } = await import("../src/routes.js");
 
@@ -81,8 +82,11 @@ test("GET /api/metrics/:saas calcula CAC, conversão, LTV e série mensal", asyn
   // Leads do mês CORRENTE da série: os 10 foram criados de 1 a 10 dias atrás,
   // então no começo do mês parte (ou todos) caem no mês anterior — a conta
   // certa depende do calendário, não de "pelo menos 1" (quebrava todo dia 1º).
-  const monthKey = new Date().toISOString().slice(0, 7);
-  const inMonth = Array.from({ length: 10 }, (_, i) => iso(i + 1)).filter((d) => d.startsWith(monthKey)).length;
+  // E o MÊS é o do DIA DO NEGÓCIO (dayKey America/Sao_Paulo, a régua da API):
+  // comparar pelo mês UTC quebrava todo dia entre 21h e meia-noite BRT, quando
+  // o ISO já virou o dia (às vezes o mês) e o negócio ainda não.
+  const monthKey = dayKey(new Date()).slice(0, 7);
+  const inMonth = Array.from({ length: 10 }, (_, i) => iso(i + 1)).filter((d) => dayKey(d).slice(0, 7) === monthKey).length;
   assert.equal(last.leads, inMonth);
 
   assert.equal((await app.inject({ method: "GET", url: "/api/metrics/nada" })).statusCode, 404);
