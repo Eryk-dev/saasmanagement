@@ -31,6 +31,179 @@ const { useState: useS, useEffect: useE, useRef: useR } = React;
 // funcionando; só a marca muda por baixo. LeverAds é o padrão (navy/teal,
 // Instrument Sans); o Elo entra com o manual dele: preto #0c0a08, ouro,
 // DM Sans no texto e Playfair Display no wordmark.
+// Copy default dos templates na voz do ELO (manual de marca: direto e
+// intencional, mecânica concreta — "uma missão por dia, cada um responde
+// sozinho, a revelação é juntos" — emocional com pé no chão, "premiação" nunca
+// "sorteio"). `*palavra*` vira destaque em ouro. Campo fora do mapa cai no
+// default do template com as trocas de BRAND.swaps.
+const ELO_COPY = {
+  "story-chamada": {
+    eyebrow: "Elo",
+    title: "Vocês conversam ou só *se falam*?",
+    body: "Uma missão por dia pro casal. Cada um responde sozinho — e a revelação é juntos. Conversas que vocês nunca tiveram.",
+    cta: "Baixa o Elo",
+  },
+  "story-lista": {
+    eyebrow: "Como funciona",
+    title: "Um hábito de casal em *3 passos*",
+    item1: "Uma missão nova todo dia",
+    item2: "Cada um responde sem ver o outro",
+    item3: "A revelação é o momento de vocês",
+    cta: "Quero testar",
+  },
+  "story-numero": {
+    eyebrow: "Streak de verdade",
+    stat: "18 dias",
+    label: "seguidos de missão cumprida — o recorde atual",
+    body: "Todo dia conta. Perdeu o dia, perdeu o elo — e a contagem volta do zero.",
+    cta: "Começa o de vocês",
+  },
+  "story-foto": {
+    title: "A pergunta de hoje rendeu *uma hora de conversa*.",
+    cta: "Baixa o Elo",
+  },
+  "story-pergunta": {
+    eyebrow: "Pergunta rápida",
+    title: "Qual foi a última vez que vocês conversaram *sem celular por perto*?",
+  },
+  "story-agenda": {
+    eyebrow: "Agenda",
+    title: "Temporada nova com *premiação real* pro ranking",
+    chips: "01/10|top 100 casais|no app",
+    body: "Casais que mantêm a streak sobem no ranking e concorrem à premiação da temporada.",
+    cta: "Entra no ranking",
+  },
+  "post-chamada": {
+    eyebrow: "Elo",
+    title: "Amar é fácil. *Ser presente* dá trabalho.",
+    body: "O Elo transforma cuidado em hábito: uma missão por dia, os dois respondem sozinhos, a revelação é juntos.",
+    cta: "Link na bio",
+  },
+  "post-numero": {
+    eyebrow: "Na prática",
+    stat: "5min",
+    label: "por dia pra sair do piloto automático",
+    body: "Menos que um scroll no feed. Uma missão, duas respostas e uma conversa que vale o dia.",
+  },
+  "post-frase": {
+    title: "Ninguém termina por falta de amor. Termina por *falta de atenção*.",
+    author: "Elo · missões para casais",
+  },
+  "post-foto": {
+    title: "Cada resposta vira *memória* no diário do casal.",
+    body: "Daqui a um ano, vocês vão reler tudo isso.",
+  },
+  "post-antesdepois": {
+    eyebrow: "Antes e depois",
+    title: "O mesmo casal, *dois mundos*",
+    before: "Conversa só de logística\nCada um no seu celular\nDatas esquecidas",
+    after: "Uma missão por dia\nRevelação juntos\nStreak de semanas",
+  },
+  "post-dica": {
+    eyebrow: "Dica rápida",
+    num: "#01",
+    title: "Respondam a missão *antes de dormir*",
+    body: "Vira ritual: os dois respondem, revelam juntos e o dia termina em conversa — não em rolagem de feed.",
+  },
+  "car-dor": {
+    s1_eyebrow: "Pra quem quer ser presente",
+    s1_title: "O problema do casal moderno *não é amor*. É rotina.",
+    s2_kicker: "O problema",
+    s2_title: "Vocês viraram colegas de casa",
+    s2_body: "Conversa de logística, celular no sofá, carinho no piloto automático. Sem briga — só distância crescendo devagar.",
+    s3_kicker: "A solução",
+    s3_title: "Um elo novo *todo dia*",
+    s3_body: "O Elo manda uma missão por dia. Cada um responde sozinho e a revelação é juntos — 5 minutos que puxam a conversa de volta.",
+    s4_title: "A primeira missão de vocês é *grátis*.",
+    s4_cta: "Link na bio",
+  },
+  "car-passos": {
+    s1_eyebrow: "Guia rápido",
+    s1_title: "Como criar o hábito que *segura a relação*",
+    s2_title: "Baixe e convide seu par",
+    s2_body: "Um baixa, manda o convite e o outro entra com o código. Leva um minuto.",
+    s3_title: "Respondam a missão do dia",
+    s3_body: "Cada um responde sozinho, sem ver a resposta do outro. Sem filtro, sem combinar.",
+    s4_title: "Revelem juntos",
+    s4_body: "A revelação mostra os dois lados, soma a streak e vira memória no diário do casal.",
+    s4_cta: "Baixa o Elo · link na bio",
+  },
+  "car-case": {
+    s1_eyebrow: "Casais no Elo",
+    s1_title: "O que *um mês de Elo* faz com um casal",
+    s2_stat1: "30", s2_label1: "missões respondidas a dois",
+    s2_stat2: "18", s2_label2: "dias de streak seguidos",
+    s2_stat3: "60", s2_label3: "memórias guardadas no diário",
+    s3_kicker: "Como",
+    s3_title: "Uma missão por dia, os dois respondem",
+    s3_body: "Pergunta, desafio ou memória — nunca se repete. A revelação é o momento do casal.",
+    s4_title: "O próximo casal pode ser *vocês*.",
+    s4_cta: "Link na bio",
+  },
+  "car-mitos": {
+    s1_eyebrow: "Mitos e verdades",
+    s1_title: "O que dizem sobre *cuidar da relação*",
+    s2_mito: "Relacionamento bom não dá trabalho",
+    s2_verdade: "Todo relacionamento vivo é cultivado. A diferença é ter um caminho claro — 5 minutos por dia bastam.",
+    s3_mito: "A gente já se conhece completamente",
+    s3_verdade: "Casais no Elo descobrem coisas novas depois de anos juntos. Sempre tem pergunta que nunca foi feita.",
+    s4_title: "Testem a primeira missão *de graça*.",
+    s4_cta: "Link na bio",
+  },
+  "car-bastidores": {
+    s1_title: "Por dentro do *Elo*",
+    s2_body: "A missão chega todo dia no horário que o casal escolher.",
+    s3_body: "Streak, diário e ranking: o cuidado vira jogo — e o jogo vira hábito.",
+    s4_title: "Querem ver *na prática*?",
+    s4_cta: "Link na bio",
+  },
+  "car-faq": {
+    s1_eyebrow: "Perguntas frequentes",
+    s1_title: "O que todo casal pergunta *antes de baixar*",
+    s2_q: "Precisa dos dois no app?",
+    s2_a: "Sim — e é aí que a mágica acontece: um baixa, convida o outro e o casal joga junto. A primeira missão é grátis.",
+    s3_q: "E se um dia a gente esquecer?",
+    s3_a: "Existe o congelamento de streak: a cada 3 dias vocês ganham uma proteção pra não zerar por um deslize.",
+    s4_title: "Ficou dúvida? *Manda mensagem.*",
+    s4_cta: "Manda no direct",
+  },
+  "seq-dor": {
+    s1_eyebrow: "Pra quem quer ser presente",
+    s1_title: "Vocês não brigam. Só *se falam cada vez menos*.",
+    s2_kicker: "O problema",
+    s2_title: "A rotina come a conversa",
+    s2_body: "Trabalho, contas, celular. No fim do dia sobra um \"e aí, tudo bem?\" — e a relação vive de resto.",
+    s3_kicker: "A solução",
+    s3_title: "Uma missão por dia, *os dois juntos*",
+    s3_body: "O Elo pergunta o que vocês não perguntariam. Cada um responde sozinho, a revelação é juntos.",
+    s4_title: "A primeira missão é *grátis*.",
+    s4_cta: "Baixa o Elo",
+  },
+  "seq-passos": {
+    s1_eyebrow: "Guia rápido",
+    s1_title: "Como sair do piloto automático em *3 passos*",
+    s2_title: "Baixe e convide seu par",
+    s2_body: "Um baixa, manda o convite, o outro entra com o código. Um minuto.",
+    s3_title: "Respondam sem combinar",
+    s3_body: "A missão do dia chega pros dois. Cada um responde sem ver a resposta do outro.",
+    s4_title: "Revelem juntos",
+    s4_body: "A revelação soma a streak e vira memória no diário. Amanhã tem outra.",
+    s4_cta: "Baixa o Elo · link na bio",
+  },
+  "seq-case": {
+    s1_eyebrow: "Casais no Elo",
+    s1_title: "Um mês de Elo muda *a conversa* de um casal",
+    s2_stat1: "30", s2_label1: "missões a dois",
+    s2_stat2: "18", s2_label2: "dias de streak",
+    s2_stat3: "60", s2_label3: "memórias no diário",
+    s3_kicker: "Como",
+    s3_title: "Uma missão por dia, os dois respondem",
+    s3_body: "Pergunta, desafio ou memória — e a revelação é o momento do casal.",
+    s4_title: "O próximo casal pode ser *vocês*.",
+    s4_cta: "Baixa o Elo",
+  },
+};
+
 const BRAND_DEFS = {
   leverads: {
     colors: {
@@ -66,6 +239,7 @@ const BRAND_DEFS = {
     filePrefix: "elo",
     // Voz nos defaults dos templates (o copy é editável de toda forma).
     swaps: { LeverAds: "Elo", "@lever.ads": "appelo.com.br" },
+    copy: ELO_COPY, // defaults dos templates na voz do Elo (campo a campo)
   },
 };
 
@@ -1051,7 +1225,13 @@ const brandSwap = (s) => {
   for (const [from, to] of Object.entries(BRAND.swaps)) out = out.split(from).join(to);
   return out;
 };
-const defaultsOf = (tpl) => Object.fromEntries(tpl.fields.map((f) => [f.k, f.def == null ? f.def : brandSwap(f.def)]));
+// Default de cada campo: a marca ativa pode ter copy PRÓPRIA por template
+// (BRAND.copy, voz do produto); campo fora do mapa cai no def do template com
+// as trocas genéricas (wordmark/handle) do brandSwap.
+const defaultsOf = (tpl) => Object.fromEntries(tpl.fields.map((f) => {
+  const own = BRAND.copy?.[tpl.id]?.[f.k];
+  return [f.k, own !== undefined ? own : (f.def == null ? f.def : brandSwap(f.def))];
+}));
 const photoSlotsOf = (tpl) => tpl.els.filter((e) => e.type === "photo");
 
 // ── Editor ───────────────────────────────────────────────────────────────────
