@@ -15,7 +15,7 @@
 
 export const SCREEN_IDS = [
   "overview", "today", "pipeline", "customers", "metrics", "expenses",
-  "social", "forms", "proposals", "creative", "offers", "disparos", "whatsapp", "agenda", "consultas", "calls", "integrations", "aquisicao", "analise", "funcionarios", "metas", "training", "tasks", "mindmaps", "settings",
+  "social", "forms", "proposals", "creative", "offers", "contracts", "disparos", "whatsapp", "agenda", "consultas", "calls", "integrations", "aquisicao", "analise", "funcionarios", "metas", "training", "tasks", "mindmaps", "settings",
   "outbound", "remuneracao",
   "eloapp", "landingpages",
 ];
@@ -67,6 +67,7 @@ const ROUTE_SCREENS = [
   ["/api/proposal_templates", ["proposals"]],
   ["/api/proposals", ["proposals"]],     // inclui /preview
   ["/api/offers", ["offers"]],           // links de pagamento das ofertas
+  ["/api/contracts", ["contracts"]],     // modelos de contrato (biblioteca)
   ["/api/campaigns", ["disparos"]],      // disparos de e-mail + WhatsApp (mark, ai-copy e CRUD)
   ["/api/outbound_accounts", ["outbound"]], // radar de contas do outbound (Cold Calling 2.0)
   ["/api/comp_plans", ["remuneracao"]],  // remuneração por cargo (ADMIN_PREFIXES exige etiqueta admin, além da tela)
