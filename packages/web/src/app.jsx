@@ -28,6 +28,8 @@ import { FuncionariosScreen } from "./screens/funcionarios.jsx";
 import { MetasScreen } from "./screens/metas.jsx";
 import { TrainingScreen, TrainingGate } from "./screens/training.jsx";
 import { CustomersScreen } from "./screens/customers.jsx";
+import { EloAppScreen } from "./screens/eloapp.jsx";
+import { LandingPagesScreen } from "./screens/landingpages.jsx";
 import { TasksScreen } from "./screens/tasks.jsx";
 import { MindmapsScreen } from "./screens/mindmaps.jsx";
 import { SettingsScreen } from "./screens/settings.jsx";
@@ -172,9 +174,11 @@ function App() {
     consultas:   ["Comercial", "Consultas"],
     social:      ["Marketing", "Redes sociais"],
     metrics:     ["Marketing", "Publicidade"],
+    landingpages: ["Marketing", "Landing pages"],
     forms:       ["Marketing", "Formulários"],
     creative:    ["Marketing", "Canvas"],
     disparos:    ["Marketing", "Disparos"],
+    eloapp:      ["Análises", "Análise do App"],
     aquisicao:   ["Análises", "Análise de Aquisição"],
     calls:       ["Análises", "Análise de Pitches"],
     integrations: ["Análises", "Análise de Integração"],
@@ -251,6 +255,8 @@ function App() {
           {scr === "integrations" && <IntegrationsScreen onOpenLead={openLead} />}
           {scr === "aquisicao"   && <AquisicaoScreen />}
           {scr === "analise"     && <AnaliseScreen />}
+          {scr === "eloapp"      && <EloAppScreen />}
+          {scr === "landingpages" && <LandingPagesScreen />}
           {scr === "funcionarios" && <FuncionariosScreen onNav={nav} />}
           {scr === "metas"       && <MetasScreen />}
           {scr === "training"    && <TrainingScreen />}

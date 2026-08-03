@@ -49,6 +49,7 @@ import { findDuplicateLead, dedupMergePatch } from "./lead-dedup.js";
 import { registerFunnelMetricsRoutes } from "./routes.funnel-metrics.js";
 import { registerScoreboardRoutes } from "./routes.scoreboard.js";
 import { registerPipelinePaceRoutes } from "./routes.pipeline-pace.js";
+import { registerEloRoutes } from "./elo.js";
 
 // Auth interna fica FORA do CRUD genérico: passwordHash/token de sessão nunca
 // saem pela API. Gestão via rotas dedicadas (/api/auth/*).
@@ -296,6 +297,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerPipelinePaceRoutes(app, repo, opts.pipelinePace);
   // Placar por pessoa/papel (SDR/closer/CS) — o cockpit de gestão da Visão geral.
   registerScoreboardRoutes(app, repo, opts.scoreboard);
+  // Análises do Elo App (produto B2C): agregados do banco do app + beacon
+  // público das landing pages (/public/lp/events) e resumo de conversão.
+  registerEloRoutes(app, repo, opts.elo);
   // Usuários do time: login/logout/me + gestão mínima (rotas dedicadas).
   registerAuthRoutes(app, repo);
   // Google Meet: conectar conta (OAuth) + criar call na agenda do closer.

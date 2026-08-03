@@ -17,6 +17,7 @@ export const SCREEN_IDS = [
   "overview", "today", "pipeline", "customers", "metrics", "expenses",
   "social", "forms", "proposals", "creative", "offers", "disparos", "whatsapp", "agenda", "consultas", "calls", "integrations", "aquisicao", "analise", "funcionarios", "metas", "training", "tasks", "mindmaps", "settings",
   "outbound", "remuneracao",
+  "eloapp", "landingpages",
 ];
 
 export const sanitizeScreens = (x) =>
@@ -43,6 +44,8 @@ const ROUTE_SCREENS = [
   ["/api/social", ["social"]],
   ["/api/marketing", ["metrics", "aquisicao"]],
   ["/api/metrics/", ["metrics", "aquisicao"]],
+  ["/api/elo/", ["eloapp", "landingpages"]],  // agregados do app Elo (tela Análise do App)
+  ["/api/lp/", ["landingpages"]],             // resumo do beacon das landing pages
   ["/api/ad_insights", ["metrics"]],
   ["/api/ai-costs", ["expenses"]],
   ["/api/expenses", ["expenses"]], // CRUD genérico E /api/expenses/summary/:saas

@@ -54,6 +54,7 @@ function tbl(name) {
 const INDEXES = [
   ["form_events_form_created_idx", "form_events", `((json->>'form'), (json->>'createdAt'))`],
   ["form_events_saas_created_idx", "form_events", `((json->>'saas'), (json->>'createdAt'))`],
+  ["lp_events_saas_created_idx", "lp_events", `((json->>'saas'), (json->>'createdAt'))`],
   ["form_submissions_form_created_idx", "form_submissions", `((json->>'form'), (json->>'createdAt'))`],
   ["wa_messages_thread_idx", "wa_messages", `((json->>'thread'))`],
   ["activities_saas_type_idx", "activities", `((json->>'saas'), (json->>'type'))`],

@@ -128,6 +128,9 @@ export const api = {
     return req("GET", `/api/${collection}${qs ? `?${qs}` : ""}`);
   },
   get: (collection, id) => req("GET", `/api/${collection}/${id}`),
+  // Análises do Elo App (produto B2C) + beacon das landing pages (elo.js).
+  eloOverview: (days) => req("GET", `/api/elo/overview${days ? `?days=${days}` : ""}`),
+  lpSummary: (saas, days) => req("GET", `/api/lp/summary?saas=${encodeURIComponent(saas || "elo")}${days ? `&days=${days}` : ""}`),
   create: (collection, obj) => req("POST", `/api/${collection}`, obj),
   update: (collection, id, patch) => req("PATCH", `/api/${collection}/${id}`, patch),
   remove: (collection, id) => req("DELETE", `/api/${collection}/${id}`),
