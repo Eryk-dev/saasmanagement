@@ -13,6 +13,7 @@ import { ProposalsScreen } from "./screens/proposals.jsx";
 import { CreativeScreen } from "./screens/creative.jsx";
 import { SocialScreen } from "./screens/social.jsx";
 import { OffersScreen } from "./screens/offers.jsx";
+import { ContractsScreen } from "./screens/contracts.jsx";
 import { DisparosScreen } from "./screens/disparos.jsx";
 import { OutboundScreen } from "./screens/outbound.jsx";
 import { RemuneracaoScreen } from "./screens/remuneracao.jsx";
@@ -167,6 +168,7 @@ function App() {
     customers:   ["Comercial", "Clientes"],
     proposals:   ["Comercial", "Propostas"],
     offers:      ["Comercial", "Link pagamento"],
+    contracts:   ["Comercial", "Contratos"],
     agenda:      ["Comercial", "Agenda"],
     whatsapp:    ["Comercial", "Inbox"],
     consultas:   ["Comercial", "Consultas"],
@@ -241,6 +243,7 @@ function App() {
           {scr === "creative"    && <CreativeScreen />}
           {scr === "social"      && <SocialScreen />}
           {scr === "offers"      && <OffersScreen />}
+          {scr === "contracts"   && <ContractsScreen />}
           {scr === "agenda"      && <AgendaScreen onOpenLead={openLead} />}
           {scr === "consultas"   && <ConsultasScreen />}
           {scr === "disparos"    && <DisparosScreen onOpenLead={openLead} />}
