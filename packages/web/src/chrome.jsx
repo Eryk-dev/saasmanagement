@@ -44,8 +44,7 @@ const NAV = [
   { id: "metrics",    label: "Publicidade",    icon: "∿",  group: "marketing" },
   { id: "landingpages", label: "Landing pages", icon: "▭", group: "marketing", saas: "elo" }, // visitas + conversão do checkout web
   { id: "forms",      label: "Formulários",    icon: "▤",  group: "marketing", notSaas: "elo" },
-  { id: "creative",   label: "Canvas",         icon: "◨",  group: "marketing", notSaas: "elo" },
-  { id: "manualmarca", label: "Manual de marca", icon: "◪", group: "marketing", saas: "elo" }, // referência viva da marca Elo
+  { id: "creative",   label: "Canvas",         icon: "◨",  group: "marketing" }, // veste a marca do workspace; no Elo traz o manual de marca embutido
   { id: "disparos",   label: "Disparos",       icon: "➤",  group: "marketing", notSaas: "elo" },
 
   { id: "eloapp",        label: "Análise do App",        icon: "◕", group: "analises", saas: "elo" }, // funil web, assinaturas, casais, missões, streaks
@@ -92,7 +91,6 @@ const ICONS = {
   integrations: <NavSvg><path d="M10 13.4a4 4 0 0 0 6 .4l2.9-2.9a4 4 0 0 0-5.7-5.7l-1.5 1.5" /><path d="M14 10.6a4 4 0 0 0-6-.4l-2.9 2.9a4 4 0 0 0 5.7 5.7l1.5-1.5" /></NavSvg>,
   analise: <NavSvg><path d="M5.4 20v-8" /><path d="M12 20V4.6" /><path d="M18.6 20v-5" /></NavSvg>,
   eloapp: <NavSvg><path d="M12 20.4l-7.2-7.1a4.6 4.6 0 0 1 6.5-6.5l.7.7.7-.7a4.6 4.6 0 0 1 6.5 6.5z" /></NavSvg>,
-  manualmarca: <NavSvg><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17.5H6.5A2.5 2.5 0 0 0 4 22z" /><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M9 7h6M9 10.4h4" /></NavSvg>,
   landingpages: <NavSvg><rect x="2.8" y="4" width="18.4" height="16" rx="2" /><path d="M2.8 8.6h18.4" /><path d="M5.6 6.3h.01M8 6.3h.01" /><path d="M6 12.4h7M6 15.6h4.6" /></NavSvg>,
   funcionarios: <NavSvg><rect x="6" y="3" width="12" height="18" rx="2" /><circle cx="12" cy="10" r="2.1" /><path d="M8.9 16.4a3.4 3.4 0 0 1 6.2 0" /><path d="M10.2 3.4h3.6" /></NavSvg>,
   tasks: <NavSvg><rect x="3.6" y="3.6" width="16.8" height="16.8" rx="2.4" /><path d="M8.4 12.4l2.6 2.6 4.9-5.5" /></NavSvg>,

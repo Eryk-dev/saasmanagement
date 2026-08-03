@@ -1,14 +1,12 @@
 import React from "react";
-import { PageHead, Card } from "../components/viz.jsx";
-import { EmptyState } from "../atoms.jsx";
-import { useActiveSaas } from "../lib/workspace.js";
+import { Card } from "../components/viz.jsx";
 
-// Manual de marca do Elo — a referência viva da marca no workspace do produto
-// (substitui o Canvas, que é ferramenta de criativo dos produtos B2B). Tudo que
-// alguém precisa pra produzir um post, um anúncio ou uma página SEM desviar da
-// marca: logo e usos, paleta, tipografia, voz e onde estão os assets.
+// Manual de marca do Elo — embutido no Canvas do workspace Elo, abaixo das
+// abas de criação: quem monta o criativo tem a referência da marca na mesma
+// tela. Tudo que alguém precisa pra produzir um post, um anúncio ou uma página
+// SEM desviar da marca: logo e usos, paleta, tipografia, voz e assets.
 // Fontes reais da marca (Playfair Display + DM Sans) carregam do Google Fonts
-// só quando a tela abre — o resto do cockpit segue com as fontes dele.
+// só quando a seção monta — o resto do cockpit segue com as fontes dele.
 
 const { useEffect } = React;
 
@@ -71,9 +69,7 @@ function Rule({ ok, children }) {
   );
 }
 
-function BrandEloScreen() {
-  const [product] = useActiveSaas();
-
+function EloBrandManual() {
   // Fontes da marca (uma vez por sessão; o link fica no <head> depois que carrega).
   useEffect(() => {
     const id = "elo-brand-fonts";
@@ -85,17 +81,15 @@ function BrandEloScreen() {
     document.head.appendChild(link);
   }, []);
 
-  if (product?.id !== "elo") {
-    return <EmptyState title="Manual de marca é do workspace do Elo" hint="Troque pro Elo no seletor de produto da barra lateral." />;
-  }
-
   const display = "'Playfair Display', serif";
   const body = "'DM Sans', sans-serif";
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-      <PageHead title="Manual de marca" sub="Elo · a referência pra qualquer material — post, anúncio, página, box" />
-      <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 12 }}>
+        <h2 style={{ margin: 0, fontFamily: "var(--display)", fontSize: 19, fontWeight: 700, letterSpacing: "-0.01em" }}>Manual de marca</h2>
+        <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>a referência pra qualquer material — post, anúncio, página, box</span>
+      </div>
 
         {/* Logo sobre o fundo oficial */}
         <Card title="Logo" hint="versão principal: ouro sobre preto Elo">
@@ -205,9 +199,8 @@ function BrandEloScreen() {
           </div>
         </Card>
 
-      </div>
     </div>
   );
 }
 
-export { BrandEloScreen };
+export { EloBrandManual };

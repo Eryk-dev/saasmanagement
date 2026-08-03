@@ -1,6 +1,8 @@
 import React from "react";
 import { PageHead, Segmented } from "../components/viz.jsx";
 import { useIsMobile } from "../lib/responsive.js";
+import { useActiveSaas } from "../lib/workspace.js";
+import { EloBrandManual } from "./brand-elo.jsx";
 
 // Estáticos — editor de criativos da marca pro Instagram, direto no cockpit.
 // 18 templates fixos (6 stories 1080×1920 · 6 posts de feed 1080×1350 · 6
@@ -24,16 +26,67 @@ import { useIsMobile } from "../lib/responsive.js";
 const { useState: useS, useEffect: useE, useRef: useR } = React;
 
 // ── Marca ────────────────────────────────────────────────────────────────────
-const B = {
-  navy: "#051C2C",
-  grad: ["#073143", "#051C2C", "#03141D"], // mesmo gradiente da proposta
-  ice: "#F3FBFF",
-  teal: "#23D8D3",        // teal do logo — brilha no navy
-  tealDeep: "#0C8F83",    // teal legível sobre fundo claro
+// O editor veste a marca do WORKSPACE ativo. Os slots de cor são SEMÂNTICOS
+// (navy = fundo escuro, ice = claro, teal = acento) — o renderer inteiro segue
+// funcionando; só a marca muda por baixo. LeverAds é o padrão (navy/teal,
+// Instrument Sans); o Elo entra com o manual dele: preto #0c0a08, ouro,
+// DM Sans no texto e Playfair Display no wordmark.
+const BRAND_DEFS = {
+  leverads: {
+    colors: {
+      navy: "#051C2C",
+      grad: ["#073143", "#051C2C", "#03141D"], // mesmo gradiente da proposta
+      ice: "#F3FBFF",
+      teal: "#23D8D3",        // teal do logo — brilha no navy
+      tealDeep: "#0C8F83",    // teal legível sobre fundo claro
+    },
+    display: "'Instrument Sans'",
+    mono: "'JetBrains Mono'",
+    wordmark: "LeverAds",
+    wordmarkFont: "'Instrument Sans'",
+    fontsHref: "https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap",
+    icon: { aspect: 0.973, dx: -0.16, gap: 0.78 }, // proporções do símbolo no drawImage
+    filePrefix: "leverads",
+    swaps: {},
+  },
+  elo: {
+    colors: {
+      navy: "#0c0a08",                          // preto Elo (fundo oficial)
+      grad: ["#241c12", "#0c0a08", "#080604"],  // mesmo clima da LP
+      ice: "#f5ecdc",                           // creme claro da marca
+      teal: "#e8a84a",                          // gold médio — o acento
+      tealDeep: "#a9742f",                      // ouro legível sobre fundo claro
+    },
+    display: "'DM Sans'",
+    mono: "'DM Sans'",
+    wordmark: "Elo",
+    wordmarkFont: "'Playfair Display'",
+    fontsHref: "https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap",
+    icon: { aspect: 1.57, dx: 0, gap: 1.75 },   // elos entrelaçados são largos
+    filePrefix: "elo",
+    // Voz nos defaults dos templates (o copy é editável de toda forma).
+    swaps: { LeverAds: "Elo", "@lever.ads": "appelo.com.br" },
+  },
 };
-const FD = "'Instrument Sans'";
-const FM = "'JetBrains Mono'";
-const FONTS_HREF = "https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap";
+
+let BRAND_ID = "leverads";
+let BRAND = BRAND_DEFS.leverads;
+let B = BRAND.colors;
+let FD = BRAND.display;
+let FM = BRAND.mono;
+
+// Troca síncrona ANTES de qualquer desenho (o editor chama no render). Zera o
+// cache de assets pra fontes e logo recarregarem na marca nova.
+function applyBrand(id) {
+  const next = BRAND_DEFS[id] ? id : "leverads";
+  if (next === BRAND_ID) return;
+  BRAND_ID = next;
+  BRAND = BRAND_DEFS[next];
+  B = BRAND.colors;
+  FD = BRAND.display;
+  FM = BRAND.mono;
+  assetsPromise = null;
+}
 
 // Paleta resolvida por modo do fundo (escuro = navy, claro = gelo).
 function pal(mode) {
@@ -51,7 +104,7 @@ const iconSvg = (main) =>
   `<path fill="${main}" d="M519.22,843.75l-45.1,15.11c53.94,77.43,143.68,128.2,245.06,128.2,4.38,0,8.76-.08,13.07-.3l-14.13-45.02c-80.76-.3-152.75-38.68-198.9-97.98ZM719.19,390.03c-164.61,0-298.55,133.94-298.55,298.55,0,29.46,4.31,58.02,12.31,84.91l39.13-29.31c-4-17.9-6.12-36.49-6.12-55.6,0-139.6,113.62-253.22,253.22-253.22s253.15,113.62,253.15,253.22c0,99.49-57.71,185.84-141.42,227.16v49.63c109.39-44.27,186.74-151.69,186.74-276.79,0-164.61-133.86-298.55-298.47-298.55Z"/>` +
   `<polygon fill="#23D8D3" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53"/></svg>`;
 
-const ASSETS = { iconIce: null, iconNavy: null };
+const ASSETS = { for: null, iconIce: null, iconNavy: null };
 
 function loadImg(src) {
   return new Promise((resolve, reject) => {
@@ -62,27 +115,43 @@ function loadImg(src) {
   });
 }
 
-// Fontes (Google Fonts) + logos prontos pra desenhar. Idempotente.
+// Fontes (Google Fonts) + logos prontos pra desenhar. Idempotente POR MARCA —
+// trocar de workspace zera o cache (applyBrand) e recarrega na marca nova.
 let assetsPromise = null;
 function loadAssets() {
-  if (assetsPromise) return assetsPromise;
+  if (assetsPromise && ASSETS.for === BRAND_ID) return assetsPromise;
+  const id = BRAND_ID;
   assetsPromise = (async () => {
-    if (!document.getElementById("creative-fonts")) {
+    const linkId = "creative-fonts-" + id;
+    if (!document.getElementById(linkId)) {
       const link = document.createElement("link");
-      link.id = "creative-fonts";
+      link.id = linkId;
       link.rel = "stylesheet";
-      link.href = FONTS_HREF;
+      link.href = BRAND.fontsHref;
       document.head.appendChild(link);
     }
-    const uri = (svg) => "data:image/svg+xml;utf8," + encodeURIComponent(svg);
-    [ASSETS.iconIce, ASSETS.iconNavy] = await Promise.all([
-      loadImg(uri(iconSvg(B.ice))), loadImg(uri(iconSvg(B.navy))),
-    ]);
+    if (id === "elo") {
+      // Ícone oficial (gradiente ouro — funciona nos dois fundos). O SVG do
+      // asset não tem width/height, então injeta pro drawImage ter intrínseco.
+      const res = await fetch("/brand/elo/elo-icon-color.svg");
+      let svg = await res.text();
+      if (!/<svg[^>]*\swidth=/.test(svg)) svg = svg.replace("<svg ", '<svg width="372" height="237" ');
+      const img = await loadImg("data:image/svg+xml;utf8," + encodeURIComponent(svg));
+      ASSETS.iconIce = img;
+      ASSETS.iconNavy = img;
+    } else {
+      const uri = (svg) => "data:image/svg+xml;utf8," + encodeURIComponent(svg);
+      [ASSETS.iconIce, ASSETS.iconNavy] = await Promise.all([
+        loadImg(uri(iconSvg(B.ice))), loadImg(uri(iconSvg(B.navy))),
+      ]);
+    }
+    ASSETS.for = id;
     const want = [
       `700 100px ${FD}`, `600 60px ${FD}`, `500 44px ${FD}`, `400 40px ${FD}`,
       `600 32px ${FM}`, `500 30px ${FM}`, `400 28px ${FM}`,
+      `700 44px ${BRAND.wordmarkFont}`,
     ];
-    await Promise.all(want.map((f) => document.fonts.load(f, "LeverAds ✓ →").catch(() => {})));
+    await Promise.all(want.map((f) => document.fonts.load(f, `${BRAND.wordmark} ✓ →`).catch(() => {})));
     await document.fonts.ready;
   })();
   return assetsPromise;
@@ -252,16 +321,17 @@ const elText = (el, env) => (el.field != null ? env.vals[el.field] : el.text) ??
 const EL = {
   logo(ctx, el, x, y, env) {
     const h = el.h;
+    const ic = BRAND.icon; // proporções do símbolo mudam por marca (elos são largos)
     const icon = env.mode === "dark" ? ASSETS.iconIce : ASSETS.iconNavy;
-    if (icon) ctx.drawImage(icon, x - h * 0.16, y, h * 0.973, h);
-    let w = h * 0.78;
+    if (icon) ctx.drawImage(icon, x + h * ic.dx, y, h * ic.aspect, h);
+    let w = h * ic.gap;
     if (el.wordmark !== false) {
-      ctx.font = `700 ${Math.round(h * 0.42)}px ${FD}`;
+      ctx.font = `700 ${Math.round(h * 0.42)}px ${BRAND.wordmarkFont}`;
       ctx.fillStyle = pal(env.mode).fg;
       ctx.textBaseline = "middle";
-      ctx.fillText("LeverAds", x + h * 0.78, y + h * 0.52);
+      ctx.fillText(BRAND.wordmark, x + h * ic.gap, y + h * 0.52);
       ctx.textBaseline = "alphabetic";
-      w = h * 0.78 + ctx.measureText("LeverAds").width;
+      w = h * ic.gap + ctx.measureText(BRAND.wordmark).width;
     }
     return { x, y, w, h };
   },
@@ -974,7 +1044,14 @@ const GROUPS = [
 
 const GROUP_FMT_LABEL = { story: "Story", storyseq: "Sequência de stories", post: "Post de feed", car: "Carrossel" };
 
-const defaultsOf = (tpl) => Object.fromEntries(tpl.fields.map((f) => [f.k, f.def]));
+// Defaults dos templates trocam de voz junto com a marca (BRAND.swaps) —
+// "LeverAds" e "@lever.ads" viram os equivalentes da marca ativa.
+const brandSwap = (s) => {
+  let out = String(s ?? "");
+  for (const [from, to] of Object.entries(BRAND.swaps)) out = out.split(from).join(to);
+  return out;
+};
+const defaultsOf = (tpl) => Object.fromEntries(tpl.fields.map((f) => [f.k, f.def == null ? f.def : brandSwap(f.def)]));
 const photoSlotsOf = (tpl) => tpl.els.filter((e) => e.type === "photo");
 
 // ── Editor ───────────────────────────────────────────────────────────────────
@@ -985,6 +1062,11 @@ const ZOOMS = [1, 1.35, 1.75];
 
 function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomIndex = 1, apiRef, standalone = false }) {
   const isMobile = useIsMobile();
+  // A marca segue o workspace ativo — trocar de produto redesenha tudo na
+  // identidade certa (síncrono, antes de qualquer efeito de desenho).
+  const [activeProduct] = useActiveSaas();
+  const brandId = BRAND_DEFS[activeProduct?.id] ? activeProduct.id : "leverads";
+  applyBrand(brandId);
   const allowed = TEMPLATES.filter((t) => groups.includes(t.group));
   const [tplId, setTplId] = useS(allowed[0]?.id);
   const tpl = allowed.find((t) => t.id === tplId) || allowed[0] || TEMPLATES[0];
@@ -1004,10 +1086,10 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
   const photoTargetRef = useR(null);
   const extraSeq = useR(0);
 
-  useE(() => { let ok = true; loadAssets().then(() => ok && setReady(true)); return () => { ok = false; }; }, []);
+  useE(() => { let ok = true; setReady(false); loadAssets().then(() => ok && setReady(true)); return () => { ok = false; }; }, [brandId]);
   useE(() => {
     setVals(defaultsOf(tpl)); setPos({}); setImgs({}); setExtras([]); setSel(null); setAddSlide(1); setActiveSlide(0);
-  }, [tpl.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tpl.id, brandId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Redesenha os canvases (resolução nativa; o CSS só encolhe a exibição).
   useE(() => {
@@ -1019,7 +1101,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
       const ctx = c.getContext("2d");
       boxesRef.current[i] = renderSlide(ctx, tpl, i, { vals, imgs }, pos, extras, sel);
     }
-  }, [ready, tpl, vals, pos, imgs, extras, sel]);
+  }, [ready, tpl, vals, pos, imgs, extras, sel, brandId]);
 
   // ── Drag & clique no preview ──
   function canvasPoint(e, i) {
@@ -1097,7 +1179,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
       // o outline de seleção não pode sair no PNG
       boxesRef.current[i] = renderSlide(c.getContext("2d"), tpl, i, { vals, imgs }, pos, extras, null);
     }
-    const name = `leverads-${tpl.id}${tpl.slides > 1 ? `-${i + 1}de${tpl.slides}` : ""}.png`;
+    const name = `${BRAND.filePrefix}-${tpl.id}${tpl.slides > 1 ? `-${i + 1}de${tpl.slides}` : ""}.png`;
     c.toBlob((blob) => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -1123,7 +1205,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
       renderSlide(c.getContext("2d"), tpl, i, { vals, imgs }, pos, extras, null);
       const blob = await new Promise((r) => c.toBlob(r, "image/png"));
       renderSlide(c.getContext("2d"), tpl, i, { vals, imgs }, pos, extras, sel);
-      if (blob) out.push({ blob, name: `leverads-${tpl.id}-${i + 1}.png` });
+      if (blob) out.push({ blob, name: `${BRAND.filePrefix}-${tpl.id}-${i + 1}.png` });
     }
     return out;
   }
@@ -1216,6 +1298,14 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
               </section>
             </div>
           </div>
+
+          {/* No workspace do Elo, o manual de marca mora aqui — abaixo das abas
+              de criação, quem monta o criativo consulta a referência sem sair. */}
+          {brandId === "elo" && (
+            <div style={{ marginTop: 28 }}>
+              <EloBrandManual />
+            </div>
+          )}
         </div>
       </div>
     );

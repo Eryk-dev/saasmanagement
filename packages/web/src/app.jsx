@@ -31,7 +31,6 @@ import { TrainingScreen, TrainingGate } from "./screens/training.jsx";
 import { CustomersScreen } from "./screens/customers.jsx";
 import { EloAppScreen } from "./screens/eloapp.jsx";
 import { LandingPagesScreen } from "./screens/landingpages.jsx";
-import { BrandEloScreen } from "./screens/brand-elo.jsx";
 import { TasksScreen } from "./screens/tasks.jsx";
 import { MindmapsScreen } from "./screens/mindmaps.jsx";
 import { SettingsScreen } from "./screens/settings.jsx";
@@ -177,7 +176,6 @@ function App() {
     social:      ["Marketing", "Redes sociais"],
     metrics:     ["Marketing", "Publicidade"],
     landingpages: ["Marketing", "Landing pages"],
-    manualmarca: ["Marketing", "Manual de marca"],
     forms:       ["Marketing", "Formulários"],
     creative:    ["Marketing", "Canvas"],
     disparos:    ["Marketing", "Disparos"],
@@ -264,7 +262,6 @@ function App() {
           {scr === "analise"     && <AnaliseScreen />}
           {scr === "eloapp"      && <EloAppScreen />}
           {scr === "landingpages" && <LandingPagesScreen />}
-          {scr === "manualmarca" && <BrandEloScreen />}
           {scr === "funcionarios" && <FuncionariosScreen onNav={nav} />}
           {scr === "metas"       && <MetasScreen />}
           {scr === "training"    && <TrainingScreen />}

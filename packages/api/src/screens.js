@@ -17,7 +17,7 @@ export const SCREEN_IDS = [
   "overview", "today", "pipeline", "customers", "metrics", "expenses",
   "social", "forms", "proposals", "creative", "offers", "disparos", "whatsapp", "agenda", "consultas", "calls", "integrations", "aquisicao", "analise", "funcionarios", "metas", "training", "tasks", "mindmaps", "settings",
   "outbound", "remuneracao",
-  "eloapp", "landingpages", "manualmarca",
+  "eloapp", "landingpages",
 ];
 
 export const sanitizeScreens = (x) =>
