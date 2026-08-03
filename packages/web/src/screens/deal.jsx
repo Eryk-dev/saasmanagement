@@ -149,6 +149,30 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
     setLead((prev) => ({ ...prev, ...p }));
     api.update("leads", lead.id, p).catch((err) => console.warn("lead patch not persisted:", err.message));
   }
+  // Proposta direto no WhatsApp (pedido do Leo, 03/08): UM botão que garante a
+  // proposta (gera na hora se o lead ainda não tem) e abre a conversa com a
+  // mensagem pronta. O link é SEMPRE a visão do CLIENTE (cockpitProposalUrl,
+  // link limpo — oferta escondida do Shift+Espaço não vai junto).
+  const [propBusy, setPropBusy] = React.useState(false);
+  async function propostaNoWhats() {
+    setPropBusy(true);
+    try {
+      let url = lead.proposalUrl;
+      if (!url) {
+        await api.generateProposal(lead.id);
+        const fresh = await api.get("leads", lead.id);
+        setLead((prev) => ({ ...prev, ...fresh }));
+        dirty.current = true;
+        url = fresh?.proposalUrl || "";
+      }
+      if (!url) { window.alert("Não consegui gerar a proposta deste produto (template publicado?)"); return; }
+      const msg = `Aqui está a proposta sobre a qual conversamos: ${cockpitProposalUrl(url)}`;
+      if (onOpenWhatsapp) onOpenWhatsapp(lead, msg);
+      else if (wa) window.open(`${wa}?text=${encodeURIComponent(msg)}`, "_blank", "noopener");
+    } catch (e) {
+      window.alert(e?.message || "não deu pra gerar/enviar a proposta");
+    } finally { setPropBusy(false); }
+  }
   function moveStage(stage) {
     if (!stage || stage === lead.stage) return;
     const gate = moveGate(saasCfg, lead, stage);
@@ -361,6 +385,17 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   style={{ color: "var(--accent)", borderColor: "var(--accent-line)", background: "var(--accent-soft)", fontWeight: 600, textDecoration: "none" }}>
                   personalizada ↗
                 </a>
+              )}
+              {/* Enviar a proposta pro cliente: gera se faltar e abre o
+                  WhatsApp com a mensagem pronta (link limpo do cliente). */}
+              {(onOpenWhatsapp || wa) && (
+                <button onClick={propostaNoWhats} disabled={propBusy} className="chip"
+                  title={lead.proposalUrl
+                    ? "Abrir o WhatsApp com a proposta pronta pra enviar (link limpo, visão do cliente, sem a oferta escondida)"
+                    : "Gerar a proposta e abrir o WhatsApp com ela pronta pra enviar (link limpo, visão do cliente)"}
+                  style={{ cursor: "pointer", background: "#25D366", borderColor: "#25D366", color: "#06120c", fontWeight: 700 }}>
+                  {propBusy ? "gerando…" : "➤ proposta no Whats"}
+                </button>
               )}
               <button onClick={() => setCustomProp(true)} className="chip" title="Montar/editar uma proposta personalizada (objetiva)"
                 style={{ cursor: "pointer" }}>
