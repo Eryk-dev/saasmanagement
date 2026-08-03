@@ -37,6 +37,7 @@ const NAV = [
   { id: "consultas",  label: "Consultas",      icon: "❋",  group: "comercial", saas: "uniquekids" },
   { id: "proposals",  label: "Propostas",      icon: "▥",  group: "comercial", notSaas: "elo" },
   { id: "offers",     label: "Link pagamento", icon: "◇",  group: "comercial", notSaas: "elo" },
+  { id: "contracts",  label: "Contratos",      icon: "▧",  group: "comercial", notSaas: "elo" }, // biblioteca de modelos de contrato (resgatar → preencher → assinar)
   { id: "agenda",     label: "Agenda",         icon: "▦",  group: "comercial", notSaas: "elo" },
   { id: "whatsapp",   label: "Inbox",          icon: "✆",  group: "comercial", notSaas: "elo" }, // WhatsApp + DMs de IG/Messenger
 
@@ -77,6 +78,7 @@ const ICONS = {
   consultas: <NavSvg><rect x="3.4" y="4.6" width="17.2" height="16.4" rx="2" /><path d="M3.4 9.6h17.2" /><path d="M8.2 2.6v4M15.8 2.6v4" /><path d="M8.8 15.2l2.2 2.2 4.2-4.6" /></NavSvg>,
   proposals: <NavSvg><path d="M13.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z" /><path d="M13.5 3v5.5H19" /><path d="M9 13.5h6M9 17h6" /></NavSvg>,
   offers: <NavSvg><rect x="2.6" y="5" width="18.8" height="14" rx="2" /><path d="M2.6 10h18.8" /><path d="M6.2 15h4" /></NavSvg>,
+  contracts: <NavSvg><path d="M13.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z" /><path d="M13.5 3v5.5H19" /><path d="M8.6 17.4c.9-1.6 1.8-1.6 2.6 0 .8 1.4 1.6 1.4 2.4 0 .5-.9 1-.9 1.8 0" /></NavSvg>,
   agenda: <NavSvg><rect x="3.4" y="4.6" width="17.2" height="16.4" rx="2" /><path d="M3.4 9.6h17.2" /><path d="M8.2 2.6v4M15.8 2.6v4" /></NavSvg>,
   whatsapp: <NavSvg><path d="M5.2 3.2h3.6l1.6 4.3-2.2 1.9a12.6 12.6 0 0 0 6.4 6.4l1.9-2.2 4.3 1.6v3.6a2 2 0 0 1-2.1 2A16.3 16.3 0 0 1 3.2 5.3a2 2 0 0 1 2-2.1z" /></NavSvg>,
   social: <NavSvg><circle cx="6" cy="12" r="2.7" /><circle cx="17.6" cy="5.6" r="2.7" /><circle cx="17.6" cy="18.4" r="2.7" /><path d="M8.5 10.8l6.7-3.9M8.5 13.2l6.7 3.9" /></NavSvg>,
