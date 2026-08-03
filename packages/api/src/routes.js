@@ -536,7 +536,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
             author: req.authUser?.id || "api",
           });
         } catch { /* fail-open */ }
-        return reply.code(200).send(merged);
+        // _dedup é transiente (não persiste): avisa o cliente que NÃO nasceu card
+        // novo — o cockpit mostra qual card recebeu a mescla em vez de fechar calado.
+        return reply.code(200).send({ ...merged, _dedup: true });
       }
     }
     let created = await repo.create(collection, { ...(CREATE_DEFAULTS[collection] || {}), ...req.body, ...stamp });
