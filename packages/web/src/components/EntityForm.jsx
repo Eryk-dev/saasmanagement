@@ -132,13 +132,17 @@ function toPayload(fields, values) {
 
 // `bare`: renderiza só o form (campos + rodapé), sem o overlay/drawer próprio —
 // pra embutir dentro de outro popup (ex.: edição inline no popup do cliente).
-function EntityForm({ entityKey, record, onClose, onSaved, bare = false }) {
+function EntityForm({ entityKey, record, onClose, onSaved, onOpenLead, bare = false }) {
   const cfg = ENTITIES[entityKey];
   const isEdit = !!(record && record.id);
   const [values, setValues] = useState(() => toInputs(effectiveFields(cfg, record || {}), record));
   const [busy, setBusy] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState(null);
+  // Criar lead que caiu no dedup do servidor: a API mesclou num card existente
+  // (mesmo telefone/e-mail no produto) e nada novo nasceu — guarda o card pra
+  // avisar em vez de fechar calado.
+  const [dedup, setDedup] = useState(null);
 
   const set = (key, val) => setValues((v) => ({ ...v, [key]: val }));
 
@@ -172,6 +176,13 @@ function EntityForm({ entityKey, record, onClose, onSaved, bare = false }) {
         await api.update(cfg.collection, record.id, payload);
       } else {
         const created = await api.create(cfg.collection, payload);
+        if (cfg.collection === "leads" && created?._dedup) {
+          // O servidor mesclou num lead que já existia: mantém o modal aberto
+          // com o aviso (a proposta do card antigo fica como está).
+          setBusy(false);
+          setDedup(created);
+          return;
+        }
         // Best-effort: ao criar um lead, dispara a geração da proposta no Levercopy.
         // O servidor decide a elegibilidade (saas/config) e nunca quebra a criação —
         // se falhar, o lead já existe e o botão "Gerar proposta" cobre a 2ª tentativa.
@@ -194,7 +205,23 @@ function EntityForm({ entityKey, record, onClose, onSaved, bare = false }) {
       ))}
     </div>
   );
-  const footer = (
+  const footer = dedup ? (
+    // Caiu no dedup: nenhum card novo — mostra qual card recebeu a mescla.
+    <div style={{ padding: "12px 20px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+      <div style={{ marginBottom: 10, padding: "10px 12px", background: "var(--warn-soft)", border: "1px solid var(--warn-line)", borderRadius: "var(--r-2)", fontSize: 12.5, lineHeight: 1.5, color: "var(--fg-1)" }}>
+        Esse telefone/e-mail já é do card <b>{dedup.name || dedup.id}</b>{dedup.stage ? <> (etapa <b>{dedup.stage}</b>)</> : null}.
+        Atualizei o card existente com o que você preencheu — nenhum lead novo foi criado.
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        {onOpenLead && (
+          <button type="button" onClick={() => onOpenLead(dedup)} style={{ flex: 1, padding: "9px 12px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500 }}>
+            Abrir o card existente
+          </button>
+        )}
+        <button type="button" onClick={() => onSaved()} style={{ padding: "9px 16px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13 }}>Fechar</button>
+      </div>
+    </div>
+  ) : (
     <div style={{ padding: "12px 20px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
       {error && <div className="mono" style={{ fontSize: 11, color: "var(--neg)", marginBottom: 8 }}>{error}</div>}
       <div style={{ display: "flex", gap: 8 }}>

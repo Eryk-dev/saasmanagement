@@ -293,6 +293,7 @@ function App() {
             record={editor.record}
             onClose={() => setEditor(null)}
             onSaved={async () => { setEditor(null); await refresh(); }}
+            onOpenLead={async (l) => { setEditor(null); await refresh(); openLead(l); }}
           />
         </ErrorBoundary>
       )}
