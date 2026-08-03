@@ -413,6 +413,16 @@ function ConsultaModal({ c, customers, consultas = [], onClose, onSaved }) {
               {form.meetUrl
                 ? <a href={form.meetUrl} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 11.5, color: "var(--accent)" }}>{form.meetUrl} ↗</a>
                 : <span className="mono dim" style={{ fontSize: 11 }}>sem Meet ainda (o Meet grava e transcreve sozinho)</span>}
+              {/* Link da GRAVAÇÃO: o arquivo fica no Drive da conta conectada
+                  (Meet Recordings) e o poller grava o link aqui junto com o
+                  resumo. Antes o campo existia mas não aparecia na tela. */}
+              {form.transcriptUrl && (
+                <a href={form.transcriptUrl} target="_blank" rel="noreferrer"
+                  style={{ fontSize: 11.5, fontWeight: 600, color: "var(--accent)", textDecoration: "none" }}
+                  title="Gravação da consulta no Drive (conta conectada · pasta Meet Recordings)">
+                  ▶ gravação ↗
+                </a>
+              )}
               <span style={{ flex: 1 }} />
               {!form.meetUrl && <button disabled={!!busy || !form.at} title={form.at ? "cria o Meet no horário da consulta e manda o convite por e-mail" : "defina o horário primeiro"} onClick={() => act("meet", () => api.consultationMeet(form.id))} style={chip(false)}>{busy === "meet" ? "criando…" : "Criar Meet"}</button>}
               <button disabled={!!busy || !form.meetUrl} onClick={() => act("sum", () => api.consultationSummary(form.id, true))} style={chip(false)} title="busca a transcrição e resume (também acontece sozinho após a consulta)">{busy === "sum" ? "resumindo…" : "↻ Resumir com IA"}</button>
