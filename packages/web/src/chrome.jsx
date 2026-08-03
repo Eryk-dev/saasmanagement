@@ -1,7 +1,7 @@
 import React from "react";
 import { api, clearKey } from "./lib/api.js";
 import { useActiveSaas } from "./lib/workspace.js";
-import { canSeeScreen, currentUser, userById, userPhoto } from "./lib/users.js";
+import { canSeeScreen, currentUser, isAdminUser, userById, userPhoto } from "./lib/users.js";
 import { PeriodPicker, usePeriod } from "./components/period-picker.jsx";
 
 // Filtro de período GLOBAL, no topo ao lado da busca: muda a janela do cockpit
@@ -50,6 +50,7 @@ const NAV = [
   { id: "tasks",      label: "Tarefas",        icon: "▣",  group: "geral" },
   { id: "mindmaps",   label: "Mapas mentais",  icon: "⌬",  group: "geral" },
   { id: "metas",      label: "Metas",          icon: "◎",  group: "geral" },
+  { id: "remuneracao", label: "Remuneração",   icon: "◫",  group: "geral", adminOnly: true }, // modelos de comp por cargo (salário: só admin)
   { id: "expenses",   label: "Custos",         icon: "◫",  group: "geral" },
   { id: "settings",   label: "Configurações",  icon: "✦",  group: "geral" },
 ];
@@ -77,6 +78,7 @@ const ICONS = {
   creative: <NavSvg><path d="M12 3a9 9 0 1 0 0 18c1.5 0 2.3-.9 2.3-1.9 0-1.6-1.3-1.9-1.3-3 0-1.3 1.1-2 2.5-2h2a4 4 0 0 0 3.2-6.4A9 9 0 0 0 12 3z" /><circle cx="8" cy="9" r="0.4" /><circle cx="13.5" cy="7" r="0.4" /><circle cx="6.8" cy="14" r="0.4" /></NavSvg>,
   disparos: <NavSvg><path d="M21.3 2.7L11 13" /><path d="M21.3 2.7l-6.5 18.2-3.8-7.9-7.9-3.8z" /></NavSvg>,
   outbound: <NavSvg><circle cx="12" cy="12" r="7.4" /><circle cx="12" cy="12" r="2.6" /><path d="M12 2.2v4M12 17.8v4M2.2 12h4M17.8 12h4" /></NavSvg>,
+  remuneracao: <NavSvg><rect x="2.8" y="5.6" width="18.4" height="12.8" rx="2" /><circle cx="12" cy="12" r="2.6" /><path d="M6 9.2v5.6M18 9.2v5.6" /></NavSvg>,
   aquisicao: <NavSvg><path d="M3.2 4h17.6l-6.8 8.2v6.3l-4 2.3v-8.6z" /></NavSvg>,
   calls: <NavSvg><rect x="9" y="2.6" width="6" height="11" rx="3" /><path d="M5.6 11a6.4 6.4 0 0 0 12.8 0" /><path d="M12 17.4V21" /></NavSvg>,
   integrations: <NavSvg><path d="M10 13.4a4 4 0 0 0 6 .4l2.9-2.9a4 4 0 0 0-5.7-5.7l-1.5 1.5" /><path d="M14 10.6a4 4 0 0 0-6-.4l-2.9 2.9a4 4 0 0 0 5.7 5.7l1.5-1.5" /></NavSvg>,
@@ -108,7 +110,7 @@ function NavRail({ current, onNav, collapsed }) {
   // quando o item é de UM produto (item.saas), só no workspace dele; grupo sem
   // tela permitida some inteiro. A API tem o guard de verdade.
   const groups = [];
-  NAV.filter((item) => !item.hidden && (!item.saas || item.saas === product?.id) && canSeeScreen(item.id)).forEach(item => {
+  NAV.filter((item) => !item.hidden && (!item.saas || item.saas === product?.id) && canSeeScreen(item.id) && (!item.adminOnly || isAdminUser())).forEach(item => {
     let g = groups.find(x => x.key === item.group);
     if (!g) { g = { key: item.group, items: [] }; groups.push(g); }
     g.items.push(item);

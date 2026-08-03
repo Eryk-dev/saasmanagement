@@ -15,6 +15,7 @@ import { SocialScreen } from "./screens/social.jsx";
 import { OffersScreen } from "./screens/offers.jsx";
 import { DisparosScreen } from "./screens/disparos.jsx";
 import { OutboundScreen } from "./screens/outbound.jsx";
+import { RemuneracaoScreen } from "./screens/remuneracao.jsx";
 import { WhatsappInboxScreen } from "./screens/whatsapp.jsx";
 import { WaHotAlert } from "./components/wa-hot-alert.jsx";
 import { AgendaScreen } from "./screens/agenda.jsx";
@@ -180,6 +181,7 @@ function App() {
     analise:     ["Análises", "Análise de Pace"],
     funcionarios: ["Análises", "Análise de Equipe"],
     tasks:       ["Geral", "Tarefas"],
+    remuneracao: ["Geral", "Remuneração"],
     mindmaps:    ["Geral", "Mapas mentais"],
     metas:       ["Geral", "Metas"],
     training:    ["Treinamentos"],
@@ -243,6 +245,7 @@ function App() {
           {scr === "consultas"   && <ConsultasScreen />}
           {scr === "disparos"    && <DisparosScreen onOpenLead={openLead} />}
           {scr === "outbound"    && <OutboundScreen onOpenLead={openLead} />}
+          {scr === "remuneracao" && <RemuneracaoScreen />}
           {scr === "whatsapp"    && <WhatsappInboxScreen onOpenLead={openLead} initialThread={params.waThread} initialLead={params.waLead} initialDraft={params.waDraft} />}
           {scr === "calls"       && <CallsScreen onOpenLead={openLead} />}
           {scr === "integrations" && <IntegrationsScreen onOpenLead={openLead} />}

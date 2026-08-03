@@ -140,6 +140,11 @@ export const CREATE_DEFAULTS = {
   // lead com source "Outbound · radar" + outbound:true (classe ALVO no
   // metrics-core) e linka aqui em `leadId`.
   outbound_accounts: { saas: "", name: "", marketplace: "", niche: "", listings: "", reputation: "", city: "", phone: "", email: "", instagram: "", site: "", cnpj: "", notes: "", status: "fria", owner: "", leadId: "", lastTouchAt: "", createdAt: "" },
+  // Remuneração por cargo (tela Remuneração, SÓ admin — guard em screens.js):
+  // um doc por role (sdr/sdr_outbound/closer/integrator/social) com fixo,
+  // variável e as alavancas do modelo do livro. Dado sensível: rota exige a
+  // etiqueta admin, além da tela.
+  comp_plans: { role: "", fixed: 0, variableCap: 0, commissionPct: 0, acceleratorPct: 0, upsellPct: 0, referralBonus: 0, notes: "", updatedAt: "" },
   // Sequência de nutrição (drip): `trigger.stages` = etapas que auto-inscrevem;
   // `steps` = [{ channel:"email"|"whatsapp", delayDays, subject, body, text }];
   // `exitOn` = condições de saída. status active/paused/draft (só active roda).

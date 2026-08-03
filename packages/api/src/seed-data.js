@@ -57,6 +57,7 @@ export const COLLECTIONS = {
   mp_payments: [],   // espelho dos pagamentos do Mercado Pago (financeiro): quem pagou, como, casado com qual cliente/fatura (mp-payments.js)
   campaigns: [],     // disparos (e-mail + WhatsApp) pros leads qualificados por produto (ferramenta)
   outbound_accounts: [], // radar de contas do outbound (Cold Calling 2.0): conta-alvo com os 8 status do livro; virar lead cria card classe Alvo
+  comp_plans: [],    // planos de remuneração por cargo (tela Remuneração, SÓ admin): fixo, variável e regras — 1 doc por role
   sequences: [],     // sequências de nutrição (drip): passos por canal + gatilho por etapa
   sequence_enrollments: [], // progresso de cada lead numa sequência (stepIndex, nextRunAt, status)
   drip_templates: [], // conteúdo reutilizável (e-mail/WhatsApp) pros passos das sequências
