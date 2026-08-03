@@ -167,13 +167,11 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
       }
       if (!url) { window.alert("Não consegui gerar a proposta deste produto (template publicado?)"); return; }
       const msg = `Aqui está a proposta sobre a qual conversamos: ${cockpitProposalUrl(url)}`;
-      // Produto COM número oficial conectado (product.waPhoneId) → inbox do
-      // cockpit (sai pelo número da casa e fica registrado). SEM número (ex.:
-      // UniqueKids hoje, a Ana manda do WhatsApp Web dela) → wa.me com o texto
-      // pronto, que no desktop abre o WhatsApp Web. Quando o número do produto
-      // for conectado em Ajustes → Integrações, o botão troca sozinho.
-      if (saasCfg?.waPhoneId && onOpenWhatsapp) onOpenWhatsapp(lead, msg);
-      else if (wa) window.open(`${wa}?text=${encodeURIComponent(msg)}`, "_blank", "noopener");
+      // SEMPRE WhatsApp Web (decisão do Leo, 03/08): wa.me com o texto pronto,
+      // independente de o produto ter número oficial conectado — quem envia a
+      // proposta é o closer, do WhatsApp dele. O inbox segue existindo pros
+      // outros fluxos; aqui só cai nele se o lead não tiver telefone.
+      if (wa) window.open(`${wa}?text=${encodeURIComponent(msg)}`, "_blank", "noopener");
       else if (onOpenWhatsapp) onOpenWhatsapp(lead, msg);
     } catch (e) {
       window.alert(e?.message || "não deu pra gerar/enviar a proposta");
@@ -397,9 +395,8 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               {(onOpenWhatsapp || wa) && (
                 <button onClick={propostaNoWhats} disabled={propBusy} className="chip"
                   title={(lead.proposalUrl
-                    ? "Abrir o WhatsApp com a proposta pronta pra enviar (link limpo, visão do cliente, sem a oferta escondida)"
-                    : "Gerar a proposta e abrir o WhatsApp com ela pronta pra enviar (link limpo, visão do cliente)")
-                    + (saasCfg?.waPhoneId ? " · abre no inbox do cockpit" : " · abre no WhatsApp Web (produto sem número oficial conectado)")}
+                    ? "Abrir o WhatsApp Web com a proposta pronta pra enviar (link limpo, visão do cliente, sem a oferta escondida)"
+                    : "Gerar a proposta e abrir o WhatsApp Web com ela pronta pra enviar (link limpo, visão do cliente)")}
                   style={{ cursor: "pointer", background: "#25D366", borderColor: "#25D366", color: "#06120c", fontWeight: 700 }}>
                   {propBusy ? "gerando…" : "➤ proposta no Whats"}
                 </button>
