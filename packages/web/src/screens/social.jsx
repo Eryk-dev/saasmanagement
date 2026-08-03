@@ -1,6 +1,7 @@
 import React from "react";
 import { PageHead, Pill, Card, StatTile } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
+import { MetaConnectCard } from "../components/meta-connect.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -453,10 +454,16 @@ function SocialScreen() {
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
         {!sum && !err && <div className="mono dim" style={{ fontSize: 12 }}>carregando métricas…</div>}
+        {/* Sem token no servidor: o cartão explica o passo de infra. Com token
+            mas sem página/IG no PRODUTO (UniqueKids, Elo, futuros): o Conectar
+            lista as páginas do token e grava a escolha no cadastro. */}
         {sum && sum.configured === false && (
-          <EmptyState title="Meta não conectada" hint="Defina META_ACCESS_TOKEN no servidor (o mesmo token da Publicidade) com as permissões de Instagram/página." />
+          <MetaConnectCard kind="social" product={product} metaOn={false} />
         )}
-        {sum && sum.configured && (
+        {sum && sum.configured && !sum.igUserId && !sum.pageId && (
+          <MetaConnectCard kind="social" product={product} metaOn onConnected={reloadSocial} />
+        )}
+        {sum && sum.configured && (sum.igUserId || sum.pageId) && (
           <>
             {sum.errors?.setup && <div className="mono" style={{ fontSize: 11.5, color: "var(--warn)" }}>{sum.errors.setup}</div>}
 

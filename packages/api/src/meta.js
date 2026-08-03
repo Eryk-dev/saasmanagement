@@ -346,6 +346,46 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       return rows;
     },
 
+    // Contas de anúncio que o TOKEN alcança — matéria-prima do "Conectar" da
+    // tela Publicidade (o id escolhido vira product.metaAdAccount).
+    async listAdAccounts() {
+      if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
+      const params = new URLSearchParams({ fields: "name,account_status,business_name", limit: "100", access_token: accessToken });
+      const rows = [];
+      let url = `${GRAPH}/me/adaccounts?${params}`;
+      while (url) {
+        const body = await get(url);
+        rows.push(...(body.data || []));
+        url = body.paging?.next || "";
+      }
+      return rows.map((a) => ({
+        id: String(a.id || "").replace(/^act_/, ""),
+        name: a.name || String(a.id || ""),
+        business: a.business_name || "",
+        active: a.account_status === 1,
+      }));
+    },
+
+    // Páginas que o TOKEN administra (com o Instagram business vinculado) —
+    // matéria-prima do "Conectar" da tela Redes sociais.
+    async listPages() {
+      if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
+      const params = new URLSearchParams({ fields: "name,instagram_business_account{id,username}", limit: "100", access_token: accessToken });
+      const rows = [];
+      let url = `${GRAPH}/me/accounts?${params}`;
+      while (url) {
+        const body = await get(url);
+        rows.push(...(body.data || []));
+        url = body.paging?.next || "";
+      }
+      return rows.map((p) => ({
+        pageId: String(p.id || ""),
+        name: p.name || String(p.id || ""),
+        igUserId: String(p.instagram_business_account?.id || ""),
+        igUsername: p.instagram_business_account?.username || "",
+      }));
+    },
+
     // Descobre página (e Instagram) dos anúncios que JÁ rodam na conta — evita
     // pedir page_id na mão: o criativo novo assina com a mesma página dos atuais.
     async discoverCreativeDefaults(adAccountId) {

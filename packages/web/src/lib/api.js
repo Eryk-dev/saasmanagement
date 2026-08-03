@@ -323,6 +323,9 @@ export const api = {
   socialAudience: (saas) => req("GET", `/api/social/audience?saas=${encodeURIComponent(saas)}`),
   socialStories: (saas) => req("GET", `/api/social/stories?saas=${encodeURIComponent(saas)}`),
   socialDiscovery: (saas) => req("GET", `/api/social/discovery?saas=${encodeURIComponent(saas)}`),
+  // "Conectar" das telas Publicidade/Redes sociais: o que o token Meta alcança.
+  metaAdAccounts: () => req("GET", "/api/marketing/meta/adaccounts"),
+  socialPages: () => req("GET", "/api/social/pages"),
   socialDms: (saas, network) => req("GET", `/api/social/dms?saas=${encodeURIComponent(saas)}&network=${encodeURIComponent(network)}`),
   socialDmMessages: (saas, id) => req("GET", `/api/social/dms/messages?saas=${encodeURIComponent(saas)}&id=${encodeURIComponent(id)}`),
   socialDmSend: (saas, body) => req("POST", `/api/social/dms/send?saas=${encodeURIComponent(saas)}`, body),
