@@ -5,9 +5,11 @@ import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
 
 // Contratos — biblioteca de MODELOS por produto. O fluxo é "resgatar": abrir o
-// modelo, imprimir/salvar em PDF (preenche o Quadro Resumo e manda assinar) ou
-// baixar o .html. O corpo é o MIOLO em HTML; a impressão veste o CSS jurídico
-// padrão (A4, serifa), o mesmo do contrato original de assinatura da LeverAds.
+// modelo, PREENCHER os dados do cliente no formulário do drawer (os campos vêm
+// dos tokens {{chave}} do corpo) e imprimir/salvar em PDF já preenchido, ou
+// baixar o .html. Campo vazio imprime como linha em branco (preenche à mão).
+// O corpo é o MIOLO em HTML; a impressão veste o CSS jurídico padrão (A4,
+// serifa), o mesmo do contrato original de assinatura da LeverAds.
 
 const { useState: useS, useEffect: useE, useRef: useR } = React;
 
@@ -36,9 +38,39 @@ const CONTRACT_CSS = `
   .local-data { margin-top: 34px; }
 `;
 
-function fullHtml(c) {
+const escHtml = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+
+// Campos de preenchimento do modelo: a lista `fields` do documento (com rótulo/
+// placeholder bons) ou, na falta dela, os tokens {{chave}} achados no corpo —
+// assim modelo criado na mão pelo time também ganha formulário.
+function fieldsOf(c) {
+  if (Array.isArray(c?.fields) && c.fields.length) return c.fields;
+  const seen = new Set();
+  const out = [];
+  for (const m of String(c?.body || "").matchAll(/\{\{([a-z0-9_]+)\}\}/gi)) {
+    if (seen.has(m[1])) continue;
+    seen.add(m[1]);
+    out.push({ key: m[1], label: m[1].replace(/_/g, " ") });
+  }
+  return out;
+}
+
+// Token preenchido entra escapado (quebra de linha vira <br>); vazio vira a
+// linha em branco de sempre, pro contrato continuar imprimível pra preencher à mão.
+const BLANK = "______________________";
+function applyFields(body, fields, values) {
+  let out = String(body || "");
+  for (const f of fields) {
+    const v = String(values?.[f.key] ?? "").trim();
+    out = out.split(`{{${f.key}}}`).join(v ? escHtml(v).replace(/\n/g, "<br>") : BLANK);
+  }
+  return out;
+}
+
+function fullHtml(c, values) {
   const title = String(c.name || "Contrato").replace(/</g, "&lt;");
-  return `<!doctype html>\n<html lang="pt-BR">\n<head>\n<meta charset="utf-8">\n<title>${title}</title>\n<style>${CONTRACT_CSS}</style>\n</head>\n<body>\n${c.body || ""}\n</body>\n</html>`;
+  const body = applyFields(c.body, fieldsOf(c), values || {});
+  return `<!doctype html>\n<html lang="pt-BR">\n<head>\n<meta charset="utf-8">\n<title>${title}</title>\n<style>${CONTRACT_CSS}</style>\n</head>\n<body>\n${body}\n</body>\n</html>`;
 }
 
 // Esqueleto de um modelo novo: cabeçalho + quadro resumo mínimo, pro time não
@@ -49,8 +81,8 @@ const NEW_BODY = `<h1>Título do contrato</h1>
 <h2>Quadro Resumo</h2>
 <table class="quadro">
   <tr><th>Contratada</th><td><strong>LEVER ADS SOFTWARE HOUSE LTDA</strong>, CNPJ <strong>67.931.740/0001-12</strong>, Avenida Itamarati, 2800, Parque Erasmo Assunção, CEP 09271-410, Santo André/SP.</td></tr>
-  <tr><th>Contratante</th><td>Razão social / Nome: ______________________________________________<br>CNPJ / CPF: ______________________________________________</td></tr>
-  <tr><th>Investimento</th><td>Valor total: R$ ______________ · Forma de pagamento: ______________</td></tr>
+  <tr><th>Contratante</th><td>Razão social / Nome: {{razao_social}}<br>CNPJ / CPF: {{cnpj_cpf}}</td></tr>
+  <tr><th>Investimento</th><td>Valor total: R$ {{valor_total}} · Forma de pagamento: {{forma_pagamento}}</td></tr>
 </table>
 
 <h2>Cláusula 1ª · Objeto</h2>
@@ -63,6 +95,7 @@ function ContractsScreen() {
   const [sel, setSel] = useS(null);      // modelo aberto (visualização)
   const [edit, setEdit] = useS(false);   // drawer em modo edição
   const [draft, setDraft] = useS(null);  // { name, tag, note, body }
+  const [fill, setFill] = useS({});      // valores digitados dos campos {{token}} do modelo aberto
   const [busy, setBusy] = useS(false);
   const [copied, setCopied] = useS(false);
   const copyTimer = useR(null);
@@ -75,7 +108,7 @@ function ContractsScreen() {
   }
   useE(() => { setItems(null); setErr(null); setSel(null); setEdit(false); load(); }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function openView(c) { setSel(c); setEdit(false); setDraft(null); }
+  function openView(c) { setSel(c); setEdit(false); setDraft(null); setFill({}); }
   function openEdit(c) { setSel(c); setEdit(true); setDraft({ name: c.name || "", tag: c.tag || "", note: c.note || "", body: c.body || "" }); }
   function openNew() { setSel(null); setEdit(true); setDraft({ name: "", tag: "", note: "", body: NEW_BODY }); }
   function close() { setSel(null); setEdit(false); setDraft(null); }
@@ -110,28 +143,29 @@ function ContractsScreen() {
     setBusy(false);
   }
 
-  // Resgatar: janela nova com o HTML completo + diálogo de impressão (salvar
-  // como PDF). O preenchimento dos campos é feito no papel/PDF ou editando.
-  function printContract(c) {
+  // Resgatar: janela nova com o HTML completo JÁ PREENCHIDO com o formulário do
+  // drawer + diálogo de impressão (salvar como PDF). Campo vazio sai em branco.
+  function printContract(c, values) {
     const w = window.open("", "_blank");
     if (!w) return;
-    w.document.write(fullHtml(c));
+    w.document.write(fullHtml(c, values));
     w.document.close();
     w.focus();
     setTimeout(() => { try { w.print(); } catch { /* usuário imprime manualmente */ } }, 350);
   }
 
-  function download(c) {
-    const blob = new Blob([fullHtml(c)], { type: "text/html;charset=utf-8" });
+  function download(c, values) {
+    const blob = new Blob([fullHtml(c, values)], { type: "text/html;charset=utf-8" });
     const a = document.createElement("a");
+    const cliente = String(values?.razao_social || "").trim();
     a.href = URL.createObjectURL(blob);
-    a.download = `${(c.name || "contrato").toLowerCase().replace(/[^a-z0-9]+/gi, "-")}.html`;
+    a.download = `${(c.name || "contrato")}${cliente ? " - " + cliente : ""}`.toLowerCase().replace(/[^a-z0-9]+/gi, "-") + ".html";
     a.click();
     URL.revokeObjectURL(a.href);
   }
 
-  async function copyHtml(c) {
-    try { await navigator.clipboard.writeText(fullHtml(c)); } catch { /* clipboard bloqueado */ }
+  async function copyHtml(c, values) {
+    try { await navigator.clipboard.writeText(fullHtml(c, values)); } catch { /* clipboard bloqueado */ }
     setCopied(true);
     clearTimeout(copyTimer.current);
     copyTimer.current = setTimeout(() => setCopied(false), 1600);
@@ -185,7 +219,7 @@ function ContractsScreen() {
 
       {(sel || edit) && (
         <div style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", display: "flex", justifyContent: "flex-end", zIndex: 70 }} onClick={close}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(860px, 100vw)", height: "100%", background: "var(--bg-1)", borderLeft: "1px solid var(--line-2)", display: "flex", flexDirection: "column", boxShadow: "var(--shadow-pop)" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: !edit && sel && fieldsOf(sel).length ? "min(1120px, 100vw)" : "min(860px, 100vw)", height: "100%", background: "var(--bg-1)", borderLeft: "1px solid var(--line-2)", display: "flex", flexDirection: "column", boxShadow: "var(--shadow-pop)" }}>
             <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
               <div style={{ minWidth: 0 }}>
                 <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" }}>{edit ? (sel ? "Editar modelo" : "Novo modelo") : "Modelo de contrato"}</div>
@@ -194,9 +228,9 @@ function ContractsScreen() {
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
                 {!edit && sel && (
                   <>
-                    <button onClick={() => printContract(sel)} style={{ ...btn, background: "var(--btn-bg)", color: "var(--btn-fg)", borderColor: "transparent" }}>Imprimir / PDF</button>
-                    <button onClick={() => download(sel)} style={btn}>Baixar .html</button>
-                    <button onClick={() => copyHtml(sel)} style={{ ...btn, ...(copied ? { background: "var(--pos-soft)", color: "var(--pos)" } : {}) }}>{copied ? "✓ copiado" : "Copiar HTML"}</button>
+                    <button onClick={() => printContract(sel, fill)} style={{ ...btn, background: "var(--btn-bg)", color: "var(--btn-fg)", borderColor: "transparent" }}>Imprimir / PDF</button>
+                    <button onClick={() => download(sel, fill)} style={btn}>Baixar .html</button>
+                    <button onClick={() => copyHtml(sel, fill)} style={{ ...btn, ...(copied ? { background: "var(--pos-soft)", color: "var(--pos)" } : {}) }}>{copied ? "✓ copiado" : "Copiar HTML"}</button>
                     <button onClick={() => openEdit(sel)} style={btn}>Editar</button>
                     <button onClick={() => duplicate(sel)} disabled={busy} style={btn}>Duplicar</button>
                     <button onClick={() => remove(sel)} disabled={busy} className="dim" style={{ ...btn, color: "var(--neg)" }}>Excluir</button>
@@ -206,9 +240,42 @@ function ContractsScreen() {
               </div>
             </div>
 
-            {!edit && sel && (
-              <iframe title={sel.name} srcDoc={fullHtml(sel)} style={{ flex: 1, border: 0, background: "#fff" }} />
-            )}
+            {!edit && sel && (() => {
+              const fields = fieldsOf(sel);
+              if (!fields.length) return <iframe title={sel.name} srcDoc={fullHtml(sel)} style={{ flex: 1, border: 0, background: "#fff" }} />;
+              const done = fields.filter((f) => String(fill[f.key] || "").trim()).length;
+              return (
+                <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+                  <div style={{ width: 330, flexShrink: 0, borderRight: "1px solid var(--line-1)", overflow: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12, background: "var(--bg-inset)" }}>
+                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+                      <span style={kicker}>Dados do contrato</span>
+                      <span className="mono dim tnum" style={{ fontSize: 10 }}>{done}/{fields.length}</span>
+                    </div>
+                    <div style={{ fontSize: 11.5, color: "var(--fg-4)", lineHeight: 1.5, marginTop: -6 }}>
+                      preencha e o contrato ao lado se atualiza; campo vazio sai como linha em branco no PDF
+                    </div>
+                    {fields.map((f) => (
+                      <label key={f.key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        <span style={{ ...kicker, fontSize: 10 }}>{f.label}</span>
+                        {f.multiline ? (
+                          <textarea value={fill[f.key] || ""} rows={2} placeholder={f.placeholder || ""}
+                            onChange={(e) => setFill((v) => ({ ...v, [f.key]: e.target.value }))}
+                            style={{ ...inp, height: "auto", minHeight: 52, padding: "6px 10px", resize: "vertical", fontFamily: "var(--sans)" }} />
+                        ) : (
+                          <input value={fill[f.key] || ""} placeholder={f.placeholder || ""}
+                            onChange={(e) => setFill((v) => ({ ...v, [f.key]: e.target.value }))} style={inp} />
+                        )}
+                        {f.hint && <span className="mono dim" style={{ fontSize: 10 }}>{f.hint}</span>}
+                      </label>
+                    ))}
+                    {done > 0 && (
+                      <button onClick={() => setFill({})} className="mono dim" style={{ alignSelf: "flex-start", fontSize: 11 }}>limpar campos</button>
+                    )}
+                  </div>
+                  <iframe title={sel.name} srcDoc={fullHtml(sel, fill)} style={{ flex: 1, border: 0, background: "#fff" }} />
+                </div>
+              );
+            })()}
 
             {edit && draft && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>

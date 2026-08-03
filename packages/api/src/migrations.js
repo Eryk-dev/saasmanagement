@@ -921,7 +921,139 @@ async function sincronizaPainelDoLead(repo, form) {
   }
 }
 
+// ── Contratos: campos de preenchimento (ago/2026) ───────────────────────────
+// Os 4 modelos de contrato nasceram com espaços em branco desenhados no HTML
+// (______). A tela Contratos ganhou formulário de preenchimento que interpola
+// tokens {{chave}}; esta migração troca os brancos dos modelos SEED pelos
+// tokens e grava a lista `fields` (rótulo/placeholder) que o formulário lê.
+// Idempotente: pula contrato que já tem token ou `fields`. Se o time editou o
+// corpo na tela e o texto não casa mais, os replaces são no-op e nada quebra —
+// `fields` só entra se o corpo final tiver pelo menos um token.
+
+const CONTRACT_COMMON_REPLACES = [
+  ["Razão social / Nome: ______________________________________________", "Razão social / Nome: {{razao_social}}"],
+  ["CNPJ / CPF: ______________________________________________", "CNPJ / CPF: {{cnpj_cpf}}"],
+  ["Endereço: ______________________________________________", "Endereço: {{endereco}}"],
+  ["Endereço da operação (local das visitas): ______________________________________________", "Endereço da operação (local das visitas): {{endereco}}"],
+  ["Representante legal: ______________________________________________", "Representante legal: {{representante}}"],
+  ["E-mail: ______________________________ &nbsp; WhatsApp: ______________________________", "E-mail: {{email}} &nbsp; WhatsApp: {{whatsapp}}"],
+  ["Forma de pagamento: &nbsp; ☐ PIX à vista &nbsp;&nbsp; ☐ Cartão de crédito em ____x de R$ ______________ &nbsp;&nbsp; ☐ Boleto faturado em ____x de R$ ______________", "Forma de pagamento: {{forma_pagamento}}"],
+  ["Vencimento(s): ______________________________________________", "Vencimento(s): {{vencimentos}}"],
+  ["Valor total: R$ ______________ ( ______________________________________________ )", "Valor total: R$ {{valor_total}} ({{valor_extenso}})"],
+  ["Valor total do período: R$ ______________ ( ______________________________________________ )", "Valor total do período: R$ {{valor_total}} ({{valor_extenso}})"],
+  ["Desenvolvimento + implantação: R$ ______________ ( ______________________________________________ )", "Desenvolvimento + implantação: R$ {{valor_total}} ({{valor_extenso}})"],
+  ["Condições específicas (se houver): ______________________________________________", "Condições específicas (se houver): {{condicoes}}"],
+  ["Personalizações adicionais (se houver): ______________________________________________", "Personalizações adicionais (se houver): {{condicoes}}"],
+  ["____________________________, ______ de ______________________ de 20______.", "{{local_data}}."],
+];
+
+// Campos comuns do Quadro Resumo (a ordem é a do formulário da tela).
+const CONTRACT_COMMON_FIELDS = [
+  { key: "razao_social", label: "Razão social / Nome" },
+  { key: "cnpj_cpf", label: "CNPJ / CPF" },
+  { key: "endereco", label: "Endereço" },
+  { key: "representante", label: "Representante legal" },
+  { key: "email", label: "E-mail" },
+  { key: "whatsapp", label: "WhatsApp", placeholder: "(11) 98765-4321" },
+  { key: "valor_total", label: "Valor total (R$)", placeholder: "40.000,00" },
+  { key: "valor_extenso", label: "Valor por extenso", placeholder: "quarenta mil reais" },
+  { key: "forma_pagamento", label: "Forma de pagamento", placeholder: "Cartão de crédito em 12x de R$ 3.333,33" },
+  { key: "vencimentos", label: "Vencimento(s)", placeholder: "primeira em 10/09/2026, demais todo dia 10" },
+  { key: "condicoes", label: "Condições específicas", multiline: true, placeholder: "se houver" },
+  { key: "local_data", label: "Local e data da assinatura", placeholder: "Curitiba, 10 de agosto de 2026" },
+];
+
+const CONTRACT_FILL_SEED = {
+  co_assinatura_leverads: {
+    replaces: [
+      ["☐ Plano Anual (12 meses) &nbsp;&nbsp; ☐ Plano Semestral (6 meses) &nbsp;&nbsp; ☐ Outro: __________________", "Plano: {{plano}}"],
+      ["Contas de marketplace incluídas: Mercado Livre ( ____ ) &nbsp; Shopee ( ____ )", "Contas de marketplace incluídas: Mercado Livre ( {{contas_ml}} ) &nbsp; Shopee ( {{contas_shopee}} )"],
+      ["____ meses contados da assinatura deste contrato, renovando-se conforme a Cláusula 8ª.", "{{vigencia_meses}} meses contados da assinatura deste contrato, renovando-se conforme a Cláusula 8ª."],
+      // A linha extra de continuação do "Condições específicas" fica órfã depois
+      // do replace comum — remove junto com o <br> que a precede.
+      ["{{condicoes}}<br>\n      ______________________________________________", "{{condicoes}}"],
+    ],
+    fields: [
+      { key: "plano", label: "Plano contratado", placeholder: "Plano Anual (12 meses)" },
+      { key: "contas_ml", label: "Contas Mercado Livre", placeholder: "3" },
+      { key: "contas_shopee", label: "Contas Shopee", placeholder: "2" },
+      { key: "vigencia_meses", label: "Vigência (meses)", placeholder: "12" },
+    ],
+  },
+  co_consultoria_logistica: {
+    replaces: [
+      ["☐ Incluídas no valor total &nbsp;&nbsp; ☐ Por conta do CONTRATANTE, mediante reembolso comprovado (deslocamento, hospedagem e alimentação da equipe da LEVER)", "{{despesas}}"],
+      ["Conclusão do escopo em ______ dias corridos", "Conclusão do escopo em {{prazo_dias}} dias corridos"],
+    ],
+    fields: [
+      { key: "despesas", label: "Despesas de deslocamento", placeholder: "Incluídas no valor total" },
+      { key: "prazo_dias", label: "Prazo (dias corridos)", placeholder: "90" },
+    ],
+  },
+  co_erp_tiny_olist: {
+    replaces: [
+      ["Tiny ERP (Olist) · plano: ______________________ ·", "Tiny ERP (Olist) · plano: {{plano_erp}} ·"],
+      ["Go-live em ______ dias corridos", "Go-live em {{prazo_dias}} dias corridos"],
+    ],
+    fields: [
+      { key: "plano_erp", label: "Plano do ERP", placeholder: "Grande" },
+      { key: "prazo_dias", label: "Prazo até o go-live (dias)", placeholder: "45" },
+    ],
+  },
+  co_leverwms: {
+    replaces: [
+      ["✓ Integração direta com o ERP: ______________________<br>", "✓ Integração direta com o ERP: {{erp_integrado}}<br>"],
+      ["Hospedagem, manutenção e suporte: &nbsp; ☐ incluídos durante a vigência da licença &nbsp;&nbsp; ☐ R$ ______________ / ano a partir do 2º ano", "Hospedagem, manutenção e suporte: {{manutencao}}"],
+      ["______ dias corridos (estimativa de referência: 45 a 90 dias)", "{{prazo_dias}} dias corridos (estimativa de referência: 45 a 90 dias)"],
+      ["______ meses contados do aceite, renovando-se conforme a Cláusula 10ª.", "{{vigencia_meses}} meses contados do aceite, renovando-se conforme a Cláusula 10ª."],
+    ],
+    fields: [
+      { key: "erp_integrado", label: "ERP integrado", placeholder: "Tiny ERP (Olist)" },
+      { key: "manutencao", label: "Hospedagem / manutenção", placeholder: "incluídas durante a vigência da licença" },
+      { key: "prazo_dias", label: "Prazo de implementação (dias)", placeholder: "90" },
+      { key: "vigencia_meses", label: "Vigência da licença (meses)", placeholder: "12" },
+    ],
+  },
+};
+
+// Replace tolerante: no padrão, runs de "_" casam com qualquer tamanho de linha
+// em branco e whitespace casa com whitespace — contar underscore exato seria
+// frágil. O replacement entra via função pra "$" não ser tratado como especial.
+function contractRep(body, from, to) {
+  const pattern = from
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/_{2,}/g, "_+")
+    .replace(/\s+/g, "\\s+");
+  return body.replace(new RegExp(pattern, "g"), () => to);
+}
+
+export async function migrateContractFillTokens(repo) {
+  let n = 0;
+  for (const [id, seed] of Object.entries(CONTRACT_FILL_SEED)) {
+    const c = await repo.get("contracts", id).catch(() => null);
+    if (!c || !c.body) continue;
+    if (c.body.includes("{{") || (Array.isArray(c.fields) && c.fields.length)) continue; // já migrado
+    let body = c.body;
+    for (const [from, to] of [...CONTRACT_COMMON_REPLACES, ...seed.replaces]) body = contractRep(body, from, to);
+    if (!body.includes("{{")) continue; // corpo editado à mão, nada casou: não mexe
+    // Só entra em `fields` o campo cujo token existe no corpo final (o modelo 2
+    // não tem "Vencimento(s)" no 4, por exemplo — cada corpo dita seus campos).
+    const fields = [...CONTRACT_COMMON_FIELDS, ...seed.fields]
+      .map((f) => (c.saas === "leverads" && id === "co_consultoria_logistica" && f.key === "endereco" ? { ...f, label: "Endereço da operação (local das visitas)" } : f))
+      .filter((f) => body.includes(`{{${f.key}}}`));
+    await repo.update("contracts", id, { body, fields });
+    n++;
+  }
+  return n;
+}
+
 export async function runStartupMigrations(repo) {
+  try {
+    const n = await migrateContractFillTokens(repo);
+    if (n) console.log(`[migration] modelos de contrato tokenizados pro preenchimento na tela (${n} modelos)`);
+  } catch (err) {
+    console.error("[migration] migrateContractFillTokens falhou:", err?.message || err);
+  }
   try {
     const changed = await migrateFormVendeMarketplace(repo);
     if (changed) console.log('[migration] form do diagnóstico ganhou a pergunta "já vende em marketplace?" + saídas laterais');
