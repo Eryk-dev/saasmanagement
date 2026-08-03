@@ -271,6 +271,19 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
     return () => { alive = false; };
   }, [version, saasCfg?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Tarefas do kanban (tela Tarefas) aqui na fila do dia: as ABERTAS do produto
+  // ativo, da pessoa da fila ou sem responsável. Concluir aqui move o card pro
+  // "Concluído" do board — mesmo registro, nenhuma fonte duplicada.
+  const [tasks, setTasks] = useS([]);
+  const [taskBoard, setTaskBoard] = useS(null);
+  useE(() => {
+    let alive = true;
+    Promise.all([api.list("tasks"), api.list("task_boards")])
+      .then(([ts, boards]) => { if (!alive) return; setTasks(ts || []); setTaskBoard((boards || [])[0] || null); })
+      .catch(() => alive && setTasks([]));
+    return () => { alive = false; };
+  }, [version, saasCfg?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Fila de quem: padrão o usuário logado; admin pode inspecionar a de qualquer um.
   const [person, setPersonState] = useS(() => {
     try { const v = localStorage.getItem("cockpit_today_person"); if (v != null) return v; } catch { /* ignore */ }
@@ -369,6 +382,28 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   }
   const openRow = (item) => (item.consulta ? openConsulta(item) : setScriptItem(item));
 
+  // Tarefas abertas da fila: sem coluna "Concluído" identificável no board, o
+  // ✓ leva pro kanban em vez de chutar a coluna errada.
+  const taskDoneKey = (() => {
+    const cols = taskBoard?.columns?.length ? taskBoard.columns : null;
+    if (!cols) return "done";
+    const c = cols.find((x) => x.key === "done" || /conclu/i.test(x.name || ""));
+    return c ? c.key : null;
+  })();
+  const taskAssignees = (t) => t.assignees || (t.assignee ? [t.assignee] : []);
+  const myTasks = tasks
+    .filter((t) => (t.saas === saasCfg?.id || !t.saas) && (!taskDoneKey || t.column !== taskDoneKey))
+    .filter((t) => { const a = taskAssignees(t); return !a.length || !person || a.includes(person); })
+    .sort((a, b) =>
+      String(a.dueDate || "9999-99-99").localeCompare(String(b.dueDate || "9999-99-99")) ||
+      String(a.priority || "P9").localeCompare(String(b.priority || "P9")));
+
+  function completeTask(t) {
+    if (!taskDoneKey) { location.hash = "#tasks"; return; }
+    setTasks((prev) => prev.map((x) => (x.id === t.id ? { ...x, column: taskDoneKey } : x)));
+    api.update("tasks", t.id, { column: taskDoneKey }).catch((err) => console.warn("tarefa não concluída:", err.message));
+  }
+
   const users = allUsers().filter((u) => !u.saas || u.saas === saasCfg?.id);
   const firstPending = q.hoje.find((i) => !i.done);
   const pendingToday = q.hoje.filter((i) => !i.done);
@@ -416,11 +451,17 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
         </div>
 
         {daySocialDone && <SocialSellingNotice ig={igStats} />}
-        {total === 0 ? (
+        {total === 0 && myTasks.length === 0 ? (
           <EmptyState
             title="Fila limpa"
             hint={person ? "Nenhuma ação pendente nessa fila. Confira o pipeline ou puxe leads novos." : "Nenhuma ação pendente."}
           />
+        ) : total === 0 ? (
+          // Fila de leads vazia mas há tarefas do kanban: elas SÃO as atividades
+          // do dia (é o caso normal do workspace Elo, que não tem pipeline).
+          <div style={{ maxWidth: 640 }}>
+            <TasksCard tasks={myTasks} onDone={completeTask} />
+          </div>
         ) : (
           <div className="resp-cols" style={{ "--cols": "minmax(0, 1fr) minmax(300px, 380px)", gap: 16, alignItems: "start" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
@@ -449,6 +490,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
               <DayScore contacted={q.doneToday} contactedGoal={contactedGoal} calls={callsDone} callsGoal={Math.max(callsToday.length, 1)} />
+              {myTasks.length > 0 && <TasksCard tasks={myTasks} onDone={completeTask} />}
               <CompactSchedule title="Amanhã" rows={q.amanha} onOpen={openRow} />
               {futureRows.length > 0 && <CompactSchedule title="Próximos dias" rows={futureRows} onOpen={openRow} />}
             </div>
@@ -647,6 +689,53 @@ function CompactSchedule({ title, rows, onOpen }) {
             </span>
           </button>
         ))}
+      </div>
+    </section>
+  );
+}
+
+// Tarefas do kanban na fila do dia: as abertas da pessoa (ou sem responsável),
+// vencidas em vermelho, ✓ conclui direto. O card inteiro leva pro kanban.
+function TasksCard({ tasks, onDone }) {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const fmtDue = (d) => {
+    const dt = new Date(d + "T00:00:00");
+    return isNaN(dt) ? d : dt.toLocaleDateString("pt-BR", { day: "numeric", month: "short" }).replace(".", "");
+  };
+  const priTone = (p) => (p === "P0" ? "var(--neg)" : p === "P1" ? "var(--warn)" : "var(--fg-4)");
+  return (
+    <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "20px var(--inset-x) 12px" }}>
+        <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em" }}>Tarefas</h3>
+        <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{tasks.length} {tasks.length === 1 ? "aberta" : "abertas"}</span>
+        <button onClick={() => { location.hash = "#tasks"; }} style={{ marginLeft: "auto", fontSize: 12.5, fontWeight: 500, color: "var(--accent)" }}>kanban →</button>
+      </div>
+      <div style={{ padding: "0 var(--inset-x) 8px" }}>
+        {tasks.slice(0, 8).map((t) => {
+          const overdue = t.dueDate && t.dueDate < todayStr;
+          return (
+            <div key={t.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 0", borderTop: "1px solid var(--line-faint)" }}>
+              <button onClick={() => onDone(t)} title="Concluir tarefa" style={{
+                width: 20, height: 20, flexShrink: 0, borderRadius: 6, border: "1.5px solid var(--line-2)",
+                display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--fg-4)", fontSize: 11,
+              }}>✓</button>
+              <button onClick={() => { location.hash = "#tasks"; }} style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title || "(sem título)"}</span>
+                {(t.priority || t.dueDate) && (
+                  <span style={{ display: "flex", gap: 8, fontSize: 11.5, marginTop: 1 }}>
+                    {t.priority && <span className="mono" style={{ color: priTone(t.priority), fontWeight: 600 }}>{t.priority}</span>}
+                    {t.dueDate && <span className="mono tnum" style={{ color: overdue ? "var(--neg)" : "var(--fg-4)" }}>{overdue ? "venceu " : ""}{fmtDue(t.dueDate)}</span>}
+                  </span>
+                )}
+              </button>
+            </div>
+          );
+        })}
+        {tasks.length > 8 && (
+          <button onClick={() => { location.hash = "#tasks"; }} style={{ width: "100%", textAlign: "left", padding: "9px 0", borderTop: "1px solid var(--line-faint)", fontSize: 12.5, color: "var(--accent)", fontWeight: 500 }}>
+            +{tasks.length - 8} no kanban →
+          </button>
+        )}
       </div>
     </section>
   );
