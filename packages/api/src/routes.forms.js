@@ -17,7 +17,7 @@ import { logActivity, initialNextActionAt, autoLeadOwner } from "./lead-flow.js"
 import { findDuplicateLead, dedupMergePatch } from "./lead-dedup.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 
-const clientIp = (req) =>
+export const clientIp = (req) =>
   String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.ip || "?";
 
 // UTM vinda da página pública: só chaves conhecidas, strings curtas. Vai no lead
@@ -25,7 +25,7 @@ const clientIp = (req) =>
 // Click-ids de cada plataforma (fbclid/gclid/ttclid) + referrer externo entram
 // no mesmo objeto — atribuição não fica restrita à Meta.
 const UTM_KEYS = ["source", "medium", "campaign", "content", "term", "placement", "fbclid", "gclid", "ttclid", "referrer"];
-function sanitizeUtm(raw) {
+export function sanitizeUtm(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const out = {};
   for (const k of UTM_KEYS) {

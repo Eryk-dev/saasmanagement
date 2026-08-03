@@ -26,6 +26,7 @@ export const COLLECTIONS = {
   forms: [],
   form_submissions: [],
   form_events: [],
+  lp_events: [], // beacon anônimo das landing pages (view/cta por sessão de visita) — elo.js
   proposal_templates: [],
   proposals: [],
   plans: [],

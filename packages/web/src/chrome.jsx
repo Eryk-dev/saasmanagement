@@ -19,33 +19,40 @@ const { useState: useS, useEffect: useE, useRef: useR } = React;
 
 // Menu organizado por área do negócio: topo sem rótulo (o dia a dia), depois
 // Comercial, Marketing e Geral. A ORDEM dos grupos segue a 1ª aparição no array.
+//
+// Escopo por produto: `saas` = item existe SÓ naquele workspace (Consultas no
+// UniqueKids, Análise do App no Elo). `notSaas` = item some naquele workspace —
+// o Elo é B2C self-serve (sem SDR, sem call, sem proposta), então a camada de
+// venda assistida inteira não se aplica lá.
 const NAV = [
   { id: "overview",   label: "Visão geral",       icon: "◈",  group: "main" },
-  { id: "training",   label: "Treinamentos",      icon: "✎",  group: "main" },
+  { id: "training",   label: "Treinamentos",      icon: "✎",  group: "main", notSaas: "elo" },
   { id: "today",      label: "Minhas atividades", icon: "◷",  group: "main" },
 
-  { id: "pipeline",   label: "Pipeline",       icon: "≡",  group: "comercial" },
-  { id: "outbound",   label: "Outbound",       icon: "⌖",  group: "comercial" }, // radar de contas (Cold Calling 2.0)
+  { id: "pipeline",   label: "Pipeline",       icon: "≡",  group: "comercial", notSaas: "elo" },
+  { id: "outbound",   label: "Outbound",       icon: "⌖",  group: "comercial", notSaas: "elo" }, // radar de contas (Cold Calling 2.0)
   { id: "customers",  label: "Clientes",       icon: "○",  group: "comercial" },
   // Tela da mentoria 1:1 (pacote de consultas + Manual da Família): só aparece
   // no workspace do UniqueKids (`saas`); nos outros produtos ela não existe.
   { id: "consultas",  label: "Consultas",      icon: "❋",  group: "comercial", saas: "uniquekids" },
-  { id: "proposals",  label: "Propostas",      icon: "▥",  group: "comercial" },
-  { id: "offers",     label: "Link pagamento", icon: "◇",  group: "comercial" },
-  { id: "agenda",     label: "Agenda",         icon: "▦",  group: "comercial" },
-  { id: "whatsapp",   label: "Inbox",          icon: "✆",  group: "comercial" }, // WhatsApp + DMs de IG/Messenger
+  { id: "proposals",  label: "Propostas",      icon: "▥",  group: "comercial", notSaas: "elo" },
+  { id: "offers",     label: "Link pagamento", icon: "◇",  group: "comercial", notSaas: "elo" },
+  { id: "agenda",     label: "Agenda",         icon: "▦",  group: "comercial", notSaas: "elo" },
+  { id: "whatsapp",   label: "Inbox",          icon: "✆",  group: "comercial", notSaas: "elo" }, // WhatsApp + DMs de IG/Messenger
 
   { id: "social",     label: "Redes sociais",  icon: "◍",  group: "marketing" },
   { id: "metrics",    label: "Publicidade",    icon: "∿",  group: "marketing" },
-  { id: "forms",      label: "Formulários",    icon: "▤",  group: "marketing" },
+  { id: "landingpages", label: "Landing pages", icon: "▭", group: "marketing", saas: "elo" }, // visitas + conversão do checkout web
+  { id: "forms",      label: "Formulários",    icon: "▤",  group: "marketing", notSaas: "elo" },
   { id: "creative",   label: "Canvas",         icon: "◨",  group: "marketing" },
-  { id: "disparos",   label: "Disparos",       icon: "➤",  group: "marketing" },
+  { id: "disparos",   label: "Disparos",       icon: "➤",  group: "marketing", notSaas: "elo" },
 
+  { id: "eloapp",        label: "Análise do App",        icon: "◕", group: "analises", saas: "elo" }, // funil web, assinaturas, casais, missões, streaks
   { id: "analise",       label: "Análise de Pace",       icon: "◔", group: "analises" },
   { id: "aquisicao",     label: "Análise de Aquisição",  icon: "◐", group: "analises" },
-  { id: "calls",         label: "Análise de Pitches",    icon: "◑", group: "analises" },
-  { id: "integrations",  label: "Análise de Integração", icon: "◒", group: "analises" },
-  { id: "funcionarios",  label: "Análise de Equipe",     icon: "◓", group: "analises" },
+  { id: "calls",         label: "Análise de Pitches",    icon: "◑", group: "analises", notSaas: "elo" },
+  { id: "integrations",  label: "Análise de Integração", icon: "◒", group: "analises", notSaas: "elo" },
+  { id: "funcionarios",  label: "Análise de Equipe",     icon: "◓", group: "analises", notSaas: "elo" },
 
   { id: "tasks",      label: "Tarefas",        icon: "▣",  group: "geral" },
   { id: "mindmaps",   label: "Mapas mentais",  icon: "⌬",  group: "geral" },
@@ -83,6 +90,8 @@ const ICONS = {
   calls: <NavSvg><rect x="9" y="2.6" width="6" height="11" rx="3" /><path d="M5.6 11a6.4 6.4 0 0 0 12.8 0" /><path d="M12 17.4V21" /></NavSvg>,
   integrations: <NavSvg><path d="M10 13.4a4 4 0 0 0 6 .4l2.9-2.9a4 4 0 0 0-5.7-5.7l-1.5 1.5" /><path d="M14 10.6a4 4 0 0 0-6-.4l-2.9 2.9a4 4 0 0 0 5.7 5.7l1.5-1.5" /></NavSvg>,
   analise: <NavSvg><path d="M5.4 20v-8" /><path d="M12 20V4.6" /><path d="M18.6 20v-5" /></NavSvg>,
+  eloapp: <NavSvg><path d="M12 20.4l-7.2-7.1a4.6 4.6 0 0 1 6.5-6.5l.7.7.7-.7a4.6 4.6 0 0 1 6.5 6.5z" /></NavSvg>,
+  landingpages: <NavSvg><rect x="2.8" y="4" width="18.4" height="16" rx="2" /><path d="M2.8 8.6h18.4" /><path d="M5.6 6.3h.01M8 6.3h.01" /><path d="M6 12.4h7M6 15.6h4.6" /></NavSvg>,
   funcionarios: <NavSvg><rect x="6" y="3" width="12" height="18" rx="2" /><circle cx="12" cy="10" r="2.1" /><path d="M8.9 16.4a3.4 3.4 0 0 1 6.2 0" /><path d="M10.2 3.4h3.6" /></NavSvg>,
   tasks: <NavSvg><rect x="3.6" y="3.6" width="16.8" height="16.8" rx="2.4" /><path d="M8.4 12.4l2.6 2.6 4.9-5.5" /></NavSvg>,
   mindmaps: <NavSvg><circle cx="12" cy="5.2" r="2.4" /><circle cx="5.4" cy="18.2" r="2.4" /><circle cx="18.6" cy="18.2" r="2.4" /><path d="M12 7.6v3.6M12 11.2l-5.2 5M12 11.2l5.2 5" /></NavSvg>,
@@ -107,10 +116,13 @@ function NavRail({ current, onNav, collapsed }) {
   // Aba do navegador acompanha a marca do workspace ativo.
   useE(() => { document.title = `${brand.label} · Cockpit`; }, [brand.label]);
   // Build grouped list — só as telas permitidas pro usuário (user.screens) e,
-  // quando o item é de UM produto (item.saas), só no workspace dele; grupo sem
-  // tela permitida some inteiro. A API tem o guard de verdade.
+  // quando o item é de UM produto (item.saas) ou está fora de um (item.notSaas),
+  // só no workspace certo; grupo sem tela permitida some inteiro. A API tem o
+  // guard de verdade.
+  const inSaas = (item) =>
+    (!item.saas || item.saas === product?.id) && (!item.notSaas || item.notSaas !== product?.id);
   const groups = [];
-  NAV.filter((item) => !item.hidden && (!item.saas || item.saas === product?.id) && canSeeScreen(item.id) && (!item.adminOnly || isAdminUser())).forEach(item => {
+  NAV.filter((item) => !item.hidden && inSaas(item) && canSeeScreen(item.id) && (!item.adminOnly || isAdminUser())).forEach(item => {
     let g = groups.find(x => x.key === item.group);
     if (!g) { g = { key: item.group, items: [] }; groups.push(g); }
     g.items.push(item);
@@ -246,7 +258,25 @@ function WorkspaceSwitcher() {
 const BRANDS = {
   leverads: { label: "LeverAds", Icon: Logo },
   uniquekids: { label: "UniqueKids", Icon: UniqueKidsMark },
+  elo: { label: "Elo", Icon: EloMark },
 };
+
+// Símbolo do Elo (app de casais): dois elos entrelaçados no dourado da marca
+// (#d7914b → #e3bd90) — mesmo gradiente do logo oficial.
+function EloMark() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 28 28" style={{ flexShrink: 0 }} aria-label="Elo">
+      <defs>
+        <linearGradient id="eloGold" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#d7914b" />
+          <stop offset="1" stopColor="#e3bd90" />
+        </linearGradient>
+      </defs>
+      <circle cx="10.2" cy="14" r="6" fill="none" stroke="url(#eloGold)" strokeWidth="2.6" />
+      <circle cx="17.8" cy="14" r="6" fill="none" stroke="url(#eloGold)" strokeWidth="2.6" />
+    </svg>
+  );
+}
 
 // Símbolo da UniqueKids (manual de marca): quadrado amarelo, círculo laranja e
 // triângulo verde — as formas geométricas do logo, sem o wordmark.
