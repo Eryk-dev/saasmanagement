@@ -16,7 +16,7 @@
 export const SCREEN_IDS = [
   "overview", "today", "pipeline", "customers", "metrics", "expenses",
   "social", "forms", "proposals", "creative", "offers", "disparos", "whatsapp", "agenda", "consultas", "calls", "integrations", "aquisicao", "analise", "funcionarios", "metas", "training", "tasks", "mindmaps", "settings",
-  "outbound",
+  "outbound", "remuneracao",
 ];
 
 export const sanitizeScreens = (x) =>
@@ -66,6 +66,7 @@ const ROUTE_SCREENS = [
   ["/api/offers", ["offers"]],           // links de pagamento das ofertas
   ["/api/campaigns", ["disparos"]],      // disparos de e-mail + WhatsApp (mark, ai-copy e CRUD)
   ["/api/outbound_accounts", ["outbound"]], // radar de contas do outbound (Cold Calling 2.0)
+  ["/api/comp_plans", ["remuneracao"]],  // remuneração por cargo (ADMIN_PREFIXES exige etiqueta admin, além da tela)
   ["/api/sequences", ["disparos"]],      // sequências de nutrição (drip): CRUD + enroll/wa-sent/metrics/run
   ["/api/sequence_enrollments", ["disparos"]], // progresso das sequências
   ["/api/drip_templates", ["disparos"]], // biblioteca de conteúdo dos passos
@@ -104,12 +105,21 @@ export function screenForRequest(method, path) {
   return hit ? hit[1] : null;
 }
 
+// Rotas de dado SENSÍVEL (salário/remuneração): além da tela, exigem a
+// etiqueta `admin` — a lista de telas em branco significa "vê tudo" (ex.:
+// usuário sem restrição), e salário não pode vazar por esse caminho.
+const ADMIN_PREFIXES = ["/api/comp_plans"];
+
 // Hook Fastify (registrar DEPOIS do makeAuthHook, que popula req.authUser).
 export function makeScreenGuardHook() {
   return async (req, reply) => {
     const user = req.authUser;
     if (!user) return; // key mestre ou rota aberta — auth já decidiu
-    const screens = screenForRequest(req.method, req.url.split("?")[0]);
+    const path = req.url.split("?")[0];
+    if (ADMIN_PREFIXES.some((p) => path.startsWith(p)) && !(user.roles || []).includes("admin")) {
+      return reply.code(403).send({ error: "Sem acesso a esta área" });
+    }
+    const screens = screenForRequest(req.method, path);
     if (screens && !screens.some((s) => canScreen(user, s))) {
       return reply.code(403).send({ error: "Sem acesso a esta área" });
     }
