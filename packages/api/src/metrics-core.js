@@ -141,29 +141,73 @@ export function bookedLeadsIn(product, leads, actsOf, inWin) {
   return [...ids].map((id) => byId.get(id)).filter(Boolean);
 }
 
+// ── A TESTEMUNHA da call: o resumo por IA da transcrição ────────────────────
+// Regra do Leo (03/08): "call realizada é apenas quando o cliente APARECE".
+// Quando o cliente fura, a responsável entra sozinha na sala, a transcrição
+// pega só ela e a IA classifica a temperatura como "frio" — então o resumo é
+// a prova do que aconteceu de verdade, imune a card parado, no-show não
+// marcado ou callAt remarcado/limpo: FRIO = não compareceu; QUENTE/MORNO =
+// compareceu. O resumo de INTEGRAÇÃO fica fora (outra conversa, outra régua).
+// Devolve o resumo de call mais RECENTE do lead ({ temperatura, at }) ou null.
+export function callWitness(acts) {
+  let best = null;
+  for (const a of acts || []) {
+    const m = a?.meta;
+    if (m?.event !== "call_summary" || !m.summary || m.kind === "integracao") continue;
+    if (!best || String(a.at || "") > String(best.at || "")) best = a;
+  }
+  return best ? { temperatura: String(best.meta.summary.temperatura || ""), at: best.at || "" } : null;
+}
+
+// Safra de calls de uma janela: lead com callAt NA janela OU com resumo de
+// call (testemunha) gerado nela. O segundo braço resgata a call que ACONTECEU
+// mas sumiria da conta porque o callAt foi REMARCADO pra frente (o campo é um
+// só: a call de hoje apaga a da semana passada) ou LIMPO depois do desfecho —
+// caso real da UniqueKids em 03/08: 4 calls feitas, com transcrição, fora da
+// safra. Quem tem os dois na janela conta UMA vez (é o mesmo lead).
+export function callCohortIn(leads, actsOf, inWin) {
+  return (leads || []).filter((l) => {
+    if (l.callAt && inWin(l.callAt)) return true;
+    return (actsOf(l.id) || []).some((a) =>
+      a?.meta?.event === "call_summary" && a.meta.summary && a.meta.kind !== "integracao" && inWin(a.at));
+  });
+}
+
 // Resolução da safra de calls, com a data de hoje pra separar "não veio" de
 // "ainda vai acontecer" (Leo, 25/07 — o gap agendadas−realizadas não é tudo
 // no-show: parte é call marcada pro futuro):
-//   shown   = a call ACONTECEU: avançou pra frente OU perdeu por OUTRO motivo.
-//   noShow  = não veio: perda "nao_compareceu", etapa de No show, OU call já
+//   shown   = a call ACONTECEU: testemunha quente/morna, avançou pra frente
+//             OU perdeu por OUTRO motivo (sem testemunha dizendo o contrário).
+//   noShow  = não veio: testemunha FRIA (Leo, 03/08 — backup pro no-show não
+//             aplicado), perda "nao_compareceu", etapa de No show, OU call já
 //             VENCIDA (callAt ≤ hoje) parada sem avançar (moveu pra Nutrição
 //             etc. sem virar call real). É o "não compareceram" do funil.
 //   pending = call marcada pro FUTURO (callAt > hoje), ainda não aconteceu —
 //             fora da conta de comparecimento (não é furo, é agenda).
+// Precedência: GANHO vence tudo (cliente que fechou obviamente apareceu);
+// depois a testemunha (frio → furo; quente/morno → realizada); sem
+// transcrição, vale o estado do card como sempre valeu.
 // Assim agendadas = shown + noShow + pending, e comparecimento = shown ÷
 // (shown+noShow) mede só o que já deveria ter acontecido.
 // `today` (dia do negócio "YYYY-MM-DD"); sem ele, tudo que não aconteceu conta
 // como noShow (comportamento antigo — coorte histórica não tem call futura).
-export function callOutcome(product, list, actsOf, today = null) {
+// `inWin` (opcional): com a janela na mão, a testemunha só fala se o resumo é
+// DA janela — senão o lead remarcado pro mês seguinte carregaria o resumo do
+// mês anterior e contaria "realizada" antes da call nova acontecer.
+export function callOutcome(product, list, actsOf, today = null, inWin = null) {
   let shown = 0, noShow = 0, pending = 0, won = 0;
   for (const l of list) {
     const isW = isWonLead(product, l);
     const lost = isLoss(product, l.stage);
-    if (isW) won++;
-    const advanced = isW || FORWARD_KINDS.has(kindOf(product, l.stage))
+    if (isW) { won++; shown++; continue; }
+    const w = callWitness(actsOf(l.id));
+    const temp = w && (!inWin || inWin(w.at)) ? w.temperatura : "";
+    if (temp === "frio") { noShow++; continue; }
+    if (temp === "quente" || temp === "morno") { shown++; continue; }
+    const advanced = FORWARD_KINDS.has(kindOf(product, l.stage))
       || (actsOf(l.id) || []).some((a) => a.type === "stage" && FORWARD_KINDS.has(kindOf(product, a.meta?.to)));
     if (advanced || (lost && l.lostReason !== "nao_compareceu")) { shown++; continue; }
-    if ((lost && l.lostReason === "nao_compareceu") || (!isW && isNoShowStage(l.stage))) { noShow++; continue; }
+    if ((lost && l.lostReason === "nao_compareceu") || isNoShowStage(l.stage)) { noShow++; continue; }
     // Não avançou e não é furo marcado: futuro = ainda vai acontecer; senão,
     // call vencida que não virou nada = não compareceu.
     if (today && dayKey(l.callAt) > today) pending++;

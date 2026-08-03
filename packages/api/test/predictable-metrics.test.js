@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   leadClassOf, LEAD_CLASSES, classCounts, cashBucketsIn, cashCollectedIn,
-  contactAttribution, dayKey,
+  contactAttribution, dayKey, callOutcome, callWitness, callCohortIn,
 } from "../src/metrics-core.js";
 
 const inWin = (iso) => !!iso && dayKey(iso) >= "2026-08-01" && dayKey(iso) <= "2026-08-31";
@@ -60,6 +60,79 @@ test("cashBucketsIn: novos + upsell + renovação = caixa da janela", () => {
   assert.deepEqual(b, { novos: 7000, upsell: 1200, renovacao: 599, total: 8799 });
   // O total dos baldes é o MESMO caixa da régua oficial do mês (fatura paga).
   assert.equal(b.total, cashCollectedIn(invoices, "2026-08"));
+});
+
+// ── A testemunha da call (Leo, 03/08): transcrição decide compareceu/furou ───
+const PROD = {
+  funnel: [
+    { stage: "Call agendada", kind: "call" },
+    { stage: "Follow-up", kind: "followup" },
+    { stage: "No show", kind: "contato" },
+    { stage: "Desqualificado", kind: "desqualificado" },
+    { stage: "Ganho", kind: "ganho" },
+  ],
+};
+const sum = (at, temperatura, kind = "call") =>
+  ({ at, type: "system", meta: { event: "call_summary", kind, summary: { temperatura } } });
+
+test("callOutcome: testemunha FRIA vira no-show mesmo com card desqualificado por outro motivo", () => {
+  const l = { id: "a", stage: "Desqualificado", lostReason: "sem_fit", callAt: "2026-07-17T14:00:00-03:00" };
+  const acts = { a: [sum("2026-07-17T17:57:00-03:00", "frio")] };
+  const r = callOutcome(PROD, [l], (id) => acts[id] || [], "2026-08-03");
+  assert.deepEqual(r, { shown: 0, noShow: 1, pending: 0, won: 0 }); // sem a testemunha contaria shown
+});
+
+test("callOutcome: testemunha MORNA vira realizada mesmo com card parado em call vencida", () => {
+  const l = { id: "b", stage: "Call agendada", callAt: "2026-07-23T09:00:00-03:00" };
+  const acts = { b: [sum("2026-07-23T13:12:00-03:00", "morno")] };
+  const r = callOutcome(PROD, [l], (id) => acts[id] || [], "2026-08-03");
+  assert.deepEqual(r, { shown: 1, noShow: 0, pending: 0, won: 0 }); // sem a testemunha contaria no-show
+});
+
+test("callOutcome: GANHO vence a testemunha; sem testemunha vale o card (futuro = a realizar)", () => {
+  const won = { id: "w", stage: "Ganho", customerId: "cu_1", callAt: "2026-07-16T10:00:00-03:00" };
+  const future = { id: "f", stage: "Call agendada", callAt: "2026-08-10T10:00:00-03:00" };
+  const acts = { w: [sum("2026-07-16T13:00:00-03:00", "frio")] }; // ruído: quem fechou apareceu
+  const r = callOutcome(PROD, [won, future], (id) => acts[id] || [], "2026-08-03");
+  assert.deepEqual(r, { shown: 1, noShow: 0, pending: 1, won: 1 });
+});
+
+test("callWitness: pega o resumo de call mais recente e ignora o de integração", () => {
+  const acts = [
+    sum("2026-07-10T10:00:00Z", "frio"),
+    sum("2026-07-20T10:00:00Z", "morno"),
+    sum("2026-07-25T10:00:00Z", "quente", "integracao"), // outra conversa, fora
+  ];
+  assert.equal(callWitness(acts)?.temperatura, "morno");
+  assert.equal(callWitness([]), null);
+});
+
+test("callOutcome: testemunha de OUTRA janela não fala — remarcada pro mês seguinte fica 'a realizar'", () => {
+  // Call feita em julho (resumo morno), remarcada pra 10/08. Na janela de
+  // AGOSTO o resumo de julho não vale: a call nova ainda não aconteceu.
+  const inAug = (iso) => !!iso && dayKey(iso) >= "2026-08-01" && dayKey(iso) <= "2026-08-31";
+  const l = { id: "r", stage: "Call agendada", callAt: "2026-08-10T08:00:00-03:00" };
+  const acts = { r: [sum("2026-07-20T12:55:00-03:00", "morno")] };
+  const r = callOutcome(PROD, [l], (id) => acts[id] || [], "2026-08-03", inAug);
+  assert.deepEqual(r, { shown: 0, noShow: 0, pending: 1, won: 0 }); // não conta como realizada nesta janela
+});
+
+test("callCohortIn: call transcrita entra na safra mesmo com callAt remarcado ou limpo", () => {
+  const inWin = (iso) => !!iso && dayKey(iso) >= "2026-07-05" && dayKey(iso) <= "2026-08-03";
+  const leads = [
+    { id: "x", callAt: "2026-07-20T10:00:00-03:00" },              // na janela pelo callAt
+    { id: "y", callAt: "" },                                        // callAt LIMPO, call transcrita 28/07
+    { id: "z", callAt: "2026-08-10T08:00:00-03:00" },               // REMARCADA pro futuro, call transcrita 20/07
+    { id: "k", callAt: "" },                                        // só resumo de integração: fora
+    { id: "n", callAt: "" },                                        // nada: fora
+  ];
+  const acts = {
+    y: [sum("2026-07-28T13:09:00-03:00", "quente")],
+    z: [sum("2026-07-20T12:55:00-03:00", "morno")],
+    k: [sum("2026-07-22T12:00:00-03:00", "quente", "integracao")],
+  };
+  const ids = callCohortIn(leads, (id) => acts[id] || [], inWin).map((l) => l.id);
+  assert.deepEqual(ids.sort(), ["x", "y", "z"]);
 });
 
 test("contactAttribution devolve firstAt (base do SLA de 1º toque)", () => {
