@@ -112,6 +112,18 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
     return product;
   }
 
+  // Páginas (com o Instagram vinculado) que o token administra — alimenta o
+  // "Conectar" da tela Redes sociais (produto sem metaPageId/metaIgUser
+  // escolhe aqui e grava no cadastro).
+  app.get("/api/social/pages", async (req, reply) => {
+    if (!meta.configured()) return { configured: false, pages: [] };
+    try {
+      return { configured: true, pages: await meta.listPages() };
+    } catch (e) {
+      return reply.code(UPSTREAM_FAILED).send({ error: String(e.message || e).slice(0, 300) });
+    }
+  });
+
   // Novos seguidores recentes (~24h) pro aviso de social selling do Meu dia.
   // SÓ a contagem líquida: o Instagram/Meta NÃO expõe a lista nem o @ de quem
   // seguiu (limite da plataforma). Enxuto e liberado pra fila do SDR (today) —

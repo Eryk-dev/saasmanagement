@@ -259,6 +259,17 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     return { ok: true, since, until, report };
   });
 
+  // Contas de anúncio que o token alcança — alimenta o "Conectar" da tela
+  // Publicidade (produto sem metaAdAccount escolhe aqui e grava no cadastro).
+  app.get("/api/marketing/meta/adaccounts", async (req, reply) => {
+    if (!meta.configured()) return { configured: false, accounts: [] };
+    try {
+      return { configured: true, accounts: await meta.listAdAccounts() };
+    } catch (err) {
+      return reply.code(UPSTREAM_FAILED).send({ error: String(err.message || err).slice(0, 300) });
+    }
+  });
+
   // ── Gerenciamento de campanha (precisa de ads_management no token) ────────
   // Lista ao vivo da conta do produto: status, orçamento, objetivo.
   app.get("/api/marketing/:saas/campaigns", async (req, reply) => {

@@ -8,6 +8,7 @@ import { EmptyState, PrimaryButton } from "../atoms.jsx";
 import { stageKind } from "../lib/funnel.js";
 import { GRADE_STYLE } from "../lib/ui.js";
 import { InsightsCard } from "../components/insights.jsx";
+import { MetaConnectCard } from "../components/meta-connect.jsx";
 // Métricas — aquisição × funil do produto ativo (substitui a tela Marketing).
 // Hoje: investimento (Meta), leads, CPL real e custo por etapa, com séries no
 // tempo e quebra por campanha. CAC e LTV entram na fase de métricas de receita,
@@ -398,6 +399,10 @@ function MetricsScreen() {
       </PageHead>
 
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* Produto ainda sem conta de anúncio vinculada (UniqueKids, Elo, os
+            próximos): o Conectar lista as contas do token e grava a escolha.
+            O resto da tela segue de pé — gasto manual funciona sem Meta. */}
+        {!product.metaAdAccount && <MetaConnectCard kind="ads" product={product} metaOn={metaOn} />}
         {note && (
           // Banner, não uma linha solta: quem sobe uma leva de vídeo espera
           // minutos e volta pra tela querendo saber, de longe, se deu certo.
