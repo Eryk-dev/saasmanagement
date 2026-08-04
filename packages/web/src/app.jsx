@@ -110,7 +110,24 @@ function App() {
   // tick no /api/events; recarregamos o SEED com debounce. O primeiro evento é
   // só a baseline do rev. EventSource reconecta sozinho se a conexão cair.
   useEA(() => {
-    let last = null, t = null;
+    // COALESCÊNCIA (Leo, 04/08: "o cockpit fica dando uns pequenos refresh nele
+    // inteiro"): cada escrita de QUALQUER usuário disparava um reload completo
+    // em TODO navegador conectado, com só 350ms de janela — manhã de time ativo
+    // virava flicker contínuo. Agora: no máximo UM reload a cada 8s (o burst
+    // inteiro vira um reload só), e aba ESCONDIDA não recarrega — sincroniza
+    // uma vez quando volta ao foco.
+    let last = null, t = null, lastRun = 0, dirty = false;
+    const MIN_GAP = 8000;
+    const run = () => { lastRun = Date.now(); dirty = false; refresh(); };
+    const schedule = () => {
+      if (document.hidden) { dirty = true; return; }
+      clearTimeout(t);
+      t = setTimeout(run, Math.max(350, MIN_GAP - (Date.now() - lastRun)));
+    };
+    const onVisible = () => {
+      if (!document.hidden && dirty) { clearTimeout(t); t = setTimeout(run, 250); }
+    };
+    document.addEventListener("visibilitychange", onVisible);
     const es = new EventSource(eventsUrl());
     es.onmessage = (m) => {
       let rev, collection;
@@ -119,13 +136,10 @@ function App() {
       // Recarregar o SEED inteiro a cada toque registrado seria desperdício; se o
       // toque também mexeu no lead (denorm), o update do lead emite outro evento
       // e aí sim recarregamos.
-      if (last != null && rev !== last && collection !== "activities") {
-        clearTimeout(t);
-        t = setTimeout(refresh, 350);
-      }
+      if (last != null && rev !== last && collection !== "activities") schedule();
       last = rev;
     };
-    return () => { clearTimeout(t); es.close(); };
+    return () => { clearTimeout(t); es.close(); document.removeEventListener("visibilitychange", onVisible); };
   }, [refresh]);
 
   // Back/forward do navegador troca a tela junto com o hash.
