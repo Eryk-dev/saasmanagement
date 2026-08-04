@@ -914,23 +914,15 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
   function fitSlides() {
     var on = window.innerWidth >= 900 &&
       !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-    var wraps = document.querySelectorAll('main > section > .wrap, main > header.hero > .wrap');
-    // Fator ÚNICO pro deck inteiro: o slide mais alto define a escala e TODOS
-    // os slides rendem na mesma largura visual. Escala por slide deixava cada
-    // tela com uma largura de conteúdo diferente (desalinhado de um slide pro
-    // outro). Slide oculto (showIf) mede 0 e não pesa no fator.
-    var ratio = 1;
-    wraps.forEach(function (w) {
+    document.querySelectorAll('main > section > .wrap, main > header.hero > .wrap').forEach(function (w) {
       w.style.transform = '';
       if (!on) return;
       var sec = w.parentElement;
       var cs = window.getComputedStyle(sec);
       var avail = sec.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
       var h = w.scrollHeight;
-      if (h > avail && avail > 0) ratio = Math.min(ratio, avail / h);
+      if (h > avail && avail > 0) w.style.transform = 'scale(' + (avail / h).toFixed(4) + ')';
     });
-    if (!on || ratio >= 1) return;
-    wraps.forEach(function (w) { w.style.transform = 'scale(' + ratio.toFixed(4) + ')'; });
   }
 
   function el(tag, cls, html) {
