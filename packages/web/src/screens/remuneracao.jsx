@@ -9,8 +9,8 @@ import { isAdminUser } from "../lib/users.js";
 // Closer, CS), 3 NÍVEIS cada (1 júnior · 2 pleno · 3 sênior). SDR e Closer têm
 // DUAS PERNAS de variável, avaliadas separadamente e SOMADAS ("bônus em
 // dobro"): perna CONTRATOS (nº de fechamentos) e perna RECEITA (R$ fechado).
-// Regras das pernas: abaixo de 80% da meta = ZERO; entre as âncoras 80/100/120
-// é proporcional; acima de 120% segue a inclinação até TRAVAR em 140%.
+// Regras das pernas: abaixo de 80% da meta = ZERO; entre as âncoras
+// 80/100/120/140 é proporcional; TRAVA em 140% (o bônus 140% é o teto).
 // Closer escolhe regime CLT ou PJ (muda só o fixo). CS não tem banda: fixo +
 // R$100 por indicação que vira REUNIÃO FEITA (R$250 no lugar, se fechar; não
 // soma) + bônus por NPS ≥ 80 conforme o nível.
@@ -33,7 +33,7 @@ const tdS = { padding: "5px 8px", borderBottom: "1px solid var(--line-faint)", w
 const RULES = [
   ["Duas pernas que somam", "contratos e receita são avaliados separados e cada perna paga o bônus da banda: bater as duas metas em 100% paga o valor da tabela em DOBRO (ex.: 20 contratos + R$90k no nível 1 do closer = 1.000 + 1.000)."],
   ["Abaixo de 80% = zero", "a perna que não chega a 80% da meta não paga nada."],
-  ["Proporcional até 140%", "entre 80, 100 e 120% o valor é proporcional; acima de 120% continua na mesma inclinação e trava em 140%."],
+  ["Proporcional até 140%", "entre as âncoras 80, 100, 120 e 140% o valor é proporcional; 140% é o teto (acima disso não paga mais)."],
   ["A receita do SDR é a das oportunidades DELE", "a perna de R$ do SDR conta a receita FECHADA das oportunidades que ele gerou (desenho do Receita Previsível)."],
   ["SDR e closer perseguem o mesmo número", "metas iguais por nível de propósito: a dupla fecha junto (2 pessoas nível 1 a 90k = a meta de agosto)."],
   ["CLT ou PJ só muda o fixo", "a variável do closer é a mesma nos dois regimes."],
@@ -45,17 +45,17 @@ const RULES = [
 const DEFAULT_PLAN = {
   sdr: {
     levels: [
-      { n: 1, fixed: 2200, metaContracts: 20, metaRevenue: 90000, b80: 300, b100: 550, b120: 750 },
-      { n: 2, fixed: 2600, metaContracts: 25, metaRevenue: 120000, b80: 450, b100: 750, b120: 1000 },
-      { n: 3, fixed: 3000, metaContracts: 35, metaRevenue: 180000, b80: 650, b100: 1000, b120: 1300 },
+      { n: 1, fixed: 2200, metaContracts: 20, metaRevenue: 90000, b80: 300, b100: 550, b120: 750, b140: 950 },
+      { n: 2, fixed: 2600, metaContracts: 25, metaRevenue: 120000, b80: 450, b100: 750, b120: 1000, b140: 1250 },
+      { n: 3, fixed: 3000, metaContracts: 35, metaRevenue: 180000, b80: 650, b100: 1000, b120: 1300, b140: 1600 },
     ],
     notes: "",
   },
   closer: {
     levels: [
-      { n: 1, fixed: 3000, fixedPj: 4200, metaContracts: 20, metaRevenue: 90000, b80: 600, b100: 1000, b120: 1500 },
-      { n: 2, fixed: 4000, fixedPj: 5500, metaContracts: 25, metaRevenue: 120000, b80: 1000, b100: 1500, b120: 2100 },
-      { n: 3, fixed: 5500, fixedPj: 7500, metaContracts: 35, metaRevenue: 180000, b80: 1500, b100: 2500, b120: 3700 },
+      { n: 1, fixed: 3000, fixedPj: 4200, metaContracts: 20, metaRevenue: 90000, b80: 600, b100: 1000, b120: 1500, b140: 2000 },
+      { n: 2, fixed: 4000, fixedPj: 5500, metaContracts: 25, metaRevenue: 120000, b80: 1000, b100: 1500, b120: 2100, b140: 2700 },
+      { n: 3, fixed: 5500, fixedPj: 7500, metaContracts: 35, metaRevenue: 180000, b80: 1500, b100: 2500, b120: 3700, b140: 4900 },
     ],
     notes: "",
   },
@@ -73,14 +73,16 @@ const DEFAULT_PLAN = {
 };
 
 // Bônus de UMA perna: att = realizado ÷ meta (1 = 100%). Cliff em 80%,
-// proporcional entre as âncoras (80→b80, 100→b100, 120→b120), extrapola a
-// inclinação 100→120 acima disso e trava em 140% (decisões 1 a 3 do Leo).
-export function legBonus(att, b80, b100, b120) {
+// proporcional entre as âncoras (80→b80, 100→b100, 120→b120, 140→b140) e trava
+// em 140% (decisões 1 a 3 do Leo). Plano salvo sem b140 (anterior à coluna)
+// herda a extrapolação antiga da inclinação 100→120.
+export function legBonus(att, b80, b100, b120, b140) {
   if (!Number.isFinite(att) || att < 0.8) return 0;
   const a = Math.min(att, 1.4);
   if (a <= 1) return b80 + (b100 - b80) * ((a - 0.8) / 0.2);
   if (a <= 1.2) return b100 + (b120 - b100) * ((a - 1) / 0.2);
-  return b120 + (b120 - b100) * ((a - 1.2) / 0.2);
+  const top = Number.isFinite(b140) ? b140 : b120 + (b120 - b100);
+  return b120 + (top - b120) * ((a - 1.2) / 0.2);
 }
 const pctS = (att) => (Number.isFinite(att) ? `${Math.round(att * 100)}%` : "—");
 
@@ -90,8 +92,8 @@ function SimVendas({ plan, isCloser }) {
   const lv = (plan.levels || []).find((l) => l.n === Number(s.n)) || plan.levels?.[0] || {};
   const attC = num(lv.metaContracts) > 0 ? num(s.contratos) / num(lv.metaContracts) : 0;
   const attR = num(lv.metaRevenue) > 0 ? num(s.receita) / num(lv.metaRevenue) : 0;
-  const legC = legBonus(attC, num(lv.b80), num(lv.b100), num(lv.b120));
-  const legR = legBonus(attR, num(lv.b80), num(lv.b100), num(lv.b120));
+  const legC = legBonus(attC, num(lv.b80), num(lv.b100), num(lv.b120), lv.b140 == null ? undefined : num(lv.b140));
+  const legR = legBonus(attR, num(lv.b80), num(lv.b100), num(lv.b120), lv.b140 == null ? undefined : num(lv.b140));
   const fixed = isCloser && s.pj ? num(lv.fixedPj) : num(lv.fixed);
   const set = (k) => (e) => setS((p) => ({ ...p, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
   return (
@@ -165,7 +167,7 @@ function RoleCard({ role, saved, onSave }) {
       </div>
 
       <div className="tbl-x" style={{ marginTop: 10, overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", minWidth: isCs ? 380 : 640 }}>
+        <table style={{ borderCollapse: "collapse", minWidth: isCs ? 380 : 720 }}>
           <thead>
             <tr>
               <th style={thS}>Nível</th>
@@ -176,6 +178,7 @@ function RoleCard({ role, saved, onSave }) {
               {!isCs && <th style={thS}>Bônus 80%</th>}
               {!isCs && <th style={thS}>Bônus 100%</th>}
               {!isCs && <th style={thS}>Bônus 120%</th>}
+              {!isCs && <th style={thS}>Bônus 140%</th>}
               {isCs && <th style={thS}>Bônus NPS ≥ {num(draft.npsFloor) || 80}</th>}
             </tr>
           </thead>
@@ -190,6 +193,7 @@ function RoleCard({ role, saved, onSave }) {
                 {!isCs && <td style={tdS}><input type="number" value={l.b80 ?? 0} onChange={setLevel(l.n, "b80")} style={cellIn} /></td>}
                 {!isCs && <td style={tdS}><input type="number" value={l.b100 ?? 0} onChange={setLevel(l.n, "b100")} style={cellIn} /></td>}
                 {!isCs && <td style={tdS}><input type="number" value={l.b120 ?? 0} onChange={setLevel(l.n, "b120")} style={cellIn} /></td>}
+                {!isCs && <td style={tdS}><input type="number" value={l.b140 ?? 0} onChange={setLevel(l.n, "b140")} style={cellIn} /></td>}
                 {isCs && <td style={tdS}><input type="number" value={l.npsBonus ?? 0} onChange={setLevel(l.n, "npsBonus")} style={cellIn} /></td>}
               </tr>
             ))}
@@ -241,7 +245,10 @@ function RemuneracaoScreen() {
   // Plano vigente por trilha: doc salvo (campo plan) por cima do padrão aprovado.
   const planOf = (role) => {
     const doc = docs?.[role];
-    return doc?.plan ? { ...DEFAULT_PLAN[role], ...doc.plan, updatedAt: doc.updatedAt } : { ...DEFAULT_PLAN[role] };
+    const plan = doc?.plan ? { ...DEFAULT_PLAN[role], ...doc.plan, updatedAt: doc.updatedAt } : { ...DEFAULT_PLAN[role] };
+    // Doc salvo antes da coluna 140% não tem b140: mostra a extrapolação antiga.
+    if (role !== "cs") plan.levels = (plan.levels || []).map((l) => (l.b140 == null ? { ...l, b140: num(l.b120) + (num(l.b120) - num(l.b100)) } : l));
+    return plan;
   };
   async function save(role, plan) {
     const doc = docs?.[role];
