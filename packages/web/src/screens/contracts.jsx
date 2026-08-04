@@ -218,9 +218,9 @@ function ContractsScreen() {
       </div>
 
       {(sel || edit) && (
-        {/* O backdrop NÃO fecha no clique (Leo, 04/08): o painel tem formulário
-            preenchido à mão e um clique fora jogava tudo fora. Fecha só no ✕. */}
         <div style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", display: "flex", justifyContent: "flex-end", zIndex: 70 }}>
+          {/* O backdrop NÃO fecha no clique (Leo, 04/08): o painel tem formulário
+              preenchido à mão e um clique fora jogava tudo fora. Fecha só no ✕. */}
           <div onClick={(e) => e.stopPropagation()} style={{ width: !edit && sel && fieldsOf(sel).length ? "min(1120px, 100vw)" : "min(860px, 100vw)", height: "100%", background: "var(--bg-1)", borderLeft: "1px solid var(--line-2)", display: "flex", flexDirection: "column", boxShadow: "var(--shadow-pop)" }}>
             <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
               <div style={{ minWidth: 0 }}>
