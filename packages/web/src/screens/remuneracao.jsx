@@ -13,7 +13,8 @@ import { isAdminUser } from "../lib/users.js";
 // 80/100/120/140 é proporcional; TRAVA em 140% (o bônus 140% é o teto).
 // Closer escolhe regime CLT ou PJ (muda só o fixo). CS não tem banda: fixo +
 // R$100 por indicação que vira REUNIÃO FEITA (R$250 no lugar, se fechar; não
-// soma) + bônus por NPS ≥ 80 conforme o nível.
+// soma) + bônus por NPS ≥ 80 + bônus por churn do mês abaixo de 15%, ambos
+// conforme o nível.
 // Os números abaixo são o PADRÃO (o plano aprovado); editar e salvar grava um
 // doc por trilha na collection comp_plans (admin-only na API, screens.js).
 
@@ -37,7 +38,7 @@ const RULES = [
   ["A receita do SDR é a das oportunidades DELE", "a perna de R$ do SDR conta a receita FECHADA das oportunidades que ele gerou (desenho do Receita Previsível)."],
   ["SDR e closer perseguem o mesmo número", "metas iguais por nível de propósito: a dupla fecha junto (2 pessoas nível 1 a 90k = a meta de agosto)."],
   ["CLT ou PJ só muda o fixo", "a variável do closer é a mesma nos dois regimes."],
-  ["CS por evento, sem banda", "R$100 quando a indicação vira reunião FEITA; se converter, R$250 no lugar (não soma). Bônus de NPS pago com NPS ≥ 80."],
+  ["CS por evento, sem banda", "R$100 quando a indicação vira reunião FEITA; se converter, R$250 no lugar (não soma). Bônus de NPS pago com NPS ≥ 80 e bônus de churn pago com churn do mês abaixo de 15%."],
   ["Subir de nível é o plano de carreira", "promoção sobe fixo, meta e bônus juntos (1 júnior · 2 pleno · 3 sênior)."],
 ];
 
@@ -61,13 +62,14 @@ const DEFAULT_PLAN = {
   },
   cs: {
     levels: [
-      { n: 1, fixed: 2200, npsBonus: 500 },
-      { n: 2, fixed: 2600, npsBonus: 700 },
-      { n: 3, fixed: 3000, npsBonus: 1000 },
+      { n: 1, fixed: 2200, npsBonus: 500, churnBonus: 500 },
+      { n: 2, fixed: 2600, npsBonus: 700, churnBonus: 700 },
+      { n: 3, fixed: 3000, npsBonus: 1000, churnBonus: 1000 },
     ],
     referralMeeting: 100,
     referralClosed: 250,
     npsFloor: 80,
+    churnMax: 15,
     notes: "",
   },
 };
@@ -118,11 +120,11 @@ function SimVendas({ plan, isCloser }) {
 
 // ── Simulador do CS: eventos + NPS ───────────────────────────────────────────
 function SimCs({ plan }) {
-  const [s, setS] = useS({ n: 1, nps: true, reunioes: 4, fechadas: 1 });
+  const [s, setS] = useS({ n: 1, nps: true, churn: true, reunioes: 4, fechadas: 1 });
   const lv = (plan.levels || []).find((l) => l.n === Number(s.n)) || plan.levels?.[0] || {};
   // Indicação fechada paga o valor CHEIO no lugar do de reunião (não soma):
   // "reuniões" aqui são as que NÃO converteram.
-  const varTotal = num(s.reunioes) * num(plan.referralMeeting) + num(s.fechadas) * num(plan.referralClosed) + (s.nps ? num(lv.npsBonus) : 0);
+  const varTotal = num(s.reunioes) * num(plan.referralMeeting) + num(s.fechadas) * num(plan.referralClosed) + (s.nps ? num(lv.npsBonus) : 0) + (s.churn ? num(lv.churnBonus) : 0);
   const set = (k) => (e) => setS((p) => ({ ...p, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
   return (
     <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
@@ -130,6 +132,7 @@ function SimCs({ plan }) {
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <label>nível <select value={s.n} onChange={set("n")} style={{ ...inputS, width: 56, height: 26 }}>{(plan.levels || []).map((l) => <option key={l.n} value={l.n}>{l.n}</option>)}</select></label>
         <label style={{ display: "inline-flex", gap: 5, alignItems: "center" }}><input type="checkbox" checked={!!s.nps} onChange={set("nps")} /> NPS ≥ {num(plan.npsFloor) || 80}</label>
+        <label style={{ display: "inline-flex", gap: 5, alignItems: "center" }}><input type="checkbox" checked={!!s.churn} onChange={set("churn")} /> churn &lt; {num(plan.churnMax) || 15}%</label>
         <label>indicações c/ reunião feita (sem fechar) <input type="number" value={s.reunioes} onChange={set("reunioes")} style={{ ...inputS, width: 56, height: 26 }} /></label>
         <label>indicações fechadas <input type="number" value={s.fechadas} onChange={set("fechadas")} style={{ ...inputS, width: 56, height: 26 }} /></label>
       </div>
@@ -167,7 +170,7 @@ function RoleCard({ role, saved, onSave }) {
       </div>
 
       <div className="tbl-x" style={{ marginTop: 10, overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", minWidth: isCs ? 380 : 720 }}>
+        <table style={{ borderCollapse: "collapse", minWidth: isCs ? 500 : 720 }}>
           <thead>
             <tr>
               <th style={thS}>Nível</th>
@@ -180,6 +183,7 @@ function RoleCard({ role, saved, onSave }) {
               {!isCs && <th style={thS}>Bônus 120%</th>}
               {!isCs && <th style={thS}>Bônus 140%</th>}
               {isCs && <th style={thS}>Bônus NPS ≥ {num(draft.npsFloor) || 80}</th>}
+              {isCs && <th style={thS}>Bônus churn &lt; {num(draft.churnMax) || 15}%</th>}
             </tr>
           </thead>
           <tbody>
@@ -195,6 +199,7 @@ function RoleCard({ role, saved, onSave }) {
                 {!isCs && <td style={tdS}><input type="number" value={l.b120 ?? 0} onChange={setLevel(l.n, "b120")} style={cellIn} /></td>}
                 {!isCs && <td style={tdS}><input type="number" value={l.b140 ?? 0} onChange={setLevel(l.n, "b140")} style={cellIn} /></td>}
                 {isCs && <td style={tdS}><input type="number" value={l.npsBonus ?? 0} onChange={setLevel(l.n, "npsBonus")} style={cellIn} /></td>}
+                {isCs && <td style={tdS}><input type="number" value={l.churnBonus ?? 0} onChange={setLevel(l.n, "churnBonus")} style={cellIn} /></td>}
               </tr>
             ))}
           </tbody>
@@ -248,6 +253,8 @@ function RemuneracaoScreen() {
     const plan = doc?.plan ? { ...DEFAULT_PLAN[role], ...doc.plan, updatedAt: doc.updatedAt } : { ...DEFAULT_PLAN[role] };
     // Doc salvo antes da coluna 140% não tem b140: mostra a extrapolação antiga.
     if (role !== "cs") plan.levels = (plan.levels || []).map((l) => (l.b140 == null ? { ...l, b140: num(l.b120) + (num(l.b120) - num(l.b100)) } : l));
+    // Doc do CS salvo antes do bônus de churn: herda o valor padrão do nível.
+    if (role === "cs") plan.levels = (plan.levels || []).map((l) => (l.churnBonus == null ? { ...l, churnBonus: num(DEFAULT_PLAN.cs.levels.find((d) => d.n === l.n)?.churnBonus) } : l));
     return plan;
   };
   async function save(role, plan) {
