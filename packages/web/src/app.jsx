@@ -118,16 +118,30 @@ function App() {
     // uma vez quando volta ao foco.
     let last = null, t = null, lastRun = 0, dirty = false;
     const MIN_GAP = 8000;
-    const run = () => { lastRun = Date.now(); dirty = false; refresh(); };
+    // NUNCA recarregar com o usuário DIGITANDO (Leo, 04/08: "estou alimentando
+    // alguma informação e o refresh faz eu perder ela"): com o foco em input/
+    // textarea/select/contentEditable o reload fica represado (dirty) e só
+    // roda quando o campo perde o foco (focusout re-arma) ou a aba volta.
+    const isEditing = () => {
+      const el = document.activeElement;
+      if (!el) return false;
+      const tag = (el.tagName || "").toLowerCase();
+      return tag === "input" || tag === "textarea" || tag === "select" || el.isContentEditable;
+    };
+    const tryRun = () => {
+      if (document.hidden || isEditing()) { dirty = true; return; }
+      lastRun = Date.now(); dirty = false; refresh();
+    };
     const schedule = () => {
-      if (document.hidden) { dirty = true; return; }
       clearTimeout(t);
-      t = setTimeout(run, Math.max(350, MIN_GAP - (Date.now() - lastRun)));
+      t = setTimeout(tryRun, Math.max(350, MIN_GAP - (Date.now() - lastRun)));
     };
-    const onVisible = () => {
-      if (!document.hidden && dirty) { clearTimeout(t); t = setTimeout(run, 250); }
-    };
-    document.addEventListener("visibilitychange", onVisible);
+    // Terminou de editar (blur de qualquer campo, em capture) ou voltou pra
+    // aba: se ficou reload represado, roda um — tryRun re-checa o foco (se
+    // pulou pra outro campo, segue represado).
+    const onIdle = () => { if (dirty) { clearTimeout(t); t = setTimeout(tryRun, 600); } };
+    document.addEventListener("visibilitychange", onIdle);
+    document.addEventListener("focusout", onIdle, true);
     const es = new EventSource(eventsUrl());
     es.onmessage = (m) => {
       let rev, collection;
@@ -139,7 +153,11 @@ function App() {
       if (last != null && rev !== last && collection !== "activities") schedule();
       last = rev;
     };
-    return () => { clearTimeout(t); es.close(); document.removeEventListener("visibilitychange", onVisible); };
+    return () => {
+      clearTimeout(t); es.close();
+      document.removeEventListener("visibilitychange", onIdle);
+      document.removeEventListener("focusout", onIdle, true);
+    };
   }, [refresh]);
 
   // Back/forward do navegador troca a tela junto com o hash.
