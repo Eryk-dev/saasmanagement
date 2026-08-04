@@ -4,254 +4,274 @@ import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { isAdminUser } from "../lib/users.js";
 
-// Remuneração — tela SÓ DE ADMIN (dono): modelos de remuneração por cargo,
-// direto do Receita Previsível (caps. 10-11), + o NOSSO plano em cada vaga
-// (editável, salvo na collection comp_plans) e um simulador de quanto a
-// pessoa leva no mês. Dupla proteção: o item de menu só aparece pra admin
-// (chrome.jsx) e a API /api/comp_plans exige a etiqueta admin (screens.js),
-// então nem usuário sem restrição de telas (ex.: acesso total) enxerga salário.
+// Remuneração — tela SÓ DE ADMIN com o plano OFICIAL da casa, definido pelo
+// Leo em 04/08/2026 (folhas amarelas + decisões no chat): 3 trilhas (SDR,
+// Closer, CS), 3 NÍVEIS cada (1 júnior · 2 pleno · 3 sênior). SDR e Closer têm
+// DUAS PERNAS de variável, avaliadas separadamente e SOMADAS ("bônus em
+// dobro"): perna CONTRATOS (nº de fechamentos) e perna RECEITA (R$ fechado).
+// Regras das pernas: abaixo de 80% da meta = ZERO; entre as âncoras 80/100/120
+// é proporcional; acima de 120% segue a inclinação até TRAVAR em 140%.
+// Closer escolhe regime CLT ou PJ (muda só o fixo). CS não tem banda: fixo +
+// R$100 por indicação que vira REUNIÃO FEITA (R$250 no lugar, se fechar; não
+// soma) + bônus por NPS ≥ 80 conforme o nível.
+// Os números abaixo são o PADRÃO (o plano aprovado); editar e salvar grava um
+// doc por trilha na collection comp_plans (admin-only na API, screens.js).
 
 const { useState: useS, useEffect: useE } = React;
 
 const money = (v) => window.fmt.money(Number(v) || 0);
+const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px 22px" };
 const kicker = { fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" };
-const inputS = { height: 30, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", fontSize: 12.5, width: 110 };
+const inputS = { height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", fontSize: 12.5, width: 92 };
+const cellIn = { ...inputS, width: 78, height: 26, fontSize: 12 };
 const btnPrimary = { height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--accent)", background: "var(--accent)", color: "var(--accent-fg, #fff)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
+const thS = { padding: "6px 8px", fontSize: 10.5, color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: ".05em", textAlign: "left", whiteSpace: "nowrap", borderBottom: "1px solid var(--line-1)" };
+const tdS = { padding: "5px 8px", borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" };
 
-// Princípios do livro que valem pra TODOS os cargos (a régua da casa).
-const PRINCIPLES = [
-  ["Nunca 100% comissionado", "vale pra ~95% das empresas: com ciclo acima de 1-2 meses o vendedor passa fome, você atrai gente desesperada e o desespero chega no cliente (p.228-229)."],
-  ["Variável do SDR ≈ até 50% do fixo", "ou seja, 1/3 da remuneração total. Foi o desenho que funcionou na Salesforce depois de testar vários (p.230)."],
-  ["Metade por oportunidade ACEITA, metade pelo fechado", "a variável do SDR paga volume (oportunidades que o closer aceitou) E qualidade (receita que virou contrato), sem precisar de fiscal (p.230-231)."],
-  ["Só paga o que está no sistema", "oportunidade fora do cockpit não existe e não remunera; é o que mantém o dado confiável (p.217 e 271)."],
-  ["Transparência total", "todo mundo vê o resultado e a comissão de todo mundo (planilha única): corta ~80% do trabalho de apuração e acaba com desconfiança de folha (p.233-235)."],
-  ["Time participa do desenho", "quem ajuda a criar o plano defende o plano; na Salesforce as reclamações morreram sem mudar uma vírgula (p.232-233)."],
-  ["Promova cedo nos níveis iniciais", "6 a 8 meses nas funções de entrada; a trilha SDR → closer é o plano de carreira (p.226-227). Líder de subtime: 20% da variável atrelada ao resultado do subtime (p.284)."],
+// ── As regras da casa (decisões do Leo, 04/08) ───────────────────────────────
+const RULES = [
+  ["Duas pernas que somam", "contratos e receita são avaliados separados e cada perna paga o bônus da banda: bater as duas metas em 100% paga o valor da tabela em DOBRO (ex.: 20 contratos + R$90k no nível 1 do closer = 1.000 + 1.000)."],
+  ["Abaixo de 80% = zero", "a perna que não chega a 80% da meta não paga nada."],
+  ["Proporcional até 140%", "entre 80, 100 e 120% o valor é proporcional; acima de 120% continua na mesma inclinação e trava em 140%."],
+  ["A receita do SDR é a das oportunidades DELE", "a perna de R$ do SDR conta a receita FECHADA das oportunidades que ele gerou (desenho do Receita Previsível)."],
+  ["SDR e closer perseguem o mesmo número", "metas iguais por nível de propósito: a dupla fecha junto (2 pessoas nível 1 a 90k = a meta de agosto)."],
+  ["CLT ou PJ só muda o fixo", "a variável do closer é a mesma nos dois regimes."],
+  ["CS por evento, sem banda", "R$100 quando a indicação vira reunião FEITA; se converter, R$250 no lugar (não soma). Bônus de NPS pago com NPS ≥ 80."],
+  ["Subir de nível é o plano de carreira", "promoção sobe fixo, meta e bônus juntos (1 júnior · 2 pleno · 3 sênior)."],
 ];
 
-// Catálogo por cargo: o modelo SUGERIDO (livro adaptado pra nós) + quais campos
-// do plano aparecem + como o simulador calcula. Campos moram num doc por cargo
-// na collection comp_plans.
-const ROLES = [
-  {
-    key: "sdr",
-    title: "SDR · inbound (MRR)",
-    suggestion: [
-      "Fixo mensal + variável com teto de ~50% do fixo.",
-      "Variável em 2 metades: 50% pelas oportunidades ACEITAS pelo closer no mês (vs meta; aceite agora existe no drawer) e 50% pela receita fechada das oportunidades que ele passou.",
-      "Meta de aceitas sai da tela Metas (calls agendadas ÷ aceite); SLA de 1º toque em 5 min entra como critério de qualidade, não de bônus.",
+// ── O plano aprovado (padrão da tela; salvar sobrescreve por trilha) ─────────
+const DEFAULT_PLAN = {
+  sdr: {
+    levels: [
+      { n: 1, fixed: 2200, metaContracts: 20, metaRevenue: 90000, b80: 300, b100: 550, b120: 750 },
+      { n: 2, fixed: 2600, metaContracts: 25, metaRevenue: 120000, b80: 450, b100: 750, b120: 1000 },
+      { n: 3, fixed: 3000, metaContracts: 35, metaRevenue: 180000, b80: 650, b100: 1000, b120: 1300 },
     ],
-    fields: ["fixed", "variableCap"],
-    sim: "sdr",
+    notes: "",
   },
-  {
-    key: "sdr_outbound",
-    title: "SDR · outbound (novo)",
-    suggestion: [
-      "Mesmo desenho do SDR inbound: fixo + variável de até 50% do fixo, split 50/50 aceitas/fechado.",
-      "Rampa de meta (não cobrar meta cheia no mês 1): mês 1 = 5 oportunidades aceitas, mês 2 = 10, mês 3 = 15.",
-      "Nunca pagar por lead cru ou e-mail enviado: só oportunidade aceita conta (senão o radar vira fábrica de reunião ruim).",
+  closer: {
+    levels: [
+      { n: 1, fixed: 3000, fixedPj: 4200, metaContracts: 20, metaRevenue: 90000, b80: 600, b100: 1000, b120: 1500 },
+      { n: 2, fixed: 4000, fixedPj: 5500, metaContracts: 25, metaRevenue: 120000, b80: 1000, b100: 1500, b120: 2100 },
+      { n: 3, fixed: 5500, fixedPj: 7500, metaContracts: 35, metaRevenue: 180000, b80: 1500, b100: 2500, b120: 3700 },
     ],
-    fields: ["fixed", "variableCap"],
-    sim: "sdr",
+    notes: "",
   },
-  {
-    key: "closer",
-    title: "Closer · Executivo de Contas",
-    suggestion: [
-      "Fixo + comissão % sobre a receita FECHADA (paga pelo caixa, não pela promessa).",
-      "Acelerador acima da meta: até 100% da meta paga a alíquota cheia; o que passar da meta paga a alíquota acelerada (ex.: 1,5x).",
-      "Sem comissão por proposta enviada (proposta é merecida, não distribuída) e o closer segue dono do cliente até a integração terminar.",
+  cs: {
+    levels: [
+      { n: 1, fixed: 2200, npsBonus: 500 },
+      { n: 2, fixed: 2600, npsBonus: 700 },
+      { n: 3, fixed: 3000, npsBonus: 1000 },
     ],
-    fields: ["fixed", "commissionPct", "acceleratorPct"],
-    sim: "closer",
+    referralMeeting: 100,
+    referralClosed: 250,
+    npsFloor: 80,
+    notes: "",
   },
-  {
-    key: "integrator",
-    title: "Integrador · CS",
-    suggestion: [
-      "Fixo + variável em 2 partes: metade por retenção/NPS no alvo (a base não pode vazar) e metade em % sobre upsell que ELE gerar.",
-      "Bônus fixo por INDICAÇÃO que fechar (o pedido das 2 indicações agora é passo do roteiro).",
-      "É o cargo que protege o balde de renovação das 3 receitas; churn zero vale mais que upsell pontual.",
-    ],
-    fields: ["fixed", "variableCap", "upsellPct", "referralBonus"],
-    sim: "cs",
-  },
-  {
-    key: "social",
-    title: "Mídia social",
-    suggestion: [
-      "Fixo + bônus por metas de produção batidas (posts/stories/anúncios da tela Metas) e por leads orgânicos gerados (form com origem social).",
-      "Métricas de resultado, nunca de atividade: alcance não paga, lead e ganho atribuído pagam.",
-    ],
-    fields: ["fixed", "variableCap"],
-    sim: "social",
-  },
-];
-
-const FIELD_LABELS = {
-  fixed: ["Fixo mensal (R$)", "salário base"],
-  variableCap: ["Variável teto (R$)", "o máximo da variável no mês (livro: ~50% do fixo)"],
-  commissionPct: ["Comissão (%)", "% sobre a receita fechada até a meta"],
-  acceleratorPct: ["Acelerador (%)", "% sobre o que passar da meta"],
-  upsellPct: ["% sobre upsell", "comissão sobre upsell gerado por ele"],
-  referralBonus: ["Bônus por indicação fechada (R$)", "pago quando a indicação vira cliente"],
 };
 
-function blankPlan(role) {
-  return { id: null, role, fixed: 0, variableCap: 0, commissionPct: 0, acceleratorPct: 0, upsellPct: 0, referralBonus: 0, notes: "", updatedAt: "" };
+// Bônus de UMA perna: att = realizado ÷ meta (1 = 100%). Cliff em 80%,
+// proporcional entre as âncoras (80→b80, 100→b100, 120→b120), extrapola a
+// inclinação 100→120 acima disso e trava em 140% (decisões 1 a 3 do Leo).
+export function legBonus(att, b80, b100, b120) {
+  if (!Number.isFinite(att) || att < 0.8) return 0;
+  const a = Math.min(att, 1.4);
+  if (a <= 1) return b80 + (b100 - b80) * ((a - 0.8) / 0.2);
+  if (a <= 1.2) return b100 + (b120 - b100) * ((a - 1) / 0.2);
+  return b120 + (b120 - b100) * ((a - 1.2) / 0.2);
 }
+const pctS = (att) => (Number.isFinite(att) ? `${Math.round(att * 100)}%` : "—");
 
-// ── Simuladores (quanto a pessoa leva no mês, com o plano preenchido) ─────────
-function SimRow({ label, children }) {
-  return (
-    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
-      <span style={{ flex: 1, color: "var(--fg-3)" }}>{label}</span>
-      {children}
-    </label>
-  );
-}
-const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-const att = (real, meta) => (meta > 0 ? Math.min(real / meta, 1.5) : 0); // atinge até 150%
-
-function Simulator({ kind, plan }) {
-  const [s, setS] = useS({ aceitas: 12, metaAceitas: 15, receita: 60000, metaReceita: 90000, upsell: 5000, indicacoes: 1, reteve: true, metas: true });
+// ── Simulador de SDR/Closer: duas pernas + fixo ──────────────────────────────
+function SimVendas({ plan, isCloser }) {
+  const [s, setS] = useS({ n: 1, pj: false, contratos: 20, receita: 90000 });
+  const lv = (plan.levels || []).find((l) => l.n === Number(s.n)) || plan.levels?.[0] || {};
+  const attC = num(lv.metaContracts) > 0 ? num(s.contratos) / num(lv.metaContracts) : 0;
+  const attR = num(lv.metaRevenue) > 0 ? num(s.receita) / num(lv.metaRevenue) : 0;
+  const legC = legBonus(attC, num(lv.b80), num(lv.b100), num(lv.b120));
+  const legR = legBonus(attR, num(lv.b80), num(lv.b100), num(lv.b120));
+  const fixed = isCloser && s.pj ? num(lv.fixedPj) : num(lv.fixed);
   const set = (k) => (e) => setS((p) => ({ ...p, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
-  const inp = (k, w = 84) => <input type="number" value={s[k]} onChange={set(k)} style={{ ...inputS, width: w, height: 26, fontSize: 12 }} />;
-
-  let variable = 0, lines = [];
-  if (kind === "sdr") {
-    const a = att(num(s.aceitas), num(s.metaAceitas));
-    const b = att(num(s.receita), num(s.metaReceita));
-    variable = num(plan.variableCap) * (0.5 * a + 0.5 * b);
-    lines = [
-      <SimRow key="a" label="oportunidades aceitas no mês / meta">{inp("aceitas", 64)} / {inp("metaAceitas", 64)}</SimRow>,
-      <SimRow key="b" label="receita fechada das suas oportunidades / meta">{inp("receita")} / {inp("metaReceita")}</SimRow>,
-    ];
-  } else if (kind === "closer") {
-    const rec = num(s.receita), meta = num(s.metaReceita);
-    variable = (num(plan.commissionPct) / 100) * Math.min(rec, meta) + (num(plan.acceleratorPct) / 100) * Math.max(rec - meta, 0);
-    lines = [
-      <SimRow key="a" label="receita fechada no mês (R$)">{inp("receita")}</SimRow>,
-      <SimRow key="b" label="meta do mês (R$)">{inp("metaReceita")}</SimRow>,
-    ];
-  } else if (kind === "cs") {
-    variable = (s.reteve ? num(plan.variableCap) / 2 : 0) + (num(plan.upsellPct) / 100) * num(s.upsell) + num(plan.referralBonus) * num(s.indicacoes);
-    lines = [
-      <SimRow key="a" label="bateu retenção/NPS do mês?"><input type="checkbox" checked={!!s.reteve} onChange={set("reteve")} /></SimRow>,
-      <SimRow key="b" label="upsell gerado (R$)">{inp("upsell")}</SimRow>,
-      <SimRow key="c" label="indicações que fecharam">{inp("indicacoes", 64)}</SimRow>,
-    ];
-  } else {
-    variable = s.metas ? num(plan.variableCap) : 0;
-    lines = [<SimRow key="a" label="metas de produção batidas?"><input type="checkbox" checked={!!s.metas} onChange={set("metas")} /></SimRow>];
-  }
-  const total = num(plan.fixed) + variable;
   return (
-    <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 6 }}>
+    <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
       <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Simulador · quanto leva no mês</div>
-      {lines}
-      <div style={{ fontSize: 12.5, marginTop: 2 }}>
-        variável <b>{money(variable)}</b> + fixo <b>{money(plan.fixed)}</b> = <b style={{ color: "var(--pos)" }}>{money(total)}</b>
-        <span style={{ color: "var(--fg-4)" }}> · atingimento acima da meta conta até 150%</span>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <label>nível <select value={s.n} onChange={set("n")} style={{ ...inputS, width: 56, height: 26 }}>{(plan.levels || []).map((l) => <option key={l.n} value={l.n}>{l.n}</option>)}</select></label>
+        {isCloser && <label style={{ display: "inline-flex", gap: 5, alignItems: "center" }}><input type="checkbox" checked={!!s.pj} onChange={set("pj")} /> regime PJ</label>}
+        <label>contratos <input type="number" value={s.contratos} onChange={set("contratos")} style={{ ...inputS, width: 64, height: 26 }} /></label>
+        <label>receita R$ <input type="number" value={s.receita} onChange={set("receita")} style={{ ...inputS, width: 100, height: 26 }} /></label>
+      </div>
+      <div style={{ color: "var(--fg-2)" }}>
+        perna contratos {pctS(attC)} → <b>{money(legC)}</b> · perna receita {pctS(attR)} → <b>{money(legR)}</b>
+      </div>
+      <div>
+        fixo{isCloser ? (s.pj ? " (PJ)" : " (CLT)") : ""} <b>{money(fixed)}</b> + variável <b>{money(legC + legR)}</b> = <b style={{ color: "var(--pos)" }}>{money(fixed + legC + legR)}</b>
+        <span style={{ color: "var(--fg-4)" }}> · abaixo de 80% a perna zera · teto 140%</span>
       </div>
     </div>
   );
 }
 
-function RoleCard({ role, plan, onSave }) {
-  const [draft, setDraft] = useS(plan);
+// ── Simulador do CS: eventos + NPS ───────────────────────────────────────────
+function SimCs({ plan }) {
+  const [s, setS] = useS({ n: 1, nps: true, reunioes: 4, fechadas: 1 });
+  const lv = (plan.levels || []).find((l) => l.n === Number(s.n)) || plan.levels?.[0] || {};
+  // Indicação fechada paga o valor CHEIO no lugar do de reunião (não soma):
+  // "reuniões" aqui são as que NÃO converteram.
+  const varTotal = num(s.reunioes) * num(plan.referralMeeting) + num(s.fechadas) * num(plan.referralClosed) + (s.nps ? num(lv.npsBonus) : 0);
+  const set = (k) => (e) => setS((p) => ({ ...p, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
+  return (
+    <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
+      <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Simulador · quanto leva no mês</div>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <label>nível <select value={s.n} onChange={set("n")} style={{ ...inputS, width: 56, height: 26 }}>{(plan.levels || []).map((l) => <option key={l.n} value={l.n}>{l.n}</option>)}</select></label>
+        <label style={{ display: "inline-flex", gap: 5, alignItems: "center" }}><input type="checkbox" checked={!!s.nps} onChange={set("nps")} /> NPS ≥ {num(plan.npsFloor) || 80}</label>
+        <label>indicações c/ reunião feita (sem fechar) <input type="number" value={s.reunioes} onChange={set("reunioes")} style={{ ...inputS, width: 56, height: 26 }} /></label>
+        <label>indicações fechadas <input type="number" value={s.fechadas} onChange={set("fechadas")} style={{ ...inputS, width: 56, height: 26 }} /></label>
+      </div>
+      <div>
+        fixo <b>{money(lv.fixed)}</b> + variável <b>{money(varTotal)}</b> = <b style={{ color: "var(--pos)" }}>{money(num(lv.fixed) + varTotal)}</b>
+        <span style={{ color: "var(--fg-4)" }}> · fechada paga {money(plan.referralClosed)} no lugar dos {money(plan.referralMeeting)} (não soma)</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Card por trilha: tabela de níveis editável + simulador ───────────────────
+const ROLE_META = {
+  sdr: { title: "SDR", sub: "duas pernas: contratos fechados das SUAS oportunidades + receita fechada delas" },
+  closer: { title: "Closer · Executivo de Contas", sub: "duas pernas: contratos fechados + receita fechada · CLT ou PJ (muda só o fixo)" },
+  cs: { title: "Integrador · CS", sub: "fixo + indicação (reunião feita / fechada) + bônus NPS" },
+};
+
+function RoleCard({ role, saved, onSave }) {
+  const [draft, setDraft] = useS(saved);
   const [saving, setSaving] = useS(false);
-  useE(() => setDraft(plan), [plan]); // eslint-disable-line
-  const set = (k) => (e) => setDraft((p) => ({ ...p, [k]: e.target.value }));
-  const dirty = JSON.stringify(draft) !== JSON.stringify(plan);
+  useE(() => setDraft(saved), [saved]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+  const isCs = role === "cs";
+  const isCloser = role === "closer";
+  const setLevel = (n, k) => (e) => setDraft((p) => ({ ...p, levels: (p.levels || []).map((l) => (l.n === n ? { ...l, [k]: num(e.target.value) } : l)) }));
+  const setTop = (k) => (e) => setDraft((p) => ({ ...p, [k]: k === "notes" ? e.target.value : num(e.target.value) }));
+
   return (
     <div style={box}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 15.5, fontWeight: 700, letterSpacing: "-0.01em" }}>{role.title}</div>
-        {plan.updatedAt && <span className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)" }}>plano salvo em {new Date(plan.updatedAt).toLocaleDateString("pt-BR")}</span>}
+        <div style={{ fontSize: 15.5, fontWeight: 700, letterSpacing: "-0.01em" }}>{ROLE_META[role].title}</div>
+        <span style={{ fontSize: 11.5, color: "var(--fg-3)" }}>{ROLE_META[role].sub}</span>
+        {saved.updatedAt && <span className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)", marginLeft: "auto" }}>salvo em {new Date(saved.updatedAt).toLocaleDateString("pt-BR")}</span>}
       </div>
-      <div className="mono" style={{ ...kicker, color: "var(--accent)", margin: "10px 0 6px" }}>Modelo sugerido (livro)</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        {role.suggestion.map((s, i) => (
-          <div key={i} style={{ display: "flex", gap: 7, fontSize: 12.5, lineHeight: 1.5 }}>
-            <span style={{ color: "var(--accent)", flexShrink: 0 }}>•</span><span>{s}</span>
-          </div>
-        ))}
+
+      <div className="tbl-x" style={{ marginTop: 10, overflowX: "auto" }}>
+        <table style={{ borderCollapse: "collapse", minWidth: isCs ? 380 : 640 }}>
+          <thead>
+            <tr>
+              <th style={thS}>Nível</th>
+              <th style={thS}>{isCloser ? "Fixo CLT" : "Fixo"}</th>
+              {isCloser && <th style={thS}>Fixo PJ</th>}
+              {!isCs && <th style={thS}>Meta contratos</th>}
+              {!isCs && <th style={thS}>Meta receita</th>}
+              {!isCs && <th style={thS}>Bônus 80%</th>}
+              {!isCs && <th style={thS}>Bônus 100%</th>}
+              {!isCs && <th style={thS}>Bônus 120%</th>}
+              {isCs && <th style={thS}>Bônus NPS ≥ {num(draft.npsFloor) || 80}</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {(draft.levels || []).map((l) => (
+              <tr key={l.n}>
+                <td style={{ ...tdS, fontWeight: 700 }}>{l.n} <span style={{ fontWeight: 400, color: "var(--fg-4)", fontSize: 10.5 }}>{l.n === 1 ? "jr" : l.n === 2 ? "pl" : "sn"}</span></td>
+                <td style={tdS}><input type="number" value={l.fixed} onChange={setLevel(l.n, "fixed")} style={cellIn} /></td>
+                {isCloser && <td style={tdS}><input type="number" value={l.fixedPj ?? 0} onChange={setLevel(l.n, "fixedPj")} style={cellIn} /></td>}
+                {!isCs && <td style={tdS}><input type="number" value={l.metaContracts ?? 0} onChange={setLevel(l.n, "metaContracts")} style={{ ...cellIn, width: 60 }} /></td>}
+                {!isCs && <td style={tdS}><input type="number" value={l.metaRevenue ?? 0} onChange={setLevel(l.n, "metaRevenue")} style={{ ...cellIn, width: 96 }} /></td>}
+                {!isCs && <td style={tdS}><input type="number" value={l.b80 ?? 0} onChange={setLevel(l.n, "b80")} style={cellIn} /></td>}
+                {!isCs && <td style={tdS}><input type="number" value={l.b100 ?? 0} onChange={setLevel(l.n, "b100")} style={cellIn} /></td>}
+                {!isCs && <td style={tdS}><input type="number" value={l.b120 ?? 0} onChange={setLevel(l.n, "b120")} style={cellIn} /></td>}
+                {isCs && <td style={tdS}><input type="number" value={l.npsBonus ?? 0} onChange={setLevel(l.n, "npsBonus")} style={cellIn} /></td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-      <div className="mono" style={{ ...kicker, color: "var(--fg-3)", margin: "12px 0 6px" }}>Nosso plano (salva pra referência do time de gestão)</div>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        {role.fields.map((f) => (
-          <label key={f} style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11, color: "var(--fg-3)" }} title={FIELD_LABELS[f][1]}>
-            {FIELD_LABELS[f][0]}
-            <input type="number" value={draft[f] ?? 0} onChange={set(f)} style={inputS} />
-          </label>
-        ))}
-        <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11, color: "var(--fg-3)", flex: "1 1 200px" }}>
-          Observações
-          <input value={draft.notes || ""} onChange={set("notes")} placeholder="acordos, exceções…" style={{ ...inputS, width: "100%" }} />
-        </label>
-      </div>
-      {dirty && (
-        <button style={{ ...btnPrimary, marginTop: 10 }} disabled={saving}
-          onClick={async () => {
-            setSaving(true);
-            try { await onSave(draft); } catch (e) { window.alert(e?.message || "não salvou"); }
-            setSaving(false);
-          }}>
-          {saving ? "salvando…" : "salvar plano"}
-        </button>
+
+      {isCs && (
+        <div style={{ display: "flex", gap: 12, marginTop: 10, flexWrap: "wrap", fontSize: 11.5, color: "var(--fg-3)", alignItems: "center" }}>
+          <label>indicação · reunião feita R$ <input type="number" value={draft.referralMeeting ?? 0} onChange={setTop("referralMeeting")} style={{ ...cellIn, width: 64 }} /></label>
+          <label>indicação · fechada R$ <input type="number" value={draft.referralClosed ?? 0} onChange={setTop("referralClosed")} style={{ ...cellIn, width: 64 }} /></label>
+          <span style={{ color: "var(--fg-4)" }}>fechada substitui a de reunião (não soma)</span>
+        </div>
       )}
-      <Simulator kind={role.sim} plan={draft} />
+
+      <div style={{ display: "flex", gap: 10, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <label style={{ flex: "1 1 240px", fontSize: 11, color: "var(--fg-3)", display: "flex", flexDirection: "column", gap: 3 }}>
+          Observações
+          <input value={draft.notes || ""} onChange={setTop("notes")} placeholder="acordos, exceções…" style={{ ...inputS, width: "100%" }} />
+        </label>
+        {dirty && (
+          <button style={btnPrimary} disabled={saving}
+            onClick={async () => {
+              setSaving(true);
+              try { await onSave(role, draft); } catch (e) { window.alert(e?.message || "não salvou"); }
+              setSaving(false);
+            }}>
+            {saving ? "salvando…" : "salvar plano"}
+          </button>
+        )}
+      </div>
+
+      {isCs ? <SimCs plan={draft} /> : <SimVendas plan={draft} isCloser={isCloser} />}
     </div>
   );
 }
 
 function RemuneracaoScreen() {
-  const [plans, setPlans] = useS(null);
+  const [docs, setDocs] = useS(null); // comp_plans salvos, por role
   const load = () => api.list("comp_plans").then((all) => {
     const by = {};
-    for (const p of all || []) by[p.role] = p;
-    setPlans(by);
-  }).catch(() => setPlans({}));
-  useE(() => { load(); }, []); // eslint-disable-line
+    for (const d of all || []) if (d.role) by[d.role] = d;
+    setDocs(by);
+  }).catch(() => setDocs({}));
+  useE(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isAdminUser()) return <EmptyState title="Área da gestão" hint="Esta tela é só pra quem tem a etiqueta admin." />;
 
-  async function save(draft) {
-    const clean = {
-      role: draft.role,
-      fixed: num(draft.fixed), variableCap: num(draft.variableCap),
-      commissionPct: num(draft.commissionPct), acceleratorPct: num(draft.acceleratorPct),
-      upsellPct: num(draft.upsellPct), referralBonus: num(draft.referralBonus),
-      notes: draft.notes || "", updatedAt: new Date().toISOString(),
-    };
-    if (draft.id) await api.update("comp_plans", draft.id, clean);
-    else await api.create("comp_plans", clean);
+  // Plano vigente por trilha: doc salvo (campo plan) por cima do padrão aprovado.
+  const planOf = (role) => {
+    const doc = docs?.[role];
+    return doc?.plan ? { ...DEFAULT_PLAN[role], ...doc.plan, updatedAt: doc.updatedAt } : { ...DEFAULT_PLAN[role] };
+  };
+  async function save(role, plan) {
+    const doc = docs?.[role];
+    const { updatedAt, ...clean } = plan;
+    const payload = { role, plan: clean, updatedAt: new Date().toISOString() };
+    if (doc?.id) await api.update("comp_plans", doc.id, payload);
+    else await api.create("comp_plans", payload);
     load();
   }
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-      <PageHead title="Remuneração" sub="modelos por cargo (Receita Previsível) · visível só pra admins" />
-      <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14, maxWidth: 980 }}>
+      <PageHead title="Remuneração" sub="plano oficial por cargo e nível (aprovado 04/08) · visível só pra admins" />
+      <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14, maxWidth: 1020 }}>
         <div style={box}>
-          <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 8 }}>Princípios · direto do livro</div>
+          <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 8 }}>Regras da casa</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-            {PRINCIPLES.map(([t, d], i) => (
+            {RULES.map(([t, d], i) => (
               <div key={i} style={{ fontSize: 12.5, lineHeight: 1.5 }}>
                 <b>{t}.</b> <span style={{ color: "var(--fg-2)" }}>{d}</span>
               </div>
             ))}
           </div>
         </div>
-        {plans == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
-        {plans != null && ROLES.map((r) => (
-          <RoleCard key={r.key} role={r} plan={plans[r.key] || blankPlan(r.key)} onSave={save} />
+        {docs == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
+        {docs != null && ["sdr", "closer", "cs"].map((role) => (
+          <RoleCard key={role} role={role} saved={planOf(role)} onSave={save} />
         ))}
         <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>
-          Quando o plano do SDR for aprovado, o próximo passo é amarrar a metade das "aceitas" ao aceite do closer que já roda no drawer (hoje é telemetria).
+          Contratos e receita saem da mesma régua do placar (fechamentos por wonAt). Próximo passo natural: o cockpit calcular a variável do mês de cada pessoa sozinho, a partir do nível dela.
         </div>
       </div>
     </div>
