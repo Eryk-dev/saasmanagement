@@ -34,7 +34,7 @@ import { EloAppScreen } from "./screens/eloapp.jsx";
 import { LandingPagesScreen } from "./screens/landingpages.jsx";
 import { TasksScreen } from "./screens/tasks.jsx";
 import { MindmapsScreen } from "./screens/mindmaps.jsx";
-import { SettingsScreen } from "./screens/settings.jsx";
+import { SettingsScreen, SettingsLite } from "./screens/settings.jsx";
 import { LeadDetail } from "./screens/deal.jsx";
 import { CommandSearch } from "./components/CommandSearch.jsx";
 import { ErrorBoundary } from "./components/error-boundary.jsx";
@@ -234,7 +234,9 @@ function App() {
   // Clientes. O corte de verdade é no servidor (screens.js) — aqui é UX.
   const allowedNav = NAV.filter((n) => !n.hidden && canSeeScreen(n.id));
   const neededScreen = screen === "subscriptions" ? "customers" : screen;
-  const scr = canSeeScreen(neededScreen) ? screen : (allowedNav[0]?.id || "pipeline");
+  // "settings" passa SEMPRE: quem não tem a tela cai na versão reduzida (só a
+  // conexão Google pessoal, SettingsLite) — todo usuário conecta a própria conta.
+  const scr = canSeeScreen(neededScreen) || neededScreen === "settings" ? screen : (allowedNav[0]?.id || "pipeline");
 
   return (
     <DataContext.Provider value={dataCtx}>
@@ -303,7 +305,7 @@ function App() {
           {scr === "subscriptions" && <CustomersScreen initialTab="billing" />}
           {scr === "tasks"       && <TasksScreen />}
           {scr === "mindmaps"    && <MindmapsScreen />}
-          {scr === "settings"    && <SettingsScreen saasId={params.saas} />}
+          {scr === "settings"    && (canSeeScreen("settings") ? <SettingsScreen saasId={params.saas} /> : <SettingsLite />)}
         </div>
         </ErrorBoundary>
       </main>
