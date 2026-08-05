@@ -451,17 +451,20 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
         </div>
 
         {daySocialDone && <SocialSellingNotice ig={igStats} />}
-        {total === 0 && myTasks.length === 0 ? (
-          <EmptyState
-            title="Fila limpa"
-            hint={person ? "Nenhuma ação pendente nessa fila. Confira o pipeline ou puxe leads novos." : "Nenhuma ação pendente."}
-          />
-        ) : total === 0 ? (
-          // Fila de leads vazia mas há tarefas do kanban: elas SÃO as atividades
-          // do dia (é o caso normal do workspace Elo, que não tem pipeline).
-          <div style={{ maxWidth: 640 }}>
-            <TasksCard tasks={myTasks} onDone={completeTask} />
-          </div>
+        {total === 0 ? (
+          // Fila de leads vazia: a tela continua a de sempre ("Fila limpa");
+          // as tarefas do kanban entram como um bloco A MAIS, nunca no lugar dela.
+          <>
+            <EmptyState
+              title="Fila limpa"
+              hint={person ? "Nenhuma ação pendente nessa fila. Confira o pipeline ou puxe leads novos." : "Nenhuma ação pendente."}
+            />
+            {myTasks.length > 0 && (
+              <div style={{ maxWidth: 640 }}>
+                <TasksCard tasks={myTasks} onDone={completeTask} />
+              </div>
+            )}
+          </>
         ) : (
           <div className="resp-cols" style={{ "--cols": "minmax(0, 1fr) minmax(300px, 380px)", gap: 16, alignItems: "start" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
