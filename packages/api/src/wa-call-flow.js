@@ -196,6 +196,13 @@ async function maybeStart(repo, wa, { thread, resolvePhoneId, now = new Date() }
   if (!thread.leadId) return; // só lead conhecido — o form cria o lead antes de mandar pro WhatsApp
   const inbound = await repo.listWhere("wa_messages", { thread: thread.id, direction: "in" }, { fields: [] });
   if (inbound.length > 1) return; // não é o 1º contato — conversa já existia
+  // O TIME já abriu a conversa antes (template dos "modelos", WhatsApp do 1º
+  // ato, disparo)? Então o lead está RESPONDENDO a alguém e o fluxo não se
+  // re-apresenta por cima — caso Leandro (05/08): template às 09:34 e o fluxo
+  // mandou "Oiii, Manuela falando" DE NOVO às 09:39, na 1ª resposta dele. O
+  // pedido de permissão de ligação fica no botão "Pedir pra ligar" da conversa.
+  const outbound = await repo.listWhere("wa_messages", { thread: thread.id, direction: "out" }, { fields: [] });
+  if (outbound.length) return;
   const lead = await repo.get("leads", thread.leadId);
   if (!lead) return;
   const product = (await repo.list("products")).find((p) => p.id === (thread.saas || lead.saas));

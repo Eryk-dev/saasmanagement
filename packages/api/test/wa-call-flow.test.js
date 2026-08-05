@@ -130,6 +130,21 @@ test("client real: sendCallPermission posta o interactive de permissão", async 
   assert.equal(calls[0].payload.to, "5541992516545");
 });
 
+test("time já abriu a conversa (template/1º ato) → fluxo NÃO se re-apresenta na 1ª resposta do lead", async () => {
+  const repo = makeMemRepo();
+  await seedFlow(repo, { greeting: "Olá {nome}! Posso te ligar?" });
+  const wa = fakeWa();
+  const app = await appWith(repo, wa);
+  // O SDR mandou um template ANTES de qualquer resposta (conversa aberta por nós).
+  await recordMessage(repo, { id: "wamid.TPL", phone: "5541992516545", direction: "out", text: "Oiii, recebi seu cadastro com interesse na LeverAds…", status: "sent", author: "sdr", leadId: "ld1", saas: "leverads" });
+  // 1ª resposta do lead: NADA de saudação nova (era o caso Leandro, saudação em dobro).
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inText("5541992516545", "wamid.IN1", "Bom dia") });
+  assert.equal(wa.perms.length, 0);
+  assert.equal(wa.sent.length, 0);
+  const thr = await repo.get("wa_threads", "5541992516545");
+  assert.equal(thr.callFlow, undefined); // sem fluxo registrado: "Pedir pra ligar" segue disponível pro SDR
+});
+
 test("1º contato de lead conhecido com fluxo ligado → pedido de permissão com a saudação, callFlow pending, sem alerta", async () => {
   const repo = makeMemRepo();
   await seedFlow(repo, { greeting: "Olá {nome}! Sou o Leonardo. Posso te ligar?" });
