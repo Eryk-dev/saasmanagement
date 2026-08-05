@@ -124,7 +124,9 @@ function NavRail({ current, onNav, collapsed }) {
   const inSaas = (item) =>
     (!item.saas || item.saas === product?.id) && (!item.notSaas || item.notSaas !== product?.id);
   const groups = [];
-  NAV.filter((item) => !item.hidden && inSaas(item) && canSeeScreen(item.id) && (!item.adminOnly || isAdminUser())).forEach(item => {
+  // "settings" aparece pra TODO usuário: quem não tem a tela liberada abre a
+  // versão reduzida (só a conexão Google pessoal) — ver SettingsLite.
+  NAV.filter((item) => !item.hidden && inSaas(item) && (canSeeScreen(item.id) || item.id === "settings") && (!item.adminOnly || isAdminUser())).forEach(item => {
     let g = groups.find(x => x.key === item.group);
     if (!g) { g = { key: item.group, items: [] }; groups.push(g); }
     g.items.push(item);

@@ -1370,4 +1370,24 @@ function SettingHeader({ number, title, sub }) {
   );
 }
 
-export { SettingsScreen };
+// Versão REDUZIDA das Configurações pra quem NÃO tem a tela liberada em
+// user.screens (pedido do Leo, 05/08): TODO usuário precisa conseguir conectar
+// a PRÓPRIA conta Google (calls/integrações espelhadas na agenda pessoal), e
+// SÓ isso — funil, campos, equipe e integrações do produto seguem da gestão.
+// As rotas /api/google/user/* já são abertas a qualquer sessão logada (fora do
+// ROUTE_SCREENS), então aqui é só a superfície.
+function SettingsLite() {
+  return (
+    <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+      <PageHead title="Configurações" sub="sua conta Google" />
+      <div style={{ padding: "16px var(--pad-x) 56px", maxWidth: 680 }}>
+        <MyGoogleCalendarCard />
+        <div className="mono dim" style={{ fontSize: 11, marginTop: 6 }}>
+          as demais configurações (funil, campos, equipe, integrações do produto) ficam com a gestão
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export { SettingsScreen, SettingsLite };
