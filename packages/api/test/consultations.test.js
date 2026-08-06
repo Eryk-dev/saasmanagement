@@ -8,7 +8,7 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { MANUAL_SECTIONS, newManual, publicManual } = await import("../src/deliverables.js");
-const { syncConsultationCalendar, makeConsultationSummarizer, startConsultationSummaries, formatConsultationText } = await import("../src/consultations.js");
+const { syncConsultationCalendar, syncConsultationMeetEvent, makeConsultationSummarizer, startConsultationSummaries, formatConsultationText } = await import("../src/consultations.js");
 const { registerConsultationRoutes } = await import("../src/routes.consultations.js");
 const { manualPageHtml } = await import("../src/manual-page.js");
 
@@ -95,6 +95,43 @@ test("syncConsultationCalendar: cria, remarca no MESMO evento e cancela apagando
   c = await repo.get("consultations", "cs1");
   assert.deepEqual(gu.deleted[0], { userId: "ana", eventId: "ev1" });
   assert.equal(c.calEventId, "");
+});
+
+test("syncConsultationMeetEvent: remarcar move o evento do Meet (convite do cliente) e realinha o poller; cancelar apaga", async () => {
+  const repo = makeMemRepo();
+  const patched = [], deleted = [];
+  const g = {
+    configured: () => true, connected: async () => true,
+    patchCalendarEvent: async (id, body) => { patched.push({ id, ...body }); },
+    deleteCalendarEvent: async (id) => { deleted.push(id); },
+  };
+  let c = await repo.create("consultations", { id: "cs1", clientName: "Mariana", n: 4, at: "2026-08-10T15:00", durationMin: 60, status: "scheduled", meetUrl: "https://meet.google.com/x-y-z", meetEventId: "gev9", meetScheduledAt: "2026-08-01T18:00:00.000Z" });
+
+  // remarcada: o MESMO evento do Meet muda de horário e o meetScheduledAt segue
+  await syncConsultationMeetEvent(repo, g, c);
+  assert.equal(patched[0].id, "gev9");
+  assert.equal(patched[0].summary, "Consulta 4/8 · Mariana");
+  assert.equal(patched[0].start.dateTime, "2026-08-10T15:00:00");
+  assert.equal(patched[0].start.timeZone, "America/Sao_Paulo");
+  c = await repo.get("consultations", "cs1");
+  assert.equal(c.meetScheduledAt, new Date("2026-08-10T15:00:00-03:00").toISOString());
+
+  // cancelada: apaga o evento (avisa o convidado) e limpa o rastreio
+  c = await repo.update("consultations", "cs1", { status: "canceled" });
+  await syncConsultationMeetEvent(repo, g, c);
+  assert.deepEqual(deleted, ["gev9"]);
+  c = await repo.get("consultations", "cs1");
+  assert.equal(c.meetEventId, "");
+  assert.equal(c.meetUrl, "");
+});
+
+test("syncConsultationMeetEvent: sem meetEventId ou sem Google conectado, não faz nada", async () => {
+  const repo = makeMemRepo();
+  const g = { configured: () => true, connected: async () => false, patchCalendarEvent: async () => { throw new Error("não era pra chamar"); } };
+  const semMeet = await repo.create("consultations", { id: "a", at: "2026-08-10T15:00", status: "scheduled" });
+  assert.deepEqual(await syncConsultationMeetEvent(repo, g, semMeet), {});
+  const comMeet = await repo.create("consultations", { id: "b", at: "2026-08-10T15:00", status: "scheduled", meetEventId: "gev1" });
+  assert.deepEqual(await syncConsultationMeetEvent(repo, g, comMeet), {}); // desconectado
 });
 
 test("syncConsultationCalendar: sem Google conectado não cria nada", async () => {

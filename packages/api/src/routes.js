@@ -26,7 +26,7 @@ import { registerSequenceRoutes } from "./routes.sequences.js";
 import { registerPitchRoutes } from "./routes.pitch.js";
 import { registerRoutineRoutes } from "./routes.routine.js";
 import { registerConsultationRoutes } from "./routes.consultations.js";
-import { syncConsultationCalendar } from "./consultations.js";
+import { syncConsultationCalendar, syncConsultationMeetEvent } from "./consultations.js";
 import { newManual, sameFamily } from "./deliverables.js";
 import { registerIntegrationRoutes } from "./routes.integrations.js";
 import { registerMetasRoutes } from "./routes.metas.js";
@@ -713,9 +713,11 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       } catch { /* fail-open */ }
     }
     // Consulta remarcada, cancelada ou reatribuída → re-espelha na agenda
-    // pessoal da responsável (mesmo evento; cancelar apaga). Best-effort.
+    // pessoal da responsável (mesmo evento; cancelar apaga) E move o evento do
+    // Meet na conta do time (o convite do cliente acompanha). Best-effort.
     if (collection === "consultations" && ("at" in req.body || "status" in req.body || "owner" in req.body || "durationMin" in req.body || "n" in req.body || "clientName" in req.body)) {
       try { await syncConsultationCalendar(repo, googleUser, updated); } catch { /* fail-open */ }
+      try { await syncConsultationMeetEvent(repo, googleClient, updated); } catch { /* fail-open */ }
     }
     if (collection === "subscriptions") {
       await syncCustomerArr(repo, updated.customer);
@@ -737,6 +739,10 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     if (subCustomer) await syncCustomerArr(repo, subCustomer);
     if (gone?.calEventId && gone?.calEventUser) {
       try { await googleUser.deleteEvent(gone.calEventUser, gone.calEventId); } catch { /* fail-open */ }
+    }
+    // Consulta apagada → cancela também o evento do Meet (convite do cliente).
+    if (gone?.meetEventId && googleClient?.configured?.()) {
+      try { if (await googleClient.connected()) await googleClient.deleteCalendarEvent(gone.meetEventId); } catch { /* fail-open */ }
     }
     return { ok: true, id };
   });

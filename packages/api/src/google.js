@@ -347,6 +347,33 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
     return body;
   }
 
+  // Edita um evento existente (PATCH parcial: só os campos enviados mudam; o
+  // Meet anexado e a descrição ficam). sendUpdates=all → convidados recebem o
+  // e-mail de atualização: é assim que a remarcação chega pro cliente.
+  async function patchCalendarEvent(eventId, body, calendarId = process.env.GOOGLE_MEET_CALENDAR_ID || "primary") {
+    const token = await accessToken();
+    const res = await f(`${CAL_URL}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}?sendUpdates=all`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const out = await res.json().catch(() => ({}));
+    if (res.status >= 400 || out.error) throw new Error(`Google Calendar -> ${res.status}: ${out.error?.message || "falha ao atualizar o evento"}`);
+    return out;
+  }
+
+  // Apaga um evento (cancelamento avisa os convidados). Já-apagado não é erro.
+  async function deleteCalendarEvent(eventId, calendarId = process.env.GOOGLE_MEET_CALENDAR_ID || "primary") {
+    const token = await accessToken();
+    const res = await f(`${CAL_URL}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}?sendUpdates=all`, {
+      method: "DELETE", headers: { authorization: `Bearer ${token}` },
+    });
+    if (res.status >= 400 && res.status !== 404 && res.status !== 410) {
+      const out = await res.json().catch(() => ({}));
+      throw new Error(`Google Calendar -> ${res.status}: ${out.error?.message || "falha ao apagar o evento"}`);
+    }
+  }
+
   // Fallback de transcrição pelo DRIVE: o Meet salva a transcrição como um Google
   // Doc no Drive do ORGANIZADOR (a conta conectada). Quando a Meet API não devolve
   // o conferenceRecord (ex.: quem hospeda a call é OUTRA conta que não a conectada),
@@ -421,7 +448,7 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
     };
   }
 
-  return { configured, connected, account, grantedScopes, authUrl, exchangeCode, accessToken, createMeetEvent, configureSpace, fetchTranscript, endActiveConference, sendGmail, gmailReady, getCalendarEvent, fetchTranscriptFromDrive };
+  return { configured, connected, account, grantedScopes, authUrl, exchangeCode, accessToken, createMeetEvent, configureSpace, fetchTranscript, endActiveConference, sendGmail, gmailReady, getCalendarEvent, patchCalendarEvent, deleteCalendarEvent, fetchTranscriptFromDrive };
 }
 
 // Cabeçalho de e-mail com não-ASCII (nome, assunto): codifica em MIME
