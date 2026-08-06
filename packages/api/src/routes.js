@@ -56,7 +56,7 @@ import { registerEloRoutes } from "./elo.js";
 // wa_threads/wa_messages ficam FORA do CRUD genérico: o inbox usa as rotas
 // dedicadas (/api/whatsapp/*, gateadas), então o texto das conversas não vaza
 // pra qualquer usuário autenticado via /api/wa_messages.
-const PRIVATE = new Set(["users", "sessions", "user_assets", "activity_assets", "wa_threads", "wa_messages", "wa_media", "wa_template_media"]);
+const PRIVATE = new Set(["users", "sessions", "user_assets", "activity_assets", "task_assets", "wa_threads", "wa_messages", "wa_media", "wa_template_media"]);
 const isExposed = (c) => COLLECTION_NAMES.includes(c) && !PRIVATE.has(c);
 
 // Collections external SaaS are allowed to write to via REST/MCP.
@@ -112,7 +112,8 @@ export const CREATE_DEFAULTS = {
   // Kanban de tarefas do time. `column` = KEY estável da coluna do board (renomear
   // coluna não órfã o card); `assignees` = ids de usuários do time (collection users);
   // comments = [{ id, author, text, at }] — o SPA faz PATCH do array inteiro.
-  tasks: { title: "", description: "", saas: "", assignees: [], column: "", priority: "", dueDate: "", labels: [], comments: [], order: 0 },
+  // `photo` = URL /public/tasks/:id do anexo (task_assets, 1 foto por tarefa).
+  tasks: { title: "", description: "", saas: "", assignees: [], column: "", priority: "", dueDate: "", labels: [], comments: [], order: 0, photo: "" },
   task_boards: { name: "Tarefas", columns: [] },
   // Timeline do lead (pontos de contato + eventos automáticos). `type` toque =
   // whatsapp/call/email/meeting; `stage` = mudança de estágio (meta {from,to});
@@ -445,6 +446,32 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
 
   app.get("/public/activities/:id", async (req, reply) => {
     const doc = await repo.get("activity_assets", req.params.id);
+    if (!doc) return reply.code(404).send({ error: "imagem não encontrada" });
+    reply.header("cache-control", "public, max-age=31536000, immutable");
+    return reply.type(doc.mime || "image/png").send(Buffer.from(doc.data || "", "base64"));
+  });
+
+  // Foto anexada a uma TAREFA (Leo, 06/08: anexar foto ao criar a tarefa).
+  // MESMO desenho do asset de atividade acima: bytes em `task_assets`, URL
+  // pública /public/tasks/:id (id randômico é a chave, <img> não manda header)
+  // e a URL vai no campo `photo` do doc da tarefa (quem não conhece o campo
+  // simplesmente não mostra). Guard: /api/tasks já mapeia pra tela "tasks".
+  app.post("/api/tasks/asset", async (req, reply) => {
+    const file = await req.file();
+    if (!file) return reply.code(400).send({ error: "envie uma imagem (multipart, campo file)" });
+    if (!/^image\//.test(file.mimetype || "")) return reply.code(400).send({ error: "só aceito imagem" });
+    const buf = await file.toBuffer();
+    if (buf.length > 5 * 1024 * 1024) return reply.code(413).send({ error: "imagem acima de 5MB — recorte ou comprima" });
+    const id = `tka_${randomUUID()}`;
+    await repo.create("task_assets", {
+      id, mime: file.mimetype, size: buf.length, name: file.filename || "",
+      data: buf.toString("base64"), by: req.authUser?.id || "", at: new Date().toISOString(),
+    });
+    return { id, url: `/public/tasks/${id}` };
+  });
+
+  app.get("/public/tasks/:id", async (req, reply) => {
+    const doc = await repo.get("task_assets", req.params.id);
     if (!doc) return reply.code(404).send({ error: "imagem não encontrada" });
     reply.header("cache-control", "public, max-age=31536000, immutable");
     return reply.type(doc.mime || "image/png").send(Buffer.from(doc.data || "", "base64"));

@@ -305,6 +305,10 @@ function TaskCard({ t, users, completed, onDragStart, onDropBefore, onOpen }) {
         cursor: "grab",
         opacity: completed ? .75 : 1,
       }}>
+      {/* Miniatura da foto anexada (task.photo → /public/tasks/:id). */}
+      {t.photo && (
+        <img src={t.photo} alt="" style={{ width: "100%", maxHeight: 120, objectFit: "cover", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", marginBottom: 8, display: "block", opacity: completed ? 0.6 : 1 }} />
+      )}
       <div style={{ fontSize: 13.5, fontWeight: completed ? 500 : 600, lineHeight: 1.35, color: completed ? "var(--fg-3)" : "var(--fg-1)", textDecoration: completed ? "line-through" : "none" }}>{t.title}</div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: "var(--fg-3)", minWidth: 0 }}>
@@ -346,8 +350,20 @@ function TaskModal({ task, presetColumn, presetSaas, columns, users, onSave, onD
   const { SAAS } = window.SEED;
   const [d, setD] = useState(() => task ? { ...task, assignees: assigneesOf(task) } : {
     title: "", description: "", saas: presetSaas, assignees: [],
-    column: presetColumn, priority: "", dueDate: "", labels: [],
+    column: presetColumn, priority: "", dueDate: "", labels: [], photo: "",
   });
+  const [uploading, setUploading] = useState(false);
+  // Foto da tarefa (Leo, 06/08): sobe na hora pro task_assets e a URL fica no
+  // rascunho — salvar a tarefa grava o campo `photo` junto.
+  async function attachPhoto(file) {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const { url } = await api.taskAsset(file, file.name || "foto.png");
+      setD((p) => ({ ...p, photo: url }));
+    } catch (err) { window.alert(err.message || "não deu pra anexar a foto"); }
+    finally { setUploading(false); }
+  }
   const [comments, setComments] = useState(task?.comments || []);
   const [newComment, setNewComment] = useState("");
   const [busy, setBusy] = useState(false);
@@ -395,6 +411,27 @@ function TaskModal({ task, presetColumn, presetSaas, columns, users, onSave, onD
           <span style={labelStyle}>Descrição</span>
           <textarea value={d.description} onChange={set("description")} rows={3} style={{ ...inputStyle, height: "auto", padding: 8, fontSize: 13, resize: "vertical" }} />
         </label>
+
+        {/* Foto anexada (opcional): preview + trocar/remover. */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {d.photo && (
+            <a href={d.photo} target="_blank" rel="noreferrer" title="abrir a foto em tamanho cheio">
+              <img src={d.photo} alt="" style={{ maxWidth: "100%", maxHeight: 180, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", display: "block" }} />
+            </a>
+          )}
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <label style={{ ...chromeBtnStyleSmall, cursor: "pointer", display: "inline-flex", alignItems: "center" }}>
+              <span style={{ fontSize: 11 }}>{uploading ? "enviando…" : d.photo ? "trocar foto" : "📎 anexar foto"}</span>
+              <input type="file" accept="image/*" style={{ display: "none" }}
+                onChange={(e) => { attachPhoto(e.target.files?.[0]); e.target.value = ""; }} />
+            </label>
+            {d.photo && !uploading && (
+              <button type="button" onClick={() => setD((p) => ({ ...p, photo: "" }))} className="dim" style={{ ...chromeBtnStyleSmall }}>
+                <span style={{ fontSize: 11 }}>remover</span>
+              </button>
+            )}
+          </div>
+        </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>

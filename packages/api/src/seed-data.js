@@ -41,6 +41,7 @@ export const COLLECTIONS = {
   task_boards: [],
   activities: [],
   activity_assets: [], // foto anexada a um toque da timeline (base64, servida em /public/activities/:id)
+  task_assets: [],   // foto anexada a uma tarefa do kanban (base64, servida em /public/tasks/:id; URL no task.photo)
   agenda_blocks: [], // bloqueios de agenda (tela Agenda): horários que o closer/CS trava p/ compromisso externo — { user, recur, date/weekday, allDay, fromHour, toHour, reason }
   mindmaps: [], // mapas mentais / estratégia (tela Mapas mentais): { name, nodes[], links[] }
   app_config: [], // chave-valor de integrações (ex.: google_oauth = refresh token da conta conectada)
