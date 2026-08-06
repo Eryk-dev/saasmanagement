@@ -41,6 +41,11 @@ export const META_CATALOG = [
       { metric: "showRate", kind: "rate", label: "Comparecimento na call", unit: "%", hint: "das agendadas, quantas acontecem", default: pct(RATE_BENCHMARKS.showRate) },
       { metric: "contacts", kind: "flow", label: "Contatos no mês", unit: "n", default: null, team: true },
       { metric: "callsBooked", kind: "flow", label: "Calls agendadas", unit: "n", default: null, team: true },
+      // As duas pernas do plano de REMUNERAÇÃO do SDR (04/08): fechamentos e
+      // R$ das oportunidades DELE. A meta vem do plano pelo nível da pessoa
+      // (comp-plan.js no goalFor do placar); campo digitado aqui ainda vence.
+      { metric: "won", kind: "flow", label: "Contratos no mês", unit: "n", hint: "fechamentos das SUAS oportunidades", default: null },
+      { metric: "revenue", kind: "flow", label: "Receita fechada", unit: "R$", hint: "R$ fechado das SUAS oportunidades", default: null },
     ],
   },
   {
