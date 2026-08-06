@@ -29,6 +29,7 @@
 
 import { randomBytes } from "node:crypto";
 import { CYCLE_MONTHS } from "./billing.js";
+import { hasCatalog, applyCatalog } from "./proposal-catalog.js";
 
 export const SLIDE_TYPES = ["hero", "cards", "receipt", "steps", "compare", "bignum", "pricing", "closer", "custom"];
 
@@ -171,12 +172,16 @@ export function contractValue(calc, state) {
 // O que a página pública recebe (window.__PROPOSAL__). editKey NUNCA vai junto —
 // `editable` é decidido pela rota comparando ?k com o editKey guardado.
 export function publicProposal(p, { editable = false } = {}) {
+  // O catálogo (tabela de preço por produto, dores, SPIN) é dado do SERVIDOR:
+  // a página recebe só o resultado (slides transformados + catalogUI no modo
+  // closer), nunca a tabela crua no view-source.
+  const { catalog, ...calc } = { ...CALC_DEFAULTS, ...(p.calc || {}) };
   return {
     id: p.id,
     name: p.name || "",
     theme: p.theme || {},
     slides: p.slides || [],
-    calc: { ...CALC_DEFAULTS, ...(p.calc || {}) },
+    calc,
     data: p.data || { lead: {}, answers: {} },
     state: p.state || {},
     accepted: !!p.accepted,
@@ -198,24 +203,31 @@ export function publicProposal(p, { editable = false } = {}) {
 // Idempotente por (mãe, oferta): re-compartilhar re-snapshota o mesmo link,
 // então correção no deck ou nos dados do lead chega em quem já recebeu.
 export async function shareProposalOffer(repo, parent, offer, { baseUrl = "" } = {}) {
-  const offers = proposalOffers(parent?.slides);
+  // Catálogo de produto: o cliente recebe o deck do PRODUTO decidido na tela
+  // zero (transformado e travado), nunca o snapshot genérico com as duas bases.
+  const transformed = applyCatalog(parent);
+  const slidesSrc = transformed ? transformed.slides : parent?.slides;
+  const offers = proposalOffers(slidesSrc);
   // Oferta inválida NÃO cai na principal por silêncio: este link vai pro
   // cliente, mandar o preço errado é pior que falhar.
   const n = offer == null ? 1 : Number(offer);
   const picked = offers.find((o) => o.offer === n);
   if (!picked) return { ok: false, error: "oferta inexistente nesta proposta" };
 
+  // O catálogo não viaja no snapshot do cliente (tabela de preço é do servidor;
+  // sem ele o deck compartilhado também nunca re-transforma).
+  const { catalog: _catalog, ...calcSansCatalog } = parent.calc || {};
   const snapshot = {
     saas: parent.saas,
     template: parent.template || "",
     lead: parent.lead || "",
     name: parent.name || "Proposta",
     theme: parent.theme || {},
-    calc: parent.calc || {},
+    calc: calcSansCatalog,
     acceptStage: parent.acceptStage || "",
     data: parent.data || { lead: {}, answers: {} },
     state: parent.state || {},
-    slides: flattenOffer(parent.slides, n),
+    slides: flattenOffer(slidesSrc, n),
     showAll: true,
     sharedFrom: parent.id,
     sharedOffer: n,
@@ -340,7 +352,11 @@ export async function runNativeProposal(repo, lead, opts = {}) {
       lead: lead.id,
       name: template.name || "Proposta",
       theme: template.theme || {},
-      slides: (template.slides || []).filter((s) => slideVisible(s, data.answers)),
+      // Com catálogo, os slides de pricing são MATÉRIA-PRIMA do produto (o
+      // transform escolhe/reconstrói na hora de servir): entram no snapshot
+      // mesmo com showIf de nicho — senão um override pra +OEM FULL num lead
+      // fora de autopeças ficaria sem a base do slide.
+      slides: (template.slides || []).filter((s) => (hasCatalog(calc) && s?.type === "pricing") || slideVisible(s, data.answers)),
       calc,
       acceptStage: template.acceptStage || "",
       data,

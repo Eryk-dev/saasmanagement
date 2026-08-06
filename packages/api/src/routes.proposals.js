@@ -6,6 +6,7 @@
 // (closer abrindo o próprio link de edição não infla o número).
 
 import { publicProposal } from "./proposal.js";
+import { applyCatalog, catalogUI } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { makeRateLimiter } from "./forms.js";
 import { convertWonLead } from "./routes.js";
@@ -13,6 +14,19 @@ import { logActivity, applyStageMove } from "./lead-flow.js";
 
 // Proposta "fake" a partir de um template + dados de exemplo — usada pelo
 // preview do builder (iframe) e pela página /p/t/:id (preview em aba).
+// Deck do produto ativo + payload da tela zero: o transform roda ao SERVIR (o
+// snapshot no banco segue genérico); o card de decisão (catalogUI) só entra no
+// modo closer. Sem catálogo, tudo passa intacto.
+function renderProposal(p, { editable = false, previewBanner = false } = {}) {
+  const transformed = applyCatalog(p);
+  const pv = publicProposal(transformed ? { ...p, slides: transformed.slides } : p, { editable });
+  if (editable) {
+    const ui = catalogUI(p);
+    if (ui) pv.catalogUI = ui;
+  }
+  return proposalPageHtml(pv, { previewBanner });
+}
+
 function previewFromTemplate(t, { data, state, answers } = {}) {
   return {
     id: "preview",
@@ -68,7 +82,20 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     // antes da capa + edição ao vivo, sem salvar nada (a página detecta o id
     // "preview" e desliga o auto-save). Assim dá pra testar o deck inteiro,
     // inclusive o preço calculado do Starter, sem gerar proposta.
-    return reply.type("text/html").header("cache-control", "no-store").send(proposalPageHtml(publicProposal(previewFromTemplate(t), { editable: true }), { previewBanner: true }));
+    const fake = previewFromTemplate(t);
+    // Sem proposta pra salvar, a tela zero do catálogo simula via QUERY: cada
+    // mudança recarrega com ?accounts=…&product=… e o estado nasce daqui.
+    const q = req.query || {};
+    if (typeof q.accounts === "string" && (t.calc?.seatsMap || {})[q.accounts] != null) {
+      fake.state.accounts = q.accounts;
+      fake.state.seats = Number(t.calc.seatsMap[q.accounts]);
+    }
+    if (typeof q.volume === "string" && (t.calc?.volumeMid || {})[q.volume] != null) fake.state.volume = q.volume;
+    if (typeof q.niche === "string" && q.niche) fake.data.answers.niche = q.niche.slice(0, 40);
+    if (typeof q.product === "string") fake.state.product = q.product.slice(0, 20);
+    if (typeof q.pain === "string") fake.state.pain = q.pain.slice(0, 8);
+    if (q.oem === "1") fake.state.oem = true;
+    return reply.type("text/html").header("cache-control", "no-store").send(renderProposal(fake, { editable: true, previewBanner: true }));
   });
 
   app.get("/p/:id", async (req, reply) => {
@@ -115,7 +142,7 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     }
     // no-store: sem isso o navegador reusa HTML antigo por cache heurístico e o
     // closer apresenta uma versão velha do deck (re-snapshots são frequentes).
-    return reply.type("text/html").header("cache-control", "no-store").send(proposalPageHtml(publicProposal(p, { editable })));
+    return reply.type("text/html").header("cache-control", "no-store").send(renderProposal(p, { editable }));
   });
 
   // Painel do closer: só os campos de estado, só com o editKey certo.
@@ -141,6 +168,12 @@ export function registerProposalRoutes(app, repo, opts = {}) {
       state.accounts = body.accounts;
       state.seats = Number(seatsMap[body.accounts]);
     }
+    // Camada de produto (catálogo): o select "Apresentar" da tela zero. Vazio =
+    // seguir a sugestão da régua; produto fora do catálogo não entra.
+    const catalogProducts = (p.calc && p.calc.catalog && p.calc.catalog.products) || {};
+    if (typeof body.product === "string" && (body.product === "" || catalogProducts[body.product])) state.product = body.product;
+    if (typeof body.pain === "string") state.pain = body.pain.slice(0, 8);
+    if (typeof body.oem === "boolean") state.oem = body.oem;
 
     // Campos de texto da capa (editados inline no modo closer): gravam no SNAPSHOT
     // da proposta e — porque o dado do lead costuma estar errado/incompleto — no

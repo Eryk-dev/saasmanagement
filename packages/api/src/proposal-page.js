@@ -326,7 +326,10 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .price-pay { margin-top: 18px; display: flex; flex-direction: column; gap: 9px; }
   .pay-row { display: flex; align-items: center; gap: 10px; font-size: 15px; color: var(--ink-2); }
   .pay-row svg { color: var(--accent); flex-shrink: 0; }
-  .price-cycles { margin-top: 10px; font-family: var(--font-mono); font-size: 12px; color: var(--accent); letter-spacing: .04em; }
+  .price-cycles { margin-top: 10px; font-family: var(--font-mono); font-size: 17px; color: var(--accent); letter-spacing: .04em; }
+  /* Número da parcela em destaque (o *X* do cycles): metade do valor total. */
+  .price-cycles em { font-style: normal; font-family: var(--font-display); font-weight: 700;
+    font-size: clamp(32px, 4.2vw, 58px); line-height: 1.1; letter-spacing: 0; }
   /* Preço-âncora (de R$ X riscado) acima do valor e total riscado na linha de ciclos */
   .price-from { font-family: var(--font-mono); font-size: 16px; color: var(--ink-4); text-decoration: line-through; margin-top: 24px; }
   @media (min-width: 768px) { .price-from { font-size: 18px; } }
@@ -488,7 +491,7 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
      pagamento comprido (12x + PIX) embrulha em várias linhas em vez de vazar
      pra fora da faixa (overflow hidden cortava "montagem R$ 30 + pla…"). */
   .pb-right { flex: 0 1 auto; min-width: 0; max-width: 300px; text-align: right; }
-  .pb-right .price-cycles { margin: 0; font-size: 13.5px; line-height: 1.6; white-space: normal; }
+  .pb-right .price-cycles { margin: 0; font-size: 18px; line-height: 1.6; white-space: normal; }
   .pb-price.price-number { margin: 0; justify-content: center; align-items: baseline; flex-wrap: nowrap; }
   .pb-price .amount { font-size: clamp(64px, 8.4vw, 116px); }
   .pb-price .currency { font-size: clamp(22px, 3vw, 34px); }
@@ -614,6 +617,52 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .setup-go { margin-top: 40px; align-self: flex-start; padding: 15px 32px; border-radius: var(--radius); background: var(--accent); color: var(--accent-fg); font-weight: 600; font-size: 16px; transition: transform .15s var(--ease-out), filter .15s var(--ease-out); }
   .setup-go:hover { transform: translateY(-2px); filter: brightness(1.05); }
   @media print { .closer-setup { display: none !important; } }
+
+  /* ── Tela zero com catálogo (card de decisão, só com catalogUI) ───────────
+     Cabe em UMA tela e estoura a largura do deck de propósito: o cliente nunca
+     vê esta tela. Card em 3 colunas: régua+dor · perguntas SPIN · decisão. */
+  .closer-setup.lvx { justify-content: flex-start; padding-top: 24px; }
+  .closer-setup.lvx > .wrap { max-width: min(97vw, 1840px); }
+  .closer-setup.lvx .setup-title { font-size: clamp(24px, 2.4vw, 34px); }
+  .lvx-cols { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 26px; align-items: start; margin-top: 24px; }
+  @media (max-width: 900px) { .lvx-cols { grid-template-columns: 1fr; } }
+  .lvx-cols .setup-grid { display: flex; flex-direction: column; gap: 11px; margin: 0; }
+  .lvx-cols .setup-field { width: 100%; }
+  .lvx-card { border: 1px solid var(--line); border-radius: calc(var(--radius) + 4px); background: var(--raised);
+    padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .lvx-card-cols { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.15fr) minmax(0, 1fr); gap: 12px 24px; align-items: start; }
+  @media (max-width: 1240px) { .lvx-card-cols { grid-template-columns: 1fr; } }
+  .lvx-ccol { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .lvx-h { font-family: var(--font-mono); font-size: 10px; letter-spacing: .13em; text-transform: uppercase; color: var(--ink-3); }
+  .lvx-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .lvx-badge { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
+    font-weight: 700; font-size: 22px; flex: none; font-family: var(--font-display); }
+  .lvx-row b { font-size: 14.5px; }
+  .lvx-row .lvx-why { font-size: 12px; color: var(--ink-2); display: block; max-width: 46ch; }
+  .lvx-tag { display: inline-block; font-family: var(--font-mono); font-size: 9px; letter-spacing: .11em;
+    text-transform: uppercase; border-radius: 999px; padding: 4px 9px; margin-bottom: 4px;
+    background: color-mix(in oklab, var(--accent) 16%, transparent); color: var(--fg); }
+  .lvx-tag.pend { background: #f6e3b4; color: #6d4a06; }
+  .lvx-sel { width: 100%; border: 1px solid var(--line); background: var(--bg); border-radius: 10px;
+    padding: 10px 12px; font: 600 13.5px var(--font-display); color: var(--fg); }
+  .lvx-note { font-size: 11px; color: var(--ink-3); }
+  .lvx-cur { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
+    background: color-mix(in oklab, var(--accent) 7%, var(--bg)); font-size: 12.5px; color: var(--ink-2); line-height: 1.45; }
+  .lvx-cur b { display: block; font-size: 13.5px; color: var(--fg); margin-bottom: 2px; }
+  .lvx-cur .lvx-cur-price { display: block; margin-top: 4px; color: var(--fg); font-weight: 600; }
+  .lvx-spin { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg);
+    font-size: 12px; color: var(--ink-2); line-height: 1.5; }
+  .lvx-spin .q { display: block; margin-top: 6px; }
+  .lvx-spin .q:first-child { margin-top: 0; }
+  .lvx-spin .q b { color: var(--accent); font-family: var(--font-mono); margin-right: 4px; }
+  .lvx-back { font-size: 11.5px; color: var(--ink-2); background: none; border: 0; cursor: pointer;
+    text-align: left; padding: 0; text-decoration: underline; font-family: var(--font-display); display: none; }
+  .lvx-back.show { display: inline; }
+  table.lvx-mtx { border-collapse: separate; border-spacing: 3px; font: 600 10px var(--font-mono); }
+  .lvx-mtx th { font-size: 8px; color: var(--ink-3); padding: 1px 2px; text-align: center; font-weight: 600; }
+  .lvx-mtx th.r { text-align: right; padding-right: 5px; }
+  .lvx-mtx td { width: 30px; height: 24px; text-align: center; border-radius: 6px; }
+  .lvx-mtx td.hot { outline: 2px solid var(--fg); outline-offset: 1px; }
 
   @media print {
     .nav, .edit-pop, .save-tag, .edit-banner, .accept-row, .slide-media video { display: none !important; }
@@ -908,21 +957,30 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     });
   }
 
-  // Trava cada slide na altura da tela (desktop): se o conteúdo natural passa da
+  // Trava os slides na altura da tela (desktop): se o conteúdo natural passa da
   // área útil do slide (viewport − nav − padding), escala pra caber. Nada de
   // slide mais alto que o monitor; o snap mandatory volta a ser seguro.
   function fitSlides() {
     var on = window.innerWidth >= 900 &&
       !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-    document.querySelectorAll('main > section > .wrap, main > header.hero > .wrap').forEach(function (w) {
+    var wraps = document.querySelectorAll('main > section:not(.closer-setup) > .wrap, main > header.hero > .wrap');
+    // Fator ÚNICO pro deck inteiro: o slide mais alto define a escala e TODOS
+    // os slides rendem na mesma largura visual. Escala por slide deixava cada
+    // tela com uma largura de conteúdo diferente (desalinhado de um slide pro
+    // outro). Slide oculto (showIf) mede 0 e não pesa no fator; a tela zero do
+    // closer fica de fora (altura própria, o cliente nunca vê).
+    var ratio = 1;
+    wraps.forEach(function (w) {
       w.style.transform = '';
       if (!on) return;
       var sec = w.parentElement;
       var cs = window.getComputedStyle(sec);
       var avail = sec.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
       var h = w.scrollHeight;
-      if (h > avail && avail > 0) w.style.transform = 'scale(' + (avail / h).toFixed(4) + ')';
+      if (h > avail && avail > 0) ratio = Math.min(ratio, avail / h);
     });
+    if (!on || ratio >= 1) return;
+    wraps.forEach(function (w) { w.style.transform = 'scale(' + ratio.toFixed(4) + ')'; });
   }
 
   function el(tag, cls, html) {
@@ -1540,9 +1598,10 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     function flash(text, cls) { if (demo) return; tag.textContent = text; tag.className = 'save-tag show' + (cls ? ' ' + cls : ''); }
     function doSave() {
       flash('salvando…', '');
-      fetch('/public/proposals/' + encodeURIComponent(P.id), {
+      // Retorna a promise: o card do catálogo espera o save antes de recarregar.
+      return fetch('/public/proposals/' + encodeURIComponent(P.id), {
         method: 'PATCH', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ k: token, accounts: state.accounts, volume: state.volume, cycle: state.cycle, customPriceCents: state.customPriceCents, validUntil: state.validUntil, frozen: true, company: DATA.lead.company, name: DATA.lead.name, niche: DATA.answers.niche, cloneCount: state.cloneCount, newPerMonth: state.newPerMonth })
+        body: JSON.stringify({ k: token, accounts: state.accounts, volume: state.volume, cycle: state.cycle, customPriceCents: state.customPriceCents, validUntil: state.validUntil, frozen: true, company: DATA.lead.company, name: DATA.lead.name, niche: DATA.answers.niche, cloneCount: state.cloneCount, newPerMonth: state.newPerMonth, product: state.product, pain: state.pain, oem: state.oem })
       }).then(function (r) { if (!r.ok) throw new Error('falha'); return r.json(); })
         .then(function () { flash('salvo ✓', 'ok'); setTimeout(function () { tag.className = 'save-tag'; }, 1600); })
         .catch(function () { flash('✕ erro ao salvar', 'err'); });
@@ -1672,6 +1731,147 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         grid.appendChild(lab);
       });
       w.appendChild(grid);
+
+      // ── Card de decisão do catálogo (produto e oferta pela régua) ─────────
+      // Só quando o servidor mandou catalogUI (calc.catalog no snapshot). A
+      // régua sugere, o closer decide; dado que muda a régua salva e RECARREGA
+      // (o deck do produto é montado no servidor). No preview (/p/t) nada
+      // persiste: as escolhas viajam na query string.
+      var CAT = P.catalogUI;
+      if (CAT) {
+        sec.classList.add('lvx');
+        var TIER_STYLE = { S: ['#7c3aed', '#fff'], A: ['#16a34a', '#fff'], B: ['#65a30d', '#fff'], C: ['#eab308', '#463500'], D: ['#ea580c', '#fff'], E: ['#9aa2ad', '#fff'] };
+        var painKeys = ['A', 'B', 'C', 'D', 'E', 'none'].filter(function (kk) { return CAT.pains[kk]; });
+        var prodKeys = Object.keys(CAT.names);
+        if (state.pain == null) state.pain = CAT.pain;
+        if (state.oem == null) state.oem = CAT.oem;
+        if (state.product == null) state.product = CAT.product;
+        var card = el('div', 'lvx-card');
+        card.innerHTML =
+          '<span class="lvx-h">A régua sugere, você decide</span>' +
+          '<div class="lvx-card-cols">' +
+          '<div class="lvx-ccol">' +
+          '<div class="lvx-row"><div class="lvx-badge" id="lvxB"></div>' +
+            '<div><b id="lvxT"></b><span class="lvx-why" id="lvxW"></span></div></div>' +
+          '<div class="lvx-row"><div style="overflow-x:auto"><table class="lvx-mtx" id="lvxM"></table></div></div>' +
+          '<div><span class="lvx-h">Dor que trouxe o lead (código do anúncio)</span>' +
+            '<select class="lvx-sel" id="lvxPain" style="margin-top:6px">' +
+              painKeys.map(function (kk) { return '<option value="' + kk + '">' + (kk === 'none' ? '' : '[' + kk + '] ') + esc(CAT.pains[kk].label) + '</option>'; }).join('') +
+            '</select></div>' +
+          '</div>' +
+          '<div class="lvx-ccol">' +
+          '<div class="lvx-spin" id="lvxSpin"></div>' +
+          '</div>' +
+          '<div class="lvx-ccol">' +
+          '<div><span class="lvx-tag" id="lvxTag"></span><b id="lvxSug" style="display:block;font-size:15px"></b>' +
+            '<span style="font-size:12px;color:var(--ink-2)" id="lvxPr"></span></div>' +
+          '<div><span class="lvx-h">Apresentar</span>' +
+            '<select class="lvx-sel" id="lvxSel" style="margin-top:6px">' +
+              prodKeys.map(function (kk) { return '<option value="' + kk + '">' + esc(CAT.names[kk]) + '</option>'; }).join('') +
+            '</select><button class="lvx-back" id="lvxBack" type="button">↩ voltar pra sugestão da régua</button>' +
+            '<div class="lvx-cur" id="lvxCur"></div>' +
+            '<div class="lvx-note" style="margin-top:6px">Mudou contas, anúncios ou nicho? O deck já troca sozinho pra apresentação sugerida. Escolher aqui força um produto até a próxima mudança de dados.</div></div>' +
+          '<div class="lvx-row" id="lvxOemRow" style="display:none;font-size:12.5px;color:var(--ink-2)">' +
+            '<label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="lvxOem" style="width:15px;height:15px"> ' +
+            'Confirmei no rapport que ele quer os anúncios OEM</label></div>' +
+          '</div>' +
+          '</div>';
+        var cols = el('div', 'lvx-cols');
+        w.insertBefore(cols, grid);
+        cols.appendChild(grid);
+        cols.appendChild(card);
+
+        var catGet = function (id) { return card.querySelector('#' + id); };
+        function mtxHtml() {
+          var m = CAT.matrix, h = '<tr><th></th>' + m.vols.map(function (a) { return '<th>' + a + '</th>'; }).join('') + '</tr>';
+          for (var r = 0; r < m.grid.length; r++) {
+            h += '<tr><th class="r">' + m.accounts[r] + '</th>';
+            for (var c = 0; c < m.grid[r].length; c++) {
+              var g = m.grid[r][c], st = TIER_STYLE[g] || TIER_STYLE.C, hot = (r === m.accIndex && c === m.volIndex);
+              h += '<td class="' + (hot ? 'hot' : '') + '" style="background:' + (hot ? st[0] : st[0] + '33') + ';color:' + (hot ? st[1] : st[0]) + '">' + g + '</td>';
+            }
+            h += '</tr>';
+          }
+          return h;
+        }
+        function syncCat() {
+          var st = TIER_STYLE[CAT.tier] || TIER_STYLE.C;
+          catGet('lvxB').textContent = CAT.tier;
+          catGet('lvxB').style.background = st[0];
+          catGet('lvxB').style.color = st[1];
+          catGet('lvxT').textContent = 'Cliente ' + CAT.tier;
+          catGet('lvxW').textContent = state.accounts + ' conta(s) × ' + state.volume + ' anúncios.' + (CAT.low ? ' Entra no Parcial.' : ' Perfil de FULL.');
+          catGet('lvxM').innerHTML = mtxHtml();
+          var pn = CAT.pains[state.pain] || CAT.pains.none || {};
+          catGet('lvxPain').value = CAT.pains[state.pain] ? state.pain : 'none';
+          catGet('lvxSpin').innerHTML = pn.spin
+            ? '<span class="q"><b>S</b>' + esc(pn.spin.S) + '</span><span class="q"><b>P</b>' + esc(pn.spin.P) + '</span>' +
+              '<span class="q"><b>I</b>' + esc(pn.spin.I) + '</span><span class="q"><b>N</b>' + esc(pn.spin.N) + '</span>' +
+              '<span class="lvx-note" style="display:block;margin-top:8px">Respondeu a N? Emenda a demo ao vivo: deixa eu te mostrar isso rodando nas SUAS contas agora. Não re-pergunte o que o form já respondeu, abra confirmando.</span>'
+            : '<span class="q">' + esc(pn.tip || '') + '</span>';
+          var tagEl = catGet('lvxTag');
+          if (CAT.oemNeeded && !state.oem) { tagEl.className = 'lvx-tag pend'; tagEl.textContent = 'Sugerido · OEM a confirmar no rapport'; }
+          else { tagEl.className = 'lvx-tag'; tagEl.textContent = 'Sugerido pela régua'; }
+          catGet('lvxSug').textContent = CAT.names[CAT.suggested] || CAT.suggested;
+          catGet('lvxPr').textContent = CAT.priceLines[CAT.suggested] || '';
+          var shown = state.product || CAT.suggested;
+          catGet('lvxSel').value = shown;
+          catGet('lvxCur').innerHTML = '<b>' + esc(CAT.names[shown] || shown) + '</b>' + esc(CAT.offerLines[shown] || '') +
+            '<span class="lvx-cur-price">' + esc(CAT.priceLines[shown] || '') + '</span>';
+          catGet('lvxBack').className = 'lvx-back' + (state.product && state.product !== CAT.suggested ? ' show' : '');
+          catGet('lvxOemRow').style.display = String(DATA.answers.niche || '') === 'autopecas' ? 'flex' : 'none';
+          catGet('lvxOem').checked = !!state.oem;
+        }
+        // Recarrega com o deck do produto certo. Proposta real: salva e recarrega;
+        // preview (demo): as escolhas viajam na query string.
+        function catReload(params) {
+          if (demo) {
+            var q = new URLSearchParams(location.search);
+            Object.keys(params).forEach(function (kk) { params[kk] == null ? q.delete(kk) : q.set(kk, params[kk]); });
+            location.search = q.toString();
+            return;
+          }
+          Promise.resolve(doSave()).then(function () { location.reload(); }, function () { location.reload(); });
+        }
+        // No preview a query é a memória entre reloads; na proposta real basta o save.
+        function catRemember(key, value) {
+          if (!demo) { scheduleSave(); return; }
+          var q = new URLSearchParams(location.search);
+          value === '' || value == null ? q.delete(key) : q.set(key, value);
+          history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q.toString() : ''));
+        }
+        catGet('lvxSel').addEventListener('change', function () {
+          state.product = this.value;
+          catReload({ product: this.value });
+        });
+        catGet('lvxBack').addEventListener('click', function () {
+          state.product = '';
+          catReload({ product: null });
+        });
+        catGet('lvxPain').addEventListener('change', function () {
+          state.pain = this.value;
+          catRemember('pain', this.value === 'none' ? '' : this.value);
+          syncCat();
+        });
+        catGet('lvxOem').addEventListener('change', function () {
+          state.oem = this.checked;
+          catRemember('oem', this.checked ? '1' : '');
+          syncCat();
+        });
+        // Dado que muda a régua (contas/anúncios/nicho) solta o override e
+        // recarrega já no produto sugerido. change (não input): o nicho digitado
+        // só dispara no blur, sem recarregar a cada tecla.
+        grid.addEventListener('change', function (ev) {
+          var lab = ev.target && ev.target.closest ? ev.target.closest('.setup-field') : null;
+          if (!lab) return;
+          var name = (lab.querySelector('span') || {}).textContent || '';
+          if (name !== 'Nicho' && name !== 'Contas' && name !== 'Anúncios') return;
+          state.product = '';
+          catReload({ accounts: state.accounts, volume: state.volume, niche: DATA.answers.niche || null, product: null });
+        });
+        syncCat();
+      }
+
       var go = el('button', 'setup-go', 'Começar apresentação →');
       go.onclick = function () {
         var first = root.querySelector('header.hero, section:not(.closer-setup)');

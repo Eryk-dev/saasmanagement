@@ -1,0 +1,267 @@
+// Catálogo de produto/oferta da proposta (tela zero com régua): migração do
+// template, sugestão pela matriz S-E, transform do deck por produto (pricing
+// único + tela OEM + ritmo claro/escuro), trava do produto no link do cliente
+// e o card de decisão (catalogUI) só no modo closer.
+
+import test from "node:test";
+import assert from "node:assert/strict";
+import Fastify from "fastify";
+import { makeMemRepo } from "./helpers/mem-repo.js";
+
+const { ensureProposalCatalog } = await import("../src/migrations.js");
+const { applyCatalog, catalogUI, suggestProduct } = await import("../src/proposal-catalog.js");
+const { runNativeProposal, shareProposalOffer, publicProposal } = await import("../src/proposal.js");
+const { registerProposalRoutes } = await import("../src/routes.proposals.js");
+
+// Template no formato do pt_leverads REAL (antes da migração): faixas antigas,
+// dois slides de investimento com showIf de nicho, deck com ritmo claro/escuro.
+const TEMPLATE = {
+  id: "pt_leverads",
+  saas: "leverads",
+  name: "Proposta · LeverAds",
+  status: "published",
+  theme: { accent: "#23D8D3" },
+  calc: {
+    seatsKey: "accounts",
+    seatsMap: { "1": 2, "2": 2, "3-5": 4, "6-10": 8, "10+": 12 },
+    volumeKey: "volume",
+    volumeMid: { "0-10": 10, "50-200": 200 },
+    answerLabels: { niche: { autopecas: "Autopeças", outros: "Outros" }, staff: { 1: "1 funcionário" } },
+    plans: {},
+    defaultCycle: "annual",
+  },
+  slides: [
+    { key: "hero", type: "hero", bg: "", title: "Capa" },
+    { key: "como_funciona", type: "steps", bg: "", title: "3 etapas", steps: [{ tag: "E1", title: "Clonagem", text: "..." }] },
+    { key: "impacto", type: "compare", bg: "dark", title: "Impacto" },
+    {
+      key: "investimento_autopecas", type: "pricing", bg: "", title: "Invest auto",
+      price: "11.988", cycles: "12x de 999/mês", planTag: "ANUAL",
+      showIf: { key: "niche", values: ["autopecas"] },
+      features: ["100 anúncios gerados por OEM", "Automação de clonagem ilimitada"],
+      benefitGroups: [
+        { title: "Motor", items: ["100 anúncios gerados por OEM"] },
+        { title: "Plataforma", items: ["Painel"] },
+        { title: "Lado humano", items: ["Suporte"] },
+      ],
+      offer2: { planTag: "SEMESTRAL", price: "7.188" },
+      offer3: { planTag: "OEM", price: "4.188" },
+    },
+    {
+      key: "investimento", type: "pricing", bg: "", title: "Invest",
+      price: "7.188", cycles: "12x de 599/mês", planTag: "ANUAL",
+      showIf: { key: "niche", values: ["casa", "moda", "beleza", "outros", "eletronicos"] },
+      features: ["Automação de clonagem ilimitada"],
+      benefitGroups: [
+        { title: "Motor", items: ["Clonagem"] },
+        { title: "Plataforma", items: ["Painel"] },
+        { title: "Lado humano", items: ["Suporte"] },
+      ],
+      offer2: { planTag: "SEMESTRAL", price: "4.188" },
+    },
+  ],
+};
+
+// O que interessa é o PAYLOAD (window.__PROPOSAL__), não o fonte estático do
+// renderer (que cita catalogUI/como_funciona em código e comentário de CSS).
+function payloadOf(html) {
+  const m = html.match(/window\.__PROPOSAL__ = (\{[\s\S]*?\});<\/script>/);
+  assert.ok(m, "payload presente");
+  return JSON.parse(m[1]);
+}
+
+async function seedRepo() {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [{ stage: "Inbox" }] });
+  await repo.create("proposal_templates", JSON.parse(JSON.stringify(TEMPLATE)));
+  await ensureProposalCatalog(repo);
+  return repo;
+}
+
+async function makeProposal(repo, answers = {}) {
+  const lead = await repo.create("leads", {
+    id: "ld_" + Math.random().toString(36).slice(2, 8),
+    saas: "leverads", name: "Cleber Souza", company: "O2 Consultoria",
+    niche: "outros", accounts: "1", listings: "100-500", staff: "1",
+    ...answers,
+  });
+  const r = await runNativeProposal(repo, lead, { baseUrl: "http://x" });
+  assert.equal(r.ok, true, "geração ok");
+  return r.proposal;
+}
+
+test("migração: faixas de anúncios viram as colunas da régua + catálogo gravado; one-shot", async () => {
+  const repo = makeMemRepo();
+  await repo.create("proposal_templates", JSON.parse(JSON.stringify(TEMPLATE)));
+  const first = await ensureProposalCatalog(repo);
+  assert.equal(first, true, "primeira execução grava");
+  const t = await repo.get("proposal_templates", "pt_leverads");
+  assert.equal(t.calc.volumeKey, "listings", "volume vem da resposta listings do form");
+  assert.deepEqual(Object.keys(t.calc.volumeMid), ["0-100", "100-500", "500-2000", "2000-10000", "10000+"]);
+  assert.ok(t.calc.catalog.products.parcialA, "catálogo presente");
+  assert.equal(t.calc.catalog.products.parcialA.sem.total, 2100, "Parcial preço fechado 04/08");
+  const again = await ensureProposalCatalog(repo);
+  assert.equal(again, false, "idempotente: segunda execução não mexe");
+});
+
+test("snapshot guarda as DUAS bases de pricing (showIf de nicho não filtra com catálogo)", async () => {
+  const repo = await seedRepo();
+  const p = await makeProposal(repo, { niche: "outros" });
+  const pricing = p.slides.filter((s) => s.type === "pricing").map((s) => s.key);
+  assert.deepEqual(pricing.sort(), ["investimento", "investimento_autopecas"], "as duas bases no snapshot");
+  assert.equal(p.state.volume, "100-500", "faixa vem de answers.listings");
+});
+
+test("cliente D fora de autopeças → Parcial (preço fechado, sem OEM, sem tela OEM)", async () => {
+  const repo = await seedRepo();
+  const p = await makeProposal(repo, { niche: "outros", accounts: "1", listings: "100-500" });
+  assert.equal(suggestProduct(p.calc, p.state, p.data.answers), "parcialA");
+  const t = applyCatalog(p);
+  assert.equal(t.product, "parcialA");
+  const pricing = t.slides.find((s) => s.type === "pricing");
+  assert.equal(pricing.key, "investimento_parcial");
+  assert.equal(pricing.price, "2.100");
+  assert.equal(pricing.cycles, "12x de *175*/mês", "parcela com marcador de destaque");
+  assert.equal(pricing.offer2.price, "3.588", "anual no Shift+1");
+  assert.equal(pricing.offer3, undefined, "escada antiga morta");
+  assert.ok(!t.slides.some((s) => s.key === "oem_processo"), "sem tela OEM");
+  assert.equal(t.slides.filter((s) => s.type === "pricing").length, 1, "um investimento só");
+});
+
+test("autopeças pequeno → Parcial + OEM 50; tela OEM escura depois do 3 etapas e ritmo re-alternado", async () => {
+  const repo = await seedRepo();
+  const p = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "100-500" });
+  const t = applyCatalog(p);
+  assert.equal(t.product, "parcialoem");
+  const keys = t.slides.map((s) => s.key);
+  const iSteps = keys.indexOf("como_funciona");
+  assert.equal(keys[iSteps + 1], "oem_processo", "tela OEM logo depois do 3 etapas");
+  const oem = t.slides[iSteps + 1];
+  assert.equal(oem.bg, "dark");
+  assert.match(oem.pills[0], /^50 anúncios OEM/, "cota do combo");
+  assert.equal(t.slides[iSteps + 2].bg, "", "impacto vira claro");
+  const pricing = t.slides.find((s) => s.type === "pricing");
+  assert.equal(pricing.bg, "dark", "investimento fecha escuro");
+  assert.equal(pricing.price, "3.288");
+  assert.equal(pricing.sub, "soma: Parcial + OEM 50/mês");
+});
+
+test("OEM avulso: 3 etapas SAI, tela OEM entra clara no lugar; cota segue o porte", async () => {
+  const repo = await seedRepo();
+  const p = await makeProposal(repo, { niche: "outros", accounts: "1", listings: "100-500" });
+  p.state.product = "oem";
+  const t = applyCatalog(p);
+  const keys = t.slides.map((s) => s.key);
+  assert.ok(!keys.includes("como_funciona"), "clonagem não entra pra quem não compra clonagem");
+  const oem = t.slides.find((s) => s.key === "oem_processo");
+  assert.equal(oem.bg, "", "clara, na posição do 3 etapas (ritmo original)");
+  const pricing = t.slides.find((s) => s.type === "pricing");
+  assert.equal(pricing.price, "1.188", "OEM 50 pro pequeno");
+  assert.match(pricing.sub, /50 anúncios por mês/);
+
+  const big = await makeProposal(repo, { niche: "outros", accounts: "10+", listings: "10000+" });
+  big.state.product = "oem";
+  const tb = applyCatalog(big);
+  assert.equal(tb.slides.find((s) => s.type === "pricing").price, "2.988", "OEM 200 pro grande");
+});
+
+test("cliente grande: FULL sugerido; override +OEM FULL usa a base de autopeças com 200/mês", async () => {
+  const repo = await seedRepo();
+  const p = await makeProposal(repo, { niche: "outros", accounts: "3-5", listings: "2000-10000" });
+  assert.equal(applyCatalog(p).product, "full");
+  assert.equal(applyCatalog(p).slides.find((s) => s.type === "pricing").price, "7.188");
+  p.state.product = "fulloem";
+  const t = applyCatalog(p);
+  const pricing = t.slides.find((s) => s.type === "pricing");
+  assert.equal(pricing.price, "11.988");
+  assert.ok(JSON.stringify(pricing).includes("200 anúncios gerados por OEM"), "100→200 na base de autopeças");
+  assert.ok(t.slides.some((s) => s.key === "oem_processo"), "tela OEM presente");
+});
+
+test("payload público nunca leva o catálogo cru; catalogUI tem nomes/preços prontos", async () => {
+  const repo = await seedRepo();
+  const p = await makeProposal(repo, {});
+  const pub = publicProposal(p, { editable: true });
+  assert.equal(pub.calc.catalog, undefined, "tabela de preço é do servidor");
+  const ui = catalogUI(p);
+  assert.deepEqual(Object.keys(ui.names).sort(), ["full", "fulloem", "oem", "parcialA", "parcialoem"]);
+  assert.match(ui.priceLines.full, /R\$ 7\.188 no semestre \(12x 599\)/);
+  assert.match(ui.priceLines.parcialA, /R\$ 2\.100 no semestre \(12x 175\)/);
+  assert.equal(ui.tier, "D");
+  assert.equal(ui.pain, "none", "sem dor marcada → trilha genérica");
+  assert.ok(ui.pains.A.spin.S.length > 10, "perguntas SPIN embarcadas");
+});
+
+test("link do cliente: deck transformado, oferta travada, sem catálogo no snapshot filho", async () => {
+  const repo = await seedRepo();
+  const p = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "100-500" });
+  const r = await shareProposalOffer(repo, p, 1, { baseUrl: "http://x" });
+  assert.equal(r.ok, true);
+  const child = r.proposal;
+  const pricing = child.slides.find((s) => s.type === "pricing");
+  assert.equal(pricing.key, "investimento_combo", "produto da tela zero travado");
+  assert.equal(pricing.price, "3.288");
+  assert.equal(pricing.offer2, undefined, "escada secreta fora do link do cliente");
+  assert.ok(child.slides.some((s) => s.key === "oem_processo"), "tela OEM viaja junto");
+  assert.equal((child.calc || {}).catalog, undefined, "catálogo não viaja");
+});
+
+test("rotas: card de decisão só no modo closer; PATCH aceita product/pain/oem e ignora produto inválido", async () => {
+  const repo = await seedRepo();
+  const p = await makeProposal(repo, {});
+  const app = Fastify();
+  registerProposalRoutes(app, repo);
+
+  const closer = await app.inject({ method: "GET", url: "/p/" + p.id + "?k=" + p.editKey });
+  const closerPayload = payloadOf(closer.body);
+  assert.ok(closerPayload.catalogUI, "payload do card no modo closer");
+  assert.ok(closerPayload.slides.some((s) => s.key === "investimento_parcial"), "deck já transformado");
+
+  const cliente = await app.inject({ method: "GET", url: "/p/" + p.id });
+  const clientePayload = payloadOf(cliente.body);
+  assert.equal(clientePayload.catalogUI, undefined, "cliente não vê o card");
+  assert.equal(clientePayload.calc.catalog, undefined, "nem a tabela de preço");
+
+  // O script do cliente é concatenação dentro de template literal: valida que
+  // o JS embutido continua parseável com o card novo.
+  const scripts = [...closer.body.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+  assert.ok(scripts.length >= 2, "página tem payload + script");
+  for (const [, src] of scripts) {
+    assert.doesNotThrow(() => new Function(src.replace(/^window\.__PROPOSAL__ = /, "return ")), "script servido é JS válido");
+  }
+
+  const patch = await app.inject({
+    method: "PATCH", url: "/public/proposals/" + p.id,
+    payload: { k: p.editKey, product: "fulloem", pain: "B", oem: true },
+  });
+  assert.equal(patch.statusCode, 200);
+  const saved = await repo.get("proposals", p.id);
+  assert.equal(saved.state.product, "fulloem");
+  assert.equal(saved.state.pain, "B");
+  assert.equal(saved.state.oem, true);
+
+  await app.inject({
+    method: "PATCH", url: "/public/proposals/" + p.id,
+    payload: { k: p.editKey, product: "nao_existe" },
+  });
+  assert.equal((await repo.get("proposals", p.id)).state.product, "fulloem", "produto inválido não entra");
+
+  await app.inject({
+    method: "PATCH", url: "/public/proposals/" + p.id,
+    payload: { k: p.editKey, product: "" },
+  });
+  assert.equal((await repo.get("proposals", p.id)).state.product, "", "vazio = volta a seguir a régua");
+});
+
+test("preview /p/t: simulação via query (produto e dados) sem persistir nada", async () => {
+  const repo = await seedRepo();
+  const app = Fastify();
+  registerProposalRoutes(app, repo);
+  const r = await app.inject({ method: "GET", url: "/p/t/pt_leverads?accounts=10%2B&volume=10000%2B&niche=autopecas&product=oem&pain=A" });
+  assert.equal(r.statusCode, 200);
+  const payload = payloadOf(r.body);
+  assert.ok(payload.catalogUI, "preview roda o card");
+  assert.equal(payload.catalogUI.pain, "A", "dor da query aplicada");
+  assert.ok(payload.slides.some((s) => s.key === "investimento_oem"), "produto da query aplicado");
+  assert.ok(!payload.slides.some((s) => s.key === "como_funciona"), "OEM avulso sem a tela de clonagem");
+});
