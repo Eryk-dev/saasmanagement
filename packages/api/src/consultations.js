@@ -61,6 +61,34 @@ export async function syncConsultationCalendar(repo, gu, c) {
   return patch;
 }
 
+// O evento do MEET (conta do TIME; é o convite que o CLIENTE vê e a âncora da
+// transcrição) também segue a consulta: remarcar move o evento no Calendar
+// (sendUpdates avisa o convidado por e-mail), cancelar apaga; meetScheduledAt
+// (referência do poller de resumo) acompanha. Best-effort puro (nunca lança).
+export async function syncConsultationMeetEvent(repo, google, c) {
+  if (!google?.configured?.() || !c?.meetEventId) return {};
+  try { if (!(await google.connected())) return {}; } catch { return {}; }
+  const patch = {};
+  try {
+    if (c.status === "canceled") {
+      await google.deleteCalendarEvent(c.meetEventId);
+      patch.meetUrl = ""; patch.meetEventId = ""; patch.meetScheduledAt = "";
+    } else if (c.at) {
+      const { start, end } = calTimes(c.at, Number(c.durationMin) || 60);
+      await google.patchCalendarEvent(c.meetEventId, {
+        summary: `Consulta ${c.n || "?"}/${c.packageTotal || 8} · ${c.clientName || "cliente"}`,
+        start, end,
+      });
+      if (c.at.length >= 16) {
+        const iso = new Date(`${c.at}${c.at.length === 16 ? ":00" : ""}-03:00`).toISOString();
+        if (iso !== c.meetScheduledAt) patch.meetScheduledAt = iso;
+      }
+    }
+  } catch { return {}; }
+  if (Object.keys(patch).length) { try { await repo.update("consultations", c.id, patch); } catch { /* fail-open */ } }
+  return patch;
+}
+
 // Texto plano do resumo da consulta (timeline/compose; sem travessão).
 export function formatConsultationText(s) {
   const lines = [`Consulta (resumo IA)`, "", s.resumo || ""];
