@@ -8,6 +8,7 @@ import { createClosedSubscription } from "./billing.js";
 import { FLASHCARD_DEFAULTS } from "./routes.flashcards.js";
 import { mergeLeadQuestions } from "./forms.js";
 import { waMatchKey } from "./wa-store.js";
+import { slideVisible } from "./proposal.js";
 
 // Garante o estágio "Integração" no funil do produto `leverads`, posicionado
 // entre "Negociação" e "Ganho". Integração é pós-venda: negócio já fechado,
@@ -1143,6 +1144,52 @@ export async function ensureProposalCatalog(repo) {
   return true;
 }
 
+// Retroativo (pedido do Leo, 06/08): as propostas JÁ GERADAS do pt_leverads
+// entram no fluxo novo — re-snapshot do template atual (catálogo, faixas da
+// régua, as duas bases de pricing) preservando id/link/editKey/views e os
+// dados do lead, então o link que o closer já tem passa a abrir a tela zero
+// com régua. Ficam FORA por segurança: propostas ACEITAS (história fechada) e
+// snapshots de cliente já compartilhados (sharedFrom) — mudar o preço que está
+// na mão do cliente é decisão humana; re-compartilhar já re-snapshota.
+// Idempotente: proposta com calc.catalog não é tocada de novo.
+export async function backfillProposalCatalog(repo) {
+  const t = await repo.get("proposal_templates", "pt_leverads");
+  if (!t || !t.calc?.catalog) return 0; // depende do ensureProposalCatalog
+  const proposals = await repo.list("proposals");
+  let n = 0;
+  for (const p of proposals) {
+    if (p.template !== "pt_leverads") continue;
+    if (p.sharedFrom || p.accepted) continue;
+    if (p.calc && p.calc.catalog) continue;
+    const answers = p.data?.answers || {};
+    const state = { ...(p.state || {}) };
+    // Faixa de anúncios: a resposta atual do form (listings) quando existe;
+    // senão a faixa antiga vira a coluna equivalente da régua pelo ponto médio.
+    const vm = t.calc.volumeMid || {};
+    const bands = Object.keys(vm);
+    const fromAnswers = answers[t.calc.volumeKey || "listings"];
+    if (fromAnswers != null && vm[String(fromAnswers)] != null) {
+      state.volume = String(fromAnswers);
+    } else {
+      const oldMid = Number((p.calc?.volumeMid || {})[state.volume]) || 0;
+      const col = oldMid <= 100 ? 0 : oldMid <= 500 ? 1 : oldMid <= 2000 ? 2 : oldMid <= 10000 ? 3 : 4;
+      state.volume = bands[Math.min(col, bands.length - 1)] || state.volume || "";
+    }
+    const seats = Number((t.calc.seatsMap || {})[state.accounts]);
+    if (seats) state.seats = seats;
+    // Mesma régua de snapshot do runNativeProposal com catálogo: pricing é
+    // matéria-prima do produto e entra sempre; o resto respeita o showIf.
+    await repo.update("proposals", p.id, {
+      theme: t.theme || {},
+      calc: t.calc,
+      slides: (t.slides || []).filter((s) => s?.type === "pricing" || slideVisible(s, answers)),
+      state,
+    });
+    n++;
+  }
+  return n;
+}
+
 export async function runStartupMigrations(repo) {
   try {
     const n = await migrateContractFillTokens(repo);
@@ -1315,5 +1362,12 @@ export async function runStartupMigrations(repo) {
     if (changed) console.log("[migration] catálogo de produto/oferta gravado no template pt_leverads (tela zero com régua)");
   } catch (err) {
     console.error("[migration] ensureProposalCatalog falhou:", err?.message || err);
+  }
+  // Depois do catálogo no template: propostas antigas entram no fluxo novo.
+  try {
+    const n = await backfillProposalCatalog(repo);
+    if (n) console.log(`[migration] ${n} proposta(s) existente(s) re-snapshotada(s) no fluxo do catálogo`);
+  } catch (err) {
+    console.error("[migration] backfillProposalCatalog falhou:", err?.message || err);
   }
 }

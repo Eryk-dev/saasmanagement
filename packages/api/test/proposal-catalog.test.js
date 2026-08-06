@@ -265,3 +265,48 @@ test("preview /p/t: simulação via query (produto e dados) sem persistir nada",
   assert.ok(payload.slides.some((s) => s.key === "investimento_oem"), "produto da query aplicado");
   assert.ok(!payload.slides.some((s) => s.key === "como_funciona"), "OEM avulso sem a tela de clonagem");
 });
+
+test("retroativo: proposta antiga re-snapshotada no fluxo novo; aceita e compartilhada ficam de fora", async () => {
+  const { backfillProposalCatalog } = await import("../src/migrations.js");
+  const repo = await seedRepo();
+  const oldCalc = {
+    seatsKey: "accounts", seatsMap: { "1": 2, "2": 2, "3-5": 4, "6-10": 8, "10+": 12 },
+    volumeKey: "volume",
+    volumeMid: { "0-10": 10, "10-50": 50, "50-200": 200, "200-1.000": 600, "1.000-5.000": 3000, "15.000-50.000": 30000 },
+  };
+  const oldSlides = [
+    { key: "hero", type: "hero", title: "Capa" },
+    { key: "investimento", type: "pricing", price: "7.188", planTag: "ANUAL" },
+  ];
+  const mk = (id, extra) => repo.create("proposals", {
+    id, saas: "leverads", template: "pt_leverads", lead: "ld_x", name: "Proposta",
+    calc: JSON.parse(JSON.stringify(oldCalc)), slides: JSON.parse(JSON.stringify(oldSlides)),
+    data: { lead: { name: "Ana" }, answers: { niche: "outros", accounts: "2" } },
+    state: { accounts: "2", seats: 2, volume: "200-1.000", cycle: "annual", validUntil: "01/09/2026", frozen: true },
+    editKey: "k_" + id, views: 3, accepted: false, createdAt: "2026-07-01T00:00:00.000Z",
+    ...extra,
+  });
+  await mk("pr_old");
+  await mk("pr_aceita", { accepted: true });
+  await mk("pr_filha", { sharedFrom: "pr_old", sharedOffer: 1, editKey: "" });
+
+  const n = await backfillProposalCatalog(repo);
+  assert.equal(n, 1, "só a proposta viva e não compartilhada entra");
+
+  const p = await repo.get("proposals", "pr_old");
+  assert.ok(p.calc.catalog, "catálogo no snapshot");
+  assert.equal(p.state.volume, "500-2000", "faixa antiga (mid 600) vira a coluna equivalente da régua");
+  assert.equal(p.state.validUntil, "01/09/2026", "resto do estado preservado");
+  assert.equal(p.editKey, "k_pr_old", "link do closer intacto");
+  assert.equal(p.views, 3, "tracking preservado");
+  const keys = p.slides.map((s) => s.key);
+  assert.ok(keys.includes("investimento") && keys.includes("investimento_autopecas"), "as duas bases de pricing");
+  assert.ok(keys.includes("como_funciona"), "deck completo do template atual");
+  const t = applyCatalog(p);
+  assert.equal(t.tier, "C", "2 contas × 500-2000 cai na coluna certa da régua");
+  assert.equal(t.product, "full", "tier C = perfil de FULL");
+
+  assert.equal((await repo.get("proposals", "pr_aceita")).calc.catalog, undefined, "aceita não muda");
+  assert.equal((await repo.get("proposals", "pr_filha")).calc.catalog, undefined, "link do cliente não muda");
+  assert.equal(await backfillProposalCatalog(repo), 0, "idempotente");
+});
