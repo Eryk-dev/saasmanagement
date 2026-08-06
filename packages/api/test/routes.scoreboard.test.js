@@ -557,14 +557,23 @@ test("meta de VAGA é do time e reparte entre as pessoas; taxa e ticket não se 
   await repo.create("leads", { id: "w1", saas: "leverads", closer: "u_clo", stage: "Ganho", amount: 500, createdAt: now, stageSince: now });
   await repo.create("activities", { id: "st_w1", saas: "leverads", lead: "w1", type: "stage", at: now, meta: { from: "Follow-up", to: "Ganho" } });
 
+  // Rateio de volume comprovado numa métrica FORA do plano de remuneração
+  // (contacts do SDR): won/revenue passaram a seguir o plano, por pessoa.
+  await repo.create("users", { id: "u_sdr2", name: "Sofia SDR", roles: ["sdr"] });
+  await repo.create("goals", { id: "gc", saas: "leverads", scope: "role", key: "sdr", metric: "contacts", target: 100, period: "month" });
+
   const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
   const c = sb.closer.find((x) => x.user === "u_clo");
-  assert.equal(c.goals.won.target, 12, "24 do time ÷ 2 closers");
-  assert.equal(c.goals.won.teamTarget, 24);
-  assert.equal(c.goals.won.people, 2, "closer de outro produto fica de fora do rateio");
-  assert.equal(c.goals.revenue.target, 60000);
+  // Plano de remuneração (06/08): contratos/receita são POR PESSOA pelo nível
+  // (default 1 = 20 · 90k) e VENCEM a meta de vaga digitada (24/120k acima).
+  assert.equal(c.goals.won.target, 20, "plano de remuneração (nível 1) vence a vaga digitada");
+  assert.equal(c.goals.won.scope, "remuneracao");
+  assert.equal(c.goals.revenue.target, 90000);
   assert.equal(c.goals.ticket.target, 5000, "média não se reparte");
   assert.equal(c.goals.winRateCall.target, 25, "taxa não se reparte");
+  const s1 = sb.sdr.find((x) => x.user === "u_sdr");
+  assert.equal(s1.goals.contacts.target, 50, "100 do time ÷ 2 SDRs (rateio segue vivo fora do plano)");
+  assert.equal(s1.goals.contacts.teamTarget, 100);
   await app.close();
 });
 
@@ -642,11 +651,11 @@ test("targets por PESSOA: metas da vaga com o realizado dela e a parte do rateio
 
   const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
   const clo = Object.fromEntries(sb.closer.find((x) => x.user === "u_clo").targets.map((t) => [t.metric, t]));
-  assert.equal(clo.won.target, 12, "24 do time ÷ 2 closers = a parte dele");
-  assert.equal(clo.won.teamTarget, 24);
+  assert.equal(clo.won.target, 20, "plano de remuneração (nível 1), por pessoa — vaga digitada 24 fica atrás");
+  assert.equal(clo.won.teamTarget, null, "meta do plano não é rateio de time");
   assert.equal(clo.won.value, 1, "realizado DELE, não do time");
   assert.equal(clo.won.kind, "flow", "só fluxo pode ser reescalado pra janela");
-  assert.equal(clo.revenue.target, 60000);
+  assert.equal(clo.revenue.target, 90000);
   assert.equal(clo.conversaoCall.target, 40, "taxa não se reparte");
   assert.equal(clo.conversaoCall.kind, "rate");
   assert.equal(clo.ticket.target, null, "sem meta, mas com valor medido, ainda aparece");
@@ -656,6 +665,12 @@ test("targets por PESSOA: metas da vaga com o realizado dela e a parte do rateio
   assert.equal(sdr.contacts.target, 300, "1 SDR só: a meta do time é dele inteira");
   assert.equal(sdr.contacts.value, 1);
   assert.equal(sdr.showRate.target, 75);
+  // As duas pernas do plano no card do SDR: contratos/receita das
+  // oportunidades DELE (owner do lead ganho), com a meta do nível.
+  assert.equal(sdr.won.target, 20);
+  assert.equal(sdr.won.value, 1);
+  assert.equal(sdr.revenue.target, 90000);
+  assert.equal(sdr.revenue.value, 500);
   // métrica sem meta E sem valor medido não vira linha vazia no cartão
   assert.equal(sdr.bookingRate.value, 100);
   await app.close();
@@ -664,7 +679,7 @@ test("targets por PESSOA: metas da vaga com o realizado dela e a parte do rateio
 test("Ana (só UniqueKids) não entra no placar da LeverAds", async () => {
   const { app, repo } = await buildApp();
   await repo.create("users", { id: "ana", name: "Ana", roles: ["closer", "integrator", "social"], saas: "uniquekids" });
-  await repo.create("goals", { id: "g1", saas: "leverads", scope: "role", key: "closer", metric: "won", target: 24, period: "month" });
+  await repo.create("goals", { id: "g1", saas: "leverads", scope: "role", key: "closer", metric: "callsShown", target: 73, period: "month" });
   await repo.create("leads", { id: "w1", saas: "leverads", closer: "u_clo", stage: "Ganho", amount: 500, createdAt: now, stageSince: now });
   await repo.create("activities", { id: "st_w1", saas: "leverads", lead: "w1", type: "stage", at: now, meta: { from: "Follow-up", to: "Ganho" } });
   await repo.create("customers", { id: "c1", saas: "leverads", owner: "u_cs", startedAt: now });
@@ -673,8 +688,29 @@ test("Ana (só UniqueKids) não entra no placar da LeverAds", async () => {
   for (const role of ["sdr", "closer", "cs", "social"]) {
     assert.equal(sb[role].some((x) => x.user === "ana"), false, `ana não pode aparecer em ${role}`);
   }
-  // e não dilui a meta do time daqui: 1 closer da LeverAds persegue os 24
-  assert.equal(sb.closer.find((x) => x.user === "u_clo").targets.find((t) => t.metric === "won").target, 24);
+  // e não dilui a meta do time daqui: 1 closer da LeverAds persegue os 73 inteiros
+  assert.equal(sb.closer.find((x) => x.user === "u_clo").targets.find((t) => t.metric === "callsShown").target, 73);
+  await app.close();
+});
+
+test("plano de remuneração: meta por NÍVEL da pessoa, doc salvo sobrescreve o padrão e user-scope vence tudo", async () => {
+  const { app, repo } = await buildApp();
+  await repo.update("users", "u_clo", { compLevel: 2 });
+  // Doc salvo na tela Remuneração muda o nível 2 do closer (30 · 150k).
+  await repo.create("comp_plans", { id: "cp1", role: "closer", plan: { levels: [{ n: 2, metaContracts: 30, metaRevenue: 150000 }] } });
+  // Ajuste POR PESSOA na tela Metas ainda vence o plano (SDR com won = 7).
+  await repo.create("goals", { id: "gu", saas: "leverads", scope: "user", key: "u_sdr", metric: "won", target: 7, period: "month" });
+  await repo.create("leads", { id: "w1", saas: "leverads", owner: "u_sdr", closer: "u_clo", stage: "Ganho", amount: 500, createdAt: now, stageSince: now });
+
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  const c = sb.closer.find((x) => x.user === "u_clo");
+  assert.equal(c.goals.won.target, 30, "nível 2 do doc salvo (não o default 25)");
+  assert.equal(c.goals.won.level, 2);
+  assert.equal(c.goals.revenue.target, 150000);
+  const s1 = sb.sdr.find((x) => x.user === "u_sdr");
+  assert.equal(s1.goals.won.target, 7, "meta digitada POR PESSOA vence o plano");
+  assert.equal(s1.goals.won.scope, "user");
+  assert.equal(s1.goals.revenue.target, 90000, "sem ajuste pessoal, vale o plano (nível 1)");
   await app.close();
 });
 

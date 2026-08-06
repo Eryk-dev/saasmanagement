@@ -60,6 +60,8 @@ const publicUser = (u) => ({
   id: u.id, name: u.name, role: u.role || "admin",
   roles: Array.isArray(u.roles) ? u.roles : [],
   saas: u.saas || "",
+  // Nível do plano de remuneração (1 jr · 2 pl · 3 sn) — régua das metas do card.
+  compLevel: (() => { const n = Math.floor(Number(u.compLevel)); return n >= 1 && n <= 3 ? n : 1; })(),
   // Foto de perfil: URL de /public/users/:id com ?v= do último upload (a tag
   // <img> não manda header, então a rota é aberta e o ?v= fura o cache). "" =
   // sem foto, o SPA cai nas iniciais.
@@ -238,8 +240,14 @@ export function registerAuthRoutes(app, repo) {
   app.patch("/api/auth/users/:id", async (req, reply) => {
     const user = await repo.get("users", req.params.id);
     if (!user) return reply.code(404).send({ error: "Not found" });
-    const { name, roles, password, saas, screens } = req.body || {};
+    const { name, roles, password, saas, screens, compLevel } = req.body || {};
     const patch = {};
+    // Nível do plano de remuneração (1 jr · 2 pl · 3 sn): régua das metas de
+    // contratos/receita do card da pessoa na Visão geral (comp-plan.js).
+    if (compLevel !== undefined) {
+      const n = Math.floor(Number(compLevel));
+      patch.compLevel = n >= 1 && n <= 3 ? n : 1;
+    }
     if (typeof name === "string" && name.trim()) {
       // Mesma guarda do /api/auth/me: o login casa por id OU nome, então dois
       // nomes iguais no time deixariam a entrada ambígua.

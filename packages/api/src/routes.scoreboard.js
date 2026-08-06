@@ -9,6 +9,7 @@
 // novas + cancelamentos com data) — cresce quando o billing registrar o evento.
 
 import { cadenceOf, firstStage, isLoss, kindOf, TOUCH_TYPES } from "./stages.js";
+import { compGoalFor, compLevelOf } from "./comp-plan.js";
 import { TEAM_METRICS, META_CATALOG, deriveGoalsFromPace } from "./routes.metas.js";
 import { RATE_BENCHMARKS, computePipelinePace } from "./routes.pipeline-pace.js";
 import {
@@ -47,7 +48,7 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     const hasPrev = /^\d{4}-\d{2}-\d{2}$/.test(prevSince) && /^\d{4}-\d{2}-\d{2}$/.test(prevUntil);
     const inPrev = (iso) => iso && dayKey(iso) >= prevSince && dayKey(iso) <= prevUntil;
 
-    const [allLeads, allActs, allCustomers, proposals, subs, users, goalsAll, npsAll, waMessages, invoicesAll] = await Promise.all([
+    const [allLeads, allActs, allCustomers, proposals, subs, users, goalsAll, npsAll, waMessages, invoicesAll, compPlansAll] = await Promise.all([
       repo.list("leads"),
       repo.list("activities"),
       repo.list("customers"),
@@ -58,6 +59,7 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       repo.list("nps").catch(() => []),
       repo.list("wa_messages").catch(() => []),
       repo.list("invoices").catch(() => []),
+      repo.list("comp_plans").catch(() => []), // plano de remuneração (metas por nível)
     ]);
     // Lead interno (teste) fora de tudo — régua oficial do metrics-core.
     const leads = allLeads.filter((l) => l.saas === product.id && isRealLead(l));
@@ -102,6 +104,12 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     const goalFor = (userId, role, metric) => {
       const u = goals.find((g) => g.scope === "user" && g.key === userId && g.metric === metric);
       if (u) return { target: Number(u.target) || 0, period: u.period || "month", scope: "user" };
+      // O plano de REMUNERAÇÃO manda em contratos (won) e receita de SDR/closer
+      // (Leo, 06/08): meta POR PESSOA pelo nível dela (user.compLevel, 1 sem
+      // campo), sem repartir por headcount — vence a meta de vaga digitada e a
+      // derivada do pace; só o ajuste por PESSOA (acima) fica na frente.
+      const comp = compGoalFor(compPlansAll, role, metric, compLevelOf(users.find((x) => x.id === userId)));
+      if (comp) return comp;
       const r = goals.find((g) => g.scope === "role" && g.key === role && g.metric === metric);
       if (!r) {
         // Indicação: alvo derivado da BASE — cada cliente precisa render N
@@ -306,6 +314,13 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       // alcançou) — nunca passa de 100% (o rótulo diz "dos leads novos, quantos
       // você alcança"). Pro SDR único é a mesma do funil.
       const contactRate = uid === soloSdr ? teamContactRate : cohortRate(mine);
+      // Contratos e receita DAS OPORTUNIDADES DELE (owner) na janela — as duas
+      // pernas do plano de remuneração do SDR (a receita dele é a fechada das
+      // oportunidades que ELE gerou, regra 3 do plano de 04/08).
+      const winMineAt = winTransitionsFor(mine);
+      const wonMineLeads = [...winMineAt.keys()].map((id) => leadById.get(id)).filter(Boolean);
+      const wonMine = wonMineLeads.length;
+      const revenueMine = round2(wonMineLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0));
       // Taxa de agendamento = das pessoas que ele contatou, quantas viraram call
       // (orgânico ÷ orgânico — o histórico só entra no COUNT, não na taxa).
       const bookingRate = contactedOrganic > 0 ? round2((callsBookedOrganic / contactedOrganic) * 100) : null;
@@ -321,7 +336,8 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       return {
         user: uid, name: nameOf(uid),
         contactRate,
-        targets: personTargets(uid, "sdr", { contactRate, bookingRate, showRate, contacts: contacted, callsBooked }),
+        targets: personTargets(uid, "sdr", { contactRate, bookingRate, showRate, contacts: contacted, callsBooked, won: wonMine, revenue: revenueMine }),
+        won: wonMine, revenue: revenueMine, // as duas pernas do plano (oportunidades DELE)
         leadsNew,
         leadsPrev, // leads da janela anterior (base da meta dinâmica de calls)
         contacted,
@@ -339,7 +355,7 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
         callWinRate: callsBookedOrganic > 0 ? round2((wonFromCalls / callsBookedOrganic) * 100) : null,
         // Metas por TAXA (o alvo absoluto de calls sai de leads × bookingRate na
         // UI); callsBooked absoluto fica de fallback se alguém preferir fixo.
-        goals: { ...goalMap(uid, "sdr", ["contactRate", "bookingRate", "showRate", "callsBooked", "contacts"]), callWinRate: bookedWinGoal(uid, "sdr") },
+        goals: { ...goalMap(uid, "sdr", ["contactRate", "bookingRate", "showRate", "callsBooked", "contacts", "won", "revenue"]), callWinRate: bookedWinGoal(uid, "sdr") },
       };
     }).filter((p) => sdrRole.has(p.user) || p.leadsNew > 0 || p.callsBooked > 0 || p.contacted > 0) // ghost/owner legado só com atividade; SDR real sempre
       .sort((a, b) => b.callsBooked - a.callsBooked);
