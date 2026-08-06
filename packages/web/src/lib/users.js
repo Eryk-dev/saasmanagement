@@ -57,7 +57,15 @@ export function userPhoto(id) {
 
 // Matiz determinística por id — MESMO hash do Avatar (atoms.jsx), pra cor do
 // avatar e do chip/agenda baterem.
+// Matiz (0-360) da cor de cada pessoa na agenda/pipeline: hash do id. Exceções
+// EXPLÍCITAS pra quando o sorteio aproxima duas pessoas e confunde a leitura
+// (Leo, 06/08: o verde do Vitor era igual ao do Leonardo → Vitor fica AMARELO).
+const TONE_OVERRIDES = {
+  us_mrqkn2tm03: 95, // Vitor · amarelo (mostarda no oklch 0.55/0.13 das telas)
+};
 export function userTone(id) {
+  const over = TONE_OVERRIDES[String(id || "")];
+  if (over != null) return over;
   let h = 0;
   for (const c of String(id || "?")) h = (h * 31 + c.charCodeAt(0)) % 360;
   return h;
