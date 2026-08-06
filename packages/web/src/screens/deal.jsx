@@ -371,6 +371,15 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   {lead.closer && <span title={`Closer: ${displayName(lead.closer)}`}><Avatar id={lead.closer} name={displayName(lead.closer)} size={18} /></span>}
                 </span>
               )}
+              {/* Apresentação do CLOSER (link com a chave): abre a tela zero
+                  com régua/produto/SPIN — é por aqui que a call roda. */}
+              {lead.proposal_edit_url && (
+                <a href={lead.proposal_edit_url} target="_blank" rel="noreferrer"
+                  className="chip" title="Abrir a apresentação do closer (tela zero com régua e SPIN)"
+                  style={{ color: "var(--accent-fg)", borderColor: "var(--accent)", background: "var(--accent)", fontWeight: 600, textDecoration: "none" }}>
+                  apresentar ↗
+                </a>
+              )}
               {/* Proposta mora AQUI (o card antigo saiu): sempre a visão do
                   CLIENTE — o link limpo, o mesmo que ele recebe. */}
               {lead.proposalUrl && (
