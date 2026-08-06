@@ -1047,6 +1047,102 @@ export async function migrateContractFillTokens(repo) {
   return n;
 }
 
+// ── Catálogo de produto/oferta da proposta (aprovado pelo Leo, 04-06/08/2026) ──
+// Liga a tela zero com régua + produto no deck do leverads: alinha as faixas de
+// anúncios do template às COLUNAS da régua de qualidade (o form já pergunta
+// `listings` exatamente nessas faixas) e grava o catálogo em calc.catalog
+// (preços aprovados, dores do painMap e perguntas SPIN por dor). One-shot: se o
+// template já tem calc.catalog, não mexe — edição do dono é soberana.
+const LEVERADS_VOLUME_MID = { "0-100": 50, "100-500": 300, "500-2000": 1200, "2000-10000": 5000, "10000+": 20000 };
+const LEVERADS_CATALOG = {
+  accounts: ["1", "2", "3-5", "6-10", "10+"],
+  volLabels: ["≤100", "100-500", "500-2k", "2-10k", "10k+"],
+  // Espelho do GRADE_GRID de packages/web/src/lib/ui.js (calibração 24/07).
+  grid: [
+    ["E", "D", "C", "C", "C"],
+    ["D", "C", "C", "B", "B"],
+    ["C", "B", "B", "A", "A"],
+    ["B", "B", "A", "S", "S"],
+    ["A", "A", "A", "S", "S"],
+  ],
+  // Semestral abre; anual é o degrau do Shift+1. Parcial de preço fechado (o
+  // teste A/B morreu 04/08: a oferta por SKU não existe mais).
+  products: {
+    full: { name: "LeverAds FULL", sem: { total: 7188, per: 599 }, anu: { total: 11988, per: 999 } },
+    fulloem: { name: "LeverAds + OEM FULL", cota: 200, sem: { total: 11988, per: 999 }, anu: { total: 16068, per: 1339 } },
+    oem: {
+      name: "OEM avulso",
+      small: { cota: 50, sem: { total: 1188, per: 99 }, anu: { total: 1788, per: 149 } },
+      big: { cota: 200, sem: { total: 2988, per: 249 }, anu: { total: 4188, per: 349 } },
+    },
+    parcialA: { name: "Parcial", sem: { total: 2100, per: 175 }, anu: { total: 3588, per: 299 } },
+    parcialoem: { name: "Parcial + OEM 50", cota: 50, sem: { total: 3288, per: 274 }, anu: { total: 5376, per: 448 } },
+  },
+  // Dores do painMap do produto + perguntas SPIN (definidas com o Leo 06/08).
+  pains: {
+    A: {
+      label: "Subir os mesmos anúncios nas outras contas",
+      spin: {
+        S: "Hoje, quando você publica um produto novo, como funciona? Sobe na conta principal e depois replica nas outras? Quem faz isso?",
+        P: "Quanto tempo por semana vai embora só copiando anúncio de conta pra conta? Qual parte é a pior: ficha técnica, variações, fotos?",
+        I: "Enquanto o produto não está nas outras contas, quantas vendas elas deixam de fazer? Já desistiu de subir em alguma conta por pura falta de braço?",
+        N: "Se o que você sobe na conta principal aparecesse nas outras em minutos, o que você faria com essas horas? Subiria mais produto?",
+      },
+    },
+    B: {
+      label: "Conta banida, precisa anunciar em conta nova",
+      spin: {
+        S: "Você já passou por suspensão ou queda de conta? Hoje, quanto do seu faturamento depende de uma conta só?",
+        P: "Na época, quanto tempo levou pra reerguer a operação? O que foi mais difícil: refazer os anúncios, a reputação, o catálogo?",
+        I: "Se a sua conta principal caísse amanhã, quanto você perde por dia até reconstruir? Esse risco já te fez segurar investimento?",
+        N: "Faria diferença ter as outras contas já espelhadas, prontas, pra uma queda virar solavanco em vez de parar a empresa?",
+      },
+    },
+    C: {
+      label: "Gerenciar SKUs com múltiplos anúncios em múltiplas contas",
+      spin: {
+        S: "Somando todas as contas, quantos anúncios você administra? Quando muda preço ou ficha de um produto, como isso chega nas outras contas?",
+        P: "Com que frequência aparece anúncio desatualizado em alguma conta (preço antigo, atributo errado)? E você descobre como, por acaso?",
+        I: "Um preço errado numa conta que você olha pouco, quanto custa até alguém perceber? Já tomou prejuízo ou punição do marketplace por isso?",
+        N: "E se uma alteração feita uma vez se propagasse pra todos os anúncios daquele SKU, em todas as contas? O que isso mudaria na sua segurança pra crescer?",
+      },
+    },
+    D: {
+      label: "Economizar folha salarial e reduzir riscos",
+      spin: {
+        S: "Quantas pessoas cuidam dos seus anúncios hoje? O que elas fazem no dia a dia, na prática?",
+        P: "Quanto dessa rotina é repetição (copiar, conferir, ajustar) em vez de coisa que gera venda? E quando alguém sai de férias ou pede as contas?",
+        I: "Pra dobrar de contas no seu modelo atual, quantas contratações seriam? E um erro manual grave, tipo atributo errado em escala, o que já te custou?",
+        N: "Se a replicação rodasse sozinha, você enxugaria a folha ou realocaria o time pra venda? Quanto isso vale por mês?",
+      },
+    },
+    E: {
+      label: "Mais exposição no marketplace pra vender mais",
+      spin: {
+        S: "Seu catálogo completo está ativo em quantas contas hoje? Na busca do ML, o comprador te encontra uma vez ou várias?",
+        P: "O que te impede de ter tudo ativo em mais contas: trabalho, tempo, medo de bagunçar a operação?",
+        I: "Cada conta a mais é uma posição a mais na página de busca. Quanto você estima que fica na mesa com o catálogo cheio numa conta só, enquanto o concorrente aparece três vezes?",
+        N: "Se ativar o catálogo em mais duas ou três contas custasse horas em vez de meses, o que acontece com seu faturamento? Quer simular com seus números?",
+      },
+    },
+    none: {
+      label: "Sem código (não veio de anúncio)",
+      tip: "Abre com a Situação genérica (me conta como está a operação hoje, quantas contas, quem cuida) e escolhe a trilha A-E conforme a primeira dor que ele verbalizar.",
+    },
+  },
+};
+
+export async function ensureProposalCatalog(repo) {
+  const t = await repo.get("proposal_templates", "pt_leverads");
+  if (!t || (t.calc && t.calc.catalog)) return false;
+  const calc = { ...(t.calc || {}) };
+  calc.volumeKey = "listings";
+  calc.volumeMid = { ...LEVERADS_VOLUME_MID };
+  calc.catalog = LEVERADS_CATALOG;
+  await repo.update("proposal_templates", "pt_leverads", { calc });
+  return true;
+}
+
 export async function runStartupMigrations(repo) {
   try {
     const n = await migrateContractFillTokens(repo);
@@ -1213,5 +1309,11 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] cliente + assinatura criados pra ${n} lead(s) já na entrega`);
   } catch (err) {
     console.error("[migration] backfillPostSaleCustomers falhou:", err?.message || err);
+  }
+  try {
+    const changed = await ensureProposalCatalog(repo);
+    if (changed) console.log("[migration] catálogo de produto/oferta gravado no template pt_leverads (tela zero com régua)");
+  } catch (err) {
+    console.error("[migration] ensureProposalCatalog falhou:", err?.message || err);
   }
 }
