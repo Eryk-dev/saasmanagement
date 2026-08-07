@@ -582,18 +582,29 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
       // follow-up era marcado pelo drawer (só nextActionAt, sem callAt) sumia —
       // foi o caso da Laura. Toque de CADÊNCIA (novo/contato/qualificação) segue
       // opcional pelo toggle, senão a agenda vira lista de GPS.
-      if (l.nextActionAt && k === "followup") {
+      // Call que JÁ ACONTECEU é HISTÓRIA e nunca sai da agenda (Leo, 07/08:
+      // "fiz as calls e sumiu tudo da minha agenda"): renderiza como call
+      // FEITA (✓, cor lavada, do closer) mesmo que o card tenha ido pra
+      // follow-up/no show/ganho — a supressão do naSame só vale pra call
+      // FUTURA (não duplicar o compromisso remarcado por cima do horário).
+      const callT = l.callAt ? new Date(l.callAt) : null;
+      const callDone = !!(callT && Number.isFinite(callT.getTime()) && callT.getTime() < Date.now());
+      const naSame = l.callAt && l.nextActionAt && new Date(l.callAt).getTime() === new Date(l.nextActionAt).getTime();
+      const callInstead = k === "followup" && naSame && callDone; // história vence a pílula duplicada
+      if (l.nextActionAt && k === "followup" && !callInstead) {
         out.push({ l, t: new Date(l.nextActionAt), kind: "follow-up", who: l.closer || l.owner });
-      } else if (l.nextActionAt && showTouches) {
+      } else if (l.nextActionAt && showTouches && k !== "followup") {
         out.push({ l, t: new Date(l.nextActionAt), kind: "toque", who: l.owner || l.closer });
       }
-      // Call marcada. Quando o roteiro grava callAt = nextActionAt no follow-up,
-      // não duplica (o bloco de follow-up acima já cobre esse horário).
-      const naSame = l.callAt && l.nextActionAt && new Date(l.callAt).getTime() === new Date(l.nextActionAt).getTime();
-      if (l.callAt && !(k === "followup" && naSame)) {
-        out.push({ l, t: new Date(l.callAt), kind: "call", who: l.closer });
+      // Call marcada: futura respeita o naSame (follow-up cobre o horário);
+      // passada entra SEMPRE, como histórico.
+      if (callT && (callDone || !(k === "followup" && naSame))) {
+        out.push({ l, t: callT, kind: "call", who: l.closer, done: callDone });
       }
-      if (l.integrationAt) out.push({ l, t: new Date(l.integrationAt), kind: "integração", who: l.integrator || l.closer });
+      if (l.integrationAt) {
+        const it = new Date(l.integrationAt);
+        out.push({ l, t: it, kind: "integração", who: l.integrator || l.closer, done: Number.isFinite(it.getTime()) && it.getTime() < Date.now() });
+      }
       return out;
     })
     .concat(consultEvents)
@@ -728,7 +739,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                     );
                   });
                 })()}
-                {placed.map(({ l, t, lane, lanes, kind, who }) => {
+                {placed.map(({ l, t, lane, lanes, kind, who, done }) => {
                   const tone = toneOf(who);
                   const isTouch = kind === "toque";
                   // Follow-up: ocupa 20 min na agenda, fundo ESCURO + letra clara
@@ -740,7 +751,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                   return (
                     <div key={l.id + kind}
                       onClick={(e) => { e.stopPropagation(); const target = kind === "consulta" ? l._leadRef : l; if (target && onOpenLead) onOpenLead(target); }}
-                      title={`${timeStr} · ${isFollowup ? "follow-up" : kind} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}`}
+                      title={`${timeStr} · ${isFollowup ? "follow-up" : kind}${done ? " · realizada · histórico" : ""} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}`}
                       style={{
                         position: "absolute", top: (hour - H0) * hourH + 1,
                         left: `calc(${lane * w}% + 2px)`, width: `calc(${w}% - 4px)`,
@@ -750,7 +761,10 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                         border: isTouch ? `1px dashed color-mix(in srgb, ${tone} 55%, var(--line-2))` : `1px solid color-mix(in srgb, ${tone} ${isFollowup ? 60 : 45}%, var(--line-1))`,
                         borderLeft: isTouch ? `2px dashed ${tone}` : `3px solid ${tone}`,
                         borderRadius: 5, padding: isFollowup ? "0 6px" : isTouch ? "1px 6px" : "3px 6px",
-                        opacity: isTouch ? 0.85 : 1,
+                        // Feita (histórico): mesma cor do closer, só lavada — dá
+                        // pra ler a semana inteira do que aconteceu sem confundir
+                        // com o que ainda vai acontecer.
+                        opacity: isTouch ? 0.85 : done ? 0.62 : 1,
                         display: isFollowup ? "flex" : undefined, alignItems: isFollowup ? "center" : undefined,
                       }}>
                       {isFollowup ? (
@@ -761,7 +775,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                       ) : (
                         <>
                           <div className="mono tnum" style={{ fontSize: 9.5, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {isTouch ? `○ ${l.name}` : `${timeStr}${who ? ` · ${displayName(who).split(" ")[0]}` : ""}${kind === "integração" ? " · int" : kind === "consulta" ? " · 1:1" : ""}`}
+                            {isTouch ? `○ ${l.name}` : `${done ? "✓ " : ""}${timeStr}${who ? ` · ${displayName(who).split(" ")[0]}` : ""}${kind === "integração" ? " · int" : kind === "consulta" ? " · 1:1" : ""}`}
                             {!isTouch && (kind === "call" || kind === "consulta") && l.callUrl && (
                               <a href={l.callUrl} target="_blank" rel="noopener noreferrer" title="Entrar na videochamada"
                                 onClick={(e) => e.stopPropagation()} style={{ marginLeft: 4, textDecoration: "none" }}>🎥</a>
