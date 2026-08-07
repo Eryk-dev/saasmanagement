@@ -134,3 +134,38 @@ test("custo percentual (checkout/imposto): % sobre os ganhos do mês no pipeline
   assert.equal(pc.amount, 0);
   assert.equal(past.wonBase, 0);
 });
+
+test("custo percentual com base: checkout só no cartão 12x, imposto sobre os recebidos", async () => {
+  const repo = makeMemRepo();
+  const funnel = [{ stage: "Novo lead", kind: "novo", conv: 1 }, { stage: "Ganho", kind: "ganho", conv: 1 }];
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel });
+  const month = new Date().toISOString().slice(0, 7);
+  const nowIso = new Date().toISOString();
+
+  // Ganhos do mês: 7.000 no cartão 12x + 3.000 no PIX → cardBase 7.000, wonBase 10.000.
+  await repo.create("leads", { id: "w1", saas: "leverads", stage: "Ganho", amount: 7000, stageSince: nowIso, paymentMethod: "cartao12x" });
+  await repo.create("leads", { id: "w2", saas: "leverads", stage: "Ganho", amount: 3000, stageSince: nowIso, paymentMethod: "pix" });
+  // Recebidos do mês: 599 + 401 pagos; aberta, paga em mês antigo e outro saas ficam fora.
+  await repo.create("invoices", { id: "i1", saas: "leverads", amount: 599, status: "paid", paidAt: nowIso });
+  await repo.create("invoices", { id: "i2", saas: "leverads", amount: 401, status: "paid", paidAt: nowIso });
+  await repo.create("invoices", { id: "i3", saas: "leverads", amount: 999, status: "open", dueDate: nowIso });
+  await repo.create("invoices", { id: "i4", saas: "leverads", amount: 888, status: "paid", paidAt: "2020-02-10T00:00:00Z" });
+  await repo.create("invoices", { id: "i5", saas: "outro", amount: 777, status: "paid", paidAt: nowIso });
+
+  await repo.create("expenses", { id: "e1", saas: "leverads", month: "2020-01", category: "taxas", name: "Checkout", pct: 12, base: "cartao12x", recurring: true });
+  await repo.create("expenses", { id: "e2", saas: "leverads", month: "2020-01", category: "taxas", name: "Imposto", pct: 20, base: "received", recurring: true });
+  await repo.create("expenses", { id: "e3", saas: "leverads", month: "2020-01", category: "taxas", name: "Genérico", pct: 10, recurring: true }); // sem base = ganhos
+
+  const app = Fastify();
+  registerMetricsRoutes(app, repo, { ai: { configured: () => false } });
+  const s = (await app.inject({ method: "GET", url: `/api/expenses/summary/leverads?month=${month}` })).json();
+
+  assert.equal(s.wonBase, 10000);
+  assert.equal(s.cardBase, 7000);
+  assert.equal(s.receivedBase, 1000);
+  assert.equal(s.manual.find((e) => e.id === "e1").amount, 840);  // 12% de 7.000
+  assert.equal(s.manual.find((e) => e.id === "e2").amount, 200);  // 20% de 1.000
+  assert.equal(s.manual.find((e) => e.id === "e3").amount, 1000); // 10% de 10.000
+  assert.equal(s.manual.find((e) => e.id === "e2").base, "received"); // base ecoada pra pill da tela
+  await app.close();
+});

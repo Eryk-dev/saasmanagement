@@ -5,6 +5,7 @@ import {
   ensureIntegrationStage, migrateLeverAdsCrmFunnel, migrateLeverAdsSdrCadence, migrateNutricaoSevenDays, ensureFunnelKinds,
   migrateGanhoAntesIntegracao, backfillWonAt, backfillPostSaleCustomers,
   ensureLossReasons, ensureNoShowReason, ensureSdrGoals, ensureCloserGoals, ensureCloseRateUnica, ensureSocialGoals, ensureUserRoles, ensureUserSaasScope, ensureUserScreens, DEFAULT_LOSS_REASONS,
+  migrateExpensePctBases,
 } from "../src/migrations.js";
 
 const FUNNEL = [
@@ -657,4 +658,21 @@ test("migração é one-shot e não duplica a pergunta", async () => {
   const antes = (await repo.get("forms", "fo_diagnostico_leverads")).questions.length;
   assert.equal(await migrateFormVendeMarketplace(repo), false);
   assert.equal((await repo.get("forms", "fo_diagnostico_leverads")).questions.length, antes);
+});
+
+test("custos %: Checkout vira base cartão 12x e Imposto vira recebidos, uma vez só", async () => {
+  const repo = makeMemRepo();
+  await repo.create("expenses", { id: "e1", saas: "leverads", month: "2026-07", category: "taxas", name: "Checkout", pct: 12, recurring: true });
+  await repo.create("expenses", { id: "e2", saas: "leverads", month: "2026-07", category: "taxas", name: "Imposto", pct: 20, recurring: true });
+  await repo.create("expenses", { id: "e3", saas: "leverads", month: "2026-07", category: "taxas", name: "Comissão", pct: 5, recurring: true }); // % sem nome conhecido: fica nos ganhos
+  await repo.create("expenses", { id: "e4", saas: "leverads", month: "2026-07", category: "fixo", name: "Checkout novo", amount: 300 }); // valor fixo: nunca ganha base
+  await repo.create("expenses", { id: "e5", saas: "leverads", month: "2026-07", category: "taxas", name: "Imposto extra", pct: 8, base: "won" }); // base escolhida na mão é respeitada
+
+  assert.equal(await migrateExpensePctBases(repo), 2);
+  assert.equal((await repo.get("expenses", "e1")).base, "cartao12x");
+  assert.equal((await repo.get("expenses", "e2")).base, "received");
+  assert.equal((await repo.get("expenses", "e3")).base, undefined);
+  assert.equal((await repo.get("expenses", "e4")).base, undefined);
+  assert.equal((await repo.get("expenses", "e5")).base, "won");
+  assert.equal(await migrateExpensePctBases(repo), 0); // idempotente
 });

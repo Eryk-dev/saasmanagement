@@ -15,7 +15,7 @@ import { aiCosts as defaultAiCosts } from "./ai-costs.js";
 import { NOT_CONFIGURED } from "./http-status.js";
 import {
   DAY_MS, round2, dayKey, monthKey, isRealLead,
-  winsIn, customerStartMap, tcvOf,
+  winsIn, customerStartMap, tcvOf, cashCollectedIn,
 } from "./metrics-core.js";
 
 const monthOf = monthKey; // mês do dia do NEGÓCIO (metrics-core), não UTC
@@ -72,18 +72,33 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhats
     const applies = (e) => e.recurring
       ? String(e.month) <= month && (!e.endMonth || String(e.endMonth) >= month)
       : e.month === month;
-    // Custo PERCENTUAL (e.pct, ex.: checkout 12%, imposto): calculado mês a mês
-    // sobre os GANHOS do pipeline no mês (lead.amount dos leads que venderam,
-    // pelo carimbo wonAt) — a MESMA base do "Resultado do mês" da Visão geral,
-    // então Resultado = ganhos − custos fecha redondo.
-    const hasPct = expenses.some((e) => e.saas === product.id && Number(e.pct) > 0 && applies(e));
-    let wonBase = 0;
-    if (hasPct) {
+    // Custo PERCENTUAL (e.pct): calculado mês a mês sobre a BASE do lançamento
+    // (e.base) — cada taxa incide sobre o dinheiro certo:
+    //   · "won" (padrão)  — GANHOS do pipeline no mês (lead.amount por wonAt),
+    //     a mesma base do "Resultado do mês" da Visão geral;
+    //   · "cartao12x"     — só os ganhos fechados no cartão de crédito em 12x
+    //     (lead.paymentMethod do gate) — a taxa de checkout que a adquirente
+    //     cobra pra antecipar não existe em PIX/boleto;
+    //   · "received"      — RECEBIDOS no mês (faturas pagas por paidAt, régua
+    //     cashCollectedIn do metrics-core) — imposto por regime de caixa: o
+    //     faturado em 12 boletos só paga imposto conforme as parcelas entram.
+    const pctBaseOf = (e) => (e.base === "cartao12x" || e.base === "received" ? e.base : "won");
+    const basesNeeded = new Set(expenses
+      .filter((e) => e.saas === product.id && Number(e.pct) > 0 && applies(e))
+      .map(pctBaseOf));
+    const bases = { won: 0, cartao12x: 0, received: 0 };
+    if (basesNeeded.has("won") || basesNeeded.has("cartao12x")) {
       const [allLeads, allCustomers] = await Promise.all([repo.list("leads"), repo.list("customers")]);
       const leads = allLeads.filter((l) => l.saas === product.id && isRealLead(l));
       const starts = customerStartMap(allCustomers.filter((c) => c.saas === product.id));
       const wins = winsIn(product, leads, (iso) => monthKey(iso) === month, starts);
-      wonBase = tcvOf(leads.filter((l) => wins.has(l.id)));
+      const winLeads = leads.filter((l) => wins.has(l.id));
+      bases.won = tcvOf(winLeads);
+      bases.cartao12x = tcvOf(winLeads.filter((l) => l.paymentMethod === "cartao12x"));
+    }
+    if (basesNeeded.has("received")) {
+      const invoices = (await repo.list("invoices")).filter((i) => i.saas === product.id);
+      bases.received = cashCollectedIn(invoices, month);
     }
     // WhatsApp do mês: custo REAL das conversas (conversation_analytics da
     // conta, em BRL). Conta é GLOBAL como a IA → atribui ao primeiro produto
@@ -108,11 +123,18 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhats
 
     const manual = expenses
       .filter((e) => e.saas === product.id && applies(e))
-      .map((e) => (Number(e.pct) > 0 ? { ...e, amount: round2((Number(e.pct) / 100) * wonBase) } : e))
+      .map((e) => (Number(e.pct) > 0
+        ? { ...e, base: pctBaseOf(e), amount: round2((Number(e.pct) / 100) * bases[pctBaseOf(e)]) }
+        : e))
       .sort((a, b) => (b.recurring === true) - (a.recurring === true) || String(a.category).localeCompare(String(b.category)));
     const manualTotal = round2(manual.reduce((a, e) => a + (Number(e.amount) || 0), 0));
     const total = round2(ads + (aiBRL || 0) + (wa || 0) + manualTotal);
-    return { month, ads, ai: aiBRL, aiUSD, usdBrl, wa, waConversations, manual, manualTotal, total, wonBase: hasPct ? round2(wonBase) : undefined };
+    return {
+      month, ads, ai: aiBRL, aiUSD, usdBrl, wa, waConversations, manual, manualTotal, total,
+      wonBase: basesNeeded.has("won") ? round2(bases.won) : undefined,
+      cardBase: basesNeeded.has("cartao12x") ? round2(bases.cartao12x) : undefined,
+      receivedBase: basesNeeded.has("received") ? round2(bases.received) : undefined,
+    };
   });
 
   app.get("/api/metrics/:saas", async (req, reply) => {

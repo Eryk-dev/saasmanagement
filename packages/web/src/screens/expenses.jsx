@@ -20,6 +20,17 @@ const CATEGORIES = [
 ];
 const CAT_LABEL = Object.fromEntries(CATEGORIES);
 
+// Base do custo percentual — o servidor calcula o R$ mês a mês (e devolve o
+// valor da base usada no resumo): ganhos do pipeline, só os ganhos fechados no
+// cartão de crédito 12x (checkout da adquirente) ou os recebidos do mês
+// (faturas pagas · imposto por regime de caixa).
+const PCT_BASES = [
+  { id: "won", option: "% dos ganhos do mês", pill: "dos ganhos", title: "sobre os ganhos do mês no pipeline", key: "wonBase" },
+  { id: "cartao12x", option: "% dos ganhos no cartão 12x", pill: "do cartão 12x", title: "sobre os ganhos do mês fechados no cartão de crédito em 12x", key: "cardBase" },
+  { id: "received", option: "% dos recebidos no mês", pill: "dos recebidos", title: "sobre os recebidos do mês (faturas pagas)", key: "receivedBase" },
+];
+const pctBaseInfo = (id) => PCT_BASES.find((b) => b.id === id) || PCT_BASES[0];
+
 const monthKey = (d) => d.toISOString().slice(0, 7);
 const monthLabel = (mk) => {
   const [y, m] = String(mk).split("-");
@@ -40,9 +51,9 @@ function ExpensesScreen() {
   const [product] = useActiveSaas();
   const [month, setMonth] = useState(monthKey(new Date()));
   const [data, setData] = useState(null);
-  // unit "brl" = valor fixo em R$; "pct" = percentual sobre os GANHOS do mês no
-  // pipeline (checkout, imposto) — o servidor calcula o R$ mês a mês.
-  const [form, setForm] = useState({ category: "fixo", name: "", amount: "", unit: "brl", recurring: false });
+  // unit "brl" = valor fixo em R$; "pct" = percentual sobre a base escolhida
+  // (ganhos, cartão 12x ou recebidos) — o servidor calcula o R$ mês a mês.
+  const [form, setForm] = useState({ category: "fixo", name: "", amount: "", unit: "brl", base: "won", recurring: false });
   const [note, setNote] = useState(null);
 
   const load = () => {
@@ -55,7 +66,7 @@ function ExpensesScreen() {
   // Troca de produto: descarta rascunho e aviso — o custo em digitação não pode
   // ser registrado silenciosamente no SaaS errado.
   useEffect(() => {
-    setForm({ category: "fixo", name: "", amount: "", unit: "brl", recurring: false });
+    setForm({ category: "fixo", name: "", amount: "", unit: "brl", base: "won", recurring: false });
     setNote(null);
   }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -69,11 +80,11 @@ function ExpensesScreen() {
     try {
       await api.create("expenses", {
         saas: product.id, month, category: form.category, name: form.name.trim(),
-        ...(isPct ? { pct: value } : { amount: value }),
+        ...(isPct ? { pct: value, base: form.base } : { amount: value }),
         recurring: !!form.recurring,
       });
-      setForm({ category: form.category, name: "", amount: "", unit: form.unit, recurring: form.recurring });
-      setNote({ ok: true, text: isPct ? "Custo percentual registrado — o valor em R$ é calculado sobre os ganhos de cada mês." : (form.recurring ? "Custo recorrente registrado (vale deste mês em diante)." : "Custo registrado.") });
+      setForm({ category: form.category, name: "", amount: "", unit: form.unit, base: form.base, recurring: form.recurring });
+      setNote({ ok: true, text: isPct ? `Custo percentual registrado, o valor em R$ é calculado ${pctBaseInfo(form.base).title} a cada mês.` : (form.recurring ? "Custo recorrente registrado (vale deste mês em diante)." : "Custo registrado.") });
       load();
     } catch (e) { setNote({ ok: false, text: e.message || "Falha ao registrar." }); }
   }
@@ -146,13 +157,23 @@ function ExpensesScreen() {
                   onKeyDown={(e) => { if (e.key === "Enter") addExpense(); }}
                   style={{ ...inputStyle, width: 110, fontFamily: "var(--mono)", textAlign: "right" }} />
                 <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                  title="R$ = valor fixo · % = percentual sobre os ganhos do mês no pipeline (checkout, imposto)"
+                  title="R$ = valor fixo · % = percentual sobre a base ao lado (ganhos, cartão 12x ou recebidos)"
                   style={{ ...inputStyle, width: 58, fontFamily: "var(--mono)", padding: "0 4px" }}>
                   <option value="brl">R$</option>
                   <option value="pct">%</option>
                 </select>
               </div>
             </label>
+            {form.unit === "pct" && (
+              <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Sobre o quê</span>
+                <select value={form.base} onChange={(e) => setForm({ ...form, base: e.target.value })}
+                  title="ganhos = tudo que fechou no mês · cartão 12x = só vendas no cartão de crédito em 12x (checkout) · recebidos = faturas pagas no mês (imposto por caixa)"
+                  style={{ ...inputStyle, width: 210 }}>
+                  {PCT_BASES.map((b) => <option key={b.id} value={b.id}>{b.option}</option>)}
+                </select>
+              </label>
+            )}
             <label style={{ display: "inline-flex", alignItems: "center", gap: 8, height: 38, fontSize: 13, color: "var(--fg-2)", whiteSpace: "nowrap" }}
               title="Vale deste mês em diante, todo mês, até você encerrar">
               <input type="checkbox" checked={!!form.recurring} onChange={(e) => setForm({ ...form, recurring: e.target.checked })} />
@@ -175,8 +196,8 @@ function ExpensesScreen() {
                   <Pill tone="mut">{CAT_LABEL[e.category] || e.category}</Pill>
                   <span style={{ flex: 1, fontSize: 13, fontWeight: 500, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
                   {Number(e.pct) > 0 && (
-                    <Pill tone="warn" title={`${e.pct}% sobre os ganhos do mês no pipeline${data?.wonBase != null ? ` (${brl(data.wonBase)} em ${monthLabel(month)})` : ""}`}>
-                      {String(e.pct).replace(".", ",")}% dos ganhos
+                    <Pill tone="warn" title={`${e.pct}% ${pctBaseInfo(e.base).title}${data?.[pctBaseInfo(e.base).key] != null ? ` (${brl(data[pctBaseInfo(e.base).key])} em ${monthLabel(month)})` : ""}`}>
+                      {String(e.pct).replace(".", ",")}% {pctBaseInfo(e.base).pill}
                     </Pill>
                   )}
                   {e.recurring && (

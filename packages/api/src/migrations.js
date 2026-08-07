@@ -250,6 +250,27 @@ export async function migrateFlashcardsGeneralDecks(repo) {
   return missing.length;
 }
 
+// ── Custos %: base por lançamento (ago/2026) ────────────────────────────────
+// Todo custo percentual incidia sobre os GANHOS do mês inteiro. O Leo separou:
+// o checkout de 12% só existe quando a venda fecha no cartão de crédito em 12x
+// (taxa da adquirente pra antecipar) e o imposto incide sobre o que foi
+// RECEBIDO no mês (regime de caixa), não sobre o contratado. O lançamento
+// ganha `base` ("won" | "cartao12x" | "received"; sem base = "won") e os dois
+// já cadastrados em produção são carimbados pelo nome. Idempotente: só toca
+// linha de pct sem base; lançamento novo já nasce com a base escolhida na tela.
+export async function migrateExpensePctBases(repo) {
+  let n = 0;
+  for (const e of await repo.list("expenses")) {
+    if (!(Number(e.pct) > 0) || e.base) continue;
+    const name = String(e.name || "").toLowerCase();
+    const base = name.includes("checkout") ? "cartao12x" : name.includes("imposto") ? "received" : "";
+    if (!base) continue;
+    await repo.update("expenses", e.id, { base });
+    n++;
+  }
+  return n;
+}
+
 // Permissão de ligação perdida (jul/2026): quando a saudação "posso te ligar?"
 // era digitada na mão (sem passar pelo startCallFlow que cria callFlow=pending),
 // o aceite do lead era só exibido ("topou receber a ligação") mas a thread ficava
@@ -1369,5 +1390,11 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] ${n} proposta(s) existente(s) re-snapshotada(s) no fluxo do catálogo`);
   } catch (err) {
     console.error("[migration] backfillProposalCatalog falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateExpensePctBases(repo);
+    if (n) console.log(`[migration] custos %: base carimbada em ${n} lançamento(s) (checkout → cartão 12x, imposto → recebidos)`);
+  } catch (err) {
+    console.error("[migration] migrateExpensePctBases falhou:", err?.message || err);
   }
 }
