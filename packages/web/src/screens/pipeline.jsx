@@ -605,6 +605,13 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
         const it = new Date(l.integrationAt);
         out.push({ l, t: it, kind: "integração", who: l.integrator || l.closer, done: Number.isFinite(it.getTime()) && it.getTime() < Date.now() });
       }
+      // HISTÓRICO de calls remarcadas por cima (lead.callHistory, arquivado
+      // pelo PATCH da API quando um callAt passado é sobrescrito): cada
+      // entrada vira uma call FEITA no dia em que aconteceu.
+      for (const h of (Array.isArray(l.callHistory) ? l.callHistory : [])) {
+        const ht = new Date(h?.at);
+        if (Number.isFinite(ht.getTime())) out.push({ l, t: ht, kind: "call", who: h?.closer || l.closer, done: true });
+      }
       return out;
     })
     .concat(consultEvents)
@@ -749,7 +756,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                   const w = 100 / lanes;
                   const timeStr = t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
                   return (
-                    <div key={l.id + kind}
+                    <div key={l.id + kind + t.getTime()}
                       onClick={(e) => { e.stopPropagation(); const target = kind === "consulta" ? l._leadRef : l; if (target && onOpenLead) onOpenLead(target); }}
                       title={`${timeStr} · ${isFollowup ? "follow-up" : kind}${done ? " · realizada · histórico" : ""} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}`}
                       style={{

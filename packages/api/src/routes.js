@@ -658,6 +658,25 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       const cur = await repo.get(collection, id);
       if (cur && cur.stage !== req.body.stage) patch = { ...req.body, stageSince: new Date().toISOString() };
     }
+    // HISTÓRICO DE CALLS (Leo, 07/08): callAt é UM campo só — remarcar (ou
+    // limpar) sobrescrevia a call que JÁ ACONTECEU e ela sumia da agenda pra
+    // sempre (caso Thiago Nova Era: call de quinta apagada pela retomada de
+    // sexta). Antes de gravar um callAt DIFERENTE por cima de um callAt
+    // PASSADO, arquiva o antigo em lead.callHistory [{at, closer}] (máx 60);
+    // a agenda desenha o histórico como call feita (✓). Vale pra TODO caminho
+    // de escrita — tela, roteiro do Meu dia, drawer, MCP passam por este PATCH.
+    if (collection === "leads" && "callAt" in req.body) {
+      const cur = await repo.get(collection, id);
+      const oldAt = String(cur?.callAt || "");
+      const nextAt = String(req.body.callAt || "");
+      if (cur && oldAt && oldAt !== nextAt) {
+        const oldT = new Date(oldAt).getTime();
+        const hist = Array.isArray(cur.callHistory) ? cur.callHistory : [];
+        if (Number.isFinite(oldT) && oldT < Date.now() && !hist.some((h) => String(h?.at || "") === oldAt)) {
+          patch = { ...patch, callHistory: [...hist, { at: oldAt, closer: cur.closer || "" }].slice(-60) };
+        }
+      }
+    }
     const updated = await repo.update(collection, id, patch);
     if (!updated) return reply.code(404).send({ error: "Not found" });
     // Form editado → ressincroniza leadQuestions do produto (best-effort).
