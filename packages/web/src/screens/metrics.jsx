@@ -522,6 +522,35 @@ function MetricsScreen() {
           </div>
         </Card>
 
+        {/* Origem dos leads: UTM + referrer do cadastro (classificador único no
+            metrics-core). Além do volume, o APROVEITAMENTO por origem: calls da
+            coorte do período e ganhos pela data da venda — origem boa é a que
+            senta gente na call e fecha, não a que só enche o topo. */}
+        <Card title="Origem dos leads" hint="UTM + referrer do cadastro · calls da coorte do período · ganhos pela data da venda">
+          <div style={{ padding: "16px 24px 22px", display: "flex", flexDirection: "column", gap: 10 }}>
+            {(() => {
+              const origins = (data && !data.error ? data.origins : []) || [];
+              const totalLeads = origins.reduce((a, o) => a + o.leads, 0);
+              if (!origins.length) return <span style={{ color: "var(--fg-4)", fontSize: 13 }}>sem leads no período</span>;
+              return origins.map((o) => {
+                const share = totalLeads ? Math.round((o.leads / totalLeads) * 1000) / 10 : 0;
+                const callPct = o.leads ? Math.round((o.calls / o.leads) * 100) : 0;
+                return (
+                  <div key={o.key} style={{ display: "grid", gridTemplateColumns: "minmax(88px, 170px) 1fr minmax(84px, 104px) minmax(96px, 120px) minmax(64px, 92px)", gap: 12, alignItems: "center" }}>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={o.label}>{o.label}</span>
+                    <div style={{ height: 20, borderRadius: 6, background: "var(--bg-2)", overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${Math.max(o.leads ? 3 : 0, share)}%`, background: o.won ? "var(--pos)" : "var(--accent)", borderRadius: 6 }} />
+                    </div>
+                    <span className="tnum" style={{ textAlign: "right", fontSize: 13.5, fontWeight: 700 }}>{window.fmt.int(o.leads)} <span style={{ fontWeight: 500, fontSize: 11.5, color: "var(--fg-4)" }}>· {String(share).replace(".", ",")}%</span></span>
+                    <span className="tnum" style={{ textAlign: "right", fontSize: 12.5, color: "var(--fg-3)" }} title="da coorte do período, quantos marcaram/sentaram em call">{o.calls} call{o.calls === 1 ? "" : "s"} <span style={{ color: "var(--fg-4)" }}>· {callPct}%</span></span>
+                    <span className="tnum" style={{ textAlign: "right", fontSize: 12.5, fontWeight: o.won ? 700 : 500, color: o.won ? "var(--pos)" : "var(--fg-4)" }} title={o.revenue ? `receita ${money(o.revenue)}` : "ganhos fechados no período"}>{o.won} ganho{o.won === 1 ? "" : "s"}</span>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        </Card>
+
         <Card title="Por dor" hint="código [X] no nome do anúncio · qual roteiro traz lead que fecha, não só lead barato" style={{ overflow: "hidden" }}>
           <PainTable pains={(data && !data.error ? data.pains : []) || []} money={money} />
         </Card>
