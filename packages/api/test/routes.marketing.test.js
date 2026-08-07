@@ -663,3 +663,40 @@ test("leadGrade: matriz de 5 níveis (tabela contas × anúncios, redesenho 21/0
   // sem nenhuma resposta = fora (null)
   assert.equal(g(undefined, undefined), null);
 });
+
+test("origem dos leads: classificador UTM+referrer, calls e ganhos por origem", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", {
+    id: "leverads", name: "LeverAds", metaAdAccount: "act_123",
+    funnel: [{ stage: "Inbox", conv: 1 }, { stage: "Call agendada", kind: "call", conv: 0.5 }, { stage: "Ganho", kind: "ganho", conv: 0.4 }],
+  });
+  const mk = (id, extra) => repo.create("leads", { id, saas: "leverads", stage: "Inbox", createdAt: "2026-06-01T12:00:00.000Z", ...extra });
+  await mk("o1", { utm: { source: "meta", medium: "paid", referrer: "https://l.facebook.com/x" } });
+  await mk("o2", { utm: { source: "meta", medium: "paid", referrer: "https://instagram.com/" }, callAt: "2026-06-02T10:00" });
+  await mk("o3", { utm: { source: "ig", medium: "paid" } });
+  await mk("o4", { utm: { source: "meta", medium: "paid" } });
+  await mk("o5", { utm: { referrer: "https://l.instagram.com/" } });
+  await mk("o6", { utm: { source: "facebook", referrer: "https://l.facebook.com/" } });
+  await mk("o7", { utm: { source: "google", referrer: "https://google.com/" } });
+  await mk("o8", { utm: { referrer: "https://leverads.com.br/" } });
+  await mk("o9", {});
+  // ganho NA janela (data da venda): credita a origem do lead (Ads FB)
+  await mk("o10", { stage: "Ganho", wonAt: "2026-06-02T12:00:00.000Z", amount: 7000, utm: { source: "meta", medium: "paid", referrer: "https://m.facebook.com/" } });
+
+  const app = buildApp(repo);
+  const m = (await app.inject({ method: "GET", url: "/api/marketing/leverads?since=2026-06-01&until=2026-06-02" })).json();
+  const by = Object.fromEntries(m.origins.map((o) => [o.key, o]));
+  assert.equal(by.ads_ig.leads, 2, "referrer instagram + source ig pagos");
+  assert.equal(by.ads_ig.calls, 1, "callAt conta como call");
+  assert.equal(by.ads_fb.leads, 2, "referrer facebook pago (o ganho também é lead da janela)");
+  assert.equal(by.ads_fb.won, 1, "ganho creditado à origem do lead");
+  assert.equal(by.ads_fb.revenue, 7000);
+  assert.equal(by.ads_meta.leads, 1, "pago sem canal identificável não infla IG/FB");
+  assert.equal(by.bio_ig.leads, 1);
+  assert.equal(by.bio_fb.leads, 1);
+  assert.equal(by.google.leads, 1);
+  assert.equal(by.site.leads, 1);
+  assert.equal(by.direto.leads, 1, "sem UTM nenhum = direto");
+  assert.equal(m.origins[0].key, "ads_fb", "empate em leads: ganho desempata");
+  await app.close();
+});
