@@ -92,6 +92,11 @@ function CustomersScreen({ initialTab = "base" }) {
   const mainSub = (c) => subsOf(c).find((s) => s.status === "active" || s.status === "past_due") || subsOf(c)[0] || null;
   // sub.plan é FK pra `plans` — resolve o nome (nunca mostrar o id cru na UI).
   const planLabel = (s) => plans.find((p) => p.id === s.plan)?.name || CYCLE_LABEL[s.cycle] || s.cycle || "plano";
+  // Plano CONTRATADO do cliente: o cadastro (customer.plan) manda; a assinatura
+  // só entra como fallback. O ciclo da assinatura é cadência de COBRANÇA, não o
+  // contrato — boleto faturado vira ciclo mensal por design, e mostrar "mensal"
+  // pra um contrato semestral faturado estava errado.
+  const contractPlan = (c) => c.plan || (mainSub(c) ? planLabel(mainSub(c)) : "");
   // Cliente com endedAt no passado deu churn: fica fora do MRR, da contagem de
   // ativos e da régua (mas segue na tabela e na Análise).
   const isChurned = (c) => c.endedAt && new Date(c.endedAt).getTime() <= Date.now();
@@ -156,7 +161,7 @@ function CustomersScreen({ initialTab = "base" }) {
   const SORT_VALS = {
     cliente: (c) => String(c.name || "").toLowerCase() || null,
     nivel: (c) => { const g = gradeOf(c).grade; return g in GRADE_RANK ? GRADE_RANK[g] : null; },
-    plano: (c) => { const s = mainSub(c); return String(isMentoria(c) ? consultPackageLabel(journeyOf(c).total) : s ? planLabel(s) : c.plan || "").toLowerCase() || null; },
+    plano: (c) => String(isMentoria(c) ? consultPackageLabel(journeyOf(c).total) : contractPlan(c)).toLowerCase() || null,
     mrr: (c) => (c.arr || 0),
     pagamento: (c) => { const pm = c.paymentMethod || leadById.get(c.leadId)?.paymentMethod; return pm ? paymentLabel(pm).toLowerCase() : null; },
     fechado: (c) => Number(leadById.get(c.leadId)?.amount) || Number(c.arr) || null,
@@ -337,7 +342,16 @@ function CustomersScreen({ initialTab = "base" }) {
                       <tr key={c.id} onClick={() => setSel(c.id)} style={{ cursor: "pointer" }}
                         onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-                        <td style={{ padding: "14px 20px", fontSize: 13.5, fontWeight: 600, borderBottom: "1px solid var(--line-faint)" }}>{c.name}</td>
+                        {/* Empresa + nome do contato (do cadastro; fallback no lead). Some quando é a mesma coisa. */}
+                        <td style={{ padding: "14px 20px", fontSize: 13.5, fontWeight: 600, borderBottom: "1px solid var(--line-faint)" }}>
+                          {c.name}
+                          {(() => {
+                            const contact = String(c.contact || leadById.get(c.leadId)?.name || "").trim();
+                            return contact && contact.toLowerCase() !== String(c.name || "").trim().toLowerCase()
+                              ? <div style={{ fontSize: 12, fontWeight: 400, color: "var(--fg-3)", marginTop: 2 }}>{contact}</div>
+                              : null;
+                          })()}
+                        </td>
                         {/* Nível (categoria A/B/C…) do cliente, pela grade do lead. Só LeverAds. */}
                         {!isKidsWorkspace && (() => { const t = gradeOf(c); return (
                           <td style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)" }}>
@@ -346,9 +360,9 @@ function CustomersScreen({ initialTab = "base" }) {
                               : <span style={{ fontSize: 13, color: "var(--fg-4)" }}>—</span>}
                           </td>
                         ); })()}
-                        {/* Pacote (mentoria) × plano da assinatura (SaaS) */}
+                        {/* Pacote (mentoria) × plano contratado (cadastro primeiro, assinatura como fallback) */}
                         <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
-                          {kids ? consultPackageLabel(j.total) : sub ? planLabel(sub) : c.plan || "sem plano"}
+                          {kids ? consultPackageLabel(j.total) : contractPlan(c) || "sem plano"}
                         </td>
                         {/* Mentoria é compra única: mostra o valor do contrato, não MRR */}
                         <td className="tnum" style={{ padding: "14px 20px", fontSize: 13, textAlign: "right", borderBottom: "1px solid var(--line-faint)" }}>
@@ -759,7 +773,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
     { label: "Último contato", value: lastContact(customer) },
     { label: "Consultas", value: `${consultDone} de ${consultTotal} feitas` },
   ] : [
-    { label: "Plano", value: mainSub ? planLabel(mainSub) : customer.plan || "sem plano" },
+    { label: "Plano", value: customer.plan || (mainSub ? planLabel(mainSub) : "sem plano") },
     { label: "Tempo de casa", value: tenureLabel(customer) || "defina o início" },
     { label: "Último contato", value: lastContact(customer) },
     { label: "Assinatura", value: st ? st.label : "sem assinatura" },
