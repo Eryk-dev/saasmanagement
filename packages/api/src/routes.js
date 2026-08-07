@@ -681,6 +681,26 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     if (collection === "leads" && updated.customerId && ["amount", "planClosed", "paymentMethod", "consultPackage"].some((k) => k in req.body)) {
       try { await syncWonLeadDeal(repo, updated); } catch { /* fail-open */ }
     }
+    // Caminho INVERSO do espelho acima: valor do contrato editado na tela de
+    // Clientes (customer.arr) volta pro fechamento (lead.amount, que é o que a
+    // coluna "Total fechado" mostra) e segue pelo mesmo syncWonLeadDeal até a
+    // assinatura — senão MRR muda e o total fechado fica com o número velho.
+    // Best-effort: nunca quebra o PATCH.
+    if (collection === "customers" && "arr" in req.body && updated.leadId) {
+      try {
+        const lead = await repo.get("leads", updated.leadId);
+        if (lead && lead.customerId === updated.id) {
+          const amount = Math.round((Number(updated.arr) || 0) / (CLOSED_PLAN_ANNUAL_FACTOR[lead.planClosed] || 1));
+          if (amount !== (Number(lead.amount) || 0)) {
+            const fresh = await repo.update("leads", lead.id, { amount });
+            // Serviço único/fechamento legado não têm spec de assinatura: só o
+            // amount espelha (cancelar/mexer em assinatura a partir de uma
+            // edição de valor seria chute).
+            if (closedSubscriptionSpec(fresh)) await syncWonLeadDeal(repo, fresh);
+          }
+        }
+      } catch { /* fail-open */ }
+    }
     // Call/integração agendada, reagendada ou reatribuída → espelha na agenda
     // PESSOAL do responsável (closer na call, integrator na integração) que
     // conectou a própria conta Google. Best-effort: nunca quebra o PATCH.
