@@ -184,3 +184,61 @@ test("motor: rollover gera fatura de renovação; dunning marca past_due; pagar 
 
   await app.close();
 });
+
+// ── Desfazer fechamento errado direto da tela de Clientes (Leo, 07/08) ───────
+test("revert-win: remove cliente/assinatura/fatura, limpa o carimbo e devolve o card pro funil", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [
+    { stage: "Qualificando", kind: "qualificacao" }, { stage: "Follow-up", kind: "followup" },
+    { stage: "Ganho", kind: "ganho" }, { stage: "Integração", kind: "integracao" },
+  ] });
+  const app = buildApp(repo);
+  await repo.create("leads", { id: "l1", saas: "leverads", name: "New Gift", stage: "Ganho", customerId: "c9", wonAt: "2026-08-01T22:00:00Z", amount: 7180 });
+  await repo.create("customers", { id: "c9", saas: "leverads", name: "New Gift", leadId: "l1", arr: 7180 });
+  await repo.create("subscriptions", { id: "s9", saas: "leverads", customer: "c9", status: "active", cycle: "annual", price: 7180 });
+  await repo.create("invoices", { id: "i9", saas: "leverads", customer: "c9", subscription: "s9", status: "paid", amount: 7180, paidAt: "2026-08-01T22:00:00Z" });
+
+  const res = await app.inject({ method: "POST", url: "/api/customers/c9/revert-win" });
+  assert.equal(res.statusCode, 200);
+  assert.equal(await repo.get("customers", "c9"), null);
+  assert.equal(await repo.get("subscriptions", "s9"), null);
+  assert.equal(await repo.get("invoices", "i9"), null);
+  const lead = await repo.get("leads", "l1");
+  assert.equal(lead.customerId, "");
+  assert.equal(lead.wonAt, "");
+  assert.equal(lead.stage, "Follow-up", "card sai da região de venda pro follow-up");
+  await app.close();
+});
+
+test("revert-win: card que JÁ voltou pro funil com o carimbo preso (caso New Gift) só limpa", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [
+    { stage: "Follow-up", kind: "followup" }, { stage: "Ganho", kind: "ganho" },
+  ] });
+  const app = buildApp(repo);
+  await repo.create("leads", { id: "l1", saas: "leverads", stage: "Follow-up", customerId: "c9", wonAt: "2026-08-01T22:00:00Z" });
+  await repo.create("customers", { id: "c9", saas: "leverads", leadId: "l1", arr: 7180 });
+
+  const res = await app.inject({ method: "POST", url: "/api/customers/c9/revert-win" });
+  assert.equal(res.statusCode, 200);
+  assert.equal(await repo.get("customers", "c9"), null);
+  const lead = await repo.get("leads", "l1");
+  assert.equal(lead.stage, "Follow-up", "card não se move");
+  assert.equal(lead.customerId, "");
+  await app.close();
+});
+
+test("revert-win: dinheiro REAL do Mercado Pago bloqueia com 409 e não apaga nada", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [{ stage: "Ganho", kind: "ganho" }] });
+  const app = buildApp(repo);
+  await repo.create("leads", { id: "l1", saas: "leverads", stage: "Ganho", customerId: "c9" });
+  await repo.create("customers", { id: "c9", saas: "leverads", leadId: "l1" });
+  await repo.create("invoices", { id: "i9", saas: "leverads", customer: "c9", status: "paid", amount: 500, mpPaymentId: "mp_123" });
+
+  const res = await app.inject({ method: "POST", url: "/api/customers/c9/revert-win" });
+  assert.equal(res.statusCode, 409);
+  assert.ok(await repo.get("customers", "c9"), "cliente fica");
+  assert.ok(await repo.get("invoices", "i9"), "fatura real fica");
+  await app.close();
+});
