@@ -932,7 +932,7 @@ function CompactAdsCard({ saas, objects, metrics, money, busyIds, range, onRange
   const round2 = (n) => Math.round(n * 100) / 100;
   const totals = (() => {
     if (!rows.length) return null;
-    const t = { abc: { A: 0, B: 0, C: 0 } };
+    const t = { abc: Object.fromEntries(GRADES.map((g) => [g, 0])) };
     const has = new Set();
     let dailyBudget = 0, hasBudget = false;
     for (const o of rows) {
