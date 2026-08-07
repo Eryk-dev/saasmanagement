@@ -624,6 +624,24 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
   // informada — assim já entra no CAIXA pela régua existente e conta na meta de
   // upsell do CS (atribuída pelo dono do cliente). O bump do SSE recarrega a lista
   // de faturas sozinho (deps [product, version] no efeito da tela).
+  // Desfazer um fechamento ERRADO (Leo, 07/08): remove o cliente, a assinatura
+  // e as faturas automáticas, limpa o carimbo de venda e devolve o card pro
+  // funil — as métricas (ganho do mês, MRR, caixa) descontam sozinhas.
+  // Dinheiro real do Mercado Pago bloqueia no servidor (409 com o motivo).
+  const [reverting, setReverting] = useState(false);
+  async function revertWin() {
+    if (reverting) return;
+    if (!window.confirm(`Desfazer o fechamento de ${customer.name || "este cliente"}?\n\nRemove o cliente, a assinatura e as faturas automáticas; o card do lead volta pro funil e as métricas descontam. Não dá pra desfazer o desfazer.`)) return;
+    setReverting(true);
+    try {
+      await api.customerRevertWin(customer.id);
+      await refresh();
+      onClose && onClose();
+    } catch (e) {
+      window.alert(e.message || "não deu pra desfazer o fechamento");
+    } finally { setReverting(false); }
+  }
+
   const [upsellOpen, setUpsellOpen] = useState(false);
   const [upVal, setUpVal] = useState("");
   const [upDate, setUpDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -790,6 +808,11 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
                 {chargeOpen ? "cancelar" : "+ cobrança"}
               </button>
             )}
+            <button onClick={revertWin} disabled={reverting}
+              title="Avançou errado? Desfaz o fechamento: remove ESTE cliente, a assinatura e as faturas automáticas, limpa o carimbo de venda e devolve o card do lead pro funil. As métricas (ganho do mês, MRR, caixa) descontam sozinhas. Cobrança real do Mercado Pago bloqueia o desfazer."
+              style={{ height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid color-mix(in srgb, var(--neg) 40%, transparent)", background: "var(--bg-1)", color: "var(--neg)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
+              {reverting ? "desfazendo…" : "desfazer venda"}
+            </button>
           </div>
           {finMsg && <div className="mono" style={{ fontSize: 10.5, color: "var(--accent)", padding: "0 0 8px" }}>{finMsg}</div>}
           {chargeOpen && (

@@ -511,6 +511,9 @@ export const api = {
   },
   // Equipe: etiquetas de papel (sdr/closer/integrator), criação e reset de senha.
   updateUser: (id, patch) => req("PATCH", `/api/auth/users/${id}`, patch),
+  // Desfaz um fechamento errado: remove cliente/assinatura/faturas automáticas
+  // e devolve o card pro funil (409 se houver dinheiro real do Mercado Pago).
+  customerRevertWin: (id) => req("POST", `/api/customers/${id}/revert-win`),
   createUser: ({ name, password, roles }) => req("POST", "/api/auth/users", { name, password, ...(roles ? { roles } : {}) }),
   // Remove um usuário do time. force=true remove mesmo com leads atribuídos (409 sem force).
   removeUser: (id, force = false) => req("DELETE", `/api/auth/users/${id}${force ? "?force=1" : ""}`),
