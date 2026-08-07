@@ -135,7 +135,50 @@ function CustomersScreen({ initialTab = "base" }) {
     return { items, total, done, next };
   };
   const fmtNextAt = (at) => new Date(at).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "");
-  const shownCustomers = showAll ? customers : customers.slice(0, 50);
+
+  // Data de entrada (startedAt = "Cliente desde"). Data pura vira meia-noite
+  // LOCAL (new Date("YYYY-MM-DD") seria UTC e voltaria um dia no Brasil).
+  const entradaDate = (c) => {
+    if (!c.startedAt) return null;
+    const v = String(c.startedAt);
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(v + "T00:00:00") : new Date(v);
+    return Number.isFinite(d.getTime()) ? d : null;
+  };
+  const entradaLabel = (c) => {
+    const d = entradaDate(c);
+    return d ? d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "2-digit" }).replace(".", "") : "";
+  };
+
+  // Ordenação por clique no cabeçalho (alterna ↑/↓). Sem clique, mantém o
+  // padrão histórico (maior contrato primeiro). Vazio sempre no fim.
+  const [sort, setSort] = useState(null); // { key, dir: 1|-1 }
+  const GRADE_RANK = { S: 0, A: 1, B: 2, C: 3, D: 4, E: 5 };
+  const SORT_VALS = {
+    cliente: (c) => String(c.name || "").toLowerCase() || null,
+    nivel: (c) => { const g = gradeOf(c).grade; return g in GRADE_RANK ? GRADE_RANK[g] : null; },
+    plano: (c) => { const s = mainSub(c); return String(isMentoria(c) ? consultPackageLabel(journeyOf(c).total) : s ? planLabel(s) : c.plan || "").toLowerCase() || null; },
+    mrr: (c) => (c.arr || 0),
+    pagamento: (c) => { const pm = c.paymentMethod || leadById.get(c.leadId)?.paymentMethod; return pm ? paymentLabel(pm).toLowerCase() : null; },
+    fechado: (c) => Number(leadById.get(c.leadId)?.amount) || Number(c.arr) || null,
+    entrada: (c) => entradaDate(c)?.getTime() ?? null,
+    casa: (c) => { const d = entradaDate(c); return d ? Math.floor((Date.now() - d.getTime()) / 86400000) : null; },
+    contato: (c) => {
+      const at = (LEADS || []).find((l) => l.id === c.leadId)?.lastActivityAt || c.lastContactAt;
+      return at ? Math.floor((Date.now() - new Date(at).getTime()) / 86400000) : null;
+    },
+  };
+  const sortedCustomers = useMemo(() => {
+    const val = sort && SORT_VALS[sort.key];
+    if (!val) return customers;
+    return [...customers].sort((a, b) => {
+      const va = val(a), vb = val(b);
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      return sort.dir * (typeof va === "string" ? va.localeCompare(vb, "pt-BR") : va - vb);
+    });
+  }, [customers, sort, subs, plans, LEADS, allConsultas, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shownCustomers = showAll ? sortedCustomers : sortedCustomers.slice(0, 50);
   const lastContact = (c) => {
     const lead = (LEADS || []).find((l) => l.id === c.leadId);
     const at = lead?.lastActivityAt || c.lastContactAt;
@@ -268,14 +311,18 @@ function CustomersScreen({ initialTab = "base" }) {
             <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
             <Card style={{ overflow: "hidden", flex: "1 1 560px", minWidth: 0 }}>
               <div className="tbl-x">
-              <table style={{ width: "100%", minWidth: isKidsWorkspace ? 880 : 1160, borderCollapse: "collapse" }}>
+              <table style={{ width: "100%", minWidth: isKidsWorkspace ? 960 : 1240, borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
                     {(isKidsWorkspace
-                      ? ["Cliente", "Pacote", "Valor", "Tempo de casa", "Último contato", "Próxima consulta", "Consultas"]
-                      : ["Cliente", "Nível", "Plano", "MRR", "Pagamento", "Total fechado", "Tempo de casa", "Último contato", "Próximo marco", "Assinatura"]
-                    ).map((h) => (
-                      <th key={h} style={{ textAlign: (h === "MRR" || h === "Valor" || h === "Total fechado") ? "right" : "left", fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", padding: "12px 20px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
+                      ? [["Cliente", "cliente"], ["Pacote", "plano"], ["Valor", "mrr"], ["Entrada", "entrada"], ["Tempo de casa", "casa"], ["Último contato", "contato"], ["Próxima consulta", null], ["Consultas", null]]
+                      : [["Cliente", "cliente"], ["Nível", "nivel"], ["Plano", "plano"], ["MRR", "mrr"], ["Pagamento", "pagamento"], ["Total fechado", "fechado"], ["Entrada", "entrada"], ["Tempo de casa", "casa"], ["Último contato", "contato"], ["Próximo marco", null], ["Assinatura", null]]
+                    ).map(([h, k]) => (
+                      <th key={h} title={k ? "ordenar" : undefined}
+                        onClick={k ? () => setSort((s) => (s?.key === k ? { key: k, dir: -s.dir } : { key: k, dir: 1 })) : undefined}
+                        style={{ textAlign: (h === "MRR" || h === "Valor" || h === "Total fechado") ? "right" : "left", fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: sort?.key === k ? "var(--fg-2)" : "var(--fg-4)", padding: "12px 20px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", cursor: k ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>
+                        {h}{sort?.key === k ? (sort.dir === 1 ? " ↑" : " ↓") : ""}
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -324,6 +371,10 @@ function CustomersScreen({ initialTab = "base" }) {
                             </td>
                           );
                         })()}
+                        {/* Data de entrada (startedAt = "Cliente desde") */}
+                        <td className="tnum" style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
+                          {entradaLabel(c) || <span style={{ color: "var(--fg-4)" }}>—</span>}
+                        </td>
                         <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
                           {tenureLabel(c) || <span style={{ color: "var(--fg-4)" }}>defina o início</span>}
                         </td>
