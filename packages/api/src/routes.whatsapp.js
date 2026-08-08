@@ -6,6 +6,7 @@ import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead,
 import { applyHealthEvent, getWaHealth, waHealthSummary, recordWebhookDelivery, resolveWabaId } from "./wa-health.js";
 import { runInboundCallFlow, startCallFlow, openAlerts, closeThreadAlerts, parsePermissionReply, greetingFor } from "./wa-call-flow.js";
 import { runWaAutomations } from "./wa-automations.js";
+import { runWaFlows } from "./wa-flows.js";
 import { transcriber as defaultTranscriber } from "./transcribe.js";
 import { formatSummaryText } from "./call-summaries.js";
 import { logActivity, onActivityCreated } from "./lead-flow.js";
@@ -178,18 +179,19 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
               if (stored) {
                 try { await runInboundCallFlow(repo, wa, { message: m, resolvePhoneId }); }
                 catch (err) { req.log?.warn?.({ err: err.message }, "fluxo de ligação falhou"); }
-                // Automações do Inbox (regras reativas em wa_automations):
-                // rodam DEPOIS do fluxo de ligação; a resposta sai pelo número
-                // da conversa e cai na thread como autor "automacao".
+                // Automações do Inbox: FLUXOS de conversa primeiro (capturam a
+                // conversa enquanto esperam resposta), regras simples depois —
+                // e só quando nenhum fluxo tratou a mensagem. Tudo sai pelo
+                // número da conversa como autor "automacao".
                 try {
-                  await runWaAutomations(repo, {
-                    message: { from: m.from, text: bodyOf(m) },
-                    send: async ({ thread, text }) => {
-                      const phoneId = await resolvePhoneId({ thread });
-                      if (phoneId === null || !wa.configured(phoneId)) return;
-                      await sendAndRecord(repo, wa, { phone: thread.phone || thread.id, text, author: "automacao", phoneId, saas: thread.saas || "" });
-                    },
-                  });
+                  const autoSend = async ({ thread, text }) => {
+                    const phoneId = await resolvePhoneId({ thread });
+                    if (phoneId === null || !wa.configured(phoneId)) return;
+                    await sendAndRecord(repo, wa, { phone: thread.phone || thread.id, text, author: "automacao", phoneId, saas: thread.saas || "" });
+                  };
+                  const autoMsg = { from: m.from, text: bodyOf(m) };
+                  const flowHit = await runWaFlows(repo, { message: autoMsg, send: autoSend });
+                  if (!flowHit) await runWaAutomations(repo, { message: autoMsg, send: autoSend });
                 } catch (err) { req.log?.warn?.({ err: err.message }, "automação do inbox falhou"); }
               }
             }

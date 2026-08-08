@@ -56,6 +56,7 @@ export const COLLECTIONS = {
   wa_media: [],      // cache do binário de mídia recebida (áudio/imagem/…) em base64: o id da Meta expira, então baixa 1x e guarda (routes.whatsapp.js)
   wa_template_media: [], // foto PADRÃO por template (header de imagem): id = nome do template, binário em base64 — o composer preenche sozinho e o envio sobe pra Meta a cada disparo (routes.whatsapp.js)
   wa_automations: [], // automações do Inbox: regras reativas gatilho → resposta automática na mensagem recebida (wa-automations.js)
+  wa_flows: [],      // fluxos de conversa do Inbox (construtor): gatilho + passos com espera de resposta e ramificação (wa-flows.js)
   offers: [],        // links de pagamento das ofertas por produto (ferramenta)
   contracts: [],     // modelos de contrato por produto (tela Contratos): { name, tag, note, body (HTML do miolo, imprime com o CSS padrão da tela) }
   mp_payments: [],   // espelho dos pagamentos do Mercado Pago (financeiro): quem pagou, como, casado com qual cliente/fatura (mp-payments.js)
