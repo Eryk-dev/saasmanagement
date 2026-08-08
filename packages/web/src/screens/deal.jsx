@@ -6,7 +6,7 @@ import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-mov
 import { leadScoreLabel, leadAge, waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
 import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind } from "../lib/funnel.js";
 import { displayName, usersByRole, currentUser } from "../lib/users.js";
-import { paymentLabel, closedPlanLabel } from "../lib/payments.js";
+import { paymentLabel, closedPlanLabel, PAYMENT_METHODS, CLOSED_PLANS } from "../lib/payments.js";
 import { api } from "../lib/api.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 import { sourceLabel } from "../lib/sources.js";
@@ -1050,7 +1050,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
           <PaymentLinkModal
             lead={lead}
             onClose={() => setPayLink(false)}
-            onSaved={(r) => { dirty.current = true; setLead((prev) => ({ ...prev, mpChargeUrl: r.url, mpChargeAmount: r.amount, mpChargeAt: new Date().toISOString() })); }}
+            onSaved={(r) => { dirty.current = true; setLead((prev) => ({ ...prev, ...(r.lead || {}) })); }}
           />
         )}
       </div>
@@ -1062,55 +1062,140 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
 // external_reference = lead — o pagamento entra no Financeiro já casado com a
 // origem (e com o cliente quando o lead vira Ganho). Não cria fatura: fatura é
 // do cliente, pós-Ganho. Gerar de novo substitui o link salvo no card.
+//
+// O bloco "fechamento" grava DIRETO os campos que o gate de Ganho usa
+// (planClosed/amount/paymentMethod): pagamento confirmado + card virado, o
+// cliente e a assinatura nascem com plano, duração e valor certos.
 function PaymentLinkModal({ lead, onClose, onSaved }) {
+  const product = (window.SEED?.SAAS || []).find((s) => s.id === lead.saas);
+  // Mesmo rótulo do servidor (PLAN_LABEL em routes.mp.js): título default do checkout.
+  const PLAN_TITLE = { anual: "Plano Anual", semestral: "Plano Semestral", unico: "Serviço único" };
+  const titleFor = (p) => [product?.name || lead.saas, PLAN_TITLE[p] || "pagamento"].filter(Boolean).join(" · ");
+
   const [amount, setAmount] = React.useState(lead.mpChargeAmount || "");
   const [installments, setInstallments] = React.useState(12);
+  const [plan, setPlan] = React.useState(lead.planClosed || "anual");
+  const [contract, setContract] = React.useState(Number(lead.amount) > 0 ? String(lead.amount) : "");
+  const [method, setMethod] = React.useState(lead.paymentMethod || "");
+  const [payerEmail, setPayerEmail] = React.useState(lead.email || "");
+  const [title, setTitle] = React.useState(lead.mpChargeTitle || titleFor(lead.planClosed || "anual"));
+  const [titleDirty, setTitleDirty] = React.useState(!!lead.mpChargeTitle);
+  const [description, setDescription] = React.useState("");
   const [url, setUrl] = React.useState(lead.mpChargeUrl || "");
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState(null);
   const wa = waLink(lead.phone);
-  const inputStyle = { height: 36, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
+  const inputStyle = { height: 36, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, width: "100%" };
+  const kicker = { fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)" };
+
+  function pickPlan(p) {
+    setPlan(p);
+    if (!titleDirty) setTitle(titleFor(p)); // título acompanha o plano até o closer mexer nele
+  }
 
   async function create() {
     const value = Number(String(amount).replace(",", "."));
     if (!(value > 0)) { setErr("Informe o valor da cobrança."); return; }
+    const contractValue = Number(String(contract).replace(",", "."));
     setBusy(true); setErr(null);
     try {
-      const r = await api.mpLeadLink(lead.id, { amount: value, maxInstallments: Number(installments) || undefined });
+      const r = await api.mpLeadLink(lead.id, {
+        amount: value, maxInstallments: Number(installments) || undefined,
+        title: title.trim() || undefined, description: description.trim() || undefined,
+        payerEmail: payerEmail.trim() || undefined,
+        plan, contractValue: contractValue > 0 ? contractValue : undefined,
+        paymentMethod: method || undefined,
+      });
       setUrl(r.url || "");
-      onSaved && onSaved({ url: r.url || "", amount: value });
+      onSaved && onSaved(r);
     } catch (e) { setErr(e.message || "MP não respondeu"); }
     finally { setBusy(false); }
   }
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", zIndex: 130, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(100%, 440px)", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.45)", zIndex: 130, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(100%, 500px)", maxHeight: "90vh", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 600 }}>Link de pagamento · {lead.name || "lead"}</div>
-            <div className="mono dim" style={{ fontSize: 11, marginTop: 2 }}>o pagamento entra no Financeiro já casado com este lead</div>
+            <div className="mono dim" style={{ fontSize: 11, marginTop: 2 }}>{product?.name || lead.saas} · o pagamento entra no Financeiro já casado com este lead</div>
           </div>
           <button onClick={onClose} className="mono dim" style={{ fontSize: 15 }}>✕</button>
         </div>
 
-        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 130 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Valor (R$)</span>
-            <input type="number" min="0" step="0.01" placeholder="0,00" value={amount} autoFocus
-              onChange={(e) => setAmount(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") create(); }}
-              style={{ ...inputStyle, fontFamily: "var(--mono)", textAlign: "right" }} />
+        {/* O que o cliente vê ao abrir o checkout do MP. */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span className="kicker accent">checkout</span>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 96px", gap: 8 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span style={kicker}>Valor da cobrança (R$)</span>
+              <input type="number" min="0" step="0.01" placeholder="0,00" value={amount} autoFocus
+                onChange={(e) => setAmount(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") create(); }}
+                style={{ ...inputStyle, fontFamily: "var(--mono)", textAlign: "right" }} />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span style={kicker}>Parcelas até</span>
+              <select value={installments} onChange={(e) => setInstallments(e.target.value)} style={inputStyle}>
+                {[1, 3, 6, 12].map((n) => <option key={n} value={n}>{n}x</option>)}
+              </select>
+            </label>
+          </div>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={kicker}>Título no checkout</span>
+            <input type="text" value={title} placeholder={titleFor(plan)}
+              onChange={(e) => { setTitle(e.target.value); setTitleDirty(true); }}
+              style={inputStyle} />
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Parcelas até</span>
-            <select value={installments} onChange={(e) => setInstallments(e.target.value)} style={{ ...inputStyle, width: 86 }}>
-              {[1, 3, 6, 12].map((n) => <option key={n} value={n}>{n}x</option>)}
-            </select>
+            <span style={kicker}>Descrição (opcional)</span>
+            <input type="text" value={description} placeholder="ex.: 12 meses de LeverAds com contas ilimitadas"
+              onChange={(e) => setDescription(e.target.value)}
+              style={inputStyle} />
           </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={kicker}>E-mail do pagador</span>
+            <input type="email" value={payerEmail} placeholder="pré-preenche o checkout e reforça o casamento"
+              onChange={(e) => setPayerEmail(e.target.value)}
+              style={inputStyle} />
+          </label>
+        </div>
+
+        {/* O combinado do negócio: mesmos campos do gate de Ganho — virar o
+            card depois do pagamento vira 1 clique com tudo certo. */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span className="kicker accent">fechamento</span>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span style={kicker}>Plano · duração</span>
+              <select value={plan} onChange={(e) => pickPlan(e.target.value)} style={inputStyle}>
+                {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+              </select>
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span style={kicker}>Valor do contrato (R$)</span>
+              <input type="number" min="0" step="0.01" placeholder="se a cobrança for só a entrada" value={contract}
+                onChange={(e) => setContract(e.target.value)}
+                title="valor do negócio inteiro — a cobrança do link pode ser só a entrada"
+                style={{ ...inputStyle, fontFamily: "var(--mono)", textAlign: "right" }} />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span style={kicker}>Forma combinada</span>
+              <select value={method} onChange={(e) => setMethod(e.target.value)} style={inputStyle}>
+                <option value="">escolher…</option>
+                {PAYMENT_METHODS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="mono dim" style={{ fontSize: 10.5 }}>
+            esses três vão pro card: quando o pagamento cair e você virar pra Ganho, cliente e assinatura já nascem com plano, duração e valor certos
+          </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <button onClick={create} disabled={busy}
-            style={{ height: 36, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600, opacity: busy ? 0.6 : 1 }}>
-            {busy ? "gerando…" : (url ? "gerar novo" : "gerar link")}
+            style={{ height: 36, padding: "0 16px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600, opacity: busy ? 0.6 : 1 }}>
+            {busy ? "gerando…" : (url ? "gerar novo link" : "gerar link")}
           </button>
         </div>
 

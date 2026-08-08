@@ -253,6 +253,12 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
   // casado com a origem (e com o cliente, quando o lead converte), sem depender
   // do e-mail do pagador. NÃO cria fatura: fatura é do cliente, pós-Ganho; o
   // link fica no lead (mpChargeUrl) e a criação vira atividade no card.
+  //
+  // O modal também manda o FECHAMENTO (plan/contractValue/paymentMethod): são
+  // os MESMOS campos que o gate de Ganho pede (planClosed/amount/paymentMethod)
+  // — gravados aqui, o card vira Ganho num clique e o cliente/assinatura nascem
+  // com plano, duração e valor certos (convertWonLead). Campo vazio não apaga
+  // o que o lead já tem.
   app.post("/api/leads/:id/mp/link", async (req, reply) => {
     if (!mp.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN)" });
     const lead = await repo.get("leads", req.params.id);
@@ -260,21 +266,32 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
     const amount = Math.round(Number(req.body?.amount) * 100) / 100;
     if (!(amount > 0)) return reply.code(400).send({ error: "valor deve ser positivo" });
     const product = lead.saas ? await repo.get("products", lead.saas) : null;
+    const PLAN_LABEL = { anual: "Plano Anual", semestral: "Plano Semestral", unico: "Serviço único" };
+    const plan = PLAN_LABEL[req.body?.plan] ? String(req.body.plan) : "";
     const title = String(req.body?.title || "").trim()
-      || [product?.name || lead.saas, "pagamento"].filter(Boolean).join(" · ");
+      || [product?.name || lead.saas, plan ? PLAN_LABEL[plan] : "pagamento"].filter(Boolean).join(" · ");
+    const description = String(req.body?.description || "").trim() || undefined;
+    const payerEmail = String(req.body?.payerEmail ?? lead.email ?? "").trim().toLowerCase() || undefined;
     try {
       const pref = await mp.createCheckoutPreference({
-        title, amount, externalReference: lead.id,
-        payerEmail: lead.email || undefined,
+        title, description, amount, externalReference: lead.id,
+        payerEmail,
         backUrl: PUBLIC_BASE, notificationUrl,
         maxInstallments: Number(req.body?.maxInstallments) || undefined,
       });
+      const contractValue = Math.round(Number(req.body?.contractValue) * 100) / 100;
+      const paymentMethod = String(req.body?.paymentMethod || "").trim();
       const updated = await repo.update("leads", lead.id, {
-        mpChargeUrl: pref.init_point || null, mpChargeAmount: amount, mpChargeAt: new Date().toISOString(),
+        mpChargeUrl: pref.init_point || null, mpChargeAmount: amount,
+        mpChargeTitle: title, mpChargeAt: new Date().toISOString(),
+        ...(plan ? { planClosed: plan } : {}),
+        ...(contractValue > 0 ? { amount: contractValue } : {}),
+        ...(paymentMethod ? { paymentMethod } : {}),
       });
       await logActivity(repo, {
         saas: lead.saas || "", lead: lead.id, type: "note",
-        text: `Link de pagamento criado: R$ ${amount.toFixed(2).replace(".", ",")} (${title})`,
+        text: `Link de pagamento criado: R$ ${amount.toFixed(2).replace(".", ",")} (${title})`
+          + (contractValue > 0 && contractValue !== amount ? ` · contrato R$ ${contractValue.toFixed(2).replace(".", ",")}` : ""),
         author: req.authUser?.id || "system",
       });
       return { ok: true, lead: updated, url: pref.init_point || null };

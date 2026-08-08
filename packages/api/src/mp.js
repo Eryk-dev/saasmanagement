@@ -94,11 +94,12 @@ export function makeMp({ fetch: f = globalThis.fetch, accessToken, webhookSecret
 
     // Cobrança avulsa (checkout preference → init_point). external_reference
     // carrega o id da FATURA do Cockpit — o webhook/poller dá a baixa sozinho.
-    createCheckoutPreference({ title, amount, externalReference, payerEmail, backUrl, notificationUrl, maxInstallments }) {
+    createCheckoutPreference({ title, description, amount, externalReference, payerEmail, backUrl, notificationUrl, maxInstallments }) {
       if (!(Number(amount) > 0)) throw new Error(`amount deve ser positivo, got ${amount}`);
       return request("POST", "/checkout/preferences", {
         items: [{
           title: String(title || "Cobrança"),
+          ...(description ? { description: String(description) } : {}),
           quantity: 1,
           unit_price: Math.round(Number(amount) * 100) / 100,
           currency_id: SUB_CURRENCY,
