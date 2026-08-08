@@ -32,7 +32,7 @@ const CAT_LABEL = Object.fromEntries(CATEGORIES);
 // (faturas pagas · imposto por regime de caixa).
 const PCT_BASES = [
   { id: "won", option: "% dos ganhos do mês", pill: "dos ganhos", title: "sobre os ganhos do mês no pipeline", key: "wonBase" },
-  { id: "cartao12x", option: "% dos ganhos no cartão 12x", pill: "do cartão 12x", title: "sobre os ganhos do mês fechados no cartão de crédito em 12x", key: "cardBase" },
+  { id: "cartao12x", option: "% dos recebidos no cartão", pill: "do cartão", title: "sobre os pagamentos de cartão de crédito recebidos no mês (espelho do Mercado Pago)", key: "cardBase" },
   { id: "received", option: "% dos recebidos no mês", pill: "dos recebidos", title: "sobre os recebidos do mês (faturas pagas)", key: "receivedBase" },
 ];
 const pctBaseInfo = (id) => PCT_BASES.find((b) => b.id === id) || PCT_BASES[0];
