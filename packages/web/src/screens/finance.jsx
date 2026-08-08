@@ -157,7 +157,7 @@ function FinanceTab({ product }) {
         <EmptyState title="Nenhum pagamento no período"
           hint={data ? "Troque o período acima ou clique em sincronizar. O 1º sync varre 400 dias da conta." : "carregando…"} />
       ) : (
-        <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
+        <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
           <table style={{ width: "100%", minWidth: 860, borderCollapse: "collapse" }}>
             <thead>
               <tr>

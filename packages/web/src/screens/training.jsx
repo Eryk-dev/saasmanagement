@@ -270,7 +270,7 @@ function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus, r
     const good = tally[3] + tally[4];
     body = (
       <div style={{ display: "flex", flexDirection: "column", gap: 14, width: "100%", maxWidth: 640 }}>
-        <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "20px 22px" }}>
+        <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px 22px" }}>
           <div className="kicker accent" style={{ marginBottom: 8 }}>Sessão concluída · {label}</div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
             <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 42, fontWeight: 700, color: "var(--pos)" }}>{done}</span>
@@ -530,7 +530,7 @@ function ConsistencyCard({ saasId }) {
   }, [saasId]);
   if (!s) return null;
   return (
-    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "16px 18px", maxWidth: 720 }}>
+    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px 18px", maxWidth: 720 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
         <span className="kicker accent">Consistência</span>
         <span style={{ flex: 1 }} />
@@ -984,7 +984,7 @@ function Team({ saasId, mode, setMode }) {
       {!data && !err && <div className="mono dim" style={{ fontSize: 12 }}>carregando equipe…</div>}
       {data && (users.length === 0 ? <EmptyState title="Ninguém com baralho ainda" hint="Dê vagas (SDR/closer/…) pros usuários em Ajustes." /> : (
         <>
-          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", overflow: "auto" }}>
+          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", overflow: "auto" }}>
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead><tr>
                 <th className="kicker" style={th}>Pessoa</th><th className="kicker" style={th}>Pra hoje</th><th className="kicker" style={th}>Feitas hoje</th>
@@ -1049,7 +1049,7 @@ function PersonDetail({ user: u, today }) {
   const weekly = u.weekly || [], forecast = u.forecast || [];
   const forecastMax = Math.max(1, ...forecast.map((f) => f.n));
   return (
-    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
       <div className="kicker accent">Raio-x · {u.name}</div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>

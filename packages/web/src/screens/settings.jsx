@@ -545,7 +545,7 @@ function TeamSettings() {
       <SettingHeader title="Equipe & papéis" sub="quem aparece nos pickers de SDR/closer/integração do pipeline · papel ≠ permissão (todos são admin na v1)" />
       {/* .tbl-x: no mobile a grade (colunas fixas ~900px) rola dentro do card
           em vez de estourar a página — mesmo padrão do Funil abaixo. */}
-      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
+      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
        <div style={{ minWidth: 860 }}>
         <div className="kicker" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 56px 140px 120px 44px`, gap: 8, padding: "10px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
           <span>Usuário</span>
