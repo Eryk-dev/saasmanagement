@@ -299,7 +299,10 @@ export const api = {
   composeManual: (id) => req("POST", `/api/deliverables/${id}/compose`, {}),
   // Análise de pitch: estatísticas agregadas das calls resumidas + calls recentes.
   // closer opcional (undefined = todos; "" = sem closer) separa a análise por closer.
-  pitchCalls: (saas, closer) => req("GET", `/api/pitch/${saas}/calls${closer != null ? `?closer=${encodeURIComponent(closer)}` : ""}`),
+  pitchCalls: (saas, closer, group) => {
+    const q = [group ? `group=${encodeURIComponent(group)}` : "", closer != null ? `closer=${encodeURIComponent(closer)}` : ""].filter(Boolean).join("&");
+    return req("GET", `/api/pitch/${saas}/calls${q ? `?${q}` : ""}`);
+  },
   // Análise de integração: sentimento, pendências recorrentes e integrações recentes.
   // integrator opcional (undefined = todos; "" = sem integrador) separa por integrador.
   integrationAnalysis: (saas, integrator) => req("GET", `/api/integrations/${saas}/summary${integrator != null ? `?integrator=${encodeURIComponent(integrator)}` : ""}`),
