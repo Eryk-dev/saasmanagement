@@ -12,6 +12,7 @@
 import { mp as defaultMp, parseWebhookPayload } from "./mp.js";
 import { CYCLE_MONTHS, syncCustomerArr } from "./billing.js";
 import { ingestMpPayment, runMpSync, settleInvoice } from "./mp-payments.js";
+import { PRODUCT_LABEL } from "./proposal-catalog.js";
 import { logActivity } from "./lead-flow.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 
@@ -268,8 +269,11 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
     const product = lead.saas ? await repo.get("products", lead.saas) : null;
     const PLAN_LABEL = { anual: "Plano Anual", semestral: "Plano Semestral", unico: "Serviço único" };
     const plan = PLAN_LABEL[req.body?.plan] ? String(req.body.plan) : "";
+    // Produto do catálogo da apresentação (FULL/OEM/Parcial): nomeia o checkout
+    // e fica no lead (dealProduct) — segue pro cliente e pro card da Integração.
+    const dealProduct = PRODUCT_LABEL[req.body?.product] ? String(req.body.product) : "";
     const title = String(req.body?.title || "").trim()
-      || [product?.name || lead.saas, plan ? PLAN_LABEL[plan] : "pagamento"].filter(Boolean).join(" · ");
+      || [PRODUCT_LABEL[dealProduct] || product?.name || lead.saas, plan ? PLAN_LABEL[plan] : "pagamento"].filter(Boolean).join(" · ");
     const description = String(req.body?.description || "").trim() || undefined;
     const payerEmail = String(req.body?.payerEmail ?? lead.email ?? "").trim().toLowerCase() || undefined;
     try {
@@ -285,6 +289,7 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
         mpChargeUrl: pref.init_point || null, mpChargeAmount: amount,
         mpChargeTitle: title, mpChargeAt: new Date().toISOString(),
         ...(plan ? { planClosed: plan } : {}),
+        ...(dealProduct ? { dealProduct } : {}),
         ...(contractValue > 0 ? { amount: contractValue } : {}),
         ...(paymentMethod ? { paymentMethod } : {}),
       });

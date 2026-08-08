@@ -30,6 +30,19 @@ export const CLOSED_PLANS = [
 
 export const closedPlanLabel = (id) => CLOSED_PLANS.find((p) => p.id === id)?.label || (id === "mensal" ? "Mensal" : "");
 
+// Produto do catálogo da apresentação (tela zero) com que o negócio fechou —
+// espelho do PRODUCT_LABEL de packages/api/src/proposal-catalog.js (os dois
+// andam juntos). Vai no lead (dealProduct) pelo link de pagamento, aparece no
+// card da Integração e na coluna Plano do cliente.
+export const DEAL_PRODUCTS = [
+  { id: "full", label: "LeverAds FULL" },
+  { id: "fulloem", label: "LeverAds + OEM FULL" },
+  { id: "oem", label: "OEM avulso" },
+  { id: "parcialA", label: "Parcial" },
+  { id: "parcialoem", label: "Parcial + OEM 50" },
+];
+export const dealProductLabel = (id) => DEAL_PRODUCTS.find((p) => p.id === id)?.label || "";
+
 // Como o pagamento SAIU no Mercado Pago (payment_type_id/payment_method_id do
 // /v1/payments) — diferente de PAYMENT_METHODS (o combinado do fechamento):
 // aqui é o FATO, a forma com que o dinheiro realmente entrou. Vale pro espelho

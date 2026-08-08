@@ -12,6 +12,7 @@ import { registerWebhookRoutes } from "./routes.webhooks.js";
 import { mergeLeadQuestions } from "./forms.js";
 import { registerProposalRoutes } from "./routes.proposals.js";
 import { runNativeProposal, proposalOffers, shareProposalOffer, buildCustomProposal, publicProposal } from "./proposal.js";
+import { PRODUCT_LABEL } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { registerBillingRoutes } from "./routes.billing.js";
 import { initSubscription, syncCustomerArr, createClosedSubscription, closedSubscriptionSpec } from "./billing.js";
@@ -967,6 +968,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
 // é anualizado pelo plano fechado. Assinatura criada depois manda mais — toda
 // mutação de assinatura reescreve o arr via syncCustomerArr.
 const CLOSED_PLAN_LABEL = { anual: "Anual", semestral: "Semestral", mensal: "Mensal", unico: "Serviço único" };
+// O produto do catálogo da apresentação (FULL/OEM/Parcial, lead.dealProduct)
+// entra na frente do ciclo na coluna Plano do cliente: "LeverAds FULL · Anual".
+const planLabelOf = (lead) => [PRODUCT_LABEL[lead.dealProduct], CLOSED_PLAN_LABEL[lead.planClosed]].filter(Boolean).join(" · ");
 const CLOSED_PLAN_ANNUAL_FACTOR = { anual: 1, semestral: 2, mensal: 12, unico: 1 };
 export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } = {}) {
   if (!lead || !lead.saas) return null;
@@ -1002,10 +1006,11 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
     // Mentoria (UniqueKids): o "plano" do cliente é o PACOTE comprado.
     plan: lead.saas === "uniquekids"
       ? `Mentoria · ${Number(lead.consultPackage) === 4 ? 4 : 8} consultas`
-      : (CLOSED_PLAN_LABEL[lead.planClosed] || ""),
+      : (planLabelOf(lead) || ""),
     arr: Math.round((Number(lead.amount) || 0) * (CLOSED_PLAN_ANNUAL_FACTOR[lead.planClosed] || 1)),
     leadId: lead.id,
     ...(csOwner ? { owner: csOwner } : {}),
+    ...(lead.dealProduct ? { dealProduct: lead.dealProduct } : {}), // produto do catálogo (FULL/OEM/Parcial)
     ...(lead.paymentMethod ? { paymentMethod: lead.paymentMethod } : {}), // modo como fechou (PIX/boleto/cartão 12x)
     startedAt: new Date().toISOString(),
   });
@@ -1093,7 +1098,8 @@ export async function syncWonLeadDeal(repo, lead) {
   const patch = {
     plan: lead.saas === "uniquekids"
       ? `Mentoria · ${Number(lead.consultPackage) === 4 ? 4 : 8} consultas`
-      : (CLOSED_PLAN_LABEL[lead.planClosed] || customer.plan || ""),
+      : (planLabelOf(lead) || customer.plan || ""),
+    ...(lead.dealProduct ? { dealProduct: lead.dealProduct } : {}),
     ...(lead.paymentMethod ? { paymentMethod: lead.paymentMethod } : {}),
   };
   const manualArr = () => Math.round((Number(lead.amount) || 0) * (CLOSED_PLAN_ANNUAL_FACTOR[lead.planClosed] || 1));

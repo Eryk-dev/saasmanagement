@@ -395,28 +395,30 @@ test("lead: link completo carrega o checkout (título/descrição/e-mail) e grav
   });
 
   const res = await app.inject({ method: "POST", url: "/api/leads/l7/mp/link", payload: {
-    amount: 10000, maxInstallments: 12, plan: "anual", contractValue: 40000,
+    amount: 10000, maxInstallments: 12, plan: "anual", product: "fulloem", contractValue: 40000,
     paymentMethod: "cartao12x", description: "12 meses de LeverAds", payerEmail: "financeiro@loja.com",
   } });
   assert.equal(res.statusCode, 200);
 
-  // o cliente vê título com o plano, descrição e e-mail pré-preenchido
+  // o cliente vê o título com PRODUTO do catálogo + plano, descrição e e-mail
   const call = fakeFetch.calls.find((c) => c.key === "POST /checkout/preferences");
-  assert.equal(call.body.items[0].title, "LeverAds · Plano Anual");
+  assert.equal(call.body.items[0].title, "LeverAds + OEM FULL · Plano Anual");
   assert.equal(call.body.items[0].description, "12 meses de LeverAds");
   assert.equal(call.body.payer.email, "financeiro@loja.com");
 
-  // fechamento gravado no card: os MESMOS campos do gate de Ganho
+  // fechamento gravado no card: os MESMOS campos do gate de Ganho + produto
   const saved = await repo.get("leads", "l7");
   assert.equal(saved.planClosed, "anual");
+  assert.equal(saved.dealProduct, "fulloem");
   assert.equal(saved.amount, 40000);
   assert.equal(saved.paymentMethod, "cartao12x");
-  assert.equal(saved.mpChargeTitle, "LeverAds · Plano Anual");
+  assert.equal(saved.mpChargeTitle, "LeverAds + OEM FULL · Plano Anual");
 
   // link rápido sem os campos de fechamento: nada do combinado é apagado
   await app.inject({ method: "POST", url: "/api/leads/l7/mp/link", payload: { amount: 500 } });
   const again = await repo.get("leads", "l7");
   assert.equal(again.planClosed, "anual");
+  assert.equal(again.dealProduct, "fulloem");
   assert.equal(again.amount, 40000);
   assert.equal(again.paymentMethod, "cartao12x");
 
