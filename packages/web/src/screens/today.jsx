@@ -1,5 +1,5 @@
 import React from "react";
-import { EmptyState } from "../atoms.jsx";
+import { EmptyState, useEsc, toast, WaButton } from "../atoms.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { Pill } from "../components/viz.jsx";
 import { ActivityComposer } from "../components/timeline.jsx";
@@ -263,13 +263,18 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   // no horário marcado (buildQueue). Fora do SEED (coleção própria), refetch no
   // tempo real (version). Sem consultas no produto, a fila fica igual.
   const [consultas, setConsultas] = useS([]);
+  // Falha de carga NÃO pode ser silenciosa: consulta/tarefa que some da fila
+  // sem aviso é compromisso furado. O banner avisa e oferece recarregar.
+  const [consultasErr, setConsultasErr] = useS(false);
+  const [tasksErr, setTasksErr] = useS(false);
+  const [reload, setReload] = useS(0);
   useE(() => {
     let alive = true;
     api.list("consultations")
-      .then((rows) => alive && setConsultas((rows || []).filter((c) => c.saas === (saasCfg?.id || activeProduct?.id))))
-      .catch(() => alive && setConsultas([]));
+      .then((rows) => { if (!alive) return; setConsultas((rows || []).filter((c) => c.saas === (saasCfg?.id || activeProduct?.id))); setConsultasErr(false); })
+      .catch(() => { if (alive) { setConsultas([]); setConsultasErr(true); } });
     return () => { alive = false; };
-  }, [version, saasCfg?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [version, saasCfg?.id, reload]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Tarefas do kanban (tela Tarefas) aqui na fila do dia: as ABERTAS do produto
   // ativo, da pessoa da fila ou sem responsável. Concluir aqui move o card pro
@@ -279,10 +284,10 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   useE(() => {
     let alive = true;
     Promise.all([api.list("tasks"), api.list("task_boards")])
-      .then(([ts, boards]) => { if (!alive) return; setTasks(ts || []); setTaskBoard((boards || [])[0] || null); })
-      .catch(() => alive && setTasks([]));
+      .then(([ts, boards]) => { if (!alive) return; setTasks(ts || []); setTaskBoard((boards || [])[0] || null); setTasksErr(false); })
+      .catch(() => { if (alive) { setTasks([]); setTasksErr(true); } });
     return () => { alive = false; };
-  }, [version, saasCfg?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [version, saasCfg?.id, reload]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fila de quem: padrão o usuário logado; admin pode inspecionar a de qualquer um.
   const [person, setPersonState] = useS(() => {
@@ -321,7 +326,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
       ...(cad.retryDays ? { nextActionAt: rollToBusinessDay(new Date(now + cad.retryDays * DAY)).toISOString() } : {}),
     } : x));
     api.logActivity({ saas: l.saas, lead: l.id, type: "call", text: "tentativa de contato (meu dia)", author: me })
-      .catch((err) => console.warn("toque não registrado:", err.message));
+      .catch((err) => { console.warn("toque não registrado:", err.message); toast("O toque não foi salvo · tente de novo", "neg"); });
   }
 
   // Card sem responsável: quem clica assume (vira o responsável). Grava no
@@ -331,13 +336,13 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
     if (!whoId) return;
     const field = item.phase === "sdr" ? "owner" : item.phase === "entrega" ? "integrator" : "closer";
     setLeads((prev) => prev.map((x) => x.id === item.l.id ? { ...x, [field]: whoId } : x));
-    api.update("leads", item.l.id, { [field]: whoId }).catch((err) => console.warn("responsável não salvo:", err.message));
+    api.update("leads", item.l.id, { [field]: whoId }).catch((err) => { console.warn("responsável não salvo:", err.message); toast("Não deu pra assumir o card · tente de novo", "neg"); });
   }
 
   // Edição inline dos dados do lead (checklist do roteiro). Otimista.
   function patchLead(leadId, patch) {
     setLeads((prev) => prev.map((x) => x.id === leadId ? { ...x, ...patch } : x));
-    api.update("leads", leadId, patch).catch((err) => console.warn("lead não salvo:", err.message));
+    api.update("leads", leadId, patch).catch((err) => { console.warn("lead não salvo:", err.message); toast("Alteração no lead não foi salva · tente de novo", "neg"); });
   }
 
   // Mover o card pra próxima coluna a partir do roteiro (com o setup do destino
@@ -350,7 +355,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
     const nx = nextAfter(cur);
     setLeads((prev) => prev.map((x) => x.id === cur.l.id
       ? { ...x, ...patch, stageSince: new Date().toISOString(), stageAttempts: 0 } : x));
-    api.update("leads", cur.l.id, patch).catch((err) => console.warn("movimento não persistido:", err.message));
+    api.update("leads", cur.l.id, patch).catch((err) => { console.warn("movimento não persistido:", err.message); toast("O movimento do card não foi salvo · tente de novo", "neg"); });
     setScriptItem(nx);
   }
 
@@ -398,10 +403,23 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
       String(a.dueDate || "9999-99-99").localeCompare(String(b.dueDate || "9999-99-99")) ||
       String(a.priority || "P9").localeCompare(String(b.priority || "P9")));
 
+  // Concluir tem DESFAZER (6s): no celular o dedo erra o ✓ e a tarefa sumia
+  // da fila sem volta fácil (só indo ao kanban).
+  const undoTimerRef = React.useRef(null);
+  const [undoTask, setUndoTask] = useS(null); // { task, prevColumn }
   function completeTask(t) {
     if (!taskDoneKey) { location.hash = "#tasks"; return; }
     setTasks((prev) => prev.map((x) => (x.id === t.id ? { ...x, column: taskDoneKey } : x)));
-    api.update("tasks", t.id, { column: taskDoneKey }).catch((err) => console.warn("tarefa não concluída:", err.message));
+    setUndoTask({ task: t, prevColumn: t.column });
+    clearTimeout(undoTimerRef.current);
+    undoTimerRef.current = setTimeout(() => setUndoTask(null), 6000);
+    api.update("tasks", t.id, { column: taskDoneKey }).catch((err) => { console.warn("tarefa não concluída:", err.message); toast("A tarefa não foi concluída no quadro · tente de novo", "neg"); });
+  }
+  function revertTask() {
+    const u = undoTask; if (!u) return;
+    clearTimeout(undoTimerRef.current); setUndoTask(null);
+    setTasks((prev) => prev.map((x) => (x.id === u.task.id ? { ...x, column: u.prevColumn } : x)));
+    api.update("tasks", u.task.id, { column: u.prevColumn }).catch((err) => { console.warn("desfazer falhou:", err.message); toast("Não deu pra desfazer · veja no kanban", "neg"); });
   }
 
   const users = allUsers().filter((u) => !u.saas || u.saas === saasCfg?.id);
@@ -431,8 +449,8 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
       <div style={{ padding: "28px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 260 }}>
-            <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em" }}>Minhas atividades</h1>
-            <div style={{ marginTop: 4, fontSize: 14.5, color: "var(--fg-3)" }}>hoje em ordem de execução · amanhã e próximos dias à vista</div>
+            <h1 className="page-title">Minhas atividades</h1>
+            <div className="page-sub" style={{ marginTop: 4 }}>hoje em ordem de execução · amanhã e próximos dias à vista</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 6, flexWrap: "wrap" }}>
             {users.map((u) => {
@@ -450,6 +468,12 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
           </div>
         </div>
 
+        {(consultasErr || tasksErr) && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid var(--warn-line)", background: "var(--warn-soft)", borderRadius: "var(--r-2)", padding: "9px 12px", fontSize: 12.5 }}>
+            <span>⚠ Não deu pra carregar {[consultasErr && "as consultas", tasksErr && "as tarefas"].filter(Boolean).join(" e ")} · a fila pode estar incompleta.</span>
+            <button onClick={() => setReload((n) => n + 1)} style={{ marginLeft: "auto", height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--warn-line)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 600 }}>recarregar</button>
+          </div>
+        )}
         {daySocialDone && <SocialSellingNotice ig={igStats} />}
         {total === 0 ? (
           // Fila de leads vazia: a tela continua a de sempre ("Fila limpa");
@@ -461,7 +485,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
             />
             {myTasks.length > 0 && (
               <div style={{ maxWidth: 640 }}>
-                <TasksCard tasks={myTasks} onDone={completeTask} />
+                <TasksCard tasks={myTasks} onDone={completeTask} undo={undoTask} onUndo={revertTask} />
               </div>
             )}
           </>
@@ -469,9 +493,9 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
           <div className="resp-cols" style={{ "--cols": "minmax(0, 1fr) minmax(300px, 380px)", gap: 16, alignItems: "start" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
               <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "20px var(--inset-x) 14px" }}>
-                  <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em" }}>Hoje</h3>
-                  <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{pendingToday.length} pendentes · em ordem de execução</span>
+                <div style={{ padding: "20px var(--inset-x) 14px" }}>
+                  <h3 className="card-title" style={{ margin: 0 }}>Hoje</h3>
+                  <div className="card-sub" style={{ marginTop: 3 }}>{pendingToday.length} pendentes · em ordem de execução</div>
                 </div>
                 {pendingToday.length === 0 && <div style={{ padding: "16px var(--inset-x)", borderTop: "1px solid var(--line-faint)", fontSize: 13, color: "var(--fg-3)" }}>Fila de hoje concluída.</div>}
                 {pendingToday.map((item, index) => (
@@ -482,9 +506,9 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
 
               {doneTodayRows.length > 0 && (
                 <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "20px var(--inset-x) 14px" }}>
-                    <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em" }}>Feitas hoje</h3>
-                    <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{doneTodayRows.length} concluídas</span>
+                  <div style={{ padding: "20px var(--inset-x) 14px" }}>
+                    <h3 className="card-title" style={{ margin: 0 }}>Feitas hoje</h3>
+                    <div className="card-sub" style={{ marginTop: 3 }}>{doneTodayRows.length} concluídas</div>
                   </div>
                   {doneTodayRows.map((item) => <DoneActivityRow key={item.l.id} item={item} onClick={() => setScriptItem(item)} />)}
                 </section>
@@ -493,7 +517,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
               <DayScore contacted={q.doneToday} contactedGoal={contactedGoal} calls={callsDone} callsGoal={Math.max(callsToday.length, 1)} />
-              {myTasks.length > 0 && <TasksCard tasks={myTasks} onDone={completeTask} />}
+              {myTasks.length > 0 && <TasksCard tasks={myTasks} onDone={completeTask} undo={undoTask} onUndo={revertTask} />}
               <CompactSchedule title="Amanhã" rows={q.amanha} onOpen={openRow} />
               {futureRows.length > 0 && <CompactSchedule title="Próximos dias" rows={futureRows} onOpen={openRow} />}
             </div>
@@ -537,7 +561,9 @@ function ConsultaRow({ item, block, featured, onOpen }) {
   else if (t <= now) when = { above: hhmm(t), text: "agora", tone: "neg" };
   else when = { text: hhmm(t), tone: "pos" };
   return (
-    <div onClick={onOpen} title="Abrir o card da consulta (Meet, resumo)" style={{
+    <div onClick={onOpen} role="button" tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
+      title="Abrir o card da consulta (Meet, resumo)" style={{
       display: "flex", alignItems: "center", gap: 14, padding: featured ? "16px var(--inset-x)" : "14px var(--inset-x)",
       borderTop: "1px solid var(--line-faint)", background: featured ? "var(--accent-soft)" : "transparent", cursor: "pointer", flexWrap: "wrap",
     }}>
@@ -557,9 +583,9 @@ function ConsultaRow({ item, block, featured, onOpen }) {
       </div>
       <div style={{ display: "flex", gap: 8, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
         {c.meetUrl && (
-          <a href={c.meetUrl} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: `1px solid ${featured ? "var(--btn-bg)" : "var(--line-2)"}`, background: featured ? "var(--btn-bg)" : "var(--bg-1)", color: featured ? "var(--btn-fg)" : "var(--fg-2)", fontSize: 12.5, fontWeight: featured ? 600 : 500, textDecoration: "none" }}>Entrar no Meet</a>
+          <a href={c.meetUrl} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: `1px solid ${featured ? "var(--btn-bg)" : "var(--line-2)"}`, background: featured ? "var(--btn-bg)" : "var(--bg-1)", color: featured ? "var(--btn-fg)" : "var(--fg-2)", fontSize: 12.5, fontWeight: featured ? 600 : 500, textDecoration: "none" }}>entrar no Meet</a>
         )}
-        <button onClick={onOpen} style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5 }}>Abrir card</button>
+        <button onClick={onOpen} style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5 }}>abrir card</button>
       </div>
     </div>
   );
@@ -618,7 +644,9 @@ function QueueRow({ item, block, featured, onScript, onClaim, onWhatsapp, onOpen
     : action);
 
   return (
-    <div onClick={onScript} title="Abrir o roteiro desta atividade" style={{
+    <div onClick={onScript} role="button" tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onScript(); } }}
+      title="Abrir o roteiro desta atividade" style={{
       display: "flex", alignItems: "center", gap: 14, padding: featured ? "16px var(--inset-x)" : "14px var(--inset-x)",
       borderTop: "1px solid var(--line-faint)", background: featured ? "var(--accent-soft)" : "transparent", cursor: "pointer", flexWrap: "wrap",
     }}>
@@ -642,7 +670,7 @@ function QueueRow({ item, block, featured, onScript, onClaim, onWhatsapp, onOpen
       <div style={{ display: "flex", gap: 8, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
         {unowned && <button onClick={onClaim} style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px dashed var(--line-2)", color: "var(--fg-3)", fontSize: 12 }}>assumir</button>}
         {meet ? (
-          <a href={meet} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", color: "var(--fg-2)", fontSize: 12.5, textDecoration: "none" }}>Abrir Meet</a>
+          <a href={meet} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", color: "var(--fg-2)", fontSize: 12.5, textDecoration: "none" }}>abrir Meet</a>
         ) : whatsapp ? (
           // Atalho pro INBOX interno (conversa do lead, com ou sem thread ainda);
           // sem o handler (contexto antigo), cai no deep-link do app.
@@ -653,7 +681,9 @@ function QueueRow({ item, block, featured, onScript, onClaim, onWhatsapp, onOpen
             <a href={whatsapp} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: `1px solid ${featured ? "var(--btn-bg)" : "var(--line-2)"}`, background: featured ? "var(--btn-bg)" : "var(--bg-1)", color: featured ? "var(--btn-fg)" : "var(--fg-2)", fontSize: 12.5, fontWeight: featured ? 600 : 500, textDecoration: "none" }}>WhatsApp</a>
           )
         ) : null}
-        {(featured || (!meet && !whatsapp)) && <button onClick={onScript} style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5 }}>Roteiro</button>}
+        {/* "roteiro" fica SEMPRE: sem ele, linha não-destaque com WhatsApp só
+            abria pelo clique no corpo (invisível pra quem navega por botão). */}
+        <button onClick={onScript} style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5 }}>roteiro</button>
       </div>
     </div>
   );
@@ -665,13 +695,16 @@ function DoneActivityRow({ item, onClick }) {
   return (
     <button onClick={onClick} style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "12px var(--inset-x)", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
       <span style={{ color: "var(--pos)", fontSize: 13, width: 44, flexShrink: 0 }}>✓</span>
-      <span style={{ fontSize: 13.5, color: "var(--fg-3)", textDecoration: "line-through", flex: 1 }}>{l.name}{l.company ? ` · ${l.company}` : ""} — {ACTION_LABELS[item.kind] || "atividade concluída"}</span>
+      <span style={{ fontSize: 13.5, color: "var(--fg-3)", textDecoration: "line-through", flex: 1 }}>{l.name}{l.company ? ` · ${l.company}` : ""} · {ACTION_LABELS[item.kind] || "atividade concluída"}</span>
       <span className="mono tnum" style={{ fontSize: 12, color: "var(--fg-4)" }}>{time}</span>
     </button>
   );
 }
 
 function CompactSchedule({ title, rows, onOpen }) {
+  // A lista corta em 5, mas NUNCA em silêncio: o total fica no subtítulo e o
+  // "+N" expande aqui mesmo (agenda escondida = call que ninguém preparou).
+  const [showAll, setShowAll] = useS(false);
   const timeOf = (item) => {
     if (!item.due) return "sem data";
     return title === "Amanhã"
@@ -680,10 +713,13 @@ function CompactSchedule({ title, rows, onOpen }) {
   };
   return (
     <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
-      <div style={{ padding: "20px var(--inset-x) 12px" }}><h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em" }}>{title}</h3></div>
+      <div style={{ padding: "20px var(--inset-x) 12px" }}>
+        <h3 className="card-title" style={{ margin: 0 }}>{title}</h3>
+        {rows.length > 0 && <div className="card-sub" style={{ marginTop: 3 }}>{rows.length} {rows.length === 1 ? "atividade" : "atividades"}</div>}
+      </div>
       <div style={{ padding: "0 var(--inset-x) 8px" }}>
         {rows.length === 0 && <div style={{ borderTop: "1px solid var(--line-faint)", padding: "12px 0 14px", fontSize: 12.5, color: "var(--fg-4)" }}>nenhuma atividade</div>}
-        {rows.slice(0, 5).map((item) => (
+        {(showAll ? rows : rows.slice(0, 5)).map((item) => (
           <button key={item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id} onClick={() => onOpen(item)} style={{ width: "100%", display: "flex", gap: 10, alignItems: "baseline", padding: "10px 0", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
             <span className="mono tnum" style={{ fontSize: 12, color: "var(--fg-4)", flexShrink: 0 }}>{timeOf(item)}</span>
             <span style={{ minWidth: 0 }}>
@@ -692,6 +728,11 @@ function CompactSchedule({ title, rows, onOpen }) {
             </span>
           </button>
         ))}
+        {rows.length > 5 && (
+          <button onClick={() => setShowAll((v) => !v)} style={{ width: "100%", textAlign: "left", padding: "9px 0", borderTop: "1px solid var(--line-faint)", fontSize: 12.5, color: "var(--accent)", fontWeight: 500 }}>
+            {showAll ? "mostrar menos" : `+${rows.length - 5} ${rows.length - 5 === 1 ? "atividade" : "atividades"}`}
+          </button>
+        )}
       </div>
     </section>
   );
@@ -699,7 +740,7 @@ function CompactSchedule({ title, rows, onOpen }) {
 
 // Tarefas do kanban na fila do dia: as abertas da pessoa (ou sem responsável),
 // vencidas em vermelho, ✓ conclui direto. O card inteiro leva pro kanban.
-function TasksCard({ tasks, onDone }) {
+function TasksCard({ tasks, onDone, undo, onUndo }) {
   const todayStr = new Date().toISOString().slice(0, 10);
   const fmtDue = (d) => {
     const dt = new Date(d + "T00:00:00");
@@ -708,19 +749,28 @@ function TasksCard({ tasks, onDone }) {
   const priTone = (p) => (p === "P0" ? "var(--neg)" : p === "P1" ? "var(--warn)" : "var(--fg-4)");
   return (
     <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "20px var(--inset-x) 12px" }}>
-        <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em" }}>Tarefas</h3>
-        <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{tasks.length} {tasks.length === 1 ? "aberta" : "abertas"}</span>
-        <button onClick={() => { location.hash = "#tasks"; }} style={{ marginLeft: "auto", fontSize: 12.5, fontWeight: 500, color: "var(--accent)" }}>kanban →</button>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "20px var(--inset-x) 12px" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h3 className="card-title" style={{ margin: 0 }}>Tarefas</h3>
+          <div className="card-sub" style={{ marginTop: 3 }}>{tasks.length} {tasks.length === 1 ? "aberta" : "abertas"}</div>
+        </div>
+        <button onClick={() => { location.hash = "#tasks"; }} style={{ fontSize: 12.5, fontWeight: 500, color: "var(--accent)", flexShrink: 0 }}>kanban →</button>
       </div>
       <div style={{ padding: "0 var(--inset-x) 8px" }}>
+        {undo && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: "1px solid var(--line-faint)", fontSize: 12.5 }}>
+            <span style={{ color: "var(--pos)", flexShrink: 0 }}>✓</span>
+            <span className="dim" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{undo.task.title || "tarefa"} concluída</span>
+            <button onClick={onUndo} style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)", flexShrink: 0 }}>desfazer</button>
+          </div>
+        )}
         {tasks.slice(0, 8).map((t) => {
           const overdue = t.dueDate && t.dueDate < todayStr;
           return (
             <div key={t.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 0", borderTop: "1px solid var(--line-faint)" }}>
               <button onClick={() => onDone(t)} title="Concluir tarefa" style={{
-                width: 20, height: 20, flexShrink: 0, borderRadius: 6, border: "1.5px solid var(--line-2)",
-                display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--fg-4)", fontSize: 11,
+                width: 28, height: 28, flexShrink: 0, borderRadius: 8, border: "1.5px solid var(--line-2)",
+                display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--fg-4)", fontSize: 13,
               }}>✓</button>
               <button onClick={() => { location.hash = "#tasks"; }} style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
                 <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title || "(sem título)"}</span>
@@ -756,7 +806,7 @@ function DayScore({ contacted, contactedGoal, calls, callsGoal }) {
   );
   return (
     <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px var(--inset-x)" }}>
-      <div style={{ fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--fg-4)" }}>Placar do dia</div>
+      <div className="kicker accent">Placar do dia</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
         {progress("Contatados", contacted, contactedGoal)}
         {progress("Calls agendadas", calls, callsGoal)}
@@ -816,7 +866,6 @@ export function CallSummaryCard({ summary, phone, onSend = null }) {
   const [copied, setCopied] = useS(false);
   if (!summary) return null;
   const box = { border: "1px solid var(--accent-line)", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--accent-soft)" };
-  const kick = { fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" };
   // Integração (onboarding) tem estrutura própria: sentimento no lugar da
   // temperatura, configurado/pendências/próximos passos no lugar de objeções.
   const integ = summary.kind === "integracao" || !!summary.sentimento;
@@ -832,7 +881,7 @@ export function CallSummaryCard({ summary, phone, onSend = null }) {
   return (
     <div style={box}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-        <span className="mono" style={{ ...kick, color: "var(--accent)" }}>{integ ? "Resumo da integração · IA" : "Resumo da última call · IA"}</span>
+        <span className="kicker accent">{integ ? "Resumo da integração · IA" : "Resumo da última call · IA"}</span>
         {badge && <Pill tone={tone}>{badge}</Pill>}
         {summary.recordingUrl && <a href={summary.recordingUrl} target="_blank" rel="noopener noreferrer" className="mono" style={{ fontSize: 10.5, color: "var(--accent)" }}>🎥 gravação</a>}
       </div>
@@ -841,13 +890,13 @@ export function CallSummaryCard({ summary, phone, onSend = null }) {
         <>
           {summary.configurado?.length > 0 && (
             <div style={{ marginBottom: 6 }}>
-              <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>Configurado</div>
+              <div className="kicker" style={{ marginBottom: 3 }}>Configurado</div>
               {summary.configurado.map((c, i) => <div key={i} style={line}>• {c}</div>)}
             </div>
           )}
           {summary.pendencias?.length > 0 && (
             <div style={{ marginBottom: 6 }}>
-              <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>Pendências</div>
+              <div className="kicker" style={{ marginBottom: 3 }}>Pendências</div>
               {summary.pendencias.map((p, i) => (
                 <div key={i} style={{ ...line, display: "flex", gap: 6, alignItems: "baseline" }}>
                   <span className="mono" style={{ color: "var(--warn)", flexShrink: 0, fontSize: 10 }}>{p.responsavel || "?"}</span>
@@ -858,7 +907,7 @@ export function CallSummaryCard({ summary, phone, onSend = null }) {
           )}
           {summary.proximosPassos?.length > 0 && (
             <div style={{ marginBottom: 6 }}>
-              <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>Próximos passos</div>
+              <div className="kicker" style={{ marginBottom: 3 }}>Próximos passos</div>
               {summary.proximosPassos.map((p, i) => <div key={i} style={line}>• {p}</div>)}
             </div>
           )}
@@ -867,7 +916,7 @@ export function CallSummaryCard({ summary, phone, onSend = null }) {
         <>
           {summary.objecoes?.length > 0 && (
             <div style={{ marginBottom: 6 }}>
-              <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>Objeções</div>
+              <div className="kicker" style={{ marginBottom: 3 }}>Objeções</div>
               {summary.objecoes.map((o, i) => (
                 <div key={i} style={{ marginBottom: 4 }}>
                   <div style={{ ...line, display: "flex", gap: 6, alignItems: "baseline" }}>
@@ -881,27 +930,27 @@ export function CallSummaryCard({ summary, phone, onSend = null }) {
           )}
           {summary.compromissos?.length > 0 && (
             <div style={{ marginBottom: 6 }}>
-              <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>Combinados</div>
+              <div className="kicker" style={{ marginBottom: 3 }}>Combinados</div>
               {summary.compromissos.map((c, i) => <div key={i} style={line}>• {c}</div>)}
             </div>
           )}
         </>
       )}
       {summary.followup?.nota && (
-        <div style={{ ...line, marginBottom: msg ? 6 : 0 }}><span className="mono dim" style={{ ...kick, fontSize: 10 }}>{integ ? "Acompanhamento" : "Próximo passo"}</span> · {summary.followup.nota}</div>
+        <div style={{ ...line, marginBottom: msg ? 6 : 0 }}><span className="kicker">{integ ? "Acompanhamento" : "Próximo passo"}</span> · {summary.followup.nota}</div>
       )}
       {msg && (
         <div style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: "7px 9px" }}>
-          <div className="mono dim" style={{ ...kick, fontSize: 9.5, marginBottom: 3 }}>WhatsApp sugerido</div>
+          <div className="kicker" style={{ marginBottom: 3 }}>WhatsApp sugerido</div>
           <div style={{ fontSize: 12, lineHeight: 1.5, whiteSpace: "pre-wrap", marginBottom: 6 }}>{msg}</div>
           <div style={{ display: "flex", gap: 6 }}>
             {/* Com o inbox à mão (roteiro), o texto vai pra caixa de mensagem
                 DAQUI; fora dele (cliente/negócio), segue pro app. */}
             {onSend ? (
               <button onClick={() => onSend(msg)} title="Abre a conversa no inbox com esta mensagem já escrita"
-                style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", border: "none", background: "#25D366", color: "#06120c", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>enviar no WhatsApp</button>
+                style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", border: "none", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>enviar no WhatsApp</button>
             ) : waHref && (
-              <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", background: "#25D366", color: "#06120c", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>enviar no WhatsApp ↗</a>
+              <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>enviar no WhatsApp ↗</a>
             )}
             <button onClick={copy} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5 }}>{copied ? "copiado ✓" : "copiar"}</button>
           </div>
@@ -928,9 +977,8 @@ export function IntegrationBriefCard({ brief, phone, deal, onSend = null }) {
     closedPlanLabel(deal?.planClosed),
   ].filter(Boolean).join(" · ");
   const box = { border: "1px solid var(--accent-line)", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--accent-soft)" };
-  const kick = { fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" };
   const line = { fontSize: 12, lineHeight: 1.5, color: "var(--fg-1)" };
-  const sub = (label) => <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>{label}</div>;
+  const sub = (label) => <div className="kicker" style={{ marginBottom: 3 }}>{label}</div>;
   // O passo a passo da call fica no roteiro da etapa (card Passo a passo, logo
   // abaixo): aqui é só o contexto. `vendido` é o shape antigo do briefing.
   const entregas = brief.entregas || brief.vendido;
@@ -958,18 +1006,18 @@ export function IntegrationBriefCard({ brief, phone, deal, onSend = null }) {
   return (
     <div style={box}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-        <span className="mono" style={{ ...kick, color: "var(--accent)" }}>Briefing da integração · IA</span>
+        <span className="kicker accent">Briefing da integração · IA</span>
         <Pill tone="pos">negócio fechado</Pill>
         {brief.source === "resumo" && <Pill tone="warn">sem transcrição</Pill>}
         {brief.recordingUrl && <a href={brief.recordingUrl} target="_blank" rel="noopener noreferrer" className="mono" style={{ fontSize: 10.5, color: "var(--accent)" }}>🎥 gravação da venda</a>}
         <button onClick={() => setOpen((v) => !v)} className="mono dim" style={{ fontSize: 10.5, marginLeft: "auto" }}>{open ? "recolher" : "abrir"}</button>
       </div>
-      <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 5 }}>
+      <div className="kicker" style={{ marginBottom: 5 }}>
         {closed ? `Já contratou: ${closed} · agora é entrega, não venda` : "O cliente já comprou, agora é entrega, não venda"}
       </div>
       {/* Estado da call de vídeo: é por ela que a integração acontece, então o
           card cobra o que falta (marcar a data, criar o Meet) antes do resto. */}
-      <div className="mono" style={{ ...kick, fontSize: 10, marginBottom: 6, color: meetUrl ? "var(--pos)" : "var(--warn)" }}>
+      <div className="kicker" style={{ marginBottom: 6, color: meetUrl ? "var(--pos)" : "var(--warn)" }}>
         {meetUrl
           ? `Call de vídeo ${when ? `marcada: ${when}` : "com link criado"}`
           : when ? `Call de vídeo ${when}, falta criar o Meet (logo abaixo, em Integração)` : "Sem call de vídeo marcada: combine o horário e crie o Meet em Integração"}
@@ -993,16 +1041,16 @@ export function IntegrationBriefCard({ brief, phone, deal, onSend = null }) {
           )}
           {msg && (
             <div style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: "7px 9px" }}>
-              <div className="mono dim" style={{ ...kick, fontSize: 9.5, marginBottom: 3 }}>{meetUrl ? "Mensagem com o link da call" : "Mensagem pra marcar a call de vídeo"}</div>
+              <div className="kicker" style={{ marginBottom: 3 }}>{meetUrl ? "Mensagem com o link da call" : "Mensagem pra marcar a call de vídeo"}</div>
               <div style={{ fontSize: 12, lineHeight: 1.5, whiteSpace: "pre-wrap", marginBottom: 6 }}>{msg}</div>
               <div style={{ display: "flex", gap: 6 }}>
                 {/* Com o inbox à mão (drawer no pipeline), o texto vai pra caixa
                     de mensagem DAQUI; fora dele, segue pro app. */}
                 {onSend && msg ? (
                   <button onClick={() => onSend(msg)} title="Abre a conversa no inbox com esta mensagem já escrita"
-                    style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", border: "none", background: "#25D366", color: "#06120c", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>enviar no WhatsApp</button>
+                    style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", border: "none", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>enviar no WhatsApp</button>
                 ) : waHref && (
-                  <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", background: "#25D366", color: "#06120c", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>enviar no WhatsApp ↗</a>
+                  <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>enviar no WhatsApp ↗</a>
                 )}
                 <button onClick={copy} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5 }}>{copied ? "copiado ✓" : "copiar"}</button>
               </div>
@@ -1041,23 +1089,21 @@ function CallShortcuts({ l, item, wa, onPatch }) {
   }
 
   const chip = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
-  const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
-  const rowLabel = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-4)", letterSpacing: "0.04em", textTransform: "uppercase" };
 
   return (
     <div style={{ border: "1px solid var(--line-2)", background: "var(--bg-inset)", borderRadius: "var(--r-2)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 9 }}>
-      <div className="mono" style={{ ...kicker, color: "var(--accent)" }}>Atalhos da call</div>
+      <div className="kicker accent">Atalhos da call</div>
 
       {/* Link da chamada: entrar · copiar · mandar pro cliente no Whats. */}
       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-        <span style={rowLabel}>Link da chamada</span>
+        <span className="kicker">Link da chamada</span>
         {l.callUrl ? (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
             <a href={l.callUrl} target="_blank" rel="noopener noreferrer" style={chip} title={l.callUrl}>entrar na call ↗</a>
             <button style={chip} title="Copiar o link da call"
               onClick={() => { try { navigator.clipboard.writeText(l.callUrl); } catch { window.prompt("Link da call:", l.callUrl); } }}>copiar</button>
             {waForward && (
-              <a href={waForward} target="_blank" rel="noopener noreferrer" style={{ ...chip, borderColor: "#25D366", color: "#128c4b" }}
+              <a href={waForward} target="_blank" rel="noopener noreferrer" style={{ ...chip, borderColor: "var(--wa-brand)", color: "var(--wa-brand-deep)" }}
                 title={`Mandar o link da call pro ${l.name || "cliente"} no WhatsApp`}>mandar link no Whats ↗</a>
             )}
             {!wa && <span className="mono dim" style={{ fontSize: 10 }}>sem telefone pra mandar no Whats</span>}
@@ -1144,11 +1190,10 @@ function ProposalBlock({ l, wa, item, onPatch }) {
   if (!l.proposalUrl && !eligible) return null;
 
   const chip = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
-  const rowLabel = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-4)", letterSpacing: "0.04em", textTransform: "uppercase" };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-      <span style={rowLabel}>Proposta</span>
+      <span className="kicker">Proposta</span>
       {!l.proposalUrl ? (
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           {altDecks.length > 0 && (
@@ -1173,12 +1218,12 @@ function ProposalBlock({ l, wa, item, onPatch }) {
           </div>
           {offers.length > 0 && (
             <>
-              <span style={{ ...rowLabel, marginTop: 3 }}>Mandar no Whats · escolha a oferta</span>
+              <span className="kicker" style={{ marginTop: 3 }}>Mandar no Whats · escolha a oferta</span>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                 {offers.map((o) => (
                   <button key={o.offer} onClick={() => share(o)} disabled={!!busy}
                     title={`Gera o link do cliente (preço visível, sem edição) da oferta ${o.label} e abre o WhatsApp`}
-                    style={{ ...chip, borderColor: sent?.offer === o.offer ? "#25D366" : "var(--line-2)", color: sent?.offer === o.offer ? "#128c4b" : "var(--fg-2)" }}>
+                    style={{ ...chip, borderColor: sent?.offer === o.offer ? "var(--wa-brand)" : "var(--line-2)", color: sent?.offer === o.offer ? "var(--wa-brand-deep)" : "var(--fg-2)" }}>
                     {busy === `o${o.offer}` ? "preparando…" : `${o.label}${o.price ? ` · ${o.price}` : ""}`}
                   </button>
                 ))}
@@ -1214,6 +1259,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
     setL((prev) => ({ ...prev, ...p }));
     onPatch && onPatch(item.l.id, p);
   }
+  useEsc(onClose); // o painel mais aberto do dia fecha no Esc
   // Remarcação na confirmação: o cliente pediu pra mudar de horário. O SDR escolhe
   // um novo slot na agenda do closer; salvamos o novo callAt E registramos um TOQUE
   // (meta.event="reschedule") — assim conta como "contatado" no placar do SDR e
@@ -1233,7 +1279,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
       saas: l.saas, lead: l.id, type: "call",
       text: isInteg ? "remarcou a integração na confirmação" : "remarcou a call na confirmação",
       author: currentUser()?.id || "", meta: { reschedule: false, event: "reschedule" },
-    }).catch((err) => console.warn("remarcação não registrada:", err.message));
+    }).catch((err) => { console.warn("remarcação não registrada:", err.message); toast("A remarcação não entrou na timeline", "warn"); });
     setResched(false);
     onClose && onClose();
   }
@@ -1258,7 +1304,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
         : `sem resposta na confirmação de ${win}`,
       author: currentUser()?.id || "",
       meta: { reschedule: false, event: replied ? "confirm" : "confirm_noreply", window: win },
-    }).catch((err) => console.warn("confirmação não registrada:", err.message));
+    }).catch((err) => { console.warn("confirmação não registrada:", err.message); toast("A confirmação não entrou na timeline", "warn"); });
     if (onAfter) onAfter(); else onClose && onClose();
   }
   // Item de confirmação de call usa o roteiro de confirmação; o resto, o roteiro
@@ -1338,7 +1384,6 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
   };
 
   const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--bg-inset)" };
-  const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70, padding: 12 }}>
@@ -1349,7 +1394,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
       }}>
         <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 8 }}>
+            <div className="kicker" style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span>{script.titulo}{script.custom ? " · personalizado" : ""}</span>
               {preview && (
                 <span className="mono" style={{ fontSize: 9.5, color: "var(--accent)", background: "var(--accent-soft)", border: "1px solid var(--accent-line)", borderRadius: 999, padding: "1px 7px", letterSpacing: "0.04em" }}>
@@ -1380,14 +1425,14 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
         <div style={{ padding: "12px 18px", display: "flex", flexDirection: "column", gap: 14, overflowY: "auto", minHeight: 0 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 310px), 1fr))", gap: 16 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-            <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Cliente</div>
+            <div className="kicker" style={{ color: "var(--fg-3)" }}>Cliente</div>
               <div style={box}>
-                <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Resumo do cliente</div>
+                <div className="kicker" style={{ marginBottom: 6 }}>Resumo do cliente</div>
                 {/* Dor do anúncio em destaque: o gancho pra conversa (o problema
                     que trouxe o lead até aqui). Só quando veio de criativo mapeado. */}
                 {pain && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 9px", marginBottom: 8, borderRadius: "var(--r-2)", background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
-                    <span className="mono" style={{ fontSize: 9.5, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", flexShrink: 0 }}>dor do anúncio</span>
+                    <span className="kicker accent" style={{ flexShrink: 0 }}>dor do anúncio</span>
                     <span style={{ fontSize: 12.5, fontWeight: 600, minWidth: 0 }}>[{pain.code}] {pain.label}</span>
                   </div>
                 )}
@@ -1404,12 +1449,12 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
                     anotação feita aqui aparece lá e vice-versa. Some no preview. */}
                 {!preview && (
                   <div style={{ marginTop: 10 }}>
-                    <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>Observações · registrar contato</div>
+                    <div className="kicker" style={{ marginBottom: 4 }}>Observações · registrar contato</div>
                     <ActivityComposer lead={l} onLogged={() => setActsReload((n) => n + 1)} />
                   </div>
                 )}
                 <div style={{ marginTop: 8 }}>
-                  <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 3 }}>Últimos contatos</div>
+                  <div className="kicker" style={{ marginBottom: 3 }}>Últimos contatos</div>
                   {acts === null && <div className="mono dim" style={{ fontSize: 11 }}>carregando…</div>}
                   {acts !== null && acts.length === 0 && <div className="mono dim" style={{ fontSize: 11 }}>nenhum contato registrado ainda · você abre a conversa</div>}
                   {(acts || []).map((a) => (
@@ -1426,7 +1471,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
 
             {attribution.length > 0 && (
               <div style={box}>
-                <div className="mono" style={{ ...kicker, marginBottom: 6 }}>De onde veio · atribuição do anúncio</div>
+                <div className="kicker" style={{ marginBottom: 6 }}>De onde veio · atribuição do anúncio</div>
                 {attribution.map(([k, v]) => (
                   <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11.5, padding: "3px 0", borderBottom: "1px solid var(--line-1)" }}>
                     <span className="mono dim" style={{ flexShrink: 0, fontSize: 10.5 }}>{k}</span>
@@ -1437,7 +1482,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
             )}
 
             <div>
-              <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Dados do lead · na ordem da conversa · edite ao confirmar</div>
+              <div className="kicker" style={{ marginBottom: 6 }}>Dados do lead · na ordem da conversa · edite ao confirmar</div>
               {/* Empilhado (1 por linha), CAMPO EDITÁVEL à direita: select com as
                   opções do formulário; texto livre pra empresa/e-mail. Grava na hora. */}
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1477,7 +1522,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-            <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Roteiro</div>
+            <div className="kicker" style={{ color: "var(--fg-3)" }}>Roteiro</div>
             {/* Resumo da última call por IA em cima do roteiro do estágio. */}
             <CallSummaryCard summary={callSummary} phone={l.phone}
               onSend={onWhatsapp ? (msg) => onWhatsapp(l, msg) : null} />
@@ -1492,16 +1537,16 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
               </div>
             )}
             <div style={{ ...box, background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
-              <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 4 }}>Como se comportar</div>
+              <div className="kicker accent" style={{ marginBottom: 4 }}>Como se comportar</div>
               <div style={{ fontSize: 12, lineHeight: 1.45 }}>{script.resumo}</div>
             </div>
             <div style={box}>
-              <div className="mono" style={{ ...kicker, marginBottom: 4 }}>Objetivo do contato</div>
+              <div className="kicker" style={{ marginBottom: 4 }}>Objetivo do contato</div>
               <div style={{ fontSize: 12, lineHeight: 1.45, fontWeight: 500 }}>{script.objetivo}</div>
             </div>
 
             <div>
-              <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Passo a passo</div>
+              <div className="kicker" style={{ marginBottom: 6 }}>Passo a passo</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                 {script.passos.map((p, i) => (
                   <div key={i} style={{ display: "flex", gap: 10 }}>
@@ -1543,17 +1588,9 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
           {wa && (
             // Atende DENTRO do cockpit (inbox); sem o handler (pré-visualização
             // em Ajustes → Scripts), cai no deep-link do app.
-            onWhatsapp ? (
-              <button onClick={() => onWhatsapp(l)} title={`Abrir a conversa no inbox · ${l.phone}`}
-                style={{ flex: "1 1 100%", textAlign: "center", padding: "10px 14px", borderRadius: "var(--r-2)", border: "none", background: "#25D366", color: "#06120c", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
-                WhatsApp
-              </button>
-            ) : (
-              <a href={wa} target="_blank" rel="noopener noreferrer" title={`WhatsApp · ${l.phone}`}
-                style={{ flex: "1 1 100%", textAlign: "center", padding: "10px 14px", borderRadius: "var(--r-2)", background: "#25D366", color: "#06120c", fontSize: 13.5, fontWeight: 700, textDecoration: "none" }}>
-                WhatsApp ↗
-              </a>
-            )
+            onWhatsapp
+              ? <WaButton block onClick={() => onWhatsapp(l)} title={`Abrir a conversa no inbox · ${l.phone}`}>WhatsApp</WaButton>
+              : <WaButton block href={wa} title={`WhatsApp · ${l.phone}`}>WhatsApp ↗</WaButton>
           )}
           {/* Confirmação: o SDR marca quando o cliente responde à mensagem de 1h;
               o roteiro troca o passo de 10 min (positiva) sozinho. */}
@@ -1568,7 +1605,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
               <button onClick={() => (on ? patch(isInteg ? { integrationConfirmed: false } : { callConfirmed: false }) : markConfirm(true))}
                 title={on ? "Cliente confirmou presença (clique pra desmarcar)" : "Cliente respondeu confirmando: marca, credita o contato e vai pro próximo da fila"}
                 style={{ padding: "8px 14px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
-                  background: on ? "var(--pos)" : "var(--bg-1)", color: on ? "#06120c" : "var(--fg-2)",
+                  background: on ? "var(--pos)" : "var(--bg-1)", color: on ? "var(--wa-brand-fg)" : "var(--fg-2)",
                   border: "1px solid " + (on ? "var(--pos)" : "var(--line-2)") }}>
                 {on ? "✓ cliente confirmou" : "cliente confirmou"}
               </button>
@@ -1982,15 +2019,13 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     }
     setMeetBusy(false);
   }
-
-  const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
-  const label = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 4 };
+  const label = { display: "block", marginBottom: 4 };
   const fieldStyle = { width: "100%", height: 30, padding: "0 8px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 };
   const slotFmt = (v) => { const d = new Date(v); return Number.isFinite(d.getTime()) ? d.toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""; };
 
   return (
     <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "12px 14px" }}>
-      <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Depois da ação · pra onde vai esse card</div>
+      <div className="kicker" style={{ marginBottom: 8 }}>Depois da ação · pra onde vai esse card</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {dests.map((d, i) => {
           // Chip de retry: não atendeu / não fechou hoje → registra a tentativa e
@@ -2033,9 +2068,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
             <>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
                 <div>
-                  <label style={label}>Closer da call *</label>
+                  <label className="kicker" style={label}>Closer da call *</label>
                   <select value={closer} onChange={(e) => { setCloser(e.target.value); setSlot(""); }} style={fieldStyle}>
-                    <option value="">— escolher closer —</option>
+                    <option value="">escolher o closer…</option>
                     {closers.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
                   </select>
                 </div>
@@ -2053,7 +2088,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
               )}
               {closer && slot && (
                 <div style={{ maxWidth: 340 }}>
-                  <label style={label}>E-mail do lead (pro convite da call)</label>
+                  <label className="kicker" style={label}>E-mail do lead (pro convite da call)</label>
                   <input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setEmailTouched(true); }} placeholder="nome@email.com" style={fieldStyle} />
                   {email && !validEmail(email) && <div className="mono" style={{ fontSize: 10, color: "var(--warn)", marginTop: 4 }}>e-mail inválido</div>}
                 </div>
@@ -2068,9 +2103,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                     que o follow-up cobra (aparece no Resumo do cliente). */}
                 {fromCall && (
                   <div style={{ maxWidth: 280, marginBottom: 10 }}>
-                    <label style={label}>Qual proposta ficou na mesa? *</label>
+                    <label className="kicker" style={label}>Qual proposta ficou na mesa? *</label>
                     <select value={offer} onChange={(e) => setOffer(e.target.value)} style={fieldStyle}>
-                      <option value="">— a oferta que o cliente levou pra pensar —</option>
+                      <option value="">a oferta que o cliente levou pra pensar…</option>
                       {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                       <option value="nenhuma">não chegou na proposta</option>
                     </select>
@@ -2086,9 +2121,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
               </div>
             ) : (
               <div style={{ maxWidth: 280 }}>
-                <label style={label}>Responsável pelo follow-up *</label>
+                <label className="kicker" style={label}>Responsável pelo follow-up *</label>
                 <select value={closer} onChange={(e) => { setCloser(e.target.value); setSlot(""); }} style={fieldStyle}>
-                  <option value="">— escolher —</option>
+                  <option value="">escolher…</option>
                   {closers.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
                 </select>
               </div>
@@ -2100,23 +2135,23 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
             return (
               <div>
                 <div style={{ maxWidth: 280 }}>
-                  <label style={label}>Responsável pela {integLabel} *</label>
+                  <label className="kicker" style={label}>Responsável pela {integLabel} *</label>
                   <select value={integrator} onChange={(e) => { setIntegrator(e.target.value); setSlot(""); }} style={fieldStyle}>
-                    <option value="">— escolher integrador —</option>
+                    <option value="">escolher o integrador…</option>
                     {integrators.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
                   </select>
                   {lead.closer && <div className="mono dim" style={{ fontSize: 10.5, marginTop: 5 }}>closer da venda: {displayName(lead.closer)} (fica registrado)</div>}
                 </div>
                 {dest.kind === "integracao" && (
                   <div style={{ maxWidth: 220, marginTop: 12 }}>
-                    <label style={label}>Valor do negócio (R$) *</label>
+                    <label className="kicker" style={label}>Valor do negócio (R$) *</label>
                     <input type="number" min="0" step="0.01" value={amount} placeholder="ex.: 7188"
                       onChange={(e) => setAmount(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") confirm(); }} style={fieldStyle} />
                     <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>fechou! esse é o valor do negócio (vira a receita do closer)</div>
                     <div style={{ marginTop: 12 }}>
-                      <label style={label}>Modo de pagamento *</label>
+                      <label className="kicker" style={label}>Modo de pagamento *</label>
                       <select value={payment} onChange={(e) => setPayment(e.target.value)} style={fieldStyle}>
-                        <option value="">— como o cliente fechou —</option>
+                        <option value="">como o cliente fechou…</option>
                         {PAYMENT_METHODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                       </select>
                     </div>
@@ -2124,7 +2159,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                 )}
                 {integrator && (
                   <div style={{ marginTop: 14 }}>
-                    <div className="mono" style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
+                    <div className="kicker" style={{ marginBottom: 8 }}>
                       Quando fazer a {integLabel} · agenda de {displayName(integrator)}
                     </div>
                     <SlotGrid days={days} day={day} setDay={setDay} slot={slot} setSlot={setSlot} busy={busy} />
@@ -2138,14 +2173,14 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
 
           {setup === "won" && (
             <div style={{ maxWidth: 220 }}>
-              <label style={label}>Valor do negócio (R$) *</label>
+              <label className="kicker" style={label}>Valor do negócio (R$) *</label>
               <input type="number" min="0" step="0.01" value={amount} placeholder="ex.: 7188"
                 onChange={(e) => setAmount(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") confirm(); }} style={fieldStyle} />
               <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>vira a receita no marketing e a conversão enviada pra Meta</div>
               <div style={{ marginTop: 12 }}>
-                <label style={label}>Modo de pagamento *</label>
+                <label className="kicker" style={label}>Modo de pagamento *</label>
                 <select value={payment} onChange={(e) => setPayment(e.target.value)} style={fieldStyle}>
-                  <option value="">— como o cliente fechou —</option>
+                  <option value="">como o cliente fechou…</option>
                   {PAYMENT_METHODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                 </select>
               </div>
@@ -2155,14 +2190,14 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
           {setup === "loss" && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
               <div>
-                <label style={label}>Motivo *</label>
+                <label className="kicker" style={label}>Motivo *</label>
                 <select value={reason} onChange={(e) => setReason(e.target.value)} style={fieldStyle}>
-                  <option value="">— escolha o motivo —</option>
+                  <option value="">escolha o motivo…</option>
                   {reasons.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
                 </select>
               </div>
               <div>
-                <label style={label}>Detalhe (opcional)</label>
+                <label className="kicker" style={label}>Detalhe (opcional)</label>
                 <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="ex.: fechou com concorrente" style={fieldStyle} />
               </div>
             </div>

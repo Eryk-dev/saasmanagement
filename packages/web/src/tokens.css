@@ -53,6 +53,11 @@
   --info-soft: #edf3fc;
   --wa-out: #d6f5cf;      /* bolha de saída do WhatsApp */
 
+  /* Verde do WhatsApp (marca, igual nos 2 temas): botão de abrir conversa */
+  --wa-brand: #25d366;
+  --wa-brand-fg: #06120c;
+  --wa-brand-deep: #128c4b;
+
   /* Séries de gráfico (validadas p/ contraste e daltonismo no claro) */
   --chart-1: #0f9d90;
   --chart-2: #5b6bd6;
