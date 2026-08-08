@@ -179,6 +179,27 @@ export function FeedbackWidget({ screenLabel }) {
         </>
       )}
 
+      {/* Balãozinho fixo ao lado do FAB (Leo, 07/08: "para pessoal não esquecer
+          dele") — some enquanto o painel está aberto; clicar também abre. */}
+      {!open && (
+        <button onClick={() => setOpen(true)}
+          style={{
+            position: "fixed", right: 74, bottom: 27, zIndex: 59,
+            height: 28, padding: "0 12px", borderRadius: 999,
+            background: "var(--bg-1)", border: "1px solid var(--line-2)",
+            boxShadow: "var(--shadow-pop)", color: "var(--fg-2)",
+            fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", cursor: "pointer",
+          }}>
+          Reporte um bug ou uma melhoria
+          {/* rabinho do balão apontando pro botão */}
+          <span style={{
+            position: "absolute", right: -4, top: "50%", width: 8, height: 8,
+            transform: "translateY(-50%) rotate(45deg)", background: "var(--bg-1)",
+            borderTop: "1px solid var(--line-2)", borderRight: "1px solid var(--line-2)",
+          }} />
+        </button>
+      )}
+
       <button onClick={() => setOpen((v) => !v)} title="Reportar bug ou sugerir melhoria"
         style={{
           position: "fixed", right: 18, bottom: 18, zIndex: 59,
