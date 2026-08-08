@@ -1,4 +1,5 @@
 import React from "react";
+import { usePeriod } from "../components/period-picker.jsx";
 import { api } from "../lib/api.js";
 import { fmt } from "../lib/format.js";
 import { PageHead, StatTile, Card } from "../components/viz.jsx";
@@ -29,14 +30,16 @@ function EloOverviewScreen({ product, onNav }) {
   const [costs, setCosts] = useState(null);
   const [error, setError] = useState("");
 
+  // Janela GLOBAL do cockpit (filtro unico no topo, 08/08).
+  const { win } = usePeriod();
   useEffect(() => {
     let alive = true;
-    api.eloOverview(30)
+    api.eloOverview(win.days)
       .then((d) => alive && setData(d))
       .catch((e) => alive && setError(e?.message || "falhou"));
     api.expensesSummary(product?.id || "elo").then((c) => alive && setCosts(c)).catch(() => {});
     return () => { alive = false; };
-  }, [product?.id]);
+  }, [product?.id, win.days]);
 
   const today = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
   const head = <PageHead title="Visão geral" sub={today} />;

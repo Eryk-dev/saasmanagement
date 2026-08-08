@@ -1,7 +1,8 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { PageHead, Segmented, FilterTab, StatTile, Card } from "../components/viz.jsx";
+import { PageHead, Segmented, StatTile, Card } from "../components/viz.jsx";
+import { usePeriod } from "../components/period-picker.jsx";
 import { painCodeOf } from "../lib/pains.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { EmptyState, PrimaryButton } from "../atoms.jsx";
@@ -69,22 +70,6 @@ const dayStr = (t) => {
 const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const money = (v) => BRL.format(Number(v) || 0);
 
-const PERIODS = [
-  { value: "7", label: "7 dias" },
-  { value: "30", label: "30 dias" },
-  { value: "90", label: "90 dias" },
-];
-// Atalhos do filtro de data PRÓPRIO do card Anúncios (o filtro do topo segue
-// mandando no resto da tela). Valores no formato que o rangeOf entende.
-const ADS_PERIODS = [
-  { value: "1", label: "hoje" },
-  { value: "yesterday", label: "ontem" },
-  { value: "3", label: "3 dias" },
-  { value: "7", label: "7 dias" },
-  { value: "30", label: "30 dias" },
-  { value: "life", label: "máximo" }, // tudo que já foi sincronizado do ad_insights
-  { value: "custom", label: "personalizado" },
-];
 // A Meta só devolve insights de até ~37 meses; o sync respeita esse teto.
 const META_LOOKBACK_DAYS = 1125;
 
@@ -125,30 +110,17 @@ function DragScroll({ children }) {
   );
 }
 
-// Range efetivo do filtro: preset relativo, lifetime ou intervalo custom
-// (de/até no mesmo dia = filtro de um dia específico).
-function rangeOf(r) {
-  const today = dayStr(Date.now());
-  if (r.preset === "custom") {
-    const since = r.since || today;
-    const until = r.until || today;
-    return since <= until ? { since, until } : { since: until, until: since };
-  }
-  if (r.preset === "life") return { since: "2020-01-01", until: today };
-  if (r.preset === "yesterday") { const y = dayStr(Date.now() - DAY); return { since: y, until: y }; }
-  const n = Number(r.preset) || 30; // "1" = hoje (since = until = hoje)
-  return { since: dayStr(Date.now() - (n - 1) * DAY), until: today };
-}
-
 function MetricsScreen() {
   const { SAAS, CONFIG } = window.SEED;
   const { version } = useData();
   const [product, setActiveSaas] = useActiveSaas();
   const metaOn = !!CONFIG?.meta?.configured;
 
-  const [range, setRange] = useState({ preset: "30" });
-  const { since, until } = rangeOf(range);
-  const rangeDays = Math.max(1, Math.round((new Date(until) - new Date(since)) / DAY) + 1);
+  // Janela GLOBAL do cockpit (filtro único no topo, pedido do Leo em 08/08):
+  // a tela inteira — tiles, tabela de anúncios, por dor, sync — segue ela.
+  const { win } = usePeriod();
+  const since = win.since, until = win.until;
+  const rangeDays = win.days;
   const [data, setData] = useState(null);
   const [biz, setBiz] = useState(null); // CAC/LTV + série mensal
   const [syncing, setSyncing] = useState(false);
@@ -184,27 +156,15 @@ function MetricsScreen() {
   };
   useEffect(() => load(true), [product?.id, since, until]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Métricas SÓ do card Anúncios, no range do filtro próprio dele — mesma
-  // rota (ad_insights por id), busca separada pra não mexer no resto da tela.
-  const [adsRange, setAdsRange] = useState({ preset: "30" });
-  const { since: adsSince, until: adsUntil } = rangeOf(adsRange);
-  const [adsData, setAdsData] = useState(null);
-  const adsEpoch = React.useRef(0);
-  const loadAds = (reset = false) => {
-    if (!product) return;
-    const ep = ++adsEpoch.current;
-    if (reset) setAdsData(null);
-    api.marketingMetrics(product.id, { since: adsSince, until: adsUntil })
-      .then((v) => { if (ep === adsEpoch.current) setAdsData(v); })
-      .catch(() => { if (ep === adsEpoch.current) setAdsData((prev) => prev || { error: true }); });
-  };
-  useEffect(() => loadAds(true), [product?.id, adsSince, adsUntil]); // eslint-disable-line react-hooks/exhaustive-deps
+  // O card Anúncios segue a MESMA janela global da tela (o filtro próprio dele
+  // saiu na centralização de 08/08) — lê o mesmo payload `data`.
+  const adsData = data;
 
   // Mudança vinda do tempo real (SSE: lead criado/movido, sync do servidor)
   // recarrega SEM piscar — os números acompanham o pipeline na hora.
   const firstVersion = React.useRef(version);
   useEffect(() => {
-    if (version !== firstVersion.current) { load(false); loadAds(false); }
+    if (version !== firstVersion.current) load(false);
   }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // O sync da Meta roda no SERVIDOR (1 execução pro time, a cada ~3 min); aqui
@@ -395,7 +355,6 @@ function MetricsScreen() {
             ao vivo · {liveAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
           </span>
         )}
-        {PERIODS.map((period) => <FilterTab key={period.value} active={range.preset === period.value} onClick={() => setRange({ preset: period.value })}>{period.label}</FilterTab>)}
       </PageHead>
 
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
@@ -556,7 +515,6 @@ function MetricsScreen() {
         </Card>
 
         <CompactAdsCard saas={product.id} objects={compactObjects} metrics={metricMaps} money={money} busyIds={busyIds}
-          range={adsRange} onRange={setAdsRange}
           onToggle={objects && !objects.error ? toggleObject : null}
           onBudget={objects && !objects.error ? commitBudget : null} error={objects?.error} />
       </div>
@@ -619,70 +577,8 @@ const adsColsDefault = () => new Set(ADS_COLS.filter((c) => c.on).map((c) => c.k
 const adsOrderDefault = () => ADS_COLS.map((c) => c.key).filter((k) => k !== "status");
 // Altura da tabela: mostra até 10 linhas; o resto fica atrás do "ver mais".
 const ADS_MAX_ROWS = 10;
-// Inputs de/até do "personalizado" do card Anúncios.
-const dateInputStyle = { height: 30, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 };
-
-// Filtro de data do card Anúncios: presets + máximo + personalizado com popover
-// de calendário. Escolher "personalizado" grava de/até EXPLÍCITOS no range (nada
-// de default silencioso) e abre o popover já com o calendário nativo do "de";
-// o chip ao lado mostra o intervalo aplicado e reabre o popover. Escolher uma
-// data que cruza a outra arrasta a outra junto (sem swap mudo).
-function AdsRangePicker({ range, onRange }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState(null);
-  const wrapRef = React.useRef(null);
-  const sinceRef = React.useRef(null);
-  const today = dayStr(Date.now());
-  const since = range.since || today, until = range.until || today;
-  const openPopover = () => {
-    const r = wrapRef.current?.getBoundingClientRect();
-    if (r) setPos({ top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right) });
-    setOpen(true);
-    setTimeout(() => { try { sinceRef.current?.showPicker?.(); } catch { /* navegador sem showPicker */ } }, 60);
-  };
-  const choose = (v) => {
-    if (v === "custom") { onRange({ preset: "custom", since, until }); openPopover(); }
-    else { setOpen(false); onRange({ ...range, preset: v }); }
-  };
-  const setSince = (v) => { if (v) onRange({ preset: "custom", since: v, until: until < v ? v : until }); };
-  const setUntil = (v) => { if (v) onRange({ preset: "custom", until: v, since: since > v ? v : since }); };
-  const fmt = (s) => `${s.slice(8, 10)}/${s.slice(5, 7)}`;
-  return (
-    <span ref={wrapRef} style={{ display: "inline-flex", alignItems: "center", gap: 6, maxWidth: "100%", minWidth: 0 }}>
-      {/* No mobile as 7 opções não cabem no header do card: o grupo rola na
-          horizontal em vez de o overflow:hidden cortar "hoje"/"personalizado". */}
-      <span style={{ maxWidth: "100%", overflowX: "auto", display: "inline-flex", flexShrink: 1 }}>
-        <Segmented value={range.preset} onChange={choose} options={ADS_PERIODS} />
-      </span>
-      {range.preset === "custom" && (
-        <button className="mono tnum" onClick={openPopover} title="mudar o intervalo"
-          style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>
-          {fmt(since)} até {fmt(until)}
-        </button>
-      )}
-      {open && pos && (
-        <>
-          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 60 }} />
-          <div style={{ position: "fixed", top: pos.top, right: pos.right, zIndex: 61, width: 218, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-            <span className="mono" style={{ fontSize: 10, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-4)" }}>Período personalizado</span>
-            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span className="mono dim" style={{ width: 24, fontSize: 10.5 }}>de</span>
-              <input ref={sinceRef} type="date" value={since} max={today} onChange={(e) => setSince(e.target.value)} style={{ ...dateInputStyle, flex: 1 }} />
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span className="mono dim" style={{ width: 24, fontSize: 10.5 }}>até</span>
-              <input type="date" value={until} min={since} max={today} onChange={(e) => setUntil(e.target.value)} style={{ ...dateInputStyle, flex: 1 }} />
-            </label>
-            <button onClick={() => setOpen(false)}
-              style={{ height: 30, borderRadius: "var(--r-2)", border: "1px solid var(--accent)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
-              aplicar
-            </button>
-          </div>
-        </>
-      )}
-    </span>
-  );
-}
+// O filtro de data próprio do card Anúncios (AdsRangePicker) saiu na
+// centralização de 08/08: o card segue a janela GLOBAL do topo, como a tela.
 
 // Botão "Colunas" + popover de checkboxes (o "Personalizar colunas" do
 // Gerenciador). Posição FIXA calculada do botão — escapa do overflow:hidden
@@ -753,7 +649,7 @@ function Toggle({ on, label, busy, disabled = false, onChange }) {
   );
 }
 
-function CompactAdsCard({ saas, objects, metrics, money, busyIds, range, onRange, onToggle, onBudget, error }) {
+function CompactAdsCard({ saas, objects, metrics, money, busyIds, onToggle, onBudget, error }) {
   const [level, setLevel] = useState("campaigns");
   const [creativeAd, setCreativeAd] = useState(null); // anúncio com o criativo aberto no modal
   // Seleção estilo Gerenciador: checkbox nas linhas — campanhas marcadas
@@ -1017,7 +913,6 @@ function CompactAdsCard({ saas, objects, metrics, money, busyIds, range, onRange
     <Card title="Anúncios" hint="estilo Gerenciador · seleção filtra os níveis de baixo · colunas no botão"
       action={
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          {range && onRange && <AdsRangePicker range={range} onRange={onRange} />}
           <Segmented value={statusFilter} onChange={setStatusFilter}
             options={[{ value: "active", label: "ativas" }, { value: "paused", label: "pausadas" }, { value: "all", label: "todas" }]} />
           <Segmented value={level} onChange={changeLevel} options={levels.map(({ value, label }) => ({ value, label }))} />
