@@ -246,7 +246,9 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   //   ganhos     = vendas com wonAt na janela, de qualquer lead (nunca ajustado)
   // Taxas: contato = COBERTURA da coorte (dos que entraram, alcançados; sem
   // histórico — não há registro do resultado daquele trabalho); agendamento =
-  // marcadas ÷ trabalhados; comparecimento = realizadas ÷ devidas; conversão =
+  // marcadas DA COORTE ÷ alcançados da coorte (régua #650: cadeia encadeada na
+  // mesma base — workload inflado pela nutrição em massa afundava a taxa e
+  // inflava o plano); comparecimento = realizadas ÷ devidas; conversão =
   // ganhos ÷ realizadas, SEM calibração: calibrar mostraria um número diferente
   // do que a Visão geral mostra pro mesmo mês.
   // Sem amostra no mês fechado (menos de MIN_RATE_SAMPLE leads ou nenhum
@@ -285,15 +287,17 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     const bookedPrev = callCohortIn(leads, actsOf, inPrevMonth);
     const outPrev = callOutcome(product, bookedPrev, actsOf, today, inPrevMonth);
     const reached = enteredPrev.filter((l) => contactPrev.leadIds.has(l.id)).length;
+    // Coorte encadeada (régua #650): das calls da janela, só as de lead que
+    // ENTROU nela — par do `reached` na taxa de agendamento.
+    const enteredIds = new Set(enteredPrev.map((l) => l.id));
+    const bookedCohortPrev = bookedPrev.filter((l) => enteredIds.has(l.id));
     nLeads = enteredPrev.length + adjN("leads");
-    const contacted = contactPrev.leadIds.size + adjN("contacted");
-    const booked = bookedPrev.length + adjN("booked");
     const shown = outPrev.shown + adjN("shown");
     const due = shown + outPrev.noShow; // o que JÁ devia ter acontecido (sem as futuras)
     nWon = wonPrev;
     conversions = {
       contactRate: resolvedRate(reached, enteredPrev.length, goalRate(goals, "sdr", "contactRate"), RATE_BENCHMARKS.contactRate),
-      bookingRate: resolvedRate(booked, contacted, goalRate(goals, "sdr", "bookingRate"), RATE_BENCHMARKS.bookingRate),
+      bookingRate: resolvedRate(bookedCohortPrev.length + adjN("booked"), reached + adjN("contacted"), goalRate(goals, "sdr", "bookingRate"), RATE_BENCHMARKS.bookingRate),
       showRate: resolvedRate(shown, due, goalRate(goals, "sdr", "showRate"), RATE_BENCHMARKS.showRate),
       closeRate: resolvedRate(nWon, shown, goalRate(goals, "closer", "conversaoCall"), RATE_BENCHMARKS.closeRate),
     };

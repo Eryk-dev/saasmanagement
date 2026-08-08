@@ -364,8 +364,9 @@ test("taxas da cadeia = funil do mês fechado (mesmas contas da Visão geral fil
   assert.deepEqual(r.rateWindow, { mode: "month", month: "2026-07", since: "2026-07-01", until: "2026-07-31" });
   // cobertura da coorte: dos 20 que entraram em julho, 16 alcançados EM julho
   assert.deepEqual(r.conversions.contactRate, { value: 0.8, source: "history", numerator: 16, denominator: 20 });
-  // workload: 16 de julho + jn1 (junho, trabalhado em julho) = 17 → 8 marcadas
-  assert.deepEqual(r.conversions.bookingRate, { value: 0.4706, source: "history", numerator: 8, denominator: 17 });
+  // coorte encadeada (régua #650): das 16 alcançadas DA COORTE, 8 marcadas —
+  // jn1 (junho, trabalhado em julho) é workload e fica FORA da taxa
+  assert.deepEqual(r.conversions.bookingRate, { value: 0.5, source: "history", numerator: 8, denominator: 16 });
   // devidas = realizadas + furos: 6 de 8 (as 2 ganhas + 4 que avançaram)
   assert.deepEqual(r.conversions.showRate, { value: 0.75, source: "history", numerator: 6, denominator: 8 });
   // ganhos com wonAt em julho ÷ realizadas, SEM calibração no modo mês
@@ -384,8 +385,8 @@ test("cadeia e Visão geral batem: pace mês fechado = funil do scoreboard no me
   assert.equal(pctOf(pace.conversions.bookingRate.value), sb.team.bookingRate);
   assert.equal(pctOf(pace.conversions.showRate.value), sb.team.showRate);
   assert.equal(pctOf(pace.conversions.closeRateEffective.value), sb.team.closeRatePeriod);
-  assert.equal(pace.conversions.bookingRate.numerator, sb.team.callsBooked);
-  assert.equal(pace.conversions.bookingRate.denominator, sb.team.contacted);
+  assert.equal(pace.conversions.bookingRate.numerator, sb.team.bookedCohort);
+  assert.equal(pace.conversions.bookingRate.denominator, sb.team.contactedCohort);
   assert.equal(pace.conversions.closeRate.numerator, sb.team.won);
   assert.equal(pace.conversions.closeRate.denominator, sb.team.shown);
   await app.close();
@@ -397,7 +398,8 @@ test("histórico pré-cockpit entra no funil do mês só quando a janela alcanç
   await seedFunilJulho(on.repo);
   const r1 = (await on.app.inject({ url: "/api/pipeline-pace/leverads" })).json();
   assert.deepEqual(r1.paceAdjust, { contacted: 80, booked: 10, shown: 10 });
-  assert.deepEqual(r1.conversions.bookingRate, { value: 0.1856, source: "history", numerator: 18, denominator: 97 });
+  // coorte + histórico: (8+10) marcadas ÷ (16+80) alcançadas — o jn1 (workload) fora
+  assert.deepEqual(r1.conversions.bookingRate, { value: 0.1875, source: "history", numerator: 18, denominator: 96 });
   assert.equal(r1.conversions.showRate.value, 0.8889); // 16 de 18 devidas (histórico não tem furo)
   assert.equal(r1.conversions.contactRate.value, 0.8); // cobertura nunca usa histórico
   await on.app.close();
@@ -407,7 +409,7 @@ test("histórico pré-cockpit entra no funil do mês só quando a janela alcanç
   await seedFunilJulho(off.repo);
   const r2 = (await off.app.inject({ url: "/api/pipeline-pace/leverads" })).json();
   assert.equal(r2.paceAdjust, null);
-  assert.equal(r2.conversions.bookingRate.denominator, 17);
+  assert.equal(r2.conversions.bookingRate.denominator, 16);
   await off.app.close();
 });
 

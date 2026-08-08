@@ -239,7 +239,7 @@ function personRows(p, bizDays, elapsedFrac, monthFrac) {
   if (p.sdr) {
     const g = p.sdr.goals || {};
     rate("contato", p.sdr.contactRate, g.contactRate?.target || 80, "Dos leads que entraram, quantos você alcançou");
-    rate("agendamento", p.sdr.bookingRate, g.bookingRate?.target || 30, "Dos contatados, quantos marcaram call");
+    rate("agendamento", p.sdr.bookingRate, g.bookingRate?.target || 30, "Dos leads da janela que ele alcançou, quantos marcaram call (base antiga trabalhada não entra na taxa)");
     rate("show", p.sdr.showRate, g.showRate?.target || 75, "Das calls que já deveriam ter acontecido, quantas aconteceram");
     // Sem meta digitada, o alvo dinâmico é da JANELA (leads anteriores × taxa),
     // então o pace nesse caso é o da janela, não o do mês.
@@ -477,9 +477,9 @@ function FunilPeriodo({ team, win, pLabel }) {
   ];
   const convs = [
     { pct: team.contactRate, metaPct: 80, num: team.contactedCohort ?? null, den: team.leadsNew },
-    // Agendamento é sobre o WORKLOAD (todo lead trabalhado, inclusive base
-    // antiga) — o hover mostra a base pra ninguém dividir pelo card da coorte.
-    { pct: team.bookingRate, metaPct: g.bookingRate?.target || 30, num: team.callsBooked, den: team.contacted },
+    // Agendamento em COORTE encadeada (régua #650): calls de leads DA janela
+    // sobre os alcançados da janela — o hover mostra o N de M.
+    { pct: team.bookingRate, metaPct: g.bookingRate?.target || 30, num: team.bookedCohort ?? team.callsBooked, den: team.contactedCohort ?? team.contacted },
     { pct: team.showRate, metaPct: g.showRate?.target || 75, num: team.shown, den: team.shown + team.noShow },
     { pct: team.closeRatePeriod, metaPct: g.closeRate?.target || 33, num: team.won, den: team.shown },
   ];
@@ -623,9 +623,14 @@ function MonthSelect() {
   const { period, custom, setPeriod, setCustom } = usePeriod();
   const now = new Date();
   const months = [];
+  // Piso: junho/2026 (início da operação no cockpit) — antes disso não há mês
+  // pra olhar; o histórico pré-cockpit entra pela régua do paceAdjust, não aqui.
+  const MIN_MONTH = "2026-06";
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1, 12);
-    months.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, d });
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    if (key < MIN_MONTH) continue;
+    months.push({ key, d });
   }
   const currentKey = months[months.length - 1].key;
   const lastDayOf = (key) => {
