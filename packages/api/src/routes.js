@@ -116,6 +116,9 @@ export const CREATE_DEFAULTS = {
   // `recurring: true` = template mensal (o próprio doc é a 1ª ocorrência; os
   // meses seguintes viram instâncias com templateId — routes.fin.js).
   payables: { saas: "", description: "", category: "outros", counterpartyType: "fornecedor", userId: "", supplierName: "", amount: 0, month: "", dueDate: "", status: "aberta", paidAt: "", paidVia: "", recurring: false, endMonth: "", templateId: "", notes: "" },
+  // Regra de conciliação aprendida: quando o pagador (doc > e-mail > nome) bate,
+  // o Financeiro aplica a ação sozinho e não pergunta mais (routes.fin.js).
+  fin_rules: { saas: "", matchField: "payerDoc", matchValue: "", action: "vincular", customer: "", reason: "", autoCount: 0, lastAppliedAt: "", createdAt: "" },
   // Kanban de tarefas do time. `column` = KEY estável da coluna do board (renomear
   // coluna não órfã o card); `assignees` = ids de usuários do time (collection users);
   // comments = [{ id, author, text, at }] — o SPA faz PATCH do array inteiro.
@@ -298,7 +301,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // getWhatsapp é getter: o client só nasce mais abaixo (registerWhatsappRoutes)
   // e o custo de WhatsApp do resumo de despesas resolve na hora do request.
   registerMetricsRoutes(app, repo, { getWhatsapp: () => whatsappClient });
-  registerFinRoutes(app, repo);
+  registerFinRoutes(app, repo, { mp: mpClient });
   // Métricas reais de funil (conversão/tempo por estágio, motivos de perda, SLA)
   // a partir do histórico de transições da timeline.
   registerFunnelMetricsRoutes(app, repo);

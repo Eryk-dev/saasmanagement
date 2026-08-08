@@ -32,7 +32,7 @@ const CAT_LABEL = Object.fromEntries(CATEGORIES);
 // (faturas pagas · imposto por regime de caixa).
 const PCT_BASES = [
   { id: "won", option: "% dos ganhos do mês", pill: "dos ganhos", title: "sobre os ganhos do mês no pipeline", key: "wonBase" },
-  { id: "cartao12x", option: "% das parcelas do cartão 12x", pill: "do cartão 12x", title: "sobre a soma das parcelas do mês (contrato ÷ 12) dos clientes que fecharam no cartão de crédito em 12x, durante os 12 meses de cada contrato", key: "cardBase" },
+  { id: "cartao12x", option: "% dos contratos no cartão 12x", pill: "do cartão 12x", title: "sobre o valor cheio dos contratos fechados no cartão 12x no mês (recebimento antecipado em D+0)", key: "cardBase" },
   { id: "received", option: "% dos recebidos no mês", pill: "dos recebidos", title: "sobre os recebidos do mês (faturas pagas)", key: "receivedBase" },
 ];
 const pctBaseInfo = (id) => PCT_BASES.find((b) => b.id === id) || PCT_BASES[0];
@@ -157,7 +157,8 @@ function CostsTab({ product, month }) {
         {data?.error && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>Falha ao carregar os custos.</div>}
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
-          <StatTile label="Total do mês" value={data ? brl(data.total) : "…"} delta="publicidade + IA + WhatsApp + manuais" />
+          <StatTile label="Total do mês" value={data ? brl(data.total) : "…"} delta="publicidade + IA + WhatsApp + manuais + contas a pagar"
+            title="Inclui as contas a pagar do mês (aba A pagar): folha, fornecedores e demais lançamentos por competência. É o mesmo total que o Resumo do Financeiro e o Resultado do mês usam." />
           <StatTile label="Publicidade" value={data ? brl(data.ads) : "…"} delta="automático · Meta e entradas manuais de anúncio" />
           <StatTile label="IA" value={data ? (data.ai != null ? brl(data.ai) : "sem dado no mês") : "…"}
             delta={data?.aiUSD != null ? `US$ ${data.aiUSD.toFixed(2).replace(".", ",")} · automático` : "automático via APIs dos provedores"} />
@@ -165,6 +166,9 @@ function CostsTab({ product, month }) {
           <StatTile label="WhatsApp" value={data ? (data.wa != null ? brl(data.wa) : "sem dado no mês") : "…"}
             delta={data?.waConversations != null ? `${data.waConversations} conversas cobradas · automático` : "automático via Meta"} />
           <StatTile label="Lançados à mão" value={data ? brl(data.manualTotal) : "…"} delta={`${data?.manual?.length ?? 0} ${(data?.manual?.length ?? 0) === 1 ? "lançamento" : "lançamentos"}`} />
+          <StatTile label="Contas a pagar do mês" value={data ? brl(data.payablesTotal || 0) : "…"}
+            delta={`${data?.payablesCount ?? 0} ${(data?.payablesCount ?? 0) === 1 ? "conta" : "contas"} · gerencie na aba A pagar`}
+            title="Folha e fornecedores lançados em A pagar, por competência. Este cartão é só leitura: a gestão (baixa, recorrência) mora na aba A pagar." />
         </div>
 
         <Card title="Lançamentos do mês" hint="custos fixos, ferramentas, pessoal e outros">

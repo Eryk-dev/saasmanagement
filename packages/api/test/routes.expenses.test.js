@@ -135,16 +135,16 @@ test("custo percentual (checkout/imposto): % sobre os ganhos do mês no pipeline
   assert.equal(past.wonBase, 0);
 });
 
-test("custo percentual com base: checkout sobre a parcela do mês dos contratos 12x, imposto sobre os recebidos", async () => {
+test("custo percentual com base: checkout inteiro sobre os contratos 12x do mês (D+0), imposto sobre os recebidos", async () => {
   const repo = makeMemRepo();
   const funnel = [{ stage: "Novo lead", kind: "novo", conv: 1 }, { stage: "Ganho", kind: "ganho", conv: 1 }];
   await repo.create("products", { id: "leverads", name: "LeverAds", funnel });
   const month = new Date().toISOString().slice(0, 7);
   const nowIso = new Date().toISOString();
 
-  // Ganhos do mês: 10.000 (wonBase). Cartão 12x: o contrato de 7.000 fechado
-  // AGORA contribui 7.000÷12 = 583,33 de parcela no mês (e pelos próximos 11);
-  // o 12x antigo (13+ meses atrás) já saiu da janela; o PIX nunca entra.
+  // Ganhos do mês: 10.000 (wonBase). Cartão 12x com antecipação D+0: o
+  // contrato de 7.000 fechado AGORA entra CHEIO na base do mês; o 12x antigo
+  // (fechado em outro mês) não entra; o PIX nunca entra.
   await repo.create("leads", { id: "w1", saas: "leverads", stage: "Ganho", amount: 7000, stageSince: nowIso, paymentMethod: "cartao12x" });
   await repo.create("leads", { id: "w2", saas: "leverads", stage: "Ganho", amount: 3000, stageSince: nowIso, paymentMethod: "pix" });
   await repo.create("leads", { id: "w3", saas: "leverads", stage: "Ganho", amount: 12000, wonAt: "2020-06-10T12:00:00Z", stageSince: "2020-06-10T12:00:00Z", paymentMethod: "cartao12x" });
@@ -164,11 +164,27 @@ test("custo percentual com base: checkout sobre a parcela do mês dos contratos 
   const s = (await app.inject({ method: "GET", url: `/api/expenses/summary/leverads?month=${month}` })).json();
 
   assert.equal(s.wonBase, 10000, "ganhos do MÊS: o 12x antigo não entra");
-  assert.equal(s.cardBase, 583.33, "7.000 ÷ 12 (só o contrato dentro da janela de 12 meses)");
+  assert.equal(s.cardBase, 7000, "contrato cheio do mês (D+0); o antigo fica fora");
   assert.equal(s.receivedBase, 1000);
-  assert.equal(s.manual.find((e) => e.id === "e1").amount, 70);   // 12% de 583,33
+  assert.equal(s.manual.find((e) => e.id === "e1").amount, 840);  // 12% de 7.000
   assert.equal(s.manual.find((e) => e.id === "e2").amount, 200);  // 20% de 1.000
   assert.equal(s.manual.find((e) => e.id === "e3").amount, 1000); // 10% de 10.000
   assert.equal(s.manual.find((e) => e.id === "e2").base, "received"); // base ecoada pra pill da tela
+  await app.close();
+});
+
+test("summary soma as contas a pagar do mês no total (tudo conversa com o Financeiro)", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds" });
+  const month = new Date().toISOString().slice(0, 7);
+  await repo.create("expenses", { id: "e1", saas: "leverads", month, category: "ferramenta", name: "Softwares", amount: 300 });
+  await repo.create("payables", { id: "p1", saas: "leverads", month, description: "Salário", category: "pessoal_com", amount: 2000, dueDate: `${month}-05`, status: "aberta" });
+  await repo.create("payables", { id: "p2", saas: "leverads", month: "2020-01", description: "Antiga", category: "outros", amount: 999, dueDate: "2020-01-05", status: "paga" });
+  const app = Fastify();
+  registerMetricsRoutes(app, repo, { ai: { configured: () => false } });
+  const s = (await app.inject({ method: "GET", url: `/api/expenses/summary/leverads?month=${month}` })).json();
+  assert.equal(s.payablesTotal, 2000, "só a competência do mês");
+  assert.equal(s.payablesCount, 1);
+  assert.equal(s.total, 2300);
   await app.close();
 });

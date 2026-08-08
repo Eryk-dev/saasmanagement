@@ -76,10 +76,9 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhats
     // (e.base) — cada taxa incide sobre o dinheiro certo:
     //   · "won" (padrão)  — GANHOS do pipeline no mês (lead.amount por wonAt),
     //     a mesma base do "Resultado do mês" da Visão geral;
-    //   · "cartao12x"     — PARCELAS do mês dos contratos fechados no cartão
-    //     12x: cada venda contribui contrato÷12 por 12 meses a partir da venda
-    //     (card12xBaseIn, metrics-core). Um 20k em 12x vira base de ~1.667/mês
-    //     por 12 meses, nunca 20k de uma vez (Leo, 08/08);
+    //   · "cartao12x"     — contratos fechados no cartão 12x NO MÊS, valor
+    //     cheio (card12xBaseIn, metrics-core): o recebimento é antecipado em
+    //     D+0, então a taxa incide inteira no mês da venda (Leo, 08/08);
     //   · "received"      — RECEBIDOS no mês (faturas pagas por paidAt, régua
     //     cashCollectedIn do metrics-core) — imposto por regime de caixa: o
     //     faturado em 12 boletos só paga imposto conforme as parcelas entram.
@@ -130,9 +129,16 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhats
         : e))
       .sort((a, b) => (b.recurring === true) - (a.recurring === true) || String(a.category).localeCompare(String(b.category)));
     const manualTotal = round2(manual.reduce((a, e) => a + (Number(e.amount) || 0), 0));
-    const total = round2(ads + (aiBRL || 0) + (wa || 0) + manualTotal);
+    // Contas a pagar do mês (competência) entram no total: o "Resultado do
+    // mês" que consome este summary passa a incluir folha e fornecedores —
+    // mesma conta do Financeiro (aba Resumo), sem dupla contagem (coleções
+    // distintas: regra/automático aqui, conta com favorecido em payables).
+    const payablesMonth = (await repo.list("payables")).filter((p) => p.saas === product.id && p.month === month);
+    const payablesTotal = round2(payablesMonth.reduce((a, p) => a + (Number(p.amount) || 0), 0));
+    const total = round2(ads + (aiBRL || 0) + (wa || 0) + manualTotal + payablesTotal);
     return {
-      month, ads, ai: aiBRL, aiUSD, usdBrl, wa, waConversations, manual, manualTotal, total,
+      month, ads, ai: aiBRL, aiUSD, usdBrl, wa, waConversations, manual, manualTotal,
+      payablesTotal, payablesCount: payablesMonth.length, total,
       wonBase: basesNeeded.has("won") ? round2(bases.won) : undefined,
       cardBase: basesNeeded.has("cartao12x") ? round2(bases.cartao12x) : undefined,
       receivedBase: basesNeeded.has("received") ? round2(bases.received) : undefined,

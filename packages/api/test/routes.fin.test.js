@@ -86,7 +86,10 @@ test("fluxo e DRE: fatura recebida + conta paga + custo manual + mídia fecham a
   assert.equal(r.receber.recebidosMes, 5000);
   assert.deepEqual(r.receber.emAberto, { n: 1, total: 2000 });
   assert.equal(r.dre.receita.renewal, 5000);
-  assert.deepEqual(r.dre.despesas, { pessoal: 3000, ferramenta: 200, ads: 100 });
+  // DRE por setor: pessoal/ferramenta legados caem no G&A, mídia automática no S&M.
+  assert.deepEqual(r.dre.setores.ga, { pessoal: 3000, ferramenta: 200 });
+  assert.deepEqual(r.dre.setores.sm, { ads: 100 });
+  assert.deepEqual(r.dre.setores.deducoes, {});
   assert.equal(r.dre.despesasMes, 3300);
   assert.equal(r.dre.resultado, 1700);
   const ago = r.fluxo.find((f) => f.month === "2026-08");
@@ -108,5 +111,102 @@ test("conciliação: aprovado sem cliente é pendência; desconsiderado sai; esp
   assert.deepEqual(r.conciliacao.pendentes, { n: 1, total: 900 });
   assert.equal(r.conciliacao.ignoradas, 1);
   assert.equal(r.conciliacao.espelhoMes, 1450, "aprovados do mês, inclusive vinculados e ignorados");
+  await app.close();
+});
+
+// ── Conciliação com aprendizado + setores + saídas ───────────────────────────
+
+test("regra aprendida vincula sozinha, baixa a fatura de valor exato e some das pendências", async () => {
+  const { app, repo } = await build();
+  await repo.create("customers", { id: "c1", saas: "leverads", name: "Loja do Zé", arr: 12000 });
+  await repo.create("invoices", { id: "i1", saas: "leverads", customer: "c1", amount: 990, status: "open", dueDate: "2026-08-10T12:00:00.000Z" });
+  await repo.create("mp_payments", { id: "mpp_9", saas: "leverads", mpId: "9", status: "approved", amount: 990, payerEmail: "ZE@Loja.com ", payerDoc: "", dateApproved: "2026-08-05T12:00:00.000Z" });
+  await app.inject({ method: "POST", url: "/api/fin_rules", payload: {
+    saas: "leverads", matchField: "payerEmail", matchValue: "ze@loja.com", action: "vincular", customer: "c1",
+  } });
+
+  const r = await fin(app, "2026-08");
+  assert.equal(r.conciliacao.pendentes.n, 0, "a regra resolveu a pendência");
+  assert.equal(r.conciliacao.autoAplicadas, 1);
+  const pmt = await repo.get("mp_payments", "mpp_9");
+  assert.equal(pmt.customer, "c1");
+  assert.equal(pmt.matchedBy, "rule");
+  const inv = await repo.get("invoices", "i1");
+  assert.equal(inv.status, "paid", "valor exato + fatura única = baixa automática");
+  assert.equal(inv.mpPaymentId, "9");
+  const rule = (await repo.list("fin_rules"))[0];
+  assert.equal(rule.autoCount, 1);
+  await app.close();
+});
+
+test("regra de desconsiderar limpa a pendência com motivo; sem regra, sai a sugestão por valor", async () => {
+  const { app, repo } = await build();
+  await repo.create("customers", { id: "c1", saas: "leverads", name: "Cliente Bom", arr: 12000 });
+  await repo.create("invoices", { id: "i1", saas: "leverads", customer: "c1", amount: 750, status: "open", dueDate: "2026-08-20T12:00:00.000Z" });
+  await repo.create("mp_payments", { id: "mpp_a", saas: "leverads", mpId: "a", status: "approved", amount: 100, payerDoc: "111.222.333-44", dateApproved: "2026-08-05T12:00:00.000Z" });
+  await repo.create("mp_payments", { id: "mpp_b", saas: "leverads", mpId: "b", status: "approved", amount: 750, payerName: "Fulano", dateApproved: "2026-08-06T12:00:00.000Z" });
+  await app.inject({ method: "POST", url: "/api/fin_rules", payload: {
+    saas: "leverads", matchField: "payerDoc", matchValue: "11122233344", action: "desconsiderar", reason: "estorno",
+  } });
+
+  const r = await fin(app, "2026-08");
+  assert.equal(r.conciliacao.pendentes.n, 1, "só o sem regra sobra");
+  assert.equal((await repo.get("mp_payments", "mpp_a")).finIgnored, true);
+  assert.equal((await repo.get("mp_payments", "mpp_a")).finIgnoredReason, "estorno");
+  assert.equal(r.conciliacao.sugestoes.mpp_b.customer, "c1", "sugestão pela fatura aberta de mesmo valor");
+  assert.equal(r.conciliacao.sugestoes.mpp_b.invoiceId, "i1");
+  await app.close();
+});
+
+test("DRE setoriza percentuais pela base: imposto vira dedução, checkout vira taxa de pagamento (COGS)", async () => {
+  const { app, repo } = await build();
+  await repo.create("customers", { id: "c1", saas: "leverads", name: "Cliente", arr: 60000 });
+  await repo.create("invoices", { id: "i1", saas: "leverads", customer: "c1", amount: 10000, status: "paid", kind: "renewal", paidAt: "2026-08-03T12:00:00.000Z", dueDate: "2026-08-03T12:00:00.000Z" });
+  await repo.create("expenses", { id: "e1", saas: "leverads", month: "2026-08", category: "taxas", name: "Imposto", pct: 10, base: "received", recurring: true });
+  const r = await fin(app, "2026-08");
+  assert.deepEqual(r.dre.setores.deducoes, { imposto: 1000 }, "10% dos 10.000 recebidos, como dedução");
+  assert.equal(r.dre.despesasMes, 1000);
+  assert.equal(r.dre.resultado, 9000);
+  await app.close();
+});
+
+test("parseSettlementCsv: só WITHDRAWAL/PAYOUT viram movimento, com valor pt-BR e tarifa", async () => {
+  const { parseSettlementCsv } = await import("../src/routes.fin.js");
+  const csv = [
+    "TRANSACTION_TYPE;TRANSACTION_DATE;SOURCE_ID;SETTLEMENT_NET_AMOUNT;FEE_AMOUNT",
+    "SETTLEMENT;2026-08-01T10:00:00Z;111;1.500,00;-45,00",
+    "WITHDRAWAL;2026-08-02T10:00:00Z;222;-3.000,50;0,00",
+    "PAYOUT;2026-08-03T10:00:00Z;333;900,00;-3,50",
+    "REFUND;2026-08-04T10:00:00Z;444;-100,00;0,00",
+  ].join("\n");
+  const rows = parseSettlementCsv(csv);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows[0], { sourceId: "222", type: "WITHDRAWAL", date: "2026-08-02", amount: 3000.5, fee: 0 });
+  assert.deepEqual(rows[1], { sourceId: "333", type: "PAYOUT", date: "2026-08-03", amount: 900, fee: 3.5 });
+  await Promise.resolve();
+});
+
+test("mp-out/sync importa saídas do relatório pronto e não duplica", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [] });
+  const csv = "TRANSACTION_TYPE;TRANSACTION_DATE;SOURCE_ID;SETTLEMENT_NET_AMOUNT;FEE_AMOUNT\nWITHDRAWAL;2026-08-02T10:00:00Z;777;2.000,00;0,00";
+  const mp = {
+    configured: () => true,
+    settlementReportList: async () => [{ file_name: "rel.csv", date_created: new Date().toISOString() }],
+    settlementReportDownload: async () => csv,
+    settlementReportCreate: async () => { throw new Error("não devia pedir novo: tem relatório fresco"); },
+  };
+  const app = Fastify();
+  const { registerFinRoutes } = await import("../src/routes.fin.js");
+  registerFinRoutes(app, repo, { mp });
+  const r1 = (await app.inject({ method: "POST", url: "/api/fin/leverads/mp-out/sync" })).json();
+  assert.equal(r1.imported, 1);
+  assert.equal(r1.requested, false);
+  const r2 = (await app.inject({ method: "POST", url: "/api/fin/leverads/mp-out/sync" })).json();
+  assert.equal(r2.imported, 0, "idempotente");
+  const movs = await repo.list("mp_movements");
+  assert.equal(movs.length, 1);
+  assert.equal(movs[0].id, "mov_777");
+  assert.equal(movs[0].amount, 2000);
   await app.close();
 });

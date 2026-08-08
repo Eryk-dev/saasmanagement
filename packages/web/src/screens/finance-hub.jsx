@@ -4,45 +4,54 @@ import { useData } from "../data.jsx";
 import { StatTile, Card, Pill } from "../components/viz.jsx";
 import { Avatar } from "../atoms.jsx";
 import { allUsers } from "../lib/users.js";
+import { mpMethodLabel } from "../lib/payments.js";
 
-// Abas novas do Financeiro (modelo Conta Azul adaptado ao cockpit):
-//   Resumo      — tiles do mês + fluxo de caixa 6 meses + DRE por categoria
-//   Conciliação — pagamentos do espelho MP sem dono: vincular cliente ou
-//                 desconsiderar (nada de dinheiro sem explicação no mês)
-//   A pagar     — contas a pagar com vencimento, situação e recorrência
-//   Folha       — as mesmas contas, na lente POR COLABORADOR
-// Receita continua nascendo nas faturas (baixa automática do MP); custo
-// automático/percentual continua na aba Custos. Aqui é organização e baixa.
+// Abas novas do Financeiro (modelo Conta Azul + P&L de SaaS por setor):
+//   Resumo      — tiles do mês + fluxo de caixa 6 meses + DRE por setor
+//                 (deduções → COGS → margem bruta → S&M → R&D → G&A)
+//   Conciliação — pendências do espelho MP com SUGESTÃO e APRENDIZADO: vinculou
+//                 ou desconsiderou com "lembrar" ligado, vira regra e o mesmo
+//                 pagador nunca mais é perguntado. Também importa as SAÍDAS da
+//                 conta (settlement report) pra casar com as contas a pagar.
+//   A pagar     — contas com vencimento, situação, setor e recorrência
+//   Folha       — as mesmas contas na lente POR COLABORADOR
+// Receita continua nascendo nas faturas; custo automático/percentual na aba
+// Custos (que agora soma as contas a pagar do mês no total, tudo conversa).
 
 const { useState, useEffect, useCallback, useMemo } = React;
 
 const money = (v) => window.fmt.money(v || 0);
 const int = (v) => window.fmt.int(v || 0);
+const r2 = (n) => Math.round(n * 100) / 100;
 
-// Categorias financeiras das contas a pagar (plano de contas gerencial).
-export const PAY_CATS = [
-  ["pessoal", "Pessoal · salários e pró-labore"],
-  ["comissao", "Pessoal · comissões"],
-  ["marketing", "Marketing"],
-  ["ferramenta", "Ferramentas e software"],
-  ["estrutura", "Estrutura · contabilidade e escritório"],
-  ["imposto", "Impostos"],
-  ["taxas", "Taxas financeiras"],
-  ["outros", "Outros"],
+// ── Plano de categorias por SETOR (espelha CAT_SECTOR do routes.fin.js) ──────
+export const SECTOR_CATS = [
+  ["deducoes", "Deduções da receita", [["imposto", "Impostos sobre receita (DAS)"]]],
+  ["cogs", "Custo do serviço (COGS)", [
+    ["infra", "Infra e hosting"], ["apis", "APIs e IA do produto"],
+    ["suporte", "Suporte e CS"], ["taxas", "Taxas de pagamento"],
+  ]],
+  ["sm", "Vendas & Marketing", [
+    ["pessoal_com", "Pessoal · comercial"], ["comissao", "Comissões"],
+    ["midia", "Mídia paga (manual)"], ["mkt", "Ferramentas de marketing"],
+  ]],
+  ["rd", "Produto & Desenvolvimento", [
+    ["pessoal_dev", "Pessoal · produto e dev"], ["dev", "Ferramentas de dev"],
+  ]],
+  ["ga", "Administrativo (G&A)", [
+    ["prolabore", "Pró-labore"], ["pessoal_adm", "Pessoal · administrativo"],
+    ["contab", "Contabilidade e jurídico"], ["escritorio", "Escritório e estrutura"],
+    ["bancos", "Tarifas bancárias"], ["outros", "Outros"],
+  ]],
 ];
-const PAY_CAT_LABEL = Object.fromEntries(PAY_CATS);
-// Rótulos das categorias vindas da aba Custos + mídia automática, pro DRE.
-const DRE_CAT_LABEL = {
-  ...PAY_CAT_LABEL,
-  ads: "Mídia paga (Meta, automático)",
-  fixo: "Custos fixos",
-  ia: "IA (APIs, automático)",
-  wa: "WhatsApp (conversas, automático)",
+const SECTOR_LABEL = { deducoes: "Deduções da receita", cogs: "Custo do serviço", sm: "Vendas & Marketing", rd: "Produto & Desenvolvimento", ga: "Administrativo" };
+const PAY_CAT_LABEL = {
+  ...Object.fromEntries(SECTOR_CATS.flatMap(([, , cats]) => cats)),
+  ads: "Mídia paga (Meta, automático)", ia: "IA (APIs, automático)", wa: "WhatsApp (conversas, automático)",
+  pessoal: "Pessoal (legado)", ferramenta: "Ferramentas (legado)", fixo: "Custos fixos (legado)",
+  estrutura: "Estrutura (legado)", marketing: "Marketing (legado)",
 };
 const RECEITA_LABEL = { renewal: "Assinaturas", installment: "Parcelas de contrato", manual: "Cobranças avulsas", upsell: "Upsell", prorata: "Upgrade de plano" };
-// Deduções da receita (regime do Conta Azul: taxas e impostos descem antes do
-// resultado operacional); o resto é despesa operacional.
-const DEDUCOES = new Set(["taxas", "imposto"]);
 
 const mesCurto = (mk) => new Date(`${mk}-15T12:00:00`).toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
 const mesLongo = (mk) => {
@@ -51,7 +60,6 @@ const mesLongo = (mk) => {
   return `${names[Number(m) - 1] || m} de ${y}`;
 };
 const dmy = (d) => (d ? `${String(d).slice(8, 10)}/${String(d).slice(5, 7)}` : "");
-const hojeISO = () => new Date().toISOString().slice(0, 10);
 
 const inp = { height: 36, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
 const btn = { height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 };
@@ -83,7 +91,7 @@ function FluxoCard({ fluxo, previsto, month }) {
     <Card title="Fluxo de caixa" hint="realizado por mês · entrada = faturas recebidas · saída = contas pagas + custos do mês">
       <div style={{ padding: "12px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 10 }}>
         {fluxo.map((f) => {
-          const saldo = Math.round((f.entrada - f.saida) * 100) / 100;
+          const saldo = r2(f.entrada - f.saida);
           return (
             <div key={f.month} style={{ display: "grid", gridTemplateColumns: "56px 1fr 110px", gap: 12, alignItems: "center" }}>
               <span style={{ fontSize: 12, color: f.month === month ? "var(--fg-1)" : "var(--fg-3)", fontWeight: f.month === month ? 650 : 500, textTransform: "capitalize" }}>{mesCurto(f.month)}</span>
@@ -105,14 +113,27 @@ function FluxoCard({ fluxo, previsto, month }) {
   );
 }
 
-function DreRow({ label, value, strong, neg, indent }) {
+function DreRow({ label, value, strong, neg, indent, title }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "6px 0", borderBottom: "1px solid var(--line-faint)", fontSize: strong ? 13.5 : 12.5 }}>
+    <div title={title} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "6px 0", borderBottom: "1px solid var(--line-faint)", fontSize: strong ? 13.5 : 12.5, cursor: title ? "help" : "default" }}>
       <span style={{ color: strong ? "var(--fg-1)" : "var(--fg-3)", fontWeight: strong ? 650 : 400, paddingLeft: indent ? 14 : 0 }}>{label}</span>
       <span className="tnum" style={{ fontWeight: strong ? 700 : 550, whiteSpace: "nowrap", color: strong ? (value >= 0 ? "var(--fg-1)" : "var(--neg)") : "var(--fg-2)" }}>
         {neg && value > 0 ? "− " : ""}{money(Math.abs(value))}
       </span>
     </div>
+  );
+}
+
+// Bloco de setor no DRE: linha do total + itens por categoria indentados.
+function DreSetor({ sector, itens }) {
+  const entries = Object.entries(itens || {}).sort((a, b) => b[1] - a[1]);
+  const total = r2(entries.reduce((a, [, v]) => a + v, 0));
+  if (!(total > 0)) return null;
+  return (
+    <>
+      <DreRow label={SECTOR_LABEL[sector] || sector} value={total} neg />
+      {entries.map(([k, v]) => <DreRow key={k} label={PAY_CAT_LABEL[k] || k} value={v} neg indent />)}
+    </>
   );
 }
 
@@ -127,19 +148,20 @@ export function ResumoTab({ product, month }) {
   }, [product.id, month, version]);
   if (!fin) return <Carregando err={err} />;
 
-  const extras = (Number(sum?.ai) || 0) + (Number(sum?.wa) || 0);
-  const despesasMes = Math.round((fin.dre.despesasMes + extras) * 100) / 100;
-  const resultado = Math.round((fin.receber.recebidosMes - despesasMes) * 100) / 100;
+  const ai = Number(sum?.ai) || 0;
+  const wa = Number(sum?.wa) || 0;
+  const S = fin.dre.setores;
+  // IA e WhatsApp são custo de entregar/atender → dobram no COGS, no cliente.
+  const cogs = { ...S.cogs, ...(ai > 0 ? { ia: ai } : {}), ...(wa > 0 ? { wa } : {}) };
+  const somaSet = (o) => r2(Object.values(o || {}).reduce((a, v) => a + v, 0));
+  const receitaTotal = r2(Object.values(fin.dre.receita).reduce((a, v) => a + v, 0));
+  const ded = somaSet(S.deducoes), cogsT = somaSet(cogs), smT = somaSet(S.sm), rdT = somaSet(S.rd), gaT = somaSet(S.ga);
+  const liquida = r2(receitaTotal - ded);
+  const bruto = r2(liquida - cogsT);
+  const margem = liquida > 0 ? Math.round((bruto / liquida) * 1000) / 10 : null;
+  const resultado = r2(bruto - smT - rdT - gaT);
+  const despesasMes = r2(fin.dre.despesasMes + ai + wa);
   const abertasTotal = fin.tiles.vencidos.total + fin.tiles.vencemHoje.total + fin.tiles.aVencer.total;
-  const receitaTotal = Object.values(fin.dre.receita).reduce((a, v) => a + v, 0);
-  const deducoes = Object.entries(fin.dre.despesas).filter(([k]) => DEDUCOES.has(k));
-  const operacionais = [
-    ...Object.entries(fin.dre.despesas).filter(([k]) => !DEDUCOES.has(k)),
-    ...(Number(sum?.ai) > 0 ? [["ia", Number(sum.ai)]] : []),
-    ...(Number(sum?.wa) > 0 ? [["wa", Number(sum.wa)]] : []),
-  ].sort((a, b) => b[1] - a[1]);
-  const somaDed = deducoes.reduce((a, [, v]) => a + v, 0);
-  const somaOp = operacionais.reduce((a, [, v]) => a + v, 0);
 
   return (
     <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
@@ -150,31 +172,38 @@ export function ResumoTab({ product, month }) {
           delta={fin.receber.vencidas.n ? `${int(fin.receber.vencidas.n)} vencida${fin.receber.vencidas.n > 1 ? "s" : ""} · ${money(fin.receber.vencidas.total)}` : "nada vencido"}
           tone={fin.receber.vencidas.n ? "down" : "flat"}
           title="Faturas em aberto agora (qualquer mês). Cobrança e baixa moram em Clientes → Assinaturas." />
-        <StatTile label="Despesas do mês" value={money(despesasMes)}
-          delta="contas do mês + custos automáticos"
+        <StatTile label="Despesas do mês" value={money(despesasMes)} delta="contas do mês + custos automáticos"
           title="Contas a pagar com competência no mês + custos da aba Custos (mídia, IA, WhatsApp, percentuais)." />
         <StatTile label="A pagar em aberto" value={money(abertasTotal)}
           delta={fin.tiles.vencidos.n ? `${int(fin.tiles.vencidos.n)} vencida${fin.tiles.vencidos.n > 1 ? "s" : ""} · ${money(fin.tiles.vencidos.total)}` : "nada vencido"}
           tone={fin.tiles.vencidos.n ? "down" : "flat"} />
+        <StatTile label="Margem bruta" value={margem == null ? "—" : `${String(margem).replace(".", ",")}%`}
+          delta={`lucro bruto ${money(bruto)}`} tone={margem != null && margem < 70 ? "down" : "flat"}
+          title="(Receita líquida − custo do serviço) ÷ receita líquida. SaaS saudável opera entre 70% e 85%; abaixo de 70% é alerta." />
         <StatTile label="Resultado do mês" value={money(resultado)} tone={resultado < 0 ? "down" : "flat"}
           delta="recebido − despesas do mês" title="Regime de caixa na receita (faturas baixadas) e competência nas despesas." />
       </div>
 
       <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: 16 }}>
         <FluxoCard fluxo={fin.fluxo} previsto={fin.previsto} month={month} />
-        <Card title="DRE do mês" hint="receita por tipo · deduções · despesas por categoria">
+        <Card title="DRE do mês" hint="P&L de SaaS: receita · deduções · custo do serviço · margem bruta · setores">
           <div style={{ padding: "10px var(--inset-x) 18px" }}>
             {Object.entries(fin.dre.receita).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
               <DreRow key={k} label={RECEITA_LABEL[k] || k} value={v} indent />
             ))}
             <DreRow label="Receita recebida" value={receitaTotal} strong />
-            {deducoes.map(([k, v]) => <DreRow key={k} label={DRE_CAT_LABEL[k] || k} value={v} neg indent />)}
-            {somaDed > 0 && <DreRow label="Receita líquida" value={receitaTotal - somaDed} strong />}
-            {operacionais.map(([k, v]) => <DreRow key={k} label={DRE_CAT_LABEL[k] || k} value={v} neg indent />)}
-            <DreRow label="Resultado do mês" value={receitaTotal - somaDed - somaOp} strong />
+            <DreSetor sector="deducoes" itens={S.deducoes} />
+            {ded > 0 && <DreRow label="Receita líquida" value={liquida} strong />}
+            <DreSetor sector="cogs" itens={cogs} />
+            <DreRow label={`Lucro bruto${margem != null ? ` · margem ${String(margem).replace(".", ",")}%` : ""}`} value={bruto} strong
+              title="Benchmark de SaaS: margem bruta saudável entre 70% e 85%." />
+            <DreSetor sector="sm" itens={S.sm} />
+            <DreSetor sector="rd" itens={S.rd} />
+            <DreSetor sector="ga" itens={S.ga} />
+            <DreRow label="Resultado do mês" value={resultado} strong />
             {fin.conciliacao.pendentes.n > 0 && (
               <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--warn)" }}>
-                {int(fin.conciliacao.pendentes.n)} pagamento{fin.conciliacao.pendentes.n > 1 ? "s" : ""} sem dono na conciliação ({money(fin.conciliacao.pendentes.total)}) · o DRE só conta o que tem explicação
+                {int(fin.conciliacao.pendentes.n)} pagamento{fin.conciliacao.pendentes.n > 1 ? "s" : ""} sem dono na conciliação ({money(fin.conciliacao.pendentes.total)})
               </div>
             )}
           </div>
@@ -187,20 +216,35 @@ export function ResumoTab({ product, month }) {
 // ── Conciliação ──────────────────────────────────────────────────────────────
 const IGNORE_REASONS = ["estorno", "transferência interna", "não é do produto", "teste", "outro"];
 
+// Identidade mais forte disponível do pagador → vira a regra de aprendizado.
+const bestIdOf = (p) => {
+  if (String(p.payerDoc || "").replace(/\D+/g, "")) return ["payerDoc", p.payerDoc, `documento ${p.payerDoc}`];
+  if (String(p.payerEmail || "").trim()) return ["payerEmail", p.payerEmail, p.payerEmail];
+  if (String(p.payerName || "").trim()) return ["payerName", p.payerName, p.payerName];
+  return null;
+};
+
 export function ConciliacaoTab({ product, month }) {
   const { fin, err, reload } = useFin(product, month);
   const { version } = useData();
   const { CUSTOMERS } = window.SEED;
   const customers = useMemo(() => (CUSTOMERS || []).filter((c) => c.saas === product?.id), [CUSTOMERS, product?.id]);
   const [payments, setPayments] = useState(null);
-  const [pick, setPick] = useState({});     // paymentId -> customerId escolhido
-  const [motivo, setMotivo] = useState({}); // paymentId -> motivo de desconsiderar
+  const [rules, setRules] = useState([]);
+  const [movs, setMovs] = useState([]);
+  const [pick, setPick] = useState({});      // paymentId -> customer escolhido
+  const [motivo, setMotivo] = useState({});  // paymentId -> motivo de desconsiderar
+  const [lembrar, setLembrar] = useState({}); // paymentId -> lembrar do pagador (default sim)
+  const [movPick, setMovPick] = useState({}); // movementId -> payable escolhida
+  const [note, setNote] = useState(null);
   const [showIgnoradas, setShowIgnoradas] = useState(false);
 
-  const loadPayments = useCallback(() => {
+  const loadAll = useCallback(() => {
     api.mpPayments({ saas: product.id }).then((r) => setPayments(Array.isArray(r) ? r : r.payments || [])).catch(() => setPayments([]));
+    api.list("fin_rules").then((r) => setRules(r.filter((x) => !x.saas || x.saas === product.id))).catch(() => setRules([]));
+    api.list("mp_movements").then(setMovs).catch(() => setMovs([]));
   }, [product.id]);
-  useEffect(() => { loadPayments(); }, [loadPayments, version]);
+  useEffect(() => { loadAll(); }, [loadAll, version]);
 
   if (!fin || payments == null) return <Carregando err={err} />;
 
@@ -208,60 +252,184 @@ export function ConciliacaoTab({ product, month }) {
   const pendentes = aprovados.filter((p) => !p.customer && !p.finIgnored)
     .sort((a, b) => String(b.dateApproved || b.dateCreated).localeCompare(String(a.dateApproved || a.dateCreated)));
   const ignoradas = aprovados.filter((p) => p.finIgnored);
-  const delta = Math.round((fin.conciliacao.espelhoMes - fin.receber.recebidosMes) * 100) / 100;
+  const delta = r2(fin.conciliacao.espelhoMes - fin.receber.recebidosMes);
+  const querLembrar = (p) => lembrar[p.id] !== false && !!bestIdOf(p);
 
-  const vincular = async (p) => {
-    const cust = pick[p.id];
+  // Aprendizado: a ação manual vira regra quando "lembrar" está ligado — o
+  // /api/fin aplica sozinho nas próximas e o pagador não é perguntado de novo.
+  const criarRegra = async (p, action, extra) => {
+    const best = bestIdOf(p);
+    if (!best) return;
+    await api.create("fin_rules", {
+      saas: product.id, matchField: best[0], matchValue: best[1],
+      action, ...extra, createdAt: new Date().toISOString(),
+    }).catch(() => {});
+  };
+  const vincular = async (p, customerId) => {
+    const cust = customerId || pick[p.id];
     if (!cust) return;
-    try { await api.mpLinkPayment(p.id, cust); reload(); loadPayments(); } catch (e) { alert(e.message); }
+    try {
+      await api.mpLinkPayment(p.id, cust);
+      if (querLembrar(p)) await criarRegra(p, "vincular", { customer: cust });
+      setNote({ ok: true, text: querLembrar(p) ? "vinculado · regra criada: esse pagador não pergunta mais" : "vinculado" });
+      reload(); loadAll();
+    } catch (e) { setNote({ ok: false, text: e.message }); }
   };
   const desconsiderar = async (p) => {
-    try { await api.update("mp_payments", p.id, { finIgnored: true, finIgnoredReason: motivo[p.id] || "outro" }); reload(); loadPayments(); } catch (e) { alert(e.message); }
+    try {
+      await api.update("mp_payments", p.id, { finIgnored: true, finIgnoredReason: motivo[p.id] || "outro" });
+      if (querLembrar(p)) await criarRegra(p, "desconsiderar", { reason: motivo[p.id] || "outro" });
+      reload(); loadAll();
+    } catch (e) { setNote({ ok: false, text: e.message }); }
   };
   const reconsiderar = async (p) => {
-    try { await api.update("mp_payments", p.id, { finIgnored: false, finIgnoredReason: "" }); reload(); loadPayments(); } catch (e) { alert(e.message); }
+    try { await api.update("mp_payments", p.id, { finIgnored: false, finIgnoredReason: "" }); reload(); loadAll(); } catch (e) { setNote({ ok: false, text: e.message }); }
   };
+  const excluirRegra = async (r) => {
+    try { await api.remove("fin_rules", r.id); loadAll(); } catch (e) { setNote({ ok: false, text: e.message }); }
+  };
+
+  // Saídas da conta MP: importar (assíncrono do lado do MP) e casar com contas.
+  const syncSaidas = async () => {
+    setNote({ ok: true, text: "sincronizando saídas…" });
+    try {
+      const r = await api.finMpOutSync(product.id);
+      const extra = r.requested ? " · relatório novo pedido ao MP, sincronize de novo em alguns minutos" : "";
+      setNote({ ok: true, text: `${r.imported} importadas de ${r.filesRead} relatórios${extra}` });
+      reload(); loadAll();
+    } catch (e) { setNote({ ok: false, text: e.message }); }
+  };
+  const movsPend = movs.filter((m) => !m.payableId && !m.finIgnored).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const vincularMov = async (m, pid) => {
+    if (!pid) return;
+    const pay = fin.payables.find((x) => x.id === pid);
+    try {
+      await api.update("mp_movements", m.id, { payableId: pid });
+      if (pay && pay.status !== "paga") await api.update("payables", pid, { status: "paga", paidAt: `${m.date}T12:00:00.000Z`, paidVia: "mp" });
+      setNote({ ok: true, text: pay && pay.status !== "paga" ? "saída casada e conta baixada" : "saída casada com a conta" });
+      reload(); loadAll();
+    } catch (e) { setNote({ ok: false, text: e.message }); }
+  };
+  const ignorarMov = async (m) => {
+    try { await api.update("mp_movements", m.id, { finIgnored: true }); loadAll(); } catch (e) { setNote({ ok: false, text: e.message }); }
+  };
+
+  const movSugestao = (m) => fin.payables.find((p) => Math.abs((Number(p.amount) || 0) - (Number(m.amount) || 0)) <= 0.01);
 
   return (
     <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))", gap: 12 }}>
-        <StatTile label="Pendentes de conciliação" value={int(pendentes.length)} delta={money(fin.conciliacao.pendentes.total)}
-          tone={pendentes.length ? "down" : "flat"} title="Pagamentos aprovados no Mercado Pago sem cliente vinculado e não desconsiderados." />
-        <StatTile label={`Espelho MP em ${mesCurto(month)}`} value={money(fin.conciliacao.espelhoMes)} delta="aprovados no mês" />
-        <StatTile label="Faturas baixadas no mês" value={money(fin.receber.recebidosMes)}
-          delta={delta === 0 ? "bateu com o espelho" : `${delta > 0 ? "+" : "−"} ${money(Math.abs(delta))} vs espelho`}
-          title="Diferença normal: pagamento sem fatura (link direto no lead), fatura baixada à mão ou pendência acima." />
+      {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 190px), 1fr))", gap: 12 }}>
+        <StatTile label="Pendentes" value={int(pendentes.length)} delta={money(fin.conciliacao.pendentes.total)}
+          tone={pendentes.length ? "down" : "flat"} title="Pagamentos aprovados sem cliente vinculado e não desconsiderados." />
+        <StatTile label="Regras aprendidas" value={int(rules.length)}
+          delta={fin.conciliacao.autoAplicadas ? `${int(fin.conciliacao.autoAplicadas)} aplicadas agora` : "aplicam sozinhas a cada leitura"}
+          title="Cada vínculo/desconsideração com o lembrar ligado vira regra: o mesmo pagador nunca mais é perguntado." />
+        <StatTile label={`Espelho MP em ${mesCurto(month)}`} value={money(fin.conciliacao.espelhoMes)}
+          delta={delta === 0 ? "bateu com as faturas" : `${delta > 0 ? "+" : "−"} ${money(Math.abs(delta))} vs faturas baixadas`}
+          title="Diferença normal: pagamento sem fatura (link direto no lead), fatura baixada à mão ou pendência ao lado." />
+        <StatTile label="Saídas sem dono" value={int(fin.conciliacao.saidasPendentes.n)} delta={money(fin.conciliacao.saidasPendentes.total)}
+          tone={fin.conciliacao.saidasPendentes.n ? "down" : "flat"}
+          title="Saques e transferências da conta MP (settlement report) ainda não casados com uma conta a pagar." />
       </div>
 
-      <Card title="Pendências" hint="todo pagamento aprovado precisa de dono: vincule ao cliente ou desconsidere com motivo">
+      <Card title="Pendências de entrada" hint="vincule ao cliente ou desconsidere com motivo · com o lembrar ligado, vira regra e não pergunta mais">
         <div style={{ padding: "10px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 10 }}>
           {!pendentes.length && <span className="dim" style={{ fontSize: 12.5 }}>Tudo conciliado por aqui.</span>}
-          {pendentes.map((p) => (
-            <div key={p.id} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "10px 12px", background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)" }}>
-              <span className="tnum dim" style={{ fontSize: 12, width: 42 }}>{dmy((p.dateApproved || p.dateCreated || "").slice(0, 10))}</span>
-              <span style={{ flex: 1, minWidth: 160, fontSize: 13 }}>
-                {p.payerName || p.payerEmail || "pagador sem nome"}
-                <span className="dim" style={{ display: "block", fontSize: 11 }}>
-                  {[p.payerDoc, p.payerBank && `via ${p.payerBank}`, p.description].filter(Boolean).join(" · ") || "sem detalhes"}
-                </span>
-              </span>
-              <span className="tnum" style={{ fontWeight: 650, whiteSpace: "nowrap" }}>{money(p.amount)}</span>
-              <span style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                <select value={pick[p.id] || ""} onChange={(e) => setPick((s) => ({ ...s, [p.id]: e.target.value }))} style={{ ...inp, minWidth: 150 }}>
-                  <option value="">vincular cliente…</option>
-                  {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-                <button onClick={() => vincular(p)} disabled={!pick[p.id]} style={{ ...btnPri, opacity: pick[p.id] ? 1 : .55 }}>ok</button>
-                <select value={motivo[p.id] || ""} onChange={(e) => setMotivo((s) => ({ ...s, [p.id]: e.target.value }))} style={{ ...inp, width: 150 }}>
-                  <option value="">desconsiderar…</option>
-                  {IGNORE_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
-                </select>
-                <button onClick={() => desconsiderar(p)} disabled={!motivo[p.id]} style={{ ...btn, opacity: motivo[p.id] ? 1 : .55 }}>ok</button>
-              </span>
-            </div>
-          ))}
+          {pendentes.map((p) => {
+            const sug = fin.conciliacao.sugestoes?.[p.id];
+            const best = bestIdOf(p);
+            return (
+              <div key={p.id} style={{ padding: "10px 12px", background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+                  <span className="tnum dim" style={{ fontSize: 12, width: 42 }}>{dmy((p.dateApproved || p.dateCreated || "").slice(0, 10))}</span>
+                  <span style={{ flex: 1, minWidth: 160, fontSize: 13, fontWeight: 600 }}>
+                    {p.payerName || p.payerEmail || "pagador sem nome"}
+                    <span className="dim" style={{ display: "block", fontSize: 11, fontWeight: 400 }}>
+                      {[p.payerDoc, p.payerEmail, p.payerBank && `via ${p.payerBank}`].filter(Boolean).join(" · ") || "sem identificação"}
+                    </span>
+                  </span>
+                  <span className="tnum" style={{ fontWeight: 650, whiteSpace: "nowrap" }}>{money(p.amount)}</span>
+                  <span className="dim tnum" style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>
+                    {[mpMethodLabel(p) || p.method, p.netAmount ? `líq. ${money(p.netAmount)}` : null].filter(Boolean).join(" · ")}
+                  </span>
+                </div>
+                {sug && (
+                  <button onClick={() => vincular(p, sug.customer)}
+                    style={{ alignSelf: "flex-start", padding: "4px 10px", borderRadius: 999, border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 12, fontWeight: 600 }}>
+                    usar sugestão: {sug.motivo} →
+                  </button>
+                )}
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  <select value={pick[p.id] || ""} onChange={(e) => setPick((s) => ({ ...s, [p.id]: e.target.value }))} style={{ ...inp, minWidth: 150 }}>
+                    <option value="">vincular cliente…</option>
+                    {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <button onClick={() => vincular(p)} disabled={!pick[p.id]} style={{ ...btnPri, opacity: pick[p.id] ? 1 : .55 }}>ok</button>
+                  <select value={motivo[p.id] || ""} onChange={(e) => setMotivo((s) => ({ ...s, [p.id]: e.target.value }))} style={{ ...inp, width: 150 }}>
+                    <option value="">desconsiderar…</option>
+                    {IGNORE_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                  <button onClick={() => desconsiderar(p)} disabled={!motivo[p.id]} style={{ ...btn, opacity: motivo[p.id] ? 1 : .55 }}>ok</button>
+                  {best && (
+                    <label title={`A regra casa por ${best[2]}. Próximo pagamento desse pagador é resolvido sozinho.`}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--fg-2)", cursor: "pointer" }}>
+                      <input type="checkbox" checked={querLembrar(p)} onChange={(e) => setLembrar((s) => ({ ...s, [p.id]: e.target.checked }))} />
+                      lembrar deste pagador
+                    </label>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </Card>
+
+      <Card title="Saídas da conta Mercado Pago" hint="saques e transferências do settlement report · case com a conta a pagar (baixa junto) ou desconsidere"
+        action={<button onClick={syncSaidas} style={btn}>↻ sincronizar saídas</button>}>
+        <div style={{ padding: "10px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 8 }}>
+          {!movsPend.length && <span className="dim" style={{ fontSize: 12.5 }}>Nenhuma saída pendente. O relatório do MP é assíncrono: sincronize, aguarde alguns minutos e sincronize de novo pra importar.</span>}
+          {movsPend.map((m) => {
+            const sug = movSugestao(m);
+            return (
+              <div key={m.id} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "9px 12px", background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)" }}>
+                <span className="tnum dim" style={{ fontSize: 12, width: 42 }}>{dmy(m.date)}</span>
+                <span style={{ flex: 1, minWidth: 140, fontSize: 12.5 }}>
+                  {m.type === "PAYOUT" ? "Transferência enviada" : "Saque pra conta bancária"}
+                  {m.fee > 0 && <span className="dim" style={{ fontSize: 11 }}> · tarifa {money(m.fee)}</span>}
+                </span>
+                <span className="tnum" style={{ fontWeight: 650, whiteSpace: "nowrap" }}>{money(m.amount)}</span>
+                <select value={movPick[m.id] || (sug ? sug.id : "")} onChange={(e) => setMovPick((s) => ({ ...s, [m.id]: e.target.value }))} style={{ ...inp, minWidth: 180 }}>
+                  <option value="">casar com conta a pagar…</option>
+                  {fin.payables.map((x) => <option key={x.id} value={x.id}>{x.description} · {money(x.amount)}{x.status === "paga" ? " (paga)" : ""}</option>)}
+                </select>
+                <button onClick={() => vincularMov(m, movPick[m.id] || sug?.id)}
+                  disabled={!(movPick[m.id] || sug)} style={{ ...btnPri, opacity: movPick[m.id] || sug ? 1 : .55 }}>
+                  {sug && !movPick[m.id] ? "casar (mesmo valor)" : "casar"}
+                </button>
+                <button onClick={() => ignorarMov(m)} className="dim" style={{ fontSize: 12, fontWeight: 600 }}>desconsiderar</button>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {rules.length > 0 && (
+        <Card title="Regras de conciliação" hint="aplicadas sozinhas a cada leitura · excluir volta a perguntar">
+          <div style={{ padding: "6px var(--inset-x) 16px", display: "flex", flexDirection: "column" }}>
+            {rules.map((r) => (
+              <div key={r.id} style={{ display: "flex", gap: 10, alignItems: "baseline", padding: "7px 0", borderBottom: "1px solid var(--line-faint)", fontSize: 12.5, flexWrap: "wrap" }}>
+                <span style={{ flex: 1, minWidth: 200 }}>
+                  <b>{r.matchValue}</b>
+                  <span className="dim"> ({r.matchField === "payerDoc" ? "documento" : r.matchField === "payerEmail" ? "e-mail" : "nome"}) → {r.action === "vincular" ? `cliente ${customers.find((c) => c.id === r.customer)?.name || r.customer}` : `desconsiderar (${r.reason || "outro"})`}</span>
+                </span>
+                <span className="dim tnum" style={{ fontSize: 11.5 }}>{int(r.autoCount || 0)} aplicações</span>
+                <button onClick={() => excluirRegra(r)} className="dim" style={{ fontSize: 12, fontWeight: 600 }}>excluir</button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {ignoradas.length > 0 && (
         <Card title="Desconsideradas" hint="fora da conciliação e dos números, com motivo"
@@ -316,8 +484,12 @@ function PayableForm({ product, month, preset, onDone }) {
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
       <input placeholder="descrição (ex.: Salário, Contabilidade)" value={f.description} onChange={(e) => set("description", e.target.value)} style={{ ...inp, flex: 2, minWidth: 180 }} />
-      <select value={f.category} onChange={(e) => set("category", e.target.value)} style={{ ...inp, minWidth: 150 }}>
-        {PAY_CATS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+      <select value={f.category} onChange={(e) => set("category", e.target.value)} style={{ ...inp, minWidth: 190 }} title="A categoria decide o setor no DRE (COGS, Vendas & Marketing, Produto, Administrativo).">
+        {SECTOR_CATS.map(([sk, sl, cats]) => (
+          <optgroup key={sk} label={sl}>
+            {cats.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </optgroup>
+        ))}
       </select>
       {!preset?.counterpartyType && (
         <select value={f.counterpartyType} onChange={(e) => set("counterpartyType", e.target.value)} style={{ ...inp, width: 120 }}>
@@ -373,6 +545,7 @@ function PayableRow({ p, fin, product, reload, showPerson = true }) {
           {[PAY_CAT_LABEL[p.category] || p.category,
             p.month !== fin.month ? `competência ${mesCurto(p.month)}` : null,
             p.recurring ? "recorrente" : p.templateId ? "da recorrência" : null,
+            p.paidVia === "mp" ? "baixada pela saída do MP" : null,
           ].filter(Boolean).join(" · ")}
         </span>
       </span>
@@ -407,7 +580,7 @@ export function PagarTab({ product, month }) {
         <StatTile label="Pagos no mês" value={money(t.pagos.total)} delta={`${int(t.pagos.n)} conta${t.pagos.n === 1 ? "" : "s"}`} />
       </div>
 
-      <Card title="Nova conta a pagar" hint="salário e pró-labore entram como colaborador e aparecem na Folha · custo automático e percentual mora na aba Custos">
+      <Card title="Nova conta a pagar" hint="a categoria decide o setor no DRE · salário e pró-labore entram como colaborador e aparecem na Folha · custo automático e percentual mora na aba Custos">
         <div style={{ padding: "12px var(--inset-x) 18px" }}>
           <PayableForm product={product} month={month} onDone={reload} />
         </div>
@@ -424,6 +597,15 @@ export function PagarTab({ product, month }) {
 }
 
 // ── Folha (as contas a pagar na lente por colaborador) ───────────────────────
+// Categoria default pelo PAPEL da pessoa: comercial → S&M, CS/integrador →
+// COGS (suporte), social → S&M, resto → administrativo.
+const roleCat = (u) => {
+  const roles = u?.roles || [];
+  if (roles.includes("sdr") || roles.includes("closer") || roles.includes("social")) return "pessoal_com";
+  if (roles.includes("integrator")) return "suporte";
+  return "pessoal_adm";
+};
+
 export function FolhaTab({ product, month }) {
   const { fin, err, reload } = useFin(product, month);
   const [formFor, setFormFor] = useState(null); // userId com o form aberto
@@ -442,7 +624,7 @@ export function FolhaTab({ product, month }) {
     ...[...porPessoa.keys()].filter((k) => k === "?" || !time.some((u) => u.id === k))
       .map((k) => ({ user: { id: k, name: "Sem vínculo" }, itens: porPessoa.get(k) })),
   ];
-  const soma = (list, f) => Math.round(list.filter(f).reduce((a, p) => a + (Number(p.amount) || 0), 0) * 100) / 100;
+  const soma = (list, f) => r2(list.filter(f).reduce((a, p) => a + (Number(p.amount) || 0), 0));
   const totalPago = soma(doMes, (p) => p.status === "paga");
   const totalAberto = soma(doMes, (p) => p.status !== "paga");
 
@@ -455,7 +637,7 @@ export function FolhaTab({ product, month }) {
         <StatTile label="Em aberto" value={money(totalAberto)} tone={totalAberto > 0 ? "down" : "flat"} />
       </div>
 
-      <Card title="Por colaborador" hint="lance salário como recorrente uma vez e ele nasce sozinho todo mês · comissão e bônus entram como lançamento do mês">
+      <Card title="Por colaborador" hint="salário recorrente lançado 1 vez nasce sozinho todo mês · a saída do MP casada na Conciliação dá baixa aqui">
         <div style={{ padding: "6px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 4 }}>
           {linhas.map(({ user, itens }) => {
             const pago = soma(itens, (p) => p.status === "paga");
@@ -477,7 +659,7 @@ export function FolhaTab({ product, month }) {
                 {formFor === user.id && (
                   <div style={{ marginTop: 10 }}>
                     <PayableForm product={product} month={month} onDone={() => { setFormFor(null); reload(); }}
-                      preset={{ counterpartyType: "colaborador", userId: user.id, category: "pessoal", description: `Salário ${mesCurto(month)}` }} />
+                      preset={{ counterpartyType: "colaborador", userId: user.id, category: roleCat(user), description: `Salário ${mesCurto(month)}` }} />
                   </div>
                 )}
                 {itens.length > 0 && (
