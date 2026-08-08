@@ -251,6 +251,21 @@ body[data-density="regular"] { font-size: 14px; }
 }
 .kicker.accent { color: var(--accent); }
 
+/* ── Controles e tabela (DS) ────────────────────────────────────
+   Escala de alturas: 28 denso · 32 padrão · 40 CTA. Input = .inp. */
+.inp {
+  height: 30px;
+  padding: 0 9px;
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-2);
+  color: var(--fg-1);
+  font-size: 12.5px;
+}
+/* Tabela padrão: td 12.5 com divisor; linha clicável ganha hover. */
+.tbl td { padding: 9px 12px; font-size: 12.5px; border-top: 1px solid var(--line-1); }
+.tbl tr[data-click]:hover td { background: var(--hover); cursor: pointer; }
+
 .kbd {
   font-family: var(--mono);
   font-size: 11px;

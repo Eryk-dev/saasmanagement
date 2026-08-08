@@ -1,6 +1,7 @@
 import React from "react";
 import { Mp3Encoder } from "@breezystack/lamejs";
 import { api } from "../lib/api.js";
+import { useEsc } from "../atoms.jsx";
 
 // Peças de conversa de WhatsApp reusadas pelo inbox (tela) e pelo chat do drawer:
 // WaBubbles (histórico) + WaComposer (texto livre) + WaTemplateComposer (fora da
@@ -323,6 +324,7 @@ export function WaComposer({ onSend, onSendMedia, disabled, placeholder, templat
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState("");
   const [openTpl, setOpenTpl] = React.useState(false);
+  useEsc(openTpl ? () => setOpenTpl(false) : null);
   const [rec, setRec] = React.useState(null); // { recorder, chunks, mime, t0 } enquanto grava
   const [recSecs, setRecSecs] = React.useState(0);
   const boxRef = React.useRef(null);

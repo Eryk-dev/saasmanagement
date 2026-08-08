@@ -1,5 +1,6 @@
 import React from "react";
 import { ENTITIES, leadQuestionFields, customEntityFields } from "../lib/entities.js";
+import { useEsc } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 // Reusable create/edit modal, driven by the per-entity config in entities.js.
 // Mirrors deal.jsx's right-drawer overlay. Create vs edit is decided by record.id.
@@ -133,6 +134,7 @@ function toPayload(fields, values) {
 // `bare`: renderiza só o form (campos + rodapé), sem o overlay/drawer próprio —
 // pra embutir dentro de outro popup (ex.: edição inline no popup do cliente).
 function EntityForm({ entityKey, record, onClose, onSaved, onOpenLead, bare = false }) {
+  useEsc(bare ? null : onClose); // inline (bare) nao captura Esc
   const cfg = ENTITIES[entityKey];
   const isEdit = !!(record && record.id);
   const [values, setValues] = useState(() => toInputs(effectiveFields(cfg, record || {}), record));

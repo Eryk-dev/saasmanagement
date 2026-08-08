@@ -1,6 +1,6 @@
 import React from "react";
 import { PageHead } from "../components/viz.jsx";
-import { EmptyState, PrimaryButton } from "../atoms.jsx";
+import { EmptyState, PrimaryButton, useEsc } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
 
@@ -108,6 +108,7 @@ function ContractsScreen() {
   }
   useE(() => { setItems(null); setErr(null); setSel(null); setEdit(false); load(); }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEsc(sel ? () => { setSel(null); setEdit(false); } : null); // drawer fecha no Esc
   function openView(c) { setSel(c); setEdit(false); setDraft(null); setFill({}); }
   function openEdit(c) { setSel(c); setEdit(true); setDraft({ name: c.name || "", tag: c.tag || "", note: c.note || "", body: c.body || "" }); }
   function openNew() { setSel(null); setEdit(true); setDraft({ name: "", tag: "", note: "", body: NEW_BODY }); }

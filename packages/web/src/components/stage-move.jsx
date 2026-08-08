@@ -1,5 +1,5 @@
 import React from "react";
-import { PrimaryButton } from "../atoms.jsx";
+import { PrimaryButton, useEsc } from "../atoms.jsx";
 import { stageKind, phaseOf, isLossKind, isWonKind, lossReasonsOf } from "../lib/funnel.js";
 import { usersByRole, currentUser } from "../lib/users.js";
 import { PAYMENT_METHODS, CLOSED_PLANS, CONSULT_PACKAGES } from "../lib/payments.js";
@@ -46,6 +46,7 @@ const field = {
 const label = { display: "block", marginBottom: 4 };
 
 export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCancel }) {
+  useEsc(onCancel);
   const isLost = gate.type === "lost";
   const isWonGate = gate.type === "won";
   const reasons = lossReasonsOf(saasCfg);

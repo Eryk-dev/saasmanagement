@@ -2,7 +2,7 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
-import { Avatar, EmptyState, PrimaryButton } from "../atoms.jsx";
+import { Avatar, EmptyState, PrimaryButton, useEsc } from "../atoms.jsx";
 import { inputStyle } from "../components/theme-inputs.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { PageHead } from "../components/viz.jsx";
@@ -109,7 +109,7 @@ function TasksScreen() {
       order = inCol.length ? (Number(inCol[inCol.length - 1].order) || 0) + 1 : 1;
     }
     setTasks((prev) => prev.map((t) => t.id === id ? { ...t, column: colKey, order } : t));
-    api.update("tasks", id, { column: colKey, order }).catch((err) => console.warn("task move not persisted:", err.message));
+    api.update("tasks", id, { column: colKey, order }).catch((err) => { console.warn("task move not persisted:", err.message); window.toast && window.toast("O card não foi movido no quadro · tente de novo", "neg"); });
   }
 
   async function saveTask(draft) {
@@ -240,6 +240,7 @@ function TaskColumn({ col, idx, count, cards, users, dragging, setDragging, onDr
 }
 
 function ColumnMenu({ col, idx, count, hasCards, onRename, onColor, onMove, onRemove, onClose }) {
+  useEsc(onClose);
   const [name, setName] = useState(col.name);
   const ref = useRef(null);
   useEffect(() => {
@@ -347,6 +348,7 @@ function LabelChip({ label }) {
 
 // ─────────────────────────────────────────────── Modal (criar/editar + comentários)
 function TaskModal({ task, presetColumn, presetSaas, columns, users, onSave, onDelete, onComment, onClose }) {
+  useEsc(onClose);
   const { SAAS } = window.SEED;
   const [d, setD] = useState(() => task ? { ...task, assignees: assigneesOf(task) } : {
     title: "", description: "", saas: presetSaas, assignees: [],

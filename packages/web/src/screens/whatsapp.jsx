@@ -372,9 +372,9 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-      <PageHead title="Inbox" sub={channel === "whatsapp" ? sub : channel === "instagram" ? "direct do Instagram · respondido pela página" : "Messenger da página"}>
+      <PageHead title="Inbox" sub={channel === "whatsapp" ? sub : channel === "instagram" ? "direct do Instagram · respondido pela página" : channel === "facebook" ? "Messenger da página" : "regras automáticas, templates, fluxos e respostas rápidas do WhatsApp"}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          {[["whatsapp", "WhatsApp"], ["instagram", "Instagram"], ["facebook", "Facebook"]].map(([id, label]) => (
+          {[["whatsapp", "WhatsApp"], ["instagram", "Instagram"], ["facebook", "Facebook"], ["automacoes", "Automações"]].map(([id, label]) => (
             <button key={id} onClick={() => setChannel(id)}
               style={{ height: 32, padding: "0 13px", border: "1px solid " + (channel === id ? "var(--accent-line)" : "var(--line-2)"), borderRadius: "var(--r-2)",
                 background: channel === id ? "var(--accent-soft)" : "var(--bg-1)", color: channel === id ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
@@ -391,7 +391,11 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
       </PageHead>
       {newTpl && <WaTemplateCreator onClose={() => setNewTpl(false)} />}
 
-      {channel !== "whatsapp" && <DmInbox key={`${product?.id}:${channel}`} network={channel} saas={product?.id} isMobile={isMobile} />}
+      {(channel === "instagram" || channel === "facebook") && <DmInbox key={`${product?.id}:${channel}`} network={channel} saas={product?.id} isMobile={isMobile} />}
+
+      {/* Central de automações do WhatsApp: regras reativas, templates da
+          Meta, fluxos de nutrição e as respostas rápidas do chat. */}
+      {channel === "automacoes" && <WaAutomationsPanel key={product?.id} product={product} />}
 
       {channel === "whatsapp" && <>
       <WaHealthBanner />
@@ -1115,7 +1119,7 @@ const TEMPLATE_PRESETS = [
   },
 ];
 
-function WaTemplateCreator({ onClose }) {
+export function WaTemplateCreator({ onClose }) {
   const [form, setForm] = React.useState({ name: "", category: "UTILITY", language: "pt_BR", body: "", example: "" });
   const [busy, setBusy] = React.useState(false);
   const [msg, setMsg] = React.useState(null); // { ok, text }

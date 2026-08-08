@@ -1,7 +1,7 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { EmptyState, PrimaryButton } from "../atoms.jsx";
+import { EmptyState, PrimaryButton, useEsc } from "../atoms.jsx";
 
 const { useState } = React;
 
@@ -18,6 +18,7 @@ export function MetaConnectCard({ kind, product, metaOn, onConnected }) {
   const [error, setError] = useState("");
   const [sel, setSel] = useState("");
   const [saving, setSaving] = useState(false);
+  useEsc(open && !saving ? () => setOpen(false) : null);
 
   const ads = kind === "ads";
   const title = ads ? "Conta de anúncio não conectada" : "Instagram e página não conectados";
