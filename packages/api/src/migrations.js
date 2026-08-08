@@ -1243,12 +1243,44 @@ export async function ensureKeyAccountGalante(repo) {
   return true;
 }
 
+// ── Papéis do time (Leo, 08/08) ─────────────────────────────────────────────
+// O Vitor é CS (integrator) e a Manuela é SDR — a etiqueta extra de closer que
+// os dois carregavam pintava bloco de closer nos cards da Visão geral e diluía
+// a meta de time dos closers de verdade. ONE-SHOT (flag no produto): rodou uma
+// vez, o Leo pode re-etiquetar em Ajustes → Equipe sem a migração desfazer.
+export async function migrateRolesCsSdr(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || product.rolesCsSdrV1) return false;
+  const users = await repo.list("users").catch(() => []);
+  let changed = 0;
+  for (const u of users) {
+    const roles = Array.isArray(u.roles) ? u.roles : [];
+    const name = String(u.name || "");
+    if (/manuela/i.test(name) && roles.includes("closer")) {
+      await repo.update("users", u.id, { roles: roles.filter((r) => r !== "closer") });
+      changed++;
+    }
+    if (/^vitor/i.test(name.trim()) && roles.some((r) => r === "closer" || r === "sdr")) {
+      await repo.update("users", u.id, { roles: roles.filter((r) => r !== "closer" && r !== "sdr") });
+      changed++;
+    }
+  }
+  await repo.update("products", "leverads", { rolesCsSdrV1: true });
+  return changed;
+}
+
 export async function runStartupMigrations(repo) {
   try {
     const changed = await ensureKeyAccountGalante(repo);
     if (changed) console.log("[migration] Galante marcado como conta grande (keyAccount) — fora das médias");
   } catch (err) {
     console.error("[migration] ensureKeyAccountGalante falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateRolesCsSdr(repo);
+    if (n) console.log(`[migration] papéis ajustados (Vitor = CS, Manuela = SDR): ${n} usuário(s)`);
+  } catch (err) {
+    console.error("[migration] migrateRolesCsSdr falhou:", err?.message || err);
   }
   try {
     const n = await migrateContractFillTokens(repo);
