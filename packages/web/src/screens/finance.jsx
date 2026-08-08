@@ -4,7 +4,7 @@ import { useData } from "../data.jsx";
 import { Pill } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { mpMethodLabel, MP_PAY_STATUS } from "../lib/payments.js";
-// Financeiro — aba da tela Clientes: o espelho dos pagamentos REAIS do Mercado
+// Pagamentos — aba da tela Financeiro: o espelho dos pagamentos REAIS do Mercado
 // Pago (quem pagou, quanto, como, quando), casado com os clientes. O que não
 // casou sozinho fica com o seletor de vínculo na própria linha. O dinheiro
 // entra pelo webhook + poller do servidor; aqui é leitura + vínculo manual +

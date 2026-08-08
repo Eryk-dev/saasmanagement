@@ -9,8 +9,8 @@ import { EmptyState } from "../atoms.jsx";
 // gestão aqui responde outra pergunta: "o app está vendendo, ativando e
 // segurando os casais?". Meta do mês = receita APROVADA no checkout web do mês
 // corrente vs. product.monthlyCashTarget (a mesma meta de Metas → Empresa).
-// Dados: /api/elo/overview (agregados do banco do app) + custos do mês (tela
-// Custos) pro resultado. A OverviewScreen normal continua valendo pros outros
+// Dados: /api/elo/overview (agregados do banco do app) + custos do mês (aba
+// Custos do Financeiro) pro resultado. A OverviewScreen normal continua valendo pros outros
 // produtos — o App troca pra cá quando o produto ativo é o Elo.
 
 const { useState, useEffect } = React;
@@ -186,7 +186,7 @@ function EloOverviewScreen({ product, onNav }) {
             <div style={{ marginTop: 10, paddingTop: 12, borderTop: "1px solid var(--line-faint)", display: "flex", gap: 14, flexWrap: "wrap" }}>
               <button onClick={() => onNav && onNav("eloapp")} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>Análise do App →</button>
               <button onClick={() => onNav && onNav("landingpages")} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>Landing pages →</button>
-              <button onClick={() => onNav && onNav("expenses")} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>Custos →</button>
+              <button onClick={() => onNav && onNav("expenses")} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>Financeiro →</button>
             </div>
           </div>
         </Card>

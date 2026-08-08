@@ -90,6 +90,7 @@ function MetasScreen() {
   const [overrides, setOverrides] = useS([]);   // [{ key, metric, target }]
   const [cash, setCash] = useS("");             // meta de venda do mês (caixa, R$) — product.monthlyCashTarget
   const [contratos, setContratos] = useS("");   // meta de contratos do mês (nº) — product.monthlyContractsTarget
+  const [growth, setGrowth] = useS("");         // % de crescimento ao mês — product.monthlyCashGrowthPct
   const [orig, setOrig] = useS(null);           // { roleVals, overrides, cash } snapshot
   const [err, setErr] = useS(null);
   const [meses, setMeses] = useS({});   // agenda: "AAAA-MM" -> meta daquele mês
@@ -103,9 +104,10 @@ function MetasScreen() {
     const ov = (d.userGoals || []).map((g) => ({ key: g.key, metric: g.metric, target: String(g.target) }));
     const ct = d.company?.cashTarget != null ? String(d.company.cashTarget) : "";
     const kt = d.company?.contractsTarget != null ? String(d.company.contractsTarget) : "";
+    const gr = d.company?.growthPct != null ? String(d.company.growthPct) : "";
     const ms = Object.fromEntries((d.company?.months || []).map((m) => [m.month, m.target != null ? String(m.target) : ""]));
-    setData(d); setRoleVals(rv); setOverrides(ov); setCash(ct); setContratos(kt); setMeses(ms);
-    setOrig({ roleVals: JSON.stringify(rv), overrides: JSON.stringify(ov), cash: ct, contratos: kt, meses: JSON.stringify(ms) });
+    setData(d); setRoleVals(rv); setOverrides(ov); setCash(ct); setContratos(kt); setGrowth(gr); setMeses(ms);
+    setOrig({ roleVals: JSON.stringify(rv), overrides: JSON.stringify(ov), cash: ct, contratos: kt, growth: gr, meses: JSON.stringify(ms) });
   };
 
   useE(() => {
@@ -116,7 +118,7 @@ function MetasScreen() {
     return () => { alive = false; };
   }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const dirty = orig && (JSON.stringify(roleVals) !== orig.roleVals || JSON.stringify(overrides) !== orig.overrides || cash !== orig.cash || contratos !== orig.contratos || JSON.stringify(meses) !== orig.meses);
+  const dirty = orig && (JSON.stringify(roleVals) !== orig.roleVals || JSON.stringify(overrides) !== orig.overrides || cash !== orig.cash || contratos !== orig.contratos || growth !== orig.growth || JSON.stringify(meses) !== orig.meses);
 
   // Mapa metric -> { label, unit } (pros rótulos dos overrides).
   const metricInfo = {};
@@ -172,7 +174,7 @@ function MetasScreen() {
       for (const o of JSON.parse(orig.overrides)) {
         if (!seen.has(`${o.key}:${o.metric}`)) goals.push({ scope: "user", key: o.key, metric: o.metric, target: "" });
       }
-      await api.saveMetas(product.id, goals, { cashTarget: cash, contractsTarget: contratos, months: meses });
+      await api.saveMetas(product.id, goals, { cashTarget: cash, contractsTarget: contratos, growthPct: growth, months: meses });
       applyData(await api.metas(product.id));
       setNote({ ok: true, text: "metas salvas · valem em todo campo que mostra meta" });
     } catch (e) {
@@ -182,7 +184,7 @@ function MetasScreen() {
   }
   function reset() {
     if (!orig) return;
-    setRoleVals(JSON.parse(orig.roleVals)); setOverrides(JSON.parse(orig.overrides)); setCash(orig.cash); setContratos(orig.contratos); setMeses(JSON.parse(orig.meses));
+    setRoleVals(JSON.parse(orig.roleVals)); setOverrides(JSON.parse(orig.overrides)); setCash(orig.cash); setContratos(orig.contratos); setGrowth(orig.growth); setMeses(JSON.parse(orig.meses));
   }
 
   const kicker = { fontSize: 11, fontWeight: 600, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" };
@@ -225,7 +227,7 @@ function MetasScreen() {
                 <span className="dim" style={{ fontSize: 12 }}>a meta que o negócio persegue no mês</span>
               </div>
               <div className="dim" style={{ fontSize: 12.5, marginBottom: 14 }}>
-                a faixa "Meta do mês" da Visão geral e a Análise de Pace perseguem a meta do MÊS ATUAL pelo VENDIDO (contrato cheio; cartão em 12x conta inteiro) e desdobram o que falta em ganhos, calls, contatos e leads por dia. Na virada do mês, o valor agendado do mês novo assume sozinho. A meta de contratos anda junto: vazia, segue a venda ÷ ticket médio; digitada, vence a divisão. O caixa e o dinheiro futuro ficam na aba Clientes.
+                a faixa "Meta do mês" da Visão geral e a Análise de Pace perseguem a meta do MÊS ATUAL pelo VENDIDO (contrato cheio; cartão em 12x conta inteiro) e desdobram o que falta em ganhos, calls, contatos e leads por dia. Na virada do mês, o valor do mês novo assume sozinho: o agendado, se houver, senão a regra de crescimento. A meta de contratos anda junto: vazia, segue a venda ÷ ticket médio; digitada, vence a divisão. O caixa e o dinheiro futuro ficam na aba Clientes.
               </div>
               {mesAtualInfo && (
                 <label style={{ display: "flex", alignItems: "center", gap: 10, maxWidth: 440 }}>
@@ -233,7 +235,9 @@ function MetasScreen() {
                     Meta de venda de {mesLabel(mesAtualInfo.month)}
                     <span className="dim" style={{ fontSize: 11, marginLeft: 6, fontWeight: 400 }}>mês atual</span>
                     {(meses[mesAtualInfo.month] ?? "") === "" && (
-                      <span className="dim" style={{ display: "block", fontSize: 11.5, fontWeight: 400 }}>sem valor próprio · vale a meta padrão ({money(mesAtualInfo.effective)})</span>
+                      <span className="dim" style={{ display: "block", fontSize: 11.5, fontWeight: 400 }}>
+                        sem valor próprio · {mesAtualInfo.source === "growth" ? "segue a regra de crescimento" : "vale a meta padrão"} ({money(mesAtualInfo.effective)})
+                      </span>
                     )}
                   </span>
                   <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -273,19 +277,37 @@ function MetasScreen() {
                 </div>
               </label>
 
-              {/* Agenda dos PRÓXIMOS meses (o atual virou o campo principal
-                  acima): configurar setembro hoje faz a plataforma inteira
-                  virar de meta sozinha no dia 1º. */}
+              {/* REGRA DE CRESCIMENTO no lugar de re-agendar a escada todo mês:
+                  mês sem valor cresce X% composto por cima do último agendado
+                  (180k → 270k → 405k com 50% segue 607,5k, 911k, … sozinho).
+                  Digitar um mês continua vencendo a regra. */}
               {proximosMeses.length > 0 && (
                 <div style={{ marginTop: 18, borderTop: "1px solid var(--line-1)", paddingTop: 16 }}>
                   <div style={{ fontSize: 13.5, color: "var(--fg-2)", marginBottom: 4 }}>Meses seguintes</div>
                   <div className="dim" style={{ fontSize: 12.5, marginBottom: 12 }}>
-                    agende agora e, quando o mês virar, o valor passa a valer sozinho em toda a plataforma (as metas de vaga em branco se reajustam junto). Mês em branco segue a meta padrão.
+                    com a regra de crescimento, você não precisa voltar aqui todo mês: mês sem valor próprio cresce essa porcentagem por cima do último mês agendado, pra sempre. Digitar um mês vence a regra; sem regra, mês em branco cai na meta padrão.
                   </div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 10, maxWidth: 440, marginBottom: 14 }}>
+                    <span style={{ flex: 1, fontSize: 13.5, color: "var(--fg-2)" }}>
+                      Crescimento ao mês
+                      {growth === "" && <span className="dim" style={{ display: "block", fontSize: 11.5 }}>sem regra · mês em branco segue a meta padrão</span>}
+                    </span>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <input type="number" min="0" step="1" inputMode="decimal" value={growth}
+                        onChange={(e) => setGrowth(e.target.value)}
+                        placeholder="ex.: 50"
+                        className="tnum" style={{ ...inp, width: 76, textAlign: "right" }} />
+                      <span className="mono dim" style={{ fontSize: 12, width: 26 }}>%</span>
+                    </div>
+                  </label>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 190px), 1fr))", gap: 10 }}>
                     {proximosMeses.map((m) => (
-                      <label key={m.month} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ flex: 1, fontSize: 13, color: "var(--fg-2)" }}>{mesLabel(m.month)}</span>
+                      <label key={m.month} style={{ display: "flex", alignItems: "center", gap: 8 }}
+                        title={(meses[m.month] ?? "") === "" ? `sem valor próprio: ${m.source === "growth" ? "segue a regra de crescimento" : "segue a meta padrão"} (${money(m.effective)})` : undefined}>
+                        <span style={{ flex: 1, fontSize: 13, color: "var(--fg-2)" }}>
+                          {mesLabel(m.month)}
+                          {(meses[m.month] ?? "") === "" && m.source === "growth" && <span className="dim" style={{ display: "block", fontSize: 10.5 }}>pela regra</span>}
+                        </span>
                         <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                           <span className="mono dim" style={{ fontSize: 12 }}>R$</span>
                           <input type="number" min="0" step="1" inputMode="decimal"
@@ -305,7 +327,7 @@ function MetasScreen() {
               <label style={{ display: "flex", alignItems: "center", gap: 10, maxWidth: 440, marginTop: 16, borderTop: "1px solid var(--line-1)", paddingTop: 14 }}>
                 <span style={{ flex: 1, fontSize: 12.5, color: "var(--fg-3)" }}>
                   Meta padrão
-                  <span className="dim" style={{ display: "block", fontSize: 11.5 }}>vale pra qualquer mês sem valor próprio na agenda acima</span>
+                  <span className="dim" style={{ display: "block", fontSize: 11.5 }}>vale pra mês sem valor próprio e sem regra de crescimento</span>
                 </span>
                 <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                   <span className="mono dim" style={{ fontSize: 12 }}>R$</span>

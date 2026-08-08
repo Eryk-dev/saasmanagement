@@ -173,6 +173,36 @@ test("meta por mês: o mês configurado vence o padrão, e o padrão vence o do 
   assert.deepEqual(cashTargetFor({}, "2026-07"), { target: 120000, configured: false, source: "system" });
 });
 
+test("regra de crescimento: mês sem valor cresce % composto sobre o último agendado", () => {
+  // A escada real de produção: 180k → 270k → 405k (×1,5). Com a regra em 50%,
+  // novembro em diante segue sozinho em vez de despencar pro padrão 120k.
+  const p = {
+    monthlyCashTarget: 120000, monthlyCashGrowthPct: 50,
+    monthlyCashTargets: { "2026-08": 180000, "2026-09": 270000, "2026-10": 405000 },
+  };
+  assert.deepEqual(cashTargetFor(p, "2026-10"), { target: 405000, configured: true, source: "month" }, "mês agendado vence a regra");
+  assert.deepEqual(cashTargetFor(p, "2026-11"), { target: 607500, configured: true, source: "growth", growthFrom: "2026-10", growthPct: 50 });
+  assert.equal(cashTargetFor(p, "2026-12").target, 911250, "composto: 405k × 1,5²");
+  assert.equal(cashTargetFor(p, "2027-01").target, Math.round(405000 * 1.5 ** 3), "vira o ano contando os meses certos");
+  // âncora é o ÚLTIMO agendado antes do mês, não o primeiro
+  assert.deepEqual(cashTargetFor(p, "2026-09").growthFrom, undefined, "setembro é agendado, nem passa pela regra");
+  // sem mês agendado antes, não há âncora: cai no padrão
+  assert.deepEqual(cashTargetFor(p, "2026-07"), { target: 120000, configured: true, source: "default" });
+  // sem regra configurada, comportamento antigo intacto
+  const semRegra = { ...p, monthlyCashGrowthPct: null };
+  assert.deepEqual(cashTargetFor(semRegra, "2026-11"), { target: 120000, configured: true, source: "default" });
+});
+
+test("PUT/GET: company.growthPct grava, arredonda a 1 casa e limpa", async () => {
+  const { app, repo } = await buildApp();
+  await app.inject({ method: "PUT", url: "/api/metas/leverads", payload: { goals: [], company: { growthPct: "50.44" } } });
+  assert.equal((await repo.get("products", "leverads")).monthlyCashGrowthPct, 50.4);
+  assert.equal((await app.inject({ url: "/api/metas/leverads" })).json().company.growthPct, 50.4);
+  await app.inject({ method: "PUT", url: "/api/metas/leverads", payload: { goals: [], company: { growthPct: "" } } });
+  assert.equal((await repo.get("products", "leverads")).monthlyCashGrowthPct, null);
+  assert.equal((await app.inject({ url: "/api/metas/leverads" })).json().company.growthPct, null);
+});
+
 test("agenda de meses: GET lista os próximos e o PUT grava, apaga e ignora lixo", async () => {
   const repo = makeMemRepo();
   await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [], monthlyCashTarget: 120000 });

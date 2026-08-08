@@ -59,7 +59,7 @@ const NAV = [
   { id: "mindmaps",   label: "Mapas mentais",  icon: "⌬",  group: "geral" },
   { id: "metas",      label: "Metas",          icon: "◎",  group: "geral" },
   { id: "remuneracao", label: "Remuneração",   icon: "◫",  group: "geral", adminOnly: true }, // modelos de comp por cargo (salário: só admin)
-  { id: "expenses",   label: "Custos",         icon: "◫",  group: "geral" },
+  { id: "expenses",   label: "Financeiro",     icon: "◫",  group: "geral" },
   { id: "settings",   label: "Configurações",  icon: "✦",  group: "geral" },
 ];
 
