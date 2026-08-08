@@ -210,7 +210,7 @@ test("agenda de meses: GET lista os próximos e o PUT grava, apaga e ignora lixo
   registerMetasRoutes(app, repo);
 
   const antes = (await app.inject({ url: "/api/metas/leverads" })).json();
-  assert.equal(antes.company.months.length, 6, "mês corrente + 5");
+  assert.equal(antes.company.months.length, 7, "mês corrente + 6 (a janela do botão da Agenda)");
   assert.equal(antes.company.months[0].current, true);
   assert.equal(antes.company.months[0].target, null, "sem valor próprio ainda");
   assert.equal(antes.company.months[0].effective, 120000, "mas segue o padrão");

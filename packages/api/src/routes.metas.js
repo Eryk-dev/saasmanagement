@@ -118,8 +118,9 @@ const ROLES = new Set(META_CATALOG.map((r) => r.role));
 // várias metas no mesmo tick, e torna o upsert idempotente por construção.
 const goalId = (saas, scope, key, metric) => `goal_${saas}_${scope}_${key}_${metric}`;
 
-// Quantos meses à frente a tela deixa configurar (mês corrente + 5).
-const MONTHS_AHEAD = 6;
+// Quantos meses a tela enxerga: o corrente + 6 à frente (o botão "definir os
+// 6 meses" da Agenda preenche exatamente essa janela).
+const MONTHS_AHEAD = 7;
 
 // Desdobramento da meta do MÊS CHEIO pela cadeia do pace. O `plan` do pace
 // persegue o que FALTA (gap ÷ dias restantes) porque serve pra tocar o dia; a
