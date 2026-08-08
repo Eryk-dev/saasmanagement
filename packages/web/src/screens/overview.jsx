@@ -9,7 +9,6 @@ import { currentUser, isAdminUser, canSeeScreen } from "../lib/users.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { buildPeople, roleLabel, scaledGoal } from "../components/team-cards.jsx";
 import { usePeriod, businessDaysBetween } from "../components/period-picker.jsx";
-import { IcpCard } from "../components/icp-card.jsx";
 // Visão geral — o modelo aprovado pelo Leo em 08/08/2026 (protótipo v9):
 //   Meta do mês (réguas de receita contratada e de contratos, com pace)
 //   → Desempenho do time (rank + foto + medidores receita/contratos + submetas)
@@ -168,11 +167,13 @@ function Donut({ label, value, target, isMoney, lvl }) {
 }
 
 // Linha de submeta (label à esquerda, atual / meta à direita, cor pela escala).
+// nowrap nos dois lados: valor quebrado no meio ("22," numa linha, "/33" na
+// outra) era o bug visual da 1ª versão — a coluna encolhia demais.
 function RateRow({ label, valueText, metaText, lvl, title }) {
   return (
-    <div title={title} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, padding: "5px 0", borderBottom: "1px solid var(--line-faint)", fontSize: 12 }}>
-      <span style={{ color: "var(--fg-3)" }}>{label}</span>
-      <span className="tnum">
+    <div title={title} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, padding: "5px 0", borderBottom: "1px solid var(--line-faint)", fontSize: 12, minWidth: 0 }}>
+      <span style={{ color: "var(--fg-3)", whiteSpace: "nowrap" }}>{label}</span>
+      <span className="tnum" style={{ whiteSpace: "nowrap" }}>
         <b style={{ fontWeight: 650, color: lvlColor(lvl) }}>{valueText}</b>
         {metaText != null && <span style={{ color: "var(--fg-4)" }}> / {metaText}</span>}
       </span>
@@ -249,16 +250,19 @@ function PersonCard({ p, rank, bizDays, elapsedFrac, onPerson }) {
         <span style={{ fontSize: 14, fontWeight: 650 }}>{p.name}</span>
         <span style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--fg-4)" }}>{roleLabel(p)}</span>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: leg ? "auto 1fr" : "1fr", gap: 18, alignItems: "center", flex: 1 }}>
+      {/* flex + wrap: com espaço, submetas ficam à direita dos medidores; sem
+          espaço elas DESCEM inteiras pra baixo (a coluna nunca é espremida a
+          ponto de quebrar valor no meio — o bug da 1ª versão). */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "14px 22px", alignItems: "flex-start", flex: 1 }}>
         {leg && (
-          <div style={{ display: "flex", gap: 16 }}>
+          <div style={{ display: "flex", gap: 16, flex: "0 0 auto" }}>
             <Donut label="Receita" value={leg.revenue} target={revTarget} isMoney
               lvl={levelOf(leg.revenue, revTarget, elapsedFrac)} />
             <Donut label="Contratos" value={leg.won} target={wonTarget}
               lvl={levelOf(leg.won, wonTarget, elapsedFrac)} />
           </div>
         )}
-        <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <div style={{ flex: "1 1 190px", minWidth: 190, display: "flex", flexDirection: "column" }}>
           {rows.map((r) => <RateRow key={r.label} {...r} />)}
           {!rows.length && <span style={{ fontSize: 12, color: "var(--fg-4)" }}>sem metas configuradas ainda</span>}
         </div>
@@ -287,7 +291,7 @@ function TeamBoard({ score, win, onPerson }) {
         {score == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
         {score != null && !people.length && <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Sem atividade nesse período.</div>}
         {people.length > 0 && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, alignItems: "stretch" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 12, alignItems: "stretch" }}>
             {people.map(({ p, pct }, i) => (
               <PersonCard key={p.user} p={p} rank={pct >= 0 ? i + 1 : null} bizDays={win.businessDays} elapsedFrac={elapsedFrac} onPerson={onPerson} />
             ))}
@@ -612,9 +616,6 @@ function OverviewScreen({ onNav }) {
               )}
             </div>
           </Card>
-          {/* A régua de quem a gente caça fica na frente de TODO MUNDO, não só
-              da gestão: é o SDR/closer que decide em quem gastar o dia. */}
-          <IcpCard />
         </div>
       </div>
     );
@@ -695,8 +696,6 @@ function OverviewScreen({ onNav }) {
         </div>
 
         <AtencaoCard items={atencao} />
-
-        <IcpCard />
       </div>
     </div>
   );
