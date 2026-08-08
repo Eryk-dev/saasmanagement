@@ -16,6 +16,8 @@ import { usePeriod, businessDaysBetween } from "../components/period-picker.jsx"
 //   → Atenção agora (avisos com botão de ação).
 // Escala de cores única: vermelho (atrás do caminho) → teal (no pace) → verde
 // (meta batida) → dourado (120%+, alinhado às bandas da remuneração).
+// Meta batida REARMA a régua: 100% → persegue 120% → 140%… de 20 em 20, sem
+// teto (super metas, o mesmo desenho da remuneração acima de 140%).
 // Conta grande (customer.keyAccount, ex.: Galante) fica fora das médias; o
 // dinheiro segue no caixa/vendido. Explicações moram em tooltips (hover).
 
@@ -45,6 +47,19 @@ export function levelOf(value, target, expectedFrac = 1) {
 }
 const lvlColor = (lvl, fallback = "var(--fg-1)") => (lvl ? LVL_COLOR[lvl] : fallback);
 
+// ── Super metas: de 20 em 20, sem teto ───────────────────────────────────────
+// Bateu 100%, a régua rearma pro próximo degrau (120%, depois 140%, 160%…) e o
+// "hoje" volta a cobrar ritmo contra ele — espelha a remuneração, que acima de
+// 140% segue pagando por degrau de 20%. pct = quanto do degrau atual já foi.
+export function ladderOf(value, target, expectedFrac = 1) {
+  if (!(target > 0) || value == null) return null;
+  const ratio = value / target;
+  if (ratio < 1) return { ratio, tier: 1, pct: ratio, lvl: levelOf(value, target, expectedFrac), chip: null };
+  const tier = 1.2 + 0.2 * Math.floor((ratio - 1) / 0.2 + 1e-9);
+  const lvl = ratio >= 1.2 ? "gold" : "green";
+  return { ratio, tier, pct: ratio / tier, lvl, chip: `${LVL_LABEL[lvl]} · rumo a ${Math.round(tier * 100)}%` };
+}
+
 function LvlChip({ lvl, label }) {
   if (!lvl) return null;
   if (lvl === "gold") return <span className="super-chip">✦ {label || "super meta"}</span>;
@@ -56,13 +71,19 @@ function LvlChip({ lvl, label }) {
   );
 }
 
-// Fração do período que já passou, em dias ÚTEIS (o pace da janela do topo).
-function elapsedFracOf(win) {
+// Dias ÚTEIS da janela que já passaram — e a fração deles (o pace do topo).
+function elapsedBizDaysOf(win) {
   const today = bizDay(new Date());
   if (today < win.since) return 0;
   const end = today < win.until ? today : win.until;
-  return Math.min(1, businessDaysBetween(win.since, end) / Math.max(1, win.businessDays));
+  return businessDaysBetween(win.since, end);
 }
+function elapsedFracOf(win) {
+  return Math.min(1, elapsedBizDaysOf(win) / Math.max(1, win.businessDays));
+}
+// Fração do MÊS que a janela já cobriu (base 21,75 úteis) — o pace de quem é
+// medido contra a meta CHEIA do mês (as duas pernas da remuneração).
+const monthFracOf = (win) => Math.min(1, elapsedBizDaysOf(win) / 21.75);
 
 // ── Régua (barra de progresso com pace) ──────────────────────────────────────
 // Exportada: a tela Metas usa a MESMA régua pra mostrar o efeito da meta que
@@ -141,8 +162,10 @@ function MetaMesCard({ pace, goal, onNav, links = true }) {
   const { kind, label } = goalLabelOf(goal);
   const title = kind === "mês" ? "Meta do mês" : kind === "semana" ? "Meta da semana" : kind === "dia" ? "Meta do dia" : "Meta do período";
   const endedLabel = (lvl) => (goal.ended ? ({ red: "não bateu", ok: "não bateu", green: "meta batida", gold: "super meta" })[lvl] : null);
-  const sLvl = levelOf(s.sold, s.target, s.expectedProgress);
-  const cLvl = c.target != null ? levelOf(c.sold, c.target, c.expectedProgress) : null;
+  // Super metas: bateu 100%, a régua rearma pro próximo degrau (120, 140…) e o
+  // "hoje" passa a cobrar o ritmo do degrau novo.
+  const sLad = ladderOf(s.sold, s.target, s.expectedProgress);
+  const cLad = c.target != null ? ladderOf(c.sold, c.target, c.expectedProgress) : null;
   // No mês CORRENTE o pace mensal completo enriquece o tooltip (ritmo, precisa
   // por dia, projeção); janela histórica fica com a explicação da fatia.
   const curMes = kind === "mês" && goal.current && pace?.sale;
@@ -167,7 +190,7 @@ function MetaMesCard({ pace, goal, onNav, links = true }) {
               label="Régua de receita"
               title={saleTitle}
               valueText={<><strong className="tnum" style={{ color: "var(--fg-1)", fontWeight: 650 }}>{money(s.sold)}</strong> / {money(s.target)} · {Math.round((s.progress || 0) * 100)}%</>}
-              pct={s.progress} expectedPct={goal.ended ? null : s.expectedProgress} lvl={sLvl} chipLabel={endedLabel(sLvl)}
+              pct={sLad ? sLad.pct : s.progress} expectedPct={goal.ended ? null : s.expectedProgress} lvl={sLad?.lvl} chipLabel={goal.ended ? endedLabel(sLad?.lvl) : sLad?.chip}
             />
           ) : (
             <div style={{ fontSize: 12.5, color: "var(--fg-4)", alignSelf: "center" }}>Sem meta de venda pra esse período.</div>
@@ -177,7 +200,7 @@ function MetaMesCard({ pace, goal, onNav, links = true }) {
               label="Régua de contratos"
               title={contractsTitle}
               valueText={<><strong className="tnum" style={{ color: "var(--fg-1)", fontWeight: 650 }}>{int(c.sold)}</strong> / {fmtContracts(c.target)} · {Math.round((c.progress || 0) * 100)}%</>}
-              pct={c.progress} expectedPct={goal.ended ? null : c.expectedProgress} lvl={cLvl} chipLabel={endedLabel(cLvl)}
+              pct={cLad ? cLad.pct : c.progress} expectedPct={goal.ended ? null : c.expectedProgress} lvl={cLad?.lvl} chipLabel={goal.ended ? endedLabel(cLad?.lvl) : cLad?.chip}
             />
           ) : (
             <div style={{ fontSize: 12.5, color: "var(--fg-4)", alignSelf: "center" }}>
@@ -253,35 +276,53 @@ function personRows(p, bizDays, elapsedFrac) {
 // Uma linha por pessoa: identidade | régua de receita | régua de contratos |
 // submetas do papel em linha única. As barras alinhadas em coluna deixam a
 // comparação entre as pessoas imediata; ✦ = super meta (120%+).
-function MiniRegua({ value, target, isMoney, lvl }) {
-  const pct = target > 0 && value != null ? value / target : null;
+// As duas pernas mostram a meta CHEIA do mês (Leo, 08/08: "Manuela
+// R$19,5k/90k"), com o risquinho do pace e a cor dizendo se está no ritmo;
+// bateu 100%, a barra rearma pro degrau seguinte (120, 140… de 20 em 20).
+function MiniRegua({ value, target, isMoney, expectedFrac }) {
+  const lad = ladderOf(value, target, expectedFrac);
+  const ratio = lad?.ratio ?? null;
+  const fmtV = (v) => (isMoney ? `R$ ${compactMoney(v)}` : int(Math.round(v)));
+  const title = lad == null ? undefined
+    : lad.tier > 1
+      ? `Meta do mês batida (${Math.round(ratio * 100)}%) · a régua agora persegue ${Math.round(lad.tier * 100)}% = ${fmtV(target * lad.tier)}`
+      : `Meta do mês: ${fmtV(target)} · pace: deveria estar em ${fmtV(target * Math.min(1, expectedFrac ?? 1))} hoje`;
+  const exp = lad != null && expectedFrac > 0 && expectedFrac < 1 ? Math.round(expectedFrac * 100) : null;
   return (
-    <div style={{ minWidth: 0 }}>
+    <div style={{ minWidth: 0, cursor: title ? "help" : undefined }} title={title}>
       <div className="tnum" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, fontSize: 11.5, marginBottom: 5 }}>
         <span style={{ whiteSpace: "nowrap" }}>
-          <b style={{ fontWeight: 650 }}>{value == null ? "—" : isMoney ? `R$ ${compactMoney(value)}` : int(value)}</b>
+          <b style={{ fontWeight: 650 }}>{value == null ? "—" : fmtV(value)}</b>
           {target > 0 && <span style={{ color: "var(--fg-4)" }}> / {isMoney ? compactMoney(target) : int(target)}</span>}
         </span>
-        <span style={{ fontWeight: 700, color: lvlColor(lvl, "var(--fg-4)"), whiteSpace: "nowrap" }}>
-          {pct == null ? "sem meta" : `${Math.round(pct * 100)}%${lvl === "gold" ? " ✦" : ""}`}
+        <span style={{ fontWeight: 700, color: lvlColor(lad?.lvl, "var(--fg-4)"), whiteSpace: "nowrap" }}>
+          {ratio == null ? "sem meta" : `${Math.round(ratio * 100)}%${lad.lvl === "gold" ? " ✦" : ""}${lad.tier > 1 ? ` · rumo a ${Math.round(lad.tier * 100)}%` : ""}`}
         </span>
       </div>
       <div style={{ position: "relative", height: 6, borderRadius: 999, background: "var(--bg-2)" }}>
-        {pct != null && (
-          <span className={lvl === "gold" ? "super-fill" : undefined}
-            style={{ position: "absolute", top: 0, bottom: 0, left: 0, minWidth: 4, borderRadius: 999, width: `${Math.min(100, Math.round(pct * 100))}%`, background: lvlColor(lvl, "var(--accent)") }} />
+        {lad != null && (
+          <span className={lad.lvl === "gold" ? "super-fill" : undefined}
+            style={{ position: "absolute", top: 0, bottom: 0, left: 0, minWidth: 4, borderRadius: 999, width: `${Math.min(100, Math.round(lad.pct * 100))}%`, background: lvlColor(lad.lvl, "var(--accent)") }} />
+        )}
+        {exp != null && (
+          <span title="pace: onde a meta deveria estar hoje"
+            style={{ position: "absolute", top: -2, bottom: -2, left: `${exp}%`, width: 2, borderRadius: 1, background: "var(--fg-3)" }} />
         )}
       </div>
     </div>
   );
 }
 
-function PersonRow({ p, rank, bizDays, elapsedFrac, onPerson }) {
+// Meta CHEIA do mês (as pernas da remuneração são mensais; vaga com meta
+// semanal vira mês pela base 21,75/5) — a linha não reescala pra janela.
+const monthGoal = (g) => (g?.target > 0 ? Math.round(g.period === "week" ? g.target * (21.75 / 5) : g.target) : null);
+
+function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson }) {
   // As duas pernas do plano de remuneração (receita + contratos) — closer e SDR
   // têm meta própria pelo nível (comp_plans); CS/mídia mostram só as submetas.
   const leg = p.closer || p.sdr || null;
-  const revTarget = leg ? scaledGoal(leg.goals?.revenue, bizDays) : null;
-  const wonTarget = leg ? scaledGoal(leg.goals?.won, bizDays) : null;
+  const revTarget = leg ? monthGoal(leg.goals?.revenue) : null;
+  const wonTarget = leg ? monthGoal(leg.goals?.won) : null;
   const rows = personRows(p, bizDays, elapsedFrac);
   const semPerna = <span style={{ fontSize: 11.5, color: "var(--fg-4)" }}>—</span>;
   return (
@@ -294,8 +335,8 @@ function PersonRow({ p, rank, bizDays, elapsedFrac, onPerson }) {
         <span style={{ fontSize: 13.5, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
         <span className="kicker" style={{ whiteSpace: "nowrap" }}>{roleLabel(p)}</span>
       </div>
-      {leg ? <MiniRegua value={leg.revenue} target={revTarget} isMoney lvl={levelOf(leg.revenue, revTarget, elapsedFrac)} /> : semPerna}
-      {leg ? <MiniRegua value={leg.won} target={wonTarget} lvl={levelOf(leg.won, wonTarget, elapsedFrac)} /> : semPerna}
+      {leg ? <MiniRegua value={leg.revenue} target={revTarget} isMoney expectedFrac={monthFrac} /> : semPerna}
+      {leg ? <MiniRegua value={leg.won} target={wonTarget} expectedFrac={monthFrac} /> : semPerna}
       <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: 11.5, minWidth: 0, alignItems: "baseline" }}>
         {rows.map((r) => (
           <span key={r.label} title={r.title} className="tnum" style={{ whiteSpace: "nowrap", color: "var(--fg-3)" }}>
@@ -330,6 +371,7 @@ function displayPerson(p) {
 // ── Desempenho do time (ranqueado por % da meta) ─────────────────────────────
 function TeamBoard({ score, win, onPerson }) {
   const elapsedFrac = elapsedFracOf(win);
+  const monthFrac = monthFracOf(win);
   const people = useMemo(() => {
     const list = buildPeople(score).map(displayPerson).filter(Boolean);
     const pctOf = (p) => {
@@ -342,7 +384,7 @@ function TeamBoard({ score, win, onPerson }) {
     return list.map((p) => ({ p, pct: pctOf(p) })).sort((a, b) => b.pct - a.pct);
   }, [score, win.businessDays]);
   return (
-    <Card title="Desempenho do time" hint="ranqueado por % da meta · clique num nome pra abrir o pipeline">
+    <Card title="Desempenho do time" hint="ranqueado por % da meta · réguas = meta do mês, o risquinho é o pace · clique num nome pra abrir o pipeline">
       <div style={{ padding: "8px var(--inset-x) 20px" }}>
         {score == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
         {score != null && !people.length && <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Sem atividade nesse período.</div>}
@@ -355,7 +397,7 @@ function TeamBoard({ score, win, onPerson }) {
               <span className="kicker">Submetas do papel</span>
             </div>
             {people.map(({ p, pct }, i) => (
-              <PersonRow key={p.user} p={p} rank={pct >= 0 ? i + 1 : null} bizDays={win.businessDays} elapsedFrac={elapsedFrac} onPerson={onPerson} />
+              <PersonRow key={p.user} p={p} rank={pct >= 0 ? i + 1 : null} bizDays={win.businessDays} elapsedFrac={elapsedFrac} monthFrac={monthFrac} onPerson={onPerson} />
             ))}
           </div>
         )}
@@ -685,7 +727,7 @@ function OverviewScreen({ onNav }) {
               )}
               {minha && (
                 <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", overflow: "hidden", background: "var(--bg-1)" }}>
-                  <PersonRow p={minha} rank={null} bizDays={win.businessDays} elapsedFrac={elapsedFracOf(win)}
+                  <PersonRow p={minha} rank={null} bizDays={win.businessDays} elapsedFrac={elapsedFracOf(win)} monthFrac={monthFracOf(win)}
                     onPerson={canSeeScreen("pipeline") ? openPerson : null} />
                 </div>
               )}
