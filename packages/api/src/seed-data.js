@@ -37,7 +37,9 @@ export const COLLECTIONS = {
   user_assets: [], // foto de perfil (base64, 1 por usuário, servida em /public/users/:id)
   ad_insights: [],
   expenses: [],
-  payables: [], // contas a pagar do Financeiro (modelo Conta Azul): competência, vencimento, situação, favorecido colaborador/fornecedor; recorrente materializa instância por mês (routes.fin.js)
+  payables: [],
+  fin_rules: [],    // conciliação com aprendizado: pagador (doc/e-mail/nome) → ação (vincular cliente / desconsiderar) — aplicadas sozinhas a cada leitura do Financeiro (routes.fin.js)
+  mp_movements: [], // SAÍDAS da conta Mercado Pago (saques/transferências) importadas do settlement report CSV — conciliadas com contas a pagar por valor+data (routes.fin.js) // contas a pagar do Financeiro (modelo Conta Azul): competência, vencimento, situação, favorecido colaborador/fornecedor; recorrente materializa instância por mês (routes.fin.js)
   tasks: [],
   task_boards: [],
   activities: [],

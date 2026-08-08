@@ -320,6 +320,8 @@ export const api = {
   expensesSummary: (saas, month) => req("GET", `/api/expenses/summary/${saas}${month ? `?month=${month}` : ""}`),
   // Financeiro completo: a leitura do mês (contas a pagar + receber, fluxo, DRE, conciliação).
   fin: (saas, month) => req("GET", `/api/fin/${saas}${month ? `?month=${month}` : ""}`),
+  // Importa as SAÍDAS da conta MP (settlement report) pra conciliação.
+  finMpOutSync: (saas) => req("POST", `/api/fin/${saas}/mp-out/sync`, {}),
   // Mídia social: métricas do perfil, histórico e publicação orgânica (IG/FB).
   socialSummary: (saas, days) => req("GET", `/api/social/summary?saas=${encodeURIComponent(saas)}${days ? `&days=${days}` : ""}`),
   // Só a contagem líquida de novos seguidores (~24h) + o @ do perfil, pro aviso

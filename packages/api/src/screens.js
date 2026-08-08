@@ -60,6 +60,8 @@ const ROUTE_SCREENS = [
   ["/api/mp_payments", ["expenses"]],    // CRUD genérico do espelho (mesma tela)
   ["/api/fin/", ["expenses"]],           // financeiro completo: leitura do mês (contas a pagar, fluxo, DRE, conciliação)
   ["/api/payables", ["expenses"]],       // CRUD genérico das contas a pagar
+  ["/api/fin_rules", ["expenses"]],      // regras de conciliação aprendidas
+  ["/api/mp_movements", ["expenses"]],   // saídas da conta MP (settlement report)
   ["/api/plans", ["customers"]],
   ["/api/nps", ["customers"]],
   ["/api/billing/", ["customers"]],
