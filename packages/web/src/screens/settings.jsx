@@ -799,51 +799,11 @@ function IntegrationsSettings({ s }) {
   // pelo número de outro — o inbox avisa em vez de sair pelo número errado.
   const waOn = !!window.SEED?.CONFIG?.whatsapp?.configured;
   const [waPhoneId, setWaPhoneId] = useStS(s.waPhoneId || "");
-  // Fluxo de permissão de ligação: 1º contato de um lead novo no inbox responde
-  // sozinho pedindo a permissão NATIVA de chamada; a resposta do lead salta
-  // como pop-up pro SDR. DUAS saudações pelo relógio do time (seg a sex, no
-  // horário configurado): dentro pede pra ligar agora; fora avisa quando o
-  // time volta ({volta}) e pede a autorização pra esse retorno. Exige "Allow
-  // voice calls" ligado no número (WhatsApp Manager → Call settings).
-  const [cfOn, setCfOn] = useStS(!!s.waCallFlow?.enabled);
-  const [cfGreeting, setCfGreeting] = useStS(s.waCallFlow?.greeting || "");
-  const [cfAfter, setCfAfter] = useStS(s.waCallFlow?.afterHours || "");
-  const [cfStart, setCfStart] = useStS(s.waCallFlow?.hourStart ?? 8);
-  const [cfEnd, setCfEnd] = useStS(s.waCallFlow?.hourEnd ?? 18);
-  // Painel de variáveis das saudações: clique insere no campo que estava em
-  // edição, na posição do cursor (o textarea guarda a seleção mesmo no blur).
-  const [cfVars, setCfVars] = useStS(false);
-  const cfGreetRef = React.useRef(null);
-  const cfAfterRef = React.useRef(null);
-  const cfLastField = React.useRef("greeting");
-  const CF_VARS = [
-    { t: "{nome}", d: "primeiro nome do lead (some se não tiver)" },
-    { t: "{empresa}", d: "empresa do lead (some se não tiver)" },
-    { t: "{produto}", d: `nome do produto (${s.name})` },
-    { t: "{volta}", d: "quando o time volta: \"hoje às 8h\" / \"amanhã às 8h\" / \"segunda às 8h\" (pro texto de fora do horário)" },
-  ];
-  function cfInsertVar(tok) {
-    const after = cfLastField.current === "after";
-    const el = (after ? cfAfterRef : cfGreetRef).current;
-    const val = after ? cfAfter : cfGreeting;
-    const set = after ? setCfAfter : setCfGreeting;
-    const start = el?.selectionStart ?? val.length;
-    const end = el?.selectionEnd ?? val.length;
-    set(val.slice(0, start) + tok + val.slice(end));
-    requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(start + tok.length, start + tok.length); });
-  }
+  // O fluxo de ligação do 1º contato (saudações, horário do time) MUDOU de
+  // casa: agora é configurado em Inbox → Automações, junto das outras
+  // automações do WhatsApp. Aqui fica só o número do produto.
   async function saveWa() {
-    const hour = (v, fb) => { const n = Number(v); return Number.isFinite(n) && n >= 0 && n < 24 ? n : fb; };
-    await api.update("products", s.id, {
-      waPhoneId: waPhoneId.replace(/\D/g, ""),
-      waCallFlow: {
-        enabled: !!cfOn,
-        greeting: cfGreeting.trim(),
-        afterHours: cfAfter.trim(),
-        hourStart: hour(cfStart, 8),
-        hourEnd: hour(cfEnd, 18),
-      },
-    });
+    await api.update("products", s.id, { waPhoneId: waPhoneId.replace(/\D/g, "") });
     await refresh();
   }
 
@@ -952,57 +912,9 @@ function IntegrationsSettings({ s }) {
                 className="kicker" style={{ whiteSpace: "nowrap" }}>número de {s.name}</span>
               <input value={waPhoneId} placeholder="712249848640591" onChange={(e) => setWaPhoneId(e.target.value)} className="mono" style={{ ...inputStyle, width: 200, fontFamily: "var(--mono)" }} />
             </div>
-            {/* Fluxo de ligação: pedido automático de permissão no 1º contato. */}
-            <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px dashed var(--line-2)" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                <input type="checkbox" checked={cfOn} onChange={(e) => setCfOn(e.target.checked)} />
-                Fluxo de ligação no 1º contato
-              </label>
-              <div className="mono dim" style={{ fontSize: 11, marginTop: 4, lineHeight: 1.5 }}>
-                a primeira mensagem de um lead novo (ex.: vindo do formulário) recebe sozinha o pedido NATIVO de permissão de ligação · a resposta do lead salta como pop-up pro SDR · precisa do "Allow voice calls" ligado no número (WhatsApp Manager → Call settings)
-              </div>
-              {cfOn && (
-                <>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
-                    <span className="kicker">horário do time · seg a sex, das</span>
-                    <input type="number" min={0} max={23} value={cfStart} onChange={(e) => setCfStart(e.target.value)} className="mono" style={{ ...inputStyle, width: 58, fontFamily: "var(--mono)" }} />
-                    <span className="kicker">às</span>
-                    <input type="number" min={1} max={24} value={cfEnd} onChange={(e) => setCfEnd(e.target.value)} className="mono" style={{ ...inputStyle, width: 58, fontFamily: "var(--mono)" }} />
-                    <span className="mono dim" style={{ fontSize: 10 }}>fim de semana conta como fora do horário</span>
-                  </div>
-                  <div className="kicker" style={{ marginTop: 10 }}>dentro do horário (pede pra ligar agora)</div>
-                  <textarea ref={cfGreetRef} value={cfGreeting} onChange={(e) => setCfGreeting(e.target.value)} rows={2}
-                    onFocus={() => { cfLastField.current = "greeting"; }}
-                    placeholder={'Olá {nome}! Recebi seu formulário aqui. Posso te ligar pra uma breve conversa sobre a plataforma?'}
-                    style={{ ...inputStyle, width: "100%", height: "auto", minHeight: 52, marginTop: 6, padding: "8px 12px", fontSize: 12.5, lineHeight: 1.45, resize: "vertical", fontFamily: "inherit" }} />
-                  <div className="kicker" style={{ marginTop: 10 }}>fora do horário (avisa quando volta e já pede a autorização)</div>
-                  <textarea ref={cfAfterRef} value={cfAfter} onChange={(e) => setCfAfter(e.target.value)} rows={2}
-                    onFocus={() => { cfLastField.current = "after"; }}
-                    placeholder={'Olá {nome}! Recebi seu formulário aqui. Nosso time está fora do horário agora, mas volta {volta}. Posso te ligar quando voltarmos pra falar sobre a plataforma? Já deixa a autorização aqui embaixo.'}
-                    style={{ ...inputStyle, width: "100%", height: "auto", minHeight: 52, marginTop: 6, padding: "8px 12px", fontSize: 12.5, lineHeight: 1.45, resize: "vertical", fontFamily: "inherit" }} />
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                    <button onClick={() => setCfVars((v) => !v)} className="mono"
-                      style={{ height: 24, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-2)", background: cfVars ? "var(--accent-soft)" : "var(--bg-1)", color: cfVars ? "var(--accent)" : "var(--fg-3)", fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}>
-                      {"{ }"} variáveis
-                    </button>
-                    <span className="mono dim" style={{ fontSize: 10 }}>texto vazio usa o padrão</span>
-                  </div>
-                  {cfVars && (
-                    <div style={{ marginTop: 8, padding: "10px 12px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-2)", display: "flex", flexDirection: "column", gap: 6 }}>
-                      {CF_VARS.map((v) => (
-                        <div key={v.t} style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-                          <button onClick={() => cfInsertVar(v.t)} className="mono" title="clique pra inserir no texto, na posição do cursor"
-                            style={{ flexShrink: 0, padding: "2px 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--accent)", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
-                            {v.t}
-                          </button>
-                          <span style={{ fontSize: 11.5, color: "var(--fg-2)", lineHeight: 1.45 }}>{v.d}</span>
-                        </div>
-                      ))}
-                      <span className="mono dim" style={{ fontSize: 10, marginTop: 2 }}>clique numa variável pra inserir no campo que você estava editando</span>
-                    </div>
-                  )}
-                </>
-              )}
+            {/* O fluxo de ligação do 1º contato mudou de casa: Inbox → Automações. */}
+            <div className="mono dim" style={{ fontSize: 11, marginTop: 10 }}>
+              o fluxo de ligação do 1º contato (saudações e horário do time) agora é configurado em <b>Inbox → Automações</b>, junto das regras e fluxos do WhatsApp
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
               <CardSaveButton onSave={saveWa} />

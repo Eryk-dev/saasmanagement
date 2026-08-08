@@ -1,6 +1,6 @@
 import React from "react";
 import { Card } from "./viz.jsx";
-import { PrimaryButton } from "../atoms.jsx";
+import { PrimaryButton, useEsc } from "../atoms.jsx";
 
 // Insights compartilhados (Publicidade e Forms): sugestões por REGRA, cada uma
 // com o porquê nos números e um ✕ pra dispensar. A dispensa vive no localStorage
@@ -72,6 +72,7 @@ function ApplyInsightModal({ item, onCancel, onApplied }) {
   const [fields, setFields] = React.useState(null); // [{ key, label, value, multiline }]
   const [error, setError] = React.useState("");
   const busy = phase === "running" || phase === "preparing";
+  useEsc(busy ? null : (phase === "done" ? onApplied : onCancel));
 
   async function prepare() {
     setPhase("preparing");

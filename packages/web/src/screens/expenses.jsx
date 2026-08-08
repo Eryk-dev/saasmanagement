@@ -5,12 +5,15 @@ import { PageHead, StatTile, Card, Pill, FilterTab, Segmented } from "../compone
 import { useActiveSaas } from "../lib/workspace.js";
 import { EmptyState } from "../atoms.jsx";
 import { FinanceTab } from "./finance.jsx";
-// Financeiro — o dinheiro do produto em duas abas. Pagamentos: o espelho dos
-// pagamentos REAIS do Mercado Pago (quem pagou, quanto, como), casado com
-// clientes e faturas (finance.jsx). Custos: o ledger mensal — Publicidade
-// (ad_insights) e IA (APIs dos provedores, em R$) entram AUTOMÁTICOS; o resto
-// (fixos, ferramentas, pessoal) é lançado à mão. O total dos custos alimenta o
-// "Resultado do mês" da Visão geral.
+import { ResumoTab, ConciliacaoTab, PagarTab, FolhaTab } from "./finance-hub.jsx";
+// Financeiro — o dinheiro do produto num lugar só (modelo Conta Azul):
+//   Resumo (fluxo de caixa + DRE) · Conciliação (espelho MP sem dono) ·
+//   A pagar (contas com vencimento e recorrência) · Folha (por colaborador)
+//   moram em finance-hub.jsx. Pagamentos: o espelho dos pagamentos REAIS do
+//   Mercado Pago casado com clientes e faturas (finance.jsx). Custos: regras e
+//   automáticos por competência — Publicidade (ad_insights) e IA entram
+//   sozinhos, percentuais calculados no servidor; o total alimenta o
+//   "Resultado do mês" da Visão geral.
 
 const { useState, useEffect } = React;
 
@@ -29,7 +32,7 @@ const CAT_LABEL = Object.fromEntries(CATEGORIES);
 // (faturas pagas · imposto por regime de caixa).
 const PCT_BASES = [
   { id: "won", option: "% dos ganhos do mês", pill: "dos ganhos", title: "sobre os ganhos do mês no pipeline", key: "wonBase" },
-  { id: "cartao12x", option: "% dos ganhos no cartão 12x", pill: "do cartão 12x", title: "sobre os ganhos do mês fechados no cartão de crédito em 12x", key: "cardBase" },
+  { id: "cartao12x", option: "% dos recebidos no cartão", pill: "do cartão", title: "sobre o dinheiro de cartão de crédito que entrou no mês (espelho do Mercado Pago). Com antecipação D+0 a taxa incide inteira no mês em que o dinheiro cai; contrato marcado como 12x que ainda não passou no cartão não gera taxa.", key: "cardBase" },
   { id: "received", option: "% dos recebidos no mês", pill: "dos recebidos", title: "sobre os recebidos do mês (faturas pagas)", key: "receivedBase" },
 ];
 const pctBaseInfo = (id) => PCT_BASES.find((b) => b.id === id) || PCT_BASES[0];
@@ -50,7 +53,7 @@ const brl = (n) => `R$ ${(Number(n) || 0).toFixed(2).replace(".", ",")}`;
 
 function ExpensesScreen() {
   const [product] = useActiveSaas();
-  const [tab, setTabState] = useState(() => { try { return localStorage.getItem("cockpit_financeiro_tab") || "pagamentos"; } catch { return "pagamentos"; } }); // persiste
+  const [tab, setTabState] = useState(() => { try { return localStorage.getItem("cockpit_financeiro_tab") || "resumo"; } catch { return "resumo"; } }); // persiste
   const setTab = (t) => { setTabState(t); try { localStorage.setItem("cockpit_financeiro_tab", t); } catch { /* ignore */ } };
   const [month, setMonth] = useState(monthKey(new Date()));
 
@@ -61,19 +64,35 @@ function ExpensesScreen() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Financeiro"
-        sub={tab === "pagamentos"
-          ? "pagamentos da conta Mercado Pago, casados com clientes e faturas"
-          : `${monthLabel(month)} · o total alimenta o “Resultado do mês” da Visão geral`}>
-        <Segmented value={tab} onChange={setTab} options={[{ value: "pagamentos", label: "Pagamentos" }, { value: "custos", label: "Custos" }]} />
-        {tab === "custos" && (
+        sub={{
+          resumo: `${monthLabel(month)} · a foto do mês: fluxo de caixa, DRE e pendências`,
+          conciliacao: "todo pagamento aprovado precisa de dono: cliente vinculado ou motivo",
+          pagar: `${monthLabel(month)} · contas com vencimento, situação e recorrência`,
+          folha: `${monthLabel(month)} · o que foi pago a cada colaborador`,
+          pagamentos: "pagamentos da conta Mercado Pago, casados com clientes e faturas",
+          custos: `${monthLabel(month)} · o total alimenta o “Resultado do mês” da Visão geral`,
+        }[tab] || ""}>
+        <Segmented value={tab} onChange={setTab} options={[
+          { value: "resumo", label: "Resumo" },
+          { value: "conciliacao", label: "Conciliação" },
+          { value: "pagar", label: "A pagar" },
+          { value: "folha", label: "Folha" },
+          { value: "pagamentos", label: "Pagamentos" },
+          { value: "custos", label: "Custos" },
+        ]} />
+        {tab !== "pagamentos" && (
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            {[...lastMonths(3)].reverse().map((mk) => <FilterTab key={mk} active={month === mk} onClick={() => setMonth(mk)}>{shortMonth(mk)}</FilterTab>)}
+            {[...lastMonths(4)].reverse().map((mk) => <FilterTab key={mk} active={month === mk} onClick={() => setMonth(mk)}>{shortMonth(mk)}</FilterTab>)}
           </div>
         )}
       </PageHead>
 
       {/* key={product.id}: trocar de produto remonta a aba — rascunho de custo
           e vínculo em andamento nunca vazam pro SaaS errado. */}
+      {tab === "resumo" && <ResumoTab key={product.id} product={product} month={month} />}
+      {tab === "conciliacao" && <ConciliacaoTab key={product.id} product={product} month={month} />}
+      {tab === "pagar" && <PagarTab key={product.id} product={product} month={month} />}
+      {tab === "folha" && <FolhaTab key={product.id} product={product} month={month} />}
       {tab === "pagamentos" && <FinanceTab key={product.id} product={product} />}
       {tab === "custos" && <CostsTab key={product.id} product={product} month={month} />}
     </div>
@@ -138,7 +157,8 @@ function CostsTab({ product, month }) {
         {data?.error && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>Falha ao carregar os custos.</div>}
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
-          <StatTile label="Total do mês" value={data ? brl(data.total) : "…"} delta="publicidade + IA + WhatsApp + manuais" />
+          <StatTile label="Total do mês" value={data ? brl(data.total) : "…"} delta="publicidade + IA + WhatsApp + manuais + contas a pagar"
+            title="Inclui as contas a pagar do mês (aba A pagar): folha, fornecedores e demais lançamentos por competência. É o mesmo total que o Resumo do Financeiro e o Resultado do mês usam." />
           <StatTile label="Publicidade" value={data ? brl(data.ads) : "…"} delta="automático · Meta e entradas manuais de anúncio" />
           <StatTile label="IA" value={data ? (data.ai != null ? brl(data.ai) : "sem dado no mês") : "…"}
             delta={data?.aiUSD != null ? `US$ ${data.aiUSD.toFixed(2).replace(".", ",")} · automático` : "automático via APIs dos provedores"} />
@@ -146,6 +166,9 @@ function CostsTab({ product, month }) {
           <StatTile label="WhatsApp" value={data ? (data.wa != null ? brl(data.wa) : "sem dado no mês") : "…"}
             delta={data?.waConversations != null ? `${data.waConversations} conversas cobradas · automático` : "automático via Meta"} />
           <StatTile label="Lançados à mão" value={data ? brl(data.manualTotal) : "…"} delta={`${data?.manual?.length ?? 0} ${(data?.manual?.length ?? 0) === 1 ? "lançamento" : "lançamentos"}`} />
+          <StatTile label="Contas a pagar do mês" value={data ? brl(data.payablesTotal || 0) : "…"}
+            delta={`${data?.payablesCount ?? 0} ${(data?.payablesCount ?? 0) === 1 ? "conta" : "contas"} · gerencie na aba A pagar`}
+            title="Folha e fornecedores lançados em A pagar, por competência. Este cartão é só leitura: a gestão (baixa, recorrência) mora na aba A pagar." />
         </div>
 
         <Card title="Lançamentos do mês" hint="custos fixos, ferramentas, pessoal e outros">

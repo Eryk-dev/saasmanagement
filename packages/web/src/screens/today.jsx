@@ -12,7 +12,7 @@ import { useProposalTemplates } from "../components/ProposalActions.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 import { resolveScript, scriptTokens, scriptSegments, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor } from "../lib/scripts.js";
-import { PAYMENT_METHODS, CLOSED_PLANS, paymentLabel, closedPlanLabel } from "../lib/payments.js";
+import { PAYMENT_METHODS, CLOSED_PLANS, paymentLabel, closedPlanLabel, dealProductLabel } from "../lib/payments.js";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
 // "Amanhã" e "Próximos dias" (o que já está agendado, à vista), e "Sem data".
@@ -974,6 +974,7 @@ export function IntegrationBriefCard({ brief, phone, deal, onSend = null }) {
   // O que foi contratado (escopo), NÃO como foi pago: forma de pagamento é
   // assunto do financeiro, o integrador não fala de dinheiro com o cliente.
   const closed = [
+    dealProductLabel(deal?.dealProduct), // produto do catálogo (FULL/OEM/Parcial): o integrador entrega o escopo certo
     Number(deal?.amount) > 0 ? window.fmt.money(deal.amount) : "",
     closedPlanLabel(deal?.planClosed),
   ].filter(Boolean).join(" · ");

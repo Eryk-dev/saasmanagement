@@ -2,7 +2,7 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
-import { EmptyState, PrimaryButton } from "../atoms.jsx";
+import { EmptyState, PrimaryButton, useEsc } from "../atoms.jsx";
 import { mpMethodLabel } from "../lib/payments.js";
 // Assinaturas (fase 5) — Cockpit como system-of-record de billing: assinaturas,
 // faturas (renovação/pró-rata/dunning) e planos por SaaS. O pagamento em si fica
@@ -276,6 +276,7 @@ function SubscriptionsScreen({ saasId }) {
 // Modal de mudança de plano/preço/ciclo — o servidor decide: upgrade aplica já e
 // fatura o pró-rata do resto do ciclo; downgrade/troca de ciclo agendam pro fim.
 function ChangeModal({ sub, plans, customerName, onClose, onDone }) {
+  useEsc(onClose);
   const [plan, setPlan] = useState(sub.plan || "");
   const [price, setPrice] = useState(String(sub.price ?? ""));
   const [cycle, setCycle] = useState(sub.cycle || "monthly");

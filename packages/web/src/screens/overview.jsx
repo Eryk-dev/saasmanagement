@@ -5,7 +5,7 @@ import { PageHead, Card } from "../components/viz.jsx";
 import { EmptyState, Avatar } from "../atoms.jsx";
 import { stageKind, isRealLead } from "../lib/funnel.js";
 import { bizDay } from "../lib/format.js";
-import { currentUser, isAdminUser, canSeeScreen } from "../lib/users.js";
+import { currentUser, isAdminUser, canSeeScreen, userById } from "../lib/users.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { buildPeople, roleLabel, scaledGoal } from "../components/team-cards.jsx";
 import { usePeriod, businessDaysBetween } from "../components/period-picker.jsx";
@@ -16,6 +16,8 @@ import { usePeriod, businessDaysBetween } from "../components/period-picker.jsx"
 //   → Atenção agora (avisos com botão de ação).
 // Escala de cores única: vermelho (atrás do caminho) → teal (no pace) → verde
 // (meta batida) → dourado (120%+, alinhado às bandas da remuneração).
+// Meta batida REARMA a régua: 100% → persegue 120% → 140%… de 20 em 20, sem
+// teto (super metas, o mesmo desenho da remuneração acima de 140%).
 // Conta grande (customer.keyAccount, ex.: Galante) fica fora das médias; o
 // dinheiro segue no caixa/vendido. Explicações moram em tooltips (hover).
 
@@ -45,8 +47,22 @@ export function levelOf(value, target, expectedFrac = 1) {
 }
 const lvlColor = (lvl, fallback = "var(--fg-1)") => (lvl ? LVL_COLOR[lvl] : fallback);
 
+// ── Super metas: de 20 em 20, sem teto ───────────────────────────────────────
+// Bateu 100%, a régua rearma pro próximo degrau (120%, depois 140%, 160%…) e o
+// "hoje" volta a cobrar ritmo contra ele — espelha a remuneração, que acima de
+// 140% segue pagando por degrau de 20%. pct = quanto do degrau atual já foi.
+export function ladderOf(value, target, expectedFrac = 1) {
+  if (!(target > 0) || value == null) return null;
+  const ratio = value / target;
+  if (ratio < 1) return { ratio, tier: 1, pct: ratio, lvl: levelOf(value, target, expectedFrac), chip: null };
+  const tier = 1.2 + 0.2 * Math.floor((ratio - 1) / 0.2 + 1e-9);
+  const lvl = ratio >= 1.2 ? "gold" : "green";
+  return { ratio, tier, pct: ratio / tier, lvl, chip: `${LVL_LABEL[lvl]} · rumo a ${Math.round(tier * 100)}%` };
+}
+
 function LvlChip({ lvl, label }) {
   if (!lvl) return null;
+  if (lvl === "gold") return <span className="super-chip">✦ {label || "super meta"}</span>;
   const c = LVL_COLOR[lvl];
   return (
     <span style={{ fontSize: 11, fontWeight: 700, color: c, background: `color-mix(in srgb, ${c} 10%, transparent)`, border: `1px solid color-mix(in srgb, ${c} 35%, transparent)`, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap" }}>
@@ -55,13 +71,19 @@ function LvlChip({ lvl, label }) {
   );
 }
 
-// Fração do período que já passou, em dias ÚTEIS (o pace da janela do topo).
-function elapsedFracOf(win) {
+// Dias ÚTEIS da janela que já passaram — e a fração deles (o pace do topo).
+function elapsedBizDaysOf(win) {
   const today = bizDay(new Date());
   if (today < win.since) return 0;
   const end = today < win.until ? today : win.until;
-  return Math.min(1, businessDaysBetween(win.since, end) / Math.max(1, win.businessDays));
+  return businessDaysBetween(win.since, end);
 }
+function elapsedFracOf(win) {
+  return Math.min(1, elapsedBizDaysOf(win) / Math.max(1, win.businessDays));
+}
+// Fração do MÊS que a janela já cobriu (base 21,75 úteis) — o pace de quem é
+// medido contra a meta CHEIA do mês (as duas pernas da remuneração).
+const monthFracOf = (win) => Math.min(1, elapsedBizDaysOf(win) / 21.75);
 
 // ── Régua (barra de progresso com pace) ──────────────────────────────────────
 // Exportada: a tela Metas usa a MESMA régua pra mostrar o efeito da meta que
@@ -79,7 +101,8 @@ export function Regua({ label, valueText, pct, expectedPct, lvl, chipLabel, titl
         </span>
       </div>
       <div style={{ position: "relative", height: 10, borderRadius: 999, background: "var(--bg-2)" }}>
-        <span style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: `${fill}%`, minWidth: 4, borderRadius: 999, background: lvlColor(lvl, "var(--accent)") }} />
+        <span className={lvl === "gold" ? "super-fill" : undefined}
+          style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: `${fill}%`, minWidth: 4, borderRadius: 999, background: lvlColor(lvl, "var(--accent)") }} />
         {exp != null && (
           <span title="pace: onde a meta deveria estar hoje" style={{ position: "absolute", top: -4, bottom: -4, left: `${exp}%`, width: 2, borderRadius: 1, background: "var(--fg-3)" }}>
             <span style={{ position: "absolute", top: -14, left: "50%", transform: "translateX(-50%)", fontSize: 9.5, color: "var(--fg-4)", letterSpacing: "0.04em" }}>hoje</span>
@@ -93,46 +116,101 @@ export function Regua({ label, valueText, pct, expectedPct, lvl, chipLabel, titl
 
 // ── Meta do mês (réguas de receita contratada + contratos) ───────────────────
 // Sempre o MÊS CORRENTE (meta é mensal), independente do filtro do topo. Dados
-// do /api/pipeline-pace: `sale` = vendido no mês (contrato cheio) e `contracts`
-// = nº de fechamentos vs. meta (a digitada em Metas vence; senão venda ÷ ticket
-// sem contas grandes).
-function MetaMesCard({ pace, onNav, links = true }) {
-  const s = pace?.sale;
-  if (!s) return null;
-  const c = pace.contracts || {};
-  const sLvl = levelOf(s.sold, s.target, s.expectedProgress);
-  const cLvl = c.target != null ? levelOf(c.sold, c.target, c.expectedProgress) : null;
-  const saleTitle = `Receita nova contratada no mês (contrato cheio). Hoje: ${money(s.soldToday)} · ritmo ${money(s.actualDailyPace)}/dia útil`
-    + (s.requiredDailyPace != null ? ` · precisa ${money(s.requiredDailyPace)}/dia` : "")
-    + ` · ${int(s.remainingBusinessDays)} dias úteis restantes · projeção do mês ${money(s.projected)}.`;
-  const contractsTitle = c.targetSource === "company"
-    ? "Meta de contratos digitada em Metas → Empresa (a da remuneração)."
-    : "Meta derivada: venda do mês ÷ ticket médio sem contas grandes.";
+// do /api/pipeline-pace/:saas/window: a faixa SEGUE O FILTRO do topo (Leo,
+// 08/08) — julho mostra a meta e o resultado DE JULHO, semana mostra a fatia
+// da semana, dia a do dia. A meta se reparte só pelos dias úteis (fim de
+// semana não cobra meta); janela fechada mostra o veredito final.
+const MONTH_LONG = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+const endOfMonthDay = (day) => {
+  const [y, m] = day.split("-").map(Number);
+  return `${day.slice(0, 7)}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
+};
+const plusDays = (day, n) => {
+  const d = new Date(`${day}T12:00:00`);
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+// Janela da META: preset ancorado em calendário (este mês/esta semana) estica
+// até o FIM do período — a régua cobra o mês/semana inteiros, com o pace
+// marcando onde deveria estar hoje. Janela corrida (últimos 7d, custom) vale
+// como está.
+function goalWindowOf(period, win) {
+  if (period === "month") return { since: win.since, until: endOfMonthDay(win.since) };
+  if (period === "week") return { since: win.since, until: plusDays(win.since, 6) };
+  return { since: win.since, until: win.until };
+}
+// Rótulo do período da meta: mês cheio → "julho 2026"; um dia → a data; senão
+// o intervalo. `kind` escolhe o título do card.
+function goalLabelOf(goal) {
+  if (!goal) return { kind: "mês", label: "" };
+  const { since, until } = goal;
+  if (since.slice(0, 7) === until.slice(0, 7) && since.endsWith("-01") && until === endOfMonthDay(since)) {
+    const [y, m] = since.split("-").map(Number);
+    return { kind: "mês", label: `${MONTH_LONG[m - 1]} ${y}` };
+  }
+  const fmt = (s) => `${s.slice(8, 10)}/${s.slice(5, 7)}`;
+  if (since === until) return { kind: "dia", label: fmt(since) };
+  const days = Math.round((new Date(`${until}T12:00:00`) - new Date(`${since}T12:00:00`)) / DAY) + 1;
+  return { kind: days === 7 ? "semana" : "período", label: `${fmt(since)} a ${fmt(until)}` };
+}
+const fmtContracts = (t) => (t == null ? "—" : Number.isInteger(t) ? int(t) : String(t).replace(".", ","));
+
+function MetaMesCard({ pace, goal, onNav, links = true }) {
+  if (!goal) return null;
+  const s = goal.sale || {};
+  const c = goal.contracts || {};
+  const { kind, label } = goalLabelOf(goal);
+  const title = kind === "mês" ? "Meta do mês" : kind === "semana" ? "Meta da semana" : kind === "dia" ? "Meta do dia" : "Meta do período";
+  const endedLabel = (lvl) => (goal.ended ? ({ red: "não bateu", ok: "não bateu", green: "meta batida", gold: "super meta" })[lvl] : null);
+  // Super metas: bateu 100%, a régua rearma pro próximo degrau (120, 140…) e o
+  // "hoje" passa a cobrar o ritmo do degrau novo.
+  const sLad = ladderOf(s.sold, s.target, s.expectedProgress);
+  const cLad = c.target != null ? ladderOf(c.sold, c.target, c.expectedProgress) : null;
+  // No mês CORRENTE o pace mensal completo enriquece o tooltip (ritmo, precisa
+  // por dia, projeção); janela histórica fica com a explicação da fatia.
+  const curMes = kind === "mês" && goal.current && pace?.sale;
+  const saleTitle = curMes
+    ? `Receita nova contratada no mês (contrato cheio). Hoje: ${money(pace.sale.soldToday)} · ritmo ${money(pace.sale.actualDailyPace)}/dia útil`
+      + (pace.sale.requiredDailyPace != null ? ` · precisa ${money(pace.sale.requiredDailyPace)}/dia` : "")
+      + ` · ${int(pace.sale.remainingBusinessDays)} dias úteis restantes · projeção do mês ${money(pace.sale.projected)}.`
+    : `Receita nova contratada em ${label} (contrato cheio) vs. a meta da época, repartida pelos ${int(goal.businessDays)} dias úteis da janela.`;
+  const contractsTitle = "Meta de contratos da época (a digitada em Metas vence; senão venda ÷ ticket sem contas grandes), repartida pelos dias úteis da janela.";
   return (
-    <Card title="Meta do mês" hint="sempre o mês corrente · o filtro não muda esta faixa"
+    <Card title={title} hint={`${label} · segue o filtro do topo · a meta vive nos dias úteis`}
       action={links ? <button onClick={() => onNav && onNav("analise")} style={{ fontSize: 12.5, fontWeight: 500, color: "var(--accent)" }}>Ver análise completa →</button> : null}>
-      <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: "16px 36px", padding: "16px var(--inset-x) 20px" }}>
-        <Regua
-          label="Régua de receita"
-          title={saleTitle}
-          valueText={<><strong className="tnum" style={{ color: "var(--fg-1)", fontWeight: 650 }}>{money(s.sold)}</strong> / {money(s.target)} · {Math.round((s.progress || 0) * 100)}%</>}
-          pct={s.progress} expectedPct={s.expectedProgress} lvl={sLvl}
-        />
-        {c.target != null ? (
-          <Regua
-            label="Régua de contratos"
-            title={contractsTitle}
-            valueText={<><strong className="tnum" style={{ color: "var(--fg-1)", fontWeight: 650 }}>{int(c.sold)}</strong> / {int(c.target)} · {Math.round((c.progress || 0) * 100)}%</>}
-            pct={c.progress} expectedPct={c.expectedProgress} lvl={cLvl}
-          />
-        ) : (
-          <div style={{ fontSize: 12.5, color: "var(--fg-4)", alignSelf: "center" }}>
-            Sem meta de contratos ainda: registre uma venda (pro ticket existir) ou
-            {links ? <button onClick={() => onNav && onNav("metas")} style={{ fontWeight: 600, color: "var(--accent)", marginLeft: 4 }}>digite a meta em Metas →</button> : " digite a meta em Metas."}
-          </div>
-        )}
-      </div>
-      {links && s.targetConfigured === false && (
+      {goal.businessDays === 0 ? (
+        <div style={{ padding: "14px var(--inset-x) 20px", fontSize: 12.5, color: "var(--fg-3)" }}>
+          Fim de semana: sem meta cobrada (a meta vive nos dias úteis).
+          {s.sold > 0 && <> Mesmo assim entrou <b className="tnum" style={{ color: "var(--pos)" }}>{money(s.sold)}</b>{c.sold > 0 ? ` em ${int(c.sold)} ${c.sold === 1 ? "contrato" : "contratos"}` : ""}.</>}
+        </div>
+      ) : (
+        <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: "16px 36px", padding: "16px var(--inset-x) 20px" }}>
+          {s.target != null ? (
+            <Regua
+              label="Régua de receita"
+              title={saleTitle}
+              valueText={<><strong className="tnum" style={{ color: "var(--fg-1)", fontWeight: 650 }}>{money(s.sold)}</strong> / {money(s.target)} · {Math.round((s.progress || 0) * 100)}%</>}
+              pct={sLad ? sLad.pct : s.progress} expectedPct={goal.ended ? null : s.expectedProgress} lvl={sLad?.lvl} chipLabel={goal.ended ? endedLabel(sLad?.lvl) : sLad?.chip}
+            />
+          ) : (
+            <div style={{ fontSize: 12.5, color: "var(--fg-4)", alignSelf: "center" }}>Sem meta de venda pra esse período.</div>
+          )}
+          {c.target != null ? (
+            <Regua
+              label="Régua de contratos"
+              title={contractsTitle}
+              valueText={<><strong className="tnum" style={{ color: "var(--fg-1)", fontWeight: 650 }}>{int(c.sold)}</strong> / {fmtContracts(c.target)} · {Math.round((c.progress || 0) * 100)}%</>}
+              pct={cLad ? cLad.pct : c.progress} expectedPct={goal.ended ? null : c.expectedProgress} lvl={cLad?.lvl} chipLabel={goal.ended ? endedLabel(cLad?.lvl) : cLad?.chip}
+            />
+          ) : (
+            <div style={{ fontSize: 12.5, color: "var(--fg-4)", alignSelf: "center" }}>
+              Sem meta de contratos ainda: registre uma venda (pro ticket existir) ou
+              {links ? <button onClick={() => onNav && onNav("metas")} style={{ fontWeight: 600, color: "var(--accent)", marginLeft: 4 }}>digite a meta em Metas →</button> : " digite a meta em Metas."}
+            </div>
+          )}
+        </div>
+      )}
+      {links && curMes && pace.sale.targetConfigured === false && (
         <div style={{ padding: "0 var(--inset-x) 16px" }}>
           <button onClick={() => onNav && onNav("metas")} style={{ fontSize: 12, fontWeight: 600, color: "var(--warn)", textAlign: "left" }}>
             essa é a meta padrão do sistema · defina a sua em Metas → Empresa
@@ -143,69 +221,36 @@ function MetaMesCard({ pace, onNav, links = true }) {
   );
 }
 
-// ── Medidor circular (donut) das duas pernas: receita e contratos ────────────
-function Donut({ label, value, target, isMoney, lvl }) {
-  const pct = target > 0 && value != null ? value / target : null;
-  const dash = pct == null ? 0 : Math.min(1, pct) * 188.5;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-      <svg width="74" height="74" viewBox="0 0 74 74" role="img" aria-label={`${label}: ${pct == null ? "sem meta" : Math.round(pct * 100) + "% da meta"}`}>
-        <circle cx="37" cy="37" r="30" fill="none" strokeWidth="8" stroke="var(--bg-2)" />
-        {pct != null && pct > 0 && (
-          <circle cx="37" cy="37" r="30" fill="none" strokeWidth="8" strokeLinecap="round"
-            stroke={lvlColor(lvl, "var(--accent)")} strokeDasharray={`${dash.toFixed(1)} 188.5`} transform="rotate(-90 37 37)" />
-        )}
-        <text x="37" y="42" textAnchor="middle" className="tnum" style={{ fontSize: 14, fontWeight: 650, fill: "var(--fg-1)" }}>
-          {pct == null ? "—" : `${Math.round(pct * 100)}%`}
-        </text>
-      </svg>
-      <span className="kicker">{label}</span>
-      <span className="tnum" style={{ fontSize: 11.5, color: "var(--fg-2)", whiteSpace: "nowrap" }}>
-        {value == null ? "—" : isMoney ? `R$ ${compactMoney(value)}` : int(value)}
-        {target > 0 ? ` / ${isMoney ? compactMoney(target) : int(target)}` : " · sem meta"}
-      </span>
-    </div>
-  );
-}
-
-// Linha de submeta (label à esquerda, atual / meta à direita, cor pela escala).
-// nowrap nos dois lados: valor quebrado no meio ("22," numa linha, "/33" na
-// outra) era o bug visual da 1ª versão — a coluna encolhia demais.
-function RateRow({ label, valueText, metaText, lvl, title }) {
-  return (
-    <div title={title} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, padding: "5px 0", borderBottom: "1px solid var(--line-faint)", fontSize: 12, minWidth: 0 }}>
-      <span style={{ color: "var(--fg-3)", whiteSpace: "nowrap" }}>{label}</span>
-      <span className="tnum" style={{ whiteSpace: "nowrap" }}>
-        <b style={{ fontWeight: 650, color: lvlColor(lvl) }}>{valueText}</b>
-        {metaText != null && <span style={{ color: "var(--fg-4)" }}> / {metaText}</span>}
-      </span>
-    </div>
-  );
-}
-
 // Submetas por papel — tudo dado que o placar já mede, comparado com a meta.
-function personRows(p, bizDays, elapsedFrac) {
+// Metas de FLUXO (agendadas, calls, posts…) seguem a mesma régua das duas
+// pernas: meta CHEIA do mês, com o pace mensal colorindo (vermelho atrás do
+// ritmo, teal no ritmo, verde 100%+, ✦ 120%+). Taxa não tem pace (não acumula
+// no tempo): abaixo da meta é vermelho direto.
+function personRows(p, bizDays, elapsedFrac, monthFrac) {
   const rows = [];
   const rate = (label, value, target, title) => rows.push({
     label, valueText: pctStr(value), metaText: target != null ? int(target) : null,
     lvl: levelOf(value, target, 1), title,
   });
-  const flow = (label, value, target, title) => rows.push({
+  const flow = (label, value, target, title, frac = monthFrac) => rows.push({
     label, valueText: int(value), metaText: target != null ? int(target) : null,
-    lvl: levelOf(value, target, elapsedFrac), title,
+    lvl: levelOf(value, target, frac), title,
   });
   if (p.sdr) {
     const g = p.sdr.goals || {};
     rate("contato", p.sdr.contactRate, g.contactRate?.target || 80, "Dos leads que entraram, quantos você alcançou");
     rate("agendamento", p.sdr.bookingRate, g.bookingRate?.target || 30, "Dos leads da janela que ele alcançou, quantos marcaram call (base antiga trabalhada não entra na taxa)");
     rate("show", p.sdr.showRate, g.showRate?.target || 75, "Das calls que já deveriam ter acontecido, quantas aconteceram");
-    const bookedTarget = scaledGoal(g.callsBooked, bizDays)
+    // Sem meta digitada, o alvo dinâmico é da JANELA (leads anteriores × taxa),
+    // então o pace nesse caso é o da janela, não o do mês.
+    const bookedMonth = monthGoal(g.callsBooked);
+    const bookedTarget = bookedMonth
       || (g.bookingRate?.target > 0 && p.sdr.leadsPrev > 0 ? Math.round((p.sdr.leadsPrev * g.bookingRate.target) / 100) : null);
-    flow("agendadas", p.sdr.callsBooked, bookedTarget, "Calls agendadas no período vs. a meta da vaga");
+    flow("agendadas", p.sdr.callsBooked, bookedTarget, "Calls agendadas no período vs. a meta do mês da vaga", bookedMonth ? monthFrac : elapsedFrac);
   }
   if (p.closer) {
     const g = p.closer.goals || {};
-    flow("calls", p.closer.callsShown, scaledGoal(g.callsShown, bizDays), "Calls realizadas (sem no-show) vs. meta da vaga");
+    flow("calls", p.closer.callsShown, monthGoal(g.callsShown), "Calls realizadas (sem no-show) vs. a meta do mês da vaga");
     rate("conversão", p.closer.conversaoCall, g.conversaoCall?.target || 33, "Das calls que aconteceram, quantas fecharam");
     if (p.closer.followupNow > 0 || p.closer.followupCohort > 0) {
       const onTime = p.closer.followupOnTime || 0;
@@ -223,59 +268,119 @@ function personRows(p, bizDays, elapsedFrac) {
     rows.push({ label: "contas ativas", valueText: int(p.cs.activeAccounts), metaText: null, lvl: null, title: "Clientes na carteira dele" });
     rate("retenção", p.cs.retentionRate, g.retentionRate?.target || 95, "Base que ficou (100 − churn)");
     if (p.cs.nps != null || g.nps?.target) rate("nps", p.cs.nps, g.nps?.target || 80, "NPS médio das contas dele");
-    flow("indicações", p.cs.referrals, scaledGoal(g.referrals, bizDays), "Indicações recebidas na janela (nº do time)");
+    flow("indicações", p.cs.referrals, monthGoal(g.referrals), "Indicações recebidas na janela vs. a meta do mês (nº do time)");
   }
   if (p.social) {
     const g = p.social.goals || {};
-    flow("posts", p.social.postsPerMonth, scaledGoal(g.postsPerMonth, bizDays));
-    flow("stories", p.social.storiesPerMonth, scaledGoal(g.storiesPerMonth, bizDays));
-    flow("ads", p.social.adsPerMonth, scaledGoal(g.adsPerMonth, bizDays));
+    flow("posts", p.social.postsPerMonth, monthGoal(g.postsPerMonth));
+    flow("stories", p.social.storiesPerMonth, monthGoal(g.storiesPerMonth));
+    flow("ads", p.social.adsPerMonth, monthGoal(g.adsPerMonth));
   }
   return rows;
 }
 
-function PersonCard({ p, rank, bizDays, elapsedFrac, onPerson }) {
+// ── Linha da LISTA do time (aprovada pelo Leo em 08/08, no lugar dos cards) ──
+// Uma linha por pessoa: identidade | régua de receita | régua de contratos |
+// submetas do papel em linha única. As barras alinhadas em coluna deixam a
+// comparação entre as pessoas imediata; ✦ = super meta (120%+).
+// As duas pernas mostram a meta CHEIA do mês (Leo, 08/08: "Manuela
+// R$19,5k/90k"), com o risquinho do pace e a cor dizendo se está no ritmo;
+// bateu 100%, a barra rearma pro degrau seguinte (120, 140… de 20 em 20).
+function MiniRegua({ value, target, isMoney, expectedFrac }) {
+  const lad = ladderOf(value, target, expectedFrac);
+  const ratio = lad?.ratio ?? null;
+  const fmtV = (v) => (isMoney ? `R$ ${compactMoney(v)}` : int(Math.round(v)));
+  const title = lad == null ? undefined
+    : lad.tier > 1
+      ? `Meta do mês batida (${Math.round(ratio * 100)}%) · a régua agora persegue ${Math.round(lad.tier * 100)}% = ${fmtV(target * lad.tier)}`
+      : `Meta do mês: ${fmtV(target)} · pace: deveria estar em ${fmtV(target * Math.min(1, expectedFrac ?? 1))} hoje`;
+  const exp = lad != null && expectedFrac > 0 && expectedFrac < 1 ? Math.round(expectedFrac * 100) : null;
+  return (
+    <div style={{ minWidth: 0, cursor: title ? "help" : undefined }} title={title}>
+      <div className="tnum" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, fontSize: 11.5, marginBottom: 5 }}>
+        <span style={{ whiteSpace: "nowrap" }}>
+          <b style={{ fontWeight: 650 }}>{value == null ? "—" : fmtV(value)}</b>
+          {target > 0 && <span style={{ color: "var(--fg-4)" }}> / {isMoney ? compactMoney(target) : int(target)}</span>}
+        </span>
+        <span style={{ fontWeight: 700, color: lvlColor(lad?.lvl, "var(--fg-4)"), whiteSpace: "nowrap" }}>
+          {ratio == null ? "sem meta" : `${Math.round(ratio * 100)}%${lad.lvl === "gold" ? " ✦" : ""}${lad.tier > 1 ? ` · rumo a ${Math.round(lad.tier * 100)}%` : ""}`}
+        </span>
+      </div>
+      <div style={{ position: "relative", height: 6, borderRadius: 999, background: "var(--bg-2)" }}>
+        {lad != null && (
+          <span className={lad.lvl === "gold" ? "super-fill" : undefined}
+            style={{ position: "absolute", top: 0, bottom: 0, left: 0, minWidth: 4, borderRadius: 999, width: `${Math.min(100, Math.round(lad.pct * 100))}%`, background: lvlColor(lad.lvl, "var(--accent)") }} />
+        )}
+        {exp != null && (
+          <span title="pace: onde a meta deveria estar hoje"
+            style={{ position: "absolute", top: -2, bottom: -2, left: `${exp}%`, width: 2, borderRadius: 1, background: "var(--fg-3)" }} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Meta CHEIA do mês (as pernas da remuneração são mensais; vaga com meta
+// semanal vira mês pela base 21,75/5) — a linha não reescala pra janela.
+const monthGoal = (g) => (g?.target > 0 ? Math.round(g.period === "week" ? g.target * (21.75 / 5) : g.target) : null);
+
+function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson }) {
   // As duas pernas do plano de remuneração (receita + contratos) — closer e SDR
   // têm meta própria pelo nível (comp_plans); CS/mídia mostram só as submetas.
   const leg = p.closer || p.sdr || null;
-  const revTarget = leg ? scaledGoal(leg.goals?.revenue, bizDays) : null;
-  const wonTarget = leg ? scaledGoal(leg.goals?.won, bizDays) : null;
-  const rows = personRows(p, bizDays, elapsedFrac);
+  const revTarget = leg ? monthGoal(leg.goals?.revenue) : null;
+  const wonTarget = leg ? monthGoal(leg.goals?.won) : null;
+  const rows = personRows(p, bizDays, elapsedFrac, monthFrac);
+  const semPerna = <span style={{ fontSize: 11.5, color: "var(--fg-4)" }}>—</span>;
   return (
-    <section onClick={() => onPerson && onPerson(p.user)}
-      style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "14px 16px", cursor: onPerson ? "pointer" : "default", display: "flex", flexDirection: "column", minWidth: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+    <div className="vg-trow" onClick={() => onPerson && onPerson(p.user)} style={{ cursor: onPerson ? "pointer" : "default" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
         {rank != null && (
-          <span className="mono tnum" style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", background: "var(--accent-soft)", borderRadius: "var(--r-1)", padding: "1px 6px" }}>{rank}#</span>
+          <span className="mono tnum" style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", background: "var(--accent-soft)", borderRadius: "var(--r-1)", padding: "1px 6px", flexShrink: 0 }}>{rank}#</span>
         )}
-        <Avatar id={p.user} name={p.name} size={30} />
-        <span style={{ fontSize: 14, fontWeight: 650 }}>{p.name}</span>
-        <span className="kicker">{roleLabel(p)}</span>
+        <Avatar id={p.user} name={p.name} size={28} />
+        <span style={{ fontSize: 13.5, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
+        <span className="kicker" style={{ whiteSpace: "nowrap" }}>{roleLabel(p)}</span>
       </div>
-      {/* Layout SEMPRE empilhado: medidores centralizados em cima, submetas
-          embaixo. A versão lado a lado dependia de wrap e o alignContent
-          esticado espalhava as linhas pelo card — era o layout "horrível". */}
-      {leg && (
-        <div style={{ display: "flex", gap: 26, justifyContent: "center", padding: "2px 0 14px" }}>
-          <Donut label="Receita" value={leg.revenue} target={revTarget} isMoney
-            lvl={levelOf(leg.revenue, revTarget, elapsedFrac)} />
-          <Donut label="Contratos" value={leg.won} target={wonTarget}
-            lvl={levelOf(leg.won, wonTarget, elapsedFrac)} />
-        </div>
-      )}
-      <div style={{ display: "flex", flexDirection: "column", borderTop: leg ? "1px solid var(--line-faint)" : "none", paddingTop: leg ? 4 : 0 }}>
-        {rows.map((r) => <RateRow key={r.label} {...r} />)}
-        {!rows.length && <span style={{ fontSize: 12, color: "var(--fg-4)" }}>sem metas configuradas ainda</span>}
+      {leg ? <MiniRegua value={leg.revenue} target={revTarget} isMoney expectedFrac={monthFrac} /> : semPerna}
+      {leg ? <MiniRegua value={leg.won} target={wonTarget} expectedFrac={monthFrac} /> : semPerna}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: 11.5, minWidth: 0, alignItems: "baseline" }}>
+        {rows.map((r) => (
+          <span key={r.label} title={r.title} className="tnum" style={{ whiteSpace: "nowrap", color: "var(--fg-3)" }}>
+            {r.label} <b style={{ fontWeight: 650, color: lvlColor(r.lvl) }}>{r.valueText}</b>
+            {r.metaText != null && <span style={{ color: "var(--fg-4)" }}> / {r.metaText}</span>}
+          </span>
+        ))}
+        {!rows.length && <span style={{ color: "var(--fg-4)" }}>sem metas configuradas ainda</span>}
       </div>
-    </section>
+    </div>
   );
+}
+
+// Os papéis CONFIGURADOS (Ajustes → Equipe) mandam no CARTÃO (Leo, 08/08): a
+// Manuela é SDR e o Vitor é CS — um fechamento avulso registrado neles não
+// pinta bloco de closer no card (os números seguem valendo no funil/placar).
+// Usuário sem cadastro ou sem nome (id cru de registro antigo) fica fora da
+// parede — não existe card de "us_xxxx".
+const ROLE_BLOCK = { sdr: "sdr", closer: "closer", cs: "integrator", social: "social" };
+function displayPerson(p) {
+  const u = userById(p.user);
+  if (!u || !String(u.name || "").trim()) return null;
+  const roles = u.roles || [];
+  if (!roles.length) return p; // sem etiquetas ainda: mostra tudo
+  const out = { user: p.user, name: p.name };
+  for (const [block, role] of Object.entries(ROLE_BLOCK)) {
+    if (p[block] && roles.includes(role)) out[block] = p[block];
+  }
+  return out.sdr || out.closer || out.cs || out.social ? out : null;
 }
 
 // ── Desempenho do time (ranqueado por % da meta) ─────────────────────────────
 function TeamBoard({ score, win, onPerson }) {
   const elapsedFrac = elapsedFracOf(win);
+  const monthFrac = monthFracOf(win);
   const people = useMemo(() => {
-    const list = buildPeople(score);
+    const list = buildPeople(score).map(displayPerson).filter(Boolean);
     const pctOf = (p) => {
       const leg = p.closer || p.sdr;
       if (!leg) return -1; // CS/mídia vão pro fim (sem as duas pernas)
@@ -286,14 +391,20 @@ function TeamBoard({ score, win, onPerson }) {
     return list.map((p) => ({ p, pct: pctOf(p) })).sort((a, b) => b.pct - a.pct);
   }, [score, win.businessDays]);
   return (
-    <Card title="Desempenho do time" hint="ranqueado por % da meta · clique num nome pra abrir o pipeline">
+    <Card title="Desempenho do time" hint="ranqueado por % da meta · réguas = meta do mês, o risquinho é o pace · clique num nome pra abrir o pipeline">
       <div style={{ padding: "8px var(--inset-x) 20px" }}>
         {score == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
         {score != null && !people.length && <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Sem atividade nesse período.</div>}
         {people.length > 0 && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, alignItems: "stretch" }}>
+          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", overflow: "hidden", background: "var(--bg-1)" }}>
+            <div className="vg-trow vg-thead">
+              <span className="kicker">Pessoa</span>
+              <span className="kicker">Receita</span>
+              <span className="kicker">Contratos</span>
+              <span className="kicker">Submetas do papel</span>
+            </div>
             {people.map(({ p, pct }, i) => (
-              <PersonCard key={p.user} p={p} rank={pct >= 0 ? i + 1 : null} bizDays={win.businessDays} elapsedFrac={elapsedFrac} onPerson={onPerson} />
+              <PersonRow key={p.user} p={p} rank={pct >= 0 ? i + 1 : null} bizDays={win.businessDays} elapsedFrac={elapsedFrac} monthFrac={monthFrac} onPerson={onPerson} />
             ))}
           </div>
         )}
@@ -302,15 +413,26 @@ function TeamBoard({ score, win, onPerson }) {
   );
 }
 
-// ── Funil do período (atual vs meta · barra = % da meta da etapa) ────────────
-function StageBox({ nm, value, meta, lvl, title }) {
+// ── Funil do período (atual vs meta do mês · barra = % da meta da etapa) ─────
+// Mesma régua das pernas do time: meta CHEIA do mês, risquinho do pace e a cor
+// pelo ritmo; bateu 100%, a barra rearma pro degrau seguinte (120, 140…).
+function StageBox({ nm, value, meta, expectedFrac, title }) {
+  const lad = ladderOf(value ?? 0, meta, expectedFrac);
+  const exp = lad != null && expectedFrac > 0 && expectedFrac < 1 ? Math.round(expectedFrac * 100) : null;
   return (
     <div title={title} style={{ flex: "1 1 0", minWidth: 108, padding: "4px 6px", textAlign: "center" }}>
       <div className="kicker" style={{ marginBottom: 4 }}>{nm}</div>
       <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 650, letterSpacing: "-0.02em" }}>{int(value)}</div>
-      <div className="tnum" style={{ fontSize: 11.5, color: "var(--fg-4)", minHeight: 17 }}>{meta != null ? `meta ${int(meta)}` : ""}</div>
+      <div className="tnum" style={{ fontSize: 11.5, color: "var(--fg-4)", minHeight: 17 }}>
+        {meta != null ? `meta ${int(meta)}` : ""}
+        {lad != null && lad.tier > 1 && <span style={{ color: lvlColor(lad.lvl), fontWeight: 700 }}> · rumo a {Math.round(lad.tier * 100)}%</span>}
+      </div>
       <div style={{ position: "relative", height: 7, borderRadius: 999, background: "var(--bg-2)", marginTop: 8 }}>
-        <span style={{ position: "absolute", top: 0, bottom: 0, left: 0, minWidth: 4, borderRadius: 999, background: lvlColor(lvl, "var(--accent)"), width: `${meta > 0 ? Math.min(100, Math.round(((value || 0) / meta) * 100)) : 100}%` }} />
+        <span className={lad?.lvl === "gold" ? "super-fill" : undefined}
+          style={{ position: "absolute", top: 0, bottom: 0, left: 0, minWidth: 4, borderRadius: 999, background: lvlColor(lad?.lvl, "var(--accent)"), width: `${lad != null ? Math.min(100, Math.round(lad.pct * 100)) : 100}%` }} />
+        {exp != null && (
+          <span title="pace: onde a meta deveria estar hoje" style={{ position: "absolute", top: -2, bottom: -2, left: `${exp}%`, width: 2, borderRadius: 1, background: "var(--fg-3)" }} />
+        )}
       </div>
     </div>
   );
@@ -338,12 +460,11 @@ function FunilPeriodo({ team, win, pLabel }) {
       </Card>
     );
   }
-  // Meta do MÊS por etapa (a cadeia derivada da meta da empresa) reescalada
-  // pros dias úteis da janela — mesma convenção do scaledGoal (base 21,75/mês).
+  // Meta do MÊS por etapa (a cadeia derivada da meta da empresa) CHEIA — sem
+  // reescalar pra janela; o risquinho do pace mensal diz onde deveria estar.
   const mt = team.monthTargets || null;
-  const scale = win.businessDays / 21.75;
-  const sMeta = (v) => (mt && v != null ? Math.max(1, Math.round(v * scale)) : null);
-  const elapsedFrac = elapsedFracOf(win);
+  const sMeta = (v) => (mt && v != null ? Math.max(1, Math.round(v)) : null);
+  const monthFrac = monthFracOf(win);
   const g = team.goals || {};
   const stages = [
     { nm: "Leads", v: team.leadsNew, m: sMeta(mt?.leads), title: "Leads que entraram na janela (sem internos e sem saídas laterais do form)" },
@@ -365,7 +486,7 @@ function FunilPeriodo({ team, win, pLabel }) {
   const adj = team.paceAdjust;
   return (
     <Card title="Funil do período"
-      hint={`${pLabel} · atual vs meta · barra = % da meta da etapa · % entre etapas = comparecimento e conversão`}
+      hint={`${pLabel} · atual vs meta do MÊS por etapa (risquinho = pace) · % entre etapas = comparecimento e conversão`}
       action={adj ? (
         <span className="dim" style={{ fontSize: 11.5, cursor: "help" }}
           title={`Inclui histórico pré-cockpit: ${["leads", "contacted", "booked", "shown"].filter((k) => adj[k]).map((k) => `+${adj[k]} ${({ leads: "leads", contacted: "contatos", booked: "agendadas", shown: "realizadas" })[k]}`).join(" · ")}. Ganhos seguem os registros.`}>
@@ -377,7 +498,7 @@ function FunilPeriodo({ team, win, pLabel }) {
           {stages.map((s, i) => (
             <React.Fragment key={s.nm}>
               {i > 0 && <ConvStep {...convs[i - 1]} />}
-              <StageBox nm={s.nm} value={s.v} meta={s.m} lvl={levelOf(s.v, s.m, elapsedFrac)} title={s.title} />
+              <StageBox nm={s.nm} value={s.v} meta={s.m} expectedFrac={monthFrac} title={s.title} />
             </React.Fragment>
           ))}
         </div>
@@ -389,8 +510,8 @@ function FunilPeriodo({ team, win, pLabel }) {
 // ── Tiles pequenos (Aquisição / Carteira) ────────────────────────────────────
 function MiniTile({ label, dot, big, sub, title }) {
   return (
-    <div title={title} style={{ background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "12px 14px", minWidth: 0, cursor: title ? "help" : "default" }}>
-      <div className="kicker" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    <div title={title} style={{ background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "12px 14px", minWidth: 0, cursor: title ? "help" : "default", textAlign: "center" }}>
+      <div className="kicker" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
         {dot && <span style={{ width: 8, height: 8, borderRadius: 3, background: dot, flexShrink: 0 }} />}
         {label}
       </div>
@@ -547,7 +668,8 @@ function OverviewScreen({ onNav }) {
   const [biz, setBiz] = useState(null); // CAC/LTV — mesmo endpoint da Publicidade
   const [invoices, setInvoices] = useState([]);
   const [score, setScore] = useState(null); // placar do time da janela do topo
-  const [pace, setPace] = useState(null); // meta do mês — /api/pipeline-pace
+  const [pace, setPace] = useState(null); // pace do mês corrente — /api/pipeline-pace
+  const [goal, setGoal] = useState(null); // meta DA JANELA (segue o filtro) — /window
   const [wa, setWa] = useState(null); // inbox do WhatsApp (estado atual do time)
   const { period, custom, win } = usePeriod();
 
@@ -575,6 +697,10 @@ function OverviewScreen({ onNav }) {
     if (!product) return;
     let alive = true;
     api.scoreboard(product.id, win).then((s) => alive && setScore(s)).catch(() => {});
+    // Meta da JANELA do filtro (mês histórico, semana, dia): preset de
+    // calendário estica até o fim do período — a régua cobra o mês/semana
+    // inteiros com o pace marcando o "hoje".
+    api.paceWindow(product.id, goalWindowOf(period, win)).then((g) => alive && setGoal(g)).catch(() => alive && setGoal(null));
     return () => { alive = false; };
   }, [product?.id, version, period, custom.since, custom.until]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -604,12 +730,13 @@ function OverviewScreen({ onNav }) {
 
   // ── Lente individual: as próprias metas + a meta do mês da empresa ─────────
   if (!gestao) {
-    const minha = buildPeople(score).find((p) => p.user === eu?.id) || null;
+    const bruta = buildPeople(score).find((p) => p.user === eu?.id) || null;
+    const minha = bruta ? displayPerson(bruta) || bruta : null;
     return (
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
         <PageHead title="Suas metas" sub={today} />
         <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-          <MetaMesCard pace={pace} links={false} />
+          <MetaMesCard pace={pace} goal={goal} links={false} />
           <Card title={`Suas metas · ${win.label}`} hint="o que a sua vaga precisa entregar no período">
             <div style={{ padding: "8px var(--inset-x) 20px" }}>
               {score == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
@@ -620,8 +747,8 @@ function OverviewScreen({ onNav }) {
                 </div>
               )}
               {minha && (
-                <div style={{ maxWidth: 480 }}>
-                  <PersonCard p={minha} rank={null} bizDays={win.businessDays} elapsedFrac={elapsedFracOf(win)}
+                <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", overflow: "hidden", background: "var(--bg-1)" }}>
+                  <PersonRow p={minha} rank={null} bizDays={win.businessDays} elapsedFrac={elapsedFracOf(win)} monthFrac={monthFracOf(win)}
                     onPerson={canSeeScreen("pipeline") ? openPerson : null} />
                 </div>
               )}
@@ -695,7 +822,7 @@ function OverviewScreen({ onNav }) {
       </PageHead>
 
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-        <MetaMesCard pace={pace} onNav={onNav} />
+        <MetaMesCard pace={pace} goal={goal} onNav={onNav} />
 
         <TeamBoard score={score} win={win} onPerson={openPerson} />
 
@@ -712,4 +839,4 @@ function OverviewScreen({ onNav }) {
   );
 }
 
-export { OverviewScreen, MetaMesCard, FunilPeriodo, TeamBoard, PersonCard };
+export { OverviewScreen, MetaMesCard, FunilPeriodo, TeamBoard, PersonRow };

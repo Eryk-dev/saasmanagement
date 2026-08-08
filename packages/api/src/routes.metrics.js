@@ -15,7 +15,7 @@ import { aiCosts as defaultAiCosts } from "./ai-costs.js";
 import { NOT_CONFIGURED } from "./http-status.js";
 import {
   DAY_MS, round2, dayKey, monthKey, isRealLead,
-  winsIn, customerStartMap, tcvOf, cashCollectedIn,
+  winsIn, customerStartMap, tcvOf, cashCollectedIn, card12xBaseIn,
 } from "./metrics-core.js";
 
 const monthOf = monthKey; // mês do dia do NEGÓCIO (metrics-core), não UTC
@@ -76,9 +76,10 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhats
     // (e.base) — cada taxa incide sobre o dinheiro certo:
     //   · "won" (padrão)  — GANHOS do pipeline no mês (lead.amount por wonAt),
     //     a mesma base do "Resultado do mês" da Visão geral;
-    //   · "cartao12x"     — só os ganhos fechados no cartão de crédito em 12x
-    //     (lead.paymentMethod do gate) — a taxa de checkout que a adquirente
-    //     cobra pra antecipar não existe em PIX/boleto;
+    //   · "cartao12x"     — dinheiro de cartão de crédito que ENTROU no mês
+    //     (espelho MP, card12xBaseIn no metrics-core): com antecipação D+0 a
+    //     taxa incide inteira no mês em que o dinheiro cai — nunca sobre a
+    //     marcação do fechamento (Leo, 08/08);
     //   · "received"      — RECEBIDOS no mês (faturas pagas por paidAt, régua
     //     cashCollectedIn do metrics-core) — imposto por regime de caixa: o
     //     faturado em 12 boletos só paga imposto conforme as parcelas entram.
@@ -87,14 +88,16 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhats
       .filter((e) => e.saas === product.id && Number(e.pct) > 0 && applies(e))
       .map(pctBaseOf));
     const bases = { won: 0, cartao12x: 0, received: 0 };
-    if (basesNeeded.has("won") || basesNeeded.has("cartao12x")) {
+    if (basesNeeded.has("won")) {
       const [allLeads, allCustomers] = await Promise.all([repo.list("leads"), repo.list("customers")]);
       const leads = allLeads.filter((l) => l.saas === product.id && isRealLead(l));
       const starts = customerStartMap(allCustomers.filter((c) => c.saas === product.id));
       const wins = winsIn(product, leads, (iso) => monthKey(iso) === month, starts);
-      const winLeads = leads.filter((l) => wins.has(l.id));
-      bases.won = tcvOf(winLeads);
-      bases.cartao12x = tcvOf(winLeads.filter((l) => l.paymentMethod === "cartao12x"));
+      bases.won = tcvOf(leads.filter((l) => wins.has(l.id)));
+    }
+    if (basesNeeded.has("cartao12x")) {
+      const mp = (await repo.list("mp_payments")).filter((p) => !p.saas || p.saas === product.id);
+      bases.cartao12x = card12xBaseIn(mp, month);
     }
     if (basesNeeded.has("received")) {
       const invoices = (await repo.list("invoices")).filter((i) => i.saas === product.id);
@@ -128,9 +131,16 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhats
         : e))
       .sort((a, b) => (b.recurring === true) - (a.recurring === true) || String(a.category).localeCompare(String(b.category)));
     const manualTotal = round2(manual.reduce((a, e) => a + (Number(e.amount) || 0), 0));
-    const total = round2(ads + (aiBRL || 0) + (wa || 0) + manualTotal);
+    // Contas a pagar do mês (competência) entram no total: o "Resultado do
+    // mês" que consome este summary passa a incluir folha e fornecedores —
+    // mesma conta do Financeiro (aba Resumo), sem dupla contagem (coleções
+    // distintas: regra/automático aqui, conta com favorecido em payables).
+    const payablesMonth = (await repo.list("payables")).filter((p) => p.saas === product.id && p.month === month);
+    const payablesTotal = round2(payablesMonth.reduce((a, p) => a + (Number(p.amount) || 0), 0));
+    const total = round2(ads + (aiBRL || 0) + (wa || 0) + manualTotal + payablesTotal);
     return {
-      month, ads, ai: aiBRL, aiUSD, usdBrl, wa, waConversations, manual, manualTotal, total,
+      month, ads, ai: aiBRL, aiUSD, usdBrl, wa, waConversations, manual, manualTotal,
+      payablesTotal, payablesCount: payablesMonth.length, total,
       wonBase: basesNeeded.has("won") ? round2(bases.won) : undefined,
       cardBase: basesNeeded.has("cartao12x") ? round2(bases.cartao12x) : undefined,
       receivedBase: basesNeeded.has("received") ? round2(bases.received) : undefined,

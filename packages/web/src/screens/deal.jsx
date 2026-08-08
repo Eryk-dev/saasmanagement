@@ -1,12 +1,12 @@
 import React from "react";
-import { Avatar } from "../atoms.jsx";
+import { Avatar, useEsc } from "../atoms.jsx";
 import { ActivityList, ActivityComposer } from "../components/timeline.jsx";
 import { RoutineSuggestion } from "../components/routine-suggestion.jsx";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 import { leadScoreLabel, leadAge, waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
 import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind } from "../lib/funnel.js";
 import { displayName, usersByRole, currentUser } from "../lib/users.js";
-import { paymentLabel, closedPlanLabel, PAYMENT_METHODS, CLOSED_PLANS } from "../lib/payments.js";
+import { paymentLabel, closedPlanLabel, PAYMENT_METHODS, CLOSED_PLANS, DEAL_PRODUCTS, dealProductLabel } from "../lib/payments.js";
 import { api } from "../lib/api.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 import { sourceLabel } from "../lib/sources.js";
@@ -71,6 +71,7 @@ function consultaWhen(at) {
 }
 
 function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
+  useEsc(onClose); // drawer fecha no Esc; modal aberto por cima fecha primeiro (pilha)
   const { refresh, version } = useData();
   // Cópia local: as ações rápidas (etapa, próximo contato) editam aqui e
   // persistem otimisticamente; o pipeline ressincroniza no fechar (refresh).
@@ -148,7 +149,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   function patch(p) {
     dirty.current = true;
     setLead((prev) => ({ ...prev, ...p }));
-    api.update("leads", lead.id, p).catch((err) => console.warn("lead patch not persisted:", err.message));
+    api.update("leads", lead.id, p).catch((err) => { console.warn("lead patch not persisted:", err.message); window.toast && window.toast("Alteração no lead não foi salva · tente de novo", "neg"); });
   }
   // Proposta direto no WhatsApp (pedido do Leo, 03/08): UM botão que garante a
   // proposta (gera na hora se o lead ainda não tem) e abre a conversa com a
@@ -184,7 +185,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
     if (gate) { setPendingMove({ toStage: stage, gate }); return; }
     dirty.current = true;
     setLead((prev) => ({ ...prev, stage, stageSince: new Date().toISOString(), stageAttempts: 0 }));
-    api.update("leads", lead.id, { stage }).catch((err) => console.warn("lead move not persisted:", err.message));
+    api.update("leads", lead.id, { stage }).catch((err) => { console.warn("lead move not persisted:", err.message); window.toast && window.toast("O movimento do card não foi salvo · tente de novo", "neg"); });
   }
   function close() {
     if (dirty.current) refresh();
@@ -1031,7 +1032,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
             onConfirm={(p, extra) => {
               dirty.current = true;
               setLead((prev) => ({ ...prev, ...p, stageSince: new Date().toISOString(), stageAttempts: 0 }));
-              applyGatedMove(p, extra, lead.id).then(refetchTimeline).catch((err) => console.warn("movimento não persistido:", err.message));
+              applyGatedMove(p, extra, lead.id).then(refetchTimeline).catch((err) => { console.warn("movimento não persistido:", err.message); window.toast && window.toast("O movimento do card não foi salvo · tente de novo", "neg"); });
               setPendingMove(null);
             }}
           />
@@ -1066,18 +1067,21 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
 // (planClosed/amount/paymentMethod): pagamento confirmado + card virado, o
 // cliente e a assinatura nascem com plano, duração e valor certos.
 function PaymentLinkModal({ lead, onClose, onSaved }) {
+  useEsc(onClose);
   const product = (window.SEED?.SAAS || []).find((s) => s.id === lead.saas);
-  // Mesmo rótulo do servidor (PLAN_LABEL em routes.mp.js): título default do checkout.
+  // Mesmo rótulo do servidor (PLAN_LABEL/PRODUCT_LABEL em routes.mp.js):
+  // título default do checkout = produto do catálogo + plano.
   const PLAN_TITLE = { anual: "Plano Anual", semestral: "Plano Semestral", unico: "Serviço único" };
-  const titleFor = (p) => [product?.name || lead.saas, PLAN_TITLE[p] || "pagamento"].filter(Boolean).join(" · ");
+  const titleFor = (p, prod) => [dealProductLabel(prod) || product?.name || lead.saas, PLAN_TITLE[p] || "pagamento"].filter(Boolean).join(" · ");
 
   const [amount, setAmount] = React.useState(lead.mpChargeAmount || "");
   const [installments, setInstallments] = React.useState(12);
   const [plan, setPlan] = React.useState(lead.planClosed || "anual");
+  const [dealProduct, setDealProduct] = React.useState(lead.dealProduct || "");
   const [contract, setContract] = React.useState(Number(lead.amount) > 0 ? String(lead.amount) : "");
   const [method, setMethod] = React.useState(lead.paymentMethod || "");
   const [payerEmail, setPayerEmail] = React.useState(lead.email || "");
-  const [title, setTitle] = React.useState(lead.mpChargeTitle || titleFor(lead.planClosed || "anual"));
+  const [title, setTitle] = React.useState(lead.mpChargeTitle || titleFor(lead.planClosed || "anual", lead.dealProduct || ""));
   const [titleDirty, setTitleDirty] = React.useState(!!lead.mpChargeTitle);
   const [description, setDescription] = React.useState("");
   const [url, setUrl] = React.useState(lead.mpChargeUrl || "");
@@ -1086,9 +1090,14 @@ function PaymentLinkModal({ lead, onClose, onSaved }) {
   const wa = waLink(lead.phone);
   const inputStyle = { height: 36, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, width: "100%" };
 
+  // Título acompanha produto e plano até o closer mexer nele na mão.
   function pickPlan(p) {
     setPlan(p);
-    if (!titleDirty) setTitle(titleFor(p)); // título acompanha o plano até o closer mexer nele
+    if (!titleDirty) setTitle(titleFor(p, dealProduct));
+  }
+  function pickProduct(prod) {
+    setDealProduct(prod);
+    if (!titleDirty) setTitle(titleFor(plan, prod));
   }
 
   async function create() {
@@ -1101,7 +1110,8 @@ function PaymentLinkModal({ lead, onClose, onSaved }) {
         amount: value, maxInstallments: Number(installments) || undefined,
         title: title.trim() || undefined, description: description.trim() || undefined,
         payerEmail: payerEmail.trim() || undefined,
-        plan, contractValue: contractValue > 0 ? contractValue : undefined,
+        plan, product: dealProduct || undefined,
+        contractValue: contractValue > 0 ? contractValue : undefined,
         paymentMethod: method || undefined,
       });
       setUrl(r.url || "");
@@ -1141,7 +1151,7 @@ function PaymentLinkModal({ lead, onClose, onSaved }) {
           </div>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span className="kicker">Título no checkout</span>
-            <input type="text" value={title} placeholder={titleFor(plan)}
+            <input type="text" value={title} placeholder={titleFor(plan, dealProduct)}
               onChange={(e) => { setTitle(e.target.value); setTitleDirty(true); }}
               style={inputStyle} />
           </label>
@@ -1165,6 +1175,14 @@ function PaymentLinkModal({ lead, onClose, onSaved }) {
           <span className="kicker accent">fechamento</span>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span className="kicker">Produto</span>
+              <select value={dealProduct} onChange={(e) => pickProduct(e.target.value)} style={inputStyle}
+                title="produto do catálogo da apresentação — vai pro card, pro cliente e pro card da Integração">
+                <option value="">escolher…</option>
+                {DEAL_PRODUCTS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+              </select>
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <span className="kicker">Plano · duração</span>
               <select value={plan} onChange={(e) => pickPlan(e.target.value)} style={inputStyle}>
                 {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
@@ -1186,7 +1204,7 @@ function PaymentLinkModal({ lead, onClose, onSaved }) {
             </label>
           </div>
           <div className="mono dim" style={{ fontSize: 10.5 }}>
-            esses três vão pro card: quando o pagamento cair e você virar pra Ganho, cliente e assinatura já nascem com plano, duração e valor certos
+            esses campos vão pro card: quando o pagamento cair e você virar pra Ganho, cliente e assinatura já nascem com produto, plano, duração e valor certos
           </div>
         </div>
 

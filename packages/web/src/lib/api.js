@@ -318,6 +318,10 @@ export const api = {
   aiCosts: (days) => req("GET", `/api/ai-costs${days ? `?days=${days}` : ""}`),
   // Custos operacionais do mês (ads + IA automáticos + lançamentos manuais).
   expensesSummary: (saas, month) => req("GET", `/api/expenses/summary/${saas}${month ? `?month=${month}` : ""}`),
+  // Financeiro completo: a leitura do mês (contas a pagar + receber, fluxo, DRE, conciliação).
+  fin: (saas, month) => req("GET", `/api/fin/${saas}${month ? `?month=${month}` : ""}`),
+  // Importa as SAÍDAS da conta MP (settlement report) pra conciliação.
+  finMpOutSync: (saas) => req("POST", `/api/fin/${saas}/mp-out/sync`, {}),
   // Mídia social: métricas do perfil, histórico e publicação orgânica (IG/FB).
   socialSummary: (saas, days) => req("GET", `/api/social/summary?saas=${encodeURIComponent(saas)}${days ? `&days=${days}` : ""}`),
   // Só a contagem líquida de novos seguidores (~24h) + o @ do perfil, pro aviso
@@ -509,6 +513,10 @@ export const api = {
   },
   // Pace mensal de caixa: faturas pagas → meta diária por papel do funil.
   pipelinePace: (saas) => req("GET", `/api/pipeline-pace/${encodeURIComponent(saas)}`),
+  // Meta de uma JANELA qualquer (mês passado, semana, dia) — a faixa da Visão
+  // geral seguindo o filtro do topo; meta repartida pelos dias úteis.
+  paceWindow: (saas, { since, until }) =>
+    req("GET", `/api/pipeline-pace/${encodeURIComponent(saas)}/window?since=${since}&until=${until}`),
   // Placar por pessoa/papel (SDR/closer/CS) — cockpit de gestão da Visão geral.
   scoreboard: (saas, { since, until, prevSince, prevUntil } = {}) => {
     const q = new URLSearchParams();

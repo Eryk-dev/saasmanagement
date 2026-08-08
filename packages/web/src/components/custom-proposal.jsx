@@ -1,6 +1,7 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { cockpitProposalUrl } from "../lib/ui.js";
+import { useEsc } from "../atoms.jsx";
 
 // Proposta PERSONALIZADA (objetiva) — pra cliente que fechou solução sob medida
 // numa conversa. O closer não monta o deck inteiro: escreve o COMBINADO
@@ -22,6 +23,7 @@ const ghost = { height: 32, padding: "0 12px", borderRadius: "var(--r-2)", borde
 const primary = { ...ghost, border: "1px solid var(--accent)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))" };
 
 export function CustomProposalModal({ lead, onClose, onSaved }) {
+  useEsc(onClose);
   const [spec, setSpec] = useState({ title: "Proposta personalizada", subtitle: "", deliverables: [""], price: "", cycle: "avista", priceCaption: "" });
   const [url, setUrl] = useState(lead.customProposalUrl || "");
   const [busy, setBusy] = useState(false);

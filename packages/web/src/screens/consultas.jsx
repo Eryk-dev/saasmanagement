@@ -1,6 +1,6 @@
 import React from "react";
 import { PageHead } from "../components/viz.jsx";
-import { EmptyState } from "../atoms.jsx";
+import { EmptyState, useEsc } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -285,6 +285,7 @@ function AgendaTab({ days, byCell, journeys, consultas, onShiftWeek, onToday, on
 
 // ── Modal de consulta (criar/editar) ─────────────────────────────────────────
 function ConsultaModal({ c, customers, consultas = [], onClose, onSaved }) {
+  useEsc(onClose);
   // Prefill do e-mail do convite pelo cadastro do cliente quando a consulta
   // ainda não tem o seu (consultas antigas, ou família que já tem e-mail no
   // customer) — a Ana abre e já vê pra quem o convite vai, sem redigitar.
@@ -339,6 +340,7 @@ function ConsultaModal({ c, customers, consultas = [], onClose, onSaved }) {
     finally { setBusy(""); }
   }
   async function removeConsulta() {
+    if (!window.confirm(`Excluir a consulta ${form.n || "?"} de ${form.clientName || "este cliente"}? Essa ação não tem volta.`)) return;
     setBusy("del"); setErr("");
     try { await api.remove("consultations", form.id); onSaved(); }
     catch (e) { setErr(e?.message || "falhou"); setBusy(""); }
@@ -518,6 +520,7 @@ function EntregaveisTab({ manuais, customers, product, onOpen, refresh }) {
 
 // ── Editor do Manual da Família ───────────────────────────────────────────────
 function ManualEditor({ m, onClose, refresh }) {
+  useEsc(onClose);
   const [doc, setDoc] = useS(m);
   const [busy, setBusy] = useS("");
   const [err, setErr] = useS("");

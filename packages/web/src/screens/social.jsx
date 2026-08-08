@@ -1,6 +1,6 @@
 import React from "react";
 import { PageHead, Pill, Card, StatTile } from "../components/viz.jsx";
-import { EmptyState } from "../atoms.jsx";
+import { EmptyState, useEsc } from "../atoms.jsx";
 import { MetaConnectCard } from "../components/meta-connect.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { api } from "../lib/api.js";
@@ -643,6 +643,7 @@ function SocialScreen() {
 
 // ── Wizard "Criar post" ──────────────────────────────────────────────────────
 function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
+  useEsc(onClose);
   const isMobile = useIsMobile();
   const [step, setStep] = useS(1);
   const [format, setFormat] = useS("feed");

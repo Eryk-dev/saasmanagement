@@ -285,7 +285,7 @@ function NextActionModal({ leadId, onScheduled, onResolved, onClose }) {
         saasCfg={saasCfg}
         onCancel={() => setGateMove(null)}
         onConfirm={(mp, extra) => {
-          applyGatedMove(mp, extra, lead.id).then(() => { refresh(); onResolved?.(lead.id); }).catch((err2) => console.warn("movimento não persistido:", err2.message));
+          applyGatedMove(mp, extra, lead.id).then(() => { refresh(); onResolved?.(lead.id); }).catch((err2) => { console.warn("movimento não persistido:", err2.message); window.toast && window.toast("O movimento do card não foi salvo · tente de novo", "neg"); });
           setGateMove(null);
           setDone({ moved: gateMove.toStage });
         }}

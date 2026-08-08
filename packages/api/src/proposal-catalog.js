@@ -29,6 +29,18 @@ const DEFAULT_ACCOUNTS = ["1", "2", "3-5", "6-10", "10+"];
 const DEFAULT_VOL_LABELS = ["≤100", "100-500", "500-2k", "2-10k", "10k+"];
 const PRODUCT_KEYS = ["full", "fulloem", "oem", "parcialA", "parcialoem"];
 
+// Nome de exibição dos produtos do catálogo (espelho dos `name` da migração
+// ensureProposalCatalog — os dois andam juntos). Usado FORA da proposta:
+// link de pagamento do lead, coluna Plano do cliente e card da Integração
+// (web espelha em lib/payments.js DEAL_PRODUCTS).
+export const PRODUCT_LABEL = {
+  full: "LeverAds FULL",
+  fulloem: "LeverAds + OEM FULL",
+  oem: "OEM avulso",
+  parcialA: "Parcial",
+  parcialoem: "Parcial + OEM 50",
+};
+
 export const hasCatalog = (calc) => !!(calc && calc.catalog && calc.catalog.products);
 
 // Milhar pt-BR sem depender do ICU do runtime (imagem slim pode vir sem pt-BR).

@@ -92,7 +92,7 @@ export async function settleInvoice(repo, invoice, pmt, { discord, log } = {}) {
 }
 
 // Qual fatura um pagamento aprovado baixa, dado o vínculo encontrado?
-function settleTarget(invoices, link, base) {
+export function settleTarget(invoices, link, base) {
   const open = (i) => i.status === "open" || i.status === "overdue";
   if (link.invoice) {
     const inv = invoices.find((i) => i.id === link.invoice);

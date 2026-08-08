@@ -12,6 +12,7 @@ import { registerWebhookRoutes } from "./routes.webhooks.js";
 import { mergeLeadQuestions } from "./forms.js";
 import { registerProposalRoutes } from "./routes.proposals.js";
 import { runNativeProposal, proposalOffers, shareProposalOffer, buildCustomProposal, publicProposal } from "./proposal.js";
+import { PRODUCT_LABEL } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { registerBillingRoutes } from "./routes.billing.js";
 import { initSubscription, syncCustomerArr, createClosedSubscription, closedSubscriptionSpec } from "./billing.js";
@@ -39,6 +40,7 @@ import { makeMailer } from "./mailer.js";
 import { getWaHealth, waHealthSummary } from "./wa-health.js";
 import { makeAnthropic } from "./anthropic.js";
 import { registerMetricsRoutes } from "./routes.metrics.js";
+import { registerFinRoutes } from "./routes.fin.js";
 import { meta as defaultMetaClient } from "./meta.js";
 import { metaCapi as defaultMetaCapi } from "./meta-capi.js";
 import { discord as defaultDiscord } from "./discord.js";
@@ -109,6 +111,14 @@ export const CREATE_DEFAULTS = {
   // (fixo/ferramenta/pessoal/outros — publicidade e IA entram automáticos).
   // recurring=true vale de `month` em diante, todo mês, até `endMonth` (inclusivo).
   expenses: { month: "", category: "fixo", name: "", amount: 0, recurring: false, endMonth: "" },
+  // Contas a pagar (Financeiro): lançamento com competência (month), vencimento
+  // e situação; favorecido = colaborador (userId → Folha) ou fornecedor (texto).
+  // `recurring: true` = template mensal (o próprio doc é a 1ª ocorrência; os
+  // meses seguintes viram instâncias com templateId — routes.fin.js).
+  payables: { saas: "", description: "", category: "outros", counterpartyType: "fornecedor", userId: "", supplierName: "", amount: 0, month: "", dueDate: "", status: "aberta", paidAt: "", paidVia: "", recurring: false, endMonth: "", templateId: "", notes: "" },
+  // Regra de conciliação aprendida: quando o pagador (doc > e-mail > nome) bate,
+  // o Financeiro aplica a ação sozinho e não pergunta mais (routes.fin.js).
+  fin_rules: { saas: "", matchField: "payerDoc", matchValue: "", action: "vincular", customer: "", reason: "", autoCount: 0, lastAppliedAt: "", createdAt: "" },
   // Kanban de tarefas do time. `column` = KEY estável da coluna do board (renomear
   // coluna não órfã o card); `assignees` = ids de usuários do time (collection users);
   // comments = [{ id, author, text, at }] — o SPA faz PATCH do array inteiro.
@@ -291,6 +301,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // getWhatsapp é getter: o client só nasce mais abaixo (registerWhatsappRoutes)
   // e o custo de WhatsApp do resumo de despesas resolve na hora do request.
   registerMetricsRoutes(app, repo, { getWhatsapp: () => whatsappClient });
+  registerFinRoutes(app, repo, { mp: mpClient });
   // Métricas reais de funil (conversão/tempo por estágio, motivos de perda, SLA)
   // a partir do histórico de transições da timeline.
   registerFunnelMetricsRoutes(app, repo);
@@ -967,6 +978,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
 // é anualizado pelo plano fechado. Assinatura criada depois manda mais — toda
 // mutação de assinatura reescreve o arr via syncCustomerArr.
 const CLOSED_PLAN_LABEL = { anual: "Anual", semestral: "Semestral", mensal: "Mensal", unico: "Serviço único" };
+// O produto do catálogo da apresentação (FULL/OEM/Parcial, lead.dealProduct)
+// entra na frente do ciclo na coluna Plano do cliente: "LeverAds FULL · Anual".
+const planLabelOf = (lead) => [PRODUCT_LABEL[lead.dealProduct], CLOSED_PLAN_LABEL[lead.planClosed]].filter(Boolean).join(" · ");
 const CLOSED_PLAN_ANNUAL_FACTOR = { anual: 1, semestral: 2, mensal: 12, unico: 1 };
 export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } = {}) {
   if (!lead || !lead.saas) return null;
@@ -1002,10 +1016,11 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
     // Mentoria (UniqueKids): o "plano" do cliente é o PACOTE comprado.
     plan: lead.saas === "uniquekids"
       ? `Mentoria · ${Number(lead.consultPackage) === 4 ? 4 : 8} consultas`
-      : (CLOSED_PLAN_LABEL[lead.planClosed] || ""),
+      : (planLabelOf(lead) || ""),
     arr: Math.round((Number(lead.amount) || 0) * (CLOSED_PLAN_ANNUAL_FACTOR[lead.planClosed] || 1)),
     leadId: lead.id,
     ...(csOwner ? { owner: csOwner } : {}),
+    ...(lead.dealProduct ? { dealProduct: lead.dealProduct } : {}), // produto do catálogo (FULL/OEM/Parcial)
     ...(lead.paymentMethod ? { paymentMethod: lead.paymentMethod } : {}), // modo como fechou (PIX/boleto/cartão 12x)
     startedAt: new Date().toISOString(),
   });
@@ -1093,7 +1108,8 @@ export async function syncWonLeadDeal(repo, lead) {
   const patch = {
     plan: lead.saas === "uniquekids"
       ? `Mentoria · ${Number(lead.consultPackage) === 4 ? 4 : 8} consultas`
-      : (CLOSED_PLAN_LABEL[lead.planClosed] || customer.plan || ""),
+      : (planLabelOf(lead) || customer.plan || ""),
+    ...(lead.dealProduct ? { dealProduct: lead.dealProduct } : {}),
     ...(lead.paymentMethod ? { paymentMethod: lead.paymentMethod } : {}),
   };
   const manualArr = () => Math.round((Number(lead.amount) || 0) * (CLOSED_PLAN_ANNUAL_FACTOR[lead.planClosed] || 1));
