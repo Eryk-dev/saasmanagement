@@ -127,7 +127,7 @@ export function WaHotAlert({ onOpenThread }) {
       <div style={{ width: 480, maxWidth: "94vw", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "0 24px 80px -24px rgba(0,0,0,.45)", overflow: "hidden" }}>
         <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 10, background: "var(--bg-2)" }}>
           <span style={{ fontSize: 16 }}>🔥</span>
-          <span className="mono" style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-1)", flex: 1 }}>
+          <span className="kicker" style={{ fontWeight: 600, color: "var(--fg-1)", flex: 1 }}>
             Lead respondeu no WhatsApp
           </span>
           {visible.length > 1 && <span className="mono dim" style={{ fontSize: 10.5 }}>+{visible.length - 1} esperando</span>}
@@ -164,7 +164,7 @@ export function WaHotAlert({ onOpenThread }) {
 
           <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center" }}>
             <button onClick={send} disabled={busy || !reply.trim()}
-              style={{ ...btn, background: "#25D366", borderColor: "transparent", color: "#06120c", fontWeight: 700, opacity: busy || !reply.trim() ? 0.6 : 1 }}>
+              style={{ ...btn, background: "var(--wa-brand)", borderColor: "transparent", color: "var(--wa-brand-fg)", fontWeight: 700, opacity: busy || !reply.trim() ? 0.6 : 1 }}>
               Responder agora
             </button>
             <button onClick={open} style={btn}>Abrir conversa</button>

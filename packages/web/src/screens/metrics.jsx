@@ -394,17 +394,17 @@ function MetricsScreen() {
           <Card>
             <div style={{ padding: "14px 16px", display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>Data</span>
+                <span className="kicker">Data</span>
                 <input type="date" value={manual.date} onChange={(e) => setManual({ ...manual, date: e.target.value })}
                   style={{ height: 30, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)" }} />
               </label>
               <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 180 }}>
-                <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>Campanha (opcional)</span>
+                <span className="kicker">Campanha (opcional)</span>
                 <input type="text" placeholder="Entrada manual" value={manual.name} onChange={(e) => setManual({ ...manual, name: e.target.value })}
                   style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 }} />
               </label>
               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>Gasto (R$)</span>
+                <span className="kicker">Gasto (R$)</span>
                 <input type="number" min="0" step="0.01" placeholder="0,00" value={manual.spend} onChange={(e) => setManual({ ...manual, spend: e.target.value })}
                   style={{ width: 120, height: 30, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)", textAlign: "right" }} />
               </label>
@@ -937,7 +937,7 @@ function CompactAdsCard({ saas, objects, metrics, money, busyIds, onToggle, onBu
       )}
       <DragScroll>
         <div style={{ minWidth: minW }}>
-          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", alignItems: "center" }}>
+          <div className="kicker" style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontWeight: 600, borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", alignItems: "center" }}>
             <span style={{ display: "flex", alignItems: "center" }}>
               {level !== "ads" && (
                 <input type="checkbox" checked={allChecked} onChange={toggleSelAll}
@@ -1293,7 +1293,7 @@ function PlacementTable({ placements, money }) {
         <thead>
           <tr>
             {ths.map((h, i) => (
-              <th key={h} className="mono" style={{ textAlign: i === 0 ? "left" : "right", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", padding: "10px 16px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
+              <th key={h} className="kicker" style={{ textAlign: i === 0 ? "left" : "right", padding: "10px 16px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -1370,7 +1370,7 @@ function PainTable({ pains, money }) {
     // dentro do card em vez de o overflow:hidden clipar os valores.
     <div className="tbl-x" style={{ marginTop: 14 }}>
      <div>
-      <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+      <div className="kicker" style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontWeight: 600, borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
         <span>Dor</span><span style={{ textAlign: "right" }}>Investido</span><span style={{ textAlign: "right" }}>Leads</span><span style={{ textAlign: "right" }}>CPL</span>
         <span title="leads da dor que marcaram call" style={{ textAlign: "right" }}>Calls</span>
         <span title="clientes A/B/C que a dor trouxe · custo por cada" style={{ textAlign: "right" }}>Clientes ABC</span>
@@ -1616,14 +1616,13 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
   }
 
   const lbl = { display: "flex", flexDirection: "column", gap: 4 };
-  const cap = { fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" };
   const inp = { height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
 
   return (
     <Card title="Criar anúncio" hint="clona o conjunto da dor e troca só o vídeo · um anúncio por vídeo, nome «número [dor]»">
       <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <span className="mono" style={cap}>1 · Vídeos da leva {comArquivo.length > 1 ? `(${comArquivo.length} anúncios)` : ""}</span>
+          <span className="kicker">1 · Vídeos da leva {comArquivo.length > 1 ? `(${comArquivo.length} anúncios)` : ""}</span>
           {linhas.map((l, i) => (
             <div key={l.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <span className="mono dim" style={{ fontSize: 11, width: 16, textAlign: "right" }}>{i + 1}</span>
@@ -1650,7 +1649,7 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
           <label style={lbl}>
-            <span className="mono" style={cap}>2 · Dor do anúncio</span>
+            <span className="kicker">2 · Dor do anúncio</span>
             <select value={pain} onChange={(e) => setPain(e.target.value)} style={inp}>
               <option value="">Selecione…</option>
               {Object.entries(painMap).map(([c, l]) => <option key={c} value={c}>[{c}] {l}</option>)}
@@ -1669,13 +1668,13 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
         {pain === "_new" && (
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <label style={lbl}>
-              <span className="mono" style={cap}>Código (1-3 letras)</span>
+              <span className="kicker">Código (1-3 letras)</span>
               <input type="text" maxLength={3} placeholder="C" value={newPain.code}
                 onChange={(e) => setNewPain({ ...newPain, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") })}
                 style={{ ...inp, width: 80, fontFamily: "var(--mono)", textTransform: "uppercase" }} />
             </label>
             <label style={{ ...lbl, flex: 1, minWidth: 220 }}>
-              <span className="mono" style={cap}>Nome da dor</span>
+              <span className="kicker">Nome da dor</span>
               <input type="text" placeholder="ex.: Medo de banimento da conta" value={newPain.label}
                 onChange={(e) => setNewPain({ ...newPain, label: e.target.value })} style={inp} />
             </label>
@@ -1684,21 +1683,21 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
           <label style={lbl}>
-            <span className="mono" style={cap}>3 · Campanha {matches.length === 1 ? "(resolvida pela dor)" : matches.length > 1 ? "(várias [" + painCodeSel + "], escolha)" : ""}</span>
+            <span className="kicker">3 · Campanha {matches.length === 1 ? "(resolvida pela dor)" : matches.length > 1 ? "(várias [" + painCodeSel + "], escolha)" : ""}</span>
             <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)} style={inp}>
               <option value="">{painCodeSel ? (matches.length ? "Selecione…" : `nenhuma campanha [${painCodeSel}] — escolha`) : "escolha a dor antes"}</option>
               {activeCamps.map((c) => <option key={c.id} value={c.id}>{painCodeOf(c.name) === painCodeSel ? "● " : ""}{c.name}</option>)}
             </select>
           </label>
           <label style={lbl}>
-            <span className="mono" style={cap}>4 · Conjunto de origem (será clonado)</span>
+            <span className="kicker">4 · Conjunto de origem (será clonado)</span>
             <select value={sourceAdsetId} onChange={(e) => setSourceAdsetId(e.target.value)} disabled={!campaignId} style={inp}>
               <option value="">{!campaignId ? "escolha a campanha" : adsets == null ? "carregando…" : "Selecione…"}</option>
               {(adsets || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </label>
           <label style={lbl}>
-            <span className="mono" style={cap}>5 · Orçamento diário por conjunto (R$, teto {MAX_BUDGET})</span>
+            <span className="kicker">5 · Orçamento diário por conjunto (R$, teto {MAX_BUDGET})</span>
             <input type="text" inputMode="decimal" placeholder={`até ${MAX_BUDGET}`}
               value={budget} onChange={(e) => setBudget(e.target.value.replace(/[^\d.,]/g, ""))}
               style={{ ...inp, fontFamily: "var(--mono)", borderColor: budget && !orcamentoOk ? "var(--neg)" : "var(--line-2)" }} />
@@ -1812,7 +1811,6 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
   }
 
   const lbl = { display: "flex", flexDirection: "column", gap: 4 };
-  const cap = { fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" };
   const inp = { height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
   const activeCamps = campaigns.filter((c) => c.effectiveStatus !== "ARCHIVED" && c.effectiveStatus !== "DELETED");
 
@@ -1821,21 +1819,21 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
       <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
           <label style={lbl}>
-            <span className="mono" style={cap}>Campanha</span>
+            <span className="kicker">Campanha</span>
             <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)} style={inp}>
               <option value="">Selecione…</option>
               {activeCamps.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </label>
           <label style={lbl}>
-            <span className="mono" style={cap}>Conjunto</span>
+            <span className="kicker">Conjunto</span>
             <select value={adsetId} onChange={(e) => setAdsetId(e.target.value)} disabled={!campaignId} style={inp}>
               <option value="">{!campaignId ? "escolha a campanha" : adsets == null ? "carregando…" : "Selecione…"}</option>
               {(adsets || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </label>
           <label style={lbl}>
-            <span className="mono" style={cap}>Dor (roteiro)</span>
+            <span className="kicker">Dor (roteiro)</span>
             <select value={pain} onChange={(e) => setPain(e.target.value)} style={inp}>
               <option value="">Sem código</option>
               {Object.entries(painMap).map(([c, l]) => <option key={c} value={c}>[{c}] {l}</option>)}
@@ -1847,13 +1845,13 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
         {pain === "_new" && (
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <label style={lbl}>
-              <span className="mono" style={cap}>Código (1-3 letras)</span>
+              <span className="kicker">Código (1-3 letras)</span>
               <input type="text" maxLength={3} placeholder="C" value={newPain.code}
                 onChange={(e) => setNewPain({ ...newPain, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") })}
                 style={{ ...inp, width: 80, fontFamily: "var(--mono)", textTransform: "uppercase" }} />
             </label>
             <label style={{ ...lbl, flex: 1, minWidth: 220 }}>
-              <span className="mono" style={cap}>Nome da dor</span>
+              <span className="kicker">Nome da dor</span>
               <input type="text" placeholder="ex.: Medo de banimento da conta" value={newPain.label}
                 onChange={(e) => setNewPain({ ...newPain, label: e.target.value })} style={inp} />
             </label>
@@ -1862,15 +1860,15 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
           <label style={lbl}>
-            <span className="mono" style={cap}>Variação (vira o nome do anúncio)</span>
+            <span className="kicker">Variação (vira o nome do anúncio)</span>
             <input type="text" placeholder="ex.: v1 depoimento cliente" value={name} onChange={(e) => setName(e.target.value)} style={inp} />
           </label>
           <label style={lbl}>
-            <span className="mono" style={cap}>Título (headline)</span>
+            <span className="kicker">Título (headline)</span>
             <input type="text" placeholder="opcional" value={title} onChange={(e) => setTitle(e.target.value)} style={inp} />
           </label>
           <label style={lbl}>
-            <span className="mono" style={cap}>Botão (CTA)</span>
+            <span className="kicker">Botão (CTA)</span>
             <select value={cta} onChange={(e) => setCta(e.target.value)} style={inp}>
               <option value="LEARN_MORE">Saiba mais</option>
               <option value="SIGN_UP">Cadastre-se</option>
@@ -1881,18 +1879,18 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
         </div>
 
         <label style={lbl}>
-          <span className="mono" style={cap}>Texto principal</span>
+          <span className="kicker">Texto principal</span>
           <textarea rows={3} placeholder="Copy do anúncio (aparece acima do vídeo)" value={message} onChange={(e) => setMessage(e.target.value)}
             style={{ ...inp, height: "auto", minHeight: 64, padding: "8px 10px", resize: "vertical", fontFamily: "var(--sans)" }} />
         </label>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
           <label style={lbl}>
-            <span className="mono" style={cap}>Link de destino (form)</span>
+            <span className="kicker">Link de destino (form)</span>
             <input type="url" placeholder="https://…" value={link} onChange={(e) => setLink(e.target.value)} style={{ ...inp, fontFamily: "var(--mono)", fontSize: 12 }} />
           </label>
           <label style={lbl}>
-            <span className="mono" style={cap}>Vídeo</span>
+            <span className="kicker">Vídeo</span>
             <input type="file" accept="video/*" onChange={(e) => setFile(e.target.files?.[0] || null)}
               style={{ ...inp, paddingTop: 4, height: 30 }} />
           </label>
@@ -1953,7 +1951,7 @@ function CampaignDrilldown({ data, money }) {
         <thead>
           <tr>
             {["Campanha", "Investimento", "Cliques", "Leads (UTM)", "CPL real", "Leads (Meta)", "CPL (Meta)"].map((h, i) => (
-              <th key={h} className="mono" style={{ textAlign: i === 0 ? "left" : "right", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", padding: "10px 16px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
+              <th key={h} className="kicker" style={{ textAlign: i === 0 ? "left" : "right", padding: "10px 16px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
             ))}
           </tr>
         </thead>

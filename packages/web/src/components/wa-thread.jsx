@@ -215,7 +215,7 @@ export function WaTemplateComposer({ threadId, contactName = "", onSent }) {
 
   return (
     <div style={{ border: "1px dashed var(--warn-line, var(--line-2))", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--warn-soft)" }}>
-      <div className="mono" style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--warn)", marginBottom: 6 }}>
+      <div className="kicker" style={{ color: "var(--warn)", marginBottom: 6 }}>
         Fora da janela de 24h · só template aprovado chega
       </div>
 
@@ -264,7 +264,7 @@ export function WaTemplateComposer({ threadId, contactName = "", onSent }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <button disabled={!ready || busy} onClick={send} style={{
               height: 34, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 700,
-              background: "#25D366", color: "#06120c", border: "none", cursor: "pointer", opacity: !ready || busy ? 0.55 : 1,
+              background: "var(--wa-brand)", color: "var(--wa-brand-fg)", border: "none", cursor: "pointer", opacity: !ready || busy ? 0.55 : 1,
             }}>{busy ? "…" : "Enviar template"}</button>
             <span className="mono dim" style={{ fontSize: 10 }}>quando o lead responder, o campo de mensagem normal volta</span>
           </div>
@@ -438,7 +438,7 @@ export function WaComposer({ onSend, onSendMedia, disabled, placeholder, templat
               <div style={{ position: "absolute", bottom: "calc(100% + 6px)", left: 0, zIndex: 61, width: 340, maxHeight: "min(52vh, 460px)", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 6 }}>
                 {groups.map((g) => (
                   <div key={g.group} style={{ marginBottom: 4 }}>
-                    <div className="mono" style={{ fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-4)", padding: "6px 8px 4px" }}>{g.group}</div>
+                    <div className="kicker" style={{ padding: "6px 8px 4px" }}>{g.group}</div>
                     {g.items.map((it) => (
                       <button key={it.label} onClick={() => useTemplate(it.text)} title={it.text}
                         style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 8px", borderRadius: 6, border: 0, background: "transparent", color: "var(--fg-1)", fontSize: 12, cursor: "pointer", lineHeight: 1.35 }}
@@ -462,7 +462,7 @@ export function WaComposer({ onSend, onSendMedia, disabled, placeholder, templat
           <span className="mono" style={{ fontSize: 12.5, color: "var(--fg-2)" }}>gravando… {String(Math.floor(recSecs / 60)).padStart(2, "0")}:{String(recSecs % 60).padStart(2, "0")}</span>
           <span style={{ flex: 1 }} />
           <button onClick={cancelRec} title="descartar" style={{ height: 34, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, cursor: "pointer" }}>descartar</button>
-          <button onClick={stopRecAndSend} title="enviar a nota de voz" style={{ height: 34, padding: "0 16px", borderRadius: "var(--r-2)", border: "none", background: "#25D366", color: "#06120c", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>enviar ↑</button>
+          <button onClick={stopRecAndSend} title="enviar a nota de voz" style={{ height: 34, padding: "0 16px", borderRadius: "var(--r-2)", border: "none", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>enviar ↑</button>
         </div>
       ) : (
       <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
@@ -487,7 +487,7 @@ export function WaComposer({ onSend, onSendMedia, disabled, placeholder, templat
         />
         <button disabled={busy || !text.trim() || disabled} onClick={send} style={{
           height: 38, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 700,
-          background: "#25D366", color: "#06120c", border: "none", cursor: "pointer", opacity: busy || !text.trim() || disabled ? 0.55 : 1, flexShrink: 0,
+          background: "var(--wa-brand)", color: "var(--wa-brand-fg)", border: "none", cursor: "pointer", opacity: busy || !text.trim() || disabled ? 0.55 : 1, flexShrink: 0,
         }}>{busy ? "…" : "Enviar"}</button>
       </div>
       )}

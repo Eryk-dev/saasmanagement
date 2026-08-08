@@ -211,7 +211,7 @@ function NavRail({ current, onNav, collapsed }) {
         {groups.map(g => (
           <div key={g.key} style={{ marginBottom: 10 }}>
             {!collapsed && GROUP_LABELS[g.key] && (
-              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-4)", padding: "10px 10px 6px" }}>
+              <div className="kicker" style={{ fontWeight: 600, padding: "10px 10px 6px" }}>
                 {GROUP_LABELS[g.key]}
               </div>
             )}
@@ -294,7 +294,7 @@ function WorkspaceSwitcher() {
           border: "1px solid var(--line-2)", background: "var(--bg-1)",
           borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 5, zIndex: 80,
         }}>
-          <div className="mono" style={{ fontSize: 10, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-4)", padding: "6px 8px 4px" }}>Produtos</div>
+          <div className="kicker" style={{ padding: "6px 8px 4px" }}>Produtos</div>
           {saas.map((s) => {
             const isActive = s.id === product.id;
             return (
@@ -558,7 +558,6 @@ function ProfileModal({ user, onClose }) {
   const [msg, setMsg] = useS(null);        // { ok, text }
   const fileRef = useR(null);
   const inputStyle = { width: "100%", height: 30, padding: "0 8px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 };
-  const labelStyle = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "var(--mono)" };
   const linkStyle = { fontSize: 11, color: "var(--fg-3)", fontFamily: "var(--mono)", textDecoration: "underline", textUnderlineOffset: 3 };
 
   async function pick(e) {
@@ -616,11 +615,11 @@ function ProfileModal({ user, onClose }) {
           </div>
         </div>
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={labelStyle}>Nome</span>
+          <span className="kicker">Nome</span>
           <input value={name} autoFocus onChange={(e) => setName(e.target.value)} style={inputStyle} />
         </label>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={labelStyle}>Cargo</span>
+          <span className="kicker">Cargo</span>
           <div className="mono dim" style={{ fontSize: 12 }}>{cargoOf(user)}</div>
           <span className="mono dim" style={{ fontSize: 10 }}>quem muda o cargo é a gestão, em Ajustes → Equipe</span>
         </div>
@@ -642,7 +641,6 @@ function PasswordModal({ onClose }) {
   const [busy, setBusy] = useS(false);
   const [msg, setMsg] = useS(null); // { ok, text }
   const inputStyle = { width: "100%", height: 30, padding: "0 8px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 };
-  const labelStyle = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "var(--mono)" };
 
   async function submit(e) {
     e.preventDefault();
@@ -661,11 +659,11 @@ function PasswordModal({ onClose }) {
       <form onClick={(e) => e.stopPropagation()} onSubmit={submit} style={{ width: "min(320px, calc(100vw - 24px))", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ fontSize: 15, fontWeight: 500 }}>Trocar senha</div>
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={labelStyle}>Senha atual</span>
+          <span className="kicker">Senha atual</span>
           <input type="password" value={current} autoFocus autoComplete="current-password" onChange={(e) => setCurrent(e.target.value)} style={inputStyle} />
         </label>
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={labelStyle}>Nova senha (4+ caracteres)</span>
+          <span className="kicker">Nova senha (4+ caracteres)</span>
           <input type="password" value={next} autoComplete="new-password" onChange={(e) => setNext(e.target.value)} style={inputStyle} />
         </label>
         {msg && <div className="mono" style={{ fontSize: 11, color: msg.ok ? "var(--pos)" : "var(--neg)" }}>{msg.text}</div>}

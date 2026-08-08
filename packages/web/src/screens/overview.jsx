@@ -159,7 +159,7 @@ function Donut({ label, value, target, isMoney, lvl }) {
           {pct == null ? "—" : `${Math.round(pct * 100)}%`}
         </text>
       </svg>
-      <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--fg-3)", fontWeight: 550 }}>{label}</span>
+      <span className="kicker">{label}</span>
       <span className="tnum" style={{ fontSize: 11.5, color: "var(--fg-2)", whiteSpace: "nowrap" }}>
         {value == null ? "—" : isMoney ? `R$ ${compactMoney(value)}` : int(value)}
         {target > 0 ? ` / ${isMoney ? compactMoney(target) : int(target)}` : " · sem meta"}
@@ -250,7 +250,7 @@ function PersonCard({ p, rank, bizDays, elapsedFrac, onPerson }) {
         )}
         <Avatar id={p.user} name={p.name} size={30} />
         <span style={{ fontSize: 14, fontWeight: 650 }}>{p.name}</span>
-        <span style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--fg-4)" }}>{roleLabel(p)}</span>
+        <span className="kicker">{roleLabel(p)}</span>
       </div>
       {/* Layout SEMPRE empilhado: medidores centralizados em cima, submetas
           embaixo. A versão lado a lado dependia de wrap e o alignContent
@@ -306,7 +306,7 @@ function TeamBoard({ score, win, onPerson }) {
 function StageBox({ nm, value, meta, lvl, title }) {
   return (
     <div title={title} style={{ flex: "1 1 0", minWidth: 108, padding: "4px 6px", textAlign: "center" }}>
-      <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--fg-3)", marginBottom: 4 }}>{nm}</div>
+      <div className="kicker" style={{ marginBottom: 4 }}>{nm}</div>
       <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 650, letterSpacing: "-0.02em" }}>{int(value)}</div>
       <div className="tnum" style={{ fontSize: 11.5, color: "var(--fg-4)", minHeight: 17 }}>{meta != null ? `meta ${int(meta)}` : ""}</div>
       <div style={{ position: "relative", height: 7, borderRadius: 999, background: "var(--bg-2)", marginTop: 8 }}>
@@ -386,7 +386,7 @@ function FunilPeriodo({ team, win, pLabel }) {
 function MiniTile({ label, dot, big, sub, title }) {
   return (
     <div title={title} style={{ background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "12px 14px", minWidth: 0, cursor: title ? "help" : "default" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--fg-3)", fontWeight: 550 }}>
+      <div className="kicker" style={{ display: "flex", alignItems: "center", gap: 6 }}>
         {dot && <span style={{ width: 8, height: 8, borderRadius: 3, background: dot, flexShrink: 0 }} />}
         {label}
       </div>
