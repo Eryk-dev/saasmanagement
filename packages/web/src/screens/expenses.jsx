@@ -50,7 +50,8 @@ const brl = (n) => `R$ ${(Number(n) || 0).toFixed(2).replace(".", ",")}`;
 
 function ExpensesScreen() {
   const [product] = useActiveSaas();
-  const [tab, setTab] = useState("pagamentos");
+  const [tab, setTabState] = useState(() => { try { return localStorage.getItem("cockpit_financeiro_tab") || "pagamentos"; } catch { return "pagamentos"; } }); // persiste
+  const setTab = (t) => { setTabState(t); try { localStorage.setItem("cockpit_financeiro_tab", t); } catch { /* ignore */ } };
   const [month, setMonth] = useState(monthKey(new Date()));
 
   if (!product) return <EmptyState title="Nenhum produto cadastrado" hint="Crie o produto em Ajustes." />;

@@ -422,12 +422,13 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
     api.update("tasks", u.task.id, { column: u.prevColumn }).catch((err) => { console.warn("desfazer falhou:", err.message); toast("Não deu pra desfazer · veja no kanban", "neg"); });
   }
 
-  const users = allUsers().filter((u) => !u.saas || u.saas === saasCfg?.id);
+  const users = useM(() => allUsers().filter((u) => !u.saas || u.saas === saasCfg?.id), [saasCfg?.id]);
   const firstPending = q.hoje.find((i) => !i.done);
   const pendingToday = q.hoje.filter((i) => !i.done);
   const doneTodayRows = q.hoje.filter((i) => i.done);
   const futureRows = [...q.proximos, ...q.semdata];
-  const queueCounts = Object.fromEntries(users.map((u) => [u.id, buildQueue(leads, consultas, saasCfg, u.id).hoje.filter((i) => !i.done).length]));
+  // Memo: buildQueue de TODOS os usuários a cada render travava a digitação no painel.
+  const queueCounts = useM(() => Object.fromEntries(users.map((u) => [u.id, buildQueue(leads, consultas, saasCfg, u.id).hoje.filter((i) => !i.done).length])), [leads, consultas, saasCfg, users]);
   // Meta de "Contatados" é de contato (leads): consultas não contam pro placar.
   const contactedGoal = Math.max(q.doneToday + pendingToday.filter((i) => i.l).length, q.doneToday, 1);
   const callsToday = q.hoje.filter((i) => i.kind === "call" && !i.confirm);

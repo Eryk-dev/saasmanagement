@@ -349,7 +349,8 @@ function SocialScreen() {
   const days = win.days;
   const [err, setErr] = useS(null);
   const [wizard, setWizard] = useS(false);
-  const [tab, setTab] = useS("painel");
+  const [tab, setTabState] = useS(() => { try { return localStorage.getItem("cockpit_social_tab") || "painel"; } catch { return "painel"; } }); // persiste
+  const setTab = (t) => { setTabState(t); try { localStorage.setItem("cockpit_social_tab", t); } catch { /* ignore */ } };
   // Fila de comentários pendentes — some no badge da aba. Carregada junto com o
   // painel pra o número já aparecer sem abrir a aba.
   const [pending, setPending] = useS(null);

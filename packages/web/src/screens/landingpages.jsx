@@ -141,7 +141,7 @@ function LandingPagesScreen() {
               {!conv && <div className="dim" style={{ fontSize: 12.5, padding: "8px 0" }}>Configure ELO_DB_URL na API pra ver pedidos e receita por origem.</div>}
               {conv && !byUtm.length && <div className="dim" style={{ fontSize: 12.5, padding: "8px 0" }}>sem pedidos no período</div>}
               {byUtm.length > 0 && (
-                <table className="mono" style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                <div style={{ overflowX: "auto" }}><table className="mono" style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                   <thead>
                     <tr style={{ color: "var(--fg-4)", textAlign: "right" }}>
                       <th style={{ textAlign: "left", padding: "4px 0", fontWeight: 500 }}>origem</th>
@@ -164,7 +164,7 @@ function LandingPagesScreen() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></div>
               )}
             </div>
           </Card>

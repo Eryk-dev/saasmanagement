@@ -68,7 +68,8 @@ function DisparosScreen({ onOpenLead }) {
   const [metrics, setMetrics] = useS([]); // [{ id, name, sent, advanced, booked, won }]
   const [note, setNote] = useS(null);   // { ok, text }
   const [err, setErr] = useS(null);
-  const [tab, setTab] = useS("disparos"); // disparos | sequencias | templates
+  const [tab, setTabState] = useS(() => { try { return localStorage.getItem("cockpit_disparos_tab") || "disparos"; } catch { return "disparos"; } }); // disparos | sequencias | templates · persiste
+  const setTab = (t) => { setTabState(t); try { localStorage.setItem("cockpit_disparos_tab", t); } catch { /* ignore */ } };
   const gmailOn = !!window.SEED?.CONFIG?.google?.gmail; // escopo de envio concedido?
 
   // Carrega as campanhas salvas do produto + as métricas + arma o público padrão.
