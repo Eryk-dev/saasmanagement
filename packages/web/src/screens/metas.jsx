@@ -42,7 +42,7 @@ const int = (n) => Math.round(n).toLocaleString("pt-BR");
 
 // De onde veio cada número — sem isso a cadeia parece chute.
 const RATE_SOURCE = {
-  history: "medido nos últimos 30 dias",
+  history: "medida na janela do funil",
   calibrated: "calibrado pela ponta a ponta real",
   goal: "da meta configurada",
   benchmark: "padrão do mercado",
@@ -94,7 +94,16 @@ function chainParts(d, people = {}) {
     const n = people?.[role] || 0;
     return n > 1 ? `${int(total / n)} por pessoa` : null;
   };
-  const fonte = (nome, src) => `${nome}: ${RATE_SOURCE[src] || "sem origem"}.`;
+  // Período e amostra no hover: "medida em jul/2026 (12 de 44 contatados)" —
+  // responde na tela de onde a taxa saiu e de qual período (pergunta do Leo).
+  const janela = d.rateWindow?.mode === "month" ? `em ${mesLabel(d.rateWindow.month)}` : "nos últimos 30 dias";
+  const amostra = (k, unidade) => {
+    const c = d.rateCounts?.[k];
+    return c?.d > 0 ? ` (${int(c.n)} de ${int(c.d)} ${unidade})` : "";
+  };
+  const fonte = (nome, src, k, unidade) => src === "history"
+    ? `${nome}: medida ${janela}${amostra(k, unidade)}, com desfechos contados até hoje.`
+    : `${nome}: ${RATE_SOURCE[src] || "sem origem"}.`;
   const boxes = [
     { nm: "Leads", big: int(d.leads), sub: "marketing entrega", title: "Entrada do funil: quem entrega é o marketing, então não vira meta de vaga." },
     { nm: "Contatos", big: int(d.contacts), sub: share(d.contacts, "sdr"), title: "Contatos no mês (meta do time de SDR)." },
@@ -106,10 +115,13 @@ function chainParts(d, people = {}) {
       title: d.superMode ? `A meta base já caiu; a cadeia inteira persegue a próxima super meta (${d.chasePct}% da base).` : "A meta de venda do mês corrente." },
   ];
   const steps = [
-    { big: pct(d.rates.contactRate), nm: "contato", title: fonte("Taxa de contato", d.rates.contactRateSource) },
-    { big: pct(d.rates.bookingRate), nm: "agendamento", title: fonte("Taxa de agendamento", d.rates.bookingRateSource) },
-    { big: pct(d.rates.showRate), nm: "comparecimento", title: fonte("Comparecimento", d.rates.showRateSource) },
-    { big: pct(d.rates.closeRate), nm: "conversão", title: fonte("Conversão da call", d.rates.closeRateSource) },
+    { big: pct(d.rates.contactRate), nm: "contato", title: fonte("Taxa de contato", d.rates.contactRateSource, "contactRate", "leads contatados") },
+    { big: pct(d.rates.bookingRate), nm: "agendamento", title: fonte("Taxa de agendamento", d.rates.bookingRateSource, "bookingRate", "contatados agendaram") },
+    { big: pct(d.rates.showRate), nm: "comparecimento", title: fonte("Comparecimento", d.rates.showRateSource, "showRate", "agendadas aconteceram") },
+    { big: pct(d.rates.closeRate), nm: "conversão",
+      title: d.rates.closeRateSource === "calibrated"
+        ? `Conversão da call: calibrada pela ponta a ponta real ${janela}${amostra("leadToWin", "leads viraram ganho")}, pra cadeia inteira multiplicada fechar no lead→ganho medido.`
+        : fonte("Conversão da call", d.rates.closeRateSource, "closeRate", "calls fecharam") },
     d.ticket
       ? { big: money(d.ticket), nm: "× ticket médio", title: `Ticket médio: ${TICKET_SOURCE[d.ticketSource] || "sem origem"}.` }
       : { big: null, nm: "contratos digitados", title: "Sem ticket médio ainda: a meta de contratos digitada sustenta a cadeia sozinha." },
@@ -369,7 +381,7 @@ function MetasScreen() {
               <Card title="Cadeia da meta"
                 hint={<>
                   {data.derived.superMode ? `meta base batida · perseguindo a super meta ${data.derived.chasePct}%` : "o que a meta do mês exige de cada etapa · recalcula ao salvar"}
-                  {infoDot("A meta de venda desce pela MESMA cadeia e pelas mesmas taxas da Análise de Pace, então os dois lugares contam a mesma história. Passe o mouse em cada número pra ver de onde ele veio.")}
+                  {infoDot("A meta de venda desce pela MESMA cadeia e pelas mesmas taxas da Análise de Pace, então os dois lugares contam a mesma história. As taxas vêm da coorte do último MÊS FECHADO (desfechos contados até hoje); sem amostra por lá (20 leads e 1 ganho), caem nos últimos 30 dias. Passe o mouse em cada número pra ver o período e a amostra.")}
                 </>}
                 action={!data.derived.blockedBy ? (
                   <button onClick={applyDerived}

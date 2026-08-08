@@ -172,6 +172,18 @@ export function deriveGoalsFromPace(pace, opts = {}) {
       bookingRate: c.bookingRate.value, bookingRateSource: c.bookingRate.source,
       contactRate: c.contactRate.value, contactRateSource: c.contactRate.source,
     },
+    // Janela e amostra de cada taxa, pro tooltip da cadeia responder "de onde
+    // veio e de qual período" na própria tela (pergunta real do Leo): mês
+    // fechado anterior (coorte madura) ou 30d móveis no fallback. n/d zerados =
+    // taxa sem medição (veio de meta configurada ou benchmark).
+    rateWindow: pace.rateWindow || null,
+    rateCounts: {
+      contactRate: { n: c.contactRate?.numerator || 0, d: c.contactRate?.denominator || 0 },
+      bookingRate: { n: c.bookingRate?.numerator || 0, d: c.bookingRate?.denominator || 0 },
+      showRate: { n: c.showRate?.numerator || 0, d: c.showRate?.denominator || 0 },
+      closeRate: { n: c.closeRate?.numerator || 0, d: c.closeRate?.denominator || 0 },
+      leadToWin: { n: c.leadToWin?.numerator || 0, d: c.leadToWin?.denominator || 0 },
+    },
     blockedBy,
     // O que o botão "derivar do pace" grava (alvos do TIME — o placar reparte).
     // Cadeia travada não entrega meia derivação: preencher só a receita deixaria
