@@ -318,8 +318,9 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
       try { pmt = await mp.getPayment(dataId); }
       catch { return { received: true, error: "fetch_failed" }; }
       // extra payerDetail: o doc do webhook JÁ é o completo — o sync não
-      // precisa re-buscar esse pagamento pra procurar nome.
-      const r = await ingestMpPayment(repo, pmt, { discord, log: req.log, extra: { payerDetail: true } });
+      // precisa re-buscar esse pagamento pra procurar nome (2 = versão atual
+      // da extração, PAYER_DETAIL_V do mp-payments.js).
+      const r = await ingestMpPayment(repo, pmt, { discord, log: req.log, extra: { payerDetail: 2 } });
       return {
         received: true, ok: true, payment: r.payment.id, matched: r.matched,
         ...(r.settledNow ? { invoice: r.settledNow } : {}),

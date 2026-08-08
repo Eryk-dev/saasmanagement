@@ -249,18 +249,25 @@ test("pagador mascarado do search: máscara vira vazio, nome cai pros fallbacks 
   assert.equal(doc.payerDoc, "");
   assert.equal(doc.customer, "");
 
-  // Fallbacks de nome: additional_info (checkout) → titular do cartão → banco do PIX.
+  // Fallbacks de nome: additional_info (checkout) → titular do cartão.
   await ingestMpPayment(repo, mpPmt({ id: 3002, payer: { email: "" }, additional_info: { payer: { first_name: "Ana", last_name: "Silva" } } }));
   assert.equal((await repo.get("mp_payments", "mpp_3002")).payerName, "Ana Silva");
   await ingestMpPayment(repo, mpPmt({ id: 3003, payer: { email: "" }, card: { cardholder: { name: "JOSE DA SILVA" } } }));
   assert.equal((await repo.get("mp_payments", "mpp_3003")).payerName, "JOSE DA SILVA");
-  await ingestMpPayment(repo, mpPmt({ id: 3004, payer: { email: "" }, point_of_interaction: { transaction_data: { bank_info: { payer: { long_name: "Maria Souza" } } } } }));
-  assert.equal((await repo.get("mp_payments", "mpp_3004")).payerName, "Maria Souza");
 
-  // Tick do poller re-ingere o doc MAGRO: o pagador enriquecido fica de pé.
+  // bank_info do PIX é a INSTITUIÇÃO, não a pessoa: vai pro payerBank.
+  await ingestMpPayment(repo, mpPmt({ id: 3004, payer: { email: "" }, point_of_interaction: { transaction_data: { bank_info: { payer: { long_name: "COOPERATIVA SICREDI" } } } } }));
+  doc = await repo.get("mp_payments", "mpp_3004");
+  assert.equal(doc.payerName, "");
+  assert.equal(doc.payerBank, "COOPERATIVA SICREDI");
+
+  // Tick do poller re-ingere o doc MAGRO: pagador e banco enriquecidos ficam de pé.
+  await ingestMpPayment(repo, mpPmt({ id: 3003, payer: { email: "xxxxxxxxxxx" } }));
+  assert.equal((await repo.get("mp_payments", "mpp_3003")).payerName, "JOSE DA SILVA");
   await ingestMpPayment(repo, mpPmt({ id: 3004, payer: { email: "xxxxxxxxxxx" } }));
   doc = await repo.get("mp_payments", "mpp_3004");
-  assert.equal(doc.payerName, "Maria Souza");
+  assert.equal(doc.payerName, "");
+  assert.equal(doc.payerBank, "COOPERATIVA SICREDI");
 });
 
 test("runMpSync: search sem nome de pagador busca o doc completo UMA vez (payerDetail)", async () => {
@@ -276,7 +283,7 @@ test("runMpSync: search sem nome de pagador busca o doc completo UMA vez (payerD
   const doc = await repo.get("mp_payments", "mpp_4001");
   assert.equal(doc.payerName, "Cliente Real");
   assert.equal(doc.payerEmail, "payer@x.com");
-  assert.equal(doc.payerDetail, true);
+  assert.equal(doc.payerDetail, 2);
   assert.equal(doc.customer, "c1"); // o doc completo casou pelo e-mail
   assert.equal(fakeFetch.calls.filter((c) => c.key === "GET /v1/payments/4001").length, 1);
 
@@ -300,11 +307,58 @@ test("runMpSync: doc antigo do espelho sem nome (fora da janela do search) é re
   const doc = await repo.get("mp_payments", "mpp_5001");
   assert.equal(doc.payerName, "Cliente Real");
   assert.equal(doc.payerEmail, "payer@x.com"); // máscara antiga substituída pelo dado real
-  assert.equal(doc.payerDetail, true);
+  assert.equal(doc.payerDetail, 2);
 
   // Próxima passada não re-busca (payerDetail carimbado).
   await runMpSync(repo, mp);
   assert.equal(fakeFetch.calls.filter((c) => c.key === "GET /v1/payments/5001").length, 1);
+});
+
+test("runMpSync: doc v1 com a instituição no nome migra pro payerBank e o CNPJ vira razão social", async () => {
+  const repo = makeMemRepo();
+  await seedCustomer(repo);
+  // Espelho da v1: enriquecido (payerDetail true) mas com o banco guardado como nome.
+  await repo.create("mp_payments", { id: "mpp_6001", mpId: "6001", status: "approved", amount: 10000, payerName: "COOPERATIVA SICREDI", payerEmail: "", payerDetail: true, dateCreated: "2026-08-07T08:39:00.000Z" });
+
+  const { mp } = buildApp(repo, {
+    "GET /v1/payments/search": { paging: { total: 0 }, results: [] },
+    "GET /v1/payments/6001": mpPmt({
+      id: 6001, transaction_amount: 10000,
+      payer: { email: "", identification: { number: "10171520000110" } },
+      point_of_interaction: { transaction_data: { bank_info: { payer: { long_name: "COOPERATIVA SICREDI" } } } },
+    }),
+  });
+  const cnpjCalls = [];
+  const cnpjFetch = async (url) => { cnpjCalls.push(url); return { status: 200, json: async () => ({ razao_social: "AUTO PECAS EXEMPLO LTDA" }) }; };
+
+  await runMpSync(repo, mp, { cnpjFetch });
+  const doc = await repo.get("mp_payments", "mpp_6001");
+  assert.equal(doc.payerBank, "COOPERATIVA SICREDI");
+  assert.equal(doc.payerName, "AUTO PECAS EXEMPLO LTDA"); // razão social pelo CNPJ
+  assert.equal(doc.payerDoc, "10171520000110");
+  assert.equal(doc.payerDetail, 2);
+  assert.equal(doc.cnpjLookup, true);
+  assert.match(cnpjCalls[0], /brasilapi\.com\.br\/api\/cnpj\/v1\/10171520000110/);
+
+  // Próxima passada: nem re-fetch do MP nem re-consulta do CNPJ.
+  await runMpSync(repo, mp, { cnpjFetch });
+  assert.equal(cnpjCalls.length, 1);
+});
+
+test("runMpSync: CNPJ que a BrasilAPI não acha é carimbado e não re-consultado", async () => {
+  const repo = makeMemRepo();
+  const { mp } = buildApp(repo, { "GET /v1/payments/search": { paging: { total: 0 }, results: [] } });
+  await repo.create("mp_payments", { id: "mpp_7001", mpId: "7001", status: "approved", amount: 50, payerName: "", payerDoc: "00000000000000", payerDetail: 2, dateCreated: "2026-08-06T12:11:00.000Z" });
+
+  const calls = [];
+  const cnpjFetch = async (url) => { calls.push(url); return { status: 404, json: async () => ({}) }; };
+  await runMpSync(repo, mp, { cnpjFetch });
+  const doc = await repo.get("mp_payments", "mpp_7001");
+  assert.equal(doc.cnpjLookup, true);
+  assert.equal(doc.payerName, "");
+
+  await runMpSync(repo, mp, { cnpjFetch });
+  assert.equal(calls.length, 1);
 });
 
 test("GET /api/mp/payments: filtro por saas mantém os não identificados visíveis", async () => {
