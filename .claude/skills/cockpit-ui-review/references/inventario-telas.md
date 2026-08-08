@@ -4,13 +4,18 @@ Gerado em 2026-08-08 a partir de `app.jsx` (mapa de rotas `crumbsFor` + render).
 Rota = hash (`#pipeline`). Arquivos em `packages/web/src/screens/`.
 **Revisão** = auditoria da skill (checklist completo), não mexida pontual.
 
+> **Varredura de padronização 2026-08-08 (PRs #631/#633/#634): TODAS as telas e
+> componentes receberam a régua de cabeçalhos, toast de erro nas mutações das
+> telas diárias, Esc nos modais e verde WA por token.** A coluna Revisão abaixo
+> continua rastreando o CHECKLIST COMPLETO (12 blocos), que só o Meu dia tem.
+
 ## Telas navegáveis
 
 | Rota | Arquivo | Tela (NAV) | Função | Componentes-chave | Revisão |
 |---|---|---|---|---|---|
 | `overview` | overview.jsx | Visão geral | placar do funil, metas e pace por pessoa (modelo ago/2026: réguas+donuts) | StatTile, IcpCard, charts, period-picker | — |
 | `overview` (Elo) | overview-elo.jsx | Visão geral · Elo | visão B2C do app (checkout, ativação, retenção) | charts | — |
-| `today` | today.jsx | Minhas atividades | fila do dia (Hoje/Amanhã/Próximos) + roteiros de call + mini fila WhatsApp | FilterTab, LeadDetail | — |
+| `today` | today.jsx | Minhas atividades | fila do dia (Hoje/Amanhã/Próximos) + roteiros de call + mini fila WhatsApp | FilterTab, LeadDetail | **auditada + 12 achados aplicados (#631)** |
 | `pipeline` | pipeline.jsx | Comercial · Pipeline | kanban do funil por produto, SSE tempo real, agenda de slots | LeadDetail, stage-move, schedule-call | — |
 | `outbound` | outbound.jsx | Comercial · Outbound | prospecção ativa (classes Semente/Rede/Alvo, Receita Previsível) | tabela manual | — |
 | `customers` | customers.jsx | Comercial · Clientes | clientes ARR/MRR + aba Assinaturas (`subscriptions` é alias) | tabela manual, EntityForm | — |

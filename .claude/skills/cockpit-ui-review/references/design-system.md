@@ -47,7 +47,7 @@ inline. Máximo ~3 níveis por tela.
 | título de página (`.page-title` / `PageHead` viz.jsx) | 26px | 700, -0.02em | 1 por tela; sub `.page-sub` 14.5 fg-3 embaixo |
 | título de seção (`.sec-title` / `SectionHead`) | 17px | 700, -0.01em | agrupa cards; sub `.sec-sub` 12.5 fg-4 |
 | título de card (`.card-title` / `CardHead`) | 15px | 700, -0.01em | sub `.card-sub` 12.5 fg-3 |
-| kicker (`.kicker`) | 10px | 400, 0.08em, UPPERCASE | rótulo: cinza fg-4 = estado/subdivisão; `.kicker.accent` NOMEIA o bloco (máx. 1 por card, no topo); pos/neg só com significado |
+| kicker (`.kicker`) | 10px | 400, 0.08em, UPPERCASE | rótulo: cinza fg-4 = estado/subdivisão; `.kicker.accent` NOMEIA o bloco (máx. 1 por card, no topo); pos/neg só com significado. Peso 600 inline SÓ em separador estrutural (cabeçalho de grid-tabela, seção de tabela, categoria do NAV). Exceções que ficam fora: anotação dentro de gráfico < 9.5px e `textTransform` funcional (input que digita maiúsculo, `capitalize` de mês) |
 | corpo | 12.5–13.5px | 400 | texto corrido 12.5 fg-2; destaque 13.5 |
 | número em destaque | 30px (StatTile) / 22–42 | 700 display + `.tnum` | KPI; sessões usam 42 |
 
@@ -65,10 +65,11 @@ inline. Máximo ~3 níveis por tela.
 - Tabela: `<table>` manual; `th` = `className="kicker"` + padding `8px 10px`; `td` 12.5px com `borderTop: var(--line-1)`; linha clicável com hover/seleção `--accent-soft`; larga = envolver em `.tbl-x`
 - Card / KPI: card genérico = `Card` (viz.jsx); KPI = `StatTile` (viz.jsx, rótulo 12.5 + valor 30/700); `MetricTile`/`BigNumber` (charts.jsx) em análises; tile interno = `--bg-inset` + `--r-2`
 - Badge / status: `.chip` (tokens.css: neutro, `.pos/.neg/.warn/.info` com ponto, `.accent`) e `Pill` (viz.jsx)
-- Modal: overlay `fixed inset-0` `oklch(0 0 0 / 0.45)` z-80 + painel `--bg-1`/`--r-3`/`--shadow-pop`; confirmar exclusão = `components/ConfirmDelete.jsx` (nomeia o item + consequência); detalhe de lead = drawer `LeadDetail` (screens/deal.jsx); todo modal dentro de `ErrorBoundary variant="modal"`
-- Toast: **não existe global** — sucesso/erro é texto inline na tela (ver Dívidas)
+- Modal: overlay `fixed inset-0` `oklch(0 0 0 / 0.45)` z-80 + painel `--bg-1`/`--r-3`/`--shadow-pop`; confirmar exclusão = `components/ConfirmDelete.jsx` (nomeia o item + consequência); detalhe de lead = drawer `LeadDetail` (screens/deal.jsx); todo modal dentro de `ErrorBoundary variant="modal"`; **todo modal fecha no Esc** via `useEsc(onClose)` (atoms.jsx)
+- Toast: `window.toast(msg, tone)` + `ToastHost` (atoms.jsx, montado no app.jsx). REGRA: mutação otimista NUNCA falha em silêncio — todo `.catch` de update/create chama `toast("… · tente de novo", "neg")` além do console.warn
+- Botão WhatsApp: `WaButton` (atoms.jsx) ou tokens `--wa-brand/-fg/-deep`; nunca hex solto
 - Estado vazio: `EmptyState` (atoms.jsx: título 15/600 + hint + ação central)
-- Skeleton de carregamento: **não existe** — padrão vigente é texto `mono dim` 12px ("carregando…", "montando sua fila…") no lugar do bloco
+- Skeleton de carregamento: não existe — padrão OFICIAL é texto `mono dim` 12px ("carregando…") no lugar do bloco; lista cortada mostra "+N" expansível (nunca corte silencioso)
 
 ## Padrões de tela
 
@@ -99,16 +100,16 @@ gerencial — linhas compactas, muito dado por tela; `body[data-density]` existe
 
 ## Dívidas conhecidas
 
-Divergências mapeadas na auditoria de 2026-08-08. Riscar conforme resolve.
+Rodada de 2026-08-08 EXECUTADA (PRs #621, #631, #633, #634): kickers e títulos
+varridos no app inteiro, Card/PageHead na régua, toast global + regra do catch,
+Esc nos modais, verde WA por token, +N em lista cortada, desfazer em concluir
+tarefa. O que segue em aberto:
 
 | Divergência | Onde aparece | Padrão que deve prevalecer |
 |---|---|---|
-| ~160 kickers uppercase à mão (6 tamanhos × 6 spacings) | 42 arquivos (piores: today, settings, forms, metrics, pipeline, social, whatsapp) | `.kicker` / `.kicker.accent` (régua #621) — varredura aguardando OK visual do Leo no piloto Treinamentos |
-| 11 combos de tamanho×peso como "título de card" | idem | `.card-title` + `.card-sub` |
-| `Card` (viz.jsx) com título 15.5/600 e hint INLINE | todas as telas que usam Card | alinhar à régua: 15/700 + sub embaixo (mexe em muitas telas de uma vez — fazer como lote próprio) |
-| Cabeçalho de página hand-rolado igual ao PageHead | training.jsx (Head), outras | usar `PageHead` (viz.jsx) |
-| Botão secundário redeclarado por tela (`const btn`) | quase toda tela | extrair átomo (SecondaryButton) em atoms.jsx |
-| Sem toast global; sucesso = texto inline que some no refresh | finance, forms, subscriptions, training… | definir 1 padrão (toast leve ou linha de status padronizada) |
-| Sem skeleton; "carregando…" em texto | todas | oficializar o texto padrão OU criar skeleton — decidir com o Leo |
-| Tabela manual com th/td redeclarados | customers, training (Equipe), finance, forms… | componente Table compartilhado (th kicker, td 12.5, hover, vazio) |
+| Cabeçalho de página hand-rolado (estrutura), classes já aplicadas | pipeline, today, training e outras | migrar pro componente `PageHead` quando tocar na tela |
+| Botão secundário redeclarado por tela (`const btn`) e alturas 20–40 | quase toda tela | extrair SecondaryButton (atoms) e fechar a escala 28 (denso) · 32 (padrão) · 40 (CTA) |
+| Tabela manual com td redeclarado (th já é `.kicker`) | customers, finance, forms… | componente Table compartilhado (td 12.5, hover, vazio) |
 | Inputs com alturas 24/26/30 variando | forms diversos | altura única 30 (28 em contexto denso) |
+| Contraste: fg-4 em 10px ≈ 2.9:1 (checklist pede 4.5:1) | kickers/fineprints do app inteiro | DECISÃO DO LEO: escurecer `--fg-4` (claro) ou aceitar como micro-texto decorativo |
+| Auditoria de checklist completo (12 blocos) tela a tela | todas menos Meu dia | seguir a ordem do inventário; Meu dia é a referência do formato |
