@@ -248,7 +248,7 @@ function FunnelSettings({ s }) {
         <div style={{ padding: "16px var(--pad-x) 20px" }}>
           <div className="tbl-x">
             <div style={{ minWidth: 690 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "32px 1.4fr 1fr 1.2fr 40px", gap: 12, padding: "8px 0", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderBottom: "1px solid var(--line-1)" }}>
+              <div className="kicker" style={{ display: "grid", gridTemplateColumns: "32px 1.4fr 1fr 1.2fr 40px", gap: 12, padding: "8px 0", fontWeight: 600, borderBottom: "1px solid var(--line-1)" }}>
                 <span /><span>Etapa</span><span>Tipo</span><span>Cadência</span><span />
               </div>
               {rows.map((f, i) => (
@@ -401,7 +401,7 @@ function NextStepsSettings({ s }) {
       <SettingHeader title="Próximos passos" sub="por roteiro (a mesma quebra da aba Scripts): escolha QUAIS botões “Depois da ação” aparecem na tela Meu dia e em que ordem · assim cada tentativa/contato pode ter um próximo passo diferente" />
       {phases.map((phase) => (
         <div key={phase} style={{ marginBottom: 20 }}>
-          <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>{phase}</div>
+          <div className="kicker" style={{ marginBottom: 8 }}>{phase}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 540 }}>
             {items.filter((it) => it.phase === phase).map((it) => {
               const arr = rows[it.key] || [];
@@ -472,7 +472,7 @@ function TeamSettings() {
       : [...(u.roles || []), role];
     setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, roles } : x)));
     setSaving(u.id);
-    try { await api.updateUser(u.id, { roles }); } catch (e) { console.warn("roles não salvas:", e.message); load(); }
+    try { await api.updateUser(u.id, { roles }); } catch (e) { console.warn("roles não salvas:", e.message); window.toast && window.toast("As vagas do usuário não foram salvas", "neg"); load(); }
     setSaving("");
   }
 
@@ -481,7 +481,7 @@ function TeamSettings() {
   async function setUserSaas(u, saas) {
     setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, saas } : x)));
     setSaving(u.id);
-    try { await api.updateUser(u.id, { saas }); } catch (e) { console.warn("produto não salvo:", e.message); load(); }
+    try { await api.updateUser(u.id, { saas }); } catch (e) { console.warn("produto não salvo:", e.message); window.toast && window.toast("O produto do usuário não foi salvo", "neg"); load(); }
     setSaving("");
   }
   // Nível do plano de remuneração (1 jr · 2 pl · 3 sn): define as metas de
@@ -489,7 +489,7 @@ function TeamSettings() {
   async function setUserLevel(u, compLevel) {
     setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, compLevel } : x)));
     setSaving(u.id);
-    try { await api.updateUser(u.id, { compLevel }); } catch (e) { console.warn("nível não salvo:", e.message); load(); }
+    try { await api.updateUser(u.id, { compLevel }); } catch (e) { console.warn("nível não salvo:", e.message); window.toast && window.toast("O nível não foi salvo", "neg"); load(); }
     setSaving("");
   }
 
@@ -498,7 +498,7 @@ function TeamSettings() {
   async function setUserScreens(u, screens) {
     setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, screens } : x)));
     setSaving(u.id);
-    try { await api.updateUser(u.id, { screens }); } catch (e) { console.warn("telas não salvas:", e.message); load(); }
+    try { await api.updateUser(u.id, { screens }); } catch (e) { console.warn("telas não salvas:", e.message); window.toast && window.toast("As telas do usuário não foram salvas", "neg"); load(); }
     setSaving("");
   }
 
@@ -547,7 +547,7 @@ function TeamSettings() {
           em vez de estourar a página — mesmo padrão do Funil abaixo. */}
       <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
        <div style={{ minWidth: 860 }}>
-        <div className="mono" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 56px 140px 120px 44px`, gap: 8, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
+        <div className="kicker" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 56px 140px 120px 44px`, gap: 8, padding: "10px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
           <span>Usuário</span>
           {ROLE_OPTS.map(([k, l, hint]) => <span key={k} title={hint} style={{ textAlign: "center" }}>{l}</span>)}
           <span title="Nível do plano de remuneração (1 júnior · 2 pleno · 3 sênior): define as metas de contratos e receita do card na Visão geral" style={{ textAlign: "center" }}>Nível</span>
@@ -894,7 +894,7 @@ function IntegrationsSettings({ s }) {
         {mpOn && (
           <>
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
-              <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>webhook (tempo real, opcional)</span>
+              <span className="kicker" style={{ whiteSpace: "nowrap" }}>webhook (tempo real, opcional)</span>
               <code className="mono" style={{ fontSize: 11, padding: "4px 8px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-2)", overflowWrap: "anywhere" }}>{mpWebhookUrl}</code>
               <button onClick={() => { try { navigator.clipboard.writeText(mpWebhookUrl); setMpMsg("URL copiada — cole no painel MP → Webhooks (evento Pagamentos)"); } catch { window.prompt("URL do webhook:", mpWebhookUrl); } }}
                 style={{ height: 24, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11 }}>copiar</button>
@@ -925,12 +925,12 @@ function IntegrationsSettings({ s }) {
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
           {metaOn && (
             <>
-              <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>ad account de {s.name}</span>
+              <span className="kicker" style={{ whiteSpace: "nowrap" }}>ad account de {s.name}</span>
               <input value={adAccount} placeholder="act_1234567890" onChange={(e) => setAdAccount(e.target.value)} className="mono" style={{ ...inputStyle, width: 220, fontFamily: "var(--mono)" }} />
             </>
           )}
           <span className="mono" title="Pixel disparado na página pública do form deste SaaS (/f/:id) e no CAPI. Vazio = pixel padrão do env."
-            style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>pixel de {s.name}</span>
+            className="kicker" style={{ whiteSpace: "nowrap" }}>pixel de {s.name}</span>
           <input value={pixelId} placeholder="971201888623790" onChange={(e) => setPixelId(e.target.value)} className="mono" style={{ ...inputStyle, width: 170, fontFamily: "var(--mono)" }} />
           <CardSaveButton onSave={saveMeta} />
         </div>
@@ -949,7 +949,7 @@ function IntegrationsSettings({ s }) {
           <>
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
               <span className="mono" title="Phone number ID do número deste SaaS (WhatsApp Manager → API Setup, é o id do NÚMERO, não o da conta). O número precisa estar no mesmo WABA do token."
-                style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>número de {s.name}</span>
+                className="kicker" style={{ whiteSpace: "nowrap" }}>número de {s.name}</span>
               <input value={waPhoneId} placeholder="712249848640591" onChange={(e) => setWaPhoneId(e.target.value)} className="mono" style={{ ...inputStyle, width: 200, fontFamily: "var(--mono)" }} />
             </div>
             {/* Fluxo de ligação: pedido automático de permissão no 1º contato. */}
@@ -964,18 +964,18 @@ function IntegrationsSettings({ s }) {
               {cfOn && (
                 <>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
-                    <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>horário do time · seg a sex, das</span>
+                    <span className="kicker">horário do time · seg a sex, das</span>
                     <input type="number" min={0} max={23} value={cfStart} onChange={(e) => setCfStart(e.target.value)} className="mono" style={{ ...inputStyle, width: 58, fontFamily: "var(--mono)" }} />
-                    <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>às</span>
+                    <span className="kicker">às</span>
                     <input type="number" min={1} max={24} value={cfEnd} onChange={(e) => setCfEnd(e.target.value)} className="mono" style={{ ...inputStyle, width: 58, fontFamily: "var(--mono)" }} />
                     <span className="mono dim" style={{ fontSize: 10 }}>fim de semana conta como fora do horário</span>
                   </div>
-                  <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", marginTop: 10 }}>dentro do horário (pede pra ligar agora)</div>
+                  <div className="kicker" style={{ marginTop: 10 }}>dentro do horário (pede pra ligar agora)</div>
                   <textarea ref={cfGreetRef} value={cfGreeting} onChange={(e) => setCfGreeting(e.target.value)} rows={2}
                     onFocus={() => { cfLastField.current = "greeting"; }}
                     placeholder={'Olá {nome}! Recebi seu formulário aqui. Posso te ligar pra uma breve conversa sobre a plataforma?'}
                     style={{ ...inputStyle, width: "100%", height: "auto", minHeight: 52, marginTop: 6, padding: "8px 12px", fontSize: 12.5, lineHeight: 1.45, resize: "vertical", fontFamily: "inherit" }} />
-                  <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", marginTop: 10 }}>fora do horário (avisa quando volta e já pede a autorização)</div>
+                  <div className="kicker" style={{ marginTop: 10 }}>fora do horário (avisa quando volta e já pede a autorização)</div>
                   <textarea ref={cfAfterRef} value={cfAfter} onChange={(e) => setCfAfter(e.target.value)} rows={2}
                     onFocus={() => { cfLastField.current = "after"; }}
                     placeholder={'Olá {nome}! Recebi seu formulário aqui. Nosso time está fora do horário agora, mas volta {volta}. Posso te ligar quando voltarmos pra falar sobre a plataforma? Já deixa a autorização aqui embaixo.'}
@@ -1238,7 +1238,7 @@ function ScriptsSettings({ s }) {
   }
 
   const phases = [...new Set(SCRIPT_CATALOG.map((c) => c.phase))];
-  const miniLabel = { display: "block", fontSize: 10, color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 };
+  const miniLabel = { display: "block", marginBottom: 4 };
   const taStyle = { ...inputStyle, height: "auto", width: "100%", padding: "6px 8px", fontSize: 12.5, lineHeight: 1.5, fontFamily: "inherit", resize: "vertical" };
 
   return (
@@ -1246,7 +1246,7 @@ function ScriptsSettings({ s }) {
       <SettingHeader title="Scripts & cadências" sub="todos os roteiros do processo num lugar só · edite as falas direto no passo a passo (é o roteiro pronto, é só alterar) · a cadência é a mesma do Funil" />
       {phases.map((phase) => (
         <div key={phase} style={{ marginBottom: 22 }}>
-          <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>{phase}</div>
+          <div className="kicker" style={{ marginBottom: 8 }}>{phase}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {SCRIPT_CATALOG.filter((c) => c.phase === phase).map((item) => {
               const idx = stageIdxOf(item);
@@ -1293,7 +1293,7 @@ function ScriptsSettings({ s }) {
                     <div style={{ padding: "12px 14px 14px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
                       {aiInfo[item.key] && (
                         <div style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", borderRadius: "var(--r-2)", padding: "9px 11px", marginBottom: 12 }}>
-                          <div className="mono" style={{ fontSize: 10, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>✨ Sugestão da IA · {aiInfo[item.key].base} calls analisadas</div>
+                          <div className="kicker accent" style={{ marginBottom: 4 }}>✨ Sugestão da IA · {aiInfo[item.key].base} calls analisadas</div>
                           {aiInfo[item.key].diagnostico && <div style={{ fontSize: 12, lineHeight: 1.5, marginBottom: aiInfo[item.key].objecoes?.length ? 6 : 0 }}>{aiInfo[item.key].diagnostico}</div>}
                           {aiInfo[item.key].objecoes?.length > 0 && (
                             <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -1307,15 +1307,15 @@ function ScriptsSettings({ s }) {
                       )}
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
                         <div>
-                          <label style={miniLabel}>Postura (como se comportar)</label>
+                          <label className="kicker" style={miniLabel}>Postura (como se comportar)</label>
                           <textarea rows={3} value={v.resumo} onChange={(e) => setField(item.key, "resumo", e.target.value)} style={taStyle} />
                         </div>
                         <div>
-                          <label style={miniLabel}>Objetivo</label>
+                          <label className="kicker" style={miniLabel}>Objetivo</label>
                           <textarea rows={3} value={v.objetivo} onChange={(e) => setField(item.key, "objetivo", e.target.value)} style={taStyle} />
                         </div>
                       </div>
-                      <label style={miniLabel}>Passo a passo · edite as falas direto</label>
+                      <label className="kicker" style={miniLabel}>Passo a passo · edite as falas direto</label>
                       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                         {v.passos.map((p, k) => (
                           <div key={k} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: 8 }}>

@@ -134,18 +134,18 @@ export function AgendaScreen({ onOpenLead }) {
   function addBlock(obj) {
     const tmp = { ...obj, id: `tmp_${Date.now()}_${Math.round(Math.random() * 1e6)}` };
     setBlocks((prev) => [...prev, tmp]);
-    api.create("agenda_blocks", obj).catch((err) => { console.warn("item não salvo:", err.message); setBlocks((prev) => prev.filter((b) => b.id !== tmp.id)); });
+    api.create("agenda_blocks", obj).catch((err) => { console.warn("item não salvo:", err.message); setBlocks((prev) => prev.filter((b) => b.id !== tmp.id)); window.toast && window.toast("O item da agenda não foi salvo · tente de novo", "neg"); });
   }
   function updateBlock(id, patch) {
     setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
-    if (!String(id).startsWith("tmp_")) api.update("agenda_blocks", id, patch).catch((err) => console.warn("item não atualizado:", err.message));
+    if (!String(id).startsWith("tmp_")) api.update("agenda_blocks", id, patch).catch((err) => { console.warn("item não atualizado:", err.message); window.toast && window.toast("A alteração da agenda não foi salva", "neg"); });
   }
   function removeBlocks(list, { confirmWeekly = true } = {}) {
     if (!list.length) return false;
     if (confirmWeekly && list.some((b) => b.recur === "weekly") && !window.confirm("Item recorrente (toda semana). Remover de todas as semanas?")) return false;
     const ids = new Set(list.map((b) => b.id));
     setBlocks((prev) => prev.filter((b) => !ids.has(b.id)));
-    for (const b of list) if (!String(b.id).startsWith("tmp_")) api.remove("agenda_blocks", b.id).catch((err) => console.warn("não removido:", err.message));
+    for (const b of list) if (!String(b.id).startsWith("tmp_")) api.remove("agenda_blocks", b.id).catch((err) => { console.warn("não removido:", err.message); window.toast && window.toast("O item da agenda não foi removido", "neg"); });
     return true;
   }
 
@@ -210,7 +210,7 @@ export function AgendaScreen({ onOpenLead }) {
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14 }}>
         {/* Filtro por pessoa: calls/integrações/consultas + compromissos/bloqueios dela */}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Agenda de</span>
+          <span className="kicker">Agenda de</span>
           {[{ id: "", name: "todos" }, ...people].map((p) => {
             const on = person === p.id;
             return (
@@ -312,7 +312,7 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
   // válido, então nada de `|| 1`, que engolia domingo virando segunda).
   const weekdayLabel = WD_LABEL[date ? new Date(`${date}T12:00:00`).getDay() : (Number(b?.weekday) || 0)];
   const field = { height: 34, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, minWidth: 0 };
-  const label = { fontSize: 10.5, fontFamily: "var(--mono)", color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 4 };
+  const label = { display: "block", marginBottom: 4 };
   const selNames = sel.map((id) => displayName(id) || id);
   const submit = () => {
     const wd = date ? new Date(`${date}T12:00:00`).getDay() : (Number(b?.weekday) || 0);
@@ -338,7 +338,7 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
         <Segmented value={kind} onChange={setKind} options={[{ value: "event", label: "Compromisso" }, { value: "block", label: "Bloqueio" }]} />
 
         <div>
-          <span style={label}>{kind === "event" ? "Título" : "Motivo (opcional)"}</span>
+          <span className="kicker" style={label}>{kind === "event" ? "Título" : "Motivo (opcional)"}</span>
           <input autoFocus value={text} onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
             placeholder={kind === "event" ? "reunião com fornecedor, dentista…" : "almoço, folga, compromisso externo…"}
@@ -348,7 +348,7 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
         {/* Pessoas: campo que abre a lista com checkboxes (a agenda de cada
             selecionada fica ocupada). */}
         <div style={{ position: "relative" }}>
-          <span style={label}>Pessoas</span>
+          <span className="kicker" style={label}>Pessoas</span>
           <button onClick={() => setSelOpen((v) => !v)}
             style={{ ...field, width: "100%", display: "flex", alignItems: "center", gap: 8, cursor: "pointer", textAlign: "left" }}>
             <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: sel.length ? "var(--fg-1)" : "var(--fg-4)" }}>
@@ -379,7 +379,7 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
         </div>
 
         <div>
-          <span style={label}>Data</span>
+          <span className="kicker" style={label}>Data</span>
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ ...field, width: "100%" }} />
         </div>
 
@@ -391,13 +391,13 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
         {!allDay && (<>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div>
-            <span style={label}>Começa às</span>
+            <span className="kicker" style={label}>Começa às</span>
             <select value={from} onChange={(e) => setFrom(Number(e.target.value))} style={{ ...field, width: "100%" }}>
               {quarterHours(7, 20.75).map((h) => <option key={h} value={h}>{fmtH(h)}</option>)}
             </select>
           </div>
           <div>
-            <span style={label}>Duração</span>
+            <span className="kicker" style={label}>Duração</span>
             <select value={dur} onChange={(e) => setDur(Number(e.target.value))} style={{ ...field, width: "100%" }}>
               {DUR_OPTIONS.map((m) => <option key={m} value={m}>{durLabel(m)}</option>)}
               {!DUR_OPTIONS.includes(dur) && <option value={dur}>{durLabel(dur)}</option>}
@@ -408,7 +408,7 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
         </>)}
 
         <div>
-          <span style={label}>Repete</span>
+          <span className="kicker" style={label}>Repete</span>
           <select value={recur} onChange={(e) => setRecur(e.target.value)} style={{ ...field, width: "100%" }}>
             <option value="once">não repete (só {date ? date.slice(8, 10) + "/" + date.slice(5, 7) : "essa data"})</option>
             <option value="weekly">toda {weekdayLabel}</option>

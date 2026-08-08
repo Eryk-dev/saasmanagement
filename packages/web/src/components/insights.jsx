@@ -40,7 +40,7 @@ function useVisibleInsights(items, scope) {
 function InsightRow({ it, onDismiss, onApply }) {
   return (
     <div style={{ display: "flex", gap: 10, alignItems: "flex-start", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "10px 12px" }}>
-      <span className="mono" style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: TONES[it.tone] || "var(--fg-3)", border: "1px solid currentColor", borderRadius: 999, padding: "2px 8px", flexShrink: 0, marginTop: 1 }}>{it.tag}</span>
+      <span className="kicker" style={{ fontWeight: 600, color: TONES[it.tone] || "var(--fg-3)", border: "1px solid currentColor", borderRadius: 999, padding: "2px 8px", flexShrink: 0, marginTop: 1 }}>{it.tag}</span>
       <span style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--fg-2)", flex: 1 }}>{it.text}</span>
       {it.action && (
         <button onClick={onApply} title={it.action.label}
@@ -120,7 +120,7 @@ function ApplyInsightModal({ item, onCancel, onApplied }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
             {fields.map((f) => (
               <div key={f.key}>
-                <label style={{ fontSize: 10.5, fontFamily: "var(--mono)", color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>{f.label}</label>
+                <label className="kicker" style={{ display: "block", marginBottom: 4 }}>{f.label}</label>
                 {f.multiline ? (
                   <textarea value={f.value} rows={2} onChange={(e) => setField(f.key, e.target.value)} disabled={busy}
                     style={{ ...fieldStyle, resize: "vertical" }} />
@@ -138,7 +138,7 @@ function ApplyInsightModal({ item, onCancel, onApplied }) {
           </div>
         )}
 
-        <div className="mono" style={{ fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-3)", margin: "14px 0 6px" }}>
+        <div className="kicker" style={{ margin: "14px 0 6px" }}>
           O que vai ser feito
         </div>
         <ul style={{ margin: 0, padding: "0 0 0 18px", display: "flex", flexDirection: "column", gap: 5 }}>

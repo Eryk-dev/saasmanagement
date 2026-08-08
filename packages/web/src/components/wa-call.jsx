@@ -218,7 +218,7 @@ export function WaCallButton({ threadId, contactName }) {
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           {/* O botão VERDE da conversa: com permissão aceita, "Ligar" é ligar
               MESMO — disca daqui, o lead atende no WhatsApp. */}
-          <button onClick={start} style={{ ...pill, background: "#25D366", color: "#06120c", border: "none", fontWeight: 700 }}
+          <button onClick={start} style={{ ...pill, background: "var(--wa-brand)", color: "var(--wa-brand-fg)", border: "none", fontWeight: 700 }}
             title="Disca agora pelo cockpit (áudio no navegador) — o lead atende a chamada no WhatsApp">
             ✆ Ligar
           </button>

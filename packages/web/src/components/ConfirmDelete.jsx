@@ -1,6 +1,7 @@
 import React from "react";
 import { ENTITIES } from "../lib/entities.js";
 import { api } from "../lib/api.js";
+import { useEsc } from "../atoms.jsx";
 // Small centered confirm overlay for destructive deletes.
 
 const { useState } = React;
@@ -10,6 +11,7 @@ function ConfirmDelete({ entityKey, record, onClose, onDeleted }) {
   const name = (record && record[cfg.titleField]) || record?.id;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  useEsc(onClose);
 
   async function confirm() {
     setBusy(true); setError(null);

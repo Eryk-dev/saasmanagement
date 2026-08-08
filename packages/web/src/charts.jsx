@@ -267,7 +267,7 @@ function FunnelView({ s, leads, embedded, bare }) {
         : <div className="mono dim" style={{ fontSize: 11 }}>Sem cadastros ainda.</div>}
       {lostRows.length > 0 && (
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--line-1)" }}>
-          <div className="mono" style={{ fontSize: 9, color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 6 }}>Saíram do funil</div>
+          <div className="kicker" style={{ marginBottom: 6 }}>Saíram do funil</div>
           {lostRows.map(r => (
             <div key={r.stage} style={{ display: "grid", gridTemplateColumns: "92px 1fr 56px 56px", gap: 8, alignItems: "center", fontFamily: "var(--mono)", fontSize: 10.5, padding: "1.5px 0" }}>
               <span style={{ color: "var(--fg-4)" }}>{r.stage}</span>
@@ -286,7 +286,7 @@ function FunnelView({ s, leads, embedded, bare }) {
   if (bare || embedded) return panel;
   return (
     <div style={{ flex: 1, overflow: "auto", padding: "14px 24px" }}>
-      <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12 }}>Funil de conversão</div>
+      <div className="kicker" style={{ marginBottom: 12 }}>Funil de conversão</div>
       {panel}
     </div>
   );
@@ -295,7 +295,7 @@ function FunnelView({ s, leads, embedded, bare }) {
 function FunnelStat({ label, value, tone, dim }) {
   return (
     <div>
-      <div className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</div>
+      <div className="kicker">{label}</div>
       <div className="tnum" style={{ fontSize: 22, fontWeight: 600, color: dim ? "var(--fg-3)" : (tone || "var(--fg-1)"), marginTop: 3 }}>{value}</div>
     </div>
   );
@@ -305,7 +305,7 @@ function FunnelStat({ label, value, tone, dim }) {
 function MetricTile({ k, v, d, unit, dUnit, invert, small, sub, footnote }) {
   return (
     <div style={{ padding: small ? "10px 12px" : "14px 16px", background: "var(--bg-1)" }}>
-      <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>{k}</div>
+      <div className="kicker">{k}</div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: small ? 2 : 4 }}>
         <span className="mono tnum" style={{ fontSize: small ? 16 : 22, fontWeight: 500 }}>{v}</span>
         {d != null && <DeltaInline value={d} unit={dUnit || unit} invert={invert} />}
@@ -333,7 +333,7 @@ function DeltaInline({ value, unit, invert }) {
 function BigNumber({ value, label, delta, dUnit, sublabel, invert, size = 36 }) {
   return (
     <div>
-      <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" }}>{label}</div>
+      <div className="kicker">{label}</div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 4 }}>
         <span className="mono tnum" style={{ fontSize: size, fontWeight: 500, letterSpacing: "-0.02em" }}>{value}</span>
         {delta != null && <DeltaInline value={delta} unit={dUnit} invert={invert} />}

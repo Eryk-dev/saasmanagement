@@ -161,7 +161,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     const gate = moveGate(cfg, lead, stage);
     if (gate) { setPendingMove({ lead, toStage: stage, gate, saasCfg: cfg }); return; }
     commitMoveLocal(leadId, { stage });
-    api.update("leads", leadId, { stage }).catch(err => console.warn("lead move not persisted:", err.message));
+    api.update("leads", leadId, { stage }).catch(err => { console.warn("lead move not persisted:", err.message); window.toast && window.toast("O movimento do card não foi salvo · tente de novo", "neg"); });
   }
 
   if (!s) return (
@@ -186,8 +186,8 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
       <div style={{ padding: "28px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16, minHeight: "100%" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 260 }}>
-            <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em" }}>Pipeline</h1>
-            <div style={{ marginTop: 4, fontSize: 14.5, color: "var(--fg-3)" }}>
+            <h1 className="page-title">Pipeline</h1>
+            <div className="page-sub" style={{ marginTop: 4 }}>
               {openLeads.length} {openLeads.length === 1 ? "lead aberto" : "leads abertos"} · {newWeek} {newWeek === 1 ? "novo" : "novos"} esta semana · arraste (ou toque) para mover
             </div>
           </div>
@@ -244,7 +244,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           onCancel={() => setPendingMove(null)}
           onConfirm={(patch, extra) => {
             commitMoveLocal(pendingMove.lead.id, patch);
-            applyGatedMove(patch, extra, pendingMove.lead.id).catch(err => console.warn("movimento não persistido:", err.message));
+            applyGatedMove(patch, extra, pendingMove.lead.id).catch(err => { console.warn("movimento não persistido:", err.message); window.toast && window.toast("O movimento do card não foi salvo · tente de novo", "neg"); });
             setPendingMove(null);
           }}
         />
@@ -675,7 +675,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
             const isToday = d.toDateString() === new Date().toDateString();
             return (
               <div key={i} style={{ padding: "8px 6px", textAlign: "center", borderLeft: "1px solid var(--line-1)" }}>
-                <div className="mono" style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em", color: isToday ? "var(--accent)" : "var(--fg-4)" }}>
+                <div className="kicker" style={{ color: isToday ? "var(--accent)" : "var(--fg-4)" }}>
                   {fmtDay(d, { weekday: "short" })}
                 </div>
                 <div className="tnum" style={{
@@ -837,11 +837,10 @@ function LeadList({ leads }) {
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
       <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
-        <div className="mono" style={{
+        <div className="kicker" style={{
           display: "grid", gridTemplateColumns: cols,
           padding: "8px 12px",
           background: "var(--bg-inset)",
-          fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase",
           borderBottom: "1px solid var(--line-1)",
         }}>
           <span>Lead</span><span>Estágio</span><span style={{ textAlign: "right" }}>Valor</span>
@@ -849,8 +848,8 @@ function LeadList({ leads }) {
         </div>
         {sections.map(([label, rows]) => (
           <React.Fragment key={label}>
-            <div className="mono" style={{
-              padding: "7px 12px", fontSize: 10.5, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase",
+            <div className="kicker" style={{
+              padding: "7px 12px", fontWeight: 600,
               color: label === "Atrasados" ? "var(--neg)" : label === "Hoje" ? "var(--accent)" : "var(--fg-3)",
               background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)",
             }}>
@@ -906,7 +905,7 @@ const rateFmt = (rate) => rate == null ? "—" : `${Math.round(rate * 100)}%`;
 function PaceMini({ label, value, sub, tone }) {
   return (
     <div style={{ minWidth: 0, padding: "11px 12px", borderRadius: "var(--r-2)", background: "var(--bg-2)", border: "1px solid var(--line-1)" }}>
-      <div className="mono" style={{ fontSize: 9.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-4)" }}>{label}</div>
+      <div className="kicker">{label}</div>
       <div className="tnum" style={{ marginTop: 4, fontFamily: "var(--display)", fontSize: 18, fontWeight: 700, color: tone || "var(--fg-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
       <div style={{ marginTop: 2, fontSize: 10.5, lineHeight: 1.35, color: "var(--fg-3)" }}>{sub}</div>
     </div>
@@ -917,7 +916,7 @@ function EquationStep({ value, label, money }) {
   return (
     <div style={{ minWidth: 92, flex: "1 1 92px", padding: "9px 10px", textAlign: "center", borderRadius: "var(--r-2)", background: "var(--bg-2)", border: "1px solid var(--line-1)" }}>
       <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>{money ? window.fmt.money(value || 0) : wholeFmt(value)}</div>
-      <div className="mono" style={{ marginTop: 1, fontSize: 9.5, color: "var(--fg-4)", letterSpacing: "0.05em", textTransform: "uppercase" }}>{label}</div>
+      <div className="kicker" style={{ marginTop: 1 }}>{label}</div>
     </div>
   );
 }
@@ -1168,7 +1167,6 @@ function GoalReversePlan({ data, s, leads }) {
     won_tcv: "média dos ganhos (90d)",
     configured_ticket: "ticket configurado",
   }[data.context.averageEntrySource] || "sem base de ticket";
-  const noteLabel = { fontSize: 9.5, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" };
 
   const alvo = g.superMode ? `super meta ${g.chasePct}%` : "meta";
   if (g.gap === 0) {
@@ -1255,12 +1253,12 @@ function GoalReversePlan({ data, s, leads }) {
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, paddingTop: 14, borderTop: "1px solid var(--line-faint)" }}>
           <div>
-            <div className="mono" style={noteLabel}>Ticket médio</div>
+            <div className="kicker">Ticket médio</div>
             <div className="tnum" style={{ marginTop: 2, fontSize: 13, fontWeight: 600 }}>{g.ticket ? money(g.ticket) : "—"}</div>
             <div style={{ fontSize: 10, color: "var(--fg-4)" }}>{ticketSource}</div>
           </div>
           <div>
-            <div className="mono" style={noteLabel}>CPL</div>
+            <div className="kicker">CPL</div>
             <div className="tnum" style={{ marginTop: 2, fontSize: 13, fontWeight: 600 }}>{g.cpl != null ? money(g.cpl) : "—"}</div>
             <div style={{ fontSize: 10, color: "var(--fg-4)" }}>
               {g.cpl != null ? `real 30d · ${money(data.marketing.spend30)} / ${data.marketing.leads30} leads` : "sem spend no período"}
@@ -1269,7 +1267,7 @@ function GoalReversePlan({ data, s, leads }) {
           {[["Contato", conversions.contactRate], ["Agendamento", conversions.bookingRate], ["Comparecimento", conversions.showRate], ["Call → ganho", conversions.closeRate],
             ...(conversions.leadToWin ? [["Lead → ganho", conversions.leadToWin]] : [])].map(([label, rate]) => (
             <div key={label}>
-              <div className="mono" style={noteLabel}>{label}</div>
+              <div className="kicker">{label}</div>
               <div className="tnum" style={{ marginTop: 2, fontSize: 13, fontWeight: 600 }}>{rateFmt(rate.value)}</div>
               <div style={{ fontSize: 10, color: "var(--fg-4)" }}>{sourceLabel(rate)}</div>
             </div>
@@ -1292,7 +1290,7 @@ function ForecastView({ s, leads, conversions }) {
       </div>
       <div className="tbl-x">
         <div style={{ minWidth: 700 }}>
-          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+          <div className="kicker" style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontWeight: 600, borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
             <span>Etapa</span><span style={{ textAlign: "right" }}>Leads</span><span style={{ textAlign: "right" }}>Valor aberto</span><span style={{ textAlign: "right" }}>Prob.</span><span style={{ textAlign: "right" }}>Ponderado</span>
           </div>
           {buckets.map((bucket) => (
@@ -1328,7 +1326,6 @@ function FunnelAnalytics({ s }) {
   }, [s.id, days]);
 
   const card = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "14px 18px", background: "var(--bg-1)" };
-  const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 };
 
   if (err) return <div style={card}><div className="mono dim" style={{ fontSize: 12 }}>análise indisponível ({err.status || "erro"})</div></div>;
   if (!data) return <div style={card}><div className="mono dim" style={{ fontSize: 12 }}>carregando análise…</div></div>;
@@ -1339,7 +1336,7 @@ function FunnelAnalytics({ s }) {
   const ft = data.firstTouch || {};
   const stat = (label, v, sub) => (
     <div>
-      <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</div>
+      <div className="kicker">{label}</div>
       <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 20, fontWeight: 700, marginTop: 2 }}>{v}</div>
       {sub && <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)" }}>{sub}</div>}
     </div>
@@ -1348,7 +1345,7 @@ function FunnelAnalytics({ s }) {
   return (
     <>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Saúde do processo</span>
+        <span className="kicker">Saúde do processo</span>
         <span style={{ flex: 1 }} />
         {[30, 90].map(d => (
           <button key={d} onClick={() => setDays(d)} style={{
@@ -1368,7 +1365,7 @@ function FunnelAnalytics({ s }) {
       </div>
 
       <div style={card}>
-        <div className="mono" style={kicker}>Conversão real estágio → estágio · leads que passaram + mediana de dias na etapa</div>
+        <div className="kicker" style={{ marginBottom: 10 }}>Conversão real estágio → estágio · leads que passaram + mediana de dias na etapa</div>
         {data.stages.map((st) => (
           <div key={st.stage} style={{ display: "grid", gridTemplateColumns: "minmax(84px, 130px) 1fr minmax(40px, 56px) minmax(58px, 84px) minmax(58px, 84px)", gap: 10, alignItems: "center", padding: "8px 0", borderTop: "1px solid var(--line-1)" }}>
             <span className="mono" style={{ fontSize: 12, color: "var(--fg-2)" }}>{st.stage}</span>
@@ -1387,7 +1384,7 @@ function FunnelAnalytics({ s }) {
       </div>
 
       <div style={card}>
-        <div className="mono" style={kicker}>Motivos de perda · perdidos + desqualificados do período</div>
+        <div className="kicker" style={{ marginBottom: 10 }}>Motivos de perda · perdidos + desqualificados do período</div>
         {data.lossReasons.length === 0 && <div className="mono dim" style={{ fontSize: 12 }}>nenhuma perda no período 🎉</div>}
         {data.lossReasons.map((r) => (
           <div key={r.reason} style={{ display: "grid", gridTemplateColumns: "130px 1fr 40px", gap: 10, alignItems: "center", padding: "6px 0" }}>
