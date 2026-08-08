@@ -6,6 +6,7 @@
 import { normalizeFunnel, kindOf, isPostSaleStage } from "./stages.js";
 import { createClosedSubscription } from "./billing.js";
 import { FLASHCARD_DEFAULTS } from "./routes.flashcards.js";
+import { LEVERADS_EXPANSION } from "./flashcard-decks.leverads.js";
 import { mergeLeadQuestions } from "./forms.js";
 import { waMatchKey } from "./wa-store.js";
 import { slideVisible } from "./proposal.js";
@@ -246,6 +247,22 @@ export async function migrateFlashcardsGeneralDecks(repo) {
   await repo.update("flashcards", "leverads", {
     ...(missing.length ? { cards: [...(doc.cards || []), ...missing] } : {}),
     generalDecksV1: true,
+  });
+  return missing.length;
+}
+
+// ── Flashcards: expansão pra 150 por baralho + Estratégia de vendas (ago/2026) ──
+// Mesmo desenho do generalDecksV1, mas anexando SÓ os cards da EXPANSÃO (nunca a
+// base de jul/2026): se o dono apagou um card antigo pela tela, ele fica apagado.
+// Sem doc salvo em produção os DEFAULTS servem sozinhos e isto é no-op.
+export async function migrateFlashcardsDeckExpansion(repo) {
+  const doc = await repo.get("flashcards", "leverads");
+  if (!doc || doc.deckExpansionV1) return 0;
+  const have = new Set((doc.cards || []).map((c) => c && c.id));
+  const missing = LEVERADS_EXPANSION.filter((c) => !have.has(c.id));
+  await repo.update("flashcards", "leverads", {
+    ...(missing.length ? { cards: [...(doc.cards || []), ...missing] } : {}),
+    deckExpansionV1: true,
   });
   return missing.length;
 }
@@ -1253,6 +1270,12 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] flashcards: ${n} cards novos (gerais + vagas) anexados à base do leverads`);
   } catch (err) {
     console.error("[migration] migrateFlashcardsGeneralDecks falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateFlashcardsDeckExpansion(repo);
+    if (n) console.log(`[migration] flashcards: expansão ago/2026 anexada à base do leverads (${n} cards)`);
+  } catch (err) {
+    console.error("[migration] migrateFlashcardsDeckExpansion falhou:", err?.message || err);
   }
   try {
     const n = await ensureFunnelKinds(repo);
