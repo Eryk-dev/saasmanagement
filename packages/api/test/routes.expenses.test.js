@@ -135,16 +135,23 @@ test("custo percentual (checkout/imposto): % sobre os ganhos do mês no pipeline
   assert.equal(past.wonBase, 0);
 });
 
-test("custo percentual com base: checkout só no cartão 12x, imposto sobre os recebidos", async () => {
+test("custo percentual com base: checkout sobre os recebidos no cartão (espelho MP), imposto sobre os recebidos", async () => {
   const repo = makeMemRepo();
   const funnel = [{ stage: "Novo lead", kind: "novo", conv: 1 }, { stage: "Ganho", kind: "ganho", conv: 1 }];
   await repo.create("products", { id: "leverads", name: "LeverAds", funnel });
   const month = new Date().toISOString().slice(0, 7);
   const nowIso = new Date().toISOString();
 
-  // Ganhos do mês: 7.000 no cartão 12x + 3.000 no PIX → cardBase 7.000, wonBase 10.000.
+  // Ganhos do mês: 10.000 (wonBase). O cartão NÃO vem do fechamento: vem do
+  // que ENTROU no espelho MP — 4.000 + 3.000 aprovados no crédito = cardBase
+  // 7.000; PIX, recusado e outra conta ficam fora.
   await repo.create("leads", { id: "w1", saas: "leverads", stage: "Ganho", amount: 7000, stageSince: nowIso, paymentMethod: "cartao12x" });
   await repo.create("leads", { id: "w2", saas: "leverads", stage: "Ganho", amount: 3000, stageSince: nowIso, paymentMethod: "pix" });
+  await repo.create("mp_payments", { id: "mpp_1", saas: "leverads", status: "approved", methodType: "credit_card", amount: 4000, installments: 12, dateApproved: nowIso });
+  await repo.create("mp_payments", { id: "mpp_2", saas: "leverads", status: "approved", methodType: "credit_card", amount: 3000, installments: 1, dateApproved: nowIso });
+  await repo.create("mp_payments", { id: "mpp_3", saas: "leverads", status: "approved", methodType: "bank_transfer", amount: 500, dateApproved: nowIso });
+  await repo.create("mp_payments", { id: "mpp_4", saas: "leverads", status: "rejected", methodType: "credit_card", amount: 900, dateApproved: nowIso });
+  await repo.create("mp_payments", { id: "mpp_5", saas: "outro", status: "approved", methodType: "credit_card", amount: 800, dateApproved: nowIso });
   // Recebidos do mês: 599 + 401 pagos; aberta, paga em mês antigo e outro saas ficam fora.
   await repo.create("invoices", { id: "i1", saas: "leverads", amount: 599, status: "paid", paidAt: nowIso });
   await repo.create("invoices", { id: "i2", saas: "leverads", amount: 401, status: "paid", paidAt: nowIso });

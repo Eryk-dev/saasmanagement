@@ -78,7 +78,7 @@ export async function ensurePayables(repo, saas, month) {
 // Custos da collection expenses num mês, SÓ com o que mora no banco (ads +
 // manuais + percentuais). Mesmas regras do /api/expenses/summary; IA/WhatsApp
 // (chamadas externas) ficam de fora — a UI soma pelo summary quando precisa.
-function expensesOfMonth({ product, expenses, insights, invoices, leads, starts }, month) {
+function expensesOfMonth({ product, expenses, insights, invoices, leads, starts, mp }, month) {
   const applies = (e) => e.recurring
     ? String(e.month) <= month && (!e.endMonth || String(e.endMonth) >= month)
     : e.month === month;
@@ -89,11 +89,17 @@ function expensesOfMonth({ product, expenses, insights, invoices, leads, starts 
   const pctBaseOf = (e) => (e.base === "cartao12x" || e.base === "received" ? e.base : "won");
   const needed = new Set(mine.filter((e) => Number(e.pct) > 0).map(pctBaseOf));
   const bases = { won: 0, cartao12x: 0, received: 0 };
-  if (needed.has("won") || needed.has("cartao12x")) {
+  if (needed.has("won")) {
     const wins = winsIn(product, leads, (iso) => monthKey(iso) === month, starts);
-    const winLeads = leads.filter((l) => wins.has(l.id));
-    bases.won = tcvOf(winLeads);
-    bases.cartao12x = tcvOf(winLeads.filter((l) => l.paymentMethod === "cartao12x"));
+    bases.won = tcvOf(leads.filter((l) => wins.has(l.id)));
+  }
+  // Base do checkout: o que ENTROU no cartão no mês (espelho MP, aprovados) —
+  // a MESMA régua do /api/expenses/summary, senão as duas telas brigam.
+  if (needed.has("cartao12x")) {
+    bases.cartao12x = round2((mp || [])
+      .filter((p) => p.status === "approved" && p.methodType === "credit_card"
+        && monthKey(p.dateApproved || p.dateCreated) === month)
+      .reduce((a, p) => a + (Number(p.amount) || 0), 0));
   }
   if (needed.has("received")) bases.received = cashCollectedIn(invoices, month);
   const rows = mine.map((e) => (Number(e.pct) > 0
@@ -126,7 +132,9 @@ export function registerFinRoutes(app, repo) {
     ]);
     const payables = allPayables.filter((p) => p.saas === product.id);
     const invoices = allInvoices.filter((i) => i.saas === product.id);
+    const mp = allMp.filter((p) => !p.saas || p.saas === product.id);
     const ctx = {
+      mp,
       product,
       expenses: allExpenses.filter((e) => e.saas === product.id),
       insights: allInsights.filter((r) => r.saas === product.id),
@@ -163,7 +171,6 @@ export function registerFinRoutes(app, repo) {
 
     // Conciliação: pagamento aprovado do espelho sem cliente e não
     // desconsiderado = pendência (não dá pra fechar o mês com dinheiro sem dono).
-    const mp = allMp.filter((p) => !p.saas || p.saas === product.id);
     const pendentes = mp.filter((p) => p.status === "approved" && !p.customer && !p.finIgnored);
     const espelhoMes = mp.filter((p) => p.status === "approved" && monthKey(p.dateApproved || p.dateCreated) === month);
 
