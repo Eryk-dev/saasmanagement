@@ -306,7 +306,6 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
     : { label: "Próximo toque", verb: "marcar toque" };
   // Cartões (mesma linguagem da tela de atividade): caixa com rótulo mono.
   const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "12px 14px", background: "var(--bg-inset)" };
-  const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
   const rowLabel = { fontSize: 11, width: 104, flexShrink: 0 };
   const presetBtn = { height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 500 };
   // Linha chave→valor pra grids de fatos/atribuição.
@@ -407,7 +406,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   title={(lead.proposalUrl
                     ? "Abrir o WhatsApp Web com a proposta pronta pra enviar (link limpo, visão do cliente, sem a oferta escondida)"
                     : "Gerar a proposta e abrir o WhatsApp Web com ela pronta pra enviar (link limpo, visão do cliente)")}
-                  style={{ cursor: "pointer", background: "#25D366", borderColor: "#25D366", color: "#06120c", fontWeight: 700 }}>
+                  style={{ cursor: "pointer", background: "var(--wa-brand)", borderColor: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontWeight: 700 }}>
                   {propBusy ? "gerando…" : "➤ proposta no Whats"}
                 </button>
               )}
@@ -431,7 +430,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
         <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", minHeight: 0 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16, alignItems: "start" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-            <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Cliente</div>
+            <div className="kicker" style={{ color: "var(--fg-3)" }}>Cliente</div>
 
           {/* Requalificação (Receita Previsível): a oportunidade que o SDR
               passou só CONTA quando o closer requalifica e ACEITA (fit + decisor
@@ -476,7 +475,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
           {/* Resumo do cliente: dor em destaque + os fatos compilados num grid.
               O lápis abre a edição INLINE dos campos do lead (sem trocar de tela). */}
           <div style={box}>
-            <div className="mono" style={{ ...kicker, marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+            <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
               <span>Resumo do cliente</span>
               <button onClick={() => setEditResumo((v) => !v)} title={editResumo ? "Concluir edição" : "Editar os dados do cliente aqui mesmo"}
                 style={{ marginLeft: "auto", height: 22, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid " + (editResumo ? "var(--accent)" : "var(--line-2)"), background: editResumo ? "var(--accent)" : "var(--bg-1)", color: editResumo ? "var(--accent-fg)" : "var(--fg-3)", fontSize: 11 }}>
@@ -485,7 +484,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
             </div>
             {pain && (
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 9px", marginBottom: 8, borderRadius: "var(--r-2)", background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
-                <span className="mono" style={{ fontSize: 9.5, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", flexShrink: 0 }}>dor do anúncio</span>
+                <span className="kicker accent" style={{ flexShrink: 0 }}>dor do anúncio</span>
                 <span style={{ fontSize: 12.5, fontWeight: 600, minWidth: 0 }}>[{pain.code}] {pain.label}</span>
               </div>
             )}
@@ -524,7 +523,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
 
           {/* Dados do 1º contato — editáveis: preenche/corrige o que faltar. */}
           <div style={box}>
-            <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Dados do lead · edite pra completar</div>
+            <div className="kicker" style={{ marginBottom: 6 }}>Dados do lead · edite pra completar</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {checklist.map((c) => (
                 <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "5px 9px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.value ? "var(--bg-1)" : "var(--warn-soft)" }}>
@@ -559,7 +558,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
           <button onClick={() => isOpen && setShowGps((v) => !v)} disabled={!isOpen}
             title={showGps ? "Recolher os editores" : "Editar etapa, toque, call…"}
             style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", background: "none", border: "none", padding: 0, cursor: isOpen ? "pointer" : "default", textAlign: "left" }}>
-            <span className="mono" style={{ ...kicker, flexShrink: 0 }}>Próximo passo</span>
+            <span className="kicker" style={{ flexShrink: 0 }}>Próximo passo</span>
             {!isOpen
               ? <span className="dim" style={{ fontSize: 12.5 }}>lead finalizado</span>
               : next && next.key !== "none"
@@ -624,7 +623,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
           {/* Detalhes da call: link do vídeo + convidados extras, recolhidos —
               logística, não o "quando". */}
           <button onClick={() => setShowCall((v) => !v)}
-            className="mono" style={{ ...kicker, display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+            className="kicker" style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
             Detalhes da call
             <span style={{ marginLeft: "auto", fontSize: 10, flexShrink: 0, textTransform: "none", letterSpacing: 0 }}>{showCall ? "▴ recolher" : "▾ vídeo · convidados"}</span>
           </button>
@@ -645,7 +644,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   copiar
                 </button>
                 {wa && (
-                  <a className="mono" style={{ fontSize: 11, color: "#128c4b", textDecoration: "none", flexShrink: 0 }}
+                  <a className="mono" style={{ fontSize: 11, color: "var(--wa-brand-deep)", textDecoration: "none", flexShrink: 0 }}
                     href={`${wa}?text=${encodeURIComponent(`Oi${lead.name ? " " + String(lead.name).trim().split(/\s+/)[0] : ""}! Aqui é da LeverAds. Nossa call vai ser por este link: ${lead.callUrl}`)}`}
                     target="_blank" rel="noopener noreferrer" title="Enviar o link pro lead no WhatsApp">
                     mandar no Whats ↗
@@ -752,7 +751,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               {/* Entrega: briefing pro integrador + vídeo/resumo da integração,
                   recolhidos — a DATA fica em cima, sempre visível. */}
               <button onClick={() => setShowEntrega((v) => !v)}
-                className="mono" style={{ ...kicker, display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+                className="kicker" style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
                 Entrega
                 <span style={{ marginLeft: "auto", fontSize: 10, flexShrink: 0, textTransform: "none", letterSpacing: 0 }}>{showEntrega ? "▴ recolher" : "▾ briefing · vídeo"}</span>
               </button>
@@ -797,7 +796,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                     <button className="mono dim" style={{ fontSize: 11, flexShrink: 0 }} title="Copiar link"
                       onClick={() => { try { navigator.clipboard.writeText(lead.integrationCallUrl); } catch { window.prompt("Link da integração:", lead.integrationCallUrl); } }}>copiar</button>
                     {wa && (
-                      <a className="mono" style={{ fontSize: 11, color: "#128c4b", textDecoration: "none", flexShrink: 0 }}
+                      <a className="mono" style={{ fontSize: 11, color: "var(--wa-brand-deep)", textDecoration: "none", flexShrink: 0 }}
                         href={`${wa}?text=${encodeURIComponent(`Oi${lead.name ? " " + String(lead.name).trim().split(/\s+/)[0] : ""}! Aqui é da ${saasCfg?.name || "equipe"}. Nossa call de integração vai ser por este link: ${lead.integrationCallUrl}`)}`}
                         target="_blank" rel="noopener noreferrer" title="Enviar o link pro cliente no WhatsApp">mandar no Whats ↗</a>
                     )}
@@ -863,7 +862,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
         {attribution.length > 0 && (
           <div style={box}>
             <button onClick={() => setShowFrom((v) => !v)} title={showFrom ? "Recolher" : "Abrir a atribuição (campanha, conjunto, anúncio, origem)"}
-              className="mono" style={{ ...kicker, display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+              className="kicker" style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
               De onde veio · atribuição do anúncio
               <span style={{ marginLeft: "auto", fontSize: 10, flexShrink: 0 }}>{showFrom ? "▴ recolher" : "▾ abrir"}</span>
             </button>
@@ -878,7 +877,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
 
           {/* Coluna direita: insights (roteiro) do estágio atual + histórico. */}
           <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-            <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Insights do estágio · {lead.stage || (saasCfg?.funnel?.[0]?.stage ?? "")}</div>
+            <div className="kicker" style={{ color: "var(--fg-3)" }}>Insights do estágio · {lead.stage || (saasCfg?.funnel?.[0]?.stage ?? "")}</div>
             {/* Briefing de passagem em cima de tudo: é o que o integrador lê
                 primeiro quando abre o card que acabou de chegar nele. */}
             <IntegrationBriefCard brief={integrationBrief} phone={lead.phone}
@@ -892,15 +891,15 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
             <CallSummaryCard summary={showCallSummary ? callSummary : null} phone={lead.phone}
               onSend={onOpenWhatsapp ? (msg) => onOpenWhatsapp(lead, msg) : null} />
             <div style={{ ...box, background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
-              <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 4 }}>Como se comportar</div>
+              <div className="kicker" style={{ color: "var(--accent)", marginBottom: 4 }}>Como se comportar</div>
               <div style={{ fontSize: 12, lineHeight: 1.45 }}>{script.resumo}</div>
             </div>
             <div style={box}>
-              <div className="mono" style={{ ...kicker, marginBottom: 4 }}>Objetivo do contato</div>
+              <div className="kicker" style={{ marginBottom: 4 }}>Objetivo do contato</div>
               <div style={{ fontSize: 12, lineHeight: 1.45, fontWeight: 500 }}>{script.objetivo}</div>
             </div>
             <div style={box}>
-              <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Passo a passo</div>
+              <div className="kicker" style={{ marginBottom: 6 }}>Passo a passo</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                 {script.passos.map((p, i) => (
                   <div key={i} style={{ display: "flex", gap: 10 }}>
@@ -925,7 +924,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
         {consulta && (
           <div style={{ ...box, display: "flex", flexDirection: "column", gap: 9 }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-              <span className="mono" style={{ ...kicker, flexShrink: 0 }}>Consulta {consulta.n || "?"}/{consulta.packageTotal || 8}</span>
+              <span className="kicker" style={{ flexShrink: 0 }}>Consulta {consulta.n || "?"}/{consulta.packageTotal || 8}</span>
               <span style={{ fontSize: 13, fontWeight: 700 }}>{consultaWhen(consulta.at)}</span>
               <span style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{CONSULTA_STATUS[consulta.status] || consulta.status || ""}</span>
             </div>
@@ -979,7 +978,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
         <div style={{ ...box, display: "flex", flexDirection: "column", ...(showTimeline ? { minHeight: 160 } : {}) }}>
           <button onClick={() => setShowTimeline((v) => !v)}
             title={showTimeline ? "Recolher a timeline" : "Abrir a timeline (histórico + registrar toque)"}
-            className="mono" style={{ ...kicker, display: "flex", alignItems: "center", width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--fg-3)", textAlign: "left" }}>
+            className="kicker" style={{ display: "flex", alignItems: "center", width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--fg-3)", textAlign: "left" }}>
             <span>Timeline {activities ? `· ${timelineActs.length + (lead.comments?.length || 0)}` : ""}</span>
             <span style={{ marginLeft: "auto", fontSize: 10 }}>{showTimeline ? "▴ recolher" : "▾ abrir"}</span>
           </button>
@@ -1008,12 +1007,12 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
             <>
               {onOpenWhatsapp && (
                 <button onClick={() => onOpenWhatsapp(lead)} title={`Abrir a conversa no inbox do cockpit · ${lead.phone}`}
-                  style={{ flex: 1, textAlign: "center", padding: "10px 12px", background: "#25D366", color: "#06120c", border: "none", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
+                  style={{ flex: 1, textAlign: "center", padding: "10px 12px", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", border: "none", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
                   WhatsApp no cockpit
                 </button>
               )}
               <a href={wa} target="_blank" rel="noopener noreferrer" title={`Abrir no WhatsApp Web/app · ${lead.phone}`}
-                style={{ flex: onOpenWhatsapp ? "0 1 auto" : 1, textAlign: "center", padding: "10px 14px", background: onOpenWhatsapp ? "var(--bg-1)" : "#25D366", color: onOpenWhatsapp ? "var(--fg-2)" : "#06120c", border: onOpenWhatsapp ? "1px solid var(--line-2)" : "none", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: onOpenWhatsapp ? 600 : 700, textDecoration: "none", whiteSpace: "nowrap" }}>
+                style={{ flex: onOpenWhatsapp ? "0 1 auto" : 1, textAlign: "center", padding: "10px 14px", background: onOpenWhatsapp ? "var(--bg-1)" : "var(--wa-brand)", color: onOpenWhatsapp ? "var(--fg-2)" : "var(--wa-brand-fg)", border: onOpenWhatsapp ? "1px solid var(--line-2)" : "none", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: onOpenWhatsapp ? 600 : 700, textDecoration: "none", whiteSpace: "nowrap" }}>
                 {onOpenWhatsapp ? "Web ↗" : "WhatsApp ↗"}
               </a>
             </>
@@ -1086,7 +1085,6 @@ function PaymentLinkModal({ lead, onClose, onSaved }) {
   const [err, setErr] = React.useState(null);
   const wa = waLink(lead.phone);
   const inputStyle = { height: 36, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, width: "100%" };
-  const kicker = { fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)" };
 
   function pickPlan(p) {
     setPlan(p);
@@ -1128,33 +1126,33 @@ function PaymentLinkModal({ lead, onClose, onSaved }) {
           <span className="kicker accent">checkout</span>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 96px", gap: 8 }}>
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={kicker}>Valor da cobrança (R$)</span>
+              <span className="kicker">Valor da cobrança (R$)</span>
               <input type="number" min="0" step="0.01" placeholder="0,00" value={amount} autoFocus
                 onChange={(e) => setAmount(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") create(); }}
                 style={{ ...inputStyle, fontFamily: "var(--mono)", textAlign: "right" }} />
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={kicker}>Parcelas até</span>
+              <span className="kicker">Parcelas até</span>
               <select value={installments} onChange={(e) => setInstallments(e.target.value)} style={inputStyle}>
                 {[1, 3, 6, 12].map((n) => <option key={n} value={n}>{n}x</option>)}
               </select>
             </label>
           </div>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={kicker}>Título no checkout</span>
+            <span className="kicker">Título no checkout</span>
             <input type="text" value={title} placeholder={titleFor(plan)}
               onChange={(e) => { setTitle(e.target.value); setTitleDirty(true); }}
               style={inputStyle} />
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={kicker}>Descrição (opcional)</span>
+            <span className="kicker">Descrição (opcional)</span>
             <input type="text" value={description} placeholder="ex.: 12 meses de LeverAds com contas ilimitadas"
               onChange={(e) => setDescription(e.target.value)}
               style={inputStyle} />
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={kicker}>E-mail do pagador</span>
+            <span className="kicker">E-mail do pagador</span>
             <input type="email" value={payerEmail} placeholder="pré-preenche o checkout e reforça o casamento"
               onChange={(e) => setPayerEmail(e.target.value)}
               style={inputStyle} />
@@ -1167,20 +1165,20 @@ function PaymentLinkModal({ lead, onClose, onSaved }) {
           <span className="kicker accent">fechamento</span>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={kicker}>Plano · duração</span>
+              <span className="kicker">Plano · duração</span>
               <select value={plan} onChange={(e) => pickPlan(e.target.value)} style={inputStyle}>
                 {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
               </select>
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={kicker}>Valor do contrato (R$)</span>
+              <span className="kicker">Valor do contrato (R$)</span>
               <input type="number" min="0" step="0.01" placeholder="se a cobrança for só a entrada" value={contract}
                 onChange={(e) => setContract(e.target.value)}
                 title="valor do negócio inteiro — a cobrança do link pode ser só a entrada"
                 style={{ ...inputStyle, fontFamily: "var(--mono)", textAlign: "right" }} />
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={kicker}>Forma combinada</span>
+              <span className="kicker">Forma combinada</span>
               <select value={method} onChange={(e) => setMethod(e.target.value)} style={inputStyle}>
                 <option value="">escolher…</option>
                 {PAYMENT_METHODS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}

@@ -206,7 +206,7 @@ function LandingPagesScreen() {
               ))}
               {(d.ctaLabels || []).length > 0 && (
                 <div style={{ marginTop: 14 }}>
-                  <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>CTAs mais clicados</div>
+                  <div className="kicker" style={{ marginBottom: 4 }}>CTAs mais clicados</div>
                   {(d.ctaLabels || []).slice(0, 6).map((c) => (
                     <div key={c.label} className="mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 11, padding: "3px 0" }}>
                       <span style={{ color: "var(--fg-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.label}</span>

@@ -34,7 +34,6 @@ const SUB_STATUS = {
   paused: { label: "pausada", tone: "warn" },
   canceled: { label: "cancelada", tone: "mut" },
 };
-const SECTION_LABEL = { fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 };
 
 function CustomersScreen({ initialTab = "base" }) {
   const { CUSTOMERS, LEADS } = window.SEED;
@@ -299,7 +298,7 @@ function CustomersScreen({ initialTab = "base" }) {
                 )}
                 {noRuler.length > 0 && (
                   <div style={{ padding: "14px 24px 8px", borderTop: nextActions.length ? "1px solid var(--line-1)" : "none" }}>
-                    <div className="mono" style={SECTION_LABEL}>Sem régua ativa</div>
+                    <div className="kicker" style={{ marginBottom: 8 }}>Sem régua ativa</div>
                     {noRuler.map((c) => (
                       <div key={c.id} onClick={() => setSel(c.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", cursor: "pointer", fontSize: 13 }}>
                         <span style={{ fontWeight: 600 }}>{c.name}</span>
@@ -321,9 +320,9 @@ function CustomersScreen({ initialTab = "base" }) {
                       ? [["Cliente", "cliente"], ["Pacote", "plano"], ["Valor", "mrr"], ["Entrada", "entrada"], ["Tempo de casa", "casa"], ["Último contato", "contato"], ["Próxima consulta", null], ["Consultas", null]]
                       : [["Cliente", "cliente"], ["Nível", "nivel"], ["Plano", "plano"], ["MRR", "mrr"], ["Pagamento", "pagamento"], ["Total fechado", "fechado"], ["Entrada", "entrada"], ["Tempo de casa", "casa"], ["Último contato", "contato"], ["Próximo marco", null], ["Assinatura", null]]
                     ).map(([h, k]) => (
-                      <th key={h} title={k ? "ordenar" : undefined}
+                      <th key={h} className="kicker" title={k ? "ordenar" : undefined}
                         onClick={k ? () => setSort((s) => (s?.key === k ? { key: k, dir: -s.dir } : { key: k, dir: 1 })) : undefined}
-                        style={{ textAlign: (h === "MRR" || h === "Valor" || h === "Total fechado") ? "right" : "left", fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: sort?.key === k ? "var(--fg-2)" : "var(--fg-4)", padding: "12px 20px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", cursor: k ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>
+                        style={{ textAlign: (h === "MRR" || h === "Valor" || h === "Total fechado") ? "right" : "left", fontWeight: 600, color: sort?.key === k ? "var(--fg-2)" : "var(--fg-4)", padding: "12px 20px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", cursor: k ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>
                         {h}{sort?.key === k ? (sort.dir === 1 ? " ↑" : " ↓") : ""}
                       </th>
                     ))}
@@ -478,7 +477,7 @@ function useFormName(saas, formId) {
 function NivelLegend() {
   return (
     <div style={{ ...BOX, flex: "0 1 250px", minWidth: 220 }}>
-      <div className="mono" style={SECTION_LABEL}>Como o nível é definido</div>
+      <div className="kicker" style={{ marginBottom: 8 }}>Como o nível é definido</div>
       <div style={{ fontSize: 11.5, color: "var(--fg-3)", lineHeight: 1.45, marginBottom: 12 }}>
         Cruzamento de <b style={{ color: "var(--fg-2)" }}>contas de marketplace</b> (linha) × <b style={{ color: "var(--fg-2)" }}>anúncios na maior conta</b> (coluna). Quanto mais de cada, mais alto o nível (S no topo, E na base).
       </div>
@@ -512,7 +511,7 @@ function FormAnswersCard({ lead, product, onPatch }) {
   if (!items.length) return null;
   return (
     <div style={BOX}>
-      <div className="mono" style={SECTION_LABEL}>Respostas do formulário</div>
+      <div className="kicker" style={{ marginBottom: 8 }}>Respostas do formulário</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {items.map((c) => (
           <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "5px 9px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.raw ? "var(--bg-1)" : "var(--warn-soft)" }}>
@@ -585,7 +584,7 @@ function CustomerFacts({ customer, lead, product, onPatch }) {
     : ["Anual", "Semestral", "Serviço único", "Trimestral", "Mensal"];
   return (
     <div style={BOX}>
-      <div className="mono" style={{ ...SECTION_LABEL, display: "flex", alignItems: "center", gap: 8 }}>
+      <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
         <span>Dados do cliente</span>
         {onPatch && (
           <button onClick={() => setEdit((v) => !v)} title={edit ? "Concluir edição" : "Editar os dados aqui mesmo"}
@@ -798,7 +797,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 10, marginTop: 14 }}>
             {summary.map((s) => (
               <div key={s.label}>
-                <div className="mono" style={{ fontSize: 10, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-4)" }}>{s.label}</div>
+                <div className="kicker">{s.label}</div>
                 <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>{s.value}</div>
               </div>
             ))}
@@ -837,7 +836,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
             sai (o pagamento fica em Dados do cliente e nas faturas). */}
         {!isKids && (
         <div style={BOX}>
-          <div className="mono" style={SECTION_LABEL}>Assinaturas</div>
+          <div className="kicker" style={{ marginBottom: 8 }}>Assinaturas</div>
           {subs.length === 0 && (
             <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Nenhuma assinatura. Crie na aba Assinaturas.</div>
           )}
@@ -857,7 +856,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         )}
 
         <div style={BOX}>
-          <div className="mono" style={{ ...SECTION_LABEL, display: "flex", alignItems: "center", gap: 8 }}>
+          <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
             <span>Últimas faturas</span>
             <button onClick={() => setUpsellOpen((v) => !v)}
               title="Registrar um upsell (venda extra pra um cliente atual). Vira fatura paga: entra no caixa e conta na meta de upsell do CS."
@@ -951,7 +950,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
         {isKids ? (
         <div style={BOX}>
-          <div className="mono" style={{ ...SECTION_LABEL, display: "flex", alignItems: "center" }}>
+          <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center" }}>
             <span>Jornada de consultas</span>
             <button onClick={() => { onClose(); window.location.hash = "consultas"; }}
               style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
@@ -1000,7 +999,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         </div>
         ) : (
         <div style={BOX}>
-          <div className="mono" style={SECTION_LABEL}>Ações de retenção</div>
+          <div className="kicker" style={{ marginBottom: 8 }}>Ações de retenção</div>
           {!customer.startedAt && (
             <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
               Defina "Cliente desde" (editar cliente) pra ativar a régua de marcos: onboarding, check-in de mês 1, revisão de mês 3, upsell de mês 6 e contato de renovação (2 meses antes do fim do contrato).
@@ -1085,7 +1084,7 @@ function CustomerHistory({ customer }) {
     <div style={BOX}>
       {brief && <div style={{ marginBottom: 12 }}><IntegrationBriefCard brief={brief} phone={customer.phone || ""} /></div>}
       {showCallSummary && <div style={{ marginBottom: 12 }}><CallSummaryCard summary={callSummary} phone={customer.phone || ""} /></div>}
-      <div className="mono" style={{ fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
+      <div className="kicker" style={{ marginBottom: 8 }}>
         Histórico do funil
       </div>
       {acts === null

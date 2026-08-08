@@ -54,8 +54,6 @@ function AquisicaoScreen() {
   const leadSeries = (mkt?.series || []).map((d) => ({ x: shortDay(d.date), v: Number(d.leads) || 0 }));
   const loading = mkt === null;
 
-  const kicker = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" };
-
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Análise de Aquisição" sub="investimento em anúncios + conversão dos formulários · o funil de aquisição" />

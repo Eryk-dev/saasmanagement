@@ -99,7 +99,7 @@ export function MindmapsScreen() {
             fixos deixariam ~160px pro canvas). */}
         <div style={{ width: isMobile ? "100%" : 230, maxHeight: isMobile ? 150 : undefined, flexShrink: 0, borderRight: isMobile ? "none" : "1px solid var(--line-1)", borderBottom: isMobile ? "1px solid var(--line-1)" : "none", overflow: "auto", padding: isMobile ? "10px 12px" : "16px 12px", background: "var(--bg-1)", display: "flex", flexDirection: "column", gap: 2 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 8px 12px" }}>
-            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Mapas</span>
+            <span className="kicker" style={{ fontWeight: 600 }}>Mapas</span>
             <button onClick={newMap} style={{ height: 24, padding: "0 4px", color: "var(--accent)", fontSize: 12.5, fontWeight: 600 }}>+ novo</button>
           </div>
           {maps === null && <div className="mono dim" style={{ fontSize: 11, padding: 10 }}>carregando…</div>}

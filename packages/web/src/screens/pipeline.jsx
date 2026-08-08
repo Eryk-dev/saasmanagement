@@ -931,8 +931,9 @@ function EquationArrow({ label }) {
 }
 
 // Probabilidade de um lead na etapa virar ganho, compondo as taxas reais da
-// janela do funil (coorte do último mês fechado; fallback 30d móveis) —
-// contato → agendamento → comparecimento → fechamento.
+// janela do funil (funil do último mês fechado, as mesmas contas da Visão
+// geral; fallback 30d móveis) — contato → agendamento → comparecimento →
+// fechamento.
 // O fechamento usa a taxa EFETIVA (calibrada pela ponta a ponta real quando a
 // amostra deixa, vide routes.pipeline-pace.js) — sem isso o produto das taxas
 // truncadas de janela subestimava o funil em 2-3x.

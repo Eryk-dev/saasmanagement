@@ -70,7 +70,7 @@ const blockedText = (k) => BLOCKED[k] || "faltam dados pra desdobrar a meta.";
 function ChainBox({ nm, big, sub, title }) {
   return (
     <div title={title} style={{ flex: "1 1 0", minWidth: 92, padding: "4px 6px", textAlign: "center", cursor: title ? "help" : "default" }}>
-      <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--fg-3)", marginBottom: 4, whiteSpace: "nowrap" }}>{nm}</div>
+      <div className="kicker" style={{ marginBottom: 4, whiteSpace: "nowrap" }}>{nm}</div>
       <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 650, letterSpacing: "-0.02em", whiteSpace: "nowrap" }}>{big}</div>
       <div className="tnum" style={{ fontSize: 10.5, color: "var(--fg-4)", minHeight: 15, whiteSpace: "nowrap" }}>{sub || ""}</div>
     </div>
@@ -94,15 +94,16 @@ function chainParts(d, people = {}) {
     const n = people?.[role] || 0;
     return n > 1 ? `${int(total / n)} por pessoa` : null;
   };
-  // Período e amostra no hover: "medida em jul/2026 (12 de 44 contatados)" —
+  // Período e amostra no hover: "medida no funil de jul/2026 (8 de 17 ...)" —
   // responde na tela de onde a taxa saiu e de qual período (pergunta do Leo).
-  const janela = d.rateWindow?.mode === "month" ? `em ${mesLabel(d.rateWindow.month)}` : "nos últimos 30 dias";
+  // O modo mês usa as MESMAS contas do funil da Visão geral filtrada no mês.
+  const janela = d.rateWindow?.mode === "month" ? `no funil de ${mesLabel(d.rateWindow.month)}` : "nos últimos 30 dias";
   const amostra = (k, unidade) => {
     const c = d.rateCounts?.[k];
     return c?.d > 0 ? ` (${int(c.n)} de ${int(c.d)} ${unidade})` : "";
   };
   const fonte = (nome, src, k, unidade) => src === "history"
-    ? `${nome}: medida ${janela}${amostra(k, unidade)}, com desfechos contados até hoje.`
+    ? `${nome}: medida ${janela}${amostra(k, unidade)}.`
     : `${nome}: ${RATE_SOURCE[src] || "sem origem"}.`;
   const boxes = [
     { nm: "Leads", big: int(d.leads), sub: "marketing entrega", title: "Entrada do funil: quem entrega é o marketing, então não vira meta de vaga." },
@@ -116,12 +117,12 @@ function chainParts(d, people = {}) {
   ];
   const steps = [
     { big: pct(d.rates.contactRate), nm: "contato", title: fonte("Taxa de contato", d.rates.contactRateSource, "contactRate", "leads contatados") },
-    { big: pct(d.rates.bookingRate), nm: "agendamento", title: fonte("Taxa de agendamento", d.rates.bookingRateSource, "bookingRate", "contatados agendaram") },
-    { big: pct(d.rates.showRate), nm: "comparecimento", title: fonte("Comparecimento", d.rates.showRateSource, "showRate", "agendadas aconteceram") },
+    { big: pct(d.rates.bookingRate), nm: "agendamento", title: fonte("Taxa de agendamento", d.rates.bookingRateSource, "bookingRate", "leads trabalhados marcaram call") },
+    { big: pct(d.rates.showRate), nm: "comparecimento", title: fonte("Comparecimento", d.rates.showRateSource, "showRate", "que já deviam ter acontecido") },
     { big: pct(d.rates.closeRate), nm: "conversão",
       title: d.rates.closeRateSource === "calibrated"
         ? `Conversão da call: calibrada pela ponta a ponta real ${janela}${amostra("leadToWin", "leads viraram ganho")}, pra cadeia inteira multiplicada fechar no lead→ganho medido.`
-        : fonte("Conversão da call", d.rates.closeRateSource, "closeRate", "calls fecharam") },
+        : fonte("Conversão da call", d.rates.closeRateSource, "closeRate", "calls realizadas") },
     d.ticket
       ? { big: money(d.ticket), nm: "× ticket médio", title: `Ticket médio: ${TICKET_SOURCE[d.ticketSource] || "sem origem"}.` }
       : { big: null, nm: "contratos digitados", title: "Sem ticket médio ainda: a meta de contratos digitada sustenta a cadeia sozinha." },
@@ -381,7 +382,7 @@ function MetasScreen() {
               <Card title="Cadeia da meta"
                 hint={<>
                   {data.derived.superMode ? `meta base batida · perseguindo a super meta ${data.derived.chasePct}%` : "o que a meta do mês exige de cada etapa · recalcula ao salvar"}
-                  {infoDot("A meta de venda desce pela MESMA cadeia e pelas mesmas taxas da Análise de Pace, então os dois lugares contam a mesma história. As taxas vêm da coorte do último MÊS FECHADO (desfechos contados até hoje); sem amostra por lá (20 leads e 1 ganho), caem nos últimos 30 dias. Passe o mouse em cada número pra ver o período e a amostra.")}
+                  {infoDot("A meta de venda desce pela MESMA cadeia e pelas mesmas taxas da Análise de Pace. As taxas são as do FUNIL do último mês fechado, as mesmas contas da Visão geral filtrada naquele mês; sem amostra por lá (20 leads e 1 ganho), caem nos últimos 30 dias. Passe o mouse em cada número pra ver o período e a amostra.")}
                 </>}
                 action={!data.derived.blockedBy ? (
                   <button onClick={applyDerived}
@@ -460,7 +461,7 @@ function MetasScreen() {
                     {r.metrics.some((m) => m.compPlan) && (
                       <div title="Contratos e receita são meta POR PESSOA, pelo nível dela (1 jr · 2 pl · 3 sn) no plano de Remuneração: vencem a meta de vaga e a derivada do pace. Edita na tela Remuneração; só o ajuste por pessoa, no card mais abaixo, passa na frente."
                         style={{ marginTop: 12, background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "10px 12px", cursor: "help" }}>
-                        <div style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--accent)", fontWeight: 600, marginBottom: 7 }}>
+                        <div className="kicker accent" style={{ fontWeight: 600, marginBottom: 7 }}>
                           Contratos e receita · plano de Remuneração <span className="dim" style={{ letterSpacing: 0 }}>ⓘ</span>
                         </div>
                         {(data.users || []).filter((u) => u.roles.includes(r.role)).map((u) => {

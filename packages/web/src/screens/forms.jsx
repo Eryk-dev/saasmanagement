@@ -3,7 +3,7 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { chromeBtnStyleSmall, GRADE_STYLE } from "../lib/ui.js";
 import { EmptyState, PrimaryButton } from "../atoms.jsx";
-import { inputStyle, labelStyle, sectionTitle, cardStyle, addBtnStyle, THEME_DEFAULTS, LabeledInput, ThemeEditor } from "../components/theme-inputs.jsx";
+import { inputStyle, sectionTitle, cardStyle, addBtnStyle, THEME_DEFAULTS, LabeledInput, ThemeEditor } from "../components/theme-inputs.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useAttribution } from "../lib/pains.js";
 import { InsightsList } from "../components/insights.jsx";
@@ -485,11 +485,11 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
         <div style={{ flex: 1, overflow: "auto", padding: "14px 20px 32px" }}>
           {error && <div className="mono" style={{ fontSize: 11, color: "var(--neg)", marginBottom: 10 }}>{error}</div>}
 
-          <div style={sectionTitle}>Básico</div>
+          <div className="kicker" style={sectionTitle}>Básico</div>
           <LabeledInput label="Nome do form" value={draft.name} onChange={(v) => set({ name: v })} placeholder="Diagnóstico · LeverAds" />
           <LabeledInput label="Texto do botão de enviar (última tela)" value={draft.submitLabel || ""} onChange={(v) => set({ submitLabel: v })} placeholder="Enviar" />
 
-          <div style={sectionTitle}>Boas-vindas (opcional)</div>
+          <div className="kicker" style={sectionTitle}>Boas-vindas (opcional)</div>
           {!draft.welcome ? (
             <button onClick={() => set({ welcome: { title: "", subtitle: "", button: "Começar" } })} style={addBtnStyle}>+ adicionar tela de boas-vindas</button>
           ) : (
@@ -505,7 +505,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
             </div>
           )}
 
-          <div style={sectionTitle}>Perguntas</div>
+          <div className="kicker" style={sectionTitle}>Perguntas</div>
           <div className="mono dim" style={{ fontSize: 11, marginBottom: 8, lineHeight: 1.5 }}>
             Nos títulos, *palavra* vira itálico na cor da marca. "Tela de insight" mostra copy + estatística entre perguntas e avança sozinha.
           </div>
@@ -515,7 +515,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
             onChange={(qs) => set({ questions: qs })}
           />
 
-          <div style={sectionTitle}>Tela final (qualificado)</div>
+          <div className="kicker" style={sectionTitle}>Tela final (qualificado)</div>
           <div style={cardStyle}>
             <LabeledInput label="Título" value={draft.thanks?.title || ""} onChange={(v) => set({ thanks: { ...draft.thanks, title: v } })} />
             <LabeledInput label="Subtítulo" value={draft.thanks?.subtitle || ""} onChange={(v) => set({ thanks: { ...draft.thanks, subtitle: v } })} />
@@ -532,7 +532,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
             </label>
           </div>
 
-          <div style={sectionTitle}>Tela final (não qualificado)</div>
+          <div className="kicker" style={sectionTitle}>Tela final (não qualificado)</div>
           <div className="mono dim" style={{ fontSize: 11, marginBottom: 8, lineHeight: 1.5 }}>
             Mostrada quando uma opção rota para <b>→ fim (não qualificado)</b>. O contato ainda é
             registrado (marcado como desqualificado), mas <b>sem proposta e sem contar como conversão</b> (Pixel/CAPI).
@@ -542,7 +542,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
             <LabeledInput label="Subtítulo" value={draft.reject?.subtitle || ""} onChange={(v) => set({ reject: { ...draft.reject, subtitle: v } })} placeholder="No momento não é um fit, mas agradecemos o contato." />
           </div>
 
-          <div style={sectionTitle}>Saídas laterais</div>
+          <div className="kicker" style={sectionTitle}>Saídas laterais</div>
           <div className="mono dim" style={{ fontSize: 11, marginBottom: 8, lineHeight: 1.5 }}>
             Pra quem <b>não é deste produto, mas também não é lixo</b> (ex.: ainda não vende em marketplace).
             A opção da pergunta aponta pra saída, a pessoa segue respondendo normalmente e o lead nasce
@@ -574,14 +574,14 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
               if (k) set({ exits: { ...(draft.exits || {}), [k]: { label: "", stage: "", title: "", subtitle: "" } } });
             }}>+ adicionar saída</button>
 
-          <div style={{ ...sectionTitle, marginTop: 18 }}>Mapeamento → lead</div>
+          <div className="kicker" style={{ ...sectionTitle, marginTop: 18 }}>Mapeamento → lead</div>
           <div className="mono dim" style={{ fontSize: 11, marginBottom: 8, lineHeight: 1.5 }}>
             Cada envio vira um lead no pipeline deste SaaS. Aponte qual pergunta alimenta cada campo do lead — as demais respostas vão juntas no lead.
           </div>
           <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {LEAD_FIELDS.map(([k, label]) => (
               <label key={k} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <span className="mono" style={labelStyle}>{label}</span>
+                <span className="kicker">{label}</span>
                 <select value={draft.mapping?.[k] || ""} onChange={(e) => set({ mapping: { ...draft.mapping, [k]: e.target.value } })} style={inputStyle}>
                   <option value="">—</option>
                   {qKeys.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -590,7 +590,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
             ))}
           </div>
 
-          <div style={sectionTitle}>Tema da marca</div>
+          <div className="kicker" style={sectionTitle}>Tema da marca</div>
           <ThemeEditor theme={draft.theme} onChange={(theme) => set({ theme })} />
         </div>
       </div>

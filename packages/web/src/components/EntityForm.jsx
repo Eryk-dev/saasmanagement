@@ -254,7 +254,7 @@ function EntityForm({ entityKey, record, onClose, onSaved, onOpenLead, bare = fa
       >
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" }}>{isEdit ? "Editar" : "Novo"}</div>
+            <div className="kicker">{isEdit ? "Editar" : "Novo"}</div>
             <div style={{ fontSize: 18, fontWeight: 500, marginTop: 2 }}>{cfg.singular}</div>
           </div>
           <button type="button" onClick={onClose} className="mono dim" style={{ fontSize: 16 }}>✕</button>
@@ -347,7 +347,7 @@ function Field({ f, value, values, onChange, recordId }) {
   }
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: f.full ? "1 / -1" : "auto" }}>
-      <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+      <span className="kicker">
         {f.label}{f.required && <span style={{ color: "var(--neg)" }}> *</span>}
       </span>
       {input}

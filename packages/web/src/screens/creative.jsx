@@ -1403,7 +1403,6 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
   });
 
   const previewW = Math.round((tpl.group === "story" ? 300 : 340) * ZOOMS[zoom]);
-  const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
   const fieldStyle = { width: "100%", padding: "6px 9px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "inherit" };
   const smallBtn = { height: 24, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11 };
 
@@ -1455,7 +1454,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
 
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px 24px" }}>
-                <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Conteúdo</div>
+                <div className="kicker" style={{ fontWeight: 600 }}>Conteúdo</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 14 }}>
                   {tpl.fields.map((field) => (
                     <label key={field.k} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
@@ -1468,7 +1467,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
               </section>
 
               <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px 24px" }}>
-                <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Templates</div>
+                <div className="kicker" style={{ fontWeight: 600 }}>Templates</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 14 }}>
                   {visibleTemplates.map((template) => {
                     const active = template.id === tpl.id;
@@ -1502,7 +1501,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
         <div style={{ width: isMobile ? "100%" : 216, flexShrink: 0, maxHeight: isMobile ? 168 : undefined, borderRight: isMobile ? "none" : "1px solid var(--line-1)", borderBottom: isMobile ? "1px solid var(--line-1)" : "none", overflowY: "auto", padding: "12px 10px" }}>
           {GROUPS.filter(([gid]) => groups.includes(gid)).map(([gid, glabel]) => (
             <div key={gid} style={{ marginBottom: 14 }}>
-              <div className="mono" style={{ ...kicker, padding: "0 6px", marginBottom: 6 }}>{glabel}</div>
+              <div className="kicker" style={{ padding: "0 6px", marginBottom: 6 }}>{glabel}</div>
               {allowed.filter((t) => t.group === gid).map((t) => {
                 const on = t.id === tplId;
                 return (
@@ -1530,7 +1529,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
         {/* Preview */}
         <div style={{ flex: isMobile ? "none" : 1, minWidth: 0, overflow: "auto", padding: isMobile ? 12 : 18, background: "var(--bg-inset)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-            <span className="mono" style={kicker}>zoom</span>
+            <span className="kicker">zoom</span>
             {ZOOMS.map((z, i) => (
               <button key={i} onClick={() => setZoom(i)}
                 style={{ ...smallBtn, fontWeight: zoom === i ? 700 : 400, borderColor: zoom === i ? "var(--accent-line)" : "var(--line-2)", color: zoom === i ? "var(--accent)" : "var(--fg-3)" }}>
@@ -1571,15 +1570,15 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
 
         {/* Painel de edição */}
         <div style={{ width: isMobile ? "100%" : 320, flexShrink: 0, borderLeft: isMobile ? "none" : "1px solid var(--line-1)", borderTop: isMobile ? "1px solid var(--line-1)" : "none", overflowY: isMobile ? "visible" : "auto", padding: "12px 14px" }}>
-          <div className="mono" style={{ ...kicker, marginBottom: 10 }}>Texto do criativo</div>
+          <div className="kicker" style={{ marginBottom: 10 }}>Texto do criativo</div>
           {fieldGroups.map((g) => (
             <div key={g.key} style={{ marginBottom: 14 }}>
               {fieldGroups.length > 1 && (
-                <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 6 }}>{g.key}</div>
+                <div className="kicker" style={{ color: "var(--accent)", marginBottom: 6 }}>{g.key}</div>
               )}
               {g.fields.map((f) => (
                 <label key={f.k} style={{ display: "block", marginBottom: 8 }}>
-                  <span className="mono" style={{ ...kicker, display: "block", marginBottom: 3 }}>{f.label}</span>
+                  <span className="kicker" style={{ display: "block", marginBottom: 3 }}>{f.label}</span>
                   {f.type === "textarea" ? (
                     <textarea rows={3} value={vals[f.k] ?? ""} onChange={(e) => setVals((p) => ({ ...p, [f.k]: e.target.value }))}
                       style={{ ...fieldStyle, resize: "vertical", lineHeight: 1.4 }} />
@@ -1594,7 +1593,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
 
           {photoSlots.length > 0 && (
             <div style={{ marginBottom: 14, paddingTop: 10, borderTop: "1px solid var(--line-1)" }}>
-              <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Fotos do template</div>
+              <div className="kicker" style={{ marginBottom: 8 }}>Fotos do template</div>
               {photoSlots.map((s) => (
                 <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                   <span className="mono dim" style={{ fontSize: 11, flex: 1 }}>
@@ -1611,7 +1610,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
           )}
 
           <div style={{ marginBottom: 14, paddingTop: 10, borderTop: "1px solid var(--line-1)" }}>
-            <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Adicionar elemento</div>
+            <div className="kicker" style={{ marginBottom: 8 }}>Adicionar elemento</div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <button onClick={() => addExtra("text")} style={smallBtn}>＋ texto</button>
               <button onClick={() => addExtra("pill")} style={smallBtn}>＋ botão</button>
@@ -1631,7 +1630,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
                 background: "var(--bg-inset)",
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: ex.type === "photo" ? 0 : 6 }}>
-                  <span className="mono" style={{ ...kicker }}>
+                  <span className="kicker">
                     {ex.type === "pill" ? "botão" : ex.type === "photo" ? "foto" : "texto"}{tpl.slides > 1 ? ` · slide ${ex.slide}` : ""}
                   </span>
                   {ex.type === "photo" && (

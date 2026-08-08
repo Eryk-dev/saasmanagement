@@ -23,11 +23,10 @@ const { useState: useS, useEffect: useE } = React;
 const money = (v) => window.fmt.money(Number(v) || 0);
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px 22px" };
-const kicker = { fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" };
 const inputS = { height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", fontSize: 12.5, width: 92 };
 const cellIn = { ...inputS, width: 78, height: 26, fontSize: 12 };
 const btnPrimary = { height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--accent)", background: "var(--accent)", color: "var(--accent-fg, #fff)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
-const thS = { padding: "6px 8px", fontSize: 10.5, color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: ".05em", textAlign: "left", whiteSpace: "nowrap", borderBottom: "1px solid var(--line-1)" };
+const thS = { padding: "6px 8px", textAlign: "left", whiteSpace: "nowrap", borderBottom: "1px solid var(--line-1)" };
 const tdS = { padding: "5px 8px", borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" };
 
 // ── As regras da casa (decisões do Leo, 04/08) ───────────────────────────────
@@ -100,7 +99,7 @@ function SimVendas({ plan, isCloser }) {
   const set = (k) => (e) => setS((p) => ({ ...p, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
   return (
     <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
-      <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Simulador · quanto leva no mês</div>
+      <div className="kicker" style={{ color: "var(--fg-3)" }}>Simulador · quanto leva no mês</div>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <label>nível <select value={s.n} onChange={set("n")} style={{ ...inputS, width: 56, height: 26 }}>{(plan.levels || []).map((l) => <option key={l.n} value={l.n}>{l.n}</option>)}</select></label>
         {isCloser && <label style={{ display: "inline-flex", gap: 5, alignItems: "center" }}><input type="checkbox" checked={!!s.pj} onChange={set("pj")} /> regime PJ</label>}
@@ -128,7 +127,7 @@ function SimCs({ plan }) {
   const set = (k) => (e) => setS((p) => ({ ...p, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
   return (
     <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
-      <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Simulador · quanto leva no mês</div>
+      <div className="kicker" style={{ color: "var(--fg-3)" }}>Simulador · quanto leva no mês</div>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <label>nível <select value={s.n} onChange={set("n")} style={{ ...inputS, width: 56, height: 26 }}>{(plan.levels || []).map((l) => <option key={l.n} value={l.n}>{l.n}</option>)}</select></label>
         <label style={{ display: "inline-flex", gap: 5, alignItems: "center" }}><input type="checkbox" checked={!!s.nps} onChange={set("nps")} /> NPS ≥ {num(plan.npsFloor) || 80}</label>
@@ -173,17 +172,17 @@ function RoleCard({ role, saved, onSave }) {
         <table style={{ borderCollapse: "collapse", minWidth: isCs ? 500 : 720 }}>
           <thead>
             <tr>
-              <th style={thS}>Nível</th>
-              <th style={thS}>{isCloser ? "Fixo CLT" : "Fixo"}</th>
-              {isCloser && <th style={thS}>Fixo PJ</th>}
-              {!isCs && <th style={thS}>Meta contratos</th>}
-              {!isCs && <th style={thS}>Meta receita</th>}
-              {!isCs && <th style={thS}>Bônus 80%</th>}
-              {!isCs && <th style={thS}>Bônus 100%</th>}
-              {!isCs && <th style={thS}>Bônus 120%</th>}
-              {!isCs && <th style={thS}>Bônus 140%</th>}
-              {isCs && <th style={thS}>Bônus NPS ≥ {num(draft.npsFloor) || 80}</th>}
-              {isCs && <th style={thS}>Bônus churn &lt; {num(draft.churnMax) || 15}%</th>}
+              <th className="kicker" style={thS}>Nível</th>
+              <th className="kicker" style={thS}>{isCloser ? "Fixo CLT" : "Fixo"}</th>
+              {isCloser && <th className="kicker" style={thS}>Fixo PJ</th>}
+              {!isCs && <th className="kicker" style={thS}>Meta contratos</th>}
+              {!isCs && <th className="kicker" style={thS}>Meta receita</th>}
+              {!isCs && <th className="kicker" style={thS}>Bônus 80%</th>}
+              {!isCs && <th className="kicker" style={thS}>Bônus 100%</th>}
+              {!isCs && <th className="kicker" style={thS}>Bônus 120%</th>}
+              {!isCs && <th className="kicker" style={thS}>Bônus 140%</th>}
+              {isCs && <th className="kicker" style={thS}>Bônus NPS ≥ {num(draft.npsFloor) || 80}</th>}
+              {isCs && <th className="kicker" style={thS}>Bônus churn &lt; {num(draft.churnMax) || 15}%</th>}
             </tr>
           </thead>
           <tbody>
@@ -271,7 +270,7 @@ function RemuneracaoScreen() {
       <PageHead title="Remuneração" sub="plano oficial por cargo e nível (aprovado 04/08) · visível só pra admins" />
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={box}>
-          <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 8 }}>Regras da casa</div>
+          <div className="kicker" style={{ color: "var(--accent)", marginBottom: 8 }}>Regras da casa</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
             {RULES.map(([t, d], i) => (
               <div key={i} style={{ fontSize: 12.5, lineHeight: 1.5 }}>
