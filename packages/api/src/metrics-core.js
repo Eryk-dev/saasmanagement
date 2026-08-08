@@ -23,17 +23,19 @@ import { kindOf, isLoss, isNoShowStage, isWonLead, wonAtOf, TOUCH_TYPES } from "
 
 export { isWonLead, wonAtOf }; // a régua oficial de ganho, num import só
 
-// Contratos fechados no cartão 12x NO MÊS, valor CHEIO: o recebimento é
-// antecipado (D+0, decisão final do Leo 08/08/2026 — "pode aplicar a taxa
-// inteira pois recebo o valor em d0"), então a taxa de checkout incide inteira
-// no mês da venda. É a base do custo percentual `cartao12x` da aba Custos e do
-// Financeiro — régua única nos dois lugares.
-export function card12xBaseIn(product, leads, month) {
+// Dinheiro de CARTÃO DE CRÉDITO que ENTROU no mês (espelho do Mercado Pago,
+// aprovados por dateApproved). É a base do custo percentual `cartao12x` da aba
+// Custos e do Financeiro — régua única nos dois lugares.
+// Regra final do Leo (08/08/2026, 4ª iteração): com antecipação D+0 a taxa
+// incide INTEIRA no mês em que o dinheiro CAI — nunca sobre a marcação
+// "cartão 12x" do fechamento (contrato marcado que ainda não passou no cartão
+// não paga taxa; foi isso que inflou a base pra 172k com ~100 recebidos).
+export function card12xBaseIn(mpPayments, month) {
   let sum = 0;
-  for (const l of leads || []) {
-    if (l.paymentMethod !== "cartao12x" || !isWonLead(product, l)) continue;
-    if (monthKey(wonAtOf(l) || l.createdAt) !== month) continue;
-    sum += Number(l.amount) || 0;
+  for (const p of mpPayments || []) {
+    if (p.status !== "approved" || p.methodType !== "credit_card") continue;
+    if (monthKey(p.dateApproved || p.dateCreated) !== month) continue;
+    sum += Number(p.amount) || 0;
   }
   return Math.round(sum * 100) / 100;
 }
