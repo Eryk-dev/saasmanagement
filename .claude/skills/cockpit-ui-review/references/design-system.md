@@ -60,12 +60,12 @@ inline. Máximo ~3 níveis por tela.
 
 ## Componentes base
 
-- Botão: primário = `PrimaryButton` (atoms.jsx, navy 32px) ou inline `--btn-bg/--btn-fg` 40px em CTAs grandes; secundário = borda `--line-2` fundo `--bg-1` (redeclarado por tela — ver Dívidas); terciário = texto `mono dim`. **1 primário por região.**
-- Input / Select / Datepicker: sem átomo único — altura 26–30, `--bg-1`, borda `--line-2`, `--r-2` (ver Dívidas); formulário CRUD = `components/EntityForm.jsx` (dirigido por `lib/entities.js`); data/hora usa `<input type="datetime-local">` com pegadinha de fuso (BRT sem sufixo)
+- Botão: primário = `PrimaryButton` (atoms.jsx, navy 32px) ou inline `--btn-bg/--btn-fg` 40px em CTAs grandes; secundário = `SecondaryButton` (atoms.jsx, size sm/md/lg = 28/32/40); terciário = texto `mono dim`. **1 primário por região; CTA async SEMPRE com busy/disabled.**
+- Input / Select / Datepicker: classe `.inp` (30px, `--bg-1`, borda `--line-2`, `--r-2`) pra campo novo; legados 24–30 migram quando a tela for tocada; formulário CRUD = `components/EntityForm.jsx` (dirigido por `lib/entities.js`); data/hora usa `<input type="datetime-local">` com pegadinha de fuso (BRT sem sufixo)
 - Tabela: `<table>` manual; `th` = `className="kicker"` + padding `8px 10px`; `td` 12.5px com `borderTop: var(--line-1)`; linha clicável com hover/seleção `--accent-soft`; larga = envolver em `.tbl-x`
 - Card / KPI: card genérico = `Card` (viz.jsx); KPI = `StatTile` (viz.jsx, rótulo 12.5 + valor 30/700); `MetricTile`/`BigNumber` (charts.jsx) em análises; tile interno = `--bg-inset` + `--r-2`
 - Badge / status: `.chip` (tokens.css: neutro, `.pos/.neg/.warn/.info` com ponto, `.accent`) e `Pill` (viz.jsx)
-- Modal: overlay `fixed inset-0` `oklch(0 0 0 / 0.45)` z-80 + painel `--bg-1`/`--r-3`/`--shadow-pop`; confirmar exclusão = `components/ConfirmDelete.jsx` (nomeia o item + consequência); detalhe de lead = drawer `LeadDetail` (screens/deal.jsx); todo modal dentro de `ErrorBoundary variant="modal"`; **todo modal fecha no Esc** via `useEsc(onClose)` (atoms.jsx)
+- Modal: overlay `fixed inset-0` `oklch(0 0 0 / 0.45)` z-80 + painel `--bg-1`/`--r-3`/`--shadow-pop`; confirmar exclusão = `components/ConfirmDelete.jsx` ou `window.confirm` nomeando o item + consequência (TODA destrutiva confirma); detalhe de lead = drawer `LeadDetail` (screens/deal.jsx); todo modal dentro de `ErrorBoundary variant="modal"`; **todo modal fecha no Esc** via `useEsc(onClose)` (atoms.jsx, PILHA: aninhado fecha um por vez; passe null enquanto salva). Exceção deliberada: alarmes que exigem decisão (WaHotAlert, TrainingGate) não fecham no Esc
 - Toast: `window.toast(msg, tone)` + `ToastHost` (atoms.jsx, montado no app.jsx). REGRA: mutação otimista NUNCA falha em silêncio — todo `.catch` de update/create chama `toast("… · tente de novo", "neg")` além do console.warn
 - Botão WhatsApp: `WaButton` (atoms.jsx) ou tokens `--wa-brand/-fg/-deep`; nunca hex solto
 - Estado vazio: `EmptyState` (atoms.jsx: título 15/600 + hint + ação central)
@@ -105,11 +105,14 @@ varridos no app inteiro, Card/PageHead na régua, toast global + regra do catch,
 Esc nos modais, verde WA por token, +N em lista cortada, desfazer em concluir
 tarefa. O que segue em aberto:
 
+Rodada 2 (2026-08-08, PR #639): Esc universal em pilha nos 13 popups restantes
+(incl. drawer do lead), zero catch silencioso no app, excluir consulta com
+confirmação, `SecondaryButton` + `.inp` + `.tbl` criados.
+
 | Divergência | Onde aparece | Padrão que deve prevalecer |
 |---|---|---|
 | Cabeçalho de página hand-rolado (estrutura), classes já aplicadas | pipeline, today, training e outras | migrar pro componente `PageHead` quando tocar na tela |
-| Botão secundário redeclarado por tela (`const btn`) e alturas 20–40 | quase toda tela | extrair SecondaryButton (atoms) e fechar a escala 28 (denso) · 32 (padrão) · 40 (CTA) |
-| Tabela manual com td redeclarado (th já é `.kicker`) | customers, finance, forms… | componente Table compartilhado (td 12.5, hover, vazio) |
-| Inputs com alturas 24/26/30 variando | forms diversos | altura única 30 (28 em contexto denso) |
+| SecondaryButton/.inp/.tbl criados mas legados não migrados | quase toda tela | adotar quando tocar na tela (novo código já usa) |
 | Contraste: fg-4 em 10px ≈ 2.9:1 (checklist pede 4.5:1) | kickers/fineprints do app inteiro | DECISÃO DO LEO: escurecer `--fg-4` (claro) ou aceitar como micro-texto decorativo |
-| Auditoria de checklist completo (12 blocos) tela a tela | todas menos Meu dia | seguir a ordem do inventário; Meu dia é a referência do formato |
+| Persistência de filtros locais (busca/aba por tela) | customers, forms, listas | padrão localStorage `cockpit_<tela>_<filtro>` como o Meu dia faz com a pessoa |
+| Auditoria de checklist completo (12 blocos) tela a tela | todas menos Meu dia | funcional global (estados/Esc/toast/destrutivas/busy) FEITO no app; resta o passe fino por tela seguindo a ordem do inventário |
