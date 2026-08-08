@@ -1,6 +1,6 @@
 import React from "react";
 import { Segmented } from "../components/viz.jsx";
-import { EmptyState, PrimaryButton } from "../atoms.jsx";
+import { EmptyState, PrimaryButton, SectionHead, CardHead } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useData } from "../data.jsx";
@@ -34,8 +34,7 @@ const RATINGS = [
   { rating: 4, label: "Fácil", color: "var(--accent)", bg: "var(--accent-soft)" },
 ];
 
-const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
-const btn = { height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, cursor: "pointer" };
+const btn ={ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, cursor: "pointer" };
 const page = { flex: 1, overflow: "auto", padding: "28px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16, minHeight: 0 };
 
 function TrainingScreen() {
@@ -57,8 +56,8 @@ function Head({ mode, setMode, children }) {
   return (
     <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap", flexShrink: 0 }}>
       <div style={{ flex: 1, minWidth: 260 }}>
-        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em" }}>Treinamentos</h1>
-        <div style={{ marginTop: 4, fontSize: 14.5, color: "var(--fg-3)" }}>flashcards com repetição espaçada (FSRS) · sua fila é só sua</div>
+        <h1 className="page-title">Treinamentos</h1>
+        <div className="page-sub" style={{ marginTop: 4 }}>flashcards com repetição espaçada (FSRS) · sua fila é só sua</div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 6, flexWrap: "wrap" }}>
         {children}
@@ -141,9 +140,9 @@ function StartCard({ decks, exam, onExam, onStudy }) {
     return (
       <div style={{ ...shell, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 220 }}>
-          <div className="mono" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--accent)" }}>Da vez</div>
-          <div style={{ fontSize: 15, fontWeight: 700, marginTop: 3 }}>Prova de checkpoint</div>
-          <div style={{ fontSize: 12.5, color: "var(--fg-2)", marginTop: 2 }}>você aprendeu {exam.count} cards desde a última · mostra que ficou de verdade</div>
+          <div className="kicker accent">Da vez</div>
+          <div className="card-title" style={{ marginTop: 4 }}>Prova de checkpoint</div>
+          <div className="card-sub" style={{ marginTop: 3 }}>você aprendeu {exam.count} cards desde a última · mostra que ficou de verdade</div>
         </div>
         <button onClick={onExam} style={{ height: 40, padding: "0 18px", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 600, background: "var(--btn-bg)", color: "var(--btn-fg)", border: "1px solid var(--btn-bg)", boxShadow: "var(--shadow-btn)", cursor: "pointer" }}>
           Fazer prova →
@@ -164,10 +163,10 @@ function StartCard({ decks, exam, onExam, onStudy }) {
   return (
     <div style={{ ...shell, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
       <div style={{ flex: 1, minWidth: 220 }}>
-        <div className="mono" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--accent)" }}>Da vez</div>
-        <div style={{ fontSize: 15, fontWeight: 700, marginTop: 3 }}>Treino do dia · {total} card{total === 1 ? "" : "s"}</div>
-        <div style={{ fontSize: 12.5, color: "var(--fg-2)", marginTop: 2 }}>{parts}</div>
-        <div style={{ fontSize: 11.5, color: "var(--fg-3)", marginTop: 2 }}>temas misturados na cadência certa · você não escolhe, só responde</div>
+        <div className="kicker accent">Da vez</div>
+        <div className="card-title" style={{ marginTop: 4 }}>Treino do dia · {total} card{total === 1 ? "" : "s"}</div>
+        <div className="card-sub" style={{ marginTop: 3 }}>{parts}</div>
+        <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 2 }}>temas misturados na cadência certa · você não escolhe, só responde</div>
       </div>
       <button onClick={() => onStudy(false)} style={{ height: 40, padding: "0 18px", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 600, background: "var(--btn-bg)", color: "var(--btn-fg)", border: "1px solid var(--btn-bg)", boxShadow: "var(--shadow-btn)", cursor: "pointer" }}>
         Estudar →
@@ -191,18 +190,14 @@ function DeckList({ decks }) {
         const pendToday = d.counts.new + d.counts.learning + d.counts.review;
         return (
           <div key={d.role} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px 22px" }}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em" }}>{d.label}</div>
-                <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 3 }}>{learned} de {d.total} cards dominados</div>
-              </div>
+            <CardHead title={d.label} sub={`${learned} de ${d.total} cards dominados`} meta={
               <span style={{ height: 22, display: "inline-flex", alignItems: "center", padding: "0 9px", borderRadius: "var(--r-1)", background: d.role.startsWith("geral") ? "var(--bg-2)" : "var(--accent-soft)", color: d.role.startsWith("geral") ? "var(--fg-3)" : "var(--accent)", fontSize: 11.5, fontWeight: 600, flexShrink: 0 }}>
                 {d.role.startsWith("geral") ? "todo o time" : "sua vaga"}
               </span>
-            </div>
+            } />
             <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 14 }}>
               <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 30, fontWeight: 700, color: tone }}>{pct}%</span>
-              <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: "0.06em" }}>pontuação</span>
+              <span className="kicker">pontuação</span>
             </div>
             <div style={{ height: 7, marginTop: 8, borderRadius: 999, background: "var(--bg-3)", overflow: "hidden" }}>
               <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: tone, transition: "width 200ms ease" }} />
@@ -276,7 +271,7 @@ function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus, r
     body = (
       <div style={{ display: "flex", flexDirection: "column", gap: 14, width: "100%", maxWidth: 640 }}>
         <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "20px 22px" }}>
-          <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Sessão concluída · {label}</div>
+          <div className="kicker accent" style={{ marginBottom: 8 }}>Sessão concluída · {label}</div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
             <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 42, fontWeight: 700, color: "var(--pos)" }}>{done}</span>
             <span style={{ fontSize: 15, color: "var(--fg-2)" }}>revisões · {done ? Math.round((good / done) * 100) : 0}% bem lembradas</span>
@@ -313,7 +308,7 @@ function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus, r
             boxShadow: focus ? "0 24px 90px rgba(0,0,0,0.55)" : "var(--shadow-2)",
             padding: focus ? "34px 34px 28px" : "26px 26px 22px", minHeight: focus ? 220 : 180,
             display: "flex", flexDirection: "column", gap: 14, cursor: flipped ? "default" : "pointer" }}>
-          <div className="mono" style={kicker}>{(roleLabels && roleLabels[card.role]) || label} · {bucket === "new" ? "card novo" : bucket === "review" ? "revisão" : "aprendendo"}{card.sub ? ` · ${card.sub}` : ""}</div>
+          <div className="kicker">{(roleLabels && roleLabels[card.role]) || label} · {bucket === "new" ? "card novo" : bucket === "review" ? "revisão" : "aprendendo"}{card.sub ? ` · ${card.sub}` : ""}</div>
           <CardFace card={card} flipped={flipped} focus={focus} />
         </div>
 
@@ -537,7 +532,7 @@ function ConsistencyCard({ saasId }) {
   return (
     <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "16px 18px", maxWidth: 720 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-        <span className="mono" style={kicker}>Consistência</span>
+        <span className="kicker accent">Consistência</span>
         <span style={{ flex: 1 }} />
         <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 26, fontWeight: 700, color: s.streak ? "var(--accent)" : "var(--fg-4)" }}>{s.streak}</span>
         <span style={{ fontSize: 12.5, color: "var(--fg-2)" }}>dia{s.streak === 1 ? "" : "s"} seguido{s.streak === 1 ? "" : "s"}</span>
@@ -714,7 +709,7 @@ function Edit({ saasId, mode, setMode }) {
   );
 }
 
-const capStyle = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 3 };
+const capStyle = { display: "block", marginBottom: 3 };
 const areaStyle = { width: "100%", padding: "7px 9px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.4, resize: "vertical", fontFamily: "inherit" };
 const CARD_TYPES = [
   { id: "basic", label: "básico" },
@@ -812,7 +807,7 @@ function CardPreview({ card }) {
   return (
     <div onClick={() => setFlip((f) => !f)}
       style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", boxShadow: "var(--shadow-2)", padding: "14px 16px", cursor: "pointer", display: "flex", flexDirection: "column", gap: 10, alignSelf: "start" }}>
-      <div className="mono" style={kicker}>preview · {flip ? "verso" : "frente"}{sub ? ` · ${sub}` : ""} · clique pra virar</div>
+      <div className="kicker">preview · {flip ? "verso" : "frente"}{sub ? ` · ${sub}` : ""} · clique pra virar</div>
       <CardFace card={{ ...card, sub }} flipped={flip} />
     </div>
   );
@@ -858,21 +853,21 @@ function CardEditor({ card, saasId, onPatch }) {
 
       {type === "occlusion" ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <label><span style={capStyle}>Pergunta (opcional) · aparece acima da imagem</span>
+          <label><span className="kicker" style={capStyle}>Pergunta (opcional) · aparece acima da imagem</span>
             <textarea rows={1} value={card.front || ""} onChange={(e) => onPatch(card.id, "front", e.target.value)} placeholder="ex.: O que fica neste campo do CRM?" style={areaStyle} /></label>
           {card.image
             ? <OcclusionEditor card={card} onPatch={onPatch} />
             : <ImageAttach saasId={saasId} value={card.image} onChange={(id) => onPatch(card.id, "image", id)} hint="a oclusão precisa de uma imagem — cole (Ctrl+V) ou escolha o arquivo" />}
-          <label><span style={capStyle}>Verso (opcional) · explicação extra ao virar</span>
+          <label><span className="kicker" style={capStyle}>Verso (opcional) · explicação extra ao virar</span>
             <textarea rows={1} value={card.back || ""} onChange={(e) => onPatch(card.id, "back", e.target.value)} style={areaStyle} /></label>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10 }}>
-            <label><span style={capStyle}>{type === "cloze" ? <>Texto · marque deleções com {"{{c1::…}}"}</> : "Frente · pergunta"}</span>
+            <label><span className="kicker" style={capStyle}>{type === "cloze" ? <>Texto · marque deleções com {"{{c1::…}}"}</> : "Frente · pergunta"}</span>
               <textarea ref={frontRef} rows={type === "cloze" ? 3 : 2} value={card.front || ""} onChange={(e) => onPatch(card.id, "front", e.target.value)}
                 placeholder={type === "cloze" ? "ex.: A escada é {{c1::anual}} → {{c2::semestral}} → {{c3::serviço único}}" : "ex.: Objeção: 'tá caro'"} style={areaStyle} /></label>
-            <label><span style={capStyle}>{type === "cloze" ? "Verso (opcional) · contexto extra" : "Verso · resposta"}</span>
+            <label><span className="kicker" style={capStyle}>{type === "cloze" ? "Verso (opcional) · contexto extra" : "Verso · resposta"}</span>
               <textarea rows={2} value={card.back || ""} onChange={(e) => onPatch(card.id, "back", e.target.value)} placeholder={type === "cloze" ? "" : "a técnica / resposta ideal"} style={areaStyle} /></label>
           </div>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
@@ -979,7 +974,7 @@ function Team({ saasId, mode, setMode }) {
 
   const users = (data?.users || []).filter((u) => u.deckSize > 0).sort((a, b) => (b.dueToday - a.dueToday) || (b.doneToday - a.doneToday));
   const selected = users.find((u) => u.id === sel);
-  const th = { textAlign: "left", padding: "8px 10px", ...kicker, fontFamily: "var(--mono)", whiteSpace: "nowrap" };
+  const th = { textAlign: "left", padding: "8px 10px", whiteSpace: "nowrap" };
   const td = { padding: "9px 10px", fontSize: 12.5, color: "var(--fg-1)", borderTop: "1px solid var(--line-1)", whiteSpace: "nowrap" };
 
   return (
@@ -992,10 +987,10 @@ function Team({ saasId, mode, setMode }) {
           <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", overflow: "auto", maxWidth: 980 }}>
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead><tr>
-                <th style={th}>Pessoa</th><th style={th}>Pra hoje</th><th style={th}>Feitas hoje</th>
-                <th style={th} title="acerto nos cards que já estavam em revisão — memória real">Retenção 30d</th>
-                <th style={th} title="cards com intervalo ≥ 21 dias — conhecimento consolidado">Maduros</th>
-                <th style={th}>Sequência</th><th style={th}>Viu do baralho</th><th style={th}>Último estudo</th>
+                <th className="kicker" style={th}>Pessoa</th><th className="kicker" style={th}>Pra hoje</th><th className="kicker" style={th}>Feitas hoje</th>
+                <th className="kicker" style={th} title="acerto nos cards que já estavam em revisão — memória real">Retenção 30d</th>
+                <th className="kicker" style={th} title="cards com intervalo ≥ 21 dias — conhecimento consolidado">Maduros</th>
+                <th className="kicker" style={th}>Sequência</th><th className="kicker" style={th}>Viu do baralho</th><th className="kicker" style={th}>Último estudo</th>
               </tr></thead>
               <tbody>
                 {users.map((u) => (
@@ -1055,7 +1050,7 @@ function PersonDetail({ user: u, today }) {
   const forecastMax = Math.max(1, ...forecast.map((f) => f.n));
   return (
     <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "16px 18px", maxWidth: 980, display: "flex", flexDirection: "column", gap: 16 }}>
-      <div className="mono" style={kicker}>Raio-x · {u.name}</div>
+      <div className="kicker accent">Raio-x · {u.name}</div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <div style={tile} title="acerto em cards que já estavam em revisão — memória real">
@@ -1104,21 +1099,21 @@ function PersonDetail({ user: u, today }) {
 
       <div style={{ display: "flex", gap: 28, flexWrap: "wrap", alignItems: "flex-start" }}>
         <div>
-          <div className="mono" style={{ ...kicker, marginBottom: 8 }}>True retention por semana <span style={{ textTransform: "none" }}>(escala 0–100%)</span></div>
+          <div className="kicker" style={{ marginBottom: 8 }}>True retention por semana <span style={{ textTransform: "none" }}>(escala 0–100%)</span></div>
           <MiniBars max={100} bars={weekly.map((w, i) => ({
             v: w.pct, label: i === 0 || i === 7 ? dm(w.start) : "",
             title: w.pct == null ? `sem revisões · semana de ${dm(w.start)}` : `${w.pct}% · ${w.n} revisões · semana de ${dm(w.start)}`,
           }))} />
         </div>
         <div>
-          <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Vencendo nos próximos 7 dias</div>
+          <div className="kicker" style={{ marginBottom: 8 }}>Vencendo nos próximos 7 dias</div>
           <MiniBars max={forecastMax} bars={forecast.map((f) => ({
             v: f.n, label: dow(f.day), title: `${f.n} card${f.n === 1 ? "" : "s"} · ${dm(f.day)}`,
           }))} />
         </div>
         {u.retentionByRole?.length > 0 && (
           <div>
-            <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Retenção por baralho (30d)</div>
+            <div className="kicker" style={{ marginBottom: 8 }}>Retenção por baralho (30d)</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {u.retentionByRole.map((r) => (
                 <div key={r.role} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
@@ -1133,7 +1128,7 @@ function PersonDetail({ user: u, today }) {
       </div>
 
       <div>
-        <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Constância</div>
+        <div className="kicker" style={{ marginBottom: 8 }}>Constância</div>
         <Heatmap days={u.days || {}} today={today} />
       </div>
     </div>
@@ -1211,33 +1206,29 @@ const ROLE_GUIDES = [
 ];
 
 function RoleGuides() {
-  const label = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.07em", textTransform: "uppercase" };
   return (
     <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, letterSpacing: "-0.01em" }}>A empresa e as vagas</h2>
-        <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>o mapa que os cards aprofundam</span>
-      </div>
+      <SectionHead title="A empresa e as vagas" sub="o mapa que os cards aprofundam" />
 
       {/* O que a empresa faz + missão/visão */}
       <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px 24px" }}>
-        <div className="mono" style={label}>Quem somos</div>
+        <div className="kicker">Quem somos</div>
         <div style={{ fontSize: 13.5, color: "var(--fg-1)", lineHeight: 1.6, marginTop: 6, maxWidth: 900 }}>{COMPANY.what}</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px 20px", marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line-faint)" }}>
           {COMPANY.facts.map((f) => (
             <div key={f.k}>
-              <div className="mono" style={label}>{f.k}</div>
+              <div className="kicker">{f.k}</div>
               <div style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5, marginTop: 4 }}>{f.v}</div>
             </div>
           ))}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line-faint)" }}>
           <div>
-            <div className="mono" style={label}>Missão</div>
+            <div className="kicker">Missão</div>
             <div style={{ fontSize: 13, color: "var(--fg-2)", lineHeight: 1.55, marginTop: 4 }}>{COMPANY.mission}</div>
           </div>
           <div>
-            <div className="mono" style={label}>Visão</div>
+            <div className="kicker">Visão</div>
             <div style={{ fontSize: 13, color: "var(--fg-2)", lineHeight: 1.55, marginTop: 4 }}>{COMPANY.vision}</div>
           </div>
         </div>
@@ -1245,7 +1236,7 @@ function RoleGuides() {
 
       {/* Os 5 pilares de cultura */}
       <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px 24px" }}>
-        <div className="mono" style={label}>Os 5 pilares da nossa cultura</div>
+        <div className="kicker">Os 5 pilares da nossa cultura</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginTop: 12 }}>
           {COMPANY.pillars.map((pl, i) => (
             <div key={i} style={{ borderLeft: "3px solid var(--accent)", paddingLeft: 12 }}>
@@ -1257,20 +1248,19 @@ function RoleGuides() {
       </div>
 
       {/* As vagas na ordem do funil */}
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 4 }}>
-        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em" }}>As vagas, na ordem do funil</h3>
-        <span style={{ fontSize: 12, color: "var(--fg-4)" }}>mídia social → SDR → closer → CS · entender o vizinho é parte do jogo</span>
+      <div style={{ marginTop: 4 }}>
+        <SectionHead title="As vagas, na ordem do funil" sub="mídia social → SDR → closer → CS · entender o vizinho é parte do jogo" />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 14, alignItems: "start" }}>
         {ROLE_GUIDES.map((g, gi) => (
           <div key={g.role} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px 22px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span className="mono tnum" style={{ fontSize: 11, color: "var(--fg-4)" }}>{gi + 1}</span>
-              <div style={{ fontSize: 15, fontWeight: 700 }}>{g.title}</div>
+              <div className="card-title">{g.title}</div>
             </div>
             <div style={{ fontSize: 12, color: "var(--accent)", fontWeight: 600, marginTop: 2 }}>{g.tagline}</div>
             <div style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.55, marginTop: 10 }}>{g.respons}</div>
-            <div className="mono" style={{ ...label, margin: "12px 0 6px" }}>Como funciona no dia a dia</div>
+            <div className="kicker" style={{ margin: "12px 0 6px" }}>Como funciona no dia a dia</div>
             <ol style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
               {g.processo.map((s, i) => (
                 <li key={i} style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5 }}>{s}</li>

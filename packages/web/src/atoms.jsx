@@ -199,15 +199,32 @@ function FunnelHeatmap({ stages, dense }) {
   );
 }
 
-// ───────────────────────────────────────────────────── Section header
-function SectionHead({ kicker, title, action }) {
+// ───────────────────────────────────────────────────── Cabeçalhos canônicos
+// A régua única dos cabeçalhos (classes em tokens.css): página 26 · seção 17 ·
+// card 15 · kicker 10/0.08em uppercase. Subtítulo sempre na linha de baixo.
+function SectionHead({ title, sub, action }) {
   return (
-    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-        {kicker && <span className="bkt">{kicker}</span>}
-        {title && <span style={{ fontSize: 13, color: "var(--fg-1)", fontWeight: 500 }}>{title}</span>}
+    <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <div style={{ minWidth: 0 }}>
+        <h2 className="sec-title">{title}</h2>
+        {sub && <div className="sec-sub" style={{ marginTop: 2 }}>{sub}</div>}
       </div>
       {action}
+    </div>
+  );
+}
+
+// Cabeçalho de card: kicker opcional (accent = nomeia o bloco) → título → sub,
+// com `meta` (badge/ação) encostado à direita.
+function CardHead({ kicker, accent, title, sub, meta }) {
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {kicker && <div className={"kicker" + (accent ? " accent" : "")}>{kicker}</div>}
+        {title && <div className="card-title" style={kicker ? { marginTop: 4 } : undefined}>{title}</div>}
+        {sub && <div className="card-sub" style={{ marginTop: 3 }}>{sub}</div>}
+      </div>
+      {meta}
     </div>
   );
 }
@@ -296,6 +313,6 @@ function PrimaryButton({ onClick, children, disabled }) {
   );
 }
 
-Object.assign(window, { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, Ticker, Led, EmptyState, PrimaryButton, RowActions });
+Object.assign(window, { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, CardHead, Ticker, Led, EmptyState, PrimaryButton, RowActions });
 
-export { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, Ticker, Led, EmptyState, PrimaryButton, RowActions };
+export { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, CardHead, Ticker, Led, EmptyState, PrimaryButton, RowActions };
