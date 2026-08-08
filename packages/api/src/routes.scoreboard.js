@@ -539,6 +539,11 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       .sort((a, b) => b.leads - a.leads);
     const leadsNewN = leads.filter((l) => inWin(l.createdAt)).length + adjN("leads");
     const contactedN = contact.leadIds.size + adjN("contacted");
+    // COORTE da janela: dos leads que ENTRARAM nela, quantos receberam contato
+    // humano. É o número do FUNIL (funil precisa ser monotônico: 250 contatados
+    // sobre 121 leads lia como bug — o workload segue no tile/tooltip). O ajuste
+    // pré-cockpit entra igual ao de leads: o histórico é funil de coorte.
+    const cohortContactedN = leads.filter((l) => inWin(l.createdAt) && contact.leadIds.has(l.id)).length + adjN("contacted");
     const bookedN = teamBooked.length + adjN("booked");
     const shownN = teamOutcome.shown + adjN("shown");
     // Não compareceram (call vencida sem virar call real) e a realizar (call
@@ -556,6 +561,7 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       leadsNew: leadsNewN,
       contacted: contactedN,               // WORKLOAD: leads trabalhados no período + histórico
       contactedInPeriod: contact.leadIds.size, // só o orgânico (sem histórico) — pro subtítulo do tile
+      contactedCohort: cohortContactedN,   // COORTE: contatados DENTRE os leads da janela — o número do funil
       callsBooked: bookedN,
       // Taxa de contato = COBERTURA da safra (dos leads que ENTRARAM, quantos
       // foram alcançados) — nunca passa de 100%. NÃO é contacted÷leadsNew, que

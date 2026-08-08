@@ -347,13 +347,17 @@ function FunilPeriodo({ team, win, pLabel }) {
   const g = team.goals || {};
   const stages = [
     { nm: "Leads", v: team.leadsNew, m: sMeta(mt?.leads), title: "Leads que entraram na janela (sem internos e sem saídas laterais do form)" },
-    { nm: "Contatados", v: team.contacted, m: sMeta(mt?.contacts), title: `Leads trabalhados no período (contato humano; inclui lead antigo tocado agora${team.paceAdjust?.contacted ? ` + ${int(team.paceAdjust.contacted)} do histórico pré-cockpit` : ""})` },
+    // COORTE, não workload: funil tem que ser monotônico (contatados ≤ leads).
+    // Quem foi trabalhado da base antiga aparece no tooltip, não no card.
+    { nm: "Contatados", v: team.contactedCohort ?? team.contacted, m: sMeta(mt?.contacts), title: `Dos leads da janela, os que receberam contato humano${team.paceAdjust?.contacted ? ` (+ ${int(team.paceAdjust.contacted)} do histórico pré-cockpit)` : ""} · no total o time trabalhou ${int(team.contacted)} leads no período (inclui base antiga tocada agora)` },
     { nm: "Calls marcadas", v: team.callsBooked, m: sMeta(mt?.callsBooked), title: `Calls com data na janela${team.pending > 0 ? ` · ${int(team.pending)} ainda no futuro` : ""}` },
     { nm: "Calls realizadas", v: team.shown, m: sMeta(mt?.callsShown), title: `Calls que aconteceram${team.noShow > 0 ? ` · ${int(team.noShow)} não compareceram` : ""}` },
     { nm: "Ganhos", v: team.won, m: sMeta(mt?.won), title: `Ganhos no período (= soma dos closers)${team.revenue > 0 ? ` · ${money(team.revenue)}` : ""}` },
   ];
   const convs = [
-    { pct: team.contactRate, metaPct: 80, num: null, den: null },
+    { pct: team.contactRate, metaPct: 80, num: team.contactedCohort ?? null, den: team.leadsNew },
+    // Agendamento é sobre o WORKLOAD (todo lead trabalhado, inclusive base
+    // antiga) — o hover mostra a base pra ninguém dividir pelo card da coorte.
     { pct: team.bookingRate, metaPct: g.bookingRate?.target || 30, num: team.callsBooked, den: team.contacted },
     { pct: team.showRate, metaPct: g.showRate?.target || 75, num: team.shown, den: team.shown + team.noShow },
     { pct: team.closeRatePeriod, metaPct: g.closeRate?.target || 33, num: team.won, den: team.shown },
