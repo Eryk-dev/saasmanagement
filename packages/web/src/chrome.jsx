@@ -48,7 +48,7 @@ function IcpButton() {
   return (
     <div style={{ display: "inline-flex" }}>
       <button onClick={() => setOpen(!open)} className="icp-pill" title={icp.headline || "Nosso ICP · quem a gente caça"}>
-        <span style={{ fontWeight: 800, letterSpacing: "0.04em" }}>ICP</span>
+        <span className="icp-tag" style={{ fontWeight: 800, letterSpacing: "0.04em" }}>ICP</span>
         {pill && <span className="hide-mobile" style={{ fontWeight: 600, opacity: 0.95 }}>{pill}</span>}
       </button>
       {open && (
