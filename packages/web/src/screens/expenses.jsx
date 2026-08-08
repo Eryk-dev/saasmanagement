@@ -150,20 +150,20 @@ function CostsTab({ product, month }) {
         <Card title="Lançamentos do mês" hint="custos fixos, ferramentas, pessoal e outros">
           <div style={{ display: "flex", gap: 10, alignItems: "flex-end", padding: "14px 24px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", flexWrap: "wrap" }}>
             <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Categoria</span>
+              <span className="kicker" style={{ fontWeight: 600 }}>Categoria</span>
               <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} style={{ ...inputStyle, width: 140 }}>
                 {CATEGORIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 5, flex: 1, minWidth: 180 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Descrição</span>
+              <span className="kicker" style={{ fontWeight: 600 }}>Descrição</span>
               <input type="text" placeholder="Servidor, contador, assinatura…" value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 onKeyDown={(e) => { if (e.key === "Enter") addExpense(); }}
                 style={inputStyle} />
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)" }}>{form.unit === "pct" ? "Percentual (%)" : "Valor (R$)"}</span>
+              <span className="kicker" style={{ fontWeight: 600 }}>{form.unit === "pct" ? "Percentual (%)" : "Valor (R$)"}</span>
               <div style={{ display: "flex", gap: 4 }}>
                 <input type="number" min="0" step="0.01" placeholder={form.unit === "pct" ? "12" : "0,00"} value={form.amount}
                   onChange={(e) => setForm({ ...form, amount: e.target.value })}
@@ -179,7 +179,7 @@ function CostsTab({ product, month }) {
             </label>
             {form.unit === "pct" && (
               <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Sobre o quê</span>
+                <span className="kicker" style={{ fontWeight: 600 }}>Sobre o quê</span>
                 <select value={form.base} onChange={(e) => setForm({ ...form, base: e.target.value })}
                   title="ganhos = tudo que fechou no mês · cartão 12x = só vendas no cartão de crédito em 12x (checkout) · recebidos = faturas pagas no mês (imposto por caixa)"
                   style={{ ...inputStyle, width: 210 }}>

@@ -3,7 +3,7 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
 import { Avatar, EmptyState, PrimaryButton } from "../atoms.jsx";
-import { inputStyle, labelStyle } from "../components/theme-inputs.jsx";
+import { inputStyle } from "../components/theme-inputs.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { PageHead } from "../components/viz.jsx";
 // Tarefas — kanban interno do time (estilo Trello). Cards = collection `tasks`
@@ -255,13 +255,13 @@ function ColumnMenu({ col, idx, count, hasCards, onRename, onColor, onMove, onRe
       boxShadow: "var(--shadow-pop)", padding: 8, display: "flex", flexDirection: "column", gap: 8,
     }}>
       <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        <span style={labelStyle}>Nome</span>
+        <span className="kicker">Nome</span>
         <input value={name} onChange={(e) => setName(e.target.value)} onBlur={commitName}
           onKeyDown={(e) => { if (e.key === "Enter") { commitName(); onClose(); } }}
           style={{ ...inputStyle, height: 26, fontSize: 12 }} />
       </label>
       <div>
-        <span style={labelStyle}>Cor</span>
+        <span className="kicker">Cor</span>
         <div style={{ display: "flex", gap: 5, marginTop: 4 }}>
           {COLUMN_COLORS.map((c) => (
             <button key={c || "none"} onClick={() => onColor(c)} title={c ? "" : "sem cor"} style={{
@@ -404,11 +404,11 @@ function TaskModal({ task, presetColumn, presetSaas, columns, users, onSave, onD
         </div>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={labelStyle}>Título</span>
+          <span className="kicker">Título</span>
           <input value={d.title} onChange={set("title")} autoFocus style={{ ...inputStyle, height: 32, fontSize: 14 }} />
         </label>
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={labelStyle}>Descrição</span>
+          <span className="kicker">Descrição</span>
           <textarea value={d.description} onChange={set("description")} rows={3} style={{ ...inputStyle, height: "auto", padding: 8, fontSize: 13, resize: "vertical" }} />
         </label>
 
@@ -435,7 +435,7 @@ function TaskModal({ task, presetColumn, presetSaas, columns, users, onSave, onD
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={labelStyle}>SaaS</span>
+            <span className="kicker">SaaS</span>
             <select value={d.saas} onChange={set("saas")} style={selStyle}>
               <option value="">— (geral do time)</option>
               {/* Escopo do workspace: só o produto ativo (e o da própria tarefa,
@@ -444,7 +444,7 @@ function TaskModal({ task, presetColumn, presetSaas, columns, users, onSave, onD
             </select>
           </label>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={labelStyle}>Responsáveis</span>
+            <span className="kicker">Responsáveis</span>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", minHeight: 30 }}>
               {users.map((u) => {
                 const on = (d.assignees || []).includes(u.id);
@@ -467,23 +467,23 @@ function TaskModal({ task, presetColumn, presetSaas, columns, users, onSave, onD
             </div>
           </div>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={labelStyle}>Coluna</span>
+            <span className="kicker">Coluna</span>
             <select value={d.column} onChange={set("column")} style={selStyle}>
               {columns.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}
             </select>
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={labelStyle}>Prioridade</span>
+            <span className="kicker">Prioridade</span>
             <select value={d.priority} onChange={set("priority")} style={selStyle}>
               {PRIORITY_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={labelStyle}>Entrega</span>
+            <span className="kicker">Entrega</span>
             <input type="date" value={d.dueDate} onChange={set("dueDate")} style={selStyle} />
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={labelStyle}>Labels (vírgula)</span>
+            <span className="kicker">Labels (vírgula)</span>
             <input value={(d.labels || []).join(", ")}
               onChange={(e) => setD((p) => ({ ...p, labels: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) }))}
               placeholder="bug, urgente" style={selStyle} />
@@ -492,7 +492,7 @@ function TaskModal({ task, presetColumn, presetSaas, columns, users, onSave, onD
 
         {task && (
           <div style={{ borderTop: "1px solid var(--line-1)", paddingTop: 10 }}>
-            <span style={labelStyle}>Comentários</span>
+            <span className="kicker">Comentários</span>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
               {comments.map((c) => (
                 <div key={c.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>

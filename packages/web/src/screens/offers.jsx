@@ -73,8 +73,6 @@ function OffersScreen() {
     clearTimeout(copyTimer.current);
     copyTimer.current = setTimeout(() => setCopied(""), 1600);
   }
-
-  const kicker = { fontSize: 11, fontWeight: 600, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" };
   const inp = { width: "100%", height: 38, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
   const btn = { height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", boxShadow: "var(--shadow-1)" };
 
@@ -126,14 +124,14 @@ function OffersScreen() {
                   </div>
 
                   <div>
-                    <span style={{ ...kicker, display: "block", marginBottom: 8 }}>Link de pagamento</span>
+                    <span className="kicker" style={{ display: "block", marginBottom: 8 }}>Link de pagamento</span>
                     <input value={o.link} onChange={(e) => patch(i, "link", e.target.value)}
                       placeholder="https://mpago.la/…"
                       className="mono" style={{ ...inp, fontSize: 12 }} />
                   </div>
 
                   <div>
-                    <span style={{ ...kicker, display: "block", marginBottom: 8 }}>Link da proposta</span>
+                    <span className="kicker" style={{ display: "block", marginBottom: 8 }}>Link da proposta</span>
                     <input value={o.proposalUrl || ""} onChange={(e) => patch(i, "proposalUrl", e.target.value)}
                       placeholder="https://levermoney.com.br/p/…"
                       className="mono" style={{ ...inp, fontSize: 12 }} />

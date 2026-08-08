@@ -51,7 +51,7 @@ function ProposalViews({ proposalId }) {
   const fmt = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""; };
   return (
     <div style={{ marginTop: 8, border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "8px 10px" }}>
-      <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 5 }}>
+      <div className="kicker" style={{ marginBottom: 5 }}>
         Aberturas da proposta · {clientViews === 0 ? "o cliente ainda não abriu" : `cliente abriu ${clientViews}×`}
       </div>
       {log.length === 0 && <div className="mono dim" style={{ fontSize: 11 }}>nenhuma abertura registrada ainda</div>}

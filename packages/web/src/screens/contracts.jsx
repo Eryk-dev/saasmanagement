@@ -170,8 +170,6 @@ function ContractsScreen() {
     clearTimeout(copyTimer.current);
     copyTimer.current = setTimeout(() => setCopied(false), 1600);
   }
-
-  const kicker = { fontSize: 11, fontWeight: 600, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" };
   const btn = { height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", boxShadow: "var(--shadow-1)" };
   const inp = { width: "100%", height: 34, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
 
@@ -198,7 +196,7 @@ function ContractsScreen() {
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em", fontFamily: "var(--display)", cursor: "pointer" }} onClick={() => openView(c)}>{c.name}</div>
-                    {c.tag && <span className="mono" style={{ display: "inline-block", marginTop: 6, fontSize: 10, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--accent)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", borderRadius: 999, padding: "2px 8px" }}>{c.tag}</span>}
+                    {c.tag && <span className="kicker" style={{ display: "inline-block", marginTop: 6, color: "var(--accent)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", borderRadius: 999, padding: "2px 8px" }}>{c.tag}</span>}
                   </div>
                 </div>
                 {c.note && <div style={{ fontSize: 12.5, color: "var(--fg-3)", lineHeight: 1.5 }}>{c.note}</div>}
@@ -224,7 +222,7 @@ function ContractsScreen() {
           <div onClick={(e) => e.stopPropagation()} style={{ width: !edit && sel && fieldsOf(sel).length ? "min(1120px, 100vw)" : "min(860px, 100vw)", height: "100%", background: "var(--bg-1)", borderLeft: "1px solid var(--line-2)", display: "flex", flexDirection: "column", boxShadow: "var(--shadow-pop)" }}>
             <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
               <div style={{ minWidth: 0 }}>
-                <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" }}>{edit ? (sel ? "Editar modelo" : "Novo modelo") : "Modelo de contrato"}</div>
+                <div className="kicker">{edit ? (sel ? "Editar modelo" : "Novo modelo") : "Modelo de contrato"}</div>
                 <div style={{ fontSize: 17, fontWeight: 500, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{edit ? (draft?.name || "…") : sel?.name}</div>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
@@ -250,7 +248,7 @@ function ContractsScreen() {
                 <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
                   <div style={{ width: 330, flexShrink: 0, borderRight: "1px solid var(--line-1)", overflow: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12, background: "var(--bg-inset)" }}>
                     <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-                      <span style={kicker}>Dados do contrato</span>
+                      <span className="kicker">Dados do contrato</span>
                       <span className="mono dim tnum" style={{ fontSize: 10 }}>{done}/{fields.length}</span>
                     </div>
                     <div style={{ fontSize: 11.5, color: "var(--fg-4)", lineHeight: 1.5, marginTop: -6 }}>
@@ -258,7 +256,7 @@ function ContractsScreen() {
                     </div>
                     {fields.map((f) => (
                       <label key={f.key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                        <span style={{ ...kicker, fontSize: 10 }}>{f.label}</span>
+                        <span className="kicker" style={{ fontSize: 10 }}>{f.label}</span>
                         {f.multiline ? (
                           <textarea value={fill[f.key] || ""} rows={2} placeholder={f.placeholder || ""}
                             onChange={(e) => setFill((v) => ({ ...v, [f.key]: e.target.value }))}
@@ -283,15 +281,15 @@ function ContractsScreen() {
               <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
                 <div style={{ padding: "14px 20px", display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
                   <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={kicker}>Nome do modelo</span>
+                    <span className="kicker">Nome do modelo</span>
                     <input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="ex.: Consultoria logística · 4 visitas" style={inp} />
                   </label>
                   <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={kicker}>Etiqueta</span>
+                    <span className="kicker">Etiqueta</span>
                     <input value={draft.tag} onChange={(e) => setDraft((d) => ({ ...d, tag: e.target.value }))} placeholder="ex.: serviço" style={inp} />
                   </label>
                   <label style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={kicker}>Nota de uso (aparece no card)</span>
+                    <span className="kicker">Nota de uso (aparece no card)</span>
                     <input value={draft.note} onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))} placeholder="quando usar este modelo, valores de referência…" style={inp} />
                   </label>
                 </div>

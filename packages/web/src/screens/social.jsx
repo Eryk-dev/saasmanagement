@@ -106,7 +106,6 @@ const INTERACTION_LABEL = { likes: "Curtidas", comments: "Comentários", saves: 
 const TAP_LABEL = { WEBSITE: "site", EMAIL: "e-mail", CALL: "ligação", TEXT: "mensagem", DIRECTION: "rotas", BOOK_NOW: "reserva", INSTANT_EXPERIENCE: "experiência", UNDEFINED: "outros" };
 const GENDER_COLOR = ["var(--accent)", "#7C6FF0", "var(--line-2)"];
 const COUNTRY_LABEL = { BR: "Brasil", PT: "Portugal", US: "Estados Unidos", AR: "Argentina", CL: "Chile", CO: "Colômbia", MX: "México", PY: "Paraguai", UY: "Uruguai", ES: "Espanha", IT: "Itália", DE: "Alemanha", FR: "França", GB: "Reino Unido", JP: "Japão", CA: "Canadá", AU: "Austrália", AO: "Angola", MZ: "Moçambique" };
-const AUD_SUBLABEL = { fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", marginBottom: 10 };
 const hasDemo = (d) => !!(d && ((d.genders || []).length || (d.ages || []).length || (d.cities || []).length || (d.countries || []).length));
 // Paleta das fatias dos donuts; "Outros" usa a linha neutra. Cores escolhidas
 // pra ler bem no tema claro e no escuro.
@@ -144,7 +143,7 @@ function Donut({ segments, size = 116, thickness = 17 }) {
       {top && (
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, padding: "0 14px" }}>
           <span className="tnum" style={{ fontSize: 21, fontWeight: 700, lineHeight: 1, color: "var(--fg-1)" }}>{top.pct}%</span>
-          <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--fg-4)", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(top.label).split(",")[0]}</span>
+          <span className="kicker" style={{ fontWeight: 600, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(top.label).split(",")[0]}</span>
         </div>
       )}
     </div>
@@ -155,7 +154,7 @@ function DonutBlock({ title, segments }) {
   if (!segments.length) return null;
   return (
     <div>
-      {title ? <div style={AUD_SUBLABEL}>{title}</div> : null}
+      {title ? <div className="kicker" style={{ fontWeight: 600, marginBottom: 10 }}>{title}</div> : null}
       <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
         <Donut segments={segments} />
         <div style={{ display: "flex", flexDirection: "column", gap: 7, minWidth: 0, flex: 1 }}>
@@ -277,7 +276,7 @@ function DiscoveryPanel({ product, sum }) {
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 16 }}>
       <Card title="Concorrentes" hint="dados públicos · curtidas e comentários por post">
         <div style={{ padding: "10px var(--inset-x) 18px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1.4fr .8fr .7fr .7fr .6fr 24px", gap: 8, fontSize: 10.5, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--fg-4)", padding: "4px 0" }}>
+          <div className="kicker" style={{ display: "grid", gridTemplateColumns: "1.4fr .8fr .7fr .7fr .6fr 24px", gap: 8, fontWeight: 600, padding: "4px 0" }}>
             <span>Conta</span><span style={{ textAlign: "right" }}>Seguidores</span><span style={{ textAlign: "right" }}>Curt./post</span><span style={{ textAlign: "right" }}>Com./post</span><span style={{ textAlign: "right" }}>Posts/sem</span><span />
           </div>
           {[{ ...us, us: true }, ...(disc?.competitors || [])].map((c) => (
@@ -515,7 +514,7 @@ function SocialScreen() {
                       story e anúncio); sem ele, cai na média derivada dos posts. */}
                   {(officialFormats.length > 0 || sum.formats?.length > 0) && (
                     <div style={{ marginTop: 20 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", marginBottom: 10 }}>
+                      <div className="kicker" style={{ fontWeight: 600, marginBottom: 10 }}>
                         {officialFormats.length ? "Alcance por formato · 30 dias" : "Alcance médio por formato"}
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -540,7 +539,7 @@ function SocialScreen() {
                     <DonutBlock title="" segments={interactionSegs} />
                     {(sum.linkTaps || []).length > 0 && (
                       <div style={{ marginTop: 16, fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.6 }}>
-                        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", marginRight: 8 }}>Cliques no perfil</span>
+                        <span className="kicker" style={{ fontWeight: 600, marginRight: 8 }}>Cliques no perfil</span>
                         {sum.linkTaps.slice(0, 4).map((t) => `${TAP_LABEL[t.key] || String(t.key).toLowerCase()} ${fmtNum(t.value)}`).join(" · ")}
                       </div>
                     )}
@@ -564,7 +563,7 @@ function SocialScreen() {
              {/* .tbl-x: as colunas de métricas (todas as que o Instagram libera)
                  rolam na horizontal. */}
              <div className="tbl-x"><div style={{ minWidth: 1500 }}>
-              <div style={{ display: "grid", gridTemplateColumns: POSTS_GRID, gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+              <div className="kicker" style={{ display: "grid", gridTemplateColumns: POSTS_GRID, gap: 12, padding: "10px 24px", fontWeight: 600, borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
                 <span>Post</span><span>Formato</span><span style={{ textAlign: "right" }} title="contas únicas que viram o conteúdo">Alcance</span><span style={{ textAlign: "right" }} title="visualizações totais (impressões) — vale pra todos os formatos">Views</span><span style={{ textAlign: "right" }}>Curtidas</span><span style={{ textAlign: "right" }}>Coment.</span><span style={{ textAlign: "right" }}>Salvos</span><span style={{ textAlign: "right" }}>Compart.</span><span style={{ textAlign: "right" }} title="interações totais do post (curtidas + comentários + salvos + compartilhamentos)">Interações</span><span style={{ textAlign: "right" }} title="interações totais ÷ alcance">Eng.</span><span style={{ textAlign: "right" }} title="visitas ao perfil vindas deste post">Visitas</span><span style={{ textAlign: "right" }} title="novos seguidores ganhos a partir deste post">Seguiu</span><span style={{ textAlign: "right" }} title="tempo médio assistido ÷ duração do vídeo">Retenção</span><span style={{ textAlign: "right" }} title="% de views que passaram dos 3 primeiros segundos">Play 3s</span><span style={{ textAlign: "right" }} title="quantas vezes o reel foi reassistido">Replays</span><span style={{ textAlign: "right" }}>Publicado</span>
               </div>
               {recent.map((item) => (
@@ -596,7 +595,7 @@ function SocialScreen() {
                 histórico. flexShrink 0 pelo mesmo motivo da tabela de posts. */}
             <Card title="Stories" hint="capturados enquanto no ar · histórico" style={{ overflow: "hidden", flexShrink: 0 }}>
              <div className="tbl-x"><div style={{ minWidth: 1150 }}>
-              <div style={{ display: "grid", gridTemplateColumns: STORIES_GRID, gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+              <div className="kicker" style={{ display: "grid", gridTemplateColumns: STORIES_GRID, gap: 12, padding: "10px 24px", fontWeight: 600, borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
                 <span>Story</span><span style={{ textAlign: "right" }}>Alcance</span><span style={{ textAlign: "right" }}>Views</span><span style={{ textAlign: "right" }} title="respostas por DM">Respostas</span><span style={{ textAlign: "right" }}>Compart.</span><span style={{ textAlign: "right" }} title="visitas ao perfil vindas do story">Visitas</span><span style={{ textAlign: "right" }} title="novos seguidores vindos do story">Seguiu</span><span style={{ textAlign: "right" }} title="toques pra avançar">Avançou</span><span style={{ textAlign: "right" }} title="toques pra voltar (reassistiu)">Voltou</span><span style={{ textAlign: "right" }} title="fechou os stories aqui">Saiu</span><span style={{ textAlign: "right" }} title="pulou pra próxima conta">Pulou</span><span style={{ textAlign: "right" }}>Publicado</span>
               </div>
               {stories.map((s) => (
@@ -740,8 +739,6 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
       setBusy(null);
     }
   }
-
-  const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
   const bigChip = (on) => ({
     padding: "12px 16px", borderRadius: "var(--r-3)", textAlign: "left", minWidth: 150,
     border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"),
@@ -768,7 +765,7 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
           {step === 1 && (
             <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 18 }}>
               <div>
-                <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Onde vai o post?</div>
+                <div className="kicker" style={{ marginBottom: 8 }}>Onde vai o post?</div>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   {FORMATS.map((f) => (
                     <button key={f.id} onClick={() => pickFormat(f.id)} style={bigChip(format === f.id)}>
@@ -779,7 +776,7 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
                 </div>
               </div>
               <div>
-                <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Que tipo de conteúdo?</div>
+                <div className="kicker" style={{ marginBottom: 8 }}>Que tipo de conteúdo?</div>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   {fmt.kinds.map((k) => (
                     <button key={k} onClick={() => setKind(k)} style={bigChip(kind === k)}>
@@ -795,7 +792,7 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
               {CREATED_HERE.has(kind) && (
                 <div style={{ borderTop: "1px solid var(--line-1)", paddingTop: 16, display: "flex", flexDirection: "column", gap: 12, maxWidth: 620 }}>
                   <div>
-                    <label className="mono" style={{ ...kicker, display: "block", marginBottom: 6 }}>Sobre qual dor é esse post?</label>
+                    <label className="kicker" style={{ display: "block", marginBottom: 6 }}>Sobre qual dor é esse post?</label>
                     <select value={dor} onChange={(e) => setDor(e.target.value)}
                       style={{ width: "100%", height: 34, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 }}>
                       <option value="">sem dor específica (valor central da LeverAds)</option>
@@ -803,7 +800,7 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
                     </select>
                   </div>
                   <div>
-                    <label className="mono" style={{ ...kicker, display: "block", marginBottom: 6 }}>Sugestão pra criação (opcional)</label>
+                    <label className="kicker" style={{ display: "block", marginBottom: 6 }}>Sugestão pra criação (opcional)</label>
                     <textarea rows={2} value={suggestion} onChange={(e) => setSuggestion(e.target.value)}
                       placeholder="ex.: cita o case da conta que fez +105%, tom mais provocativo, fala com quem tem 5+ contas…"
                       style={{ width: "100%", padding: "8px 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.4, resize: "vertical", fontFamily: "inherit" }} />
@@ -839,7 +836,7 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
 
           {step === 2 && kind === "video" && (
             <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12, alignItems: "flex-start" }}>
-              <div className="mono" style={kicker}>Vídeo {format === "reel" ? "do reel (vertical 9:16)" : format === "story" ? "do story (vertical 9:16)" : "do post"}</div>
+              <div className="kicker">Vídeo {format === "reel" ? "do reel (vertical 9:16)" : format === "story" ? "do story (vertical 9:16)" : "do post"}</div>
               <label style={{ ...btn, cursor: "pointer", display: "inline-flex", alignItems: "center" }}>
                 {videoFile ? "trocar vídeo…" : "escolher vídeo…"}
                 <input type="file" accept="video/mp4,video/quicktime" onChange={onVideo} style={{ display: "none" }} />
@@ -856,7 +853,7 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
           {step === 3 && (
             <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14, maxWidth: 640 }}>
               <div>
-                <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Resumo</div>
+                <div className="kicker" style={{ marginBottom: 6 }}>Resumo</div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   <Pill tone="mut">{fmt.label}</Pill>
                   <Pill tone="mut">{KIND_LABELS[kind]}</Pill>
@@ -868,7 +865,7 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
 
               {hasCaption ? (
                 <label>
-                  <span className="mono" style={{ ...kicker, display: "block", marginBottom: 4 }}>Legenda</span>
+                  <span className="kicker" style={{ display: "block", marginBottom: 4 }}>Legenda</span>
                   <textarea rows={5} value={caption} onChange={(e) => setCaption(e.target.value)}
                     placeholder={"Escreva a legenda…\n\n#hashtags entram aqui também"}
                     style={{ width: "100%", padding: "8px 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.5, resize: "vertical", fontFamily: "inherit" }} />
@@ -878,7 +875,7 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
               )}
 
               <div>
-                <span className="mono" style={{ ...kicker, display: "block", marginBottom: 6 }}>Publicar em</span>
+                <span className="kicker" style={{ display: "block", marginBottom: 6 }}>Publicar em</span>
                 <div style={{ display: "flex", gap: 14 }}>
                   <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}>
                     <input type="checkbox" checked={nets.instagram} onChange={(e) => setNets((n) => ({ ...n, instagram: e.target.checked }))} />

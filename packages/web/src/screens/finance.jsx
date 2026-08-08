@@ -126,17 +126,17 @@ function FinanceTab({ product }) {
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <div style={TILE}>
-          <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.07em", textTransform: "uppercase" }}>Recebido</div>
+          <div className="kicker">Recebido</div>
           <div className="tnum" style={{ fontSize: 21, fontWeight: 700, marginTop: 3 }}>{money(stats.received)}</div>
           <div className="mono dim" style={{ fontSize: 10.5, marginTop: 2 }}>{stats.count} pagamento(s) aprovados</div>
         </div>
         <div style={TILE}>
-          <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.07em", textTransform: "uppercase" }}>Aguardando</div>
+          <div className="kicker">Aguardando</div>
           <div className="tnum" style={{ fontSize: 21, fontWeight: 700, marginTop: 3 }}>{money(stats.pending)}</div>
           <div className="mono dim" style={{ fontSize: 10.5, marginTop: 2 }}>{stats.pendingCount} pendente(s) · {stats.rejected} recusado(s)</div>
         </div>
         <div style={TILE}>
-          <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.07em", textTransform: "uppercase" }}>Por forma de pagamento</div>
+          <div className="kicker">Por forma de pagamento</div>
           <div style={{ display: "flex", gap: "4px 14px", flexWrap: "wrap", marginTop: 6 }}>
             {Object.entries(stats.byMethod).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
               <span key={k} style={{ fontSize: 12.5 }}><b>{k}</b> <span className="tnum" style={{ color: "var(--fg-3)" }}>{money(v)}</span></span>
@@ -146,7 +146,7 @@ function FinanceTab({ product }) {
         </div>
         {stats.unmatched > 0 && (
           <div style={{ ...TILE, borderColor: "var(--warn)", flex: "0 1 170px" }}>
-            <div className="mono" style={{ fontSize: 10, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--warn)" }}>Não identificados</div>
+            <div className="kicker" style={{ color: "var(--warn)" }}>Não identificados</div>
             <div className="tnum" style={{ fontSize: 21, fontWeight: 700, marginTop: 3 }}>{stats.unmatched}</div>
             <div className="mono dim" style={{ fontSize: 10.5, marginTop: 2 }}>vincule na tabela abaixo</div>
           </div>
@@ -162,7 +162,7 @@ function FinanceTab({ product }) {
             <thead>
               <tr>
                 {["Data", "Pagador", "Cliente", "Valor", "Forma", "Status", "Fatura"].map((h) => (
-                  <th key={h} style={{ textAlign: h === "Valor" ? "right" : "left", fontSize: 10.5, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
+                  <th key={h} className="kicker" style={{ textAlign: h === "Valor" ? "right" : "left", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
                 ))}
               </tr>
             </thead>

@@ -158,7 +158,7 @@ export function FeedbackWidget({ screenLabel }) {
 
             {reports.length > 0 && (
               <div style={{ borderTop: "1px solid var(--line-1)", paddingTop: 8 }}>
-                <div className="mono" style={{ fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 6 }}>Últimos reportes</div>
+                <div className="kicker" style={{ marginBottom: 6 }}>Últimos reportes</div>
                 {reports.map((t) => {
                   const col = colOf(t);
                   return (

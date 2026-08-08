@@ -43,7 +43,7 @@ const field = {
   background: "var(--bg-2)", border: "1px solid var(--line-2)",
   borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13,
 };
-const label = { fontSize: 10.5, fontFamily: "var(--mono)", color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 4 };
+const label = { display: "block", marginBottom: 4 };
 
 export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCancel }) {
   const isLost = gate.type === "lost";
@@ -124,7 +124,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
 
         {isOffer ? (
           <>
-            <label style={label}>Qual proposta ficou na mesa? *</label>
+            <label className="kicker" style={label}>Qual proposta ficou na mesa? *</label>
             <select value={offer} onChange={(e) => setOffer(e.target.value)} style={field} autoFocus>
               <option value="">— a oferta que o cliente levou pra pensar —</option>
               {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
@@ -136,7 +136,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
           </>
         ) : isWonGate ? (
           <>
-            <label style={label}>Valor do negócio (R$) *</label>
+            <label className="kicker" style={label}>Valor do negócio (R$) *</label>
             <input type="number" min="0" step="0.01" value={amount} autoFocus placeholder="ex.: 7188"
               onChange={(e) => setAmount(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") confirm(); }}
@@ -151,7 +151,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
             <div style={{ height: 12 }} />
             {isKidsWon ? (
               <>
-                <label style={label}>Pacote de consultas *</label>
+                <label className="kicker" style={label}>Pacote de consultas *</label>
                 <select value={consultPackage} onChange={(e) => setConsultPackage(e.target.value)} style={field}>
                   {CONSULT_PACKAGES.map((n) => <option key={n} value={n}>{n} consultas</option>)}
                 </select>
@@ -161,14 +161,14 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
               </>
             ) : (
               <>
-                <label style={label}>Plano fechado *</label>
+                <label className="kicker" style={label}>Plano fechado *</label>
                 <select value={planClosed} onChange={(e) => setPlanClosed(e.target.value)} style={field}>
                   {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                 </select>
               </>
             )}
             <div style={{ height: 12 }} />
-            <label style={label}>Modo de pagamento *</label>
+            <label className="kicker" style={label}>Modo de pagamento *</label>
             <select value={payment} onChange={(e) => setPayment(e.target.value)} style={field}>
               <option value="">— como o cliente fechou —</option>
               {PAYMENT_METHODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
@@ -176,18 +176,18 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
           </>
         ) : isLost ? (
           <>
-            <label style={label}>Motivo {gate.toKind === "desqualificado" ? "da desqualificação" : "da perda"} *</label>
+            <label className="kicker" style={label}>Motivo {gate.toKind === "desqualificado" ? "da desqualificação" : "da perda"} *</label>
             <select value={reason} onChange={(e) => setReason(e.target.value)} style={field} autoFocus>
               <option value="">— escolha o motivo —</option>
               {reasons.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
             </select>
             <div style={{ height: 10 }} />
-            <label style={label}>Detalhe (opcional)</label>
+            <label className="kicker" style={label}>Detalhe (opcional)</label>
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="ex.: fechou com o concorrente X" style={{ ...field, height: "auto", padding: "8px 10px", resize: "vertical" }} />
           </>
         ) : (
           <>
-            <label style={label}>Closer responsável *</label>
+            <label className="kicker" style={label}>Closer responsável *</label>
             <select value={closer} onChange={(e) => setCloser(e.target.value)} style={field} autoFocus>
               {closers.length === 0 && <option value="">— nenhum closer no time (Ajustes → Equipe) —</option>}
               {closers.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
@@ -195,12 +195,12 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
             {askCall && (
               <>
                 <div style={{ height: 10 }} />
-                <label style={label}>Call agendada pra *</label>
+                <label className="kicker" style={label}>Call agendada pra *</label>
                 <SlotGrid days={nextBusinessDays(6)} day={day} setDay={setDay} slot={callAt} setSlot={setCallAt} busy={busy} />
               </>
             )}
             <div style={{ height: 10 }} />
-            <label style={label}>Contexto pro closer (opcional)</label>
+            <label className="kicker" style={label}>Contexto pro closer (opcional)</label>
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="ex.: quer expandir pra 6 contas, sensível a preço" style={{ ...field, height: "auto", padding: "8px 10px", resize: "vertical" }} />
           </>
         )}

@@ -245,7 +245,7 @@ function Ticker({ items }) {
     }
     return (
       <span key={keyPrefix + i} style={{ display: "inline-flex", alignItems: "baseline", gap: 8, padding: "0 22px", borderRight: "1px solid var(--line-1)", whiteSpace: "nowrap" }}>
-        <span className="mono" style={{ fontSize: 11, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>{it.label}</span>
+        <span className="kicker">{it.label}</span>
         <span className="mono tnum" style={{ fontSize: 12, color: "var(--fg-1)", fontWeight: 500 }}>{it.value}</span>
         {d != null && (
           <span className="mono tnum" style={{ fontSize: 11, color }}>
