@@ -225,7 +225,7 @@ function App() {
     mindmaps:    ["Geral", "Mapas mentais"],
     metas:       ["Geral", "Metas"],
     training:    ["Treinamentos"],
-    expenses:    ["Geral", "Custos"],
+    expenses:    ["Geral", "Financeiro"],
     settings:    ["Geral", "Configurações"],
     subscriptions: ["Comercial", "Clientes", "Assinaturas"], // rota antiga → aba dentro de Clientes
   };
