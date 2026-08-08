@@ -4,6 +4,7 @@ import { useData } from "../data.jsx";
 import { Pill } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { mpMethodLabel, MP_PAY_STATUS } from "../lib/payments.js";
+import { usePeriod } from "../components/period-picker.jsx";
 // Pagamentos — aba da tela Financeiro: o espelho dos pagamentos REAIS do Mercado
 // Pago (quem pagou, quanto, como, quando), casado com os clientes. O que não
 // casou sozinho fica com o seletor de vínculo na própria linha. O dinheiro
@@ -12,19 +13,6 @@ import { mpMethodLabel, MP_PAY_STATUS } from "../lib/payments.js";
 
 const { useState, useEffect, useMemo, useCallback } = React;
 
-const RANGES = [
-  { id: "month", label: "Este mês" },
-  { id: "30d", label: "30 dias" },
-  { id: "90d", label: "90 dias" },
-  { id: "all", label: "Tudo" },
-];
-const rangeStart = (id) => {
-  const now = new Date();
-  if (id === "month") return new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  if (id === "30d") return new Date(now.getTime() - 30 * 86400000).toISOString();
-  if (id === "90d") return new Date(now.getTime() - 90 * 86400000).toISOString();
-  return "";
-};
 const agoLabel = (iso) => {
   if (!iso) return "";
   const min = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
@@ -42,7 +30,9 @@ function FinanceTab({ product }) {
   const money = window.fmt.money;
 
   const [data, setData] = useState(null); // { payments, sync }
-  const [range, setRange] = useState("month");
+  // Janela GLOBAL do cockpit (filtro único no topo, 08/08): o corte dos
+  // pagamentos é client-side, por dia local do dateCreated.
+  const { win } = usePeriod();
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState(null);
   const [linking, setLinking] = useState({}); // paymentId -> customerId escolhido
@@ -81,9 +71,12 @@ function FinanceTab({ product }) {
   const customerName = (id) => customers.find((c) => c.id === id)?.name || (CUSTOMERS || []).find((c) => c.id === id)?.name || "";
 
   const payments = useMemo(() => {
-    const start = rangeStart(range);
-    return (data?.payments || []).filter((p) => !start || String(p.dateCreated || "") >= start);
-  }, [data, range]);
+    const day = (iso) => (iso ? String(iso).slice(0, 10) : "");
+    return (data?.payments || []).filter((p) => {
+      const d = day(p.dateCreated);
+      return d >= win.since && d <= win.until;
+    });
+  }, [data, win.since, win.until]);
 
   const stats = useMemo(() => {
     const ok = payments.filter((p) => p.status === "approved");
@@ -120,16 +113,7 @@ function FinanceTab({ product }) {
   return (
     <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", gap: 6 }}>
-          {RANGES.map((r) => (
-            <button key={r.id} onClick={() => setRange(r.id)} style={{
-              height: 26, padding: "0 10px", borderRadius: "var(--r-2)", fontSize: 12,
-              border: "1px solid " + (range === r.id ? "var(--line-strong)" : "var(--line-1)"),
-              background: range === r.id ? "var(--bg-3)" : "var(--bg-2)",
-              color: range === r.id ? "var(--fg-1)" : "var(--fg-3)",
-            }}>{r.label}</button>
-          ))}
-        </div>
+        <span className="dim" style={{ fontSize: 12 }}>pagamentos de {win.label} · o filtro do topo manda na janela</span>
         <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 8 }}>
           {data?.sync?.lastAt && <span className="mono dim" style={{ fontSize: 11 }}>sincronizado {agoLabel(data.sync.lastAt)}</span>}
           <button onClick={syncNow} disabled={syncing} style={{ ...btn, opacity: syncing ? 0.6 : 1 }} title="busca os pagamentos da conta MP agora (o servidor também faz sozinho a cada 10 min)">

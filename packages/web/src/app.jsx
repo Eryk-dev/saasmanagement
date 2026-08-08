@@ -50,8 +50,15 @@ import { useIsMobile } from "./lib/responsive.js";
 const { useState: useStA, useEffect: useEA, useCallback: useCbA } = React;
 
 // Telas que respeitam a JANELA GLOBAL: o filtro de período aparece no topo (ao
-// lado da busca) só nelas, e mudar ali reflete em todas de uma vez.
-const PERIOD_SCREENS = new Set(["overview", "aquisicao", "funcionarios"]);
+// lado da busca) só nelas, e mudar ali reflete em todas de uma vez. Desde 08/08
+// (pedido do Leo) é o ÚNICO filtro de período do cockpit — as telas não têm
+// mais seletor próprio (o mês dos Custos fica: é mês CONTÁBIL de lançamento,
+// não janela de análise).
+const PERIOD_SCREENS = new Set([
+  "overview", "aquisicao", "funcionarios",
+  "metrics", "forms", "expenses", "customers", "social",
+  "eloapp", "landingpages",
+]);
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "theme": "light",

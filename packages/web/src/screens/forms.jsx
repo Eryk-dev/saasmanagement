@@ -10,6 +10,7 @@ import { InsightsList } from "../components/insights.jsx";
 import { sourceLabel } from "../lib/sources.js";
 import { AbcCell } from "./metrics.jsx";
 import { PageHead, Card } from "../components/viz.jsx";
+import { usePeriod } from "../components/period-picker.jsx";
 // Form builder — formulários de captação por SaaS, estilo Typeform: uma pergunta
 // por vez, branching por opção, tema por marca. Lista → editor (com preview
 // server-side em iframe) → respostas. A página pública vive na API (/f/:id).
@@ -88,9 +89,13 @@ function FormsScreen({ saasId }) {
   const [submissions, setSubmissions] = useState([]);
   const [view, setView] = useState({ mode: "list" }); // list | edit | subs
   const [toast, setToast] = useState(null);
-  const [preset, setPreset] = useState("30"); // chave em PERIOD_PRESETS ou "custom"
-  const [custom, setCustom] = useState({ since: "", until: "" });
-  const range = useMemo(() => periodRange(preset, custom), [preset, custom.since, custom.until]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Janela GLOBAL do cockpit (filtro único no topo, 08/08): o formFunnel corta
+  // por datetime completo, então a janela vira bordas de dia em ISO.
+  const { win } = usePeriod();
+  const range = useMemo(() => ({
+    since: dayStart(win.since + "T12:00:00"),
+    until: dayEnd(win.until + "T12:00:00"),
+  }), [win.since, win.until]);
 
   const load = useCallback(async () => {
     if (!active) return;
@@ -163,30 +168,7 @@ function FormsScreen({ saasId }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead title="Formulários" sub="formulários de captação · o envio cria o lead no funil">
-        {/* O período manda nos tiles e na tabela do A/B ao mesmo tempo: são a
-            mesma resposta do funil, ler as duas em janelas diferentes engana. */}
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-          {PERIOD_PRESETS.map(([key, label]) => (
-            <button
-              key={key || "tudo"} onClick={() => setPreset(key)}
-              style={{
-                ...chromeBtnStyleSmall, height: 30, padding: "0 11px",
-                ...(preset === key ? { background: "var(--btn-bg)", color: "var(--btn-fg)", fontWeight: 600 } : {}),
-              }}
-            >{label}</button>
-          ))}
-          <input
-            type="date" value={custom.since} max={custom.until || undefined}
-            onChange={(e) => { setCustom((c) => ({ ...c, since: e.target.value })); setPreset("custom"); }}
-            style={{ ...inputStyle, height: 30, width: 138, fontSize: 12 }}
-          />
-          <input
-            type="date" value={custom.until} min={custom.since || undefined}
-            onChange={(e) => { setCustom((c) => ({ ...c, until: e.target.value })); setPreset("custom"); }}
-            style={{ ...inputStyle, height: 30, width: 138, fontSize: 12 }}
-          />
-        </div>
+      <PageHead title="Formulários" sub="formulários de captação · o envio cria o lead no funil · a janela vem do filtro do topo">
         <PrimaryButton onClick={() => setView({ mode: "edit", form: null })}>+ novo formulário</PrimaryButton>
       </PageHead>
 
@@ -249,7 +231,7 @@ function FormsScreen({ saasId }) {
                   {pub ? (
                     <>
                       <div style={{ display: "flex", gap: 22, marginTop: 18, padding: "14px 16px", background: "var(--bg-inset)", border: "1px solid var(--line-faint)", borderRadius: "var(--r-3)", flexWrap: "wrap" }}>
-                        {[[window.fmt.int(visits), `visitas · ${periodLabel(preset, custom)}`], [window.fmt.int(starts), `começaram · ${pct(starts, visits)}`], [window.fmt.int(leads), `leads · ${pct(leads, starts)}`]].map(([value, label]) => <div key={label}><div className="tnum" style={{ fontSize: 18, fontWeight: 700 }}>{value}</div><div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{label}</div></div>)}
+                        {[[window.fmt.int(visits), `visitas · ${win.label}`], [window.fmt.int(starts), `começaram · ${pct(starts, visits)}`], [window.fmt.int(leads), `leads · ${pct(leads, starts)}`]].map(([value, label]) => <div key={label}><div className="tnum" style={{ fontSize: 18, fontWeight: 700 }}>{value}</div><div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{label}</div></div>)}
                         <button onClick={() => setView({ mode: "subs", form: f })} style={{ textAlign: "left" }}><div className="tnum" style={{ fontSize: 18, fontWeight: 700, color: "var(--pos)" }}>{pct(leads, visits)}</div><div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>conversão total</div></button>
                       </div>
                       {abVariants.length > 1 && (

@@ -5,6 +5,7 @@ import { PageHead, Segmented, Card, LineChart, StatTile } from "../components/vi
 import { EmptyState } from "../atoms.jsx";
 import { FunnelLadder } from "../charts.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
+import { usePeriod } from "../components/period-picker.jsx";
 
 // Análise do App — a leitura de performance do Elo (B2C self-serve): aqui não
 // existe pipeline de vendas, então o "funil" é o do produto — checkout web
@@ -20,15 +21,12 @@ const PRICE = {
   iap: { monthly: 27.9, annual: 197 / 12 },
 };
 
-const PERIODS = [
-  { value: 7, label: "7 dias" },
-  { value: 30, label: "30 dias" },
-  { value: 90, label: "90 dias" },
-];
 
 function EloAppScreen() {
   const [product] = useActiveSaas();
-  const [days, setDays] = React.useState(30);
+  // Janela GLOBAL do cockpit (filtro unico no topo, 08/08).
+  const { win } = usePeriod();
+  const days = win.days;
   const [data, setData] = React.useState(null);
   const [error, setError] = React.useState("");
   const [loading, setLoading] = React.useState(true);
@@ -50,9 +48,7 @@ function EloAppScreen() {
   }
 
   const head = (
-    <PageHead title="Análise do App" sub="funil do checkout web · assinaturas · casais · missões · streaks">
-      <Segmented value={days} options={PERIODS} onChange={setDays} />
-    </PageHead>
+    <PageHead title="Análise do App" sub="funil do checkout web · assinaturas · casais · missões · streaks · a janela vem do filtro do topo" />
   );
 
   if (error) {

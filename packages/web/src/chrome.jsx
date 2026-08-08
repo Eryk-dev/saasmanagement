@@ -3,6 +3,7 @@ import { api, clearKey } from "./lib/api.js";
 import { useActiveSaas } from "./lib/workspace.js";
 import { canSeeScreen, currentUser, isAdminUser, userById, userPhoto } from "./lib/users.js";
 import { PeriodPicker, usePeriod } from "./components/period-picker.jsx";
+import { IcpCard } from "./components/icp-card.jsx";
 
 // Filtro de período GLOBAL, no topo ao lado da busca: muda a janela do cockpit
 // inteiro de uma vez (lê o store compartilhado do usePeriod). Só aparece nas
@@ -10,6 +11,45 @@ import { PeriodPicker, usePeriod } from "./components/period-picker.jsx";
 function GlobalPeriod() {
   const { period, custom, setPeriod, setCustom } = usePeriod();
   return <PeriodPicker period={period} custom={custom} onChange={(p, c) => { setPeriod(p); setCustom(c); }} />;
+}
+
+// Botão ICP na topbar (à esquerda do filtro, pedido do Leo em 08/08): abre o
+// cartão "Nosso ICP" num popover, acessível de qualquer tela. Some quando o
+// produto ainda não tem ICP escrito (o IcpCard renderizaria vazio).
+function IcpButton() {
+  const [product] = useActiveSaas();
+  const [open, setOpen] = React.useState(false);
+  React.useEffect(() => {
+    if (!open) return;
+    const onEsc = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("keydown", onEsc);
+    return () => document.removeEventListener("keydown", onEsc);
+  }, [open]);
+  const icp = product?.icp;
+  if (!icp || (!icp.headline && !(icp.profile || []).length)) return null;
+  return (
+    <div style={{ display: "inline-flex" }}>
+      <button onClick={() => setOpen(!open)} title="Nosso ICP · quem a gente caça" style={{
+        height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)",
+        background: open ? "var(--accent-soft)" : "var(--bg-1)", boxShadow: "var(--shadow-1)",
+        color: open ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
+      }}>
+        ICP
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 69 }} />
+          <div style={{
+            position: "fixed", top: 64, right: 12, zIndex: 70,
+            width: "min(94vw, 780px)", maxHeight: "calc(100vh - 90px)", overflowY: "auto",
+            borderRadius: "var(--r-4)", boxShadow: "var(--shadow-pop)",
+          }}>
+            <IcpCard compact grade />
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 // App chrome v3 "Operations Terminal" — grouped nav rail + topbar with live clock.
 // A sidebar veste a MARCA do produto ativo (workspace): logo + nome no topo,
@@ -346,6 +386,7 @@ function TopBar({ title, leading, breadcrumb, onSearch, showPeriod }) {
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+        <span className="hide-mobile" style={{ display: "inline-flex" }}><IcpButton /></span>
         {showPeriod && <GlobalPeriod />}
         <span className="hide-mobile" style={{ display: "inline-flex" }}><CmdK onClick={onSearch} /></span>
         {/* No mobile o campo "Buscar lead…" some — a lupa mantém a busca a um toque. */}

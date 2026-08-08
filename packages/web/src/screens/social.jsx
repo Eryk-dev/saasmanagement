@@ -8,6 +8,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { useData } from "../data.jsx";
 import { CreativeEditor } from "./creative.jsx";
 import { useIsMobile } from "../lib/responsive.js";
+import { usePeriod } from "../components/period-picker.jsx";
 import { AreaLine, fmtNum } from "./social-metrics.jsx";
 
 // Mídia social — métricas do perfil (Instagram + página do Facebook) e o fluxo
@@ -344,7 +345,9 @@ function SocialScreen() {
   const [posts, setPosts] = useS([]);
   const [audience, setAudience] = useS(null); // demografia + melhor horário (endpoint à parte, caro)
   const [stories, setStories] = useS([]);     // histórico capturado (endpoint à parte, dispara a captura)
-  const days = 30;
+  // Janela GLOBAL do cockpit (filtro unico no topo, 08/08).
+  const { win } = usePeriod();
+  const days = win.days;
   const [err, setErr] = useS(null);
   const [wizard, setWizard] = useS(false);
   const [tab, setTab] = useS("painel");
@@ -352,7 +355,6 @@ function SocialScreen() {
   // painel pra o número já aparecer sem abrir a aba.
   const [pending, setPending] = useS(null);
 
-  // O handoff fixa a visão em 30 dias.
   useE(() => {
     if (!product?.id) return;
     let alive = true;
@@ -367,7 +369,7 @@ function SocialScreen() {
     // só entrega métrica de story vivo — abrir a tela é o gatilho).
     api.socialStories(product.id).then((r) => alive && setStories(r?.stories || [])).catch(() => {});
     return () => { alive = false; };
-  }, [product?.id]);
+  }, [product?.id, days]);
 
   // Contagem de comentários pendentes pro badge da aba. Fora do carregamento do
   // painel de propósito: varrer os comentários na Meta é lento e não pode
