@@ -193,7 +193,9 @@ function FinanceTab({ product }) {
                           {customerName(p.customer) || p.customer}
                         </span>
                       ) : p.lead ? (
-                        <span className="dim" title="pagador casou com um LEAD (ainda não é cliente)">lead: {p.lead}</span>
+                        <span className="dim" title="pagador casou com um LEAD (ainda não é cliente)">
+                          lead: {(window.SEED.LEADS || []).find((l) => l.id === p.lead)?.name || p.lead}
+                        </span>
                       ) : (
                         <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
                           <select value={linking[p.id] || ""} onChange={(e) => setLinking((m) => ({ ...m, [p.id]: e.target.value }))}
@@ -227,7 +229,7 @@ function FinanceTab({ product }) {
       )}
 
       <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.5 }}>
-        pagamentos sem produto identificado aparecem em todos os workspaces até serem vinculados · a baixa automática de fatura acontece por link do cockpit, assinatura ou e-mail + valor exato
+        pagamentos sem produto identificado aparecem em todos os workspaces até serem vinculados · o casamento acontece pelo link do cockpit (fatura, lead ou assinatura) ou pelo e-mail do pagador · a baixa automática de fatura exige valor exato quando o casamento é por e-mail
       </div>
     </div>
   );

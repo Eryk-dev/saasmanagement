@@ -12,6 +12,7 @@
 import { mp as defaultMp, parseWebhookPayload } from "./mp.js";
 import { CYCLE_MONTHS, syncCustomerArr } from "./billing.js";
 import { ingestMpPayment, runMpSync, settleInvoice } from "./mp-payments.js";
+import { logActivity } from "./lead-flow.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 
 const CYCLE_LABEL = { monthly: "mensal", quarterly: "trimestral", semiannual: "semestral", annual: "anual" };
@@ -243,6 +244,42 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
       return { ok: true, invoice: updated, url: pref.init_point || null };
     } catch (err) {
       req.log.warn({ invoice: invoice.id, err: err.message }, "MP: falha ao criar link da fatura");
+      return reply.code(UPSTREAM_FAILED).send({ error: "MP recusou a criação do link", detail: String(err.message || err).slice(0, 300) });
+    }
+  });
+
+  // Link de pagamento pelo CARD DO LEAD (atalho do closer): o checkout nasce
+  // com external_reference = id do lead — o pagamento entra no espelho JÁ
+  // casado com a origem (e com o cliente, quando o lead converte), sem depender
+  // do e-mail do pagador. NÃO cria fatura: fatura é do cliente, pós-Ganho; o
+  // link fica no lead (mpChargeUrl) e a criação vira atividade no card.
+  app.post("/api/leads/:id/mp/link", async (req, reply) => {
+    if (!mp.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN)" });
+    const lead = await repo.get("leads", req.params.id);
+    if (!lead) return reply.code(404).send({ error: "Not found" });
+    const amount = Math.round(Number(req.body?.amount) * 100) / 100;
+    if (!(amount > 0)) return reply.code(400).send({ error: "valor deve ser positivo" });
+    const product = lead.saas ? await repo.get("products", lead.saas) : null;
+    const title = String(req.body?.title || "").trim()
+      || [product?.name || lead.saas, "pagamento"].filter(Boolean).join(" · ");
+    try {
+      const pref = await mp.createCheckoutPreference({
+        title, amount, externalReference: lead.id,
+        payerEmail: lead.email || undefined,
+        backUrl: PUBLIC_BASE, notificationUrl,
+        maxInstallments: Number(req.body?.maxInstallments) || undefined,
+      });
+      const updated = await repo.update("leads", lead.id, {
+        mpChargeUrl: pref.init_point || null, mpChargeAmount: amount, mpChargeAt: new Date().toISOString(),
+      });
+      await logActivity(repo, {
+        saas: lead.saas || "", lead: lead.id, type: "note",
+        text: `Link de pagamento criado: R$ ${amount.toFixed(2).replace(".", ",")} (${title})`,
+        author: req.authUser?.id || "system",
+      });
+      return { ok: true, lead: updated, url: pref.init_point || null };
+    } catch (err) {
+      req.log.warn({ lead: lead.id, err: err.message }, "MP: falha ao criar link do lead");
       return reply.code(UPSTREAM_FAILED).send({ error: "MP recusou a criação do link", detail: String(err.message || err).slice(0, 300) });
     }
   });
