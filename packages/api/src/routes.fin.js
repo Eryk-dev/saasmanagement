@@ -20,7 +20,7 @@
 // propósito: a tela soma pelo /api/expenses/summary do mês corrente — aqui é
 // só banco, rápido e testável.
 
-import { monthKey, dayKey, isRealLead, winsIn, tcvOf, customerStartMap, cashCollectedIn } from "./metrics-core.js";
+import { monthKey, dayKey, isRealLead, winsIn, tcvOf, customerStartMap, cashCollectedIn, card12xBaseIn } from "./metrics-core.js";
 
 const round2 = (n) => Math.round(n * 100) / 100;
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -93,14 +93,9 @@ function expensesOfMonth({ product, expenses, insights, invoices, leads, starts,
     const wins = winsIn(product, leads, (iso) => monthKey(iso) === month, starts);
     bases.won = tcvOf(leads.filter((l) => wins.has(l.id)));
   }
-  // Base do checkout: o que ENTROU no cartão no mês (espelho MP, aprovados) —
-  // a MESMA régua do /api/expenses/summary, senão as duas telas brigam.
-  if (needed.has("cartao12x")) {
-    bases.cartao12x = round2((mp || [])
-      .filter((p) => p.status === "approved" && p.methodType === "credit_card"
-        && monthKey(p.dateApproved || p.dateCreated) === month)
-      .reduce((a, p) => a + (Number(p.amount) || 0), 0));
-  }
+  // Base do checkout: parcela do mês (contrato ÷ 12) dos fechamentos no cartão
+  // 12x — card12xBaseIn é a MESMA régua do /api/expenses/summary.
+  if (needed.has("cartao12x")) bases.cartao12x = card12xBaseIn(product, leads, month);
   if (needed.has("received")) bases.received = cashCollectedIn(invoices, month);
   const rows = mine.map((e) => (Number(e.pct) > 0
     ? { category: e.category || "outros", amount: round2((Number(e.pct) / 100) * bases[pctBaseOf(e)]) }
