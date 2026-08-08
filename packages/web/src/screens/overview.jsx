@@ -222,28 +222,35 @@ function MetaMesCard({ pace, goal, onNav, links = true }) {
 }
 
 // Submetas por papel — tudo dado que o placar já mede, comparado com a meta.
-function personRows(p, bizDays, elapsedFrac) {
+// Metas de FLUXO (agendadas, calls, posts…) seguem a mesma régua das duas
+// pernas: meta CHEIA do mês, com o pace mensal colorindo (vermelho atrás do
+// ritmo, teal no ritmo, verde 100%+, ✦ 120%+). Taxa não tem pace (não acumula
+// no tempo): abaixo da meta é vermelho direto.
+function personRows(p, bizDays, elapsedFrac, monthFrac) {
   const rows = [];
   const rate = (label, value, target, title) => rows.push({
     label, valueText: pctStr(value), metaText: target != null ? int(target) : null,
     lvl: levelOf(value, target, 1), title,
   });
-  const flow = (label, value, target, title) => rows.push({
+  const flow = (label, value, target, title, frac = monthFrac) => rows.push({
     label, valueText: int(value), metaText: target != null ? int(target) : null,
-    lvl: levelOf(value, target, elapsedFrac), title,
+    lvl: levelOf(value, target, frac), title,
   });
   if (p.sdr) {
     const g = p.sdr.goals || {};
     rate("contato", p.sdr.contactRate, g.contactRate?.target || 80, "Dos leads que entraram, quantos você alcançou");
     rate("agendamento", p.sdr.bookingRate, g.bookingRate?.target || 30, "Dos contatados, quantos marcaram call");
     rate("show", p.sdr.showRate, g.showRate?.target || 75, "Das calls que já deveriam ter acontecido, quantas aconteceram");
-    const bookedTarget = scaledGoal(g.callsBooked, bizDays)
+    // Sem meta digitada, o alvo dinâmico é da JANELA (leads anteriores × taxa),
+    // então o pace nesse caso é o da janela, não o do mês.
+    const bookedMonth = monthGoal(g.callsBooked);
+    const bookedTarget = bookedMonth
       || (g.bookingRate?.target > 0 && p.sdr.leadsPrev > 0 ? Math.round((p.sdr.leadsPrev * g.bookingRate.target) / 100) : null);
-    flow("agendadas", p.sdr.callsBooked, bookedTarget, "Calls agendadas no período vs. a meta da vaga");
+    flow("agendadas", p.sdr.callsBooked, bookedTarget, "Calls agendadas no período vs. a meta do mês da vaga", bookedMonth ? monthFrac : elapsedFrac);
   }
   if (p.closer) {
     const g = p.closer.goals || {};
-    flow("calls", p.closer.callsShown, scaledGoal(g.callsShown, bizDays), "Calls realizadas (sem no-show) vs. meta da vaga");
+    flow("calls", p.closer.callsShown, monthGoal(g.callsShown), "Calls realizadas (sem no-show) vs. a meta do mês da vaga");
     rate("conversão", p.closer.conversaoCall, g.conversaoCall?.target || 33, "Das calls que aconteceram, quantas fecharam");
     if (p.closer.followupNow > 0 || p.closer.followupCohort > 0) {
       const onTime = p.closer.followupOnTime || 0;
@@ -261,13 +268,13 @@ function personRows(p, bizDays, elapsedFrac) {
     rows.push({ label: "contas ativas", valueText: int(p.cs.activeAccounts), metaText: null, lvl: null, title: "Clientes na carteira dele" });
     rate("retenção", p.cs.retentionRate, g.retentionRate?.target || 95, "Base que ficou (100 − churn)");
     if (p.cs.nps != null || g.nps?.target) rate("nps", p.cs.nps, g.nps?.target || 80, "NPS médio das contas dele");
-    flow("indicações", p.cs.referrals, scaledGoal(g.referrals, bizDays), "Indicações recebidas na janela (nº do time)");
+    flow("indicações", p.cs.referrals, monthGoal(g.referrals), "Indicações recebidas na janela vs. a meta do mês (nº do time)");
   }
   if (p.social) {
     const g = p.social.goals || {};
-    flow("posts", p.social.postsPerMonth, scaledGoal(g.postsPerMonth, bizDays));
-    flow("stories", p.social.storiesPerMonth, scaledGoal(g.storiesPerMonth, bizDays));
-    flow("ads", p.social.adsPerMonth, scaledGoal(g.adsPerMonth, bizDays));
+    flow("posts", p.social.postsPerMonth, monthGoal(g.postsPerMonth));
+    flow("stories", p.social.storiesPerMonth, monthGoal(g.storiesPerMonth));
+    flow("ads", p.social.adsPerMonth, monthGoal(g.adsPerMonth));
   }
   return rows;
 }
@@ -323,7 +330,7 @@ function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson }) {
   const leg = p.closer || p.sdr || null;
   const revTarget = leg ? monthGoal(leg.goals?.revenue) : null;
   const wonTarget = leg ? monthGoal(leg.goals?.won) : null;
-  const rows = personRows(p, bizDays, elapsedFrac);
+  const rows = personRows(p, bizDays, elapsedFrac, monthFrac);
   const semPerna = <span style={{ fontSize: 11.5, color: "var(--fg-4)" }}>—</span>;
   return (
     <div className="vg-trow" onClick={() => onPerson && onPerson(p.user)} style={{ cursor: onPerson ? "pointer" : "default" }}>
@@ -406,16 +413,26 @@ function TeamBoard({ score, win, onPerson }) {
   );
 }
 
-// ── Funil do período (atual vs meta · barra = % da meta da etapa) ────────────
-function StageBox({ nm, value, meta, lvl, title }) {
+// ── Funil do período (atual vs meta do mês · barra = % da meta da etapa) ─────
+// Mesma régua das pernas do time: meta CHEIA do mês, risquinho do pace e a cor
+// pelo ritmo; bateu 100%, a barra rearma pro degrau seguinte (120, 140…).
+function StageBox({ nm, value, meta, expectedFrac, title }) {
+  const lad = ladderOf(value ?? 0, meta, expectedFrac);
+  const exp = lad != null && expectedFrac > 0 && expectedFrac < 1 ? Math.round(expectedFrac * 100) : null;
   return (
     <div title={title} style={{ flex: "1 1 0", minWidth: 108, padding: "4px 6px", textAlign: "center" }}>
       <div className="kicker" style={{ marginBottom: 4 }}>{nm}</div>
       <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 650, letterSpacing: "-0.02em" }}>{int(value)}</div>
-      <div className="tnum" style={{ fontSize: 11.5, color: "var(--fg-4)", minHeight: 17 }}>{meta != null ? `meta ${int(meta)}` : ""}</div>
+      <div className="tnum" style={{ fontSize: 11.5, color: "var(--fg-4)", minHeight: 17 }}>
+        {meta != null ? `meta ${int(meta)}` : ""}
+        {lad != null && lad.tier > 1 && <span style={{ color: lvlColor(lad.lvl), fontWeight: 700 }}> · rumo a {Math.round(lad.tier * 100)}%</span>}
+      </div>
       <div style={{ position: "relative", height: 7, borderRadius: 999, background: "var(--bg-2)", marginTop: 8 }}>
-        <span className={lvl === "gold" ? "super-fill" : undefined}
-          style={{ position: "absolute", top: 0, bottom: 0, left: 0, minWidth: 4, borderRadius: 999, background: lvlColor(lvl, "var(--accent)"), width: `${meta > 0 ? Math.min(100, Math.round(((value || 0) / meta) * 100)) : 100}%` }} />
+        <span className={lad?.lvl === "gold" ? "super-fill" : undefined}
+          style={{ position: "absolute", top: 0, bottom: 0, left: 0, minWidth: 4, borderRadius: 999, background: lvlColor(lad?.lvl, "var(--accent)"), width: `${lad != null ? Math.min(100, Math.round(lad.pct * 100)) : 100}%` }} />
+        {exp != null && (
+          <span title="pace: onde a meta deveria estar hoje" style={{ position: "absolute", top: -2, bottom: -2, left: `${exp}%`, width: 2, borderRadius: 1, background: "var(--fg-3)" }} />
+        )}
       </div>
     </div>
   );
@@ -443,12 +460,11 @@ function FunilPeriodo({ team, win, pLabel }) {
       </Card>
     );
   }
-  // Meta do MÊS por etapa (a cadeia derivada da meta da empresa) reescalada
-  // pros dias úteis da janela — mesma convenção do scaledGoal (base 21,75/mês).
+  // Meta do MÊS por etapa (a cadeia derivada da meta da empresa) CHEIA — sem
+  // reescalar pra janela; o risquinho do pace mensal diz onde deveria estar.
   const mt = team.monthTargets || null;
-  const scale = win.businessDays / 21.75;
-  const sMeta = (v) => (mt && v != null ? Math.max(1, Math.round(v * scale)) : null);
-  const elapsedFrac = elapsedFracOf(win);
+  const sMeta = (v) => (mt && v != null ? Math.max(1, Math.round(v)) : null);
+  const monthFrac = monthFracOf(win);
   const g = team.goals || {};
   const stages = [
     { nm: "Leads", v: team.leadsNew, m: sMeta(mt?.leads), title: "Leads que entraram na janela (sem internos e sem saídas laterais do form)" },
@@ -470,7 +486,7 @@ function FunilPeriodo({ team, win, pLabel }) {
   const adj = team.paceAdjust;
   return (
     <Card title="Funil do período"
-      hint={`${pLabel} · atual vs meta · barra = % da meta da etapa · % entre etapas = comparecimento e conversão`}
+      hint={`${pLabel} · atual vs meta do MÊS por etapa (risquinho = pace) · % entre etapas = comparecimento e conversão`}
       action={adj ? (
         <span className="dim" style={{ fontSize: 11.5, cursor: "help" }}
           title={`Inclui histórico pré-cockpit: ${["leads", "contacted", "booked", "shown"].filter((k) => adj[k]).map((k) => `+${adj[k]} ${({ leads: "leads", contacted: "contatos", booked: "agendadas", shown: "realizadas" })[k]}`).join(" · ")}. Ganhos seguem os registros.`}>
@@ -482,7 +498,7 @@ function FunilPeriodo({ team, win, pLabel }) {
           {stages.map((s, i) => (
             <React.Fragment key={s.nm}>
               {i > 0 && <ConvStep {...convs[i - 1]} />}
-              <StageBox nm={s.nm} value={s.v} meta={s.m} lvl={levelOf(s.v, s.m, elapsedFrac)} title={s.title} />
+              <StageBox nm={s.nm} value={s.v} meta={s.m} expectedFrac={monthFrac} title={s.title} />
             </React.Fragment>
           ))}
         </div>
