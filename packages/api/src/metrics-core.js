@@ -23,6 +23,26 @@ import { kindOf, isLoss, isNoShowStage, isWonLead, wonAtOf, TOUCH_TYPES } from "
 
 export { isWonLead, wonAtOf }; // a régua oficial de ganho, num import só
 
+// Parcelas do cartão 12x "referentes ao mês": a taxa de checkout se dilui no
+// contrato — cada venda fechada no cartão de crédito 12x contribui contrato÷12
+// por 12 meses a partir do mês da venda (decisão do Leo, 08/08/2026: "verifica
+// quais clientes estão marcados como cartão 12x, soma o valor do contrato
+// referente ao mês e aplica os 12%"). É a base do custo percentual `cartao12x`
+// da aba Custos e do Financeiro — régua única nos dois lugares.
+export function card12xBaseIn(product, leads, month) {
+  const idx = (m) => { const [y, mm] = String(m).split("-").map(Number); return y * 12 + (mm - 1); };
+  let sum = 0;
+  for (const l of leads || []) {
+    if (l.paymentMethod !== "cartao12x" || !isWonLead(product, l)) continue;
+    const start = monthKey(wonAtOf(l) || l.createdAt);
+    if (!/^\d{4}-\d{2}$/.test(start)) continue;
+    const k = idx(month) - idx(start);
+    if (k < 0 || k > 11) continue;
+    sum += (Number(l.amount) || 0) / 12;
+  }
+  return Math.round(sum * 100) / 100;
+}
+
 export const DAY_MS = 86_400_000;
 export const round2 = (n) => Math.round(n * 100) / 100;
 
