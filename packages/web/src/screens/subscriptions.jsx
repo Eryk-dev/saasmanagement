@@ -355,7 +355,7 @@ function ChangeModal({ sub, plans, customerName, onClose, onDone }) {
 
 function Table({ cols, head, children }) {
   return (
-    <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
+    <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
       <div className="kicker" style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "10px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
         {head.map((h, i) => <span key={i} style={i === head.length - 1 ? { textAlign: "right" } : undefined}>{h}</span>)}
       </div>

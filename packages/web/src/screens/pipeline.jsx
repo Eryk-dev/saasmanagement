@@ -667,7 +667,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
         </span>
       </div>
 
-      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
+      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
         {/* Cabeçalho dos dias */}
         <div style={{ display: "grid", gridTemplateColumns: "52px repeat(7, 1fr)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
           <span />
@@ -836,7 +836,7 @@ function LeadList({ leads }) {
 
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
-      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
+      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
         <div className="kicker" style={{
           display: "grid", gridTemplateColumns: cols,
           padding: "8px 12px",
