@@ -345,6 +345,57 @@ test("runMpSync: doc v1 com a instituição no nome migra pro payerBank e o CNPJ
   assert.equal(cnpjCalls.length, 1);
 });
 
+test("lead: link de pagamento pelo card carrega o id do lead e o pagamento casa com a origem", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds" });
+  await repo.create("leads", { id: "l9", name: "Loja Autopeças", saas: "leverads", email: "dono@loja.com" });
+  const { app, fakeFetch } = buildApp(repo, {
+    "POST /checkout/preferences": { id: "pref_9", init_point: "https://mp.com/p/9" },
+  });
+
+  const res = await app.inject({ method: "POST", url: "/api/leads/l9/mp/link", payload: { amount: 2500, maxInstallments: 12 } });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.json().url, "https://mp.com/p/9");
+
+  // external_reference = LEAD; e-mail do lead vai pro checkout
+  const call = fakeFetch.calls.find((c) => c.key === "POST /checkout/preferences");
+  assert.equal(call.body.external_reference, "l9");
+  assert.equal(call.body.payer.email, "dono@loja.com");
+
+  // link salvo no card + atividade na timeline
+  const saved = await repo.get("leads", "l9");
+  assert.equal(saved.mpChargeUrl, "https://mp.com/p/9");
+  assert.equal(saved.mpChargeAmount, 2500);
+  assert.ok((await repo.list("activities")).some((a) => a.lead === "l9" && /link de pagamento/i.test(a.text)));
+
+  // pagamento com a referência do lead casa SEM depender do e-mail do pagador
+  await ingestMpPayment(repo, mpPmt({ id: 9001, transaction_amount: 2500, external_reference: "l9", payer: { email: "" } }));
+  let doc = await repo.get("mp_payments", "mpp_9001");
+  assert.equal(doc.lead, "l9");
+  assert.equal(doc.saas, "leverads");
+  assert.equal(doc.customer, "");
+  assert.equal(doc.matchedBy, "reference");
+
+  // lead convertido (Ganho): pagamento novo com a mesma referência acompanha o cliente
+  await repo.update("leads", "l9", { customerId: "c9" });
+  await ingestMpPayment(repo, mpPmt({ id: 9002, transaction_amount: 1000, external_reference: "l9", payer: { email: "" } }));
+  doc = await repo.get("mp_payments", "mpp_9002");
+  assert.equal(doc.lead, "l9");
+  assert.equal(doc.customer, "c9");
+
+  await app.close();
+});
+
+test("lead: MP recusou o link → 424 e o lead fica intacto", async () => {
+  const repo = makeMemRepo();
+  await repo.create("leads", { id: "l1", saas: "leverads" });
+  const { app } = buildApp(repo, {}); // sem fake → 404 do MP
+  const res = await app.inject({ method: "POST", url: "/api/leads/l1/mp/link", payload: { amount: 100 } });
+  assert.equal(res.statusCode, 424);
+  assert.ok(!(await repo.get("leads", "l1")).mpChargeUrl);
+  await app.close();
+});
+
 test("runMpSync: CNPJ que a BrasilAPI não acha é carimbado e não re-consultado", async () => {
   const repo = makeMemRepo();
   const { mp } = buildApp(repo, { "GET /v1/payments/search": { paging: { total: 0 }, results: [] } });

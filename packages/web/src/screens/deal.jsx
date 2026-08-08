@@ -81,6 +81,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   const [showGps, setShowGps] = React.useState(false);   // Próximo passo: a linha grande fica sempre visível; isto abre os editores
   const [showCall, setShowCall] = React.useState(false); // "Detalhes da call" (vídeo/convidados) recolhido por padrão
   const [customProp, setCustomProp] = React.useState(false); // modal da proposta personalizada
+  const [payLink, setPayLink] = React.useState(false); // modal do link de pagamento (MP) do lead
   const [showEntrega, setShowEntrega] = React.useState(false); // "Entrega" (briefing/vídeo integração) recolhido
   const [showFrom, setShowFrom] = React.useState(false); // atribuição do anúncio recolhida
   const [pendingMove, setPendingMove] = React.useState(null); // { toStage, gate }
@@ -413,6 +414,13 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               <button onClick={() => setCustomProp(true)} className="chip" title="Montar/editar uma proposta personalizada (objetiva)"
                 style={{ cursor: "pointer" }}>
                 {lead.customProposalUrl ? "editar personalizada" : "+ proposta personalizada"}
+              </button>
+              {/* Link de pagamento do MP pelo card: o checkout nasce com o id
+                  do LEAD — o dinheiro entra no Financeiro rastreado à origem. */}
+              <button onClick={() => setPayLink(true)} className="chip"
+                title="Criar link de pagamento do Mercado Pago já rastreado pra este lead (o pagamento casa sozinho no Financeiro)"
+                style={{ cursor: "pointer" }}>
+                {lead.mpChargeUrl ? "link de pagamento" : "+ link de pagamento"}
               </button>
             </div>
           </div>
@@ -1036,6 +1044,91 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
             onClose={() => setCustomProp(false)}
             onSaved={(r) => { dirty.current = true; setLead((prev) => ({ ...prev, customProposalId: r.id, customProposalUrl: r.url })); }}
           />
+        )}
+
+        {payLink && (
+          <PaymentLinkModal
+            lead={lead}
+            onClose={() => setPayLink(false)}
+            onSaved={(r) => { dirty.current = true; setLead((prev) => ({ ...prev, mpChargeUrl: r.url, mpChargeAmount: r.amount, mpChargeAt: new Date().toISOString() })); }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Link de pagamento do LEAD (atalho do card): cria o checkout do MP com
+// external_reference = lead — o pagamento entra no Financeiro já casado com a
+// origem (e com o cliente quando o lead vira Ganho). Não cria fatura: fatura é
+// do cliente, pós-Ganho. Gerar de novo substitui o link salvo no card.
+function PaymentLinkModal({ lead, onClose, onSaved }) {
+  const [amount, setAmount] = React.useState(lead.mpChargeAmount || "");
+  const [installments, setInstallments] = React.useState(12);
+  const [url, setUrl] = React.useState(lead.mpChargeUrl || "");
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState(null);
+  const wa = waLink(lead.phone);
+  const inputStyle = { height: 36, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
+
+  async function create() {
+    const value = Number(String(amount).replace(",", "."));
+    if (!(value > 0)) { setErr("Informe o valor da cobrança."); return; }
+    setBusy(true); setErr(null);
+    try {
+      const r = await api.mpLeadLink(lead.id, { amount: value, maxInstallments: Number(installments) || undefined });
+      setUrl(r.url || "");
+      onSaved && onSaved({ url: r.url || "", amount: value });
+    } catch (e) { setErr(e.message || "MP não respondeu"); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", zIndex: 130, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(100%, 440px)", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>Link de pagamento · {lead.name || "lead"}</div>
+            <div className="mono dim" style={{ fontSize: 11, marginTop: 2 }}>o pagamento entra no Financeiro já casado com este lead</div>
+          </div>
+          <button onClick={onClose} className="mono dim" style={{ fontSize: 15 }}>✕</button>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 130 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Valor (R$)</span>
+            <input type="number" min="0" step="0.01" placeholder="0,00" value={amount} autoFocus
+              onChange={(e) => setAmount(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") create(); }}
+              style={{ ...inputStyle, fontFamily: "var(--mono)", textAlign: "right" }} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Parcelas até</span>
+            <select value={installments} onChange={(e) => setInstallments(e.target.value)} style={{ ...inputStyle, width: 86 }}>
+              {[1, 3, 6, 12].map((n) => <option key={n} value={n}>{n}x</option>)}
+            </select>
+          </label>
+          <button onClick={create} disabled={busy}
+            style={{ height: 36, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600, opacity: busy ? 0.6 : 1 }}>
+            {busy ? "gerando…" : (url ? "gerar novo" : "gerar link")}
+          </button>
+        </div>
+
+        {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
+
+        {url && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "10px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", minWidth: 0 }}>
+            <span className="mono" style={{ flex: 1, fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={url}>{url}</span>
+            <button className="mono dim" style={{ fontSize: 11, flexShrink: 0 }} title="Copiar link"
+              onClick={() => { try { navigator.clipboard.writeText(url); } catch { window.prompt("Link:", url); } }}>
+              copiar
+            </button>
+            {wa && (
+              <a className="mono" style={{ fontSize: 11, flexShrink: 0, color: "var(--accent)", textDecoration: "none" }}
+                href={`${wa}?text=${encodeURIComponent(`Segue o link pra pagamento: ${url}`)}`}
+                target="_blank" rel="noopener noreferrer" title="Enviar o link pro lead no WhatsApp">mandar no Whats ↗</a>
+            )}
+          </div>
         )}
       </div>
     </div>

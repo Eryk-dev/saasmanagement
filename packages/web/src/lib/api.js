@@ -435,6 +435,9 @@ export const api = {
   mpSyncNow: () => req("POST", "/api/mp/sync", {}),
   mpLinkPayment: (id, customer) => req("POST", `/api/mp/payments/${id}/link`, { customer }),
   createCharge: (customerId, body) => req("POST", `/api/customers/${customerId}/charge`, body),
+  // Link de pagamento pelo card do lead (external_reference = lead: pagamento
+  // entra no Financeiro já casado com a origem).
+  mpLeadLink: (leadId, body) => req("POST", `/api/leads/${leadId}/mp/link`, body),
   invoiceMpLink: (id, body = {}) => req("POST", `/api/invoices/${id}/mp/link`, body),
   // Marketing (Meta Ads): sync de insights + métricas cruzadas com o funil.
   marketingSync: (body = {}) => req("POST", "/api/marketing/sync", body),

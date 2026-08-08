@@ -156,6 +156,7 @@ export async function ingestMpPayment(repo, pmt, { discord, log, extra } = {}) {
     const ref = base.externalReference;
     const refInvoice = ref ? invoices.find((i) => i.id === ref) : null;
     const refSub = !refInvoice && ref ? await repo.get("subscriptions", ref) : null;
+    const refLead = !refInvoice && !refSub && ref ? await repo.get("leads", ref) : null;
     if (refInvoice) {
       Object.assign(link, {
         saas: refInvoice.saas || "", customer: refInvoice.customer || "",
@@ -173,6 +174,13 @@ export async function ingestMpPayment(repo, pmt, { discord, log, extra } = {}) {
           subscription: refSub.id, matchedBy: "subscription",
         });
       }
+    } else if (refLead) {
+      // Link criado no card do lead: o dinheiro chega rastreado à origem —
+      // customer acompanha quando o lead já converteu (customerId do Ganho).
+      Object.assign(link, {
+        saas: refLead.saas || "", lead: refLead.id,
+        customer: refLead.customerId || "", matchedBy: "reference",
+      });
     } else if (base.payerEmail) {
       const byEmail = (await repo.list("customers"))
         .filter((c) => String(c.email || "").toLowerCase() === base.payerEmail);
