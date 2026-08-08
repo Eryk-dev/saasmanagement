@@ -35,11 +35,13 @@ const SUB_STATUS = {
   canceled: { label: "cancelada", tone: "mut" },
 };
 
-function CustomersScreen({ initialTab = "base" }) {
+function CustomersScreen({ initialTab }) {
   const { CUSTOMERS, LEADS } = window.SEED;
   const { version, openForm, refresh } = useData();
   const [product] = useActiveSaas();
-  const [tab, setTab] = useState(initialTab); // base | billing
+  // Aba persiste entre navegações (rota #subscriptions força billing via prop).
+  const [tab, setTabState] = useState(() => { if (initialTab) return initialTab; try { return localStorage.getItem("cockpit_customers_tab") || "base"; } catch { return "base"; } }); // base | billing
+  const setTab = (t) => { setTabState(t); try { localStorage.setItem("cockpit_customers_tab", t); } catch { /* ignore */ } };
   const [subs, setSubs] = useState([]);
   const [plans, setPlans] = useState([]);
   const [invoices, setInvoices] = useState([]);

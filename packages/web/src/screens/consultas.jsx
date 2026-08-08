@@ -59,7 +59,8 @@ function fmtAt(at) {
 export function ConsultasScreen() {
   const { version, refresh } = useData();
   const [product] = useActiveSaas();
-  const [tab, setTab] = useS("agenda");            // agenda | entregaveis
+  const [tab, setTabState] = useS(() => { try { return localStorage.getItem("cockpit_consultas_tab") || "agenda"; } catch { return "agenda"; } }); // agenda | entregaveis · persiste
+  const setTab = (t) => { setTabState(t); try { localStorage.setItem("cockpit_consultas_tab", t); } catch { /* ignore */ } };
   const [consultas, setConsultas] = useS(null);
   const [manuais, setManuais] = useS(null);
   const [weekRef, setWeekRef] = useS(() => new Date());

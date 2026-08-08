@@ -123,7 +123,8 @@ function ProposalsScreen({ saasId }) {
   // Produto do WORKSPACE (seletor no pé da sidebar) — sem abas próprias.
   const [activeProduct] = useActiveSaas();
   const active = activeProduct?.id;
-  const [tab, setTab] = useState("templates"); // templates | geradas
+  const [tab, setTabState] = useState(() => { try { return localStorage.getItem("cockpit_proposals_tab") || "templates"; } catch { return "templates"; } }); // templates | geradas · persiste
+  const setTab = (t) => { setTabState(t); try { localStorage.setItem("cockpit_proposals_tab", t); } catch { /* ignore */ } };
   const [templates, setTemplates] = useState([]);
   const [proposals, setProposals] = useState([]);
   const [editing, setEditing] = useState(null); // { template } | null
