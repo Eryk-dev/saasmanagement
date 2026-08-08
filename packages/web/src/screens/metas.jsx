@@ -122,6 +122,14 @@ function MetasScreen() {
   const metricInfo = {};
   for (const r of data?.roles || []) for (const m of r.metrics) metricInfo[m.metric] = { label: m.label, unit: m.unit, role: r.role };
   const allMetrics = Object.entries(metricInfo);
+  // O card Empresa separa o MÊS ATUAL (campo principal, é o que a plataforma
+  // persegue agora) da agenda dos seguintes.
+  const mesAtualInfo = (data?.company?.months || []).find((m) => m.current) || null;
+  const proximosMeses = (data?.company?.months || []).filter((m) => !m.current);
+  // Métricas que seguem o plano de REMUNERAÇÃO (contratos/receita de SDR e
+  // closer): não são campo de vaga — o plano vence no placar.
+  const compKeys = new Set();
+  for (const r of data?.roles || []) for (const m of r.metrics) if (m.compPlan) compKeys.add(rk(r.role, m.metric));
 
   function setRole(role, metric, v) { setRoleVals((p) => ({ ...p, [rk(role, metric)]: v })); }
 
@@ -129,7 +137,9 @@ function MetasScreen() {
   // o Leo confere e clica em salvar). As taxas ficam como estão — são a ambição
   // que ALIMENTA a cadeia, não resultado dela.
   function applyDerived() {
-    const list = data?.derived?.goals || [];
+    // Contratos/receita de SDR e closer ficam de fora: seguem o plano de
+    // remuneração por pessoa, não têm campo de vaga pra preencher.
+    const list = (data?.derived?.goals || []).filter((g) => !compKeys.has(rk(g.role, g.metric)));
     if (!list.length) return;
     setRoleVals((p) => ({ ...p, ...Object.fromEntries(list.map((g) => [rk(g.role, g.metric), String(Math.round(g.target))])) }));
     setNote({ ok: true, text: "campos preenchidos pelo pace · confira e clique em salvar metas" });
@@ -145,8 +155,10 @@ function MetasScreen() {
     setSaving(true); setNote(null);
     try {
       const goals = [];
-      // metas por vaga: manda tudo (vazio = servidor apaga → volta pro padrão)
+      // metas por vaga: manda tudo (vazio = servidor apaga → volta pro padrão).
+      // As do plano de remuneração não têm campo de vaga: não manda nem apaga.
       for (const r of data.roles) for (const m of r.metrics) {
+        if (m.compPlan) continue;
         goals.push({ scope: "role", key: r.role, metric: m.metric, target: roleVals[rk(r.role, m.metric)] });
       }
       // overrides atuais
@@ -203,25 +215,37 @@ function MetasScreen() {
 
         {data && (
           <>
-            {/* Meta da empresa: a venda do mês que a Visão geral e a Análise perseguem */}
+            {/* Meta da empresa: o MÊS ATUAL é o campo principal — é o que a
+                plataforma persegue agora. A meta padrão (que ficava em cima e
+                parecia "a meta do mês" mesmo com agosto agendado por baixo)
+                desceu pro rodapé como fallback de mês sem valor próprio. */}
             <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: 24 }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
                 <span style={{ fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em" }}>Empresa</span>
                 <span className="dim" style={{ fontSize: 12 }}>a meta que o negócio persegue no mês</span>
               </div>
               <div className="dim" style={{ fontSize: 12.5, marginBottom: 14 }}>
-                a faixa "Meta do mês" da Visão geral e a Análise de Pace seguem essa meta pelo VENDIDO no mês (contrato cheio; cartão em 12x conta inteiro) e desdobram o que falta em ganhos, calls, contatos e leads por dia. O caixa e o dinheiro futuro ficam na aba Clientes. A meta de contratos anda junto: vazia, segue a venda ÷ ticket médio; digitada, vence a divisão e a cadeia desce a partir dela.
+                a faixa "Meta do mês" da Visão geral e a Análise de Pace perseguem a meta do MÊS ATUAL pelo VENDIDO (contrato cheio; cartão em 12x conta inteiro) e desdobram o que falta em ganhos, calls, contatos e leads por dia. Na virada do mês, o valor agendado do mês novo assume sozinho. A meta de contratos anda junto: vazia, segue a venda ÷ ticket médio; digitada, vence a divisão. O caixa e o dinheiro futuro ficam na aba Clientes.
               </div>
-              <label style={{ display: "flex", alignItems: "center", gap: 10, maxWidth: 440 }}>
-                <span style={{ flex: 1, fontSize: 13.5, color: "var(--fg-2)" }}>Meta de venda do mês</span>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  <span className="mono dim" style={{ fontSize: 12 }}>R$</span>
-                  <input type="number" min="0" step="1" inputMode="decimal" value={cash}
-                    onChange={(e) => setCash(e.target.value)}
-                    placeholder={`padrão ${data.company?.cashTargetDefault ?? 120000}`}
-                    className="tnum" style={{ ...inp, width: 130, textAlign: "right" }} />
-                </div>
-              </label>
+              {mesAtualInfo && (
+                <label style={{ display: "flex", alignItems: "center", gap: 10, maxWidth: 440 }}>
+                  <span style={{ flex: 1, fontSize: 13.5, color: "var(--fg-1)", fontWeight: 600 }}>
+                    Meta de venda de {mesLabel(mesAtualInfo.month)}
+                    <span className="dim" style={{ fontSize: 11, marginLeft: 6, fontWeight: 400 }}>mês atual</span>
+                    {(meses[mesAtualInfo.month] ?? "") === "" && (
+                      <span className="dim" style={{ display: "block", fontSize: 11.5, fontWeight: 400 }}>sem valor próprio · vale a meta padrão ({money(mesAtualInfo.effective)})</span>
+                    )}
+                  </span>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <span className="mono dim" style={{ fontSize: 12 }}>R$</span>
+                    <input type="number" min="0" step="1" inputMode="decimal"
+                      value={meses[mesAtualInfo.month] ?? ""}
+                      onChange={(e) => setMeses((p) => ({ ...p, [mesAtualInfo.month]: e.target.value }))}
+                      placeholder={String(mesAtualInfo.effective)}
+                      className="tnum" style={{ ...inp, width: 130, textAlign: "right" }} />
+                  </div>
+                </label>
+              )}
               {/* Nº de contratos do mês: a mesma meta em unidades de fechamento.
                   Vazio segue a venda ÷ ticket (o número que o pace já usa);
                   digitado vence a divisão — e, como todo digitado, não escala
@@ -249,22 +273,19 @@ function MetasScreen() {
                 </div>
               </label>
 
-              {/* Agenda dos próximos meses: configurar agosto hoje faz a
-                  plataforma inteira virar de meta sozinha no dia 1º — a faixa da
-                  Visão geral, o pace e as metas de vaga que seguem a meta. */}
-              {(data.company?.months || []).length > 0 && (
+              {/* Agenda dos PRÓXIMOS meses (o atual virou o campo principal
+                  acima): configurar setembro hoje faz a plataforma inteira
+                  virar de meta sozinha no dia 1º. */}
+              {proximosMeses.length > 0 && (
                 <div style={{ marginTop: 18, borderTop: "1px solid var(--line-1)", paddingTop: 16 }}>
                   <div style={{ fontSize: 13.5, color: "var(--fg-2)", marginBottom: 4 }}>Meses seguintes</div>
                   <div className="dim" style={{ fontSize: 12.5, marginBottom: 12 }}>
-                    deixe em branco pra o mês seguir a meta acima. Quando o mês virar, o valor daqui passa a valer sozinho em toda a plataforma, e as metas de vaga que estão em branco se reajustam junto.
+                    agende agora e, quando o mês virar, o valor passa a valer sozinho em toda a plataforma (as metas de vaga em branco se reajustam junto). Mês em branco segue a meta padrão.
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 190px), 1fr))", gap: 10 }}>
-                    {data.company.months.map((m) => (
+                    {proximosMeses.map((m) => (
                       <label key={m.month} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ flex: 1, fontSize: 13, color: m.current ? "var(--fg-1)" : "var(--fg-2)", fontWeight: m.current ? 600 : 400 }}>
-                          {mesLabel(m.month)}
-                          {m.current && <span className="dim" style={{ fontSize: 11, marginLeft: 6 }}>mês atual</span>}
-                        </span>
+                        <span style={{ flex: 1, fontSize: 13, color: "var(--fg-2)" }}>{mesLabel(m.month)}</span>
                         <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                           <span className="mono dim" style={{ fontSize: 12 }}>R$</span>
                           <input type="number" min="0" step="1" inputMode="decimal"
@@ -278,6 +299,22 @@ function MetasScreen() {
                   </div>
                 </div>
               )}
+              {/* A antiga "Meta de venda do mês": na real ela é o FALLBACK de
+                  mês sem valor agendado, então vive aqui embaixo com o nome
+                  certo, fora do caminho de quem só quer a meta de agora. */}
+              <label style={{ display: "flex", alignItems: "center", gap: 10, maxWidth: 440, marginTop: 16, borderTop: "1px solid var(--line-1)", paddingTop: 14 }}>
+                <span style={{ flex: 1, fontSize: 12.5, color: "var(--fg-3)" }}>
+                  Meta padrão
+                  <span className="dim" style={{ display: "block", fontSize: 11.5 }}>vale pra qualquer mês sem valor próprio na agenda acima</span>
+                </span>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <span className="mono dim" style={{ fontSize: 12 }}>R$</span>
+                  <input type="number" min="0" step="1" inputMode="decimal" value={cash}
+                    onChange={(e) => setCash(e.target.value)}
+                    placeholder={`padrão do sistema ${data.company?.cashTargetDefault ?? 120000}`}
+                    className="tnum" style={{ ...inp, width: 130, textAlign: "right" }} />
+                </div>
+              </label>
             </div>
 
             {/* Pace: o que a meta do mês exige, pela mesma cadeia da Análise */}
@@ -324,7 +361,7 @@ function MetasScreen() {
                     <span className="dim" style={{ fontSize: 12 }}>{r.hint}</span>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {r.metrics.map((m) => (
+                    {r.metrics.filter((m) => !m.compPlan).map((m) => (
                       <label key={m.metric} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         <span style={{ flex: 1, fontSize: 13.5, color: "var(--fg-2)", minWidth: 0 }}>
                           {m.label}
@@ -363,6 +400,37 @@ function MetasScreen() {
                       </label>
                     ))}
                   </div>
+                  {/* Contratos e receita de SDR/closer NÃO são campo de vaga:
+                      a meta é POR PESSOA, pelo nível dela no plano de
+                      Remuneração (o placar aplica o plano por cima de vaga e
+                      derivado desde 06/08 — digitar aqui era mexer num campo
+                      morto). A régua aparece por pessoa; edita na tela
+                      Remuneração, e o ajuste por pessoa abaixo ainda vence. */}
+                  {r.metrics.some((m) => m.compPlan) && (
+                    <div style={{ marginTop: 14, borderTop: "1px solid var(--line-1)", paddingTop: 12 }}>
+                      <div className="mono" style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 6 }}>
+                        Contratos e receita · plano de Remuneração
+                      </div>
+                      {(data.users || []).filter((u) => u.roles.includes(r.role)).map((u) => {
+                        const lv = (data.compPlan?.[r.role] || []).find((l) => l.n === u.compLevel) || {};
+                        return (
+                          <div key={u.id} style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "3px 0", fontSize: 12.5 }}>
+                            <span style={{ flex: 1, minWidth: 0 }}>{u.name} <span className="dim" style={{ fontSize: 11 }}>nível {u.compLevel}</span></span>
+                            <span className="tnum" style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{int(lv.metaContracts || 0)} contratos · {money(lv.metaRevenue || 0)}</span>
+                          </div>
+                        );
+                      })}
+                      {!(data.users || []).some((u) => u.roles.includes(r.role)) && (data.compPlan?.[r.role] || []).map((l) => (
+                        <div key={l.n} style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "3px 0", fontSize: 12.5 }}>
+                          <span style={{ flex: 1 }} className="dim">nível {l.n}</span>
+                          <span className="tnum" style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{int(l.metaContracts || 0)} contratos · {money(l.metaRevenue || 0)}</span>
+                        </div>
+                      ))}
+                      <div className="dim" style={{ fontSize: 11.5, marginTop: 6, lineHeight: 1.45 }}>
+                        meta por pessoa, pelo nível dela (1 jr · 2 pl · 3 sn) na tela Remuneração; vence a meta de vaga e a derivada do pace. Só o ajuste por pessoa, mais abaixo, passa na frente.
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -370,7 +438,7 @@ function MetasScreen() {
             {/* Ajuste por pessoa (override) */}
             <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: 24 }}>
               <div style={kicker}>Ajuste por pessoa (opcional)</div>
-              <div className="dim" style={{ fontSize: 12.5, margin: "8px 0 14px" }}>uma meta por pessoa vence a meta da vaga dela — pra dar um alvo diferente a alguém específico.</div>
+              <div className="dim" style={{ fontSize: 12.5, margin: "8px 0 14px" }}>uma meta por pessoa vence a meta da vaga dela (e o plano de remuneração em contratos/receita), pra dar um alvo diferente a alguém específico.</div>
               {overrides.length === 0 && <div className="dim" style={{ fontSize: 12.5, marginBottom: 10 }}>nenhum ajuste · todo mundo segue a meta da vaga</div>}
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {overrides.map((o, i) => {

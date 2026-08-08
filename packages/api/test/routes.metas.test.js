@@ -267,6 +267,24 @@ test("sem ticket, a meta de contratos digitada sustenta a cadeia sozinha", () =>
   assert.equal(d.goals.find((g) => g.metric === "revenue").target, 120000, "a meta de R$ segue derivando");
 });
 
+test("GET: plano de remuneração exposto (padrão e doc salvo) + nível por pessoa", async () => {
+  const { app, repo } = await buildApp();
+  await repo.update("users", "jon", { compLevel: 2 });
+  const r1 = (await app.inject({ url: "/api/metas/leverads" })).json();
+  assert.equal(r1.users.find((u) => u.id === "jon").compLevel, 2);
+  assert.equal(r1.users.find((u) => u.id === "leo").compLevel, 1, "sem campo = júnior");
+  assert.deepEqual(r1.compPlan.sdr.map((l) => l.metaContracts), [20, 25, 35], "padrão aprovado 04/08");
+  const sdr = r1.roles.find((x) => x.role === "sdr");
+  assert.equal(sdr.metrics.find((m) => m.metric === "won").compPlan, true, "contratos seguem o plano, não campo de vaga");
+  assert.equal(sdr.metrics.find((m) => m.metric === "revenue").compPlan, true);
+  assert.ok(!sdr.metrics.find((m) => m.metric === "contacts").compPlan, "volume comum segue campo de vaga");
+  // doc salvo na tela Remuneração vence o padrão (só da trilha dele)
+  await repo.create("comp_plans", { id: "cp_closer", role: "closer", plan: { levels: [{ n: 1, metaContracts: 18, metaRevenue: 80000 }] } });
+  const r2 = (await app.inject({ url: "/api/metas/leverads" })).json();
+  assert.deepEqual(r2.compPlan.closer, [{ n: 1, metaContracts: 18, metaRevenue: 80000 }]);
+  assert.deepEqual(r2.compPlan.sdr.map((l) => l.n), [1, 2, 3], "sdr segue no padrão");
+});
+
 test("PUT/GET: company.contractsTarget grava no produto, arredonda e limpa", async () => {
   const { app, repo } = await buildApp();
   await app.inject({ method: "PUT", url: "/api/metas/leverads", payload: { goals: [], company: { contractsTarget: "32.4" } } });
