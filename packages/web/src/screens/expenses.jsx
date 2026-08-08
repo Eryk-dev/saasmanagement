@@ -32,7 +32,7 @@ const CAT_LABEL = Object.fromEntries(CATEGORIES);
 // (faturas pagas · imposto por regime de caixa).
 const PCT_BASES = [
   { id: "won", option: "% dos ganhos do mês", pill: "dos ganhos", title: "sobre os ganhos do mês no pipeline", key: "wonBase" },
-  { id: "cartao12x", option: "% dos contratos no cartão 12x", pill: "do cartão 12x", title: "sobre o valor cheio dos contratos fechados no cartão 12x no mês (recebimento antecipado em D+0)", key: "cardBase" },
+  { id: "cartao12x", option: "% dos recebidos no cartão", pill: "do cartão", title: "sobre o dinheiro de cartão de crédito que entrou no mês (espelho do Mercado Pago). Com antecipação D+0 a taxa incide inteira no mês em que o dinheiro cai; contrato marcado como 12x que ainda não passou no cartão não gera taxa.", key: "cardBase" },
   { id: "received", option: "% dos recebidos no mês", pill: "dos recebidos", title: "sobre os recebidos do mês (faturas pagas)", key: "receivedBase" },
 ];
 const pctBaseInfo = (id) => PCT_BASES.find((b) => b.id === id) || PCT_BASES[0];

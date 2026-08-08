@@ -88,7 +88,7 @@ export async function ensurePayables(repo, saas, month) {
 // (chamadas externas) ficam de fora — a UI soma pelo summary quando precisa.
 // Cada linha ecoa `pctBase` pro DRE setorizar: imposto (received) é dedução da
 // receita; checkout (cartao12x) é taxa de pagamento (COGS).
-function expensesOfMonth({ product, expenses, insights, invoices, leads, starts }, month) {
+function expensesOfMonth({ product, expenses, insights, invoices, leads, starts, mp }, month) {
   const applies = (e) => e.recurring
     ? String(e.month) <= month && (!e.endMonth || String(e.endMonth) >= month)
     : e.month === month;
@@ -103,9 +103,9 @@ function expensesOfMonth({ product, expenses, insights, invoices, leads, starts 
     const wins = winsIn(product, leads, (iso) => monthKey(iso) === month, starts);
     bases.won = tcvOf(leads.filter((l) => wins.has(l.id)));
   }
-  // Base do checkout: contratos fechados no cartão 12x NO MÊS, valor cheio
-  // (D+0) — card12xBaseIn é a MESMA régua do /api/expenses/summary.
-  if (needed.has("cartao12x")) bases.cartao12x = card12xBaseIn(product, leads, month);
+  // Base do checkout: dinheiro de cartão que ENTROU no mês (espelho MP, D+0)
+  // — card12xBaseIn é a MESMA régua do /api/expenses/summary.
+  if (needed.has("cartao12x")) bases.cartao12x = card12xBaseIn(mp, month);
   if (needed.has("received")) bases.received = cashCollectedIn(invoices, month);
   const rows = mine.map((e) => (Number(e.pct) > 0
     ? { category: e.category || "outros", pctBase: pctBaseOf(e), amount: round2((Number(e.pct) / 100) * bases[pctBaseOf(e)]) }
@@ -190,6 +190,7 @@ export function registerFinRoutes(app, repo, { mp } = {}) {
     const customers = allCustomers.filter((c) => c.saas === product.id);
     const ctx = {
       product,
+      mp: espelho,
       expenses: allExpenses.filter((e) => e.saas === product.id),
       insights: allInsights.filter((r) => r.saas === product.id),
       invoices,

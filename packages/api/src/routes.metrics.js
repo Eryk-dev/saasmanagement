@@ -76,9 +76,10 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhats
     // (e.base) — cada taxa incide sobre o dinheiro certo:
     //   · "won" (padrão)  — GANHOS do pipeline no mês (lead.amount por wonAt),
     //     a mesma base do "Resultado do mês" da Visão geral;
-    //   · "cartao12x"     — contratos fechados no cartão 12x NO MÊS, valor
-    //     cheio (card12xBaseIn, metrics-core): o recebimento é antecipado em
-    //     D+0, então a taxa incide inteira no mês da venda (Leo, 08/08);
+    //   · "cartao12x"     — dinheiro de cartão de crédito que ENTROU no mês
+    //     (espelho MP, card12xBaseIn no metrics-core): com antecipação D+0 a
+    //     taxa incide inteira no mês em que o dinheiro cai — nunca sobre a
+    //     marcação do fechamento (Leo, 08/08);
     //   · "received"      — RECEBIDOS no mês (faturas pagas por paidAt, régua
     //     cashCollectedIn do metrics-core) — imposto por regime de caixa: o
     //     faturado em 12 boletos só paga imposto conforme as parcelas entram.
@@ -87,15 +88,16 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhats
       .filter((e) => e.saas === product.id && Number(e.pct) > 0 && applies(e))
       .map(pctBaseOf));
     const bases = { won: 0, cartao12x: 0, received: 0 };
-    if (basesNeeded.has("won") || basesNeeded.has("cartao12x")) {
+    if (basesNeeded.has("won")) {
       const [allLeads, allCustomers] = await Promise.all([repo.list("leads"), repo.list("customers")]);
       const leads = allLeads.filter((l) => l.saas === product.id && isRealLead(l));
-      if (basesNeeded.has("won")) {
-        const starts = customerStartMap(allCustomers.filter((c) => c.saas === product.id));
-        const wins = winsIn(product, leads, (iso) => monthKey(iso) === month, starts);
-        bases.won = tcvOf(leads.filter((l) => wins.has(l.id)));
-      }
-      if (basesNeeded.has("cartao12x")) bases.cartao12x = card12xBaseIn(product, leads, month);
+      const starts = customerStartMap(allCustomers.filter((c) => c.saas === product.id));
+      const wins = winsIn(product, leads, (iso) => monthKey(iso) === month, starts);
+      bases.won = tcvOf(leads.filter((l) => wins.has(l.id)));
+    }
+    if (basesNeeded.has("cartao12x")) {
+      const mp = (await repo.list("mp_payments")).filter((p) => !p.saas || p.saas === product.id);
+      bases.cartao12x = card12xBaseIn(mp, month);
     }
     if (basesNeeded.has("received")) {
       const invoices = (await repo.list("invoices")).filter((i) => i.saas === product.id);

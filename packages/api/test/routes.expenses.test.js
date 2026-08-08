@@ -135,19 +135,24 @@ test("custo percentual (checkout/imposto): % sobre os ganhos do mês no pipeline
   assert.equal(past.wonBase, 0);
 });
 
-test("custo percentual com base: checkout inteiro sobre os contratos 12x do mês (D+0), imposto sobre os recebidos", async () => {
+test("custo percentual com base: checkout sobre o dinheiro de cartão que entrou no mês (espelho, D+0), imposto sobre os recebidos", async () => {
   const repo = makeMemRepo();
   const funnel = [{ stage: "Novo lead", kind: "novo", conv: 1 }, { stage: "Ganho", kind: "ganho", conv: 1 }];
   await repo.create("products", { id: "leverads", name: "LeverAds", funnel });
   const month = new Date().toISOString().slice(0, 7);
   const nowIso = new Date().toISOString();
 
-  // Ganhos do mês: 10.000 (wonBase). Cartão 12x com antecipação D+0: o
-  // contrato de 7.000 fechado AGORA entra CHEIO na base do mês; o 12x antigo
-  // (fechado em outro mês) não entra; o PIX nunca entra.
+  // Ganhos do mês: 10.000 (wonBase). A base do CARTÃO vem do que ENTROU no
+  // espelho MP (4.000 + 3.000 aprovados no crédito = 7.000) — a MARCAÇÃO
+  // "cartão 12x" do fechamento (w1) NÃO gera base sozinha; PIX, recusado e
+  // outra conta ficam fora.
   await repo.create("leads", { id: "w1", saas: "leverads", stage: "Ganho", amount: 7000, stageSince: nowIso, paymentMethod: "cartao12x" });
   await repo.create("leads", { id: "w2", saas: "leverads", stage: "Ganho", amount: 3000, stageSince: nowIso, paymentMethod: "pix" });
-  await repo.create("leads", { id: "w3", saas: "leverads", stage: "Ganho", amount: 12000, wonAt: "2020-06-10T12:00:00Z", stageSince: "2020-06-10T12:00:00Z", paymentMethod: "cartao12x" });
+  await repo.create("mp_payments", { id: "mpp_1", saas: "leverads", status: "approved", methodType: "credit_card", amount: 4000, installments: 12, dateApproved: nowIso });
+  await repo.create("mp_payments", { id: "mpp_2", saas: "leverads", status: "approved", methodType: "credit_card", amount: 3000, installments: 1, dateApproved: nowIso });
+  await repo.create("mp_payments", { id: "mpp_3", saas: "leverads", status: "approved", methodType: "bank_transfer", amount: 500, dateApproved: nowIso });
+  await repo.create("mp_payments", { id: "mpp_4", saas: "leverads", status: "rejected", methodType: "credit_card", amount: 900, dateApproved: nowIso });
+  await repo.create("mp_payments", { id: "mpp_5", saas: "outro", status: "approved", methodType: "credit_card", amount: 800, dateApproved: nowIso });
   // Recebidos do mês: 599 + 401 pagos; aberta, paga em mês antigo e outro saas ficam fora.
   await repo.create("invoices", { id: "i1", saas: "leverads", amount: 599, status: "paid", paidAt: nowIso });
   await repo.create("invoices", { id: "i2", saas: "leverads", amount: 401, status: "paid", paidAt: nowIso });
@@ -163,8 +168,8 @@ test("custo percentual com base: checkout inteiro sobre os contratos 12x do mês
   registerMetricsRoutes(app, repo, { ai: { configured: () => false } });
   const s = (await app.inject({ method: "GET", url: `/api/expenses/summary/leverads?month=${month}` })).json();
 
-  assert.equal(s.wonBase, 10000, "ganhos do MÊS: o 12x antigo não entra");
-  assert.equal(s.cardBase, 7000, "contrato cheio do mês (D+0); o antigo fica fora");
+  assert.equal(s.wonBase, 10000);
+  assert.equal(s.cardBase, 7000, "só o que ENTROU no cartão; a marcação do lead não conta");
   assert.equal(s.receivedBase, 1000);
   assert.equal(s.manual.find((e) => e.id === "e1").amount, 840);  // 12% de 7.000
   assert.equal(s.manual.find((e) => e.id === "e2").amount, 200);  // 20% de 1.000
