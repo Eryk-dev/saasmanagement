@@ -447,6 +447,17 @@ export const api = {
   // CRM: timeline do lead (pontos de contato + eventos automáticos).
   listActivities: (leadId) => req("GET", `/api/activities?lead=${encodeURIComponent(leadId)}`),
   logActivity: (a) => req("POST", "/api/activities", a),
+  // Widget de feedback (FAB em toda tela): rotas próprias, abertas a qualquer
+  // sessão — /api/tasks é guardado pela tela "tasks" e o widget não pode
+  // depender dela. O POST cria o card no quadro; o GET traz o recorte do painel
+  // (últimos reportes + colunas); o asset é o mesmo das tarefas por outra porta.
+  feedbackList: () => req("GET", "/api/feedback"),
+  feedbackSend: (body) => req("POST", "/api/feedback", body),
+  feedbackAsset: (blob, name = "print.png") => {
+    const fd = new FormData();
+    fd.append("file", blob, name);
+    return upload("/api/feedback/asset", fd);
+  },
   // Foto anexada a uma TAREFA → asset servido em /public/tasks/:id; a URL vai
   // no campo task.photo. Mesmo desenho do activityAsset abaixo.
   taskAsset: async (blob, name = "anexo.png") => {

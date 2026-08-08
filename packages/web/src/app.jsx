@@ -20,6 +20,7 @@ import { OutboundScreen } from "./screens/outbound.jsx";
 import { RemuneracaoScreen } from "./screens/remuneracao.jsx";
 import { WhatsappInboxScreen } from "./screens/whatsapp.jsx";
 import { WaHotAlert } from "./components/wa-hot-alert.jsx";
+import { FeedbackWidget } from "./components/feedback-widget.jsx";
 import { AgendaScreen } from "./screens/agenda.jsx";
 import { ConsultasScreen } from "./screens/consultas.jsx";
 import { CallsScreen } from "./screens/calls.jsx";
@@ -325,6 +326,12 @@ function App() {
       {/* Lead quente do WhatsApp (fluxo de ligação): salta em qualquer tela. */}
       <ErrorBoundary variant="modal" label="wa-hot" resetKey="wa-hot" onReset={() => {}}>
         <WaHotAlert onOpenThread={(a) => nav("whatsapp", { waThread: a.thread, waLead: "", waDraft: "" })} />
+      </ErrorBoundary>
+
+      {/* Feedback (bug/melhoria) em toda tela: FAB no canto inferior direito;
+          o envio vira card no quadro de Tarefas com print + contexto. */}
+      <ErrorBoundary variant="modal" label="feedback" resetKey="feedback" onReset={() => {}}>
+        <FeedbackWidget screenLabel={(crumbsFor[scr] || [scr]).join(" · ")} />
       </ErrorBoundary>
 
       <CommandSearch

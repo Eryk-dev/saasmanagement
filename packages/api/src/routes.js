@@ -456,7 +456,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // pública /public/tasks/:id (id randômico é a chave, <img> não manda header)
   // e a URL vai no campo `photo` do doc da tarefa (quem não conhece o campo
   // simplesmente não mostra). Guard: /api/tasks já mapeia pra tela "tasks".
-  app.post("/api/tasks/asset", async (req, reply) => {
+  const taskAssetHandler = async (req, reply) => {
     const file = await req.file();
     if (!file) return reply.code(400).send({ error: "envie uma imagem (multipart, campo file)" });
     if (!/^image\//.test(file.mimetype || "")) return reply.code(400).send({ error: "só aceito imagem" });
@@ -468,13 +468,61 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       data: buf.toString("base64"), by: req.authUser?.id || "", at: new Date().toISOString(),
     });
     return { id, url: `/public/tasks/${id}` };
-  });
+  };
+  app.post("/api/tasks/asset", taskAssetHandler);
+  // O widget de feedback usa o MESMO asset de tarefa, mas por rota própria:
+  // /api/tasks/* exige a tela "tasks" (screens.js) e o widget vive em toda
+  // tela, pra qualquer usuário — inclusive os de telas restritas.
+  app.post("/api/feedback/asset", taskAssetHandler);
 
   app.get("/public/tasks/:id", async (req, reply) => {
     const doc = await repo.get("task_assets", req.params.id);
     if (!doc) return reply.code(404).send({ error: "imagem não encontrada" });
     reply.header("cache-control", "public, max-age=31536000, immutable");
     return reply.type(doc.mime || "image/png").send(Buffer.from(doc.data || "", "base64"));
+  });
+
+  // ── Feedback (widget flutuante, toda tela) ────────────────────────────────
+  // O reporte vira um card no quadro de Tarefas (label bug/melhoria) — nada de
+  // coleção nova. Rota própria e aberta a qualquer sessão logada porque
+  // /api/tasks exige a tela "tasks" e reportar bug tem que funcionar de
+  // qualquer tela, por qualquer usuário. O servidor monta o card: título = 1ª
+  // linha, contexto (tela + quem reportou, pelo authUser) na descrição, card no
+  // FIM da primeira coluna do quadro (mesma régua de order do kanban).
+  app.post("/api/feedback", async (req, reply) => {
+    const kind = req.body?.kind === "melhoria" ? "melhoria" : "bug";
+    const text = String(req.body?.text || "").trim();
+    if (!text) return reply.code(400).send({ error: "escreva o reporte antes de enviar" });
+    const photo = String(req.body?.photo || "");
+    const [firstLine, ...rest] = text.split("\n");
+    const boards = await repo.list("task_boards");
+    const columns = boards[0]?.columns?.length ? boards[0].columns : [{ key: "todo" }];
+    const column = columns[0].key;
+    const tasks = await repo.list("tasks");
+    const inCol = tasks.filter((t) => (columns.some((c) => c.key === t.column) ? t.column : column) === column);
+    const order = inCol.length ? Math.max(...inCol.map((t) => Number(t.order) || 0)) + 1 : 1;
+    const context = `Reportado pelo widget de feedback · tela ${String(req.body?.screen || "?").slice(0, 80)} · por ${req.authUser?.name || "API key"}`;
+    return repo.create("tasks", {
+      title: firstLine.trim().slice(0, 120),
+      description: [rest.join("\n").trim(), context].filter(Boolean).join("\n\n"),
+      saas: "", // geral: o card aparece no quadro em qualquer workspace
+      assignees: [], column, priority: kind === "bug" ? "P1" : "P2",
+      dueDate: "", labels: [kind], comments: [], order,
+      photo: photo.startsWith("/public/tasks/") ? photo : "", // só asset nosso
+      createdAt: new Date().toISOString(),
+    });
+  });
+
+  // O recorte que o painel do widget mostra (últimos reportes + colunas do
+  // quadro pro status) — não expõe o board inteiro a quem não tem a tela.
+  app.get("/api/feedback", async () => {
+    const [tasks, boards] = await Promise.all([repo.list("tasks"), repo.list("task_boards")]);
+    const reports = tasks
+      .filter((t) => (t.labels || []).some((l) => l === "bug" || l === "melhoria"))
+      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+      .slice(0, 4)
+      .map((t) => ({ id: t.id, title: t.title, column: t.column, labels: t.labels, createdAt: t.createdAt }));
+    return { reports, columns: boards[0]?.columns || [] };
   });
 
   // ── Generic CRUD over every collection ───────────────────────────────────
