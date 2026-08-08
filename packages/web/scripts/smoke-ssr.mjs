@@ -81,7 +81,7 @@ try {
     ["overview-pace", "/src/screens/overview.jsx", "PaceStrip", { pace: fakePace, onNav() {} }, "dias úteis restantes"],
     ["overview-conversions", "/src/screens/overview.jsx", "FunnelConversions", { team: fakeTeam, pLabel: "30 dias" }, "comparecimento"],
     ["metrics", "/src/screens/metrics.jsx", "MetricsScreen", {}, "Publicidade"],
-    ["expenses", "/src/screens/expenses.jsx", "ExpensesScreen", {}, "Custos operacionais"],
+    ["expenses", "/src/screens/expenses.jsx", "ExpensesScreen", {}, "Pagamentos"],
     ["customers", "/src/screens/customers.jsx", "CustomersScreen", {}, "Cliente Teste"],
     ["pipeline", "/src/screens/pipeline.jsx", "PipelineScreen", { onOpenLead() {} }, "Lead Novo"],
     ["chrome", "/src/chrome.jsx", "NavRail", { current: "overview", onNav() {} }, "Visão geral"],

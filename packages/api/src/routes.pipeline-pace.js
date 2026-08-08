@@ -32,11 +32,35 @@ export function chaseCeiling(target, sold) {
 // "AAAA-MM" → valor: o Leo configura os meses seguintes com antecedência e,
 // quando o mês vira, a plataforma inteira (faixa da Visão geral, pace, metas
 // derivadas das vagas) passa a perseguir o número novo sem ninguém mexer em
-// nada. Sem valor pro mês, vale o padrão do produto; sem padrão, o do sistema.
+// nada. Mês sem valor próprio segue a REGRA DE CRESCIMENTO (abaixo); sem
+// regra, vale o padrão do produto; sem padrão, o do sistema.
+//
+// Regra de crescimento (product.monthlyCashGrowthPct, %): a agenda finita
+// obrigava o Leo a re-agendar todo mês e, acabada a lista, a meta despencava
+// pro padrão. Com a regra, mês sem valor cresce X% COMPOSTO por cima do último
+// mês agendado antes dele (escada 180k → 270k → 405k com 50% segue 607,5k,
+// 911k, … sozinha). Mês digitado continua vencendo; sem nenhum mês agendado
+// não há âncora e a regra não se aplica.
+const monthIndex = (m) => {
+  const [y, mm] = String(m).split("-").map(Number);
+  return y * 12 + (mm - 1);
+};
 export function cashTargetFor(product, month) {
   const byMonth = product?.monthlyCashTargets;
   const doMes = byMonth && typeof byMonth === "object" ? Number(byMonth[month]) : NaN;
   if (Number.isFinite(doMes) && doMes > 0) return { target: doMes, configured: true, source: "month" };
+  const growth = Number(product?.monthlyCashGrowthPct);
+  if (Number.isFinite(growth) && growth > 0 && byMonth && typeof byMonth === "object") {
+    const ancoras = Object.entries(byMonth)
+      .filter(([m, v]) => /^\d{4}-(0[1-9]|1[0-2])$/.test(m) && m < month && Number(v) > 0)
+      .sort(([a], [b]) => (a < b ? -1 : 1));
+    const ultima = ancoras[ancoras.length - 1];
+    if (ultima) {
+      const k = monthIndex(month) - monthIndex(ultima[0]);
+      const target = Math.round(Number(ultima[1]) * Math.pow(1 + growth / 100, k));
+      return { target, configured: true, source: "growth", growthFrom: ultima[0], growthPct: growth };
+    }
+  }
   const padrao = Number(product?.monthlyCashTarget);
   if (Number.isFinite(padrao) && padrao > 0) return { target: padrao, configured: true, source: "default" };
   return { target: DEFAULT_CASH_TARGET, configured: false, source: "system" };

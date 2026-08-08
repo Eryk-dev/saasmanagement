@@ -1,13 +1,16 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { PageHead, StatTile, Card, Pill, FilterTab } from "../components/viz.jsx";
+import { PageHead, StatTile, Card, Pill, FilterTab, Segmented } from "../components/viz.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { EmptyState } from "../atoms.jsx";
-// Custos operacionais — o ledger mensal do produto. Publicidade (ad_insights)
-// e IA (APIs dos provedores, em R$) entram AUTOMÁTICOS; o resto (fixos,
-// ferramentas, pessoal) é lançado à mão aqui. O total alimenta o "Resultado
-// do mês" da Visão geral.
+import { FinanceTab } from "./finance.jsx";
+// Financeiro — o dinheiro do produto em duas abas. Pagamentos: o espelho dos
+// pagamentos REAIS do Mercado Pago (quem pagou, quanto, como), casado com
+// clientes e faturas (finance.jsx). Custos: o ledger mensal — Publicidade
+// (ad_insights) e IA (APIs dos provedores, em R$) entram AUTOMÁTICOS; o resto
+// (fixos, ferramentas, pessoal) é lançado à mão. O total dos custos alimenta o
+// "Resultado do mês" da Visão geral.
 
 const { useState, useEffect } = React;
 
@@ -46,10 +49,38 @@ const lastMonths = (n) => {
 const brl = (n) => `R$ ${(Number(n) || 0).toFixed(2).replace(".", ",")}`;
 
 function ExpensesScreen() {
-  const { SAAS } = window.SEED;
-  const { version } = useData();
   const [product] = useActiveSaas();
+  const [tab, setTab] = useState("pagamentos");
   const [month, setMonth] = useState(monthKey(new Date()));
+
+  if (!product) return <EmptyState title="Nenhum produto cadastrado" hint="Crie o produto em Ajustes." />;
+
+  const shortMonth = (mk) => new Date(`${mk}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
+
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
+      <PageHead title="Financeiro"
+        sub={tab === "pagamentos"
+          ? "pagamentos da conta Mercado Pago, casados com clientes e faturas"
+          : `${monthLabel(month)} · o total alimenta o “Resultado do mês” da Visão geral`}>
+        <Segmented value={tab} onChange={setTab} options={[{ value: "pagamentos", label: "Pagamentos" }, { value: "custos", label: "Custos" }]} />
+        {tab === "custos" && (
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            {[...lastMonths(3)].reverse().map((mk) => <FilterTab key={mk} active={month === mk} onClick={() => setMonth(mk)}>{shortMonth(mk)}</FilterTab>)}
+          </div>
+        )}
+      </PageHead>
+
+      {/* key={product.id}: trocar de produto remonta a aba — rascunho de custo
+          e vínculo em andamento nunca vazam pro SaaS errado. */}
+      {tab === "pagamentos" && <FinanceTab key={product.id} product={product} />}
+      {tab === "custos" && <CostsTab key={product.id} product={product} month={month} />}
+    </div>
+  );
+}
+
+function CostsTab({ product, month }) {
+  const { version } = useData();
   const [data, setData] = useState(null);
   // unit "brl" = valor fixo em R$; "pct" = percentual sobre a base escolhida
   // (ganhos, cartão 12x ou recebidos) — o servidor calcula o R$ mês a mês.
@@ -57,18 +88,10 @@ function ExpensesScreen() {
   const [note, setNote] = useState(null);
 
   const load = () => {
-    if (!product) return;
     setData(null);
     api.expensesSummary(product.id, month).then(setData).catch(() => setData({ error: true }));
   };
-  useEffect(load, [product?.id, month, version]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Troca de produto: descarta rascunho e aviso — o custo em digitação não pode
-  // ser registrado silenciosamente no SaaS errado.
-  useEffect(() => {
-    setForm({ category: "fixo", name: "", amount: "", unit: "brl", base: "won", recurring: false });
-    setNote(null);
-  }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [product.id, month, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function addExpense() {
     const value = Number(String(form.amount).replace(",", "."));
@@ -106,20 +129,10 @@ function ExpensesScreen() {
     catch (err) { setNote({ ok: false, text: err.message || "Falha ao encerrar." }); }
   }
 
-  if (!product) return <EmptyState title="Nenhum produto cadastrado" hint="Crie o produto em Ajustes." />;
-
   const inputStyle = { height: 38, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
-  const shortMonth = (mk) => new Date(`${mk}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-      <PageHead title="Custos operacionais" sub={`${monthLabel(month)} · o total alimenta o “Resultado do mês” da Visão geral`}>
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          {[...lastMonths(3)].reverse().map((mk) => <FilterTab key={mk} active={month === mk} onClick={() => setMonth(mk)}>{shortMonth(mk)}</FilterTab>)}
-        </div>
-      </PageHead>
-
-      <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
         {data?.error && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>Falha ao carregar os custos.</div>}
 
@@ -219,7 +232,6 @@ function ExpensesScreen() {
           )}
         </Card>
 
-      </div>
     </div>
   );
 }

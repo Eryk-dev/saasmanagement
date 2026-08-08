@@ -7,7 +7,6 @@ import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/mile
 import { ActivityList } from "../components/timeline.jsx";
 import { CallSummaryCard, IntegrationBriefCard } from "./today.jsx";
 import { SubscriptionsScreen } from "./subscriptions.jsx";
-import { FinanceTab } from "./finance.jsx";
 import { CustomersAnalysis } from "./customers-analysis.jsx";
 import { EntityForm } from "../components/EntityForm.jsx";
 import { WhatsappChat } from "../components/whatsapp-chat.jsx";
@@ -218,12 +217,11 @@ function CustomersScreen({ initialTab = "base" }) {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Clientes"
         sub={`${activeCustomers.length} ${activeCustomers.length === 1 ? "ativo" : "ativos"} · ${isKidsWorkspace ? `${money(totalContratado)} contratado` : `MRR ${money(totalMrr)}`}`}>
-        <Segmented value={tab} onChange={setTab} options={[{ value: "base", label: "Clientes" }, { value: "billing", label: "Assinaturas" }, { value: "fin", label: "Financeiro" }]} />
+        <Segmented value={tab} onChange={setTab} options={[{ value: "base", label: "Clientes" }, { value: "billing", label: "Assinaturas" }]} />
         {tab === "base" && <PrimaryButton onClick={() => openForm("customers", { saas: product.id })}>+ novo cliente</PrimaryButton>}
       </PageHead>
 
       {tab === "billing" && <SubscriptionsScreen saasId={product.id} />}
-      {tab === "fin" && <FinanceTab product={product} />}
 
       {tab === "base" && (
       <div style={{ padding: "16px var(--pad-x) 56px" }}>

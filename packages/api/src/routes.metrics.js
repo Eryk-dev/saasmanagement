@@ -30,7 +30,7 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhats
 
   // Custos operacionais do mês: publicidade (ad_insights) + IA (série dos
   // provedores convertida em R$) automáticos, mais os lançamentos manuais da
-  // collection expenses. Base da tela Custos e do resultado na Visão geral.
+  // collection expenses. Base da aba Custos do Financeiro e do resultado na Visão geral.
   app.get("/api/expenses/summary/:saas", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "Not found" });

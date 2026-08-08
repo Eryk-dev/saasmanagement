@@ -254,6 +254,7 @@ export function registerMetasRoutes(app, repo) {
       cashTarget: Number(product.monthlyCashTarget) > 0 ? Number(product.monthlyCashTarget) : null,
       cashTargetDefault: DEFAULT_CASH_TARGET,
       contractsTarget: Number(product.monthlyContractsTarget) > 0 ? Number(product.monthlyContractsTarget) : null,
+      growthPct: Number(product.monthlyCashGrowthPct) > 0 ? Number(product.monthlyCashGrowthPct) : null,
       months: proximosMeses,
     };
     // Quantas pessoas em cada vaga (o placar reparte a meta de time entre elas).
@@ -280,6 +281,14 @@ export function registerMetasRoutes(app, repo) {
         const num = Number(String(empresa.cashTarget ?? "").trim()); // "" → NaN (não 0)
         const next = Number.isFinite(num) && num > 0 ? num : null;
         if (next !== (Number(product.monthlyCashTarget) > 0 ? Number(product.monthlyCashTarget) : null)) patch.monthlyCashTarget = next;
+      }
+      // Regra de crescimento (% ao mês sobre o último mês agendado): é ela que
+      // dispensa re-agendar a escada todo mês. Vazio/zero limpa (mês sem valor
+      // volta a seguir a meta padrão). Teto de sanidade em 1000%.
+      if ("growthPct" in empresa) {
+        const num = Number(String(empresa.growthPct ?? "").trim());
+        const next = Number.isFinite(num) && num > 0 ? Math.min(Math.round(num * 10) / 10, 1000) : null;
+        if (next !== (Number(product.monthlyCashGrowthPct) > 0 ? Number(product.monthlyCashGrowthPct) : null)) patch.monthlyCashGrowthPct = next;
       }
       // Meta de contratos do mês (nº inteiro): vazio/zero limpa e o número volta
       // a seguir a venda ÷ ticket na cadeia.

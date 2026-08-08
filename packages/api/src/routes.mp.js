@@ -124,7 +124,7 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
   // notification_url só vale com base pública https (MP recusa localhost).
   const notificationUrl = PUBLIC_BASE.startsWith("https://") ? `${PUBLIC_BASE}/public/mp/webhook` : undefined;
 
-  // Lista do espelho pra aba Financeiro. Pagamento sem saas = não identificado:
+  // Lista do espelho pra tela Financeiro (aba Pagamentos). Pagamento sem saas = não identificado:
   // aparece em qualquer produto até alguém vincular.
   app.get("/api/mp/payments", async (req) => {
     const q = req.query || {};
@@ -312,7 +312,7 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
     // ── pagamento (avulso ou de link) — TODO status entra no espelho ────────
     // O ingest casa por fatura/assinatura/e-mail, baixa a fatura se aprovado
     // (idempotente por mpPaymentId, payer cross-check no caso de assinatura) e
-    // deixa o resto visível na aba Financeiro pro vínculo manual.
+    // deixa o resto visível na tela Financeiro pro vínculo manual.
     if (topic === "payment") {
       let pmt;
       try { pmt = await mp.getPayment(dataId); }

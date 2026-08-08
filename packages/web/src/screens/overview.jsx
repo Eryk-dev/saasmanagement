@@ -32,7 +32,7 @@ function OverviewScreen({ onNav, onOpenLead }) {
   const [marketing, setMarketing] = useState(null);
   const [biz, setBiz] = useState(null); // CAC/conversão (30d) — mesmo endpoint da Publicidade
   const [invoices, setInvoices] = useState([]);
-  const [costs, setCosts] = useState(null); // custos do mês corrente (tela Custos)
+  const [costs, setCosts] = useState(null); // custos do mês corrente (aba Custos do Financeiro)
   const [score, setScore] = useState(null); // placar do time da janela do topo
   const [pace, setPace] = useState(null); // meta do mês (caixa) — /api/pipeline-pace
   const [wa, setWa] = useState(null); // inbox do WhatsApp (números globais do time)
