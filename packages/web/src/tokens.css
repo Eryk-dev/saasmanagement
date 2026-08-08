@@ -296,8 +296,11 @@ body[data-density="regular"] { font-size: 14px; }
 
 /* ── Selo ICP da topbar ─────────────────────────────────────────────────────
    A ÚNICA exceção ao "nunca glow" do DS, de propósito (Leo, 08/08): o resumo
-   do ICP fica à mostra o tempo todo, num selo azul com borda brilhante que
-   corre, pra ninguém perder o foco de quem a gente caça. */
+   do ICP fica à mostra o tempo todo, pra ninguém perder o foco de quem a
+   gente caça. Paleta OFICIAL da marca LeverAds (manual/BRAND_DEFS do Canvas):
+   navy #051C2C em gradiente (#073143 → #051C2C, o mesmo da proposta), teal do
+   logo #23D8D3 na borda que corre (é o "teal brilha no navy" do manual) e
+   texto ice #F3FBFF. */
 @keyframes icp-sheen {
   0% { background-position: 0 0, 0% 50%; }
   100% { background-position: 0 0, 200% 50%; }
@@ -306,15 +309,16 @@ body[data-density="regular"] { font-size: 14px; }
   display: inline-flex; align-items: center; gap: 7px;
   height: 32px; padding: 0 14px; border-radius: 999px;
   border: 1.5px solid transparent;
-  color: #fff; font-size: 12.5px; cursor: pointer; white-space: nowrap;
+  color: #F3FBFF; font-size: 12.5px; cursor: pointer; white-space: nowrap;
   background:
-    linear-gradient(180deg, #2563eb, #1e46c9) padding-box,
-    linear-gradient(100deg, #60a5fa, #1d4ed8 35%, #bfdbfe 50%, #1d4ed8 65%, #60a5fa) border-box;
+    linear-gradient(180deg, #073143, #051C2C) padding-box,
+    linear-gradient(100deg, #0C8F83, #23D8D3 38%, #A9F5F2 50%, #23D8D3 62%, #0C8F83) border-box;
   background-size: 100% 100%, 220% 100%;
   animation: icp-sheen 3.2s linear infinite;
-  box-shadow: 0 0 12px rgba(59, 130, 246, 0.45), 0 1px 2px rgba(16, 24, 40, 0.2);
+  box-shadow: 0 0 12px rgba(35, 216, 211, 0.35), 0 1px 2px rgba(16, 24, 40, 0.2);
 }
-.icp-pill:hover { box-shadow: 0 0 16px rgba(59, 130, 246, 0.65), 0 1px 2px rgba(16, 24, 40, 0.2); }
+.icp-pill:hover { box-shadow: 0 0 16px rgba(35, 216, 211, 0.55), 0 1px 2px rgba(16, 24, 40, 0.2); }
+.icp-pill .icp-tag { color: #23D8D3; }
 @media (prefers-reduced-motion: reduce) { .icp-pill { animation: none; } }
 
 ::-webkit-scrollbar { width: 11px; height: 11px; }
