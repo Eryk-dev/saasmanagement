@@ -54,32 +54,33 @@ try {
   const wrap = (el) => React.createElement(DataContext.Provider, { value: ctx }, el);
 
   // Estados COM DADOS da Visão geral (os fetches não rodam no SSR): a faixa de
-  // meta e a régua de conversões renderizam com payloads no formato da API.
+  // meta e o funil do período renderizam com payloads no formato da API.
   const fakePace = {
-    // A meta é ancorada no VENDIDO (bloco sale); cash é leitura informativa.
+    // A meta é ancorada no VENDIDO (bloco sale); contracts é a 2ª régua.
     sale: {
       target: 60000, sold: 34000, soldToday: 1000, gap: 26000,
       expectedToDate: 30000, progress: 0.5667, expectedProgress: 0.5, status: "ahead",
       projected: 51000, actualDailyPace: 2833, requiredDailyPace: 2600,
       remainingBusinessDays: 10,
     },
-    plan: {
-      blockedBy: null,
-      wins: { remaining: 4, perDay: 0.4, today: 0 }, calls: { remaining: 16, perDay: 1.6, today: 1 },
-      callsBooked: { remaining: 21, perDay: 2.1, today: 2 }, contacts: { remaining: 70, perDay: 7, today: 12 },
-      leads: { remaining: 88, perDay: 8.8, today: 5 },
+    contracts: {
+      target: 10, targetSource: "company", sold: 6, soldToday: 1, gap: 4,
+      progress: 0.6, expectedToDate: 5, expectedProgress: 0.5, status: "ahead",
     },
   };
   const fakeTeam = {
     leadsNew: 6, contacted: 5, callsBooked: 4, bookingRate: 80, shown: 2, noShow: 1,
-    showRate: 66.67, wonFromCalls: 1, callWinRate: 25, closeRate: 50, won: 1, revenue: 800,
+    showRate: 66.67, wonFromCalls: 1, callWinRate: 25, closeRate: 50, closeRatePeriod: 50,
+    won: 1, revenue: 800, contactRate: 83.3,
     leadToWin: 16.67, goals: { bookingRate: { target: 35, period: "month" } },
+    monthTargets: { leads: 200, contacts: 160, callsBooked: 48, callsShown: 36, won: 12, revenue: 60000, wonSource: "company", blockedBy: null },
   };
+  const fakeWin = { since: "2026-08-01", until: "2026-08-08", businessDays: 6, days: 8, label: "este mês", short: "mês" };
 
   const cases = [
     ["overview", "/src/screens/overview.jsx", "OverviewScreen", { onNav() {}, onOpenLead() {} }, "Visão geral"],
-    ["overview-pace", "/src/screens/overview.jsx", "PaceStrip", { pace: fakePace, onNav() {} }, "dias úteis restantes"],
-    ["overview-conversions", "/src/screens/overview.jsx", "FunnelConversions", { team: fakeTeam, pLabel: "30 dias" }, "comparecimento"],
+    ["overview-meta", "/src/screens/overview.jsx", "MetaMesCard", { pace: fakePace, onNav() {} }, "Régua de contratos"],
+    ["overview-funil", "/src/screens/overview.jsx", "FunilPeriodo", { team: fakeTeam, win: fakeWin, pLabel: "este mês" }, "Ganhos"],
     ["metrics", "/src/screens/metrics.jsx", "MetricsScreen", {}, "Publicidade"],
     ["expenses", "/src/screens/expenses.jsx", "ExpensesScreen", {}, "Pagamentos"],
     ["customers", "/src/screens/customers.jsx", "CustomersScreen", {}, "Cliente Teste"],
