@@ -7,6 +7,7 @@ import { useData } from "../data.jsx";
 import { currentUser, isAdminUser } from "../lib/users.js";
 import { FocusShell } from "./training-focus.jsx";
 import { IcpCard } from "../components/icp-card.jsx";
+import { GRADE_GRID, GRADE_STYLE, GRADE_ACCOUNTS, GRADE_LISTINGS } from "../lib/ui.js";
 
 // Treinamentos — flashcards estilo Anki com repetição espaçada (FSRS) POR
 // PESSOA. Três modos: ESTUDAR (baralhos da sua vaga com contadores novo/
@@ -96,8 +97,16 @@ function Study({ saasId, mode, setMode }) {
     if (!data.decks.length) return <EmptyState title="Nenhum baralho pra você" hint="Peça pro gestor te dar uma vaga (SDR/closer/…) em Ajustes → Usuários." />;
     return (
       <>
-        <StartCard decks={data.decks} exam={data.exam} onExam={() => setExam(data.exam)}
-          onStudy={(foco) => { setSession(true); setFocus(!!foco); }} />
+        {/* O raciocínio da nota mora ao lado do "da vez": decorar a régua é
+            estudo diário, igual ao ICP logo abaixo. O wrapper mantém o cartão
+            "da vez" no mesmo lugar e largura de sempre (máx. 760). */}
+        <div style={{ display: "flex", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <div style={{ flex: "1 1 420px", minWidth: "min(100%, 420px)", maxWidth: 760 }}>
+            <StartCard decks={data.decks} exam={data.exam} onExam={() => setExam(data.exam)}
+              onStudy={(foco) => { setSession(true); setFocus(!!foco); }} />
+          </div>
+          <GradeReasonCard saasId={saasId} />
+        </div>
         {/* O ICP mora no treino também: decorar quem a gente caça é parte do
             estudo diário (product.icp — o mesmo cartão da Visão geral). */}
         <IcpCard compact />
@@ -173,6 +182,59 @@ function StartCard({ decks, exam, onExam, onStudy }) {
       <button onClick={() => onStudy(true)} title="modo foco: tela cheia + áudio ambiente" style={{ height: 40, padding: "0 14px", borderRadius: "var(--r-2)", fontSize: 13, background: "var(--bg-1)", color: "var(--fg-2)", border: "1px solid var(--line-2)", cursor: "pointer" }}>
         ◐ foco
       </button>
+    </div>
+  );
+}
+
+// ── Nota do lead: o raciocínio da régua (S-E + Mentoria) ─────────────────────
+// Decorar COMO a classificação nasce é parte do treino, não só ler a letra no
+// badge. A matriz vem de lib/ui.js (a MESMA que o leadTier usa), então o cartão
+// nunca desatualiza sozinho. A régua é a do diagnóstico LeverAds (contas ×
+// anúncios + saída lateral pra Mentoria), por isso só existe nesse produto.
+function GradeReasonCard({ saasId }) {
+  if (saasId !== "leverads") return null;
+  const steps = [
+    ["Já vende?", <>a 1ª pergunta do form separa os mundos. Quem responde "ainda não vendo" sai do funil de venda ali: o card nasce na fila <b>Mentoria</b>, guardando a verba que a pessoa tem pra começar. Não conta como lead (fica fora do CPL) e não vira conversão pra Meta, senão o anúncio aprenderia a caçar quem ainda não vende.</>],
+    ["Contas × anúncios", <>pra quem já vende, a nota cruza só 2 respostas: <b>quantas contas opera</b> (mais contas, mais dor de replicação) e <b>quantos anúncios tem a maior conta</b> (mais volume pra manter sincronizado). O cruzamento cai na matriz ao lado, tabela de consulta desenhada pelo Leo, não fórmula.</>],
+    ["Faltou resposta", <>o eixo sem resposta cai na menor faixa da matriz. Sem nenhuma das duas, o lead fica "sem qualificação" e o badge nem aparece no card.</>],
+    ["Onde a nota manda", <>badge no card do lead, ordem de atendimento no Meu dia (S primeiro) e colunas por nota na Publicidade (quantos leads e qual custo por nota em cada campanha). Régua única: mudou a matriz, muda em todo lugar.</>],
+  ];
+  return (
+    <div style={{ flex: "1 1 480px", minWidth: "min(100%, 360px)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "14px 18px" }}>
+      <div className="mono" style={{ ...kicker, color: "var(--accent)" }}>Nota do lead · como a classificação nasce</div>
+      <div style={{ fontSize: 14.5, fontWeight: 700, letterSpacing: "-0.01em", marginTop: 6 }}>Duas respostas viram a nota S-E · quem ainda não vende sai pra Mentoria</div>
+      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 12 }}>
+        <div style={{ flex: "1 1 300px", minWidth: "min(100%, 280px)", display: "flex", flexDirection: "column", gap: 8 }}>
+          {steps.map(([t, body], i) => (
+            <div key={i} style={{ display: "flex", gap: 8, fontSize: 12.5, lineHeight: 1.5 }}>
+              <span className="mono tnum" style={{ flexShrink: 0, color: "var(--accent)", fontWeight: 700, fontSize: 11, paddingTop: 2 }}>{i + 1}</span>
+              <span style={{ minWidth: 0 }}><b>{t}</b> · {body}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ flex: "1 1 280px", minWidth: "min(100%, 260px)", maxWidth: 420 }}>
+          <div className="mono" style={{ ...kicker, marginBottom: 8 }}>A matriz · consulta direta</div>
+          <div className="mono" style={{ fontSize: 8.5, color: "var(--fg-4)", textAlign: "center", marginBottom: 3, paddingLeft: 34 }}>anúncios na maior conta →</div>
+          <div style={{ display: "grid", gridTemplateColumns: "34px repeat(5, 1fr)", gap: 3, alignItems: "center" }}>
+            <span />
+            {GRADE_LISTINGS.map((l) => <span key={l} className="mono" style={{ fontSize: 8, color: "var(--fg-4)", textAlign: "center", lineHeight: 1.1 }}>{l}</span>)}
+            {GRADE_GRID.map((row, r) => (
+              <React.Fragment key={r}>
+                <span className="mono" style={{ fontSize: 9, color: "var(--fg-4)", textAlign: "right", paddingRight: 4, whiteSpace: "nowrap" }}>{GRADE_ACCOUNTS[r]}</span>
+                {row.map((g, c) => {
+                  const s = GRADE_STYLE[g];
+                  return <span key={c} title={`${GRADE_ACCOUNTS[r]} conta(s) · ${GRADE_LISTINGS[c]} anúncios = ${s.label}`}
+                    style={{ height: 22, borderRadius: 4, background: s.tone, color: s.badgeFg, fontSize: 10.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{g}</span>;
+                })}
+              </React.Fragment>
+            ))}
+          </div>
+          <div className="mono" style={{ fontSize: 8.5, color: "var(--fg-4)", marginTop: 4 }}>↑ contas de marketplace</div>
+          <div style={{ fontSize: 11, color: "var(--fg-4)", marginTop: 10, lineHeight: 1.45 }}>
+            Lead antigo, de antes da pergunta de anúncios publicados, entra pelo campo legado (anúncios novos por semana).
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
