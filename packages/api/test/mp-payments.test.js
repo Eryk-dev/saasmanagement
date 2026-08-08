@@ -234,6 +234,57 @@ test("runMpSync: pagina a busca, ingere tudo, carimba app_config e é idempotent
   assert.equal((await repo.list("mp_payments")).length, 2);
 });
 
+test("pagador mascarado do search: máscara vira vazio, nome cai pros fallbacks e enriquecido não regride", async () => {
+  const repo = makeMemRepo();
+  await seedCustomer(repo);
+
+  // Máscara pura ("xxxxxxxx") não é dado: e-mail/CPF viram "" e nada casa por e-mail falso.
+  await ingestMpPayment(repo, mpPmt({
+    id: 3001,
+    payer: { email: "xxxxxxxxxxx", first_name: "", last_name: "", identification: { number: "xxx.xxx.xxx-xx" } },
+  }));
+  let doc = await repo.get("mp_payments", "mpp_3001");
+  assert.equal(doc.payerEmail, "");
+  assert.equal(doc.payerName, "");
+  assert.equal(doc.payerDoc, "");
+  assert.equal(doc.customer, "");
+
+  // Fallbacks de nome: additional_info (checkout) → titular do cartão → banco do PIX.
+  await ingestMpPayment(repo, mpPmt({ id: 3002, payer: { email: "" }, additional_info: { payer: { first_name: "Ana", last_name: "Silva" } } }));
+  assert.equal((await repo.get("mp_payments", "mpp_3002")).payerName, "Ana Silva");
+  await ingestMpPayment(repo, mpPmt({ id: 3003, payer: { email: "" }, card: { cardholder: { name: "JOSE DA SILVA" } } }));
+  assert.equal((await repo.get("mp_payments", "mpp_3003")).payerName, "JOSE DA SILVA");
+  await ingestMpPayment(repo, mpPmt({ id: 3004, payer: { email: "" }, point_of_interaction: { transaction_data: { bank_info: { payer: { long_name: "Maria Souza" } } } } }));
+  assert.equal((await repo.get("mp_payments", "mpp_3004")).payerName, "Maria Souza");
+
+  // Tick do poller re-ingere o doc MAGRO: o pagador enriquecido fica de pé.
+  await ingestMpPayment(repo, mpPmt({ id: 3004, payer: { email: "xxxxxxxxxxx" } }));
+  doc = await repo.get("mp_payments", "mpp_3004");
+  assert.equal(doc.payerName, "Maria Souza");
+});
+
+test("runMpSync: search sem nome de pagador busca o doc completo UMA vez (payerDetail)", async () => {
+  const repo = makeMemRepo();
+  await seedCustomer(repo);
+
+  const { mp, fakeFetch } = buildApp(repo, {
+    "GET /v1/payments/search": { paging: { total: 1 }, results: [mpPmt({ id: 4001, payer: { email: "xxxxxxxxxxx" } })] },
+    "GET /v1/payments/4001": mpPmt({ id: 4001 }), // doc completo traz o pagador real
+  });
+
+  await runMpSync(repo, mp);
+  const doc = await repo.get("mp_payments", "mpp_4001");
+  assert.equal(doc.payerName, "Cliente Real");
+  assert.equal(doc.payerEmail, "payer@x.com");
+  assert.equal(doc.payerDetail, true);
+  assert.equal(doc.customer, "c1"); // o doc completo casou pelo e-mail
+  assert.equal(fakeFetch.calls.filter((c) => c.key === "GET /v1/payments/4001").length, 1);
+
+  // Segunda passada: nome já no espelho — não re-busca o doc por id.
+  await runMpSync(repo, mp);
+  assert.equal(fakeFetch.calls.filter((c) => c.key === "GET /v1/payments/4001").length, 1);
+});
+
 test("GET /api/mp/payments: filtro por saas mantém os não identificados visíveis", async () => {
   const repo = makeMemRepo();
   await seedCustomer(repo);

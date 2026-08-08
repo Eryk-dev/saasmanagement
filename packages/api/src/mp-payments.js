@@ -22,6 +22,23 @@ import { mp as defaultMp } from "./mp.js";
 import { discord as defaultDiscord } from "./discord.js";
 import { syncCustomerArr } from "./billing.js";
 
+// O /v1/payments/search devolve o pagador MASCARADO (e-mail "xxxxxxxxxx",
+// nome/CPF vazios ou só x's) — máscara não é dado: vira "" pra UI não mostrar
+// lixo nem o vínculo por e-mail comparar contra x's. O GET /v1/payments/:id
+// (webhook e enriquecimento do sync) é que traz o pagador de verdade.
+const masked = (s) => /^x+$/i.test(String(s || "").replace(/[@.\s_-]/g, ""));
+const clean = (s) => { const v = String(s || "").trim(); return masked(v) ? "" : v; };
+
+// Nome do pagador com fallback: payer → additional_info (checkout) → titular
+// do cartão → banco do PIX. O primeiro costuma vir vazio até no doc completo.
+function payerNameOf(pmt) {
+  return clean([pmt.payer?.first_name, pmt.payer?.last_name].filter(Boolean).join(" "))
+    || clean([pmt.additional_info?.payer?.first_name, pmt.additional_info?.payer?.last_name].filter(Boolean).join(" "))
+    || clean(pmt.card?.cardholder?.name)
+    || clean(pmt.point_of_interaction?.transaction_data?.bank_info?.payer?.long_name)
+    || "";
+}
+
 // Campos do /v1/payments do MP → doc do espelho (valores em reais, como o resto).
 export function normalizeMpPayment(pmt) {
   return {
@@ -33,9 +50,9 @@ export function normalizeMpPayment(pmt) {
     method: pmt.payment_method_id || "",  // pix|bolbradesco|master|visa|account_money…
     methodType: pmt.payment_type_id || "",// bank_transfer|ticket|credit_card|account_money…
     installments: Number(pmt.installments) || 1,
-    payerEmail: String(pmt.payer?.email || "").toLowerCase(),
-    payerName: [pmt.payer?.first_name, pmt.payer?.last_name].filter(Boolean).join(" ").trim(),
-    payerDoc: pmt.payer?.identification?.number || "",
+    payerEmail: clean(pmt.payer?.email).toLowerCase(),
+    payerName: payerNameOf(pmt),
+    payerDoc: clean(pmt.payer?.identification?.number),
     description: pmt.description || "",
     externalReference: String(pmt.external_reference || ""),
     dateCreated: pmt.date_created || "",
@@ -96,11 +113,20 @@ const sameDoc = (a, b, keys) => a && keys.every((k) => JSON.stringify(a[k] ?? nu
 
 // Upsert do espelho + casamento + baixa. Idempotente e barata quando nada mudou
 // (o poller repassa a mesma janela a cada tick — sem escrita não há SSE/refresh).
-export async function ingestMpPayment(repo, pmt, { discord, log } = {}) {
+export async function ingestMpPayment(repo, pmt, { discord, log, extra } = {}) {
   const mpId = String(pmt.id);
   const mirrorId = `mpp_${mpId}`;
   const prev = await repo.get("mp_payments", mirrorId);
   const base = normalizeMpPayment(pmt);
+
+  // O poller re-varre a janela com o doc MAGRO do search — pagador já
+  // enriquecido (webhook/GET por id) não pode regredir pra vazio. clean() no
+  // prev também: espelho antigo pode ter guardado a máscara crua.
+  if (prev) {
+    base.payerName = base.payerName || clean(prev.payerName);
+    base.payerEmail = base.payerEmail || clean(prev.payerEmail).toLowerCase();
+    base.payerDoc = base.payerDoc || clean(prev.payerDoc);
+  }
 
   // Vínculo já feito (ingest anterior ou manual) é preservado.
   const link = {
@@ -170,7 +196,7 @@ export async function ingestMpPayment(repo, pmt, { discord, log } = {}) {
     }
   }
 
-  const doc = { ...base, ...link, ...(payerMismatch ? { payerMismatch: true } : {}) };
+  const doc = { ...base, ...link, ...extra, ...(payerMismatch ? { payerMismatch: true } : {}) };
   const KEYS = Object.keys(doc);
   let saved;
   if (!prev) saved = await repo.create("mp_payments", { id: mirrorId, ...doc, syncedAt: new Date().toISOString() });
@@ -188,19 +214,30 @@ export async function ingestMpPayment(repo, pmt, { discord, log } = {}) {
 // Uma passada de reconciliação: busca paginada dos pagamentos da conta desde o
 // último sync (com folga de 2 dias; 1º run varre 400 dias = backfill sozinho) e
 // ingere um a um. Carimbo em app_config "mp_sync" — a UI mostra o último sync.
-export async function runMpSync(repo, mp, { discord, log, now = new Date(), backfillDays = 400, overlapDays = 2, maxPages = 40 } = {}) {
+export async function runMpSync(repo, mp, { discord, log, now = new Date(), backfillDays = 400, overlapDays = 2, maxPages = 40, enrichLimit = 40 } = {}) {
   if (!mp?.configured?.()) return { ok: false, error: "not_configured" };
   const cfg = await repo.get("app_config", "mp_sync");
   const since = cfg?.lastAt
     ? new Date(new Date(cfg.lastAt).getTime() - overlapDays * 86_400_000)
     : new Date(now.getTime() - backfillDays * 86_400_000);
 
-  let offset = 0, seen = 0, matched = 0, settled = 0;
+  let offset = 0, seen = 0, matched = 0, settled = 0, enriched = 0;
   for (let page = 0; page < maxPages; page++) {
     const res = await mp.searchPayments({ begin: since.toISOString(), end: now.toISOString(), limit: 50, offset });
     const results = Array.isArray(res?.results) ? res.results : [];
     for (const pmt of results) {
-      const r = await ingestMpPayment(repo, pmt, { discord, log });
+      // Search sem nome de pagador → busca o doc COMPLETO uma única vez
+      // (payerDetail carimba a tentativa: PIX que não traz nome nem no doc
+      // completo não vira re-fetch eterno). Cap por passada segura o backfill.
+      let full = pmt, extra;
+      if (!payerNameOf(pmt) && enriched < enrichLimit) {
+        const prev = await repo.get("mp_payments", `mpp_${pmt.id}`);
+        if (!prev?.payerName && !prev?.payerDetail) {
+          try { full = await mp.getPayment(pmt.id); extra = { payerDetail: true }; enriched++; }
+          catch { /* segue com o resumo; tenta de novo no próximo tick */ }
+        }
+      }
+      const r = await ingestMpPayment(repo, full, { discord, log, extra });
       seen++;
       if (r.matched) matched++;
       if (r.settledNow) settled++;

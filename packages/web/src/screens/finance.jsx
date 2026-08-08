@@ -191,7 +191,7 @@ function FinanceTab({ product }) {
                     <td className="mono dim tnum" style={{ padding: "10px 14px", fontSize: 12, borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" }}>{fmtAt(p.dateApproved || p.dateCreated)}</td>
                     <td style={{ padding: "10px 14px", fontSize: 13, borderBottom: "1px solid var(--line-faint)" }}>
                       <div style={{ fontWeight: 500 }}>{p.payerName || "—"}</div>
-                      {p.payerEmail && <div className="mono dim" style={{ fontSize: 10.5 }}>{p.payerEmail}</div>}
+                      {(p.payerEmail || p.payerDoc) && <div className="mono dim" style={{ fontSize: 10.5 }}>{p.payerEmail || `CPF/CNPJ ${p.payerDoc}`}</div>}
                     </td>
                     <td style={{ padding: "10px 14px", fontSize: 13, borderBottom: "1px solid var(--line-faint)" }}>
                       {p.customer ? (
