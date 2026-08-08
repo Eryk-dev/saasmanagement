@@ -13,9 +13,26 @@ function GlobalPeriod() {
   return <PeriodPicker period={period} custom={custom} onChange={(p, c) => { setPeriod(p); setCustom(c); }} />;
 }
 
-// Botão ICP na topbar (à esquerda do filtro, pedido do Leo em 08/08): abre o
-// cartão "Nosso ICP" num popover, acessível de qualquer tela. Some quando o
-// produto ainda não tem ICP escrito (o IcpCard renderizaria vazio).
+// Selo ICP na topbar (à esquerda do filtro): o RESUMO do perfil fica à mostra
+// o tempo todo ("2+ contas · 500+ anúncios · R$150k+"), num selo destacado com
+// borda brilhante — pedido do Leo em 08/08: "pra não perdermos o foco nele".
+// O clique abre o cartão completo (com a matriz de nota). Some quando o
+// produto ainda não tem ICP escrito. `icp.pill` (texto livre no produto) vence
+// o resumo derivado dos números do perfil.
+function icpPillText(icp) {
+  if (icp?.pill) return String(icp.pill);
+  const toks = [];
+  for (const item of icp?.profile || []) {
+    // O nº com "+" de cada linha do perfil ("2+ contas…", "R$150k+…"), com a
+    // palavra seguinte quando ela é curta ("contas", "anúncios").
+    const m = String(item).match(/((?:R\$\s*)?\d[\d.,]*\s*(?:mil|k)?\+?)(?:\s+([a-zà-ú]{2,12}))?/i);
+    if (!m || !/[+]/.test(m[0])) continue;
+    toks.push((m[1] + (m[2] ? " " + m[2] : "")).trim());
+    if (toks.length >= 3) break;
+  }
+  return toks.join(" · ");
+}
+
 function IcpButton() {
   const [product] = useActiveSaas();
   const [open, setOpen] = React.useState(false);
@@ -27,14 +44,12 @@ function IcpButton() {
   }, [open]);
   const icp = product?.icp;
   if (!icp || (!icp.headline && !(icp.profile || []).length)) return null;
+  const pill = icpPillText(icp);
   return (
     <div style={{ display: "inline-flex" }}>
-      <button onClick={() => setOpen(!open)} title="Nosso ICP · quem a gente caça" style={{
-        height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)",
-        background: open ? "var(--accent-soft)" : "var(--bg-1)", boxShadow: "var(--shadow-1)",
-        color: open ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
-      }}>
-        ICP
+      <button onClick={() => setOpen(!open)} className="icp-pill" title={icp.headline || "Nosso ICP · quem a gente caça"}>
+        <span style={{ fontWeight: 800, letterSpacing: "0.04em" }}>ICP</span>
+        {pill && <span className="hide-mobile" style={{ fontWeight: 600, opacity: 0.95 }}>{pill}</span>}
       </button>
       {open && (
         <>
