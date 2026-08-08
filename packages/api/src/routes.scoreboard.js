@@ -323,9 +323,12 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       const wonMineLeads = [...winMineAt.keys()].map((id) => leadById.get(id)).filter(Boolean);
       const wonMine = wonMineLeads.length;
       const revenueMine = round2(wonMineLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0));
-      // Taxa de agendamento = das pessoas que ele contatou, quantas viraram call
-      // (orgânico ÷ orgânico — o histórico só entra no COUNT, não na taxa).
-      const bookingRate = contactedOrganic > 0 ? round2((callsBookedOrganic / contactedOrganic) * 100) : null;
+      // Taxa de agendamento em COORTE (régua #650): das leads DA JANELA cujo 1º
+      // contato foi dele, quantas viraram call. Workload (lead antigo tocado
+      // pela nutrição) segue no COUNT, mas não afunda mais a taxa.
+      const cohortContactedMine = leads.filter((l) => inWin(l.createdAt) && contact.authorOf?.get(l.id) === uid).length;
+      const bookedCohortMine = booked.filter((l) => inWin(l.createdAt)).length;
+      const bookingRate = cohortContactedMine > 0 ? round2((bookedCohortMine / cohortContactedMine) * 100) : null;
       // Comparecimento = das que JÁ deveriam ter acontecido (realizadas + não
       // compareceram), quantas aconteceram — exclui as calls FUTURAS (Leo,
       // 25/07). Pro SDR único é o MESMO número do funil (safra do time +
@@ -544,6 +547,11 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     // sobre 121 leads lia como bug — o workload segue no tile/tooltip). O ajuste
     // pré-cockpit entra igual ao de leads: o histórico é funil de coorte.
     const cohortContactedN = leads.filter((l) => inWin(l.createdAt) && contact.leadIds.has(l.id)).length + adjN("contacted");
+    // Calls da coorte: das agendadas na janela, as de lead que ENTROU nela —
+    // numerador da taxa de agendamento em coorte (workload inflado pela
+    // nutrição em massa afundava a taxa: 30÷250 = 12% "vermelho" com o time
+    // batendo 30÷97 = 31% na safra real).
+    const bookedCohortN = teamBooked.filter((l) => inWin(l.createdAt)).length + adjN("booked");
     const bookedN = teamBooked.length + adjN("booked");
     const shownN = teamOutcome.shown + adjN("shown");
     // Não compareceram (call vencida sem virar call real) e a realizar (call
@@ -567,8 +575,10 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       // foram alcançados) — nunca passa de 100%. NÃO é contacted÷leadsNew, que
       // misturava workload (lead antigo + histórico) com coorte e dava 126%.
       contactRate: teamContactRate,
-      // Taxa de agendamento = calls agendadas ÷ leads contatados (workload).
-      bookingRate: contactedN > 0 ? round2((bookedN / contactedN) * 100) : null,
+      // Taxa de agendamento em COORTE encadeada (mesma régua do funil #650):
+      // das leads da janela alcançadas, quantas marcaram call.
+      bookingRate: cohortContactedN > 0 ? round2((bookedCohortN / cohortContactedN) * 100) : null,
+      bookedCohort: bookedCohortN,         // calls marcadas de leads DA janela — hover do funil
       shown: shownN,
       noShow: noShowN,       // não compareceram (call vencida sem acontecer) — o gap real
       pending: pendingN,     // agendadas pro futuro (ainda vão acontecer)

@@ -264,7 +264,9 @@ export function contactAttribution({ leads, actsOf, waMessages, saas, inWin, hum
   // `firstAt` = leadId → quando foi o 1º contato humano (alimenta o SLA de 1º
   // toque: minutos entre o cadastro e a resposta do time).
   const firstAt = new Map([...first].map(([id, v]) => [id, v.at]));
-  return { leadIds: new Set(first.keys()), firstAt, byAuthor, automationReached: autoReached.size };
+  // `authorOf` = leadId → autor creditado (base das taxas por pessoa em coorte).
+  const authorOf = new Map([...first].map(([id, v]) => [id, v.author]));
+  return { leadIds: new Set(first.keys()), firstAt, byAuthor, authorOf, automationReached: autoReached.size };
 }
 
 export function funnelCounts(product, { leads, actsOf, inWin, winLeadsIn, adjust, waContactedIds } = {}) {

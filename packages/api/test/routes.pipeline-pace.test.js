@@ -329,55 +329,91 @@ test("passou de 200%: não há teto acima, o pace para de cobrar", async () => {
   assert.equal(c.superMetas.every((s) => s.hit), true);
 });
 
-// ── Coorte das taxas: mês fechado anterior, desfechos até hoje (Leo, 08/08) ──
-// Com amostra decente no mês fechado (20+ leads e 1+ ganho), as taxas da cadeia
-// vêm da coorte DELE — madura e estável — e não da janela móvel de 30 dias.
-test("taxas vêm da coorte do mês fechado: desfecho de agosto conta, lead de agosto não, paceAdjust fica fora", async () => {
-  const AGO = new Date("2026-08-10T15:00:00.000Z"); // 12h em Brasília, segunda
-  const { app, repo } = await build({ paceAdjust: { leads: 80, contacted: 10 } }, AGO);
+// ── Taxas da cadeia: o FUNIL do mês fechado anterior (Leo, 08/08) ────────────
+// "o correto é o funil": as taxas que desdobram a meta são as MESMAS contas do
+// funil da Visão geral filtrada no mês passado (bloco team do scoreboard).
+// O fixture monta julho inteiro e olha de agosto.
+const AGO = new Date("2026-08-10T15:00:00.000Z"); // 12h em Brasília, segunda
 
-  // 20 leads criados em JULHO: 16 contatados, 8 agendaram (1 já em agosto),
-  // 6 compareceram, 2 fecharam (1 fechou em agosto — desfecho conta na coorte).
-  //   jl1..jl2 Ganho · jl3..jl6 Proposta (compareceu) · jl7..jl8 furo · resto parado
+// Julho completo: 20 leads entraram; 16 contatados EM julho (jl17 só foi tocado
+// em agosto, fora do funil de julho); jn1 entrou em junho e foi trabalhado em
+// julho (o workload conta ele, a cobertura não); 8 calls com data em julho
+// (jl1..jl8): 2 ganhas (wonAt em julho), 4 avançaram (Proposta), 2 furaram.
+async function seedFunilJulho(repo) {
   for (let i = 1; i <= 20; i++) {
     const dia = String(i).padStart(2, "0");
     const stage = i <= 2 ? "Ganho" : i <= 6 ? "Proposta" : i <= 8 ? "Perdido" : "Novo lead";
     await repo.create("leads", {
       id: `jl${i}`, saas: "leverads", stage,
       createdAt: `2026-07-${dia}T12:00:00.000Z`,
-      ...(i <= 2 ? { amount: 6000, wonAt: i === 1 ? "2026-07-20T12:00:00.000Z" : "2026-08-04T12:00:00.000Z" } : {}),
+      ...(i <= 8 ? { callAt: `2026-07-${String(i + 10).padStart(2, "0")}T15:00:00.000Z` } : {}),
+      ...(i <= 2 ? { amount: 6000, wonAt: i === 1 ? "2026-07-20T12:00:00.000Z" : "2026-07-28T12:00:00.000Z" } : {}),
       ...(i === 7 || i === 8 ? { lostReason: "nao_compareceu" } : {}),
     });
     if (i <= 16) await repo.create("activities", { id: `t${i}`, saas: "leverads", lead: `jl${i}`, type: "whatsapp", author: "sdr", at: `2026-07-${dia}T13:00:00.000Z` });
-    if (i <= 8) await repo.create("activities", {
-      id: `b${i}`, saas: "leverads", lead: `jl${i}`, type: "stage",
-      meta: { from: "Novo lead", to: "Call agendada" },
-      // jl3 agendou só em AGOSTO: sucesso da coorte de julho mesmo assim.
-      at: i === 3 ? "2026-08-05T14:00:00.000Z" : `2026-07-${dia}T14:00:00.000Z`,
-    });
   }
-  // Fora da coorte: lead de junho e leads de agosto (contatados) não entram.
-  await repo.create("leads", { id: "jn1", saas: "leverads", stage: "Novo lead", createdAt: "2026-06-15T12:00:00.000Z" });
-  for (let i = 1; i <= 3; i++) {
-    await repo.create("leads", { id: `al${i}`, saas: "leverads", stage: "Novo lead", createdAt: "2026-08-08T12:00:00.000Z" });
-    await repo.create("activities", { id: `ta${i}`, saas: "leverads", lead: `al${i}`, type: "whatsapp", author: "sdr", at: "2026-08-08T13:00:00.000Z" });
-  }
+  await repo.create("activities", { id: "t17ago", saas: "leverads", lead: "jl17", type: "whatsapp", author: "sdr", at: "2026-08-03T13:00:00.000Z" });
+  await repo.create("leads", { id: "jn1", saas: "leverads", stage: "Qualificando", createdAt: "2026-06-15T12:00:00.000Z" });
+  await repo.create("activities", { id: "tjn1", saas: "leverads", lead: "jn1", type: "whatsapp", author: "sdr", at: "2026-07-05T13:00:00.000Z" });
+}
 
+test("taxas da cadeia = funil do mês fechado (mesmas contas da Visão geral filtrada no mês)", async () => {
+  const { app, repo } = await build({}, AGO);
+  await seedFunilJulho(repo);
   const r = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
   assert.deepEqual(r.rateWindow, { mode: "month", month: "2026-07", since: "2026-07-01", until: "2026-07-31" });
+  // cobertura da coorte: dos 20 que entraram em julho, 16 alcançados EM julho
   assert.deepEqual(r.conversions.contactRate, { value: 0.8, source: "history", numerator: 16, denominator: 20 });
+  // coorte encadeada (régua #650): das 16 alcançadas DA COORTE, 8 marcadas —
+  // jn1 (junho, trabalhado em julho) é workload e fica FORA da taxa
   assert.deepEqual(r.conversions.bookingRate, { value: 0.5, source: "history", numerator: 8, denominator: 16 });
+  // devidas = realizadas + furos: 6 de 8 (as 2 ganhas + 4 que avançaram)
   assert.deepEqual(r.conversions.showRate, { value: 0.75, source: "history", numerator: 6, denominator: 8 });
-  assert.equal(r.conversions.closeRate.value, 0.3333); // 2 ÷ 6 compareceram
-  // Ponta a ponta 2/20 = 10% ÷ upstream 0,8×0,5×0,75 = calibrado em 33,33%
-  assert.deepEqual(r.conversions.closeRateEffective, { value: 0.3333, source: "calibrated" });
-  // paceAdjust é história PRÉ-cockpit: não entra na coorte do mês fechado.
-  assert.equal(r.paceAdjust, null);
+  // ganhos com wonAt em julho ÷ realizadas, SEM calibração no modo mês
+  assert.deepEqual(r.conversions.closeRate, { value: 0.3333, source: "history", numerator: 2, denominator: 6 });
+  assert.deepEqual(r.conversions.closeRateEffective, { value: 0.3333, source: "history" });
   await app.close();
 });
 
+test("cadeia e Visão geral batem: pace mês fechado = funil do scoreboard no mesmo mês", async () => {
+  const { app, repo } = await build({}, AGO);
+  await seedFunilJulho(repo);
+  const pace = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
+  const sb = (await app.inject({ url: "/api/scoreboard/leverads?since=2026-07-01&until=2026-07-31" })).json();
+  const pctOf = (v) => Math.round(v * 10000) / 100; // fração → % (régua do placar)
+  assert.equal(pctOf(pace.conversions.contactRate.value), sb.team.contactRate);
+  assert.equal(pctOf(pace.conversions.bookingRate.value), sb.team.bookingRate);
+  assert.equal(pctOf(pace.conversions.showRate.value), sb.team.showRate);
+  assert.equal(pctOf(pace.conversions.closeRateEffective.value), sb.team.closeRatePeriod);
+  assert.equal(pace.conversions.bookingRate.numerator, sb.team.bookedCohort);
+  assert.equal(pace.conversions.bookingRate.denominator, sb.team.contactedCohort);
+  assert.equal(pace.conversions.closeRate.numerator, sb.team.won);
+  assert.equal(pace.conversions.closeRate.denominator, sb.team.shown);
+  await app.close();
+});
+
+test("histórico pré-cockpit entra no funil do mês só quando a janela alcança a época", async () => {
+  // com .before depois do dia 1º: julho alcança a época → histórico soma nos volumes
+  const on = await build({ paceAdjust: { contacted: 80, booked: 10, shown: 10, before: "2026-07-08" } }, AGO);
+  await seedFunilJulho(on.repo);
+  const r1 = (await on.app.inject({ url: "/api/pipeline-pace/leverads" })).json();
+  assert.deepEqual(r1.paceAdjust, { contacted: 80, booked: 10, shown: 10 });
+  // coorte + histórico: (8+10) marcadas ÷ (16+80) alcançadas — o jn1 (workload) fora
+  assert.deepEqual(r1.conversions.bookingRate, { value: 0.1875, source: "history", numerator: 18, denominator: 96 });
+  assert.equal(r1.conversions.showRate.value, 0.8889); // 16 de 18 devidas (histórico não tem furo)
+  assert.equal(r1.conversions.contactRate.value, 0.8); // cobertura nunca usa histórico
+  await on.app.close();
+  // sem .before: época = 1º registro de atividade (01/07); julho não começa
+  // antes dela → histórico fica fora
+  const off = await build({ paceAdjust: { contacted: 80, booked: 10, shown: 10 } }, AGO);
+  await seedFunilJulho(off.repo);
+  const r2 = (await off.app.inject({ url: "/api/pipeline-pace/leverads" })).json();
+  assert.equal(r2.paceAdjust, null);
+  assert.equal(r2.conversions.bookingRate.denominator, 16);
+  await off.app.close();
+});
+
 test("mês fechado sem amostra (menos de 20 leads) cai nos 30 dias móveis", async () => {
-  const AGO = new Date("2026-08-10T15:00:00.000Z");
   const { app, repo } = await build({}, AGO);
   // Julho tem só 5 leads (1 até fechou): amostra pequena demais pra virar régua.
   for (let i = 1; i <= 5; i++) {
