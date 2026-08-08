@@ -190,7 +190,7 @@ export function FeedbackWidget({ screenLabel }) {
             boxShadow: "var(--shadow-pop)", color: "var(--fg-2)",
             fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", cursor: "pointer",
           }}>
-          Reporte um bug ou uma melhoria
+          Reportar um bug/melhoria
           {/* rabinho do balão apontando pro botão */}
           <span style={{
             position: "absolute", right: -4, top: "50%", width: 8, height: 8,
