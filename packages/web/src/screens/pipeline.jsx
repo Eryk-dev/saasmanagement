@@ -931,8 +931,9 @@ function EquationArrow({ label }) {
   );
 }
 
-// Probabilidade de um lead na etapa virar ganho, compondo as taxas reais dos
-// últimos 30 dias (contato → agendamento → comparecimento → fechamento).
+// Probabilidade de um lead na etapa virar ganho, compondo as taxas reais da
+// janela do funil (coorte do último mês fechado; fallback 30d móveis) —
+// contato → agendamento → comparecimento → fechamento.
 // O fechamento usa a taxa EFETIVA (calibrada pela ponta a ponta real quando a
 // amostra deixa, vide routes.pipeline-pace.js) — sem isso o produto das taxas
 // truncadas de janela subestimava o funil em 2-3x.
@@ -1154,8 +1155,12 @@ function GoalReversePlan({ data, s, leads }) {
   const plan = data.plan || {};
   const money = window.fmt.money;
   const perDay = (n) => (n == null || g.daysLeft <= 0 ? null : n / g.daysLeft);
+  // Janela das taxas no rótulo: "real jul · 12/44" (mês fechado) ou "real 30d".
+  const rateJanela = data.rateWindow?.mode === "month"
+    ? new Date(`${data.rateWindow.month}-15T12:00:00`).toLocaleDateString("pt-BR", { month: "short" }).replace(".", "")
+    : "30d";
   const sourceLabel = (rate) => rate.source === "history"
-    ? `real 30d · ${rate.numerator}/${rate.denominator}`
+    ? `real ${rateJanela} · ${rate.numerator}/${rate.denominator}`
     : rate.source === "goal" ? "meta configurada" : "benchmark";
   const ticketSource = {
     initial_payments: "primeiras faturas pagas",
