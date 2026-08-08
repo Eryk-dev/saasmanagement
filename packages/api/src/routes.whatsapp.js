@@ -5,6 +5,7 @@ import { makeWhatsapp } from "./whatsapp.js";
 import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId, setLeadWhatsappOptOut, waInsights, waFormEngagement, findLeadByPhone, findThreadByPhone, linkThreadToLead } from "./wa-store.js";
 import { applyHealthEvent, getWaHealth, waHealthSummary, recordWebhookDelivery, resolveWabaId } from "./wa-health.js";
 import { runInboundCallFlow, startCallFlow, openAlerts, closeThreadAlerts, parsePermissionReply, greetingFor } from "./wa-call-flow.js";
+import { runWaAutomations } from "./wa-automations.js";
 import { transcriber as defaultTranscriber } from "./transcribe.js";
 import { formatSummaryText } from "./call-summaries.js";
 import { logActivity, onActivityCreated } from "./lead-flow.js";
@@ -177,6 +178,19 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
               if (stored) {
                 try { await runInboundCallFlow(repo, wa, { message: m, resolvePhoneId }); }
                 catch (err) { req.log?.warn?.({ err: err.message }, "fluxo de ligação falhou"); }
+                // Automações do Inbox (regras reativas em wa_automations):
+                // rodam DEPOIS do fluxo de ligação; a resposta sai pelo número
+                // da conversa e cai na thread como autor "automacao".
+                try {
+                  await runWaAutomations(repo, {
+                    message: { from: m.from, text: bodyOf(m) },
+                    send: async ({ thread, text }) => {
+                      const phoneId = await resolvePhoneId({ thread });
+                      if (phoneId === null || !wa.configured(phoneId)) return;
+                      await sendAndRecord(repo, wa, { phone: thread.phone || thread.id, text, author: "automacao", phoneId, saas: thread.saas || "" });
+                    },
+                  });
+                } catch (err) { req.log?.warn?.({ err: err.message }, "automação do inbox falhou"); }
               }
             }
             for (const st of v.statuses || []) {
