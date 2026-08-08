@@ -13,7 +13,7 @@ import { compGoalFor, compLevelOf } from "./comp-plan.js";
 import { TEAM_METRICS, META_CATALOG, deriveGoalsFromPace } from "./routes.metas.js";
 import { RATE_BENCHMARKS, computePipelinePace } from "./routes.pipeline-pace.js";
 import {
-  DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead,
+  DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead, isWonLead,
   callOutcome as coreCallOutcome, callCohortIn,
   winsIn, customerStartMap, contactAttribution, isReferralLead,
   classCounts, cashBucketsIn,
@@ -96,9 +96,11 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     // meta do mês reajusta a régua de todo mundo sozinho — inclusive quando o
     // mês vira e entra o alvo agendado pro mês novo.
     let derivado = {};
+    let derivedChain = null; // a cadeia inteira (leads→contatos→calls→ganhos) — vira team.monthTargets
     try {
       const d = deriveGoalsFromPace(await computePipelinePace(repo, product), { contractsTarget: product.monthlyContractsTarget });
       derivado = Object.fromEntries((d?.goals || []).map((g) => [`${g.role}.${g.metric}`, Number(g.target)]));
+      derivedChain = d;
     } catch { derivado = {}; }
 
     const goalFor = (userId, role, metric) => {
@@ -367,6 +369,24 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     // (calls > 0 || won > 0) já esconde quem não tem movimento.
     const closerRole = new Set(withRole("closer")); // membro do papel closer sempre aparece (pra ver a meta)
     const closerIds = [...new Set([...closerRole, ...leads.map((l) => l.closer).filter(Boolean)])];
+    // ── Follow-up do closer (submetas da Visão geral) ─────────────────────────
+    // "Follow-ups em dia" = estado ATUAL: leads dele parados em etapa de kind
+    // followup cujo GPS (nextActionAt, a cadência que o lead-flow materializa)
+    // ainda não venceu — sem GPS conta como atrasado (o "sem próximo passo").
+    // "Resgate" = dos leads que CAÍRAM em follow-up na janela (transição de
+    // etapa nas activities, ou o card parado lá com stageSince na janela),
+    // quantos viraram ganho (régua oficial isWonLead) — não importa quando.
+    const nowMs = now().getTime();
+    const followupCohortOf = (mine) => {
+      const ids = new Set();
+      for (const l of mine) {
+        if (kindOf(product, l.stage) === "followup" && inWin(l.stageSince)) { ids.add(l.id); continue; }
+        for (const a of actsByLead.get(l.id) || []) {
+          if (a.type === "stage" && inWin(a.at) && kindOf(product, a.meta?.to) === "followup") { ids.add(l.id); break; }
+        }
+      }
+      return [...ids].map((id) => leadById.get(id)).filter(Boolean);
+    };
     const closer = closerIds.map((uid) => {
       const mine = leads.filter((l) => l.closer === uid);
       // Calls agendadas (pela data da call) e quantas ACONTECERAM (compareceram):
@@ -398,6 +418,11 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       // pelo MESMO callsShown que aparece — inclui o histórico, que não tem
       // ganho, então a taxa reflete o recorde real sobre TODAS as calls feitas.
       const conversao = callsShown > 0 ? round2((wonN / callsShown) * 100) : null;
+      // Follow-up: fila atual em dia + resgate da janela (réguas no bloco acima).
+      const fuNow = mine.filter((l) => kindOf(product, l.stage) === "followup");
+      const followupOnTime = fuNow.filter((l) => l.nextActionAt && new Date(l.nextActionAt).getTime() >= nowMs).length;
+      const fuCohort = followupCohortOf(mine);
+      const followupWon = fuCohort.filter((l) => isWonLead(product, l)).length;
       return {
         user: uid, name: nameOf(uid),
         targets: personTargets(uid, "closer", {
@@ -413,7 +438,12 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
         ticket: wonN > 0 ? round2(revenue / wonN) : null,
         cycleDays: median(cycle),
         lossReasons,
-        goals: { ...goalMap(uid, "closer", ["won", "revenue", "conversaoCall", "ticket"]), winRateCall: bookedWinGoal(uid, "closer") },
+        followupNow: fuNow.length,           // leads dele em follow-up agora
+        followupOnTime,                      // desses, com o GPS em dia
+        followupCohort: fuCohort.length,     // caíram em follow-up na janela
+        followupWon,                         // desses, resgatados pra ganho
+        followupWinRate: fuCohort.length > 0 ? round2((followupWon / fuCohort.length) * 100) : null,
+        goals: { ...goalMap(uid, "closer", ["won", "revenue", "conversaoCall", "ticket", "followupWinRate", "callsShown"]), winRateCall: bookedWinGoal(uid, "closer") },
       };
     }).filter((p) => closerRole.has(p.user) || p.calls > 0 || p.won > 0) // closer legado (ex.: CS que fechou) só com movimento; closer real sempre
       .sort((a, b) => b.revenue - a.revenue);
@@ -616,12 +646,24 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     //    venda parada há 14+ dias sem mudar de etapa — candidata a reativar,
     //    reciclar pra nutrição ou desqualificar. Independe da janela do topo.
     const STALL_KINDS = new Set(["qualificacao", "call", "proposta", "followup"]);
-    const nowMs = now().getTime();
     const stalledLeads = leads
       .filter((l) => STALL_KINDS.has(kindOf(product, l.stage)) && l.stageSince && (nowMs - new Date(l.stageSince).getTime()) / DAY > 14)
       .map((l) => ({ id: l.id, name: l.name || l.nome || l.id, stage: l.stage, days: Math.floor((nowMs - new Date(l.stageSince).getTime()) / DAY) }))
       .sort((a, b) => b.days - a.days);
     team.stalled = { count: stalledLeads.length, items: stalledLeads.slice(0, 20) };
+    // Metas do MÊS por etapa do funil (a cadeia derivada da meta da empresa,
+    // deriveGoalsFromPace) — o "atual vs meta" do Funil do período na Visão
+    // geral. A tela reescala pros dias úteis da janela (base 21,75/mês).
+    team.monthTargets = derivedChain ? {
+      leads: derivedChain.leads ?? null,
+      contacts: derivedChain.contacts ?? null,
+      callsBooked: derivedChain.callsBooked ?? null,
+      callsShown: derivedChain.callsShown ?? null,
+      won: derivedChain.won ?? null,
+      revenue: derivedChain.target ?? null,
+      wonSource: derivedChain.wonSource || "",  // company = meta de contratos digitada
+      blockedBy: derivedChain.blockedBy || null,
+    } : null;
 
     return { saas: product.id, since, until, sdr, closer, cs, social, team };
   });

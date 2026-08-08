@@ -200,14 +200,22 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   // Entrada média por nova venda: 1ª fatura paga de cada assinatura/cliente.
   // Sem esse vínculo, degrada pra qualquer fatura paga recente; depois TCV ganho
   // e, por último, ticket configurado — a fonte volta explícita pra interface.
+  //
+  // CONTA GRANDE (customer.keyAccount, ex.: Galante) fica FORA do ticket médio:
+  // um fechamento de R$ 120 mil no meio de vendas de R$ 3-7 mil quebra a cadeia
+  // inteira (meta de contratos, calls, leads). O dinheiro dela segue contando em
+  // caixa e vendido; só as MÉDIAS e as metas derivadas ignoram.
+  const keyCustomerIds = new Set(customers.filter((c) => !!c.keyAccount).map((c) => c.id));
+  const isKeyInvoice = (i) => keyCustomerIds.has(i.customer);
+  const isKeyLead = (l) => (l.customerId && keyCustomerIds.has(l.customerId));
   const firstPaid = new Map();
   for (const inv of [...paid].sort((a, b) => String(a.paidAt).localeCompare(String(b.paidAt)))) {
     const key = inv.subscription ? `sub:${inv.subscription}` : inv.customer ? `customer:${inv.customer}` : "";
     if (key && !firstPaid.has(key)) firstPaid.set(key, inv);
   }
-  const initialRecent = [...firstPaid.values()].filter((i) => inRange(i.paidAt, since90));
-  const paidRecent = paid.filter((i) => inRange(i.paidAt, since90));
-  const wonRecent90 = winLeadsIn((iso) => inRange(iso, since90));
+  const initialRecent = [...firstPaid.values()].filter((i) => inRange(i.paidAt, since90) && !isKeyInvoice(i));
+  const paidRecent = paid.filter((i) => inRange(i.paidAt, since90) && !isKeyInvoice(i));
+  const wonRecent90 = winLeadsIn((iso) => inRange(iso, since90)).filter((l) => !isKeyLead(l));
   const configuredTicket = goals.find((g) => g.scope === "role" && g.key === "closer" && g.metric === "ticket");
   let averageEntry = averageAmount(initialRecent);
   let averageEntrySource = averageEntry != null ? "initial_payments" : "";
@@ -320,6 +328,15 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     pct: Math.round(m * 100), mult: m, value: round2(target * m), hit: sold >= target * m,
   }));
 
+  // ── Meta de CONTRATOS do mês (a 2ª régua da Meta do mês na Visão geral) ────
+  // A meta digitada da empresa (monthlyContractsTarget, tela Metas) vence; sem
+  // ela, deriva de venda ÷ ticket — o MESMO averageEntry sem contas grandes da
+  // cadeia, então as duas telas nunca divergem. Vendido = nº de fechamentos do
+  // mês (contagem; conta grande conta 1 contrato, só sai das médias).
+  const contractsTarget = Number(product.monthlyContractsTarget) > 0
+    ? Math.round(Number(product.monthlyContractsTarget))
+    : (averageEntry > 0 ? Math.ceil(target / averageEntry) : null);
+
   const throughRate = (amount, rate) => amount === 0 ? 0 : amount != null && rate > 0 ? Math.ceil(amount / rate) : null;
   const winsRemaining = chaseGap === 0 ? 0 : averageEntry > 0 ? Math.ceil(chaseGap / averageEntry) : null;
   const callsRemaining = throughRate(winsRemaining, conversions.closeRateEffective.value);
@@ -372,6 +389,22 @@ export async function computePipelinePace(repo, product, now = new Date()) {
       elapsedBusinessDays: calendar.elapsed,
       remainingBusinessDays: calendar.remaining,
     },
+    // A 2ª régua da Meta do mês: CONTRATOS fechados vs. meta (contagem).
+    contracts: (() => {
+      const soldN = tcvMonthLeads.length;
+      const expected = contractsTarget != null ? round2(contractsTarget * (calendar.elapsed / Math.max(1, calendar.total))) : null;
+      return {
+        target: contractsTarget,
+        targetSource: Number(product.monthlyContractsTarget) > 0 ? "company" : (contractsTarget != null ? "ticket" : ""),
+        sold: soldN,
+        soldToday: todayWon,
+        gap: contractsTarget != null ? Math.max(0, contractsTarget - soldN) : null,
+        progress: contractsTarget > 0 ? round4(soldN / contractsTarget) : null,
+        expectedToDate: expected,
+        expectedProgress,
+        status: expected == null ? null : soldN >= expected ? "ahead" : soldN >= expected * 0.95 ? "attention" : "behind",
+      };
+    })(),
     // Leitura de CAIXA (faturas pagas) — informativa; o fluxo detalhado e o
     // dinheiro futuro moram na aba Clientes.
     cash: {

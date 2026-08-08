@@ -1228,7 +1228,28 @@ export async function backfillProposalCatalog(repo) {
   return n;
 }
 
+// ── Conta grande (keyAccount) ───────────────────────────────────────────────
+// Cliente fora da régua (ex.: Galante, pacote bespoke de R$ 120 mil no meio de
+// vendas de R$ 3-7 mil): o flag `keyAccount` tira ele do ticket médio e das
+// metas derivadas por contrato (pace/Metas/Visão geral) sem tirar o dinheiro
+// do caixa/vendido. Carimba o Galante uma vez; clientes futuros são marcados
+// na edição do cliente (campo "Conta grande"). Idempotente: já marcado (ou
+// desmarcado DE PROPÓSITO — campo presente com valor falso) não mexe.
+export async function ensureKeyAccountGalante(repo) {
+  const customers = await repo.list("customers");
+  const galante = customers.find((c) => c.saas === "leverads" && /galante/i.test(String(c.name || "")));
+  if (!galante || galante.keyAccount !== undefined) return false;
+  await repo.update("customers", galante.id, { keyAccount: true });
+  return true;
+}
+
 export async function runStartupMigrations(repo) {
+  try {
+    const changed = await ensureKeyAccountGalante(repo);
+    if (changed) console.log("[migration] Galante marcado como conta grande (keyAccount) — fora das médias");
+  } catch (err) {
+    console.error("[migration] ensureKeyAccountGalante falhou:", err?.message || err);
+  }
   try {
     const n = await migrateContractFillTokens(repo);
     if (n) console.log(`[migration] modelos de contrato tokenizados pro preenchimento na tela (${n} modelos)`);

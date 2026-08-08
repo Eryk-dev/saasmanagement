@@ -62,6 +62,10 @@ export const META_CATALOG = [
       // colore. A conversão sobre as AGENDADAS não é campo: é conta
       // (comparecimento × esta), senão dá pra configurar duas que se contradizem.
       { metric: "conversaoCall", kind: "rate", label: "Call → ganho", unit: "%", hint: "das calls que aconteceram", default: pct(RATE_BENCHMARKS.closeRate) },
+      // Resgate de follow-up: dos leads que caíram em follow-up na janela,
+      // quantos o closer trouxe de volta pra ganho. É a métrica que separa o
+      // closer que só colhe call quente do que trabalha a fila (Visão geral).
+      { metric: "followupWinRate", kind: "rate", label: "Resgate de follow-up", unit: "%", hint: "dos que caíram em follow-up, quantos fecham", default: 15 },
       // Volume de call do closer: as que ACONTECERAM (o no-show é cobrado no
       // comparecimento do SDR). Fica logo abaixo da taxa porque é o denominador
       // dela — as duas juntas explicam os ganhos.
