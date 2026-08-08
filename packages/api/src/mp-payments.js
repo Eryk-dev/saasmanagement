@@ -247,6 +247,21 @@ export async function runMpSync(repo, mp, { discord, log, now = new Date(), back
     if (!results.length || (total && offset >= total)) break;
   }
 
+  // Retro-enriquecimento: docs do espelho que ficaram sem nome (ingeridos antes
+  // do fallback existir, ou já fora da janela deslizante do search) ganham o
+  // GET por id na mesma cota — cada um tenta uma vez (payerDetail).
+  if (enriched < enrichLimit) {
+    const stale = (await repo.list("mp_payments")).filter((d) => !d.payerName && !d.payerDetail);
+    for (const d of stale) {
+      if (enriched >= enrichLimit) break;
+      try {
+        const full = await mp.getPayment(d.mpId);
+        enriched++;
+        await ingestMpPayment(repo, full, { discord, log, extra: { payerDetail: true } });
+      } catch { /* tenta no próximo tick */ }
+    }
+  }
+
   const stamp = { id: "mp_sync", lastAt: now.toISOString(), lastSeen: seen, updatedAt: now.toISOString() };
   if (cfg) await repo.update("app_config", "mp_sync", stamp);
   else await repo.create("app_config", stamp);

@@ -285,6 +285,28 @@ test("runMpSync: search sem nome de pagador busca o doc completo UMA vez (payerD
   assert.equal(fakeFetch.calls.filter((c) => c.key === "GET /v1/payments/4001").length, 1);
 });
 
+test("runMpSync: doc antigo do espelho sem nome (fora da janela do search) é retro-enriquecido", async () => {
+  const repo = makeMemRepo();
+  await seedCustomer(repo);
+  // Espelho pré-fix: sem nome, com a máscara crua guardada, fora da janela do search.
+  await repo.create("mp_payments", { id: "mpp_5001", mpId: "5001", status: "approved", amount: 325, payerName: "", payerEmail: "xxxxxxxxxxx", dateCreated: "2026-06-01T10:00:00.000Z" });
+
+  const { mp, fakeFetch } = buildApp(repo, {
+    "GET /v1/payments/search": { paging: { total: 0 }, results: [] },
+    "GET /v1/payments/5001": mpPmt({ id: 5001, transaction_amount: 325 }),
+  });
+
+  await runMpSync(repo, mp);
+  const doc = await repo.get("mp_payments", "mpp_5001");
+  assert.equal(doc.payerName, "Cliente Real");
+  assert.equal(doc.payerEmail, "payer@x.com"); // máscara antiga substituída pelo dado real
+  assert.equal(doc.payerDetail, true);
+
+  // Próxima passada não re-busca (payerDetail carimbado).
+  await runMpSync(repo, mp);
+  assert.equal(fakeFetch.calls.filter((c) => c.key === "GET /v1/payments/5001").length, 1);
+});
+
 test("GET /api/mp/payments: filtro por saas mantém os não identificados visíveis", async () => {
   const repo = makeMemRepo();
   await seedCustomer(repo);
