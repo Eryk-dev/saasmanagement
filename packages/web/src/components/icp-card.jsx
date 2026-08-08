@@ -13,13 +13,11 @@ import { GRADE_GRID, GRADE_STYLE, GRADE_ACCOUNTS, GRADE_LISTINGS } from "../lib/
 // deploy, e cada produto do portfólio tem o seu (sem ICP definido, o cartão
 // não aparece — UniqueKids só ganha o dela quando alguém escrever).
 
-const kicker = { fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" };
-
 function ListCol({ title, tone, mark, items }) {
   if (!items?.length) return null;
   return (
     <div style={{ flex: "1 1 260px", minWidth: 240 }}>
-      <div className="mono" style={{ ...kicker, color: tone, marginBottom: 6 }}>{title}</div>
+      <div className="kicker" style={{ color: tone, marginBottom: 6 }}>{title}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
         {items.map((it, i) => (
           <div key={i} style={{ display: "flex", gap: 7, fontSize: 12.5, lineHeight: 1.45 }}>
@@ -38,7 +36,7 @@ function ListCol({ title, tone, mark, items }) {
 function GradeCol() {
   return (
     <div style={{ flex: "1 1 260px", minWidth: 240, maxWidth: 360 }}>
-      <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 6 }}>Nota do lead · contas × anúncios</div>
+      <div className="kicker accent" style={{ marginBottom: 6 }}>Nota do lead · contas × anúncios</div>
       <div className="mono" style={{ fontSize: 8.5, color: "var(--fg-4)", textAlign: "center", marginBottom: 3, paddingLeft: 34 }}>anúncios na maior conta →</div>
       <div style={{ display: "grid", gridTemplateColumns: "34px repeat(5, 1fr)", gap: 3, alignItems: "center" }}>
         <span />
@@ -66,10 +64,10 @@ export function IcpCard({ compact, grade }) {
   return (
     <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: compact ? "14px 18px" : "16px 24px" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-        <div className="mono" style={{ ...kicker, color: "var(--accent)" }}>Nosso ICP · quem a gente caça</div>
-        {icp.updatedAt && <span className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)" }}>atualizado {icp.updatedAt}</span>}
+        <div className="kicker accent">Nosso ICP · quem a gente caça</div>
+        {icp.updatedAt && <span className="mono dim" style={{ fontSize: 10 }}>atualizado {icp.updatedAt}</span>}
       </div>
-      {icp.headline && <div style={{ fontSize: compact ? 14.5 : 16, fontWeight: 700, letterSpacing: "-0.01em", marginTop: 6 }}>{icp.headline}</div>}
+      {icp.headline && <div className="card-title" style={{ marginTop: 4 }}>{icp.headline}</div>}
       <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 12 }}>
         <ListCol title="Perfil ideal" tone="var(--pos)" mark="✓" items={icp.profile} />
         <ListCol title="Sinais vermelhos" tone="var(--neg)" mark="✕" items={icp.redFlags} />
