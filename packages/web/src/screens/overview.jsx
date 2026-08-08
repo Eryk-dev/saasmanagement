@@ -5,7 +5,7 @@ import { PageHead, Card } from "../components/viz.jsx";
 import { EmptyState, Avatar } from "../atoms.jsx";
 import { stageKind, isRealLead } from "../lib/funnel.js";
 import { bizDay } from "../lib/format.js";
-import { currentUser, isAdminUser, canSeeScreen } from "../lib/users.js";
+import { currentUser, isAdminUser, canSeeScreen, userById } from "../lib/users.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { buildPeople, roleLabel, scaledGoal } from "../components/team-cards.jsx";
 import { usePeriod, businessDaysBetween } from "../components/period-picker.jsx";
@@ -47,6 +47,7 @@ const lvlColor = (lvl, fallback = "var(--fg-1)") => (lvl ? LVL_COLOR[lvl] : fall
 
 function LvlChip({ lvl, label }) {
   if (!lvl) return null;
+  if (lvl === "gold") return <span className="super-chip">✦ {label || "super meta"}</span>;
   const c = LVL_COLOR[lvl];
   return (
     <span style={{ fontSize: 11, fontWeight: 700, color: c, background: `color-mix(in srgb, ${c} 10%, transparent)`, border: `1px solid color-mix(in srgb, ${c} 35%, transparent)`, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap" }}>
@@ -79,7 +80,8 @@ export function Regua({ label, valueText, pct, expectedPct, lvl, chipLabel, titl
         </span>
       </div>
       <div style={{ position: "relative", height: 10, borderRadius: 999, background: "var(--bg-2)" }}>
-        <span style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: `${fill}%`, minWidth: 4, borderRadius: 999, background: lvlColor(lvl, "var(--accent)") }} />
+        <span className={lvl === "gold" ? "super-fill" : undefined}
+          style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: `${fill}%`, minWidth: 4, borderRadius: 999, background: lvlColor(lvl, "var(--accent)") }} />
         {exp != null && (
           <span title="pace: onde a meta deveria estar hoje" style={{ position: "absolute", top: -4, bottom: -4, left: `${exp}%`, width: 2, borderRadius: 1, background: "var(--fg-3)" }}>
             <span style={{ position: "absolute", top: -14, left: "50%", transform: "translateX(-50%)", fontSize: 9.5, color: "var(--fg-4)", letterSpacing: "0.04em" }}>hoje</span>
@@ -205,7 +207,7 @@ function Donut({ label, value, target, isMoney, lvl }) {
       <svg width="74" height="74" viewBox="0 0 74 74" role="img" aria-label={`${label}: ${pct == null ? "sem meta" : Math.round(pct * 100) + "% da meta"}`}>
         <circle cx="37" cy="37" r="30" fill="none" strokeWidth="8" stroke="var(--bg-2)" />
         {pct != null && pct > 0 && (
-          <circle cx="37" cy="37" r="30" fill="none" strokeWidth="8" strokeLinecap="round"
+          <circle className={lvl === "gold" ? "super-ring" : undefined} cx="37" cy="37" r="30" fill="none" strokeWidth="8" strokeLinecap="round"
             stroke={lvlColor(lvl, "var(--accent)")} strokeDasharray={`${dash.toFixed(1)} 188.5`} transform="rotate(-90 37 37)" />
         )}
         <text x="37" y="42" textAnchor="middle" className="tnum" style={{ fontSize: 14, fontWeight: 650, fill: "var(--fg-1)" }}>
@@ -324,11 +326,29 @@ function PersonCard({ p, rank, bizDays, elapsedFrac, onPerson }) {
   );
 }
 
+// Os papéis CONFIGURADOS (Ajustes → Equipe) mandam no CARTÃO (Leo, 08/08): a
+// Manuela é SDR e o Vitor é CS — um fechamento avulso registrado neles não
+// pinta bloco de closer no card (os números seguem valendo no funil/placar).
+// Usuário sem cadastro ou sem nome (id cru de registro antigo) fica fora da
+// parede — não existe card de "us_xxxx".
+const ROLE_BLOCK = { sdr: "sdr", closer: "closer", cs: "integrator", social: "social" };
+function displayPerson(p) {
+  const u = userById(p.user);
+  if (!u || !String(u.name || "").trim()) return null;
+  const roles = u.roles || [];
+  if (!roles.length) return p; // sem etiquetas ainda: mostra tudo
+  const out = { user: p.user, name: p.name };
+  for (const [block, role] of Object.entries(ROLE_BLOCK)) {
+    if (p[block] && roles.includes(role)) out[block] = p[block];
+  }
+  return out.sdr || out.closer || out.cs || out.social ? out : null;
+}
+
 // ── Desempenho do time (ranqueado por % da meta) ─────────────────────────────
 function TeamBoard({ score, win, onPerson }) {
   const elapsedFrac = elapsedFracOf(win);
   const people = useMemo(() => {
-    const list = buildPeople(score);
+    const list = buildPeople(score).map(displayPerson).filter(Boolean);
     const pctOf = (p) => {
       const leg = p.closer || p.sdr;
       if (!leg) return -1; // CS/mídia vão pro fim (sem as duas pernas)
@@ -363,7 +383,8 @@ function StageBox({ nm, value, meta, lvl, title }) {
       <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 650, letterSpacing: "-0.02em" }}>{int(value)}</div>
       <div className="tnum" style={{ fontSize: 11.5, color: "var(--fg-4)", minHeight: 17 }}>{meta != null ? `meta ${int(meta)}` : ""}</div>
       <div style={{ position: "relative", height: 7, borderRadius: 999, background: "var(--bg-2)", marginTop: 8 }}>
-        <span style={{ position: "absolute", top: 0, bottom: 0, left: 0, minWidth: 4, borderRadius: 999, background: lvlColor(lvl, "var(--accent)"), width: `${meta > 0 ? Math.min(100, Math.round(((value || 0) / meta) * 100)) : 100}%` }} />
+        <span className={lvl === "gold" ? "super-fill" : undefined}
+          style={{ position: "absolute", top: 0, bottom: 0, left: 0, minWidth: 4, borderRadius: 999, background: lvlColor(lvl, "var(--accent)"), width: `${meta > 0 ? Math.min(100, Math.round(((value || 0) / meta) * 100)) : 100}%` }} />
       </div>
     </div>
   );
@@ -438,8 +459,8 @@ function FunilPeriodo({ team, win, pLabel }) {
 // ── Tiles pequenos (Aquisição / Carteira) ────────────────────────────────────
 function MiniTile({ label, dot, big, sub, title }) {
   return (
-    <div title={title} style={{ background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "12px 14px", minWidth: 0, cursor: title ? "help" : "default" }}>
-      <div className="kicker" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    <div title={title} style={{ background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "12px 14px", minWidth: 0, cursor: title ? "help" : "default", textAlign: "center" }}>
+      <div className="kicker" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
         {dot && <span style={{ width: 8, height: 8, borderRadius: 3, background: dot, flexShrink: 0 }} />}
         {label}
       </div>
@@ -653,7 +674,8 @@ function OverviewScreen({ onNav }) {
 
   // ── Lente individual: as próprias metas + a meta do mês da empresa ─────────
   if (!gestao) {
-    const minha = buildPeople(score).find((p) => p.user === eu?.id) || null;
+    const bruta = buildPeople(score).find((p) => p.user === eu?.id) || null;
+    const minha = bruta ? displayPerson(bruta) || bruta : null;
     return (
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
         <PageHead title="Suas metas" sub={today} />
