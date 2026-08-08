@@ -5,12 +5,15 @@ import { PageHead, StatTile, Card, Pill, FilterTab, Segmented } from "../compone
 import { useActiveSaas } from "../lib/workspace.js";
 import { EmptyState } from "../atoms.jsx";
 import { FinanceTab } from "./finance.jsx";
-// Financeiro — o dinheiro do produto em duas abas. Pagamentos: o espelho dos
-// pagamentos REAIS do Mercado Pago (quem pagou, quanto, como), casado com
-// clientes e faturas (finance.jsx). Custos: o ledger mensal — Publicidade
-// (ad_insights) e IA (APIs dos provedores, em R$) entram AUTOMÁTICOS; o resto
-// (fixos, ferramentas, pessoal) é lançado à mão. O total dos custos alimenta o
-// "Resultado do mês" da Visão geral.
+import { ResumoTab, ConciliacaoTab, PagarTab, FolhaTab } from "./finance-hub.jsx";
+// Financeiro — o dinheiro do produto num lugar só (modelo Conta Azul):
+//   Resumo (fluxo de caixa + DRE) · Conciliação (espelho MP sem dono) ·
+//   A pagar (contas com vencimento e recorrência) · Folha (por colaborador)
+//   moram em finance-hub.jsx. Pagamentos: o espelho dos pagamentos REAIS do
+//   Mercado Pago casado com clientes e faturas (finance.jsx). Custos: regras e
+//   automáticos por competência — Publicidade (ad_insights) e IA entram
+//   sozinhos, percentuais calculados no servidor; o total alimenta o
+//   "Resultado do mês" da Visão geral.
 
 const { useState, useEffect } = React;
 
@@ -50,7 +53,7 @@ const brl = (n) => `R$ ${(Number(n) || 0).toFixed(2).replace(".", ",")}`;
 
 function ExpensesScreen() {
   const [product] = useActiveSaas();
-  const [tab, setTabState] = useState(() => { try { return localStorage.getItem("cockpit_financeiro_tab") || "pagamentos"; } catch { return "pagamentos"; } }); // persiste
+  const [tab, setTabState] = useState(() => { try { return localStorage.getItem("cockpit_financeiro_tab") || "resumo"; } catch { return "resumo"; } }); // persiste
   const setTab = (t) => { setTabState(t); try { localStorage.setItem("cockpit_financeiro_tab", t); } catch { /* ignore */ } };
   const [month, setMonth] = useState(monthKey(new Date()));
 
@@ -61,19 +64,35 @@ function ExpensesScreen() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Financeiro"
-        sub={tab === "pagamentos"
-          ? "pagamentos da conta Mercado Pago, casados com clientes e faturas"
-          : `${monthLabel(month)} · o total alimenta o “Resultado do mês” da Visão geral`}>
-        <Segmented value={tab} onChange={setTab} options={[{ value: "pagamentos", label: "Pagamentos" }, { value: "custos", label: "Custos" }]} />
-        {tab === "custos" && (
+        sub={{
+          resumo: `${monthLabel(month)} · a foto do mês: fluxo de caixa, DRE e pendências`,
+          conciliacao: "todo pagamento aprovado precisa de dono: cliente vinculado ou motivo",
+          pagar: `${monthLabel(month)} · contas com vencimento, situação e recorrência`,
+          folha: `${monthLabel(month)} · o que foi pago a cada colaborador`,
+          pagamentos: "pagamentos da conta Mercado Pago, casados com clientes e faturas",
+          custos: `${monthLabel(month)} · o total alimenta o “Resultado do mês” da Visão geral`,
+        }[tab] || ""}>
+        <Segmented value={tab} onChange={setTab} options={[
+          { value: "resumo", label: "Resumo" },
+          { value: "conciliacao", label: "Conciliação" },
+          { value: "pagar", label: "A pagar" },
+          { value: "folha", label: "Folha" },
+          { value: "pagamentos", label: "Pagamentos" },
+          { value: "custos", label: "Custos" },
+        ]} />
+        {tab !== "pagamentos" && (
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            {[...lastMonths(3)].reverse().map((mk) => <FilterTab key={mk} active={month === mk} onClick={() => setMonth(mk)}>{shortMonth(mk)}</FilterTab>)}
+            {[...lastMonths(4)].reverse().map((mk) => <FilterTab key={mk} active={month === mk} onClick={() => setMonth(mk)}>{shortMonth(mk)}</FilterTab>)}
           </div>
         )}
       </PageHead>
 
       {/* key={product.id}: trocar de produto remonta a aba — rascunho de custo
           e vínculo em andamento nunca vazam pro SaaS errado. */}
+      {tab === "resumo" && <ResumoTab key={product.id} product={product} month={month} />}
+      {tab === "conciliacao" && <ConciliacaoTab key={product.id} product={product} month={month} />}
+      {tab === "pagar" && <PagarTab key={product.id} product={product} month={month} />}
+      {tab === "folha" && <FolhaTab key={product.id} product={product} month={month} />}
       {tab === "pagamentos" && <FinanceTab key={product.id} product={product} />}
       {tab === "custos" && <CostsTab key={product.id} product={product} month={month} />}
     </div>

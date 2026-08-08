@@ -37,6 +37,7 @@ export const COLLECTIONS = {
   user_assets: [], // foto de perfil (base64, 1 por usuário, servida em /public/users/:id)
   ad_insights: [],
   expenses: [],
+  payables: [], // contas a pagar do Financeiro (modelo Conta Azul): competência, vencimento, situação, favorecido colaborador/fornecedor; recorrente materializa instância por mês (routes.fin.js)
   tasks: [],
   task_boards: [],
   activities: [],

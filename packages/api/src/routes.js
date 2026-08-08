@@ -40,6 +40,7 @@ import { makeMailer } from "./mailer.js";
 import { getWaHealth, waHealthSummary } from "./wa-health.js";
 import { makeAnthropic } from "./anthropic.js";
 import { registerMetricsRoutes } from "./routes.metrics.js";
+import { registerFinRoutes } from "./routes.fin.js";
 import { meta as defaultMetaClient } from "./meta.js";
 import { metaCapi as defaultMetaCapi } from "./meta-capi.js";
 import { discord as defaultDiscord } from "./discord.js";
@@ -110,6 +111,11 @@ export const CREATE_DEFAULTS = {
   // (fixo/ferramenta/pessoal/outros — publicidade e IA entram automáticos).
   // recurring=true vale de `month` em diante, todo mês, até `endMonth` (inclusivo).
   expenses: { month: "", category: "fixo", name: "", amount: 0, recurring: false, endMonth: "" },
+  // Contas a pagar (Financeiro): lançamento com competência (month), vencimento
+  // e situação; favorecido = colaborador (userId → Folha) ou fornecedor (texto).
+  // `recurring: true` = template mensal (o próprio doc é a 1ª ocorrência; os
+  // meses seguintes viram instâncias com templateId — routes.fin.js).
+  payables: { saas: "", description: "", category: "outros", counterpartyType: "fornecedor", userId: "", supplierName: "", amount: 0, month: "", dueDate: "", status: "aberta", paidAt: "", paidVia: "", recurring: false, endMonth: "", templateId: "", notes: "" },
   // Kanban de tarefas do time. `column` = KEY estável da coluna do board (renomear
   // coluna não órfã o card); `assignees` = ids de usuários do time (collection users);
   // comments = [{ id, author, text, at }] — o SPA faz PATCH do array inteiro.
@@ -292,6 +298,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // getWhatsapp é getter: o client só nasce mais abaixo (registerWhatsappRoutes)
   // e o custo de WhatsApp do resumo de despesas resolve na hora do request.
   registerMetricsRoutes(app, repo, { getWhatsapp: () => whatsappClient });
+  registerFinRoutes(app, repo);
   // Métricas reais de funil (conversão/tempo por estágio, motivos de perda, SLA)
   // a partir do histórico de transições da timeline.
   registerFunnelMetricsRoutes(app, repo);
