@@ -1,5 +1,5 @@
 import React from "react";
-import { PageHead, Card, Pill, StatTile } from "../components/viz.jsx";
+import { PageHead, Card, Pill, StatTile, Segmented } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -61,23 +61,30 @@ function CallsScreen({ onOpenLead }) {
   const [data, setData] = useS(null);
   const [err, setErr] = useS(null);
   const [ai, setAi] = useS(null); // null | "loading" | { diagnostico, objecoes } | { error }
-  const [closer, setCloser] = useS(undefined); // undefined = todos os closers
+  // Call de VENDA (lead com closer) ≠ call de QUALIFICAÇÃO do SDR (lead sem
+  // closer): teor diferente, análise separada. O grupo escolhido persiste.
+  const [group, setGroupState] = useS(() => { try { return localStorage.getItem("cockpit_calls_group") || "venda"; } catch { return "venda"; } });
+  const setGroup = (g) => { setGroupState(g); setCloser(undefined); try { localStorage.setItem("cockpit_calls_group", g); } catch { /* ignore */ } };
+  const [closer, setCloser] = useS(undefined); // undefined = todos do grupo
   const [closers, setClosers] = useS([]); // lista persistente pro seletor (não some no loading)
 
-  // Troca de produto zera o filtro de closer.
+  // Troca de produto zera o filtro de pessoa.
   useE(() => { setCloser(undefined); setClosers([]); }, [product?.id]);
 
   useE(() => {
     if (!product?.id) return;
     let alive = true;
     setData(null); setErr(null); setAi(null);
-    api.pitchCalls(product.id, closer).then((d) => {
+    api.pitchCalls(product.id, closer, group).then((d) => {
       if (!alive) return;
       setData(d);
       if (Array.isArray(d.closers)) setClosers(d.closers); // lista completa (não muda com o filtro)
     }).catch((e) => alive && setErr(e.message));
     return () => { alive = false; };
-  }, [product?.id, closer]);
+  }, [product?.id, closer, group]);
+
+  // Pessoas do grupo ativo (a API manda contagem por grupo+pessoa).
+  const groupPeople = closers.filter((p) => (p.group || "venda") === group);
 
   // Diagnóstico da IA: usa o roteiro ATUAL da call (default + override do produto)
   // + o padrão das calls. Mostramos só o diagnóstico e como tratar as objeções;
@@ -85,12 +92,15 @@ function CallsScreen({ onOpenLead }) {
   async function diagnosticar() {
     setAi("loading");
     try {
-      const base = DEFAULT_SCRIPTS.call || {};
-      const cur = applyScriptOverride(base, product.scripts?.call) || base;
+      // Grupo decide o roteiro de referência: venda = call de fechamento;
+      // qualificação = roteiro de 1º contato do SDR.
+      const key = group === "sdr" ? "novo" : "call";
+      const base = DEFAULT_SCRIPTS[key] || {};
+      const cur = applyScriptOverride(base, product.scripts?.[key]) || base;
       const r = await api.improvePitch(product.id, {
-        scriptKey: "call", scriptLabel: "Call de fechamento",
+        scriptKey: key, scriptLabel: group === "sdr" ? "1º contato (SDR)" : "Call de fechamento",
         currentScript: { resumo: cur.resumo, objetivo: cur.objetivo, passos: cur.passos },
-        closer, // undefined = todos; senão diagnóstico só das calls desse closer
+        closer, group, // undefined = todos do grupo; senão só as calls da pessoa
       });
       setAi({ diagnostico: r.diagnostico || "", objecoes: r.objecoesRecorrentes || [] });
     } catch (e) {
@@ -110,21 +120,28 @@ function CallsScreen({ onOpenLead }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <PageHead title="Análise de Pitches"
-        sub={(data ? `${data.count} ${data.count === 1 ? "call resumida" : "calls resumidas"}` : "calls resumidas") + " por IA · objeções, dores e temperatura" + (closer != null ? ` · ${closer ? displayName(closer) : "sem closer"}` : "")} />
+        sub={(data ? `${data.count} ${data.count === 1 ? "call resumida" : "calls resumidas"}` : "calls resumidas") + " por IA · objeções, dores e temperatura · " + (group === "sdr" ? "qualificação (SDR)" : "vendas (closer)") + (closer != null ? ` · ${closer ? displayName(closer) : "sem responsável"}` : "")} />
 
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-        {closers.length >= 2 ? (
-          <PersonFilter people={closers} value={closer} onChange={setCloser} />
-        ) : closers.length === 1 && data?.count > 0 ? (
-          <div className="mono dim" style={{ fontSize: 11 }}>
-            separado por closer · {closers[0].id ? `todas as calls são de ${displayName(closers[0].id)}` : "nenhuma call tem closer atribuído ainda"}
-          </div>
-        ) : null}
+        <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+          {/* Venda ≠ qualificação: a call do closer e a do SDR têm teor diferente,
+              então cada grupo tem sua análise e suas pessoas. */}
+          <Segmented value={group} onChange={setGroup} options={[
+            { value: "venda", label: "Vendas · closer" },
+            { value: "sdr", label: "Qualificação · SDR" },
+          ]} />
+          {groupPeople.length >= 2 && <PersonFilter people={groupPeople} value={closer} onChange={setCloser} />}
+          {groupPeople.length === 1 && data?.count > 0 && (
+            <span className="mono dim" style={{ fontSize: 11 }}>
+              {groupPeople[0].id ? `todas as calls do grupo são de ${displayName(groupPeople[0].id)}` : "nenhuma call do grupo tem responsável"}
+            </span>
+          )}
+        </div>
         {err && <div className="mono" style={{ color: "var(--neg)" }}>{err}</div>}
         {!data && !err && <div className="mono dim">carregando…</div>}
 
         {data && data.count === 0 && (
-          <EmptyState title="Nenhuma call resumida ainda"
+          <EmptyState title={group === "sdr" ? "Nenhuma call de qualificação resumida ainda" : "Nenhuma call de venda resumida ainda"}
             hint="As calls agendadas pelo cockpit viram resumo automático quando o Meet gera a transcrição. Conforme as calls acontecem, os padrões (objeções, dores, temperatura) aparecem aqui." />
         )}
 
@@ -163,7 +180,8 @@ function CallsScreen({ onOpenLead }) {
               </Card>
             </div>
 
-            <Card title="Diagnóstico do pitch (IA)" hint="a IA lê as calls e diz o que ajustar no roteiro da call">
+            <Card title={group === "sdr" ? "Diagnóstico da qualificação (IA)" : "Diagnóstico do pitch (IA)"}
+              hint={group === "sdr" ? "a IA lê as calls do SDR e diz o que ajustar no roteiro de 1º contato" : "a IA lê as calls e diz o que ajustar no roteiro da call"}>
               <div style={{ padding: "16px 24px 22px", display: "flex", flexDirection: "column", gap: 12 }}>
                 <div>
                   <button onClick={diagnosticar} disabled={ai === "loading" || data.aiConfigured === false}
@@ -185,7 +203,7 @@ function CallsScreen({ onOpenLead }) {
                         ))}
                       </div>
                     )}
-                    <div className="mono dim" style={{ fontSize: 11 }}>pra aplicar a nova versão do roteiro, vá em Ajustes → Scripts → Call de fechamento → “✨ IA das calls”.</div>
+                    <div className="mono dim" style={{ fontSize: 11 }}>pra aplicar a nova versão do roteiro, vá em Ajustes → Scripts → {group === "sdr" ? "1º contato" : "Call de fechamento"} → “✨ IA das calls”.</div>
                   </>
                 )}
               </div>
