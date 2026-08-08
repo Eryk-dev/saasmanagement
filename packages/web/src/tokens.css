@@ -362,6 +362,21 @@ body[data-density="regular"] { font-size: 14px; }
 .super-ring { filter: drop-shadow(0 0 3px rgba(35, 216, 211, 0.7)); }
 @media (prefers-reduced-motion: reduce) { .super-chip { animation: none; } }
 
+/* Lista do Desempenho do time (Visão geral, Leo 08/08): uma linha por pessoa —
+   identidade | régua de receita | régua de contratos | submetas em linha. */
+.vg-trow {
+  display: grid;
+  grid-template-columns: 215px minmax(170px, 1fr) minmax(170px, 1fr) minmax(340px, 1.7fr);
+  gap: 20px; align-items: center; padding: 12px 16px;
+}
+.vg-trow + .vg-trow { border-top: 1px solid var(--line-1); }
+.vg-trow:not(.vg-thead):hover { background: var(--hover); }
+.vg-thead { padding: 8px 16px; background: var(--bg-2); }
+@media (max-width: 900px) {
+  .vg-trow { grid-template-columns: 1fr; gap: 8px; }
+  .vg-thead { display: none; }
+}
+
 ::-webkit-scrollbar { width: 11px; height: 11px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 999px; border: 3px solid var(--bg-0); }
