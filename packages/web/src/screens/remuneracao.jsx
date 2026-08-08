@@ -269,7 +269,7 @@ function RemuneracaoScreen() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Remuneração" sub="plano oficial por cargo e nível (aprovado 04/08) · visível só pra admins" />
-      <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14, maxWidth: 1020 }}>
+      <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={box}>
           <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 8 }}>Regras da casa</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>

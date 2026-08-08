@@ -55,7 +55,7 @@ inline. Máximo ~3 níveis por tela.
 - Escala de espaçamento: página `28px var(--pad-x)` (pad-x 28→14 no mobile); gap entre cards 14–16; respiro interno de card `20px var(--inset-x)` (24→14)
 - Raio de borda: `--r-4` 12 card · `--r-3` 10 interno/modal · `--r-2` 8 controle/botão · `--r-1` 5 badge · 999 pill
 - Sombra: `--shadow-card` (quase invisível) card · `--shadow-2` elevado · `--shadow-pop` modal/dropdown · **nunca glow**
-- Largura máxima do conteúdo: por bloco, não global — 720/760/920/980 conforme a tela; telas de board/tabela ocupam tudo
+- Largura: TELA ocupa sempre a largura inteira (raiz sem maxWidth — regra do Leo, 08/08, PR #630: Metas/Configurações/Remuneração/Treinos tinham raiz travada e foi removido). Medida (maxWidth) só em: texto corrido (~900px), formulário de FLUXO (wizard/modal, 620-680) e card único isolado — nunca no contêiner da tela
 - Breakpoints: **768px** estrutural (`useIsMobile` em lib/responsive.js: drawer de nav, layout) · **900px** no CSS (`--pad-x` encolhe, `.resp-cols` empilha, `.hide-mobile`/`.show-mobile`) · `pointer: coarse` (scrollbar fina, inércia)
 
 ## Componentes base
