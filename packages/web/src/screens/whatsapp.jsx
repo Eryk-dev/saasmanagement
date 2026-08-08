@@ -14,6 +14,7 @@ import { clientSummary, buildQueue, ACTION_LABELS } from "./today.jsx";
 import { currentUser, usersByRole } from "../lib/users.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
+import { WaAutomationsPanel } from "../components/wa-automations.jsx";
 
 // Inbox de WhatsApp: um WhatsApp Web dentro do cockpit. Lista de conversas à
 // esquerda (não-lidas primeiro na cara, ordenadas por recência) + conversa

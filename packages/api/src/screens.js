@@ -69,10 +69,11 @@ const ROUTE_SCREENS = [
   ["/api/offers", ["offers"]],           // links de pagamento das ofertas
   ["/api/contracts", ["contracts"]],     // modelos de contrato (biblioteca)
   ["/api/campaigns", ["disparos"]],      // disparos de e-mail + WhatsApp (mark, ai-copy e CRUD)
+  ["/api/wa_automations", ["whatsapp"]], // automações do Inbox (regras reativas: CRUD genérico)
   ["/api/outbound_accounts", ["outbound"]], // radar de contas do outbound (Cold Calling 2.0)
   ["/api/comp_plans", ["remuneracao"]],  // remuneração por cargo (ADMIN_PREFIXES exige etiqueta admin, além da tela)
-  ["/api/sequences", ["disparos"]],      // sequências de nutrição (drip): CRUD + enroll/wa-sent/metrics/run
-  ["/api/sequence_enrollments", ["disparos"]], // progresso das sequências
+  ["/api/sequences", ["disparos", "whatsapp"]],      // sequências de nutrição (drip): CRUD + enroll/wa-sent/metrics/run; a aba Automações do Inbox lista/pausa
+  ["/api/sequence_enrollments", ["disparos", "whatsapp"]], // progresso das sequências
   ["/api/drip_templates", ["disparos"]], // biblioteca de conteúdo dos passos
   // Números do inbox (esperando resposta/janelas) no "Precisa de atenção" da
   // Visão geral — só a LEITURA agregada; conversas/envio seguem só do inbox.
