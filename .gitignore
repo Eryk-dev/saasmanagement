@@ -6,3 +6,7 @@ dist/
 packages/api/data/*.db
 packages/api/data/*.db-*
 .DS_Store
+
+# artefatos locais de sessão do Claude (skills são versionadas)
+.claude/worktrees/
+.claude/scheduled_tasks.lock
