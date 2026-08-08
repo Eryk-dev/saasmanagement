@@ -38,6 +38,7 @@ import { MindmapsScreen } from "./screens/mindmaps.jsx";
 import { SettingsScreen, SettingsLite } from "./screens/settings.jsx";
 import { LeadDetail } from "./screens/deal.jsx";
 import { CommandSearch } from "./components/CommandSearch.jsx";
+import { ToastHost } from "./atoms.jsx";
 import { ErrorBoundary } from "./components/error-boundary.jsx";
 import { DataContext, loadSeed } from "./data.jsx";
 import { useActiveSaas } from "./lib/workspace.js";
@@ -340,6 +341,9 @@ function App() {
       <ErrorBoundary variant="modal" label="feedback" resetKey="feedback" onReset={() => {}}>
         <FeedbackWidget screenLabel={(crumbsFor[scr] || [scr]).join(" · ")} />
       </ErrorBoundary>
+
+      {/* Toast global (window.toast): erro de mutação otimista e avisos rápidos. */}
+      <ToastHost />
 
       <CommandSearch
         open={searchOpen}
