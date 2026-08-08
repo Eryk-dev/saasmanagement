@@ -13,6 +13,7 @@
 // cadeia (calls, contatos, leads) desce a partir dela.
 
 import { DEFAULT_CASH_TARGET, RATE_BENCHMARKS, computePipelinePace, cashTargetFor } from "./routes.pipeline-pace.js";
+import { DEFAULT_COMP_PLAN, compLevelOf } from "./comp-plan.js";
 import { monthKey } from "./metrics-core.js";
 
 // Benchmark do pace (0..1) vira o "padrão" em % que a tela mostra: um número só
@@ -45,10 +46,12 @@ export const META_CATALOG = [
       { metric: "contacts", kind: "flow", label: "Contatos no mês", unit: "n", default: null, team: true },
       { metric: "callsBooked", kind: "flow", label: "Calls agendadas", unit: "n", default: null, team: true },
       // As duas pernas do plano de REMUNERAÇÃO do SDR (04/08): fechamentos e
-      // R$ das oportunidades DELE. A meta vem do plano pelo nível da pessoa
-      // (comp-plan.js no goalFor do placar); campo digitado aqui ainda vence.
-      { metric: "won", kind: "flow", label: "Contratos no mês", unit: "n", hint: "fechamentos das SUAS oportunidades", default: null },
-      { metric: "revenue", kind: "flow", label: "Receita fechada", unit: "R$", hint: "R$ fechado das SUAS oportunidades", default: null },
+      // R$ das oportunidades DELE. `compPlan: true` = a meta vem do plano pelo
+      // nível da pessoa (comp-plan.js VENCE vaga e derivado no goalFor do
+      // placar), então a tela não oferece campo de vaga — mostra a régua do
+      // plano; só o ajuste por PESSOA ainda vence.
+      { metric: "won", kind: "flow", label: "Contratos no mês", unit: "n", hint: "fechamentos das SUAS oportunidades", default: null, compPlan: true },
+      { metric: "revenue", kind: "flow", label: "Receita fechada", unit: "R$", hint: "R$ fechado das SUAS oportunidades", default: null, compPlan: true },
     ],
   },
   {
@@ -63,8 +66,8 @@ export const META_CATALOG = [
       // comparecimento do SDR). Fica logo abaixo da taxa porque é o denominador
       // dela — as duas juntas explicam os ganhos.
       { metric: "callsShown", kind: "flow", label: "Calls realizadas no mês", unit: "n", hint: "sem contar os no-show", default: null, team: true },
-      { metric: "won", kind: "flow", label: "Ganhos no mês", unit: "n", default: null, team: true },
-      { metric: "revenue", kind: "flow", label: "Receita no mês", unit: "R$", default: null, team: true },
+      { metric: "won", kind: "flow", label: "Ganhos no mês", unit: "n", default: null, team: true, compPlan: true },
+      { metric: "revenue", kind: "flow", label: "Receita no mês", unit: "R$", default: null, team: true, compPlan: true },
       { metric: "ticket", kind: "avg", label: "Ticket médio", unit: "R$", default: null },
     ],
   },
@@ -207,11 +210,24 @@ export function registerMetasRoutes(app, repo) {
         derived: derivedByMetric[`${r.role}.${m.metric}`] ?? null,
       })),
     }));
-    // Time do produto com papel (pros overrides por pessoa).
+    // Time do produto com papel (pros overrides por pessoa). O `compLevel` (1
+    // jr · 2 pl · 3 sn) diz qual linha do plano de remuneração vale pra pessoa.
     const users = (await repo.list("users").catch(() => []))
       .filter((u) => !u.saas || u.saas === product.id)
       .filter((u) => (u.roles || []).some((r) => ROLES.has(r)))
-      .map((u) => ({ id: u.id, name: u.name || u.id, roles: (u.roles || []).filter((r) => ROLES.has(r)) }));
+      .map((u) => ({ id: u.id, name: u.name || u.id, roles: (u.roles || []).filter((r) => ROLES.has(r)), compLevel: compLevelOf(u) }));
+    // Plano de REMUNERAÇÃO vigente (comp_plans por cima do padrão aprovado):
+    // contratos/receita de SDR e closer são meta POR PESSOA pelo nível — o
+    // placar já aplica (comp vence vaga e derivado), a tela mostra a régua.
+    const compDocs = await repo.list("comp_plans").catch(() => []);
+    const compLevels = (role) => {
+      const doc = compDocs.find((d) => d && d.role === role);
+      const levels = doc?.plan?.levels?.length ? doc.plan.levels : DEFAULT_COMP_PLAN[role].levels;
+      return levels
+        .map((l) => ({ n: Math.floor(Number(l?.n)) || 1, metaContracts: Number(l?.metaContracts) || 0, metaRevenue: Number(l?.metaRevenue) || 0 }))
+        .sort((a, b) => a.n - b.n);
+    };
+    const compPlan = { sdr: compLevels("sdr"), closer: compLevels("closer") };
     // Metas por pessoa já configuradas.
     const userGoals = goals
       .filter((g) => g.scope === "user" && ALL_METRICS.has(g.metric))
@@ -242,7 +258,7 @@ export function registerMetasRoutes(app, repo) {
     };
     // Quantas pessoas em cada vaga (o placar reparte a meta de time entre elas).
     const people = Object.fromEntries([...ROLES].map((role) => [role, users.filter((u) => u.roles.includes(role)).length]));
-    return { saas: product.id, roles, users, userGoals, company, people, derived };
+    return { saas: product.id, roles, users, userGoals, company, people, derived, compPlan };
   });
 
   // Salva as metas (upsert/delete na collection goals). Cada item:
