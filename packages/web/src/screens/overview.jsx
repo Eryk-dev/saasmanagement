@@ -36,7 +36,7 @@ const compactMoney = (v) => {
 // acumula no tempo) o pace é 1: abaixo da meta é vermelho direto.
 const LVL_COLOR = { red: "var(--neg)", ok: "var(--accent)", green: "var(--pos)", gold: "var(--gold)" };
 const LVL_LABEL = { red: "atrás do pace", ok: "no pace", green: "meta batida", gold: "super meta" };
-function levelOf(value, target, expectedFrac = 1) {
+export function levelOf(value, target, expectedFrac = 1) {
   if (!(target > 0) || value == null) return null;
   const r = value / target;
   if (r >= 1.2) return "gold";
@@ -64,7 +64,9 @@ function elapsedFracOf(win) {
 }
 
 // ── Régua (barra de progresso com pace) ──────────────────────────────────────
-function Regua({ label, valueText, pct, expectedPct, lvl, chipLabel, title, sub }) {
+// Exportada: a tela Metas usa a MESMA régua pra mostrar o efeito da meta que
+// está sendo editada, senão as duas telas divergem no desenho.
+export function Regua({ label, valueText, pct, expectedPct, lvl, chipLabel, title, sub }) {
   const fill = Math.min(100, Math.round((pct || 0) * 100));
   const exp = expectedPct != null ? Math.min(100, Math.round(expectedPct * 100)) : null;
   return (
