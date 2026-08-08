@@ -1,5 +1,5 @@
 import React from "react";
-import { Avatar } from "../atoms.jsx";
+import { Avatar, useEsc } from "../atoms.jsx";
 import { ActivityList, ActivityComposer } from "../components/timeline.jsx";
 import { RoutineSuggestion } from "../components/routine-suggestion.jsx";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
@@ -71,6 +71,7 @@ function consultaWhen(at) {
 }
 
 function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
+  useEsc(onClose); // drawer fecha no Esc; modal aberto por cima fecha primeiro (pilha)
   const { refresh, version } = useData();
   // Cópia local: as ações rápidas (etapa, próximo contato) editam aqui e
   // persistem otimisticamente; o pipeline ressincroniza no fechar (refresh).
@@ -148,7 +149,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   function patch(p) {
     dirty.current = true;
     setLead((prev) => ({ ...prev, ...p }));
-    api.update("leads", lead.id, p).catch((err) => console.warn("lead patch not persisted:", err.message));
+    api.update("leads", lead.id, p).catch((err) => { console.warn("lead patch not persisted:", err.message); window.toast && window.toast("Alteração no lead não foi salva · tente de novo", "neg"); });
   }
   // Proposta direto no WhatsApp (pedido do Leo, 03/08): UM botão que garante a
   // proposta (gera na hora se o lead ainda não tem) e abre a conversa com a
@@ -184,7 +185,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
     if (gate) { setPendingMove({ toStage: stage, gate }); return; }
     dirty.current = true;
     setLead((prev) => ({ ...prev, stage, stageSince: new Date().toISOString(), stageAttempts: 0 }));
-    api.update("leads", lead.id, { stage }).catch((err) => console.warn("lead move not persisted:", err.message));
+    api.update("leads", lead.id, { stage }).catch((err) => { console.warn("lead move not persisted:", err.message); window.toast && window.toast("O movimento do card não foi salvo · tente de novo", "neg"); });
   }
   function close() {
     if (dirty.current) refresh();
@@ -1031,7 +1032,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
             onConfirm={(p, extra) => {
               dirty.current = true;
               setLead((prev) => ({ ...prev, ...p, stageSince: new Date().toISOString(), stageAttempts: 0 }));
-              applyGatedMove(p, extra, lead.id).then(refetchTimeline).catch((err) => console.warn("movimento não persistido:", err.message));
+              applyGatedMove(p, extra, lead.id).then(refetchTimeline).catch((err) => { console.warn("movimento não persistido:", err.message); window.toast && window.toast("O movimento do card não foi salvo · tente de novo", "neg"); });
               setPendingMove(null);
             }}
           />
@@ -1066,6 +1067,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
 // (planClosed/amount/paymentMethod): pagamento confirmado + card virado, o
 // cliente e a assinatura nascem com plano, duração e valor certos.
 function PaymentLinkModal({ lead, onClose, onSaved }) {
+  useEsc(onClose);
   const product = (window.SEED?.SAAS || []).find((s) => s.id === lead.saas);
   // Mesmo rótulo do servidor (PLAN_LABEL/PRODUCT_LABEL em routes.mp.js):
   // título default do checkout = produto do catálogo + plano.

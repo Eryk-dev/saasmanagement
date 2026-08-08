@@ -299,21 +299,27 @@ function RowActions({ onEdit, onDelete }) {
 
 // ───────────────────────────────────────────────────── Esc fecha o popup
 // Todo modal/painel fecha no Esc: useEsc(onClose) dentro do componente do
-// popup. O listener só vive enquanto o popup está montado.
+// popup. Pilha por ordem de MONTAGEM: com modal sobre drawer, o Esc fecha só
+// o de cima; o próximo Esc fecha o de baixo. Passe null pra desativar
+// temporariamente (ex.: enquanto salva).
+const escStack = [];
 function useEsc(onClose) {
+  const ref = React.useRef(onClose);
+  ref.current = onClose;
   React.useEffect(() => {
-    if (!onClose) return;
+    const entry = {};
+    escStack.push(entry);
     function onKey(e) {
       if (e.key !== "Escape") return;
+      if (escStack[escStack.length - 1] !== entry || !ref.current) return;
       // Esc dentro de campo primeiro tira o foco; o próximo Esc fecha.
       const t = e.target;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) { t.blur(); return; }
-      e.stopPropagation();
-      onClose();
+      ref.current();
     }
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    return () => { escStack.splice(escStack.indexOf(entry), 1); window.removeEventListener("keydown", onKey); };
+  }, []);
 }
 
 // ───────────────────────────────────────────────────── Toast global
@@ -371,6 +377,23 @@ function WaButton({ href, onClick, children, title, block, small }) {
     : <button onClick={onClick} title={title} style={style}>{children}</button>;
 }
 
+// ───────────────────────────────────────────────────── Botão secundário
+// A escala de controles do DS: 28 denso · 32 padrão · 40 CTA. Secundário =
+// borda line-2 sobre bg-1 (o "const btn" que cada tela redeclarava).
+function SecondaryButton({ onClick, children, title, size = "md", disabled, style }) {
+  const h = size === "sm" ? 28 : size === "lg" ? 40 : 32;
+  return (
+    <button onClick={onClick} title={title} disabled={disabled} style={{
+      height: h, padding: size === "sm" ? "0 10px" : "0 14px",
+      borderRadius: "var(--r-2)", border: "1px solid var(--line-2)",
+      background: "var(--bg-1)", color: "var(--fg-2)",
+      fontSize: size === "sm" ? 12 : 12.5, fontWeight: 500,
+      opacity: disabled ? 0.5 : 1, cursor: disabled ? "not-allowed" : "pointer",
+      transition: "var(--transition-ui)", ...style,
+    }}>{children}</button>
+  );
+}
+
 // Primary CTA button — shared so empty states and toolbars create records the
 // same way. `onClick` opens the relevant EntityForm.
 function PrimaryButton({ onClick, children, disabled }) {
@@ -387,6 +410,6 @@ function PrimaryButton({ onClick, children, disabled }) {
   );
 }
 
-Object.assign(window, { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, CardHead, Ticker, Led, EmptyState, PrimaryButton, RowActions, toast, ToastHost, WaButton });
+Object.assign(window, { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, CardHead, Ticker, Led, EmptyState, PrimaryButton, SecondaryButton, RowActions, toast, ToastHost, WaButton });
 
-export { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, CardHead, Ticker, Led, EmptyState, PrimaryButton, RowActions, useEsc, toast, ToastHost, WaButton };
+export { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, CardHead, Ticker, Led, EmptyState, PrimaryButton, SecondaryButton, RowActions, useEsc, toast, ToastHost, WaButton };
