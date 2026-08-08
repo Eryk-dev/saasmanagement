@@ -93,46 +93,99 @@ export function Regua({ label, valueText, pct, expectedPct, lvl, chipLabel, titl
 
 // ── Meta do mês (réguas de receita contratada + contratos) ───────────────────
 // Sempre o MÊS CORRENTE (meta é mensal), independente do filtro do topo. Dados
-// do /api/pipeline-pace: `sale` = vendido no mês (contrato cheio) e `contracts`
-// = nº de fechamentos vs. meta (a digitada em Metas vence; senão venda ÷ ticket
-// sem contas grandes).
-function MetaMesCard({ pace, onNav, links = true }) {
-  const s = pace?.sale;
-  if (!s) return null;
-  const c = pace.contracts || {};
+// do /api/pipeline-pace/:saas/window: a faixa SEGUE O FILTRO do topo (Leo,
+// 08/08) — julho mostra a meta e o resultado DE JULHO, semana mostra a fatia
+// da semana, dia a do dia. A meta se reparte só pelos dias úteis (fim de
+// semana não cobra meta); janela fechada mostra o veredito final.
+const MONTH_LONG = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+const endOfMonthDay = (day) => {
+  const [y, m] = day.split("-").map(Number);
+  return `${day.slice(0, 7)}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
+};
+const plusDays = (day, n) => {
+  const d = new Date(`${day}T12:00:00`);
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+// Janela da META: preset ancorado em calendário (este mês/esta semana) estica
+// até o FIM do período — a régua cobra o mês/semana inteiros, com o pace
+// marcando onde deveria estar hoje. Janela corrida (últimos 7d, custom) vale
+// como está.
+function goalWindowOf(period, win) {
+  if (period === "month") return { since: win.since, until: endOfMonthDay(win.since) };
+  if (period === "week") return { since: win.since, until: plusDays(win.since, 6) };
+  return { since: win.since, until: win.until };
+}
+// Rótulo do período da meta: mês cheio → "julho 2026"; um dia → a data; senão
+// o intervalo. `kind` escolhe o título do card.
+function goalLabelOf(goal) {
+  if (!goal) return { kind: "mês", label: "" };
+  const { since, until } = goal;
+  if (since.slice(0, 7) === until.slice(0, 7) && since.endsWith("-01") && until === endOfMonthDay(since)) {
+    const [y, m] = since.split("-").map(Number);
+    return { kind: "mês", label: `${MONTH_LONG[m - 1]} ${y}` };
+  }
+  const fmt = (s) => `${s.slice(8, 10)}/${s.slice(5, 7)}`;
+  if (since === until) return { kind: "dia", label: fmt(since) };
+  const days = Math.round((new Date(`${until}T12:00:00`) - new Date(`${since}T12:00:00`)) / DAY) + 1;
+  return { kind: days === 7 ? "semana" : "período", label: `${fmt(since)} a ${fmt(until)}` };
+}
+const fmtContracts = (t) => (t == null ? "—" : Number.isInteger(t) ? int(t) : String(t).replace(".", ","));
+
+function MetaMesCard({ pace, goal, onNav, links = true }) {
+  if (!goal) return null;
+  const s = goal.sale || {};
+  const c = goal.contracts || {};
+  const { kind, label } = goalLabelOf(goal);
+  const title = kind === "mês" ? "Meta do mês" : kind === "semana" ? "Meta da semana" : kind === "dia" ? "Meta do dia" : "Meta do período";
+  const endedLabel = (lvl) => (goal.ended ? ({ red: "não bateu", ok: "não bateu", green: "meta batida", gold: "super meta" })[lvl] : null);
   const sLvl = levelOf(s.sold, s.target, s.expectedProgress);
   const cLvl = c.target != null ? levelOf(c.sold, c.target, c.expectedProgress) : null;
-  const saleTitle = `Receita nova contratada no mês (contrato cheio). Hoje: ${money(s.soldToday)} · ritmo ${money(s.actualDailyPace)}/dia útil`
-    + (s.requiredDailyPace != null ? ` · precisa ${money(s.requiredDailyPace)}/dia` : "")
-    + ` · ${int(s.remainingBusinessDays)} dias úteis restantes · projeção do mês ${money(s.projected)}.`;
-  const contractsTitle = c.targetSource === "company"
-    ? "Meta de contratos digitada em Metas → Empresa (a da remuneração)."
-    : "Meta derivada: venda do mês ÷ ticket médio sem contas grandes.";
+  // No mês CORRENTE o pace mensal completo enriquece o tooltip (ritmo, precisa
+  // por dia, projeção); janela histórica fica com a explicação da fatia.
+  const curMes = kind === "mês" && goal.current && pace?.sale;
+  const saleTitle = curMes
+    ? `Receita nova contratada no mês (contrato cheio). Hoje: ${money(pace.sale.soldToday)} · ritmo ${money(pace.sale.actualDailyPace)}/dia útil`
+      + (pace.sale.requiredDailyPace != null ? ` · precisa ${money(pace.sale.requiredDailyPace)}/dia` : "")
+      + ` · ${int(pace.sale.remainingBusinessDays)} dias úteis restantes · projeção do mês ${money(pace.sale.projected)}.`
+    : `Receita nova contratada em ${label} (contrato cheio) vs. a meta da época, repartida pelos ${int(goal.businessDays)} dias úteis da janela.`;
+  const contractsTitle = "Meta de contratos da época (a digitada em Metas vence; senão venda ÷ ticket sem contas grandes), repartida pelos dias úteis da janela.";
   return (
-    <Card title="Meta do mês" hint="sempre o mês corrente · o filtro não muda esta faixa"
+    <Card title={title} hint={`${label} · segue o filtro do topo · a meta vive nos dias úteis`}
       action={links ? <button onClick={() => onNav && onNav("analise")} style={{ fontSize: 12.5, fontWeight: 500, color: "var(--accent)" }}>Ver análise completa →</button> : null}>
-      <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: "16px 36px", padding: "16px var(--inset-x) 20px" }}>
-        <Regua
-          label="Régua de receita"
-          title={saleTitle}
-          valueText={<><strong className="tnum" style={{ color: "var(--fg-1)", fontWeight: 650 }}>{money(s.sold)}</strong> / {money(s.target)} · {Math.round((s.progress || 0) * 100)}%</>}
-          pct={s.progress} expectedPct={s.expectedProgress} lvl={sLvl}
-        />
-        {c.target != null ? (
-          <Regua
-            label="Régua de contratos"
-            title={contractsTitle}
-            valueText={<><strong className="tnum" style={{ color: "var(--fg-1)", fontWeight: 650 }}>{int(c.sold)}</strong> / {int(c.target)} · {Math.round((c.progress || 0) * 100)}%</>}
-            pct={c.progress} expectedPct={c.expectedProgress} lvl={cLvl}
-          />
-        ) : (
-          <div style={{ fontSize: 12.5, color: "var(--fg-4)", alignSelf: "center" }}>
-            Sem meta de contratos ainda: registre uma venda (pro ticket existir) ou
-            {links ? <button onClick={() => onNav && onNav("metas")} style={{ fontWeight: 600, color: "var(--accent)", marginLeft: 4 }}>digite a meta em Metas →</button> : " digite a meta em Metas."}
-          </div>
-        )}
-      </div>
-      {links && s.targetConfigured === false && (
+      {goal.businessDays === 0 ? (
+        <div style={{ padding: "14px var(--inset-x) 20px", fontSize: 12.5, color: "var(--fg-3)" }}>
+          Fim de semana: sem meta cobrada (a meta vive nos dias úteis).
+          {s.sold > 0 && <> Mesmo assim entrou <b className="tnum" style={{ color: "var(--pos)" }}>{money(s.sold)}</b>{c.sold > 0 ? ` em ${int(c.sold)} ${c.sold === 1 ? "contrato" : "contratos"}` : ""}.</>}
+        </div>
+      ) : (
+        <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: "16px 36px", padding: "16px var(--inset-x) 20px" }}>
+          {s.target != null ? (
+            <Regua
+              label="Régua de receita"
+              title={saleTitle}
+              valueText={<><strong className="tnum" style={{ color: "var(--fg-1)", fontWeight: 650 }}>{money(s.sold)}</strong> / {money(s.target)} · {Math.round((s.progress || 0) * 100)}%</>}
+              pct={s.progress} expectedPct={goal.ended ? null : s.expectedProgress} lvl={sLvl} chipLabel={endedLabel(sLvl)}
+            />
+          ) : (
+            <div style={{ fontSize: 12.5, color: "var(--fg-4)", alignSelf: "center" }}>Sem meta de venda pra esse período.</div>
+          )}
+          {c.target != null ? (
+            <Regua
+              label="Régua de contratos"
+              title={contractsTitle}
+              valueText={<><strong className="tnum" style={{ color: "var(--fg-1)", fontWeight: 650 }}>{int(c.sold)}</strong> / {fmtContracts(c.target)} · {Math.round((c.progress || 0) * 100)}%</>}
+              pct={c.progress} expectedPct={goal.ended ? null : c.expectedProgress} lvl={cLvl} chipLabel={endedLabel(cLvl)}
+            />
+          ) : (
+            <div style={{ fontSize: 12.5, color: "var(--fg-4)", alignSelf: "center" }}>
+              Sem meta de contratos ainda: registre uma venda (pro ticket existir) ou
+              {links ? <button onClick={() => onNav && onNav("metas")} style={{ fontWeight: 600, color: "var(--accent)", marginLeft: 4 }}>digite a meta em Metas →</button> : " digite a meta em Metas."}
+            </div>
+          )}
+        </div>
+      )}
+      {links && curMes && pace.sale.targetConfigured === false && (
         <div style={{ padding: "0 var(--inset-x) 16px" }}>
           <button onClick={() => onNav && onNav("metas")} style={{ fontSize: 12, fontWeight: 600, color: "var(--warn)", textAlign: "left" }}>
             essa é a meta padrão do sistema · defina a sua em Metas → Empresa
@@ -538,7 +591,8 @@ function OverviewScreen({ onNav }) {
   const [biz, setBiz] = useState(null); // CAC/LTV — mesmo endpoint da Publicidade
   const [invoices, setInvoices] = useState([]);
   const [score, setScore] = useState(null); // placar do time da janela do topo
-  const [pace, setPace] = useState(null); // meta do mês — /api/pipeline-pace
+  const [pace, setPace] = useState(null); // pace do mês corrente — /api/pipeline-pace
+  const [goal, setGoal] = useState(null); // meta DA JANELA (segue o filtro) — /window
   const [wa, setWa] = useState(null); // inbox do WhatsApp (estado atual do time)
   const { period, custom, win } = usePeriod();
 
@@ -566,6 +620,10 @@ function OverviewScreen({ onNav }) {
     if (!product) return;
     let alive = true;
     api.scoreboard(product.id, win).then((s) => alive && setScore(s)).catch(() => {});
+    // Meta da JANELA do filtro (mês histórico, semana, dia): preset de
+    // calendário estica até o fim do período — a régua cobra o mês/semana
+    // inteiros com o pace marcando o "hoje".
+    api.paceWindow(product.id, goalWindowOf(period, win)).then((g) => alive && setGoal(g)).catch(() => alive && setGoal(null));
     return () => { alive = false; };
   }, [product?.id, version, period, custom.since, custom.until]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -600,7 +658,7 @@ function OverviewScreen({ onNav }) {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
         <PageHead title="Suas metas" sub={today} />
         <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-          <MetaMesCard pace={pace} links={false} />
+          <MetaMesCard pace={pace} goal={goal} links={false} />
           <Card title={`Suas metas · ${win.label}`} hint="o que a sua vaga precisa entregar no período">
             <div style={{ padding: "8px var(--inset-x) 20px" }}>
               {score == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
@@ -686,7 +744,7 @@ function OverviewScreen({ onNav }) {
       </PageHead>
 
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-        <MetaMesCard pace={pace} onNav={onNav} />
+        <MetaMesCard pace={pace} goal={goal} onNav={onNav} />
 
         <TeamBoard score={score} win={win} onPerson={openPerson} />
 
