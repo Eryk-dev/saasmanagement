@@ -483,10 +483,110 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   };
 }
 
+// ── Meta de uma JANELA qualquer (mês passado, semana, dia) ───────────────────
+// A faixa "Meta do mês" da Visão geral segue o filtro do topo (Leo, 08/08):
+// julho selecionado mostra a meta e o resultado DE JULHO, semana mostra a
+// fatia da semana, dia a fatia do dia — cada mês com a meta da sua época
+// (product.monthlyCashTargets + regra de crescimento, via cashTargetFor).
+//
+// A meta se reparte SÓ pelos dias úteis (o time não opera no fim de semana):
+// meta do dia útil = meta do mês ÷ dias úteis daquele mês; a meta da janela é
+// a soma dos dias úteis que ela cobre (janela cruzando meses soma cada fatia).
+// Sábado/domingo carregam meta zero — dia de fim de semana selecionado devolve
+// businessDays: 0 e a UI mostra "sem meta cobrada".
+const isBizDay = (day) => {
+  const w = new Date(`${day}T12:00:00Z`).getUTCDay();
+  return w !== 0 && w !== 6;
+};
+const nextDay = (day) => dayKey(new Date(new Date(`${day}T12:00:00Z`).getTime() + DAY));
+function monthBizDays(month) {
+  const total = new Date(Date.UTC(...month.split("-").map(Number), 0)).getUTCDate();
+  let n = 0;
+  for (let d = 1; d <= total; d++) {
+    const w = new Date(Date.UTC(month.split("-")[0], Number(month.split("-")[1]) - 1, d)).getUTCDay();
+    if (w !== 0 && w !== 6) n++;
+  }
+  return n;
+}
+
+export async function computeWindowGoal(repo, product, since, until, now = new Date()) {
+  const today = dayKey(now);
+  // Ticket sem contas grandes e a meta de contratos digitada: a MESMA régua do
+  // pace do mês corrente, pra as duas faixas nunca divergirem.
+  const pace = await computePipelinePace(repo, product, now);
+  const avg = Number(pace.context.averageEntry) > 0 ? Number(pace.context.averageEntry) : null;
+  const companyContracts = Number(product.monthlyContractsTarget) > 0 ? Math.round(Number(product.monthlyContractsTarget)) : null;
+
+  // Meta da janela: soma da fatia diária (dias úteis) de cada mês coberto.
+  const bizPerMonth = new Map();
+  let bizDays = 0, bizElapsed = 0, targetRevenue = 0, targetContracts = 0, hasContractsTarget = false;
+  for (let d = since; d <= until; d = nextDay(d)) {
+    if (!isBizDay(d)) continue;
+    bizDays++;
+    if (d <= today) bizElapsed++;
+    const m = d.slice(0, 7);
+    if (!bizPerMonth.has(m)) bizPerMonth.set(m, monthBizDays(m));
+    const mBiz = bizPerMonth.get(m) || 1;
+    targetRevenue += cashTargetFor(product, m).target / mBiz;
+    const mContracts = companyContracts ?? (avg ? Math.ceil(cashTargetFor(product, m).target / avg) : null);
+    if (mContracts != null) { targetContracts += mContracts / mBiz; hasContractsTarget = true; }
+  }
+  targetRevenue = round2(targetRevenue);
+
+  // Vendido na janela: régua oficial da venda (isWonLead + wonAt, contrato cheio).
+  const [allLeads, allCustomers] = await Promise.all([repo.list("leads"), repo.list("customers")]);
+  const leads = allLeads.filter((l) => l.saas === product.id && isRealLead(l));
+  const customers = allCustomers.filter((c) => c.saas === product.id);
+  const inWin = (iso) => { const d = dayKey(iso); return d && d >= since && d <= until; };
+  const winAt = winsIn(product, leads, inWin, customerStartMap(customers));
+  const winLeads = leads.filter((l) => winAt.has(l.id));
+  const sold = tcvOf(winLeads);
+  const soldN = winLeads.length;
+
+  const ended = until < today;
+  const expectedFrac = bizDays > 0 ? round4(bizElapsed / bizDays) : 1;
+  const statusOf = (val, target) => {
+    if (!(target > 0)) return null;
+    if (ended) return val >= target ? "ahead" : "behind"; // janela fechada: veredito final
+    const expected = target * expectedFrac;
+    return val >= expected ? "ahead" : val >= expected * 0.95 ? "attention" : "behind";
+  };
+  const contractsTarget = hasContractsTarget ? Math.round(targetContracts * 10) / 10 : null;
+  return {
+    saas: product.id, since, until, today,
+    businessDays: bizDays, businessDaysElapsed: bizElapsed,
+    ended, current: !ended && since <= today,
+    sale: {
+      target: targetRevenue > 0 ? targetRevenue : null,
+      sold,
+      progress: targetRevenue > 0 ? round4(sold / targetRevenue) : null,
+      expectedProgress: expectedFrac,
+      status: statusOf(sold, targetRevenue),
+    },
+    contracts: {
+      target: contractsTarget,
+      sold: soldN,
+      progress: contractsTarget > 0 ? round4(soldN / contractsTarget) : null,
+      expectedProgress: expectedFrac,
+      status: statusOf(soldN, contractsTarget),
+    },
+  };
+}
+
 export function registerPipelinePaceRoutes(app, repo, { now = () => new Date() } = {}) {
   app.get("/api/pipeline-pace/:saas", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "Not found" });
     return computePipelinePace(repo, product, now());
+  });
+  // Meta de uma janela qualquer (a faixa da Visão geral seguindo o filtro).
+  app.get("/api/pipeline-pace/:saas/window", async (req, reply) => {
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "Not found" });
+    const ok = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ""));
+    const since = String(req.query.since || "");
+    const until = String(req.query.until || "");
+    if (!ok(since) || !ok(until) || since > until) return reply.code(400).send({ error: "since/until inválidos (YYYY-MM-DD)" });
+    return computeWindowGoal(repo, product, since, until, now());
   });
 }

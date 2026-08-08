@@ -506,6 +506,10 @@ export const api = {
   },
   // Pace mensal de caixa: faturas pagas → meta diária por papel do funil.
   pipelinePace: (saas) => req("GET", `/api/pipeline-pace/${encodeURIComponent(saas)}`),
+  // Meta de uma JANELA qualquer (mês passado, semana, dia) — a faixa da Visão
+  // geral seguindo o filtro do topo; meta repartida pelos dias úteis.
+  paceWindow: (saas, { since, until }) =>
+    req("GET", `/api/pipeline-pace/${encodeURIComponent(saas)}/window?since=${since}&until=${until}`),
   // Placar por pessoa/papel (SDR/closer/CS) — cockpit de gestão da Visão geral.
   scoreboard: (saas, { since, until, prevSince, prevUntil } = {}) => {
     const q = new URLSearchParams();
