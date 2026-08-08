@@ -198,46 +198,6 @@ function MetaMesCard({ pace, goal, onNav, links = true }) {
   );
 }
 
-// ── Medidor circular (donut) das duas pernas: receita e contratos ────────────
-function Donut({ label, value, target, isMoney, lvl }) {
-  const pct = target > 0 && value != null ? value / target : null;
-  const dash = pct == null ? 0 : Math.min(1, pct) * 188.5;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-      <svg width="74" height="74" viewBox="0 0 74 74" role="img" aria-label={`${label}: ${pct == null ? "sem meta" : Math.round(pct * 100) + "% da meta"}`}>
-        <circle cx="37" cy="37" r="30" fill="none" strokeWidth="8" stroke="var(--bg-2)" />
-        {pct != null && pct > 0 && (
-          <circle className={lvl === "gold" ? "super-ring" : undefined} cx="37" cy="37" r="30" fill="none" strokeWidth="8" strokeLinecap="round"
-            stroke={lvlColor(lvl, "var(--accent)")} strokeDasharray={`${dash.toFixed(1)} 188.5`} transform="rotate(-90 37 37)" />
-        )}
-        <text x="37" y="42" textAnchor="middle" className="tnum" style={{ fontSize: 14, fontWeight: 650, fill: "var(--fg-1)" }}>
-          {pct == null ? "—" : `${Math.round(pct * 100)}%`}
-        </text>
-      </svg>
-      <span className="kicker">{label}</span>
-      <span className="tnum" style={{ fontSize: 11.5, color: "var(--fg-2)", whiteSpace: "nowrap" }}>
-        {value == null ? "—" : isMoney ? `R$ ${compactMoney(value)}` : int(value)}
-        {target > 0 ? ` / ${isMoney ? compactMoney(target) : int(target)}` : " · sem meta"}
-      </span>
-    </div>
-  );
-}
-
-// Linha de submeta (label à esquerda, atual / meta à direita, cor pela escala).
-// nowrap nos dois lados: valor quebrado no meio ("22," numa linha, "/33" na
-// outra) era o bug visual da 1ª versão — a coluna encolhia demais.
-function RateRow({ label, valueText, metaText, lvl, title }) {
-  return (
-    <div title={title} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, padding: "5px 0", borderBottom: "1px solid var(--line-faint)", fontSize: 12, minWidth: 0 }}>
-      <span style={{ color: "var(--fg-3)", whiteSpace: "nowrap" }}>{label}</span>
-      <span className="tnum" style={{ whiteSpace: "nowrap" }}>
-        <b style={{ fontWeight: 650, color: lvlColor(lvl) }}>{valueText}</b>
-        {metaText != null && <span style={{ color: "var(--fg-4)" }}> / {metaText}</span>}
-      </span>
-    </div>
-  );
-}
-
 // Submetas por papel — tudo dado que o placar já mede, comparado com a meta.
 function personRows(p, bizDays, elapsedFrac) {
   const rows = [];
@@ -289,40 +249,63 @@ function personRows(p, bizDays, elapsedFrac) {
   return rows;
 }
 
-function PersonCard({ p, rank, bizDays, elapsedFrac, onPerson }) {
+// ── Linha da LISTA do time (aprovada pelo Leo em 08/08, no lugar dos cards) ──
+// Uma linha por pessoa: identidade | régua de receita | régua de contratos |
+// submetas do papel em linha única. As barras alinhadas em coluna deixam a
+// comparação entre as pessoas imediata; ✦ = super meta (120%+).
+function MiniRegua({ value, target, isMoney, lvl }) {
+  const pct = target > 0 && value != null ? value / target : null;
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div className="tnum" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, fontSize: 11.5, marginBottom: 5 }}>
+        <span style={{ whiteSpace: "nowrap" }}>
+          <b style={{ fontWeight: 650 }}>{value == null ? "—" : isMoney ? `R$ ${compactMoney(value)}` : int(value)}</b>
+          {target > 0 && <span style={{ color: "var(--fg-4)" }}> / {isMoney ? compactMoney(target) : int(target)}</span>}
+        </span>
+        <span style={{ fontWeight: 700, color: lvlColor(lvl, "var(--fg-4)"), whiteSpace: "nowrap" }}>
+          {pct == null ? "sem meta" : `${Math.round(pct * 100)}%${lvl === "gold" ? " ✦" : ""}`}
+        </span>
+      </div>
+      <div style={{ position: "relative", height: 6, borderRadius: 999, background: "var(--bg-2)" }}>
+        {pct != null && (
+          <span className={lvl === "gold" ? "super-fill" : undefined}
+            style={{ position: "absolute", top: 0, bottom: 0, left: 0, minWidth: 4, borderRadius: 999, width: `${Math.min(100, Math.round(pct * 100))}%`, background: lvlColor(lvl, "var(--accent)") }} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PersonRow({ p, rank, bizDays, elapsedFrac, onPerson }) {
   // As duas pernas do plano de remuneração (receita + contratos) — closer e SDR
   // têm meta própria pelo nível (comp_plans); CS/mídia mostram só as submetas.
   const leg = p.closer || p.sdr || null;
   const revTarget = leg ? scaledGoal(leg.goals?.revenue, bizDays) : null;
   const wonTarget = leg ? scaledGoal(leg.goals?.won, bizDays) : null;
   const rows = personRows(p, bizDays, elapsedFrac);
+  const semPerna = <span style={{ fontSize: 11.5, color: "var(--fg-4)" }}>—</span>;
   return (
-    <section onClick={() => onPerson && onPerson(p.user)}
-      style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "14px 16px", cursor: onPerson ? "pointer" : "default", display: "flex", flexDirection: "column", minWidth: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+    <div className="vg-trow" onClick={() => onPerson && onPerson(p.user)} style={{ cursor: onPerson ? "pointer" : "default" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
         {rank != null && (
-          <span className="mono tnum" style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", background: "var(--accent-soft)", borderRadius: "var(--r-1)", padding: "1px 6px" }}>{rank}#</span>
+          <span className="mono tnum" style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", background: "var(--accent-soft)", borderRadius: "var(--r-1)", padding: "1px 6px", flexShrink: 0 }}>{rank}#</span>
         )}
-        <Avatar id={p.user} name={p.name} size={30} />
-        <span style={{ fontSize: 14, fontWeight: 650 }}>{p.name}</span>
-        <span className="kicker">{roleLabel(p)}</span>
+        <Avatar id={p.user} name={p.name} size={28} />
+        <span style={{ fontSize: 13.5, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
+        <span className="kicker" style={{ whiteSpace: "nowrap" }}>{roleLabel(p)}</span>
       </div>
-      {/* Layout SEMPRE empilhado: medidores centralizados em cima, submetas
-          embaixo. A versão lado a lado dependia de wrap e o alignContent
-          esticado espalhava as linhas pelo card — era o layout "horrível". */}
-      {leg && (
-        <div style={{ display: "flex", gap: 26, justifyContent: "center", padding: "2px 0 14px" }}>
-          <Donut label="Receita" value={leg.revenue} target={revTarget} isMoney
-            lvl={levelOf(leg.revenue, revTarget, elapsedFrac)} />
-          <Donut label="Contratos" value={leg.won} target={wonTarget}
-            lvl={levelOf(leg.won, wonTarget, elapsedFrac)} />
-        </div>
-      )}
-      <div style={{ display: "flex", flexDirection: "column", borderTop: leg ? "1px solid var(--line-faint)" : "none", paddingTop: leg ? 4 : 0 }}>
-        {rows.map((r) => <RateRow key={r.label} {...r} />)}
-        {!rows.length && <span style={{ fontSize: 12, color: "var(--fg-4)" }}>sem metas configuradas ainda</span>}
+      {leg ? <MiniRegua value={leg.revenue} target={revTarget} isMoney lvl={levelOf(leg.revenue, revTarget, elapsedFrac)} /> : semPerna}
+      {leg ? <MiniRegua value={leg.won} target={wonTarget} lvl={levelOf(leg.won, wonTarget, elapsedFrac)} /> : semPerna}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: 11.5, minWidth: 0, alignItems: "baseline" }}>
+        {rows.map((r) => (
+          <span key={r.label} title={r.title} className="tnum" style={{ whiteSpace: "nowrap", color: "var(--fg-3)" }}>
+            {r.label} <b style={{ fontWeight: 650, color: lvlColor(r.lvl) }}>{r.valueText}</b>
+            {r.metaText != null && <span style={{ color: "var(--fg-4)" }}> / {r.metaText}</span>}
+          </span>
+        ))}
+        {!rows.length && <span style={{ color: "var(--fg-4)" }}>sem metas configuradas ainda</span>}
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -364,9 +347,15 @@ function TeamBoard({ score, win, onPerson }) {
         {score == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
         {score != null && !people.length && <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Sem atividade nesse período.</div>}
         {people.length > 0 && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, alignItems: "stretch" }}>
+          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", overflow: "hidden", background: "var(--bg-1)" }}>
+            <div className="vg-trow vg-thead">
+              <span className="kicker">Pessoa</span>
+              <span className="kicker">Receita</span>
+              <span className="kicker">Contratos</span>
+              <span className="kicker">Submetas do papel</span>
+            </div>
             {people.map(({ p, pct }, i) => (
-              <PersonCard key={p.user} p={p} rank={pct >= 0 ? i + 1 : null} bizDays={win.businessDays} elapsedFrac={elapsedFrac} onPerson={onPerson} />
+              <PersonRow key={p.user} p={p} rank={pct >= 0 ? i + 1 : null} bizDays={win.businessDays} elapsedFrac={elapsedFrac} onPerson={onPerson} />
             ))}
           </div>
         )}
@@ -691,8 +680,8 @@ function OverviewScreen({ onNav }) {
                 </div>
               )}
               {minha && (
-                <div style={{ maxWidth: 480 }}>
-                  <PersonCard p={minha} rank={null} bizDays={win.businessDays} elapsedFrac={elapsedFracOf(win)}
+                <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", overflow: "hidden", background: "var(--bg-1)" }}>
+                  <PersonRow p={minha} rank={null} bizDays={win.businessDays} elapsedFrac={elapsedFracOf(win)}
                     onPerson={canSeeScreen("pipeline") ? openPerson : null} />
                 </div>
               )}
@@ -783,4 +772,4 @@ function OverviewScreen({ onNav }) {
   );
 }
 
-export { OverviewScreen, MetaMesCard, FunilPeriodo, TeamBoard, PersonCard };
+export { OverviewScreen, MetaMesCard, FunilPeriodo, TeamBoard, PersonRow };
