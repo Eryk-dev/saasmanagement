@@ -252,22 +252,20 @@ function PersonCard({ p, rank, bizDays, elapsedFrac, onPerson }) {
         <span style={{ fontSize: 14, fontWeight: 650 }}>{p.name}</span>
         <span style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--fg-4)" }}>{roleLabel(p)}</span>
       </div>
-      {/* flex + wrap: com espaço, submetas ficam à direita dos medidores; sem
-          espaço elas DESCEM inteiras pra baixo (a coluna nunca é espremida a
-          ponto de quebrar valor no meio — o bug da 1ª versão). */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "14px 22px", alignItems: "flex-start", flex: 1 }}>
-        {leg && (
-          <div style={{ display: "flex", gap: 16, flex: "0 0 auto" }}>
-            <Donut label="Receita" value={leg.revenue} target={revTarget} isMoney
-              lvl={levelOf(leg.revenue, revTarget, elapsedFrac)} />
-            <Donut label="Contratos" value={leg.won} target={wonTarget}
-              lvl={levelOf(leg.won, wonTarget, elapsedFrac)} />
-          </div>
-        )}
-        <div style={{ flex: "1 1 190px", minWidth: 190, display: "flex", flexDirection: "column" }}>
-          {rows.map((r) => <RateRow key={r.label} {...r} />)}
-          {!rows.length && <span style={{ fontSize: 12, color: "var(--fg-4)" }}>sem metas configuradas ainda</span>}
+      {/* Layout SEMPRE empilhado: medidores centralizados em cima, submetas
+          embaixo. A versão lado a lado dependia de wrap e o alignContent
+          esticado espalhava as linhas pelo card — era o layout "horrível". */}
+      {leg && (
+        <div style={{ display: "flex", gap: 26, justifyContent: "center", padding: "2px 0 14px" }}>
+          <Donut label="Receita" value={leg.revenue} target={revTarget} isMoney
+            lvl={levelOf(leg.revenue, revTarget, elapsedFrac)} />
+          <Donut label="Contratos" value={leg.won} target={wonTarget}
+            lvl={levelOf(leg.won, wonTarget, elapsedFrac)} />
         </div>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", borderTop: leg ? "1px solid var(--line-faint)" : "none", paddingTop: leg ? 4 : 0 }}>
+        {rows.map((r) => <RateRow key={r.label} {...r} />)}
+        {!rows.length && <span style={{ fontSize: 12, color: "var(--fg-4)" }}>sem metas configuradas ainda</span>}
       </div>
     </section>
   );
@@ -293,7 +291,7 @@ function TeamBoard({ score, win, onPerson }) {
         {score == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
         {score != null && !people.length && <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Sem atividade nesse período.</div>}
         {people.length > 0 && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 12, alignItems: "stretch" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, alignItems: "stretch" }}>
             {people.map(({ p, pct }, i) => (
               <PersonCard key={p.user} p={p} rank={pct >= 0 ? i + 1 : null} bizDays={win.businessDays} elapsedFrac={elapsedFrac} onPerson={onPerson} />
             ))}
@@ -398,7 +396,9 @@ function MiniTile({ label, dot, big, sub, title }) {
   );
 }
 
-const tilesGrid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(148px, 1fr))", gap: 10 };
+// 3 tiles por linha, fixo (pedido do Leo: 3 em cima, 3 embaixo) — auto-fit
+// quebrava em 4+2 e as duas metades ficavam tortas.
+const tilesGrid = { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 };
 
 function AquisicaoCard({ marketing, biz, classes, pShort }) {
   const cpl = marketing?.totals?.spend > 0 && marketing?.totals?.cpl != null ? marketing.totals.cpl : null;
