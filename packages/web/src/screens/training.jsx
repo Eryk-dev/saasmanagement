@@ -726,7 +726,7 @@ function ExamSettings({ settings, setSettings }) {
       style={{ width: w, height: 24, padding: "0 7px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12 }} />
   );
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "8px 12px", maxWidth: 920 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "8px 12px" }}>
       <label className="mono" style={{ fontSize: 11, color: "var(--fg-2)", display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
         <input type="checkbox" checked={on}
           onChange={(e) => setSettings((s) => ({ ...s, examEvery: e.target.checked ? 30 : 0 }))}
@@ -757,7 +757,7 @@ function EditCards({ cards, saasId, onPatch, onAdd, onRemove, roleLabel }) {
   const norm = (s) => String(s || "").toLowerCase();
   const shown = q.trim() ? cards.filter((c) => norm(`${c.front} ${c.back}`).includes(norm(q))) : cards;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 920 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <button onClick={() => setOpen(onAdd())}
           style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--btn-bg, var(--accent))", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600 }}>
@@ -984,7 +984,7 @@ function Team({ saasId, mode, setMode }) {
       {!data && !err && <div className="mono dim" style={{ fontSize: 12 }}>carregando equipe…</div>}
       {data && (users.length === 0 ? <EmptyState title="Ninguém com baralho ainda" hint="Dê vagas (SDR/closer/…) pros usuários em Ajustes." /> : (
         <>
-          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", overflow: "auto", maxWidth: 980 }}>
+          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", overflow: "auto" }}>
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead><tr>
                 <th className="kicker" style={th}>Pessoa</th><th className="kicker" style={th}>Pra hoje</th><th className="kicker" style={th}>Feitas hoje</th>
@@ -1049,7 +1049,7 @@ function PersonDetail({ user: u, today }) {
   const weekly = u.weekly || [], forecast = u.forecast || [];
   const forecastMax = Math.max(1, ...forecast.map((f) => f.n));
   return (
-    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "16px 18px", maxWidth: 980, display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
       <div className="kicker accent">Raio-x · {u.name}</div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
