@@ -242,3 +242,38 @@ test("passado de 200% (chaseTarget null): cai na base, não há teto acima", () 
   assert.equal(d.target, 120000);
   assert.equal(d.superMode, false);
 });
+
+// ── Meta de contratos da empresa (monthlyContractsTarget) ────────────────────
+test("meta de contratos digitada vence a venda ÷ ticket e puxa a cadeia", () => {
+  const d = deriveGoalsFromPace(paceStub(), { contractsTarget: 32 });
+  assert.equal(d.won, 32, "digitado vence os 20 da divisão");
+  assert.equal(d.wonFromTicket, 20, "a divisão fica exposta pra comparação");
+  assert.equal(d.wonSource, "company");
+  assert.equal(d.callsShown, 64, "cadeia desce do digitado: 32 ÷ 50%");
+  assert.equal(d.goals.find((g) => g.metric === "won").target, 32);
+  // e não escala em super meta (digitado não escala)
+  const s = deriveGoalsFromPace(paceStub({ sale: { target: 120000, chaseTarget: 240000, chasePct: 200 } }), { contractsTarget: 32 });
+  assert.equal(s.won, 32);
+});
+
+test("sem ticket, a meta de contratos digitada sustenta a cadeia sozinha", () => {
+  const semTicket = paceStub({ context: { averageEntry: 0, averageEntrySource: "" } });
+  assert.equal(deriveGoalsFromPace(semTicket).blockedBy, "ticket", "sem nada, trava como antes");
+  const d = deriveGoalsFromPace(semTicket, { contractsTarget: 30 });
+  assert.equal(d.blockedBy, null);
+  assert.equal(d.won, 30);
+  assert.equal(d.wonFromTicket, null);
+  assert.ok(!d.goals.find((g) => g.metric === "ticket"), "sem ticket não deriva meta de ticket");
+  assert.equal(d.goals.find((g) => g.metric === "revenue").target, 120000, "a meta de R$ segue derivando");
+});
+
+test("PUT/GET: company.contractsTarget grava no produto, arredonda e limpa", async () => {
+  const { app, repo } = await buildApp();
+  await app.inject({ method: "PUT", url: "/api/metas/leverads", payload: { goals: [], company: { contractsTarget: "32.4" } } });
+  assert.equal((await repo.get("products", "leverads")).monthlyContractsTarget, 32);
+  assert.equal((await app.inject({ url: "/api/metas/leverads" })).json().company.contractsTarget, 32);
+  // vazio limpa: o número volta a seguir a venda ÷ ticket
+  await app.inject({ method: "PUT", url: "/api/metas/leverads", payload: { goals: [], company: { contractsTarget: "" } } });
+  assert.equal((await repo.get("products", "leverads")).monthlyContractsTarget, null);
+  assert.equal((await app.inject({ url: "/api/metas/leverads" })).json().company.contractsTarget, null);
+});

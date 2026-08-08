@@ -65,8 +65,13 @@ function chainRows(d, people = {}) {
     // desce por cima dela — o rótulo diz qual teto está sendo desdobrado.
     { label: d.superMode ? `Super meta ${d.chasePct}% do mês` : "Meta de venda do mês",
       note: d.superMode ? `meta base ${money(d.base)} já batida` : "", value: money(d.target) },
-    { label: "Ticket médio", note: TICKET_SOURCE[d.ticketSource] || "", value: `÷ ${money(d.ticket)}` },
-    { label: "Ganhos no mês", note: share(d.won, "closer"), value: int(d.won) },
+    // Sem ticket a linha some (a meta de contratos digitada sustenta a cadeia
+    // sozinha); com meta de contratos digitada, ela vence a divisão e a linha
+    // de ganhos diz de onde veio o número.
+    d.ticket ? { label: "Ticket médio", note: TICKET_SOURCE[d.ticketSource] || "", value: `÷ ${money(d.ticket)}` } : null,
+    { label: "Ganhos no mês",
+      note: [d.wonSource === "company" ? "meta de contratos da empresa (digitada vence a divisão)" : "", share(d.won, "closer")].filter(Boolean).join(" · "),
+      value: int(d.won) },
     { label: "Conversão da call", note: RATE_SOURCE[d.rates.closeRateSource] || "", value: `÷ ${pct(d.rates.closeRate)}` },
     { label: "Calls realizadas no mês", value: int(d.callsShown) },
     { label: "Comparecimento", note: RATE_SOURCE[d.rates.showRateSource] || "", value: `÷ ${pct(d.rates.showRate)}` },
@@ -75,7 +80,7 @@ function chainRows(d, people = {}) {
     { label: "Contatos no mês", note: share(d.contacts, "sdr"), value: int(d.contacts) },
     { label: "Taxa de contato", note: RATE_SOURCE[d.rates.contactRateSource] || "", value: `÷ ${pct(d.rates.contactRate)}` },
     { label: "Leads no mês", note: "entrada do funil: quem entrega é o marketing, então não vira meta de vaga", value: int(d.leads) },
-  ];
+  ].filter(Boolean);
 }
 
 function MetasScreen() {
@@ -84,6 +89,7 @@ function MetasScreen() {
   const [roleVals, setRoleVals] = useS({});     // "role:metric" -> string
   const [overrides, setOverrides] = useS([]);   // [{ key, metric, target }]
   const [cash, setCash] = useS("");             // meta de venda do mês (caixa, R$) — product.monthlyCashTarget
+  const [contratos, setContratos] = useS("");   // meta de contratos do mês (nº) — product.monthlyContractsTarget
   const [orig, setOrig] = useS(null);           // { roleVals, overrides, cash } snapshot
   const [err, setErr] = useS(null);
   const [meses, setMeses] = useS({});   // agenda: "AAAA-MM" -> meta daquele mês
@@ -96,9 +102,10 @@ function MetasScreen() {
     for (const r of d.roles) for (const m of r.metrics) rv[rk(r.role, m.metric)] = m.target != null ? String(m.target) : "";
     const ov = (d.userGoals || []).map((g) => ({ key: g.key, metric: g.metric, target: String(g.target) }));
     const ct = d.company?.cashTarget != null ? String(d.company.cashTarget) : "";
+    const kt = d.company?.contractsTarget != null ? String(d.company.contractsTarget) : "";
     const ms = Object.fromEntries((d.company?.months || []).map((m) => [m.month, m.target != null ? String(m.target) : ""]));
-    setData(d); setRoleVals(rv); setOverrides(ov); setCash(ct); setMeses(ms);
-    setOrig({ roleVals: JSON.stringify(rv), overrides: JSON.stringify(ov), cash: ct, meses: JSON.stringify(ms) });
+    setData(d); setRoleVals(rv); setOverrides(ov); setCash(ct); setContratos(kt); setMeses(ms);
+    setOrig({ roleVals: JSON.stringify(rv), overrides: JSON.stringify(ov), cash: ct, contratos: kt, meses: JSON.stringify(ms) });
   };
 
   useE(() => {
@@ -109,7 +116,7 @@ function MetasScreen() {
     return () => { alive = false; };
   }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const dirty = orig && (JSON.stringify(roleVals) !== orig.roleVals || JSON.stringify(overrides) !== orig.overrides || cash !== orig.cash || JSON.stringify(meses) !== orig.meses);
+  const dirty = orig && (JSON.stringify(roleVals) !== orig.roleVals || JSON.stringify(overrides) !== orig.overrides || cash !== orig.cash || contratos !== orig.contratos || JSON.stringify(meses) !== orig.meses);
 
   // Mapa metric -> { label, unit } (pros rótulos dos overrides).
   const metricInfo = {};
@@ -153,7 +160,7 @@ function MetasScreen() {
       for (const o of JSON.parse(orig.overrides)) {
         if (!seen.has(`${o.key}:${o.metric}`)) goals.push({ scope: "user", key: o.key, metric: o.metric, target: "" });
       }
-      await api.saveMetas(product.id, goals, { cashTarget: cash, months: meses });
+      await api.saveMetas(product.id, goals, { cashTarget: cash, contractsTarget: contratos, months: meses });
       applyData(await api.metas(product.id));
       setNote({ ok: true, text: "metas salvas · valem em todo campo que mostra meta" });
     } catch (e) {
@@ -163,7 +170,7 @@ function MetasScreen() {
   }
   function reset() {
     if (!orig) return;
-    setRoleVals(JSON.parse(orig.roleVals)); setOverrides(JSON.parse(orig.overrides)); setCash(orig.cash); setMeses(JSON.parse(orig.meses));
+    setRoleVals(JSON.parse(orig.roleVals)); setOverrides(JSON.parse(orig.overrides)); setCash(orig.cash); setContratos(orig.contratos); setMeses(JSON.parse(orig.meses));
   }
 
   const kicker = { fontSize: 11, fontWeight: 600, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" };
@@ -203,7 +210,7 @@ function MetasScreen() {
                 <span className="dim" style={{ fontSize: 12 }}>a meta que o negócio persegue no mês</span>
               </div>
               <div className="dim" style={{ fontSize: 12.5, marginBottom: 14 }}>
-                a faixa "Meta do mês" da Visão geral e a Análise de Pace seguem essa meta pelo VENDIDO no mês (contrato cheio; cartão em 12x conta inteiro) e desdobram o que falta em ganhos, calls, contatos e leads por dia. O caixa e o dinheiro futuro ficam na aba Clientes.
+                a faixa "Meta do mês" da Visão geral e a Análise de Pace seguem essa meta pelo VENDIDO no mês (contrato cheio; cartão em 12x conta inteiro) e desdobram o que falta em ganhos, calls, contatos e leads por dia. O caixa e o dinheiro futuro ficam na aba Clientes. A meta de contratos anda junto: vazia, segue a venda ÷ ticket médio; digitada, vence a divisão e a cadeia desce a partir dela.
               </div>
               <label style={{ display: "flex", alignItems: "center", gap: 10, maxWidth: 440 }}>
                 <span style={{ flex: 1, fontSize: 13.5, color: "var(--fg-2)" }}>Meta de venda do mês</span>
@@ -213,6 +220,32 @@ function MetasScreen() {
                     onChange={(e) => setCash(e.target.value)}
                     placeholder={`padrão ${data.company?.cashTargetDefault ?? 120000}`}
                     className="tnum" style={{ ...inp, width: 130, textAlign: "right" }} />
+                </div>
+              </label>
+              {/* Nº de contratos do mês: a mesma meta em unidades de fechamento.
+                  Vazio segue a venda ÷ ticket (o número que o pace já usa);
+                  digitado vence a divisão — e, como todo digitado, não escala
+                  em super meta. */}
+              <label style={{ display: "flex", alignItems: "center", gap: 10, maxWidth: 440, marginTop: 12 }}>
+                <span style={{ flex: 1, fontSize: 13.5, color: "var(--fg-2)" }}>
+                  Meta de contratos no mês
+                  {contratos === "" && data.derived?.wonFromTicket != null && (
+                    <span style={{ display: "block", fontSize: 11.5, color: "var(--accent)" }}>seguindo a meta de venda ÷ ticket: {data.derived.wonFromTicket}</span>
+                  )}
+                  {divergente(contratos, data.derived?.wonFromTicket) && (
+                    <button type="button" onClick={() => setContratos(String(data.derived.wonFromTicket))}
+                      style={{ display: "block", fontSize: 11.5, color: "var(--warn)", textAlign: "left", fontWeight: 600 }}>
+                      a meta de venda ÷ ticket dá {data.derived.wonFromTicket} · usar esse
+                    </button>
+                  )}
+                </span>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <input type="number" min="0" step="1" inputMode="numeric" value={contratos}
+                    onChange={(e) => setContratos(e.target.value)}
+                    placeholder={data.derived?.wonFromTicket != null ? `${data.derived.wonFromTicket} pela venda` : "—"}
+                    title={data.derived?.wonFromTicket != null ? `vazio = segue a meta de venda ÷ ticket (${data.derived.wonFromTicket})` : undefined}
+                    className="tnum" style={{ ...inp, width: 130, textAlign: "right" }} />
+                  <span className="mono dim" style={{ fontSize: 12 }}>contratos</span>
                 </div>
               </label>
 

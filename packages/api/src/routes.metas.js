@@ -7,7 +7,10 @@
 //
 // Além das metas por vaga/pessoa, a tela edita a META DA EMPRESA: a meta de
 // venda do mês (caixa), gravada em product.monthlyCashTarget — é ela que a
-// faixa "Meta do mês" da Visão geral e a Análise do pipeline perseguem.
+// faixa "Meta do mês" da Visão geral e a Análise do pipeline perseguem — e a
+// meta de CONTRATOS do mês (product.monthlyContractsTarget): vazia, o número
+// de contratos segue a venda ÷ ticket; digitada, ela vence essa divisão e a
+// cadeia (calls, contatos, leads) desce a partir dela.
 
 import { DEFAULT_CASH_TARGET, RATE_BENCHMARKS, computePipelinePace, cashTargetFor } from "./routes.pipeline-pace.js";
 import { monthKey } from "./metrics-core.js";
@@ -120,7 +123,7 @@ const MONTHS_AHEAD = 6;
 // como fallback quando falta histórico (goalRate em routes.pipeline-pace.js),
 // então derivar taxa do pace criaria referência circular — e taxa é ambição,
 // não retrato do que já acontece.
-export function deriveGoalsFromPace(pace) {
+export function deriveGoalsFromPace(pace, opts = {}) {
   const through = (n, rate) => (n != null && rate > 0 ? Math.ceil(n / rate) : null);
   // Persegue a META ATUAL: batida a base, o pace re-ancora na próxima super meta
   // (sale.chaseTarget), e o card Pace da tela Metas mostra o que ESSE teto exige.
@@ -132,13 +135,19 @@ export function deriveGoalsFromPace(pace) {
   const chasePct = pace.sale.chasePct || null;
   const ticket = Number(pace.context.averageEntry) > 0 ? Number(pace.context.averageEntry) : null;
   const c = pace.conversions;
-  const won = ticket ? Math.ceil(target / ticket) : null;
+  // Nº de contratos do mês: a meta digitada da EMPRESA (monthlyContractsTarget)
+  // vence a divisão venda ÷ ticket — e, como todo digitado, NÃO escala em super
+  // meta. wonFromTicket fica exposto pra tela comparar as duas verdades.
+  const contractsTarget = Number(opts.contractsTarget) > 0 ? Math.round(Number(opts.contractsTarget)) : null;
+  const wonFromTicket = ticket ? Math.ceil(target / ticket) : null;
+  const won = contractsTarget ?? wonFromTicket;
   const callsShown = through(won, c.closeRateEffective.value);
   const callsBooked = through(callsShown, c.showRate.value);
   const contacts = through(callsBooked, c.bookingRate.value);
   const leads = through(contacts, c.contactRate.value);
-  // Sem ticket não há cadeia: o que trava é sempre a primeira divisão que falha.
-  const blockedBy = !ticket ? "ticket"
+  // O que trava é sempre a primeira divisão que falha. Sem ticket, a meta de
+  // contratos digitada ainda sustenta a cadeia (ela É o nº de ganhos).
+  const blockedBy = won == null ? "ticket"
     : !(c.closeRateEffective.value > 0) ? "closeRate"
     : !(c.showRate.value > 0) ? "showRate"
     : !(c.bookingRate.value > 0) ? "bookingRate"
@@ -147,6 +156,7 @@ export function deriveGoalsFromPace(pace) {
   return {
     target, base, superMode, chasePct,
     ticket, ticketSource: pace.context.averageEntrySource || "",
+    contractsTarget, wonFromTicket, wonSource: contractsTarget != null ? "company" : "ticket",
     won, callsShown, callsBooked, contacts,
     leads, // entrada do funil: é o marketing que entrega, então não vira meta de vaga
     rates: {
@@ -183,7 +193,7 @@ export function registerMetasRoutes(app, repo) {
     };
     // Derivação da meta do mês (cadeia do pace) — best-effort, ver mais abaixo.
     let derived = null;
-    try { derived = deriveGoalsFromPace(await computePipelinePace(repo, product)); }
+    try { derived = deriveGoalsFromPace(await computePipelinePace(repo, product), { contractsTarget: product.monthlyContractsTarget }); }
     catch { derived = null; }
     const derivedByMetric = Object.fromEntries((derived?.goals || []).map((g) => [`${g.role}.${g.metric}`, g.target]));
     const roles = META_CATALOG.map((r) => ({
@@ -227,6 +237,7 @@ export function registerMetasRoutes(app, repo) {
     const company = {
       cashTarget: Number(product.monthlyCashTarget) > 0 ? Number(product.monthlyCashTarget) : null,
       cashTargetDefault: DEFAULT_CASH_TARGET,
+      contractsTarget: Number(product.monthlyContractsTarget) > 0 ? Number(product.monthlyContractsTarget) : null,
       months: proximosMeses,
     };
     // Quantas pessoas em cada vaga (o placar reparte a meta de time entre elas).
@@ -253,6 +264,13 @@ export function registerMetasRoutes(app, repo) {
         const num = Number(String(empresa.cashTarget ?? "").trim()); // "" → NaN (não 0)
         const next = Number.isFinite(num) && num > 0 ? num : null;
         if (next !== (Number(product.monthlyCashTarget) > 0 ? Number(product.monthlyCashTarget) : null)) patch.monthlyCashTarget = next;
+      }
+      // Meta de contratos do mês (nº inteiro): vazio/zero limpa e o número volta
+      // a seguir a venda ÷ ticket na cadeia.
+      if ("contractsTarget" in empresa) {
+        const num = Number(String(empresa.contractsTarget ?? "").trim());
+        const next = Number.isFinite(num) && num > 0 ? Math.round(num) : null;
+        if (next !== (Number(product.monthlyContractsTarget) > 0 ? Number(product.monthlyContractsTarget) : null)) patch.monthlyContractsTarget = next;
       }
       // Agenda de metas por mês: "AAAA-MM" → valor. Vazio/zero apaga o mês (ele
       // volta a seguir o padrão), e mês fora do formato é ignorado.

@@ -97,7 +97,7 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     // mês vira e entra o alvo agendado pro mês novo.
     let derivado = {};
     try {
-      const d = deriveGoalsFromPace(await computePipelinePace(repo, product));
+      const d = deriveGoalsFromPace(await computePipelinePace(repo, product), { contractsTarget: product.monthlyContractsTarget });
       derivado = Object.fromEntries((d?.goals || []).map((g) => [`${g.role}.${g.metric}`, Number(g.target)]));
     } catch { derivado = {}; }
 
