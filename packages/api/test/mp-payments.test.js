@@ -386,6 +386,43 @@ test("lead: link de pagamento pelo card carrega o id do lead e o pagamento casa 
   await app.close();
 });
 
+test("lead: link completo carrega o checkout (título/descrição/e-mail) e grava o fechamento no card", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds" });
+  await repo.create("leads", { id: "l7", name: "Sergio", saas: "leverads", email: "sergio@x.com", amount: 900 });
+  const { app, fakeFetch } = buildApp(repo, {
+    "POST /checkout/preferences": { id: "pref_7", init_point: "https://mp.com/p/7" },
+  });
+
+  const res = await app.inject({ method: "POST", url: "/api/leads/l7/mp/link", payload: {
+    amount: 10000, maxInstallments: 12, plan: "anual", contractValue: 40000,
+    paymentMethod: "cartao12x", description: "12 meses de LeverAds", payerEmail: "financeiro@loja.com",
+  } });
+  assert.equal(res.statusCode, 200);
+
+  // o cliente vê título com o plano, descrição e e-mail pré-preenchido
+  const call = fakeFetch.calls.find((c) => c.key === "POST /checkout/preferences");
+  assert.equal(call.body.items[0].title, "LeverAds · Plano Anual");
+  assert.equal(call.body.items[0].description, "12 meses de LeverAds");
+  assert.equal(call.body.payer.email, "financeiro@loja.com");
+
+  // fechamento gravado no card: os MESMOS campos do gate de Ganho
+  const saved = await repo.get("leads", "l7");
+  assert.equal(saved.planClosed, "anual");
+  assert.equal(saved.amount, 40000);
+  assert.equal(saved.paymentMethod, "cartao12x");
+  assert.equal(saved.mpChargeTitle, "LeverAds · Plano Anual");
+
+  // link rápido sem os campos de fechamento: nada do combinado é apagado
+  await app.inject({ method: "POST", url: "/api/leads/l7/mp/link", payload: { amount: 500 } });
+  const again = await repo.get("leads", "l7");
+  assert.equal(again.planClosed, "anual");
+  assert.equal(again.amount, 40000);
+  assert.equal(again.paymentMethod, "cartao12x");
+
+  await app.close();
+});
+
 test("lead: MP recusou o link → 424 e o lead fica intacto", async () => {
   const repo = makeMemRepo();
   await repo.create("leads", { id: "l1", saas: "leverads" });
