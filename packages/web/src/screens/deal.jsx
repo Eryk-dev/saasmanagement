@@ -56,6 +56,47 @@ const localToIso = (v) => {
   return Number.isFinite(d.getTime()) ? d.toISOString() : "";
 };
 
+// Editor explícito de data/hora. Mantém o input UNCONTROLLED para o Safari não
+// apagar os pedaços enquanto a pessoa digita e só confirma depois que a API
+// respondeu. O botão sempre visível deixa claro que escolher a data não basta:
+// é preciso salvar o horário.
+function DateTimeEditor({ value, onSave, validate, style }) {
+  const inputRef = React.useRef(null);
+  const [status, setStatus] = React.useState(""); // "dirty" | "saving" | "saved"
+  const stored = String(value || "");
+
+  React.useEffect(() => {
+    if (inputRef.current && inputRef.current.value !== stored) inputRef.current.value = stored;
+    setStatus((cur) => (cur === "saving" || cur === "saved") ? "saved" : "");
+  }, [stored]);
+
+  async function save() {
+    const raw = inputRef.current?.value || "";
+    if (raw === stored) { setStatus(""); return; }
+    const invalid = validate?.(raw) || "";
+    if (invalid) {
+      window.toast && window.toast(invalid, "neg");
+      return;
+    }
+    setStatus("saving");
+    let ok = false;
+    try { ok = (await onSave(raw)) !== false; } catch { ok = false; }
+    setStatus(ok ? "saved" : "dirty");
+  }
+
+  return (<>
+    <input ref={inputRef} type="datetime-local" defaultValue={stored} disabled={status === "saving"}
+      onInput={(e) => setStatus(e.currentTarget.value === stored ? "" : "dirty")}
+      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } }}
+      style={style} />
+    <button type="button" onClick={save} disabled={status !== "dirty"}
+      className="mono" title="Salvar a nova data e hora"
+      style={{ height: 26, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: status === "dirty" ? "var(--accent)" : "var(--bg-2)", color: status === "dirty" ? "var(--accent-fg)" : status === "saved" ? "var(--pos)" : "var(--fg-4)", fontSize: 10.5, fontWeight: 700, cursor: status === "dirty" ? "pointer" : "default" }}>
+      {status === "saving" ? "salvando…" : status === "saved" ? "salvo ✓" : "salvar horário"}
+    </button>
+  </>);
+}
+
 // Catálogo de atribuição e dor do criativo: helpers compartilhados com o
 // pipeline (lib/pains.js) — cache por SaaS no módulo.
 
@@ -150,6 +191,21 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
     dirty.current = true;
     setLead((prev) => ({ ...prev, ...p }));
     api.update("leads", lead.id, p).catch((err) => { console.warn("lead patch not persisted:", err.message); window.toast && window.toast("Alteração no lead não foi salva · tente de novo", "neg"); });
+  }
+  // Horário usa confirmação real: não atualiza o drawer otimisticamente. Assim
+  // "salvo ✓" significa que a API respondeu, e uma falha deixa o botão pronto
+  // para tentar de novo com o valor ainda digitado.
+  async function persistSchedule(p) {
+    try {
+      const saved = await api.update("leads", lead.id, p);
+      dirty.current = true;
+      setLead((prev) => ({ ...prev, ...saved }));
+      return saved;
+    } catch (err) {
+      console.warn("lead schedule not persisted:", err.message);
+      window.toast && window.toast("Horário não foi salvo · tente de novo", "neg");
+      return null;
+    }
   }
   // Proposta direto no WhatsApp: garante a apresentação-mãe e cria/atualiza a
   // versão própria do CLIENTE com a oferta principal. O share roda no servidor
@@ -587,16 +643,11 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   {label}
                 </button>
               ))}
-              {/* Uncontrolled + save no blur: durante a digitação de data/hora o
-                  datetime-local fica transitoriamente vazio/inválido. Quando era
-                  controlled, esse estado disparava o patch e o React recolocava
-                  o valor anterior, impedindo editar sobretudo no Safari. */}
-              <input key={`${lead.id}:touch:${lead.nextActionAt || ""}`} type="datetime-local" defaultValue={isoToLocal(lead.nextActionAt)}
-                onBlur={(e) => {
-                  const at = localToIso(e.target.value);
-                  if (at !== (lead.nextActionAt || "")) patch({ nextActionAt: at });
+              <DateTimeEditor value={isoToLocal(lead.nextActionAt)}
+                onSave={async (raw) => {
+                  const saved = await persistSchedule({ nextActionAt: localToIso(raw) });
+                  return !!saved;
                 }}
-                onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
                 style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
               {lead.nextActionAt && (
                 <button onClick={() => patch({ nextActionAt: "", nextActionNote: "" })} className="mono dim" style={{ fontSize: 11 }} title="Limpar próximo toque">limpar</button>
@@ -612,23 +663,14 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                 então marcar a call aqui SINCRONIZA o próximo toque no mesmo
                 horário (igual o roteiro faz) — senão o card fica com a call
                 num dia e a fila cobrando em outro. */}
-            <input key={`${lead.id}:call:${lead.callAt || ""}`} type="datetime-local" defaultValue={dtLocal(lead.callAt)}
-              onBlur={(e) => {
-                // Digitação livre também respeita a agenda do closer: aqui não
-                // tem a grade do Meu dia pra esconder o slot ocupado, então a
-                // checagem é na hora de salvar (era por onde entravam duas
-                // calls do mesmo closer no mesmo horário, sem ninguém avisar).
-                if (e.target.value && callConflict(e.target.value)) {
-                  e.target.value = dtLocal(lead.callAt);
-                  window.toast && window.toast(callBusyMsg || "Esse horário já está ocupado", "neg");
-                  return;
-                }
-                if (e.target.value === dtLocal(lead.callAt)) return;
-                patch(kind === "followup" && e.target.value
-                  ? { callAt: e.target.value, nextActionAt: localToIso(e.target.value) }
-                  : { callAt: e.target.value });
+            <DateTimeEditor value={dtLocal(lead.callAt)}
+              validate={(raw) => raw && callConflict(raw) ? (callBusyMsg || "Esse horário já está ocupado") : ""}
+              onSave={async (raw) => {
+                const saved = await persistSchedule(kind === "followup" && raw
+                  ? { callAt: raw, nextActionAt: localToIso(raw) }
+                  : { callAt: raw });
+                return !!saved;
               }}
-              onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
               style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: `1px solid ${callBusyMsg ? "var(--neg)" : "var(--line-1)"}`, background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
             {lead.callAt && (
               <button onClick={() => patch({ callAt: "" })} className="mono dim" style={{ fontSize: 11 }} title="Limpar call">limpar</button>
