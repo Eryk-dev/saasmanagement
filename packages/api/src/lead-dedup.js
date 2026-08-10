@@ -36,7 +36,7 @@ const PROTECTED = new Set([
 ]);
 // Atribuição/marketing: sempre pro clique/anúncio MAIS RECENTE (a pessoa voltou
 // por um anúncio novo — é essa origem que interessa medir e mostrar).
-const REFRESH = new Set(["utm", "fbc", "fbp", "sourceUrl", "source", "formVariant", "formHeadline", "form"]);
+const REFRESH = new Set(["utm", "fbc", "fbp", "sourceUrl", "source", "formVariant", "formHeadline", "form", "sourcePain"]);
 const isEmpty = (v) => v == null || v === "" || (Array.isArray(v) && v.length === 0);
 const onlyDigits = (s) => /^\d+$/.test(String(s || "").replace(/\s/g, ""));
 

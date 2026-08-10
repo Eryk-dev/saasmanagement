@@ -25,11 +25,12 @@ test("findDuplicateLead: e-mail desempata; lead interno (teste) fica fora", asyn
   assert.equal(await findDuplicateLead(repo, { saas: "leverads", phone: "41988887777" }), null);    // interno não casa
 });
 
-test("dedupMergePatch: refresca atribuição, preenche buraco, NÃO toca o estado do funil", () => {
+test("dedupMergePatch: refresca atribuição e dor, preenche buraco, NÃO toca o estado do funil", () => {
   const existing = { id: "l1", stage: "Desqualificado", owner: "u1", name: "41999", email: "", utm: { campaign: "old" }, amount: 500 };
-  const incoming = { stage: "Novo lead", owner: "", name: "Maria Silva", email: "m@ex.com", utm: { campaign: "new" }, amount: 0, sourceUrl: "https://x" };
+  const incoming = { stage: "Novo lead", owner: "", name: "Maria Silva", email: "m@ex.com", utm: { campaign: "new" }, sourcePain: "E", amount: 0, sourceUrl: "https://x" };
   const patch = dedupMergePatch(existing, incoming);
   assert.deepEqual(patch.utm, { campaign: "new" }); // atribuição sempre refresca
+  assert.equal(patch.sourcePain, "E");              // dor acompanha o clique mais recente
   assert.equal(patch.sourceUrl, "https://x");
   assert.equal(patch.email, "m@ex.com");            // preenche vazio
   assert.equal(patch.name, "Maria Silva");          // troca "só número" por nome de verdade

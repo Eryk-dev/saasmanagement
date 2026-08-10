@@ -8,7 +8,8 @@
 
 import { randomUUID } from "node:crypto";
 import { publicForm, validateAnswers, leadFromSubmission, submissionTerminal, submissionExit, makeRateLimiter, buildSteps, variantHeadline, submissionSummary } from "./forms.js";
-import { painCode, leadGrade } from "./routes.marketing.js";
+import { leadGrade } from "./routes.marketing.js";
+import { attributionPain } from "./attribution.js";
 import { isWonLead, kindOf } from "./stages.js";
 import { formPageHtml, EMBED_JS } from "./form-page.js";
 import { CREATE_DEFAULTS, dispatchProposal, publicBase } from "./routes.js";
@@ -199,6 +200,9 @@ export function registerFormRoutes(app, repo, opts = {}) {
       ...(sourceUrl ? { sourceUrl } : {}),
       ...(variant ? { formVariant: variant } : {}),
       ...(headline ? { formHeadline: headline } : {}),
+      // Persiste a dor de origem no lead. Antes ela vivia só na submissão e a
+      // proposta, criada logo abaixo, inevitavelmente nascia em "Sem código".
+      ...(pain ? { sourcePain: pain } : {}),
       ...(nextAt ? { nextActionAt: nextAt } : {}),
       ...(internal ? { internal: true, source: `Form · ${form.name || form.id} · teste da equipe` } : {}),
       createdAt: new Date().toISOString(), // métricas de marketing filtram por período
@@ -452,10 +456,14 @@ export function registerFormRoutes(app, repo, opts = {}) {
   // Dor do anúncio de origem: utm_content = ad id → nome do anúncio (insights
   // sincronizados) → código "[X]". "" quando não dá pra resolver (sem utm, ad
   // ainda sem sync) — a página cai na welcome base.
-  async function adPainOf(content) {
+  async function adPainOf(content, saas) {
     if (!content) return "";
-    const row = (await repo.list("ad_insights")).find((r) => String(r.adId || "") === String(content));
-    return row ? (painCode(row.adName) || "") : "";
+    const rows = await repo.listWhere("ad_insights", { adId: String(content), ...(saas ? { saas } : {}) }, {
+      fields: ["adName", "adsetName", "campaignName", "date"],
+    });
+    // Nome mais recente vence em caso de rename na Meta.
+    const row = rows.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))[0];
+    return attributionPain(row);
   }
   // welcome específica da dor sobrescreve a base (título/CTA/variantes da dor);
   // byPain nunca vai pro client inteiro — só a versão já resolvida.
@@ -477,7 +485,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
     const embed = req.query.embed === "1" || req.query.embed === "true";
     // Pixel por produto: o form dispara o pixel do SaaS dele (fallback env).
     const product = form.saas ? await repo.get("products", form.saas) : null;
-    const pain = await adPainOf(String(req.query.utm_content || ""));
+    const pain = await adPainOf(String(req.query.utm_content || ""), form.saas);
     const pf = await withSalesWhatsapp(resolveWelcome(publicForm(form), pain), form);
     return reply.type("text/html").send(formPageHtml(pf, { embed, pixelId: product?.metaPixelId || "", pain }));
   });

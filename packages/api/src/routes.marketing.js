@@ -21,6 +21,8 @@ import { stagePassCounts } from "./routes.funnel-metrics.js";
 import { kindOf } from "./stages.js";
 import { dayKey, isRealLead, winsIn, customerStartMap, leadOrigin, LEAD_ORIGINS } from "./metrics-core.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
+import { painCode } from "./attribution.js";
+export { painCode };
 
 const DAY_MS = 86400000;
 // Dia no FUSO DO NEGÓCIO — régua única do metrics-core (America/Sao_Paulo).
@@ -120,14 +122,6 @@ function parseBudget(raw) {
   if (!s) return null;
   const n = Number(s);
   return Number.isFinite(n) && n > 0 ? n : null;
-}
-
-// Código da dor na nomenclatura do anúncio: "[X]" em QUALQUER posição do nome
-// ("[A] v3 depoimento" ou "1303 [B]"). Código = 1-3 alfanuméricos — colchete
-// com outra coisa ("[TESTE]") não vira dor fantasma no relatório.
-export function painCode(adName) {
-  const m = String(adName || "").match(/\[([A-Za-z0-9]{1,3})\]/);
-  return m ? m[1].toUpperCase() : null;
 }
 
 // Cliente A/B/C/D/E — a MESMA régua do leadTier() da web (packages/web/src/lib/

@@ -204,15 +204,17 @@ test("submission com template nativo publicado → proposta NATIVA no lead (disp
 
   const res = await app.inject({
     method: "POST", url: "/public/forms/fo_test/submissions",
-    payload: { answers: ANSWERS_FULL },
+    payload: { answers: ANSWERS_FULL, pain: "E" },
   });
   assert.equal(res.statusCode, 201);
 
   const [lead] = await repo.list("leads");
   assert.ok(lead.proposta_id, "auto-trigger do form gerou proposta");
+  assert.equal(lead.sourcePain, "E", "dor de origem fica no lead, não só na submissão");
   assert.match(lead.proposalUrl, /\/p\//); // URL nativa, não levercopy
   const proposal = await repo.get("proposals", lead.proposta_id);
   assert.equal(proposal.saas, "leverads"); // snapshot nativo persistido
+  assert.equal(proposal.state.pain, "E", "proposta já nasce na trilha da origem");
   await app.close();
 });
 
