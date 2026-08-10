@@ -333,7 +333,16 @@ function App() {
 
       {/* Lead quente do WhatsApp (fluxo de ligação): salta em qualquer tela. */}
       <ErrorBoundary variant="modal" label="wa-hot" resetKey="wa-hot" onReset={() => {}}>
-        <WaHotAlert onOpenThread={(a) => nav("whatsapp", { waThread: a.thread, waLead: "", waDraft: "" })} />
+        <WaHotAlert
+          onOpenThread={(a) => nav("whatsapp", { waThread: a.thread, waLead: "", waDraft: "" })}
+          onOpenLeadWhatsapp={(a) => nav("whatsapp", { waLead: a.leadId, waThread: "", waDraft: "" })}
+          onOpenLeadCard={(a) => {
+            // O alerta pode chegar no mesmo tick em que o SEED ainda não trouxe
+            // o card recém-criado: sem ele, cai no funil do produto em vez de
+            // abrir um drawer vazio e perder o lead de vista.
+            const l = (window.SEED?.LEADS || []).find((x) => x.id === a.leadId);
+            if (l) openLead(l); else nav("pipeline", { saas: a.saas });
+          }} />
       </ErrorBoundary>
 
       {/* Feedback (bug/melhoria) em toda tela: FAB no canto inferior direito;
