@@ -17,7 +17,7 @@
 //     hourStart/hourEnd do produto, fim de semana conta como fora).
 
 import { findThreadByPhone, listMessages } from "./wa-store.js";
-import { isBusinessHours } from "./wa-call-flow.js";
+import { isBusinessHours } from "./business-hours.js";
 
 const norm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 

@@ -12,7 +12,8 @@
 import { randomUUID } from "node:crypto";
 import { recordMessage, threadId } from "./wa-store.js";
 import { isWonLead } from "./stages.js";
-import { isAutoSilenced } from "./weekend-duty.js";
+import { isAutoSilenced } from "./off-hours-duty.js";
+import { isBusinessHours, businessClock, hourOf } from "./business-hours.js";
 
 // Saudações padrão quando o produto não configurou as dele (Ajustes →
 // Integrações). {nome} = primeiro nome do lead (some com elegância quando não
@@ -24,20 +25,8 @@ export const DEFAULT_AFTER_HOURS_GREETING = "Olá {nome}! Recebi seu formulário
 // ── Horário do time ─────────────────────────────────────────────────────────
 // O fluxo tem DUAS saudações: dentro do horário comercial (seg a sex, 8h às
 // 18h por padrão, configurável por produto) pede pra ligar AGORA; fora dele
-// avisa quando o time volta e pede a autorização pra ligar QUANDO voltar.
-// Relógio do negócio em UTC-3 fixo (mesma convenção do marketing/lead-flow).
-const BRT = 3 * 3_600_000;
-const hourOf = (v, fallback) => { const n = Number(v); return Number.isFinite(n) && n >= 0 && n < 24 ? n : fallback; };
-const businessClock = (at) => new Date(new Date(at).getTime() - BRT); // campos UTC = relógio de Brasília
-
-export function isBusinessHours(product, at = new Date()) {
-  const cfg = product?.waCallFlow || {};
-  const clock = businessClock(at);
-  const dow = clock.getUTCDay();
-  if (dow === 0 || dow === 6) return false;
-  const h = clock.getUTCHours() + clock.getUTCMinutes() / 60;
-  return h >= hourOf(cfg.hourStart, 8) && h < hourOf(cfg.hourEnd, 18);
-}
+// avisa quando o time volta e pede a autorização pra ligar QUANDO voltar. O
+// expediente em si mora em business-hours.js, compartilhado com o plantão.
 
 // O {volta} da saudação fora do horário. Sexta à noite e sábado apontam pra
 // segunda; domingo à noite "amanhã" JÁ é segunda; madrugada de dia útil é hoje.
@@ -238,9 +227,9 @@ async function maybeStart(repo, wa, { thread, resolvePhoneId, now = new Date() }
   if (!lead) return;
   const product = (await repo.list("products")).find((p) => p.id === (thread.saas || lead.saas));
   if (!product?.waCallFlow?.enabled) return;
-  // Plantão de fim de semana: o formulário já mandou esse lead pro número de
+  // Plantão fora do horário: o formulário já mandou esse lead pro número de
   // quem está de plantão, e quem responde é gente. A saudação automática
-  // "estamos fora do horário, voltamos segunda" entraria por cima de um
+  // "estamos fora do horário, voltamos amanhã" entraria por cima de um
   // atendimento humano acontecendo AGORA — na janela do plantão ela fica calada.
   if (isAutoSilenced(product, now)) return;
   if (isWonLead(product, lead)) return; // cliente fechado não recebe "posso te ligar?"
