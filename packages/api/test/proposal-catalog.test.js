@@ -206,6 +206,20 @@ test("link do cliente: deck transformado, oferta travada, sem catálogo no snaps
   assert.equal((child.calc || {}).catalog, undefined, "catálogo não viaja");
 });
 
+test("link do cliente respeita o produto escolhido pelo closer em Apresentar", async () => {
+  const repo = await seedRepo();
+  const p = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "100-500" });
+  // A régua sugeriria Parcial + OEM; o closer decidiu apresentar OEM avulso.
+  p.state = { ...p.state, product: "oem" };
+
+  const r = await shareProposalOffer(repo, p, 1, { baseUrl: "http://x" });
+  assert.equal(r.ok, true);
+  assert.equal(r.proposal.state.product, "oem");
+  assert.equal(r.proposal.slides.find((s) => s.type === "pricing").key, "investimento_oem");
+  assert.equal(r.proposal.showAll, true, "preço e benefícios não esperam Espaço");
+  assert.equal(r.proposal.editKey, "", "versão do cliente não abre a tela zero");
+});
+
 test("rotas: card de decisão só no modo closer; PATCH aceita product/pain/oem e ignora produto inválido", async () => {
   const repo = await seedRepo();
   const p = await makeProposal(repo, {});

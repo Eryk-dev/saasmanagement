@@ -151,31 +151,41 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
     setLead((prev) => ({ ...prev, ...p }));
     api.update("leads", lead.id, p).catch((err) => { console.warn("lead patch not persisted:", err.message); window.toast && window.toast("Alteração no lead não foi salva · tente de novo", "neg"); });
   }
-  // Proposta direto no WhatsApp (pedido do Leo, 03/08): UM botão que garante a
-  // proposta (gera na hora se o lead ainda não tem) e abre a conversa com a
-  // mensagem pronta. O link é SEMPRE a visão do CLIENTE (cockpitProposalUrl,
-  // link limpo — oferta escondida do Shift+Espaço não vai junto).
+  // Proposta direto no WhatsApp: garante a apresentação-mãe e cria/atualiza a
+  // versão própria do CLIENTE com a oferta principal. O share roda no servidor
+  // sobre o state.product salvo pela tela zero de "apresentar", então o cliente
+  // recebe exatamente o produto decidido pelo closer, sem setup, sem edição e
+  // com benefícios/preço já visíveis (nada depende de Espaço/Shift+Espaço).
   const [propBusy, setPropBusy] = React.useState(false);
   async function propostaNoWhats() {
     setPropBusy(true);
+    // Abre ainda dentro do clique: depois dos awaits o navegador pode tratar a
+    // nova aba como popup e bloquear. A navegação acontece quando o link do
+    // cliente estiver pronto.
+    const win = wa ? window.open("", "_blank") : null;
     try {
-      let url = lead.proposalUrl;
-      if (!url) {
+      if (!lead.proposta_id || !lead.proposalUrl) {
         await api.generateProposal(lead.id);
         const fresh = await api.get("leads", lead.id);
         setLead((prev) => ({ ...prev, ...fresh }));
         dirty.current = true;
-        url = fresh?.proposalUrl || "";
       }
-      if (!url) { window.alert("Não consegui gerar a proposta deste produto (template publicado?)"); return; }
-      const msg = `Aqui está a proposta sobre a qual conversamos: ${cockpitProposalUrl(url)}`;
+      const shared = await api.shareProposal(lead.id, 1);
+      const url = shared?.url || "";
+      if (!url) { if (win) win.close(); window.alert("Não consegui preparar a proposta deste produto."); return; }
+      const msg = `Aqui está a proposta sobre a qual conversamos: ${url}`;
       // SEMPRE WhatsApp Web (decisão do Leo, 03/08): wa.me com o texto pronto,
       // independente de o produto ter número oficial conectado — quem envia a
       // proposta é o closer, do WhatsApp dele. O inbox segue existindo pros
       // outros fluxos; aqui só cai nele se o lead não tiver telefone.
-      if (wa) window.open(`${wa}?text=${encodeURIComponent(msg)}`, "_blank", "noopener");
+      if (wa) {
+        const whatsappUrl = `${wa}?text=${encodeURIComponent(msg)}`;
+        if (win) win.location.replace(whatsappUrl);
+        else window.open(whatsappUrl, "_blank", "noopener");
+      }
       else if (onOpenWhatsapp) onOpenWhatsapp(lead, msg);
     } catch (e) {
+      if (win) win.close();
       window.alert(e?.message || "não deu pra gerar/enviar a proposta");
     } finally { setPropBusy(false); }
   }
@@ -381,15 +391,6 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   apresentar ↗
                 </a>
               )}
-              {/* Proposta mora AQUI (o card antigo saiu): sempre a visão do
-                  CLIENTE — o link limpo, o mesmo que ele recebe. */}
-              {lead.proposalUrl && (
-                <a href={cockpitProposalUrl(lead.proposalUrl)} target="_blank" rel="noreferrer"
-                  className="chip" title="Abrir a proposta como o cliente vê"
-                  style={{ color: "var(--accent)", borderColor: "var(--accent-line)", background: "var(--accent-soft)", fontWeight: 600, textDecoration: "none" }}>
-                  proposta ↗
-                </a>
-              )}
               {/* Proposta PERSONALIZADA: pra quem fechou solução sob medida numa
                   conversa. Capa + o combinado (entregáveis + valor), no layout
                   do deck. Independe da proposta automática acima. */}
@@ -405,8 +406,8 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               {(onOpenWhatsapp || wa) && (
                 <button onClick={propostaNoWhats} disabled={propBusy} className="chip"
                   title={(lead.proposalUrl
-                    ? "Abrir o WhatsApp Web com a proposta pronta pra enviar (link limpo, visão do cliente, sem a oferta escondida)"
-                    : "Gerar a proposta e abrir o WhatsApp Web com ela pronta pra enviar (link limpo, visão do cliente)")}
+                    ? "Abrir o WhatsApp Web com o produto escolhido em apresentar, já pronto para o cliente"
+                    : "Gerar a apresentação e abrir o WhatsApp Web com a versão pronta para o cliente")}
                   style={{ cursor: "pointer", background: "var(--wa-brand)", borderColor: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontWeight: 700 }}>
                   {propBusy ? "gerando…" : "➤ proposta no Whats"}
                 </button>
