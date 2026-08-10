@@ -91,6 +91,19 @@ test("1º toque em estágio novo: lead segue sozinho pra Qualificando (1º ato d
   await repo.create("leads", { id: "l2", saas: "leverads", stage: "Novo lead" });
   await app.inject({ method: "POST", url: "/api/activities", payload: { lead: "l2", saas: "leverads", type: "call", at, meta: { reschedule: false } } });
   assert.equal((await repo.get("leads", "l2")).stage, "Novo lead");
+
+  // Data manual (botões +1d/+2d/+1sem da timeline) vence o GPS automático,
+  // mas continua sendo um contato real: o lead precisa sair de Novo lead.
+  await repo.create("leads", { id: "l3", saas: "leverads", stage: "Novo lead", stageAttempts: 0 });
+  const manualNextAt = "2026-07-15T15:00:00.000Z";
+  await app.inject({
+    method: "POST", url: "/api/activities",
+    payload: { lead: "l3", saas: "leverads", type: "whatsapp", author: "sdr", at, meta: { nextActionAt: manualNextAt } },
+  });
+  const manual = await repo.get("leads", "l3");
+  assert.equal(manual.stage, "Qualificando", "data manual não bloqueia o avanço do 1º contato");
+  assert.equal(manual.nextActionAt, manualNextAt, "data manual vence a cadência do novo estágio");
+  assert.ok((await activitiesOf(repo, "l3", "stage")).some((a) => a.meta.from === "Novo lead" && a.meta.to === "Qualificando"));
   await app.close();
 });
 

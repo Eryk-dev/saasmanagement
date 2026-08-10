@@ -188,15 +188,15 @@ export function ActivityComposer({ lead, onLogged }) {
     try {
       let photoUrl = "";
       if (photo) photoUrl = (await api.activityAsset(photo.blob, photo.name)).url;
+      const nextActionAt = nextMs ? new Date(Date.now() + nextMs).toISOString() : "";
       const a = await api.logActivity({
         saas: lead.saas, lead: lead.id, type, text: t,
         author: currentUser()?.id || "",
-        // preset de próximo contato vence o re-agendamento automático da cadência
-        ...(nextMs || photoUrl ? { meta: { ...(nextMs ? { reschedule: false } : {}), ...(photoUrl ? { photo: photoUrl } : {}) } } : {}),
+        // O servidor aplica o próximo contato manual DEPOIS da cadência e do
+        // avanço Novo → Qualificando. Antes usávamos reschedule:false e isso
+        // também bloqueava o avanço, deixando leads já contatados em Novo lead.
+        ...(nextActionAt || photoUrl ? { meta: { ...(nextActionAt ? { nextActionAt } : {}), ...(photoUrl ? { photo: photoUrl } : {}) } } : {}),
       });
-      if (nextMs) {
-        await api.update("leads", lead.id, { nextActionAt: new Date(Date.now() + nextMs).toISOString() });
-      }
       setText(""); dropPhoto();
       onLogged && onLogged(a);
     } catch (e) {

@@ -234,8 +234,10 @@ export async function applyStageMove(repo, { lead, toStage, patch = {}, author =
 // Hook do POST genérico de activities: toque (whatsapp/call/email/meeting)
 // atualiza as denormalizações do lead (últ. contato, tentativas no estágio) e
 // re-agenda o próximo passo pela cadência do estágio atual — registrou o toque,
-// o GPS já marca o próximo. Nota só atualiza o "últ. contato". `meta.reschedule
-// === false` registra sem mexer na agenda (ex.: backfill de histórico).
+// o GPS já marca o próximo. `meta.nextActionAt` vence a cadência quando a
+// pessoa escolhe uma data manual, sem impedir que o 1º contato promova o lead
+// de Novo para Qualificando. Nota só atualiza o "últ. contato".
+// `meta.reschedule === false` registra sem mexer na agenda (ex.: backfill).
 export async function onActivityCreated(repo, activity) {
   if (!activity || !activity.lead) return null;
   const isTouch = TOUCH_TYPES.has(activity.type);
@@ -247,6 +249,9 @@ export async function onActivityCreated(repo, activity) {
     lastActivityType: activity.type,
   };
   if (isTouch && activity.meta?.reschedule !== false) {
+    const manualNextRaw = String(activity.meta?.nextActionAt || "").trim();
+    const manualNextMs = manualNextRaw ? new Date(manualNextRaw).getTime() : NaN;
+    const manualNextAt = Number.isFinite(manualNextMs) ? new Date(manualNextMs).toISOString() : "";
     patch.stageAttempts = (Number(lead.stageAttempts) || 0) + 1;
     const product = lead.saas ? await repo.get("products", lead.saas) : null;
     const stage = lead.stage || firstStage(product);
@@ -267,9 +272,14 @@ export async function onActivityCreated(repo, activity) {
           author: activity.author || "system",
           now: new Date(activity.at || Date.now()),
         });
-        return repo.update("leads", lead.id, { ...patch, ...movePatch, stage: target.stage });
+        return repo.update("leads", lead.id, {
+          ...patch, ...movePatch,
+          ...(manualNextAt ? { nextActionAt: manualNextAt } : {}),
+          stage: target.stage,
+        });
       }
     }
+    if (manualNextAt) patch.nextActionAt = manualNextAt;
   }
   return repo.update("leads", lead.id, patch);
 }
