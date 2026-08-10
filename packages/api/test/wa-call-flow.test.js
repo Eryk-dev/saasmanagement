@@ -9,7 +9,8 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { makeWhatsapp } = await import("../src/whatsapp.js");
 const { registerWhatsappRoutes } = await import("../src/routes.whatsapp.js");
-const { greetingFor, parsePermissionReply, isBusinessHours, runInboundCallFlow, DEFAULT_CALL_GREETING } = await import("../src/wa-call-flow.js");
+const { greetingFor, parsePermissionReply, runInboundCallFlow, DEFAULT_CALL_GREETING } = await import("../src/wa-call-flow.js");
+const { isBusinessHours } = await import("../src/business-hours.js");
 const { recordMessage } = await import("../src/wa-store.js");
 
 // Cliente fake: registra envios de texto e de pedido de permissão.
@@ -237,13 +238,13 @@ test("auto: dentro do horário usa a saudação normal; fora usa a de ausência 
   assert.match(await trigger("2026-07-15T22:30:00Z"), /amanhã às 8h/);
 });
 
-// Plantão de fim de semana: o formulário já mandou o lead pro número de quem
-// está de plantão e quem responde é gente. O robô dizendo "estamos fora do
-// horário" entraria por cima desse atendimento, então na janela ele cala.
-test("plantão de fim de semana: saudação automática calada na janela, normal fora dela", async () => {
-  const trigger = async (isoNow, weekendDuty) => {
+// Plantão fora do horário: o formulário já mandou o lead pro número de quem está
+// de plantão e quem responde é gente. O robô dizendo "estamos fora do horário"
+// entraria por cima desse atendimento, então na janela ele cala.
+test("plantão: saudação automática calada fora do expediente, normal dentro dele", async () => {
+  const trigger = async (isoNow, duty) => {
     const repo = makeMemRepo();
-    await repo.create("products", { id: "leverads", name: "LeverAds", waCallFlow: { enabled: true }, ...(weekendDuty ? { weekendDuty } : {}) });
+    await repo.create("products", { id: "leverads", name: "LeverAds", waCallFlow: { enabled: true }, ...(duty ? { duty } : {}) });
     await repo.create("leads", { id: "ld1", saas: "leverads", phone: "41992516545", name: "Maria Souza", stage: "Novo" });
     const wa = fakeWa();
     const msg = { from: "5541992516545", id: "wamid.X", type: "text", text: { body: "oi" } };
@@ -261,7 +262,12 @@ test("plantão de fim de semana: saudação automática calada na janela, normal
   assert.equal(sabado.sent, 0);
   assert.equal(sabado.callFlow, null);
 
-  // segunda 10h, já fora da janela: volta ao normal
+  // quarta 22h: noite de dia útil também é plantão, mesmo silêncio
+  const noite = await trigger("2026-08-06T01:00:00Z", PLANTAO);
+  assert.equal(noite.perms, 0);
+  assert.equal(noite.sent, 0);
+
+  // segunda 10h, dentro do expediente: volta ao normal
   const segunda = await trigger("2026-08-10T13:00:00Z", PLANTAO);
   assert.equal(segunda.perms, 1);
 

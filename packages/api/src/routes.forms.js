@@ -16,7 +16,7 @@ import { stageByKind, firstStage } from "./stages.js";
 import { logActivity, initialNextActionAt, autoLeadOwner } from "./lead-flow.js";
 import { findDuplicateLead, dedupMergePatch } from "./lead-dedup.js";
 import { raiseNewLeadAlert } from "./wa-call-flow.js";
-import { weekendDutyPhone } from "./weekend-duty.js";
+import { dutyPhone } from "./off-hours-duty.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 
 export const clientIp = (req) =>
@@ -73,17 +73,21 @@ export function registerFormRoutes(app, repo, opts = {}) {
   // CONECTADO no cockpit, a não ser que aquele form tenha um número próprio
   // escrito. Injetado por routes.js (o cliente do WhatsApp nasce depois daqui).
   const salesWhatsapp = opts.salesWhatsapp || (async () => "");
+  // Relógio injetável só pra teste: o plantão depende da hora, e teste que
+  // depende do relógio real passa ou falha conforme a hora em que roda.
+  const now = opts.now || (() => new Date());
 
   // Preenche o WhatsApp do "obrigado" com o número conectado quando o form não
   // define um: um número só pra manter, sem cópia velha em cada formulário.
   //
-  // No plantão de fim de semana o número do plantonista GANHA até do número
-  // escrito no próprio form: a janela existe justamente porque ninguém está no
-  // número comercial, então mandar o lead pra lá seria mandar pro vazio. Fora da
-  // janela nada muda, e produto sem plantão configurado nunca entra aqui.
+  // No plantão (fora do expediente: noite de dia útil e fim de semana) o número
+  // do plantonista GANHA até do número escrito no próprio form: a janela existe
+  // justamente porque ninguém está no número comercial, então mandar o lead pra
+  // lá seria mandar pro vazio. Dentro do expediente nada muda, e produto sem
+  // plantão configurado nunca entra aqui.
   async function withSalesWhatsapp(pf, form) {
     const product = form?.saas ? await repo.get("products", form.saas) : null;
-    const duty = weekendDutyPhone(product);
+    const duty = dutyPhone(product, now());
     if (duty) return { ...pf, thanks: { ...(pf.thanks || {}), whatsapp: duty } };
     if (pf?.thanks?.whatsapp) return pf;
     const digits = await salesWhatsapp();
