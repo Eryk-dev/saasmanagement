@@ -11,7 +11,7 @@ import { registerFormRoutes } from "./routes.forms.js";
 import { registerWebhookRoutes } from "./routes.webhooks.js";
 import { mergeLeadQuestions } from "./forms.js";
 import { registerProposalRoutes } from "./routes.proposals.js";
-import { runNativeProposal, proposalOffers, shareProposalOffer, buildCustomProposal, publicProposal } from "./proposal.js";
+import { runNativeProposal, proposalOffers, shareProposalOffer, buildCustomProposal, publicProposal, syncProposalLeadSnapshot } from "./proposal.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { registerBillingRoutes } from "./routes.billing.js";
 import { initSubscription, syncCustomerArr, createClosedSubscription, closedSubscriptionSpec } from "./billing.js";
@@ -727,6 +727,15 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     }
     const updated = await repo.update(collection, id, patch);
     if (!updated) return reply.code(404).send({ error: "Not found" });
+    // Empresa/nome preenchidos depois da geração precisam chegar na
+    // apresentação existente. O helper também recupera a dor de origem quando
+    // o snapshot é antigo; tudo é best-effort para nunca quebrar o PATCH do lead.
+    if (collection === "leads" && updated.proposta_id && ["company", "name", "sourcePain", "utm"].some((k) => k in req.body)) {
+      try {
+        const proposal = await repo.get("proposals", updated.proposta_id);
+        if (proposal) await syncProposalLeadSnapshot(repo, proposal);
+      } catch { /* fail-open */ }
+    }
     // Form editado → ressincroniza leadQuestions do produto (best-effort).
     if (collection === "forms") { try { await syncLeadQuestions(repo, updated); } catch { /* fail-open */ } }
     // Lead que virou "Ganho" → cria o cliente (pós-venda) com startedAt e link
@@ -939,8 +948,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   app.post("/api/leads/:id/proposal-share", async (req, reply) => {
     const lead = await repo.get("leads", req.params.id);
     if (!lead) return reply.code(404).send({ error: "Not found" });
-    const proposal = lead.proposta_id ? await repo.get("proposals", lead.proposta_id) : null;
+    let proposal = lead.proposta_id ? await repo.get("proposals", lead.proposta_id) : null;
     if (!proposal) return reply.code(400).send({ error: "lead ainda não tem proposta gerada" });
+    proposal = await syncProposalLeadSnapshot(repo, proposal);
     const body = req.body && typeof req.body === "object" ? req.body : {};
     const result = await shareProposalOffer(repo, proposal, body.offer, { baseUrl: publicBase(req) });
     if (!result.ok) return reply.code(400).send({ error: result.error });

@@ -5,7 +5,7 @@
 // Tracking de visualização: cada GET /p/:id SEM o editKey conta uma view
 // (closer abrindo o próprio link de edição não infla o número).
 
-import { publicProposal } from "./proposal.js";
+import { publicProposal, syncProposalLeadSnapshot } from "./proposal.js";
 import { applyCatalog, catalogUI } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { makeRateLimiter } from "./forms.js";
@@ -99,11 +99,15 @@ export function registerProposalRoutes(app, repo, opts = {}) {
   });
 
   app.get("/p/:id", async (req, reply) => {
-    const p = await repo.get("proposals", req.params.id);
+    let p = await repo.get("proposals", req.params.id);
     if (!p) {
       return reply.code(404).type("text/html").send("<!doctype html><meta charset=utf-8><title>404</title><p style='font-family:system-ui;padding:40px'>Proposta não encontrada.</p>");
     }
     const editable = !!req.query.k && req.query.k === p.editKey;
+    // O link de apresentação pode ter sido gerado antes de o SDR preencher a
+    // empresa. Reabre sempre com os dados atuais e recupera a dor dos snapshots
+    // antigos, sem mexer no deck nem em escolhas manuais do closer.
+    if (editable) p = await syncProposalLeadSnapshot(repo, p);
     if (!editable) {
       // QUEM abriu: link aberto de DENTRO do cockpit (?from=cockpit ou referer do
       // cockpit) é do TIME (SDR/closer conferindo), não é o cliente. Aberturas do

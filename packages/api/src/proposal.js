@@ -30,6 +30,7 @@
 import { randomBytes } from "node:crypto";
 import { CYCLE_MONTHS } from "./billing.js";
 import { hasCatalog, applyCatalog } from "./proposal-catalog.js";
+import { attributionPain, painCode } from "./attribution.js";
 
 export const SLIDE_TYPES = ["hero", "cards", "receipt", "steps", "compare", "bignum", "pricing", "closer", "custom"];
 
@@ -57,6 +58,73 @@ export function splitLeadData(lead) {
     },
     answers,
   };
+}
+
+function validProposalPain(calc, raw) {
+  const code = painCode(`[${String(raw || "").trim()}]`) || "";
+  const pains = calc?.catalog?.pains;
+  return code && (!pains || pains[code]) ? code : "";
+}
+
+// Atualiza os dados vivos que pertencem ao lead sem refazer o snapshot do deck.
+// A proposta nasce junto com o envio do form, mas empresa costuma ser preenchida
+// pelo SDR depois. A dor também podia faltar nos snapshots antigos porque antes
+// era guardada só na submissão. O override manual da tela zero sempre vence.
+export async function syncProposalLeadSnapshot(repo, proposal) {
+  if (!proposal?.lead || proposal.sharedFrom) return proposal;
+  const lead = await repo.get("leads", proposal.lead);
+  if (!lead) return proposal;
+
+  const data = {
+    lead: { ...(proposal.data?.lead || {}) },
+    answers: { ...(proposal.data?.answers || {}) },
+  };
+  const fresh = splitLeadData(lead);
+  let dataChanged = false;
+  for (const key of ["name", "firstName", "company", "email", "phone", "amount"]) {
+    if (fresh.lead[key] !== data.lead[key]) {
+      data.lead[key] = fresh.lead[key];
+      dataChanged = true;
+    }
+  }
+  // Mantém a origem junto do snapshot para auditoria e para um futuro reload
+  // não depender novamente das tabelas de marketing.
+  if (lead.sourcePain && lead.sourcePain !== data.answers.sourcePain) {
+    data.answers.sourcePain = lead.sourcePain;
+    dataChanged = true;
+  }
+
+  const state = { ...(proposal.state || {}) };
+  let stateChanged = false;
+  // "none" é escolha manual explícita; só a ausência real autoriza inferir.
+  if (state.pain == null || state.pain === "") {
+    let inferred = validProposalPain(proposal.calc, lead.sourcePain || data.answers.sourcePain);
+    if (!inferred) {
+      const submissions = await repo.listWhere("form_submissions", { lead: lead.id }, { fields: ["pain", "createdAt"] });
+      const latest = submissions
+        .filter((s) => s.pain)
+        .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))[0];
+      inferred = validProposalPain(proposal.calc, latest?.pain);
+    }
+    if (!inferred && lead.utm?.content) {
+      const rows = await repo.listWhere("ad_insights", {
+        adId: String(lead.utm.content),
+        ...(lead.saas ? { saas: lead.saas } : {}),
+      }, { fields: ["adName", "adsetName", "campaignName", "date"] });
+      const latest = rows.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))[0];
+      inferred = validProposalPain(proposal.calc, attributionPain(latest));
+    }
+    if (inferred) {
+      state.pain = inferred;
+      stateChanged = true;
+    }
+  }
+
+  if (!dataChanged && !stateChanged) return proposal;
+  return (await repo.update("proposals", proposal.id, {
+    ...(dataChanged ? { data } : {}),
+    ...(stateChanged ? { state } : {}),
+  })) || proposal;
 }
 
 // Slide condicional: showIf = { key, values } → entra no snapshot só se a
@@ -151,11 +219,13 @@ export function initialState(calc, answers) {
   const seats = Number(c.seatsMap?.[accounts]) || c.plans?.[c.defaultCycle]?.included || 2;
   const volume = (c.volumeKey && answers[c.volumeKey]) || Object.keys(c.volumeMid || {})[0] || "";
   const valid = new Date(Date.now() + (Number(c.validDays) || 7) * 86400_000);
+  const sourcePain = validProposalPain(c, answers?.sourcePain);
   return {
     accounts, seats, volume, cycle: c.defaultCycle,
     customPriceCents: 0,
     validUntil: valid.toLocaleDateString("pt-BR"),
     frozen: false,
+    ...(sourcePain ? { pain: sourcePain } : {}),
   };
 }
 
