@@ -237,6 +237,41 @@ test("auto: dentro do horário usa a saudação normal; fora usa a de ausência 
   assert.match(await trigger("2026-07-15T22:30:00Z"), /amanhã às 8h/);
 });
 
+// Plantão de fim de semana: o formulário já mandou o lead pro número de quem
+// está de plantão e quem responde é gente. O robô dizendo "estamos fora do
+// horário" entraria por cima desse atendimento, então na janela ele cala.
+test("plantão de fim de semana: saudação automática calada na janela, normal fora dela", async () => {
+  const trigger = async (isoNow, weekendDuty) => {
+    const repo = makeMemRepo();
+    await repo.create("products", { id: "leverads", name: "LeverAds", waCallFlow: { enabled: true }, ...(weekendDuty ? { weekendDuty } : {}) });
+    await repo.create("leads", { id: "ld1", saas: "leverads", phone: "41992516545", name: "Maria Souza", stage: "Novo" });
+    const wa = fakeWa();
+    const msg = { from: "5541992516545", id: "wamid.X", type: "text", text: { body: "oi" } };
+    await recordMessage(repo, { id: msg.id, phone: msg.from, direction: "in", text: "oi", from: msg.from, status: "received" });
+    await runInboundCallFlow(repo, wa, { message: msg, resolvePhoneId: async () => "PN1", now: new Date(isoNow) });
+    const thread = await repo.get("wa_threads", "5541992516545");
+    return { perms: wa.perms.length, sent: wa.sent.length, callFlow: thread?.callFlow || null };
+  };
+  const PLANTAO = { enabled: true, phone: "5541995063622" };
+
+  // sábado 12h: nada sai, e a thread não fica com fluxo aberto (o lead não
+  // recebeu pedido nenhum, então não há permissão pendente pra cobrar depois)
+  const sabado = await trigger("2026-08-08T15:00:00Z", PLANTAO);
+  assert.equal(sabado.perms, 0);
+  assert.equal(sabado.sent, 0);
+  assert.equal(sabado.callFlow, null);
+
+  // segunda 10h, já fora da janela: volta ao normal
+  const segunda = await trigger("2026-08-10T13:00:00Z", PLANTAO);
+  assert.equal(segunda.perms, 1);
+
+  // produto SEM plantão configurado segue como sempre foi, inclusive no sábado
+  assert.equal((await trigger("2026-08-08T15:00:00Z", null)).perms, 1);
+
+  // plantão com o robô ligado de propósito (silenceAuto: false) continua falando
+  assert.equal((await trigger("2026-08-08T15:00:00Z", { ...PLANTAO, silenceAuto: false })).perms, 1);
+});
+
 test("interactive indisponível → cai pra texto simples com a mesma saudação (not_requested)", async () => {
   const repo = makeMemRepo();
   await seedFlow(repo);

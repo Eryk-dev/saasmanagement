@@ -251,6 +251,26 @@ export function leadFromSubmission(form, answers) {
   return lead;
 }
 
+// Resumo humano das respostas, pro aviso de lead novo dizer COM QUEM se vai
+// falar sem obrigar o SDR a abrir o card antes de ligar ("Autopeças · 3 a 5
+// contas · 500 a 2 mil anúncios"). Só as perguntas de qualificação: contato já
+// está no nome do card, e `insight` é tela de conteúdo, não resposta.
+export function submissionSummary(form, answers, { max = 3 } = {}) {
+  const contact = new Set(Object.values(form?.mapping || {}));
+  const out = [];
+  for (const q of form?.questions || []) {
+    if (out.length >= max) break;
+    if (q.type === "insight" || contact.has(q.key)) continue;
+    const v = answers?.[q.key];
+    if (isBlank(v)) continue;
+    // Select guarda o VALOR da opção ("3-5"); quem lê quer o rótulo ("3 a 5
+    // contas"). Valor solto (allowCustom, texto livre) entra como veio.
+    const labelOf = (one) => (q.options || []).find((o) => o.value === one)?.label || String(one);
+    out.push(Array.isArray(v) ? v.map(labelOf).join(", ") : labelOf(v));
+  }
+  return out.join(" · ").slice(0, 200);
+}
+
 // Rate-limit de janela fixa por chave (IP). Em memória — suficiente pra um
 // processo único; o limite real de abuso fica no captcha/honeypot + infra.
 export function makeRateLimiter({ limit = 10, windowMs = 60_000 } = {}) {

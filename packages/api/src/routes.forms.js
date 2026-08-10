@@ -7,7 +7,7 @@
 // definição do form. IDs são opacos; forms em rascunho não existem publicamente.
 
 import { randomUUID } from "node:crypto";
-import { publicForm, validateAnswers, leadFromSubmission, submissionTerminal, submissionExit, makeRateLimiter, buildSteps, variantHeadline } from "./forms.js";
+import { publicForm, validateAnswers, leadFromSubmission, submissionTerminal, submissionExit, makeRateLimiter, buildSteps, variantHeadline, submissionSummary } from "./forms.js";
 import { painCode, leadGrade } from "./routes.marketing.js";
 import { isWonLead, kindOf } from "./stages.js";
 import { formPageHtml, EMBED_JS } from "./form-page.js";
@@ -15,6 +15,8 @@ import { CREATE_DEFAULTS, dispatchProposal, publicBase } from "./routes.js";
 import { stageByKind, firstStage } from "./stages.js";
 import { logActivity, initialNextActionAt, autoLeadOwner } from "./lead-flow.js";
 import { findDuplicateLead, dedupMergePatch } from "./lead-dedup.js";
+import { raiseNewLeadAlert } from "./wa-call-flow.js";
+import { weekendDutyPhone } from "./weekend-duty.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 
 export const clientIp = (req) =>
@@ -74,7 +76,15 @@ export function registerFormRoutes(app, repo, opts = {}) {
 
   // Preenche o WhatsApp do "obrigado" com o número conectado quando o form não
   // define um: um número só pra manter, sem cópia velha em cada formulário.
-  async function withSalesWhatsapp(pf) {
+  //
+  // No plantão de fim de semana o número do plantonista GANHA até do número
+  // escrito no próprio form: a janela existe justamente porque ninguém está no
+  // número comercial, então mandar o lead pra lá seria mandar pro vazio. Fora da
+  // janela nada muda, e produto sem plantão configurado nunca entra aqui.
+  async function withSalesWhatsapp(pf, form) {
+    const product = form?.saas ? await repo.get("products", form.saas) : null;
+    const duty = weekendDutyPhone(product);
+    if (duty) return { ...pf, thanks: { ...(pf.thanks || {}), whatsapp: duty } };
     if (pf?.thanks?.whatsapp) return pf;
     const digits = await salesWhatsapp();
     return digits ? { ...pf, thanks: { ...(pf.thanks || {}), whatsapp: digits } } : pf;
@@ -99,7 +109,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
   app.get("/public/forms/:id", async (req, reply) => {
     const form = await publishedForm(req.params.id);
     if (!form) return reply.code(404).send({ error: "Not found" });
-    return withSalesWhatsapp(publicForm(form));
+    return withSalesWhatsapp(publicForm(form), form);
   });
 
   app.post("/public/forms/:id/submissions", async (req, reply) => {
@@ -270,6 +280,17 @@ export function registerFormRoutes(app, repo, opts = {}) {
       const fresh = (await repo.get("leads", lead.id)) || lead;
       const product = await repo.get("products", form.saas);
       await discord.leadNew({ lead: fresh, productName: product?.name });
+    }
+
+    // Pop-up de lead novo pro SDR: o melhor momento de falar com essa pessoa é
+    // agora, com ela ainda na página. Vale também na RE-ENTRADA (preencher de
+    // novo é levantar a mão de novo) — o alerta é um por lead, então reenvio
+    // atualiza o mesmo aviso em vez de empilhar. Fica de fora quem não é fila de
+    // venda: desqualificado, saída lateral, teste da equipe e cliente fechado.
+    if (lead && !disqualified && !exit && !internal && !isWonLead(product, lead)) {
+      try {
+        await raiseNewLeadAlert(repo, lead, { text: submissionSummary(form, answers) });
+      } catch { /* aviso não pode quebrar o envio do form */ }
     }
 
     return reply.code(201).send({ ok: true, id: submission.id });
@@ -453,7 +474,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // Pixel por produto: o form dispara o pixel do SaaS dele (fallback env).
     const product = form.saas ? await repo.get("products", form.saas) : null;
     const pain = await adPainOf(String(req.query.utm_content || ""));
-    const pf = await withSalesWhatsapp(resolveWelcome(publicForm(form), pain));
+    const pf = await withSalesWhatsapp(resolveWelcome(publicForm(form), pain), form);
     return reply.type("text/html").send(formPageHtml(pf, { embed, pixelId: product?.metaPixelId || "", pain }));
   });
 
@@ -495,7 +516,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
   app.post("/api/forms/preview", async (req, reply) => {
     const draft = req.body && typeof req.body === "object" ? req.body : null;
     if (!draft) return reply.code(400).send({ error: "JSON body required" });
-    const pf = await withSalesWhatsapp(resolveWelcome(publicForm(draft), ""));
+    const pf = await withSalesWhatsapp(resolveWelcome(publicForm(draft), ""), draft);
     return { html: formPageHtml(pf, { embed: false, preview: true }) };
   });
 }

@@ -12,6 +12,7 @@
 import { randomUUID } from "node:crypto";
 import { recordMessage, threadId } from "./wa-store.js";
 import { isWonLead } from "./stages.js";
+import { isAutoSilenced } from "./weekend-duty.js";
 
 // Saudações padrão quando o produto não configurou as dele (Ajustes →
 // Integrações). {nome} = primeiro nome do lead (some com elegância quando não
@@ -97,18 +98,48 @@ export async function openAlerts(repo) {
   return (await repo.list("wa_alerts")).filter((a) => a.status === "open");
 }
 
+// O pop-up do cockpit é um só e serve dois avisos: `hot` = o lead RESPONDEU numa
+// conversa aberta; `lead` = o lead ACABOU DE ENTRAR e ninguém falou com ele
+// ainda. Linha anterior à existência do campo é alerta de conversa.
+export const alertKind = (a) => (a?.kind === "lead" ? "lead" : "hot");
+
 // Um alerta ABERTO por conversa: mensagem nova do mesmo lead atualiza o alerta
 // existente em vez de empilhar pop-ups.
 async function raiseAlert(repo, thread, { text = "", permission = "" } = {}) {
   const now = new Date().toISOString();
   const base = {
+    kind: "hot", // alerta de CONVERSA (lead respondeu) — ver raiseNewLeadAlert
     thread: thread.id, phone: thread.phone, name: thread.name || "",
     leadId: thread.leadId || null, saas: thread.saas || "",
     text: String(text || "").slice(0, 300),
     permission: permission || thread.callFlow?.permission || "",
     at: now,
   };
-  const open = (await openAlerts(repo)).find((a) => a.thread === thread.id);
+  const open = (await openAlerts(repo)).find((a) => a.thread === thread.id && alertKind(a) === "hot");
+  if (open) return repo.update("wa_alerts", open.id, base);
+  return repo.create("wa_alerts", { id: "wal_" + randomUUID(), ...base, status: "open", createdAt: now });
+}
+
+// ── Pop-up de LEAD NOVO ─────────────────────────────────────────────────────
+// O lead acabou de mandar o formulário: é o único momento em que ele está com o
+// assunto na cabeça e o celular na mão. O alerta salta pro SDR na hora pra o 1º
+// contato sair em minutos, em vez de esperar o próximo bloco da fila do Meu dia.
+//
+// Um alerta por LEAD: reenvio do form (ou segunda entrada) atualiza o mesmo
+// registro, então a tabela cresce no máximo junto com a de leads, nunca uma
+// linha por pop-up ignorado. Até quando o aviso ainda vale a pena interromper
+// alguém é decisão de quem exibe (wa-hot-alert.jsx): depois da janela o lead não
+// some, ele está na fila do Meu dia, que é onde o atraso é cobrado.
+export async function raiseNewLeadAlert(repo, lead, { at = new Date(), text = "" } = {}) {
+  if (!lead?.id) return null;
+  const now = new Date(at).toISOString();
+  const base = {
+    kind: "lead", thread: "", // lead novo ainda não tem conversa: o pop-up abre o 1º toque
+    phone: String(lead.phone || "").replace(/\D/g, ""),
+    name: lead.name || "", leadId: lead.id, saas: lead.saas || "",
+    text: String(text || "").slice(0, 300), permission: "", at: now,
+  };
+  const open = (await openAlerts(repo)).find((a) => a.leadId === lead.id && alertKind(a) === "lead");
   if (open) return repo.update("wa_alerts", open.id, base);
   return repo.create("wa_alerts", { id: "wal_" + randomUUID(), ...base, status: "open", createdAt: now });
 }
@@ -207,6 +238,11 @@ async function maybeStart(repo, wa, { thread, resolvePhoneId, now = new Date() }
   if (!lead) return;
   const product = (await repo.list("products")).find((p) => p.id === (thread.saas || lead.saas));
   if (!product?.waCallFlow?.enabled) return;
+  // Plantão de fim de semana: o formulário já mandou esse lead pro número de
+  // quem está de plantão, e quem responde é gente. A saudação automática
+  // "estamos fora do horário, voltamos segunda" entraria por cima de um
+  // atendimento humano acontecendo AGORA — na janela do plantão ela fica calada.
+  if (isAutoSilenced(product, now)) return;
   if (isWonLead(product, lead)) return; // cliente fechado não recebe "posso te ligar?"
   const phoneId = await resolvePhoneId({ thread });
   if (phoneId === null || !wa.configured(phoneId)) return;
