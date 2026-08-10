@@ -587,7 +587,16 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   {label}
                 </button>
               ))}
-              <input type="datetime-local" value={isoToLocal(lead.nextActionAt)} onChange={(e) => patch({ nextActionAt: localToIso(e.target.value) })}
+              {/* Uncontrolled + save no blur: durante a digitação de data/hora o
+                  datetime-local fica transitoriamente vazio/inválido. Quando era
+                  controlled, esse estado disparava o patch e o React recolocava
+                  o valor anterior, impedindo editar sobretudo no Safari. */}
+              <input key={`${lead.id}:touch:${lead.nextActionAt || ""}`} type="datetime-local" defaultValue={isoToLocal(lead.nextActionAt)}
+                onBlur={(e) => {
+                  const at = localToIso(e.target.value);
+                  if (at !== (lead.nextActionAt || "")) patch({ nextActionAt: at });
+                }}
+                onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
                 style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
               {lead.nextActionAt && (
                 <button onClick={() => patch({ nextActionAt: "", nextActionNote: "" })} className="mono dim" style={{ fontSize: 11 }} title="Limpar próximo toque">limpar</button>
@@ -603,17 +612,23 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                 então marcar a call aqui SINCRONIZA o próximo toque no mesmo
                 horário (igual o roteiro faz) — senão o card fica com a call
                 num dia e a fila cobrando em outro. */}
-            <input type="datetime-local" value={dtLocal(lead.callAt)}
-              onChange={(e) => {
+            <input key={`${lead.id}:call:${lead.callAt || ""}`} type="datetime-local" defaultValue={dtLocal(lead.callAt)}
+              onBlur={(e) => {
                 // Digitação livre também respeita a agenda do closer: aqui não
                 // tem a grade do Meu dia pra esconder o slot ocupado, então a
                 // checagem é na hora de salvar (era por onde entravam duas
                 // calls do mesmo closer no mesmo horário, sem ninguém avisar).
-                if (e.target.value && callConflict(e.target.value)) return;
+                if (e.target.value && callConflict(e.target.value)) {
+                  e.target.value = dtLocal(lead.callAt);
+                  window.toast && window.toast(callBusyMsg || "Esse horário já está ocupado", "neg");
+                  return;
+                }
+                if (e.target.value === dtLocal(lead.callAt)) return;
                 patch(kind === "followup" && e.target.value
                   ? { callAt: e.target.value, nextActionAt: localToIso(e.target.value) }
                   : { callAt: e.target.value });
               }}
+              onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
               style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: `1px solid ${callBusyMsg ? "var(--neg)" : "var(--line-1)"}`, background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
             {lead.callAt && (
               <button onClick={() => patch({ callAt: "" })} className="mono dim" style={{ fontSize: 11 }} title="Limpar call">limpar</button>
