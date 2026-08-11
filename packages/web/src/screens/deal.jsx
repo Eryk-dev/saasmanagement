@@ -4,7 +4,7 @@ import { ActivityList, ActivityComposer } from "../components/timeline.jsx";
 import { RoutineSuggestion } from "../components/routine-suggestion.jsx";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 import { leadScoreLabel, leadAge, waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
-import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind } from "../lib/funnel.js";
+import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind, isLossKind } from "../lib/funnel.js";
 import { displayName, usersByRole, currentUser } from "../lib/users.js";
 import { paymentLabel, closedPlanLabel, PAYMENT_METHODS, CLOSED_PLANS } from "../lib/payments.js";
 import { api } from "../lib/api.js";
@@ -56,6 +56,47 @@ const localToIso = (v) => {
   return Number.isFinite(d.getTime()) ? d.toISOString() : "";
 };
 
+// Editor explícito de data/hora. Mantém o input UNCONTROLLED para o Safari não
+// apagar os pedaços enquanto a pessoa digita e só confirma depois que a API
+// respondeu. O botão sempre visível deixa claro que escolher a data não basta:
+// é preciso salvar o horário.
+function DateTimeEditor({ value, onSave, validate, style }) {
+  const inputRef = React.useRef(null);
+  const [status, setStatus] = React.useState(""); // "dirty" | "saving" | "saved"
+  const stored = String(value || "");
+
+  React.useEffect(() => {
+    if (inputRef.current && inputRef.current.value !== stored) inputRef.current.value = stored;
+    setStatus((cur) => (cur === "saving" || cur === "saved") ? "saved" : "");
+  }, [stored]);
+
+  async function save() {
+    const raw = inputRef.current?.value || "";
+    if (raw === stored) { setStatus(""); return; }
+    const invalid = validate?.(raw) || "";
+    if (invalid) {
+      window.toast && window.toast(invalid, "neg");
+      return;
+    }
+    setStatus("saving");
+    let ok = false;
+    try { ok = (await onSave(raw)) !== false; } catch { ok = false; }
+    setStatus(ok ? "saved" : "dirty");
+  }
+
+  return (<>
+    <input ref={inputRef} type="datetime-local" defaultValue={stored} disabled={status === "saving"}
+      onInput={(e) => setStatus(e.currentTarget.value === stored ? "" : "dirty")}
+      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } }}
+      style={style} />
+    <button type="button" onClick={save} disabled={status !== "dirty"}
+      className="mono" title="Salvar a nova data e hora"
+      style={{ height: 26, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: status === "dirty" ? "var(--accent)" : "var(--bg-2)", color: status === "dirty" ? "var(--accent-fg)" : status === "saved" ? "var(--pos)" : "var(--fg-4)", fontSize: 10.5, fontWeight: 700, cursor: status === "dirty" ? "pointer" : "default" }}>
+      {status === "saving" ? "salvando…" : status === "saved" ? "salvo ✓" : "salvar horário"}
+    </button>
+  </>);
+}
+
 // Catálogo de atribuição e dor do criativo: helpers compartilhados com o
 // pipeline (lib/pains.js) — cache por SaaS no módulo.
 
@@ -63,6 +104,10 @@ const localToIso = (v) => {
 // card do lead centraliza pra quem tem uma consulta marcada (entra na sala, cria
 // o Meet ou resume por aqui, sem abrir a tela de Consultas).
 const CONSULTA_STATUS = { scheduled: "agendada", done: "realizada", no_show: "faltou", canceled: "cancelada" };
+
+// Região de venda do funil (espelho do SOLD_KINDS do lead-flow.js): sair dela
+// pro funil aberto desfaz o fechamento no servidor.
+const SOLD_KINDS = new Set(["ganho", "integracao", "posvenda"]);
 function consultaWhen(at) {
   if (!at) return "sem horário";
   const d = new Date(String(at).length === 16 ? `${at}:00` : at);
@@ -123,6 +168,12 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === lead.saas);
   const kind = stageKind(saasCfg, lead.stage || (saasCfg?.funnel?.[0]?.stage ?? ""));
   const isOpen = workableStages(saasCfg).includes(lead.stage) || !lead.stage;
+  // Destinos de UM CLIQUE pra um lead finalizado: tudo que não é perda, na ordem
+  // do funil (inclui o Ganho — o caso que motivou isto é o desqualificado que
+  // voltou e fechou). Reclassificar entre perdido/desqualificado fica no select.
+  const reopenStages = (saasCfg?.funnel || [])
+    .map((f) => f.stage)
+    .filter((st) => st && st !== lead.stage && !isLossKind(stageKind(saasCfg, st)));
 
   // Agenda do closer deste lead, na mesma régua do Meu dia (call de 1h, ignora
   // o próprio card e os follow-ups). Serve pra barrar horário já ocupado no
@@ -148,38 +199,70 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   function patch(p) {
     dirty.current = true;
     setLead((prev) => ({ ...prev, ...p }));
-    api.update("leads", lead.id, p).catch((err) => console.warn("lead patch not persisted:", err.message));
+    return api.update("leads", lead.id, p)
+      .catch((err) => { console.warn("lead patch not persisted:", err.message); window.toast && window.toast("Alteração no lead não foi salva · tente de novo", "neg"); return null; });
   }
-  // Proposta direto no WhatsApp (pedido do Leo, 03/08): UM botão que garante a
-  // proposta (gera na hora se o lead ainda não tem) e abre a conversa com a
-  // mensagem pronta. O link é SEMPRE a visão do CLIENTE (cockpitProposalUrl,
-  // link limpo — oferta escondida do Shift+Espaço não vai junto).
+  // Horário usa confirmação real: não atualiza o drawer otimisticamente. Assim
+  // "salvo ✓" significa que a API respondeu, e uma falha deixa o botão pronto
+  // para tentar de novo com o valor ainda digitado.
+  async function persistSchedule(p) {
+    try {
+      const saved = await api.update("leads", lead.id, p);
+      dirty.current = true;
+      setLead((prev) => ({ ...prev, ...saved }));
+      return saved;
+    } catch (err) {
+      console.warn("lead schedule not persisted:", err.message);
+      window.toast && window.toast("Horário não foi salvo · tente de novo", "neg");
+      return null;
+    }
+  }
+  // Proposta direto no WhatsApp: garante a apresentação-mãe e cria/atualiza a
+  // versão própria do CLIENTE com a oferta principal. O share roda no servidor
+  // sobre o state.product salvo pela tela zero de "apresentar", então o cliente
+  // recebe exatamente o produto decidido pelo closer, sem setup, sem edição e
+  // com benefícios/preço já visíveis (nada depende de Espaço/Shift+Espaço).
   const [propBusy, setPropBusy] = React.useState(false);
   async function propostaNoWhats() {
     setPropBusy(true);
+    // Abre ainda dentro do clique: depois dos awaits o navegador pode tratar a
+    // nova aba como popup e bloquear. A navegação acontece quando o link do
+    // cliente estiver pronto.
+    const win = wa ? window.open("", "_blank") : null;
     try {
-      let url = lead.proposalUrl;
-      if (!url) {
+      if (!lead.proposta_id || !lead.proposalUrl) {
         await api.generateProposal(lead.id);
         const fresh = await api.get("leads", lead.id);
         setLead((prev) => ({ ...prev, ...fresh }));
         dirty.current = true;
-        url = fresh?.proposalUrl || "";
       }
-      if (!url) { window.alert("Não consegui gerar a proposta deste produto (template publicado?)"); return; }
-      const msg = `Aqui está a proposta sobre a qual conversamos: ${cockpitProposalUrl(url)}`;
+      const shared = await api.shareProposal(lead.id, 1);
+      const url = shared?.url || "";
+      if (!url) { if (win) win.close(); window.alert("Não consegui preparar a proposta deste produto."); return; }
+      const msg = `Aqui está a proposta sobre a qual conversamos: ${url}`;
       // SEMPRE WhatsApp Web (decisão do Leo, 03/08): wa.me com o texto pronto,
       // independente de o produto ter número oficial conectado — quem envia a
       // proposta é o closer, do WhatsApp dele. O inbox segue existindo pros
       // outros fluxos; aqui só cai nele se o lead não tiver telefone.
-      if (wa) window.open(`${wa}?text=${encodeURIComponent(msg)}`, "_blank", "noopener");
+      if (wa) {
+        const whatsappUrl = `${wa}?text=${encodeURIComponent(msg)}`;
+        if (win) win.location.replace(whatsappUrl);
+        else window.open(whatsappUrl, "_blank", "noopener");
+      }
       else if (onOpenWhatsapp) onOpenWhatsapp(lead, msg);
     } catch (e) {
+      if (win) win.close();
       window.alert(e?.message || "não deu pra gerar/enviar a proposta");
     } finally { setPropBusy(false); }
   }
   function moveStage(stage) {
     if (!stage || stage === lead.stage) return;
+    // Espelho do applyStageMove: sair da região de venda (Ganho/Integração/CS)
+    // pra uma etapa aberta DESFAZ o fechamento no servidor — o cliente e a
+    // assinatura criados na venda somem da base. É irreversível demais pra
+    // acontecer num clique distraído no select, então confirma antes.
+    if (SOLD_KINDS.has(kind) && !SOLD_KINDS.has(stageKind(saasCfg, stage)) && (lead.customerId || lead.wonAt)
+      && !window.confirm(`Tirar este lead de "${lead.stage}" DESFAZ o fechamento: o cliente e a assinatura criados na venda saem da base (cobrança real no Mercado Pago fica). Continuar?`)) return;
     const gate = moveGate(saasCfg, lead, stage);
     if (gate) { setPendingMove({ toStage: stage, gate }); return; }
     dirty.current = true;
@@ -380,15 +463,6 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   apresentar ↗
                 </a>
               )}
-              {/* Proposta mora AQUI (o card antigo saiu): sempre a visão do
-                  CLIENTE — o link limpo, o mesmo que ele recebe. */}
-              {lead.proposalUrl && (
-                <a href={cockpitProposalUrl(lead.proposalUrl)} target="_blank" rel="noreferrer"
-                  className="chip" title="Abrir a proposta como o cliente vê"
-                  style={{ color: "var(--accent)", borderColor: "var(--accent-line)", background: "var(--accent-soft)", fontWeight: 600, textDecoration: "none" }}>
-                  proposta ↗
-                </a>
-              )}
               {/* Proposta PERSONALIZADA: pra quem fechou solução sob medida numa
                   conversa. Capa + o combinado (entregáveis + valor), no layout
                   do deck. Independe da proposta automática acima. */}
@@ -404,8 +478,8 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               {(onOpenWhatsapp || wa) && (
                 <button onClick={propostaNoWhats} disabled={propBusy} className="chip"
                   title={(lead.proposalUrl
-                    ? "Abrir o WhatsApp Web com a proposta pronta pra enviar (link limpo, visão do cliente, sem a oferta escondida)"
-                    : "Gerar a proposta e abrir o WhatsApp Web com ela pronta pra enviar (link limpo, visão do cliente)")}
+                    ? "Abrir o WhatsApp Web com o produto escolhido em apresentar, já pronto para o cliente"
+                    : "Gerar a apresentação e abrir o WhatsApp Web com a versão pronta para o cliente")}
                   style={{ cursor: "pointer", background: "var(--wa-brand)", borderColor: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontWeight: 700 }}>
                   {propBusy ? "gerando…" : "➤ proposta no Whats"}
                 </button>
@@ -457,8 +531,10 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   const nota = window.prompt("Por que está devolvendo pro SDR? (fica no card)");
                   if (nota == null) return;
                   patch({ oppReturned: new Date().toISOString(), oppReturnNote: nota, oppAccepted: "", oppAcceptedBy: "" });
+                  // stageByKind devolve o NOME da etapa (string) — ler `.stage`
+                  // aqui deixava a devolução sem mover o card.
                   const back = stageByKind(saasCfg, "qualificacao");
-                  if (back?.stage) moveStage(back.stage);
+                  if (back) moveStage(back);
                 }}
                   style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
                   devolver pro SDR
@@ -555,18 +631,22 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               integração na entrega, senão o toque), colorido por atrasado/hoje/
               futuro. É o "próximo passo"; etapa, call, proposta e entrega viram
               contexto por fase, recolhido abaixo. */}
-          <button onClick={() => isOpen && setShowGps((v) => !v)} disabled={!isOpen}
-            title={showGps ? "Recolher os editores" : "Editar etapa, toque, call…"}
-            style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", background: "none", border: "none", padding: 0, cursor: isOpen ? "pointer" : "default", textAlign: "left" }}>
+          {/* Lead finalizado TAMBÉM abre: desqualificado/perdido que volta a
+              falar (e às vezes fecha) precisa voltar pro funil por aqui — o
+              bloco fechado virava beco sem saída e o jeito era abrir card novo,
+              perdendo histórico, origem e proposta. */}
+          <button onClick={() => setShowGps((v) => !v)}
+            title={showGps ? "Recolher os editores" : isOpen ? "Editar etapa, toque, call…" : "Reabrir o lead: voltar pro funil ou mover de etapa"}
+            style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
             <span className="kicker" style={{ flexShrink: 0 }}>Próximo passo</span>
             {!isOpen
-              ? <span className="dim" style={{ fontSize: 12.5 }}>lead finalizado</span>
+              ? <span className="dim" style={{ fontSize: 12.5 }}>lead finalizado{lead.lostReason ? ` · ${lossReasonLabel(saasCfg, lead.lostReason)}` : ""}</span>
               : next && next.key !== "none"
                 ? <span style={{ fontSize: 13.5, fontWeight: 700, color: next.tone }}>{primaryStep.label} <span style={{ fontWeight: 400, color: "var(--fg-4)" }}>·</span> {next.text.replace(/^[◆●]\s*/, "")}</span>
                 : <span style={{ fontSize: 13, fontWeight: 600, color: "var(--warn)" }}>sem {primaryStep.label.toLowerCase()} · {primaryStep.verb}</span>}
-            {isOpen && <span className="mono" style={{ marginLeft: "auto", fontSize: 10, color: "var(--fg-4)", flexShrink: 0 }}>{showGps ? "▴ recolher" : "▾ editar"}</span>}
+            <span className="mono" style={{ marginLeft: "auto", fontSize: 10, color: "var(--fg-4)", flexShrink: 0 }}>{showGps ? "▴ recolher" : isOpen ? "▾ editar" : "▾ reabrir"}</span>
           </button>
-          {showGps && (<>
+          {showGps && isOpen && (<>
           <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
             <span className="mono dim" style={{ ...rowLabel, paddingTop: 6 }}>Próximo toque</span>
             <div style={{ display: "flex", gap: 5, flex: 1, flexWrap: "wrap", alignItems: "center" }}>
@@ -585,7 +665,11 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   {label}
                 </button>
               ))}
-              <input type="datetime-local" value={isoToLocal(lead.nextActionAt)} onChange={(e) => patch({ nextActionAt: localToIso(e.target.value) })}
+              <DateTimeEditor value={isoToLocal(lead.nextActionAt)}
+                onSave={async (raw) => {
+                  const saved = await persistSchedule({ nextActionAt: localToIso(raw) });
+                  return !!saved;
+                }}
                 style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
               {lead.nextActionAt && (
                 <button onClick={() => patch({ nextActionAt: "", nextActionNote: "" })} className="mono dim" style={{ fontSize: 11 }} title="Limpar próximo toque">limpar</button>
@@ -601,16 +685,13 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                 então marcar a call aqui SINCRONIZA o próximo toque no mesmo
                 horário (igual o roteiro faz) — senão o card fica com a call
                 num dia e a fila cobrando em outro. */}
-            <input type="datetime-local" value={dtLocal(lead.callAt)}
-              onChange={(e) => {
-                // Digitação livre também respeita a agenda do closer: aqui não
-                // tem a grade do Meu dia pra esconder o slot ocupado, então a
-                // checagem é na hora de salvar (era por onde entravam duas
-                // calls do mesmo closer no mesmo horário, sem ninguém avisar).
-                if (e.target.value && callConflict(e.target.value)) return;
-                patch(kind === "followup" && e.target.value
-                  ? { callAt: e.target.value, nextActionAt: localToIso(e.target.value) }
-                  : { callAt: e.target.value });
+            <DateTimeEditor value={dtLocal(lead.callAt)}
+              validate={(raw) => raw && callConflict(raw) ? (callBusyMsg || "Esse horário já está ocupado") : ""}
+              onSave={async (raw) => {
+                const saved = await persistSchedule(kind === "followup" && raw
+                  ? { callAt: raw, nextActionAt: localToIso(raw) }
+                  : { callAt: raw });
+                return !!saved;
               }}
               style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: `1px solid ${callBusyMsg ? "var(--neg)" : "var(--line-1)"}`, background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
             {lead.callAt && (
@@ -845,17 +926,41 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               </>)}
             </>
           )}
-          {/* mover etapa: demoted, no fim — a etapa é CONSEQUÊNCIA do trabalho,
-              não o "próximo passo". Antes era a 1ª linha e confundia. */}
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 2 }}>
-            <span className="mono dim" style={{ fontSize: 11, flexShrink: 0 }}>mover etapa</span>
-            <select value={lead.stage || ""} onChange={(e) => moveStage(e.target.value)}
-              style={{ flex: 1, height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
-              {(saasCfg?.funnel || []).map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
-              {saasCfg?.funnel?.every((f) => f.stage !== lead.stage) && lead.stage && <option value={lead.stage}>{lead.stage}</option>}
-            </select>
-          </div>
           </>)}
+          {/* Lead FINALIZADO (ganho/perdido/desqualificado): as únicas ações que
+              fazem sentido são reclassificar ou REABRIR. Um clique manda o card
+              de volta pra etapa escolhida pelos mesmos gates do board (call pede
+              hora, ganho pede valor e pagamento) e o servidor limpa o motivo da
+              perda sozinho no revival. */}
+          {showGps && !isOpen && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="dim" style={{ fontSize: 11.5, lineHeight: 1.45 }}>
+                {kind === "ganho"
+                  ? "Tirar do Ganho desfaz o fechamento (o cliente e a assinatura criados na venda saem da base). Pra registrar churn, use a etapa de perda."
+                  : `Reabrir devolve o card pro funil${lead.lostReason ? ` (o motivo “${lossReasonLabel(saasCfg, lead.lostReason)}” é apagado)` : ""} e o próximo toque volta a ser cobrado na fila do Meu dia.`}
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span className="mono dim" style={{ fontSize: 11, flexShrink: 0 }}>{kind === "ganho" ? "mover pra" : "reabrir em"}</span>
+                {reopenStages.map((st) => (
+                  <button key={st} onClick={() => moveStage(st)} style={presetBtn} title={`Mover este lead pra “${st}”`}>{st}</button>
+                ))}
+              </div>
+            </div>
+          )}
+          {/* mover etapa: demoted, no fim — a etapa é CONSEQUÊNCIA do trabalho,
+              não o "próximo passo". Antes era a 1ª linha e confundia. Serve
+              também de saída completa pro lead finalizado (inclui reclassificar
+              a perda: desqualificado ↔ perdido). */}
+          {showGps && (
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 2 }}>
+              <span className="mono dim" style={{ fontSize: 11, flexShrink: 0 }}>mover etapa</span>
+              <select value={lead.stage || ""} onChange={(e) => moveStage(e.target.value)}
+                style={{ flex: 1, height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
+                {(saasCfg?.funnel || []).map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
+                {saasCfg?.funnel?.every((f) => f.stage !== lead.stage) && lead.stage && <option value={lead.stage}>{lead.stage}</option>}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* De onde veio: recolhível (consulta, não fluxo do dia a dia). */}
