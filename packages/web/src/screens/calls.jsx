@@ -217,6 +217,19 @@ function CallsScreen({ onOpenLead }) {
                     onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
                     <span style={{ fontSize: 13.5, fontWeight: 600, flexShrink: 0, width: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.leadName || "lead"}</span>
+                    {c.recordingUrl && (
+                      <a
+                        href={c.recordingUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        title="Abrir gravação da call no Drive"
+                        aria-label={`Abrir gravação de ${c.leadName || "cliente"} no Drive`}
+                        className="mono"
+                        style={{ color: "var(--accent)", fontSize: 10.5, fontWeight: 700, flexShrink: 0, textDecoration: "none", whiteSpace: "nowrap" }}>
+                        ▶ vídeo no Drive ↗
+                      </a>
+                    )}
                     <Pill tone={TEMP_TONE[c.temperatura] || "mut"}>{c.temperatura || "—"}</Pill>
                     {closer == null && c.closer && <Pill tone="mut">{displayName(c.closer)}</Pill>}
                     <span className="dim" style={{ fontSize: 12.5, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.resumo}</span>
