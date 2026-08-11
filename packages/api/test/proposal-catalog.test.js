@@ -192,6 +192,20 @@ test("payload público nunca leva o catálogo cru; catalogUI tem nomes/preços p
   assert.ok(ui.pains.A.spin.S.length > 10, "perguntas SPIN embarcadas");
 });
 
+test("serviço único: tabela por faixa na tela zero, fora do deck e sobrescrita pelo banco", async () => {
+  const repo = await seedRepo();
+  const p = await makeProposal(repo, {});
+  const one = catalogUI(p).oneOffCloning;
+  assert.equal(one.tag, "serviço único");
+  assert.deepEqual(one.rows.map((r) => r.price), ["R$ 996", "R$ 2.184", "R$ 2.988"]);
+  assert.match(one.rows[0].range, /100 anúncios/);
+  // É consulta do closer: nada disso entra no deck que o cliente recebe.
+  assert.equal(JSON.stringify(applyCatalog(p).slides).includes("serviço único"), false);
+
+  p.calc.catalog.oneOff = { tag: "serviço único", title: "Outro", rows: [{ range: "Tudo", price: "R$ 1" }] };
+  assert.deepEqual(catalogUI(p).oneOffCloning.rows, [{ range: "Tudo", price: "R$ 1" }], "banco manda no preço");
+});
+
 test("link do cliente: deck transformado, oferta travada, sem catálogo no snapshot filho", async () => {
   const repo = await seedRepo();
   const p = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "100-500" });
