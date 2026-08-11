@@ -28,6 +28,10 @@ const DEFAULT_GRID = [
 const DEFAULT_ACCOUNTS = ["1", "2", "3-5", "6-10", "10+"];
 const DEFAULT_VOL_LABELS = ["≤100", "100-500", "500-2k", "2-10k", "10k+"];
 const PRODUCT_KEYS = ["full", "fulloem", "oem", "parcialA", "parcialoem"];
+// Serviço único: a clonagem entre contas cobrada UMA vez, por faixa de anúncios.
+// Não é produto do catálogo — é tabela de consulta do closer na tela zero, então
+// não entra no deck nem viaja no link do cliente. `calc.catalog.oneOff` (banco)
+// sobrescreve estes valores sem precisar de deploy.
 const ONE_OFF_CLONING = {
   tag: "serviço único",
   title: "Clonagem entre contas",
@@ -313,6 +317,6 @@ export function catalogUI(p) {
     },
     names, priceLines, offerLines,
     pains: cat.pains || {},
-    oneOffCloning: clone(ONE_OFF_CLONING),
+    oneOffCloning: clone(cat.oneOff || ONE_OFF_CLONING),
   };
 }
