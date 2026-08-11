@@ -28,6 +28,16 @@ const DEFAULT_GRID = [
 const DEFAULT_ACCOUNTS = ["1", "2", "3-5", "6-10", "10+"];
 const DEFAULT_VOL_LABELS = ["≤100", "100-500", "500-2k", "2-10k", "10k+"];
 const PRODUCT_KEYS = ["full", "fulloem", "oem", "parcialA", "parcialoem"];
+const ONE_OFF_CLONING = {
+  tag: "serviço único",
+  title: "Clonagem entre contas",
+  rows: [
+    { range: "Até 100 anúncios", price: "R$ 996" },
+    { range: "101 a 500 anúncios", price: "R$ 2.184" },
+    { range: "501 a 2.000 anúncios", price: "R$ 2.988" },
+  ],
+  note: "Consulta do closer · não altera o produto nem a apresentação",
+};
 
 // Nome de exibição dos produtos do catálogo (espelho dos `name` da migração
 // ensureProposalCatalog — os dois andam juntos). Usado FORA da proposta:
@@ -303,5 +313,6 @@ export function catalogUI(p) {
     },
     names, priceLines, offerLines,
     pains: cat.pains || {},
+    oneOffCloning: clone(ONE_OFF_CLONING),
   };
 }

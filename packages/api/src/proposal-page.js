@@ -650,6 +650,17 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
     background: color-mix(in oklab, var(--accent) 7%, var(--bg)); font-size: 12.5px; color: var(--ink-2); line-height: 1.45; }
   .lvx-cur b { display: block; font-size: 13.5px; color: var(--fg); margin-bottom: 2px; }
   .lvx-cur .lvx-cur-price { display: block; margin-top: 4px; color: var(--fg); font-weight: 600; }
+  .lvx-oneoff { border: 1px solid color-mix(in oklab, var(--accent) 38%, var(--line)); border-radius: 10px;
+    background: color-mix(in oklab, var(--accent) 5%, var(--bg)); overflow: hidden; }
+  .lvx-oneoff-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 8px; }
+  .lvx-oneoff-head b { display: block; margin-top: 2px; font-size: 13.5px; color: var(--fg); }
+  .lvx-oneoff-tag { flex: none; padding: 3px 8px; border-radius: 999px; background: var(--accent-soft);
+    color: var(--accent); font: 700 9px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+  .lvx-oneoff-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .lvx-oneoff-table td { padding: 7px 12px; border-top: 1px solid var(--line); color: var(--ink-2); }
+  .lvx-oneoff-table td:last-child { text-align: right; color: var(--fg); font-weight: 700; white-space: nowrap; }
+  .lvx-oneoff-note { display: block; padding: 8px 12px 10px; border-top: 1px solid var(--line);
+    color: var(--ink-3); font-size: 10.5px; line-height: 1.35; }
   .lvx-spin { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg);
     font-size: 12px; color: var(--ink-2); line-height: 1.5; }
   .lvx-spin .q { display: block; margin-top: 6px; }
@@ -1743,6 +1754,17 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         var TIER_STYLE = { S: ['#7c3aed', '#fff'], A: ['#16a34a', '#fff'], B: ['#65a30d', '#fff'], C: ['#eab308', '#463500'], D: ['#ea580c', '#fff'], E: ['#9aa2ad', '#fff'] };
         var painKeys = ['A', 'B', 'C', 'D', 'E', 'none'].filter(function (kk) { return CAT.pains[kk]; });
         var prodKeys = Object.keys(CAT.names);
+        var oneOff = CAT.oneOffCloning;
+        var oneOffHtml = oneOff && Array.isArray(oneOff.rows)
+          ? '<div class="lvx-oneoff">' +
+              '<div class="lvx-oneoff-head"><div><span class="lvx-h">Consulta rápida</span><b>' + esc(oneOff.title || '') + '</b></div>' +
+                '<span class="lvx-oneoff-tag">' + esc(oneOff.tag || '') + '</span></div>' +
+              '<table class="lvx-oneoff-table"><tbody>' + oneOff.rows.map(function (row) {
+                return '<tr><td>' + esc(row.range || '') + '</td><td>' + esc(row.price || '') + '</td></tr>';
+              }).join('') + '</tbody></table>' +
+              '<span class="lvx-oneoff-note">' + esc(oneOff.note || '') + '</span>' +
+            '</div>'
+          : '';
         if (state.pain == null) state.pain = CAT.pain;
         if (state.oem == null) state.oem = CAT.oem;
         if (state.product == null) state.product = CAT.product;
@@ -1774,6 +1796,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           '<div class="lvx-row" id="lvxOemRow" style="display:none;font-size:12.5px;color:var(--ink-2)">' +
             '<label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="lvxOem" style="width:15px;height:15px"> ' +
             'Confirmei no rapport que ele quer os anúncios OEM</label></div>' +
+          oneOffHtml +
           '</div>' +
           '</div>';
         var cols = el('div', 'lvx-cols');
