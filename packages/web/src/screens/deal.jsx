@@ -4,7 +4,7 @@ import { ActivityList, ActivityComposer } from "../components/timeline.jsx";
 import { RoutineSuggestion } from "../components/routine-suggestion.jsx";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 import { leadScoreLabel, leadAge, waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
-import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind } from "../lib/funnel.js";
+import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind, isLossKind } from "../lib/funnel.js";
 import { displayName, usersByRole, currentUser } from "../lib/users.js";
 import { paymentLabel, closedPlanLabel, PAYMENT_METHODS, CLOSED_PLANS, DEAL_PRODUCTS, dealProductLabel } from "../lib/payments.js";
 import { api } from "../lib/api.js";
@@ -104,6 +104,10 @@ function DateTimeEditor({ value, onSave, validate, style }) {
 // card do lead centraliza pra quem tem uma consulta marcada (entra na sala, cria
 // o Meet ou resume por aqui, sem abrir a tela de Consultas).
 const CONSULTA_STATUS = { scheduled: "agendada", done: "realizada", no_show: "faltou", canceled: "cancelada" };
+
+// Região de venda do funil (espelho do SOLD_KINDS do lead-flow.js): sair dela
+// pro funil aberto desfaz o fechamento no servidor.
+const SOLD_KINDS = new Set(["ganho", "integracao", "posvenda"]);
 function consultaWhen(at) {
   if (!at) return "sem horário";
   const d = new Date(String(at).length === 16 ? `${at}:00` : at);
@@ -165,6 +169,12 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === lead.saas);
   const kind = stageKind(saasCfg, lead.stage || (saasCfg?.funnel?.[0]?.stage ?? ""));
   const isOpen = workableStages(saasCfg).includes(lead.stage) || !lead.stage;
+  // Destinos de UM CLIQUE pra um lead finalizado: tudo que não é perda, na ordem
+  // do funil (inclui o Ganho — o caso que motivou isto é o desqualificado que
+  // voltou e fechou). Reclassificar entre perdido/desqualificado fica no select.
+  const reopenStages = (saasCfg?.funnel || [])
+    .map((f) => f.stage)
+    .filter((st) => st && st !== lead.stage && !isLossKind(stageKind(saasCfg, st)));
 
   // Agenda do closer deste lead, na mesma régua do Meu dia (call de 1h, ignora
   // o próprio card e os follow-ups). Serve pra barrar horário já ocupado no
@@ -247,6 +257,12 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   }
   function moveStage(stage) {
     if (!stage || stage === lead.stage) return;
+    // Espelho do applyStageMove: sair da região de venda (Ganho/Integração/CS)
+    // pra uma etapa aberta DESFAZ o fechamento no servidor — o cliente e a
+    // assinatura criados na venda somem da base. É irreversível demais pra
+    // acontecer num clique distraído no select, então confirma antes.
+    if (SOLD_KINDS.has(kind) && !SOLD_KINDS.has(stageKind(saasCfg, stage)) && (lead.customerId || lead.wonAt)
+      && !window.confirm(`Tirar este lead de "${lead.stage}" DESFAZ o fechamento: o cliente e a assinatura criados na venda saem da base (cobrança real no Mercado Pago fica). Continuar?`)) return;
     const gate = moveGate(saasCfg, lead, stage);
     if (gate) { setPendingMove({ toStage: stage, gate }); return; }
     dirty.current = true;
@@ -516,7 +532,9 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   if (nota == null) return;
                   patch({ oppReturned: new Date().toISOString(), oppReturnNote: nota, oppAccepted: "", oppAcceptedBy: "" });
                   const back = stageByKind(saasCfg, "qualificacao");
-                  if (back?.stage) moveStage(back.stage);
+                  // stageByKind devolve o NOME da etapa (string) — ler `.stage`
+                  // aqui deixava a devolução sem mover o card.
+                  if (back) moveStage(back);
                 }}
                   style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
                   devolver pro SDR
@@ -613,18 +631,22 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               integração na entrega, senão o toque), colorido por atrasado/hoje/
               futuro. É o "próximo passo"; etapa, call, proposta e entrega viram
               contexto por fase, recolhido abaixo. */}
-          <button onClick={() => isOpen && setShowGps((v) => !v)} disabled={!isOpen}
-            title={showGps ? "Recolher os editores" : "Editar etapa, toque, call…"}
-            style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", background: "none", border: "none", padding: 0, cursor: isOpen ? "pointer" : "default", textAlign: "left" }}>
+          {/* Lead finalizado TAMBÉM abre: desqualificado/perdido que volta a
+              falar (e às vezes fecha) precisa voltar pro funil por aqui — o
+              bloco fechado virava beco sem saída e o jeito era abrir card novo,
+              perdendo histórico, origem e proposta. */}
+          <button onClick={() => setShowGps((v) => !v)}
+            title={showGps ? "Recolher os editores" : isOpen ? "Editar etapa, toque, call…" : "Reabrir o lead: voltar pro funil ou mover de etapa"}
+            style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
             <span className="kicker" style={{ flexShrink: 0 }}>Próximo passo</span>
             {!isOpen
-              ? <span className="dim" style={{ fontSize: 12.5 }}>lead finalizado</span>
+              ? <span className="dim" style={{ fontSize: 12.5 }}>lead finalizado{lead.lostReason ? ` · ${lossReasonLabel(saasCfg, lead.lostReason)}` : ""}</span>
               : next && next.key !== "none"
                 ? <span style={{ fontSize: 13.5, fontWeight: 700, color: next.tone }}>{primaryStep.label} <span style={{ fontWeight: 400, color: "var(--fg-4)" }}>·</span> {next.text.replace(/^[◆●]\s*/, "")}</span>
                 : <span style={{ fontSize: 13, fontWeight: 600, color: "var(--warn)" }}>sem {primaryStep.label.toLowerCase()} · {primaryStep.verb}</span>}
-            {isOpen && <span className="mono" style={{ marginLeft: "auto", fontSize: 10, color: "var(--fg-4)", flexShrink: 0 }}>{showGps ? "▴ recolher" : "▾ editar"}</span>}
+            <span className="mono" style={{ marginLeft: "auto", fontSize: 10, color: "var(--fg-4)", flexShrink: 0 }}>{showGps ? "▴ recolher" : isOpen ? "▾ editar" : "▾ reabrir"}</span>
           </button>
-          {showGps && (<>
+          {showGps && isOpen && (<>
           <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
             <span className="mono dim" style={{ ...rowLabel, paddingTop: 6 }}>Próximo toque</span>
             <div style={{ display: "flex", gap: 5, flex: 1, flexWrap: "wrap", alignItems: "center" }}>
@@ -904,17 +926,41 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               </>)}
             </>
           )}
-          {/* mover etapa: demoted, no fim — a etapa é CONSEQUÊNCIA do trabalho,
-              não o "próximo passo". Antes era a 1ª linha e confundia. */}
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 2 }}>
-            <span className="mono dim" style={{ fontSize: 11, flexShrink: 0 }}>mover etapa</span>
-            <select value={lead.stage || ""} onChange={(e) => moveStage(e.target.value)}
-              style={{ flex: 1, height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
-              {(saasCfg?.funnel || []).map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
-              {saasCfg?.funnel?.every((f) => f.stage !== lead.stage) && lead.stage && <option value={lead.stage}>{lead.stage}</option>}
-            </select>
-          </div>
           </>)}
+          {/* Lead FINALIZADO (ganho/perdido/desqualificado): as únicas ações que
+              fazem sentido são reclassificar ou REABRIR. Um clique manda o card
+              de volta pra etapa escolhida pelos mesmos gates do board (call pede
+              hora, ganho pede valor e pagamento) e o servidor limpa o motivo da
+              perda sozinho no revival. */}
+          {showGps && !isOpen && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="dim" style={{ fontSize: 11.5, lineHeight: 1.45 }}>
+                {kind === "ganho"
+                  ? "Tirar do Ganho desfaz o fechamento (o cliente e a assinatura criados na venda saem da base). Pra registrar churn, use a etapa de perda."
+                  : `Reabrir devolve o card pro funil${lead.lostReason ? ` (o motivo “${lossReasonLabel(saasCfg, lead.lostReason)}” é apagado)` : ""} e o próximo toque volta a ser cobrado na fila do Meu dia.`}
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span className="mono dim" style={{ fontSize: 11, flexShrink: 0 }}>{kind === "ganho" ? "mover pra" : "reabrir em"}</span>
+                {reopenStages.map((st) => (
+                  <button key={st} onClick={() => moveStage(st)} style={presetBtn} title={`Mover este lead pra “${st}”`}>{st}</button>
+                ))}
+              </div>
+            </div>
+          )}
+          {/* mover etapa: demoted, no fim — a etapa é CONSEQUÊNCIA do trabalho,
+              não o "próximo passo". Antes era a 1ª linha e confundia. Serve
+              também de saída completa pro lead finalizado (inclui reclassificar
+              a perda: desqualificado ↔ perdido). */}
+          {showGps && (
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 2 }}>
+              <span className="mono dim" style={{ fontSize: 11, flexShrink: 0 }}>mover etapa</span>
+              <select value={lead.stage || ""} onChange={(e) => moveStage(e.target.value)}
+                style={{ flex: 1, height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
+                {(saasCfg?.funnel || []).map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
+                {saasCfg?.funnel?.every((f) => f.stage !== lead.stage) && lead.stage && <option value={lead.stage}>{lead.stage}</option>}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* De onde veio: recolhível (consulta, não fluxo do dia a dia). */}
