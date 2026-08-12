@@ -68,6 +68,7 @@ inline. Máximo ~3 níveis por tela.
 - Modal: overlay `fixed inset-0` `oklch(0 0 0 / 0.45)` z-80 + painel `--bg-1`/`--r-3`/`--shadow-pop`; confirmar exclusão = `components/ConfirmDelete.jsx` ou `window.confirm` nomeando o item + consequência (TODA destrutiva confirma); detalhe de lead = drawer `LeadDetail` (screens/deal.jsx); todo modal dentro de `ErrorBoundary variant="modal"`; **todo modal fecha no Esc** via `useEsc(onClose)` (atoms.jsx, PILHA: aninhado fecha um por vez; passe null enquanto salva). Exceção deliberada: alarmes que exigem decisão (WaHotAlert, TrainingGate) não fecham no Esc
 - Toast: `window.toast(msg, tone)` + `ToastHost` (atoms.jsx, montado no app.jsx). REGRA: mutação otimista NUNCA falha em silêncio — todo `.catch` de update/create chama `toast("… · tente de novo", "neg")` além do console.warn
 - Botão WhatsApp: `WaButton` (atoms.jsx) ou tokens `--wa-brand/-fg/-deep`; nunca hex solto
+- Blocos do LEAD: `components/lead-blocks.jsx` — `clientSummary` (os fatos compilados, `{ full: true }` na ficha), `ClientSummaryCard`, `AttributionCard`, `LeadChecklist`, `ScriptBlocks` (como se comportar + objetivo + passo a passo com "copiar"). REGRA (12/08): o card do lead (deal.jsx) e o painel de atividade (today.jsx) mostram a MESMA informação com o mesmo título, a mesma ordem e o mesmo desenho — painel novo que fale de lead usa estes blocos em vez de remontar
 - Estado vazio: `EmptyState` (atoms.jsx: título 15/600 + hint + ação central)
 - Skeleton de carregamento: não existe — padrão OFICIAL é texto `mono dim` 12px ("carregando…") no lugar do bloco; lista cortada mostra "+N" expansível (nunca corte silencioso)
 
@@ -113,6 +114,8 @@ confirmação, `SecondaryButton` + `.inp` + `.tbl` criados.
 |---|---|---|
 | Cabeçalho de página hand-rolado (estrutura), classes já aplicadas | pipeline, today, training e outras | migrar pro componente `PageHead` quando tocar na tela |
 | SecondaryButton/.inp/.tbl criados mas legados não migrados | quase toda tela | adotar quando tocar na tela (novo código já usa) |
+| Campos do checklist do lead em 26px (denso) em vez de `.inp` 30 | `lead-blocks.jsx` (card do lead + Meu dia) | decidir se a lista densa vira exceção registrada ou sobe pra 30 nos dois painéis de uma vez |
+| Card do lead no inbox monta resumo e checklist por conta própria | `LeadSideCard` (whatsapp.jsx, coluna de 300px) | já usa `clientSummary`; falta uma variante compacta dos blocos de `lead-blocks.jsx` |
 | Contraste: fg-4 em 10px ≈ 2.9:1 (checklist pede 4.5:1) | kickers/fineprints do app inteiro | DECISÃO DO LEO: escurecer `--fg-4` (claro) ou aceitar como micro-texto decorativo |
 | Persistência de filtros locais (busca/aba por tela) | customers, forms, listas | padrão localStorage `cockpit_<tela>_<filtro>` como o Meu dia faz com a pessoa |
 | Auditoria de checklist completo (12 blocos) tela a tela | todas menos Meu dia | funcional global (estados/Esc/toast/destrutivas/busy) FEITO no app; resta o passe fino por tela seguindo a ordem do inventário |

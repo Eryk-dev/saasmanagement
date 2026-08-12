@@ -1,16 +1,17 @@
 import React from "react";
-import { Avatar, useEsc } from "../atoms.jsx";
+import { Avatar, useEsc, WaButton } from "../atoms.jsx";
 import { ActivityList, ActivityComposer } from "../components/timeline.jsx";
 import { RoutineSuggestion } from "../components/routine-suggestion.jsx";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
-import { leadScoreLabel, leadAge, waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
+import { clientSummary, leadBox, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks } from "../components/lead-blocks.jsx";
+import { waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
 import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind, isLossKind } from "../lib/funnel.js";
 import { displayName, usersByRole, currentUser } from "../lib/users.js";
-import { paymentLabel, closedPlanLabel, PAYMENT_METHODS, CLOSED_PLANS, DEAL_PRODUCTS, dealProductLabel } from "../lib/payments.js";
+import { PAYMENT_METHODS, CLOSED_PLANS, DEAL_PRODUCTS, dealProductLabel } from "../lib/payments.js";
 import { api } from "../lib/api.js";
-import { useAttribution, leadPain } from "../lib/pains.js";
+import { useAttribution } from "../lib/pains.js";
 import { sourceLabel } from "../lib/sources.js";
-import { resolveScript, scriptTokens, scriptSegments, scriptChecklist } from "../lib/scripts.js";
+import { resolveScript, scriptTokens, scriptChecklist } from "../lib/scripts.js";
 import { CallSummaryCard, IntegrationBriefCard, callBusyKeys, callSlotKeys } from "./today.jsx";
 import { CustomProposalModal } from "../components/custom-proposal.jsx";
 import { useData } from "../data.jsx";
@@ -333,51 +334,27 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
     [activities],
   );
 
-  const score = lead.score;
-  const hasScore = score != null && score !== "";
-  const hasIcp = lead.icp != null && lead.icp !== "";
-  const icpPct = hasIcp ? `${Math.round(Number(lead.icp) * 100)}%` : null;
-
   // Atribuição: resolve utm.campaign/term/content pra nomes via catálogo, e a
   // dor do criativo ("[X]" no nome do anúncio → rótulo do painMap do produto).
   const cat = useAttribution(lead.saas, !!lead.utm);
   const utm = lead.utm || {};
-  const pain = leadPain(lead, cat, saasCfg?.painMap);
   const tier = leadTier(lead);
-  // De onde veio (Dor sobe pro destaque do Resumo; aqui fica a atribuição crua).
+  // Resumo do cliente: MESMA compilação do roteiro do Meu dia (clientSummary em
+  // components/lead-blocks.jsx), com `full` acrescentando no fim o que só a
+  // ficha mostra (contato, integrador, perda). Os fatos de cima ficam idênticos
+  // aos do painel de atividade — dado igual, rótulo igual, ordem igual.
+  const { pain, facts: summaryFacts } = clientSummary(saasCfg, lead, lead.stage || (saasCfg?.funnel?.[0]?.stage ?? ""), cat, { full: true });
+
+  // De onde veio: as duas primeiras linhas são as do roteiro (anúncio +
+  // headline); a ficha continua mostrando a atribuição crua embaixo.
   const attribution = [
-    ["Variante da headline", lead.formHeadline || (lead.formVariant ? `versão ${lead.formVariant}` : null)],
+    ["Anúncio", cat?.ads?.[utm.content]?.name || utm.content],
+    ["Headline do formulário", lead.formHeadline || (lead.formVariant ? `versão ${lead.formVariant}` : null)],
     ["Campanha", cat?.campaigns?.[utm.campaign]?.name || utm.campaign],
     ["Conjunto", cat?.adsets?.[utm.term]?.name || utm.term],
-    ["Anúncio", cat?.ads?.[utm.content]?.name || utm.content],
     ["Origem", [sourceLabel(utm), utm.medium].filter(Boolean).join(" / ") || null],
     ["Veio de", utm.referrer || null],           // referrer externo (orgânico/bio)
     ["Página de entrada", lead.sourceUrl || null],
-  ].filter(([, v]) => v != null && v !== "");
-
-  // Resumo do cliente: os números e campos reais compilados num grid só (mesmo
-  // padrão da tela de atividade). Empresa fica no cabeçalho; só o preenchido entra.
-  const daysInStage = Math.max(0, Math.floor((Date.now() - new Date(lead.stageSince || lead.createdAt || Date.now()).getTime()) / 86400000));
-  const summaryFacts = [
-    ["Potencial", tier.key !== "sem" ? tier.label : null],
-    ["Valor", lead.amount ? window.fmt.money(lead.amount) : null],
-    // Registrada no movimento Call → Follow-up: é a oferta que o follow-up cobra.
-    ["Proposta na mesa", lead.proposalOffer ? (lead.proposalOffer === "nenhuma" ? "não chegou na proposta" : closedPlanLabel(lead.proposalOffer) || lead.proposalOffer) : null],
-    ["Pagamento", lead.paymentMethod ? paymentLabel(lead.paymentMethod) : null],
-    ["Idade", leadAge(lead)],
-    ["Na etapa", `${daysInStage}d`],
-    ["Temperatura", hasScore ? `${leadScoreLabel(score)} · ${score}` : null],
-    ["ICP (fit)", icpPct],
-    ["Prioridade", lead.priority],
-    ["Faixa", lead.value],
-    ["Origem", lead.source],
-    ["Dono (SDR)", lead.owner ? displayName(lead.owner) : null],
-    ["Closer", lead.closer ? displayName(lead.closer) : null],
-    ["Integrador", lead.integrator ? displayName(lead.integrator) : null],
-    ["E-mail", lead.email],
-    ["Telefone", lead.phone],
-    ["Motivo", lead.reason],
-    ["Perda", lead.lostReason ? `${lossReasonLabel(saasCfg, lead.lostReason)}${lead.lostNote ? ` · ${lead.lostNote}` : ""}` : null],
   ].filter(([, v]) => v != null && v !== "");
 
   const next = nextTouchPill(lead, { isOpen, kind });
@@ -387,17 +364,11 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   const primaryStep = kind === "call" ? { label: "Call", verb: "agendar call" }
     : (kind === "integracao" || kind === "posvenda") ? { label: "Integração", verb: "marcar integração" }
     : { label: "Próximo toque", verb: "marcar toque" };
-  // Cartões (mesma linguagem da tela de atividade): caixa com rótulo mono.
-  const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "12px 14px", background: "var(--bg-inset)" };
+  // Cartão: a MESMA caixa dos blocos compartilhados (lead-blocks.jsx), pra o
+  // card e o painel de atividade terem o mesmo respiro.
+  const box = leadBox;
   const rowLabel = { fontSize: 11, width: 104, flexShrink: 0 };
   const presetBtn = { height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 500 };
-  // Linha chave→valor pra grids de fatos/atribuição.
-  const FactRow = ({ k, v }) => (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12, padding: "4px 0", borderBottom: "1px solid var(--line-1)" }}>
-      <span className="mono dim" style={{ flexShrink: 0, fontSize: 10.5 }}>{k}</span>
-      <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
-    </div>
-  );
   // Linha rótulo→campo pra edição inline do Resumo.
   const editInput = { flex: 1, minWidth: 0, height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 };
   const EditRow = ({ label, children }) => (
@@ -407,19 +378,11 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
     </label>
   );
 
-  // Insights do estágio (roteiro) + checklist editável dos dados do 1º contato —
-  // mesma lógica da tela de atividade do Meu dia (lib/scripts.js).
+  // Roteiro do estágio + checklist editável dos dados do 1º contato — a MESMA
+  // lógica (lib/scripts.js) e os MESMOS blocos do painel de atividade do Meu dia.
   const script = resolveScript(saasCfg, lead);
   const scriptTk = scriptTokens(lead, saasCfg, salesSummary);
   const checklist = scriptChecklist(saasCfg, lead);
-  const renderFala = (text) => scriptSegments(text, scriptTk).map((s, i) => {
-    if (s.text != null) return <React.Fragment key={i}>{s.text}</React.Fragment>;
-    if (s.value != null) return <strong key={i} style={{ color: "var(--accent)", fontWeight: 600 }}>{s.value}</strong>;
-    return (
-      <span key={i} className="mono" title="dado não preenchido no lead: descubra nesta conversa"
-        style={{ background: "var(--warn-soft)", color: "var(--warn)", borderRadius: 4, padding: "0 5px", fontSize: "0.85em", whiteSpace: "nowrap" }}>{s.gap}</span>
-    );
-  });
 
   return (
     <div style={{
@@ -432,28 +395,33 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
         display: "flex", flexDirection: "column",
         boxShadow: "var(--shadow-pop)",
       }}>
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line-1)", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "start" }}>
-          <div>
-            <div className="mono dim code" style={{ fontSize: 10, letterSpacing: "0.08em" }}>LEAD · {String(lead.id).toUpperCase()}</div>
-            <div style={{ fontSize: 20, fontWeight: 500, marginTop: 4 }}>{lead.name}</div>
-            {lead.company && <div className="mono dim" style={{ fontSize: 12, marginTop: 2 }}>{lead.company}</div>}
-            <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-              {(() => { const t = leadTier(lead); return t.key !== "sem" && (
-                <span className="chip" title="soma de contas operadas + anúncios publicados"
-                  style={{ color: t.ink, borderColor: "color-mix(in srgb, " + t.tone + " 55%, transparent)", background: "color-mix(in srgb, " + t.tone + " 14%, transparent)", fontWeight: 600 }}>
-                  {t.label}
-                </span>
-              ); })()}
+        {/* Cabeçalho na MESMA anatomia do painel de atividade do Meu dia:
+            rótulo do painel em cima e a linha de identidade com nome, nota do
+            lead (A-E), etapa e empresa · telefone. Os chips de origem,
+            temperatura e prioridade saíram: repetiam o "Resumo do cliente"
+            logo abaixo. As AÇÕES ficam na linha de baixo, separadas da
+            identidade. */}
+        <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--line-1)", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "start", gap: 10 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div className="kicker">Lead · <span className="code">{String(lead.id).toUpperCase()}</span></div>
+            <div style={{ fontSize: 16.5, fontWeight: 600, marginTop: 2, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {lead.name}
+              {tier.grade && (
+                <span className="tnum" title={`${tier.label} · soma de contas operadas + anúncios publicados`}
+                  style={{ width: 18, height: 18, borderRadius: 5, display: "inline-flex", alignItems: "center", justifyContent: "center", background: tier.tone, color: tier.badgeFg, fontFamily: "var(--display)", fontSize: 11, fontWeight: 700 }}>{tier.grade}</span>
+              )}
               {lead.stage && <span className="chip">{lead.stage}</span>}
-              {lead.source && <span className="chip">{lead.source}</span>}
-              {hasScore && <span className={"chip " + (Number(score) >= 75 ? "neg" : Number(score) >= 50 ? "warn" : "")}>{leadScoreLabel(score)}</span>}
-              {lead.priority && <span className="chip">{lead.priority}</span>}
+              {(lead.company || lead.phone) && (
+                <span className="mono dim" style={{ fontSize: 11 }}>{[lead.company, lead.phone].filter(Boolean).join(" · ")}</span>
+              )}
               {(lead.owner || lead.closer) && (
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                   {lead.owner && <span title={`SDR: ${displayName(lead.owner)}`}><Avatar id={lead.owner} name={displayName(lead.owner)} size={18} /></span>}
                   {lead.closer && <span title={`Closer: ${displayName(lead.closer)}`}><Avatar id={lead.closer} name={displayName(lead.closer)} size={18} /></span>}
                 </span>
               )}
+            </div>
+            <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
               {/* Apresentação do CLOSER (link com a chave): abre a tela zero
                   com régua/produto/SPIN — é por aqui que a call roda. */}
               {lead.proposal_edit_url && (
@@ -497,13 +465,14 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               </button>
             </div>
           </div>
-          <button onClick={close} className="mono dim" style={{ fontSize: 16, flexShrink: 0 }}>✕</button>
+          <button onClick={close} aria-label="Fechar" className="mono dim" style={{ fontSize: 16, flexShrink: 0, width: 36, height: 36, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--r-2)" }}>✕</button>
         </div>
 
-        {/* Corpo rolável: duas colunas (Cliente | Insights do estágio atual). */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", minHeight: 0 }}>
+        {/* Corpo rolável: duas colunas (Cliente | Roteiro) — mesma divisão do
+            painel de atividade do Meu dia. */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "12px 18px", minHeight: 0 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16, alignItems: "start" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
             <div className="kicker" style={{ color: "var(--fg-3)" }}>Cliente</div>
 
           {/* Requalificação (Receita Previsível): a oportunidade que o SDR
@@ -548,23 +517,19 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               <b>Devolvida pelo closer:</b> {lead.oppReturnNote}
             </div>
           )}
-          {/* Resumo do cliente: dor em destaque + os fatos compilados num grid.
-              O lápis abre a edição INLINE dos campos do lead (sem trocar de tela). */}
-          <div style={box}>
-            <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
-              <span>Resumo do cliente</span>
+          {/* Resumo do cliente: MESMO bloco do painel de atividade (dor em
+              destaque + os fatos na mesma ordem). O lápis é exclusivo da ficha:
+              abre a edição INLINE dos campos do lead, no lugar do grid. */}
+          <ClientSummaryCard
+            pain={pain}
+            facts={editResumo ? null : summaryFacts}
+            action={(
               <button onClick={() => setEditResumo((v) => !v)} title={editResumo ? "Concluir edição" : "Editar os dados do cliente aqui mesmo"}
                 style={{ marginLeft: "auto", height: 22, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid " + (editResumo ? "var(--accent)" : "var(--line-2)"), background: editResumo ? "var(--accent)" : "var(--bg-1)", color: editResumo ? "var(--accent-fg)" : "var(--fg-3)", fontSize: 11 }}>
                 {editResumo ? "✓ pronto" : "✎ editar"}
               </button>
-            </div>
-            {pain && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 9px", marginBottom: 8, borderRadius: "var(--r-2)", background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
-                <span className="kicker accent" style={{ flexShrink: 0 }}>dor do anúncio</span>
-                <span style={{ fontSize: 12.5, fontWeight: 600, minWidth: 0 }}>[{pain.code}] {pain.label}</span>
-              </div>
-            )}
-            {editResumo ? (
+            )}>
+            {editResumo && (
               <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                 <EditRow label="Nome"><input defaultValue={lead.name || ""} onBlur={(e) => e.target.value !== (lead.name || "") && patch({ name: e.target.value })} style={editInput} /></EditRow>
                 <EditRow label="Empresa"><input defaultValue={lead.company || ""} onBlur={(e) => e.target.value !== (lead.company || "") && patch({ company: e.target.value })} style={editInput} /></EditRow>
@@ -590,38 +555,40 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   );
                 })}
               </div>
-            ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "0 16px" }}>
-                {summaryFacts.map(([k, v]) => <FactRow key={k} k={k} v={v} />)}
-              </div>
+            )}
+          </ClientSummaryCard>
+
+          {/* Contatos logo abaixo do resumo, como no painel de atividade (lá é
+              "registrar contato · últimos contatos"). Aqui é a timeline COMPLETA
+              e nasce recolhida: o histórico é consulta, não fluxo do dia. */}
+          <div style={{ ...box, display: "flex", flexDirection: "column", ...(showTimeline ? { minHeight: 160 } : {}) }}>
+            <button onClick={() => setShowTimeline((v) => !v)}
+              title={showTimeline ? "Recolher a timeline" : "Abrir a timeline (histórico + registrar contato)"}
+              className="kicker" style={{ display: "flex", alignItems: "center", width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+              <span>Contatos · timeline {activities ? `· ${timelineActs.length + (lead.comments?.length || 0)}` : ""}</span>
+              <span style={{ marginLeft: "auto", fontSize: 10 }}>{showTimeline ? "▴ recolher" : "▾ registrar contato"}</span>
+            </button>
+            {showTimeline && (
+              <>
+                <div style={{ marginTop: 10 }}>
+                  <ActivityComposer lead={lead} onLogged={refetchTimeline} />
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  {activities === null
+                    ? <div className="mono dim" style={{ fontSize: 11.5, padding: "10px 0" }}>carregando…</div>
+                    : <ActivityList activities={timelineActs} comments={lead.comments} />}
+                </div>
+              </>
             )}
           </div>
 
-          {/* Dados do 1º contato — editáveis: preenche/corrige o que faltar. */}
-          <div style={box}>
-            <div className="kicker" style={{ marginBottom: 6 }}>Dados do lead · edite pra completar</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {checklist.map((c) => (
-                <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "5px 9px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.value ? "var(--bg-1)" : "var(--warn-soft)" }}>
-                  <span style={{ color: c.value ? "var(--pos)" : "var(--warn)", flexShrink: 0, fontSize: 12 }}>{c.value ? "✓" : "○"}</span>
-                  <span className="dim" style={{ flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.35 }}>{c.label}</span>
-                  {c.type === "select" ? (
-                    <select value={c.raw || ""} onChange={(e) => patch({ [c.key]: e.target.value })}
-                      style={{ flexShrink: 0, maxWidth: "48%", height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12, fontWeight: 500 }}>
-                      <option value="">selecionar…</option>
-                      {c.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                      {c.raw && !c.options.some((o) => o.value === c.raw) && <option value={c.raw}>{c.raw}</option>}
-                    </select>
-                  ) : (
-                    <input key={lead.id + c.key} type="text" defaultValue={c.raw || ""} placeholder="preencher…"
-                      onBlur={(e) => { if (e.target.value !== (c.raw || "")) patch({ [c.key]: e.target.value }); }}
-                      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                      style={{ flexShrink: 0, width: "48%", height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontWeight: 500 }} />
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+          {/* De onde veio · atribuição do anúncio: mesmo bloco (e mesmo lugar,
+              depois dos contatos) do painel de atividade. Recolhível porque a
+              ficha lista a atribuição inteira. */}
+          <AttributionCard rows={attribution} open={showFrom} onToggle={() => setShowFrom((v) => !v)} />
+
+          {/* Dados do lead: mesmo checklist, mesmo título do painel de atividade. */}
+          <LeadChecklist checklist={checklist} onPatch={patch} leadId={lead.id} />
 
           {/* GPS: etapa (gateada) + próximo toque + call agendada, sem sair do
               drawer. RECOLHÍVEL: fechado, o cabeçalho segura o resumo (o pill
@@ -963,26 +930,12 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
           )}
         </div>
 
-        {/* De onde veio: recolhível (consulta, não fluxo do dia a dia). */}
-        {attribution.length > 0 && (
-          <div style={box}>
-            <button onClick={() => setShowFrom((v) => !v)} title={showFrom ? "Recolher" : "Abrir a atribuição (campanha, conjunto, anúncio, origem)"}
-              className="kicker" style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
-              De onde veio · atribuição do anúncio
-              <span style={{ marginLeft: "auto", fontSize: 10, flexShrink: 0 }}>{showFrom ? "▴ recolher" : "▾ abrir"}</span>
-            </button>
-            {showFrom && (
-              <div style={{ marginTop: 6 }}>
-                {attribution.map(([k, v]) => <FactRow key={k} k={k} v={v} />)}
-              </div>
-            )}
-          </div>
-        )}
           </div>
 
-          {/* Coluna direita: insights (roteiro) do estágio atual + histórico. */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-            <div className="kicker" style={{ color: "var(--fg-3)" }}>Insights do estágio · {lead.stage || (saasCfg?.funnel?.[0]?.stage ?? "")}</div>
+          {/* Coluna direita: o ROTEIRO do estágio (mesmo nome e mesma ordem do
+              painel de atividade do Meu dia) + o que é da entrega/mentoria. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+            <div className="kicker" style={{ color: "var(--fg-3)" }}>Roteiro · {lead.stage || (saasCfg?.funnel?.[0]?.stage ?? "")}</div>
             {/* Briefing de passagem em cima de tudo: é o que o integrador lê
                 primeiro quando abre o card que acabou de chegar nele. */}
             <IntegrationBriefCard brief={integrationBrief} phone={lead.phone}
@@ -995,29 +948,10 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                 (some quando o briefing já cobre a call de venda). */}
             <CallSummaryCard summary={showCallSummary ? callSummary : null} phone={lead.phone}
               onSend={onOpenWhatsapp ? (msg) => onOpenWhatsapp(lead, msg) : null} />
-            <div style={{ ...box, background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
-              <div className="kicker" style={{ color: "var(--accent)", marginBottom: 4 }}>Como se comportar</div>
-              <div style={{ fontSize: 12, lineHeight: 1.45 }}>{script.resumo}</div>
-            </div>
-            <div style={box}>
-              <div className="kicker" style={{ marginBottom: 4 }}>Objetivo do contato</div>
-              <div style={{ fontSize: 12, lineHeight: 1.45, fontWeight: 500 }}>{script.objetivo}</div>
-            </div>
-            <div style={box}>
-              <div className="kicker" style={{ marginBottom: 6 }}>Passo a passo</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                {script.passos.map((p, i) => (
-                  <div key={i} style={{ display: "flex", gap: 10 }}>
-                    <span className="mono tnum" style={{ width: 20, height: 20, borderRadius: 999, flexShrink: 0, marginTop: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "var(--bg-inset)", border: "1px solid var(--line-2)", fontSize: 10.5, fontWeight: 700, color: "var(--fg-3)" }}>{i + 1}</span>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      {p.t && <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 1 }}>{p.t}</div>}
-                      {p.fala && <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--fg-1)", borderLeft: "3px solid var(--accent-line)", paddingLeft: 10, whiteSpace: "pre-wrap" }}>{renderFala(p.fala)}</div>}
-                      {p.dica && <div className="dim" style={{ fontSize: 10.5, marginTop: 2, paddingLeft: 13 }}>{renderFala(p.dica)}</div>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* Como se comportar + objetivo + passo a passo: bloco único
+                compartilhado com o painel de atividade — inclusive o "copiar"
+                de cada fala, que só existia lá. */}
+            <ScriptBlocks script={script} tokens={scriptTk} />
 
             {/* UniqueKids: sugestão de solução da rotina (IA · método R.O.T.I.N.A),
                 gerada do desafio + exemplo e editável pela Ana. Só aparece quando há desafio. */}
@@ -1077,49 +1011,25 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
           </div>
         )}
 
-        {/* Timeline RECOLHÍVEL: nasce fechada (o histórico é consulta, não fluxo
-            do dia a dia) — o cabeçalho mostra a contagem e abre no clique, com o
-            composer de registrar toque junto. */}
-        <div style={{ ...box, display: "flex", flexDirection: "column", ...(showTimeline ? { minHeight: 160 } : {}) }}>
-          <button onClick={() => setShowTimeline((v) => !v)}
-            title={showTimeline ? "Recolher a timeline" : "Abrir a timeline (histórico + registrar toque)"}
-            className="kicker" style={{ display: "flex", alignItems: "center", width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--fg-3)", textAlign: "left" }}>
-            <span>Timeline {activities ? `· ${timelineActs.length + (lead.comments?.length || 0)}` : ""}</span>
-            <span style={{ marginLeft: "auto", fontSize: 10 }}>{showTimeline ? "▴ recolher" : "▾ abrir"}</span>
-          </button>
-          {showTimeline && (
-            <>
-              <div style={{ marginTop: 10 }}>
-                <ActivityComposer lead={lead} onLogged={refetchTimeline} />
-              </div>
-              <div style={{ marginTop: 8 }}>
-                {activities === null
-                  ? <div className="mono dim" style={{ fontSize: 11.5, padding: "10px 0" }}>carregando…</div>
-                  : <ActivityList activities={timelineActs} comments={lead.comments} />}
-              </div>
-            </>
-          )}
-        </div>
-          </div>{/* fim coluna Insights */}
+          </div>{/* fim coluna Roteiro */}
         </div>{/* fim grid duas colunas */}
         </div>
 
-        <div style={{ flexShrink: 0, padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", gap: 8, background: "var(--bg-inset)" }}>
+        {/* Rodapé no mesmo desenho do painel de atividade: o WhatsApp esticado
+            (WaButton do DS). O "Web ↗" ao lado é da ficha, pra quem prefere
+            atender do WhatsApp Web em vez do inbox. */}
+        <div style={{ flexShrink: 0, padding: "10px 18px", borderTop: "1px solid var(--line-1)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", background: "var(--bg-inset)" }}>
           {wa ? (
-            // Dois caminhos: o VERDE sólido abre a conversa no INBOX do cockpit
-            // (responder daqui, com histórico); o de contorno abre no WhatsApp
-            // Web/app pra quem prefere atender por lá.
             <>
+              {onOpenWhatsapp
+                ? <WaButton block onClick={() => onOpenWhatsapp(lead)} title={`Abrir a conversa no inbox do cockpit · ${lead.phone}`}>WhatsApp</WaButton>
+                : <WaButton block href={wa} title={`WhatsApp · ${lead.phone}`}>WhatsApp ↗</WaButton>}
               {onOpenWhatsapp && (
-                <button onClick={() => onOpenWhatsapp(lead)} title={`Abrir a conversa no inbox do cockpit · ${lead.phone}`}
-                  style={{ flex: 1, textAlign: "center", padding: "10px 12px", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", border: "none", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
-                  WhatsApp no cockpit
-                </button>
+                <a href={wa} target="_blank" rel="noopener noreferrer" title={`Abrir no WhatsApp Web/app · ${lead.phone}`}
+                  style={{ flex: "0 1 auto", textAlign: "center", padding: "10px 14px", background: "var(--bg-1)", color: "var(--fg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>
+                  Web ↗
+                </a>
               )}
-              <a href={wa} target="_blank" rel="noopener noreferrer" title={`Abrir no WhatsApp Web/app · ${lead.phone}`}
-                style={{ flex: onOpenWhatsapp ? "0 1 auto" : 1, textAlign: "center", padding: "10px 14px", background: onOpenWhatsapp ? "var(--bg-1)" : "var(--wa-brand)", color: onOpenWhatsapp ? "var(--fg-2)" : "var(--wa-brand-fg)", border: onOpenWhatsapp ? "1px solid var(--line-2)" : "none", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: onOpenWhatsapp ? 600 : 700, textDecoration: "none", whiteSpace: "nowrap" }}>
-                {onOpenWhatsapp ? "Web ↗" : "WhatsApp ↗"}
-              </a>
             </>
           ) : (
             <span className="mono dim" style={{ flex: 1, textAlign: "center", padding: "10px 12px", fontSize: 12 }}>sem telefone cadastrado</span>
