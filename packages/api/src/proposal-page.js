@@ -628,6 +628,10 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   @media (max-width: 900px) { .lvx-cols { grid-template-columns: 1fr; } }
   .lvx-cols .setup-grid { display: flex; flex-direction: column; gap: 11px; margin: 0; }
   .lvx-cols .setup-field { width: 100%; }
+  /* Coluna dos campos: o botão de começar fica logo abaixo do último campo,
+     centralizado na coluna (e não no rodapé da tela inteira). */
+  .lvx-side { display: flex; flex-direction: column; min-width: 0; }
+  .lvx-side .setup-go { align-self: center; margin-top: 20px; }
   .lvx-card { border: 1px solid var(--line); border-radius: calc(var(--radius) + 4px); background: var(--raised);
     padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
   .lvx-card-cols { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.15fr) minmax(0, 1fr); gap: 12px 24px; align-items: start; }
@@ -1730,6 +1734,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     function buildSetup() {
       var sec = el('section', 'closer-setup');
       var w = el('div', 'wrap');
+      var goHost = null; // com o card do catálogo, o botão desce na COLUNA dos campos
       w.appendChild(el('span', 'hero-tag', 'Antes de começar'));
       w.appendChild(el('h2', 'setup-title', 'Confira os dados antes de apresentar'));
       w.appendChild(el('p', 'setup-sub', 'Ajuste o que precisar. As mudanças entram na apresentação na hora.'));
@@ -1822,8 +1827,14 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           '</div>';
         var cols = el('div', 'lvx-cols');
         w.insertBefore(cols, grid);
-        cols.appendChild(grid);
+        // Coluna da esquerda = campos + o botão de começar logo abaixo deles
+        // (o card de decisão é bem mais alto; com o botão no fim do wrap ele
+        // ficava perdido lá embaixo, longe do último campo).
+        var side = el('div', 'lvx-side');
+        side.appendChild(grid);
+        cols.appendChild(side);
         cols.appendChild(card);
+        goHost = side;
 
         var catGet = function (id) { return card.querySelector('#' + id); };
         function mtxHtml() {
@@ -1946,7 +1957,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         var first = root.querySelector('header.hero, section:not(.closer-setup)');
         if (first) first.scrollIntoView({ behavior: 'smooth', block: 'start' });
       };
-      w.appendChild(go);
+      (goHost || w).appendChild(go);
       sec.appendChild(w);
       root.insertBefore(sec, root.firstChild);
       // Inserir a "tela zero" ANTES da capa dispara o scroll anchoring do navegador
