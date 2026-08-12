@@ -1164,6 +1164,18 @@ const LEVERADS_CATALOG = {
         N: "Se ativar o catálogo em mais duas ou três contas custasse horas em vez de meses, o que acontece com seu faturamento? Quer simular com seus números?",
       },
     },
+    // Dor de anúncio OEM (agosto/2026): o lead clicou num anúncio de part
+    // number, não de clonagem. É a única dor que aponta PRODUTO (OEM avulso,
+    // ver PAIN_PRODUCT em proposal-catalog.js) — as A-E só trocam a trilha.
+    OEM: {
+      label: "Anunciar pelo código OEM sem montar ficha nem compatibilidade",
+      spin: {
+        S: "Como nasce um anúncio de peça na sua operação hoje? Alguém monta a ficha técnica e as aplicações, ou você só sobe o que já vem pronto do fornecedor?",
+        P: "Quanto tempo leva pra publicar UMA peça com ficha completa e todas as compatibilidades? Quantos códigos do seu catálogo seguem sem anúncio porque dá esse trabalho?",
+        I: "Cada código que você não anuncia é uma busca em que o comprador acha o concorrente. E anúncio com aplicação errada já te custou devolução ou reclamação?",
+        N: "Se você mandasse só a lista de códigos e os anúncios voltassem prontos (foto, descrição, compatibilidade) publicados na sua conta, quantas peças você subiria por mês?",
+      },
+    },
     none: {
       label: "Sem código (não veio de anúncio)",
       tip: "Abre com a Situação genérica (me conta como está a operação hoje, quantas contas, quem cuida) e escolhe a trilha A-E conforme a primeira dor que ele verbalizar.",

@@ -1752,7 +1752,10 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       if (CAT) {
         sec.classList.add('lvx');
         var TIER_STYLE = { S: ['#7c3aed', '#fff'], A: ['#16a34a', '#fff'], B: ['#65a30d', '#fff'], C: ['#eab308', '#463500'], D: ['#ea580c', '#fff'], E: ['#9aa2ad', '#fff'] };
-        var painKeys = ['A', 'B', 'C', 'D', 'E', 'none'].filter(function (kk) { return CAT.pains[kk]; });
+        // Ordem das dores vem do servidor (painOrder): dor nova no catálogo
+        // entra no select sozinha. Fallback = catálogo antigo, sem painOrder.
+        var painKeys = (CAT.painOrder && CAT.painOrder.length ? CAT.painOrder : ['A', 'B', 'C', 'D', 'E', 'none'])
+          .filter(function (kk) { return CAT.pains[kk]; });
         var prodKeys = Object.keys(CAT.names);
         var oneOff = CAT.oneOffCloning;
         var oneOffHtml = oneOff && Array.isArray(oneOff.rows)
@@ -1834,7 +1837,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
             : '<span class="q">' + esc(pn.tip || '') + '</span>';
           var tagEl = catGet('lvxTag');
           if (CAT.oemNeeded && !state.oem) { tagEl.className = 'lvx-tag pend'; tagEl.textContent = 'Sugerido · OEM a confirmar no rapport'; }
-          else { tagEl.className = 'lvx-tag'; tagEl.textContent = 'Sugerido pela régua'; }
+          else { tagEl.className = 'lvx-tag'; tagEl.textContent = CAT.suggestedBy === 'pain' ? 'Sugerido pela dor do anúncio' : 'Sugerido pela régua'; }
           catGet('lvxSug').textContent = CAT.names[CAT.suggested] || CAT.suggested;
           catGet('lvxPr').textContent = CAT.priceLines[CAT.suggested] || '';
           var shown = state.product || CAT.suggested;
@@ -1872,8 +1875,15 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           catReload({ product: null });
         });
         catGet('lvxPain').addEventListener('change', function () {
+          // Dor que aponta produto (OEM) remonta o DECK, então precisa do
+          // servidor; trocar entre dores A-E só troca a trilha SPIN, que é
+          // client-side. Com produto forçado no Apresentar, o deck não muda.
+          var pp = CAT.painProducts || {};
+          var changesDeck = (pp[state.pain] || '') !== (pp[this.value] || '') && !state.product;
           state.pain = this.value;
-          catRemember('pain', this.value === 'none' ? '' : this.value);
+          var q = this.value === 'none' ? '' : this.value;
+          if (changesDeck) { catReload({ pain: q || null }); return; }
+          catRemember('pain', q);
           syncCat();
         });
         catGet('lvxOem').addEventListener('change', function () {
