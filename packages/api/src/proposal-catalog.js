@@ -78,9 +78,26 @@ export const lowTier = (t) => t === "D" || t === "E";
 
 const isAuto = (answers) => String(answers?.niche || "").trim().toLowerCase() === "autopecas";
 
-// D/E entra no Parcial (combo com OEM 50 se autopeças); o resto é FULL
-// (+OEM se autopeças). A régua orienta; o override do closer mora em state.product.
+// Dor do anúncio que MANDA no produto: quem clicou no anúncio de part number
+// veio comprar OEM, não clonagem, então a régua (contas × anúncios) não decide
+// por ele. A cota segue o porte, como em todo produto OEM (50 no D/E, 200 nos
+// demais). As dores A-E não apontam produto: só trocam a trilha SPIN.
+const PAIN_PRODUCT = { OEM: "oem" };
+
+const painOf = (state) => String(state?.pain || "").trim().toUpperCase();
+
+// Produto que a DOR do lead pede, quando o catálogo tem esse produto.
+export function painProduct(calc, state) {
+  const key = PAIN_PRODUCT[painOf(state)] || "";
+  return key && calc?.catalog?.products?.[key] ? key : "";
+}
+
+// A dor manda primeiro; sem dor de produto, D/E entra no Parcial (combo com OEM
+// 50 se autopeças) e o resto é FULL (+OEM se autopeças). A régua orienta; o
+// override do closer mora em state.product.
 export function suggestProduct(calc, state, answers) {
+  const byPain = painProduct(calc, state);
+  if (byPain) return byPain;
   const low = lowTier(tierOf(calc, state));
   const auto = isAuto(answers);
   if (low) return auto ? "parcialoem" : "parcialA";
@@ -302,12 +319,27 @@ export function catalogUI(p) {
     priceLines[k] = priceLine(k, cat.products, small);
     offerLines[k] = offerLine(k, cat.products, small);
   }
+  // Ordem do select de dor: códigos de 1 letra (A-E) antes dos maiores (OEM),
+  // "sem código" sempre por último. Sai pronto daqui porque a tela zero não
+  // conhece o catálogo — dor nova no template aparece sem tocar no renderer.
+  const painOrder = Object.keys(cat.pains || {})
+    .filter((k) => k !== "none")
+    .sort((a, b) => a.length - b.length || a.localeCompare(b))
+    .concat(cat.pains?.none ? ["none"] : []);
+  // Dores que trocam o PRODUTO (a troca precisa do servidor pra remontar o
+  // deck); as demais só trocam a trilha SPIN, que é client-side.
+  const painProducts = {};
+  for (const [code, key] of Object.entries(PAIN_PRODUCT)) {
+    if (cat.products[key] && (cat.pains || {})[code]) painProducts[code] = key;
+  }
   return {
     tier, low: small, suggested,
+    suggestedBy: painProduct(calc, state) ? "pain" : "grid",
     product: cat.products[String(state.product || "")] ? String(state.product) : "",
     oemNeeded: suggested === "fulloem" || suggested === "parcialoem",
     oem: !!state.oem,
     pain: String(state.pain || "") || "none",
+    painOrder, painProducts,
     matrix: {
       grid: cat.grid || DEFAULT_GRID,
       accounts,

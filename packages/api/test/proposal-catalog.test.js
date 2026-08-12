@@ -9,7 +9,7 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { ensureProposalCatalog } = await import("../src/migrations.js");
-const { applyCatalog, catalogUI, suggestProduct } = await import("../src/proposal-catalog.js");
+const { applyCatalog, activeProduct, catalogUI, suggestProduct } = await import("../src/proposal-catalog.js");
 const { runNativeProposal, shareProposalOffer, publicProposal } = await import("../src/proposal.js");
 const { registerProposalRoutes } = await import("../src/routes.proposals.js");
 
@@ -163,6 +163,43 @@ test("OEM avulso: 3 etapas SAI, tela OEM entra clara no lugar; cota segue o port
   big.state.product = "oem";
   const tb = applyCatalog(big);
   assert.equal(tb.slides.find((s) => s.type === "pricing").price, "2.988", "OEM 200 pro grande");
+});
+
+test("dor [OEM]: o anúncio de part number manda no produto, acima da régua", async () => {
+  const repo = await seedRepo();
+  // Autopeças pequeno: a régua sozinha mandaria pro combo Parcial + OEM 50.
+  const p = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "100-500" });
+  assert.equal(suggestProduct(p.calc, p.state, p.data.answers), "parcialoem");
+
+  p.state = { ...p.state, pain: "OEM" };
+  assert.equal(suggestProduct(p.calc, p.state, p.data.answers), "oem", "quem clicou no anúncio de OEM não veio comprar clonagem");
+  const t = applyCatalog(p);
+  assert.equal(t.product, "oem");
+  assert.ok(!t.slides.some((s) => s.key === "como_funciona"), "o 3 etapas (clonagem) sai do deck");
+  assert.equal(t.slides.find((s) => s.type === "pricing").price, "1.188", "cota 50 pelo porte D/E");
+
+  const big = await makeProposal(repo, { niche: "autopecas", accounts: "10+", listings: "10000+" });
+  big.state = { ...big.state, pain: "OEM" };
+  assert.equal(applyCatalog(big).slides.find((s) => s.type === "pricing").price, "2.988", "cota 200 pro grande");
+
+  big.state.product = "fulloem"; // Apresentar continua vencendo tudo.
+  assert.equal(activeProduct(big), "fulloem");
+});
+
+test("tela zero: dor OEM entra no select depois das letras e avisa que ela troca o deck", async () => {
+  const repo = await seedRepo();
+  const p = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "100-500" });
+  const base = catalogUI(p);
+  assert.deepEqual(base.painOrder, ["A", "B", "C", "D", "E", "OEM", "none"], "letras, códigos maiores, sem código");
+  assert.deepEqual(base.painProducts, { OEM: "oem" }, "só a dor de produto obriga recarregar a página");
+  assert.equal(base.suggestedBy, "grid");
+  assert.ok(base.pains.OEM.spin.N.length > 10, "trilha SPIN da dor OEM embarcada");
+
+  p.state = { ...p.state, pain: "OEM" };
+  const ui = catalogUI(p);
+  assert.equal(ui.suggested, "oem");
+  assert.equal(ui.suggestedBy, "pain", "o card diz que quem decidiu foi a dor, não a matriz");
+  assert.equal(ui.oemNeeded, false, "veio de anúncio de OEM: nada a confirmar no rapport");
 });
 
 test("cliente grande: FULL sugerido; override +OEM FULL usa a base de autopeças com 200/mês", async () => {

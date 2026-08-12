@@ -4,7 +4,7 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 import { attributionPain } from "../src/attribution.js";
 import { syncProposalLeadSnapshot } from "../src/proposal.js";
 
-const calc = { catalog: { pains: { A: {}, B: {}, C: {}, D: {}, E: {}, none: {} } } };
+const calc = { catalog: { pains: { A: {}, B: {}, C: {}, D: {}, E: {}, OEM: {}, none: {} } } };
 
 test("attributionPain procura a dor em anúncio, conjunto e campanha, nessa ordem", () => {
   assert.equal(attributionPain({ adName: "004", adsetName: "1338 [E] - Copy", campaignName: "[D]" }), "E");
@@ -34,6 +34,19 @@ test("snapshot antigo puxa empresa atual do lead e recupera dor pelo conjunto do
   assert.equal(synced.data.lead.company, "Azul Pet");
   assert.equal(synced.state.pain, "E");
   assert.equal((await repo.get("proposals", "pr_1")).state.pain, "E", "sincroniza no snapshot persistido");
+});
+
+test("dor de 3 letras: anúncio [OEM] chega inteiro na proposta", async () => {
+  const repo = makeMemRepo();
+  await repo.create("leads", { id: "le_1", saas: "leverads", name: "Rafael", company: "Peças BR", sourcePain: "oem" });
+  const proposal = await repo.create("proposals", {
+    id: "pr_1", lead: "le_1", calc,
+    data: { lead: { name: "Rafael", firstName: "Rafael", company: "" }, answers: {} },
+    state: {},
+  });
+
+  const synced = await syncProposalLeadSnapshot(repo, proposal);
+  assert.equal(synced.state.pain, "OEM", "código normalizado em maiúscula, igual ao nome do anúncio");
 });
 
 test("dor escolhida manualmente na tela zero não é sobrescrita pela origem", async () => {
