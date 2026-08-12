@@ -79,7 +79,7 @@ function NowClock({ now }) {
       border: "1px solid var(--line-2)", background: "var(--bg-1)", flexShrink: 0,
     }}>
       <span style={{ color: "var(--accent)", display: "inline-flex" }}><ClockIcon now={now} /></span>
-      <span className="mono tnum" style={{ fontSize: 13, fontWeight: 600, color: "var(--fg-1)", letterSpacing: "-0.01em" }}>{hhmmOf(now)}</span>
+      <span className="tnum" style={{ fontSize: 13.5, fontWeight: 600, color: "var(--fg-1)" }}>{hhmmOf(now)}</span>
       <span style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{day}</span>
     </span>
   );
@@ -92,10 +92,12 @@ function TimeCell({ pill, note, tone, soft }) {
   const noteColor = tone === "neg" ? "var(--neg)" : tone === "warn" ? "var(--warn)" : tone === "pos" ? "var(--pos)" : "var(--fg-4)";
   return (
     <span style={{ width: 66, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3 }}>
-      <span className={soft ? "" : "mono tnum"} style={{
+      {/* Instrument Sans com números tabulares (`.tnum`, sem `.mono`): a hora
+          lê mais fácil que na JetBrains e as colunas continuam alinhadas. */}
+      <span className="tnum" style={{
         display: "inline-flex", alignItems: "center", height: 22, padding: soft ? "0 8px" : "0 9px", borderRadius: 999,
         background: soft ? "var(--bg-2)" : "var(--btn-bg)", color: soft ? "var(--fg-2)" : "var(--btn-fg)",
-        fontSize: soft ? 11 : 12, fontWeight: 600, letterSpacing: "-0.01em", whiteSpace: "nowrap",
+        fontSize: soft ? 11.5 : 12.5, fontWeight: 600, whiteSpace: "nowrap",
       }}>{pill}</span>
       {note && <span style={{ fontSize: 10.5, fontWeight: tone === "neg" ? 600 : 500, color: noteColor, paddingLeft: 2, whiteSpace: "nowrap" }}>{note}</span>}
     </span>
@@ -780,7 +782,7 @@ function DoneActivityRow({ item, onClick }) {
     <button onClick={onClick} style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "12px var(--inset-x)", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
       <span style={{ color: "var(--pos)", fontSize: 13, width: 66, flexShrink: 0 }}>✓</span>
       <span style={{ fontSize: 13.5, color: "var(--fg-3)", textDecoration: "line-through", flex: 1 }}>{l.name}{l.company ? ` · ${l.company}` : ""} · {ACTION_LABELS[item.kind] || "atividade concluída"}</span>
-      <span className="mono tnum" style={{ fontSize: 12, color: "var(--fg-4)" }}>{time}</span>
+      <span className="tnum" style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{time}</span>
     </button>
   );
 }
@@ -805,7 +807,7 @@ function CompactSchedule({ title, rows, onOpen }) {
         {rows.length === 0 && <div style={{ borderTop: "1px solid var(--line-faint)", padding: "12px 0 14px", fontSize: 12.5, color: "var(--fg-4)" }}>nenhuma atividade</div>}
         {(showAll ? rows : rows.slice(0, 5)).map((item) => (
           <button key={item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id} onClick={() => onOpen(item)} style={{ width: "100%", display: "flex", gap: 10, alignItems: "baseline", padding: "10px 0", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
-            <span className="mono tnum" style={{ fontSize: 12, color: "var(--fg-4)", flexShrink: 0 }}>{timeOf(item)}</span>
+            <span className="tnum" style={{ fontSize: 12.5, color: "var(--fg-4)", flexShrink: 0 }}>{timeOf(item)}</span>
             <span style={{ minWidth: 0 }}>
               <span style={{ display: "block", fontSize: 13.5, fontWeight: 600 }}>{item.consulta ? (item.consulta.clientName || "cliente") : item.l.name}</span>
               <span style={{ display: "block", fontSize: 12, color: "var(--fg-3)" }}>{item.consulta ? `Consulta ${item.consulta.n || "?"}/${item.consulta.packageTotal || 8} · UniqueKids` : `${ACTION_LABELS[item.kind] || "contato"}${item.l.company ? ` · ${item.l.company}` : ""}`}</span>
