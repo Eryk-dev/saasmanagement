@@ -279,6 +279,45 @@ test("PATCH: faixa de contas é autoritativa — deriva seats do topo (seatsMap)
   await app.close();
 });
 
+test("PATCH: contas e anúncios ajustados na tela zero viram a resposta do lead (a nota do card)", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("leads", { ...LEAD });
+  await app.inject({ method: "POST", url: "/api/leads/le_p1/proposal" });
+  const { proposta_id } = await repo.get("leads", "le_p1");
+  const { editKey } = await repo.get("proposals", proposta_id);
+
+  // Closer confirma na call: são 2 contas, não 3-5.
+  const ok = await app.inject({
+    method: "PATCH", url: `/public/proposals/${proposta_id}`,
+    payload: { k: editKey, accounts: "2", volume: "10-50" },
+  });
+  assert.equal(ok.statusCode, 200);
+  const p = await repo.get("proposals", proposta_id);
+  assert.equal(p.data.answers.accounts, "2"); // snapshot acompanha
+  assert.equal(p.data.answers.volume, "10-50");
+  const lead = await repo.get("leads", "le_p1");
+  assert.equal(lead.accounts, "2");           // writeback: a nota do card cai pra régua real
+  assert.equal(lead.volume, "10-50");
+
+  // Faixa que a régua não conhece não suja o cadastro do lead.
+  await app.inject({ method: "PATCH", url: `/public/proposals/${proposta_id}`, payload: { k: editKey, volume: "quinhentos" } });
+  assert.equal((await repo.get("leads", "le_p1")).volume, "10-50");
+  await app.close();
+});
+
+test("PATCH: lead que não respondeu anúncios não ganha resposta do palpite da proposta", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("leads", { ...LEAD, id: "le_p2", volume: undefined });
+  await app.inject({ method: "POST", url: "/api/leads/le_p2/proposal" });
+  const { proposta_id } = await repo.get("leads", "le_p2");
+  const { editKey, state } = await repo.get("proposals", proposta_id);
+  assert.equal(state.volume, "0-10"); // fallback do initialState (1ª faixa do volumeMid)
+
+  await app.inject({ method: "PATCH", url: `/public/proposals/${proposta_id}`, payload: { k: editKey, cloneCount: 50 } });
+  assert.equal((await repo.get("leads", "le_p2")).volume, undefined, "palpite não vira resposta do lead");
+  await app.close();
+});
+
 test("PATCH: campos da capa (empresa/nome/nicho) gravam no snapshot E no lead", async () => {
   const { app, repo } = await buildApp();
   await repo.create("leads", { ...LEAD });
