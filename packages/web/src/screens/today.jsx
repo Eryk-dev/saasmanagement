@@ -3,16 +3,17 @@ import { EmptyState, useEsc, toast, WaButton } from "../atoms.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { Pill } from "../components/viz.jsx";
 import { ActivityComposer } from "../components/timeline.jsx";
-import { waLink, leadTier, leadScoreLabel, cockpitProposalUrl } from "../lib/ui.js";
+import { waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor } from "../lib/funnel.js";
 import { allUsers, currentUser, displayName, userById, usersByRole } from "../lib/users.js";
 import { useProposalTemplates } from "../components/ProposalActions.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
-import { useAttribution, leadPain } from "../lib/pains.js";
-import { resolveScript, scriptTokens, scriptSegments, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor } from "../lib/scripts.js";
-import { PAYMENT_METHODS, CLOSED_PLANS, paymentLabel, closedPlanLabel, dealProductLabel } from "../lib/payments.js";
+import { useAttribution } from "../lib/pains.js";
+import { clientSummary, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks } from "../components/lead-blocks.jsx";
+import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor } from "../lib/scripts.js";
+import { PAYMENT_METHODS, CLOSED_PLANS, closedPlanLabel, dealProductLabel } from "../lib/payments.js";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
 // "Amanhã" e "Próximos dias" (o que já está agendado, à vista), e "Sem data".
@@ -819,45 +820,10 @@ function DayScore({ contacted, contactedGoal, calls, callsGoal }) {
 // Rótulo curto dos tipos de activity nos "últimos contatos" do resumo.
 const ACT_LABELS = { whatsapp: "whatsapp", call: "ligação", email: "e-mail", meeting: "reunião", note: "nota", stage: "mudou de etapa", system: "sistema" };
 
-// Resumo compilado do cliente pro roteiro: a dor do anúncio (gancho da
-// conversa), os fatos relevantes (potencial, temperatura, ICP, prioridade,
-// faixa, etapa, toques, valor, origem, responsáveis, nota) e a atribuição (de
-// onde o lead veio). Só entra o que está preenchido. `cat` = catálogo de
-// atribuição (id → nome de campanha/conjunto/anúncio) já resolvido no componente.
-export function clientSummary(saasCfg, lead, stage, cat) {
-  const tier = leadTier(lead);
-  const daysInStage = lead.stageSince || lead.createdAt
-    ? Math.max(0, Math.floor((Date.now() - new Date(lead.stageSince || lead.createdAt).getTime()) / DAY)) : null;
-  const cad = cadenceOf(saasCfg, stage);
-  const hasScore = lead.score != null && lead.score !== "";
-  const icpPct = (lead.icp != null && lead.icp !== "") ? `${Math.round(Number(lead.icp) * 100)}%` : null;
-  const utm = lead.utm || {};
-  const money = (v) => (typeof window !== "undefined" && window.fmt?.money?.(v)) || v;
-  const facts = [
-    ["Potencial", tier.grade ? `${tier.grade} · ${tier.label}` : null],
-    ["Temperatura", hasScore ? `${leadScoreLabel(lead.score)} · ${lead.score}` : null],
-    ["ICP (fit)", icpPct],
-    ["Prioridade", lead.priority],
-    ["Faixa de faturamento", lead.value],
-    ["Etapa", `${stage}${daysInStage != null ? ` · ${daysInStage}d nela` : ""}`],
-    ["Toques na etapa", Number(cad.maxAttempts) ? `${Number(lead.stageAttempts) || 0} de ${cad.maxAttempts}` : (Number(lead.stageAttempts) || 0) || null],
-    ["Valor", lead.amount ? money(lead.amount) : null],
-    // Registrada no movimento Call → Follow-up: é a oferta que o follow-up cobra.
-    ["Proposta na mesa", lead.proposalOffer ? (lead.proposalOffer === "nenhuma" ? "não chegou na proposta" : closedPlanLabel(lead.proposalOffer) || lead.proposalOffer) : null],
-    ["Pagamento", lead.paymentMethod ? paymentLabel(lead.paymentMethod) : null],
-    ["Origem", lead.source],
-    ["SDR / closer", [lead.owner && displayName(lead.owner), lead.closer && displayName(lead.closer)].filter(Boolean).join(" / ") || null],
-    ["Próximo passo (nota)", lead.nextActionNote],
-  ].filter(([, v]) => v != null && v !== "");
-  // De onde veio: só o anúncio basta. Com teste A/B no form, mostra também o
-  // HEADLINE que o lead viu (denormalizado no submit; fallback pro id da versão).
-  const headline = lead.formHeadline || (lead.formVariant ? `versão ${lead.formVariant}` : null);
-  const attribution = [
-    ["Anúncio", cat?.ads?.[utm.content]?.name || utm.content],
-    ["Headline do formulário", headline],
-  ].filter(([, v]) => v != null && v !== "");
-  return { pain: leadPain(lead, cat, saasCfg?.painMap), facts, attribution };
-}
+// O resumo compilado do cliente mora em components/lead-blocks.jsx (é o mesmo
+// dos dois painéis de lead). Reexportado aqui porque o inbox do WhatsApp
+// importa `clientSummary` desta tela desde antes.
+export { clientSummary };
 
 // Resumo da última call por IA (activity call_summary, gerado da transcrição do
 // Meet) mostrado no roteiro pra o closer trabalhar o follow-up com contexto: o
@@ -1359,33 +1325,12 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
   // transcrita (combinado, objeção em aberto, dor, temperatura).
   const tokens = scriptTokens(l, saasCfg, salesSummary);
 
-  const renderFala = (text) => scriptSegments(text, tokens).map((s, i) => {
-    if (s.text != null) return <React.Fragment key={i}>{s.text}</React.Fragment>;
-    if (s.value != null) return <strong key={i} style={{ color: "var(--accent)", fontWeight: 600 }}>{s.value}</strong>;
-    return (
-      <span key={i} className="mono" title="dado não preenchido no lead: descubra nesta conversa"
-        style={{ background: "var(--warn-soft)", color: "var(--warn)", borderRadius: 4, padding: "0 5px", fontSize: "0.85em", whiteSpace: "nowrap" }}>
-        {s.gap}
-      </span>
-    );
-  });
-  // Texto puro da fala (tokens já resolvidos) pra copiar e colar no WhatsApp.
-  const falaText = (text) => scriptSegments(text, tokens).map((s) => (s.text != null ? s.text : s.value != null ? s.value : s.gap || "")).join("");
-  const [copiedStep, setCopiedStep] = useS(null);
-  const copyFala = async (text, i) => {
-    const t = falaText(text);
-    try { await navigator.clipboard.writeText(t); setCopiedStep(i); setTimeout(() => setCopiedStep((c) => (c === i ? null : c)), 1500); }
-    catch { window.prompt("Copie a mensagem:", t); }
-  };
-
   const fmtWhen = (iso) => {
     const d = new Date(iso);
     if (!Number.isFinite(d.getTime())) return "";
     const days = Math.floor((Date.now() - d.getTime()) / DAY);
     return days <= 0 ? `hoje ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : days === 1 ? "ontem" : `há ${days}d`;
   };
-
-  const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--bg-inset)" };
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70, padding: 12 }}>
@@ -1428,25 +1373,11 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 310px), 1fr))", gap: 16 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
             <div className="kicker" style={{ color: "var(--fg-3)" }}>Cliente</div>
-              <div style={box}>
-                <div className="kicker" style={{ marginBottom: 6 }}>Resumo do cliente</div>
-                {/* Dor do anúncio em destaque: o gancho pra conversa (o problema
-                    que trouxe o lead até aqui). Só quando veio de criativo mapeado. */}
-                {pain && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 9px", marginBottom: 8, borderRadius: "var(--r-2)", background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
-                    <span className="kicker accent" style={{ flexShrink: 0 }}>dor do anúncio</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 600, minWidth: 0 }}>[{pain.code}] {pain.label}</span>
-                  </div>
-                )}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "4px 14px" }}>
-                  {facts.map(([k, v]) => (
-                    <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, padding: "3px 0", borderBottom: "1px solid var(--line-1)" }}>
-                      <span className="mono dim" style={{ flexShrink: 0, fontSize: 10.5 }}>{k}</span>
-                      <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0 }}>{v}</span>
-                    </div>
-                  ))}
-                </div>
-                {/* Observações · registrar contato: mesmo composer do drawer do
+              {/* Resumo do cliente, atribuição e checklist: os MESMOS blocos do
+                  card do lead (components/lead-blocks.jsx) — quem trabalha a
+                  fila e depois abre o card vê a mesma coisa no mesmo lugar. */}
+              <ClientSummaryCard pain={pain} facts={facts}>
+                {/* Observações · registrar contato: mesmo composer do card do
                     pipeline (grava na coleção activities). Como é o MESMO dado, a
                     anotação feita aqui aparece lá e vice-versa. Some no preview. */}
                 {!preview && (
@@ -1469,46 +1400,11 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
                     </div>
                   ))}
                 </div>
-              </div>
+              </ClientSummaryCard>
 
-            {attribution.length > 0 && (
-              <div style={box}>
-                <div className="kicker" style={{ marginBottom: 6 }}>De onde veio · atribuição do anúncio</div>
-                {attribution.map(([k, v]) => (
-                  <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11.5, padding: "3px 0", borderBottom: "1px solid var(--line-1)" }}>
-                    <span className="mono dim" style={{ flexShrink: 0, fontSize: 10.5 }}>{k}</span>
-                    <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+            <AttributionCard rows={attribution} />
 
-            <div>
-              <div className="kicker" style={{ marginBottom: 6 }}>Dados do lead · na ordem da conversa · edite ao confirmar</div>
-              {/* Empilhado (1 por linha), CAMPO EDITÁVEL à direita: select com as
-                  opções do formulário; texto livre pra empresa/e-mail. Grava na hora. */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {checklist.map((c) => (
-                  <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "5px 9px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.value ? "var(--bg-1)" : "var(--warn-soft)" }}>
-                    <span style={{ color: c.value ? "var(--pos)" : "var(--warn)", flexShrink: 0, fontSize: 12 }}>{c.value ? "✓" : "○"}</span>
-                    <span className="dim" style={{ flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.35 }}>{c.label}</span>
-                    {c.type === "select" ? (
-                      <select value={c.raw || ""} onChange={(e) => patch({ [c.key]: e.target.value })}
-                        style={{ flexShrink: 0, maxWidth: "48%", height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12, fontWeight: 500 }}>
-                        <option value="">selecionar…</option>
-                        {c.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                        {c.raw && !c.options.some((o) => o.value === c.raw) && <option value={c.raw}>{c.raw}</option>}
-                      </select>
-                    ) : (
-                      <input key={l.id + c.key} type="text" defaultValue={c.raw || ""} placeholder="preencher…"
-                        onBlur={(e) => { if (e.target.value !== (c.raw || "")) patch({ [c.key]: e.target.value }); }}
-                        onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                        style={{ flexShrink: 0, width: "48%", height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontWeight: 500 }} />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+            <LeadChecklist checklist={checklist} onPatch={patch} leadId={l.id} />
 
             {/* Destino do card fica AQUI, embaixo dos dados do cliente, pra
                 aproveitar o espaço vazio da coluna e encurtar o painel. Item de
@@ -1538,46 +1434,9 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
                 <ProposalBlock l={l} wa={wa} item={item} onPatch={patch} />
               </div>
             )}
-            <div style={{ ...box, background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
-              <div className="kicker accent" style={{ marginBottom: 4 }}>Como se comportar</div>
-              <div style={{ fontSize: 12, lineHeight: 1.45 }}>{script.resumo}</div>
-            </div>
-            <div style={box}>
-              <div className="kicker" style={{ marginBottom: 4 }}>Objetivo do contato</div>
-              <div style={{ fontSize: 12, lineHeight: 1.45, fontWeight: 500 }}>{script.objetivo}</div>
-            </div>
-
-            <div>
-              <div className="kicker" style={{ marginBottom: 6 }}>Passo a passo</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                {script.passos.map((p, i) => (
-                  <div key={i} style={{ display: "flex", gap: 10 }}>
-                    <span className="mono tnum" style={{
-                      width: 20, height: 20, borderRadius: 999, flexShrink: 0, marginTop: 1,
-                      display: "inline-flex", alignItems: "center", justifyContent: "center",
-                      background: "var(--bg-inset)", border: "1px solid var(--line-2)", fontSize: 10.5, fontWeight: 700, color: "var(--fg-3)",
-                    }}>{i + 1}</span>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      {p.t && <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 1 }}>{p.t}</div>}
-                      {/* Passo sem fala é ação pura (ex.: "ligar 2 vezes"): só a dica. */}
-                      {p.fala && (
-                        <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
-                          <div style={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 1.5, color: "var(--fg-1)", borderLeft: "3px solid var(--accent-line)", paddingLeft: 10, whiteSpace: "pre-wrap" }}>
-                            {renderFala(p.fala)}
-                          </div>
-                          <button onClick={() => copyFala(p.fala, i)} title="Copiar a mensagem (com os dados preenchidos) pra colar no WhatsApp"
-                            style={{ flexShrink: 0, height: 24, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid " + (copiedStep === i ? "var(--pos)" : "var(--line-2)"),
-                              background: "var(--bg-2)", color: copiedStep === i ? "var(--pos)" : "var(--fg-3)", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
-                            {copiedStep === i ? "copiado ✓" : "⧉ copiar"}
-                          </button>
-                        </div>
-                      )}
-                      {p.dica && <div className="dim" style={{ fontSize: 10.5, marginTop: 2, paddingLeft: 13 }}>{renderFala(p.dica)}</div>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* Como se comportar + objetivo + passo a passo: bloco único
+                compartilhado com o card do lead (lead-blocks.jsx). */}
+            <ScriptBlocks script={script} tokens={tokens} />
           </div>
         </div>
         </div>
