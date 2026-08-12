@@ -1246,8 +1246,10 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       // + faixa de preço); reveal = a INTERAÇÃO está ligada. Na versão mandada
       // pro cliente (P.showAll) o layout continua o mesmo, mas nada espera
       // comando: sem véu, sem listeners, tudo já visível.
+      // revealOpen = slide de FECHAMENTO do beta: mesmo layout encadeado, mas
+      // já com tudo à mostra (nada espera comando), igual à versão do cliente.
       var staged = !!s.revealPrice;
-      var reveal = staged && !P.showAll;
+      var reveal = staged && !P.showAll && !s.revealOpen;
       var sec = el('section', ((hasOpts ? 'compact-pricing ' : '') + (reveal ? 'price-pending' : '')).trim() || null);
       var w = el('div', 'wrap');
       w.appendChild(band(s, num, total));
@@ -1430,6 +1432,43 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
             guaranteeHtml + paybackHtml + '</div>';
       }
       w.appendChild(pw);
+      var inView = function () {
+        var r = sec.getBoundingClientRect();
+        var mid = (window.innerHeight || document.documentElement.clientHeight) / 2;
+        return r.top <= mid && r.bottom >= mid;
+      };
+      // Ofertas 2, 3 e 4 são SECRETAS (ferramentas de negociação do closer):
+      // Shift+1 revela a 2ª oferta, Shift+2 revela a 3ª — dá pra pular direto
+      // pra 3ª sem passar pela 2ª. Nunca por clique/avanço normal nem no print,
+      // e NUNCA no link do cliente (P.showAll). Vale no slide encadeado, depois
+      // do preço aberto, e no de fechamento do beta (revealOpen), onde o preço
+      // já nasce à mostra.
+      if ((reveal || s.revealOpen) && !P.showAll) {
+        document.addEventListener('keydown', function (e) {
+          if (sec.classList.contains('price-pending')) return;
+          if (!e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+          // Usa e.code (Shift+1 = "!" em e.key, mas a tecla física é Digit1).
+          var code = e.code;
+          if ((code === 'Digit1' || code === 'Numpad1') && hasOffer2) {
+            if (!inView()) return;
+            e.preventDefault();
+            sec.classList.remove('offer3-on');
+            sec.classList.add('offer2-on');
+            fitSlides();
+          } else if ((code === 'Digit2' || code === 'Numpad2') && hasOffer3) {
+            if (!inView()) return;
+            e.preventDefault();
+            sec.classList.remove('offer4-on');
+            sec.classList.add('offer3-on');
+            fitSlides();
+          } else if ((code === 'Digit3' || code === 'Numpad3') && hasOffer4) {
+            if (!inView()) return;
+            e.preventDefault();
+            sec.classList.add('offer4-on');
+            fitSlides();
+          }
+        });
+      }
       if (reveal) {
         // Fila de passos: título+1º item juntos, depois um elemento por comando.
         var steps = [];
@@ -1447,46 +1486,11 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           sec.classList.remove('price-pending');
           sec.classList.add('price-revealed');
         };
-        var inView = function () {
-          var r = sec.getBoundingClientRect();
-          var mid = (window.innerHeight || document.documentElement.clientHeight) / 2;
-          return r.top <= mid && r.bottom >= mid;
-        };
         // "Comando de passar o slide": tecla de avanço com o slide dominando a
         // viewport (senão a tecla estaria rolando outra parte da página), ou
         // clique/tap em qualquer ponto da seção. Sem botão visível de propósito.
         sec.addEventListener('click', advance);
         document.addEventListener('keydown', function (e) {
-          // Ofertas 2 e 3 são SECRETAS (ferramentas de negociação do closer):
-          // Shift+1 revela a 2ª oferta, Shift+2 revela a 3ª — dá pra pular direto
-          // pra 3ª sem passar pela 2ª. Nunca por clique/avanço normal nem no print.
-          // Usa e.code (Shift+1 = "!" em e.key, mas a tecla física é Digit1).
-          if (!sec.classList.contains('price-pending') && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            var code = e.code;
-            if ((code === 'Digit1' || code === 'Numpad1') && hasOffer2) {
-              if (!inView()) return;
-              e.preventDefault();
-              sec.classList.remove('offer3-on');
-              sec.classList.add('offer2-on');
-              fitSlides();
-              return;
-            }
-            if ((code === 'Digit2' || code === 'Numpad2') && hasOffer3) {
-              if (!inView()) return;
-              e.preventDefault();
-              sec.classList.remove('offer4-on');
-              sec.classList.add('offer3-on');
-              fitSlides();
-              return;
-            }
-            if ((code === 'Digit3' || code === 'Numpad3') && hasOffer4) {
-              if (!inView()) return;
-              e.preventDefault();
-              sec.classList.add('offer4-on');
-              fitSlides();
-              return;
-            }
-          }
           if (!sec.classList.contains('price-pending')) return;
           var k = e.key;
           if (k !== 'ArrowRight' && k !== 'ArrowDown' && k !== 'PageDown' && k !== ' ' && k !== 'Enter') return;
@@ -1866,7 +1870,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
             b.className = ((b.getAttribute('data-order') || '') === (isB ? 'B' : '')) ? 'on' : '';
           });
           catGet('lvxOrderNote').textContent = isB
-            ? 'Beta: começa nas 3 etapas, mostra o preço logo depois e fecha com impacto, história e prova. Sem capa.'
+            ? 'Beta: começa nas 3 etapas, preço logo depois, impacto e história no meio e fecha no investimento com tudo à mostra. Sem capa.'
             : 'Ordem de sempre: capa, história, marcas, sobre nós, 3 etapas, impacto e investimento.';
         }
         // Recarrega com o deck do produto certo. Proposta real: salva e recarrega;
