@@ -145,6 +145,11 @@ export function leadGrade(l) {
   if (acc == null && ads == null) return null;
   return GRADE_GRID[acc ?? 0][ads ?? 0];
 }
+// Faixas que a régua ENTENDE, por campo do lead. Quem escreve resposta de volta
+// no lead (a tela zero da proposta) checa aqui antes: valor fora dessas faixas
+// não muda a nota, só sujaria o cadastro.
+export const GRADE_BANDS = { accounts: GRADE_ACCOUNTS, listings: GRADE_LISTINGS, volume: GRADE_VOLUME };
+export const gradeBandKnown = (field, value) => !!GRADE_BANDS[field] && GRADE_BANDS[field][value] != null;
 const GRADES = ["S", "A", "B", "C", "D", "E"];
 const gradeCounts = (leads) => {
   const abc = { S: 0, A: 0, B: 0, C: 0, D: 0, E: 0 };

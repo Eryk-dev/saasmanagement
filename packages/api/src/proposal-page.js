@@ -1779,6 +1779,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           '<div class="lvx-row"><div class="lvx-badge" id="lvxB"></div>' +
             '<div><b id="lvxT"></b><span class="lvx-why" id="lvxW"></span></div></div>' +
           '<div class="lvx-row"><div style="overflow-x:auto"><table class="lvx-mtx" id="lvxM"></table></div></div>' +
+          '<span class="lvx-note" style="display:block;margin-top:-4px">Contas e anúncios confirmados aqui viram a resposta do lead: a nota do card no cockpit passa a ser esta.</span>' +
           '<div><span class="lvx-h">Dor que trouxe o lead (código do anúncio)</span>' +
             '<select class="lvx-sel" id="lvxPain" style="margin-top:6px">' +
               painKeys.map(function (kk) { return '<option value="' + kk + '">' + (kk === 'none' ? '' : '[' + kk + '] ') + esc(CAT.pains[kk].label) + '</option>'; }).join('') +

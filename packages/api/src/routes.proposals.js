@@ -11,6 +11,7 @@ import { proposalPageHtml } from "./proposal-page.js";
 import { makeRateLimiter } from "./forms.js";
 import { convertWonLead } from "./routes.js";
 import { logActivity, applyStageMove } from "./lead-flow.js";
+import { gradeBandKnown } from "./routes.marketing.js";
 
 // Proposta "fake" a partir de um template + dados de exemplo — usada pelo
 // preview do builder (iframe) e pela página /p/t/:id (preview em aba).
@@ -195,6 +196,24 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     }
     if (typeof body.niche === "string" && body.niche !== data.answers.niche) {
       data.answers.niche = body.niche; leadPatch.niche = body.niche; dataChanged = true;
+    }
+    // Contas × anúncios: a régua da tela zero é a nota REAL do cliente. O closer
+    // confirma esses dois na call ("são 2 contas, não 3"), então o que ele
+    // ajusta aqui vira a resposta do lead — senão a proposta apresenta um
+    // cliente C e o card do pipeline segue mostrando B. Os nomes dos campos vêm
+    // do template (seatsKey/volumeKey = accounts/listings na LeverAds) e só
+    // valem se a faixa for uma que a régua entende.
+    const seatsKey = p.calc && p.calc.seatsKey;
+    const volumeKey = p.calc && p.calc.volumeKey;
+    if (seatsKey && gradeBandKnown(seatsKey, state.accounts) && state.accounts !== data.answers[seatsKey]) {
+      data.answers[seatsKey] = state.accounts; leadPatch[seatsKey] = state.accounts; dataChanged = true;
+    }
+    // Anúncios têm um porém: quando o lead não respondeu, o estado nasce na
+    // PRIMEIRA faixa do volumeMid (fallback do initialState). Esse palpite não
+    // pode virar resposta do lead, então ele é o único caso que não espelha.
+    const volumeGuess = !data.answers[volumeKey] && state.volume === (Object.keys((p.calc && p.calc.volumeMid) || {})[0] || "");
+    if (volumeKey && !volumeGuess && gradeBandKnown(volumeKey, state.volume) && state.volume !== data.answers[volumeKey]) {
+      data.answers[volumeKey] = state.volume; leadPatch[volumeKey] = state.volume; dataChanged = true;
     }
 
     const patch = { state };
