@@ -315,18 +315,27 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   // Toque direto da fila: vira activity, o servidor conta a tentativa, re-agenda
   // o GPS (pulando fim de semana) e, em estágio "novo", move o lead sozinho pra
   // Qualificando. Espelho local pra resposta imediata; o SSE ressincroniza.
-  function logTouch(item) {
+  //
+  // `when` = data e hora escolhidas no "Retomar" ("YYYY-MM-DDTHH:MM", hora
+  // local). Ela MANDA no próximo toque: o servidor re-agenda pela cadência ao
+  // receber a activity, então o horário do operador só vale se for gravado
+  // DEPOIS que a activity entrou — por isso o update espera o logActivity.
+  function logTouch(item, when = "") {
     const l = item.l;
     const cad = cadenceOf(saasCfg, item.stage);
     const now = Date.now();
+    const chosen = when ? new Date(when) : null;
+    const chosenIso = chosen && Number.isFinite(chosen.getTime()) ? chosen.toISOString() : "";
     setLeads((prev) => prev.map((x) => x.id === l.id ? {
       ...x,
       stageAttempts: (Number(x.stageAttempts) || 0) + 1,
       lastActivityAt: new Date(now).toISOString(),
       lastActivityType: "call",
-      ...(cad.retryDays ? { nextActionAt: rollToBusinessDay(new Date(now + cad.retryDays * DAY)).toISOString() } : {}),
+      ...(chosenIso ? { nextActionAt: chosenIso }
+        : cad.retryDays ? { nextActionAt: rollToBusinessDay(new Date(now + cad.retryDays * DAY)).toISOString() } : {}),
     } : x));
     api.logActivity({ saas: l.saas, lead: l.id, type: "call", text: "tentativa de contato (meu dia)", author: me })
+      .then(() => (chosenIso ? api.update("leads", l.id, { nextActionAt: chosenIso }) : null))
       .catch((err) => { console.warn("toque não registrado:", err.message); toast("O toque não foi salvo · tente de novo", "neg"); });
   }
 
@@ -538,7 +547,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
             onMoveMeet={moveAndMeet}
             onAfter={advanceScript}
             onClose={() => setScriptItem(null)}
-            onTouch={() => { const nx = nextAfter(scriptItem); logTouch(scriptItem); setScriptItem(nx); }}
+            onTouch={(when) => { const nx = nextAfter(scriptItem); logTouch(scriptItem, when); setScriptItem(nx); }}
             onOpenLead={() => { setScriptItem(null); onOpenLead && onOpenLead(scriptItem.l); }}
             onWhatsapp={onOpenWhatsapp ? (l, draft) => { setScriptItem(null); onOpenWhatsapp(l, draft); } : null}
           />
@@ -1758,6 +1767,26 @@ export function SlotGrid({ days, day, setDay, slot, setSlot, busy }) {
   );
 }
 
+// "Quando retomar": N dias à frente, 9h, nunca no fim de semana (a mesma régua
+// dos atalhos de próximo toque na ficha do lead). Devolve o formato do
+// <input type="datetime-local"> — hora local, sem fuso.
+const retryPreset = (days, hour = 9) => {
+  if (days === 0) { const t = new Date(); t.setHours(t.getHours() + 1, 0, 0, 0); return slotVal(t, t.getHours(), 0); }
+  const d = rollToBusinessDay(new Date(Date.now() + days * DAY));
+  d.setHours(hour, 0, 0, 0);
+  return slotVal(d, hour, 0);
+};
+const RETRY_PRESETS = [
+  ["hoje +1h", () => retryPreset(0)],
+  ["amanhã 9h", () => retryPreset(1)],
+  ["+2d", () => retryPreset(2)],
+  ["+1sem", () => retryPreset(7)],
+  ["+15d", () => retryPreset(15)],
+  ["+30d", () => retryPreset(30)],
+  ["+45d", () => retryPreset(45)],
+  ["+60d", () => retryPreset(60)],
+];
+
 function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet, onAfter, onTouch }) {
   const dests = destinationsFor(saasCfg, lead);
   const stageMeta = Object.fromEntries((saasCfg?.funnel || []).map((f) => [f.stage, f]));
@@ -1774,6 +1803,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const [note, setNote] = useS("");
   const [slot, setSlot] = useS(lead.callAt || "");
   const [day, setDay] = useS(() => nextBusinessDays(1)[0]); // dia da grade (qualquer dia via calendário)
+  const [retryAt, setRetryAt] = useS(""); // "Retomar": quando voltar nesse lead
   // Call → Follow-up: qual proposta ficou na mesa (obrigatória nesse movimento).
   const fromCall = stageKind(saasCfg, lead.stage || saasCfg?.funnel?.[0]?.stage) === "call";
   const [offer, setOffer] = useS(lead.proposalOffer || "");
@@ -1783,7 +1813,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const [meetRes, setMeetRes] = useS(null);      // { callUrl, attendees }
   const [meetErr, setMeetErr] = useS(null);
   useE(() => {
-    setDest(null); setCloser(lead.closer || ""); setSlot(lead.callAt || ""); setDay(nextBusinessDays(1)[0]);
+    setDest(null); setCloser(lead.closer || ""); setSlot(lead.callAt || ""); setDay(nextBusinessDays(1)[0]); setRetryAt("");
     setIntegrator(lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
     setAmount(lead.amount || ""); setPayment(lead.paymentMethod || ""); setReason(""); setNote("");
     setOffer(lead.proposalOffer || "");
@@ -1800,7 +1830,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   // (callSummary.followup.quando, hora de Brasília), quando cai num slot válido
   // (dia útil à vista, dentro do expediente, no futuro e livre na agenda).
   useE(() => {
-    if (!dest || setupType(dest.kind) !== "followup" || slot) return;
+    if (!dest || dest.retry || setupType(dest.kind) !== "followup" || slot) return;
     const m = String(callSummary?.followup?.quando || "").match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
     if (!m) return;
     const hh = Number(m[2]);
@@ -1817,7 +1847,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   }, [dest, callSummary]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (dests.length === 0) return null;
-  const setup = dest ? setupType(dest.kind) : null;
+  // "Retomar" tem setup próprio (a data de voltar) e NÃO herda o do kind da
+  // etapa atual — senão um retry em follow-up abriria a grade de agendamento.
+  const setup = !dest ? null : dest.retry ? "retry" : setupType(dest.kind);
   const days = nextBusinessDays(6);
 
   // Horas ocupadas na agenda do closer (cada call = 1h; ignora o próprio lead).
@@ -1829,16 +1861,23 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   // Escolher um destino inicializa a agenda com o horário que já existe no lead
   // (call/follow-up = callAt; integração = integrationAt), pra permitir reagendar.
   const chooseDest = (d) => {
-    const next = dest?.stage === d.stage ? null : d;
+    const same = dest && dest.stage === d.stage && !!dest.retry === !!d.retry;
+    const next = same ? null : d;
     setDest(next);
     if (!next) return;
+    // Retomar: já nasce preenchido com a cadência do estágio (o "amanhã" de
+    // antes), então quem só quer registrar a tentativa confirma num clique e
+    // quem precisa de outra data muda ali mesmo.
+    if (next.retry) { setRetryAt(retryPreset(Number(cadenceOf(saasCfg, lead.stage)?.retryDays) || 1)); return; }
     const st = setupType(next.kind);
     const at = st === "integrator" ? (lead.integrationAt || "") : (st === "call" || st === "followup") ? (lead.callAt || "") : "";
     setSlot(at);
     setDay(at ? parseYMD(at.slice(0, 10)) : nextBusinessDays(1)[0]);
   };
 
+  const isRetry = !!dest?.retry;
   const ready = !dest ? false
+    : isRetry ? !!retryAt
     : setup === "call" ? !!(closer && slot)
     : setup === "followup" ? !!closer && (!fromCall || !!offer) // horário é opcional; saindo da call, a proposta na mesa é obrigatória
     : setup === "integrator" ? !!(integrator && (dest.kind !== "integracao" || (Number(amount) > 0 && !!payment)))
@@ -1848,6 +1887,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
 
   function confirm() {
     if (!ready) return;
+    // Retomar não move o card: registra a tentativa e marca quando voltar (num
+    // lead novo é o servidor que promove pra Qualificando, no toque).
+    if (isRetry) { onTouch && onTouch(retryAt); return; }
     const patch = { stage: dest.stage };
     if (setup === "call") { patch.closer = closer; patch.callAt = slot; if (email.trim()) patch.email = email.trim(); }
     // Follow-up: mantém o closer e, se um horário foi escolhido, agenda nele —
@@ -1889,21 +1931,25 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
       <div className="kicker" style={{ marginBottom: 8 }}>Depois da ação · pra onde vai esse card</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {dests.map((d, i) => {
-          // Chip de retry: não atendeu / não fechou hoje → registra a tentativa e
-          // retoma amanhã (num lead novo, promove pra Qualificando sozinho).
+          // Chip de retry: não atendeu / não fechou hoje → registra a tentativa
+          // e abre a escolha de quando voltar (num lead novo, o toque promove
+          // pra Qualificando sozinho, no servidor).
           if (d.retry) {
             const color = stageMeta[d.stage]?.color || "var(--fg-3)";
+            const on = isRetry;
             return (
-              <button key="retry" onClick={() => onTouch && onTouch()}
+              <button key="retry" onClick={() => chooseDest(d)}
                 title={d.promote
-                  ? `Não atendeu ou ainda não fechou · registra a tentativa e vai pra ${d.stage} (tenta amanhã)`
-                  : "Não atendeu · registra a tentativa e retoma amanhã"}
+                  ? `Não atendeu ou ainda não fechou · registra a tentativa, vai pra ${d.stage} e você escolhe quando voltar`
+                  : "Não atendeu · registra a tentativa e você escolhe o dia e a hora de voltar"}
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 7, height: 30, padding: "0 12px", borderRadius: "var(--r-2)",
-                  background: "var(--bg-1)", border: "1px dashed var(--line-strong)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 500,
+                  background: on ? "var(--accent-soft)" : "var(--bg-1)",
+                  border: "1px dashed " + (on ? "var(--accent-line)" : "var(--line-strong)"),
+                  color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: on ? 600 : 500,
                 }}>
                 <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
-                {d.promote ? `${d.stage} · tenta amanhã` : "Retomar amanhã"}
+                {d.promote ? `${d.stage} · retomar` : "Retomar"}
               </button>
             );
           }
@@ -1925,6 +1971,36 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
 
       {dest && (
         <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+          {/* Retomar: QUANDO voltar nesse lead. Atalhos + data e hora exatas
+              (mesmos atalhos do "próximo toque" da ficha do lead) — antes era
+              sempre a cadência do estágio, e quem combinou de voltar daqui a
+              duas semanas tinha que corrigir no card depois. */}
+          {isRetry && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="kicker">Quando retomar</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                {RETRY_PRESETS.map(([txt, mk]) => {
+                  const v = mk();
+                  const on = retryAt === v;
+                  return (
+                    <button key={txt} onClick={() => setRetryAt(v)} style={{
+                      height: 28, padding: "0 10px", borderRadius: "var(--r-2)",
+                      border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"),
+                      background: on ? "var(--accent-soft)" : "var(--bg-1)",
+                      color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 11.5, fontWeight: on ? 600 : 500,
+                    }}>{txt}</button>
+                  );
+                })}
+                <input type="datetime-local" value={retryAt} onChange={(e) => setRetryAt(e.target.value)}
+                  title="Dia e hora exatos pra voltar nesse lead"
+                  style={{ ...fieldStyle, width: "auto", height: 28, fontFamily: "var(--mono)", fontSize: 11.5 }} />
+              </div>
+              <div className="mono dim" style={{ fontSize: 10.5 }}>
+                registra a tentativa de contato{dest.promote ? ` e manda o card pra ${dest.stage}` : ""} · o lead volta na sua fila nesse horário
+              </div>
+            </div>
+          )}
+
           {setup === "call" && (
             <>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
@@ -2096,7 +2172,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                 height: 32, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
                 background: ready ? "var(--btn-bg, var(--accent))" : "var(--bg-2)", color: ready ? "var(--btn-fg, var(--accent-fg))" : "var(--fg-4)",
                 border: "1px solid " + (ready ? "var(--btn-bg, var(--accent))" : "var(--line-2)"), cursor: ready ? "pointer" : "not-allowed",
-              }}>{setup === "followup" && slot ? "agendar follow-up →" : `mover pra ${dest.stage} →`}</button>
+              }}>{isRetry ? "registrar tentativa e retomar →" : setup === "followup" && slot ? "agendar follow-up →" : `mover pra ${dest.stage} →`}</button>
               <button onClick={() => setDest(null)} className="mono dim" style={{ fontSize: 11.5 }}>cancelar</button>
             </div>
           )}

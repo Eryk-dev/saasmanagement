@@ -177,7 +177,8 @@ export function lossReasonLabel(saasCfg, id) {
 // Pra CADA situação (kind da etapa em que o lead está) há uma lista ORDENADA de
 // destinos possíveis. É o default editável em Ajustes → Próximos passos:
 // product.nextSteps[sourceKind] sobrescreve a lista abaixo (quais aparecem + a
-// ordem). Inclui os pseudo-kinds `retry` (Retomar amanhã) e `noshow` (cliente
+// ordem). Inclui os pseudo-kinds `retry` (Retomar: registra a tentativa e o
+// operador escolhe o dia e a hora de voltar) e `noshow` (cliente
 // furou), que NÃO estão em KINDS. destinationsFor (today.jsx) resolve cada kind
 // pra etapa real do funil (some se o produto não tiver etapa daquele tipo).
 export const NEXT_KINDS = {
@@ -200,7 +201,7 @@ export const NEXT_KINDS = {
 // situação, com rótulo amigável.
 export const NEXT_STEP_KINDS = ["retry", "call", "noshow", "contato", "followup", "integracao", "posvenda", "ganho", "desqualificado"];
 export const NEXT_STEP_LABELS = {
-  retry:          "Retomar amanhã / tentar de novo",
+  retry:          "Retomar (escolhe o dia e a hora)",
   call:           "Agendar call",
   noshow:         "No show (cliente furou)",
   contato:        "Nutrição / voltar pro contato",
