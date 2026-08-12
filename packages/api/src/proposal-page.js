@@ -646,6 +646,12 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .lvx-sel { width: 100%; border: 1px solid var(--line); background: var(--bg); border-radius: 10px;
     padding: 10px 12px; font: 600 13.5px var(--font-display); color: var(--fg); }
   .lvx-note { font-size: 11px; color: var(--ink-3); }
+  /* Pílula A/B da ordem da apresentação (teste do closer). */
+  .lvx-ab { display: inline-flex; padding: 3px; gap: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); }
+  .lvx-ab button { border: 0; cursor: pointer; border-radius: 999px; padding: 6px 14px; background: transparent;
+    color: var(--ink-2); font: 700 13px var(--font-display); display: inline-flex; align-items: baseline; gap: 6px; }
+  .lvx-ab button i { font-style: normal; font-family: var(--font-mono); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; opacity: .75; }
+  .lvx-ab button.on { background: var(--fg); color: var(--bg); }
   .lvx-cur { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
     background: color-mix(in oklab, var(--accent) 7%, var(--bg)); font-size: 12.5px; color: var(--ink-2); line-height: 1.45; }
   .lvx-cur b { display: block; font-size: 13.5px; color: var(--fg); margin-bottom: 2px; }
@@ -1612,7 +1618,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       // Retorna a promise: o card do catálogo espera o save antes de recarregar.
       return fetch('/public/proposals/' + encodeURIComponent(P.id), {
         method: 'PATCH', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ k: token, accounts: state.accounts, volume: state.volume, cycle: state.cycle, customPriceCents: state.customPriceCents, validUntil: state.validUntil, frozen: true, company: DATA.lead.company, name: DATA.lead.name, niche: DATA.answers.niche, cloneCount: state.cloneCount, newPerMonth: state.newPerMonth, product: state.product, pain: state.pain, oem: state.oem })
+        body: JSON.stringify({ k: token, accounts: state.accounts, volume: state.volume, cycle: state.cycle, customPriceCents: state.customPriceCents, validUntil: state.validUntil, frozen: true, company: DATA.lead.company, name: DATA.lead.name, niche: DATA.answers.niche, cloneCount: state.cloneCount, newPerMonth: state.newPerMonth, product: state.product, pain: state.pain, oem: state.oem, deckOrder: state.deckOrder })
       }).then(function (r) { if (!r.ok) throw new Error('falha'); return r.json(); })
         .then(function () { flash('salvo ✓', 'ok'); setTimeout(function () { tag.className = 'save-tag'; }, 1600); })
         .catch(function () { flash('✕ erro ao salvar', 'err'); });
@@ -1771,6 +1777,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         if (state.pain == null) state.pain = CAT.pain;
         if (state.oem == null) state.oem = CAT.oem;
         if (state.product == null) state.product = CAT.product;
+        if (state.deckOrder == null) state.deckOrder = CAT.deckOrder === 'B' ? 'B' : '';
         var card = el('div', 'lvx-card');
         card.innerHTML =
           '<span class="lvx-h">A régua sugere, você decide</span>' +
@@ -1789,6 +1796,12 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           '<div class="lvx-spin" id="lvxSpin"></div>' +
           '</div>' +
           '<div class="lvx-ccol">' +
+          '<div><span class="lvx-h">Ordem da apresentação</span>' +
+            '<div class="lvx-ab" id="lvxOrder" style="margin-top:6px">' +
+              '<button type="button" data-order="">A <i>padrão</i></button>' +
+              '<button type="button" data-order="B">B <i>beta</i></button>' +
+            '</div>' +
+            '<span class="lvx-note" id="lvxOrderNote" style="display:block;margin-top:6px"></span></div>' +
           '<div><span class="lvx-tag" id="lvxTag"></span><b id="lvxSug" style="display:block;font-size:15px"></b>' +
             '<span style="font-size:12px;color:var(--ink-2)" id="lvxPr"></span></div>' +
           '<div><span class="lvx-h">Apresentar</span>' +
@@ -1848,6 +1861,13 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           catGet('lvxBack').className = 'lvx-back' + (state.product && state.product !== CAT.suggested ? ' show' : '');
           catGet('lvxOemRow').style.display = String(DATA.answers.niche || '') === 'autopecas' ? 'flex' : 'none';
           catGet('lvxOem').checked = !!state.oem;
+          var isB = state.deckOrder === 'B';
+          Array.prototype.forEach.call(catGet('lvxOrder').children, function (b) {
+            b.className = ((b.getAttribute('data-order') || '') === (isB ? 'B' : '')) ? 'on' : '';
+          });
+          catGet('lvxOrderNote').textContent = isB
+            ? 'Beta: começa nas 3 etapas, mostra o preço logo depois e fecha com impacto, história e prova. Sem capa.'
+            : 'Ordem de sempre: capa, história, marcas, sobre nós, 3 etapas, impacto e investimento.';
         }
         // Recarrega com o deck do produto certo. Proposta real: salva e recarrega;
         // preview (demo): as escolhas viajam na query string.
@@ -1867,6 +1887,17 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           value === '' || value == null ? q.delete(key) : q.set(key, value);
           history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q.toString() : ''));
         }
+        // Ordem da apresentação: a montagem do deck é no servidor, então trocar
+        // de A pra B salva e recarrega (mesma dança da troca de produto).
+        catGet('lvxOrder').addEventListener('click', function (ev) {
+          var b = ev.target && ev.target.closest ? ev.target.closest('button[data-order]') : null;
+          if (!b) return;
+          var v = b.getAttribute('data-order') === 'B' ? 'B' : '';
+          if (v === state.deckOrder) return;
+          state.deckOrder = v;
+          syncCat();
+          catReload({ order: v || null });
+        });
         catGet('lvxSel').addEventListener('change', function () {
           state.product = this.value;
           catReload({ product: this.value });

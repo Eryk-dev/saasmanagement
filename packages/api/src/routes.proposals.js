@@ -96,6 +96,7 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     if (typeof q.product === "string") fake.state.product = q.product.slice(0, 20);
     if (typeof q.pain === "string") fake.state.pain = q.pain.slice(0, 8);
     if (q.oem === "1") fake.state.oem = true;
+    if (typeof q.order === "string") fake.state.deckOrder = q.order.toUpperCase() === "B" ? "B" : "";
     return reply.type("text/html").header("cache-control", "no-store").send(renderProposal(fake, { editable: true, previewBanner: true }));
   });
 
@@ -179,6 +180,8 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     if (typeof body.product === "string" && (body.product === "" || catalogProducts[body.product])) state.product = body.product;
     if (typeof body.pain === "string") state.pain = body.pain.slice(0, 8);
     if (typeof body.oem === "boolean") state.oem = body.oem;
+    // Ordem da apresentação (teste A/B da tela zero): A = padrão, B = beta.
+    if (typeof body.deckOrder === "string") state.deckOrder = body.deckOrder.toUpperCase() === "B" ? "B" : "";
 
     // Campos de texto da capa (editados inline no modo closer): gravam no SNAPSHOT
     // da proposta e — porque o dado do lead costuma estar errado/incompleto — no
