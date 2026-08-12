@@ -441,7 +441,7 @@ function NextStepsSettings({ s }) {
           </div>
         </div>
       ))}
-      <SaveBar onSave={save} hint="“Retomar amanhã” registra a tentativa sem trocar de etapa · os demais movem o card pro tipo escolhido" />
+      <SaveBar onSave={save} hint="“Retomar” registra a tentativa sem trocar de etapa e pergunta quando voltar · os demais movem o card pro tipo escolhido" />
     </div>
   );
 }
