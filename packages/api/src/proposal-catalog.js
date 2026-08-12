@@ -299,6 +299,17 @@ export function orderDeck(slides, order) {
     .map((s, i) => ({ s: clone(s), i, r: rank(s, i) }))
     .sort((a, b) => a.r - b.r || a.i - b.i)
     .map((x) => x.s);
+  // FECHAMENTO do beta: o investimento DE NOVO no fim, com tudo à mostra. No
+  // meio do deck ele é encadeado (benefícios um a um, preço no comando); aqui
+  // o closer recapitula a oferta inteira de uma vez, sem refazer a revelação.
+  // A escada de ofertas (Shift+1/2) continua secreta, como no slide encadeado.
+  const pricing = out.find((s) => s?.type === "pricing");
+  if (pricing) {
+    const recap = clone(pricing);
+    recap.key = (pricing.key || "investimento") + "_aberto";
+    recap.revealOpen = true;
+    out.push(recap);
+  }
   // A ordem nova embaralha os fundos originais, então o ritmo claro/escuro é
   // refeito do zero (mesma regra da inserção da tela OEM): começa claro.
   let dark = false;

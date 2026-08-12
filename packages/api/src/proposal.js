@@ -276,7 +276,10 @@ export async function shareProposalOffer(repo, parent, offer, { baseUrl = "" } =
   // Catálogo de produto: o cliente recebe o deck do PRODUTO decidido na tela
   // zero (transformado e travado), nunca o snapshot genérico com as duas bases.
   const transformed = applyCatalog(parent);
-  const slidesSrc = transformed ? transformed.slides : parent?.slides;
+  // O slide de FECHAMENTO do beta (investimento com tudo à mostra) é ferramenta
+  // da apresentação ao vivo: no link do cliente, onde nada espera comando, ele
+  // seria só o mesmo preço duas vezes.
+  const slidesSrc = (transformed ? transformed.slides : parent?.slides || []).filter((s) => !s?.revealOpen);
   const offers = proposalOffers(slidesSrc);
   // Oferta inválida NÃO cai na principal por silêncio: este link vai pro
   // cliente, mandar o preço errado é pior que falhar.

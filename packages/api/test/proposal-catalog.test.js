@@ -334,19 +334,39 @@ test("ordem B: mecanismo → OEM → preço → impacto → história, sem capa 
   const b = orderDeck(DECK_REAL, "B");
   assert.deepEqual(b.map((s) => s.key), [
     "como_funciona", "oem_processo", "investimento_combo", "impacto", "nossa_operacao", "perfis_ig", "sobre_nos",
+    "investimento_combo_aberto",
   ]);
-  assert.deepEqual(b.map((s) => s.bg), ["", "dark", "", "dark", "", "dark", ""], "claro/escuro alternado do zero");
+  assert.deepEqual(b.map((s) => s.bg), ["", "dark", "", "dark", "", "dark", "", "dark"], "claro/escuro alternado do zero");
   assert.equal(DECK_REAL[0].key, "hero", "não mexe no array original");
   assert.deepEqual(orderDeck(DECK_REAL, "").map((s) => s.key), DECK_REAL.map((s) => s.key), "A = ordem de sempre");
   // Sem OEM a fila é a mesma, só sem a tela do processo.
   const semOem = orderDeck(DECK_REAL.filter((s) => s.key !== "oem_processo"), "B");
   assert.deepEqual(semOem.map((s) => s.key), [
-    "como_funciona", "investimento_combo", "impacto", "nossa_operacao", "perfis_ig", "sobre_nos",
+    "como_funciona", "investimento_combo", "impacto", "nossa_operacao", "perfis_ig", "sobre_nos", "investimento_combo_aberto",
   ]);
   // Slide que a régua não conhece não some: fica no fim, na ordem original.
   const comExtra = orderDeck([...DECK_REAL, { key: "novo_slide", type: "custom" }], "B");
-  assert.equal(comExtra.length, DECK_REAL.length, "capa sai, o resto fica");
-  assert.equal(comExtra[comExtra.length - 1].key, "novo_slide");
+  assert.equal(comExtra[comExtra.length - 2].key, "novo_slide", "slide desconhecido antes do fechamento");
+  assert.equal(comExtra[comExtra.length - 1].key, "investimento_combo_aberto");
+});
+
+test("fechamento do beta: cópia do investimento com tudo à mostra, fora do link do cliente", async () => {
+  const repo = await seedRepo();
+  const p = await makeProposal(repo, { niche: "outros", accounts: "10+", listings: "10000+" });
+  await repo.update("proposals", p.id, { state: { ...p.state, deckOrder: "B" } });
+  const t = applyCatalog(await repo.get("proposals", p.id));
+  const pricing = t.slides.filter((s) => s.type === "pricing");
+  assert.equal(pricing.length, 2, "o investimento aparece no meio e no fim");
+  assert.equal(t.slides[t.slides.length - 1].key, "investimento_aberto", "fechamento é o último");
+  assert.equal(pricing[0].revealOpen, undefined, "o do meio segue encadeado");
+  assert.equal(pricing[1].revealOpen, true, "o do fim já nasce aberto");
+  assert.equal(pricing[1].price, pricing[0].price, "mesma oferta, mesmo preço");
+
+  // Link do cliente: nada espera comando lá, então o fechamento seria o preço repetido.
+  const shared = await shareProposalOffer(repo, await repo.get("proposals", p.id), 1, { baseUrl: "http://x" });
+  assert.equal(shared.ok, true);
+  assert.equal(shared.proposal.slides.filter((s) => s.type === "pricing").length, 1, "cliente recebe um investimento só");
+  assert.ok(!shared.proposal.slides.some((s) => s.revealOpen), "sem o slide de fechamento");
 });
 
 test("ordem B na proposta: PATCH liga o beta e o deck servido já vem reordenado", async () => {
@@ -368,7 +388,7 @@ test("ordem B na proposta: PATCH liga o beta e o deck servido já vem reordenado
   const beta = applyCatalog(await repo.get("proposals", p.id));
   assert.deepEqual(beta.slides.map((s) => s.key).slice(0, 3), ["como_funciona", "oem_processo", "investimento_combo"]);
   assert.ok(!beta.slides.some((s) => s.type === "hero"), "capa fora do beta");
-  assert.equal(beta.slides.length, padrao.slides.length - 1, "só a capa saiu");
+  assert.equal(beta.slides.length, padrao.slides.length, "sai a capa, entra o fechamento");
 
   const closer = await app.inject({ method: "GET", url: "/p/" + p.id + "?k=" + p.editKey });
   assert.equal(payloadOf(closer.body).catalogUI.deckOrder, "B", "pílula A/B abre marcada no beta");
