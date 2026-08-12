@@ -27,6 +27,81 @@ const { useState: useS, useMemo: useM, useEffect: useE } = React;
 const TOUCH_TYPES = new Set(["whatsapp", "call", "email", "meeting"]);
 const DAY = 86400000;
 
+// Relógio da tela: um tick a cada 30s mantém o horário do cabeçalho e as
+// previsões da fila ("em 25 min") vivos sem depender de recarga de dados.
+function useNow(step = 30000) {
+  const [now, setNow] = useS(() => Date.now());
+  useE(() => {
+    const id = setInterval(() => setNow(Date.now()), step);
+    return () => clearInterval(id);
+  }, [step]);
+  return now;
+}
+
+// Previsão que fica embaixo da pílula de horário: quanto falta pro compromisso.
+function untilNote(t, now) {
+  const mins = Math.round((t - now) / 60000);
+  if (mins <= 0) return "agora";
+  if (mins < 60) return `em ${mins} min`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m ? `em ${h}h${String(m).padStart(2, "0")}` : `em ${h}h`;
+}
+
+const hhmmOf = (t) => new Date(t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+const ddmmOf = (t) => new Date(t).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+
+// Ponteiros no horário real — o ícone do relógio marca a hora de agora.
+function ClockIcon({ now, size = 15 }) {
+  const d = new Date(now);
+  const mins = d.getMinutes();
+  const hand = (deg, len) => {
+    const a = ((deg - 90) * Math.PI) / 180;
+    return `${(12 + Math.cos(a) * len).toFixed(1)} ${(12 + Math.sin(a) * len).toFixed(1)}`;
+  };
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d={`M12 12 L ${hand(((d.getHours() % 12) + mins / 60) * 30, 4.2)}`} />
+      <path d={`M12 12 L ${hand(mins * 6, 6.4)}`} />
+    </svg>
+  );
+}
+
+// Relógio ao vivo ao lado do título: situa quem está operando a fila (o "agora"
+// das pílulas de horário é este).
+function NowClock({ now }) {
+  const d = new Date(now);
+  const day = d.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" }).replace(".", "");
+  return (
+    <span title={`agora · ${day} ${hhmmOf(now)}`} style={{
+      display: "inline-flex", alignItems: "center", gap: 7, height: 30, padding: "0 12px", borderRadius: 999,
+      border: "1px solid var(--line-2)", background: "var(--bg-1)", flexShrink: 0,
+    }}>
+      <span style={{ color: "var(--accent)", display: "inline-flex" }}><ClockIcon now={now} /></span>
+      <span className="mono tnum" style={{ fontSize: 13, fontWeight: 600, color: "var(--fg-1)", letterSpacing: "-0.01em" }}>{hhmmOf(now)}</span>
+      <span style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{day}</span>
+    </span>
+  );
+}
+
+// Coluna "quando" da fila: a HORA em pílula navy (o dado que a pessoa procura
+// primeiro) e a previsão logo abaixo ("agora", "em 25 min", "atrasado 2d").
+// Item sem hora marcada usa a pílula neutra pra fila não perder o alinhamento.
+function TimeCell({ pill, note, tone, soft }) {
+  const noteColor = tone === "neg" ? "var(--neg)" : tone === "warn" ? "var(--warn)" : tone === "pos" ? "var(--pos)" : "var(--fg-4)";
+  return (
+    <span style={{ width: 66, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3 }}>
+      <span className={soft ? "" : "mono tnum"} style={{
+        display: "inline-flex", alignItems: "center", height: 22, padding: soft ? "0 8px" : "0 9px", borderRadius: 999,
+        background: soft ? "var(--bg-2)" : "var(--btn-bg)", color: soft ? "var(--fg-2)" : "var(--btn-fg)",
+        fontSize: soft ? 11 : 12, fontWeight: 600, letterSpacing: "-0.01em", whiteSpace: "nowrap",
+      }}>{pill}</span>
+      {note && <span style={{ fontSize: 10.5, fontWeight: tone === "neg" ? 600 : 500, color: noteColor, paddingLeft: 2, whiteSpace: "nowrap" }}>{note}</span>}
+    </span>
+  );
+}
+
 // Rótulo da ação por kind — o "o que fazer" do item, não o nome do estágio.
 const ACTION_LABELS = {
   novo: "1º contato",
@@ -304,6 +379,9 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
 
   const q = useM(() => buildQueue(leads, consultas, saasCfg, person), [leads, consultas, saasCfg, person]);
   const total = q.hoje.length + q.amanha.length + q.proximos.length + q.semdata.length;
+  // Tick do relógio do cabeçalho — de quebra mantém a previsão de cada linha
+  // ("em 25 min", "agora") em dia sem esperar um refresh de dados.
+  const now = useNow();
 
   // Próximo item pendente DEPOIS deste na fila de HOJE — o "toque e próximo".
   // Só entre leads (consultas não entram no fluxo de roteiro/toque).
@@ -460,7 +538,10 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
       <div style={{ padding: "28px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 260 }}>
-            <h1 className="page-title">Minhas atividades</h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <h1 className="page-title">Minhas atividades</h1>
+              <NowClock now={now} />
+            </div>
             <div className="page-sub" style={{ marginTop: 4 }}>hoje em ordem de execução · amanhã e próximos dias à vista</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 6, flexWrap: "wrap" }}>
@@ -564,13 +645,12 @@ function ConsultaRow({ item, block, featured, onOpen }) {
   const c = item.consulta;
   const t = item.due?.t;
   const now = Date.now();
-  const hhmm = (v) => new Date(v).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   let when;
-  if (t == null) when = { text: "sem hora", tone: "mut" };
-  else if (block === "amanha") when = { text: hhmm(t), tone: "mut" };
-  else if (block === "proximos") when = { text: new Date(t).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), tone: "mut" };
-  else if (t <= now) when = { above: hhmm(t), text: "agora", tone: "neg" };
-  else when = { text: hhmm(t), tone: "pos" };
+  if (t == null) when = { pill: "sem hora", soft: true, tone: "mut" };
+  else if (block === "amanha") when = { pill: hhmmOf(t), note: "amanhã", tone: "mut" };
+  else if (block === "proximos") when = { pill: ddmmOf(t), note: hhmmOf(t), tone: "mut" };
+  else if (t <= now) when = { pill: hhmmOf(t), note: "agora", tone: "neg" };
+  else when = { pill: hhmmOf(t), note: untilNote(t, now), tone: "pos" };
   return (
     <div onClick={onOpen} role="button" tabIndex={0}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
@@ -578,10 +658,7 @@ function ConsultaRow({ item, block, featured, onOpen }) {
       display: "flex", alignItems: "center", gap: 14, padding: featured ? "16px var(--inset-x)" : "14px var(--inset-x)",
       borderTop: "1px solid var(--line-faint)", background: featured ? "var(--accent-soft)" : "transparent", cursor: "pointer", flexWrap: "wrap",
     }}>
-      <span className="mono tnum" style={{ fontSize: 12.5, width: 44, flexShrink: 0, display: "flex", flexDirection: "column", gap: 1 }}>
-        {when.above && <span style={{ fontSize: 11, color: "var(--fg-4)" }}>{when.above}</span>}
-        <span style={{ color: when.tone === "neg" ? "var(--neg)" : when.tone === "pos" ? "var(--pos)" : "var(--fg-4)" }}>{when.text}</span>
-      </span>
+      <TimeCell pill={when.pill} note={when.note} tone={when.tone} soft={when.soft} />
       <span style={{ width: 118, flexShrink: 0 }}>
         <span style={{ display: "inline-block", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: "20px", padding: "0 8px", borderRadius: "var(--r-1)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 11.5, fontWeight: 600 }}>Consulta {c.n || "?"}/{c.packageTotal || 8}</span>
       </span>
@@ -610,33 +687,33 @@ function QueueRow({ item, block, featured, onScript, onClaim, onWhatsapp, onOpen
   if (consulta) return <ConsultaRow item={item} block={block} featured={featured} onOpen={onOpen} />;
   const now = Date.now();
 
-  // Pill de horário. Hoje: atrasado (dias) · agora · HH:mm · novo (idade).
-  // Amanhã: só a hora. Próximos dias: a data. Quando vira "agora", a hora
-  // agendada continua visível em cima do rótulo (when.above).
-  const hhmm = (t) => new Date(t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  // Coluna de horário. A HORA marcada vai na pílula navy (destaque) e a
+  // previsão fica logo abaixo: hoje = agora / em 25 min / atrasado Nd; amanhã e
+  // próximos dias = a data na pílula. Item sem hora (novo, sem data) usa a
+  // pílula neutra com a idade embaixo.
   const startToday = new Date().setHours(0, 0, 0, 0);
   let when;
   if (item.confirm && due) {
     // Confirmação: mostra a hora JÁ descontada (1h/10min antes da call). Passou
     // da hora = "agora" em vermelho pra virar prioridade.
     when = due.t <= now
-      ? { above: hhmm(due.t), text: "agora", tone: "neg" }
-      : { text: hhmm(due.t), tone: "pos" };
+      ? { pill: hhmmOf(due.t), note: "agora", tone: "neg" }
+      : { pill: hhmmOf(due.t), note: untilNote(due.t, now), tone: "pos" };
   } else if (due && block === "amanha") {
-    when = { text: hhmm(due.t), tone: "mut" };
+    when = { pill: hhmmOf(due.t), note: "amanhã", tone: "mut" };
   } else if (due && block === "proximos") {
-    when = { text: new Date(due.t).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), tone: "mut" };
+    when = { pill: ddmmOf(due.t), note: hhmmOf(due.t), tone: "mut" };
   } else if (due && due.t < startToday) {
     const daysLate = Math.max(1, Math.ceil((startToday - due.t) / DAY));
-    when = { text: `atrasado ${daysLate}d`, tone: "neg" };
+    when = { pill: ddmmOf(due.t), note: `atrasado ${daysLate}d`, tone: "neg" };
   } else if (due && due.t <= now) {
-    when = { above: hhmm(due.t), text: due.type === "call" ? "call agora" : "agora", tone: "neg" };
+    when = { pill: hhmmOf(due.t), note: due.type === "call" ? "call agora" : "agora", tone: "neg" };
   } else if (due) {
-    when = { text: hhmm(due.t), tone: due.type === "call" ? "pos" : "mut" };
+    when = { pill: hhmmOf(due.t), note: untilNote(due.t, now), tone: due.type === "call" ? "pos" : "mut" };
   } else if (kind === "novo") {
     const ageH = l.createdAt ? Math.max(0, Math.floor((now - new Date(l.createdAt).getTime()) / 3600000)) : null;
-    when = { text: ageH == null ? "novo" : ageH < 24 ? `há ${ageH}h` : `há ${Math.floor(ageH / 24)}d`, tone: "warn" };
-  } else when = { text: "sem data", tone: "mut" };
+    when = { pill: "novo", soft: true, note: ageH == null ? null : ageH < 24 ? `há ${ageH}h` : `há ${Math.floor(ageH / 24)}d`, tone: "warn" };
+  } else when = { pill: "sem data", soft: true, tone: "mut" };
 
   const unowned = !who; // assumir só quando o card não tem responsável
   const action = item.confirm
@@ -646,7 +723,6 @@ function QueueRow({ item, block, featured, onScript, onClaim, onWhatsapp, onOpen
   const whatsapp = waLink(l.phone);
   const meet = (kind === "call" || kind === "integracao") && l.callUrl;
   const attemptNumber = Number(l.stageAttempts) || 0;
-  const hhmmOf = (v) => new Date(v).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   const actionDetail = l.nextActionNote || (item.confirmKind === "integracao" && l.integrationAt
     ? `integração às ${hhmmOf(l.integrationAt)}`
     : item.confirm && l.callAt ? `call às ${hhmmOf(l.callAt)}`
@@ -661,10 +737,7 @@ function QueueRow({ item, block, featured, onScript, onClaim, onWhatsapp, onOpen
       display: "flex", alignItems: "center", gap: 14, padding: featured ? "16px var(--inset-x)" : "14px var(--inset-x)",
       borderTop: "1px solid var(--line-faint)", background: featured ? "var(--accent-soft)" : "transparent", cursor: "pointer", flexWrap: "wrap",
     }}>
-      <span className="mono tnum" style={{ fontSize: 12.5, width: 44, flexShrink: 0, display: "flex", flexDirection: "column", gap: 1 }}>
-        {when.above && <span style={{ fontSize: 11, color: "var(--fg-4)" }}>{when.above}</span>}
-        <span style={{ color: when.tone === "neg" ? "var(--neg)" : when.tone === "warn" ? "var(--warn)" : when.tone === "pos" ? "var(--pos)" : "var(--fg-4)" }}>{when.text}</span>
-      </span>
+      <TimeCell pill={when.pill} note={when.note} tone={when.tone} soft={when.soft} />
       {/* Status do lead como coluna própria (alinhada, igual o horário); a
           tentativa vai numa linha menor embaixo da pill. */}
       <span style={{ width: 118, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
@@ -705,7 +778,7 @@ function DoneActivityRow({ item, onClick }) {
   const time = l.lastActivityAt ? new Date(l.lastActivityAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
   return (
     <button onClick={onClick} style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "12px var(--inset-x)", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
-      <span style={{ color: "var(--pos)", fontSize: 13, width: 44, flexShrink: 0 }}>✓</span>
+      <span style={{ color: "var(--pos)", fontSize: 13, width: 66, flexShrink: 0 }}>✓</span>
       <span style={{ fontSize: 13.5, color: "var(--fg-3)", textDecoration: "line-through", flex: 1 }}>{l.name}{l.company ? ` · ${l.company}` : ""} · {ACTION_LABELS[item.kind] || "atividade concluída"}</span>
       <span className="mono tnum" style={{ fontSize: 12, color: "var(--fg-4)" }}>{time}</span>
     </button>
