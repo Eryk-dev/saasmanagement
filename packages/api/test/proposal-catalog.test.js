@@ -9,7 +9,7 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { ensureProposalCatalog } = await import("../src/migrations.js");
-const { applyCatalog, activeProduct, catalogUI, suggestProduct, dealCatalog, DEAL_PRODUCT_LABEL } = await import("../src/proposal-catalog.js");
+const { applyCatalog, activeProduct, catalogUI, suggestProduct, dealCatalog, DEAL_PRODUCT_LABEL, orderDeck } = await import("../src/proposal-catalog.js");
 const { runNativeProposal, shareProposalOffer, publicProposal } = await import("../src/proposal.js");
 const { registerProposalRoutes } = await import("../src/routes.proposals.js");
 
@@ -316,6 +316,65 @@ test("rotas: card de decisão só no modo closer; PATCH aceita product/pain/oem 
     payload: { k: p.editKey, product: "" },
   });
   assert.equal((await repo.get("proposals", p.id)).state.product, "", "vazio = volta a seguir a régua");
+});
+
+// ── Teste A/B da ordem da apresentação (Leo, 12/08) ─────────────────────────
+const DECK_REAL = [
+  { key: "hero", type: "hero", bg: "" },
+  { key: "nossa_operacao", type: "custom", bg: "dark" },
+  { key: "perfis_ig", type: "custom", bg: "" },
+  { key: "sobre_nos", type: "cards", bg: "dark" },
+  { key: "como_funciona", type: "steps", bg: "" },
+  { key: "oem_processo", type: "steps", bg: "dark" },
+  { key: "impacto", type: "compare", bg: "dark" },
+  { key: "investimento_combo", type: "pricing", bg: "" },
+];
+
+test("ordem B: mecanismo → OEM → preço → impacto → história, sem capa e com ritmo refeito", () => {
+  const b = orderDeck(DECK_REAL, "B");
+  assert.deepEqual(b.map((s) => s.key), [
+    "como_funciona", "oem_processo", "investimento_combo", "impacto", "nossa_operacao", "perfis_ig", "sobre_nos",
+  ]);
+  assert.deepEqual(b.map((s) => s.bg), ["", "dark", "", "dark", "", "dark", ""], "claro/escuro alternado do zero");
+  assert.equal(DECK_REAL[0].key, "hero", "não mexe no array original");
+  assert.deepEqual(orderDeck(DECK_REAL, "").map((s) => s.key), DECK_REAL.map((s) => s.key), "A = ordem de sempre");
+  // Sem OEM a fila é a mesma, só sem a tela do processo.
+  const semOem = orderDeck(DECK_REAL.filter((s) => s.key !== "oem_processo"), "B");
+  assert.deepEqual(semOem.map((s) => s.key), [
+    "como_funciona", "investimento_combo", "impacto", "nossa_operacao", "perfis_ig", "sobre_nos",
+  ]);
+  // Slide que a régua não conhece não some: fica no fim, na ordem original.
+  const comExtra = orderDeck([...DECK_REAL, { key: "novo_slide", type: "custom" }], "B");
+  assert.equal(comExtra.length, DECK_REAL.length, "capa sai, o resto fica");
+  assert.equal(comExtra[comExtra.length - 1].key, "novo_slide");
+});
+
+test("ordem B na proposta: PATCH liga o beta e o deck servido já vem reordenado", async () => {
+  const repo = await seedRepo();
+  const p = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "100-500" });
+  const app = Fastify();
+  registerProposalRoutes(app, repo);
+
+  const padrao = applyCatalog(await repo.get("proposals", p.id));
+  assert.equal(padrao.slides[0].key, "hero", "A abre na capa");
+
+  const patch = await app.inject({
+    method: "PATCH", url: "/public/proposals/" + p.id,
+    payload: { k: p.editKey, deckOrder: "b" },
+  });
+  assert.equal(patch.statusCode, 200);
+  assert.equal((await repo.get("proposals", p.id)).state.deckOrder, "B", "aceita minúsculo");
+
+  const beta = applyCatalog(await repo.get("proposals", p.id));
+  assert.deepEqual(beta.slides.map((s) => s.key).slice(0, 3), ["como_funciona", "oem_processo", "investimento_combo"]);
+  assert.ok(!beta.slides.some((s) => s.type === "hero"), "capa fora do beta");
+  assert.equal(beta.slides.length, padrao.slides.length - 1, "só a capa saiu");
+
+  const closer = await app.inject({ method: "GET", url: "/p/" + p.id + "?k=" + p.editKey });
+  assert.equal(payloadOf(closer.body).catalogUI.deckOrder, "B", "pílula A/B abre marcada no beta");
+
+  await app.inject({ method: "PATCH", url: "/public/proposals/" + p.id, payload: { k: p.editKey, deckOrder: "z" } });
+  assert.equal((await repo.get("proposals", p.id)).state.deckOrder, "", "valor estranho volta pro padrão");
 });
 
 test("preview /p/t: simulação via query (produto e dados) sem persistir nada", async () => {
