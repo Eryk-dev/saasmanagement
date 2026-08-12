@@ -17,7 +17,7 @@ import { leadTier, leadScoreLabel, leadAge } from "../lib/ui.js";
 import { cadenceOf, lossReasonLabel } from "../lib/funnel.js";
 import { leadPain } from "../lib/pains.js";
 import { displayName } from "../lib/users.js";
-import { paymentLabel, closedPlanLabel } from "../lib/payments.js";
+import { paymentLabel, closedPlanLabel, dealProductLabel, dealProductsOf } from "../lib/payments.js";
 import { scriptSegments } from "../lib/scripts.js";
 
 const DAY = 86_400_000;
@@ -50,6 +50,9 @@ export function clientSummary(saasCfg, lead, stage, cat, { full = false } = {}) 
     ["Faixa de faturamento", lead.value],
     ["Etapa", `${stage}${daysInStage != null ? ` · ${daysInStage}d nela` : ""}`],
     ["Toques na etapa", Number(cad.maxAttempts) ? `${Number(lead.stageAttempts) || 0} de ${cad.maxAttempts}` : (Number(lead.stageAttempts) || 0) || null],
+    // O que ele comprou: produto do catálogo da apresentação, escolhido no
+    // fechamento (é o escopo que a entrega vai executar).
+    ["Produto", dealProductLabel(lead.dealProduct, lead.saas) || null],
     ["Valor", lead.amount ? money(lead.amount) : null],
     // Registrada no movimento Call → Follow-up: é a oferta que o follow-up cobra.
     ["Proposta na mesa", lead.proposalOffer ? (lead.proposalOffer === "nenhuma" ? "não chegou na proposta" : closedPlanLabel(lead.proposalOffer) || lead.proposalOffer) : null],
@@ -169,6 +172,57 @@ export function LeadChecklist({ checklist, onPatch, leadId, title = "Dados do le
     </div>
   );
 }
+
+// ── Fechamento: O QUE foi vendido ──────────────────────────────────────────
+// O card só chega na Integração depois de fechar, e a entrega precisa saber o
+// ESCOPO: qual produto da apresentação o cliente comprou. O select sai do
+// catálogo real (SEED → template no banco) e os preços viram atalho pro valor
+// do negócio — clicar preenche, e dá pra ajustar. Some sozinho no SaaS sem
+// catálogo (UniqueKids fecha pacote de consultas).
+//
+// Usado no gate do board/card (stage-move.jsx) e no "Depois da ação" do Meu dia
+// (today.jsx): fechar por qualquer um dos dois registra a mesma coisa.
+export function DealProductField({ saas, value, onChange, plan = "", onPick, fieldStyle, labelStyle = null, required = true }) {
+  const products = dealProductsOf(saas);
+  if (!products.length) return null;
+  const cur = products.find((p) => p.id === value) || null;
+  // TODOS os preços do produto (semestral e anual, e as duas cotas no OEM): um
+  // clique resolve valor E ciclo de uma vez, então esconder o outro ciclo só
+  // obrigaria a trocar o plano antes pra ver o preço. O que bate com o plano
+  // atual fica destacado.
+  const prices = cur?.prices || [];
+  const money = (v) => (typeof window !== "undefined" && window.fmt?.money?.(v)) || `R$${v}`;
+  return (
+    <div>
+      <label className="kicker" style={labelStyle || { display: "block", marginBottom: 4 }}>Produto vendido {required ? "*" : ""}</label>
+      <select value={value} onChange={(e) => onChange(e.target.value, products.find((p) => p.id === e.target.value) || null)} style={fieldStyle}>
+        <option value="">— o que ele comprou na apresentação —</option>
+        {products.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+      </select>
+      {!!prices.length && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
+          <span className="mono dim" style={{ fontSize: 10, flexShrink: 0 }}>preço do catálogo</span>
+          {prices.map((r) => {
+            const on = !!plan && r.plan === plan;
+            return (
+              <button key={`${r.plan}-${r.label}-${r.value}`} onClick={() => onPick && onPick(r)}
+                title={`Usar ${money(r.value)} como valor do negócio (plano ${closedPlanLabel(r.plan) || r.plan})`}
+                style={{ height: 24, padding: "0 9px", borderRadius: "var(--r-2)",
+                  border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"),
+                  background: on ? "var(--accent-soft)" : "var(--bg-1)",
+                  color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 11, fontWeight: on ? 600 : 500 }}>
+                {r.label} · {money(r.value)}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+// Produto de SERVIÇO ÚNICO (clonagem avulsa): o plano é sempre "unico", não faz
+// sentido perguntar ciclo. Quem consome usa pra travar o select de plano.
+export const isOneOffProduct = (saas, id) => !!dealProductsOf(saas).find((p) => p.id === id)?.oneOff;
 
 // Roteiro do estágio: como se comportar + objetivo + passo a passo. A fala vem
 // com os dados do lead interpolados (scriptSegments): valor preenchido fica em

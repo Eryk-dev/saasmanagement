@@ -7,7 +7,7 @@ import { clientSummary, leadBox, ClientSummaryCard, AttributionCard, LeadCheckli
 import { waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
 import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind, isLossKind } from "../lib/funnel.js";
 import { displayName, usersByRole, currentUser } from "../lib/users.js";
-import { PAYMENT_METHODS, CLOSED_PLANS, DEAL_PRODUCTS, dealProductLabel } from "../lib/payments.js";
+import { PAYMENT_METHODS, CLOSED_PLANS, DEAL_PRODUCTS, dealProductLabel, dealProductsOf } from "../lib/payments.js";
 import { api } from "../lib/api.js";
 import { useAttribution } from "../lib/pains.js";
 import { sourceLabel } from "../lib/sources.js";
@@ -1086,7 +1086,7 @@ function PaymentLinkModal({ lead, onClose, onSaved }) {
   // Mesmo rótulo do servidor (PLAN_LABEL/PRODUCT_LABEL em routes.mp.js):
   // título default do checkout = produto do catálogo + plano.
   const PLAN_TITLE = { anual: "Plano Anual", semestral: "Plano Semestral", unico: "Serviço único" };
-  const titleFor = (p, prod) => [dealProductLabel(prod) || product?.name || lead.saas, PLAN_TITLE[p] || "pagamento"].filter(Boolean).join(" · ");
+  const titleFor = (p, prod) => [dealProductLabel(prod, lead.saas) || product?.name || lead.saas, PLAN_TITLE[p] || "pagamento"].filter(Boolean).join(" · ");
 
   const [amount, setAmount] = React.useState(lead.mpChargeAmount || "");
   const [installments, setInstallments] = React.useState(12);
@@ -1193,7 +1193,8 @@ function PaymentLinkModal({ lead, onClose, onSaved }) {
               <select value={dealProduct} onChange={(e) => pickProduct(e.target.value)} style={inputStyle}
                 title="produto do catálogo da apresentação — vai pro card, pro cliente e pro card da Integração">
                 <option value="">escolher…</option>
-                {DEAL_PRODUCTS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                {/* catálogo real do SaaS (SEED); sem catálogo, a lista estática */}
+                {(dealProductsOf(lead.saas).length ? dealProductsOf(lead.saas) : DEAL_PRODUCTS).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
               </select>
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>

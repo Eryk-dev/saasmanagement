@@ -12,7 +12,7 @@ import { registerWebhookRoutes } from "./routes.webhooks.js";
 import { mergeLeadQuestions } from "./forms.js";
 import { registerProposalRoutes } from "./routes.proposals.js";
 import { runNativeProposal, proposalOffers, shareProposalOffer, buildCustomProposal, publicProposal, syncProposalLeadSnapshot } from "./proposal.js";
-import { PRODUCT_LABEL } from "./proposal-catalog.js";
+import { DEAL_PRODUCT_LABEL, dealCatalog } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { registerBillingRoutes } from "./routes.billing.js";
 import { initSubscription, syncCustomerArr, createClosedSubscription, closedSubscriptionSpec } from "./billing.js";
@@ -414,7 +414,20 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       // (ex.: mostrar o botão "Gerar proposta" nos leads de SaaS com provider).
       CONFIG: {
         levercopy: integrationStatus(),
-        proposals: { nativeSaas: (await repo.list("proposal_templates")).filter((t) => t.status === "published").map((t) => t.saas) },
+        // `catalog` = o que o closer pode FECHAR, com os preços do template
+        // (banco): o gate de fechamento do card monta o select de produto e
+        // sugere o valor a partir daqui, então mexer no preço no banco vale na
+        // hora, sem deploy. SaaS sem catálogo (UniqueKids) simplesmente não entra.
+        proposals: await (async () => {
+          const templates = await repo.list("proposal_templates");
+          const published = templates.filter((t) => t.status === "published");
+          const catalog = {};
+          for (const t of published) {
+            const rows = dealCatalog(t.calc);
+            if (rows.length && t.saas) catalog[t.saas] = rows;
+          }
+          return { nativeSaas: published.map((t) => t.saas), catalog };
+        })(),
         mp: { configured: mpClient.configured(), webhook: mpClient.hasWebhookSecret() },
         meta: { configured: metaClient.configured() },
         google: { configured: googleClient.configured(), connected: await googleClient.connected(), account: await googleClient.account(), gmail: await googleClient.gmailReady() },
@@ -990,7 +1003,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
 const CLOSED_PLAN_LABEL = { anual: "Anual", semestral: "Semestral", mensal: "Mensal", unico: "Serviço único" };
 // O produto do catálogo da apresentação (FULL/OEM/Parcial, lead.dealProduct)
 // entra na frente do ciclo na coluna Plano do cliente: "LeverAds FULL · Anual".
-const planLabelOf = (lead) => [PRODUCT_LABEL[lead.dealProduct], CLOSED_PLAN_LABEL[lead.planClosed]].filter(Boolean).join(" · ");
+const planLabelOf = (lead) => [DEAL_PRODUCT_LABEL[lead.dealProduct], CLOSED_PLAN_LABEL[lead.planClosed]].filter(Boolean).join(" · ");
 const CLOSED_PLAN_ANNUAL_FACTOR = { anual: 1, semestral: 2, mensal: 12, unico: 1 };
 export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } = {}) {
   if (!lead || !lead.saas) return null;
