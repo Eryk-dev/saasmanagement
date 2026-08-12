@@ -9,7 +9,7 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { ensureProposalCatalog } = await import("../src/migrations.js");
-const { applyCatalog, activeProduct, catalogUI, suggestProduct } = await import("../src/proposal-catalog.js");
+const { applyCatalog, activeProduct, catalogUI, suggestProduct, dealCatalog, DEAL_PRODUCT_LABEL } = await import("../src/proposal-catalog.js");
 const { runNativeProposal, shareProposalOffer, publicProposal } = await import("../src/proposal.js");
 const { registerProposalRoutes } = await import("../src/routes.proposals.js");
 
@@ -374,4 +374,47 @@ test("retroativo: proposta antiga re-snapshotada no fluxo novo; aceita e compart
   assert.equal((await repo.get("proposals", "pr_aceita")).calc.catalog, undefined, "aceita não muda");
   assert.equal((await repo.get("proposals", "pr_filha")).calc.catalog, undefined, "link do cliente não muda");
   assert.equal(await backfillProposalCatalog(repo), 0, "idempotente");
+});
+
+// O closer fecha a venda NO CARD (Call → Integração) e precisa dizer o que
+// vendeu, com o preço da apresentação: o cockpit recebe esta lista no SEED.
+test("catálogo do fechamento: produtos com preço + clonagem avulsa como serviço único", async () => {
+  const repo = makeMemRepo();
+  await repo.create("proposal_templates", JSON.parse(JSON.stringify(TEMPLATE)));
+  await ensureProposalCatalog(repo);
+  const t = await repo.get("proposal_templates", "pt_leverads");
+
+  const rows = dealCatalog(t.calc);
+  const byId = Object.fromEntries(rows.map((r) => [r.id, r]));
+  assert.deepEqual(rows.map((r) => r.id), ["full", "fulloem", "oem", "parcialA", "parcialoem", "avulso"]);
+
+  const full = byId.full.prices;
+  assert.deepEqual(full.map((p) => [p.plan, p.value]), [["semestral", 7188], ["anual", 11988]]);
+
+  // OEM avulso tem dois níveis de cota: cada um vira uma opção nomeada.
+  assert.deepEqual(byId.oem.prices.map((p) => `${p.label} ${p.value}`), [
+    "Semestral · 50 anúncios 1188", "Anual · 50 anúncios 1788",
+    "Semestral · 200 anúncios 2988", "Anual · 200 anúncios 4188",
+  ]);
+
+  // Clonagem avulsa: serviço único por faixa de anúncios (preço em texto no
+  // catálogo vira número pro cockpit preencher o valor do negócio). Sem oneOff
+  // no banco valem as faixas padrão do código.
+  const semBanco = JSON.parse(JSON.stringify(t.calc));
+  delete semBanco.catalog.oneOff;
+  const avulso = dealCatalog(semBanco).find((r) => r.id === "avulso");
+  assert.equal(avulso.oneOff, true);
+  assert.deepEqual(avulso.prices.map((p) => [p.plan, p.value]), [["unico", 996], ["unico", 2184], ["unico", 2988]]);
+  assert.equal(DEAL_PRODUCT_LABEL.avulso, "Clonagem avulsa");
+
+  // Preço editado no banco vale na hora (sem deploy).
+  const calc = JSON.parse(JSON.stringify(t.calc));
+  calc.catalog.products.full.sem.total = 6900;
+  calc.catalog.oneOff = { rows: [{ range: "Até 100 anúncios", price: "R$ 1.200" }] };
+  const edited = Object.fromEntries(dealCatalog(calc).map((r) => [r.id, r]));
+  assert.equal(edited.full.prices[0].value, 6900);
+  assert.deepEqual(edited.avulso.prices, [{ plan: "unico", label: "Até 100 anúncios", value: 1200 }]);
+
+  // SaaS sem catálogo (mentoria do Kids): nada a oferecer, o campo some.
+  assert.deepEqual(dealCatalog({ plans: {} }), []);
 });

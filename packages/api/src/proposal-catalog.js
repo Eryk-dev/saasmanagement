@@ -55,6 +55,13 @@ export const PRODUCT_LABEL = {
   parcialoem: "Parcial + OEM 50",
 };
 
+// O que pode ser VENDIDO (lead.dealProduct) = os produtos do deck + a clonagem
+// avulsa, que é serviço único e não vira apresentação. Separado do
+// PRODUCT_LABEL de propósito: "avulso" não existe em catalog.products, então
+// nunca pode virar produto ativo do deck (applyCatalog ignoraria).
+export const ONE_OFF_KEY = "avulso";
+export const DEAL_PRODUCT_LABEL = { ...PRODUCT_LABEL, [ONE_OFF_KEY]: "Clonagem avulsa" };
+
 export const hasCatalog = (calc) => !!(calc && calc.catalog && calc.catalog.products);
 
 // Milhar pt-BR sem depender do ICU do runtime (imagem slim pode vir sem pt-BR).
@@ -351,4 +358,59 @@ export function catalogUI(p) {
     pains: cat.pains || {},
     oneOffCloning: clone(cat.oneOff || ONE_OFF_CLONING),
   };
+}
+
+// ── Catálogo pro COCKPIT (fechamento do card) ──────────────────────────────
+// O closer fecha a venda no card (Call → Integração / Ganho) e precisa dizer O
+// QUE vendeu, com o preço que está na apresentação. Esta é a lista que vai no
+// SEED (CONFIG.proposals.catalog[saas]): produto + os preços do catálogo do
+// TEMPLATE (banco), pra o cockpit sugerir o valor sem hardcode nem regra
+// duplicada — mexeu no preço no banco, o card já fecha com o preço novo.
+//
+// A clonagem avulsa entra como produto vendível (serviço único, por faixa de
+// anúncios) mesmo não sendo produto do deck.
+const moneyOf = (v) => {
+  if (typeof v === "number") return Math.round(v) || 0;
+  const digits = String(v ?? "").replace(/[^\d,]/g, "").split(",")[0].replace(/\D/g, "");
+  return digits ? Number(digits) : 0;
+};
+const cycleLabel = { sem: "Semestral", anu: "Anual" };
+const cyclePlan = { sem: "semestral", anu: "anual" };
+
+export function dealCatalog(calc) {
+  if (!hasCatalog(calc)) return [];
+  const cat = calc.catalog;
+  const out = [];
+  // Preços de um produto: sem/anu direto, ou os dois níveis de cota do OEM
+  // avulso (50 e 200 anúncios), que viram quatro opções nomeadas.
+  const pricesOf = (p) => {
+    const rows = [];
+    for (const [k, cycle] of [["sem", "sem"], ["anu", "anu"]]) {
+      if (p?.[k]?.total) rows.push({ plan: cyclePlan[cycle], label: cycleLabel[cycle], value: moneyOf(p[k].total) });
+    }
+    for (const level of ["small", "big"]) {
+      const lv = p?.[level];
+      if (!lv) continue;
+      for (const k of ["sem", "anu"]) {
+        if (lv[k]?.total) rows.push({ plan: cyclePlan[k], label: `${cycleLabel[k]} · ${lv.cota || level} anúncios`, value: moneyOf(lv[k].total) });
+      }
+    }
+    return rows;
+  };
+  for (const key of PRODUCT_KEYS) {
+    const p = cat.products?.[key];
+    if (!p) continue;
+    out.push({ id: key, label: p.name || PRODUCT_LABEL[key] || key, prices: pricesOf(p) });
+  }
+  const oneOff = cat.oneOff || ONE_OFF_CLONING;
+  const rows = (oneOff.rows || []).filter((r) => r && r.price);
+  if (rows.length) {
+    out.push({
+      id: ONE_OFF_KEY,
+      label: DEAL_PRODUCT_LABEL[ONE_OFF_KEY],
+      oneOff: true, // plano é sempre "Serviço único"
+      prices: rows.map((r) => ({ plan: "unico", label: r.range || oneOff.title || "serviço único", value: moneyOf(r.price) })),
+    });
+  }
+  return out;
 }

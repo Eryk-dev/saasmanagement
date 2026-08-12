@@ -2,7 +2,8 @@ import React from "react";
 import { PrimaryButton, useEsc } from "../atoms.jsx";
 import { stageKind, phaseOf, isLossKind, isWonKind, lossReasonsOf } from "../lib/funnel.js";
 import { usersByRole, currentUser } from "../lib/users.js";
-import { PAYMENT_METHODS, CLOSED_PLANS, CONSULT_PACKAGES } from "../lib/payments.js";
+import { PAYMENT_METHODS, CLOSED_PLANS, CONSULT_PACKAGES, dealProductsOf } from "../lib/payments.js";
+import { DealProductField, isOneOffProduct } from "./lead-blocks.jsx";
 import { api } from "../lib/api.js";
 import { SlotGrid, nextBusinessDays, callBusyKeys } from "../screens/today.jsx";
 
@@ -29,12 +30,14 @@ export function moveGate(saasCfg, lead, toStage) {
   // não aparece na Agenda nem ocupa slot), então o gate pede a hora ANTES de
   // mover, em vez de deixar o PATCH tomar 422 e o card não sair do lugar.
   if (toKind === "call" && !lead.callAt) return { type: "call", toKind };
-  // Fechamento = passar pra Ganho (pede o valor quando ainda não tem) OU pra
-  // Integração — na Integração o gate abre SEMPRE, pré-preenchido: é a última
-  // porta antes da entrega, então é aqui que o closer confere (ou corrige)
-  // plano, valor e pagamento. Um clique confirma; ajuste re-espelha no cliente
-  // e na assinatura criados no fechamento (syncWonLeadDeal na API).
-  if (toKind === "integracao" || (isWonKind(toKind) && !(Number(lead.amount) > 0))) return { type: "won", toKind };
+  // Fechamento = passar pra Ganho (pede o valor e o produto quando ainda não
+  // tem) OU pra Integração — na Integração o gate abre SEMPRE, pré-preenchido:
+  // é a última porta antes da entrega, então é aqui que o closer confere (ou
+  // corrige) produto, plano, valor e pagamento. Um clique confirma; ajuste
+  // re-espelha no cliente e na assinatura criados no fechamento
+  // (syncWonLeadDeal na API).
+  const missingProduct = !lead.dealProduct && dealProductsOf(lead.saas).length > 0;
+  if (toKind === "integracao" || (isWonKind(toKind) && (!(Number(lead.amount) > 0) || missingProduct))) return { type: "won", toKind };
   return null;
 }
 
@@ -65,6 +68,12 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // o gate captura o tamanho e o servidor cria a jornada inteira na conversão.
   const isKidsWon = isWonGate && lead.saas === "uniquekids";
   const [consultPackage, setConsultPackage] = React.useState(String(lead.consultPackage || 8));
+  // O QUE foi vendido (produto da apresentação): obrigatório no fechamento de
+  // quem tem catálogo — é o escopo que a Integração vai entregar e o que nomeia
+  // o Plano do cliente. Já vem preenchido quando o link de pagamento gravou.
+  const [dealProduct, setDealProduct] = React.useState(lead.dealProduct || "");
+  const askProduct = isWonGate && !isKidsWon && dealProductsOf(lead.saas).length > 0;
+  const oneOff = isOneOffProduct(lead.saas, dealProduct);
   // Call → Follow-up: qual proposta ficou na mesa (o follow-up cobra ELA).
   const isOffer = gate.type === "offer";
   const [offer, setOffer] = React.useState(lead.proposalOffer || "");
@@ -80,7 +89,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // A call é OBRIGATÓRIA pra entrar na etapa (regra do servidor), tanto no gate
   // de call quanto no handoff que já cai numa etapa de call.
   const ready = isLost ? !!reason
-    : isWonGate ? (Number(amount) > 0 && !!payment)
+    : isWonGate ? (Number(amount) > 0 && !!payment && (!askProduct || !!dealProduct))
       : isOffer ? !!offer
         : askCall ? (!!closer && !!callAt)
           : !!closer;
@@ -95,8 +104,9 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
       patch.amount = Number(amount);
       patch.paymentMethod = payment;
       // Mentoria é compra única (o valor não anualiza); o pacote é o "plano".
-      patch.planClosed = isKidsWon ? "unico" : planClosed;
+      patch.planClosed = isKidsWon ? "unico" : oneOff ? "unico" : planClosed;
       if (isKidsWon) patch.consultPackage = Number(consultPackage) || 8;
+      if (askProduct) patch.dealProduct = dealProduct;
     } else if (isOffer) {
       patch.proposalOffer = offer;
     } else {
@@ -137,8 +147,19 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
           </>
         ) : isWonGate ? (
           <>
+            {/* O QUE ele comprou vem primeiro: escolher o produto já sugere o
+                preço do catálogo no valor, então o resto do gate cai pronto. */}
+            {askProduct && (
+              <>
+                <DealProductField saas={lead.saas} value={dealProduct} plan={planClosed}
+                  fieldStyle={field} labelStyle={label}
+                  onChange={(id, p) => { setDealProduct(id); if (p?.oneOff) setPlanClosed("unico"); }}
+                  onPick={(r) => { setAmount(String(r.value)); if (r.plan) setPlanClosed(r.plan); }} />
+                <div style={{ height: 12 }} />
+              </>
+            )}
             <label className="kicker" style={label}>Valor do negócio (R$) *</label>
-            <input type="number" min="0" step="0.01" value={amount} autoFocus placeholder="ex.: 7188"
+            <input type="number" min="0" step="0.01" value={amount} autoFocus={!askProduct} placeholder="ex.: 7188"
               onChange={(e) => setAmount(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") confirm(); }}
               style={field} />
@@ -163,7 +184,10 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
             ) : (
               <>
                 <label className="kicker" style={label}>Plano fechado *</label>
-                <select value={planClosed} onChange={(e) => setPlanClosed(e.target.value)} style={field}>
+                {/* Serviço único (clonagem avulsa) não tem ciclo: o plano é o
+                    próprio produto, então o select fica travado. */}
+                <select value={oneOff ? "unico" : planClosed} disabled={oneOff}
+                  onChange={(e) => setPlanClosed(e.target.value)} style={{ ...field, opacity: oneOff ? 0.7 : 1 }}>
                   {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                 </select>
               </>

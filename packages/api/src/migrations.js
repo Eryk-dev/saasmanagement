@@ -1189,7 +1189,10 @@ export async function ensureProposalCatalog(repo) {
   const calc = { ...(t.calc || {}) };
   calc.volumeKey = "listings";
   calc.volumeMid = { ...LEVERADS_VOLUME_MID };
-  calc.catalog = LEVERADS_CATALOG;
+  // CÓPIA: sem isso o template (e todo snapshot que sair dele em memória)
+  // aponta pro mesmo objeto do módulo, e uma edição de catálogo vaza pros
+  // outros — o teste do serviço único pegou isso.
+  calc.catalog = JSON.parse(JSON.stringify(LEVERADS_CATALOG));
   await repo.update("proposal_templates", "pt_leverads", { calc });
   return true;
 }

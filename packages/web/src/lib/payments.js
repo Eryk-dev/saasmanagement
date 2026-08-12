@@ -40,8 +40,24 @@ export const DEAL_PRODUCTS = [
   { id: "oem", label: "OEM avulso" },
   { id: "parcialA", label: "Parcial" },
   { id: "parcialoem", label: "Parcial + OEM 50" },
+  // Serviço único (clonagem entre contas cobrada uma vez, por faixa de
+  // anúncios): vende, mas não é produto do deck — não vira apresentação.
+  { id: "avulso", label: "Clonagem avulsa" },
 ];
-export const dealProductLabel = (id) => DEAL_PRODUCTS.find((p) => p.id === id)?.label || "";
+
+// O QUE DÁ PRA FECHAR neste SaaS, com os preços que estão na apresentação: o
+// servidor manda o catálogo do template (banco) no SEED, então preço mexido no
+// banco vale na hora, sem deploy do cockpit. Lista vazia = SaaS sem catálogo
+// (UniqueKids vende pacote de consultas) — quem consome esconde o campo.
+export function dealProductsOf(saas) {
+  const rows = (typeof window !== "undefined" && window.SEED?.CONFIG?.proposals?.catalog?.[saas]) || null;
+  return Array.isArray(rows) ? rows : [];
+}
+// Rótulo do produto vendido: o do catálogo do SEED (nome que está na
+// apresentação) e, sem ele, o estático acima.
+export const dealProductLabel = (id, saas = "") =>
+  dealProductsOf(saas).find((p) => p.id === id)?.label
+  || DEAL_PRODUCTS.find((p) => p.id === id)?.label || "";
 
 // Como o pagamento SAIU no Mercado Pago (payment_type_id/payment_method_id do
 // /v1/payments) — diferente de PAYMENT_METHODS (o combinado do fechamento):
