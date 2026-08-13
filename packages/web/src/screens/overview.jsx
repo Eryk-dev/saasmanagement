@@ -5,7 +5,7 @@ import { PageHead, Card } from "../components/viz.jsx";
 import { EmptyState, Avatar } from "../atoms.jsx";
 import { stageKind, isRealLead } from "../lib/funnel.js";
 import { bizDay } from "../lib/format.js";
-import { currentUser, isAdminUser, canSeeScreen, userById } from "../lib/users.js";
+import { canSeeScreen, userById } from "../lib/users.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { buildPeople, roleLabel, scaledGoal } from "../components/team-cards.jsx";
 import { usePeriod, businessDaysBetween } from "../components/period-picker.jsx";
@@ -685,10 +685,10 @@ function OverviewScreen({ onNav }) {
   const [wa, setWa] = useState(null); // inbox do WhatsApp (estado atual do time)
   const { period, custom, win } = usePeriod();
 
-  // Lente por CARGO: quem não é gestão vê as próprias metas + a meta do mês.
-  const eu = currentUser();
-  const gestao = !eu || isAdminUser();
-
+  // A Visão geral é UMA só, a de gestão, pra todo o time: receita, placar e
+  // fila de atenção na frente de todo mundo (transparência de operação). O
+  // guard da API acompanha — quem tem a tela overview LÊ o que os painéis
+  // buscam (OVERVIEW_READ_PREFIXES no screens.js do servidor).
   const loadedFor = React.useRef(null);
   useEffect(() => {
     if (!product) return;
@@ -697,11 +697,9 @@ function OverviewScreen({ onNav }) {
       setMarketing(null); setBiz(null); setInvoices([]); setScore(null); setPace(null);
     }
     let alive = true;
-    if (gestao) {
-      api.marketingMetrics(product.id, { since: win.since, until: win.until }).then((m) => alive && setMarketing(m)).catch(() => alive && setMarketing(null));
-      api.metrics(product.id, { days: win.days }).then((b) => alive && setBiz(b)).catch(() => alive && setBiz(null));
-      api.list("invoices").then((rows) => alive && setInvoices(rows.filter((i) => i.saas === product.id))).catch(() => {});
-    }
+    api.marketingMetrics(product.id, { since: win.since, until: win.until }).then((m) => alive && setMarketing(m)).catch(() => alive && setMarketing(null));
+    api.metrics(product.id, { days: win.days }).then((b) => alive && setBiz(b)).catch(() => alive && setBiz(null));
+    api.list("invoices").then((rows) => alive && setInvoices(rows.filter((i) => i.saas === product.id))).catch(() => {});
     return () => { alive = false; };
   }, [product?.id, version, period, custom.since, custom.until]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -722,7 +720,7 @@ function OverviewScreen({ onNav }) {
     if (!product) return;
     let alive = true;
     api.pipelinePace(product.id).then((d) => alive && setPace(d)).catch(() => alive && setPace(null));
-    if (gestao) api.waInsights(30).then((d) => alive && setWa(d)).catch(() => alive && setWa(null));
+    api.waInsights(30).then((d) => alive && setWa(d)).catch(() => alive && setWa(null));
     return () => { alive = false; };
   }, [product?.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -739,37 +737,6 @@ function OverviewScreen({ onNav }) {
   };
 
   const today = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
-
-  // ── Lente individual: as próprias metas + a meta do mês da empresa ─────────
-  if (!gestao) {
-    const bruta = buildPeople(score).find((p) => p.user === eu?.id) || null;
-    const minha = bruta ? displayPerson(bruta) || bruta : null;
-    return (
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-        <PageHead title="Suas metas" sub={today} />
-        <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-          <MetaMesCard pace={pace} goal={goal} links={false} />
-          <Card title={`Suas metas · ${win.label}`} hint="o que a sua vaga precisa entregar no período">
-            <div style={{ padding: "8px var(--inset-x) 20px" }}>
-              {score == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
-              {score != null && !minha && (
-                <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.6 }}>
-                  Sua vaga ainda não tem metas configuradas neste produto.<br />
-                  Peça pra gestão preencher em <b>Metas</b>, que elas aparecem aqui.
-                </div>
-              )}
-              {minha && (
-                <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", overflow: "hidden", background: "var(--bg-1)" }}>
-                  <PersonRow p={minha} rank={null} bizDays={win.businessDays} elapsedFrac={elapsedFracOf(win)} monthFrac={monthFracOf(win)}
-                    onPerson={canSeeScreen("pipeline") ? openPerson : null} />
-                </div>
-              )}
-            </div>
-          </Card>
-        </div>
-      </div>
-    );
-  }
 
   // ── Atenção agora: avisos calculados do dado que já existe ─────────────────
   const todayKey = bizDay(new Date());
@@ -836,7 +803,7 @@ function OverviewScreen({ onNav }) {
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         <MetaMesCard pace={pace} goal={goal} onNav={onNav} />
 
-        <TeamBoard score={score} win={win} onPerson={openPerson} />
+        <TeamBoard score={score} win={win} onPerson={canSeeScreen("pipeline") ? openPerson : null} />
 
         <FunilPeriodo team={score?.team} win={win} pLabel={win.label} />
 

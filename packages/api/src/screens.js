@@ -110,15 +110,25 @@ const ROUTE_SCREENS = [
 // produto/funil/usuários é coisa da tela Ajustes.
 const SETTINGS_WRITE_PREFIXES = ["/api/products", "/api/auth/users"];
 
+// A Visão geral de gestão é a MESMA pra todo o time: quem tem a tela overview
+// também LÊ o que os painéis dela buscam — tiles de aquisição (/api/marketing,
+// /api/metrics) e Resultado do mês (/api/invoices, /api/expenses/summary). Só
+// GET: sync, pay e CRUD continuam exigindo a tela dona da rota.
+const OVERVIEW_READ_PREFIXES = ["/api/marketing", "/api/metrics/", "/api/invoices", "/api/expenses/summary/"];
+
 export function screenForRequest(method, path) {
   if (method !== "GET" && SETTINGS_WRITE_PREFIXES.some((p) => path.startsWith(p))) return ["settings"];
   const hit = ROUTE_SCREENS.find(([prefix]) => path.startsWith(prefix));
-  return hit ? hit[1] : null;
+  if (!hit) return null;
+  if (method === "GET" && OVERVIEW_READ_PREFIXES.some((p) => path.startsWith(p))) return [...hit[1], "overview"];
+  return hit[1];
 }
 
-// Rotas de dado SENSÍVEL (salário/remuneração): além da tela, exigem a
-// etiqueta `admin` — a lista de telas em branco significa "vê tudo" (ex.:
-// usuário sem restrição), e salário não pode vazar por esse caminho.
+// Rotas de dado SENSÍVEL (salário/remuneração): a lista de telas em branco
+// significa "vê tudo" (ex.: usuário sem restrição), e salário não pode vazar
+// por esse caminho. Passa quem tem a etiqueta `admin` — ou quem ganhou a tela
+// `remuneracao` EXPLICITAMENTE em Ajustes → Equipe, e aí só LEITURA: editar
+// plano de comp segue coisa de admin.
 const ADMIN_PREFIXES = ["/api/comp_plans"];
 
 // Hook Fastify (registrar DEPOIS do makeAuthHook, que popula req.authUser).
@@ -127,8 +137,12 @@ export function makeScreenGuardHook() {
     const user = req.authUser;
     if (!user) return; // key mestre ou rota aberta — auth já decidiu
     const path = req.url.split("?")[0];
-    if (ADMIN_PREFIXES.some((p) => path.startsWith(p)) && !(user.roles || []).includes("admin")) {
-      return reply.code(403).send({ error: "Sem acesso a esta área" });
+    if (ADMIN_PREFIXES.some((p) => path.startsWith(p))) {
+      const admin = (user.roles || []).includes("admin");
+      const granted = Array.isArray(user.screens) && user.screens.includes("remuneracao");
+      if (!admin && !(req.method === "GET" && granted)) {
+        return reply.code(403).send({ error: "Sem acesso a esta área" });
+      }
     }
     const screens = screenForRequest(req.method, path);
     if (screens && !screens.some((s) => canScreen(user, s))) {

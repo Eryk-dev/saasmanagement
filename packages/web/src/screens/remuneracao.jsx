@@ -2,9 +2,9 @@ import React from "react";
 import { PageHead } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
-import { isAdminUser } from "../lib/users.js";
+import { hasExplicitScreen, isAdminUser } from "../lib/users.js";
 
-// Remuneração — tela SÓ DE ADMIN com o plano OFICIAL da casa, definido pelo
+// Remuneração — tela da GESTÃO com o plano OFICIAL da casa, definido pelo
 // Leo em 04/08/2026 (folhas amarelas + decisões no chat): 3 trilhas (SDR,
 // Closer, CS), 3 NÍVEIS cada (1 júnior · 2 pleno · 3 sênior). SDR e Closer têm
 // DUAS PERNAS de variável, avaliadas separadamente e SOMADAS ("bônus em
@@ -18,7 +18,11 @@ import { isAdminUser } from "../lib/users.js";
 // soma) + bônus por NPS ≥ 80 + bônus por churn do mês abaixo de 15%, ambos
 // conforme o nível.
 // Os números abaixo são o PADRÃO (o plano aprovado); editar e salvar grava um
-// doc por trilha na collection comp_plans (admin-only na API, screens.js).
+// doc por trilha na collection comp_plans.
+// Quem vê: admin (edita) ou quem ganhou a tela EXPLICITAMENTE em Ajustes →
+// Equipe (só leitura — campos desabilitados). Usuário sem restrição de telas
+// ("vê tudo") NÃO conta como concessão — salário não vaza por esse caminho. A
+// API /api/comp_plans aplica a mesma regra (screens.js do servidor).
 
 const { useState: useS, useEffect: useE } = React;
 
@@ -257,7 +261,9 @@ function RemuneracaoScreen() {
   }).catch(() => setDocs({}));
   useE(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!isAdminUser()) return <EmptyState title="Área da gestão" hint="Esta tela é só pra quem tem a etiqueta admin." />;
+  const editor = isAdminUser();
+  if (!editor && !hasExplicitScreen("remuneracao"))
+    return <EmptyState title="Área da gestão" hint="Peça pra gestão liberar a tela Remuneração em Ajustes → Equipe." />;
 
   // Plano vigente por trilha: doc salvo (campo plan) por cima do padrão aprovado.
   const planOf = (role) => {
@@ -280,7 +286,7 @@ function RemuneracaoScreen() {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-      <PageHead title="Remuneração" sub="plano oficial por cargo e nível (aprovado 04/08) · visível só pra admins" />
+      <PageHead title="Remuneração" sub="plano oficial por cargo e nível (aprovado 04/08) · edição só pra admins" />
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={box}>
           <div className="kicker" style={{ color: "var(--accent)", marginBottom: 8 }}>Regras da casa</div>
@@ -293,8 +299,12 @@ function RemuneracaoScreen() {
           </div>
         </div>
         {docs == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
+        {/* Não-admin (tela concedida) só LÊ: o fieldset desabilitado trava todos
+            os campos de uma vez — sem edição, o botão salvar nem chega a nascer. */}
         {docs != null && ["sdr", "closer", "cs"].map((role) => (
-          <RoleCard key={role} role={role} saved={planOf(role)} onSave={save} />
+          <fieldset key={role} disabled={!editor} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+            <RoleCard role={role} saved={planOf(role)} onSave={save} />
+          </fieldset>
         ))}
         <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>
           Contratos e receita saem da mesma régua do placar (fechamentos por wonAt). Próximo passo natural: o cockpit calcular a variável do mês de cada pessoa sozinho, a partir do nível dela.

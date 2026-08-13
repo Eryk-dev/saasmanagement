@@ -1,6 +1,8 @@
-// Guard da Remuneração: /api/comp_plans é dado sensível (salário) — exige a
-// etiqueta admin ALÉM da tela. Lista de telas em branco significa "vê tudo",
-// e salário não pode vazar por esse caminho (era o furo da conta sem restrição).
+// Guard da Remuneração: /api/comp_plans é dado sensível (salário). Lista de
+// telas em branco significa "vê tudo", e salário não pode vazar por esse
+// caminho (era o furo da conta sem restrição). Passa: admin (tudo) ou quem
+// ganhou a tela `remuneracao` EXPLICITAMENTE em Ajustes → Equipe (só GET —
+// editar plano de comp segue coisa de admin).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeScreenGuardHook } from "../src/screens.js";
@@ -15,6 +17,13 @@ const run = async (user, url, method = "GET") => {
 test("comp_plans: não-admin toma 403 mesmo com todas as telas liberadas", async () => {
   assert.equal(await run({ roles: ["closer"], screens: [] }, "/api/comp_plans"), 403);
   assert.equal(await run({ roles: ["integrator"], screens: [] }, "/api/comp_plans/abc", "PATCH"), 403);
+});
+
+test("comp_plans: tela remuneracao concedida explicitamente = leitura; escrita segue só admin", async () => {
+  const vitor = { roles: ["closer"], screens: ["overview", "remuneracao"] };
+  assert.equal(await run(vitor, "/api/comp_plans"), null);
+  assert.equal(await run(vitor, "/api/comp_plans", "POST"), 403);
+  assert.equal(await run(vitor, "/api/comp_plans/abc", "PATCH"), 403);
 });
 
 test("comp_plans: admin passa; key mestre (sem authUser) passa", async () => {
