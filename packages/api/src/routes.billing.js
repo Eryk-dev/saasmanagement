@@ -150,6 +150,39 @@ export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
     return reopened;
   });
 
+  // Dinheiro que REALMENTE entrou, por cliente do SaaS — base do "Status pgto."
+  // da tela Clientes. Conta só FATO: pagamento aprovado no espelho do Mercado
+  // Pago (casado por cliente ou pelo lead de origem) e fatura baixada de
+  // verdade (parcela/fatura marcada paga na mão ou baixada pelo MP). A fatura
+  // inicial que NASCE paga no fechamento (paidAt === periodStart, convenção do
+  // createClosedSubscription) fica fora: é suposição de recebimento, e o
+  // fechamento no cartão sem o link pago provou que ela mente (Marianna, 13/08).
+  app.get("/api/billing/received/:saas", async (req) => {
+    const customers = (await repo.list("customers")).filter((c) => c.saas === req.params.saas);
+    const ids = new Set(customers.map((c) => c.id));
+    const byLead = new Map(customers.filter((c) => c.leadId).map((c) => [c.leadId, c.id]));
+    const received = {};
+    const add = (cid, v) => { if (cid && ids.has(cid) && v > 0) received[cid] = Math.round(((received[cid] || 0) + v) * 100) / 100; };
+    const countedMp = new Set(); // idempotência: pagamento espelhado + fatura baixada por ele contam UMA vez
+    for (const p of await repo.list("mp_payments")) {
+      if (p.status !== "approved") continue;
+      const cid = (ids.has(p.customer) ? p.customer : "") || byLead.get(p.lead) || "";
+      if (!cid) continue;
+      add(cid, Number(p.amount) || 0);
+      countedMp.add(String(p.mpId));
+    }
+    for (const i of await repo.list("invoices")) {
+      if (i.status !== "paid" || !ids.has(i.customer)) continue;
+      if (i.mpPaymentId) {
+        if (!countedMp.has(String(i.mpPaymentId))) add(i.customer, Number(i.amount) || 0);
+        continue;
+      }
+      if (i.paidAt && i.periodStart && i.paidAt === i.periodStart) continue; // nasceu paga no fechamento
+      add(i.customer, Number(i.amount) || 0);
+    }
+    return received;
+  });
+
   // Tick do motor: mudanças agendadas + renovações + dunning + sync de ARR.
   app.post("/api/billing/run", async (req) => {
     const graceDays = req.body?.graceDays != null ? Number(req.body.graceDays) : undefined;

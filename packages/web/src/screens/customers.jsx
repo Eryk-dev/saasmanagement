@@ -7,14 +7,14 @@ import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/mile
 import { ActivityList } from "../components/timeline.jsx";
 import { CallSummaryCard, IntegrationBriefCard } from "./today.jsx";
 import { SubscriptionsScreen } from "./subscriptions.jsx";
-import { CustomersAnalysis, cashSplit } from "./customers-analysis.jsx";
+import { CustomersAnalysis } from "./customers-analysis.jsx";
 import { EntityForm } from "../components/EntityForm.jsx";
 import { WhatsappChat } from "../components/whatsapp-chat.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { leadTier, waLink, GRADE_STYLE, GRADE_GRID, GRADE_ACCOUNTS, GRADE_LISTINGS } from "../lib/ui.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { displayName } from "../lib/users.js";
-import { paymentLabel, paymentUpfront, PAYMENT_METHODS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel } from "../lib/payments.js";
+import { paymentLabel, paymentUpfront, PAYMENT_METHODS, PAY_STATUS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel } from "../lib/payments.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 // Clientes — a base ativa do produto em dois blocos: a tabela de clientes e,
 // ao lado, "Próximas ações" (o próximo marco de retenção de cada cliente,
@@ -111,18 +111,40 @@ function CustomersScreen({ initialTab }) {
   // mesmo quando a fatura ainda está aberta (boleto/pix à vista não baixado).
   const leadById = React.useMemo(() => new Map((LEADS || []).map((l) => [l.id, l])), [LEADS]);
 
-  // Estado do pagamento do contrato: quanto do ARR já ENTROU, pela mesma régua
-  // do Recebido/A receber da Análise (cashSplit — cronograma de parcelas quando
-  // existe, senão a heurística por meio de pagamento). Pago = valor total já
-  // recebido; Parcial = entrou parte (faturado/recorrente/parcelado no meio do
-  // fluxo, ou semestral à vista esperando a renovação); Não pago = nada entrou.
+  // Dinheiro REAL recebido por cliente ({ id: total }): MP aprovado casado com
+  // o cliente/lead + baixas de fatura de verdade (o endpoint exclui a fatura
+  // que nasce paga no fechamento por convenção).
+  const [received, setReceived] = useState({});
+  useEffect(() => {
+    if (!product?.id) return;
+    let alive = true;
+    api.billingReceived(product.id).then((m) => alive && setReceived(m || {})).catch(() => {});
+    return () => { alive = false; };
+  }, [product?.id, version]);
+
+  // Estado do pagamento (coluna Status pgto.): a marcação MANUAL no cliente
+  // manda (paymentStatus — muita venda entra por PIX/cartão fora do rastreio do
+  // MP, só o time sabe o que caiu na conta). Sem marcação, decide o FATO: o
+  // recebido real contra o valor fechado, com 2% de folga (link do MP sai com
+  // centavos de diferença — Zpack 6.488 de 6.500). Sem registro nenhum, o meio
+  // de pagamento dá o padrão: faturado/recorrente/parcelado é Parcial por
+  // natureza; à vista/cartão 12x fica Não pago até alguém confirmar — fechar no
+  // cartão NÃO é receber (caso Marianna, 13/08).
   const payStatus = (c) => {
-    const total = Number(c.arr) || 0;
-    if (total <= 0) return null;
-    const { cash } = cashSplit(c, Date.now(), invoices);
-    if (cash <= 0) return { label: "Não pago", tone: "neg", rank: 2, cash, total };
-    if (cash >= total - 0.005) return { label: "Pago", tone: "pos", rank: 0, cash, total };
-    return { label: "Parcial", tone: "warn", rank: 1, cash, total };
+    const cash = Number(received[c.id]) || 0;
+    const total = Number(leadById.get(c.leadId)?.amount) || Number(c.arr) || 0;
+    const pm = c.paymentMethod || leadById.get(c.leadId)?.paymentMethod;
+    const auto = total > 0 && cash >= total * 0.98 ? "paid" : cash > 0 ? "partial" : paymentUpfront(pm) ? "unpaid" : "partial";
+    const manual = PAY_STATUS[c.paymentStatus] ? c.paymentStatus : "";
+    const key = manual || auto;
+    return {
+      ...PAY_STATUS[key], key, auto, manual: !!manual,
+      hint: manual
+        ? "marcado na mão — clique pra mudar"
+        : cash > 0
+          ? `${money(cash)} recebido de ${money(total)} (MP + baixas de fatura) — clique pra marcar na mão`
+          : "nenhum pagamento registrado — clique pra marcar",
+    };
   };
 
   // Nível (categoria A/B/C/…) do cliente = grade do lead que virou cliente
@@ -179,7 +201,7 @@ function CustomersScreen({ initialTab }) {
     mrr: (c) => (c.arr || 0),
     pagamento: (c) => { const pm = c.paymentMethod || leadById.get(c.leadId)?.paymentMethod; return pm ? paymentLabel(pm).toLowerCase() : null; },
     fechado: (c) => Number(leadById.get(c.leadId)?.amount) || Number(c.arr) || null,
-    pgto: (c) => payStatus(c)?.rank ?? null,
+    pgto: (c) => payStatus(c).rank,
     entrada: (c) => entradaDate(c)?.getTime() ?? null,
     casa: (c) => { const d = entradaDate(c); return d ? Math.floor((Date.now() - d.getTime()) / 86400000) : null; },
     contato: (c) => {
@@ -197,7 +219,7 @@ function CustomersScreen({ initialTab }) {
       if (vb == null) return -1;
       return sort.dir * (typeof va === "string" ? va.localeCompare(vb, "pt-BR") : va - vb);
     });
-  }, [customers, sort, subs, plans, invoices, LEADS, allConsultas, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [customers, sort, subs, plans, received, LEADS, allConsultas, tick]); // eslint-disable-line react-hooks/exhaustive-deps
   const shownCustomers = showAll ? sortedCustomers : sortedCustomers.slice(0, 50);
   const lastContact = (c) => {
     const lead = (LEADS || []).find((l) => l.id === c.leadId);
@@ -391,14 +413,23 @@ function CustomersScreen({ initialTab }) {
                             </td>
                           );
                         })()}
-                        {/* Estado do pagamento: Pago / Parcial / Não pago (quanto do contrato já entrou). Só SaaS. */}
+                        {/* Status pgto.: Pago / Parcial / Não pago. Clicar na pill abre um select invisível
+                            por cima dela — marca na mão sem abrir o popup (o resto da linha segue abrindo). */}
                         {!isKidsWorkspace && (() => {
                           const ps = payStatus(c);
                           return (
                             <td style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)" }}>
-                              {ps
-                                ? <Pill tone={ps.tone} title={`${money(ps.cash)} recebido de ${money(ps.total)}`}>{ps.label}</Pill>
-                                : <span style={{ fontSize: 13, color: "var(--fg-4)" }}>—</span>}
+                              <span onClick={(e) => e.stopPropagation()} title={ps.hint} style={{ position: "relative", display: "inline-flex" }}>
+                                <Pill tone={ps.tone}>{ps.label}</Pill>
+                                <select value={ps.manual ? ps.key : ""}
+                                  onChange={(e) => patchCustomer(c, { paymentStatus: e.target.value })}
+                                  style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}>
+                                  <option value="">automático · {PAY_STATUS[ps.auto].label}</option>
+                                  <option value="paid">Pago</option>
+                                  <option value="partial">Parcial</option>
+                                  <option value="unpaid">Não pago</option>
+                                </select>
+                              </span>
                             </td>
                           );
                         })()}
@@ -593,6 +624,7 @@ function CustomerFacts({ customer, lead, product, onPatch }) {
     ["Faixa de faturamento", lead?.value],
     ["Valor fechado", lead?.amount ? window.fmt.money(lead.amount) : null],
     ["Pagamento", (customer.paymentMethod || lead?.paymentMethod) ? paymentLabel(customer.paymentMethod || lead?.paymentMethod) : null],
+    ["Status pgto.", PAY_STATUS[customer.paymentStatus] ? `${PAY_STATUS[customer.paymentStatus].label} (manual)` : null],
     ["SDR", lead?.owner ? displayName(lead.owner) : null],
     ["Closer", lead?.closer ? displayName(lead.closer) : null],
     ["Integrador", lead?.integrator ? displayName(lead.integrator) : null],
@@ -638,6 +670,14 @@ function CustomerFacts({ customer, lead, product, onPatch }) {
             <select value={customer.paymentMethod || ""} onChange={(e) => patch({ paymentMethod: e.target.value })} style={inputSt}>
               <option value="">—</option>
               {PAYMENT_METHODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+          </EditRow>
+          <EditRow label="Status pgto.">
+            <select value={PAY_STATUS[customer.paymentStatus] ? customer.paymentStatus : ""} onChange={(e) => patch({ paymentStatus: e.target.value })} style={inputSt}>
+              <option value="">automático (dinheiro registrado decide)</option>
+              <option value="paid">Pago</option>
+              <option value="partial">Parcial</option>
+              <option value="unpaid">Não pago</option>
             </select>
           </EditRow>
           <EditRow label="Valor/ano (R$)"><input type="number" defaultValue={customer.arr ?? ""} onBlur={(e) => { const n = e.target.value === "" ? 0 : Number(e.target.value); if (n !== (customer.arr || 0)) patch({ arr: n }); }} style={inputSt} /></EditRow>

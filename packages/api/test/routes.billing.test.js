@@ -242,3 +242,44 @@ test("revert-win: dinheiro REAL do Mercado Pago bloqueia com 409 e não apaga na
   assert.ok(await repo.get("invoices", "i9"), "fatura real fica");
   await app.close();
 });
+
+test("GET /api/billing/received/:saas — só dinheiro FATO: MP aprovado (por cliente ou lead) + baixa real; nascida paga e duplicata do MP ficam fora", async () => {
+  const repo = makeMemRepo();
+  await setup(repo);
+  await repo.create("customers", { id: "c2", name: "Via Lead", saas: "leverads", arr: 0, leadId: "l2" });
+  await repo.create("customers", { id: "c3", name: "Fechou no cartão sem pagar", saas: "leverads", arr: 0 });
+  await repo.create("customers", { id: "c9", name: "Outro SaaS", saas: "uniquekids", arr: 0 });
+
+  // Espelho do MP: aprovado casado no cliente, aprovado casado pelo lead de
+  // origem, rejeitado (não é dinheiro) e aprovado de outro SaaS (fica fora).
+  await repo.create("mp_payments", { id: "mpp_1", mpId: "1", status: "approved", amount: 100, customer: "c1" });
+  await repo.create("mp_payments", { id: "mpp_2", mpId: "2", status: "approved", amount: 50.5, lead: "l2" });
+  await repo.create("mp_payments", { id: "mpp_3", mpId: "3", status: "rejected", amount: 999, customer: "c1" });
+  await repo.create("mp_payments", { id: "mpp_4", mpId: "4", status: "approved", amount: 77, customer: "c9" });
+
+  // Fatura baixada PELO pagamento 1 (mpPaymentId) → já contou no espelho, não duplica.
+  await repo.create("invoices", { customer: "c1", saas: "leverads", amount: 100, kind: "renewal", status: "paid", mpPaymentId: "1", paidAt: "2026-08-01T10:00:00.000Z" });
+  // Parcela baixada NA MÃO (sem MP) → é fato, conta.
+  await repo.create("invoices", { customer: "c1", saas: "leverads", amount: 30, kind: "installment", status: "paid", paidAt: "2026-08-02T10:00:00.000Z" });
+  // Fatura que NASCE paga no fechamento (paidAt === periodStart) → convenção, fora.
+  await repo.create("invoices", { customer: "c3", saas: "leverads", amount: 500, kind: "renewal", status: "paid", paidAt: "2026-08-03T00:00:00.000Z", periodStart: "2026-08-03T00:00:00.000Z" });
+  // Fatura aberta não é recebimento.
+  await repo.create("invoices", { customer: "c3", saas: "leverads", amount: 200, kind: "renewal", status: "open" });
+
+  const app = buildApp(repo);
+  const res = await app.inject({ method: "GET", url: "/api/billing/received/leverads" });
+  assert.equal(res.statusCode, 200);
+  // c1 = 100 (MP) + 30 (parcela na mão); c2 = 50.5 (MP pelo lead); c3 não recebeu nada.
+  assert.deepEqual(res.json(), { c1: 130, c2: 50.5 });
+  await app.close();
+});
+
+test("closedSubscriptionSpec: assinatura recorrente (cartão mensal) vira ciclo mensal sem cronograma de parcelas", async () => {
+  const { closedSubscriptionSpec } = await import("../src/billing.js");
+  // Plano mensal fechado na recorrente: parcela = o próprio valor do mês.
+  assert.deepEqual(closedSubscriptionSpec({ planClosed: "mensal", amount: 274, paymentMethod: "cartao_recorrente" }), { cycle: "monthly", price: 274 });
+  // Mesmo com "paymentInstallments" perdido no lead, recorrente ganha cronograma
+  // como o faturado ganharia — o gate não pergunta parcelas pra ela, então o
+  // caminho normal é sem schedule (campo vazio).
+  assert.deepEqual(closedSubscriptionSpec({ planClosed: "anual", amount: 1200, paymentMethod: "cartao_recorrente", paymentInstallments: "" }), { cycle: "monthly", price: 100 });
+});

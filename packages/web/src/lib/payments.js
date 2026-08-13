@@ -12,11 +12,29 @@ export const PAYMENT_METHODS = [
   { id: "boleto_vista", label: "Boleto à vista", upfront: true },
   { id: "boleto", label: "Boleto faturado", upfront: false },
   { id: "cartao12x", label: "Cartão de crédito 12x", upfront: true },
+  // Assinatura recorrente: cartão de crédito com cobrança MENSAL (modalidade
+  // nova, 13/08) — não tem Nº de parcelas (é indefinida), o dinheiro entra mês
+  // a mês enquanto durar o contrato.
+  { id: "cartao_recorrente", label: "Assinatura recorrente", upfront: false, recurring: true },
 ];
 
 export const paymentLabel = (id) => PAYMENT_METHODS.find((p) => p.id === id)?.label || "";
 // Sem meio de pagamento registrado, assume à vista (comportamento antigo: tudo caixa).
 export const paymentUpfront = (id) => PAYMENT_METHODS.find((p) => p.id === id)?.upfront !== false;
+// Recorrente = mensal sem fim definido: fica fora do "faturado em quantas vezes".
+export const paymentRecurring = (id) => !!PAYMENT_METHODS.find((p) => p.id === id)?.recurring;
+
+// Estado do PAGAMENTO do contrato (coluna Status pgto. da tela Clientes).
+// `customer.paymentStatus` guarda a marcação MANUAL (paid|partial|unpaid);
+// vazio = automático: dinheiro real registrado (MP aprovado + baixas de fatura)
+// comparado ao valor fechado — e, sem registro nenhum, o meio de pagamento
+// decide o padrão (faturado/recorrente/parcelado é Parcial por natureza;
+// à vista/cartão 12x sem registro é Não pago até alguém confirmar).
+export const PAY_STATUS = {
+  paid: { label: "Pago", tone: "pos", rank: 0 },
+  partial: { label: "Parcial", tone: "warn", rank: 1 },
+  unpaid: { label: "Não pago", tone: "neg", rank: 2 },
+};
 
 // Plano com que o negócio fechou — também assinalado no gate de fechamento e
 // carregado pro customer no convertWonLead (vira a coluna Plano e a base do arr).
