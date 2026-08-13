@@ -24,7 +24,7 @@ const DAY = 86_400_000;
 //    outro só quando renovar (fica "a receber"). Único/sem plano: tudo agora.
 //  · faturado / parcelado → uma parcela por mês ao longo do ano (12 parcelas).
 // Cliente churnado para de gerar: o que faltava NÃO vira a receber.
-export function cashSplit(c, now, invoices = []) {
+function cashSplit(c, now, invoices = []) {
   const annual = Number(c.arr) || 0;
   if (annual <= 0) return { cash: 0, future: 0 };
   // Cronograma explícito vence a heurística: soma o que está pago × em aberto.

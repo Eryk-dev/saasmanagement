@@ -76,8 +76,11 @@ export async function initSubscription(repo, sub, now = new Date()) {
 // = amount × CLOSED_PLAN_ANNUAL_FACTOR, então o syncCustomerArr não muda nada.
 const PLAN_MONTHS = { anual: 12, semestral: 6, mensal: 1 };
 const PLAN_CYCLE = { anual: "annual", semestral: "semiannual", mensal: "monthly" };
-const MONTHLY_PAYMENT = new Set(["boleto", "pix_parcelado"]);
-const METHOD_LABEL = { boleto: "boleto faturado", pix_parcelado: "PIX parcelado" };
+// cartao_recorrente (assinatura no cartão, cobrança mensal indefinida) recebe
+// por mês como o faturado, mas NUNCA tem Nº de parcelas — o gate não pergunta,
+// então closedInstallments devolve 0 e o ciclo mensal fica com o runBilling.
+const MONTHLY_PAYMENT = new Set(["boleto", "pix_parcelado", "cartao_recorrente"]);
+const METHOD_LABEL = { boleto: "boleto faturado", pix_parcelado: "PIX parcelado", cartao_recorrente: "assinatura recorrente" };
 
 // Nº de parcelas escolhido no gate de fechamento (0 = sem cronograma explícito).
 // Só vale em pagamento faturado/parcelado: à vista/cartão 12x a adquirente

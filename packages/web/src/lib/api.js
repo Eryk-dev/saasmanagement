@@ -431,6 +431,8 @@ export const api = {
   // Billing (fase 5).
   changeSubscription: (id, body) => req("POST", `/api/subscriptions/${id}/change`, body),
   payInvoice: (id) => req("POST", `/api/invoices/${id}/pay`),
+  // Dinheiro real recebido por cliente ({ customerId: total }) — Status pgto.
+  billingReceived: (saas) => req("GET", `/api/billing/received/${encodeURIComponent(saas)}`),
   unpayInvoice: (id) => req("POST", `/api/invoices/${id}/unpay`),
   runBilling: () => req("POST", "/api/billing/run", {}),
   // Mercado Pago: gera o link de autorização da assinatura (preapproval).

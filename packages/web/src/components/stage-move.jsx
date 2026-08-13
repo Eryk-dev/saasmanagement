@@ -2,7 +2,7 @@ import React from "react";
 import { PrimaryButton, useEsc } from "../atoms.jsx";
 import { stageKind, phaseOf, isLossKind, isWonKind, lossReasonsOf } from "../lib/funnel.js";
 import { usersByRole, currentUser } from "../lib/users.js";
-import { PAYMENT_METHODS, CLOSED_PLANS, CONSULT_PACKAGES, CLOSED_PLAN_MONTHS, dealProductsOf, paymentUpfront } from "../lib/payments.js";
+import { PAYMENT_METHODS, CLOSED_PLANS, CONSULT_PACKAGES, CLOSED_PLAN_MONTHS, dealProductsOf, paymentUpfront, paymentRecurring } from "../lib/payments.js";
 import { DealProductField, isOneOffProduct } from "./lead-blocks.jsx";
 import { api } from "../lib/api.js";
 import { SlotGrid, nextBusinessDays, callBusyKeys } from "../screens/today.jsx";
@@ -79,7 +79,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   const [dealProduct, setDealProduct] = React.useState(lead.dealProduct || "");
   const askProduct = isWonGate && !isKidsWon && dealProductsOf(lead.saas).length > 0;
   const oneOff = isOneOffProduct(lead.saas, dealProduct);
-  const isFaturado = !!payment && paymentUpfront(payment) === false;
+  const isFaturado = !!payment && paymentUpfront(payment) === false && !paymentRecurring(payment);
   const effInstallments = Number(installments) > 0 ? Number(installments)
     : (CLOSED_PLAN_MONTHS[isKidsWon || oneOff ? "unico" : planClosed] || 12);
   // Call → Follow-up: qual proposta ficou na mesa (o follow-up cobra ELA).
