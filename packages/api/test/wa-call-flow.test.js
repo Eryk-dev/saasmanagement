@@ -9,7 +9,8 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { makeWhatsapp } = await import("../src/whatsapp.js");
 const { registerWhatsappRoutes } = await import("../src/routes.whatsapp.js");
-const { greetingFor, parsePermissionReply, isBusinessHours, runInboundCallFlow, DEFAULT_CALL_GREETING } = await import("../src/wa-call-flow.js");
+const { greetingFor, parsePermissionReply, runInboundCallFlow, DEFAULT_CALL_GREETING } = await import("../src/wa-call-flow.js");
+const { isBusinessHours } = await import("../src/business-hours.js");
 const { recordMessage } = await import("../src/wa-store.js");
 
 // Cliente fake: registra envios de texto e de pedido de permissão.
@@ -130,6 +131,21 @@ test("client real: sendCallPermission posta o interactive de permissão", async 
   assert.equal(calls[0].payload.to, "5541992516545");
 });
 
+test("time já abriu a conversa (template/1º ato) → fluxo NÃO se re-apresenta na 1ª resposta do lead", async () => {
+  const repo = makeMemRepo();
+  await seedFlow(repo, { greeting: "Olá {nome}! Posso te ligar?" });
+  const wa = fakeWa();
+  const app = await appWith(repo, wa);
+  // O SDR mandou um template ANTES de qualquer resposta (conversa aberta por nós).
+  await recordMessage(repo, { id: "wamid.TPL", phone: "5541992516545", direction: "out", text: "Oiii, recebi seu cadastro com interesse na LeverAds…", status: "sent", author: "sdr", leadId: "ld1", saas: "leverads" });
+  // 1ª resposta do lead: NADA de saudação nova (era o caso Leandro, saudação em dobro).
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inText("5541992516545", "wamid.IN1", "Bom dia") });
+  assert.equal(wa.perms.length, 0);
+  assert.equal(wa.sent.length, 0);
+  const thr = await repo.get("wa_threads", "5541992516545");
+  assert.equal(thr.callFlow, undefined); // sem fluxo registrado: "Pedir pra ligar" segue disponível pro SDR
+});
+
 test("1º contato de lead conhecido com fluxo ligado → pedido de permissão com a saudação, callFlow pending, sem alerta", async () => {
   const repo = makeMemRepo();
   await seedFlow(repo, { greeting: "Olá {nome}! Sou o Leonardo. Posso te ligar?" });
@@ -220,6 +236,46 @@ test("auto: dentro do horário usa a saudação normal; fora usa a de ausência 
   assert.match(weekend, /autorização/);
   // qua 19h30 BRT: ausência com volta amanhã
   assert.match(await trigger("2026-07-15T22:30:00Z"), /amanhã às 8h/);
+});
+
+// Plantão fora do horário: o formulário já mandou o lead pro número de quem está
+// de plantão e quem responde é gente. O robô dizendo "estamos fora do horário"
+// entraria por cima desse atendimento, então na janela ele cala.
+test("plantão: saudação automática calada fora do expediente, normal dentro dele", async () => {
+  const trigger = async (isoNow, duty) => {
+    const repo = makeMemRepo();
+    await repo.create("products", { id: "leverads", name: "LeverAds", waCallFlow: { enabled: true }, ...(duty ? { duty } : {}) });
+    await repo.create("leads", { id: "ld1", saas: "leverads", phone: "41992516545", name: "Maria Souza", stage: "Novo" });
+    const wa = fakeWa();
+    const msg = { from: "5541992516545", id: "wamid.X", type: "text", text: { body: "oi" } };
+    await recordMessage(repo, { id: msg.id, phone: msg.from, direction: "in", text: "oi", from: msg.from, status: "received" });
+    await runInboundCallFlow(repo, wa, { message: msg, resolvePhoneId: async () => "PN1", now: new Date(isoNow) });
+    const thread = await repo.get("wa_threads", "5541992516545");
+    return { perms: wa.perms.length, sent: wa.sent.length, callFlow: thread?.callFlow || null };
+  };
+  const PLANTAO = { enabled: true, phone: "5541995063622" };
+
+  // sábado 12h: nada sai, e a thread não fica com fluxo aberto (o lead não
+  // recebeu pedido nenhum, então não há permissão pendente pra cobrar depois)
+  const sabado = await trigger("2026-08-08T15:00:00Z", PLANTAO);
+  assert.equal(sabado.perms, 0);
+  assert.equal(sabado.sent, 0);
+  assert.equal(sabado.callFlow, null);
+
+  // quarta 22h: noite de dia útil também é plantão, mesmo silêncio
+  const noite = await trigger("2026-08-06T01:00:00Z", PLANTAO);
+  assert.equal(noite.perms, 0);
+  assert.equal(noite.sent, 0);
+
+  // segunda 10h, dentro do expediente: volta ao normal
+  const segunda = await trigger("2026-08-10T13:00:00Z", PLANTAO);
+  assert.equal(segunda.perms, 1);
+
+  // produto SEM plantão configurado segue como sempre foi, inclusive no sábado
+  assert.equal((await trigger("2026-08-08T15:00:00Z", null)).perms, 1);
+
+  // plantão com o robô ligado de propósito (silenceAuto: false) continua falando
+  assert.equal((await trigger("2026-08-08T15:00:00Z", { ...PLANTAO, silenceAuto: false })).perms, 1);
 });
 
 test("interactive indisponível → cai pra texto simples com a mesma saudação (not_requested)", async () => {

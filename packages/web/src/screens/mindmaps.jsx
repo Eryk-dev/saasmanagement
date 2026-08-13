@@ -75,7 +75,23 @@ export function MindmapsScreen() {
   }
   const onMapSaved = (saved) => setMaps((m) => (m || []).map((x) => x.id === saved.id ? { ...x, ...saved } : x));
 
-  const active = (maps || []).find((m) => m.id === activeId) || null;
+  // Só os mapas do WORKSPACE ativo (Leo, 03/08: conteúdo por produto, sem
+  // misturar). Mapa LEGADO sem carimbo (saas vazio) aparece em todos os
+  // workspaces com a etiqueta "sem produto" e um clique pra trazer pro atual —
+  // assim ninguém precisa adivinhar o dono por ele.
+  const visible = (maps || []).filter((m) => !m.saas || m.saas === activeProduct?.id);
+  const active = visible.find((m) => m.id === activeId) || null;
+  // Trocou de produto: se o mapa aberto é de outro workspace, cai pro primeiro
+  // da casa (ou nenhum) — o canvas nunca mostra mapa de produto errado.
+  useEffect(() => {
+    if (activeId && !visible.some((m) => m.id === activeId)) setActiveId(visible[0]?.id || null);
+    else if (!activeId && visible.length) setActiveId(visible[0].id);
+  }, [activeProduct?.id, maps]); // eslint-disable-line react-hooks/exhaustive-deps
+  async function claimMap(id) {
+    const saas = activeProduct?.id || "";
+    setMaps((m) => (m || []).map((x) => (x.id === id ? { ...x, saas } : x)));
+    try { await api.update("mindmaps", id, { saas }); } catch { /* ignore */ }
+  }
 
   return (
     <div style={{ flex: 1, display: "flex", minHeight: 0, flexDirection: isMobile ? "column" : "row" }}>
@@ -83,12 +99,12 @@ export function MindmapsScreen() {
             fixos deixariam ~160px pro canvas). */}
         <div style={{ width: isMobile ? "100%" : 230, maxHeight: isMobile ? 150 : undefined, flexShrink: 0, borderRight: isMobile ? "none" : "1px solid var(--line-1)", borderBottom: isMobile ? "1px solid var(--line-1)" : "none", overflow: "auto", padding: isMobile ? "10px 12px" : "16px 12px", background: "var(--bg-1)", display: "flex", flexDirection: "column", gap: 2 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 8px 12px" }}>
-            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Mapas</span>
+            <span className="kicker" style={{ fontWeight: 600 }}>Mapas</span>
             <button onClick={newMap} style={{ height: 24, padding: "0 4px", color: "var(--accent)", fontSize: 12.5, fontWeight: 600 }}>+ novo</button>
           </div>
           {maps === null && <div className="mono dim" style={{ fontSize: 11, padding: 10 }}>carregando…</div>}
-          {maps !== null && maps.length === 0 && <div className="dim" style={{ fontSize: 12, padding: 10, lineHeight: 1.5 }}>nenhum mapa ainda · crie o primeiro em “+ novo”</div>}
-          {(maps || []).map((m) => (
+          {maps !== null && visible.length === 0 && <div className="dim" style={{ fontSize: 12, padding: 10, lineHeight: 1.5 }}>nenhum mapa {activeProduct?.name ? `da ${activeProduct.name}` : "ainda"} · crie o primeiro em “+ novo”</div>}
+          {visible.map((m) => (
             <div key={m.id} onClick={() => setActiveId(m.id)} onDoubleClick={() => setRenaming(m.id)}
               style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: "var(--r-2)", cursor: "pointer",
                 background: m.id === activeId ? "var(--accent-soft)" : "transparent" }}>
@@ -101,6 +117,14 @@ export function MindmapsScreen() {
               ) : (
                 <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: m.id === activeId ? 600 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: m.id === activeId ? "var(--fg-1)" : "var(--fg-2)" }}>{m.name || "Sem título"}</span>
               )}
+              {/* Legado sem produto: etiqueta + um clique pra trazer pro workspace. */}
+              {!m.saas && (
+                <button onClick={(e) => { e.stopPropagation(); claimMap(m.id); }}
+                  title={`Mapa antigo, sem produto definido (aparece em todos os workspaces). Clique pra trazer pra ${activeProduct?.name || "este produto"}.`}
+                  style={{ flexShrink: 0, height: 18, padding: "0 6px", borderRadius: 999, border: "1px dashed var(--line-2)", background: "transparent", color: "var(--fg-4)", fontSize: 9.5, cursor: "pointer" }}>
+                  sem produto · trazer
+                </button>
+              )}
               <span className="mono tnum dim" style={{ fontSize: 10.5, flexShrink: 0 }}>{(m.nodes || []).length}</span>
             </div>
           ))}
@@ -110,7 +134,7 @@ export function MindmapsScreen() {
         <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
           {active
             ? <MapEditor key={active.id} map={active} onSaved={onMapSaved} />
-            : <EmptyState title="Nenhum mapa aberto" hint={maps && maps.length ? "Escolha um mapa na lista." : "Crie um mapa em “+ novo” pra começar."} />}
+            : <EmptyState title="Nenhum mapa aberto" hint={visible.length ? "Escolha um mapa na lista." : `Crie um mapa ${activeProduct?.name ? `da ${activeProduct.name} ` : ""}em “+ novo” pra começar.`} />}
         </div>
     </div>
   );

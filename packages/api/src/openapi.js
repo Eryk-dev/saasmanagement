@@ -204,7 +204,8 @@ export const openapi = {
         description:
           "Ponto de contato / evento da timeline do lead. Toques (whatsapp/call/email/meeting) atualizam o " +
           "últ. contato do lead, contam tentativa no estágio e re-agendam `nextActionAt` pela cadência " +
-          "(envie `meta.reschedule: false` pra registrar sem mexer na agenda). `stage` e `system` são " +
+          "(`meta.nextActionAt` define uma data manual; `meta.reschedule: false` registra sem mexer na agenda). " +
+          "`stage` e `system` são " +
           "gravados automaticamente pelo servidor (movimento de estágio, lead criado, proposta vista/aceita).",
         properties: {
           id: { type: "string", readOnly: true, example: "ac_7f3e…" },

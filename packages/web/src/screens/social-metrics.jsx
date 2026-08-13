@@ -8,8 +8,6 @@ import React from "react";
 
 const { useState: useS, useRef: useR } = React;
 
-const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
-
 export const fmtNum = (n) => {
   if (n == null || Number.isNaN(n)) return "–";
   const neg = n < 0; const a = Math.abs(n);
@@ -25,7 +23,7 @@ export function SectionCard({ title, right, children, note }) {
   return (
     <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 16px" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
-        <div className="mono" style={kicker}>{title}</div>
+        <div className="kicker">{title}</div>
         {note && <span className="mono dim" style={{ fontSize: 10 }}>{note}</span>}
         {right && <div style={{ marginLeft: "auto" }}>{right}</div>}
       </div>

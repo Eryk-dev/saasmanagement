@@ -23,8 +23,8 @@ export function PageHead({ title, sub, children }) {
   return (
     <div style={{ display: "flex", alignItems: "flex-start", gap: 16, rowGap: 10, flexWrap: "wrap", padding: "var(--page-head-top) var(--pad-x) 0", flexShrink: 0 }}>
       <div style={{ flex: 1, minWidth: 260 }}>
-        <h1 style={{ margin: 0, fontFamily: "var(--display)", fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--fg-1)" }}>{title}</h1>
-        {sub && <div style={{ fontSize: 14.5, color: "var(--fg-3)", marginTop: 4 }}>{sub}</div>}
+        <h1 className="page-title">{title}</h1>
+        {sub && <div className="page-sub" style={{ marginTop: 4 }}>{sub}</div>}
       </div>
       {children && <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, flexWrap: "wrap", paddingTop: 6 }}>{children}</div>}
     </div>
@@ -86,10 +86,14 @@ export function Card({ title, hint, action, children, style }) {
   return (
     <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", minWidth: 0, ...style }}>
       {(title || hint) && (
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "20px var(--inset-x) 0", flexWrap: "wrap" }}>
-          <h3 style={{ margin: 0, fontFamily: "var(--display)", fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em" }}>{title}</h3>
-          {hint && <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{hint}</span>}
-          {action && <span style={{ marginLeft: "auto", minWidth: 0, maxWidth: "100%" }}>{action}</span>}
+        // Cabeçalho na régua do DS: título 15/700, hint SEMPRE na linha de
+        // baixo (nunca inline), ação encostada à direita.
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "20px var(--inset-x) 0", flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h3 className="card-title" style={{ margin: 0 }}>{title}</h3>
+            {hint && <div className="card-sub" style={{ marginTop: 3 }}>{hint}</div>}
+          </div>
+          {action && <span style={{ minWidth: 0, maxWidth: "100%" }}>{action}</span>}
         </div>
       )}
       {children}

@@ -1,13 +1,16 @@
 import React from "react";
 import { PageHead } from "../components/viz.jsx";
-import { EmptyState, PrimaryButton } from "../atoms.jsx";
+import { EmptyState, PrimaryButton, useEsc } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
+import { currentUser, displayName } from "../lib/users.js";
 
 // Contratos — biblioteca de MODELOS por produto. O fluxo é "resgatar": abrir o
-// modelo, imprimir/salvar em PDF (preenche o Quadro Resumo e manda assinar) ou
-// baixar o .html. O corpo é o MIOLO em HTML; a impressão veste o CSS jurídico
-// padrão (A4, serifa), o mesmo do contrato original de assinatura da LeverAds.
+// modelo, PREENCHER os dados do cliente no formulário do drawer (os campos vêm
+// dos tokens {{chave}} do corpo) e imprimir/salvar em PDF já preenchido, ou
+// baixar o .html. Campo vazio imprime como linha em branco (preenche à mão).
+// O corpo é o MIOLO em HTML; a impressão veste o CSS jurídico padrão (A4,
+// serifa), o mesmo do contrato original de assinatura da LeverAds.
 
 const { useState: useS, useEffect: useE, useRef: useR } = React;
 
@@ -36,9 +39,39 @@ const CONTRACT_CSS = `
   .local-data { margin-top: 34px; }
 `;
 
-function fullHtml(c) {
+const escHtml = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+
+// Campos de preenchimento do modelo: a lista `fields` do documento (com rótulo/
+// placeholder bons) ou, na falta dela, os tokens {{chave}} achados no corpo —
+// assim modelo criado na mão pelo time também ganha formulário.
+function fieldsOf(c) {
+  if (Array.isArray(c?.fields) && c.fields.length) return c.fields;
+  const seen = new Set();
+  const out = [];
+  for (const m of String(c?.body || "").matchAll(/\{\{([a-z0-9_]+)\}\}/gi)) {
+    if (seen.has(m[1])) continue;
+    seen.add(m[1]);
+    out.push({ key: m[1], label: m[1].replace(/_/g, " ") });
+  }
+  return out;
+}
+
+// Token preenchido entra escapado (quebra de linha vira <br>); vazio vira a
+// linha em branco de sempre, pro contrato continuar imprimível pra preencher à mão.
+const BLANK = "______________________";
+function applyFields(body, fields, values) {
+  let out = String(body || "");
+  for (const f of fields) {
+    const v = String(values?.[f.key] ?? "").trim();
+    out = out.split(`{{${f.key}}}`).join(v ? escHtml(v).replace(/\n/g, "<br>") : BLANK);
+  }
+  return out;
+}
+
+function fullHtml(c, values) {
   const title = String(c.name || "Contrato").replace(/</g, "&lt;");
-  return `<!doctype html>\n<html lang="pt-BR">\n<head>\n<meta charset="utf-8">\n<title>${title}</title>\n<style>${CONTRACT_CSS}</style>\n</head>\n<body>\n${c.body || ""}\n</body>\n</html>`;
+  const body = applyFields(c.body, fieldsOf(c), values || {});
+  return `<!doctype html>\n<html lang="pt-BR">\n<head>\n<meta charset="utf-8">\n<title>${title}</title>\n<style>${CONTRACT_CSS}</style>\n</head>\n<body>\n${body}\n</body>\n</html>`;
 }
 
 // Esqueleto de um modelo novo: cabeçalho + quadro resumo mínimo, pro time não
@@ -49,12 +82,38 @@ const NEW_BODY = `<h1>Título do contrato</h1>
 <h2>Quadro Resumo</h2>
 <table class="quadro">
   <tr><th>Contratada</th><td><strong>LEVER ADS SOFTWARE HOUSE LTDA</strong>, CNPJ <strong>67.931.740/0001-12</strong>, Avenida Itamarati, 2800, Parque Erasmo Assunção, CEP 09271-410, Santo André/SP.</td></tr>
-  <tr><th>Contratante</th><td>Razão social / Nome: ______________________________________________<br>CNPJ / CPF: ______________________________________________</td></tr>
-  <tr><th>Investimento</th><td>Valor total: R$ ______________ · Forma de pagamento: ______________</td></tr>
+  <tr><th>Contratante</th><td>Razão social / Nome: {{razao_social}}<br>CNPJ / CPF: {{cnpj_cpf}}</td></tr>
+  <tr><th>Investimento</th><td>Valor total: R$ {{valor_total}} · Forma de pagamento: {{forma_pagamento}}</td></tr>
 </table>
 
 <h2>Cláusula 1ª · Objeto</h2>
 <p><strong>1.1.</strong> Descreva aqui o objeto do contrato.</p>`;
+
+// Viewer somente-leitura de um contrato CONFIRMADO (componente próprio pro
+// useEsc montar/desmontar junto). Sem formulário → backdrop e Esc fecham.
+function IssueViewer({ issue, btn, onClose, onPrint, onRemove }) {
+  useEsc(onClose);
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", display: "flex", justifyContent: "flex-end", zIndex: 70 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(860px, 100vw)", height: "100%", background: "var(--bg-1)", borderLeft: "1px solid var(--line-2)", display: "flex", flexDirection: "column", boxShadow: "var(--shadow-pop)" }}>
+        <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div style={{ minWidth: 0 }}>
+            <div className="kicker">Contrato confirmado{issue.createdAt ? ` · ${new Date(issue.createdAt).toLocaleDateString("pt-BR")}` : ""}{issue.author ? ` · ${displayName(issue.author)}` : ""}</div>
+            <div style={{ fontSize: 17, fontWeight: 500, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {issue.customerName || "sem cliente"} · {issue.name}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+            <button onClick={onPrint} style={{ ...btn, background: "var(--btn-bg)", color: "var(--btn-fg)", borderColor: "transparent" }}>Imprimir / PDF</button>
+            <button onClick={onRemove} className="dim" style={{ ...btn, color: "var(--neg)" }}>Excluir registro</button>
+            <button onClick={onClose} className="mono dim" style={{ fontSize: 16, padding: "0 4px" }}>✕</button>
+          </div>
+        </div>
+        <iframe title={issue.name} srcDoc={fullHtml(issue, issue.values)} style={{ flex: 1, border: 0, background: "#fff" }} />
+      </div>
+    </div>
+  );
+}
 
 function ContractsScreen() {
   const [product] = useActiveSaas();
@@ -63,7 +122,16 @@ function ContractsScreen() {
   const [sel, setSel] = useS(null);      // modelo aberto (visualização)
   const [edit, setEdit] = useS(false);   // drawer em modo edição
   const [draft, setDraft] = useS(null);  // { name, tag, note, body }
+  const [fill, setFill] = useS({});      // valores digitados dos campos {{token}} do modelo aberto
   const [busy, setBusy] = useS(false);
+  // Histórico de contratos CONFIRMADOS: cada confirmação grava um snapshot do
+  // modelo preenchido (corpo + campos + valores) preso ao cliente — o modelo
+  // pode evoluir, o registro reimprime o que foi emitido.
+  const [issues, setIssues] = useS([]);
+  const [issueSel, setIssueSel] = useS(null); // registro aberto (viewer somente-leitura)
+  const [custId, setCustId] = useS("");       // cliente vinculado no preenchimento
+  const [confirmed, setConfirmed] = useS(false);
+  const customers = (window.SEED?.CUSTOMERS || []).filter((c) => !product?.id || c.saas === product.id);
   const [copied, setCopied] = useS(false);
   const copyTimer = useR(null);
 
@@ -71,11 +139,62 @@ function ContractsScreen() {
     try {
       const all = await api.list("contracts");
       setItems((all || []).filter((c) => !c.saas || c.saas === product?.id));
+      const hist = await api.list("contract_issues").catch(() => []);
+      setIssues((hist || []).filter((c) => !c.saas || c.saas === product?.id)
+        .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""))));
     } catch (e) { setErr(e.message); }
   }
   useE(() => { setItems(null); setErr(null); setSel(null); setEdit(false); load(); }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function openView(c) { setSel(c); setEdit(false); setDraft(null); }
+  useEsc(sel ? () => { setSel(null); setEdit(false); } : null); // drawer fecha no Esc
+  function openView(c) { setSel(c); setEdit(false); setDraft(null); setFill({}); setCustId(""); setConfirmed(false); setIssueSel(null); }
+
+  // Vincular o cliente preenche os campos ÓBVIOS que ainda estão vazios (nome,
+  // e-mail, WhatsApp, representante) — o que você já digitou não é sobrescrito.
+  function pickCustomer(c, id) {
+    setCustId(id);
+    const cust = customers.find((x) => x.id === id);
+    if (!cust) return;
+    const keys = new Set(fieldsOf(c).map((f) => f.key));
+    const sugestao = {
+      razao_social: cust.name || "", representante: cust.contact || "",
+      email: cust.email || "", whatsapp: cust.phone || "",
+    };
+    setFill((v) => {
+      const next = { ...v };
+      for (const [k, val] of Object.entries(sugestao)) {
+        if (keys.has(k) && val && !String(next[k] || "").trim()) next[k] = val;
+      }
+      return next;
+    });
+  }
+
+  // Confirmar = registrar o contrato emitido: snapshot completo no histórico.
+  async function confirmContract(c) {
+    const cust = customers.find((x) => x.id === custId);
+    const clientName = (cust?.name || String(fill.razao_social || "").trim());
+    if (!clientName) return;
+    setBusy(true);
+    try {
+      await api.create("contract_issues", {
+        saas: product?.id || "", contract: c.id, name: c.name || "", tag: c.tag || "",
+        customerId: cust?.id || "", customerName: clientName,
+        values: { ...fill }, fields: fieldsOf(c), body: c.body || "",
+        author: currentUser()?.id || "", createdAt: new Date().toISOString(),
+      });
+      setConfirmed(true);
+      await load();
+    } catch (e) { setErr(e.message); }
+    setBusy(false);
+  }
+
+  async function removeIssue(i) {
+    if (!window.confirm(`Excluir o registro "${i.name} · ${i.customerName}"? O histórico não guarda cópia.`)) return;
+    setBusy(true);
+    try { setIssueSel(null); await api.remove("contract_issues", i.id); await load(); }
+    catch (e) { setErr(e.message); }
+    setBusy(false);
+  }
   function openEdit(c) { setSel(c); setEdit(true); setDraft({ name: c.name || "", tag: c.tag || "", note: c.note || "", body: c.body || "" }); }
   function openNew() { setSel(null); setEdit(true); setDraft({ name: "", tag: "", note: "", body: NEW_BODY }); }
   function close() { setSel(null); setEdit(false); setDraft(null); }
@@ -110,34 +229,33 @@ function ContractsScreen() {
     setBusy(false);
   }
 
-  // Resgatar: janela nova com o HTML completo + diálogo de impressão (salvar
-  // como PDF). O preenchimento dos campos é feito no papel/PDF ou editando.
-  function printContract(c) {
+  // Resgatar: janela nova com o HTML completo JÁ PREENCHIDO com o formulário do
+  // drawer + diálogo de impressão (salvar como PDF). Campo vazio sai em branco.
+  function printContract(c, values) {
     const w = window.open("", "_blank");
     if (!w) return;
-    w.document.write(fullHtml(c));
+    w.document.write(fullHtml(c, values));
     w.document.close();
     w.focus();
     setTimeout(() => { try { w.print(); } catch { /* usuário imprime manualmente */ } }, 350);
   }
 
-  function download(c) {
-    const blob = new Blob([fullHtml(c)], { type: "text/html;charset=utf-8" });
+  function download(c, values) {
+    const blob = new Blob([fullHtml(c, values)], { type: "text/html;charset=utf-8" });
     const a = document.createElement("a");
+    const cliente = String(values?.razao_social || "").trim();
     a.href = URL.createObjectURL(blob);
-    a.download = `${(c.name || "contrato").toLowerCase().replace(/[^a-z0-9]+/gi, "-")}.html`;
+    a.download = `${(c.name || "contrato")}${cliente ? " - " + cliente : ""}`.toLowerCase().replace(/[^a-z0-9]+/gi, "-") + ".html";
     a.click();
     URL.revokeObjectURL(a.href);
   }
 
-  async function copyHtml(c) {
-    try { await navigator.clipboard.writeText(fullHtml(c)); } catch { /* clipboard bloqueado */ }
+  async function copyHtml(c, values) {
+    try { await navigator.clipboard.writeText(fullHtml(c, values)); } catch { /* clipboard bloqueado */ }
     setCopied(true);
     clearTimeout(copyTimer.current);
     copyTimer.current = setTimeout(() => setCopied(false), 1600);
   }
-
-  const kicker = { fontSize: 11, fontWeight: 600, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" };
   const btn = { height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", boxShadow: "var(--shadow-1)" };
   const inp = { width: "100%", height: 34, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
 
@@ -164,7 +282,7 @@ function ContractsScreen() {
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em", fontFamily: "var(--display)", cursor: "pointer" }} onClick={() => openView(c)}>{c.name}</div>
-                    {c.tag && <span className="mono" style={{ display: "inline-block", marginTop: 6, fontSize: 10, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--accent)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", borderRadius: 999, padding: "2px 8px" }}>{c.tag}</span>}
+                    {c.tag && <span className="kicker" style={{ display: "inline-block", marginTop: 6, color: "var(--accent)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", borderRadius: 999, padding: "2px 8px" }}>{c.tag}</span>}
                   </div>
                 </div>
                 {c.note && <div style={{ fontSize: 12.5, color: "var(--fg-3)", lineHeight: 1.5 }}>{c.note}</div>}
@@ -178,25 +296,54 @@ function ContractsScreen() {
           </div>
         )}
 
+        {issues.length > 0 && (
+          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "18px 24px" }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 10 }}>
+              <span className="sec" style={{ fontFamily: "var(--display)", fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em" }}>Contratos confirmados</span>
+              <span className="mono dim tnum" style={{ fontSize: 11 }}>{issues.length}</span>
+            </div>
+            {issues.map((i) => (
+              <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: "1px solid var(--line-1)", fontSize: 13, flexWrap: "wrap" }}>
+                <span className="mono dim tnum" style={{ fontSize: 11.5, flexShrink: 0 }}>
+                  {i.createdAt ? new Date(i.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "2-digit" }).replace(".", "") : ""}
+                </span>
+                <span style={{ fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.customerName || "sem cliente"}</span>
+                <span style={{ color: "var(--fg-3)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.name}</span>
+                {i.tag && <span className="kicker" style={{ color: "var(--accent)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", borderRadius: 999, padding: "1px 7px", flexShrink: 0 }}>{i.tag}</span>}
+                {String(i.values?.valor_total || "").trim() && (
+                  <span className="mono tnum" style={{ fontSize: 12, color: "var(--fg-2)", flexShrink: 0 }}>R$ {String(i.values.valor_total).trim()}</span>
+                )}
+                <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                  {i.author && <span className="mono dim" style={{ fontSize: 10.5 }}>{displayName(i.author)}</span>}
+                  <button onClick={() => { setIssueSel(i); setSel(null); setEdit(false); }} style={{ ...btn, height: 26, padding: "0 10px", fontSize: 11.5 }}>Abrir</button>
+                  <button onClick={() => printContract(i, i.values)} style={{ ...btn, height: 26, padding: "0 10px", fontSize: 11.5 }}>Imprimir / PDF</button>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
-          os modelos ficam salvos no servidor pro time todo. “Imprimir / PDF” abre o contrato pronto pra salvar em PDF; os campos em branco do Quadro Resumo são preenchidos por cliente.
+          os modelos ficam salvos no servidor pro time todo. “Imprimir / PDF” abre o contrato pronto pra salvar em PDF; os campos em branco do Quadro Resumo são preenchidos por cliente. Preencheu com o cliente fechado? “✓ Confirmar contrato” registra o snapshot no histórico aqui de baixo.
         </div>
       </div>
 
       {(sel || edit) && (
-        <div style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", display: "flex", justifyContent: "flex-end", zIndex: 70 }} onClick={close}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(860px, 100vw)", height: "100%", background: "var(--bg-1)", borderLeft: "1px solid var(--line-2)", display: "flex", flexDirection: "column", boxShadow: "var(--shadow-pop)" }}>
+        <div style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", display: "flex", justifyContent: "flex-end", zIndex: 70 }}>
+          {/* O backdrop NÃO fecha no clique (Leo, 04/08): o painel tem formulário
+              preenchido à mão e um clique fora jogava tudo fora. Fecha só no ✕. */}
+          <div onClick={(e) => e.stopPropagation()} style={{ width: !edit && sel && fieldsOf(sel).length ? "min(1120px, 100vw)" : "min(860px, 100vw)", height: "100%", background: "var(--bg-1)", borderLeft: "1px solid var(--line-2)", display: "flex", flexDirection: "column", boxShadow: "var(--shadow-pop)" }}>
             <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
               <div style={{ minWidth: 0 }}>
-                <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" }}>{edit ? (sel ? "Editar modelo" : "Novo modelo") : "Modelo de contrato"}</div>
+                <div className="kicker">{edit ? (sel ? "Editar modelo" : "Novo modelo") : "Modelo de contrato"}</div>
                 <div style={{ fontSize: 17, fontWeight: 500, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{edit ? (draft?.name || "…") : sel?.name}</div>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
                 {!edit && sel && (
                   <>
-                    <button onClick={() => printContract(sel)} style={{ ...btn, background: "var(--btn-bg)", color: "var(--btn-fg)", borderColor: "transparent" }}>Imprimir / PDF</button>
-                    <button onClick={() => download(sel)} style={btn}>Baixar .html</button>
-                    <button onClick={() => copyHtml(sel)} style={{ ...btn, ...(copied ? { background: "var(--pos-soft)", color: "var(--pos)" } : {}) }}>{copied ? "✓ copiado" : "Copiar HTML"}</button>
+                    <button onClick={() => printContract(sel, fill)} style={{ ...btn, background: "var(--btn-bg)", color: "var(--btn-fg)", borderColor: "transparent" }}>Imprimir / PDF</button>
+                    <button onClick={() => download(sel, fill)} style={btn}>Baixar .html</button>
+                    <button onClick={() => copyHtml(sel, fill)} style={{ ...btn, ...(copied ? { background: "var(--pos-soft)", color: "var(--pos)" } : {}) }}>{copied ? "✓ copiado" : "Copiar HTML"}</button>
                     <button onClick={() => openEdit(sel)} style={btn}>Editar</button>
                     <button onClick={() => duplicate(sel)} disabled={busy} style={btn}>Duplicar</button>
                     <button onClick={() => remove(sel)} disabled={busy} className="dim" style={{ ...btn, color: "var(--neg)" }}>Excluir</button>
@@ -206,23 +353,79 @@ function ContractsScreen() {
               </div>
             </div>
 
-            {!edit && sel && (
-              <iframe title={sel.name} srcDoc={fullHtml(sel)} style={{ flex: 1, border: 0, background: "#fff" }} />
-            )}
+            {!edit && sel && (() => {
+              const fields = fieldsOf(sel);
+              if (!fields.length) return <iframe title={sel.name} srcDoc={fullHtml(sel)} style={{ flex: 1, border: 0, background: "#fff" }} />;
+              const done = fields.filter((f) => String(fill[f.key] || "").trim()).length;
+              return (
+                <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+                  <div style={{ width: 330, flexShrink: 0, borderRight: "1px solid var(--line-1)", overflow: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12, background: "var(--bg-inset)" }}>
+                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+                      <span className="kicker">Dados do contrato</span>
+                      <span className="mono dim tnum" style={{ fontSize: 10 }}>{done}/{fields.length}</span>
+                    </div>
+                    <div style={{ fontSize: 11.5, color: "var(--fg-4)", lineHeight: 1.5, marginTop: -6 }}>
+                      preencha e o contrato ao lado se atualiza; campo vazio sai como linha em branco no PDF
+                    </div>
+                    {customers.length > 0 && (
+                      <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        <span className="kicker" style={{ fontSize: 10 }}>Cliente (vincula o registro)</span>
+                        <select value={custId} onChange={(e) => pickCustomer(sel, e.target.value)} style={inp}>
+                          <option value="">— sem vínculo (digite abaixo) —</option>
+                          {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </label>
+                    )}
+                    {fields.map((f) => (
+                      <label key={f.key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        <span className="kicker" style={{ fontSize: 10 }}>{f.label}</span>
+                        {f.multiline ? (
+                          <textarea value={fill[f.key] || ""} rows={2} placeholder={f.placeholder || ""}
+                            onChange={(e) => { setConfirmed(false); const val = e.target.value; setFill((v) => ({ ...v, [f.key]: val })); }}
+                            style={{ ...inp, height: "auto", minHeight: 52, padding: "6px 10px", resize: "vertical", fontFamily: "var(--sans)" }} />
+                        ) : (
+                          <input value={fill[f.key] || ""} placeholder={f.placeholder || ""}
+                            onChange={(e) => { setConfirmed(false); const val = e.target.value; setFill((v) => ({ ...v, [f.key]: val })); }} style={inp} />
+                        )}
+                        {f.hint && <span className="mono dim" style={{ fontSize: 10 }}>{f.hint}</span>}
+                      </label>
+                    ))}
+                    {done > 0 && (
+                      <button onClick={() => { setFill({}); setCustId(""); setConfirmed(false); }} className="mono dim" style={{ alignSelf: "flex-start", fontSize: 11 }}>limpar campos</button>
+                    )}
+                    {/* Confirmar = o contrato saiu com esses dados: registra o
+                        snapshot no histórico da tela, preso ao cliente. */}
+                    <button onClick={() => confirmContract(sel)}
+                      disabled={busy || confirmed || !(customers.find((x) => x.id === custId)?.name || String(fill.razao_social || "").trim())}
+                      title={confirmed ? "registrado no histórico" : "registrar este contrato preenchido no histórico da tela (snapshot preso ao cliente)"}
+                      style={{ marginTop: "auto", padding: "10px 12px", borderRadius: "var(--r-2)", border: "none",
+                        background: confirmed ? "var(--pos-soft, var(--bg-2))" : "var(--accent)",
+                        color: confirmed ? "var(--pos)" : "var(--accent-fg, #fff)", fontSize: 13, fontWeight: 600,
+                        opacity: busy || (!confirmed && !(customers.find((x) => x.id === custId)?.name || String(fill.razao_social || "").trim())) ? 0.55 : 1 }}>
+                      {confirmed ? "✓ Contrato confirmado · no histórico" : busy ? "registrando…" : "✓ Confirmar contrato"}
+                    </button>
+                    {!confirmed && !(customers.find((x) => x.id === custId)?.name || String(fill.razao_social || "").trim()) && (
+                      <span className="mono dim" style={{ fontSize: 10, marginTop: -6 }}>escolha o cliente ou preencha a razão social pra confirmar</span>
+                    )}
+                  </div>
+                  <iframe title={sel.name} srcDoc={fullHtml(sel, fill)} style={{ flex: 1, border: 0, background: "#fff" }} />
+                </div>
+              );
+            })()}
 
             {edit && draft && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
                 <div style={{ padding: "14px 20px", display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
                   <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={kicker}>Nome do modelo</span>
+                    <span className="kicker">Nome do modelo</span>
                     <input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="ex.: Consultoria logística · 4 visitas" style={inp} />
                   </label>
                   <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={kicker}>Etiqueta</span>
+                    <span className="kicker">Etiqueta</span>
                     <input value={draft.tag} onChange={(e) => setDraft((d) => ({ ...d, tag: e.target.value }))} placeholder="ex.: serviço" style={inp} />
                   </label>
                   <label style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={kicker}>Nota de uso (aparece no card)</span>
+                    <span className="kicker">Nota de uso (aparece no card)</span>
                     <input value={draft.note} onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))} placeholder="quando usar este modelo, valores de referência…" style={inp} />
                   </label>
                 </div>
@@ -241,6 +444,13 @@ function ContractsScreen() {
             )}
           </div>
         </div>
+      )}
+
+      {issueSel && !sel && !edit && (
+        <IssueViewer issue={issueSel} btn={btn}
+          onClose={() => setIssueSel(null)}
+          onPrint={() => printContract(issueSel, issueSel.values)}
+          onRemove={() => removeIssue(issueSel)} />
       )}
     </div>
   );

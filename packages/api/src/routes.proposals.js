@@ -5,14 +5,29 @@
 // Tracking de visualização: cada GET /p/:id SEM o editKey conta uma view
 // (closer abrindo o próprio link de edição não infla o número).
 
-import { publicProposal } from "./proposal.js";
+import { publicProposal, syncProposalLeadSnapshot } from "./proposal.js";
+import { applyCatalog, catalogUI } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { makeRateLimiter } from "./forms.js";
 import { convertWonLead } from "./routes.js";
 import { logActivity, applyStageMove } from "./lead-flow.js";
+import { gradeBandKnown } from "./routes.marketing.js";
 
 // Proposta "fake" a partir de um template + dados de exemplo — usada pelo
 // preview do builder (iframe) e pela página /p/t/:id (preview em aba).
+// Deck do produto ativo + payload da tela zero: o transform roda ao SERVIR (o
+// snapshot no banco segue genérico); o card de decisão (catalogUI) só entra no
+// modo closer. Sem catálogo, tudo passa intacto.
+function renderProposal(p, { editable = false, previewBanner = false } = {}) {
+  const transformed = applyCatalog(p);
+  const pv = publicProposal(transformed ? { ...p, slides: transformed.slides } : p, { editable });
+  if (editable) {
+    const ui = catalogUI(p);
+    if (ui) pv.catalogUI = ui;
+  }
+  return proposalPageHtml(pv, { previewBanner });
+}
+
 function previewFromTemplate(t, { data, state, answers } = {}) {
   return {
     id: "preview",
@@ -68,15 +83,33 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     // antes da capa + edição ao vivo, sem salvar nada (a página detecta o id
     // "preview" e desliga o auto-save). Assim dá pra testar o deck inteiro,
     // inclusive o preço calculado do Starter, sem gerar proposta.
-    return reply.type("text/html").header("cache-control", "no-store").send(proposalPageHtml(publicProposal(previewFromTemplate(t), { editable: true }), { previewBanner: true }));
+    const fake = previewFromTemplate(t);
+    // Sem proposta pra salvar, a tela zero do catálogo simula via QUERY: cada
+    // mudança recarrega com ?accounts=…&product=… e o estado nasce daqui.
+    const q = req.query || {};
+    if (typeof q.accounts === "string" && (t.calc?.seatsMap || {})[q.accounts] != null) {
+      fake.state.accounts = q.accounts;
+      fake.state.seats = Number(t.calc.seatsMap[q.accounts]);
+    }
+    if (typeof q.volume === "string" && (t.calc?.volumeMid || {})[q.volume] != null) fake.state.volume = q.volume;
+    if (typeof q.niche === "string" && q.niche) fake.data.answers.niche = q.niche.slice(0, 40);
+    if (typeof q.product === "string") fake.state.product = q.product.slice(0, 20);
+    if (typeof q.pain === "string") fake.state.pain = q.pain.slice(0, 8);
+    if (q.oem === "1") fake.state.oem = true;
+    if (typeof q.order === "string") fake.state.deckOrder = q.order.toUpperCase() === "B" ? "B" : "";
+    return reply.type("text/html").header("cache-control", "no-store").send(renderProposal(fake, { editable: true, previewBanner: true }));
   });
 
   app.get("/p/:id", async (req, reply) => {
-    const p = await repo.get("proposals", req.params.id);
+    let p = await repo.get("proposals", req.params.id);
     if (!p) {
       return reply.code(404).type("text/html").send("<!doctype html><meta charset=utf-8><title>404</title><p style='font-family:system-ui;padding:40px'>Proposta não encontrada.</p>");
     }
     const editable = !!req.query.k && req.query.k === p.editKey;
+    // O link de apresentação pode ter sido gerado antes de o SDR preencher a
+    // empresa. Reabre sempre com os dados atuais e recupera a dor dos snapshots
+    // antigos, sem mexer no deck nem em escolhas manuais do closer.
+    if (editable) p = await syncProposalLeadSnapshot(repo, p);
     if (!editable) {
       // QUEM abriu: link aberto de DENTRO do cockpit (?from=cockpit ou referer do
       // cockpit) é do TIME (SDR/closer conferindo), não é o cliente. Aberturas do
@@ -115,7 +148,7 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     }
     // no-store: sem isso o navegador reusa HTML antigo por cache heurístico e o
     // closer apresenta uma versão velha do deck (re-snapshots são frequentes).
-    return reply.type("text/html").header("cache-control", "no-store").send(proposalPageHtml(publicProposal(p, { editable })));
+    return reply.type("text/html").header("cache-control", "no-store").send(renderProposal(p, { editable }));
   });
 
   // Painel do closer: só os campos de estado, só com o editKey certo.
@@ -141,6 +174,14 @@ export function registerProposalRoutes(app, repo, opts = {}) {
       state.accounts = body.accounts;
       state.seats = Number(seatsMap[body.accounts]);
     }
+    // Camada de produto (catálogo): o select "Apresentar" da tela zero. Vazio =
+    // seguir a sugestão da régua; produto fora do catálogo não entra.
+    const catalogProducts = (p.calc && p.calc.catalog && p.calc.catalog.products) || {};
+    if (typeof body.product === "string" && (body.product === "" || catalogProducts[body.product])) state.product = body.product;
+    if (typeof body.pain === "string") state.pain = body.pain.slice(0, 8);
+    if (typeof body.oem === "boolean") state.oem = body.oem;
+    // Ordem da apresentação (teste A/B da tela zero): A = padrão, B = beta.
+    if (typeof body.deckOrder === "string") state.deckOrder = body.deckOrder.toUpperCase() === "B" ? "B" : "";
 
     // Campos de texto da capa (editados inline no modo closer): gravam no SNAPSHOT
     // da proposta e — porque o dado do lead costuma estar errado/incompleto — no
@@ -158,6 +199,24 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     }
     if (typeof body.niche === "string" && body.niche !== data.answers.niche) {
       data.answers.niche = body.niche; leadPatch.niche = body.niche; dataChanged = true;
+    }
+    // Contas × anúncios: a régua da tela zero é a nota REAL do cliente. O closer
+    // confirma esses dois na call ("são 2 contas, não 3"), então o que ele
+    // ajusta aqui vira a resposta do lead — senão a proposta apresenta um
+    // cliente C e o card do pipeline segue mostrando B. Os nomes dos campos vêm
+    // do template (seatsKey/volumeKey = accounts/listings na LeverAds) e só
+    // valem se a faixa for uma que a régua entende.
+    const seatsKey = p.calc && p.calc.seatsKey;
+    const volumeKey = p.calc && p.calc.volumeKey;
+    if (seatsKey && gradeBandKnown(seatsKey, state.accounts) && state.accounts !== data.answers[seatsKey]) {
+      data.answers[seatsKey] = state.accounts; leadPatch[seatsKey] = state.accounts; dataChanged = true;
+    }
+    // Anúncios têm um porém: quando o lead não respondeu, o estado nasce na
+    // PRIMEIRA faixa do volumeMid (fallback do initialState). Esse palpite não
+    // pode virar resposta do lead, então ele é o único caso que não espelha.
+    const volumeGuess = !data.answers[volumeKey] && state.volume === (Object.keys((p.calc && p.calc.volumeMid) || {})[0] || "");
+    if (volumeKey && !volumeGuess && gradeBandKnown(volumeKey, state.volume) && state.volume !== data.answers[volumeKey]) {
+      data.answers[volumeKey] = state.volume; leadPatch[volumeKey] = state.volume; dataChanged = true;
     }
 
     const patch = { state };

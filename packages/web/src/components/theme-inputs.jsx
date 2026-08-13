@@ -9,8 +9,7 @@ export const inputStyle = {
   background: "var(--bg-1)", border: "1px solid var(--line-2)",
   borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, fontFamily: "var(--sans)",
 };
-export const labelStyle = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" };
-export const sectionTitle = { fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-4)", margin: "18px 0 8px" };
+export const sectionTitle = { margin: "18px 0 8px" };
 export const cardStyle = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: 12, display: "flex", flexDirection: "column", gap: 8, background: "var(--bg-inset)" };
 export const addBtnStyle = { alignSelf: "flex-start", height: 30, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 12, color: "var(--fg-2)", boxShadow: "var(--shadow-1)" };
 
@@ -25,7 +24,7 @@ export const fontValueOf = (name) => `'${name}', system-ui, sans-serif`;
 export function LabeledInput({ label, value, onChange, placeholder, type = "text" }) {
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
-      <span style={labelStyle}>{label}</span>
+      <span className="kicker">{label}</span>
       <input type={type} value={value ?? ""} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} style={inputStyle} />
     </label>
   );
@@ -34,7 +33,7 @@ export function LabeledInput({ label, value, onChange, placeholder, type = "text
 export function LabeledTextarea({ label, value, onChange, placeholder, rows = 2 }) {
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
-      <span style={labelStyle}>{label}</span>
+      <span className="kicker">{label}</span>
       <textarea value={value ?? ""} placeholder={placeholder} rows={rows} onChange={(e) => onChange(e.target.value)}
         style={{ ...inputStyle, height: "auto", minHeight: 48, padding: "6px 8px", resize: "vertical" }} />
     </label>
@@ -44,7 +43,7 @@ export function LabeledTextarea({ label, value, onChange, placeholder, rows = 2 
 export function ColorInput({ label, value, onChange }) {
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <span style={labelStyle}>{label}</span>
+      <span className="kicker">{label}</span>
       <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
         <input type="color" value={value || "#000000"} onChange={(e) => onChange(e.target.value)} style={{ width: 30, height: 30, padding: 0, border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-2)" }} />
         <input value={value ?? ""} onChange={(e) => onChange(e.target.value)} className="mono" style={{ ...inputStyle, fontSize: 12 }} />
@@ -59,7 +58,7 @@ export function FontPicker({ value, onChange }) {
   const [custom, setCustom] = useState(!isCurated);
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <span style={labelStyle}>Fonte da marca</span>
+      <span className="kicker">Fonte da marca</span>
       <div style={{ display: "flex", gap: 6 }}>
         <select
           value={custom ? "_custom" : (fam || "Instrument Sans")}

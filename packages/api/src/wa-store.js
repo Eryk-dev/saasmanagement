@@ -216,7 +216,10 @@ export async function updateStatus(repo, waMessageId, status, err = "") {
   if (!m) return;
   const title = typeof err === "string" ? err : (err?.title || err?.message || "");
   const code = typeof err === "object" && err ? Number(err.code) : NaN;
-  await repo.update("wa_messages", waMessageId, { status, ...(title ? { error: title } : {}) });
+  // silent: recibo de status (sent→delivered→read) chega às dezenas por
+  // conversa e NÃO é dado de SEED — bumpar aqui recarregava o cockpit inteiro
+  // de todo usuário a cada recibo. O inbox aberto vê o ✓✓ no próprio poll.
+  await repo.update("wa_messages", waMessageId, { status, ...(title ? { error: title } : {}) }, { silent: true });
   if (status === "failed" && Number.isFinite(code) && INVALID_FAIL_CODES.has(code) && m.leadId) {
     const lead = await repo.get("leads", m.leadId);
     if (lead && !lead.whatsappInvalid) {
@@ -370,7 +373,9 @@ export async function markThreadRead(repo, tid) {
   for (const m of msgs) {
     if (m.direction === "in") {
       lastIn = m.id;
-      if (!m.readByAgent) await repo.update("wa_messages", m.id, { readByAgent: true });
+      // silent: marcar lido é ação local do inbox (uma escrita POR MENSAGEM ao
+      // abrir a conversa) — não precisa recarregar o cockpit dos outros.
+      if (!m.readByAgent) await repo.update("wa_messages", m.id, { readByAgent: true }, { silent: true });
     }
   }
   return lastIn;

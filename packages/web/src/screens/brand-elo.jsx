@@ -140,12 +140,12 @@ function EloBrandManual() {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12, fontSize: 12.5, color: "var(--fg-2)" }}>
               <div>
-                <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>Display · títulos</div>
+                <div className="kicker" style={{ marginBottom: 4 }}>Display · títulos</div>
                 <div style={{ fontFamily: display, fontSize: 19, fontWeight: 700 }}>Playfair Display</div>
                 <div style={{ color: "var(--fg-3)", marginTop: 3 }}>Bold/SemiBold · headlines, números-herói, capa. Nunca em texto corrido.</div>
               </div>
               <div>
-                <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>Body · interface e texto</div>
+                <div className="kicker" style={{ marginBottom: 4 }}>Body · interface e texto</div>
                 <div style={{ fontFamily: body, fontSize: 17, fontWeight: 500 }}>DM Sans</div>
                 <div style={{ color: "var(--fg-3)", marginTop: 3 }}>Regular/Medium · parágrafos, botões, legendas. Gradiente ouro só em destaque de título.</div>
               </div>
@@ -157,13 +157,13 @@ function EloBrandManual() {
         <Card title="Voz e tom" hint='tese: "o cara que investe no relacionamento" — quem baixa e convida é ele'>
           <div style={{ padding: "14px var(--inset-x) 18px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 }}>
             <div>
-              <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>A marca é</div>
+              <div className="kicker" style={{ marginBottom: 8 }}>A marca é</div>
               <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 6 }}>
                 {VOICE_DO.map((v) => <Rule key={v} ok>{v}</Rule>)}
               </ul>
             </div>
             <div>
-              <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>A marca nunca é</div>
+              <div className="kicker" style={{ marginBottom: 8 }}>A marca nunca é</div>
               <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 6 }}>
                 {VOICE_DONT.map((v) => <Rule key={v} ok={false}>{v}</Rule>)}
               </ul>
@@ -171,7 +171,7 @@ function EloBrandManual() {
             <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
               {COPY_SAMPLES.map((c) => (
                 <div key={c.label} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "10px 14px", background: "var(--bg-inset)" }}>
-                  <div className="mono dim" style={{ fontSize: 9.5, letterSpacing: "0.06em", textTransform: "uppercase" }}>{c.label}</div>
+                  <div className="kicker">{c.label}</div>
                   <div style={{ fontFamily: display, fontSize: 14.5, fontWeight: 600, marginTop: 4, lineHeight: 1.4 }}>{c.text}</div>
                 </div>
               ))}
@@ -187,7 +187,7 @@ function EloBrandManual() {
               <div style={{ padding: "8px 12px", fontSize: 11.5, color: "var(--fg-3)", background: "var(--bg-1)" }}>og-image oficial (1200×630) — preview de link da LP</div>
             </div>
             <div style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.7 }}>
-              <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>Arquivos-fonte (repo eloapp)</div>
+              <div className="kicker" style={{ marginBottom: 6 }}>Arquivos-fonte (repo eloapp)</div>
               <div><span className="mono">tools/brand/</span> — logo e ícone ouro-sobre-preto (SVG + PNG 512/1024/2048), og-image</div>
               <div><span className="mono">public/elo-*.svg</span> — logo, ícone e wordmark (color e white)</div>
               <div><span className="mono">tools/video-overlays/</span> — gerador de cards pra vídeo UGC (5 templates)</div>

@@ -9,10 +9,11 @@
 // novas + cancelamentos com data) — cresce quando o billing registrar o evento.
 
 import { cadenceOf, firstStage, isLoss, kindOf, TOUCH_TYPES } from "./stages.js";
+import { compGoalFor, compLevelOf } from "./comp-plan.js";
 import { TEAM_METRICS, META_CATALOG, deriveGoalsFromPace } from "./routes.metas.js";
 import { RATE_BENCHMARKS, computePipelinePace } from "./routes.pipeline-pace.js";
 import {
-  DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead,
+  DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead, isWonLead,
   callOutcome as coreCallOutcome, callCohortIn,
   winsIn, customerStartMap, contactAttribution, isReferralLead,
   classCounts, cashBucketsIn,
@@ -47,7 +48,7 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     const hasPrev = /^\d{4}-\d{2}-\d{2}$/.test(prevSince) && /^\d{4}-\d{2}-\d{2}$/.test(prevUntil);
     const inPrev = (iso) => iso && dayKey(iso) >= prevSince && dayKey(iso) <= prevUntil;
 
-    const [allLeads, allActs, allCustomers, proposals, subs, users, goalsAll, npsAll, waMessages, invoicesAll] = await Promise.all([
+    const [allLeads, allActs, allCustomers, proposals, subs, users, goalsAll, npsAll, waMessages, invoicesAll, compPlansAll] = await Promise.all([
       repo.list("leads"),
       repo.list("activities"),
       repo.list("customers"),
@@ -58,6 +59,7 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       repo.list("nps").catch(() => []),
       repo.list("wa_messages").catch(() => []),
       repo.list("invoices").catch(() => []),
+      repo.list("comp_plans").catch(() => []), // plano de remuneração (metas por nível)
     ]);
     // Lead interno (teste) fora de tudo — régua oficial do metrics-core.
     const leads = allLeads.filter((l) => l.saas === product.id && isRealLead(l));
@@ -94,14 +96,22 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     // meta do mês reajusta a régua de todo mundo sozinho — inclusive quando o
     // mês vira e entra o alvo agendado pro mês novo.
     let derivado = {};
+    let derivedChain = null; // a cadeia inteira (leads→contatos→calls→ganhos) — vira team.monthTargets
     try {
-      const d = deriveGoalsFromPace(await computePipelinePace(repo, product));
+      const d = deriveGoalsFromPace(await computePipelinePace(repo, product), { contractsTarget: product.monthlyContractsTarget });
       derivado = Object.fromEntries((d?.goals || []).map((g) => [`${g.role}.${g.metric}`, Number(g.target)]));
+      derivedChain = d;
     } catch { derivado = {}; }
 
     const goalFor = (userId, role, metric) => {
       const u = goals.find((g) => g.scope === "user" && g.key === userId && g.metric === metric);
       if (u) return { target: Number(u.target) || 0, period: u.period || "month", scope: "user" };
+      // O plano de REMUNERAÇÃO manda em contratos (won) e receita de SDR/closer
+      // (Leo, 06/08): meta POR PESSOA pelo nível dela (user.compLevel, 1 sem
+      // campo), sem repartir por headcount — vence a meta de vaga digitada e a
+      // derivada do pace; só o ajuste por PESSOA (acima) fica na frente.
+      const comp = compGoalFor(compPlansAll, role, metric, compLevelOf(users.find((x) => x.id === userId)));
+      if (comp) return comp;
       const r = goals.find((g) => g.scope === "role" && g.key === role && g.metric === metric);
       if (!r) {
         // Indicação: alvo derivado da BASE — cada cliente precisa render N
@@ -306,9 +316,19 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       // alcançou) — nunca passa de 100% (o rótulo diz "dos leads novos, quantos
       // você alcança"). Pro SDR único é a mesma do funil.
       const contactRate = uid === soloSdr ? teamContactRate : cohortRate(mine);
-      // Taxa de agendamento = das pessoas que ele contatou, quantas viraram call
-      // (orgânico ÷ orgânico — o histórico só entra no COUNT, não na taxa).
-      const bookingRate = contactedOrganic > 0 ? round2((callsBookedOrganic / contactedOrganic) * 100) : null;
+      // Contratos e receita DAS OPORTUNIDADES DELE (owner) na janela — as duas
+      // pernas do plano de remuneração do SDR (a receita dele é a fechada das
+      // oportunidades que ELE gerou, regra 3 do plano de 04/08).
+      const winMineAt = winTransitionsFor(mine);
+      const wonMineLeads = [...winMineAt.keys()].map((id) => leadById.get(id)).filter(Boolean);
+      const wonMine = wonMineLeads.length;
+      const revenueMine = round2(wonMineLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0));
+      // Taxa de agendamento em COORTE (régua #650): das leads DA JANELA cujo 1º
+      // contato foi dele, quantas viraram call. Workload (lead antigo tocado
+      // pela nutrição) segue no COUNT, mas não afunda mais a taxa.
+      const cohortContactedMine = leads.filter((l) => inWin(l.createdAt) && contact.authorOf?.get(l.id) === uid).length;
+      const bookedCohortMine = booked.filter((l) => inWin(l.createdAt)).length;
+      const bookingRate = cohortContactedMine > 0 ? round2((bookedCohortMine / cohortContactedMine) * 100) : null;
       // Comparecimento = das que JÁ deveriam ter acontecido (realizadas + não
       // compareceram), quantas aconteceram — exclui as calls FUTURAS (Leo,
       // 25/07). Pro SDR único é o MESMO número do funil (safra do time +
@@ -321,7 +341,8 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       return {
         user: uid, name: nameOf(uid),
         contactRate,
-        targets: personTargets(uid, "sdr", { contactRate, bookingRate, showRate, contacts: contacted, callsBooked }),
+        targets: personTargets(uid, "sdr", { contactRate, bookingRate, showRate, contacts: contacted, callsBooked, won: wonMine, revenue: revenueMine }),
+        won: wonMine, revenue: revenueMine, // as duas pernas do plano (oportunidades DELE)
         leadsNew,
         leadsPrev, // leads da janela anterior (base da meta dinâmica de calls)
         contacted,
@@ -339,7 +360,7 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
         callWinRate: callsBookedOrganic > 0 ? round2((wonFromCalls / callsBookedOrganic) * 100) : null,
         // Metas por TAXA (o alvo absoluto de calls sai de leads × bookingRate na
         // UI); callsBooked absoluto fica de fallback se alguém preferir fixo.
-        goals: { ...goalMap(uid, "sdr", ["contactRate", "bookingRate", "showRate", "callsBooked", "contacts"]), callWinRate: bookedWinGoal(uid, "sdr") },
+        goals: { ...goalMap(uid, "sdr", ["contactRate", "bookingRate", "showRate", "callsBooked", "contacts", "won", "revenue"]), callWinRate: bookedWinGoal(uid, "sdr") },
       };
     }).filter((p) => sdrRole.has(p.user) || p.leadsNew > 0 || p.callsBooked > 0 || p.contacted > 0) // ghost/owner legado só com atividade; SDR real sempre
       .sort((a, b) => b.callsBooked - a.callsBooked);
@@ -351,6 +372,24 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     // (calls > 0 || won > 0) já esconde quem não tem movimento.
     const closerRole = new Set(withRole("closer")); // membro do papel closer sempre aparece (pra ver a meta)
     const closerIds = [...new Set([...closerRole, ...leads.map((l) => l.closer).filter(Boolean)])];
+    // ── Follow-up do closer (submetas da Visão geral) ─────────────────────────
+    // "Follow-ups em dia" = estado ATUAL: leads dele parados em etapa de kind
+    // followup cujo GPS (nextActionAt, a cadência que o lead-flow materializa)
+    // ainda não venceu — sem GPS conta como atrasado (o "sem próximo passo").
+    // "Resgate" = dos leads que CAÍRAM em follow-up na janela (transição de
+    // etapa nas activities, ou o card parado lá com stageSince na janela),
+    // quantos viraram ganho (régua oficial isWonLead) — não importa quando.
+    const nowMs = now().getTime();
+    const followupCohortOf = (mine) => {
+      const ids = new Set();
+      for (const l of mine) {
+        if (kindOf(product, l.stage) === "followup" && inWin(l.stageSince)) { ids.add(l.id); continue; }
+        for (const a of actsByLead.get(l.id) || []) {
+          if (a.type === "stage" && inWin(a.at) && kindOf(product, a.meta?.to) === "followup") { ids.add(l.id); break; }
+        }
+      }
+      return [...ids].map((id) => leadById.get(id)).filter(Boolean);
+    };
     const closer = closerIds.map((uid) => {
       const mine = leads.filter((l) => l.closer === uid);
       // Calls agendadas (pela data da call) e quantas ACONTECERAM (compareceram):
@@ -382,6 +421,11 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       // pelo MESMO callsShown que aparece — inclui o histórico, que não tem
       // ganho, então a taxa reflete o recorde real sobre TODAS as calls feitas.
       const conversao = callsShown > 0 ? round2((wonN / callsShown) * 100) : null;
+      // Follow-up: fila atual em dia + resgate da janela (réguas no bloco acima).
+      const fuNow = mine.filter((l) => kindOf(product, l.stage) === "followup");
+      const followupOnTime = fuNow.filter((l) => l.nextActionAt && new Date(l.nextActionAt).getTime() >= nowMs).length;
+      const fuCohort = followupCohortOf(mine);
+      const followupWon = fuCohort.filter((l) => isWonLead(product, l)).length;
       return {
         user: uid, name: nameOf(uid),
         targets: personTargets(uid, "closer", {
@@ -397,7 +441,12 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
         ticket: wonN > 0 ? round2(revenue / wonN) : null,
         cycleDays: median(cycle),
         lossReasons,
-        goals: { ...goalMap(uid, "closer", ["won", "revenue", "conversaoCall", "ticket"]), winRateCall: bookedWinGoal(uid, "closer") },
+        followupNow: fuNow.length,           // leads dele em follow-up agora
+        followupOnTime,                      // desses, com o GPS em dia
+        followupCohort: fuCohort.length,     // caíram em follow-up na janela
+        followupWon,                         // desses, resgatados pra ganho
+        followupWinRate: fuCohort.length > 0 ? round2((followupWon / fuCohort.length) * 100) : null,
+        goals: { ...goalMap(uid, "closer", ["won", "revenue", "conversaoCall", "ticket", "followupWinRate", "callsShown"]), winRateCall: bookedWinGoal(uid, "closer") },
       };
     }).filter((p) => closerRole.has(p.user) || p.calls > 0 || p.won > 0) // closer legado (ex.: CS que fechou) só com movimento; closer real sempre
       .sort((a, b) => b.revenue - a.revenue);
@@ -493,6 +542,16 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       .sort((a, b) => b.leads - a.leads);
     const leadsNewN = leads.filter((l) => inWin(l.createdAt)).length + adjN("leads");
     const contactedN = contact.leadIds.size + adjN("contacted");
+    // COORTE da janela: dos leads que ENTRARAM nela, quantos receberam contato
+    // humano. É o número do FUNIL (funil precisa ser monotônico: 250 contatados
+    // sobre 121 leads lia como bug — o workload segue no tile/tooltip). O ajuste
+    // pré-cockpit entra igual ao de leads: o histórico é funil de coorte.
+    const cohortContactedN = leads.filter((l) => inWin(l.createdAt) && contact.leadIds.has(l.id)).length + adjN("contacted");
+    // Calls da coorte: das agendadas na janela, as de lead que ENTROU nela —
+    // numerador da taxa de agendamento em coorte (workload inflado pela
+    // nutrição em massa afundava a taxa: 30÷250 = 12% "vermelho" com o time
+    // batendo 30÷97 = 31% na safra real).
+    const bookedCohortN = teamBooked.filter((l) => inWin(l.createdAt)).length + adjN("booked");
     const bookedN = teamBooked.length + adjN("booked");
     const shownN = teamOutcome.shown + adjN("shown");
     // Não compareceram (call vencida sem virar call real) e a realizar (call
@@ -510,13 +569,16 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       leadsNew: leadsNewN,
       contacted: contactedN,               // WORKLOAD: leads trabalhados no período + histórico
       contactedInPeriod: contact.leadIds.size, // só o orgânico (sem histórico) — pro subtítulo do tile
+      contactedCohort: cohortContactedN,   // COORTE: contatados DENTRE os leads da janela — o número do funil
       callsBooked: bookedN,
       // Taxa de contato = COBERTURA da safra (dos leads que ENTRARAM, quantos
       // foram alcançados) — nunca passa de 100%. NÃO é contacted÷leadsNew, que
       // misturava workload (lead antigo + histórico) com coorte e dava 126%.
       contactRate: teamContactRate,
-      // Taxa de agendamento = calls agendadas ÷ leads contatados (workload).
-      bookingRate: contactedN > 0 ? round2((bookedN / contactedN) * 100) : null,
+      // Taxa de agendamento em COORTE encadeada (mesma régua do funil #650):
+      // das leads da janela alcançadas, quantas marcaram call.
+      bookingRate: cohortContactedN > 0 ? round2((bookedCohortN / cohortContactedN) * 100) : null,
+      bookedCohort: bookedCohortN,         // calls marcadas de leads DA janela — hover do funil
       shown: shownN,
       noShow: noShowN,       // não compareceram (call vencida sem acontecer) — o gap real
       pending: pendingN,     // agendadas pro futuro (ainda vão acontecer)
@@ -600,12 +662,24 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     //    venda parada há 14+ dias sem mudar de etapa — candidata a reativar,
     //    reciclar pra nutrição ou desqualificar. Independe da janela do topo.
     const STALL_KINDS = new Set(["qualificacao", "call", "proposta", "followup"]);
-    const nowMs = now().getTime();
     const stalledLeads = leads
       .filter((l) => STALL_KINDS.has(kindOf(product, l.stage)) && l.stageSince && (nowMs - new Date(l.stageSince).getTime()) / DAY > 14)
       .map((l) => ({ id: l.id, name: l.name || l.nome || l.id, stage: l.stage, days: Math.floor((nowMs - new Date(l.stageSince).getTime()) / DAY) }))
       .sort((a, b) => b.days - a.days);
     team.stalled = { count: stalledLeads.length, items: stalledLeads.slice(0, 20) };
+    // Metas do MÊS por etapa do funil (a cadeia derivada da meta da empresa,
+    // deriveGoalsFromPace) — o "atual vs meta" do Funil do período na Visão
+    // geral. A tela reescala pros dias úteis da janela (base 21,75/mês).
+    team.monthTargets = derivedChain ? {
+      leads: derivedChain.leads ?? null,
+      contacts: derivedChain.contacts ?? null,
+      callsBooked: derivedChain.callsBooked ?? null,
+      callsShown: derivedChain.callsShown ?? null,
+      won: derivedChain.won ?? null,
+      revenue: derivedChain.target ?? null,
+      wonSource: derivedChain.wonSource || "",  // company = meta de contratos digitada
+      blockedBy: derivedChain.blockedBy || null,
+    } : null;
 
     return { saas: product.id, since, until, sdr, closer, cs, social, team };
   });

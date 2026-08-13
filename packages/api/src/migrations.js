@@ -6,8 +6,10 @@
 import { normalizeFunnel, kindOf, isPostSaleStage } from "./stages.js";
 import { createClosedSubscription } from "./billing.js";
 import { FLASHCARD_DEFAULTS } from "./routes.flashcards.js";
+import { LEVERADS_EXPANSION } from "./flashcard-decks.leverads.js";
 import { mergeLeadQuestions } from "./forms.js";
 import { waMatchKey } from "./wa-store.js";
+import { slideVisible } from "./proposal.js";
 
 // Garante o estágio "Integração" no funil do produto `leverads`, posicionado
 // entre "Negociação" e "Ganho". Integração é pós-venda: negócio já fechado,
@@ -247,6 +249,43 @@ export async function migrateFlashcardsGeneralDecks(repo) {
     generalDecksV1: true,
   });
   return missing.length;
+}
+
+// ── Flashcards: expansão pra 150 por baralho + Estratégia de vendas (ago/2026) ──
+// Mesmo desenho do generalDecksV1, mas anexando SÓ os cards da EXPANSÃO (nunca a
+// base de jul/2026): se o dono apagou um card antigo pela tela, ele fica apagado.
+// Sem doc salvo em produção os DEFAULTS servem sozinhos e isto é no-op.
+export async function migrateFlashcardsDeckExpansion(repo) {
+  const doc = await repo.get("flashcards", "leverads");
+  if (!doc || doc.deckExpansionV1) return 0;
+  const have = new Set((doc.cards || []).map((c) => c && c.id));
+  const missing = LEVERADS_EXPANSION.filter((c) => !have.has(c.id));
+  await repo.update("flashcards", "leverads", {
+    ...(missing.length ? { cards: [...(doc.cards || []), ...missing] } : {}),
+    deckExpansionV1: true,
+  });
+  return missing.length;
+}
+
+// ── Custos %: base por lançamento (ago/2026) ────────────────────────────────
+// Todo custo percentual incidia sobre os GANHOS do mês inteiro. O Leo separou:
+// o checkout de 12% só existe quando a venda fecha no cartão de crédito em 12x
+// (taxa da adquirente pra antecipar) e o imposto incide sobre o que foi
+// RECEBIDO no mês (regime de caixa), não sobre o contratado. O lançamento
+// ganha `base` ("won" | "cartao12x" | "received"; sem base = "won") e os dois
+// já cadastrados em produção são carimbados pelo nome. Idempotente: só toca
+// linha de pct sem base; lançamento novo já nasce com a base escolhida na tela.
+export async function migrateExpensePctBases(repo) {
+  let n = 0;
+  for (const e of await repo.list("expenses")) {
+    if (!(Number(e.pct) > 0) || e.base) continue;
+    const name = String(e.name || "").toLowerCase();
+    const base = name.includes("checkout") ? "cartao12x" : name.includes("imposto") ? "received" : "";
+    if (!base) continue;
+    await repo.update("expenses", e.id, { base });
+    n++;
+  }
+  return n;
 }
 
 // Permissão de ligação perdida (jul/2026): quando a saudação "posso te ligar?"
@@ -921,7 +960,349 @@ async function sincronizaPainelDoLead(repo, form) {
   }
 }
 
+// ── Contratos: campos de preenchimento (ago/2026) ───────────────────────────
+// Os 4 modelos de contrato nasceram com espaços em branco desenhados no HTML
+// (______). A tela Contratos ganhou formulário de preenchimento que interpola
+// tokens {{chave}}; esta migração troca os brancos dos modelos SEED pelos
+// tokens e grava a lista `fields` (rótulo/placeholder) que o formulário lê.
+// Idempotente: pula contrato que já tem token ou `fields`. Se o time editou o
+// corpo na tela e o texto não casa mais, os replaces são no-op e nada quebra —
+// `fields` só entra se o corpo final tiver pelo menos um token.
+
+const CONTRACT_COMMON_REPLACES = [
+  ["Razão social / Nome: ______________________________________________", "Razão social / Nome: {{razao_social}}"],
+  ["CNPJ / CPF: ______________________________________________", "CNPJ / CPF: {{cnpj_cpf}}"],
+  ["Endereço: ______________________________________________", "Endereço: {{endereco}}"],
+  ["Endereço da operação (local das visitas): ______________________________________________", "Endereço da operação (local das visitas): {{endereco}}"],
+  ["Representante legal: ______________________________________________", "Representante legal: {{representante}}"],
+  ["E-mail: ______________________________ &nbsp; WhatsApp: ______________________________", "E-mail: {{email}} &nbsp; WhatsApp: {{whatsapp}}"],
+  ["Forma de pagamento: &nbsp; ☐ PIX à vista &nbsp;&nbsp; ☐ Cartão de crédito em ____x de R$ ______________ &nbsp;&nbsp; ☐ Boleto faturado em ____x de R$ ______________", "Forma de pagamento: {{forma_pagamento}}"],
+  ["Vencimento(s): ______________________________________________", "Vencimento(s): {{vencimentos}}"],
+  ["Valor total: R$ ______________ ( ______________________________________________ )", "Valor total: R$ {{valor_total}} ({{valor_extenso}})"],
+  ["Valor total do período: R$ ______________ ( ______________________________________________ )", "Valor total do período: R$ {{valor_total}} ({{valor_extenso}})"],
+  ["Desenvolvimento + implantação: R$ ______________ ( ______________________________________________ )", "Desenvolvimento + implantação: R$ {{valor_total}} ({{valor_extenso}})"],
+  ["Condições específicas (se houver): ______________________________________________", "Condições específicas (se houver): {{condicoes}}"],
+  ["Personalizações adicionais (se houver): ______________________________________________", "Personalizações adicionais (se houver): {{condicoes}}"],
+  ["____________________________, ______ de ______________________ de 20______.", "{{local_data}}."],
+];
+
+// Campos comuns do Quadro Resumo (a ordem é a do formulário da tela).
+const CONTRACT_COMMON_FIELDS = [
+  { key: "razao_social", label: "Razão social / Nome" },
+  { key: "cnpj_cpf", label: "CNPJ / CPF" },
+  { key: "endereco", label: "Endereço" },
+  { key: "representante", label: "Representante legal" },
+  { key: "email", label: "E-mail" },
+  { key: "whatsapp", label: "WhatsApp", placeholder: "(11) 98765-4321" },
+  { key: "valor_total", label: "Valor total (R$)", placeholder: "40.000,00" },
+  { key: "valor_extenso", label: "Valor por extenso", placeholder: "quarenta mil reais" },
+  { key: "forma_pagamento", label: "Forma de pagamento", placeholder: "Cartão de crédito em 12x de R$ 3.333,33" },
+  { key: "vencimentos", label: "Vencimento(s)", placeholder: "primeira em 10/09/2026, demais todo dia 10" },
+  { key: "condicoes", label: "Condições específicas", multiline: true, placeholder: "se houver" },
+  { key: "local_data", label: "Local e data da assinatura", placeholder: "Curitiba, 10 de agosto de 2026" },
+];
+
+const CONTRACT_FILL_SEED = {
+  co_assinatura_leverads: {
+    replaces: [
+      ["☐ Plano Anual (12 meses) &nbsp;&nbsp; ☐ Plano Semestral (6 meses) &nbsp;&nbsp; ☐ Outro: __________________", "Plano: {{plano}}"],
+      ["Contas de marketplace incluídas: Mercado Livre ( ____ ) &nbsp; Shopee ( ____ )", "Contas de marketplace incluídas: Mercado Livre ( {{contas_ml}} ) &nbsp; Shopee ( {{contas_shopee}} )"],
+      ["____ meses contados da assinatura deste contrato, renovando-se conforme a Cláusula 8ª.", "{{vigencia_meses}} meses contados da assinatura deste contrato, renovando-se conforme a Cláusula 8ª."],
+      // A linha extra de continuação do "Condições específicas" fica órfã depois
+      // do replace comum — remove junto com o <br> que a precede.
+      ["{{condicoes}}<br>\n      ______________________________________________", "{{condicoes}}"],
+    ],
+    fields: [
+      { key: "plano", label: "Plano contratado", placeholder: "Plano Anual (12 meses)" },
+      { key: "contas_ml", label: "Contas Mercado Livre", placeholder: "3" },
+      { key: "contas_shopee", label: "Contas Shopee", placeholder: "2" },
+      { key: "vigencia_meses", label: "Vigência (meses)", placeholder: "12" },
+    ],
+  },
+  co_consultoria_logistica: {
+    replaces: [
+      ["☐ Incluídas no valor total &nbsp;&nbsp; ☐ Por conta do CONTRATANTE, mediante reembolso comprovado (deslocamento, hospedagem e alimentação da equipe da LEVER)", "{{despesas}}"],
+      ["Conclusão do escopo em ______ dias corridos", "Conclusão do escopo em {{prazo_dias}} dias corridos"],
+    ],
+    fields: [
+      { key: "despesas", label: "Despesas de deslocamento", placeholder: "Incluídas no valor total" },
+      { key: "prazo_dias", label: "Prazo (dias corridos)", placeholder: "90" },
+    ],
+  },
+  co_erp_tiny_olist: {
+    replaces: [
+      ["Tiny ERP (Olist) · plano: ______________________ ·", "Tiny ERP (Olist) · plano: {{plano_erp}} ·"],
+      ["Go-live em ______ dias corridos", "Go-live em {{prazo_dias}} dias corridos"],
+    ],
+    fields: [
+      { key: "plano_erp", label: "Plano do ERP", placeholder: "Grande" },
+      { key: "prazo_dias", label: "Prazo até o go-live (dias)", placeholder: "45" },
+    ],
+  },
+  co_leverwms: {
+    replaces: [
+      ["✓ Integração direta com o ERP: ______________________<br>", "✓ Integração direta com o ERP: {{erp_integrado}}<br>"],
+      ["Hospedagem, manutenção e suporte: &nbsp; ☐ incluídos durante a vigência da licença &nbsp;&nbsp; ☐ R$ ______________ / ano a partir do 2º ano", "Hospedagem, manutenção e suporte: {{manutencao}}"],
+      ["______ dias corridos (estimativa de referência: 45 a 90 dias)", "{{prazo_dias}} dias corridos (estimativa de referência: 45 a 90 dias)"],
+      ["______ meses contados do aceite, renovando-se conforme a Cláusula 10ª.", "{{vigencia_meses}} meses contados do aceite, renovando-se conforme a Cláusula 10ª."],
+    ],
+    fields: [
+      { key: "erp_integrado", label: "ERP integrado", placeholder: "Tiny ERP (Olist)" },
+      { key: "manutencao", label: "Hospedagem / manutenção", placeholder: "incluídas durante a vigência da licença" },
+      { key: "prazo_dias", label: "Prazo de implementação (dias)", placeholder: "90" },
+      { key: "vigencia_meses", label: "Vigência da licença (meses)", placeholder: "12" },
+    ],
+  },
+};
+
+// Replace tolerante: no padrão, runs de "_" casam com qualquer tamanho de linha
+// em branco e whitespace casa com whitespace — contar underscore exato seria
+// frágil. O replacement entra via função pra "$" não ser tratado como especial.
+function contractRep(body, from, to) {
+  const pattern = from
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/_{2,}/g, "_+")
+    .replace(/\s+/g, "\\s+");
+  return body.replace(new RegExp(pattern, "g"), () => to);
+}
+
+export async function migrateContractFillTokens(repo) {
+  let n = 0;
+  for (const [id, seed] of Object.entries(CONTRACT_FILL_SEED)) {
+    const c = await repo.get("contracts", id).catch(() => null);
+    if (!c || !c.body) continue;
+    if (c.body.includes("{{") || (Array.isArray(c.fields) && c.fields.length)) continue; // já migrado
+    let body = c.body;
+    for (const [from, to] of [...CONTRACT_COMMON_REPLACES, ...seed.replaces]) body = contractRep(body, from, to);
+    if (!body.includes("{{")) continue; // corpo editado à mão, nada casou: não mexe
+    // Só entra em `fields` o campo cujo token existe no corpo final (o modelo 2
+    // não tem "Vencimento(s)" no 4, por exemplo — cada corpo dita seus campos).
+    const fields = [...CONTRACT_COMMON_FIELDS, ...seed.fields]
+      .map((f) => (c.saas === "leverads" && id === "co_consultoria_logistica" && f.key === "endereco" ? { ...f, label: "Endereço da operação (local das visitas)" } : f))
+      .filter((f) => body.includes(`{{${f.key}}}`));
+    await repo.update("contracts", id, { body, fields });
+    n++;
+  }
+  return n;
+}
+
+// ── Catálogo de produto/oferta da proposta (aprovado pelo Leo, 04-06/08/2026) ──
+// Liga a tela zero com régua + produto no deck do leverads: alinha as faixas de
+// anúncios do template às COLUNAS da régua de qualidade (o form já pergunta
+// `listings` exatamente nessas faixas) e grava o catálogo em calc.catalog
+// (preços aprovados, dores do painMap e perguntas SPIN por dor). One-shot: se o
+// template já tem calc.catalog, não mexe — edição do dono é soberana.
+const LEVERADS_VOLUME_MID = { "0-100": 50, "100-500": 300, "500-2000": 1200, "2000-10000": 5000, "10000+": 20000 };
+const LEVERADS_CATALOG = {
+  accounts: ["1", "2", "3-5", "6-10", "10+"],
+  volLabels: ["≤100", "100-500", "500-2k", "2-10k", "10k+"],
+  // Espelho do GRADE_GRID de packages/web/src/lib/ui.js (calibração 24/07).
+  grid: [
+    ["E", "D", "C", "C", "C"],
+    ["D", "C", "C", "B", "B"],
+    ["C", "B", "B", "A", "A"],
+    ["B", "B", "A", "S", "S"],
+    ["A", "A", "A", "S", "S"],
+  ],
+  // Semestral abre; anual é o degrau do Shift+1. Parcial de preço fechado (o
+  // teste A/B morreu 04/08: a oferta por SKU não existe mais).
+  products: {
+    full: { name: "LeverAds FULL", sem: { total: 7188, per: 599 }, anu: { total: 11988, per: 999 } },
+    fulloem: { name: "LeverAds + OEM FULL", cota: 200, sem: { total: 11988, per: 999 }, anu: { total: 16068, per: 1339 } },
+    oem: {
+      name: "OEM avulso",
+      small: { cota: 50, sem: { total: 1188, per: 99 }, anu: { total: 1788, per: 149 } },
+      big: { cota: 200, sem: { total: 2988, per: 249 }, anu: { total: 4188, per: 349 } },
+    },
+    parcialA: { name: "Parcial", sem: { total: 2100, per: 175 }, anu: { total: 3588, per: 299 } },
+    parcialoem: { name: "Parcial + OEM 50", cota: 50, sem: { total: 3288, per: 274 }, anu: { total: 5376, per: 448 } },
+  },
+  // Dores do painMap do produto + perguntas SPIN (definidas com o Leo 06/08).
+  pains: {
+    A: {
+      label: "Subir os mesmos anúncios nas outras contas",
+      spin: {
+        S: "Hoje, quando você publica um produto novo, como funciona? Sobe na conta principal e depois replica nas outras? Quem faz isso?",
+        P: "Quanto tempo por semana vai embora só copiando anúncio de conta pra conta? Qual parte é a pior: ficha técnica, variações, fotos?",
+        I: "Enquanto o produto não está nas outras contas, quantas vendas elas deixam de fazer? Já desistiu de subir em alguma conta por pura falta de braço?",
+        N: "Se o que você sobe na conta principal aparecesse nas outras em minutos, o que você faria com essas horas? Subiria mais produto?",
+      },
+    },
+    B: {
+      label: "Conta banida, precisa anunciar em conta nova",
+      spin: {
+        S: "Você já passou por suspensão ou queda de conta? Hoje, quanto do seu faturamento depende de uma conta só?",
+        P: "Na época, quanto tempo levou pra reerguer a operação? O que foi mais difícil: refazer os anúncios, a reputação, o catálogo?",
+        I: "Se a sua conta principal caísse amanhã, quanto você perde por dia até reconstruir? Esse risco já te fez segurar investimento?",
+        N: "Faria diferença ter as outras contas já espelhadas, prontas, pra uma queda virar solavanco em vez de parar a empresa?",
+      },
+    },
+    C: {
+      label: "Gerenciar SKUs com múltiplos anúncios em múltiplas contas",
+      spin: {
+        S: "Somando todas as contas, quantos anúncios você administra? Quando muda preço ou ficha de um produto, como isso chega nas outras contas?",
+        P: "Com que frequência aparece anúncio desatualizado em alguma conta (preço antigo, atributo errado)? E você descobre como, por acaso?",
+        I: "Um preço errado numa conta que você olha pouco, quanto custa até alguém perceber? Já tomou prejuízo ou punição do marketplace por isso?",
+        N: "E se uma alteração feita uma vez se propagasse pra todos os anúncios daquele SKU, em todas as contas? O que isso mudaria na sua segurança pra crescer?",
+      },
+    },
+    D: {
+      label: "Economizar folha salarial e reduzir riscos",
+      spin: {
+        S: "Quantas pessoas cuidam dos seus anúncios hoje? O que elas fazem no dia a dia, na prática?",
+        P: "Quanto dessa rotina é repetição (copiar, conferir, ajustar) em vez de coisa que gera venda? E quando alguém sai de férias ou pede as contas?",
+        I: "Pra dobrar de contas no seu modelo atual, quantas contratações seriam? E um erro manual grave, tipo atributo errado em escala, o que já te custou?",
+        N: "Se a replicação rodasse sozinha, você enxugaria a folha ou realocaria o time pra venda? Quanto isso vale por mês?",
+      },
+    },
+    E: {
+      label: "Mais exposição no marketplace pra vender mais",
+      spin: {
+        S: "Seu catálogo completo está ativo em quantas contas hoje? Na busca do ML, o comprador te encontra uma vez ou várias?",
+        P: "O que te impede de ter tudo ativo em mais contas: trabalho, tempo, medo de bagunçar a operação?",
+        I: "Cada conta a mais é uma posição a mais na página de busca. Quanto você estima que fica na mesa com o catálogo cheio numa conta só, enquanto o concorrente aparece três vezes?",
+        N: "Se ativar o catálogo em mais duas ou três contas custasse horas em vez de meses, o que acontece com seu faturamento? Quer simular com seus números?",
+      },
+    },
+    // Dor de anúncio OEM (agosto/2026): o lead clicou num anúncio de part
+    // number, não de clonagem. É a única dor que aponta PRODUTO (OEM avulso,
+    // ver PAIN_PRODUCT em proposal-catalog.js) — as A-E só trocam a trilha.
+    OEM: {
+      label: "Anunciar pelo código OEM sem montar ficha nem compatibilidade",
+      spin: {
+        S: "Como nasce um anúncio de peça na sua operação hoje? Alguém monta a ficha técnica e as aplicações, ou você só sobe o que já vem pronto do fornecedor?",
+        P: "Quanto tempo leva pra publicar UMA peça com ficha completa e todas as compatibilidades? Quantos códigos do seu catálogo seguem sem anúncio porque dá esse trabalho?",
+        I: "Cada código que você não anuncia é uma busca em que o comprador acha o concorrente. E anúncio com aplicação errada já te custou devolução ou reclamação?",
+        N: "Se você mandasse só a lista de códigos e os anúncios voltassem prontos (foto, descrição, compatibilidade) publicados na sua conta, quantas peças você subiria por mês?",
+      },
+    },
+    none: {
+      label: "Sem código (não veio de anúncio)",
+      tip: "Abre com a Situação genérica (me conta como está a operação hoje, quantas contas, quem cuida) e escolhe a trilha A-E conforme a primeira dor que ele verbalizar.",
+    },
+  },
+};
+
+export async function ensureProposalCatalog(repo) {
+  const t = await repo.get("proposal_templates", "pt_leverads");
+  if (!t || (t.calc && t.calc.catalog)) return false;
+  const calc = { ...(t.calc || {}) };
+  calc.volumeKey = "listings";
+  calc.volumeMid = { ...LEVERADS_VOLUME_MID };
+  // CÓPIA: sem isso o template (e todo snapshot que sair dele em memória)
+  // aponta pro mesmo objeto do módulo, e uma edição de catálogo vaza pros
+  // outros — o teste do serviço único pegou isso.
+  calc.catalog = JSON.parse(JSON.stringify(LEVERADS_CATALOG));
+  await repo.update("proposal_templates", "pt_leverads", { calc });
+  return true;
+}
+
+// Retroativo (pedido do Leo, 06/08): as propostas JÁ GERADAS do pt_leverads
+// entram no fluxo novo — re-snapshot do template atual (catálogo, faixas da
+// régua, as duas bases de pricing) preservando id/link/editKey/views e os
+// dados do lead, então o link que o closer já tem passa a abrir a tela zero
+// com régua. Ficam FORA por segurança: propostas ACEITAS (história fechada) e
+// snapshots de cliente já compartilhados (sharedFrom) — mudar o preço que está
+// na mão do cliente é decisão humana; re-compartilhar já re-snapshota.
+// Idempotente: proposta com calc.catalog não é tocada de novo.
+export async function backfillProposalCatalog(repo) {
+  const t = await repo.get("proposal_templates", "pt_leverads");
+  if (!t || !t.calc?.catalog) return 0; // depende do ensureProposalCatalog
+  const proposals = await repo.list("proposals");
+  let n = 0;
+  for (const p of proposals) {
+    if (p.template !== "pt_leverads") continue;
+    if (p.sharedFrom || p.accepted) continue;
+    if (p.calc && p.calc.catalog) continue;
+    const answers = p.data?.answers || {};
+    const state = { ...(p.state || {}) };
+    // Faixa de anúncios: a resposta atual do form (listings) quando existe;
+    // senão a faixa antiga vira a coluna equivalente da régua pelo ponto médio.
+    const vm = t.calc.volumeMid || {};
+    const bands = Object.keys(vm);
+    const fromAnswers = answers[t.calc.volumeKey || "listings"];
+    if (fromAnswers != null && vm[String(fromAnswers)] != null) {
+      state.volume = String(fromAnswers);
+    } else {
+      const oldMid = Number((p.calc?.volumeMid || {})[state.volume]) || 0;
+      const col = oldMid <= 100 ? 0 : oldMid <= 500 ? 1 : oldMid <= 2000 ? 2 : oldMid <= 10000 ? 3 : 4;
+      state.volume = bands[Math.min(col, bands.length - 1)] || state.volume || "";
+    }
+    const seats = Number((t.calc.seatsMap || {})[state.accounts]);
+    if (seats) state.seats = seats;
+    // Mesma régua de snapshot do runNativeProposal com catálogo: pricing é
+    // matéria-prima do produto e entra sempre; o resto respeita o showIf.
+    await repo.update("proposals", p.id, {
+      theme: t.theme || {},
+      calc: t.calc,
+      slides: (t.slides || []).filter((s) => s?.type === "pricing" || slideVisible(s, answers)),
+      state,
+    });
+    n++;
+  }
+  return n;
+}
+
+// ── Conta grande (keyAccount) ───────────────────────────────────────────────
+// Cliente fora da régua (ex.: Galante, pacote bespoke de R$ 120 mil no meio de
+// vendas de R$ 3-7 mil): o flag `keyAccount` tira ele do ticket médio e das
+// metas derivadas por contrato (pace/Metas/Visão geral) sem tirar o dinheiro
+// do caixa/vendido. Carimba o Galante uma vez; clientes futuros são marcados
+// na edição do cliente (campo "Conta grande"). Idempotente: já marcado (ou
+// desmarcado DE PROPÓSITO — campo presente com valor falso) não mexe.
+export async function ensureKeyAccountGalante(repo) {
+  const customers = await repo.list("customers");
+  const galante = customers.find((c) => c.saas === "leverads" && /galante/i.test(String(c.name || "")));
+  if (!galante || galante.keyAccount !== undefined) return false;
+  await repo.update("customers", galante.id, { keyAccount: true });
+  return true;
+}
+
+// ── Papéis do time (Leo, 08/08) ─────────────────────────────────────────────
+// O Vitor é CS (integrator) e a Manuela é SDR — a etiqueta extra de closer que
+// os dois carregavam pintava bloco de closer nos cards da Visão geral e diluía
+// a meta de time dos closers de verdade. ONE-SHOT (flag no produto): rodou uma
+// vez, o Leo pode re-etiquetar em Ajustes → Equipe sem a migração desfazer.
+export async function migrateRolesCsSdr(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || product.rolesCsSdrV1) return false;
+  const users = await repo.list("users").catch(() => []);
+  let changed = 0;
+  for (const u of users) {
+    const roles = Array.isArray(u.roles) ? u.roles : [];
+    const name = String(u.name || "");
+    if (/manuela/i.test(name) && roles.includes("closer")) {
+      await repo.update("users", u.id, { roles: roles.filter((r) => r !== "closer") });
+      changed++;
+    }
+    if (/^vitor/i.test(name.trim()) && roles.some((r) => r === "closer" || r === "sdr")) {
+      await repo.update("users", u.id, { roles: roles.filter((r) => r !== "closer" && r !== "sdr") });
+      changed++;
+    }
+  }
+  await repo.update("products", "leverads", { rolesCsSdrV1: true });
+  return changed;
+}
+
 export async function runStartupMigrations(repo) {
+  try {
+    const changed = await ensureKeyAccountGalante(repo);
+    if (changed) console.log("[migration] Galante marcado como conta grande (keyAccount) — fora das médias");
+  } catch (err) {
+    console.error("[migration] ensureKeyAccountGalante falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateRolesCsSdr(repo);
+    if (n) console.log(`[migration] papéis ajustados (Vitor = CS, Manuela = SDR): ${n} usuário(s)`);
+  } catch (err) {
+    console.error("[migration] migrateRolesCsSdr falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateContractFillTokens(repo);
+    if (n) console.log(`[migration] modelos de contrato tokenizados pro preenchimento na tela (${n} modelos)`);
+  } catch (err) {
+    console.error("[migration] migrateContractFillTokens falhou:", err?.message || err);
+  }
   try {
     const changed = await migrateFormVendeMarketplace(repo);
     if (changed) console.log('[migration] form do diagnóstico ganhou a pergunta "já vende em marketplace?" + saídas laterais');
@@ -957,6 +1338,12 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] flashcards: ${n} cards novos (gerais + vagas) anexados à base do leverads`);
   } catch (err) {
     console.error("[migration] migrateFlashcardsGeneralDecks falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateFlashcardsDeckExpansion(repo);
+    if (n) console.log(`[migration] flashcards: expansão ago/2026 anexada à base do leverads (${n} cards)`);
+  } catch (err) {
+    console.error("[migration] migrateFlashcardsDeckExpansion falhou:", err?.message || err);
   }
   try {
     const n = await ensureFunnelKinds(repo);
@@ -1081,5 +1468,24 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] cliente + assinatura criados pra ${n} lead(s) já na entrega`);
   } catch (err) {
     console.error("[migration] backfillPostSaleCustomers falhou:", err?.message || err);
+  }
+  try {
+    const changed = await ensureProposalCatalog(repo);
+    if (changed) console.log("[migration] catálogo de produto/oferta gravado no template pt_leverads (tela zero com régua)");
+  } catch (err) {
+    console.error("[migration] ensureProposalCatalog falhou:", err?.message || err);
+  }
+  // Depois do catálogo no template: propostas antigas entram no fluxo novo.
+  try {
+    const n = await backfillProposalCatalog(repo);
+    if (n) console.log(`[migration] ${n} proposta(s) existente(s) re-snapshotada(s) no fluxo do catálogo`);
+  } catch (err) {
+    console.error("[migration] backfillProposalCatalog falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateExpensePctBases(repo);
+    if (n) console.log(`[migration] custos %: base carimbada em ${n} lançamento(s) (checkout → cartão 12x, imposto → recebidos)`);
+  } catch (err) {
+    console.error("[migration] migrateExpensePctBases falhou:", err?.message || err);
   }
 }

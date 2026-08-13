@@ -2,8 +2,8 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
-import { Avatar, EmptyState, PrimaryButton } from "../atoms.jsx";
-import { inputStyle, labelStyle } from "../components/theme-inputs.jsx";
+import { Avatar, EmptyState, PrimaryButton, useEsc } from "../atoms.jsx";
+import { inputStyle } from "../components/theme-inputs.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { PageHead } from "../components/viz.jsx";
 // Tarefas — kanban interno do time (estilo Trello). Cards = collection `tasks`
@@ -109,7 +109,7 @@ function TasksScreen() {
       order = inCol.length ? (Number(inCol[inCol.length - 1].order) || 0) + 1 : 1;
     }
     setTasks((prev) => prev.map((t) => t.id === id ? { ...t, column: colKey, order } : t));
-    api.update("tasks", id, { column: colKey, order }).catch((err) => console.warn("task move not persisted:", err.message));
+    api.update("tasks", id, { column: colKey, order }).catch((err) => { console.warn("task move not persisted:", err.message); window.toast && window.toast("O card não foi movido no quadro · tente de novo", "neg"); });
   }
 
   async function saveTask(draft) {
@@ -240,6 +240,7 @@ function TaskColumn({ col, idx, count, cards, users, dragging, setDragging, onDr
 }
 
 function ColumnMenu({ col, idx, count, hasCards, onRename, onColor, onMove, onRemove, onClose }) {
+  useEsc(onClose);
   const [name, setName] = useState(col.name);
   const ref = useRef(null);
   useEffect(() => {
@@ -255,13 +256,13 @@ function ColumnMenu({ col, idx, count, hasCards, onRename, onColor, onMove, onRe
       boxShadow: "var(--shadow-pop)", padding: 8, display: "flex", flexDirection: "column", gap: 8,
     }}>
       <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        <span style={labelStyle}>Nome</span>
+        <span className="kicker">Nome</span>
         <input value={name} onChange={(e) => setName(e.target.value)} onBlur={commitName}
           onKeyDown={(e) => { if (e.key === "Enter") { commitName(); onClose(); } }}
           style={{ ...inputStyle, height: 26, fontSize: 12 }} />
       </label>
       <div>
-        <span style={labelStyle}>Cor</span>
+        <span className="kicker">Cor</span>
         <div style={{ display: "flex", gap: 5, marginTop: 4 }}>
           {COLUMN_COLORS.map((c) => (
             <button key={c || "none"} onClick={() => onColor(c)} title={c ? "" : "sem cor"} style={{
@@ -305,6 +306,10 @@ function TaskCard({ t, users, completed, onDragStart, onDropBefore, onOpen }) {
         cursor: "grab",
         opacity: completed ? .75 : 1,
       }}>
+      {/* Miniatura da foto anexada (task.photo → /public/tasks/:id). */}
+      {t.photo && (
+        <img src={t.photo} alt="" style={{ width: "100%", maxHeight: 120, objectFit: "cover", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", marginBottom: 8, display: "block", opacity: completed ? 0.6 : 1 }} />
+      )}
       <div style={{ fontSize: 13.5, fontWeight: completed ? 500 : 600, lineHeight: 1.35, color: completed ? "var(--fg-3)" : "var(--fg-1)", textDecoration: completed ? "line-through" : "none" }}>{t.title}</div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: "var(--fg-3)", minWidth: 0 }}>
@@ -343,11 +348,24 @@ function LabelChip({ label }) {
 
 // ─────────────────────────────────────────────── Modal (criar/editar + comentários)
 function TaskModal({ task, presetColumn, presetSaas, columns, users, onSave, onDelete, onComment, onClose }) {
+  useEsc(onClose);
   const { SAAS } = window.SEED;
   const [d, setD] = useState(() => task ? { ...task, assignees: assigneesOf(task) } : {
     title: "", description: "", saas: presetSaas, assignees: [],
-    column: presetColumn, priority: "", dueDate: "", labels: [],
+    column: presetColumn, priority: "", dueDate: "", labels: [], photo: "",
   });
+  const [uploading, setUploading] = useState(false);
+  // Foto da tarefa (Leo, 06/08): sobe na hora pro task_assets e a URL fica no
+  // rascunho — salvar a tarefa grava o campo `photo` junto.
+  async function attachPhoto(file) {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const { url } = await api.taskAsset(file, file.name || "foto.png");
+      setD((p) => ({ ...p, photo: url }));
+    } catch (err) { window.alert(err.message || "não deu pra anexar a foto"); }
+    finally { setUploading(false); }
+  }
   const [comments, setComments] = useState(task?.comments || []);
   const [newComment, setNewComment] = useState("");
   const [busy, setBusy] = useState(false);
@@ -388,17 +406,38 @@ function TaskModal({ task, presetColumn, presetSaas, columns, users, onSave, onD
         </div>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={labelStyle}>Título</span>
+          <span className="kicker">Título</span>
           <input value={d.title} onChange={set("title")} autoFocus style={{ ...inputStyle, height: 32, fontSize: 14 }} />
         </label>
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={labelStyle}>Descrição</span>
+          <span className="kicker">Descrição</span>
           <textarea value={d.description} onChange={set("description")} rows={3} style={{ ...inputStyle, height: "auto", padding: 8, fontSize: 13, resize: "vertical" }} />
         </label>
 
+        {/* Foto anexada (opcional): preview + trocar/remover. */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {d.photo && (
+            <a href={d.photo} target="_blank" rel="noreferrer" title="abrir a foto em tamanho cheio">
+              <img src={d.photo} alt="" style={{ maxWidth: "100%", maxHeight: 180, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", display: "block" }} />
+            </a>
+          )}
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <label style={{ ...chromeBtnStyleSmall, cursor: "pointer", display: "inline-flex", alignItems: "center" }}>
+              <span style={{ fontSize: 11 }}>{uploading ? "enviando…" : d.photo ? "trocar foto" : "📎 anexar foto"}</span>
+              <input type="file" accept="image/*" style={{ display: "none" }}
+                onChange={(e) => { attachPhoto(e.target.files?.[0]); e.target.value = ""; }} />
+            </label>
+            {d.photo && !uploading && (
+              <button type="button" onClick={() => setD((p) => ({ ...p, photo: "" }))} className="dim" style={{ ...chromeBtnStyleSmall }}>
+                <span style={{ fontSize: 11 }}>remover</span>
+              </button>
+            )}
+          </div>
+        </div>
+
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={labelStyle}>SaaS</span>
+            <span className="kicker">SaaS</span>
             <select value={d.saas} onChange={set("saas")} style={selStyle}>
               <option value="">— (geral do time)</option>
               {/* Escopo do workspace: só o produto ativo (e o da própria tarefa,
@@ -407,7 +446,7 @@ function TaskModal({ task, presetColumn, presetSaas, columns, users, onSave, onD
             </select>
           </label>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={labelStyle}>Responsáveis</span>
+            <span className="kicker">Responsáveis</span>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", minHeight: 30 }}>
               {users.map((u) => {
                 const on = (d.assignees || []).includes(u.id);
@@ -430,23 +469,23 @@ function TaskModal({ task, presetColumn, presetSaas, columns, users, onSave, onD
             </div>
           </div>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={labelStyle}>Coluna</span>
+            <span className="kicker">Coluna</span>
             <select value={d.column} onChange={set("column")} style={selStyle}>
               {columns.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}
             </select>
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={labelStyle}>Prioridade</span>
+            <span className="kicker">Prioridade</span>
             <select value={d.priority} onChange={set("priority")} style={selStyle}>
               {PRIORITY_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={labelStyle}>Entrega</span>
+            <span className="kicker">Entrega</span>
             <input type="date" value={d.dueDate} onChange={set("dueDate")} style={selStyle} />
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={labelStyle}>Labels (vírgula)</span>
+            <span className="kicker">Labels (vírgula)</span>
             <input value={(d.labels || []).join(", ")}
               onChange={(e) => setD((p) => ({ ...p, labels: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) }))}
               placeholder="bug, urgente" style={selStyle} />
@@ -455,7 +494,7 @@ function TaskModal({ task, presetColumn, presetSaas, columns, users, onSave, onD
 
         {task && (
           <div style={{ borderTop: "1px solid var(--line-1)", paddingTop: 10 }}>
-            <span style={labelStyle}>Comentários</span>
+            <span className="kicker">Comentários</span>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
               {comments.map((c) => (
                 <div key={c.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>

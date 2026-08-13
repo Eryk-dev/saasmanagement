@@ -7,9 +7,13 @@
 //
 // Além das metas por vaga/pessoa, a tela edita a META DA EMPRESA: a meta de
 // venda do mês (caixa), gravada em product.monthlyCashTarget — é ela que a
-// faixa "Meta do mês" da Visão geral e a Análise do pipeline perseguem.
+// faixa "Meta do mês" da Visão geral e a Análise do pipeline perseguem — e a
+// meta de CONTRATOS do mês (product.monthlyContractsTarget): vazia, o número
+// de contratos segue a venda ÷ ticket; digitada, ela vence essa divisão e a
+// cadeia (calls, contatos, leads) desce a partir dela.
 
 import { DEFAULT_CASH_TARGET, RATE_BENCHMARKS, computePipelinePace, cashTargetFor } from "./routes.pipeline-pace.js";
+import { DEFAULT_COMP_PLAN, compLevelOf } from "./comp-plan.js";
 import { monthKey } from "./metrics-core.js";
 
 // Benchmark do pace (0..1) vira o "padrão" em % que a tela mostra: um número só
@@ -41,6 +45,13 @@ export const META_CATALOG = [
       { metric: "showRate", kind: "rate", label: "Comparecimento na call", unit: "%", hint: "das agendadas, quantas acontecem", default: pct(RATE_BENCHMARKS.showRate) },
       { metric: "contacts", kind: "flow", label: "Contatos no mês", unit: "n", default: null, team: true },
       { metric: "callsBooked", kind: "flow", label: "Calls agendadas", unit: "n", default: null, team: true },
+      // As duas pernas do plano de REMUNERAÇÃO do SDR (04/08): fechamentos e
+      // R$ das oportunidades DELE. `compPlan: true` = a meta vem do plano pelo
+      // nível da pessoa (comp-plan.js VENCE vaga e derivado no goalFor do
+      // placar), então a tela não oferece campo de vaga — mostra a régua do
+      // plano; só o ajuste por PESSOA ainda vence.
+      { metric: "won", kind: "flow", label: "Contratos no mês", unit: "n", hint: "fechamentos das SUAS oportunidades", default: null, compPlan: true },
+      { metric: "revenue", kind: "flow", label: "Receita fechada", unit: "R$", hint: "R$ fechado das SUAS oportunidades", default: null, compPlan: true },
     ],
   },
   {
@@ -51,12 +62,16 @@ export const META_CATALOG = [
       // colore. A conversão sobre as AGENDADAS não é campo: é conta
       // (comparecimento × esta), senão dá pra configurar duas que se contradizem.
       { metric: "conversaoCall", kind: "rate", label: "Call → ganho", unit: "%", hint: "das calls que aconteceram", default: pct(RATE_BENCHMARKS.closeRate) },
+      // Resgate de follow-up: dos leads que caíram em follow-up na janela,
+      // quantos o closer trouxe de volta pra ganho. É a métrica que separa o
+      // closer que só colhe call quente do que trabalha a fila (Visão geral).
+      { metric: "followupWinRate", kind: "rate", label: "Resgate de follow-up", unit: "%", hint: "dos que caíram em follow-up, quantos fecham", default: 15 },
       // Volume de call do closer: as que ACONTECERAM (o no-show é cobrado no
       // comparecimento do SDR). Fica logo abaixo da taxa porque é o denominador
       // dela — as duas juntas explicam os ganhos.
       { metric: "callsShown", kind: "flow", label: "Calls realizadas no mês", unit: "n", hint: "sem contar os no-show", default: null, team: true },
-      { metric: "won", kind: "flow", label: "Ganhos no mês", unit: "n", default: null, team: true },
-      { metric: "revenue", kind: "flow", label: "Receita no mês", unit: "R$", default: null, team: true },
+      { metric: "won", kind: "flow", label: "Ganhos no mês", unit: "n", default: null, team: true, compPlan: true },
+      { metric: "revenue", kind: "flow", label: "Receita no mês", unit: "R$", default: null, team: true, compPlan: true },
       { metric: "ticket", kind: "avg", label: "Ticket médio", unit: "R$", default: null },
     ],
   },
@@ -103,8 +118,9 @@ const ROLES = new Set(META_CATALOG.map((r) => r.role));
 // várias metas no mesmo tick, e torna o upsert idempotente por construção.
 const goalId = (saas, scope, key, metric) => `goal_${saas}_${scope}_${key}_${metric}`;
 
-// Quantos meses à frente a tela deixa configurar (mês corrente + 5).
-const MONTHS_AHEAD = 6;
+// Quantos meses a tela enxerga: o corrente + 6 à frente (o botão "definir os
+// 6 meses" da Agenda preenche exatamente essa janela).
+const MONTHS_AHEAD = 7;
 
 // Desdobramento da meta do MÊS CHEIO pela cadeia do pace. O `plan` do pace
 // persegue o que FALTA (gap ÷ dias restantes) porque serve pra tocar o dia; a
@@ -115,7 +131,7 @@ const MONTHS_AHEAD = 6;
 // como fallback quando falta histórico (goalRate em routes.pipeline-pace.js),
 // então derivar taxa do pace criaria referência circular — e taxa é ambição,
 // não retrato do que já acontece.
-export function deriveGoalsFromPace(pace) {
+export function deriveGoalsFromPace(pace, opts = {}) {
   const through = (n, rate) => (n != null && rate > 0 ? Math.ceil(n / rate) : null);
   // Persegue a META ATUAL: batida a base, o pace re-ancora na próxima super meta
   // (sale.chaseTarget), e o card Pace da tela Metas mostra o que ESSE teto exige.
@@ -127,13 +143,19 @@ export function deriveGoalsFromPace(pace) {
   const chasePct = pace.sale.chasePct || null;
   const ticket = Number(pace.context.averageEntry) > 0 ? Number(pace.context.averageEntry) : null;
   const c = pace.conversions;
-  const won = ticket ? Math.ceil(target / ticket) : null;
+  // Nº de contratos do mês: a meta digitada da EMPRESA (monthlyContractsTarget)
+  // vence a divisão venda ÷ ticket — e, como todo digitado, NÃO escala em super
+  // meta. wonFromTicket fica exposto pra tela comparar as duas verdades.
+  const contractsTarget = Number(opts.contractsTarget) > 0 ? Math.round(Number(opts.contractsTarget)) : null;
+  const wonFromTicket = ticket ? Math.ceil(target / ticket) : null;
+  const won = contractsTarget ?? wonFromTicket;
   const callsShown = through(won, c.closeRateEffective.value);
   const callsBooked = through(callsShown, c.showRate.value);
   const contacts = through(callsBooked, c.bookingRate.value);
   const leads = through(contacts, c.contactRate.value);
-  // Sem ticket não há cadeia: o que trava é sempre a primeira divisão que falha.
-  const blockedBy = !ticket ? "ticket"
+  // O que trava é sempre a primeira divisão que falha. Sem ticket, a meta de
+  // contratos digitada ainda sustenta a cadeia (ela É o nº de ganhos).
+  const blockedBy = won == null ? "ticket"
     : !(c.closeRateEffective.value > 0) ? "closeRate"
     : !(c.showRate.value > 0) ? "showRate"
     : !(c.bookingRate.value > 0) ? "bookingRate"
@@ -142,6 +164,7 @@ export function deriveGoalsFromPace(pace) {
   return {
     target, base, superMode, chasePct,
     ticket, ticketSource: pace.context.averageEntrySource || "",
+    contractsTarget, wonFromTicket, wonSource: contractsTarget != null ? "company" : "ticket",
     won, callsShown, callsBooked, contacts,
     leads, // entrada do funil: é o marketing que entrega, então não vira meta de vaga
     rates: {
@@ -149,6 +172,18 @@ export function deriveGoalsFromPace(pace) {
       showRate: c.showRate.value, showRateSource: c.showRate.source,
       bookingRate: c.bookingRate.value, bookingRateSource: c.bookingRate.source,
       contactRate: c.contactRate.value, contactRateSource: c.contactRate.source,
+    },
+    // Janela e amostra de cada taxa, pro tooltip da cadeia responder "de onde
+    // veio e de qual período" na própria tela (pergunta real do Leo): mês
+    // fechado anterior (coorte madura) ou 30d móveis no fallback. n/d zerados =
+    // taxa sem medição (veio de meta configurada ou benchmark).
+    rateWindow: pace.rateWindow || null,
+    rateCounts: {
+      contactRate: { n: c.contactRate?.numerator || 0, d: c.contactRate?.denominator || 0 },
+      bookingRate: { n: c.bookingRate?.numerator || 0, d: c.bookingRate?.denominator || 0 },
+      showRate: { n: c.showRate?.numerator || 0, d: c.showRate?.denominator || 0 },
+      closeRate: { n: c.closeRate?.numerator || 0, d: c.closeRate?.denominator || 0 },
+      leadToWin: { n: c.leadToWin?.numerator || 0, d: c.leadToWin?.denominator || 0 },
     },
     blockedBy,
     // O que o botão "derivar do pace" grava (alvos do TIME — o placar reparte).
@@ -178,7 +213,7 @@ export function registerMetasRoutes(app, repo) {
     };
     // Derivação da meta do mês (cadeia do pace) — best-effort, ver mais abaixo.
     let derived = null;
-    try { derived = deriveGoalsFromPace(await computePipelinePace(repo, product)); }
+    try { derived = deriveGoalsFromPace(await computePipelinePace(repo, product), { contractsTarget: product.monthlyContractsTarget }); }
     catch { derived = null; }
     const derivedByMetric = Object.fromEntries((derived?.goals || []).map((g) => [`${g.role}.${g.metric}`, g.target]));
     const roles = META_CATALOG.map((r) => ({
@@ -192,11 +227,24 @@ export function registerMetasRoutes(app, repo) {
         derived: derivedByMetric[`${r.role}.${m.metric}`] ?? null,
       })),
     }));
-    // Time do produto com papel (pros overrides por pessoa).
+    // Time do produto com papel (pros overrides por pessoa). O `compLevel` (1
+    // jr · 2 pl · 3 sn) diz qual linha do plano de remuneração vale pra pessoa.
     const users = (await repo.list("users").catch(() => []))
       .filter((u) => !u.saas || u.saas === product.id)
       .filter((u) => (u.roles || []).some((r) => ROLES.has(r)))
-      .map((u) => ({ id: u.id, name: u.name || u.id, roles: (u.roles || []).filter((r) => ROLES.has(r)) }));
+      .map((u) => ({ id: u.id, name: u.name || u.id, roles: (u.roles || []).filter((r) => ROLES.has(r)), compLevel: compLevelOf(u) }));
+    // Plano de REMUNERAÇÃO vigente (comp_plans por cima do padrão aprovado):
+    // contratos/receita de SDR e closer são meta POR PESSOA pelo nível — o
+    // placar já aplica (comp vence vaga e derivado), a tela mostra a régua.
+    const compDocs = await repo.list("comp_plans").catch(() => []);
+    const compLevels = (role) => {
+      const doc = compDocs.find((d) => d && d.role === role);
+      const levels = doc?.plan?.levels?.length ? doc.plan.levels : DEFAULT_COMP_PLAN[role].levels;
+      return levels
+        .map((l) => ({ n: Math.floor(Number(l?.n)) || 1, metaContracts: Number(l?.metaContracts) || 0, metaRevenue: Number(l?.metaRevenue) || 0 }))
+        .sort((a, b) => a.n - b.n);
+    };
+    const compPlan = { sdr: compLevels("sdr"), closer: compLevels("closer") };
     // Metas por pessoa já configuradas.
     const userGoals = goals
       .filter((g) => g.scope === "user" && ALL_METRICS.has(g.metric))
@@ -222,11 +270,13 @@ export function registerMetasRoutes(app, repo) {
     const company = {
       cashTarget: Number(product.monthlyCashTarget) > 0 ? Number(product.monthlyCashTarget) : null,
       cashTargetDefault: DEFAULT_CASH_TARGET,
+      contractsTarget: Number(product.monthlyContractsTarget) > 0 ? Number(product.monthlyContractsTarget) : null,
+      growthPct: Number(product.monthlyCashGrowthPct) > 0 ? Number(product.monthlyCashGrowthPct) : null,
       months: proximosMeses,
     };
     // Quantas pessoas em cada vaga (o placar reparte a meta de time entre elas).
     const people = Object.fromEntries([...ROLES].map((role) => [role, users.filter((u) => u.roles.includes(role)).length]));
-    return { saas: product.id, roles, users, userGoals, company, people, derived };
+    return { saas: product.id, roles, users, userGoals, company, people, derived, compPlan };
   });
 
   // Salva as metas (upsert/delete na collection goals). Cada item:
@@ -248,6 +298,21 @@ export function registerMetasRoutes(app, repo) {
         const num = Number(String(empresa.cashTarget ?? "").trim()); // "" → NaN (não 0)
         const next = Number.isFinite(num) && num > 0 ? num : null;
         if (next !== (Number(product.monthlyCashTarget) > 0 ? Number(product.monthlyCashTarget) : null)) patch.monthlyCashTarget = next;
+      }
+      // Regra de crescimento (% ao mês sobre o último mês agendado): é ela que
+      // dispensa re-agendar a escada todo mês. Vazio/zero limpa (mês sem valor
+      // volta a seguir a meta padrão). Teto de sanidade em 1000%.
+      if ("growthPct" in empresa) {
+        const num = Number(String(empresa.growthPct ?? "").trim());
+        const next = Number.isFinite(num) && num > 0 ? Math.min(Math.round(num * 10) / 10, 1000) : null;
+        if (next !== (Number(product.monthlyCashGrowthPct) > 0 ? Number(product.monthlyCashGrowthPct) : null)) patch.monthlyCashGrowthPct = next;
+      }
+      // Meta de contratos do mês (nº inteiro): vazio/zero limpa e o número volta
+      // a seguir a venda ÷ ticket na cadeia.
+      if ("contractsTarget" in empresa) {
+        const num = Number(String(empresa.contractsTarget ?? "").trim());
+        const next = Number.isFinite(num) && num > 0 ? Math.round(num) : null;
+        if (next !== (Number(product.monthlyContractsTarget) > 0 ? Number(product.monthlyContractsTarget) : null)) patch.monthlyContractsTarget = next;
       }
       // Agenda de metas por mês: "AAAA-MM" → valor. Vazio/zero apaga o mês (ele
       // volta a seguir o padrão), e mês fora do formato é ignorado.

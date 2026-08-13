@@ -20,6 +20,7 @@ import { OutboundScreen } from "./screens/outbound.jsx";
 import { RemuneracaoScreen } from "./screens/remuneracao.jsx";
 import { WhatsappInboxScreen } from "./screens/whatsapp.jsx";
 import { WaHotAlert } from "./components/wa-hot-alert.jsx";
+import { FeedbackWidget } from "./components/feedback-widget.jsx";
 import { AgendaScreen } from "./screens/agenda.jsx";
 import { ConsultasScreen } from "./screens/consultas.jsx";
 import { CallsScreen } from "./screens/calls.jsx";
@@ -34,9 +35,10 @@ import { EloAppScreen } from "./screens/eloapp.jsx";
 import { LandingPagesScreen } from "./screens/landingpages.jsx";
 import { TasksScreen } from "./screens/tasks.jsx";
 import { MindmapsScreen } from "./screens/mindmaps.jsx";
-import { SettingsScreen } from "./screens/settings.jsx";
+import { SettingsScreen, SettingsLite } from "./screens/settings.jsx";
 import { LeadDetail } from "./screens/deal.jsx";
 import { CommandSearch } from "./components/CommandSearch.jsx";
+import { ToastHost } from "./atoms.jsx";
 import { ErrorBoundary } from "./components/error-boundary.jsx";
 import { DataContext, loadSeed } from "./data.jsx";
 import { useActiveSaas } from "./lib/workspace.js";
@@ -49,8 +51,15 @@ import { useIsMobile } from "./lib/responsive.js";
 const { useState: useStA, useEffect: useEA, useCallback: useCbA } = React;
 
 // Telas que respeitam a JANELA GLOBAL: o filtro de período aparece no topo (ao
-// lado da busca) só nelas, e mudar ali reflete em todas de uma vez.
-const PERIOD_SCREENS = new Set(["overview", "aquisicao", "funcionarios"]);
+// lado da busca) só nelas, e mudar ali reflete em todas de uma vez. Desde 08/08
+// (pedido do Leo) é o ÚNICO filtro de período do cockpit — as telas não têm
+// mais seletor próprio (o mês dos Custos fica: é mês CONTÁBIL de lançamento,
+// não janela de análise).
+const PERIOD_SCREENS = new Set([
+  "overview", "aquisicao", "funcionarios",
+  "metrics", "forms", "expenses", "customers", "social",
+  "eloapp", "landingpages",
+]);
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "theme": "light",
@@ -110,7 +119,38 @@ function App() {
   // tick no /api/events; recarregamos o SEED com debounce. O primeiro evento é
   // só a baseline do rev. EventSource reconecta sozinho se a conexão cair.
   useEA(() => {
-    let last = null, t = null;
+    // COALESCÊNCIA (Leo, 04/08: "o cockpit fica dando uns pequenos refresh nele
+    // inteiro"): cada escrita de QUALQUER usuário disparava um reload completo
+    // em TODO navegador conectado, com só 350ms de janela — manhã de time ativo
+    // virava flicker contínuo. Agora: no máximo UM reload a cada 8s (o burst
+    // inteiro vira um reload só), e aba ESCONDIDA não recarrega — sincroniza
+    // uma vez quando volta ao foco.
+    let last = null, t = null, lastRun = 0, dirty = false;
+    const MIN_GAP = 8000;
+    // NUNCA recarregar com o usuário DIGITANDO (Leo, 04/08: "estou alimentando
+    // alguma informação e o refresh faz eu perder ela"): com o foco em input/
+    // textarea/select/contentEditable o reload fica represado (dirty) e só
+    // roda quando o campo perde o foco (focusout re-arma) ou a aba volta.
+    const isEditing = () => {
+      const el = document.activeElement;
+      if (!el) return false;
+      const tag = (el.tagName || "").toLowerCase();
+      return tag === "input" || tag === "textarea" || tag === "select" || el.isContentEditable;
+    };
+    const tryRun = () => {
+      if (document.hidden || isEditing()) { dirty = true; return; }
+      lastRun = Date.now(); dirty = false; refresh();
+    };
+    const schedule = () => {
+      clearTimeout(t);
+      t = setTimeout(tryRun, Math.max(350, MIN_GAP - (Date.now() - lastRun)));
+    };
+    // Terminou de editar (blur de qualquer campo, em capture) ou voltou pra
+    // aba: se ficou reload represado, roda um — tryRun re-checa o foco (se
+    // pulou pra outro campo, segue represado).
+    const onIdle = () => { if (dirty) { clearTimeout(t); t = setTimeout(tryRun, 600); } };
+    document.addEventListener("visibilitychange", onIdle);
+    document.addEventListener("focusout", onIdle, true);
     const es = new EventSource(eventsUrl());
     es.onmessage = (m) => {
       let rev, collection;
@@ -119,13 +159,14 @@ function App() {
       // Recarregar o SEED inteiro a cada toque registrado seria desperdício; se o
       // toque também mexeu no lead (denorm), o update do lead emite outro evento
       // e aí sim recarregamos.
-      if (last != null && rev !== last && collection !== "activities") {
-        clearTimeout(t);
-        t = setTimeout(refresh, 350);
-      }
+      if (last != null && rev !== last && collection !== "activities") schedule();
       last = rev;
     };
-    return () => { clearTimeout(t); es.close(); };
+    return () => {
+      clearTimeout(t); es.close();
+      document.removeEventListener("visibilitychange", onIdle);
+      document.removeEventListener("focusout", onIdle, true);
+    };
   }, [refresh]);
 
   // Back/forward do navegador troca a tela junto com o hash.
@@ -192,7 +233,7 @@ function App() {
     mindmaps:    ["Geral", "Mapas mentais"],
     metas:       ["Geral", "Metas"],
     training:    ["Treinamentos"],
-    expenses:    ["Geral", "Custos"],
+    expenses:    ["Geral", "Financeiro"],
     settings:    ["Geral", "Configurações"],
     subscriptions: ["Comercial", "Clientes", "Assinaturas"], // rota antiga → aba dentro de Clientes
   };
@@ -202,7 +243,9 @@ function App() {
   // Clientes. O corte de verdade é no servidor (screens.js) — aqui é UX.
   const allowedNav = NAV.filter((n) => !n.hidden && canSeeScreen(n.id));
   const neededScreen = screen === "subscriptions" ? "customers" : screen;
-  const scr = canSeeScreen(neededScreen) ? screen : (allowedNav[0]?.id || "pipeline");
+  // "settings" passa SEMPRE: quem não tem a tela cai na versão reduzida (só a
+  // conexão Google pessoal, SettingsLite) — todo usuário conecta a própria conta.
+  const scr = canSeeScreen(neededScreen) || neededScreen === "settings" ? screen : (allowedNav[0]?.id || "pipeline");
 
   return (
     <DataContext.Provider value={dataCtx}>
@@ -271,7 +314,7 @@ function App() {
           {scr === "subscriptions" && <CustomersScreen initialTab="billing" />}
           {scr === "tasks"       && <TasksScreen />}
           {scr === "mindmaps"    && <MindmapsScreen />}
-          {scr === "settings"    && <SettingsScreen saasId={params.saas} />}
+          {scr === "settings"    && (canSeeScreen("settings") ? <SettingsScreen saasId={params.saas} /> : <SettingsLite />)}
         </div>
         </ErrorBoundary>
       </main>
@@ -290,8 +333,26 @@ function App() {
 
       {/* Lead quente do WhatsApp (fluxo de ligação): salta em qualquer tela. */}
       <ErrorBoundary variant="modal" label="wa-hot" resetKey="wa-hot" onReset={() => {}}>
-        <WaHotAlert onOpenThread={(a) => nav("whatsapp", { waThread: a.thread, waLead: "", waDraft: "" })} />
+        <WaHotAlert
+          onOpenThread={(a) => nav("whatsapp", { waThread: a.thread, waLead: "", waDraft: "" })}
+          onOpenLeadWhatsapp={(a) => nav("whatsapp", { waLead: a.leadId, waThread: "", waDraft: "" })}
+          onOpenLeadCard={(a) => {
+            // O alerta pode chegar no mesmo tick em que o SEED ainda não trouxe
+            // o card recém-criado: sem ele, cai no funil do produto em vez de
+            // abrir um drawer vazio e perder o lead de vista.
+            const l = (window.SEED?.LEADS || []).find((x) => x.id === a.leadId);
+            if (l) openLead(l); else nav("pipeline", { saas: a.saas });
+          }} />
       </ErrorBoundary>
+
+      {/* Feedback (bug/melhoria) em toda tela: FAB no canto inferior direito;
+          o envio vira card no quadro de Tarefas com print + contexto. */}
+      <ErrorBoundary variant="modal" label="feedback" resetKey="feedback" onReset={() => {}}>
+        <FeedbackWidget screenLabel={(crumbsFor[scr] || [scr]).join(" · ")} />
+      </ErrorBoundary>
+
+      {/* Toast global (window.toast): erro de mutação otimista e avisos rápidos. */}
+      <ToastHost />
 
       <CommandSearch
         open={searchOpen}

@@ -1,18 +1,19 @@
 import React from "react";
-import { EmptyState } from "../atoms.jsx";
+import { EmptyState, useEsc, toast, WaButton } from "../atoms.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { Pill } from "../components/viz.jsx";
 import { ActivityComposer } from "../components/timeline.jsx";
-import { waLink, leadTier, leadScoreLabel, cockpitProposalUrl } from "../lib/ui.js";
+import { waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor } from "../lib/funnel.js";
 import { allUsers, currentUser, displayName, userById, usersByRole } from "../lib/users.js";
 import { useProposalTemplates } from "../components/ProposalActions.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
-import { useAttribution, leadPain } from "../lib/pains.js";
-import { resolveScript, scriptTokens, scriptSegments, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor } from "../lib/scripts.js";
-import { PAYMENT_METHODS, CLOSED_PLANS, paymentLabel, closedPlanLabel } from "../lib/payments.js";
+import { useAttribution } from "../lib/pains.js";
+import { clientSummary, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks, DealProductField, isOneOffProduct } from "../components/lead-blocks.jsx";
+import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor } from "../lib/scripts.js";
+import { PAYMENT_METHODS, CLOSED_PLANS, closedPlanLabel, dealProductLabel, dealProductsOf } from "../lib/payments.js";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
 // "Amanhã" e "Próximos dias" (o que já está agendado, à vista), e "Sem data".
@@ -25,6 +26,83 @@ const { useState: useS, useMemo: useM, useEffect: useE } = React;
 
 const TOUCH_TYPES = new Set(["whatsapp", "call", "email", "meeting"]);
 const DAY = 86400000;
+
+// Relógio da tela: um tick a cada 30s mantém o horário do cabeçalho e as
+// previsões da fila ("em 25 min") vivos sem depender de recarga de dados.
+function useNow(step = 30000) {
+  const [now, setNow] = useS(() => Date.now());
+  useE(() => {
+    const id = setInterval(() => setNow(Date.now()), step);
+    return () => clearInterval(id);
+  }, [step]);
+  return now;
+}
+
+// Previsão que fica embaixo da pílula de horário: quanto falta pro compromisso.
+function untilNote(t, now) {
+  const mins = Math.round((t - now) / 60000);
+  if (mins <= 0) return "agora";
+  if (mins < 60) return `em ${mins} min`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m ? `em ${h}h${String(m).padStart(2, "0")}` : `em ${h}h`;
+}
+
+const hhmmOf = (t) => new Date(t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+const ddmmOf = (t) => new Date(t).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+
+// Ponteiros no horário real — o ícone do relógio marca a hora de agora.
+function ClockIcon({ now, size = 15 }) {
+  const d = new Date(now);
+  const mins = d.getMinutes();
+  const hand = (deg, len) => {
+    const a = ((deg - 90) * Math.PI) / 180;
+    return `${(12 + Math.cos(a) * len).toFixed(1)} ${(12 + Math.sin(a) * len).toFixed(1)}`;
+  };
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d={`M12 12 L ${hand(((d.getHours() % 12) + mins / 60) * 30, 4.2)}`} />
+      <path d={`M12 12 L ${hand(mins * 6, 6.4)}`} />
+    </svg>
+  );
+}
+
+// Relógio ao vivo ao lado do título: situa quem está operando a fila (o "agora"
+// das pílulas de horário é este).
+function NowClock({ now }) {
+  const d = new Date(now);
+  const day = d.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" }).replace(".", "");
+  return (
+    <span title={`agora · ${day} ${hhmmOf(now)}`} style={{
+      display: "inline-flex", alignItems: "center", gap: 7, height: 30, padding: "0 12px", borderRadius: 999,
+      border: "1px solid var(--line-2)", background: "var(--bg-1)", flexShrink: 0,
+    }}>
+      <span style={{ color: "var(--accent)", display: "inline-flex" }}><ClockIcon now={now} /></span>
+      <span className="tnum" style={{ fontSize: 13.5, fontWeight: 600, color: "var(--fg-1)" }}>{hhmmOf(now)}</span>
+      <span style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{day}</span>
+    </span>
+  );
+}
+
+// Coluna "quando" da fila: a HORA em pílula navy (o dado que a pessoa procura
+// primeiro) e a previsão logo abaixo ("agora", "em 25 min", "atrasado 2d").
+// Item sem hora marcada usa a pílula neutra pra fila não perder o alinhamento.
+function TimeCell({ pill, note, tone, soft }) {
+  const noteColor = tone === "neg" ? "var(--neg)" : tone === "warn" ? "var(--warn)" : tone === "pos" ? "var(--pos)" : "var(--fg-4)";
+  return (
+    <span style={{ width: 66, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3 }}>
+      {/* Instrument Sans com números tabulares (`.tnum`, sem `.mono`): a hora
+          lê mais fácil que na JetBrains e as colunas continuam alinhadas. */}
+      <span className="tnum" style={{
+        display: "inline-flex", alignItems: "center", height: 22, padding: soft ? "0 8px" : "0 9px", borderRadius: 999,
+        background: soft ? "var(--bg-2)" : "var(--btn-bg)", color: soft ? "var(--fg-2)" : "var(--btn-fg)",
+        fontSize: soft ? 11.5 : 12.5, fontWeight: 600, whiteSpace: "nowrap",
+      }}>{pill}</span>
+      {note && <span style={{ fontSize: 10.5, fontWeight: tone === "neg" ? 600 : 500, color: noteColor, paddingLeft: 2, whiteSpace: "nowrap" }}>{note}</span>}
+    </span>
+  );
+}
 
 // Rótulo da ação por kind — o "o que fazer" do item, não o nome do estágio.
 const ACTION_LABELS = {
@@ -263,13 +341,18 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   // no horário marcado (buildQueue). Fora do SEED (coleção própria), refetch no
   // tempo real (version). Sem consultas no produto, a fila fica igual.
   const [consultas, setConsultas] = useS([]);
+  // Falha de carga NÃO pode ser silenciosa: consulta/tarefa que some da fila
+  // sem aviso é compromisso furado. O banner avisa e oferece recarregar.
+  const [consultasErr, setConsultasErr] = useS(false);
+  const [tasksErr, setTasksErr] = useS(false);
+  const [reload, setReload] = useS(0);
   useE(() => {
     let alive = true;
     api.list("consultations")
-      .then((rows) => alive && setConsultas((rows || []).filter((c) => c.saas === (saasCfg?.id || activeProduct?.id))))
-      .catch(() => alive && setConsultas([]));
+      .then((rows) => { if (!alive) return; setConsultas((rows || []).filter((c) => c.saas === (saasCfg?.id || activeProduct?.id))); setConsultasErr(false); })
+      .catch(() => { if (alive) { setConsultas([]); setConsultasErr(true); } });
     return () => { alive = false; };
-  }, [version, saasCfg?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [version, saasCfg?.id, reload]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Tarefas do kanban (tela Tarefas) aqui na fila do dia: as ABERTAS do produto
   // ativo, da pessoa da fila ou sem responsável. Concluir aqui move o card pro
@@ -279,10 +362,10 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   useE(() => {
     let alive = true;
     Promise.all([api.list("tasks"), api.list("task_boards")])
-      .then(([ts, boards]) => { if (!alive) return; setTasks(ts || []); setTaskBoard((boards || [])[0] || null); })
-      .catch(() => alive && setTasks([]));
+      .then(([ts, boards]) => { if (!alive) return; setTasks(ts || []); setTaskBoard((boards || [])[0] || null); setTasksErr(false); })
+      .catch(() => { if (alive) { setTasks([]); setTasksErr(true); } });
     return () => { alive = false; };
-  }, [version, saasCfg?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [version, saasCfg?.id, reload]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fila de quem: padrão o usuário logado; admin pode inspecionar a de qualquer um.
   const [person, setPersonState] = useS(() => {
@@ -298,6 +381,9 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
 
   const q = useM(() => buildQueue(leads, consultas, saasCfg, person), [leads, consultas, saasCfg, person]);
   const total = q.hoje.length + q.amanha.length + q.proximos.length + q.semdata.length;
+  // Tick do relógio do cabeçalho — de quebra mantém a previsão de cada linha
+  // ("em 25 min", "agora") em dia sem esperar um refresh de dados.
+  const now = useNow();
 
   // Próximo item pendente DEPOIS deste na fila de HOJE — o "toque e próximo".
   // Só entre leads (consultas não entram no fluxo de roteiro/toque).
@@ -309,19 +395,28 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   // Toque direto da fila: vira activity, o servidor conta a tentativa, re-agenda
   // o GPS (pulando fim de semana) e, em estágio "novo", move o lead sozinho pra
   // Qualificando. Espelho local pra resposta imediata; o SSE ressincroniza.
-  function logTouch(item) {
+  //
+  // `when` = data e hora escolhidas no "Retomar" ("YYYY-MM-DDTHH:MM", hora
+  // local). Ela MANDA no próximo toque: o servidor re-agenda pela cadência ao
+  // receber a activity, então o horário do operador só vale se for gravado
+  // DEPOIS que a activity entrou — por isso o update espera o logActivity.
+  function logTouch(item, when = "") {
     const l = item.l;
     const cad = cadenceOf(saasCfg, item.stage);
     const now = Date.now();
+    const chosen = when ? new Date(when) : null;
+    const chosenIso = chosen && Number.isFinite(chosen.getTime()) ? chosen.toISOString() : "";
     setLeads((prev) => prev.map((x) => x.id === l.id ? {
       ...x,
       stageAttempts: (Number(x.stageAttempts) || 0) + 1,
       lastActivityAt: new Date(now).toISOString(),
       lastActivityType: "call",
-      ...(cad.retryDays ? { nextActionAt: rollToBusinessDay(new Date(now + cad.retryDays * DAY)).toISOString() } : {}),
+      ...(chosenIso ? { nextActionAt: chosenIso }
+        : cad.retryDays ? { nextActionAt: rollToBusinessDay(new Date(now + cad.retryDays * DAY)).toISOString() } : {}),
     } : x));
     api.logActivity({ saas: l.saas, lead: l.id, type: "call", text: "tentativa de contato (meu dia)", author: me })
-      .catch((err) => console.warn("toque não registrado:", err.message));
+      .then(() => (chosenIso ? api.update("leads", l.id, { nextActionAt: chosenIso }) : null))
+      .catch((err) => { console.warn("toque não registrado:", err.message); toast("O toque não foi salvo · tente de novo", "neg"); });
   }
 
   // Card sem responsável: quem clica assume (vira o responsável). Grava no
@@ -331,13 +426,13 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
     if (!whoId) return;
     const field = item.phase === "sdr" ? "owner" : item.phase === "entrega" ? "integrator" : "closer";
     setLeads((prev) => prev.map((x) => x.id === item.l.id ? { ...x, [field]: whoId } : x));
-    api.update("leads", item.l.id, { [field]: whoId }).catch((err) => console.warn("responsável não salvo:", err.message));
+    api.update("leads", item.l.id, { [field]: whoId }).catch((err) => { console.warn("responsável não salvo:", err.message); toast("Não deu pra assumir o card · tente de novo", "neg"); });
   }
 
   // Edição inline dos dados do lead (checklist do roteiro). Otimista.
   function patchLead(leadId, patch) {
     setLeads((prev) => prev.map((x) => x.id === leadId ? { ...x, ...patch } : x));
-    api.update("leads", leadId, patch).catch((err) => console.warn("lead não salvo:", err.message));
+    api.update("leads", leadId, patch).catch((err) => { console.warn("lead não salvo:", err.message); toast("Alteração no lead não foi salva · tente de novo", "neg"); });
   }
 
   // Mover o card pra próxima coluna a partir do roteiro (com o setup do destino
@@ -350,7 +445,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
     const nx = nextAfter(cur);
     setLeads((prev) => prev.map((x) => x.id === cur.l.id
       ? { ...x, ...patch, stageSince: new Date().toISOString(), stageAttempts: 0 } : x));
-    api.update("leads", cur.l.id, patch).catch((err) => console.warn("movimento não persistido:", err.message));
+    api.update("leads", cur.l.id, patch).catch((err) => { console.warn("movimento não persistido:", err.message); toast("O movimento do card não foi salvo · tente de novo", "neg"); });
     setScriptItem(nx);
   }
 
@@ -398,18 +493,32 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
       String(a.dueDate || "9999-99-99").localeCompare(String(b.dueDate || "9999-99-99")) ||
       String(a.priority || "P9").localeCompare(String(b.priority || "P9")));
 
+  // Concluir tem DESFAZER (6s): no celular o dedo erra o ✓ e a tarefa sumia
+  // da fila sem volta fácil (só indo ao kanban).
+  const undoTimerRef = React.useRef(null);
+  const [undoTask, setUndoTask] = useS(null); // { task, prevColumn }
   function completeTask(t) {
     if (!taskDoneKey) { location.hash = "#tasks"; return; }
     setTasks((prev) => prev.map((x) => (x.id === t.id ? { ...x, column: taskDoneKey } : x)));
-    api.update("tasks", t.id, { column: taskDoneKey }).catch((err) => console.warn("tarefa não concluída:", err.message));
+    setUndoTask({ task: t, prevColumn: t.column });
+    clearTimeout(undoTimerRef.current);
+    undoTimerRef.current = setTimeout(() => setUndoTask(null), 6000);
+    api.update("tasks", t.id, { column: taskDoneKey }).catch((err) => { console.warn("tarefa não concluída:", err.message); toast("A tarefa não foi concluída no quadro · tente de novo", "neg"); });
+  }
+  function revertTask() {
+    const u = undoTask; if (!u) return;
+    clearTimeout(undoTimerRef.current); setUndoTask(null);
+    setTasks((prev) => prev.map((x) => (x.id === u.task.id ? { ...x, column: u.prevColumn } : x)));
+    api.update("tasks", u.task.id, { column: u.prevColumn }).catch((err) => { console.warn("desfazer falhou:", err.message); toast("Não deu pra desfazer · veja no kanban", "neg"); });
   }
 
-  const users = allUsers().filter((u) => !u.saas || u.saas === saasCfg?.id);
+  const users = useM(() => allUsers().filter((u) => !u.saas || u.saas === saasCfg?.id), [saasCfg?.id]);
   const firstPending = q.hoje.find((i) => !i.done);
   const pendingToday = q.hoje.filter((i) => !i.done);
   const doneTodayRows = q.hoje.filter((i) => i.done);
   const futureRows = [...q.proximos, ...q.semdata];
-  const queueCounts = Object.fromEntries(users.map((u) => [u.id, buildQueue(leads, consultas, saasCfg, u.id).hoje.filter((i) => !i.done).length]));
+  // Memo: buildQueue de TODOS os usuários a cada render travava a digitação no painel.
+  const queueCounts = useM(() => Object.fromEntries(users.map((u) => [u.id, buildQueue(leads, consultas, saasCfg, u.id).hoje.filter((i) => !i.done).length])), [leads, consultas, saasCfg, users]);
   // Meta de "Contatados" é de contato (leads): consultas não contam pro placar.
   const contactedGoal = Math.max(q.doneToday + pendingToday.filter((i) => i.l).length, q.doneToday, 1);
   const callsToday = q.hoje.filter((i) => i.kind === "call" && !i.confirm);
@@ -431,8 +540,11 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
       <div style={{ padding: "28px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 260 }}>
-            <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em" }}>Minhas atividades</h1>
-            <div style={{ marginTop: 4, fontSize: 14.5, color: "var(--fg-3)" }}>hoje em ordem de execução · amanhã e próximos dias à vista</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <h1 className="page-title">Minhas atividades</h1>
+              <NowClock now={now} />
+            </div>
+            <div className="page-sub" style={{ marginTop: 4 }}>hoje em ordem de execução · amanhã e próximos dias à vista</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 6, flexWrap: "wrap" }}>
             {users.map((u) => {
@@ -450,25 +562,34 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
           </div>
         </div>
 
-        {daySocialDone && <SocialSellingNotice ig={igStats} />}
-        {total === 0 && myTasks.length === 0 ? (
-          <EmptyState
-            title="Fila limpa"
-            hint={person ? "Nenhuma ação pendente nessa fila. Confira o pipeline ou puxe leads novos." : "Nenhuma ação pendente."}
-          />
-        ) : total === 0 ? (
-          // Fila de leads vazia mas há tarefas do kanban: elas SÃO as atividades
-          // do dia (é o caso normal do workspace Elo, que não tem pipeline).
-          <div style={{ maxWidth: 640 }}>
-            <TasksCard tasks={myTasks} onDone={completeTask} />
+        {(consultasErr || tasksErr) && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid var(--warn-line)", background: "var(--warn-soft)", borderRadius: "var(--r-2)", padding: "9px 12px", fontSize: 12.5 }}>
+            <span>⚠ Não deu pra carregar {[consultasErr && "as consultas", tasksErr && "as tarefas"].filter(Boolean).join(" e ")} · a fila pode estar incompleta.</span>
+            <button onClick={() => setReload((n) => n + 1)} style={{ marginLeft: "auto", height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--warn-line)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 600 }}>recarregar</button>
           </div>
+        )}
+        {daySocialDone && <SocialSellingNotice ig={igStats} />}
+        {total === 0 ? (
+          // Fila de leads vazia: a tela continua a de sempre ("Fila limpa");
+          // as tarefas do kanban entram como um bloco A MAIS, nunca no lugar dela.
+          <>
+            <EmptyState
+              title="Fila limpa"
+              hint={person ? "Nenhuma ação pendente nessa fila. Confira o pipeline ou puxe leads novos." : "Nenhuma ação pendente."}
+            />
+            {myTasks.length > 0 && (
+              <div style={{ maxWidth: 640 }}>
+                <TasksCard tasks={myTasks} onDone={completeTask} undo={undoTask} onUndo={revertTask} />
+              </div>
+            )}
+          </>
         ) : (
           <div className="resp-cols" style={{ "--cols": "minmax(0, 1fr) minmax(300px, 380px)", gap: 16, alignItems: "start" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
               <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "20px var(--inset-x) 14px" }}>
-                  <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em" }}>Hoje</h3>
-                  <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{pendingToday.length} pendentes · em ordem de execução</span>
+                <div style={{ padding: "20px var(--inset-x) 14px" }}>
+                  <h3 className="card-title" style={{ margin: 0 }}>Hoje</h3>
+                  <div className="card-sub" style={{ marginTop: 3 }}>{pendingToday.length} pendentes · em ordem de execução</div>
                 </div>
                 {pendingToday.length === 0 && <div style={{ padding: "16px var(--inset-x)", borderTop: "1px solid var(--line-faint)", fontSize: 13, color: "var(--fg-3)" }}>Fila de hoje concluída.</div>}
                 {pendingToday.map((item, index) => (
@@ -479,9 +600,9 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
 
               {doneTodayRows.length > 0 && (
                 <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "20px var(--inset-x) 14px" }}>
-                    <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em" }}>Feitas hoje</h3>
-                    <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{doneTodayRows.length} concluídas</span>
+                  <div style={{ padding: "20px var(--inset-x) 14px" }}>
+                    <h3 className="card-title" style={{ margin: 0 }}>Feitas hoje</h3>
+                    <div className="card-sub" style={{ marginTop: 3 }}>{doneTodayRows.length} concluídas</div>
                   </div>
                   {doneTodayRows.map((item) => <DoneActivityRow key={item.l.id} item={item} onClick={() => setScriptItem(item)} />)}
                 </section>
@@ -490,7 +611,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
               <DayScore contacted={q.doneToday} contactedGoal={contactedGoal} calls={callsDone} callsGoal={Math.max(callsToday.length, 1)} />
-              {myTasks.length > 0 && <TasksCard tasks={myTasks} onDone={completeTask} />}
+              {myTasks.length > 0 && <TasksCard tasks={myTasks} onDone={completeTask} undo={undoTask} onUndo={revertTask} />}
               <CompactSchedule title="Amanhã" rows={q.amanha} onOpen={openRow} />
               {futureRows.length > 0 && <CompactSchedule title="Próximos dias" rows={futureRows} onOpen={openRow} />}
             </div>
@@ -509,7 +630,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
             onMoveMeet={moveAndMeet}
             onAfter={advanceScript}
             onClose={() => setScriptItem(null)}
-            onTouch={() => { const nx = nextAfter(scriptItem); logTouch(scriptItem); setScriptItem(nx); }}
+            onTouch={(when) => { const nx = nextAfter(scriptItem); logTouch(scriptItem, when); setScriptItem(nx); }}
             onOpenLead={() => { setScriptItem(null); onOpenLead && onOpenLead(scriptItem.l); }}
             onWhatsapp={onOpenWhatsapp ? (l, draft) => { setScriptItem(null); onOpenWhatsapp(l, draft); } : null}
           />
@@ -526,22 +647,20 @@ function ConsultaRow({ item, block, featured, onOpen }) {
   const c = item.consulta;
   const t = item.due?.t;
   const now = Date.now();
-  const hhmm = (v) => new Date(v).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   let when;
-  if (t == null) when = { text: "sem hora", tone: "mut" };
-  else if (block === "amanha") when = { text: hhmm(t), tone: "mut" };
-  else if (block === "proximos") when = { text: new Date(t).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), tone: "mut" };
-  else if (t <= now) when = { above: hhmm(t), text: "agora", tone: "neg" };
-  else when = { text: hhmm(t), tone: "pos" };
+  if (t == null) when = { pill: "sem hora", soft: true, tone: "mut" };
+  else if (block === "amanha") when = { pill: hhmmOf(t), note: "amanhã", tone: "mut" };
+  else if (block === "proximos") when = { pill: ddmmOf(t), note: hhmmOf(t), tone: "mut" };
+  else if (t <= now) when = { pill: hhmmOf(t), note: "agora", tone: "neg" };
+  else when = { pill: hhmmOf(t), note: untilNote(t, now), tone: "pos" };
   return (
-    <div onClick={onOpen} title="Abrir o card da consulta (Meet, resumo)" style={{
+    <div onClick={onOpen} role="button" tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
+      title="Abrir o card da consulta (Meet, resumo)" style={{
       display: "flex", alignItems: "center", gap: 14, padding: featured ? "16px var(--inset-x)" : "14px var(--inset-x)",
       borderTop: "1px solid var(--line-faint)", background: featured ? "var(--accent-soft)" : "transparent", cursor: "pointer", flexWrap: "wrap",
     }}>
-      <span className="mono tnum" style={{ fontSize: 12.5, width: 44, flexShrink: 0, display: "flex", flexDirection: "column", gap: 1 }}>
-        {when.above && <span style={{ fontSize: 11, color: "var(--fg-4)" }}>{when.above}</span>}
-        <span style={{ color: when.tone === "neg" ? "var(--neg)" : when.tone === "pos" ? "var(--pos)" : "var(--fg-4)" }}>{when.text}</span>
-      </span>
+      <TimeCell pill={when.pill} note={when.note} tone={when.tone} soft={when.soft} />
       <span style={{ width: 118, flexShrink: 0 }}>
         <span style={{ display: "inline-block", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: "20px", padding: "0 8px", borderRadius: "var(--r-1)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 11.5, fontWeight: 600 }}>Consulta {c.n || "?"}/{c.packageTotal || 8}</span>
       </span>
@@ -554,9 +673,9 @@ function ConsultaRow({ item, block, featured, onOpen }) {
       </div>
       <div style={{ display: "flex", gap: 8, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
         {c.meetUrl && (
-          <a href={c.meetUrl} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: `1px solid ${featured ? "var(--btn-bg)" : "var(--line-2)"}`, background: featured ? "var(--btn-bg)" : "var(--bg-1)", color: featured ? "var(--btn-fg)" : "var(--fg-2)", fontSize: 12.5, fontWeight: featured ? 600 : 500, textDecoration: "none" }}>Entrar no Meet</a>
+          <a href={c.meetUrl} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: `1px solid ${featured ? "var(--btn-bg)" : "var(--line-2)"}`, background: featured ? "var(--btn-bg)" : "var(--bg-1)", color: featured ? "var(--btn-fg)" : "var(--fg-2)", fontSize: 12.5, fontWeight: featured ? 600 : 500, textDecoration: "none" }}>entrar no Meet</a>
         )}
-        <button onClick={onOpen} style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5 }}>Abrir card</button>
+        <button onClick={onOpen} style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5 }}>abrir card</button>
       </div>
     </div>
   );
@@ -570,33 +689,33 @@ function QueueRow({ item, block, featured, onScript, onClaim, onWhatsapp, onOpen
   if (consulta) return <ConsultaRow item={item} block={block} featured={featured} onOpen={onOpen} />;
   const now = Date.now();
 
-  // Pill de horário. Hoje: atrasado (dias) · agora · HH:mm · novo (idade).
-  // Amanhã: só a hora. Próximos dias: a data. Quando vira "agora", a hora
-  // agendada continua visível em cima do rótulo (when.above).
-  const hhmm = (t) => new Date(t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  // Coluna de horário. A HORA marcada vai na pílula navy (destaque) e a
+  // previsão fica logo abaixo: hoje = agora / em 25 min / atrasado Nd; amanhã e
+  // próximos dias = a data na pílula. Item sem hora (novo, sem data) usa a
+  // pílula neutra com a idade embaixo.
   const startToday = new Date().setHours(0, 0, 0, 0);
   let when;
   if (item.confirm && due) {
     // Confirmação: mostra a hora JÁ descontada (1h/10min antes da call). Passou
     // da hora = "agora" em vermelho pra virar prioridade.
     when = due.t <= now
-      ? { above: hhmm(due.t), text: "agora", tone: "neg" }
-      : { text: hhmm(due.t), tone: "pos" };
+      ? { pill: hhmmOf(due.t), note: "agora", tone: "neg" }
+      : { pill: hhmmOf(due.t), note: untilNote(due.t, now), tone: "pos" };
   } else if (due && block === "amanha") {
-    when = { text: hhmm(due.t), tone: "mut" };
+    when = { pill: hhmmOf(due.t), note: "amanhã", tone: "mut" };
   } else if (due && block === "proximos") {
-    when = { text: new Date(due.t).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), tone: "mut" };
+    when = { pill: ddmmOf(due.t), note: hhmmOf(due.t), tone: "mut" };
   } else if (due && due.t < startToday) {
     const daysLate = Math.max(1, Math.ceil((startToday - due.t) / DAY));
-    when = { text: `atrasado ${daysLate}d`, tone: "neg" };
+    when = { pill: ddmmOf(due.t), note: `atrasado ${daysLate}d`, tone: "neg" };
   } else if (due && due.t <= now) {
-    when = { above: hhmm(due.t), text: due.type === "call" ? "call agora" : "agora", tone: "neg" };
+    when = { pill: hhmmOf(due.t), note: due.type === "call" ? "call agora" : "agora", tone: "neg" };
   } else if (due) {
-    when = { text: hhmm(due.t), tone: due.type === "call" ? "pos" : "mut" };
+    when = { pill: hhmmOf(due.t), note: untilNote(due.t, now), tone: due.type === "call" ? "pos" : "mut" };
   } else if (kind === "novo") {
     const ageH = l.createdAt ? Math.max(0, Math.floor((now - new Date(l.createdAt).getTime()) / 3600000)) : null;
-    when = { text: ageH == null ? "novo" : ageH < 24 ? `há ${ageH}h` : `há ${Math.floor(ageH / 24)}d`, tone: "warn" };
-  } else when = { text: "sem data", tone: "mut" };
+    when = { pill: "novo", soft: true, note: ageH == null ? null : ageH < 24 ? `há ${ageH}h` : `há ${Math.floor(ageH / 24)}d`, tone: "warn" };
+  } else when = { pill: "sem data", soft: true, tone: "mut" };
 
   const unowned = !who; // assumir só quando o card não tem responsável
   const action = item.confirm
@@ -606,7 +725,6 @@ function QueueRow({ item, block, featured, onScript, onClaim, onWhatsapp, onOpen
   const whatsapp = waLink(l.phone);
   const meet = (kind === "call" || kind === "integracao") && l.callUrl;
   const attemptNumber = Number(l.stageAttempts) || 0;
-  const hhmmOf = (v) => new Date(v).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   const actionDetail = l.nextActionNote || (item.confirmKind === "integracao" && l.integrationAt
     ? `integração às ${hhmmOf(l.integrationAt)}`
     : item.confirm && l.callAt ? `call às ${hhmmOf(l.callAt)}`
@@ -615,14 +733,13 @@ function QueueRow({ item, block, featured, onScript, onClaim, onWhatsapp, onOpen
     : action);
 
   return (
-    <div onClick={onScript} title="Abrir o roteiro desta atividade" style={{
+    <div onClick={onScript} role="button" tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onScript(); } }}
+      title="Abrir o roteiro desta atividade" style={{
       display: "flex", alignItems: "center", gap: 14, padding: featured ? "16px var(--inset-x)" : "14px var(--inset-x)",
       borderTop: "1px solid var(--line-faint)", background: featured ? "var(--accent-soft)" : "transparent", cursor: "pointer", flexWrap: "wrap",
     }}>
-      <span className="mono tnum" style={{ fontSize: 12.5, width: 44, flexShrink: 0, display: "flex", flexDirection: "column", gap: 1 }}>
-        {when.above && <span style={{ fontSize: 11, color: "var(--fg-4)" }}>{when.above}</span>}
-        <span style={{ color: when.tone === "neg" ? "var(--neg)" : when.tone === "warn" ? "var(--warn)" : when.tone === "pos" ? "var(--pos)" : "var(--fg-4)" }}>{when.text}</span>
-      </span>
+      <TimeCell pill={when.pill} note={when.note} tone={when.tone} soft={when.soft} />
       {/* Status do lead como coluna própria (alinhada, igual o horário); a
           tentativa vai numa linha menor embaixo da pill. */}
       <span style={{ width: 118, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
@@ -639,7 +756,7 @@ function QueueRow({ item, block, featured, onScript, onClaim, onWhatsapp, onOpen
       <div style={{ display: "flex", gap: 8, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
         {unowned && <button onClick={onClaim} style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px dashed var(--line-2)", color: "var(--fg-3)", fontSize: 12 }}>assumir</button>}
         {meet ? (
-          <a href={meet} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", color: "var(--fg-2)", fontSize: 12.5, textDecoration: "none" }}>Abrir Meet</a>
+          <a href={meet} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", color: "var(--fg-2)", fontSize: 12.5, textDecoration: "none" }}>abrir Meet</a>
         ) : whatsapp ? (
           // Atalho pro INBOX interno (conversa do lead, com ou sem thread ainda);
           // sem o handler (contexto antigo), cai no deep-link do app.
@@ -650,7 +767,9 @@ function QueueRow({ item, block, featured, onScript, onClaim, onWhatsapp, onOpen
             <a href={whatsapp} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: `1px solid ${featured ? "var(--btn-bg)" : "var(--line-2)"}`, background: featured ? "var(--btn-bg)" : "var(--bg-1)", color: featured ? "var(--btn-fg)" : "var(--fg-2)", fontSize: 12.5, fontWeight: featured ? 600 : 500, textDecoration: "none" }}>WhatsApp</a>
           )
         ) : null}
-        {(featured || (!meet && !whatsapp)) && <button onClick={onScript} style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5 }}>Roteiro</button>}
+        {/* "roteiro" fica SEMPRE: sem ele, linha não-destaque com WhatsApp só
+            abria pelo clique no corpo (invisível pra quem navega por botão). */}
+        <button onClick={onScript} style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5 }}>roteiro</button>
       </div>
     </div>
   );
@@ -661,14 +780,17 @@ function DoneActivityRow({ item, onClick }) {
   const time = l.lastActivityAt ? new Date(l.lastActivityAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
   return (
     <button onClick={onClick} style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "12px var(--inset-x)", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
-      <span style={{ color: "var(--pos)", fontSize: 13, width: 44, flexShrink: 0 }}>✓</span>
-      <span style={{ fontSize: 13.5, color: "var(--fg-3)", textDecoration: "line-through", flex: 1 }}>{l.name}{l.company ? ` · ${l.company}` : ""} — {ACTION_LABELS[item.kind] || "atividade concluída"}</span>
-      <span className="mono tnum" style={{ fontSize: 12, color: "var(--fg-4)" }}>{time}</span>
+      <span style={{ color: "var(--pos)", fontSize: 13, width: 66, flexShrink: 0 }}>✓</span>
+      <span style={{ fontSize: 13.5, color: "var(--fg-3)", textDecoration: "line-through", flex: 1 }}>{l.name}{l.company ? ` · ${l.company}` : ""} · {ACTION_LABELS[item.kind] || "atividade concluída"}</span>
+      <span className="tnum" style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{time}</span>
     </button>
   );
 }
 
 function CompactSchedule({ title, rows, onOpen }) {
+  // A lista corta em 5, mas NUNCA em silêncio: o total fica no subtítulo e o
+  // "+N" expande aqui mesmo (agenda escondida = call que ninguém preparou).
+  const [showAll, setShowAll] = useS(false);
   const timeOf = (item) => {
     if (!item.due) return "sem data";
     return title === "Amanhã"
@@ -677,18 +799,26 @@ function CompactSchedule({ title, rows, onOpen }) {
   };
   return (
     <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
-      <div style={{ padding: "20px var(--inset-x) 12px" }}><h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em" }}>{title}</h3></div>
+      <div style={{ padding: "20px var(--inset-x) 12px" }}>
+        <h3 className="card-title" style={{ margin: 0 }}>{title}</h3>
+        {rows.length > 0 && <div className="card-sub" style={{ marginTop: 3 }}>{rows.length} {rows.length === 1 ? "atividade" : "atividades"}</div>}
+      </div>
       <div style={{ padding: "0 var(--inset-x) 8px" }}>
         {rows.length === 0 && <div style={{ borderTop: "1px solid var(--line-faint)", padding: "12px 0 14px", fontSize: 12.5, color: "var(--fg-4)" }}>nenhuma atividade</div>}
-        {rows.slice(0, 5).map((item) => (
+        {(showAll ? rows : rows.slice(0, 5)).map((item) => (
           <button key={item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id} onClick={() => onOpen(item)} style={{ width: "100%", display: "flex", gap: 10, alignItems: "baseline", padding: "10px 0", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
-            <span className="mono tnum" style={{ fontSize: 12, color: "var(--fg-4)", flexShrink: 0 }}>{timeOf(item)}</span>
+            <span className="tnum" style={{ fontSize: 12.5, color: "var(--fg-4)", flexShrink: 0 }}>{timeOf(item)}</span>
             <span style={{ minWidth: 0 }}>
               <span style={{ display: "block", fontSize: 13.5, fontWeight: 600 }}>{item.consulta ? (item.consulta.clientName || "cliente") : item.l.name}</span>
               <span style={{ display: "block", fontSize: 12, color: "var(--fg-3)" }}>{item.consulta ? `Consulta ${item.consulta.n || "?"}/${item.consulta.packageTotal || 8} · UniqueKids` : `${ACTION_LABELS[item.kind] || "contato"}${item.l.company ? ` · ${item.l.company}` : ""}`}</span>
             </span>
           </button>
         ))}
+        {rows.length > 5 && (
+          <button onClick={() => setShowAll((v) => !v)} style={{ width: "100%", textAlign: "left", padding: "9px 0", borderTop: "1px solid var(--line-faint)", fontSize: 12.5, color: "var(--accent)", fontWeight: 500 }}>
+            {showAll ? "mostrar menos" : `+${rows.length - 5} ${rows.length - 5 === 1 ? "atividade" : "atividades"}`}
+          </button>
+        )}
       </div>
     </section>
   );
@@ -696,7 +826,7 @@ function CompactSchedule({ title, rows, onOpen }) {
 
 // Tarefas do kanban na fila do dia: as abertas da pessoa (ou sem responsável),
 // vencidas em vermelho, ✓ conclui direto. O card inteiro leva pro kanban.
-function TasksCard({ tasks, onDone }) {
+function TasksCard({ tasks, onDone, undo, onUndo }) {
   const todayStr = new Date().toISOString().slice(0, 10);
   const fmtDue = (d) => {
     const dt = new Date(d + "T00:00:00");
@@ -705,19 +835,28 @@ function TasksCard({ tasks, onDone }) {
   const priTone = (p) => (p === "P0" ? "var(--neg)" : p === "P1" ? "var(--warn)" : "var(--fg-4)");
   return (
     <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "20px var(--inset-x) 12px" }}>
-        <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em" }}>Tarefas</h3>
-        <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{tasks.length} {tasks.length === 1 ? "aberta" : "abertas"}</span>
-        <button onClick={() => { location.hash = "#tasks"; }} style={{ marginLeft: "auto", fontSize: 12.5, fontWeight: 500, color: "var(--accent)" }}>kanban →</button>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "20px var(--inset-x) 12px" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h3 className="card-title" style={{ margin: 0 }}>Tarefas</h3>
+          <div className="card-sub" style={{ marginTop: 3 }}>{tasks.length} {tasks.length === 1 ? "aberta" : "abertas"}</div>
+        </div>
+        <button onClick={() => { location.hash = "#tasks"; }} style={{ fontSize: 12.5, fontWeight: 500, color: "var(--accent)", flexShrink: 0 }}>kanban →</button>
       </div>
       <div style={{ padding: "0 var(--inset-x) 8px" }}>
+        {undo && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: "1px solid var(--line-faint)", fontSize: 12.5 }}>
+            <span style={{ color: "var(--pos)", flexShrink: 0 }}>✓</span>
+            <span className="dim" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{undo.task.title || "tarefa"} concluída</span>
+            <button onClick={onUndo} style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)", flexShrink: 0 }}>desfazer</button>
+          </div>
+        )}
         {tasks.slice(0, 8).map((t) => {
           const overdue = t.dueDate && t.dueDate < todayStr;
           return (
             <div key={t.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 0", borderTop: "1px solid var(--line-faint)" }}>
               <button onClick={() => onDone(t)} title="Concluir tarefa" style={{
-                width: 20, height: 20, flexShrink: 0, borderRadius: 6, border: "1.5px solid var(--line-2)",
-                display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--fg-4)", fontSize: 11,
+                width: 28, height: 28, flexShrink: 0, borderRadius: 8, border: "1.5px solid var(--line-2)",
+                display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--fg-4)", fontSize: 13,
               }}>✓</button>
               <button onClick={() => { location.hash = "#tasks"; }} style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
                 <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title || "(sem título)"}</span>
@@ -753,7 +892,7 @@ function DayScore({ contacted, contactedGoal, calls, callsGoal }) {
   );
   return (
     <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px var(--inset-x)" }}>
-      <div style={{ fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--fg-4)" }}>Placar do dia</div>
+      <div className="kicker accent">Placar do dia</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
         {progress("Contatados", contacted, contactedGoal)}
         {progress("Calls agendadas", calls, callsGoal)}
@@ -765,45 +904,10 @@ function DayScore({ contacted, contactedGoal, calls, callsGoal }) {
 // Rótulo curto dos tipos de activity nos "últimos contatos" do resumo.
 const ACT_LABELS = { whatsapp: "whatsapp", call: "ligação", email: "e-mail", meeting: "reunião", note: "nota", stage: "mudou de etapa", system: "sistema" };
 
-// Resumo compilado do cliente pro roteiro: a dor do anúncio (gancho da
-// conversa), os fatos relevantes (potencial, temperatura, ICP, prioridade,
-// faixa, etapa, toques, valor, origem, responsáveis, nota) e a atribuição (de
-// onde o lead veio). Só entra o que está preenchido. `cat` = catálogo de
-// atribuição (id → nome de campanha/conjunto/anúncio) já resolvido no componente.
-export function clientSummary(saasCfg, lead, stage, cat) {
-  const tier = leadTier(lead);
-  const daysInStage = lead.stageSince || lead.createdAt
-    ? Math.max(0, Math.floor((Date.now() - new Date(lead.stageSince || lead.createdAt).getTime()) / DAY)) : null;
-  const cad = cadenceOf(saasCfg, stage);
-  const hasScore = lead.score != null && lead.score !== "";
-  const icpPct = (lead.icp != null && lead.icp !== "") ? `${Math.round(Number(lead.icp) * 100)}%` : null;
-  const utm = lead.utm || {};
-  const money = (v) => (typeof window !== "undefined" && window.fmt?.money?.(v)) || v;
-  const facts = [
-    ["Potencial", tier.grade ? `${tier.grade} · ${tier.label}` : null],
-    ["Temperatura", hasScore ? `${leadScoreLabel(lead.score)} · ${lead.score}` : null],
-    ["ICP (fit)", icpPct],
-    ["Prioridade", lead.priority],
-    ["Faixa de faturamento", lead.value],
-    ["Etapa", `${stage}${daysInStage != null ? ` · ${daysInStage}d nela` : ""}`],
-    ["Toques na etapa", Number(cad.maxAttempts) ? `${Number(lead.stageAttempts) || 0} de ${cad.maxAttempts}` : (Number(lead.stageAttempts) || 0) || null],
-    ["Valor", lead.amount ? money(lead.amount) : null],
-    // Registrada no movimento Call → Follow-up: é a oferta que o follow-up cobra.
-    ["Proposta na mesa", lead.proposalOffer ? (lead.proposalOffer === "nenhuma" ? "não chegou na proposta" : closedPlanLabel(lead.proposalOffer) || lead.proposalOffer) : null],
-    ["Pagamento", lead.paymentMethod ? paymentLabel(lead.paymentMethod) : null],
-    ["Origem", lead.source],
-    ["SDR / closer", [lead.owner && displayName(lead.owner), lead.closer && displayName(lead.closer)].filter(Boolean).join(" / ") || null],
-    ["Próximo passo (nota)", lead.nextActionNote],
-  ].filter(([, v]) => v != null && v !== "");
-  // De onde veio: só o anúncio basta. Com teste A/B no form, mostra também o
-  // HEADLINE que o lead viu (denormalizado no submit; fallback pro id da versão).
-  const headline = lead.formHeadline || (lead.formVariant ? `versão ${lead.formVariant}` : null);
-  const attribution = [
-    ["Anúncio", cat?.ads?.[utm.content]?.name || utm.content],
-    ["Headline do formulário", headline],
-  ].filter(([, v]) => v != null && v !== "");
-  return { pain: leadPain(lead, cat, saasCfg?.painMap), facts, attribution };
-}
+// O resumo compilado do cliente mora em components/lead-blocks.jsx (é o mesmo
+// dos dois painéis de lead). Reexportado aqui porque o inbox do WhatsApp
+// importa `clientSummary` desta tela desde antes.
+export { clientSummary };
 
 // Resumo da última call por IA (activity call_summary, gerado da transcrição do
 // Meet) mostrado no roteiro pra o closer trabalhar o follow-up com contexto: o
@@ -813,7 +917,6 @@ export function CallSummaryCard({ summary, phone, onSend = null }) {
   const [copied, setCopied] = useS(false);
   if (!summary) return null;
   const box = { border: "1px solid var(--accent-line)", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--accent-soft)" };
-  const kick = { fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" };
   // Integração (onboarding) tem estrutura própria: sentimento no lugar da
   // temperatura, configurado/pendências/próximos passos no lugar de objeções.
   const integ = summary.kind === "integracao" || !!summary.sentimento;
@@ -829,7 +932,7 @@ export function CallSummaryCard({ summary, phone, onSend = null }) {
   return (
     <div style={box}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-        <span className="mono" style={{ ...kick, color: "var(--accent)" }}>{integ ? "Resumo da integração · IA" : "Resumo da última call · IA"}</span>
+        <span className="kicker accent">{integ ? "Resumo da integração · IA" : "Resumo da última call · IA"}</span>
         {badge && <Pill tone={tone}>{badge}</Pill>}
         {summary.recordingUrl && <a href={summary.recordingUrl} target="_blank" rel="noopener noreferrer" className="mono" style={{ fontSize: 10.5, color: "var(--accent)" }}>🎥 gravação</a>}
       </div>
@@ -838,13 +941,13 @@ export function CallSummaryCard({ summary, phone, onSend = null }) {
         <>
           {summary.configurado?.length > 0 && (
             <div style={{ marginBottom: 6 }}>
-              <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>Configurado</div>
+              <div className="kicker" style={{ marginBottom: 3 }}>Configurado</div>
               {summary.configurado.map((c, i) => <div key={i} style={line}>• {c}</div>)}
             </div>
           )}
           {summary.pendencias?.length > 0 && (
             <div style={{ marginBottom: 6 }}>
-              <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>Pendências</div>
+              <div className="kicker" style={{ marginBottom: 3 }}>Pendências</div>
               {summary.pendencias.map((p, i) => (
                 <div key={i} style={{ ...line, display: "flex", gap: 6, alignItems: "baseline" }}>
                   <span className="mono" style={{ color: "var(--warn)", flexShrink: 0, fontSize: 10 }}>{p.responsavel || "?"}</span>
@@ -855,7 +958,7 @@ export function CallSummaryCard({ summary, phone, onSend = null }) {
           )}
           {summary.proximosPassos?.length > 0 && (
             <div style={{ marginBottom: 6 }}>
-              <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>Próximos passos</div>
+              <div className="kicker" style={{ marginBottom: 3 }}>Próximos passos</div>
               {summary.proximosPassos.map((p, i) => <div key={i} style={line}>• {p}</div>)}
             </div>
           )}
@@ -864,7 +967,7 @@ export function CallSummaryCard({ summary, phone, onSend = null }) {
         <>
           {summary.objecoes?.length > 0 && (
             <div style={{ marginBottom: 6 }}>
-              <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>Objeções</div>
+              <div className="kicker" style={{ marginBottom: 3 }}>Objeções</div>
               {summary.objecoes.map((o, i) => (
                 <div key={i} style={{ marginBottom: 4 }}>
                   <div style={{ ...line, display: "flex", gap: 6, alignItems: "baseline" }}>
@@ -878,27 +981,27 @@ export function CallSummaryCard({ summary, phone, onSend = null }) {
           )}
           {summary.compromissos?.length > 0 && (
             <div style={{ marginBottom: 6 }}>
-              <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>Combinados</div>
+              <div className="kicker" style={{ marginBottom: 3 }}>Combinados</div>
               {summary.compromissos.map((c, i) => <div key={i} style={line}>• {c}</div>)}
             </div>
           )}
         </>
       )}
       {summary.followup?.nota && (
-        <div style={{ ...line, marginBottom: msg ? 6 : 0 }}><span className="mono dim" style={{ ...kick, fontSize: 10 }}>{integ ? "Acompanhamento" : "Próximo passo"}</span> · {summary.followup.nota}</div>
+        <div style={{ ...line, marginBottom: msg ? 6 : 0 }}><span className="kicker">{integ ? "Acompanhamento" : "Próximo passo"}</span> · {summary.followup.nota}</div>
       )}
       {msg && (
         <div style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: "7px 9px" }}>
-          <div className="mono dim" style={{ ...kick, fontSize: 9.5, marginBottom: 3 }}>WhatsApp sugerido</div>
+          <div className="kicker" style={{ marginBottom: 3 }}>WhatsApp sugerido</div>
           <div style={{ fontSize: 12, lineHeight: 1.5, whiteSpace: "pre-wrap", marginBottom: 6 }}>{msg}</div>
           <div style={{ display: "flex", gap: 6 }}>
             {/* Com o inbox à mão (roteiro), o texto vai pra caixa de mensagem
                 DAQUI; fora dele (cliente/negócio), segue pro app. */}
             {onSend ? (
               <button onClick={() => onSend(msg)} title="Abre a conversa no inbox com esta mensagem já escrita"
-                style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", border: "none", background: "#25D366", color: "#06120c", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>enviar no WhatsApp</button>
+                style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", border: "none", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>enviar no WhatsApp</button>
             ) : waHref && (
-              <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", background: "#25D366", color: "#06120c", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>enviar no WhatsApp ↗</a>
+              <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>enviar no WhatsApp ↗</a>
             )}
             <button onClick={copy} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5 }}>{copied ? "copiado ✓" : "copiar"}</button>
           </div>
@@ -921,13 +1024,13 @@ export function IntegrationBriefCard({ brief, phone, deal, onSend = null }) {
   // O que foi contratado (escopo), NÃO como foi pago: forma de pagamento é
   // assunto do financeiro, o integrador não fala de dinheiro com o cliente.
   const closed = [
+    dealProductLabel(deal?.dealProduct), // produto do catálogo (FULL/OEM/Parcial): o integrador entrega o escopo certo
     Number(deal?.amount) > 0 ? window.fmt.money(deal.amount) : "",
     closedPlanLabel(deal?.planClosed),
   ].filter(Boolean).join(" · ");
   const box = { border: "1px solid var(--accent-line)", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--accent-soft)" };
-  const kick = { fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" };
   const line = { fontSize: 12, lineHeight: 1.5, color: "var(--fg-1)" };
-  const sub = (label) => <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 3 }}>{label}</div>;
+  const sub = (label) => <div className="kicker" style={{ marginBottom: 3 }}>{label}</div>;
   // O passo a passo da call fica no roteiro da etapa (card Passo a passo, logo
   // abaixo): aqui é só o contexto. `vendido` é o shape antigo do briefing.
   const entregas = brief.entregas || brief.vendido;
@@ -955,18 +1058,18 @@ export function IntegrationBriefCard({ brief, phone, deal, onSend = null }) {
   return (
     <div style={box}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-        <span className="mono" style={{ ...kick, color: "var(--accent)" }}>Briefing da integração · IA</span>
+        <span className="kicker accent">Briefing da integração · IA</span>
         <Pill tone="pos">negócio fechado</Pill>
         {brief.source === "resumo" && <Pill tone="warn">sem transcrição</Pill>}
         {brief.recordingUrl && <a href={brief.recordingUrl} target="_blank" rel="noopener noreferrer" className="mono" style={{ fontSize: 10.5, color: "var(--accent)" }}>🎥 gravação da venda</a>}
         <button onClick={() => setOpen((v) => !v)} className="mono dim" style={{ fontSize: 10.5, marginLeft: "auto" }}>{open ? "recolher" : "abrir"}</button>
       </div>
-      <div className="mono dim" style={{ ...kick, fontSize: 10, marginBottom: 5 }}>
+      <div className="kicker" style={{ marginBottom: 5 }}>
         {closed ? `Já contratou: ${closed} · agora é entrega, não venda` : "O cliente já comprou, agora é entrega, não venda"}
       </div>
       {/* Estado da call de vídeo: é por ela que a integração acontece, então o
           card cobra o que falta (marcar a data, criar o Meet) antes do resto. */}
-      <div className="mono" style={{ ...kick, fontSize: 10, marginBottom: 6, color: meetUrl ? "var(--pos)" : "var(--warn)" }}>
+      <div className="kicker" style={{ marginBottom: 6, color: meetUrl ? "var(--pos)" : "var(--warn)" }}>
         {meetUrl
           ? `Call de vídeo ${when ? `marcada: ${when}` : "com link criado"}`
           : when ? `Call de vídeo ${when}, falta criar o Meet (logo abaixo, em Integração)` : "Sem call de vídeo marcada: combine o horário e crie o Meet em Integração"}
@@ -990,16 +1093,16 @@ export function IntegrationBriefCard({ brief, phone, deal, onSend = null }) {
           )}
           {msg && (
             <div style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: "7px 9px" }}>
-              <div className="mono dim" style={{ ...kick, fontSize: 9.5, marginBottom: 3 }}>{meetUrl ? "Mensagem com o link da call" : "Mensagem pra marcar a call de vídeo"}</div>
+              <div className="kicker" style={{ marginBottom: 3 }}>{meetUrl ? "Mensagem com o link da call" : "Mensagem pra marcar a call de vídeo"}</div>
               <div style={{ fontSize: 12, lineHeight: 1.5, whiteSpace: "pre-wrap", marginBottom: 6 }}>{msg}</div>
               <div style={{ display: "flex", gap: 6 }}>
                 {/* Com o inbox à mão (drawer no pipeline), o texto vai pra caixa
                     de mensagem DAQUI; fora dele, segue pro app. */}
                 {onSend && msg ? (
                   <button onClick={() => onSend(msg)} title="Abre a conversa no inbox com esta mensagem já escrita"
-                    style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", border: "none", background: "#25D366", color: "#06120c", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>enviar no WhatsApp</button>
+                    style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", border: "none", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>enviar no WhatsApp</button>
                 ) : waHref && (
-                  <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", background: "#25D366", color: "#06120c", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>enviar no WhatsApp ↗</a>
+                  <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>enviar no WhatsApp ↗</a>
                 )}
                 <button onClick={copy} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5 }}>{copied ? "copiado ✓" : "copiar"}</button>
               </div>
@@ -1038,23 +1141,21 @@ function CallShortcuts({ l, item, wa, onPatch }) {
   }
 
   const chip = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
-  const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
-  const rowLabel = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-4)", letterSpacing: "0.04em", textTransform: "uppercase" };
 
   return (
     <div style={{ border: "1px solid var(--line-2)", background: "var(--bg-inset)", borderRadius: "var(--r-2)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 9 }}>
-      <div className="mono" style={{ ...kicker, color: "var(--accent)" }}>Atalhos da call</div>
+      <div className="kicker accent">Atalhos da call</div>
 
       {/* Link da chamada: entrar · copiar · mandar pro cliente no Whats. */}
       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-        <span style={rowLabel}>Link da chamada</span>
+        <span className="kicker">Link da chamada</span>
         {l.callUrl ? (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
             <a href={l.callUrl} target="_blank" rel="noopener noreferrer" style={chip} title={l.callUrl}>entrar na call ↗</a>
             <button style={chip} title="Copiar o link da call"
               onClick={() => { try { navigator.clipboard.writeText(l.callUrl); } catch { window.prompt("Link da call:", l.callUrl); } }}>copiar</button>
             {waForward && (
-              <a href={waForward} target="_blank" rel="noopener noreferrer" style={{ ...chip, borderColor: "#25D366", color: "#128c4b" }}
+              <a href={waForward} target="_blank" rel="noopener noreferrer" style={{ ...chip, borderColor: "var(--wa-brand)", color: "var(--wa-brand-deep)" }}
                 title={`Mandar o link da call pro ${l.name || "cliente"} no WhatsApp`}>mandar link no Whats ↗</a>
             )}
             {!wa && <span className="mono dim" style={{ fontSize: 10 }}>sem telefone pra mandar no Whats</span>}
@@ -1141,11 +1242,10 @@ function ProposalBlock({ l, wa, item, onPatch }) {
   if (!l.proposalUrl && !eligible) return null;
 
   const chip = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
-  const rowLabel = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-4)", letterSpacing: "0.04em", textTransform: "uppercase" };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-      <span style={rowLabel}>Proposta</span>
+      <span className="kicker">Proposta</span>
       {!l.proposalUrl ? (
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           {altDecks.length > 0 && (
@@ -1170,12 +1270,12 @@ function ProposalBlock({ l, wa, item, onPatch }) {
           </div>
           {offers.length > 0 && (
             <>
-              <span style={{ ...rowLabel, marginTop: 3 }}>Mandar no Whats · escolha a oferta</span>
+              <span className="kicker" style={{ marginTop: 3 }}>Mandar no Whats · escolha a oferta</span>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                 {offers.map((o) => (
                   <button key={o.offer} onClick={() => share(o)} disabled={!!busy}
                     title={`Gera o link do cliente (preço visível, sem edição) da oferta ${o.label} e abre o WhatsApp`}
-                    style={{ ...chip, borderColor: sent?.offer === o.offer ? "#25D366" : "var(--line-2)", color: sent?.offer === o.offer ? "#128c4b" : "var(--fg-2)" }}>
+                    style={{ ...chip, borderColor: sent?.offer === o.offer ? "var(--wa-brand)" : "var(--line-2)", color: sent?.offer === o.offer ? "var(--wa-brand-deep)" : "var(--fg-2)" }}>
                     {busy === `o${o.offer}` ? "preparando…" : `${o.label}${o.price ? ` · ${o.price}` : ""}`}
                   </button>
                 ))}
@@ -1211,6 +1311,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
     setL((prev) => ({ ...prev, ...p }));
     onPatch && onPatch(item.l.id, p);
   }
+  useEsc(onClose); // o painel mais aberto do dia fecha no Esc
   // Remarcação na confirmação: o cliente pediu pra mudar de horário. O SDR escolhe
   // um novo slot na agenda do closer; salvamos o novo callAt E registramos um TOQUE
   // (meta.event="reschedule") — assim conta como "contatado" no placar do SDR e
@@ -1230,7 +1331,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
       saas: l.saas, lead: l.id, type: "call",
       text: isInteg ? "remarcou a integração na confirmação" : "remarcou a call na confirmação",
       author: currentUser()?.id || "", meta: { reschedule: false, event: "reschedule" },
-    }).catch((err) => console.warn("remarcação não registrada:", err.message));
+    }).catch((err) => { console.warn("remarcação não registrada:", err.message); toast("A remarcação não entrou na timeline", "warn"); });
     setResched(false);
     onClose && onClose();
   }
@@ -1255,7 +1356,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
         : `sem resposta na confirmação de ${win}`,
       author: currentUser()?.id || "",
       meta: { reschedule: false, event: replied ? "confirm" : "confirm_noreply", window: win },
-    }).catch((err) => console.warn("confirmação não registrada:", err.message));
+    }).catch((err) => { console.warn("confirmação não registrada:", err.message); toast("A confirmação não entrou na timeline", "warn"); });
     if (onAfter) onAfter(); else onClose && onClose();
   }
   // Item de confirmação de call usa o roteiro de confirmação; o resto, o roteiro
@@ -1308,34 +1409,12 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
   // transcrita (combinado, objeção em aberto, dor, temperatura).
   const tokens = scriptTokens(l, saasCfg, salesSummary);
 
-  const renderFala = (text) => scriptSegments(text, tokens).map((s, i) => {
-    if (s.text != null) return <React.Fragment key={i}>{s.text}</React.Fragment>;
-    if (s.value != null) return <strong key={i} style={{ color: "var(--accent)", fontWeight: 600 }}>{s.value}</strong>;
-    return (
-      <span key={i} className="mono" title="dado não preenchido no lead: descubra nesta conversa"
-        style={{ background: "var(--warn-soft)", color: "var(--warn)", borderRadius: 4, padding: "0 5px", fontSize: "0.85em", whiteSpace: "nowrap" }}>
-        {s.gap}
-      </span>
-    );
-  });
-  // Texto puro da fala (tokens já resolvidos) pra copiar e colar no WhatsApp.
-  const falaText = (text) => scriptSegments(text, tokens).map((s) => (s.text != null ? s.text : s.value != null ? s.value : s.gap || "")).join("");
-  const [copiedStep, setCopiedStep] = useS(null);
-  const copyFala = async (text, i) => {
-    const t = falaText(text);
-    try { await navigator.clipboard.writeText(t); setCopiedStep(i); setTimeout(() => setCopiedStep((c) => (c === i ? null : c)), 1500); }
-    catch { window.prompt("Copie a mensagem:", t); }
-  };
-
   const fmtWhen = (iso) => {
     const d = new Date(iso);
     if (!Number.isFinite(d.getTime())) return "";
     const days = Math.floor((Date.now() - d.getTime()) / DAY);
     return days <= 0 ? `hoje ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : days === 1 ? "ontem" : `há ${days}d`;
   };
-
-  const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--bg-inset)" };
-  const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70, padding: 12 }}>
@@ -1346,7 +1425,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
       }}>
         <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 8 }}>
+            <div className="kicker" style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span>{script.titulo}{script.custom ? " · personalizado" : ""}</span>
               {preview && (
                 <span className="mono" style={{ fontSize: 9.5, color: "var(--accent)", background: "var(--accent-soft)", border: "1px solid var(--accent-line)", borderRadius: 999, padding: "1px 7px", letterSpacing: "0.04em" }}>
@@ -1377,36 +1456,22 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
         <div style={{ padding: "12px 18px", display: "flex", flexDirection: "column", gap: 14, overflowY: "auto", minHeight: 0 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 310px), 1fr))", gap: 16 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-            <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Cliente</div>
-              <div style={box}>
-                <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Resumo do cliente</div>
-                {/* Dor do anúncio em destaque: o gancho pra conversa (o problema
-                    que trouxe o lead até aqui). Só quando veio de criativo mapeado. */}
-                {pain && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 9px", marginBottom: 8, borderRadius: "var(--r-2)", background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
-                    <span className="mono" style={{ fontSize: 9.5, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", flexShrink: 0 }}>dor do anúncio</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 600, minWidth: 0 }}>[{pain.code}] {pain.label}</span>
-                  </div>
-                )}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "4px 14px" }}>
-                  {facts.map(([k, v]) => (
-                    <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, padding: "3px 0", borderBottom: "1px solid var(--line-1)" }}>
-                      <span className="mono dim" style={{ flexShrink: 0, fontSize: 10.5 }}>{k}</span>
-                      <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0 }}>{v}</span>
-                    </div>
-                  ))}
-                </div>
-                {/* Observações · registrar contato: mesmo composer do drawer do
+            <div className="kicker" style={{ color: "var(--fg-3)" }}>Cliente</div>
+              {/* Resumo do cliente, atribuição e checklist: os MESMOS blocos do
+                  card do lead (components/lead-blocks.jsx) — quem trabalha a
+                  fila e depois abre o card vê a mesma coisa no mesmo lugar. */}
+              <ClientSummaryCard pain={pain} facts={facts}>
+                {/* Observações · registrar contato: mesmo composer do card do
                     pipeline (grava na coleção activities). Como é o MESMO dado, a
                     anotação feita aqui aparece lá e vice-versa. Some no preview. */}
                 {!preview && (
                   <div style={{ marginTop: 10 }}>
-                    <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>Observações · registrar contato</div>
+                    <div className="kicker" style={{ marginBottom: 4 }}>Observações · registrar contato</div>
                     <ActivityComposer lead={l} onLogged={() => setActsReload((n) => n + 1)} />
                   </div>
                 )}
                 <div style={{ marginTop: 8 }}>
-                  <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 3 }}>Últimos contatos</div>
+                  <div className="kicker" style={{ marginBottom: 3 }}>Últimos contatos</div>
                   {acts === null && <div className="mono dim" style={{ fontSize: 11 }}>carregando…</div>}
                   {acts !== null && acts.length === 0 && <div className="mono dim" style={{ fontSize: 11 }}>nenhum contato registrado ainda · você abre a conversa</div>}
                   {(acts || []).map((a) => (
@@ -1419,46 +1484,11 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
                     </div>
                   ))}
                 </div>
-              </div>
+              </ClientSummaryCard>
 
-            {attribution.length > 0 && (
-              <div style={box}>
-                <div className="mono" style={{ ...kicker, marginBottom: 6 }}>De onde veio · atribuição do anúncio</div>
-                {attribution.map(([k, v]) => (
-                  <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11.5, padding: "3px 0", borderBottom: "1px solid var(--line-1)" }}>
-                    <span className="mono dim" style={{ flexShrink: 0, fontSize: 10.5 }}>{k}</span>
-                    <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+            <AttributionCard rows={attribution} />
 
-            <div>
-              <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Dados do lead · na ordem da conversa · edite ao confirmar</div>
-              {/* Empilhado (1 por linha), CAMPO EDITÁVEL à direita: select com as
-                  opções do formulário; texto livre pra empresa/e-mail. Grava na hora. */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {checklist.map((c) => (
-                  <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "5px 9px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.value ? "var(--bg-1)" : "var(--warn-soft)" }}>
-                    <span style={{ color: c.value ? "var(--pos)" : "var(--warn)", flexShrink: 0, fontSize: 12 }}>{c.value ? "✓" : "○"}</span>
-                    <span className="dim" style={{ flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.35 }}>{c.label}</span>
-                    {c.type === "select" ? (
-                      <select value={c.raw || ""} onChange={(e) => patch({ [c.key]: e.target.value })}
-                        style={{ flexShrink: 0, maxWidth: "48%", height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12, fontWeight: 500 }}>
-                        <option value="">selecionar…</option>
-                        {c.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                        {c.raw && !c.options.some((o) => o.value === c.raw) && <option value={c.raw}>{c.raw}</option>}
-                      </select>
-                    ) : (
-                      <input key={l.id + c.key} type="text" defaultValue={c.raw || ""} placeholder="preencher…"
-                        onBlur={(e) => { if (e.target.value !== (c.raw || "")) patch({ [c.key]: e.target.value }); }}
-                        onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                        style={{ flexShrink: 0, width: "48%", height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontWeight: 500 }} />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+            <LeadChecklist checklist={checklist} onPatch={patch} leadId={l.id} />
 
             {/* Destino do card fica AQUI, embaixo dos dados do cliente, pra
                 aproveitar o espaço vazio da coluna e encurtar o painel. Item de
@@ -1474,7 +1504,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-            <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Roteiro</div>
+            <div className="kicker" style={{ color: "var(--fg-3)" }}>Roteiro</div>
             {/* Resumo da última call por IA em cima do roteiro do estágio. */}
             <CallSummaryCard summary={callSummary} phone={l.phone}
               onSend={onWhatsapp ? (msg) => onWhatsapp(l, msg) : null} />
@@ -1488,46 +1518,9 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
                 <ProposalBlock l={l} wa={wa} item={item} onPatch={patch} />
               </div>
             )}
-            <div style={{ ...box, background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
-              <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 4 }}>Como se comportar</div>
-              <div style={{ fontSize: 12, lineHeight: 1.45 }}>{script.resumo}</div>
-            </div>
-            <div style={box}>
-              <div className="mono" style={{ ...kicker, marginBottom: 4 }}>Objetivo do contato</div>
-              <div style={{ fontSize: 12, lineHeight: 1.45, fontWeight: 500 }}>{script.objetivo}</div>
-            </div>
-
-            <div>
-              <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Passo a passo</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                {script.passos.map((p, i) => (
-                  <div key={i} style={{ display: "flex", gap: 10 }}>
-                    <span className="mono tnum" style={{
-                      width: 20, height: 20, borderRadius: 999, flexShrink: 0, marginTop: 1,
-                      display: "inline-flex", alignItems: "center", justifyContent: "center",
-                      background: "var(--bg-inset)", border: "1px solid var(--line-2)", fontSize: 10.5, fontWeight: 700, color: "var(--fg-3)",
-                    }}>{i + 1}</span>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      {p.t && <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 1 }}>{p.t}</div>}
-                      {/* Passo sem fala é ação pura (ex.: "ligar 2 vezes"): só a dica. */}
-                      {p.fala && (
-                        <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
-                          <div style={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 1.5, color: "var(--fg-1)", borderLeft: "3px solid var(--accent-line)", paddingLeft: 10, whiteSpace: "pre-wrap" }}>
-                            {renderFala(p.fala)}
-                          </div>
-                          <button onClick={() => copyFala(p.fala, i)} title="Copiar a mensagem (com os dados preenchidos) pra colar no WhatsApp"
-                            style={{ flexShrink: 0, height: 24, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid " + (copiedStep === i ? "var(--pos)" : "var(--line-2)"),
-                              background: "var(--bg-2)", color: copiedStep === i ? "var(--pos)" : "var(--fg-3)", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
-                            {copiedStep === i ? "copiado ✓" : "⧉ copiar"}
-                          </button>
-                        </div>
-                      )}
-                      {p.dica && <div className="dim" style={{ fontSize: 10.5, marginTop: 2, paddingLeft: 13 }}>{renderFala(p.dica)}</div>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* Como se comportar + objetivo + passo a passo: bloco único
+                compartilhado com o card do lead (lead-blocks.jsx). */}
+            <ScriptBlocks script={script} tokens={tokens} />
           </div>
         </div>
         </div>
@@ -1540,17 +1533,9 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
           {wa && (
             // Atende DENTRO do cockpit (inbox); sem o handler (pré-visualização
             // em Ajustes → Scripts), cai no deep-link do app.
-            onWhatsapp ? (
-              <button onClick={() => onWhatsapp(l)} title={`Abrir a conversa no inbox · ${l.phone}`}
-                style={{ flex: "1 1 100%", textAlign: "center", padding: "10px 14px", borderRadius: "var(--r-2)", border: "none", background: "#25D366", color: "#06120c", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
-                WhatsApp
-              </button>
-            ) : (
-              <a href={wa} target="_blank" rel="noopener noreferrer" title={`WhatsApp · ${l.phone}`}
-                style={{ flex: "1 1 100%", textAlign: "center", padding: "10px 14px", borderRadius: "var(--r-2)", background: "#25D366", color: "#06120c", fontSize: 13.5, fontWeight: 700, textDecoration: "none" }}>
-                WhatsApp ↗
-              </a>
-            )
+            onWhatsapp
+              ? <WaButton block onClick={() => onWhatsapp(l)} title={`Abrir a conversa no inbox · ${l.phone}`}>WhatsApp</WaButton>
+              : <WaButton block href={wa} title={`WhatsApp · ${l.phone}`}>WhatsApp ↗</WaButton>
           )}
           {/* Confirmação: o SDR marca quando o cliente responde à mensagem de 1h;
               o roteiro troca o passo de 10 min (positiva) sozinho. */}
@@ -1565,7 +1550,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
               <button onClick={() => (on ? patch(isInteg ? { integrationConfirmed: false } : { callConfirmed: false }) : markConfirm(true))}
                 title={on ? "Cliente confirmou presença (clique pra desmarcar)" : "Cliente respondeu confirmando: marca, credita o contato e vai pro próximo da fila"}
                 style={{ padding: "8px 14px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
-                  background: on ? "var(--pos)" : "var(--bg-1)", color: on ? "#06120c" : "var(--fg-2)",
+                  background: on ? "var(--pos)" : "var(--bg-1)", color: on ? "var(--wa-brand-fg)" : "var(--fg-2)",
                   border: "1px solid " + (on ? "var(--pos)" : "var(--line-2)") }}>
                 {on ? "✓ cliente confirmou" : "cliente confirmou"}
               </button>
@@ -1857,6 +1842,26 @@ export function SlotGrid({ days, day, setDay, slot, setSlot, busy }) {
   );
 }
 
+// "Quando retomar": N dias à frente, 9h, nunca no fim de semana (a mesma régua
+// dos atalhos de próximo toque na ficha do lead). Devolve o formato do
+// <input type="datetime-local"> — hora local, sem fuso.
+const retryPreset = (days, hour = 9) => {
+  if (days === 0) { const t = new Date(); t.setHours(t.getHours() + 1, 0, 0, 0); return slotVal(t, t.getHours(), 0); }
+  const d = rollToBusinessDay(new Date(Date.now() + days * DAY));
+  d.setHours(hour, 0, 0, 0);
+  return slotVal(d, hour, 0);
+};
+const RETRY_PRESETS = [
+  ["hoje +1h", () => retryPreset(0)],
+  ["amanhã 9h", () => retryPreset(1)],
+  ["+2d", () => retryPreset(2)],
+  ["+1sem", () => retryPreset(7)],
+  ["+15d", () => retryPreset(15)],
+  ["+30d", () => retryPreset(30)],
+  ["+45d", () => retryPreset(45)],
+  ["+60d", () => retryPreset(60)],
+];
+
 function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet, onAfter, onTouch }) {
   const dests = destinationsFor(saasCfg, lead);
   const stageMeta = Object.fromEntries((saasCfg?.funnel || []).map((f) => [f.stage, f]));
@@ -1869,10 +1874,15 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const [integrator, setIntegrator] = useS(lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
   const [amount, setAmount] = useS(lead.amount || "");
   const [payment, setPayment] = useS(lead.paymentMethod || "");
+  // O que foi VENDIDO (produto do catálogo da apresentação + ciclo): o card só
+  // vai pra Integração depois de fechar, e a entrega precisa do escopo.
+  const [dealProduct, setDealProduct] = useS(lead.dealProduct || "");
+  const [planClosed, setPlanClosed] = useS(lead.planClosed || "anual");
   const [reason, setReason] = useS("");
   const [note, setNote] = useS("");
   const [slot, setSlot] = useS(lead.callAt || "");
   const [day, setDay] = useS(() => nextBusinessDays(1)[0]); // dia da grade (qualquer dia via calendário)
+  const [retryAt, setRetryAt] = useS(""); // "Retomar": quando voltar nesse lead
   // Call → Follow-up: qual proposta ficou na mesa (obrigatória nesse movimento).
   const fromCall = stageKind(saasCfg, lead.stage || saasCfg?.funnel?.[0]?.stage) === "call";
   const [offer, setOffer] = useS(lead.proposalOffer || "");
@@ -1882,9 +1892,10 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const [meetRes, setMeetRes] = useS(null);      // { callUrl, attendees }
   const [meetErr, setMeetErr] = useS(null);
   useE(() => {
-    setDest(null); setCloser(lead.closer || ""); setSlot(lead.callAt || ""); setDay(nextBusinessDays(1)[0]);
+    setDest(null); setCloser(lead.closer || ""); setSlot(lead.callAt || ""); setDay(nextBusinessDays(1)[0]); setRetryAt("");
     setIntegrator(lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
     setAmount(lead.amount || ""); setPayment(lead.paymentMethod || ""); setReason(""); setNote("");
+    setDealProduct(lead.dealProduct || ""); setPlanClosed(lead.planClosed || "anual");
     setOffer(lead.proposalOffer || "");
     setEmail(lead.email || ""); setEmailTouched(false); setMeetBusy(false); setMeetRes(null); setMeetErr(null);
   }, [lead.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1899,7 +1910,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   // (callSummary.followup.quando, hora de Brasília), quando cai num slot válido
   // (dia útil à vista, dentro do expediente, no futuro e livre na agenda).
   useE(() => {
-    if (!dest || setupType(dest.kind) !== "followup" || slot) return;
+    if (!dest || dest.retry || setupType(dest.kind) !== "followup" || slot) return;
     const m = String(callSummary?.followup?.quando || "").match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
     if (!m) return;
     const hh = Number(m[2]);
@@ -1916,7 +1927,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   }, [dest, callSummary]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (dests.length === 0) return null;
-  const setup = dest ? setupType(dest.kind) : null;
+  // "Retomar" tem setup próprio (a data de voltar) e NÃO herda o do kind da
+  // etapa atual — senão um retry em follow-up abriria a grade de agendamento.
+  const setup = !dest ? null : dest.retry ? "retry" : setupType(dest.kind);
   const days = nextBusinessDays(6);
 
   // Horas ocupadas na agenda do closer (cada call = 1h; ignora o próprio lead).
@@ -1928,36 +1941,65 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   // Escolher um destino inicializa a agenda com o horário que já existe no lead
   // (call/follow-up = callAt; integração = integrationAt), pra permitir reagendar.
   const chooseDest = (d) => {
-    const next = dest?.stage === d.stage ? null : d;
+    const same = dest && dest.stage === d.stage && !!dest.retry === !!d.retry;
+    const next = same ? null : d;
     setDest(next);
     if (!next) return;
+    // Retomar: já nasce preenchido com a cadência do estágio (o "amanhã" de
+    // antes), então quem só quer registrar a tentativa confirma num clique e
+    // quem precisa de outra data muda ali mesmo.
+    if (next.retry) { setRetryAt(retryPreset(Number(cadenceOf(saasCfg, lead.stage)?.retryDays) || 1)); return; }
     const st = setupType(next.kind);
-    const at = st === "integrator" ? (lead.integrationAt || "") : (st === "call" || st === "followup") ? (lead.callAt || "") : "";
+    const at = st === "integrator" ? (lead.integrationAt || "")
+      : st === "call" ? (lead.callAt || "")
+      : st === "followup" ? (lead.followupAt || "") // remarcar o follow-up abre no horário dele
+      : "";
     setSlot(at);
     setDay(at ? parseYMD(at.slice(0, 10)) : nextBusinessDays(1)[0]);
   };
 
+  const isRetry = !!dest?.retry;
+  // Produto do catálogo é obrigatório pra fechar em quem tem catálogo (o SaaS
+  // sem catálogo, como a mentoria do Kids, nem mostra o campo).
+  const askProduct = dealProductsOf(lead.saas).length > 0;
+  const oneOff = isOneOffProduct(lead.saas, dealProduct);
+  const dealReady = Number(amount) > 0 && !!payment && (!askProduct || !!dealProduct);
   const ready = !dest ? false
+    : isRetry ? !!retryAt
     : setup === "call" ? !!(closer && slot)
     : setup === "followup" ? !!closer && (!fromCall || !!offer) // horário é opcional; saindo da call, a proposta na mesa é obrigatória
-    : setup === "integrator" ? !!(integrator && (dest.kind !== "integracao" || (Number(amount) > 0 && !!payment)))
-    : setup === "won" ? (Number(amount) > 0 && !!payment)
+    : setup === "integrator" ? !!(integrator && (dest.kind !== "integracao" || dealReady))
+    : setup === "won" ? dealReady
     : setup === "loss" ? !!reason
     : true;
 
+  // O fechamento em si (produto, ciclo, valor, pagamento) — igual no gate do
+  // board: quem fecha pelo roteiro registra a mesma coisa.
+  const dealPatch = () => ({
+    amount: Number(amount),
+    paymentMethod: payment,
+    ...(askProduct ? { dealProduct, planClosed: oneOff ? "unico" : planClosed } : {}),
+  });
+
   function confirm() {
     if (!ready) return;
+    // Retomar não move o card: registra a tentativa e marca quando voltar (num
+    // lead novo é o servidor que promove pra Qualificando, no toque).
+    if (isRetry) { onTouch && onTouch(retryAt); return; }
     const patch = { stage: dest.stage };
     if (setup === "call") { patch.closer = closer; patch.callAt = slot; if (email.trim()) patch.email = email.trim(); }
     // Follow-up: mantém o closer e, se um horário foi escolhido, agenda nele —
-    // callAt (aparece na agenda, sem travar slots de venda) + nextActionAt (a
-    // fila do "meu dia" vence exatamente nesse horário, não na cadência padrão).
-    else if (setup === "followup") { patch.closer = closer; if (fromCall && offer) patch.proposalOffer = offer; if (slot) { patch.callAt = slot; patch.nextActionAt = slot; } }
+    // followAt PRÓPRIO (aparece na agenda com a cara de follow-up, sem travar
+    // slots de venda) + nextActionAt (a fila do "meu dia" vence exatamente nesse
+    // horário, não na cadência padrão). Já foi gravado no callAt e dava ruim: a
+    // agenda desenhava um "✓ call feita" que nunca aconteceu e ainda arquivava a
+    // call de verdade no histórico (Leo, 13/08 — casos Beto e Milaan).
+    else if (setup === "followup") { patch.closer = closer; if (fromCall && offer) patch.proposalOffer = offer; if (slot) { patch.followupAt = slot; patch.nextActionAt = slot; } }
     // Integração: define o integrador e, se um horário foi escolhido na agenda,
     // agenda a integração nele (integrationAt aparece na Agenda e replica na
     // agenda pessoal do integrador que conectou o Google).
-    else if (setup === "integrator") { patch.integrator = integrator; if (slot) patch.integrationAt = slot; if (dest.kind === "integracao" && Number(amount) > 0) { patch.amount = Number(amount); patch.paymentMethod = payment; } }
-    else if (setup === "won") { patch.amount = Number(amount); patch.paymentMethod = payment; }
+    else if (setup === "integrator") { patch.integrator = integrator; if (slot) patch.integrationAt = slot; if (dest.kind === "integracao" && Number(amount) > 0) { Object.assign(patch, dealPatch()); } }
+    else if (setup === "won") { Object.assign(patch, dealPatch()); }
     else if (setup === "loss") { patch.lostReason = reason; if (note.trim()) patch.lostNote = note.trim(); }
     onMove && onMove(patch);
   }
@@ -1979,32 +2021,67 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     }
     setMeetBusy(false);
   }
-
-  const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
-  const label = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 4 };
+  const label = { display: "block", marginBottom: 4 };
   const fieldStyle = { width: "100%", height: 30, padding: "0 8px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 };
   const slotFmt = (v) => { const d = new Date(v); return Number.isFinite(d.getTime()) ? d.toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""; };
 
+  // O que foi vendido — os mesmos campos do gate do board (produto do catálogo,
+  // ciclo, valor e pagamento), servindo a Integração e o Ganho.
+  const dealFields = (hint) => (
+    <div style={{ maxWidth: 340 }}>
+      <DealProductField saas={lead.saas} value={dealProduct} plan={planClosed}
+        fieldStyle={fieldStyle} labelStyle={label}
+        onChange={(id, p) => { setDealProduct(id); if (p?.oneOff) setPlanClosed("unico"); }}
+        onPick={(r) => { setAmount(String(r.value)); if (r.plan) setPlanClosed(r.plan); }} />
+      {askProduct && (
+        <div style={{ marginTop: 12 }}>
+          <label className="kicker" style={label}>Plano fechado *</label>
+          <select value={oneOff ? "unico" : planClosed} disabled={oneOff}
+            onChange={(e) => setPlanClosed(e.target.value)} style={{ ...fieldStyle, opacity: oneOff ? 0.7 : 1 }}>
+            {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select>
+        </div>
+      )}
+      <div style={{ marginTop: 12 }}>
+        <label className="kicker" style={label}>Valor do negócio (R$) *</label>
+        <input type="number" min="0" step="0.01" value={amount} placeholder="ex.: 7188"
+          onChange={(e) => setAmount(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") confirm(); }} style={fieldStyle} />
+        <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>{hint}</div>
+      </div>
+      <div style={{ marginTop: 12 }}>
+        <label className="kicker" style={label}>Modo de pagamento *</label>
+        <select value={payment} onChange={(e) => setPayment(e.target.value)} style={fieldStyle}>
+          <option value="">como o cliente fechou…</option>
+          {PAYMENT_METHODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+        </select>
+      </div>
+    </div>
+  );
+
   return (
     <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "12px 14px" }}>
-      <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Depois da ação · pra onde vai esse card</div>
+      <div className="kicker" style={{ marginBottom: 8 }}>Depois da ação · pra onde vai esse card</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {dests.map((d, i) => {
-          // Chip de retry: não atendeu / não fechou hoje → registra a tentativa e
-          // retoma amanhã (num lead novo, promove pra Qualificando sozinho).
+          // Chip de retry: não atendeu / não fechou hoje → registra a tentativa
+          // e abre a escolha de quando voltar (num lead novo, o toque promove
+          // pra Qualificando sozinho, no servidor).
           if (d.retry) {
             const color = stageMeta[d.stage]?.color || "var(--fg-3)";
+            const on = isRetry;
             return (
-              <button key="retry" onClick={() => onTouch && onTouch()}
+              <button key="retry" onClick={() => chooseDest(d)}
                 title={d.promote
-                  ? `Não atendeu ou ainda não fechou · registra a tentativa e vai pra ${d.stage} (tenta amanhã)`
-                  : "Não atendeu · registra a tentativa e retoma amanhã"}
+                  ? `Não atendeu ou ainda não fechou · registra a tentativa, vai pra ${d.stage} e você escolhe quando voltar`
+                  : "Não atendeu · registra a tentativa e você escolhe o dia e a hora de voltar"}
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 7, height: 30, padding: "0 12px", borderRadius: "var(--r-2)",
-                  background: "var(--bg-1)", border: "1px dashed var(--line-strong)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 500,
+                  background: on ? "var(--accent-soft)" : "var(--bg-1)",
+                  border: "1px dashed " + (on ? "var(--accent-line)" : "var(--line-strong)"),
+                  color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: on ? 600 : 500,
                 }}>
                 <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
-                {d.promote ? `${d.stage} · tenta amanhã` : "Retomar amanhã"}
+                {d.promote ? `${d.stage} · retomar` : "Retomar"}
               </button>
             );
           }
@@ -2026,13 +2103,43 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
 
       {dest && (
         <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+          {/* Retomar: QUANDO voltar nesse lead. Atalhos + data e hora exatas
+              (mesmos atalhos do "próximo toque" da ficha do lead) — antes era
+              sempre a cadência do estágio, e quem combinou de voltar daqui a
+              duas semanas tinha que corrigir no card depois. */}
+          {isRetry && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="kicker">Quando retomar</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                {RETRY_PRESETS.map(([txt, mk]) => {
+                  const v = mk();
+                  const on = retryAt === v;
+                  return (
+                    <button key={txt} onClick={() => setRetryAt(v)} style={{
+                      height: 28, padding: "0 10px", borderRadius: "var(--r-2)",
+                      border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"),
+                      background: on ? "var(--accent-soft)" : "var(--bg-1)",
+                      color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 11.5, fontWeight: on ? 600 : 500,
+                    }}>{txt}</button>
+                  );
+                })}
+                <input type="datetime-local" value={retryAt} onChange={(e) => setRetryAt(e.target.value)}
+                  title="Dia e hora exatos pra voltar nesse lead"
+                  style={{ ...fieldStyle, width: "auto", height: 28, fontFamily: "var(--mono)", fontSize: 11.5 }} />
+              </div>
+              <div className="mono dim" style={{ fontSize: 10.5 }}>
+                registra a tentativa de contato{dest.promote ? ` e manda o card pra ${dest.stage}` : ""} · o lead volta na sua fila nesse horário
+              </div>
+            </div>
+          )}
+
           {setup === "call" && (
             <>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
                 <div>
-                  <label style={label}>Closer da call *</label>
+                  <label className="kicker" style={label}>Closer da call *</label>
                   <select value={closer} onChange={(e) => { setCloser(e.target.value); setSlot(""); }} style={fieldStyle}>
-                    <option value="">— escolher closer —</option>
+                    <option value="">escolher o closer…</option>
                     {closers.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
                   </select>
                 </div>
@@ -2050,7 +2157,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
               )}
               {closer && slot && (
                 <div style={{ maxWidth: 340 }}>
-                  <label style={label}>E-mail do lead (pro convite da call)</label>
+                  <label className="kicker" style={label}>E-mail do lead (pro convite da call)</label>
                   <input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setEmailTouched(true); }} placeholder="nome@email.com" style={fieldStyle} />
                   {email && !validEmail(email) && <div className="mono" style={{ fontSize: 10, color: "var(--warn)", marginTop: 4 }}>e-mail inválido</div>}
                 </div>
@@ -2065,9 +2172,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                     que o follow-up cobra (aparece no Resumo do cliente). */}
                 {fromCall && (
                   <div style={{ maxWidth: 280, marginBottom: 10 }}>
-                    <label style={label}>Qual proposta ficou na mesa? *</label>
+                    <label className="kicker" style={label}>Qual proposta ficou na mesa? *</label>
                     <select value={offer} onChange={(e) => setOffer(e.target.value)} style={fieldStyle}>
-                      <option value="">— a oferta que o cliente levou pra pensar —</option>
+                      <option value="">a oferta que o cliente levou pra pensar…</option>
                       {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                       <option value="nenhuma">não chegou na proposta</option>
                     </select>
@@ -2083,9 +2190,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
               </div>
             ) : (
               <div style={{ maxWidth: 280 }}>
-                <label style={label}>Responsável pelo follow-up *</label>
+                <label className="kicker" style={label}>Responsável pelo follow-up *</label>
                 <select value={closer} onChange={(e) => { setCloser(e.target.value); setSlot(""); }} style={fieldStyle}>
-                  <option value="">— escolher —</option>
+                  <option value="">escolher…</option>
                   {closers.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
                 </select>
               </div>
@@ -2097,31 +2204,17 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
             return (
               <div>
                 <div style={{ maxWidth: 280 }}>
-                  <label style={label}>Responsável pela {integLabel} *</label>
+                  <label className="kicker" style={label}>Responsável pela {integLabel} *</label>
                   <select value={integrator} onChange={(e) => { setIntegrator(e.target.value); setSlot(""); }} style={fieldStyle}>
-                    <option value="">— escolher integrador —</option>
+                    <option value="">escolher o integrador…</option>
                     {integrators.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
                   </select>
                   {lead.closer && <div className="mono dim" style={{ fontSize: 10.5, marginTop: 5 }}>closer da venda: {displayName(lead.closer)} (fica registrado)</div>}
                 </div>
-                {dest.kind === "integracao" && (
-                  <div style={{ maxWidth: 220, marginTop: 12 }}>
-                    <label style={label}>Valor do negócio (R$) *</label>
-                    <input type="number" min="0" step="0.01" value={amount} placeholder="ex.: 7188"
-                      onChange={(e) => setAmount(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") confirm(); }} style={fieldStyle} />
-                    <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>fechou! esse é o valor do negócio (vira a receita do closer)</div>
-                    <div style={{ marginTop: 12 }}>
-                      <label style={label}>Modo de pagamento *</label>
-                      <select value={payment} onChange={(e) => setPayment(e.target.value)} style={fieldStyle}>
-                        <option value="">— como o cliente fechou —</option>
-                        {PAYMENT_METHODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                )}
+                {dest.kind === "integracao" && <div style={{ marginTop: 12 }}>{dealFields("fechou! esse é o valor do negócio (vira a receita do closer)")}</div>}
                 {integrator && (
                   <div style={{ marginTop: 14 }}>
-                    <div className="mono" style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
+                    <div className="kicker" style={{ marginBottom: 8 }}>
                       Quando fazer a {integLabel} · agenda de {displayName(integrator)}
                     </div>
                     <SlotGrid days={days} day={day} setDay={setDay} slot={slot} setSlot={setSlot} busy={busy} />
@@ -2133,33 +2226,19 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
             );
           })()}
 
-          {setup === "won" && (
-            <div style={{ maxWidth: 220 }}>
-              <label style={label}>Valor do negócio (R$) *</label>
-              <input type="number" min="0" step="0.01" value={amount} placeholder="ex.: 7188"
-                onChange={(e) => setAmount(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") confirm(); }} style={fieldStyle} />
-              <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>vira a receita no marketing e a conversão enviada pra Meta</div>
-              <div style={{ marginTop: 12 }}>
-                <label style={label}>Modo de pagamento *</label>
-                <select value={payment} onChange={(e) => setPayment(e.target.value)} style={fieldStyle}>
-                  <option value="">— como o cliente fechou —</option>
-                  {PAYMENT_METHODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-                </select>
-              </div>
-            </div>
-          )}
+          {setup === "won" && dealFields("vira a receita no marketing e a conversão enviada pra Meta")}
 
           {setup === "loss" && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
               <div>
-                <label style={label}>Motivo *</label>
+                <label className="kicker" style={label}>Motivo *</label>
                 <select value={reason} onChange={(e) => setReason(e.target.value)} style={fieldStyle}>
-                  <option value="">— escolha o motivo —</option>
+                  <option value="">escolha o motivo…</option>
                   {reasons.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
                 </select>
               </div>
               <div>
-                <label style={label}>Detalhe (opcional)</label>
+                <label className="kicker" style={label}>Detalhe (opcional)</label>
                 <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="ex.: fechou com concorrente" style={fieldStyle} />
               </div>
             </div>
@@ -2197,7 +2276,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                 height: 32, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
                 background: ready ? "var(--btn-bg, var(--accent))" : "var(--bg-2)", color: ready ? "var(--btn-fg, var(--accent-fg))" : "var(--fg-4)",
                 border: "1px solid " + (ready ? "var(--btn-bg, var(--accent))" : "var(--line-2)"), cursor: ready ? "pointer" : "not-allowed",
-              }}>{setup === "followup" && slot ? "agendar follow-up →" : `mover pra ${dest.stage} →`}</button>
+              }}>{isRetry ? "registrar tentativa e retomar →" : setup === "followup" && slot ? "agendar follow-up →" : `mover pra ${dest.stage} →`}</button>
               <button onClick={() => setDest(null)} className="mono dim" style={{ fontSize: 11.5 }}>cancelar</button>
             </div>
           )}

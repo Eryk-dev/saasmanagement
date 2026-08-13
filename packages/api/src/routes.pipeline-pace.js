@@ -5,7 +5,7 @@
 import { TOUCH_TYPES } from "./stages.js";
 import {
   DAY_MS as DAY, round2, dayKey, isRealLead,
-  bookedLeadsIn, callOutcome, winsIn, customerStartMap, tcvOf, contactAttribution,
+  bookedLeadsIn, callOutcome, callCohortIn, winsIn, customerStartMap, tcvOf, contactAttribution,
 } from "./metrics-core.js";
 
 // Meta de caixa quando o produto ainda não tem a dele (product.monthlyCashTarget,
@@ -32,11 +32,35 @@ export function chaseCeiling(target, sold) {
 // "AAAA-MM" → valor: o Leo configura os meses seguintes com antecedência e,
 // quando o mês vira, a plataforma inteira (faixa da Visão geral, pace, metas
 // derivadas das vagas) passa a perseguir o número novo sem ninguém mexer em
-// nada. Sem valor pro mês, vale o padrão do produto; sem padrão, o do sistema.
+// nada. Mês sem valor próprio segue a REGRA DE CRESCIMENTO (abaixo); sem
+// regra, vale o padrão do produto; sem padrão, o do sistema.
+//
+// Regra de crescimento (product.monthlyCashGrowthPct, %): a agenda finita
+// obrigava o Leo a re-agendar todo mês e, acabada a lista, a meta despencava
+// pro padrão. Com a regra, mês sem valor cresce X% COMPOSTO por cima do último
+// mês agendado antes dele (escada 180k → 270k → 405k com 50% segue 607,5k,
+// 911k, … sozinha). Mês digitado continua vencendo; sem nenhum mês agendado
+// não há âncora e a regra não se aplica.
+const monthIndex = (m) => {
+  const [y, mm] = String(m).split("-").map(Number);
+  return y * 12 + (mm - 1);
+};
 export function cashTargetFor(product, month) {
   const byMonth = product?.monthlyCashTargets;
   const doMes = byMonth && typeof byMonth === "object" ? Number(byMonth[month]) : NaN;
   if (Number.isFinite(doMes) && doMes > 0) return { target: doMes, configured: true, source: "month" };
+  const growth = Number(product?.monthlyCashGrowthPct);
+  if (Number.isFinite(growth) && growth > 0 && byMonth && typeof byMonth === "object") {
+    const ancoras = Object.entries(byMonth)
+      .filter(([m, v]) => /^\d{4}-(0[1-9]|1[0-2])$/.test(m) && m < month && Number(v) > 0)
+      .sort(([a], [b]) => (a < b ? -1 : 1));
+    const ultima = ancoras[ancoras.length - 1];
+    if (ultima) {
+      const k = monthIndex(month) - monthIndex(ultima[0]);
+      const target = Math.round(Number(ultima[1]) * Math.pow(1 + growth / 100, k));
+      return { target, configured: true, source: "growth", growthFrom: ultima[0], growthPct: growth };
+    }
+  }
   const padrao = Number(product?.monthlyCashTarget);
   if (Number.isFinite(padrao) && padrao > 0) return { target: padrao, configured: true, source: "default" };
   return { target: DEFAULT_CASH_TARGET, configured: false, source: "system" };
@@ -51,6 +75,11 @@ export function cashTargetFor(product, month) {
 // `closeRate` é sempre sobre as calls que ACONTECERAM — o furo já é cobrado no
 // showRate, e contar duas vezes esconderia de quem é o problema.
 export const RATE_BENCHMARKS = { contactRate: 0.8, bookingRate: 0.3, showRate: 0.75, closeRate: 0.33 };
+
+// Amostra mínima de leads pra confiar numa coorte medida: decide se o mês
+// fechado anterior vira a janela das taxas e se a calibração da ponta a ponta
+// liga. Abaixo disso, um ganho a mais ou a menos vira ruído gigante.
+export const MIN_RATE_SAMPLE = 20;
 const round4 = (n) => Math.round(n * 10_000) / 10_000;
 const clampRate = (n) => Math.max(0, Math.min(1, n));
 
@@ -176,14 +205,22 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   // Entrada média por nova venda: 1ª fatura paga de cada assinatura/cliente.
   // Sem esse vínculo, degrada pra qualquer fatura paga recente; depois TCV ganho
   // e, por último, ticket configurado — a fonte volta explícita pra interface.
+  //
+  // CONTA GRANDE (customer.keyAccount, ex.: Galante) fica FORA do ticket médio:
+  // um fechamento de R$ 120 mil no meio de vendas de R$ 3-7 mil quebra a cadeia
+  // inteira (meta de contratos, calls, leads). O dinheiro dela segue contando em
+  // caixa e vendido; só as MÉDIAS e as metas derivadas ignoram.
+  const keyCustomerIds = new Set(customers.filter((c) => !!c.keyAccount).map((c) => c.id));
+  const isKeyInvoice = (i) => keyCustomerIds.has(i.customer);
+  const isKeyLead = (l) => (l.customerId && keyCustomerIds.has(l.customerId));
   const firstPaid = new Map();
   for (const inv of [...paid].sort((a, b) => String(a.paidAt).localeCompare(String(b.paidAt)))) {
     const key = inv.subscription ? `sub:${inv.subscription}` : inv.customer ? `customer:${inv.customer}` : "";
     if (key && !firstPaid.has(key)) firstPaid.set(key, inv);
   }
-  const initialRecent = [...firstPaid.values()].filter((i) => inRange(i.paidAt, since90));
-  const paidRecent = paid.filter((i) => inRange(i.paidAt, since90));
-  const wonRecent90 = winLeadsIn((iso) => inRange(iso, since90));
+  const initialRecent = [...firstPaid.values()].filter((i) => inRange(i.paidAt, since90) && !isKeyInvoice(i));
+  const paidRecent = paid.filter((i) => inRange(i.paidAt, since90) && !isKeyInvoice(i));
+  const wonRecent90 = winLeadsIn((iso) => inRange(iso, since90)).filter((l) => !isKeyLead(l));
   const configuredTicket = goals.find((g) => g.scope === "role" && g.key === "closer" && g.metric === "ticket");
   let averageEntry = averageAmount(initialRecent);
   let averageEntrySource = averageEntry != null ? "initial_payments" : "";
@@ -194,51 +231,104 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     averageEntrySource = "configured_ticket";
   }
 
-  // Conversões operacionais dos últimos 30 dias, espelhando o placar atual.
-  const recentLeads = leads.filter((l) => inRange(l.createdAt, since30));
-  const recentLeadIds = new Set(recentLeads.map((l) => l.id));
-  // Contato = ação HUMANA (contactAttribution, a MESMA régua do placar): toque
-  // na timeline ou mensagem enviada no inbox por gente do time — automação
-  // (fluxo de ligação, drip) não conta como contato. Sem janela no toque de
-  // propósito: a coorte é dos leads recentes, o contato vale quando aconteceu.
+  // ── Taxas da cadeia: o FUNIL DO PERÍODO do mês fechado anterior ────────────
+  // (decisão do Leo, 08/08/2026: "o correto é o funil"). As taxas que desdobram
+  // a meta são as MESMAS contas do funil da Visão geral filtrada no mês passado
+  // (bloco `team` do scoreboard), pra Metas, Análise e Visão geral contarem UMA
+  // história — o teste de consistência no routes.pipeline-pace.test.js amarra:
+  //   leads      = criados na janela (+ histórico pré-cockpit se a janela
+  //                alcança a época; MESMO gate do placar)
+  //   contatados = WORKLOAD: leads trabalhados na janela (lead antigo tocado
+  //                agora conta) + histórico
+  //   marcadas   = safra de calls da janela (callAt OU testemunha nela) + hist
+  //   realizadas = resolução da safra; a base do comparecimento exclui as
+  //                calls futuras (realizadas + furos), igual ao placar
+  //   ganhos     = vendas com wonAt na janela, de qualquer lead (nunca ajustado)
+  // Taxas: contato = COBERTURA da coorte (dos que entraram, alcançados; sem
+  // histórico — não há registro do resultado daquele trabalho); agendamento =
+  // marcadas DA COORTE ÷ alcançados da coorte (régua #650: cadeia encadeada na
+  // mesma base — workload inflado pela nutrição em massa afundava a taxa e
+  // inflava o plano); comparecimento = realizadas ÷ devidas; conversão =
+  // ganhos ÷ realizadas, SEM calibração: calibrar mostraria um número diferente
+  // do que a Visão geral mostra pro mesmo mês.
+  // Sem amostra no mês fechado (menos de MIN_RATE_SAMPLE leads ou nenhum
+  // ganho), cai na janela móvel de 30 dias (coorte + calibração), como era —
+  // produto novo não trava no benchmark.
   const humanIds = new Set(users.map((u) => u.id));
-  const humanContact = contactAttribution({ leads, actsOf, waMessages, saas: product.id, inWin: () => true, humanIds });
-  const contacted = recentLeads.filter((l) => humanContact.leadIds.has(l.id));
-  // Uma safra de calls só (as agendadas na janela) e a resolução dela — o funil
-  // inteiro corre sobre a MESMA base: contato → agendamento → comparecimento →
-  // call→ganho encadeiam. Antes cada taxa usava uma contagem de call diferente
-  // (44 agendadas, 33 resolvidas, 76 por callAt) e o número não fechava.
-  const booked = bookedLeadsIn(product, leads, actsOf, (iso) => inRange(iso, since30));
-  const bookedFromRecentLeads = booked.filter((l) => recentLeadIds.has(l.id));
-  // Resolve a MESMA safra que o agendamento conta (bookedFromRecentLeads), pra
-  // o funil encadear exato: agendadas N → dessas, quantas compareceram/fecharam.
-  const callOut = callOutcome(product, bookedFromRecentLeads, actsOf); // { shown, noShow, won }
+  const prevMonth = (() => { const d = new Date(`${month}-01T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7); })();
+  const [pmY, pmM] = prevMonth.split("-").map(Number);
+  const prevMonthEnd = `${prevMonth}-${String(new Date(pmY, pmM, 0).getDate()).padStart(2, "0")}`;
+  const inPrevMonth = (iso) => inRange(iso, `${prevMonth}-01`, prevMonthEnd);
+  const enteredPrev = leads.filter((l) => inPrevMonth(l.createdAt));
+  const wonPrev = winLeadsIn(inPrevMonth).length;
+  const useMonth = enteredPrev.length >= MIN_RATE_SAMPLE && wonPrev > 0;
 
-  // Ajuste de histórico PRÉ-COCKPIT (product.paceAdjust): dados REAIS de antes do
-  // registro no cockpit (call no telefone, contato por outro canal) somados às
-  // contagens do funil. Somas positivas em { leads, contacted, booked, shown };
-  // zero/ausente = funil só do que o sistema gravou. GANHO nunca usa ajuste
-  // (decisão do Leo, 24/07): as vendas pré-cockpit foram registradas com wonAt
-  // real (#293), então um "+won" contaria em dobro. O funil ENCADEIA — cada
-  // denominador é o passo anterior — então o histórico entra limpo.
+  // Histórico PRÉ-COCKPIT (product.paceAdjust): dados reais de antes do registro
+  // no cockpit somados aos VOLUMES. GANHO nunca usa ajuste (decisão do Leo,
+  // 24/07): as vendas pré-cockpit têm wonAt real (#293), "+won" contaria em dobro.
   const adj = product.paceAdjust && typeof product.paceAdjust === "object" ? product.paceAdjust : {};
-  const adjN = (k) => { const n = Math.floor(Number(adj[k])); return Number.isFinite(n) && n > 0 ? n : 0; };
-  const paceAdjust = ["leads", "contacted", "booked", "shown"].reduce((o, k) => (adjN(k) ? { ...o, [k]: adjN(k) } : o), null);
-  const nLeads = recentLeads.length + adjN("leads");
-  const nContacted = contacted.length + adjN("contacted");
-  const nBooked = bookedFromRecentLeads.length + adjN("booked");
-  const nShown = callOut.shown + adjN("shown");
-  const nWon = callOut.won;
-  const conversions = {
-    contactRate: resolvedRate(nContacted, nLeads, goalRate(goals, "sdr", "contactRate"), RATE_BENCHMARKS.contactRate),
-    bookingRate: resolvedRate(nBooked, nContacted, goalRate(goals, "sdr", "bookingRate"), RATE_BENCHMARKS.bookingRate),
-    // Comparecimento sobre as AGENDADAS (funil encadeado): dos que marcaram call,
-    // quantos apareceram.
-    showRate: resolvedRate(nShown, nBooked, goalRate(goals, "sdr", "showRate"), RATE_BENCHMARKS.showRate),
-    // Call → ganho: dos que compareceram, quantos fecharam. A meta é a
-    // `conversaoCall` do closer — a MESMA que o placar mede (won ÷ compareceram).
-    closeRate: resolvedRate(nWon, nShown, goalRate(goals, "closer", "conversaoCall"), RATE_BENCHMARKS.closeRate),
-  };
+  const adjVal = (k) => { const n = Math.floor(Number(adj[k])); return Number.isFinite(n) && n > 0 ? n : 0; };
+  const adjMap = (on) => (on ? ["leads", "contacted", "booked", "shown"].reduce((o, k) => (adjVal(k) ? { ...o, [k]: adjVal(k) } : o), null) : null);
+
+  let conversions, rateWindow, paceAdjust, nLeads, nWon;
+  if (useMonth) {
+    // Gate do histórico: MESMO do placar — só entra quando a JANELA começa
+    // antes da época do 1º registro de atividade (ou de paceAdjust.before).
+    let activityEpoch = null;
+    for (const a of allActivities) {
+      if (a.saas !== product.id) continue;
+      const d0 = dayKey(a.at);
+      if (d0 && (!activityEpoch || d0 < activityEpoch)) activityEpoch = d0;
+    }
+    const adjCutoff = adj.before || activityEpoch;
+    const adjOn = !!product.paceAdjust && (!adjCutoff || `${prevMonth}-01` < adjCutoff);
+    const adjN = (k) => (adjOn ? adjVal(k) : 0);
+    const contactPrev = contactAttribution({ leads, actsOf, waMessages, saas: product.id, inWin: inPrevMonth, humanIds });
+    const bookedPrev = callCohortIn(leads, actsOf, inPrevMonth);
+    const outPrev = callOutcome(product, bookedPrev, actsOf, today, inPrevMonth);
+    const reached = enteredPrev.filter((l) => contactPrev.leadIds.has(l.id)).length;
+    // Coorte encadeada (régua #650): das calls da janela, só as de lead que
+    // ENTROU nela — par do `reached` na taxa de agendamento.
+    const enteredIds = new Set(enteredPrev.map((l) => l.id));
+    const bookedCohortPrev = bookedPrev.filter((l) => enteredIds.has(l.id));
+    nLeads = enteredPrev.length + adjN("leads");
+    const shown = outPrev.shown + adjN("shown");
+    const due = shown + outPrev.noShow; // o que JÁ devia ter acontecido (sem as futuras)
+    nWon = wonPrev;
+    conversions = {
+      contactRate: resolvedRate(reached, enteredPrev.length, goalRate(goals, "sdr", "contactRate"), RATE_BENCHMARKS.contactRate),
+      bookingRate: resolvedRate(bookedCohortPrev.length + adjN("booked"), reached + adjN("contacted"), goalRate(goals, "sdr", "bookingRate"), RATE_BENCHMARKS.bookingRate),
+      showRate: resolvedRate(shown, due, goalRate(goals, "sdr", "showRate"), RATE_BENCHMARKS.showRate),
+      closeRate: resolvedRate(nWon, shown, goalRate(goals, "closer", "conversaoCall"), RATE_BENCHMARKS.closeRate),
+    };
+    paceAdjust = adjMap(adjOn);
+    rateWindow = { mode: "month", month: prevMonth, since: `${prevMonth}-01`, until: prevMonthEnd };
+  } else {
+    // Janela móvel de 30 dias (fallback): coorte dos leads criados nela com
+    // desfechos até hoje + calibração pela ponta a ponta, como sempre foi.
+    // Contato sem janela no toque de propósito: a coorte é dos leads recentes,
+    // o contato vale quando aconteceu.
+    const cohort = leads.filter((l) => inRange(l.createdAt, since30));
+    const ids = new Set(cohort.map((l) => l.id));
+    const humanContact = contactAttribution({ leads, actsOf, waMessages, saas: product.id, inWin: () => true, humanIds });
+    const contacted = cohort.filter((l) => humanContact.leadIds.has(l.id));
+    const booked = bookedLeadsIn(product, leads, actsOf, (iso) => inRange(iso, since30)).filter((l) => ids.has(l.id));
+    const out = callOutcome(product, booked, actsOf); // { shown, noShow, won }
+    nLeads = cohort.length + adjVal("leads");
+    const nContacted = contacted.length + adjVal("contacted");
+    const nBooked = booked.length + adjVal("booked");
+    const nShown = out.shown + adjVal("shown");
+    nWon = out.won;
+    conversions = {
+      contactRate: resolvedRate(nContacted, nLeads, goalRate(goals, "sdr", "contactRate"), RATE_BENCHMARKS.contactRate),
+      bookingRate: resolvedRate(nBooked, nContacted, goalRate(goals, "sdr", "bookingRate"), RATE_BENCHMARKS.bookingRate),
+      // Comparecimento sobre as AGENDADAS (funil encadeado da coorte).
+      showRate: resolvedRate(nShown, nBooked, goalRate(goals, "sdr", "showRate"), RATE_BENCHMARKS.showRate),
+      closeRate: resolvedRate(nWon, nShown, goalRate(goals, "closer", "conversaoCall"), RATE_BENCHMARKS.closeRate),
+    };
+    paceAdjust = adjMap(true);
+    rateWindow = { mode: "rolling30", since: since30, until: today };
+  }
 
   // CPL real dos últimos 30 dias (mesma régua do /api/marketing): spend do
   // ad_insights ÷ leads criados no período (sem internos). Alimenta o cálculo
@@ -246,25 +336,24 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   const spend30 = round2(allInsights
     .filter((r) => r.saas === product.id && r.date >= since30 && r.date <= today)
     .reduce((a, r) => a + (Number(r.spend) || 0), 0));
-  const leads30 = recentLeads.length; // já sem internos (filtro oficial lá em cima)
+  // CPL segue os 30d MÓVEIS de propósito: dinheiro de mídia é presente, não
+  // coorte — o custo por lead de julho não diz o que o clique custa hoje.
+  const leads30 = leads.filter((l) => inRange(l.createdAt, since30)).length; // já sem internos
   const cpl = spend30 > 0 && leads30 > 0 ? round2(spend30 / leads30) : null;
 
-  // Ponta a ponta REAL (ganhos 30d ÷ leads criados 30d): é a régua que bate com
-  // o caixa ("vendi X com Y de mídia"). As taxas de etapa acima são medidas em
-  // janela curta, então cada coorte está TRUNCADA (lead recente ainda não teve
-  // tempo de avançar; call recente ainda não teve tempo de fechar) e o viés se
-  // multiplica na cadeia: o produto das 4 dava ~metade da ponta a ponta real e
-  // o plano pedia 2-3x mais lead/investimento do que a história mostra. Com
-  // amostra decente, o fechamento é CALIBRADO pra cadeia fechar exatamente na
-  // ponta a ponta (a folga vai toda pro fechamento, a taxa mais truncada: call
-  // agendada na janela ainda não teve tempo de virar ganho).
+  // Ponta a ponta REAL (ganhos ÷ leads da janela das taxas): é a régua que bate
+  // com o caixa ("vendi X com Y de mídia"). Na janela MÓVEL as taxas de etapa
+  // vêm de coorte truncada (lead recente ainda não teve tempo de avançar) e o
+  // viés se multiplica na cadeia — por isso lá o fechamento é CALIBRADO pra
+  // cadeia fechar exatamente na ponta a ponta. No modo MÊS FECHADO a calibração
+  // fica DESLIGADA de propósito: a régua é o funil como a Visão geral mostra
+  // pro mesmo mês, e calibrar exibiria um número diferente entre as duas telas.
   const chainProb = round4(clampRate(conversions.contactRate.value * conversions.bookingRate.value
     * conversions.showRate.value * conversions.closeRate.value));
-  // Lead → ganho = ganhos do funil ÷ leads (ambos com o histórico pré-cockpit).
   conversions.leadToWin = resolvedRate(nWon, nLeads, null, chainProb);
   const upstream = conversions.contactRate.value * conversions.bookingRate.value * conversions.showRate.value;
-  const calibrated = conversions.leadToWin.source === "history"
-    && conversions.leadToWin.numerator > 0 && conversions.leadToWin.denominator >= 20 && upstream > 0;
+  const calibrated = rateWindow.mode !== "month" && conversions.leadToWin.source === "history"
+    && conversions.leadToWin.numerator > 0 && conversions.leadToWin.denominator >= MIN_RATE_SAMPLE && upstream > 0;
   conversions.closeRateEffective = calibrated
     ? { value: round4(clampRate(conversions.leadToWin.value / upstream)), source: "calibrated" }
     : { value: conversions.closeRate.value, source: conversions.closeRate.source };
@@ -295,6 +384,15 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   const superMetas = SUPER_METAS.map((m) => ({
     pct: Math.round(m * 100), mult: m, value: round2(target * m), hit: sold >= target * m,
   }));
+
+  // ── Meta de CONTRATOS do mês (a 2ª régua da Meta do mês na Visão geral) ────
+  // A meta digitada da empresa (monthlyContractsTarget, tela Metas) vence; sem
+  // ela, deriva de venda ÷ ticket — o MESMO averageEntry sem contas grandes da
+  // cadeia, então as duas telas nunca divergem. Vendido = nº de fechamentos do
+  // mês (contagem; conta grande conta 1 contrato, só sai das médias).
+  const contractsTarget = Number(product.monthlyContractsTarget) > 0
+    ? Math.round(Number(product.monthlyContractsTarget))
+    : (averageEntry > 0 ? Math.ceil(target / averageEntry) : null);
 
   const throughRate = (amount, rate) => amount === 0 ? 0 : amount != null && rate > 0 ? Math.ceil(amount / rate) : null;
   const winsRemaining = chaseGap === 0 ? 0 : averageEntry > 0 ? Math.ceil(chaseGap / averageEntry) : null;
@@ -348,6 +446,22 @@ export async function computePipelinePace(repo, product, now = new Date()) {
       elapsedBusinessDays: calendar.elapsed,
       remainingBusinessDays: calendar.remaining,
     },
+    // A 2ª régua da Meta do mês: CONTRATOS fechados vs. meta (contagem).
+    contracts: (() => {
+      const soldN = tcvMonthLeads.length;
+      const expected = contractsTarget != null ? round2(contractsTarget * (calendar.elapsed / Math.max(1, calendar.total))) : null;
+      return {
+        target: contractsTarget,
+        targetSource: Number(product.monthlyContractsTarget) > 0 ? "company" : (contractsTarget != null ? "ticket" : ""),
+        sold: soldN,
+        soldToday: todayWon,
+        gap: contractsTarget != null ? Math.max(0, contractsTarget - soldN) : null,
+        progress: contractsTarget > 0 ? round4(soldN / contractsTarget) : null,
+        expectedToDate: expected,
+        expectedProgress,
+        status: expected == null ? null : soldN >= expected ? "ahead" : soldN >= expected * 0.95 ? "attention" : "behind",
+      };
+    })(),
     // Leitura de CAIXA (faturas pagas) — informativa; o fluxo detalhado e o
     // dinheiro futuro moram na aba Clientes.
     cash: {
@@ -381,6 +495,7 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     marketing: { spend30, leads30, cpl },
     paceAdjust, // histórico pré-cockpit somado ao funil (null quando não há)
     conversions,
+    rateWindow, // janela das taxas: mês fechado anterior ou 30d móveis (fallback)
     plan: {
       blockedBy,
       sold: planMetric(chaseGap, calendar.remaining, soldToday),
@@ -395,10 +510,110 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   };
 }
 
+// ── Meta de uma JANELA qualquer (mês passado, semana, dia) ───────────────────
+// A faixa "Meta do mês" da Visão geral segue o filtro do topo (Leo, 08/08):
+// julho selecionado mostra a meta e o resultado DE JULHO, semana mostra a
+// fatia da semana, dia a fatia do dia — cada mês com a meta da sua época
+// (product.monthlyCashTargets + regra de crescimento, via cashTargetFor).
+//
+// A meta se reparte SÓ pelos dias úteis (o time não opera no fim de semana):
+// meta do dia útil = meta do mês ÷ dias úteis daquele mês; a meta da janela é
+// a soma dos dias úteis que ela cobre (janela cruzando meses soma cada fatia).
+// Sábado/domingo carregam meta zero — dia de fim de semana selecionado devolve
+// businessDays: 0 e a UI mostra "sem meta cobrada".
+const isBizDay = (day) => {
+  const w = new Date(`${day}T12:00:00Z`).getUTCDay();
+  return w !== 0 && w !== 6;
+};
+const nextDay = (day) => dayKey(new Date(new Date(`${day}T12:00:00Z`).getTime() + DAY));
+function monthBizDays(month) {
+  const total = new Date(Date.UTC(...month.split("-").map(Number), 0)).getUTCDate();
+  let n = 0;
+  for (let d = 1; d <= total; d++) {
+    const w = new Date(Date.UTC(month.split("-")[0], Number(month.split("-")[1]) - 1, d)).getUTCDay();
+    if (w !== 0 && w !== 6) n++;
+  }
+  return n;
+}
+
+export async function computeWindowGoal(repo, product, since, until, now = new Date()) {
+  const today = dayKey(now);
+  // Ticket sem contas grandes e a meta de contratos digitada: a MESMA régua do
+  // pace do mês corrente, pra as duas faixas nunca divergirem.
+  const pace = await computePipelinePace(repo, product, now);
+  const avg = Number(pace.context.averageEntry) > 0 ? Number(pace.context.averageEntry) : null;
+  const companyContracts = Number(product.monthlyContractsTarget) > 0 ? Math.round(Number(product.monthlyContractsTarget)) : null;
+
+  // Meta da janela: soma da fatia diária (dias úteis) de cada mês coberto.
+  const bizPerMonth = new Map();
+  let bizDays = 0, bizElapsed = 0, targetRevenue = 0, targetContracts = 0, hasContractsTarget = false;
+  for (let d = since; d <= until; d = nextDay(d)) {
+    if (!isBizDay(d)) continue;
+    bizDays++;
+    if (d <= today) bizElapsed++;
+    const m = d.slice(0, 7);
+    if (!bizPerMonth.has(m)) bizPerMonth.set(m, monthBizDays(m));
+    const mBiz = bizPerMonth.get(m) || 1;
+    targetRevenue += cashTargetFor(product, m).target / mBiz;
+    const mContracts = companyContracts ?? (avg ? Math.ceil(cashTargetFor(product, m).target / avg) : null);
+    if (mContracts != null) { targetContracts += mContracts / mBiz; hasContractsTarget = true; }
+  }
+  targetRevenue = round2(targetRevenue);
+
+  // Vendido na janela: régua oficial da venda (isWonLead + wonAt, contrato cheio).
+  const [allLeads, allCustomers] = await Promise.all([repo.list("leads"), repo.list("customers")]);
+  const leads = allLeads.filter((l) => l.saas === product.id && isRealLead(l));
+  const customers = allCustomers.filter((c) => c.saas === product.id);
+  const inWin = (iso) => { const d = dayKey(iso); return d && d >= since && d <= until; };
+  const winAt = winsIn(product, leads, inWin, customerStartMap(customers));
+  const winLeads = leads.filter((l) => winAt.has(l.id));
+  const sold = tcvOf(winLeads);
+  const soldN = winLeads.length;
+
+  const ended = until < today;
+  const expectedFrac = bizDays > 0 ? round4(bizElapsed / bizDays) : 1;
+  const statusOf = (val, target) => {
+    if (!(target > 0)) return null;
+    if (ended) return val >= target ? "ahead" : "behind"; // janela fechada: veredito final
+    const expected = target * expectedFrac;
+    return val >= expected ? "ahead" : val >= expected * 0.95 ? "attention" : "behind";
+  };
+  const contractsTarget = hasContractsTarget ? Math.round(targetContracts * 10) / 10 : null;
+  return {
+    saas: product.id, since, until, today,
+    businessDays: bizDays, businessDaysElapsed: bizElapsed,
+    ended, current: !ended && since <= today,
+    sale: {
+      target: targetRevenue > 0 ? targetRevenue : null,
+      sold,
+      progress: targetRevenue > 0 ? round4(sold / targetRevenue) : null,
+      expectedProgress: expectedFrac,
+      status: statusOf(sold, targetRevenue),
+    },
+    contracts: {
+      target: contractsTarget,
+      sold: soldN,
+      progress: contractsTarget > 0 ? round4(soldN / contractsTarget) : null,
+      expectedProgress: expectedFrac,
+      status: statusOf(soldN, contractsTarget),
+    },
+  };
+}
+
 export function registerPipelinePaceRoutes(app, repo, { now = () => new Date() } = {}) {
   app.get("/api/pipeline-pace/:saas", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "Not found" });
     return computePipelinePace(repo, product, now());
+  });
+  // Meta de uma janela qualquer (a faixa da Visão geral seguindo o filtro).
+  app.get("/api/pipeline-pace/:saas/window", async (req, reply) => {
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "Not found" });
+    const ok = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ""));
+    const since = String(req.query.since || "");
+    const until = String(req.query.until || "");
+    if (!ok(since) || !ok(until) || since > until) return reply.code(400).send({ error: "since/until inválidos (YYYY-MM-DD)" });
+    return computeWindowGoal(repo, product, since, until, now());
   });
 }

@@ -2,7 +2,7 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
-import { EmptyState, PrimaryButton } from "../atoms.jsx";
+import { EmptyState, PrimaryButton, useEsc } from "../atoms.jsx";
 import { mpMethodLabel } from "../lib/payments.js";
 // Assinaturas (fase 5) — Cockpit como system-of-record de billing: assinaturas,
 // faturas (renovação/pró-rata/dunning) e planos por SaaS. O pagamento em si fica
@@ -276,6 +276,7 @@ function SubscriptionsScreen({ saasId }) {
 // Modal de mudança de plano/preço/ciclo — o servidor decide: upgrade aplica já e
 // fatura o pró-rata do resto do ciclo; downgrade/troca de ciclo agendam pro fim.
 function ChangeModal({ sub, plans, customerName, onClose, onDone }) {
+  useEsc(onClose);
   const [plan, setPlan] = useState(sub.plan || "");
   const [price, setPrice] = useState(String(sub.price ?? ""));
   const [cycle, setCycle] = useState(sub.cycle || "monthly");
@@ -307,19 +308,18 @@ function ChangeModal({ sub, plans, customerName, onClose, onDone }) {
   }
 
   const input = { width: "100%", height: 30, padding: "0 8px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 };
-  const label = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "var(--mono)" };
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70 }}>
       <form onClick={(e) => e.stopPropagation()} onSubmit={submit} style={{ width: "min(420px, calc(100vw - 24px))", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
         <div>
-          <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" }}>Mudar plano</div>
+          <div className="kicker">Mudar plano</div>
           <div style={{ fontSize: 16, fontWeight: 500, marginTop: 2 }}>{customerName}</div>
           <div className="mono dim" style={{ fontSize: 11, marginTop: 2 }}>hoje: {window.fmt.money(sub.price || 0)}/{CYCLE_LABEL[sub.cycle] || sub.cycle} · upgrade fatura o pró-rata do resto do ciclo; downgrade/troca de ciclo valem no fim do ciclo</div>
         </div>
         {!!plans.length && (
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={label}>Plano</span>
+            <span className="kicker">Plano</span>
             <select value={plan} onChange={(e) => pickPlan(e.target.value)} style={input}>
               <option value="">(avulso — só preço/ciclo)</option>
               {plans.map((p) => <option key={p.id} value={p.id}>{p.name} · {window.fmt.money(p.price || 0)}/{CYCLE_LABEL[p.cycle] || p.cycle}</option>)}
@@ -328,11 +328,11 @@ function ChangeModal({ sub, plans, customerName, onClose, onDone }) {
         )}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={label}>Preço por ciclo</span>
+            <span className="kicker">Preço por ciclo</span>
             <input type="number" step="any" value={price} onChange={(e) => setPrice(e.target.value)} style={input} />
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={label}>Ciclo</span>
+            <span className="kicker">Ciclo</span>
             <select value={cycle} onChange={(e) => setCycle(e.target.value)} style={input}>
               <option value="monthly">Mensal</option>
               <option value="quarterly">Trimestral</option>
@@ -355,8 +355,8 @@ function ChangeModal({ sub, plans, customerName, onClose, onDone }) {
 
 function Table({ cols, head, children }) {
   return (
-    <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
-      <div className="mono" style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
+    <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
+      <div className="kicker" style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "10px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
         {head.map((h, i) => <span key={i} style={i === head.length - 1 ? { textAlign: "right" } : undefined}>{h}</span>)}
       </div>
       {children}

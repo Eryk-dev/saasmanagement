@@ -161,7 +161,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     const gate = moveGate(cfg, lead, stage);
     if (gate) { setPendingMove({ lead, toStage: stage, gate, saasCfg: cfg }); return; }
     commitMoveLocal(leadId, { stage });
-    api.update("leads", leadId, { stage }).catch(err => console.warn("lead move not persisted:", err.message));
+    api.update("leads", leadId, { stage }).catch(err => { console.warn("lead move not persisted:", err.message); window.toast && window.toast("O movimento do card não foi salvo · tente de novo", "neg"); });
   }
 
   if (!s) return (
@@ -186,8 +186,8 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
       <div style={{ padding: "28px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16, minHeight: "100%" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 260 }}>
-            <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em" }}>Pipeline</h1>
-            <div style={{ marginTop: 4, fontSize: 14.5, color: "var(--fg-3)" }}>
+            <h1 className="page-title">Pipeline</h1>
+            <div className="page-sub" style={{ marginTop: 4 }}>
               {openLeads.length} {openLeads.length === 1 ? "lead aberto" : "leads abertos"} · {newWeek} {newWeek === 1 ? "novo" : "novos"} esta semana · arraste (ou toque) para mover
             </div>
           </div>
@@ -244,7 +244,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           onCancel={() => setPendingMove(null)}
           onConfirm={(patch, extra) => {
             commitMoveLocal(pendingMove.lead.id, patch);
-            applyGatedMove(patch, extra, pendingMove.lead.id).catch(err => console.warn("movimento não persistido:", err.message));
+            applyGatedMove(patch, extra, pendingMove.lead.id).catch(err => { console.warn("movimento não persistido:", err.message); window.toast && window.toast("O movimento do card não foi salvo · tente de novo", "neg"); });
             setPendingMove(null);
           }}
         />
@@ -582,18 +582,47 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
       // follow-up era marcado pelo drawer (só nextActionAt, sem callAt) sumia —
       // foi o caso da Laura. Toque de CADÊNCIA (novo/contato/qualificação) segue
       // opcional pelo toggle, senão a agenda vira lista de GPS.
-      if (l.nextActionAt && k === "followup") {
+      // Call que JÁ ACONTECEU é HISTÓRIA e nunca sai da agenda (Leo, 07/08:
+      // "fiz as calls e sumiu tudo da minha agenda"): renderiza como call
+      // FEITA (✓, cor lavada, do closer) mesmo que o card tenha ido pra
+      // follow-up/no show/ganho — a supressão do naSame só vale pra call
+      // FUTURA (não duplicar o compromisso remarcado por cima do horário).
+      const callT = l.callAt ? new Date(l.callAt) : null;
+      const callDone = !!(callT && Number.isFinite(callT.getTime()) && callT.getTime() < Date.now());
+      const naSame = l.callAt && l.nextActionAt && new Date(l.callAt).getTime() === new Date(l.nextActionAt).getTime();
+      const callInstead = k === "followup" && naSame && callDone; // história vence a pílula duplicada
+      if (l.nextActionAt && k === "followup" && !callInstead) {
         out.push({ l, t: new Date(l.nextActionAt), kind: "follow-up", who: l.closer || l.owner });
-      } else if (l.nextActionAt && showTouches) {
+      } else if (l.nextActionAt && showTouches && k !== "followup") {
         out.push({ l, t: new Date(l.nextActionAt), kind: "toque", who: l.owner || l.closer });
       }
-      // Call marcada. Quando o roteiro grava callAt = nextActionAt no follow-up,
-      // não duplica (o bloco de follow-up acima já cobre esse horário).
-      const naSame = l.callAt && l.nextActionAt && new Date(l.callAt).getTime() === new Date(l.nextActionAt).getTime();
-      if (l.callAt && !(k === "followup" && naSame)) {
-        out.push({ l, t: new Date(l.callAt), kind: "call", who: l.closer });
+      // Follow-up MARCADO com hora (lead.followupAt): compromisso PRÓPRIO, com a
+      // cara de follow-up hoje e depois de passar (lavado, como toda história).
+      // Ele já morou no callAt e a agenda desenhava um "✓ call feita" que nunca
+      // existiu — indistinguível de uma call de verdade (Leo, 13/08). Some do
+      // caminho quando é o mesmo instante do próximo toque, senão a pílula sai
+      // duplicada em cima dela mesma.
+      const fupT = l.followupAt ? new Date(l.followupAt) : null;
+      if (fupT && Number.isFinite(fupT.getTime())
+        && !(l.nextActionAt && new Date(l.nextActionAt).getTime() === fupT.getTime())) {
+        out.push({ l, t: fupT, kind: "follow-up", who: l.closer || l.owner, done: fupT.getTime() < Date.now() });
       }
-      if (l.integrationAt) out.push({ l, t: new Date(l.integrationAt), kind: "integração", who: l.integrator || l.closer });
+      // Call marcada: futura respeita o naSame (follow-up cobre o horário);
+      // passada entra SEMPRE, como histórico.
+      if (callT && (callDone || !(k === "followup" && naSame))) {
+        out.push({ l, t: callT, kind: "call", who: l.closer, done: callDone });
+      }
+      if (l.integrationAt) {
+        const it = new Date(l.integrationAt);
+        out.push({ l, t: it, kind: "integração", who: l.integrator || l.closer, done: Number.isFinite(it.getTime()) && it.getTime() < Date.now() });
+      }
+      // HISTÓRICO de calls remarcadas por cima (lead.callHistory, arquivado
+      // pelo PATCH da API quando um callAt passado é sobrescrito): cada
+      // entrada vira uma call FEITA no dia em que aconteceu.
+      for (const h of (Array.isArray(l.callHistory) ? l.callHistory : [])) {
+        const ht = new Date(h?.at);
+        if (Number.isFinite(ht.getTime())) out.push({ l, t: ht, kind: "call", who: h?.closer || l.closer, done: true });
+      }
       return out;
     })
     .concat(consultEvents)
@@ -649,7 +678,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
         </span>
       </div>
 
-      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
+      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
         {/* Cabeçalho dos dias */}
         <div style={{ display: "grid", gridTemplateColumns: "52px repeat(7, 1fr)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
           <span />
@@ -657,7 +686,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
             const isToday = d.toDateString() === new Date().toDateString();
             return (
               <div key={i} style={{ padding: "8px 6px", textAlign: "center", borderLeft: "1px solid var(--line-1)" }}>
-                <div className="mono" style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em", color: isToday ? "var(--accent)" : "var(--fg-4)" }}>
+                <div className="kicker" style={{ color: isToday ? "var(--accent)" : "var(--fg-4)" }}>
                   {fmtDay(d, { weekday: "short" })}
                 </div>
                 <div className="tnum" style={{
@@ -728,7 +757,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                     );
                   });
                 })()}
-                {placed.map(({ l, t, lane, lanes, kind, who }) => {
+                {placed.map(({ l, t, lane, lanes, kind, who, done }) => {
                   const tone = toneOf(who);
                   const isTouch = kind === "toque";
                   // Follow-up: ocupa 20 min na agenda, fundo ESCURO + letra clara
@@ -738,9 +767,9 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                   const w = 100 / lanes;
                   const timeStr = t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
                   return (
-                    <div key={l.id + kind}
+                    <div key={l.id + kind + t.getTime()}
                       onClick={(e) => { e.stopPropagation(); const target = kind === "consulta" ? l._leadRef : l; if (target && onOpenLead) onOpenLead(target); }}
-                      title={`${timeStr} · ${isFollowup ? "follow-up" : kind} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}`}
+                      title={`${timeStr} · ${isFollowup ? "follow-up" : kind}${done ? (isFollowup ? " · já passou" : " · realizada · histórico") : ""} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}`}
                       style={{
                         position: "absolute", top: (hour - H0) * hourH + 1,
                         left: `calc(${lane * w}% + 2px)`, width: `calc(${w}% - 4px)`,
@@ -750,7 +779,10 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                         border: isTouch ? `1px dashed color-mix(in srgb, ${tone} 55%, var(--line-2))` : `1px solid color-mix(in srgb, ${tone} ${isFollowup ? 60 : 45}%, var(--line-1))`,
                         borderLeft: isTouch ? `2px dashed ${tone}` : `3px solid ${tone}`,
                         borderRadius: 5, padding: isFollowup ? "0 6px" : isTouch ? "1px 6px" : "3px 6px",
-                        opacity: isTouch ? 0.85 : 1,
+                        // Feita (histórico): mesma cor do closer, só lavada — dá
+                        // pra ler a semana inteira do que aconteceu sem confundir
+                        // com o que ainda vai acontecer.
+                        opacity: isTouch ? 0.85 : done ? 0.62 : 1,
                         display: isFollowup ? "flex" : undefined, alignItems: isFollowup ? "center" : undefined,
                       }}>
                       {isFollowup ? (
@@ -761,7 +793,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                       ) : (
                         <>
                           <div className="mono tnum" style={{ fontSize: 9.5, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {isTouch ? `○ ${l.name}` : `${timeStr}${who ? ` · ${displayName(who).split(" ")[0]}` : ""}${kind === "integração" ? " · int" : kind === "consulta" ? " · 1:1" : ""}`}
+                            {isTouch ? `○ ${l.name}` : `${done ? "✓ " : ""}${timeStr}${who ? ` · ${displayName(who).split(" ")[0]}` : ""}${kind === "integração" ? " · int" : kind === "consulta" ? " · 1:1" : ""}`}
                             {!isTouch && (kind === "call" || kind === "consulta") && l.callUrl && (
                               <a href={l.callUrl} target="_blank" rel="noopener noreferrer" title="Entrar na videochamada"
                                 onClick={(e) => e.stopPropagation()} style={{ marginLeft: 4, textDecoration: "none" }}>🎥</a>
@@ -815,12 +847,11 @@ function LeadList({ leads }) {
 
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
-      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
-        <div className="mono" style={{
+      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
+        <div className="kicker" style={{
           display: "grid", gridTemplateColumns: cols,
           padding: "8px 12px",
           background: "var(--bg-inset)",
-          fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase",
           borderBottom: "1px solid var(--line-1)",
         }}>
           <span>Lead</span><span>Estágio</span><span style={{ textAlign: "right" }}>Valor</span>
@@ -828,8 +859,8 @@ function LeadList({ leads }) {
         </div>
         {sections.map(([label, rows]) => (
           <React.Fragment key={label}>
-            <div className="mono" style={{
-              padding: "7px 12px", fontSize: 10.5, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase",
+            <div className="kicker" style={{
+              padding: "7px 12px", fontWeight: 600,
               color: label === "Atrasados" ? "var(--neg)" : label === "Hoje" ? "var(--accent)" : "var(--fg-3)",
               background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)",
             }}>
@@ -885,7 +916,7 @@ const rateFmt = (rate) => rate == null ? "—" : `${Math.round(rate * 100)}%`;
 function PaceMini({ label, value, sub, tone }) {
   return (
     <div style={{ minWidth: 0, padding: "11px 12px", borderRadius: "var(--r-2)", background: "var(--bg-2)", border: "1px solid var(--line-1)" }}>
-      <div className="mono" style={{ fontSize: 9.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-4)" }}>{label}</div>
+      <div className="kicker">{label}</div>
       <div className="tnum" style={{ marginTop: 4, fontFamily: "var(--display)", fontSize: 18, fontWeight: 700, color: tone || "var(--fg-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
       <div style={{ marginTop: 2, fontSize: 10.5, lineHeight: 1.35, color: "var(--fg-3)" }}>{sub}</div>
     </div>
@@ -896,7 +927,7 @@ function EquationStep({ value, label, money }) {
   return (
     <div style={{ minWidth: 92, flex: "1 1 92px", padding: "9px 10px", textAlign: "center", borderRadius: "var(--r-2)", background: "var(--bg-2)", border: "1px solid var(--line-1)" }}>
       <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>{money ? window.fmt.money(value || 0) : wholeFmt(value)}</div>
-      <div className="mono" style={{ marginTop: 1, fontSize: 9.5, color: "var(--fg-4)", letterSpacing: "0.05em", textTransform: "uppercase" }}>{label}</div>
+      <div className="kicker" style={{ marginTop: 1 }}>{label}</div>
     </div>
   );
 }
@@ -910,8 +941,10 @@ function EquationArrow({ label }) {
   );
 }
 
-// Probabilidade de um lead na etapa virar ganho, compondo as taxas reais dos
-// últimos 30 dias (contato → agendamento → comparecimento → fechamento).
+// Probabilidade de um lead na etapa virar ganho, compondo as taxas reais da
+// janela do funil (funil do último mês fechado, as mesmas contas da Visão
+// geral; fallback 30d móveis) — contato → agendamento → comparecimento →
+// fechamento.
 // O fechamento usa a taxa EFETIVA (calibrada pela ponta a ponta real quando a
 // amostra deixa, vide routes.pipeline-pace.js) — sem isso o produto das taxas
 // truncadas de janela subestimava o funil em 2-3x.
@@ -1133,8 +1166,12 @@ function GoalReversePlan({ data, s, leads }) {
   const plan = data.plan || {};
   const money = window.fmt.money;
   const perDay = (n) => (n == null || g.daysLeft <= 0 ? null : n / g.daysLeft);
+  // Janela das taxas no rótulo: "real jul · 12/44" (mês fechado) ou "real 30d".
+  const rateJanela = data.rateWindow?.mode === "month"
+    ? new Date(`${data.rateWindow.month}-15T12:00:00`).toLocaleDateString("pt-BR", { month: "short" }).replace(".", "")
+    : "30d";
   const sourceLabel = (rate) => rate.source === "history"
-    ? `real 30d · ${rate.numerator}/${rate.denominator}`
+    ? `real ${rateJanela} · ${rate.numerator}/${rate.denominator}`
     : rate.source === "goal" ? "meta configurada" : "benchmark";
   const ticketSource = {
     initial_payments: "primeiras faturas pagas",
@@ -1142,7 +1179,6 @@ function GoalReversePlan({ data, s, leads }) {
     won_tcv: "média dos ganhos (90d)",
     configured_ticket: "ticket configurado",
   }[data.context.averageEntrySource] || "sem base de ticket";
-  const noteLabel = { fontSize: 9.5, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" };
 
   const alvo = g.superMode ? `super meta ${g.chasePct}%` : "meta";
   if (g.gap === 0) {
@@ -1229,12 +1265,12 @@ function GoalReversePlan({ data, s, leads }) {
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, paddingTop: 14, borderTop: "1px solid var(--line-faint)" }}>
           <div>
-            <div className="mono" style={noteLabel}>Ticket médio</div>
+            <div className="kicker">Ticket médio</div>
             <div className="tnum" style={{ marginTop: 2, fontSize: 13, fontWeight: 600 }}>{g.ticket ? money(g.ticket) : "—"}</div>
             <div style={{ fontSize: 10, color: "var(--fg-4)" }}>{ticketSource}</div>
           </div>
           <div>
-            <div className="mono" style={noteLabel}>CPL</div>
+            <div className="kicker">CPL</div>
             <div className="tnum" style={{ marginTop: 2, fontSize: 13, fontWeight: 600 }}>{g.cpl != null ? money(g.cpl) : "—"}</div>
             <div style={{ fontSize: 10, color: "var(--fg-4)" }}>
               {g.cpl != null ? `real 30d · ${money(data.marketing.spend30)} / ${data.marketing.leads30} leads` : "sem spend no período"}
@@ -1243,7 +1279,7 @@ function GoalReversePlan({ data, s, leads }) {
           {[["Contato", conversions.contactRate], ["Agendamento", conversions.bookingRate], ["Comparecimento", conversions.showRate], ["Call → ganho", conversions.closeRate],
             ...(conversions.leadToWin ? [["Lead → ganho", conversions.leadToWin]] : [])].map(([label, rate]) => (
             <div key={label}>
-              <div className="mono" style={noteLabel}>{label}</div>
+              <div className="kicker">{label}</div>
               <div className="tnum" style={{ marginTop: 2, fontSize: 13, fontWeight: 600 }}>{rateFmt(rate.value)}</div>
               <div style={{ fontSize: 10, color: "var(--fg-4)" }}>{sourceLabel(rate)}</div>
             </div>
@@ -1266,7 +1302,7 @@ function ForecastView({ s, leads, conversions }) {
       </div>
       <div className="tbl-x">
         <div style={{ minWidth: 700 }}>
-          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+          <div className="kicker" style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontWeight: 600, borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
             <span>Etapa</span><span style={{ textAlign: "right" }}>Leads</span><span style={{ textAlign: "right" }}>Valor aberto</span><span style={{ textAlign: "right" }}>Prob.</span><span style={{ textAlign: "right" }}>Ponderado</span>
           </div>
           {buckets.map((bucket) => (
@@ -1302,7 +1338,6 @@ function FunnelAnalytics({ s }) {
   }, [s.id, days]);
 
   const card = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "14px 18px", background: "var(--bg-1)" };
-  const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 };
 
   if (err) return <div style={card}><div className="mono dim" style={{ fontSize: 12 }}>análise indisponível ({err.status || "erro"})</div></div>;
   if (!data) return <div style={card}><div className="mono dim" style={{ fontSize: 12 }}>carregando análise…</div></div>;
@@ -1313,7 +1348,7 @@ function FunnelAnalytics({ s }) {
   const ft = data.firstTouch || {};
   const stat = (label, v, sub) => (
     <div>
-      <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</div>
+      <div className="kicker">{label}</div>
       <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 20, fontWeight: 700, marginTop: 2 }}>{v}</div>
       {sub && <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)" }}>{sub}</div>}
     </div>
@@ -1322,7 +1357,7 @@ function FunnelAnalytics({ s }) {
   return (
     <>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Saúde do processo</span>
+        <span className="kicker">Saúde do processo</span>
         <span style={{ flex: 1 }} />
         {[30, 90].map(d => (
           <button key={d} onClick={() => setDays(d)} style={{
@@ -1342,7 +1377,7 @@ function FunnelAnalytics({ s }) {
       </div>
 
       <div style={card}>
-        <div className="mono" style={kicker}>Conversão real estágio → estágio · leads que passaram + mediana de dias na etapa</div>
+        <div className="kicker" style={{ marginBottom: 10 }}>Conversão real estágio → estágio · leads que passaram + mediana de dias na etapa</div>
         {data.stages.map((st) => (
           <div key={st.stage} style={{ display: "grid", gridTemplateColumns: "minmax(84px, 130px) 1fr minmax(40px, 56px) minmax(58px, 84px) minmax(58px, 84px)", gap: 10, alignItems: "center", padding: "8px 0", borderTop: "1px solid var(--line-1)" }}>
             <span className="mono" style={{ fontSize: 12, color: "var(--fg-2)" }}>{st.stage}</span>
@@ -1361,7 +1396,7 @@ function FunnelAnalytics({ s }) {
       </div>
 
       <div style={card}>
-        <div className="mono" style={kicker}>Motivos de perda · perdidos + desqualificados do período</div>
+        <div className="kicker" style={{ marginBottom: 10 }}>Motivos de perda · perdidos + desqualificados do período</div>
         {data.lossReasons.length === 0 && <div className="mono dim" style={{ fontSize: 12 }}>nenhuma perda no período 🎉</div>}
         {data.lossReasons.map((r) => (
           <div key={r.reason} style={{ display: "grid", gridTemplateColumns: "130px 1fr 40px", gap: 10, alignItems: "center", padding: "6px 0" }}>

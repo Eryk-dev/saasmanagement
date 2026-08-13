@@ -3,6 +3,7 @@ import { api, clearKey } from "./lib/api.js";
 import { useActiveSaas } from "./lib/workspace.js";
 import { canSeeScreen, currentUser, hasExplicitScreen, isAdminUser, userById, userPhoto } from "./lib/users.js";
 import { PeriodPicker, usePeriod } from "./components/period-picker.jsx";
+import { IcpCard } from "./components/icp-card.jsx";
 
 // Filtro de período GLOBAL, no topo ao lado da busca: muda a janela do cockpit
 // inteiro de uma vez (lê o store compartilhado do usePeriod). Só aparece nas
@@ -10,6 +11,60 @@ import { PeriodPicker, usePeriod } from "./components/period-picker.jsx";
 function GlobalPeriod() {
   const { period, custom, setPeriod, setCustom } = usePeriod();
   return <PeriodPicker period={period} custom={custom} onChange={(p, c) => { setPeriod(p); setCustom(c); }} />;
+}
+
+// Selo ICP na topbar (à esquerda do filtro): o RESUMO do perfil fica à mostra
+// o tempo todo ("2+ contas · 500+ anúncios · R$150k+"), num selo destacado com
+// borda brilhante — pedido do Leo em 08/08: "pra não perdermos o foco nele".
+// O clique abre o cartão completo (com a matriz de nota). Some quando o
+// produto ainda não tem ICP escrito. `icp.pill` (texto livre no produto) vence
+// o resumo derivado dos números do perfil.
+function icpPillText(icp) {
+  if (icp?.pill) return String(icp.pill);
+  const toks = [];
+  for (const item of icp?.profile || []) {
+    // O nº com "+" de cada linha do perfil ("2+ contas…", "R$150k+…"), com a
+    // palavra seguinte quando ela é curta ("contas", "anúncios").
+    const m = String(item).match(/((?:R\$\s*)?\d[\d.,]*\s*(?:mil|k)?\+?)(?:\s+([a-zà-ú]{2,12}))?/i);
+    if (!m || !/[+]/.test(m[0])) continue;
+    toks.push((m[1] + (m[2] ? " " + m[2] : "")).trim());
+    if (toks.length >= 3) break;
+  }
+  return toks.join(" · ");
+}
+
+function IcpButton() {
+  const [product] = useActiveSaas();
+  const [open, setOpen] = React.useState(false);
+  React.useEffect(() => {
+    if (!open) return;
+    const onEsc = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("keydown", onEsc);
+    return () => document.removeEventListener("keydown", onEsc);
+  }, [open]);
+  const icp = product?.icp;
+  if (!icp || (!icp.headline && !(icp.profile || []).length)) return null;
+  const pill = icpPillText(icp);
+  return (
+    <div style={{ display: "inline-flex" }}>
+      <button onClick={() => setOpen(!open)} className="icp-pill" title={icp.headline || "Nosso ICP · quem a gente caça"}>
+        <span className="icp-tag" style={{ fontWeight: 800, letterSpacing: "0.04em" }}>ICP</span>
+        {pill && <span className="hide-mobile" style={{ fontWeight: 600, opacity: 0.95 }}>{pill}</span>}
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 69 }} />
+          <div style={{
+            position: "fixed", top: 64, right: 12, zIndex: 70,
+            width: "min(94vw, 780px)", maxHeight: "calc(100vh - 90px)", overflowY: "auto",
+            borderRadius: "var(--r-4)", boxShadow: "var(--shadow-pop)",
+          }}>
+            <IcpCard compact grade />
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 // App chrome v3 "Operations Terminal" — grouped nav rail + topbar with live clock.
 // A sidebar veste a MARCA do produto ativo (workspace): logo + nome no topo,
@@ -59,7 +114,7 @@ const NAV = [
   { id: "mindmaps",   label: "Mapas mentais",  icon: "⌬",  group: "geral" },
   { id: "metas",      label: "Metas",          icon: "◎",  group: "geral" },
   { id: "remuneracao", label: "Remuneração",   icon: "◫",  group: "geral", adminOnly: true }, // modelos de comp por cargo (salário: admin, ou tela concedida explicitamente = leitura)
-  { id: "expenses",   label: "Custos",         icon: "◫",  group: "geral" },
+  { id: "expenses",   label: "Financeiro",     icon: "◫",  group: "geral" },
   { id: "settings",   label: "Configurações",  icon: "✦",  group: "geral" },
 ];
 
@@ -124,7 +179,9 @@ function NavRail({ current, onNav, collapsed }) {
   const inSaas = (item) =>
     (!item.saas || item.saas === product?.id) && (!item.notSaas || item.notSaas !== product?.id);
   const groups = [];
-  NAV.filter((item) => !item.hidden && inSaas(item) && canSeeScreen(item.id) && (!item.adminOnly || isAdminUser() || hasExplicitScreen(item.id))).forEach(item => {
+  // "settings" aparece pra TODO usuário: quem não tem a tela liberada abre a
+  // versão reduzida (só a conexão Google pessoal) — ver SettingsLite.
+  NAV.filter((item) => !item.hidden && inSaas(item) && (canSeeScreen(item.id) || item.id === "settings") && (!item.adminOnly || isAdminUser() || hasExplicitScreen(item.id))).forEach(item => {
     let g = groups.find(x => x.key === item.group);
     if (!g) { g = { key: item.group, items: [] }; groups.push(g); }
     g.items.push(item);
@@ -154,7 +211,7 @@ function NavRail({ current, onNav, collapsed }) {
         {groups.map(g => (
           <div key={g.key} style={{ marginBottom: 10 }}>
             {!collapsed && GROUP_LABELS[g.key] && (
-              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-4)", padding: "10px 10px 6px" }}>
+              <div className="kicker" style={{ fontWeight: 600, padding: "10px 10px 6px" }}>
                 {GROUP_LABELS[g.key]}
               </div>
             )}
@@ -237,7 +294,7 @@ function WorkspaceSwitcher() {
           border: "1px solid var(--line-2)", background: "var(--bg-1)",
           borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 5, zIndex: 80,
         }}>
-          <div className="mono" style={{ fontSize: 10, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-4)", padding: "6px 8px 4px" }}>Produtos</div>
+          <div className="kicker" style={{ padding: "6px 8px 4px" }}>Produtos</div>
           {saas.map((s) => {
             const isActive = s.id === product.id;
             return (
@@ -344,6 +401,7 @@ function TopBar({ title, leading, breadcrumb, onSearch, showPeriod }) {
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+        <span className="hide-mobile" style={{ display: "inline-flex" }}><IcpButton /></span>
         {showPeriod && <GlobalPeriod />}
         <span className="hide-mobile" style={{ display: "inline-flex" }}><CmdK onClick={onSearch} /></span>
         {/* No mobile o campo "Buscar lead…" some — a lupa mantém a busca a um toque. */}
@@ -500,7 +558,6 @@ function ProfileModal({ user, onClose }) {
   const [msg, setMsg] = useS(null);        // { ok, text }
   const fileRef = useR(null);
   const inputStyle = { width: "100%", height: 30, padding: "0 8px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 };
-  const labelStyle = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "var(--mono)" };
   const linkStyle = { fontSize: 11, color: "var(--fg-3)", fontFamily: "var(--mono)", textDecoration: "underline", textUnderlineOffset: 3 };
 
   async function pick(e) {
@@ -558,11 +615,11 @@ function ProfileModal({ user, onClose }) {
           </div>
         </div>
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={labelStyle}>Nome</span>
+          <span className="kicker">Nome</span>
           <input value={name} autoFocus onChange={(e) => setName(e.target.value)} style={inputStyle} />
         </label>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={labelStyle}>Cargo</span>
+          <span className="kicker">Cargo</span>
           <div className="mono dim" style={{ fontSize: 12 }}>{cargoOf(user)}</div>
           <span className="mono dim" style={{ fontSize: 10 }}>quem muda o cargo é a gestão, em Ajustes → Equipe</span>
         </div>
@@ -584,7 +641,6 @@ function PasswordModal({ onClose }) {
   const [busy, setBusy] = useS(false);
   const [msg, setMsg] = useS(null); // { ok, text }
   const inputStyle = { width: "100%", height: 30, padding: "0 8px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 };
-  const labelStyle = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "var(--mono)" };
 
   async function submit(e) {
     e.preventDefault();
@@ -603,11 +659,11 @@ function PasswordModal({ onClose }) {
       <form onClick={(e) => e.stopPropagation()} onSubmit={submit} style={{ width: "min(320px, calc(100vw - 24px))", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ fontSize: 15, fontWeight: 500 }}>Trocar senha</div>
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={labelStyle}>Senha atual</span>
+          <span className="kicker">Senha atual</span>
           <input type="password" value={current} autoFocus autoComplete="current-password" onChange={(e) => setCurrent(e.target.value)} style={inputStyle} />
         </label>
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={labelStyle}>Nova senha (4+ caracteres)</span>
+          <span className="kicker">Nova senha (4+ caracteres)</span>
           <input type="password" value={next} autoComplete="new-password" onChange={(e) => setNext(e.target.value)} style={inputStyle} />
         </label>
         {msg && <div className="mono" style={{ fontSize: 11, color: msg.ok ? "var(--pos)" : "var(--neg)" }}>{msg.text}</div>}

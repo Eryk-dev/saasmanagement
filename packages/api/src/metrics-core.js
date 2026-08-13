@@ -23,6 +23,23 @@ import { kindOf, isLoss, isNoShowStage, isWonLead, wonAtOf, TOUCH_TYPES } from "
 
 export { isWonLead, wonAtOf }; // a régua oficial de ganho, num import só
 
+// Dinheiro de CARTÃO DE CRÉDITO que ENTROU no mês (espelho do Mercado Pago,
+// aprovados por dateApproved). É a base do custo percentual `cartao12x` da aba
+// Custos e do Financeiro — régua única nos dois lugares.
+// Regra final do Leo (08/08/2026, 4ª iteração): com antecipação D+0 a taxa
+// incide INTEIRA no mês em que o dinheiro CAI — nunca sobre a marcação
+// "cartão 12x" do fechamento (contrato marcado que ainda não passou no cartão
+// não paga taxa; foi isso que inflou a base pra 172k com ~100 recebidos).
+export function card12xBaseIn(mpPayments, month) {
+  let sum = 0;
+  for (const p of mpPayments || []) {
+    if (p.status !== "approved" || p.methodType !== "credit_card") continue;
+    if (monthKey(p.dateApproved || p.dateCreated) !== month) continue;
+    sum += Number(p.amount) || 0;
+  }
+  return Math.round(sum * 100) / 100;
+}
+
 export const DAY_MS = 86_400_000;
 export const round2 = (n) => Math.round(n * 100) / 100;
 
@@ -264,7 +281,9 @@ export function contactAttribution({ leads, actsOf, waMessages, saas, inWin, hum
   // `firstAt` = leadId → quando foi o 1º contato humano (alimenta o SLA de 1º
   // toque: minutos entre o cadastro e a resposta do time).
   const firstAt = new Map([...first].map(([id, v]) => [id, v.at]));
-  return { leadIds: new Set(first.keys()), firstAt, byAuthor, automationReached: autoReached.size };
+  // `authorOf` = leadId → autor creditado (base das taxas por pessoa em coorte).
+  const authorOf = new Map([...first].map(([id, v]) => [id, v.author]));
+  return { leadIds: new Set(first.keys()), firstAt, byAuthor, authorOf, automationReached: autoReached.size };
 }
 
 export function funnelCounts(product, { leads, actsOf, inWin, winLeadsIn, adjust, waContactedIds } = {}) {
@@ -329,3 +348,42 @@ export const receivablesUntil = (invoices, untilDay) =>
     const due = dayKey(i.dueDate);
     return due && due <= untilDay;
   });
+
+// ── Origem do lead (Aquisição) ──────────────────────────────────────────────
+// Classifica o lead pelo UTM + referrer do cadastro — régua ÚNICA: a tela de
+// Publicidade (e qualquer card novo) lê DAQUI. Ordem importa: pago primeiro
+// (medium=paid, com o canal pelo referrer/source), depois social orgânico
+// (bio), busca, site próprio. Sem nada = Direto (link limpo, ex.: WhatsApp).
+// Calibrado nos leads reais de 07/08: meta+paid com referrer facebook/instagram
+// é o grosso; "ig"/"fb" no source são os links antigos; "an" = Audience Network.
+export function leadOrigin(lead) {
+  const utm = (lead && typeof lead.utm === "object" && lead.utm) || {};
+  const src = String(utm.source || "").toLowerCase();
+  const medium = String(utm.medium || "").toLowerCase();
+  const ref = String(utm.referrer || "").toLowerCase();
+  const ig = ref.includes("instagram") || src === "ig" || src === "instagram";
+  const fb = ref.includes("facebook") || src === "fb" || src === "facebook" || src === "an";
+  if (medium === "paid") {
+    if (ig) return "ads_ig";
+    if (fb) return "ads_fb";
+    return "ads_meta"; // pago sem canal identificável (referrer vazio/estranho)
+  }
+  if (ig) return "bio_ig";
+  if (fb) return "bio_fb";
+  if (src.includes("google") || ref.includes("google")) return "google";
+  if (src.includes("site") || ref.includes("leverads.com.br") || ref.includes("levermoney")) return "site";
+  if (!src && !medium && !ref) return "direto";
+  return "outros";
+}
+
+export const LEAD_ORIGINS = [
+  { key: "ads_ig", label: "Ads IG" },
+  { key: "ads_fb", label: "Ads FB" },
+  { key: "ads_meta", label: "Ads Meta · sem canal" },
+  { key: "bio_ig", label: "Bio IG" },
+  { key: "bio_fb", label: "Bio FB" },
+  { key: "google", label: "Google" },
+  { key: "site", label: "Site" },
+  { key: "direto", label: "Direto · sem UTM" },
+  { key: "outros", label: "Outros" },
+];

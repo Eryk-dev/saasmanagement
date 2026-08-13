@@ -2,7 +2,7 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { EmptyState, PrimaryButton } from "../atoms.jsx";
-import { inputStyle, labelStyle, sectionTitle, cardStyle, addBtnStyle, THEME_DEFAULTS, LabeledInput, LabeledTextarea, ThemeEditor } from "../components/theme-inputs.jsx";
+import { inputStyle, sectionTitle, cardStyle, addBtnStyle, THEME_DEFAULTS, LabeledInput, LabeledTextarea, ThemeEditor } from "../components/theme-inputs.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { PageHead, Segmented } from "../components/viz.jsx";
 // Proposal builder — propostas comerciais por marca, no MESMO modelo do form
@@ -123,7 +123,8 @@ function ProposalsScreen({ saasId }) {
   // Produto do WORKSPACE (seletor no pé da sidebar) — sem abas próprias.
   const [activeProduct] = useActiveSaas();
   const active = activeProduct?.id;
-  const [tab, setTab] = useState("templates"); // templates | geradas
+  const [tab, setTabState] = useState(() => { try { return localStorage.getItem("cockpit_proposals_tab") || "templates"; } catch { return "templates"; } }); // templates | geradas · persiste
+  const setTab = (t) => { setTabState(t); try { localStorage.setItem("cockpit_proposals_tab", t); } catch { /* ignore */ } };
   const [templates, setTemplates] = useState([]);
   const [proposals, setProposals] = useState([]);
   const [editing, setEditing] = useState(null); // { template } | null
@@ -180,7 +181,7 @@ function ProposalsScreen({ saasId }) {
   ) : (
     <div className="tbl-x">
       <div style={{ minWidth: 760 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1.3fr .8fr .9fr .6fr", gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+        <div className="kicker" style={{ display: "grid", gridTemplateColumns: "1.3fr 1.3fr .8fr .9fr .6fr", gap: 12, padding: "10px 24px", fontWeight: 600, borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
           <span>Lead</span><span>Template</span><span>Gerada em</span><span>Status</span><span />
         </div>
         {proposals.slice(0, tab === "geradas" ? proposals.length : 6).map((p) => {
@@ -330,7 +331,7 @@ function TemplateEditor({ template, saasId, onDone, onCancel }) {
       <div style={{ display: "flex", flexDirection: "column", minHeight: 0, borderRight: "1px solid var(--line-1)" }}>
         <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" }}>{isEdit ? "Editar template" : "Novo template"}</div>
+            <div className="kicker">{isEdit ? "Editar template" : "Novo template"}</div>
             <div style={{ fontSize: 16, fontWeight: 500, marginTop: 2 }}>{draft.name || "Sem nome"}</div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -345,11 +346,11 @@ function TemplateEditor({ template, saasId, onDone, onCancel }) {
         <div style={{ flex: 1, overflow: "auto", padding: "14px 20px 32px" }}>
           {error && <div className="mono" style={{ fontSize: 11, color: "var(--neg)", marginBottom: 10 }}>{error}</div>}
 
-          <div style={sectionTitle}>Básico</div>
+          <div className="kicker" style={sectionTitle}>Básico</div>
           <div style={{ display: "flex", gap: 10 }}>
             <LabeledInput label="Nome do template" value={draft.name} onChange={(v) => set({ name: v })} placeholder="Proposta · LeverAds" />
             <label style={{ display: "flex", flexDirection: "column", gap: 4, width: 220 }}>
-              <span className="mono" style={labelStyle}>Aceite move o lead para</span>
+              <span className="kicker">Aceite move o lead para</span>
               <select value={draft.acceptStage || ""} onChange={(e) => set({ acceptStage: e.target.value })} style={inputStyle}>
                 <option value="">(não mover)</option>
                 {stages.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -360,20 +361,20 @@ function TemplateEditor({ template, saasId, onDone, onCancel }) {
             Interpolações: {"{{lead.name}} {{lead.firstName}} {{lead.company}} {{answers.<chave>}} {{calc.preco}} {{calc.custoMes}} {{calc.custoAno}} {{calc.vendasEquiv}} {{calc.roi}} {{calc.plano}} {{calc.precoCiclos}} {{calc.fatTotal}} {{calc.horasMes}} {{state.validUntil}}"} · *palavra* = itálico na cor da marca.
           </div>
 
-          <div style={sectionTitle}>Slides</div>
+          <div className="kicker" style={sectionTitle}>Slides</div>
           <SlidesBuilder slides={draft.slides || []} onChange={(slides) => set({ slides })} />
 
-          <div style={sectionTitle}>Calculadora (custo oculto / preço)</div>
+          <div className="kicker" style={sectionTitle}>Calculadora (custo oculto / preço)</div>
           <CalcEditor calc={draft.calc || {}} onChange={(calc) => set({ calc })} />
 
-          <div style={sectionTitle}>Tema da marca</div>
+          <div className="kicker" style={sectionTitle}>Tema da marca</div>
           <ThemeEditor theme={draft.theme} onChange={(theme) => set({ theme })} />
         </div>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", minHeight: 0, background: "var(--bg-inset)" }}>
         <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span className="mono dim" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" }}>Preview ao vivo (dados de exemplo)</span>
+          <span className="kicker">Preview ao vivo (dados de exemplo)</span>
           {isEdit && (
             <a href={`${publicBase()}/p/t/${template.id}`} target="_blank" rel="noreferrer" className="mono code" style={{ fontSize: 11, color: "var(--accent)" }}>
               abrir preview ↗
@@ -464,7 +465,7 @@ function SlideCard({ slide, index, total, onChange, onRemove, onMove, arrowStyle
 function StrList({ label, items, onChange }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <span className="mono" style={labelStyle}>{label}</span>
+      <span className="kicker">{label}</span>
       {items.map((it, i) => (
         <div key={i} style={{ display: "flex", gap: 6 }}>
           <input value={it} onChange={(e) => { const arr = [...items]; arr[i] = e.target.value; onChange(arr); }} style={inputStyle} />
@@ -479,7 +480,7 @@ function StrList({ label, items, onChange }) {
 function ObjList({ label, cols, items, onChange }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <span className="mono" style={labelStyle}>{label}</span>
+      <span className="kicker">{label}</span>
       {items.map((it, i) => (
         <div key={i} style={{ display: "flex", gap: 6 }}>
           {cols.map(([ck, cph]) => (
@@ -519,7 +520,7 @@ function CalcEditor({ calc, onChange }) {
           <LabeledInput label="Chave da resposta de CONTAS (ex.: accounts)" value={calc.seatsKey} onChange={(v) => set("seatsKey", v)} />
           <LabeledInput label="Chave da resposta de VOLUME (ex.: volume)" value={calc.volumeKey} onChange={(v) => set("volumeKey", v)} />
           <label style={{ display: "flex", flexDirection: "column", gap: 4, width: 140 }}>
-            <span className="mono" style={labelStyle}>Ciclo padrão</span>
+            <span className="kicker">Ciclo padrão</span>
             <select value={calc.defaultCycle || "monthly"} onChange={(e) => set("defaultCycle", e.target.value)} style={inputStyle}>
               {cycles.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
@@ -529,7 +530,7 @@ function CalcEditor({ calc, onChange }) {
         <MapEditor label="Faixa de volume → anúncios/semana (volumeMid)" map={calc.volumeMid || {}} onChange={(m) => set("volumeMid", m)} />
       </div>
       <div style={{ ...cardStyle }}>
-        <span className="mono" style={labelStyle}>Planos (R$/mês · contas incluídas · R$ por conta extra)</span>
+        <span className="kicker">Planos (R$/mês · contas incluídas · R$ por conta extra)</span>
         {cycles.map(([v, l]) => (
           <div key={v} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             <span className="mono dim" style={{ fontSize: 11, width: 76 }}>{l}</span>
@@ -552,7 +553,7 @@ function MapEditor({ label, map, onChange }) {
   };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
-      <span className="mono" style={labelStyle}>{label}</span>
+      <span className="kicker">{label}</span>
       {entries.map(([k, v], i) => (
         <div key={i} style={{ display: "flex", gap: 6 }}>
           <input value={k} placeholder="resposta" onChange={(e) => setEntry(i, e.target.value, v)} className="mono" style={{ ...inputStyle, width: 140, fontSize: 12 }} />

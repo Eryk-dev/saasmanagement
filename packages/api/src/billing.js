@@ -77,14 +77,32 @@ export async function initSubscription(repo, sub, now = new Date()) {
 const PLAN_MONTHS = { anual: 12, semestral: 6, mensal: 1 };
 const PLAN_CYCLE = { anual: "annual", semestral: "semiannual", mensal: "monthly" };
 const MONTHLY_PAYMENT = new Set(["boleto", "pix_parcelado"]);
+const METHOD_LABEL = { boleto: "boleto faturado", pix_parcelado: "PIX parcelado" };
+
+// Nº de parcelas escolhido no gate de fechamento (0 = sem cronograma explícito).
+// Só vale em pagamento faturado/parcelado: à vista/cartão 12x a adquirente
+// antecipa, parcela é problema dela.
+export function closedInstallments({ paymentMethod, paymentInstallments } = {}) {
+  if (!MONTHLY_PAYMENT.has(String(paymentMethod || ""))) return 0;
+  const n = Math.round(Number(paymentInstallments) || 0);
+  return n > 0 ? Math.min(n, 36) : 0;
+}
 
 // Ciclo e preço da assinatura que um fechamento implica. Serviço único (ou
 // valor zerado) não é recorrência → null. Compartilhado entre criar a
 // assinatura no ganho e revisá-la quando o gate reedita plano/valor/pagamento.
-export function closedSubscriptionSpec({ planClosed, amount, paymentMethod } = {}) {
+// Com Nº de parcelas do gate (schedule), a assinatura fica no ciclo do PLANO
+// com o valor CHEIO — annualized bate com o arr do convertWonLead igual à
+// vista — e o recebimento vira o cronograma de faturas kind:"installment"
+// (createInstallmentSchedule); o runBilling só renova no fim do contrato.
+// Sem o Nº (fechamento antigo), segue o desenho original: ciclo mensal com o
+// valor da parcela plano÷meses.
+export function closedSubscriptionSpec({ planClosed, amount, paymentMethod, paymentInstallments } = {}) {
   const months = PLAN_MONTHS[planClosed];
   const value = Number(amount) || 0;
   if (!months || value <= 0) return null;
+  const schedule = closedInstallments({ paymentMethod, paymentInstallments });
+  if (schedule) return { cycle: PLAN_CYCLE[planClosed], price: value, schedule };
   const monthly = MONTHLY_PAYMENT.has(String(paymentMethod || ""));
   return {
     cycle: monthly ? "monthly" : PLAN_CYCLE[planClosed],
@@ -92,8 +110,62 @@ export function closedSubscriptionSpec({ planClosed, amount, paymentMethod } = {
   };
 }
 
-export async function createClosedSubscription(repo, { customerId, saas, planClosed, amount, paymentMethod, startAt }, now = new Date()) {
-  const spec = closedSubscriptionSpec({ planClosed, amount, paymentMethod });
+// Cronograma do faturado: N faturas kind:"installment" com vencimento mensal a
+// partir do fechamento, TODAS em aberto — faturado é promessa, o caixa só conta
+// quando alguém marca a parcela como paga (ou a baixa do MP casa o pagamento).
+// Divisão em centavos: parcelas iguais e a PRIMEIRA absorve a sobra. A Análise
+// de clientes já trata essas faturas como a verdade do recebido × a receber.
+export async function createInstallmentSchedule(repo, { customerId, saas, subscription = "", total, installments, startAt, method = "", startN = 1, of }, now = new Date()) {
+  const n = Math.max(1, Math.round(Number(installments) || 1));
+  const cents = Math.round((Number(total) || 0) * 100);
+  if (!customerId || cents <= 0) return [];
+  const base = Math.floor(cents / n);
+  const label = METHOD_LABEL[method] || "faturado";
+  const totalN = Number(of) || startN - 1 + n;
+  const created = [];
+  for (let i = 0; i < n; i++) {
+    created.push(await repo.create("invoices", {
+      subscription, customer: customerId, saas: saas || "",
+      amount: (i === 0 ? cents - base * (n - 1) : base) / 100,
+      kind: "installment", status: "open",
+      installmentN: startN + i, installmentOf: totalN,
+      title: `Parcela ${startN + i}/${totalN} · ${label}`,
+      dueDate: addMonths(startAt || now.toISOString(), startN - 1 + i),
+      createdAt: now.toISOString(),
+    }));
+  }
+  return created;
+}
+
+// Re-sincroniza o cronograma quando o gate reedita valor/plano/parcelas (ou o
+// valor do contrato é editado em Clientes). Parcela PAGA é fato — fica como
+// está; as abertas/vencidas são refeitas: o que falta receber (total − pagas)
+// redividido nas parcelas restantes. installments=0 (virou à vista/cartão) só
+// remove as abertas.
+export async function syncClosedInstallments(repo, { customerId, saas, subscription = "", total, installments, startAt, method = "" }, now = new Date()) {
+  if (!customerId) return;
+  const all = (await repo.list("invoices")).filter((i) => i.customer === customerId && i.kind === "installment");
+  const paid = all.filter((i) => i.status === "paid");
+  const open = all.filter((i) => i.status !== "paid");
+  const n = Math.max(0, Math.round(Number(installments) || 0));
+  const remainingN = Math.max(0, n - paid.length);
+  const paidSum = paid.reduce((a, i) => a + (Number(i.amount) || 0), 0);
+  const remaining = Math.round(((Number(total) || 0) - paidSum) * 100) / 100;
+  // Nada mudou de verdade? Não regrava (regravar acorda o SSE de todo mundo).
+  const openSum = open.reduce((a, i) => a + (Number(i.amount) || 0), 0);
+  if (open.length === remainingN && Math.abs(openSum - remaining) < 0.005
+    && (!all.length || Number(all[0].installmentOf) === n)) return;
+  for (const i of open) await repo.remove("invoices", i.id);
+  if (remainingN > 0 && remaining > 0) {
+    await createInstallmentSchedule(repo, {
+      customerId, saas, subscription, total: remaining, installments: remainingN,
+      startAt, method, startN: paid.length + 1, of: n,
+    }, now);
+  }
+}
+
+export async function createClosedSubscription(repo, { customerId, saas, planClosed, amount, paymentMethod, paymentInstallments, startAt }, now = new Date()) {
+  const spec = closedSubscriptionSpec({ planClosed, amount, paymentMethod, paymentInstallments });
   if (!customerId || !spec) return null;
   const { cycle, price } = spec;
   let periodStart = startAt || now.toISOString();
@@ -107,12 +179,22 @@ export async function createClosedSubscription(repo, { customerId, saas, planClo
     status: "active", cycle, price, plan: "", pendingChange: null,
     customer: customerId, saas: saas || "", periodStart, periodEnd,
   });
-  await repo.create("invoices", {
-    subscription: sub.id, customer: customerId, saas: saas || "",
-    amount: price, kind: "renewal", status: "paid",
-    dueDate: periodStart, periodStart, periodEnd,
-    paidAt: periodStart, createdAt: now.toISOString(),
-  });
+  if (spec.schedule) {
+    // Faturado com cronograma: o recebimento são as PARCELAS (nascem abertas) —
+    // a fatura inicial paga do desenho original não existe aqui, senão o valor
+    // cheio contaria como recebido no dia do fechamento.
+    await createInstallmentSchedule(repo, {
+      customerId, saas, subscription: sub.id, total: price,
+      installments: spec.schedule, startAt: startAt || periodStart, method: paymentMethod,
+    }, now);
+  } else {
+    await repo.create("invoices", {
+      subscription: sub.id, customer: customerId, saas: saas || "",
+      amount: price, kind: "renewal", status: "paid",
+      dueDate: periodStart, periodStart, periodEnd,
+      paidAt: periodStart, createdAt: now.toISOString(),
+    });
+  }
   await syncCustomerArr(repo, customerId);
   return sub;
 }

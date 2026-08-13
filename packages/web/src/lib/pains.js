@@ -32,10 +32,17 @@ export function useAttribution(saas, enabled = true) {
 
 // Dor do lead: null quando não veio de anúncio mapeado.
 export function leadPain(lead, cat, painMap) {
-  const content = lead?.utm?.content;
-  if (!content) return null;
-  const adName = cat?.ads?.[String(content)]?.name || String(content);
-  const code = painCodeOf(adName);
+  const utm = lead?.utm || {};
+  const ad = cat?.ads?.[String(utm.content)] || {};
+  const adsetId = utm.term || ad.adsetId;
+  const adset = cat?.adsets?.[String(adsetId)] || {};
+  const campaignId = utm.campaign || ad.campaignId || adset.campaignId;
+  // Alguns conjuntos antigos guardam [A-E] só no conjunto/campanha. O nível
+  // mais específico continua vencendo quando o código existe no anúncio.
+  const code = lead?.sourcePain ||
+    painCodeOf(ad.name || utm.content) ||
+    painCodeOf(adset.name || utm.term) ||
+    painCodeOf(cat?.campaigns?.[String(campaignId)]?.name || utm.campaign);
   if (!code) return null;
   return { code, label: (painMap || {})[code] || code };
 }

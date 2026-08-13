@@ -68,7 +68,8 @@ function DisparosScreen({ onOpenLead }) {
   const [metrics, setMetrics] = useS([]); // [{ id, name, sent, advanced, booked, won }]
   const [note, setNote] = useS(null);   // { ok, text }
   const [err, setErr] = useS(null);
-  const [tab, setTab] = useS("disparos"); // disparos | sequencias | templates
+  const [tab, setTabState] = useS(() => { try { return localStorage.getItem("cockpit_disparos_tab") || "disparos"; } catch { return "disparos"; } }); // disparos | sequencias | templates · persiste
+  const setTab = (t) => { setTabState(t); try { localStorage.setItem("cockpit_disparos_tab", t); } catch { /* ignore */ } };
   const gmailOn = !!window.SEED?.CONFIG?.google?.gmail; // escopo de envio concedido?
 
   // Carrega as campanhas salvas do produto + as métricas + arma o público padrão.
@@ -280,7 +281,7 @@ function DisparosScreen({ onOpenLead }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 400px), 1fr))", gap: 16, alignItems: "start" }}>
             <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden", minWidth: 0 }}>
               <div style={{ overflowX: "auto" }}><div style={{ minWidth: 620 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "40px 1.3fr 1.1fr .9fr .9fr", gap: 12, padding: "12px 20px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", alignItems: "center" }}>
+                <div className="kicker" style={{ display: "grid", gridTemplateColumns: "40px 1.3fr 1.1fr .9fr .9fr", gap: 12, padding: "12px 20px", fontWeight: 600, borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", alignItems: "center" }}>
                   <input type="checkbox" checked={allSelected} onChange={toggleAll} style={{ width: 18, height: 18, accentColor: "var(--accent)" }} /><span>Lead</span><span>Empresa</span><span>Etapa</span><span>Último toque</span>
                 </div>
                 {shown.slice(0, 5).map((lead) => (
@@ -301,7 +302,7 @@ function DisparosScreen({ onOpenLead }) {
             </section>
 
             <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Nova campanha</div>
+              <div className="kicker" style={{ fontWeight: 600 }}>Nova campanha</div>
               <Segmented value={channel} onChange={setChannel} options={[{ value: "wa", label: "WhatsApp" }, { value: "email", label: "E-mail" }]} />
               <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                 <span style={{ fontSize: 12, color: "var(--fg-3)" }}>Template</span>
@@ -325,7 +326,6 @@ function DisparosScreen({ onOpenLead }) {
   );
 
   const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: 14 };
-  const kicker = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
   const field = { width: "100%", padding: "8px 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 };
   const chipBtn = (on) => ({ display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 11px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"), background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)" });
   const sendChip = { display: "inline-flex", alignItems: "center", gap: 5, height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", fontSize: 11.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
@@ -368,7 +368,7 @@ function DisparosScreen({ onOpenLead }) {
 
         {campaigns.length > 0 && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-            <span style={kicker}>campanhas</span>
+            <span className="kicker">campanhas</span>
             {campaigns.map((c) => {
               const total = Object.keys(c.sent || {}).length;
               return (
@@ -384,7 +384,7 @@ function DisparosScreen({ onOpenLead }) {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 14 }}>
           {/* ── PÚBLICO ─────────────────────────────────────────────── */}
           <div style={{ ...box, display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-            <div style={kicker}>Público · etapas do funil</div>
+            <div className="kicker">Público · etapas do funil</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {stageOptions.map((st) => (
                 <button key={st} onClick={() => toggleStage(st)} style={chipBtn(stagesSel.has(st))}>{st}</button>
@@ -426,7 +426,7 @@ function DisparosScreen({ onOpenLead }) {
           {/* ── MENSAGEM ────────────────────────────────────────────── */}
           <div style={{ ...box, display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={kicker}>Mensagem</div>
+              <div className="kicker">Mensagem</div>
               <div style={{ display: "flex", gap: 6 }}>
                 <button onClick={() => setCamp((c) => ({ ...c, channels: { ...c.channels, whatsapp: !c.channels.whatsapp } }))} style={chipBtn(camp.channels.whatsapp)}>WhatsApp</button>
                 <button onClick={() => setCamp((c) => ({ ...c, channels: { ...c.channels, email: !c.channels.email } }))} style={chipBtn(camp.channels.email)}>E-mail</button>
@@ -459,7 +459,7 @@ function DisparosScreen({ onOpenLead }) {
             )}
 
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-              <span style={kicker}>tokens</span>
+              <span className="kicker">tokens</span>
               {TOKENS.map(([k, lbl]) => (
                 <button key={k} onClick={() => insertToken(k)} title={`inserir ${lbl}`} className="mono"
                   style={{ ...sendChip, height: 24, padding: "0 8px", fontSize: 11 }}>{`{{${k}}}`}</button>
@@ -474,7 +474,7 @@ function DisparosScreen({ onOpenLead }) {
 
             {sampleLead && (camp.wa.text || camp.email.subject || camp.email.body) && (
               <div style={{ border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", padding: 10, background: "var(--bg-inset)" }}>
-                <div style={kicker}>Prévia · {sampleLead.name}</div>
+                <div className="kicker">Prévia · {sampleLead.name}</div>
                 {camp.channels.email && (camp.email.subject || camp.email.body) && (
                   <div style={{ marginTop: 6, fontSize: 12.5 }}>
                     <div style={{ fontWeight: 600 }}>{interpolate(camp.email.subject, sampleTokens)}</div>
@@ -492,7 +492,7 @@ function DisparosScreen({ onOpenLead }) {
         {/* ── DISPARAR ──────────────────────────────────────────────── */}
         <div style={box}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
-            <div style={kicker}>Disparar · {chosen.length} selecionados</div>
+            <div className="kicker">Disparar · {chosen.length} selecionados</div>
             {camp.channels.whatsapp && <Pill tone={sentWa >= withWa && withWa > 0 ? "pos" : "mut"}>WhatsApp {sentWa}/{withWa}</Pill>}
             {camp.channels.email && <Pill tone={sentEmail >= withEmail && withEmail > 0 ? "pos" : "mut"}>e-mail {sentEmail}/{withEmail}</Pill>}
             {camp.channels.email && (
@@ -534,7 +534,7 @@ function DisparosScreen({ onOpenLead }) {
                       : l.whatsappOptOut ? <span className="mono dim" style={{ fontSize: 10.5 }} title="pediu pra parar de receber no WhatsApp">descadastrou Whats</span>
                       : waUrl ? (
                         <a href={waUrl} target="_blank" rel="noopener noreferrer" onClick={() => mark(l, "whatsapp")}
-                          style={{ ...sendChip, borderColor: s.whatsapp ? "var(--pos)" : "#25D366", color: s.whatsapp ? "var(--pos)" : "#128c4b" }}>
+                          style={{ ...sendChip, borderColor: s.whatsapp ? "var(--pos)" : "var(--wa-brand)", color: s.whatsapp ? "var(--pos)" : "var(--wa-brand-deep)" }}>
                           {s.whatsapp ? "✓ Whats" : "abrir Whats ↗"}
                         </a>
                       ) : <span className="mono dim" style={{ fontSize: 10.5 }}>{wa ? "sem texto" : "sem telefone"}</span>
@@ -559,7 +559,7 @@ function DisparosScreen({ onOpenLead }) {
             avançaram de etapa / marcaram call / fecharam nos 30 dias seguintes
             (atribuído pela timeline). Compara as campanhas pra achar o padrão. */}
         <div style={box}>
-          <div style={{ ...kicker, marginBottom: 8 }}>Resultados · conversão no funil (30 dias após o disparo)</div>
+          <div className="kicker" style={{ marginBottom: 8 }}>Resultados · conversão no funil (30 dias após o disparo)</div>
           {metrics.length === 0 ? (
             <div className="mono dim" style={{ fontSize: 12 }}>nenhum disparo medido ainda · dispare e a conversão aparece aqui</div>
           ) : (
@@ -658,7 +658,6 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
   const leadById = Object.fromEntries((leads || []).map((l) => [l.id, l]));
 
   const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: 14 };
-  const kick = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
   const field = { width: "100%", padding: "7px 9px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 };
   const chip = (on) => ({ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", fontSize: 11.5, fontWeight: 600, cursor: "pointer", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"), background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)" });
 
@@ -670,7 +669,7 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
 
       {/* Sequências salvas */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-        <span style={kick}>sequências</span>
+        <span className="kicker">sequências</span>
         {list.map((s) => (
           <button key={s.id} onClick={() => loadSeq(s)} style={{ ...chip(seq.id === s.id), display: "inline-flex", alignItems: "center", gap: 6 }}>
             <span style={{ width: 7, height: 7, borderRadius: 99, background: s.status === "active" ? "var(--pos)" : s.status === "paused" ? "var(--warn)" : "var(--fg-4)" }} />
@@ -693,7 +692,7 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
           </div>
 
           <div>
-            <div style={kick}>Gatilho · entra quem está nestas etapas</div>
+            <div className="kicker">Gatilho · entra quem está nestas etapas</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
               {(stageOptions || []).map((st) => <button key={st} onClick={() => toggleTrigger(st)} style={chip((seq.trigger?.stages || []).includes(st))}>{st}</button>)}
             </div>
@@ -702,7 +701,7 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
 
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={kick}>Passos</div>
+              <div className="kicker">Passos</div>
               <span style={{ display: "inline-flex", gap: 6 }}>
                 <button onClick={() => addStep("email")} className="mono" style={{ ...chip(false), height: 24, fontSize: 11 }}>+ e-mail</button>
                 <button onClick={() => addStep("whatsapp")} className="mono" style={{ ...chip(false), height: 24, fontSize: 11 }}>+ WhatsApp</button>
@@ -739,7 +738,7 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
           </div>
 
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-            <span style={kick}>sai quando</span>
+            <span className="kicker">sai quando</span>
             {[["won", "fechou"], ["booked", "marcou call"], ["optOut", "descadastrou"]].map(([k, lbl]) => (
               <label key={k} style={{ display: "inline-flex", gap: 5, alignItems: "center", fontSize: 12 }}>
                 <input type="checkbox" checked={seq.exitOn?.[k] !== false} onChange={(e) => setSeq((s) => ({ ...s, exitOn: { ...s.exitOn, [k]: e.target.checked } }))} />
@@ -758,11 +757,11 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
         {/* Métricas + fila de WhatsApp */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={box}>
-            <div style={{ ...kick, marginBottom: 8 }}>Resultados · conversão no funil</div>
+            <div className="kicker" style={{ marginBottom: 8 }}>Resultados · conversão no funil</div>
             {myMetrics ? (
               <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
                 {[["inscritos", myMetrics.enrolled], ["avançou", myMetrics.advanced], ["marcou call", myMetrics.booked], ["fechou", myMetrics.won]].map(([lbl, v]) => (
-                  <div key={lbl}><div className="tnum" style={{ fontSize: 20, fontWeight: 700, color: lbl === "fechou" && v ? "var(--pos)" : "var(--fg-1)" }}>{v}</div><div style={kick}>{lbl}</div></div>
+                  <div key={lbl}><div className="tnum" style={{ fontSize: 20, fontWeight: 700, color: lbl === "fechou" && v ? "var(--pos)" : "var(--fg-1)" }}>{v}</div><div className="kicker">{lbl}</div></div>
                 ))}
                 <div style={{ marginLeft: "auto", alignSelf: "center", fontSize: 11, color: "var(--fg-3)" }} className="mono">
                   {myMetrics.statusCounts?.active || 0} ativos · {myMetrics.statusCounts?.waiting || 0} no whats · {myMetrics.statusCounts?.done || 0} concluídos · {myMetrics.statusCounts?.exited || 0} saíram
@@ -772,7 +771,7 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
           </div>
 
           <div style={box}>
-            <div style={{ ...kick, marginBottom: 8 }}>Fila de WhatsApp · {enrollments.length} pra mandar hoje</div>
+            <div className="kicker" style={{ marginBottom: 8 }}>Fila de WhatsApp · {enrollments.length} pra mandar hoje</div>
             {enrollments.length === 0 ? (
               <div className="mono dim" style={{ fontSize: 12 }}>nenhum passo de WhatsApp pendente · o motor coloca aqui quando chega a vez</div>
             ) : (
@@ -792,7 +791,7 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
                         <span className="mono dim" style={{ fontSize: 10 }}>{s?.name || ""} · passo {en.stepIndex + 1}</span>
                       </span>
                       {waUrl
-                        ? <a href={waUrl} target="_blank" rel="noopener noreferrer" onClick={mark} style={{ display: "inline-flex", alignItems: "center", height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid #25D366", color: "#128c4b", fontSize: 11.5, fontWeight: 600, textDecoration: "none" }}>abrir Whats ↗</a>
+                        ? <a href={waUrl} target="_blank" rel="noopener noreferrer" onClick={mark} style={{ display: "inline-flex", alignItems: "center", height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--wa-brand)", color: "var(--wa-brand-deep)", fontSize: 11.5, fontWeight: 600, textDecoration: "none" }}>abrir Whats ↗</a>
                         : <button onClick={mark} className="mono" style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", fontSize: 11.5 }}>{wa ? "marcar enviado" : "sem telefone · marcar"}</button>}
                     </div>
                   );
@@ -830,7 +829,6 @@ function TemplatesTab({ product }) {
   async function del(id) { if (window.confirm("Apagar template?")) { try { await api.remove("drip_templates", id); reload(); } catch (e) { setNote({ ok: false, text: e.message }); } } }
 
   const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: 14 };
-  const kick = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
   const field = { width: "100%", padding: "7px 9px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 };
   if (!product) return null;
 
@@ -839,7 +837,7 @@ function TemplatesTab({ product }) {
       {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 14 }}>
         <div style={{ ...box, display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={kick}>{t.id ? "editar template" : "novo template"}</div>
+          <div className="kicker">{t.id ? "editar template" : "novo template"}</div>
           <div style={{ display: "flex", gap: 8 }}>
             <input value={t.name} onChange={(e) => setT((x) => ({ ...x, name: e.target.value }))} placeholder="nome" style={{ ...field, flex: 1 }} />
             <select value={t.channel} onChange={(e) => setT((x) => ({ ...x, channel: e.target.value }))} style={{ ...field, width: 130 }}>
@@ -862,7 +860,7 @@ function TemplatesTab({ product }) {
         </div>
 
         <div style={{ ...box }}>
-          <div style={{ ...kick, marginBottom: 8 }}>Biblioteca · {list.length}</div>
+          <div className="kicker" style={{ marginBottom: 8 }}>Biblioteca · {list.length}</div>
           {list.length === 0 ? <div className="mono dim" style={{ fontSize: 12 }}>nenhum template ainda</div> : (
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {list.map((x) => (

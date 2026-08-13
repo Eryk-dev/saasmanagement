@@ -31,7 +31,7 @@ export function RoutineSuggestion({ lead, patch }) {
 
   return (
     <div style={box}>
-      <div className="mono" style={{ ...kicker, display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+      <div className="kicker" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <span style={{ flex: 1 }}>Sugestão de solução · método R.O.T.I.N.A</span>
         <button onClick={generate} disabled={busy || !aiOn}
           title={aiOn ? "Gera a partir do desafio e do exemplo preenchidos no lead" : "IA não configurada no servidor"}
@@ -55,4 +55,3 @@ export function RoutineSuggestion({ lead, patch }) {
 }
 
 const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "12px 14px", background: "var(--bg-inset)" };
-const kicker = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };

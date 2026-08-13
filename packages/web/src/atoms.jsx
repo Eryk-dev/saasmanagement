@@ -199,15 +199,32 @@ function FunnelHeatmap({ stages, dense }) {
   );
 }
 
-// ───────────────────────────────────────────────────── Section header
-function SectionHead({ kicker, title, action }) {
+// ───────────────────────────────────────────────────── Cabeçalhos canônicos
+// A régua única dos cabeçalhos (classes em tokens.css): página 26 · seção 17 ·
+// card 15 · kicker 10/0.08em uppercase. Subtítulo sempre na linha de baixo.
+function SectionHead({ title, sub, action }) {
   return (
-    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-        {kicker && <span className="bkt">{kicker}</span>}
-        {title && <span style={{ fontSize: 13, color: "var(--fg-1)", fontWeight: 500 }}>{title}</span>}
+    <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <div style={{ minWidth: 0 }}>
+        <h2 className="sec-title">{title}</h2>
+        {sub && <div className="sec-sub" style={{ marginTop: 2 }}>{sub}</div>}
       </div>
       {action}
+    </div>
+  );
+}
+
+// Cabeçalho de card: kicker opcional (accent = nomeia o bloco) → título → sub,
+// com `meta` (badge/ação) encostado à direita.
+function CardHead({ kicker, accent, title, sub, meta }) {
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {kicker && <div className={"kicker" + (accent ? " accent" : "")}>{kicker}</div>}
+        {title && <div className="card-title" style={kicker ? { marginTop: 4 } : undefined}>{title}</div>}
+        {sub && <div className="card-sub" style={{ marginTop: 3 }}>{sub}</div>}
+      </div>
+      {meta}
     </div>
   );
 }
@@ -228,7 +245,7 @@ function Ticker({ items }) {
     }
     return (
       <span key={keyPrefix + i} style={{ display: "inline-flex", alignItems: "baseline", gap: 8, padding: "0 22px", borderRight: "1px solid var(--line-1)", whiteSpace: "nowrap" }}>
-        <span className="mono" style={{ fontSize: 11, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>{it.label}</span>
+        <span className="kicker">{it.label}</span>
         <span className="mono tnum" style={{ fontSize: 12, color: "var(--fg-1)", fontWeight: 500 }}>{it.value}</span>
         {d != null && (
           <span className="mono tnum" style={{ fontSize: 11, color }}>
@@ -280,6 +297,103 @@ function RowActions({ onEdit, onDelete }) {
   );
 }
 
+// ───────────────────────────────────────────────────── Esc fecha o popup
+// Todo modal/painel fecha no Esc: useEsc(onClose) dentro do componente do
+// popup. Pilha por ordem de MONTAGEM: com modal sobre drawer, o Esc fecha só
+// o de cima; o próximo Esc fecha o de baixo. Passe null pra desativar
+// temporariamente (ex.: enquanto salva).
+const escStack = [];
+function useEsc(onClose) {
+  const ref = React.useRef(onClose);
+  ref.current = onClose;
+  React.useEffect(() => {
+    const entry = {};
+    escStack.push(entry);
+    function onKey(e) {
+      if (e.key !== "Escape") return;
+      if (escStack[escStack.length - 1] !== entry || !ref.current) return;
+      // Esc dentro de campo primeiro tira o foco; o próximo Esc fecha.
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) { t.blur(); return; }
+      ref.current();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => { escStack.splice(escStack.indexOf(entry), 1); window.removeEventListener("keydown", onKey); };
+  }, []);
+}
+
+// ───────────────────────────────────────────────────── Toast global
+// window.toast("não salvou · tente de novo", "neg") — a superfície de erro das
+// mutações otimistas (que antes falhavam em silêncio no console) e de avisos
+// rápidos. Um por vez, some sozinho; clique dispensa. O host mora no app.jsx.
+function toast(message, tone = "neutral", ms = 4500) {
+  try { window.dispatchEvent(new CustomEvent("cockpit-toast", { detail: { message, tone, ms } })); }
+  catch { /* fora do browser */ }
+}
+
+function ToastHost() {
+  const [t, setT] = React.useState(null); // { message, tone, key }
+  React.useEffect(() => {
+    let timer = null;
+    function onToast(e) {
+      const d = e.detail || {};
+      setT({ message: d.message || "", tone: d.tone || "neutral", key: Date.now() });
+      clearTimeout(timer);
+      timer = setTimeout(() => setT(null), d.ms || 4500);
+    }
+    window.addEventListener("cockpit-toast", onToast);
+    return () => { window.removeEventListener("cockpit-toast", onToast); clearTimeout(timer); };
+  }, []);
+  if (!t) return null;
+  const dot = t.tone === "neg" ? "var(--neg)" : t.tone === "pos" ? "var(--pos)" : t.tone === "warn" ? "var(--warn)" : "var(--fg-4)";
+  return (
+    <div onClick={() => setT(null)} role="status" style={{
+      position: "fixed", left: "50%", bottom: 22, transform: "translateX(-50%)", zIndex: 200,
+      maxWidth: "min(92vw, 480px)", display: "flex", alignItems: "center", gap: 8,
+      padding: "10px 14px", borderRadius: "var(--r-2)", cursor: "pointer",
+      background: "var(--fg-1)", color: "var(--bg-1)", boxShadow: "var(--shadow-pop)", fontSize: 12.5, fontWeight: 500,
+    }}>
+      <span style={{ width: 7, height: 7, borderRadius: 999, background: dot, flexShrink: 0 }} />
+      <span style={{ minWidth: 0 }}>{t.message}</span>
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────── Botão WhatsApp
+// O verde da marca num lugar só: com `href` vira link (deep-link do app), com
+// `onClick` vira botão (inbox interno). `block` estica na linha inteira.
+function WaButton({ href, onClick, children, title, block, small }) {
+  const style = {
+    display: "inline-flex", alignItems: "center", justifyContent: "center",
+    height: small ? 26 : 32, padding: small ? "0 10px" : "0 14px",
+    ...(block ? { flex: "1 1 100%", height: "auto", padding: "10px 14px" } : {}),
+    borderRadius: "var(--r-2)", border: "none",
+    background: "var(--wa-brand)", color: "var(--wa-brand-fg)",
+    fontSize: block ? 13.5 : small ? 11.5 : 12.5, fontWeight: 700,
+    textDecoration: "none", cursor: "pointer",
+  };
+  return href
+    ? <a href={href} target="_blank" rel="noopener noreferrer" title={title} style={style}>{children}</a>
+    : <button onClick={onClick} title={title} style={style}>{children}</button>;
+}
+
+// ───────────────────────────────────────────────────── Botão secundário
+// A escala de controles do DS: 28 denso · 32 padrão · 40 CTA. Secundário =
+// borda line-2 sobre bg-1 (o "const btn" que cada tela redeclarava).
+function SecondaryButton({ onClick, children, title, size = "md", disabled, style }) {
+  const h = size === "sm" ? 28 : size === "lg" ? 40 : 32;
+  return (
+    <button onClick={onClick} title={title} disabled={disabled} style={{
+      height: h, padding: size === "sm" ? "0 10px" : "0 14px",
+      borderRadius: "var(--r-2)", border: "1px solid var(--line-2)",
+      background: "var(--bg-1)", color: "var(--fg-2)",
+      fontSize: size === "sm" ? 12 : 12.5, fontWeight: 500,
+      opacity: disabled ? 0.5 : 1, cursor: disabled ? "not-allowed" : "pointer",
+      transition: "var(--transition-ui)", ...style,
+    }}>{children}</button>
+  );
+}
+
 // Primary CTA button — shared so empty states and toolbars create records the
 // same way. `onClick` opens the relevant EntityForm.
 function PrimaryButton({ onClick, children, disabled }) {
@@ -296,6 +410,6 @@ function PrimaryButton({ onClick, children, disabled }) {
   );
 }
 
-Object.assign(window, { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, Ticker, Led, EmptyState, PrimaryButton, RowActions });
+Object.assign(window, { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, CardHead, Ticker, Led, EmptyState, PrimaryButton, SecondaryButton, RowActions, toast, ToastHost, WaButton });
 
-export { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, Ticker, Led, EmptyState, PrimaryButton, RowActions };
+export { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, CardHead, Ticker, Led, EmptyState, PrimaryButton, SecondaryButton, RowActions, useEsc, toast, ToastHost, WaButton };

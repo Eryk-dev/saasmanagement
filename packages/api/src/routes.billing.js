@@ -3,8 +3,56 @@
 // (routes.js), que já sincroniza o ARR nas mutações de assinatura.
 
 import { computeChange, runBilling, syncCustomerArr } from "./billing.js";
+import { kindOf, stageByKind, firstStage } from "./stages.js";
+import { applyStageMove, revertWonLead } from "./lead-flow.js";
 
 export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
+  // Desfazer um FECHAMENTO ERRADO direto da tela de Clientes (Leo, 07/08 —
+  // caso New Gift: avançou sem querer, puxou o card de volta, mas o cliente/
+  // assinatura/fatura ficaram vivos contando MRR, caixa e ganho do mês). O
+  // caminho natural (puxar o card) já desfaz via applyStageMove→revertWonLead;
+  // este botão cobre o resto: card que já voltou com o carimbo preso, cliente
+  // sem lead vinculado, ou o gestor agindo direto daqui. Métricas descontam
+  // SOZINHAS: tudo deriva dos registros removidos (winsIn/MRR/caixa).
+  // Trava de dinheiro REAL (mesma do revertWonLead): preapproval/pagamento do
+  // Mercado Pago bloqueia com 409 explícito (EasyPanel engole 5xx).
+  app.post("/api/customers/:id/revert-win", async (req, reply) => {
+    const customer = await repo.get("customers", req.params.id);
+    if (!customer) return reply.code(404).send({ error: "cliente não encontrado" });
+    const subs = (await repo.list("subscriptions")).filter((s) => s.customer === customer.id);
+    const invoices = (await repo.list("invoices")).filter((i) =>
+      i.customer === customer.id || subs.some((s) => s.id === i.subscription));
+    if (subs.some((s) => s.mpPreapprovalId) || invoices.some((i) => i.mpPaymentId)) {
+      return reply.code(409).send({ error: "esse cliente tem cobrança/pagamento REAL do Mercado Pago — o dinheiro existiu, desfaça pelo Financeiro na mão" });
+    }
+    const author = req.authUser?.id || "revert-cliente";
+    const lead = customer.leadId ? await repo.get("leads", customer.leadId) : null;
+    if (lead) {
+      const product = lead.saas ? await repo.get("products", lead.saas) : null;
+      const kind = kindOf(product, lead.stage);
+      if (kind === "ganho" || kind === "integracao" || kind === "posvenda") {
+        // Card ainda na região de venda: puxa pra uma etapa ABERTA — o
+        // applyStageMove limpa o carimbo e chama o revertWonLead sozinho.
+        const back = stageByKind(product, "followup")?.stage
+          || stageByKind(product, "qualificacao")?.stage || firstStage(product);
+        const patch = await applyStageMove(repo, { lead, toStage: back, author });
+        await repo.update("leads", lead.id, { ...patch, stage: back });
+      } else {
+        // Card já voltou pro funil (o carimbo ficou preso): só a limpeza.
+        await revertWonLead(repo, lead, { author });
+        await repo.update("leads", lead.id, { customerId: "", wonAt: "" });
+      }
+      if (await repo.get("customers", customer.id)) {
+        return reply.code(409).send({ error: "não consegui remover o cliente (o vínculo com o lead não bate) — confira o registro" });
+      }
+      return { ok: true, leadId: lead.id, stage: (await repo.get("leads", lead.id))?.stage || "" };
+    }
+    // Cliente sem lead vinculado: remove os registros direto (trava do MP já passou).
+    for (const i of invoices) await repo.remove("invoices", i.id);
+    for (const s of subs) await repo.remove("subscriptions", s.id);
+    await repo.remove("customers", customer.id);
+    return { ok: true, leadId: "" };
+  });
   // Mudança de plano/preço/ciclo. Upgrade aplica já (+ fatura pró-rata do diff
   // restante do ciclo); downgrade e troca de ciclo agendam pro fim do ciclo.
   app.post("/api/subscriptions/:id/change", async (req, reply) => {
@@ -76,6 +124,30 @@ export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
       await discord.invoicePaid({ invoice: paid, customerName: customer?.name, via: "baixa manual" });
     }
     return paid;
+  });
+
+  // Desfaz uma baixa MANUAL (clique errado no "marcar paga"). Pagamento real do
+  // Mercado Pago não desmarca — o dinheiro existiu, estorno é no Financeiro.
+  // Volta pra open/overdue conforme o vencimento e re-derruba a assinatura pra
+  // past_due se a fatura reaberta já estava vencida.
+  app.post("/api/invoices/:id/unpay", async (req, reply) => {
+    const inv = await repo.get("invoices", req.params.id);
+    if (!inv) return reply.code(404).send({ error: "Not found" });
+    if (inv.mpPaymentId) return reply.code(409).send({ error: "essa fatura foi paga de verdade pelo Mercado Pago — não dá pra desmarcar, estorno é no Financeiro" });
+    if (inv.status !== "paid") return inv;
+    const overdue = inv.dueDate && new Date(inv.dueDate).getTime() + 3 * 86400000 <= Date.now();
+    const reopened = await repo.update("invoices", inv.id, {
+      status: overdue ? "overdue" : "open", paidAt: "",
+      ...(overdue ? { overdueAt: new Date().toISOString() } : {}),
+    });
+    if (inv.subscription && overdue) {
+      const sub = await repo.get("subscriptions", inv.subscription);
+      if (sub && sub.status === "active") {
+        await repo.update("subscriptions", sub.id, { status: "past_due" });
+        await syncCustomerArr(repo, sub.customer);
+      }
+    }
+    return reopened;
   });
 
   // Tick do motor: mudanças agendadas + renovações + dunning + sync de ARR.

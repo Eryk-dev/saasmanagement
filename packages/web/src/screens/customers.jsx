@@ -7,7 +7,6 @@ import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/mile
 import { ActivityList } from "../components/timeline.jsx";
 import { CallSummaryCard, IntegrationBriefCard } from "./today.jsx";
 import { SubscriptionsScreen } from "./subscriptions.jsx";
-import { FinanceTab } from "./finance.jsx";
 import { CustomersAnalysis } from "./customers-analysis.jsx";
 import { EntityForm } from "../components/EntityForm.jsx";
 import { WhatsappChat } from "../components/whatsapp-chat.jsx";
@@ -15,7 +14,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { leadTier, waLink, GRADE_STYLE, GRADE_GRID, GRADE_ACCOUNTS, GRADE_LISTINGS } from "../lib/ui.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { displayName } from "../lib/users.js";
-import { paymentLabel, PAYMENT_METHODS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel } from "../lib/payments.js";
+import { paymentLabel, paymentUpfront, PAYMENT_METHODS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel } from "../lib/payments.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 // Clientes — a base ativa do produto em dois blocos: a tabela de clientes e,
 // ao lado, "Próximas ações" (o próximo marco de retenção de cada cliente,
@@ -35,13 +34,14 @@ const SUB_STATUS = {
   paused: { label: "pausada", tone: "warn" },
   canceled: { label: "cancelada", tone: "mut" },
 };
-const SECTION_LABEL = { fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 };
 
-function CustomersScreen({ initialTab = "base" }) {
+function CustomersScreen({ initialTab }) {
   const { CUSTOMERS, LEADS } = window.SEED;
   const { version, openForm, refresh } = useData();
   const [product] = useActiveSaas();
-  const [tab, setTab] = useState(initialTab); // base | billing
+  // Aba persiste entre navegações (rota #subscriptions força billing via prop).
+  const [tab, setTabState] = useState(() => { if (initialTab) return initialTab; try { return localStorage.getItem("cockpit_customers_tab") || "base"; } catch { return "base"; } }); // base | billing
+  const setTab = (t) => { setTabState(t); try { localStorage.setItem("cockpit_customers_tab", t); } catch { /* ignore */ } };
   const [subs, setSubs] = useState([]);
   const [plans, setPlans] = useState([]);
   const [invoices, setInvoices] = useState([]);
@@ -92,6 +92,11 @@ function CustomersScreen({ initialTab = "base" }) {
   const mainSub = (c) => subsOf(c).find((s) => s.status === "active" || s.status === "past_due") || subsOf(c)[0] || null;
   // sub.plan é FK pra `plans` — resolve o nome (nunca mostrar o id cru na UI).
   const planLabel = (s) => plans.find((p) => p.id === s.plan)?.name || CYCLE_LABEL[s.cycle] || s.cycle || "plano";
+  // Plano CONTRATADO do cliente: o cadastro (customer.plan) manda; a assinatura
+  // só entra como fallback. O ciclo da assinatura é cadência de COBRANÇA, não o
+  // contrato — boleto faturado vira ciclo mensal por design, e mostrar "mensal"
+  // pra um contrato semestral faturado estava errado.
+  const contractPlan = (c) => c.plan || (mainSub(c) ? planLabel(mainSub(c)) : "");
   // Cliente com endedAt no passado deu churn: fica fora do MRR, da contagem de
   // ativos e da régua (mas segue na tabela e na Análise).
   const isChurned = (c) => c.endedAt && new Date(c.endedAt).getTime() <= Date.now();
@@ -135,7 +140,50 @@ function CustomersScreen({ initialTab = "base" }) {
     return { items, total, done, next };
   };
   const fmtNextAt = (at) => new Date(at).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "");
-  const shownCustomers = showAll ? customers : customers.slice(0, 50);
+
+  // Data de entrada (startedAt = "Cliente desde"). Data pura vira meia-noite
+  // LOCAL (new Date("YYYY-MM-DD") seria UTC e voltaria um dia no Brasil).
+  const entradaDate = (c) => {
+    if (!c.startedAt) return null;
+    const v = String(c.startedAt);
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(v + "T00:00:00") : new Date(v);
+    return Number.isFinite(d.getTime()) ? d : null;
+  };
+  const entradaLabel = (c) => {
+    const d = entradaDate(c);
+    return d ? d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "2-digit" }).replace(".", "") : "";
+  };
+
+  // Ordenação por clique no cabeçalho (alterna ↑/↓). Sem clique, mantém o
+  // padrão histórico (maior contrato primeiro). Vazio sempre no fim.
+  const [sort, setSort] = useState(null); // { key, dir: 1|-1 }
+  const GRADE_RANK = { S: 0, A: 1, B: 2, C: 3, D: 4, E: 5 };
+  const SORT_VALS = {
+    cliente: (c) => String(c.name || "").toLowerCase() || null,
+    nivel: (c) => { const g = gradeOf(c).grade; return g in GRADE_RANK ? GRADE_RANK[g] : null; },
+    plano: (c) => String(isMentoria(c) ? consultPackageLabel(journeyOf(c).total) : contractPlan(c)).toLowerCase() || null,
+    mrr: (c) => (c.arr || 0),
+    pagamento: (c) => { const pm = c.paymentMethod || leadById.get(c.leadId)?.paymentMethod; return pm ? paymentLabel(pm).toLowerCase() : null; },
+    fechado: (c) => Number(leadById.get(c.leadId)?.amount) || Number(c.arr) || null,
+    entrada: (c) => entradaDate(c)?.getTime() ?? null,
+    casa: (c) => { const d = entradaDate(c); return d ? Math.floor((Date.now() - d.getTime()) / 86400000) : null; },
+    contato: (c) => {
+      const at = (LEADS || []).find((l) => l.id === c.leadId)?.lastActivityAt || c.lastContactAt;
+      return at ? Math.floor((Date.now() - new Date(at).getTime()) / 86400000) : null;
+    },
+  };
+  const sortedCustomers = useMemo(() => {
+    const val = sort && SORT_VALS[sort.key];
+    if (!val) return customers;
+    return [...customers].sort((a, b) => {
+      const va = val(a), vb = val(b);
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      return sort.dir * (typeof va === "string" ? va.localeCompare(vb, "pt-BR") : va - vb);
+    });
+  }, [customers, sort, subs, plans, LEADS, allConsultas, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shownCustomers = showAll ? sortedCustomers : sortedCustomers.slice(0, 50);
   const lastContact = (c) => {
     const lead = (LEADS || []).find((l) => l.id === c.leadId);
     const at = lead?.lastActivityAt || c.lastContactAt;
@@ -170,12 +218,11 @@ function CustomersScreen({ initialTab = "base" }) {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Clientes"
         sub={`${activeCustomers.length} ${activeCustomers.length === 1 ? "ativo" : "ativos"} · ${isKidsWorkspace ? `${money(totalContratado)} contratado` : `MRR ${money(totalMrr)}`}`}>
-        <Segmented value={tab} onChange={setTab} options={[{ value: "base", label: "Clientes" }, { value: "billing", label: "Assinaturas" }, { value: "fin", label: "Financeiro" }]} />
+        <Segmented value={tab} onChange={setTab} options={[{ value: "base", label: "Clientes" }, { value: "billing", label: "Assinaturas" }]} />
         {tab === "base" && <PrimaryButton onClick={() => openForm("customers", { saas: product.id })}>+ novo cliente</PrimaryButton>}
       </PageHead>
 
       {tab === "billing" && <SubscriptionsScreen saasId={product.id} />}
-      {tab === "fin" && <FinanceTab product={product} />}
 
       {tab === "base" && (
       <div style={{ padding: "16px var(--pad-x) 56px" }}>
@@ -253,7 +300,7 @@ function CustomersScreen({ initialTab = "base" }) {
                 )}
                 {noRuler.length > 0 && (
                   <div style={{ padding: "14px 24px 8px", borderTop: nextActions.length ? "1px solid var(--line-1)" : "none" }}>
-                    <div className="mono" style={SECTION_LABEL}>Sem régua ativa</div>
+                    <div className="kicker" style={{ marginBottom: 8 }}>Sem régua ativa</div>
                     {noRuler.map((c) => (
                       <div key={c.id} onClick={() => setSel(c.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", cursor: "pointer", fontSize: 13 }}>
                         <span style={{ fontWeight: 600 }}>{c.name}</span>
@@ -268,14 +315,18 @@ function CustomersScreen({ initialTab = "base" }) {
             <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
             <Card style={{ overflow: "hidden", flex: "1 1 560px", minWidth: 0 }}>
               <div className="tbl-x">
-              <table style={{ width: "100%", minWidth: isKidsWorkspace ? 880 : 1160, borderCollapse: "collapse" }}>
+              <table style={{ width: "100%", minWidth: isKidsWorkspace ? 960 : 1240, borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
                     {(isKidsWorkspace
-                      ? ["Cliente", "Pacote", "Valor", "Tempo de casa", "Último contato", "Próxima consulta", "Consultas"]
-                      : ["Cliente", "Nível", "Plano", "MRR", "Pagamento", "Total fechado", "Tempo de casa", "Último contato", "Próximo marco", "Assinatura"]
-                    ).map((h) => (
-                      <th key={h} style={{ textAlign: (h === "MRR" || h === "Valor" || h === "Total fechado") ? "right" : "left", fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", padding: "12px 20px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
+                      ? [["Cliente", "cliente"], ["Pacote", "plano"], ["Valor", "mrr"], ["Entrada", "entrada"], ["Tempo de casa", "casa"], ["Último contato", "contato"], ["Próxima consulta", null], ["Consultas", null]]
+                      : [["Cliente", "cliente"], ["Nível", "nivel"], ["Plano", "plano"], ["MRR", "mrr"], ["Pagamento", "pagamento"], ["Total fechado", "fechado"], ["Entrada", "entrada"], ["Tempo de casa", "casa"], ["Último contato", "contato"], ["Próximo marco", null], ["Assinatura", null]]
+                    ).map(([h, k]) => (
+                      <th key={h} className="kicker" title={k ? "ordenar" : undefined}
+                        onClick={k ? () => setSort((s) => (s?.key === k ? { key: k, dir: -s.dir } : { key: k, dir: 1 })) : undefined}
+                        style={{ textAlign: (h === "MRR" || h === "Valor" || h === "Total fechado") ? "right" : "left", fontWeight: 600, color: sort?.key === k ? "var(--fg-2)" : "var(--fg-4)", padding: "12px 20px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", cursor: k ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>
+                        {h}{sort?.key === k ? (sort.dir === 1 ? " ↑" : " ↓") : ""}
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -290,7 +341,16 @@ function CustomersScreen({ initialTab = "base" }) {
                       <tr key={c.id} onClick={() => setSel(c.id)} style={{ cursor: "pointer" }}
                         onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-                        <td style={{ padding: "14px 20px", fontSize: 13.5, fontWeight: 600, borderBottom: "1px solid var(--line-faint)" }}>{c.name}</td>
+                        {/* Empresa + nome do contato (do cadastro; fallback no lead). Some quando é a mesma coisa. */}
+                        <td style={{ padding: "14px 20px", fontSize: 13.5, fontWeight: 600, borderBottom: "1px solid var(--line-faint)" }}>
+                          {c.name}
+                          {(() => {
+                            const contact = String(c.contact || leadById.get(c.leadId)?.name || "").trim();
+                            return contact && contact.toLowerCase() !== String(c.name || "").trim().toLowerCase()
+                              ? <div style={{ fontSize: 12, fontWeight: 400, color: "var(--fg-3)", marginTop: 2 }}>{contact}</div>
+                              : null;
+                          })()}
+                        </td>
                         {/* Nível (categoria A/B/C…) do cliente, pela grade do lead. Só LeverAds. */}
                         {!isKidsWorkspace && (() => { const t = gradeOf(c); return (
                           <td style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)" }}>
@@ -299,9 +359,9 @@ function CustomersScreen({ initialTab = "base" }) {
                               : <span style={{ fontSize: 13, color: "var(--fg-4)" }}>—</span>}
                           </td>
                         ); })()}
-                        {/* Pacote (mentoria) × plano da assinatura (SaaS) */}
+                        {/* Pacote (mentoria) × plano contratado (cadastro primeiro, assinatura como fallback) */}
                         <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
-                          {kids ? consultPackageLabel(j.total) : sub ? planLabel(sub) : c.plan || "sem plano"}
+                          {kids ? consultPackageLabel(j.total) : contractPlan(c) || "sem plano"}
                         </td>
                         {/* Mentoria é compra única: mostra o valor do contrato, não MRR */}
                         <td className="tnum" style={{ padding: "14px 20px", fontSize: 13, textAlign: "right", borderBottom: "1px solid var(--line-faint)" }}>
@@ -324,6 +384,10 @@ function CustomersScreen({ initialTab = "base" }) {
                             </td>
                           );
                         })()}
+                        {/* Data de entrada (startedAt = "Cliente desde") */}
+                        <td className="tnum" style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
+                          {entradaLabel(c) || <span style={{ color: "var(--fg-4)" }}>—</span>}
+                        </td>
                         <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
                           {tenureLabel(c) || <span style={{ color: "var(--fg-4)" }}>defina o início</span>}
                         </td>
@@ -415,7 +479,7 @@ function useFormName(saas, formId) {
 function NivelLegend() {
   return (
     <div style={{ ...BOX, flex: "0 1 250px", minWidth: 220 }}>
-      <div className="mono" style={SECTION_LABEL}>Como o nível é definido</div>
+      <div className="kicker" style={{ marginBottom: 8 }}>Como o nível é definido</div>
       <div style={{ fontSize: 11.5, color: "var(--fg-3)", lineHeight: 1.45, marginBottom: 12 }}>
         Cruzamento de <b style={{ color: "var(--fg-2)" }}>contas de marketplace</b> (linha) × <b style={{ color: "var(--fg-2)" }}>anúncios na maior conta</b> (coluna). Quanto mais de cada, mais alto o nível (S no topo, E na base).
       </div>
@@ -449,7 +513,7 @@ function FormAnswersCard({ lead, product, onPatch }) {
   if (!items.length) return null;
   return (
     <div style={BOX}>
-      <div className="mono" style={SECTION_LABEL}>Respostas do formulário</div>
+      <div className="kicker" style={{ marginBottom: 8 }}>Respostas do formulário</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {items.map((c) => (
           <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "5px 9px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.raw ? "var(--bg-1)" : "var(--warn-soft)" }}>
@@ -522,7 +586,7 @@ function CustomerFacts({ customer, lead, product, onPatch }) {
     : ["Anual", "Semestral", "Serviço único", "Trimestral", "Mensal"];
   return (
     <div style={BOX}>
-      <div className="mono" style={{ ...SECTION_LABEL, display: "flex", alignItems: "center", gap: 8 }}>
+      <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
         <span>Dados do cliente</span>
         {onPatch && (
           <button onClick={() => setEdit((v) => !v)} title={edit ? "Concluir edição" : "Editar os dados aqui mesmo"}
@@ -624,6 +688,24 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
   // informada — assim já entra no CAIXA pela régua existente e conta na meta de
   // upsell do CS (atribuída pelo dono do cliente). O bump do SSE recarrega a lista
   // de faturas sozinho (deps [product, version] no efeito da tela).
+  // Desfazer um fechamento ERRADO (Leo, 07/08): remove o cliente, a assinatura
+  // e as faturas automáticas, limpa o carimbo de venda e devolve o card pro
+  // funil — as métricas (ganho do mês, MRR, caixa) descontam sozinhas.
+  // Dinheiro real do Mercado Pago bloqueia no servidor (409 com o motivo).
+  const [reverting, setReverting] = useState(false);
+  async function revertWin() {
+    if (reverting) return;
+    if (!window.confirm(`Desfazer o fechamento de ${customer.name || "este cliente"}?\n\nRemove o cliente, a assinatura e as faturas automáticas; o card do lead volta pro funil e as métricas descontam. Não dá pra desfazer o desfazer.`)) return;
+    setReverting(true);
+    try {
+      await api.customerRevertWin(customer.id);
+      await refresh();
+      onClose && onClose();
+    } catch (e) {
+      window.alert(e.message || "não deu pra desfazer o fechamento");
+    } finally { setReverting(false); }
+  }
+
   const [upsellOpen, setUpsellOpen] = useState(false);
   const [upVal, setUpVal] = useState("");
   const [upDate, setUpDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -647,6 +729,39 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
   // cliente numa tacada (POST /charge). O link vai pro clipboard; a baixa é
   // automática quando o cliente pagar (webhook/poller casam pelo id da fatura).
   const mpOn = !!window.SEED?.CONFIG?.mp?.configured;
+  // Cronograma do faturado (faturas kind:"installment"): marcar paga /
+  // desmarcar por parcela. O override local dá o feedback imediato; o SSE
+  // recarrega a lista de verdade logo depois (deps [product, version]).
+  const [invOverride, setInvOverride] = useState({});
+  const [invBusy, setInvBusy] = useState("");
+  const invStatus = (i) => invOverride[i.id] || i.status;
+  async function toggleParcela(i) {
+    if (invBusy) return;
+    setInvBusy(i.id);
+    try {
+      if (invStatus(i) === "paid") {
+        const r = await api.unpayInvoice(i.id);
+        setInvOverride((o) => ({ ...o, [i.id]: r?.status || "open" }));
+      } else {
+        await api.payInvoice(i.id);
+        setInvOverride((o) => ({ ...o, [i.id]: "paid" }));
+      }
+    } catch (e) {
+      window.toast && window.toast(e?.message || "não deu pra atualizar a parcela", "neg");
+    } finally { setInvBusy(""); }
+  }
+  const parcelas = invoices.filter((i) => i.kind === "installment")
+    .sort((a, b) => (a.installmentN || 0) - (b.installmentN || 0) || String(a.dueDate || "").localeCompare(String(b.dueDate || "")));
+  // Mudar o parcelamento depois do fechamento: PATCH no lead re-espelha via
+  // syncWonLeadDeal — refaz as parcelas em aberto, as pagas ficam.
+  const [nSaving, setNSaving] = useState(false);
+  async function changeParcelamento(n) {
+    if (!lead || nSaving) return;
+    setNSaving(true);
+    try { await api.update("leads", lead.id, { paymentInstallments: Number(n) || "" }); }
+    catch (e) { window.toast && window.toast(e?.message || "não deu pra mudar o parcelamento", "neg"); }
+    finally { setNSaving(false); }
+  }
   const [chargeOpen, setChargeOpen] = useState(false);
   const [chVal, setChVal] = useState("");
   const [chTitle, setChTitle] = useState("");
@@ -690,7 +805,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
     { label: "Último contato", value: lastContact(customer) },
     { label: "Consultas", value: `${consultDone} de ${consultTotal} feitas` },
   ] : [
-    { label: "Plano", value: mainSub ? planLabel(mainSub) : customer.plan || "sem plano" },
+    { label: "Plano", value: customer.plan || (mainSub ? planLabel(mainSub) : "sem plano") },
     { label: "Tempo de casa", value: tenureLabel(customer) || "defina o início" },
     { label: "Último contato", value: lastContact(customer) },
     { label: "Assinatura", value: st ? st.label : "sem assinatura" },
@@ -717,7 +832,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 10, marginTop: 14 }}>
             {summary.map((s) => (
               <div key={s.label}>
-                <div className="mono" style={{ fontSize: 10, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-4)" }}>{s.label}</div>
+                <div className="kicker">{s.label}</div>
                 <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>{s.value}</div>
               </div>
             ))}
@@ -756,7 +871,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
             sai (o pagamento fica em Dados do cliente e nas faturas). */}
         {!isKids && (
         <div style={BOX}>
-          <div className="mono" style={SECTION_LABEL}>Assinaturas</div>
+          <div className="kicker" style={{ marginBottom: 8 }}>Assinaturas</div>
           {subs.length === 0 && (
             <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Nenhuma assinatura. Crie na aba Assinaturas.</div>
           )}
@@ -775,8 +890,64 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         </div>
         )}
 
+        {parcelas.length > 0 && (() => {
+          const pagas = parcelas.filter((i) => invStatus(i) === "paid");
+          const recebido = pagas.reduce((a, i) => a + (Number(i.amount) || 0), 0);
+          const aReceber = parcelas.reduce((a, i) => a + (Number(i.amount) || 0), 0) - recebido;
+          const totalN = Number(parcelas[parcelas.length - 1]?.installmentOf) || parcelas.length;
+          return (
+            <div style={BOX}>
+              <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span>Parcelas do faturado · {pagas.length}/{parcelas.length} pagas</span>
+                <span className="mono" style={{ marginLeft: "auto", fontSize: 11, color: "var(--fg-3)", textTransform: "none", letterSpacing: 0 }}>
+                  {money(recebido)} recebido · {money(aReceber)} a receber
+                </span>
+                {lead && !paymentUpfront(customer.paymentMethod || lead.paymentMethod) && (
+                  <select value={String(totalN)} disabled={nSaving} onChange={(e) => changeParcelamento(e.target.value)}
+                    title="Mudar o parcelamento refaz as parcelas em aberto; as pagas ficam como estão"
+                    style={{ height: 22, padding: "0 4px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11 }}>
+                    {Array.from({ length: 12 }, (_, k) => k + 1).map((n) => <option key={n} value={n}>{n}x</option>)}
+                  </select>
+                )}
+              </div>
+              {parcelas.map((i) => {
+                const st = invStatus(i);
+                return (
+                  <div key={i.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 13 }}>
+                    <span style={{ color: "var(--fg-2)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {i.dueDate ? new Date(i.dueDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "") : ""} · {i.title || `Parcela ${i.installmentN || "?"}/${i.installmentOf || parcelas.length}`}
+                      {st === "paid" && mpMethodLabel(i) ? <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)" }}> · {mpMethodLabel(i)}</span> : null}
+                    </span>
+                    <span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+                      {mpOn && st !== "paid" && (
+                        <button onClick={() => invoiceLink(i)}
+                          title={i.mpInitPoint ? "copiar o link de pagamento desta parcela" : "gerar o link de pagamento desta parcela no Mercado Pago"}
+                          style={{ height: 20, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--accent)", fontSize: 10.5 }}>
+                          {i.mpInitPoint ? "copiar link" : "link MP"}
+                        </button>
+                      )}
+                      <span className="tnum mono" style={{ fontWeight: 500 }}>{money(i.amount || 0)}</span>
+                      <Pill tone={st === "paid" ? "pos" : st === "overdue" ? "neg" : "warn"}>
+                        {st === "paid" ? "paga" : st === "overdue" ? "vencida" : "aberta"}
+                      </Pill>
+                      {/* baixa REAL do MP não desmarca (o dinheiro existiu) */}
+                      {!(st === "paid" && i.mpPaymentId) && (
+                        <button onClick={() => toggleParcela(i)} disabled={invBusy === i.id}
+                          title={st === "paid" ? "desfazer a baixa manual desta parcela" : "registrar que esta parcela foi paga"}
+                          style={{ height: 20, padding: "0 8px", borderRadius: 999, border: "1px solid " + (st === "paid" ? "var(--line-2)" : "var(--pos, var(--accent))"), background: "var(--bg-1)", color: st === "paid" ? "var(--fg-3)" : "var(--pos, var(--accent))", fontSize: 10.5, fontWeight: 600, opacity: invBusy === i.id ? 0.5 : 1 }}>
+                          {invBusy === i.id ? "…" : st === "paid" ? "desmarcar" : "marcar paga"}
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
         <div style={BOX}>
-          <div className="mono" style={{ ...SECTION_LABEL, display: "flex", alignItems: "center", gap: 8 }}>
+          <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
             <span>Últimas faturas</span>
             <button onClick={() => setUpsellOpen((v) => !v)}
               title="Registrar um upsell (venda extra pra um cliente atual). Vira fatura paga: entra no caixa e conta na meta de upsell do CS."
@@ -790,6 +961,11 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
                 {chargeOpen ? "cancelar" : "+ cobrança"}
               </button>
             )}
+            <button onClick={revertWin} disabled={reverting}
+              title="Avançou errado? Desfaz o fechamento: remove ESTE cliente, a assinatura e as faturas automáticas, limpa o carimbo de venda e devolve o card do lead pro funil. As métricas (ganho do mês, MRR, caixa) descontam sozinhas. Cobrança real do Mercado Pago bloqueia o desfazer."
+              style={{ height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid color-mix(in srgb, var(--neg) 40%, transparent)", background: "var(--bg-1)", color: "var(--neg)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
+              {reverting ? "desfazendo…" : "desfazer venda"}
+            </button>
           </div>
           {finMsg && <div className="mono" style={{ fontSize: 10.5, color: "var(--accent)", padding: "0 0 8px" }}>{finMsg}</div>}
           {chargeOpen && (
@@ -830,7 +1006,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
               </button>
             </div>
           )}
-          {invoices.slice(0, 6).map((i) => (
+          {invoices.filter((i) => i.kind !== "installment").slice(0, 6).map((i) => (
             <div key={i.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 13 }}>
               <span style={{ color: "var(--fg-2)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {i.dueDate ? new Date(i.dueDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "") : ""} · {i.title || i.kind || "fatura"}
@@ -852,8 +1028,8 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
               </span>
             </div>
           ))}
-          {invoices.length === 0 && (
-            <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Nenhuma fatura ainda.</div>
+          {invoices.filter((i) => i.kind !== "installment").length === 0 && (
+            <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{parcelas.length ? "Nenhuma fatura além das parcelas." : "Nenhuma fatura ainda."}</div>
           )}
         </div>
 
@@ -865,7 +1041,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
         {isKids ? (
         <div style={BOX}>
-          <div className="mono" style={{ ...SECTION_LABEL, display: "flex", alignItems: "center" }}>
+          <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center" }}>
             <span>Jornada de consultas</span>
             <button onClick={() => { onClose(); window.location.hash = "consultas"; }}
               style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
@@ -914,7 +1090,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         </div>
         ) : (
         <div style={BOX}>
-          <div className="mono" style={SECTION_LABEL}>Ações de retenção</div>
+          <div className="kicker" style={{ marginBottom: 8 }}>Ações de retenção</div>
           {!customer.startedAt && (
             <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
               Defina "Cliente desde" (editar cliente) pra ativar a régua de marcos: onboarding, check-in de mês 1, revisão de mês 3, upsell de mês 6 e contato de renovação (2 meses antes do fim do contrato).
@@ -999,7 +1175,7 @@ function CustomerHistory({ customer }) {
     <div style={BOX}>
       {brief && <div style={{ marginBottom: 12 }}><IntegrationBriefCard brief={brief} phone={customer.phone || ""} /></div>}
       {showCallSummary && <div style={{ marginBottom: 12 }}><CallSummaryCard summary={callSummary} phone={customer.phone || ""} /></div>}
-      <div className="mono" style={{ fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
+      <div className="kicker" style={{ marginBottom: 8 }}>
         Histórico do funil
       </div>
       {acts === null

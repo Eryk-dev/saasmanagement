@@ -154,6 +154,11 @@ export const ENTITIES = {
       { key: "startedAt", label: "Cliente desde", type: "date", help: "base da linha do tempo de marcos" },
       { key: "endedAt", label: "Churn (saída)", type: "date", help: "deixe vazio enquanto o cliente estiver ativo; alimenta churn e LTV da Análise" },
       { key: "csm", label: "CSM", type: "select", options: peopleOptions, blankLabel: "—" },
+      // Conta grande (★): venda fora da régua (ex.: pacote bespoke). Sai do
+      // ticket médio e das metas por contrato; o dinheiro segue no caixa.
+      { key: "keyAccount", label: "Conta grande", type: "select", blankLabel: "Não",
+        options: [{ value: "true", label: "★ Sim · fora das médias" }],
+        help: "fica fora do ticket médio e das metas derivadas; caixa e vendido seguem contando" },
       { key: "flags", label: "Flags", type: "tags", help: "separadas por vírgula" },
     ],
   },

@@ -1,16 +1,17 @@
 import React from "react";
-import { Avatar } from "../atoms.jsx";
+import { Avatar, useEsc, WaButton } from "../atoms.jsx";
 import { ActivityList, ActivityComposer } from "../components/timeline.jsx";
 import { RoutineSuggestion } from "../components/routine-suggestion.jsx";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
-import { leadScoreLabel, leadAge, waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
-import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind } from "../lib/funnel.js";
+import { clientSummary, leadBox, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks } from "../components/lead-blocks.jsx";
+import { waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
+import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind, isLossKind } from "../lib/funnel.js";
 import { displayName, usersByRole, currentUser } from "../lib/users.js";
-import { paymentLabel, closedPlanLabel } from "../lib/payments.js";
+import { PAYMENT_METHODS, CLOSED_PLANS, DEAL_PRODUCTS, dealProductLabel, dealProductsOf } from "../lib/payments.js";
 import { api } from "../lib/api.js";
-import { useAttribution, leadPain } from "../lib/pains.js";
+import { useAttribution } from "../lib/pains.js";
 import { sourceLabel } from "../lib/sources.js";
-import { resolveScript, scriptTokens, scriptSegments, scriptChecklist } from "../lib/scripts.js";
+import { resolveScript, scriptTokens, scriptChecklist } from "../lib/scripts.js";
 import { CallSummaryCard, IntegrationBriefCard, callBusyKeys, callSlotKeys } from "./today.jsx";
 import { CustomProposalModal } from "../components/custom-proposal.jsx";
 import { useData } from "../data.jsx";
@@ -56,6 +57,47 @@ const localToIso = (v) => {
   return Number.isFinite(d.getTime()) ? d.toISOString() : "";
 };
 
+// Editor explícito de data/hora. Mantém o input UNCONTROLLED para o Safari não
+// apagar os pedaços enquanto a pessoa digita e só confirma depois que a API
+// respondeu. O botão sempre visível deixa claro que escolher a data não basta:
+// é preciso salvar o horário.
+function DateTimeEditor({ value, onSave, validate, style }) {
+  const inputRef = React.useRef(null);
+  const [status, setStatus] = React.useState(""); // "dirty" | "saving" | "saved"
+  const stored = String(value || "");
+
+  React.useEffect(() => {
+    if (inputRef.current && inputRef.current.value !== stored) inputRef.current.value = stored;
+    setStatus((cur) => (cur === "saving" || cur === "saved") ? "saved" : "");
+  }, [stored]);
+
+  async function save() {
+    const raw = inputRef.current?.value || "";
+    if (raw === stored) { setStatus(""); return; }
+    const invalid = validate?.(raw) || "";
+    if (invalid) {
+      window.toast && window.toast(invalid, "neg");
+      return;
+    }
+    setStatus("saving");
+    let ok = false;
+    try { ok = (await onSave(raw)) !== false; } catch { ok = false; }
+    setStatus(ok ? "saved" : "dirty");
+  }
+
+  return (<>
+    <input ref={inputRef} type="datetime-local" defaultValue={stored} disabled={status === "saving"}
+      onInput={(e) => setStatus(e.currentTarget.value === stored ? "" : "dirty")}
+      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } }}
+      style={style} />
+    <button type="button" onClick={save} disabled={status !== "dirty"}
+      className="mono" title="Salvar a nova data e hora"
+      style={{ height: 26, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: status === "dirty" ? "var(--accent)" : "var(--bg-2)", color: status === "dirty" ? "var(--accent-fg)" : status === "saved" ? "var(--pos)" : "var(--fg-4)", fontSize: 10.5, fontWeight: 700, cursor: status === "dirty" ? "pointer" : "default" }}>
+      {status === "saving" ? "salvando…" : status === "saved" ? "salvo ✓" : "salvar horário"}
+    </button>
+  </>);
+}
+
 // Catálogo de atribuição e dor do criativo: helpers compartilhados com o
 // pipeline (lib/pains.js) — cache por SaaS no módulo.
 
@@ -63,6 +105,10 @@ const localToIso = (v) => {
 // card do lead centraliza pra quem tem uma consulta marcada (entra na sala, cria
 // o Meet ou resume por aqui, sem abrir a tela de Consultas).
 const CONSULTA_STATUS = { scheduled: "agendada", done: "realizada", no_show: "faltou", canceled: "cancelada" };
+
+// Região de venda do funil (espelho do SOLD_KINDS do lead-flow.js): sair dela
+// pro funil aberto desfaz o fechamento no servidor.
+const SOLD_KINDS = new Set(["ganho", "integracao", "posvenda"]);
 function consultaWhen(at) {
   if (!at) return "sem horário";
   const d = new Date(String(at).length === 16 ? `${at}:00` : at);
@@ -71,6 +117,7 @@ function consultaWhen(at) {
 }
 
 function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
+  useEsc(onClose); // drawer fecha no Esc; modal aberto por cima fecha primeiro (pilha)
   const { refresh, version } = useData();
   // Cópia local: as ações rápidas (etapa, próximo contato) editam aqui e
   // persistem otimisticamente; o pipeline ressincroniza no fechar (refresh).
@@ -81,6 +128,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   const [showGps, setShowGps] = React.useState(false);   // Próximo passo: a linha grande fica sempre visível; isto abre os editores
   const [showCall, setShowCall] = React.useState(false); // "Detalhes da call" (vídeo/convidados) recolhido por padrão
   const [customProp, setCustomProp] = React.useState(false); // modal da proposta personalizada
+  const [payLink, setPayLink] = React.useState(false); // modal do link de pagamento (MP) do lead
   const [showEntrega, setShowEntrega] = React.useState(false); // "Entrega" (briefing/vídeo integração) recolhido
   const [showFrom, setShowFrom] = React.useState(false); // atribuição do anúncio recolhida
   const [pendingMove, setPendingMove] = React.useState(null); // { toStage, gate }
@@ -122,6 +170,12 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === lead.saas);
   const kind = stageKind(saasCfg, lead.stage || (saasCfg?.funnel?.[0]?.stage ?? ""));
   const isOpen = workableStages(saasCfg).includes(lead.stage) || !lead.stage;
+  // Destinos de UM CLIQUE pra um lead finalizado: tudo que não é perda, na ordem
+  // do funil (inclui o Ganho — o caso que motivou isto é o desqualificado que
+  // voltou e fechou). Reclassificar entre perdido/desqualificado fica no select.
+  const reopenStages = (saasCfg?.funnel || [])
+    .map((f) => f.stage)
+    .filter((st) => st && st !== lead.stage && !isLossKind(stageKind(saasCfg, st)));
 
   // Agenda do closer deste lead, na mesma régua do Meu dia (call de 1h, ignora
   // o próprio card e os follow-ups). Serve pra barrar horário já ocupado no
@@ -147,39 +201,74 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   function patch(p) {
     dirty.current = true;
     setLead((prev) => ({ ...prev, ...p }));
-    api.update("leads", lead.id, p).catch((err) => console.warn("lead patch not persisted:", err.message));
+    api.update("leads", lead.id, p).catch((err) => { console.warn("lead patch not persisted:", err.message); window.toast && window.toast("Alteração no lead não foi salva · tente de novo", "neg"); });
   }
-  // Proposta direto no WhatsApp (pedido do Leo, 03/08): UM botão que garante a
-  // proposta (gera na hora se o lead ainda não tem) e abre a conversa com a
-  // mensagem pronta. O link é SEMPRE a visão do CLIENTE (cockpitProposalUrl,
-  // link limpo — oferta escondida do Shift+Espaço não vai junto).
+  // Horário usa confirmação real: não atualiza o drawer otimisticamente. Assim
+  // "salvo ✓" significa que a API respondeu, e uma falha deixa o botão pronto
+  // para tentar de novo com o valor ainda digitado.
+  async function persistSchedule(p) {
+    try {
+      const saved = await api.update("leads", lead.id, p);
+      dirty.current = true;
+      setLead((prev) => ({ ...prev, ...saved }));
+      return saved;
+    } catch (err) {
+      console.warn("lead schedule not persisted:", err.message);
+      window.toast && window.toast("Horário não foi salvo · tente de novo", "neg");
+      return null;
+    }
+  }
+  // Proposta direto no WhatsApp: garante a apresentação-mãe e cria/atualiza a
+  // versão própria do CLIENTE com a oferta principal. O share roda no servidor
+  // sobre o state.product salvo pela tela zero de "apresentar", então o cliente
+  // recebe exatamente o produto decidido pelo closer, sem setup, sem edição e
+  // com benefícios/preço já visíveis (nada depende de Espaço/Shift+Espaço).
   const [propBusy, setPropBusy] = React.useState(false);
   async function propostaNoWhats() {
     setPropBusy(true);
+    // Abre ainda dentro do clique: depois dos awaits o navegador pode tratar a
+    // nova aba como popup e bloquear. A navegação acontece quando o link do
+    // cliente estiver pronto.
+    const win = wa ? window.open("", "_blank") : null;
     try {
-      let url = lead.proposalUrl;
-      if (!url) {
+      if (!lead.proposta_id || !lead.proposalUrl) {
         await api.generateProposal(lead.id);
         const fresh = await api.get("leads", lead.id);
         setLead((prev) => ({ ...prev, ...fresh }));
         dirty.current = true;
-        url = fresh?.proposalUrl || "";
       }
-      if (!url) { window.alert("Não consegui gerar a proposta deste produto (template publicado?)"); return; }
-      const msg = `Aqui está a proposta sobre a qual conversamos: ${cockpitProposalUrl(url)}`;
-      if (onOpenWhatsapp) onOpenWhatsapp(lead, msg);
-      else if (wa) window.open(`${wa}?text=${encodeURIComponent(msg)}`, "_blank", "noopener");
+      const shared = await api.shareProposal(lead.id, 1);
+      const url = shared?.url || "";
+      if (!url) { if (win) win.close(); window.alert("Não consegui preparar a proposta deste produto."); return; }
+      const msg = `Aqui está a proposta sobre a qual conversamos: ${url}`;
+      // SEMPRE WhatsApp Web (decisão do Leo, 03/08): wa.me com o texto pronto,
+      // independente de o produto ter número oficial conectado — quem envia a
+      // proposta é o closer, do WhatsApp dele. O inbox segue existindo pros
+      // outros fluxos; aqui só cai nele se o lead não tiver telefone.
+      if (wa) {
+        const whatsappUrl = `${wa}?text=${encodeURIComponent(msg)}`;
+        if (win) win.location.replace(whatsappUrl);
+        else window.open(whatsappUrl, "_blank", "noopener");
+      }
+      else if (onOpenWhatsapp) onOpenWhatsapp(lead, msg);
     } catch (e) {
+      if (win) win.close();
       window.alert(e?.message || "não deu pra gerar/enviar a proposta");
     } finally { setPropBusy(false); }
   }
   function moveStage(stage) {
     if (!stage || stage === lead.stage) return;
+    // Espelho do applyStageMove: sair da região de venda (Ganho/Integração/CS)
+    // pra uma etapa aberta DESFAZ o fechamento no servidor — o cliente e a
+    // assinatura criados na venda somem da base. É irreversível demais pra
+    // acontecer num clique distraído no select, então confirma antes.
+    if (SOLD_KINDS.has(kind) && !SOLD_KINDS.has(stageKind(saasCfg, stage)) && (lead.customerId || lead.wonAt)
+      && !window.confirm(`Tirar este lead de "${lead.stage}" DESFAZ o fechamento: o cliente e a assinatura criados na venda saem da base (cobrança real no Mercado Pago fica). Continuar?`)) return;
     const gate = moveGate(saasCfg, lead, stage);
     if (gate) { setPendingMove({ toStage: stage, gate }); return; }
     dirty.current = true;
     setLead((prev) => ({ ...prev, stage, stageSince: new Date().toISOString(), stageAttempts: 0 }));
-    api.update("leads", lead.id, { stage }).catch((err) => console.warn("lead move not persisted:", err.message));
+    api.update("leads", lead.id, { stage }).catch((err) => { console.warn("lead move not persisted:", err.message); window.toast && window.toast("O movimento do card não foi salvo · tente de novo", "neg"); });
   }
   function close() {
     if (dirty.current) refresh();
@@ -245,51 +334,27 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
     [activities],
   );
 
-  const score = lead.score;
-  const hasScore = score != null && score !== "";
-  const hasIcp = lead.icp != null && lead.icp !== "";
-  const icpPct = hasIcp ? `${Math.round(Number(lead.icp) * 100)}%` : null;
-
   // Atribuição: resolve utm.campaign/term/content pra nomes via catálogo, e a
   // dor do criativo ("[X]" no nome do anúncio → rótulo do painMap do produto).
   const cat = useAttribution(lead.saas, !!lead.utm);
   const utm = lead.utm || {};
-  const pain = leadPain(lead, cat, saasCfg?.painMap);
   const tier = leadTier(lead);
-  // De onde veio (Dor sobe pro destaque do Resumo; aqui fica a atribuição crua).
+  // Resumo do cliente: MESMA compilação do roteiro do Meu dia (clientSummary em
+  // components/lead-blocks.jsx), com `full` acrescentando no fim o que só a
+  // ficha mostra (contato, integrador, perda). Os fatos de cima ficam idênticos
+  // aos do painel de atividade — dado igual, rótulo igual, ordem igual.
+  const { pain, facts: summaryFacts } = clientSummary(saasCfg, lead, lead.stage || (saasCfg?.funnel?.[0]?.stage ?? ""), cat, { full: true });
+
+  // De onde veio: as duas primeiras linhas são as do roteiro (anúncio +
+  // headline); a ficha continua mostrando a atribuição crua embaixo.
   const attribution = [
-    ["Variante da headline", lead.formHeadline || (lead.formVariant ? `versão ${lead.formVariant}` : null)],
+    ["Anúncio", cat?.ads?.[utm.content]?.name || utm.content],
+    ["Headline do formulário", lead.formHeadline || (lead.formVariant ? `versão ${lead.formVariant}` : null)],
     ["Campanha", cat?.campaigns?.[utm.campaign]?.name || utm.campaign],
     ["Conjunto", cat?.adsets?.[utm.term]?.name || utm.term],
-    ["Anúncio", cat?.ads?.[utm.content]?.name || utm.content],
     ["Origem", [sourceLabel(utm), utm.medium].filter(Boolean).join(" / ") || null],
     ["Veio de", utm.referrer || null],           // referrer externo (orgânico/bio)
     ["Página de entrada", lead.sourceUrl || null],
-  ].filter(([, v]) => v != null && v !== "");
-
-  // Resumo do cliente: os números e campos reais compilados num grid só (mesmo
-  // padrão da tela de atividade). Empresa fica no cabeçalho; só o preenchido entra.
-  const daysInStage = Math.max(0, Math.floor((Date.now() - new Date(lead.stageSince || lead.createdAt || Date.now()).getTime()) / 86400000));
-  const summaryFacts = [
-    ["Potencial", tier.key !== "sem" ? tier.label : null],
-    ["Valor", lead.amount ? window.fmt.money(lead.amount) : null],
-    // Registrada no movimento Call → Follow-up: é a oferta que o follow-up cobra.
-    ["Proposta na mesa", lead.proposalOffer ? (lead.proposalOffer === "nenhuma" ? "não chegou na proposta" : closedPlanLabel(lead.proposalOffer) || lead.proposalOffer) : null],
-    ["Pagamento", lead.paymentMethod ? paymentLabel(lead.paymentMethod) : null],
-    ["Idade", leadAge(lead)],
-    ["Na etapa", `${daysInStage}d`],
-    ["Temperatura", hasScore ? `${leadScoreLabel(score)} · ${score}` : null],
-    ["ICP (fit)", icpPct],
-    ["Prioridade", lead.priority],
-    ["Faixa", lead.value],
-    ["Origem", lead.source],
-    ["Dono (SDR)", lead.owner ? displayName(lead.owner) : null],
-    ["Closer", lead.closer ? displayName(lead.closer) : null],
-    ["Integrador", lead.integrator ? displayName(lead.integrator) : null],
-    ["E-mail", lead.email],
-    ["Telefone", lead.phone],
-    ["Motivo", lead.reason],
-    ["Perda", lead.lostReason ? `${lossReasonLabel(saasCfg, lead.lostReason)}${lead.lostNote ? ` · ${lead.lostNote}` : ""}` : null],
   ].filter(([, v]) => v != null && v !== "");
 
   const next = nextTouchPill(lead, { isOpen, kind });
@@ -299,18 +364,11 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   const primaryStep = kind === "call" ? { label: "Call", verb: "agendar call" }
     : (kind === "integracao" || kind === "posvenda") ? { label: "Integração", verb: "marcar integração" }
     : { label: "Próximo toque", verb: "marcar toque" };
-  // Cartões (mesma linguagem da tela de atividade): caixa com rótulo mono.
-  const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "12px 14px", background: "var(--bg-inset)" };
-  const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
+  // Cartão: a MESMA caixa dos blocos compartilhados (lead-blocks.jsx), pra o
+  // card e o painel de atividade terem o mesmo respiro.
+  const box = leadBox;
   const rowLabel = { fontSize: 11, width: 104, flexShrink: 0 };
   const presetBtn = { height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 500 };
-  // Linha chave→valor pra grids de fatos/atribuição.
-  const FactRow = ({ k, v }) => (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12, padding: "4px 0", borderBottom: "1px solid var(--line-1)" }}>
-      <span className="mono dim" style={{ flexShrink: 0, fontSize: 10.5 }}>{k}</span>
-      <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
-    </div>
-  );
   // Linha rótulo→campo pra edição inline do Resumo.
   const editInput = { flex: 1, minWidth: 0, height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 };
   const EditRow = ({ label, children }) => (
@@ -320,19 +378,11 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
     </label>
   );
 
-  // Insights do estágio (roteiro) + checklist editável dos dados do 1º contato —
-  // mesma lógica da tela de atividade do Meu dia (lib/scripts.js).
+  // Roteiro do estágio + checklist editável dos dados do 1º contato — a MESMA
+  // lógica (lib/scripts.js) e os MESMOS blocos do painel de atividade do Meu dia.
   const script = resolveScript(saasCfg, lead);
   const scriptTk = scriptTokens(lead, saasCfg, salesSummary);
   const checklist = scriptChecklist(saasCfg, lead);
-  const renderFala = (text) => scriptSegments(text, scriptTk).map((s, i) => {
-    if (s.text != null) return <React.Fragment key={i}>{s.text}</React.Fragment>;
-    if (s.value != null) return <strong key={i} style={{ color: "var(--accent)", fontWeight: 600 }}>{s.value}</strong>;
-    return (
-      <span key={i} className="mono" title="dado não preenchido no lead: descubra nesta conversa"
-        style={{ background: "var(--warn-soft)", color: "var(--warn)", borderRadius: 4, padding: "0 5px", fontSize: "0.85em", whiteSpace: "nowrap" }}>{s.gap}</span>
-    );
-  });
 
   return (
     <div style={{
@@ -345,35 +395,40 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
         display: "flex", flexDirection: "column",
         boxShadow: "var(--shadow-pop)",
       }}>
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line-1)", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "start" }}>
-          <div>
-            <div className="mono dim code" style={{ fontSize: 10, letterSpacing: "0.08em" }}>LEAD · {String(lead.id).toUpperCase()}</div>
-            <div style={{ fontSize: 20, fontWeight: 500, marginTop: 4 }}>{lead.name}</div>
-            {lead.company && <div className="mono dim" style={{ fontSize: 12, marginTop: 2 }}>{lead.company}</div>}
-            <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-              {(() => { const t = leadTier(lead); return t.key !== "sem" && (
-                <span className="chip" title="soma de contas operadas + anúncios publicados"
-                  style={{ color: t.ink, borderColor: "color-mix(in srgb, " + t.tone + " 55%, transparent)", background: "color-mix(in srgb, " + t.tone + " 14%, transparent)", fontWeight: 600 }}>
-                  {t.label}
-                </span>
-              ); })()}
+        {/* Cabeçalho na MESMA anatomia do painel de atividade do Meu dia:
+            rótulo do painel em cima e a linha de identidade com nome, nota do
+            lead (A-E), etapa e empresa · telefone. Os chips de origem,
+            temperatura e prioridade saíram: repetiam o "Resumo do cliente"
+            logo abaixo. As AÇÕES ficam na linha de baixo, separadas da
+            identidade. */}
+        <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--line-1)", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "start", gap: 10 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div className="kicker">Lead · <span className="code">{String(lead.id).toUpperCase()}</span></div>
+            <div style={{ fontSize: 16.5, fontWeight: 600, marginTop: 2, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {lead.name}
+              {tier.grade && (
+                <span className="tnum" title={`${tier.label} · soma de contas operadas + anúncios publicados`}
+                  style={{ width: 18, height: 18, borderRadius: 5, display: "inline-flex", alignItems: "center", justifyContent: "center", background: tier.tone, color: tier.badgeFg, fontFamily: "var(--display)", fontSize: 11, fontWeight: 700 }}>{tier.grade}</span>
+              )}
               {lead.stage && <span className="chip">{lead.stage}</span>}
-              {lead.source && <span className="chip">{lead.source}</span>}
-              {hasScore && <span className={"chip " + (Number(score) >= 75 ? "neg" : Number(score) >= 50 ? "warn" : "")}>{leadScoreLabel(score)}</span>}
-              {lead.priority && <span className="chip">{lead.priority}</span>}
+              {(lead.company || lead.phone) && (
+                <span className="mono dim" style={{ fontSize: 11 }}>{[lead.company, lead.phone].filter(Boolean).join(" · ")}</span>
+              )}
               {(lead.owner || lead.closer) && (
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                   {lead.owner && <span title={`SDR: ${displayName(lead.owner)}`}><Avatar id={lead.owner} name={displayName(lead.owner)} size={18} /></span>}
                   {lead.closer && <span title={`Closer: ${displayName(lead.closer)}`}><Avatar id={lead.closer} name={displayName(lead.closer)} size={18} /></span>}
                 </span>
               )}
-              {/* Proposta mora AQUI (o card antigo saiu): sempre a visão do
-                  CLIENTE — o link limpo, o mesmo que ele recebe. */}
-              {lead.proposalUrl && (
-                <a href={cockpitProposalUrl(lead.proposalUrl)} target="_blank" rel="noreferrer"
-                  className="chip" title="Abrir a proposta como o cliente vê"
-                  style={{ color: "var(--accent)", borderColor: "var(--accent-line)", background: "var(--accent-soft)", fontWeight: 600, textDecoration: "none" }}>
-                  proposta ↗
+            </div>
+            <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              {/* Apresentação do CLOSER (link com a chave): abre a tela zero
+                  com régua/produto/SPIN — é por aqui que a call roda. */}
+              {lead.proposal_edit_url && (
+                <a href={lead.proposal_edit_url} target="_blank" rel="noreferrer"
+                  className="chip" title="Abrir a apresentação do closer (tela zero com régua e SPIN)"
+                  style={{ color: "var(--accent-fg)", borderColor: "var(--accent)", background: "var(--accent)", fontWeight: 600, textDecoration: "none" }}>
+                  apresentar ↗
                 </a>
               )}
               {/* Proposta PERSONALIZADA: pra quem fechou solução sob medida numa
@@ -390,10 +445,10 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   WhatsApp com a mensagem pronta (link limpo do cliente). */}
               {(onOpenWhatsapp || wa) && (
                 <button onClick={propostaNoWhats} disabled={propBusy} className="chip"
-                  title={lead.proposalUrl
-                    ? "Abrir o WhatsApp com a proposta pronta pra enviar (link limpo, visão do cliente, sem a oferta escondida)"
-                    : "Gerar a proposta e abrir o WhatsApp com ela pronta pra enviar (link limpo, visão do cliente)"}
-                  style={{ cursor: "pointer", background: "#25D366", borderColor: "#25D366", color: "#06120c", fontWeight: 700 }}>
+                  title={(lead.proposalUrl
+                    ? "Abrir o WhatsApp Web com o produto escolhido em apresentar, já pronto para o cliente"
+                    : "Gerar a apresentação e abrir o WhatsApp Web com a versão pronta para o cliente")}
+                  style={{ cursor: "pointer", background: "var(--wa-brand)", borderColor: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontWeight: 700 }}>
                   {propBusy ? "gerando…" : "➤ proposta no Whats"}
                 </button>
               )}
@@ -401,16 +456,24 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                 style={{ cursor: "pointer" }}>
                 {lead.customProposalUrl ? "editar personalizada" : "+ proposta personalizada"}
               </button>
+              {/* Link de pagamento do MP pelo card: o checkout nasce com o id
+                  do LEAD — o dinheiro entra no Financeiro rastreado à origem. */}
+              <button onClick={() => setPayLink(true)} className="chip"
+                title="Criar link de pagamento do Mercado Pago já rastreado pra este lead (o pagamento casa sozinho no Financeiro)"
+                style={{ cursor: "pointer" }}>
+                {lead.mpChargeUrl ? "link de pagamento" : "+ link de pagamento"}
+              </button>
             </div>
           </div>
-          <button onClick={close} className="mono dim" style={{ fontSize: 16, flexShrink: 0 }}>✕</button>
+          <button onClick={close} aria-label="Fechar" className="mono dim" style={{ fontSize: 16, flexShrink: 0, width: 36, height: 36, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--r-2)" }}>✕</button>
         </div>
 
-        {/* Corpo rolável: duas colunas (Cliente | Insights do estágio atual). */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", minHeight: 0 }}>
+        {/* Corpo rolável: duas colunas (Cliente | Roteiro) — mesma divisão do
+            painel de atividade do Meu dia. */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "12px 18px", minHeight: 0 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16, alignItems: "start" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-            <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Cliente</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+            <div className="kicker" style={{ color: "var(--fg-3)" }}>Cliente</div>
 
           {/* Requalificação (Receita Previsível): a oportunidade que o SDR
               passou só CONTA quando o closer requalifica e ACEITA (fit + decisor
@@ -438,7 +501,9 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   if (nota == null) return;
                   patch({ oppReturned: new Date().toISOString(), oppReturnNote: nota, oppAccepted: "", oppAcceptedBy: "" });
                   const back = stageByKind(saasCfg, "qualificacao");
-                  if (back?.stage) moveStage(back.stage);
+                  // stageByKind devolve o NOME da etapa (string) — ler `.stage`
+                  // aqui deixava a devolução sem mover o card.
+                  if (back) moveStage(back);
                 }}
                   style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
                   devolver pro SDR
@@ -452,23 +517,19 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               <b>Devolvida pelo closer:</b> {lead.oppReturnNote}
             </div>
           )}
-          {/* Resumo do cliente: dor em destaque + os fatos compilados num grid.
-              O lápis abre a edição INLINE dos campos do lead (sem trocar de tela). */}
-          <div style={box}>
-            <div className="mono" style={{ ...kicker, marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
-              <span>Resumo do cliente</span>
+          {/* Resumo do cliente: MESMO bloco do painel de atividade (dor em
+              destaque + os fatos na mesma ordem). O lápis é exclusivo da ficha:
+              abre a edição INLINE dos campos do lead, no lugar do grid. */}
+          <ClientSummaryCard
+            pain={pain}
+            facts={editResumo ? null : summaryFacts}
+            action={(
               <button onClick={() => setEditResumo((v) => !v)} title={editResumo ? "Concluir edição" : "Editar os dados do cliente aqui mesmo"}
                 style={{ marginLeft: "auto", height: 22, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid " + (editResumo ? "var(--accent)" : "var(--line-2)"), background: editResumo ? "var(--accent)" : "var(--bg-1)", color: editResumo ? "var(--accent-fg)" : "var(--fg-3)", fontSize: 11 }}>
                 {editResumo ? "✓ pronto" : "✎ editar"}
               </button>
-            </div>
-            {pain && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 9px", marginBottom: 8, borderRadius: "var(--r-2)", background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
-                <span className="mono" style={{ fontSize: 9.5, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", flexShrink: 0 }}>dor do anúncio</span>
-                <span style={{ fontSize: 12.5, fontWeight: 600, minWidth: 0 }}>[{pain.code}] {pain.label}</span>
-              </div>
-            )}
-            {editResumo ? (
+            )}>
+            {editResumo && (
               <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                 <EditRow label="Nome"><input defaultValue={lead.name || ""} onBlur={(e) => e.target.value !== (lead.name || "") && patch({ name: e.target.value })} style={editInput} /></EditRow>
                 <EditRow label="Empresa"><input defaultValue={lead.company || ""} onBlur={(e) => e.target.value !== (lead.company || "") && patch({ company: e.target.value })} style={editInput} /></EditRow>
@@ -494,38 +555,40 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   );
                 })}
               </div>
-            ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "0 16px" }}>
-                {summaryFacts.map(([k, v]) => <FactRow key={k} k={k} v={v} />)}
-              </div>
+            )}
+          </ClientSummaryCard>
+
+          {/* Contatos logo abaixo do resumo, como no painel de atividade (lá é
+              "registrar contato · últimos contatos"). Aqui é a timeline COMPLETA
+              e nasce recolhida: o histórico é consulta, não fluxo do dia. */}
+          <div style={{ ...box, display: "flex", flexDirection: "column", ...(showTimeline ? { minHeight: 160 } : {}) }}>
+            <button onClick={() => setShowTimeline((v) => !v)}
+              title={showTimeline ? "Recolher a timeline" : "Abrir a timeline (histórico + registrar contato)"}
+              className="kicker" style={{ display: "flex", alignItems: "center", width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+              <span>Contatos · timeline {activities ? `· ${timelineActs.length + (lead.comments?.length || 0)}` : ""}</span>
+              <span style={{ marginLeft: "auto", fontSize: 10 }}>{showTimeline ? "▴ recolher" : "▾ registrar contato"}</span>
+            </button>
+            {showTimeline && (
+              <>
+                <div style={{ marginTop: 10 }}>
+                  <ActivityComposer lead={lead} onLogged={refetchTimeline} />
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  {activities === null
+                    ? <div className="mono dim" style={{ fontSize: 11.5, padding: "10px 0" }}>carregando…</div>
+                    : <ActivityList activities={timelineActs} comments={lead.comments} />}
+                </div>
+              </>
             )}
           </div>
 
-          {/* Dados do 1º contato — editáveis: preenche/corrige o que faltar. */}
-          <div style={box}>
-            <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Dados do lead · edite pra completar</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {checklist.map((c) => (
-                <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "5px 9px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.value ? "var(--bg-1)" : "var(--warn-soft)" }}>
-                  <span style={{ color: c.value ? "var(--pos)" : "var(--warn)", flexShrink: 0, fontSize: 12 }}>{c.value ? "✓" : "○"}</span>
-                  <span className="dim" style={{ flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.35 }}>{c.label}</span>
-                  {c.type === "select" ? (
-                    <select value={c.raw || ""} onChange={(e) => patch({ [c.key]: e.target.value })}
-                      style={{ flexShrink: 0, maxWidth: "48%", height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12, fontWeight: 500 }}>
-                      <option value="">selecionar…</option>
-                      {c.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                      {c.raw && !c.options.some((o) => o.value === c.raw) && <option value={c.raw}>{c.raw}</option>}
-                    </select>
-                  ) : (
-                    <input key={lead.id + c.key} type="text" defaultValue={c.raw || ""} placeholder="preencher…"
-                      onBlur={(e) => { if (e.target.value !== (c.raw || "")) patch({ [c.key]: e.target.value }); }}
-                      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                      style={{ flexShrink: 0, width: "48%", height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontWeight: 500 }} />
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+          {/* De onde veio · atribuição do anúncio: mesmo bloco (e mesmo lugar,
+              depois dos contatos) do painel de atividade. Recolhível porque a
+              ficha lista a atribuição inteira. */}
+          <AttributionCard rows={attribution} open={showFrom} onToggle={() => setShowFrom((v) => !v)} />
+
+          {/* Dados do lead: mesmo checklist, mesmo título do painel de atividade. */}
+          <LeadChecklist checklist={checklist} onPatch={patch} leadId={lead.id} />
 
           {/* GPS: etapa (gateada) + próximo toque + call agendada, sem sair do
               drawer. RECOLHÍVEL: fechado, o cabeçalho segura o resumo (o pill
@@ -535,18 +598,22 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               integração na entrega, senão o toque), colorido por atrasado/hoje/
               futuro. É o "próximo passo"; etapa, call, proposta e entrega viram
               contexto por fase, recolhido abaixo. */}
-          <button onClick={() => isOpen && setShowGps((v) => !v)} disabled={!isOpen}
-            title={showGps ? "Recolher os editores" : "Editar etapa, toque, call…"}
-            style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", background: "none", border: "none", padding: 0, cursor: isOpen ? "pointer" : "default", textAlign: "left" }}>
-            <span className="mono" style={{ ...kicker, flexShrink: 0 }}>Próximo passo</span>
+          {/* Lead finalizado TAMBÉM abre: desqualificado/perdido que volta a
+              falar (e às vezes fecha) precisa voltar pro funil por aqui — o
+              bloco fechado virava beco sem saída e o jeito era abrir card novo,
+              perdendo histórico, origem e proposta. */}
+          <button onClick={() => setShowGps((v) => !v)}
+            title={showGps ? "Recolher os editores" : isOpen ? "Editar etapa, toque, call…" : "Reabrir o lead: voltar pro funil ou mover de etapa"}
+            style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+            <span className="kicker" style={{ flexShrink: 0 }}>Próximo passo</span>
             {!isOpen
-              ? <span className="dim" style={{ fontSize: 12.5 }}>lead finalizado</span>
+              ? <span className="dim" style={{ fontSize: 12.5 }}>lead finalizado{lead.lostReason ? ` · ${lossReasonLabel(saasCfg, lead.lostReason)}` : ""}</span>
               : next && next.key !== "none"
                 ? <span style={{ fontSize: 13.5, fontWeight: 700, color: next.tone }}>{primaryStep.label} <span style={{ fontWeight: 400, color: "var(--fg-4)" }}>·</span> {next.text.replace(/^[◆●]\s*/, "")}</span>
                 : <span style={{ fontSize: 13, fontWeight: 600, color: "var(--warn)" }}>sem {primaryStep.label.toLowerCase()} · {primaryStep.verb}</span>}
-            {isOpen && <span className="mono" style={{ marginLeft: "auto", fontSize: 10, color: "var(--fg-4)", flexShrink: 0 }}>{showGps ? "▴ recolher" : "▾ editar"}</span>}
+            <span className="mono" style={{ marginLeft: "auto", fontSize: 10, color: "var(--fg-4)", flexShrink: 0 }}>{showGps ? "▴ recolher" : isOpen ? "▾ editar" : "▾ reabrir"}</span>
           </button>
-          {showGps && (<>
+          {showGps && isOpen && (<>
           <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
             <span className="mono dim" style={{ ...rowLabel, paddingTop: 6 }}>Próximo toque</span>
             <div style={{ display: "flex", gap: 5, flex: 1, flexWrap: "wrap", alignItems: "center" }}>
@@ -565,7 +632,11 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   {label}
                 </button>
               ))}
-              <input type="datetime-local" value={isoToLocal(lead.nextActionAt)} onChange={(e) => patch({ nextActionAt: localToIso(e.target.value) })}
+              <DateTimeEditor value={isoToLocal(lead.nextActionAt)}
+                onSave={async (raw) => {
+                  const saved = await persistSchedule({ nextActionAt: localToIso(raw) });
+                  return !!saved;
+                }}
                 style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
               {lead.nextActionAt && (
                 <button onClick={() => patch({ nextActionAt: "", nextActionNote: "" })} className="mono dim" style={{ fontSize: 11 }} title="Limpar próximo toque">limpar</button>
@@ -581,16 +652,13 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                 então marcar a call aqui SINCRONIZA o próximo toque no mesmo
                 horário (igual o roteiro faz) — senão o card fica com a call
                 num dia e a fila cobrando em outro. */}
-            <input type="datetime-local" value={dtLocal(lead.callAt)}
-              onChange={(e) => {
-                // Digitação livre também respeita a agenda do closer: aqui não
-                // tem a grade do Meu dia pra esconder o slot ocupado, então a
-                // checagem é na hora de salvar (era por onde entravam duas
-                // calls do mesmo closer no mesmo horário, sem ninguém avisar).
-                if (e.target.value && callConflict(e.target.value)) return;
-                patch(kind === "followup" && e.target.value
-                  ? { callAt: e.target.value, nextActionAt: localToIso(e.target.value) }
-                  : { callAt: e.target.value });
+            <DateTimeEditor value={dtLocal(lead.callAt)}
+              validate={(raw) => raw && callConflict(raw) ? (callBusyMsg || "Esse horário já está ocupado") : ""}
+              onSave={async (raw) => {
+                const saved = await persistSchedule(kind === "followup" && raw
+                  ? { callAt: raw, nextActionAt: localToIso(raw) }
+                  : { callAt: raw });
+                return !!saved;
               }}
               style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: `1px solid ${callBusyMsg ? "var(--neg)" : "var(--line-1)"}`, background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
             {lead.callAt && (
@@ -603,7 +671,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
           {/* Detalhes da call: link do vídeo + convidados extras, recolhidos —
               logística, não o "quando". */}
           <button onClick={() => setShowCall((v) => !v)}
-            className="mono" style={{ ...kicker, display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+            className="kicker" style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
             Detalhes da call
             <span style={{ marginLeft: "auto", fontSize: 10, flexShrink: 0, textTransform: "none", letterSpacing: 0 }}>{showCall ? "▴ recolher" : "▾ vídeo · convidados"}</span>
           </button>
@@ -624,7 +692,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   copiar
                 </button>
                 {wa && (
-                  <a className="mono" style={{ fontSize: 11, color: "#128c4b", textDecoration: "none", flexShrink: 0 }}
+                  <a className="mono" style={{ fontSize: 11, color: "var(--wa-brand-deep)", textDecoration: "none", flexShrink: 0 }}
                     href={`${wa}?text=${encodeURIComponent(`Oi${lead.name ? " " + String(lead.name).trim().split(/\s+/)[0] : ""}! Aqui é da LeverAds. Nossa call vai ser por este link: ${lead.callUrl}`)}`}
                     target="_blank" rel="noopener noreferrer" title="Enviar o link pro lead no WhatsApp">
                     mandar no Whats ↗
@@ -731,7 +799,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               {/* Entrega: briefing pro integrador + vídeo/resumo da integração,
                   recolhidos — a DATA fica em cima, sempre visível. */}
               <button onClick={() => setShowEntrega((v) => !v)}
-                className="mono" style={{ ...kicker, display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+                className="kicker" style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
                 Entrega
                 <span style={{ marginLeft: "auto", fontSize: 10, flexShrink: 0, textTransform: "none", letterSpacing: 0 }}>{showEntrega ? "▴ recolher" : "▾ briefing · vídeo"}</span>
               </button>
@@ -776,7 +844,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                     <button className="mono dim" style={{ fontSize: 11, flexShrink: 0 }} title="Copiar link"
                       onClick={() => { try { navigator.clipboard.writeText(lead.integrationCallUrl); } catch { window.prompt("Link da integração:", lead.integrationCallUrl); } }}>copiar</button>
                     {wa && (
-                      <a className="mono" style={{ fontSize: 11, color: "#128c4b", textDecoration: "none", flexShrink: 0 }}
+                      <a className="mono" style={{ fontSize: 11, color: "var(--wa-brand-deep)", textDecoration: "none", flexShrink: 0 }}
                         href={`${wa}?text=${encodeURIComponent(`Oi${lead.name ? " " + String(lead.name).trim().split(/\s+/)[0] : ""}! Aqui é da ${saasCfg?.name || "equipe"}. Nossa call de integração vai ser por este link: ${lead.integrationCallUrl}`)}`}
                         target="_blank" rel="noopener noreferrer" title="Enviar o link pro cliente no WhatsApp">mandar no Whats ↗</a>
                     )}
@@ -825,39 +893,49 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               </>)}
             </>
           )}
-          {/* mover etapa: demoted, no fim — a etapa é CONSEQUÊNCIA do trabalho,
-              não o "próximo passo". Antes era a 1ª linha e confundia. */}
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 2 }}>
-            <span className="mono dim" style={{ fontSize: 11, flexShrink: 0 }}>mover etapa</span>
-            <select value={lead.stage || ""} onChange={(e) => moveStage(e.target.value)}
-              style={{ flex: 1, height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
-              {(saasCfg?.funnel || []).map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
-              {saasCfg?.funnel?.every((f) => f.stage !== lead.stage) && lead.stage && <option value={lead.stage}>{lead.stage}</option>}
-            </select>
-          </div>
           </>)}
+          {/* Lead FINALIZADO (ganho/perdido/desqualificado): as únicas ações que
+              fazem sentido são reclassificar ou REABRIR. Um clique manda o card
+              de volta pra etapa escolhida pelos mesmos gates do board (call pede
+              hora, ganho pede valor e pagamento) e o servidor limpa o motivo da
+              perda sozinho no revival. */}
+          {showGps && !isOpen && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="dim" style={{ fontSize: 11.5, lineHeight: 1.45 }}>
+                {kind === "ganho"
+                  ? "Tirar do Ganho desfaz o fechamento (o cliente e a assinatura criados na venda saem da base). Pra registrar churn, use a etapa de perda."
+                  : `Reabrir devolve o card pro funil${lead.lostReason ? ` (o motivo “${lossReasonLabel(saasCfg, lead.lostReason)}” é apagado)` : ""} e o próximo toque volta a ser cobrado na fila do Meu dia.`}
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span className="mono dim" style={{ fontSize: 11, flexShrink: 0 }}>{kind === "ganho" ? "mover pra" : "reabrir em"}</span>
+                {reopenStages.map((st) => (
+                  <button key={st} onClick={() => moveStage(st)} style={presetBtn} title={`Mover este lead pra “${st}”`}>{st}</button>
+                ))}
+              </div>
+            </div>
+          )}
+          {/* mover etapa: demoted, no fim — a etapa é CONSEQUÊNCIA do trabalho,
+              não o "próximo passo". Antes era a 1ª linha e confundia. Serve
+              também de saída completa pro lead finalizado (inclui reclassificar
+              a perda: desqualificado ↔ perdido). */}
+          {showGps && (
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 2 }}>
+              <span className="mono dim" style={{ fontSize: 11, flexShrink: 0 }}>mover etapa</span>
+              <select value={lead.stage || ""} onChange={(e) => moveStage(e.target.value)}
+                style={{ flex: 1, height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
+                {(saasCfg?.funnel || []).map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
+                {saasCfg?.funnel?.every((f) => f.stage !== lead.stage) && lead.stage && <option value={lead.stage}>{lead.stage}</option>}
+              </select>
+            </div>
+          )}
         </div>
 
-        {/* De onde veio: recolhível (consulta, não fluxo do dia a dia). */}
-        {attribution.length > 0 && (
-          <div style={box}>
-            <button onClick={() => setShowFrom((v) => !v)} title={showFrom ? "Recolher" : "Abrir a atribuição (campanha, conjunto, anúncio, origem)"}
-              className="mono" style={{ ...kicker, display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
-              De onde veio · atribuição do anúncio
-              <span style={{ marginLeft: "auto", fontSize: 10, flexShrink: 0 }}>{showFrom ? "▴ recolher" : "▾ abrir"}</span>
-            </button>
-            {showFrom && (
-              <div style={{ marginTop: 6 }}>
-                {attribution.map(([k, v]) => <FactRow key={k} k={k} v={v} />)}
-              </div>
-            )}
-          </div>
-        )}
           </div>
 
-          {/* Coluna direita: insights (roteiro) do estágio atual + histórico. */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-            <div className="mono" style={{ ...kicker, color: "var(--fg-3)" }}>Insights do estágio · {lead.stage || (saasCfg?.funnel?.[0]?.stage ?? "")}</div>
+          {/* Coluna direita: o ROTEIRO do estágio (mesmo nome e mesma ordem do
+              painel de atividade do Meu dia) + o que é da entrega/mentoria. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+            <div className="kicker" style={{ color: "var(--fg-3)" }}>Roteiro · {lead.stage || (saasCfg?.funnel?.[0]?.stage ?? "")}</div>
             {/* Briefing de passagem em cima de tudo: é o que o integrador lê
                 primeiro quando abre o card que acabou de chegar nele. */}
             <IntegrationBriefCard brief={integrationBrief} phone={lead.phone}
@@ -870,29 +948,10 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                 (some quando o briefing já cobre a call de venda). */}
             <CallSummaryCard summary={showCallSummary ? callSummary : null} phone={lead.phone}
               onSend={onOpenWhatsapp ? (msg) => onOpenWhatsapp(lead, msg) : null} />
-            <div style={{ ...box, background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
-              <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 4 }}>Como se comportar</div>
-              <div style={{ fontSize: 12, lineHeight: 1.45 }}>{script.resumo}</div>
-            </div>
-            <div style={box}>
-              <div className="mono" style={{ ...kicker, marginBottom: 4 }}>Objetivo do contato</div>
-              <div style={{ fontSize: 12, lineHeight: 1.45, fontWeight: 500 }}>{script.objetivo}</div>
-            </div>
-            <div style={box}>
-              <div className="mono" style={{ ...kicker, marginBottom: 6 }}>Passo a passo</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                {script.passos.map((p, i) => (
-                  <div key={i} style={{ display: "flex", gap: 10 }}>
-                    <span className="mono tnum" style={{ width: 20, height: 20, borderRadius: 999, flexShrink: 0, marginTop: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "var(--bg-inset)", border: "1px solid var(--line-2)", fontSize: 10.5, fontWeight: 700, color: "var(--fg-3)" }}>{i + 1}</span>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      {p.t && <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 1 }}>{p.t}</div>}
-                      {p.fala && <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--fg-1)", borderLeft: "3px solid var(--accent-line)", paddingLeft: 10, whiteSpace: "pre-wrap" }}>{renderFala(p.fala)}</div>}
-                      {p.dica && <div className="dim" style={{ fontSize: 10.5, marginTop: 2, paddingLeft: 13 }}>{renderFala(p.dica)}</div>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* Como se comportar + objetivo + passo a passo: bloco único
+                compartilhado com o painel de atividade — inclusive o "copiar"
+                de cada fala, que só existia lá. */}
+            <ScriptBlocks script={script} tokens={scriptTk} />
 
             {/* UniqueKids: sugestão de solução da rotina (IA · método R.O.T.I.N.A),
                 gerada do desafio + exemplo e editável pela Ana. Só aparece quando há desafio. */}
@@ -904,7 +963,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
         {consulta && (
           <div style={{ ...box, display: "flex", flexDirection: "column", gap: 9 }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-              <span className="mono" style={{ ...kicker, flexShrink: 0 }}>Consulta {consulta.n || "?"}/{consulta.packageTotal || 8}</span>
+              <span className="kicker" style={{ flexShrink: 0 }}>Consulta {consulta.n || "?"}/{consulta.packageTotal || 8}</span>
               <span style={{ fontSize: 13, fontWeight: 700 }}>{consultaWhen(consulta.at)}</span>
               <span style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{CONSULTA_STATUS[consulta.status] || consulta.status || ""}</span>
             </div>
@@ -952,49 +1011,25 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
           </div>
         )}
 
-        {/* Timeline RECOLHÍVEL: nasce fechada (o histórico é consulta, não fluxo
-            do dia a dia) — o cabeçalho mostra a contagem e abre no clique, com o
-            composer de registrar toque junto. */}
-        <div style={{ ...box, display: "flex", flexDirection: "column", ...(showTimeline ? { minHeight: 160 } : {}) }}>
-          <button onClick={() => setShowTimeline((v) => !v)}
-            title={showTimeline ? "Recolher a timeline" : "Abrir a timeline (histórico + registrar toque)"}
-            className="mono" style={{ ...kicker, display: "flex", alignItems: "center", width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--fg-3)", textAlign: "left" }}>
-            <span>Timeline {activities ? `· ${timelineActs.length + (lead.comments?.length || 0)}` : ""}</span>
-            <span style={{ marginLeft: "auto", fontSize: 10 }}>{showTimeline ? "▴ recolher" : "▾ abrir"}</span>
-          </button>
-          {showTimeline && (
-            <>
-              <div style={{ marginTop: 10 }}>
-                <ActivityComposer lead={lead} onLogged={refetchTimeline} />
-              </div>
-              <div style={{ marginTop: 8 }}>
-                {activities === null
-                  ? <div className="mono dim" style={{ fontSize: 11.5, padding: "10px 0" }}>carregando…</div>
-                  : <ActivityList activities={timelineActs} comments={lead.comments} />}
-              </div>
-            </>
-          )}
-        </div>
-          </div>{/* fim coluna Insights */}
+          </div>{/* fim coluna Roteiro */}
         </div>{/* fim grid duas colunas */}
         </div>
 
-        <div style={{ flexShrink: 0, padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", gap: 8, background: "var(--bg-inset)" }}>
+        {/* Rodapé no mesmo desenho do painel de atividade: o WhatsApp esticado
+            (WaButton do DS). O "Web ↗" ao lado é da ficha, pra quem prefere
+            atender do WhatsApp Web em vez do inbox. */}
+        <div style={{ flexShrink: 0, padding: "10px 18px", borderTop: "1px solid var(--line-1)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", background: "var(--bg-inset)" }}>
           {wa ? (
-            // Dois caminhos: o VERDE sólido abre a conversa no INBOX do cockpit
-            // (responder daqui, com histórico); o de contorno abre no WhatsApp
-            // Web/app pra quem prefere atender por lá.
             <>
+              {onOpenWhatsapp
+                ? <WaButton block onClick={() => onOpenWhatsapp(lead)} title={`Abrir a conversa no inbox do cockpit · ${lead.phone}`}>WhatsApp</WaButton>
+                : <WaButton block href={wa} title={`WhatsApp · ${lead.phone}`}>WhatsApp ↗</WaButton>}
               {onOpenWhatsapp && (
-                <button onClick={() => onOpenWhatsapp(lead)} title={`Abrir a conversa no inbox do cockpit · ${lead.phone}`}
-                  style={{ flex: 1, textAlign: "center", padding: "10px 12px", background: "#25D366", color: "#06120c", border: "none", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>
-                  WhatsApp no cockpit
-                </button>
+                <a href={wa} target="_blank" rel="noopener noreferrer" title={`Abrir no WhatsApp Web/app · ${lead.phone}`}
+                  style={{ flex: "0 1 auto", textAlign: "center", padding: "10px 14px", background: "var(--bg-1)", color: "var(--fg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>
+                  Web ↗
+                </a>
               )}
-              <a href={wa} target="_blank" rel="noopener noreferrer" title={`Abrir no WhatsApp Web/app · ${lead.phone}`}
-                style={{ flex: onOpenWhatsapp ? "0 1 auto" : 1, textAlign: "center", padding: "10px 14px", background: onOpenWhatsapp ? "var(--bg-1)" : "#25D366", color: onOpenWhatsapp ? "var(--fg-2)" : "#06120c", border: onOpenWhatsapp ? "1px solid var(--line-2)" : "none", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: onOpenWhatsapp ? 600 : 700, textDecoration: "none", whiteSpace: "nowrap" }}>
-                {onOpenWhatsapp ? "Web ↗" : "WhatsApp ↗"}
-              </a>
             </>
           ) : (
             <span className="mono dim" style={{ flex: 1, textAlign: "center", padding: "10px 12px", fontSize: 12 }}>sem telefone cadastrado</span>
@@ -1011,7 +1046,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
             onConfirm={(p, extra) => {
               dirty.current = true;
               setLead((prev) => ({ ...prev, ...p, stageSince: new Date().toISOString(), stageAttempts: 0 }));
-              applyGatedMove(p, extra, lead.id).then(refetchTimeline).catch((err) => console.warn("movimento não persistido:", err.message));
+              applyGatedMove(p, extra, lead.id).then(refetchTimeline).catch((err) => { console.warn("movimento não persistido:", err.message); window.toast && window.toast("O movimento do card não foi salvo · tente de novo", "neg"); });
               setPendingMove(null);
             }}
           />
@@ -1023,6 +1058,193 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
             onClose={() => setCustomProp(false)}
             onSaved={(r) => { dirty.current = true; setLead((prev) => ({ ...prev, customProposalId: r.id, customProposalUrl: r.url })); }}
           />
+        )}
+
+        {payLink && (
+          <PaymentLinkModal
+            lead={lead}
+            onClose={() => setPayLink(false)}
+            onSaved={(r) => { dirty.current = true; setLead((prev) => ({ ...prev, ...(r.lead || {}) })); }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Link de pagamento do LEAD (atalho do card): cria o checkout do MP com
+// external_reference = lead — o pagamento entra no Financeiro já casado com a
+// origem (e com o cliente quando o lead vira Ganho). Não cria fatura: fatura é
+// do cliente, pós-Ganho. Gerar de novo substitui o link salvo no card.
+//
+// O bloco "fechamento" grava DIRETO os campos que o gate de Ganho usa
+// (planClosed/amount/paymentMethod): pagamento confirmado + card virado, o
+// cliente e a assinatura nascem com plano, duração e valor certos.
+function PaymentLinkModal({ lead, onClose, onSaved }) {
+  useEsc(onClose);
+  const product = (window.SEED?.SAAS || []).find((s) => s.id === lead.saas);
+  // Mesmo rótulo do servidor (PLAN_LABEL/PRODUCT_LABEL em routes.mp.js):
+  // título default do checkout = produto do catálogo + plano.
+  const PLAN_TITLE = { anual: "Plano Anual", semestral: "Plano Semestral", unico: "Serviço único" };
+  const titleFor = (p, prod) => [dealProductLabel(prod, lead.saas) || product?.name || lead.saas, PLAN_TITLE[p] || "pagamento"].filter(Boolean).join(" · ");
+
+  const [amount, setAmount] = React.useState(lead.mpChargeAmount || "");
+  const [installments, setInstallments] = React.useState(12);
+  const [plan, setPlan] = React.useState(lead.planClosed || "anual");
+  const [dealProduct, setDealProduct] = React.useState(lead.dealProduct || "");
+  const [contract, setContract] = React.useState(Number(lead.amount) > 0 ? String(lead.amount) : "");
+  const [method, setMethod] = React.useState(lead.paymentMethod || "");
+  const [payerEmail, setPayerEmail] = React.useState(lead.email || "");
+  const [title, setTitle] = React.useState(lead.mpChargeTitle || titleFor(lead.planClosed || "anual", lead.dealProduct || ""));
+  const [titleDirty, setTitleDirty] = React.useState(!!lead.mpChargeTitle);
+  const [description, setDescription] = React.useState("");
+  const [url, setUrl] = React.useState(lead.mpChargeUrl || "");
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState(null);
+  const wa = waLink(lead.phone);
+  const inputStyle = { height: 36, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, width: "100%" };
+
+  // Título acompanha produto e plano até o closer mexer nele na mão.
+  function pickPlan(p) {
+    setPlan(p);
+    if (!titleDirty) setTitle(titleFor(p, dealProduct));
+  }
+  function pickProduct(prod) {
+    setDealProduct(prod);
+    if (!titleDirty) setTitle(titleFor(plan, prod));
+  }
+
+  async function create() {
+    const value = Number(String(amount).replace(",", "."));
+    if (!(value > 0)) { setErr("Informe o valor da cobrança."); return; }
+    const contractValue = Number(String(contract).replace(",", "."));
+    setBusy(true); setErr(null);
+    try {
+      const r = await api.mpLeadLink(lead.id, {
+        amount: value, maxInstallments: Number(installments) || undefined,
+        title: title.trim() || undefined, description: description.trim() || undefined,
+        payerEmail: payerEmail.trim() || undefined,
+        plan, product: dealProduct || undefined,
+        contractValue: contractValue > 0 ? contractValue : undefined,
+        paymentMethod: method || undefined,
+      });
+      setUrl(r.url || "");
+      onSaved && onSaved(r);
+    } catch (e) { setErr(e.message || "MP não respondeu"); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.45)", zIndex: 130, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(100%, 500px)", maxHeight: "90vh", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>Link de pagamento · {lead.name || "lead"}</div>
+            <div className="mono dim" style={{ fontSize: 11, marginTop: 2 }}>{product?.name || lead.saas} · o pagamento entra no Financeiro já casado com este lead</div>
+          </div>
+          <button onClick={onClose} className="mono dim" style={{ fontSize: 15 }}>✕</button>
+        </div>
+
+        {/* O que o cliente vê ao abrir o checkout do MP. */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span className="kicker accent">checkout</span>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 96px", gap: 8 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span className="kicker">Valor da cobrança (R$)</span>
+              <input type="number" min="0" step="0.01" placeholder="0,00" value={amount} autoFocus
+                onChange={(e) => setAmount(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") create(); }}
+                style={{ ...inputStyle, fontFamily: "var(--mono)", textAlign: "right" }} />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span className="kicker">Parcelas até</span>
+              <select value={installments} onChange={(e) => setInstallments(e.target.value)} style={inputStyle}>
+                {[1, 3, 6, 12].map((n) => <option key={n} value={n}>{n}x</option>)}
+              </select>
+            </label>
+          </div>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span className="kicker">Título no checkout</span>
+            <input type="text" value={title} placeholder={titleFor(plan, dealProduct)}
+              onChange={(e) => { setTitle(e.target.value); setTitleDirty(true); }}
+              style={inputStyle} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span className="kicker">Descrição (opcional)</span>
+            <input type="text" value={description} placeholder="ex.: 12 meses de LeverAds com contas ilimitadas"
+              onChange={(e) => setDescription(e.target.value)}
+              style={inputStyle} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span className="kicker">E-mail do pagador</span>
+            <input type="email" value={payerEmail} placeholder="pré-preenche o checkout e reforça o casamento"
+              onChange={(e) => setPayerEmail(e.target.value)}
+              style={inputStyle} />
+          </label>
+        </div>
+
+        {/* O combinado do negócio: mesmos campos do gate de Ganho — virar o
+            card depois do pagamento vira 1 clique com tudo certo. */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span className="kicker accent">fechamento</span>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span className="kicker">Produto</span>
+              <select value={dealProduct} onChange={(e) => pickProduct(e.target.value)} style={inputStyle}
+                title="produto do catálogo da apresentação — vai pro card, pro cliente e pro card da Integração">
+                <option value="">escolher…</option>
+                {/* catálogo real do SaaS (SEED); sem catálogo, a lista estática */}
+                {(dealProductsOf(lead.saas).length ? dealProductsOf(lead.saas) : DEAL_PRODUCTS).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+              </select>
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span className="kicker">Plano · duração</span>
+              <select value={plan} onChange={(e) => pickPlan(e.target.value)} style={inputStyle}>
+                {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+              </select>
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span className="kicker">Valor do contrato (R$)</span>
+              <input type="number" min="0" step="0.01" placeholder="se a cobrança for só a entrada" value={contract}
+                onChange={(e) => setContract(e.target.value)}
+                title="valor do negócio inteiro — a cobrança do link pode ser só a entrada"
+                style={{ ...inputStyle, fontFamily: "var(--mono)", textAlign: "right" }} />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span className="kicker">Forma combinada</span>
+              <select value={method} onChange={(e) => setMethod(e.target.value)} style={inputStyle}>
+                <option value="">escolher…</option>
+                {PAYMENT_METHODS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="mono dim" style={{ fontSize: 10.5 }}>
+            esses campos vão pro card: quando o pagamento cair e você virar pra Ganho, cliente e assinatura já nascem com produto, plano, duração e valor certos
+          </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button onClick={create} disabled={busy}
+            style={{ height: 36, padding: "0 16px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600, opacity: busy ? 0.6 : 1 }}>
+            {busy ? "gerando…" : (url ? "gerar novo link" : "gerar link")}
+          </button>
+        </div>
+
+        {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
+
+        {url && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "10px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", minWidth: 0 }}>
+            <span className="mono" style={{ flex: 1, fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={url}>{url}</span>
+            <button className="mono dim" style={{ fontSize: 11, flexShrink: 0 }} title="Copiar link"
+              onClick={() => { try { navigator.clipboard.writeText(url); } catch { window.prompt("Link:", url); } }}>
+              copiar
+            </button>
+            {wa && (
+              <a className="mono" style={{ fontSize: 11, flexShrink: 0, color: "var(--accent)", textDecoration: "none" }}
+                href={`${wa}?text=${encodeURIComponent(`Segue o link pra pagamento: ${url}`)}`}
+                target="_blank" rel="noopener noreferrer" title="Enviar o link pro lead no WhatsApp">mandar no Whats ↗</a>
+            )}
+          </div>
         )}
       </div>
     </div>

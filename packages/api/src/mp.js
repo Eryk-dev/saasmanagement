@@ -37,8 +37,34 @@ export function makeMp({ fetch: f = globalThis.fetch, accessToken, webhookSecret
     return text ? JSON.parse(text) : {};
   }
 
+  // Igual ao request, mas devolve o corpo CRU (os relatórios são CSV, não JSON).
+  async function requestText(method, path) {
+    if (!configured()) throw new Error("Mercado Pago não configurado — defina MERCADOPAGO_ACCESS_TOKEN");
+    const res = await f(`${API_BASE}${path}`, { method, headers: { authorization: `Bearer ${accessToken}` } });
+    const text = await res.text();
+    if (res.status >= 400) {
+      const err = new Error(`MP API ${method} ${path} -> ${res.status}: ${text.slice(0, 300)}`);
+      err.status = res.status;
+      throw err;
+    }
+    return text;
+  }
+
   return {
     configured,
+
+    // Relatório "Dinheiro em conta" (settlement): a ÚNICA janela da API pras
+    // SAÍDAS da conta (saques/transferências aparecem como WITHDRAWAL/PAYOUT).
+    // Fluxo assíncrono: create (202) → list → download do CSV. Mesmo token.
+    settlementReportCreate(beginDate, endDate) {
+      return request("POST", "/v1/account/settlement_report", { begin_date: beginDate, end_date: endDate });
+    },
+    settlementReportList() {
+      return request("GET", "/v1/account/settlement_report/list");
+    },
+    settlementReportDownload(fileName) {
+      return requestText("GET", `/v1/account/settlement_report/${encodeURIComponent(fileName)}`);
+    },
 
     // Preapproval = assinatura recorrente. Sem card token (v1): status pending +
     // init_point — o cliente autoriza na página do MP. external_reference carrega
@@ -94,11 +120,12 @@ export function makeMp({ fetch: f = globalThis.fetch, accessToken, webhookSecret
 
     // Cobrança avulsa (checkout preference → init_point). external_reference
     // carrega o id da FATURA do Cockpit — o webhook/poller dá a baixa sozinho.
-    createCheckoutPreference({ title, amount, externalReference, payerEmail, backUrl, notificationUrl, maxInstallments }) {
+    createCheckoutPreference({ title, description, amount, externalReference, payerEmail, backUrl, notificationUrl, maxInstallments }) {
       if (!(Number(amount) > 0)) throw new Error(`amount deve ser positivo, got ${amount}`);
       return request("POST", "/checkout/preferences", {
         items: [{
           title: String(title || "Cobrança"),
+          ...(description ? { description: String(description) } : {}),
           quantity: 1,
           unit_price: Math.round(Number(amount) * 100) / 100,
           currency_id: SUB_CURRENCY,

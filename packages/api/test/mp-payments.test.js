@@ -234,6 +234,223 @@ test("runMpSync: pagina a busca, ingere tudo, carimba app_config e é idempotent
   assert.equal((await repo.list("mp_payments")).length, 2);
 });
 
+test("pagador mascarado do search: máscara vira vazio, nome cai pros fallbacks e enriquecido não regride", async () => {
+  const repo = makeMemRepo();
+  await seedCustomer(repo);
+
+  // Máscara pura ("xxxxxxxx") não é dado: e-mail/CPF viram "" e nada casa por e-mail falso.
+  await ingestMpPayment(repo, mpPmt({
+    id: 3001,
+    payer: { email: "xxxxxxxxxxx", first_name: "", last_name: "", identification: { number: "xxx.xxx.xxx-xx" } },
+  }));
+  let doc = await repo.get("mp_payments", "mpp_3001");
+  assert.equal(doc.payerEmail, "");
+  assert.equal(doc.payerName, "");
+  assert.equal(doc.payerDoc, "");
+  assert.equal(doc.customer, "");
+
+  // Fallbacks de nome: additional_info (checkout) → titular do cartão.
+  await ingestMpPayment(repo, mpPmt({ id: 3002, payer: { email: "" }, additional_info: { payer: { first_name: "Ana", last_name: "Silva" } } }));
+  assert.equal((await repo.get("mp_payments", "mpp_3002")).payerName, "Ana Silva");
+  await ingestMpPayment(repo, mpPmt({ id: 3003, payer: { email: "" }, card: { cardholder: { name: "JOSE DA SILVA" } } }));
+  assert.equal((await repo.get("mp_payments", "mpp_3003")).payerName, "JOSE DA SILVA");
+
+  // bank_info do PIX é a INSTITUIÇÃO, não a pessoa: vai pro payerBank.
+  await ingestMpPayment(repo, mpPmt({ id: 3004, payer: { email: "" }, point_of_interaction: { transaction_data: { bank_info: { payer: { long_name: "COOPERATIVA SICREDI" } } } } }));
+  doc = await repo.get("mp_payments", "mpp_3004");
+  assert.equal(doc.payerName, "");
+  assert.equal(doc.payerBank, "COOPERATIVA SICREDI");
+
+  // Tick do poller re-ingere o doc MAGRO: pagador e banco enriquecidos ficam de pé.
+  await ingestMpPayment(repo, mpPmt({ id: 3003, payer: { email: "xxxxxxxxxxx" } }));
+  assert.equal((await repo.get("mp_payments", "mpp_3003")).payerName, "JOSE DA SILVA");
+  await ingestMpPayment(repo, mpPmt({ id: 3004, payer: { email: "xxxxxxxxxxx" } }));
+  doc = await repo.get("mp_payments", "mpp_3004");
+  assert.equal(doc.payerName, "");
+  assert.equal(doc.payerBank, "COOPERATIVA SICREDI");
+});
+
+test("runMpSync: search sem nome de pagador busca o doc completo UMA vez (payerDetail)", async () => {
+  const repo = makeMemRepo();
+  await seedCustomer(repo);
+
+  const { mp, fakeFetch } = buildApp(repo, {
+    "GET /v1/payments/search": { paging: { total: 1 }, results: [mpPmt({ id: 4001, payer: { email: "xxxxxxxxxxx" } })] },
+    "GET /v1/payments/4001": mpPmt({ id: 4001 }), // doc completo traz o pagador real
+  });
+
+  await runMpSync(repo, mp);
+  const doc = await repo.get("mp_payments", "mpp_4001");
+  assert.equal(doc.payerName, "Cliente Real");
+  assert.equal(doc.payerEmail, "payer@x.com");
+  assert.equal(doc.payerDetail, 2);
+  assert.equal(doc.customer, "c1"); // o doc completo casou pelo e-mail
+  assert.equal(fakeFetch.calls.filter((c) => c.key === "GET /v1/payments/4001").length, 1);
+
+  // Segunda passada: nome já no espelho — não re-busca o doc por id.
+  await runMpSync(repo, mp);
+  assert.equal(fakeFetch.calls.filter((c) => c.key === "GET /v1/payments/4001").length, 1);
+});
+
+test("runMpSync: doc antigo do espelho sem nome (fora da janela do search) é retro-enriquecido", async () => {
+  const repo = makeMemRepo();
+  await seedCustomer(repo);
+  // Espelho pré-fix: sem nome, com a máscara crua guardada, fora da janela do search.
+  await repo.create("mp_payments", { id: "mpp_5001", mpId: "5001", status: "approved", amount: 325, payerName: "", payerEmail: "xxxxxxxxxxx", dateCreated: "2026-06-01T10:00:00.000Z" });
+
+  const { mp, fakeFetch } = buildApp(repo, {
+    "GET /v1/payments/search": { paging: { total: 0 }, results: [] },
+    "GET /v1/payments/5001": mpPmt({ id: 5001, transaction_amount: 325 }),
+  });
+
+  await runMpSync(repo, mp);
+  const doc = await repo.get("mp_payments", "mpp_5001");
+  assert.equal(doc.payerName, "Cliente Real");
+  assert.equal(doc.payerEmail, "payer@x.com"); // máscara antiga substituída pelo dado real
+  assert.equal(doc.payerDetail, 2);
+
+  // Próxima passada não re-busca (payerDetail carimbado).
+  await runMpSync(repo, mp);
+  assert.equal(fakeFetch.calls.filter((c) => c.key === "GET /v1/payments/5001").length, 1);
+});
+
+test("runMpSync: doc v1 com a instituição no nome migra pro payerBank e o CNPJ vira razão social", async () => {
+  const repo = makeMemRepo();
+  await seedCustomer(repo);
+  // Espelho da v1: enriquecido (payerDetail true) mas com o banco guardado como nome.
+  await repo.create("mp_payments", { id: "mpp_6001", mpId: "6001", status: "approved", amount: 10000, payerName: "COOPERATIVA SICREDI", payerEmail: "", payerDetail: true, dateCreated: "2026-08-07T08:39:00.000Z" });
+
+  const { mp } = buildApp(repo, {
+    "GET /v1/payments/search": { paging: { total: 0 }, results: [] },
+    "GET /v1/payments/6001": mpPmt({
+      id: 6001, transaction_amount: 10000,
+      payer: { email: "", identification: { number: "10171520000110" } },
+      point_of_interaction: { transaction_data: { bank_info: { payer: { long_name: "COOPERATIVA SICREDI" } } } },
+    }),
+  });
+  const cnpjCalls = [];
+  const cnpjFetch = async (url) => { cnpjCalls.push(url); return { status: 200, json: async () => ({ razao_social: "AUTO PECAS EXEMPLO LTDA" }) }; };
+
+  await runMpSync(repo, mp, { cnpjFetch });
+  const doc = await repo.get("mp_payments", "mpp_6001");
+  assert.equal(doc.payerBank, "COOPERATIVA SICREDI");
+  assert.equal(doc.payerName, "AUTO PECAS EXEMPLO LTDA"); // razão social pelo CNPJ
+  assert.equal(doc.payerDoc, "10171520000110");
+  assert.equal(doc.payerDetail, 2);
+  assert.equal(doc.cnpjLookup, true);
+  assert.match(cnpjCalls[0], /brasilapi\.com\.br\/api\/cnpj\/v1\/10171520000110/);
+
+  // Próxima passada: nem re-fetch do MP nem re-consulta do CNPJ.
+  await runMpSync(repo, mp, { cnpjFetch });
+  assert.equal(cnpjCalls.length, 1);
+});
+
+test("lead: link de pagamento pelo card carrega o id do lead e o pagamento casa com a origem", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds" });
+  await repo.create("leads", { id: "l9", name: "Loja Autopeças", saas: "leverads", email: "dono@loja.com" });
+  const { app, fakeFetch } = buildApp(repo, {
+    "POST /checkout/preferences": { id: "pref_9", init_point: "https://mp.com/p/9" },
+  });
+
+  const res = await app.inject({ method: "POST", url: "/api/leads/l9/mp/link", payload: { amount: 2500, maxInstallments: 12 } });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.json().url, "https://mp.com/p/9");
+
+  // external_reference = LEAD; e-mail do lead vai pro checkout
+  const call = fakeFetch.calls.find((c) => c.key === "POST /checkout/preferences");
+  assert.equal(call.body.external_reference, "l9");
+  assert.equal(call.body.payer.email, "dono@loja.com");
+
+  // link salvo no card + atividade na timeline
+  const saved = await repo.get("leads", "l9");
+  assert.equal(saved.mpChargeUrl, "https://mp.com/p/9");
+  assert.equal(saved.mpChargeAmount, 2500);
+  assert.ok((await repo.list("activities")).some((a) => a.lead === "l9" && /link de pagamento/i.test(a.text)));
+
+  // pagamento com a referência do lead casa SEM depender do e-mail do pagador
+  await ingestMpPayment(repo, mpPmt({ id: 9001, transaction_amount: 2500, external_reference: "l9", payer: { email: "" } }));
+  let doc = await repo.get("mp_payments", "mpp_9001");
+  assert.equal(doc.lead, "l9");
+  assert.equal(doc.saas, "leverads");
+  assert.equal(doc.customer, "");
+  assert.equal(doc.matchedBy, "reference");
+
+  // lead convertido (Ganho): pagamento novo com a mesma referência acompanha o cliente
+  await repo.update("leads", "l9", { customerId: "c9" });
+  await ingestMpPayment(repo, mpPmt({ id: 9002, transaction_amount: 1000, external_reference: "l9", payer: { email: "" } }));
+  doc = await repo.get("mp_payments", "mpp_9002");
+  assert.equal(doc.lead, "l9");
+  assert.equal(doc.customer, "c9");
+
+  await app.close();
+});
+
+test("lead: link completo carrega o checkout (título/descrição/e-mail) e grava o fechamento no card", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds" });
+  await repo.create("leads", { id: "l7", name: "Sergio", saas: "leverads", email: "sergio@x.com", amount: 900 });
+  const { app, fakeFetch } = buildApp(repo, {
+    "POST /checkout/preferences": { id: "pref_7", init_point: "https://mp.com/p/7" },
+  });
+
+  const res = await app.inject({ method: "POST", url: "/api/leads/l7/mp/link", payload: {
+    amount: 10000, maxInstallments: 12, plan: "anual", product: "fulloem", contractValue: 40000,
+    paymentMethod: "cartao12x", description: "12 meses de LeverAds", payerEmail: "financeiro@loja.com",
+  } });
+  assert.equal(res.statusCode, 200);
+
+  // o cliente vê o título com PRODUTO do catálogo + plano, descrição e e-mail
+  const call = fakeFetch.calls.find((c) => c.key === "POST /checkout/preferences");
+  assert.equal(call.body.items[0].title, "LeverAds + OEM FULL · Plano Anual");
+  assert.equal(call.body.items[0].description, "12 meses de LeverAds");
+  assert.equal(call.body.payer.email, "financeiro@loja.com");
+
+  // fechamento gravado no card: os MESMOS campos do gate de Ganho + produto
+  const saved = await repo.get("leads", "l7");
+  assert.equal(saved.planClosed, "anual");
+  assert.equal(saved.dealProduct, "fulloem");
+  assert.equal(saved.amount, 40000);
+  assert.equal(saved.paymentMethod, "cartao12x");
+  assert.equal(saved.mpChargeTitle, "LeverAds + OEM FULL · Plano Anual");
+
+  // link rápido sem os campos de fechamento: nada do combinado é apagado
+  await app.inject({ method: "POST", url: "/api/leads/l7/mp/link", payload: { amount: 500 } });
+  const again = await repo.get("leads", "l7");
+  assert.equal(again.planClosed, "anual");
+  assert.equal(again.dealProduct, "fulloem");
+  assert.equal(again.amount, 40000);
+  assert.equal(again.paymentMethod, "cartao12x");
+
+  await app.close();
+});
+
+test("lead: MP recusou o link → 424 e o lead fica intacto", async () => {
+  const repo = makeMemRepo();
+  await repo.create("leads", { id: "l1", saas: "leverads" });
+  const { app } = buildApp(repo, {}); // sem fake → 404 do MP
+  const res = await app.inject({ method: "POST", url: "/api/leads/l1/mp/link", payload: { amount: 100 } });
+  assert.equal(res.statusCode, 424);
+  assert.ok(!(await repo.get("leads", "l1")).mpChargeUrl);
+  await app.close();
+});
+
+test("runMpSync: CNPJ que a BrasilAPI não acha é carimbado e não re-consultado", async () => {
+  const repo = makeMemRepo();
+  const { mp } = buildApp(repo, { "GET /v1/payments/search": { paging: { total: 0 }, results: [] } });
+  await repo.create("mp_payments", { id: "mpp_7001", mpId: "7001", status: "approved", amount: 50, payerName: "", payerDoc: "00000000000000", payerDetail: 2, dateCreated: "2026-08-06T12:11:00.000Z" });
+
+  const calls = [];
+  const cnpjFetch = async (url) => { calls.push(url); return { status: 404, json: async () => ({}) }; };
+  await runMpSync(repo, mp, { cnpjFetch });
+  const doc = await repo.get("mp_payments", "mpp_7001");
+  assert.equal(doc.cnpjLookup, true);
+  assert.equal(doc.payerName, "");
+
+  await runMpSync(repo, mp, { cnpjFetch });
+  assert.equal(calls.length, 1);
+});
+
 test("GET /api/mp/payments: filtro por saas mantém os não identificados visíveis", async () => {
   const repo = makeMemRepo();
   await seedCustomer(repo);

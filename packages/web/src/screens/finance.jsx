@@ -4,7 +4,8 @@ import { useData } from "../data.jsx";
 import { Pill } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { mpMethodLabel, MP_PAY_STATUS } from "../lib/payments.js";
-// Financeiro — aba da tela Clientes: o espelho dos pagamentos REAIS do Mercado
+import { usePeriod } from "../components/period-picker.jsx";
+// Pagamentos — aba da tela Financeiro: o espelho dos pagamentos REAIS do Mercado
 // Pago (quem pagou, quanto, como, quando), casado com os clientes. O que não
 // casou sozinho fica com o seletor de vínculo na própria linha. O dinheiro
 // entra pelo webhook + poller do servidor; aqui é leitura + vínculo manual +
@@ -12,19 +13,6 @@ import { mpMethodLabel, MP_PAY_STATUS } from "../lib/payments.js";
 
 const { useState, useEffect, useMemo, useCallback } = React;
 
-const RANGES = [
-  { id: "month", label: "Este mês" },
-  { id: "30d", label: "30 dias" },
-  { id: "90d", label: "90 dias" },
-  { id: "all", label: "Tudo" },
-];
-const rangeStart = (id) => {
-  const now = new Date();
-  if (id === "month") return new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  if (id === "30d") return new Date(now.getTime() - 30 * 86400000).toISOString();
-  if (id === "90d") return new Date(now.getTime() - 90 * 86400000).toISOString();
-  return "";
-};
 const agoLabel = (iso) => {
   if (!iso) return "";
   const min = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
@@ -42,7 +30,9 @@ function FinanceTab({ product }) {
   const money = window.fmt.money;
 
   const [data, setData] = useState(null); // { payments, sync }
-  const [range, setRange] = useState("month");
+  // Janela GLOBAL do cockpit (filtro único no topo, 08/08): o corte dos
+  // pagamentos é client-side, por dia local do dateCreated.
+  const { win } = usePeriod();
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState(null);
   const [linking, setLinking] = useState({}); // paymentId -> customerId escolhido
@@ -81,9 +71,12 @@ function FinanceTab({ product }) {
   const customerName = (id) => customers.find((c) => c.id === id)?.name || (CUSTOMERS || []).find((c) => c.id === id)?.name || "";
 
   const payments = useMemo(() => {
-    const start = rangeStart(range);
-    return (data?.payments || []).filter((p) => !start || String(p.dateCreated || "") >= start);
-  }, [data, range]);
+    const day = (iso) => (iso ? String(iso).slice(0, 10) : "");
+    return (data?.payments || []).filter((p) => {
+      const d = day(p.dateCreated);
+      return d >= win.since && d <= win.until;
+    });
+  }, [data, win.since, win.until]);
 
   const stats = useMemo(() => {
     const ok = payments.filter((p) => p.status === "approved");
@@ -120,16 +113,7 @@ function FinanceTab({ product }) {
   return (
     <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", gap: 6 }}>
-          {RANGES.map((r) => (
-            <button key={r.id} onClick={() => setRange(r.id)} style={{
-              height: 26, padding: "0 10px", borderRadius: "var(--r-2)", fontSize: 12,
-              border: "1px solid " + (range === r.id ? "var(--line-strong)" : "var(--line-1)"),
-              background: range === r.id ? "var(--bg-3)" : "var(--bg-2)",
-              color: range === r.id ? "var(--fg-1)" : "var(--fg-3)",
-            }}>{r.label}</button>
-          ))}
-        </div>
+        <span className="dim" style={{ fontSize: 12 }}>pagamentos de {win.label} · o filtro do topo manda na janela</span>
         <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 8 }}>
           {data?.sync?.lastAt && <span className="mono dim" style={{ fontSize: 11 }}>sincronizado {agoLabel(data.sync.lastAt)}</span>}
           <button onClick={syncNow} disabled={syncing} style={{ ...btn, opacity: syncing ? 0.6 : 1 }} title="busca os pagamentos da conta MP agora (o servidor também faz sozinho a cada 10 min)">
@@ -142,17 +126,17 @@ function FinanceTab({ product }) {
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <div style={TILE}>
-          <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.07em", textTransform: "uppercase" }}>Recebido</div>
+          <div className="kicker">Recebido</div>
           <div className="tnum" style={{ fontSize: 21, fontWeight: 700, marginTop: 3 }}>{money(stats.received)}</div>
           <div className="mono dim" style={{ fontSize: 10.5, marginTop: 2 }}>{stats.count} pagamento(s) aprovados</div>
         </div>
         <div style={TILE}>
-          <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.07em", textTransform: "uppercase" }}>Aguardando</div>
+          <div className="kicker">Aguardando</div>
           <div className="tnum" style={{ fontSize: 21, fontWeight: 700, marginTop: 3 }}>{money(stats.pending)}</div>
           <div className="mono dim" style={{ fontSize: 10.5, marginTop: 2 }}>{stats.pendingCount} pendente(s) · {stats.rejected} recusado(s)</div>
         </div>
         <div style={TILE}>
-          <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.07em", textTransform: "uppercase" }}>Por forma de pagamento</div>
+          <div className="kicker">Por forma de pagamento</div>
           <div style={{ display: "flex", gap: "4px 14px", flexWrap: "wrap", marginTop: 6 }}>
             {Object.entries(stats.byMethod).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
               <span key={k} style={{ fontSize: 12.5 }}><b>{k}</b> <span className="tnum" style={{ color: "var(--fg-3)" }}>{money(v)}</span></span>
@@ -162,7 +146,7 @@ function FinanceTab({ product }) {
         </div>
         {stats.unmatched > 0 && (
           <div style={{ ...TILE, borderColor: "var(--warn)", flex: "0 1 170px" }}>
-            <div className="mono" style={{ fontSize: 10, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--warn)" }}>Não identificados</div>
+            <div className="kicker" style={{ color: "var(--warn)" }}>Não identificados</div>
             <div className="tnum" style={{ fontSize: 21, fontWeight: 700, marginTop: 3 }}>{stats.unmatched}</div>
             <div className="mono dim" style={{ fontSize: 10.5, marginTop: 2 }}>vincule na tabela abaixo</div>
           </div>
@@ -173,12 +157,12 @@ function FinanceTab({ product }) {
         <EmptyState title="Nenhum pagamento no período"
           hint={data ? "Troque o período acima ou clique em sincronizar. O 1º sync varre 400 dias da conta." : "carregando…"} />
       ) : (
-        <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
+        <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
           <table style={{ width: "100%", minWidth: 860, borderCollapse: "collapse" }}>
             <thead>
               <tr>
                 {["Data", "Pagador", "Cliente", "Valor", "Forma", "Status", "Fatura"].map((h) => (
-                  <th key={h} style={{ textAlign: h === "Valor" ? "right" : "left", fontSize: 10.5, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
+                  <th key={h} className="kicker" style={{ textAlign: h === "Valor" ? "right" : "left", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -191,7 +175,17 @@ function FinanceTab({ product }) {
                     <td className="mono dim tnum" style={{ padding: "10px 14px", fontSize: 12, borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" }}>{fmtAt(p.dateApproved || p.dateCreated)}</td>
                     <td style={{ padding: "10px 14px", fontSize: 13, borderBottom: "1px solid var(--line-faint)" }}>
                       <div style={{ fontWeight: 500 }}>{p.payerName || "—"}</div>
-                      {p.payerEmail && <div className="mono dim" style={{ fontSize: 10.5 }}>{p.payerEmail}</div>}
+                      {(p.payerDoc || p.payerEmail) && (
+                        <div className="mono dim" style={{ fontSize: 10.5 }}>
+                          {[p.payerDoc && `CPF/CNPJ ${p.payerDoc}`, p.payerEmail].filter(Boolean).join(" · ")}
+                        </div>
+                      )}
+                      {p.payerBank && (
+                        <div className="mono dim" title={p.payerBank}
+                          style={{ fontSize: 10.5, maxWidth: 380, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          via {p.payerBank}
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: "10px 14px", fontSize: 13, borderBottom: "1px solid var(--line-faint)" }}>
                       {p.customer ? (
@@ -199,7 +193,9 @@ function FinanceTab({ product }) {
                           {customerName(p.customer) || p.customer}
                         </span>
                       ) : p.lead ? (
-                        <span className="dim" title="pagador casou com um LEAD (ainda não é cliente)">lead: {p.lead}</span>
+                        <span className="dim" title="pagador casou com um LEAD (ainda não é cliente)">
+                          lead: {(window.SEED.LEADS || []).find((l) => l.id === p.lead)?.name || p.lead}
+                        </span>
                       ) : (
                         <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
                           <select value={linking[p.id] || ""} onChange={(e) => setLinking((m) => ({ ...m, [p.id]: e.target.value }))}
@@ -233,7 +229,7 @@ function FinanceTab({ product }) {
       )}
 
       <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.5 }}>
-        pagamentos sem produto identificado aparecem em todos os workspaces até serem vinculados · a baixa automática de fatura acontece por link do cockpit, assinatura ou e-mail + valor exato
+        pagamentos sem produto identificado aparecem em todos os workspaces até serem vinculados · o casamento acontece pelo link do cockpit (fatura, lead ou assinatura) ou pelo e-mail do pagador · a baixa automática de fatura exige valor exato quando o casamento é por e-mail
       </div>
     </div>
   );

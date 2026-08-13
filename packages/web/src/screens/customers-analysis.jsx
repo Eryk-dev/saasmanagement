@@ -1,5 +1,6 @@
 import React from "react";
-import { StatTile, FilterTab, Card } from "../components/viz.jsx";
+import { StatTile, Card } from "../components/viz.jsx";
+import { usePeriod } from "../components/period-picker.jsx";
 import { paymentUpfront } from "../lib/payments.js";
 
 // Análise da base de clientes — números do período sobre a coleção customers:
@@ -75,30 +76,15 @@ function planBucket(plan) {
 }
 const PLAN_ORDER = ["Anual", "Semestral", "Trimestral", "Serviço único", "Mensal", "sem plano"];
 
-const SHORTCUTS = [
-  { key: "tudo", label: "Tudo" },
-  { key: "mes", label: "Este mês" },
-  { key: "30d", label: "30 dias" },
-  { key: "90d", label: "90 dias" },
-  { key: "ano", label: "Este ano" },
-];
-
-function shortcutRange(key, now) {
-  const d = new Date(now);
-  if (key === "mes") return [new Date(d.getFullYear(), d.getMonth(), 1).getTime(), null];
-  if (key === "30d") return [now - 30 * DAY, null];
-  if (key === "90d") return [now - 90 * DAY, null];
-  if (key === "ano") return [new Date(d.getFullYear(), 0, 1).getTime(), null];
-  return [null, null]; // tudo
-}
-
 // `isKids` = workspace de mentoria (compra única, sem recorrência): as métricas
 // de assinatura (preço mensal médio e LTV, que derivam de MRR ÷ churn) não
 // significam nada ali e saem — o resto (faturado, caixa, futuro, ticket, churn
 // de famílias) vale igual.
 export function CustomersAnalysis({ customers, subs = [], invoices = [], isKids = false }) {
   const money = window.fmt.money;
-  const [shortcut, setShortcut] = useState("tudo");
+  // Janela GLOBAL do cockpit (filtro unico no topo, 08/08): a coorte, o caixa
+  // e o churn seguem a mesma janela do resto do cockpit.
+  const { win } = usePeriod();
 
   // Plano do cliente como o card/lista mostram: a ASSINATURA manda (ciclo →
   // anual/semestral/…), o campo c.plan é só o fallback. Assim "sem plano" só
@@ -112,18 +98,10 @@ export function CustomersAnalysis({ customers, subs = [], invoices = [], isKids 
     }
     return (c) => CYCLE_LABEL[byCustomer.get(c.id)?.cycle] || c.plan || "";
   }, [subs]);
-  const [fromInput, setFromInput] = useState("");
-  const [toInput, setToInput] = useState("");
-  const custom = shortcut === "custom";
-
   const m = useMemo(() => {
     const now = Date.now();
-    let [fromT, toT] = shortcutRange(shortcut, now);
-    if (custom) {
-      fromT = fromInput ? new Date(`${fromInput}T00:00:00`).getTime() : null;
-      toT = toInput ? new Date(`${toInput}T23:59:59`).getTime() : null;
-    }
-    const endT = toT ?? now;
+    const fromT = new Date(`${win.since}T00:00:00`).getTime();
+    const endT = Math.min(new Date(`${win.until}T23:59:59`).getTime(), now);
     const inPeriod = (iso) => {
       const t = new Date(iso).getTime();
       return Number.isFinite(t) && (fromT == null || t >= fromT) && t <= endT;
@@ -177,13 +155,9 @@ export function CustomersAnalysis({ customers, subs = [], invoices = [], isKids 
     const ltv = lifeMonths != null && mrrMedio > 0 ? mrrMedio * lifeMonths : null;
 
     return { cohort, faturado, caixa, futuro, mrrMedio, ticket, planos, churned, baseStart, churnPct, lifeMonths, ltv };
-  }, [customers, invoices, shortcut, custom, fromInput, toInput, planOf]);
+  }, [customers, invoices, win.since, win.until, planOf]);
 
   const pct = (v) => `${Math.round(v * 100)}%`;
-  const dateField = {
-    height: 32, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)",
-    background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5,
-  };
   const planosTotal = m.cohort.length || 1;
   // Ordem canônica primeiro; categorias de fora dela (ex.: pacotes da mentoria)
   // entram depois, por volume — nenhum plano some do card.
@@ -196,18 +170,6 @@ export function CustomersAnalysis({ customers, subs = [], invoices = [], isKids 
   // página é do container; aqui só o empilhamento interno.
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-        {SHORTCUTS.map((s) => (
-          <FilterTab key={s.key} active={shortcut === s.key} onClick={() => setShortcut(s.key)}>{s.label}</FilterTab>
-        ))}
-        <span style={{ width: 1, height: 20, background: "var(--line-2)", margin: "0 6px" }} />
-        <input type="date" value={fromInput} onChange={(e) => { setFromInput(e.target.value); setShortcut("custom"); }}
-          aria-label="De" style={{ ...dateField, borderColor: custom && fromInput ? "var(--accent)" : "var(--line-2)" }} />
-        <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>até</span>
-        <input type="date" value={toInput} onChange={(e) => { setToInput(e.target.value); setShortcut("custom"); }}
-          aria-label="Até" style={{ ...dateField, borderColor: custom && toInput ? "var(--accent)" : "var(--line-2)" }} />
-      </div>
-
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
         <StatTile label="Total contratado" value={money(m.faturado)} delta="valor anual (ARR) dos clientes do período" />
         <StatTile label="Recebido" value={money(m.caixa)} delta="já entrou · à vista + parcelas/ciclos vencidos" />

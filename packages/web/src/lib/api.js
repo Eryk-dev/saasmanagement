@@ -299,7 +299,10 @@ export const api = {
   composeManual: (id) => req("POST", `/api/deliverables/${id}/compose`, {}),
   // Análise de pitch: estatísticas agregadas das calls resumidas + calls recentes.
   // closer opcional (undefined = todos; "" = sem closer) separa a análise por closer.
-  pitchCalls: (saas, closer) => req("GET", `/api/pitch/${saas}/calls${closer != null ? `?closer=${encodeURIComponent(closer)}` : ""}`),
+  pitchCalls: (saas, closer, group) => {
+    const q = [group ? `group=${encodeURIComponent(group)}` : "", closer != null ? `closer=${encodeURIComponent(closer)}` : ""].filter(Boolean).join("&");
+    return req("GET", `/api/pitch/${saas}/calls${q ? `?${q}` : ""}`);
+  },
   // Análise de integração: sentimento, pendências recorrentes e integrações recentes.
   // integrator opcional (undefined = todos; "" = sem integrador) separa por integrador.
   integrationAnalysis: (saas, integrator) => req("GET", `/api/integrations/${saas}/summary${integrator != null ? `?integrator=${encodeURIComponent(integrator)}` : ""}`),
@@ -315,6 +318,10 @@ export const api = {
   aiCosts: (days) => req("GET", `/api/ai-costs${days ? `?days=${days}` : ""}`),
   // Custos operacionais do mês (ads + IA automáticos + lançamentos manuais).
   expensesSummary: (saas, month) => req("GET", `/api/expenses/summary/${saas}${month ? `?month=${month}` : ""}`),
+  // Financeiro completo: a leitura do mês (contas a pagar + receber, fluxo, DRE, conciliação).
+  fin: (saas, month) => req("GET", `/api/fin/${saas}${month ? `?month=${month}` : ""}`),
+  // Importa as SAÍDAS da conta MP (settlement report) pra conciliação.
+  finMpOutSync: (saas) => req("POST", `/api/fin/${saas}/mp-out/sync`, {}),
   // Mídia social: métricas do perfil, histórico e publicação orgânica (IG/FB).
   socialSummary: (saas, days) => req("GET", `/api/social/summary?saas=${encodeURIComponent(saas)}${days ? `&days=${days}` : ""}`),
   // Só a contagem líquida de novos seguidores (~24h) + o @ do perfil, pro aviso
@@ -424,6 +431,7 @@ export const api = {
   // Billing (fase 5).
   changeSubscription: (id, body) => req("POST", `/api/subscriptions/${id}/change`, body),
   payInvoice: (id) => req("POST", `/api/invoices/${id}/pay`),
+  unpayInvoice: (id) => req("POST", `/api/invoices/${id}/unpay`),
   runBilling: () => req("POST", "/api/billing/run", {}),
   // Mercado Pago: gera o link de autorização da assinatura (preapproval).
   mpLink: (subId, payerEmail) => req("POST", `/api/subscriptions/${subId}/mp/link`, payerEmail ? { payerEmail } : {}),
@@ -435,6 +443,9 @@ export const api = {
   mpSyncNow: () => req("POST", "/api/mp/sync", {}),
   mpLinkPayment: (id, customer) => req("POST", `/api/mp/payments/${id}/link`, { customer }),
   createCharge: (customerId, body) => req("POST", `/api/customers/${customerId}/charge`, body),
+  // Link de pagamento pelo card do lead (external_reference = lead: pagamento
+  // entra no Financeiro já casado com a origem).
+  mpLeadLink: (leadId, body) => req("POST", `/api/leads/${leadId}/mp/link`, body),
   invoiceMpLink: (id, body = {}) => req("POST", `/api/invoices/${id}/mp/link`, body),
   // Marketing (Meta Ads): sync de insights + métricas cruzadas com o funil.
   marketingSync: (body = {}) => req("POST", "/api/marketing/sync", body),
@@ -447,6 +458,34 @@ export const api = {
   // CRM: timeline do lead (pontos de contato + eventos automáticos).
   listActivities: (leadId) => req("GET", `/api/activities?lead=${encodeURIComponent(leadId)}`),
   logActivity: (a) => req("POST", "/api/activities", a),
+  // Widget de feedback (FAB em toda tela): rotas próprias, abertas a qualquer
+  // sessão — /api/tasks é guardado pela tela "tasks" e o widget não pode
+  // depender dela. O POST cria o card no quadro; o GET traz o recorte do painel
+  // (últimos reportes + colunas); o asset é o mesmo das tarefas por outra porta.
+  feedbackList: () => req("GET", "/api/feedback"),
+  feedbackSend: (body) => req("POST", "/api/feedback", body),
+  feedbackAsset: (blob, name = "print.png") => {
+    const fd = new FormData();
+    fd.append("file", blob, name);
+    return upload("/api/feedback/asset", fd);
+  },
+  // Foto anexada a uma TAREFA → asset servido em /public/tasks/:id; a URL vai
+  // no campo task.photo. Mesmo desenho do activityAsset abaixo.
+  taskAsset: async (blob, name = "anexo.png") => {
+    const fd = new FormData();
+    fd.append("file", blob, name);
+    const key = getKey();
+    const res = await fetch(`${BASE}/api/tasks/asset`, {
+      method: "POST", headers: key ? { "x-api-key": key } : {}, body: fd,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      let msg = "";
+      try { msg = JSON.parse(text).error || ""; } catch { /* HTML do proxy */ }
+      throw new Error(msg || `upload falhou (${res.status})`);
+    }
+    return res.json();
+  },
   // Foto anexada ao toque (print da conversa) → asset servido em
   // /public/activities/:id; a URL vai em activity.meta.photo.
   activityAsset: async (blob, name = "anexo.png") => {
@@ -475,6 +514,10 @@ export const api = {
   },
   // Pace mensal de caixa: faturas pagas → meta diária por papel do funil.
   pipelinePace: (saas) => req("GET", `/api/pipeline-pace/${encodeURIComponent(saas)}`),
+  // Meta de uma JANELA qualquer (mês passado, semana, dia) — a faixa da Visão
+  // geral seguindo o filtro do topo; meta repartida pelos dias úteis.
+  paceWindow: (saas, { since, until }) =>
+    req("GET", `/api/pipeline-pace/${encodeURIComponent(saas)}/window?since=${since}&until=${until}`),
   // Placar por pessoa/papel (SDR/closer/CS) — cockpit de gestão da Visão geral.
   scoreboard: (saas, { since, until, prevSince, prevUntil } = {}) => {
     const q = new URLSearchParams();
@@ -494,6 +537,9 @@ export const api = {
   },
   // Equipe: etiquetas de papel (sdr/closer/integrator), criação e reset de senha.
   updateUser: (id, patch) => req("PATCH", `/api/auth/users/${id}`, patch),
+  // Desfaz um fechamento errado: remove cliente/assinatura/faturas automáticas
+  // e devolve o card pro funil (409 se houver dinheiro real do Mercado Pago).
+  customerRevertWin: (id) => req("POST", `/api/customers/${id}/revert-win`),
   createUser: ({ name, password, roles }) => req("POST", "/api/auth/users", { name, password, ...(roles ? { roles } : {}) }),
   // Remove um usuário do time. force=true remove mesmo com leads atribuídos (409 sem force).
   removeUser: (id, force = false) => req("DELETE", `/api/auth/users/${id}${force ? "?force=1" : ""}`),

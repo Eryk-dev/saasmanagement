@@ -84,7 +84,7 @@ function SettingsScreen({ saasId }) {
       : { background: "var(--btn-bg)", color: "var(--btn-fg)" };
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, maxWidth: 1080, width: "100%" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, width: "100%" }}>
       <PageHead title="Configurações" sub={`funil, campos e integrações · ${s?.name}`}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button onClick={() => window.location.reload()} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>descartar</button>
@@ -248,7 +248,7 @@ function FunnelSettings({ s }) {
         <div style={{ padding: "16px var(--pad-x) 20px" }}>
           <div className="tbl-x">
             <div style={{ minWidth: 690 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "32px 1.4fr 1fr 1.2fr 40px", gap: 12, padding: "8px 0", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderBottom: "1px solid var(--line-1)" }}>
+              <div className="kicker" style={{ display: "grid", gridTemplateColumns: "32px 1.4fr 1fr 1.2fr 40px", gap: 12, padding: "8px 0", fontWeight: 600, borderBottom: "1px solid var(--line-1)" }}>
                 <span /><span>Etapa</span><span>Tipo</span><span>Cadência</span><span />
               </div>
               {rows.map((f, i) => (
@@ -401,7 +401,7 @@ function NextStepsSettings({ s }) {
       <SettingHeader title="Próximos passos" sub="por roteiro (a mesma quebra da aba Scripts): escolha QUAIS botões “Depois da ação” aparecem na tela Meu dia e em que ordem · assim cada tentativa/contato pode ter um próximo passo diferente" />
       {phases.map((phase) => (
         <div key={phase} style={{ marginBottom: 20 }}>
-          <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>{phase}</div>
+          <div className="kicker" style={{ marginBottom: 8 }}>{phase}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 540 }}>
             {items.filter((it) => it.phase === phase).map((it) => {
               const arr = rows[it.key] || [];
@@ -441,7 +441,7 @@ function NextStepsSettings({ s }) {
           </div>
         </div>
       ))}
-      <SaveBar onSave={save} hint="“Retomar amanhã” registra a tentativa sem trocar de etapa · os demais movem o card pro tipo escolhido" />
+      <SaveBar onSave={save} hint="“Retomar” registra a tentativa sem trocar de etapa e pergunta quando voltar · os demais movem o card pro tipo escolhido" />
     </div>
   );
 }
@@ -472,7 +472,7 @@ function TeamSettings() {
       : [...(u.roles || []), role];
     setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, roles } : x)));
     setSaving(u.id);
-    try { await api.updateUser(u.id, { roles }); } catch (e) { console.warn("roles não salvas:", e.message); load(); }
+    try { await api.updateUser(u.id, { roles }); } catch (e) { console.warn("roles não salvas:", e.message); window.toast && window.toast("As vagas do usuário não foram salvas", "neg"); load(); }
     setSaving("");
   }
 
@@ -481,7 +481,15 @@ function TeamSettings() {
   async function setUserSaas(u, saas) {
     setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, saas } : x)));
     setSaving(u.id);
-    try { await api.updateUser(u.id, { saas }); } catch (e) { console.warn("produto não salvo:", e.message); load(); }
+    try { await api.updateUser(u.id, { saas }); } catch (e) { console.warn("produto não salvo:", e.message); window.toast && window.toast("O produto do usuário não foi salvo", "neg"); load(); }
+    setSaving("");
+  }
+  // Nível do plano de remuneração (1 jr · 2 pl · 3 sn): define as metas de
+  // contratos/receita do card da pessoa na Visão geral (régua do comp-plan).
+  async function setUserLevel(u, compLevel) {
+    setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, compLevel } : x)));
+    setSaving(u.id);
+    try { await api.updateUser(u.id, { compLevel }); } catch (e) { console.warn("nível não salvo:", e.message); window.toast && window.toast("O nível não foi salvo", "neg"); load(); }
     setSaving("");
   }
 
@@ -490,7 +498,7 @@ function TeamSettings() {
   async function setUserScreens(u, screens) {
     setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, screens } : x)));
     setSaving(u.id);
-    try { await api.updateUser(u.id, { screens }); } catch (e) { console.warn("telas não salvas:", e.message); load(); }
+    try { await api.updateUser(u.id, { screens }); } catch (e) { console.warn("telas não salvas:", e.message); window.toast && window.toast("As telas do usuário não foram salvas", "neg"); load(); }
     setSaving("");
   }
 
@@ -537,18 +545,19 @@ function TeamSettings() {
       <SettingHeader title="Equipe & papéis" sub="quem aparece nos pickers de SDR/closer/integração do pipeline · papel ≠ permissão (todos são admin na v1)" />
       {/* .tbl-x: no mobile a grade (colunas fixas ~900px) rola dentro do card
           em vez de estourar a página — mesmo padrão do Funil abaixo. */}
-      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
+      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
        <div style={{ minWidth: 860 }}>
-        <div className="mono" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 140px 120px 44px`, gap: 8, padding: "10px 14px", background: "var(--bg-inset)", fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1px solid var(--line-1)" }}>
+        <div className="kicker" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 56px 140px 120px 44px`, gap: 8, padding: "10px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
           <span>Usuário</span>
           {ROLE_OPTS.map(([k, l, hint]) => <span key={k} title={hint} style={{ textAlign: "center" }}>{l}</span>)}
+          <span title="Nível do plano de remuneração (1 júnior · 2 pleno · 3 sênior): define as metas de contratos e receita do card na Visão geral" style={{ textAlign: "center" }}>Nível</span>
           <span title="Vazio = aparece nos pickers de todos os produtos; preenchido = só no workspace daquele produto">Produto</span>
           <span title="Quais telas o usuário vê (menu + rotas da API). Nenhuma marcada = todas">Telas</span>
           <span />
         </div>
         {users === null && <div className="mono dim" style={{ padding: "12px 14px", fontSize: 12 }}>carregando…</div>}
         {Array.isArray(users) && users.map((u) => (
-          <div key={u.id} style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 140px 120px 44px`, gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
+          <div key={u.id} style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 56px 140px 120px 44px`, gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 500, minWidth: 0 }}>
               <Avatar id={u.id} name={u.name} size={22} />
               <input defaultValue={u.name || u.id} key={u.name}
@@ -566,6 +575,11 @@ function TeamSettings() {
                 <input type="checkbox" checked={(u.roles || []).includes(k)} onChange={() => toggleRole(u, k)} style={{ accentColor: "var(--accent)", width: 15, height: 15, cursor: "pointer" }} />
               </span>
             ))}
+            <select value={u.compLevel || 1} onChange={(e) => setUserLevel(u, Number(e.target.value))}
+              title="Nível do plano de remuneração (1 jr · 2 pl · 3 sn)"
+              style={{ ...inputStyle, height: 26, fontSize: 12, textAlign: "center" }}>
+              {[1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
             <select value={u.saas || ""} onChange={(e) => setUserSaas(u, e.target.value)} style={{ ...inputStyle, height: 26, fontSize: 12 }}>
               <option value="">todos os produtos</option>
               {SAAS.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
@@ -785,51 +799,11 @@ function IntegrationsSettings({ s }) {
   // pelo número de outro — o inbox avisa em vez de sair pelo número errado.
   const waOn = !!window.SEED?.CONFIG?.whatsapp?.configured;
   const [waPhoneId, setWaPhoneId] = useStS(s.waPhoneId || "");
-  // Fluxo de permissão de ligação: 1º contato de um lead novo no inbox responde
-  // sozinho pedindo a permissão NATIVA de chamada; a resposta do lead salta
-  // como pop-up pro SDR. DUAS saudações pelo relógio do time (seg a sex, no
-  // horário configurado): dentro pede pra ligar agora; fora avisa quando o
-  // time volta ({volta}) e pede a autorização pra esse retorno. Exige "Allow
-  // voice calls" ligado no número (WhatsApp Manager → Call settings).
-  const [cfOn, setCfOn] = useStS(!!s.waCallFlow?.enabled);
-  const [cfGreeting, setCfGreeting] = useStS(s.waCallFlow?.greeting || "");
-  const [cfAfter, setCfAfter] = useStS(s.waCallFlow?.afterHours || "");
-  const [cfStart, setCfStart] = useStS(s.waCallFlow?.hourStart ?? 8);
-  const [cfEnd, setCfEnd] = useStS(s.waCallFlow?.hourEnd ?? 18);
-  // Painel de variáveis das saudações: clique insere no campo que estava em
-  // edição, na posição do cursor (o textarea guarda a seleção mesmo no blur).
-  const [cfVars, setCfVars] = useStS(false);
-  const cfGreetRef = React.useRef(null);
-  const cfAfterRef = React.useRef(null);
-  const cfLastField = React.useRef("greeting");
-  const CF_VARS = [
-    { t: "{nome}", d: "primeiro nome do lead (some se não tiver)" },
-    { t: "{empresa}", d: "empresa do lead (some se não tiver)" },
-    { t: "{produto}", d: `nome do produto (${s.name})` },
-    { t: "{volta}", d: "quando o time volta: \"hoje às 8h\" / \"amanhã às 8h\" / \"segunda às 8h\" (pro texto de fora do horário)" },
-  ];
-  function cfInsertVar(tok) {
-    const after = cfLastField.current === "after";
-    const el = (after ? cfAfterRef : cfGreetRef).current;
-    const val = after ? cfAfter : cfGreeting;
-    const set = after ? setCfAfter : setCfGreeting;
-    const start = el?.selectionStart ?? val.length;
-    const end = el?.selectionEnd ?? val.length;
-    set(val.slice(0, start) + tok + val.slice(end));
-    requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(start + tok.length, start + tok.length); });
-  }
+  // O fluxo de ligação do 1º contato (saudações, horário do time) MUDOU de
+  // casa: agora é configurado em Inbox → Automações, junto das outras
+  // automações do WhatsApp. Aqui fica só o número do produto.
   async function saveWa() {
-    const hour = (v, fb) => { const n = Number(v); return Number.isFinite(n) && n >= 0 && n < 24 ? n : fb; };
-    await api.update("products", s.id, {
-      waPhoneId: waPhoneId.replace(/\D/g, ""),
-      waCallFlow: {
-        enabled: !!cfOn,
-        greeting: cfGreeting.trim(),
-        afterHours: cfAfter.trim(),
-        hourStart: hour(cfStart, 8),
-        hourEnd: hour(cfEnd, 18),
-      },
-    });
+    await api.update("products", s.id, { waPhoneId: waPhoneId.replace(/\D/g, "") });
     await refresh();
   }
 
@@ -872,7 +846,7 @@ function IntegrationsSettings({ s }) {
           <div>
             <div style={{ fontSize: 13, fontWeight: 500 }}>Mercado Pago</div>
             <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>
-              financeiro: espelho de quem pagou e como (aba Financeiro em Clientes) + cobrança avulsa com link + assinaturas (preapproval) + baixa automática de fatura
+              financeiro: espelho de quem pagou e como (tela Financeiro, aba Pagamentos) + cobrança avulsa com link + assinaturas (preapproval) + baixa automática de fatura
             </div>
           </div>
           <span className={"chip " + (mpOn ? "pos" : "")} style={{ height: 22 }}>{mpOn ? "conectado" : "configurar MERCADOPAGO_ACCESS_TOKEN"}</span>
@@ -880,7 +854,7 @@ function IntegrationsSettings({ s }) {
         {mpOn && (
           <>
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
-              <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>webhook (tempo real, opcional)</span>
+              <span className="kicker" style={{ whiteSpace: "nowrap" }}>webhook (tempo real, opcional)</span>
               <code className="mono" style={{ fontSize: 11, padding: "4px 8px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-2)", overflowWrap: "anywhere" }}>{mpWebhookUrl}</code>
               <button onClick={() => { try { navigator.clipboard.writeText(mpWebhookUrl); setMpMsg("URL copiada — cole no painel MP → Webhooks (evento Pagamentos)"); } catch { window.prompt("URL do webhook:", mpWebhookUrl); } }}
                 style={{ height: 24, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11 }}>copiar</button>
@@ -911,12 +885,12 @@ function IntegrationsSettings({ s }) {
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
           {metaOn && (
             <>
-              <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>ad account de {s.name}</span>
+              <span className="kicker" style={{ whiteSpace: "nowrap" }}>ad account de {s.name}</span>
               <input value={adAccount} placeholder="act_1234567890" onChange={(e) => setAdAccount(e.target.value)} className="mono" style={{ ...inputStyle, width: 220, fontFamily: "var(--mono)" }} />
             </>
           )}
           <span className="mono" title="Pixel disparado na página pública do form deste SaaS (/f/:id) e no CAPI. Vazio = pixel padrão do env."
-            style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>pixel de {s.name}</span>
+            className="kicker" style={{ whiteSpace: "nowrap" }}>pixel de {s.name}</span>
           <input value={pixelId} placeholder="971201888623790" onChange={(e) => setPixelId(e.target.value)} className="mono" style={{ ...inputStyle, width: 170, fontFamily: "var(--mono)" }} />
           <CardSaveButton onSave={saveMeta} />
         </div>
@@ -935,60 +909,12 @@ function IntegrationsSettings({ s }) {
           <>
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
               <span className="mono" title="Phone number ID do número deste SaaS (WhatsApp Manager → API Setup, é o id do NÚMERO, não o da conta). O número precisa estar no mesmo WABA do token."
-                style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>número de {s.name}</span>
+                className="kicker" style={{ whiteSpace: "nowrap" }}>número de {s.name}</span>
               <input value={waPhoneId} placeholder="712249848640591" onChange={(e) => setWaPhoneId(e.target.value)} className="mono" style={{ ...inputStyle, width: 200, fontFamily: "var(--mono)" }} />
             </div>
-            {/* Fluxo de ligação: pedido automático de permissão no 1º contato. */}
-            <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px dashed var(--line-2)" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                <input type="checkbox" checked={cfOn} onChange={(e) => setCfOn(e.target.checked)} />
-                Fluxo de ligação no 1º contato
-              </label>
-              <div className="mono dim" style={{ fontSize: 11, marginTop: 4, lineHeight: 1.5 }}>
-                a primeira mensagem de um lead novo (ex.: vindo do formulário) recebe sozinha o pedido NATIVO de permissão de ligação · a resposta do lead salta como pop-up pro SDR · precisa do "Allow voice calls" ligado no número (WhatsApp Manager → Call settings)
-              </div>
-              {cfOn && (
-                <>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
-                    <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>horário do time · seg a sex, das</span>
-                    <input type="number" min={0} max={23} value={cfStart} onChange={(e) => setCfStart(e.target.value)} className="mono" style={{ ...inputStyle, width: 58, fontFamily: "var(--mono)" }} />
-                    <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>às</span>
-                    <input type="number" min={1} max={24} value={cfEnd} onChange={(e) => setCfEnd(e.target.value)} className="mono" style={{ ...inputStyle, width: 58, fontFamily: "var(--mono)" }} />
-                    <span className="mono dim" style={{ fontSize: 10 }}>fim de semana conta como fora do horário</span>
-                  </div>
-                  <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", marginTop: 10 }}>dentro do horário (pede pra ligar agora)</div>
-                  <textarea ref={cfGreetRef} value={cfGreeting} onChange={(e) => setCfGreeting(e.target.value)} rows={2}
-                    onFocus={() => { cfLastField.current = "greeting"; }}
-                    placeholder={'Olá {nome}! Recebi seu formulário aqui. Posso te ligar pra uma breve conversa sobre a plataforma?'}
-                    style={{ ...inputStyle, width: "100%", height: "auto", minHeight: 52, marginTop: 6, padding: "8px 12px", fontSize: 12.5, lineHeight: 1.45, resize: "vertical", fontFamily: "inherit" }} />
-                  <div className="mono" style={{ fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", marginTop: 10 }}>fora do horário (avisa quando volta e já pede a autorização)</div>
-                  <textarea ref={cfAfterRef} value={cfAfter} onChange={(e) => setCfAfter(e.target.value)} rows={2}
-                    onFocus={() => { cfLastField.current = "after"; }}
-                    placeholder={'Olá {nome}! Recebi seu formulário aqui. Nosso time está fora do horário agora, mas volta {volta}. Posso te ligar quando voltarmos pra falar sobre a plataforma? Já deixa a autorização aqui embaixo.'}
-                    style={{ ...inputStyle, width: "100%", height: "auto", minHeight: 52, marginTop: 6, padding: "8px 12px", fontSize: 12.5, lineHeight: 1.45, resize: "vertical", fontFamily: "inherit" }} />
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                    <button onClick={() => setCfVars((v) => !v)} className="mono"
-                      style={{ height: 24, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-2)", background: cfVars ? "var(--accent-soft)" : "var(--bg-1)", color: cfVars ? "var(--accent)" : "var(--fg-3)", fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}>
-                      {"{ }"} variáveis
-                    </button>
-                    <span className="mono dim" style={{ fontSize: 10 }}>texto vazio usa o padrão</span>
-                  </div>
-                  {cfVars && (
-                    <div style={{ marginTop: 8, padding: "10px 12px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-2)", display: "flex", flexDirection: "column", gap: 6 }}>
-                      {CF_VARS.map((v) => (
-                        <div key={v.t} style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-                          <button onClick={() => cfInsertVar(v.t)} className="mono" title="clique pra inserir no texto, na posição do cursor"
-                            style={{ flexShrink: 0, padding: "2px 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--accent)", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
-                            {v.t}
-                          </button>
-                          <span style={{ fontSize: 11.5, color: "var(--fg-2)", lineHeight: 1.45 }}>{v.d}</span>
-                        </div>
-                      ))}
-                      <span className="mono dim" style={{ fontSize: 10, marginTop: 2 }}>clique numa variável pra inserir no campo que você estava editando</span>
-                    </div>
-                  )}
-                </>
-              )}
+            {/* O fluxo de ligação do 1º contato mudou de casa: Inbox → Automações. */}
+            <div className="mono dim" style={{ fontSize: 11, marginTop: 10 }}>
+              o fluxo de ligação do 1º contato (saudações e horário do time) agora é configurado em <b>Inbox → Automações</b>, junto das regras e fluxos do WhatsApp
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
               <CardSaveButton onSave={saveWa} />
@@ -1224,7 +1150,7 @@ function ScriptsSettings({ s }) {
   }
 
   const phases = [...new Set(SCRIPT_CATALOG.map((c) => c.phase))];
-  const miniLabel = { display: "block", fontSize: 10, color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 };
+  const miniLabel = { display: "block", marginBottom: 4 };
   const taStyle = { ...inputStyle, height: "auto", width: "100%", padding: "6px 8px", fontSize: 12.5, lineHeight: 1.5, fontFamily: "inherit", resize: "vertical" };
 
   return (
@@ -1232,7 +1158,7 @@ function ScriptsSettings({ s }) {
       <SettingHeader title="Scripts & cadências" sub="todos os roteiros do processo num lugar só · edite as falas direto no passo a passo (é o roteiro pronto, é só alterar) · a cadência é a mesma do Funil" />
       {phases.map((phase) => (
         <div key={phase} style={{ marginBottom: 22 }}>
-          <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>{phase}</div>
+          <div className="kicker" style={{ marginBottom: 8 }}>{phase}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {SCRIPT_CATALOG.filter((c) => c.phase === phase).map((item) => {
               const idx = stageIdxOf(item);
@@ -1279,7 +1205,7 @@ function ScriptsSettings({ s }) {
                     <div style={{ padding: "12px 14px 14px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
                       {aiInfo[item.key] && (
                         <div style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", borderRadius: "var(--r-2)", padding: "9px 11px", marginBottom: 12 }}>
-                          <div className="mono" style={{ fontSize: 10, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>✨ Sugestão da IA · {aiInfo[item.key].base} calls analisadas</div>
+                          <div className="kicker accent" style={{ marginBottom: 4 }}>✨ Sugestão da IA · {aiInfo[item.key].base} calls analisadas</div>
                           {aiInfo[item.key].diagnostico && <div style={{ fontSize: 12, lineHeight: 1.5, marginBottom: aiInfo[item.key].objecoes?.length ? 6 : 0 }}>{aiInfo[item.key].diagnostico}</div>}
                           {aiInfo[item.key].objecoes?.length > 0 && (
                             <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -1293,15 +1219,15 @@ function ScriptsSettings({ s }) {
                       )}
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
                         <div>
-                          <label style={miniLabel}>Postura (como se comportar)</label>
+                          <label className="kicker" style={miniLabel}>Postura (como se comportar)</label>
                           <textarea rows={3} value={v.resumo} onChange={(e) => setField(item.key, "resumo", e.target.value)} style={taStyle} />
                         </div>
                         <div>
-                          <label style={miniLabel}>Objetivo</label>
+                          <label className="kicker" style={miniLabel}>Objetivo</label>
                           <textarea rows={3} value={v.objetivo} onChange={(e) => setField(item.key, "objetivo", e.target.value)} style={taStyle} />
                         </div>
                       </div>
-                      <label style={miniLabel}>Passo a passo · edite as falas direto</label>
+                      <label className="kicker" style={miniLabel}>Passo a passo · edite as falas direto</label>
                       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                         {v.passos.map((p, k) => (
                           <div key={k} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: 8 }}>
@@ -1370,4 +1296,24 @@ function SettingHeader({ number, title, sub }) {
   );
 }
 
-export { SettingsScreen };
+// Versão REDUZIDA das Configurações pra quem NÃO tem a tela liberada em
+// user.screens (pedido do Leo, 05/08): TODO usuário precisa conseguir conectar
+// a PRÓPRIA conta Google (calls/integrações espelhadas na agenda pessoal), e
+// SÓ isso — funil, campos, equipe e integrações do produto seguem da gestão.
+// As rotas /api/google/user/* já são abertas a qualquer sessão logada (fora do
+// ROUTE_SCREENS), então aqui é só a superfície.
+function SettingsLite() {
+  return (
+    <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+      <PageHead title="Configurações" sub="sua conta Google" />
+      <div style={{ padding: "16px var(--pad-x) 56px", maxWidth: 680 }}>
+        <MyGoogleCalendarCard />
+        <div className="mono dim" style={{ fontSize: 11, marginTop: 6 }}>
+          as demais configurações (funil, campos, equipe, integrações do produto) ficam com a gestão
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export { SettingsScreen, SettingsLite };

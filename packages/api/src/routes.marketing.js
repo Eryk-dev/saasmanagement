@@ -19,8 +19,10 @@ import { join } from "node:path";
 import { meta as defaultMeta, onMetaThrottle } from "./meta.js";
 import { stagePassCounts } from "./routes.funnel-metrics.js";
 import { kindOf } from "./stages.js";
-import { dayKey, isRealLead, winsIn, customerStartMap } from "./metrics-core.js";
+import { dayKey, isRealLead, winsIn, customerStartMap, leadOrigin, LEAD_ORIGINS } from "./metrics-core.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
+import { painCode } from "./attribution.js";
+export { painCode };
 
 const DAY_MS = 86400000;
 // Dia no FUSO DO NEGÓCIO — régua única do metrics-core (America/Sao_Paulo).
@@ -122,14 +124,6 @@ function parseBudget(raw) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-// Código da dor na nomenclatura do anúncio: "[X]" em QUALQUER posição do nome
-// ("[A] v3 depoimento" ou "1303 [B]"). Código = 1-3 alfanuméricos — colchete
-// com outra coisa ("[TESTE]") não vira dor fantasma no relatório.
-export function painCode(adName) {
-  const m = String(adName || "").match(/\[([A-Za-z0-9]{1,3})\]/);
-  return m ? m[1].toUpperCase() : null;
-}
-
 // Cliente A/B/C/D/E — a MESMA régua do leadTier() da web (packages/web/src/lib/
 // ui.js, mantê-las iguais): matriz CONTAS × ANÚNCIOS (listings; `volume` é o
 // legado semanal), TABELA DE CONSULTA redesenhada pelo Leo em 21/07 (não
@@ -151,6 +145,11 @@ export function leadGrade(l) {
   if (acc == null && ads == null) return null;
   return GRADE_GRID[acc ?? 0][ads ?? 0];
 }
+// Faixas que a régua ENTENDE, por campo do lead. Quem escreve resposta de volta
+// no lead (a tela zero da proposta) checa aqui antes: valor fora dessas faixas
+// não muda a nota, só sujaria o cadastro.
+export const GRADE_BANDS = { accounts: GRADE_ACCOUNTS, listings: GRADE_LISTINGS, volume: GRADE_VOLUME };
+export const gradeBandKnown = (field, value) => !!GRADE_BANDS[field] && GRADE_BANDS[field][value] != null;
 const GRADES = ["S", "A", "B", "C", "D", "E"];
 const gradeCounts = (leads) => {
   const abc = { S: 0, A: 0, B: 0, C: 0, D: 0, E: 0 };
@@ -704,6 +703,33 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const { ladder, counts } = stagePassCounts(product, leads, stageActsByLead);
     const perStage = ladder.map((stage, i) => ({ stage, count: counts[i], costPer: per(counts[i]) }));
 
+    // Lead que marcou/sentou em call — a MESMA régua dos cards de campanha/dor
+    // (usada dentro do finishGroup e no card de origem).
+    const hadCall = (l) =>
+      l.callAt || kindOf(product, l.stage) === "call" ||
+      (stageActsByLead.get(l.id) || []).some((a) => kindOf(product, a.meta?.to) === "call");
+
+    // Origem dos leads (Leo, 07/08): UTM + referrer do cadastro, classificador
+    // único do metrics-core. Leads/calls = coorte da janela (mesma base do CPL);
+    // ganhos e receita = fechados NA janela pela data da venda, creditados à
+    // origem do lead — a mesma régua da atribuição por campanha/conjunto/dor.
+    const originAgg = new Map(LEAD_ORIGINS.map((o) => [o.key, { ...o, leads: 0, calls: 0, won: 0, revenue: 0 }]));
+    for (const l of leads) {
+      const g = originAgg.get(leadOrigin(l)) || originAgg.get("outros");
+      g.leads++;
+      if (hadCall(l)) g.calls++;
+    }
+    for (const l of wonAll) {
+      const g = originAgg.get(leadOrigin(l)) || originAgg.get("outros");
+      g.won++;
+      g.revenue += Number(l.amount) || 0;
+    }
+    // Só origem com movimento; ordena por volume de lead (ganho desempata).
+    const origins = [...originAgg.values()]
+      .filter((o) => o.leads || o.won)
+      .map((o) => ({ ...o, revenue: Math.round(o.revenue * 100) / 100 }))
+      .sort((a, b) => b.leads - a.leads || b.won - a.won);
+
     // Somas por grupo (linhas antigas sem os campos de vídeo/link contam 0).
     const SUM_KEYS = ["spend", "impressions", "clicks", "metaLeads", "linkClicks", "video3s", "videoP25", "videoP50", "videoP95"];
     const newGroup = (base) => ({ ...base, ...Object.fromEntries(SUM_KEYS.map((k) => [k, 0])) });
@@ -744,9 +770,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       // Calls agendadas: lead atribuído que marcou call (callAt), está no
       // estágio de kind call ou passou por ele (histórico — cobre lead antigo
       // sem callAt). Responde "essa dor/anúncio traz lead que senta na call?".
-      const calls = matched.filter((l) =>
-        l.callAt || kindOf(product, l.stage) === "call" ||
-        (stageActsByLead.get(l.id) || []).some((a) => kindOf(product, a.meta?.to) === "call")).length;
+      const calls = matched.filter(hadCall).length;
       return {
         ...g,
         abc,
@@ -852,7 +876,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         // link CTR (cliques no link / impressões), igual às linhas da tabela
         ctr: impressions > 0 ? Math.round((linkClicks / impressions) * 10000) / 100 : null, // %
       },
-      perStage, campaigns, adsets, ads, pains, series,
+      perStage, origins, campaigns, adsets, ads, pains, series,
       synced: rows.length > 0,
       syncedAt: lastSyncAt.get(product.id) || null, // "ao vivo" da tela lê daqui
     };

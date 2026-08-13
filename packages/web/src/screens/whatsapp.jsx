@@ -14,6 +14,7 @@ import { clientSummary, buildQueue, ACTION_LABELS } from "./today.jsx";
 import { currentUser, usersByRole } from "../lib/users.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
+import { WaAutomationsPanel } from "../components/wa-automations.jsx";
 
 // Inbox de WhatsApp: um WhatsApp Web dentro do cockpit. Lista de conversas à
 // esquerda (não-lidas primeiro na cara, ordenadas por recência) + conversa
@@ -52,7 +53,7 @@ export function WaHealthBanner({ style }) {
     <div style={{ margin: "12px var(--pad-x) 0", padding: "10px 14px", borderRadius: "var(--r-2)",
       border: "1px solid " + (danger ? "var(--neg)" : "var(--warn)"),
       background: danger ? "var(--neg-soft)" : "var(--warn-soft)", ...style }}>
-      <div className="mono" style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, color: danger ? "var(--neg)" : "var(--warn)" }}>
+      <div className="kicker" style={{ fontWeight: 600, marginBottom: 4, color: danger ? "var(--neg)" : "var(--warn)" }}>
         {danger ? "⚠ Saúde do WhatsApp em risco" : "Saúde do WhatsApp · atenção"}
       </div>
       {(h.messages || []).map((m, i) => <div key={i} style={{ fontSize: 12.5, color: "var(--fg-1)", lineHeight: 1.4 }}>· {m}</div>)}
@@ -89,7 +90,7 @@ function WaTopStats({ numInfo, stats }) {
   const waiting = stats?.awaiting || 0;
   const item = (label, value, tone) => (
     <div key={label} style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 96 }}>
-      <span className="mono" style={{ fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-4)" }}>{label}</span>
+      <span className="kicker">{label}</span>
       <span className="tnum" style={{ fontSize: 15, fontWeight: 600, color: tone || "var(--fg-1)", lineHeight: 1.2 }}>{value}</span>
     </div>
   );
@@ -100,14 +101,14 @@ function WaTopStats({ numInfo, stats }) {
       {numInfo?.ok && (
         <>
           <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 150 }}>
-            <span className="mono" style={{ fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-4)" }}>Número</span>
+            <span className="kicker">Número</span>
             <span style={{ fontSize: 13.5, fontWeight: 600 }}>{numInfo.display || "—"}</span>
             {numInfo.name && <span style={{ fontSize: 11, color: "var(--fg-3)" }}>{numInfo.name}</span>}
           </div>
           {sep}
           {q && (
             <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 96 }}>
-              <span className="mono" style={{ fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-4)" }}>Qualidade</span>
+              <span className="kicker">Qualidade</span>
               <span style={{ fontSize: 15, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <span style={{ width: 8, height: 8, borderRadius: 99, background: q.color }} />{q.label}
               </span>
@@ -372,9 +373,9 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-      <PageHead title="Inbox" sub={channel === "whatsapp" ? sub : channel === "instagram" ? "direct do Instagram · respondido pela página" : "Messenger da página"}>
+      <PageHead title="Inbox" sub={channel === "whatsapp" ? sub : channel === "instagram" ? "direct do Instagram · respondido pela página" : channel === "facebook" ? "Messenger da página" : "regras automáticas, templates, fluxos e respostas rápidas do WhatsApp"}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          {[["whatsapp", "WhatsApp"], ["instagram", "Instagram"], ["facebook", "Facebook"]].map(([id, label]) => (
+          {[["whatsapp", "WhatsApp"], ["instagram", "Instagram"], ["facebook", "Facebook"], ["automacoes", "Automações"]].map(([id, label]) => (
             <button key={id} onClick={() => setChannel(id)}
               style={{ height: 32, padding: "0 13px", border: "1px solid " + (channel === id ? "var(--accent-line)" : "var(--line-2)"), borderRadius: "var(--r-2)",
                 background: channel === id ? "var(--accent-soft)" : "var(--bg-1)", color: channel === id ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
@@ -391,7 +392,11 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
       </PageHead>
       {newTpl && <WaTemplateCreator onClose={() => setNewTpl(false)} />}
 
-      {channel !== "whatsapp" && <DmInbox key={`${product?.id}:${channel}`} network={channel} saas={product?.id} isMobile={isMobile} />}
+      {(channel === "instagram" || channel === "facebook") && <DmInbox key={`${product?.id}:${channel}`} network={channel} saas={product?.id} isMobile={isMobile} />}
+
+      {/* Central de automações do WhatsApp: regras reativas, templates da
+          Meta, fluxos de nutrição e as respostas rápidas do chat. */}
+      {channel === "automacoes" && <WaAutomationsPanel key={product?.id} product={product} />}
 
       {channel === "whatsapp" && <>
       <WaHealthBanner />
@@ -496,7 +501,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
                         {t.lastDir === "out" ? "→ " : ""}{t.lastText || "—"}
                       </span>
                       {t.unread > 0 && (
-                        <span style={{ flexShrink: 0, minWidth: 18, height: 18, padding: "0 5px", borderRadius: 999, background: "#25D366", color: "#06120c", fontSize: 10.5, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{t.unread}</span>
+                        <span style={{ flexShrink: 0, minWidth: 18, height: 18, padding: "0 5px", borderRadius: 999, background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 10.5, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{t.unread}</span>
                       )}
                     </span>
                   </span>
@@ -585,7 +590,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
                   waLink(current.phone) && (
                     <a href={waLink(current.phone)} target="_blank" rel="noopener noreferrer"
                       title="Ligar / abrir no app"
-                      style={{ ...pill, background: "#25D366", color: "#06120c", border: "none", fontWeight: 700, textDecoration: "none" }}>✆ Ligar</a>
+                      style={{ ...pill, background: "var(--wa-brand)", color: "var(--wa-brand-fg)", border: "none", fontWeight: 700, textDecoration: "none" }}>✆ Ligar</a>
                   )
                 ) : (
                   waLink(current.phone) && (
@@ -875,7 +880,7 @@ function MyQueueStrip({ product, version, currentLeadId, onPick, resolved, onCle
   return (
     <div style={{ margin: "12px var(--pad-x) 0", padding: "8px 14px 7px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "0 4px 3px" }}>
-        <span className="mono" style={{ fontSize: 9.5, letterSpacing: 0.8, textTransform: "uppercase", color: "var(--fg-4)" }}>
+        <span className="kicker">
           Fila de hoje{mineCount ? ` · ${mineCount} minha${mineCount > 1 ? "s" : ""}` : ""}
         </span>
         <span className="mono tnum" style={{ fontSize: 9.5, color: "var(--fg-4)" }}>{visible.length} no total</span>
@@ -918,7 +923,7 @@ function MyQueueStrip({ product, version, currentLeadId, onPick, resolved, onCle
           if (idx === poolStart && poolStart > 0) {
             return (
               <React.Fragment key={`sep-${i.l.id}`}>
-                <div className="mono" style={{ fontSize: 9, letterSpacing: 0.8, textTransform: "uppercase", color: "var(--fg-4)", padding: "6px 4px 2px", borderTop: "1px solid var(--line-faint)", marginTop: 4 }}>
+                <div className="kicker" style={{ padding: "6px 4px 2px", borderTop: "1px solid var(--line-faint)", marginTop: 4 }}>
                   Fila do SDR · {visible.length - poolStart}
                 </div>
                 {row}
@@ -953,7 +958,7 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
   const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === lead.saas) || null;
   const patch = (p) => {
     setEdits((prev) => ({ ...prev, ...p }));
-    api.update("leads", base.id, p).catch((err) => console.warn("lead não salvo:", err.message));
+    api.update("leads", base.id, p).catch((err) => { console.warn("lead não salvo:", err.message); window.toast && window.toast("Alteração no lead não foi salva · tente de novo", "neg"); });
   };
   const checklist = scriptChecklist(saasCfg, lead);
   const { pain, facts, attribution } = clientSummary(saasCfg, lead, lead.stage || saasCfg?.funnel?.[0]?.stage || "", null);
@@ -964,7 +969,6 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
       ? `${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
       : "";
   };
-  const kicker = { fontSize: 10, color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "var(--mono)" };
   return (
     <div style={{ width: 300, flexShrink: 0, border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--line-1)" }}>
@@ -1009,7 +1013,7 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
           onCancel={() => setPendingMove(null)}
           onConfirm={(mp, extra) => {
             setEdits((prev) => ({ ...prev, ...mp }));
-            applyGatedMove(mp, extra, base.id).then(() => { refresh(); onResolved?.(base.id); }).catch((err) => console.warn("movimento não persistido:", err.message));
+            applyGatedMove(mp, extra, base.id).then(() => { refresh(); onResolved?.(base.id); }).catch((err) => { console.warn("movimento não persistido:", err.message); window.toast && window.toast("O movimento do card não foi salvo · tente de novo", "neg"); });
             setPendingMove(null);
           }}
         />
@@ -1018,7 +1022,7 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
       <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
         {pain && (
           <div style={{ padding: "6px 9px", borderRadius: "var(--r-2)", background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
-            <span className="mono" style={{ ...kicker, color: "var(--accent)" }}>dor do anúncio</span>
+            <span className="kicker accent">dor do anúncio</span>
             <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 2 }}>[{pain.code}] {pain.label}</div>
           </div>
         )}
@@ -1027,7 +1031,7 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
             no chat → preenche aqui e grava na hora. Amarelo = falta responder. */}
         {checklist.length > 0 && (
           <div>
-            <div className="mono" style={{ ...kicker, marginBottom: 4 }}>Qualificação · preencha conforme ele responde</div>
+            <div className="kicker" style={{ marginBottom: 4 }}>Qualificação · preencha conforme ele responde</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
               {checklist.map((c) => (
                 <div key={c.key} style={{ padding: "5px 8px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.value ? "var(--bg-1)" : "var(--warn-soft)" }}>
@@ -1055,7 +1059,7 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
         )}
 
         <div>
-          <div className="mono" style={{ ...kicker, marginBottom: 4 }}>Resumo do cliente</div>
+          <div className="kicker" style={{ marginBottom: 4 }}>Resumo do cliente</div>
           {facts.map(([k, v]) => (
             <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11.5, padding: "3px 0", borderBottom: "1px solid var(--line-faint)" }}>
               <span className="mono dim" style={{ flexShrink: 0, fontSize: 10 }}>{k}</span>
@@ -1066,7 +1070,7 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
         </div>
         {attribution.length > 0 && (
           <div>
-            <div className="mono" style={{ ...kicker, marginBottom: 4 }}>De onde veio</div>
+            <div className="kicker" style={{ marginBottom: 4 }}>De onde veio</div>
             {attribution.map(([k, v]) => (
               <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, padding: "3px 0", borderBottom: "1px solid var(--line-faint)" }}>
                 <span className="mono dim" style={{ flexShrink: 0, fontSize: 10 }}>{k}</span>
@@ -1116,7 +1120,7 @@ const TEMPLATE_PRESETS = [
   },
 ];
 
-function WaTemplateCreator({ onClose }) {
+export function WaTemplateCreator({ onClose }) {
   const [form, setForm] = React.useState({ name: "", category: "UTILITY", language: "pt_BR", body: "", example: "" });
   const [busy, setBusy] = React.useState(false);
   const [msg, setMsg] = React.useState(null); // { ok, text }

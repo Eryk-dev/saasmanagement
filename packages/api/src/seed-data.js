@@ -37,10 +37,14 @@ export const COLLECTIONS = {
   user_assets: [], // foto de perfil (base64, 1 por usuário, servida em /public/users/:id)
   ad_insights: [],
   expenses: [],
+  payables: [],
+  fin_rules: [],    // conciliação com aprendizado: pagador (doc/e-mail/nome) → ação (vincular cliente / desconsiderar) — aplicadas sozinhas a cada leitura do Financeiro (routes.fin.js)
+  mp_movements: [], // SAÍDAS da conta Mercado Pago (saques/transferências) importadas do settlement report CSV — conciliadas com contas a pagar por valor+data (routes.fin.js) // contas a pagar do Financeiro (modelo Conta Azul): competência, vencimento, situação, favorecido colaborador/fornecedor; recorrente materializa instância por mês (routes.fin.js)
   tasks: [],
   task_boards: [],
   activities: [],
   activity_assets: [], // foto anexada a um toque da timeline (base64, servida em /public/activities/:id)
+  task_assets: [],   // foto anexada a uma tarefa do kanban (base64, servida em /public/tasks/:id; URL no task.photo)
   agenda_blocks: [], // bloqueios de agenda (tela Agenda): horários que o closer/CS trava p/ compromisso externo — { user, recur, date/weekday, allDay, fromHour, toHour, reason }
   mindmaps: [], // mapas mentais / estratégia (tela Mapas mentais): { name, nodes[], links[] }
   app_config: [], // chave-valor de integrações (ex.: google_oauth = refresh token da conta conectada)
@@ -54,8 +58,11 @@ export const COLLECTIONS = {
   wa_calls: [],      // ligações pelo WhatsApp direto do cockpit (Calling API): estado da chamada + SDP answer do webhook + log (routes.whatsapp.js)
   wa_media: [],      // cache do binário de mídia recebida (áudio/imagem/…) em base64: o id da Meta expira, então baixa 1x e guarda (routes.whatsapp.js)
   wa_template_media: [], // foto PADRÃO por template (header de imagem): id = nome do template, binário em base64 — o composer preenche sozinho e o envio sobe pra Meta a cada disparo (routes.whatsapp.js)
+  wa_automations: [], // automações do Inbox: regras reativas gatilho → resposta automática na mensagem recebida (wa-automations.js)
+  wa_flows: [],      // fluxos de conversa do Inbox (construtor): gatilho + passos com espera de resposta e ramificação (wa-flows.js)
   offers: [],        // links de pagamento das ofertas por produto (ferramenta)
   contracts: [],     // modelos de contrato por produto (tela Contratos): { name, tag, note, body (HTML do miolo, imprime com o CSS padrão da tela) }
+  contract_issues: [], // contratos CONFIRMADOS (histórico da tela Contratos): snapshot do modelo preenchido por cliente — { saas, contract, name, tag, customerId, customerName, values, fields, body, author, createdAt }
   mp_payments: [],   // espelho dos pagamentos do Mercado Pago (financeiro): quem pagou, como, casado com qual cliente/fatura (mp-payments.js)
   campaigns: [],     // disparos (e-mail + WhatsApp) pros leads qualificados por produto (ferramenta)
   outbound_accounts: [], // radar de contas do outbound (Cold Calling 2.0): conta-alvo com os 8 status do livro; virar lead cria card classe Alvo

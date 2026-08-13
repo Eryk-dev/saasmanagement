@@ -3,13 +3,14 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { chromeBtnStyleSmall, GRADE_STYLE } from "../lib/ui.js";
 import { EmptyState, PrimaryButton } from "../atoms.jsx";
-import { inputStyle, labelStyle, sectionTitle, cardStyle, addBtnStyle, THEME_DEFAULTS, LabeledInput, ThemeEditor } from "../components/theme-inputs.jsx";
+import { inputStyle, sectionTitle, cardStyle, addBtnStyle, THEME_DEFAULTS, LabeledInput, ThemeEditor } from "../components/theme-inputs.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useAttribution } from "../lib/pains.js";
 import { InsightsList } from "../components/insights.jsx";
 import { sourceLabel } from "../lib/sources.js";
 import { AbcCell } from "./metrics.jsx";
 import { PageHead, Card } from "../components/viz.jsx";
+import { usePeriod } from "../components/period-picker.jsx";
 // Form builder — formulários de captação por SaaS, estilo Typeform: uma pergunta
 // por vez, branching por opção, tema por marca. Lista → editor (com preview
 // server-side em iframe) → respostas. A página pública vive na API (/f/:id).
@@ -88,9 +89,13 @@ function FormsScreen({ saasId }) {
   const [submissions, setSubmissions] = useState([]);
   const [view, setView] = useState({ mode: "list" }); // list | edit | subs
   const [toast, setToast] = useState(null);
-  const [preset, setPreset] = useState("30"); // chave em PERIOD_PRESETS ou "custom"
-  const [custom, setCustom] = useState({ since: "", until: "" });
-  const range = useMemo(() => periodRange(preset, custom), [preset, custom.since, custom.until]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Janela GLOBAL do cockpit (filtro único no topo, 08/08): o formFunnel corta
+  // por datetime completo, então a janela vira bordas de dia em ISO.
+  const { win } = usePeriod();
+  const range = useMemo(() => ({
+    since: dayStart(win.since + "T12:00:00"),
+    until: dayEnd(win.until + "T12:00:00"),
+  }), [win.since, win.until]);
 
   const load = useCallback(async () => {
     if (!active) return;
@@ -163,30 +168,7 @@ function FormsScreen({ saasId }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead title="Formulários" sub="formulários de captação · o envio cria o lead no funil">
-        {/* O período manda nos tiles e na tabela do A/B ao mesmo tempo: são a
-            mesma resposta do funil, ler as duas em janelas diferentes engana. */}
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-          {PERIOD_PRESETS.map(([key, label]) => (
-            <button
-              key={key || "tudo"} onClick={() => setPreset(key)}
-              style={{
-                ...chromeBtnStyleSmall, height: 30, padding: "0 11px",
-                ...(preset === key ? { background: "var(--btn-bg)", color: "var(--btn-fg)", fontWeight: 600 } : {}),
-              }}
-            >{label}</button>
-          ))}
-          <input
-            type="date" value={custom.since} max={custom.until || undefined}
-            onChange={(e) => { setCustom((c) => ({ ...c, since: e.target.value })); setPreset("custom"); }}
-            style={{ ...inputStyle, height: 30, width: 138, fontSize: 12 }}
-          />
-          <input
-            type="date" value={custom.until} min={custom.since || undefined}
-            onChange={(e) => { setCustom((c) => ({ ...c, until: e.target.value })); setPreset("custom"); }}
-            style={{ ...inputStyle, height: 30, width: 138, fontSize: 12 }}
-          />
-        </div>
+      <PageHead title="Formulários" sub="formulários de captação · o envio cria o lead no funil · a janela vem do filtro do topo">
         <PrimaryButton onClick={() => setView({ mode: "edit", form: null })}>+ novo formulário</PrimaryButton>
       </PageHead>
 
@@ -249,13 +231,13 @@ function FormsScreen({ saasId }) {
                   {pub ? (
                     <>
                       <div style={{ display: "flex", gap: 22, marginTop: 18, padding: "14px 16px", background: "var(--bg-inset)", border: "1px solid var(--line-faint)", borderRadius: "var(--r-3)", flexWrap: "wrap" }}>
-                        {[[window.fmt.int(visits), `visitas · ${periodLabel(preset, custom)}`], [window.fmt.int(starts), `começaram · ${pct(starts, visits)}`], [window.fmt.int(leads), `leads · ${pct(leads, starts)}`]].map(([value, label]) => <div key={label}><div className="tnum" style={{ fontSize: 18, fontWeight: 700 }}>{value}</div><div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{label}</div></div>)}
+                        {[[window.fmt.int(visits), `visitas · ${win.label}`], [window.fmt.int(starts), `começaram · ${pct(starts, visits)}`], [window.fmt.int(leads), `leads · ${pct(leads, starts)}`]].map(([value, label]) => <div key={label}><div className="tnum" style={{ fontSize: 18, fontWeight: 700 }}>{value}</div><div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{label}</div></div>)}
                         <button onClick={() => setView({ mode: "subs", form: f })} style={{ textAlign: "left" }}><div className="tnum" style={{ fontSize: 18, fontWeight: 700, color: "var(--pos)" }}>{pct(leads, visits)}</div><div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>conversão total</div></button>
                       </div>
                       {abVariants.length > 1 && (
                         <div style={{ marginTop: 16 }}>
                           <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
-                            <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)" }}>Teste A/B · headline</span>
+                            <span className="kicker" style={{ fontWeight: 600 }}>Teste A/B · headline</span>
                             <span style={{ flex: 1 }} />
                             <button onClick={() => setView({ mode: "subs", form: f })} style={{ fontSize: 11.5, fontWeight: 600, color: "var(--accent)" }}>análise completa →</button>
                           </div>
@@ -266,7 +248,7 @@ function FormsScreen({ saasId }) {
                               agendada e fechamento (ganhos + receita). */}
                           <div className="tbl-x" style={{ border: "1px solid var(--line-faint)", borderRadius: "var(--r-3)", overflow: "auto" }}>
                             <div style={{ minWidth: 1010 }}>
-                              <div style={{ display: "grid", gridTemplateColumns: AB_GRID, gap: 12, padding: "10px 18px", fontSize: 10.5, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", background: "var(--bg-inset)" }}>
+                              <div className="kicker" style={{ display: "grid", gridTemplateColumns: AB_GRID, gap: 12, padding: "10px 18px", fontWeight: 600, background: "var(--bg-inset)" }}>
                                 <span title="texto da welcome que o lead viu">Headline</span>
                                 <span style={{ textAlign: "right" }} title="sessões únicas que viram a variante">Visitas</span>
                                 <span style={{ textAlign: "right" }} title="clicaram em começar · % das visitas">Começaram</span>
@@ -362,7 +344,7 @@ function RecentSubmissions({ submissions, forms, onOpen }) {
      {/* .tbl-x: as 5 colunas rolam na horizontal no mobile em vez de virar
          colunas de 30px ilegíveis. */}
      <div className="tbl-x"><div style={{ minWidth: 640 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1.4fr 1fr 1.2fr .6fr", gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+      <div className="kicker" style={{ display: "grid", gridTemplateColumns: "1.2fr 1.4fr 1fr 1.2fr .6fr", gap: 12, padding: "10px 24px", fontWeight: 600, borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
         <span>Nome</span><span>E-mail</span><span>Empresa</span><span>Origem</span><span style={{ textAlign: "right" }}>Quando</span>
       </div>
       {rows.map((submission) => {
@@ -488,7 +470,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
       <div style={{ display: "flex", flexDirection: "column", minHeight: 0, borderRight: "1px solid var(--line-1)" }}>
         <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" }}>{isEdit ? "Editar form" : "Novo form"}</div>
+            <div className="kicker">{isEdit ? "Editar form" : "Novo form"}</div>
             <div style={{ fontSize: 16, fontWeight: 500, marginTop: 2 }}>{draft.name || "Sem nome"}</div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -503,11 +485,11 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
         <div style={{ flex: 1, overflow: "auto", padding: "14px 20px 32px" }}>
           {error && <div className="mono" style={{ fontSize: 11, color: "var(--neg)", marginBottom: 10 }}>{error}</div>}
 
-          <div style={sectionTitle}>Básico</div>
+          <div className="kicker" style={sectionTitle}>Básico</div>
           <LabeledInput label="Nome do form" value={draft.name} onChange={(v) => set({ name: v })} placeholder="Diagnóstico · LeverAds" />
           <LabeledInput label="Texto do botão de enviar (última tela)" value={draft.submitLabel || ""} onChange={(v) => set({ submitLabel: v })} placeholder="Enviar" />
 
-          <div style={sectionTitle}>Boas-vindas (opcional)</div>
+          <div className="kicker" style={sectionTitle}>Boas-vindas (opcional)</div>
           {!draft.welcome ? (
             <button onClick={() => set({ welcome: { title: "", subtitle: "", button: "Começar" } })} style={addBtnStyle}>+ adicionar tela de boas-vindas</button>
           ) : (
@@ -523,7 +505,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
             </div>
           )}
 
-          <div style={sectionTitle}>Perguntas</div>
+          <div className="kicker" style={sectionTitle}>Perguntas</div>
           <div className="mono dim" style={{ fontSize: 11, marginBottom: 8, lineHeight: 1.5 }}>
             Nos títulos, *palavra* vira itálico na cor da marca. "Tela de insight" mostra copy + estatística entre perguntas e avança sozinha.
           </div>
@@ -533,7 +515,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
             onChange={(qs) => set({ questions: qs })}
           />
 
-          <div style={sectionTitle}>Tela final (qualificado)</div>
+          <div className="kicker" style={sectionTitle}>Tela final (qualificado)</div>
           <div style={cardStyle}>
             <LabeledInput label="Título" value={draft.thanks?.title || ""} onChange={(v) => set({ thanks: { ...draft.thanks, title: v } })} />
             <LabeledInput label="Subtítulo" value={draft.thanks?.subtitle || ""} onChange={(v) => set({ thanks: { ...draft.thanks, subtitle: v } })} />
@@ -550,7 +532,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
             </label>
           </div>
 
-          <div style={sectionTitle}>Tela final (não qualificado)</div>
+          <div className="kicker" style={sectionTitle}>Tela final (não qualificado)</div>
           <div className="mono dim" style={{ fontSize: 11, marginBottom: 8, lineHeight: 1.5 }}>
             Mostrada quando uma opção rota para <b>→ fim (não qualificado)</b>. O contato ainda é
             registrado (marcado como desqualificado), mas <b>sem proposta e sem contar como conversão</b> (Pixel/CAPI).
@@ -560,7 +542,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
             <LabeledInput label="Subtítulo" value={draft.reject?.subtitle || ""} onChange={(v) => set({ reject: { ...draft.reject, subtitle: v } })} placeholder="No momento não é um fit, mas agradecemos o contato." />
           </div>
 
-          <div style={sectionTitle}>Saídas laterais</div>
+          <div className="kicker" style={sectionTitle}>Saídas laterais</div>
           <div className="mono dim" style={{ fontSize: 11, marginBottom: 8, lineHeight: 1.5 }}>
             Pra quem <b>não é deste produto, mas também não é lixo</b> (ex.: ainda não vende em marketplace).
             A opção da pergunta aponta pra saída, a pessoa segue respondendo normalmente e o lead nasce
@@ -592,14 +574,14 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
               if (k) set({ exits: { ...(draft.exits || {}), [k]: { label: "", stage: "", title: "", subtitle: "" } } });
             }}>+ adicionar saída</button>
 
-          <div style={{ ...sectionTitle, marginTop: 18 }}>Mapeamento → lead</div>
+          <div className="kicker" style={{ ...sectionTitle, marginTop: 18 }}>Mapeamento → lead</div>
           <div className="mono dim" style={{ fontSize: 11, marginBottom: 8, lineHeight: 1.5 }}>
             Cada envio vira um lead no pipeline deste SaaS. Aponte qual pergunta alimenta cada campo do lead — as demais respostas vão juntas no lead.
           </div>
           <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {LEAD_FIELDS.map(([k, label]) => (
               <label key={k} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <span className="mono" style={labelStyle}>{label}</span>
+                <span className="kicker">{label}</span>
                 <select value={draft.mapping?.[k] || ""} onChange={(e) => set({ mapping: { ...draft.mapping, [k]: e.target.value } })} style={inputStyle}>
                   <option value="">—</option>
                   {qKeys.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -608,7 +590,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
             ))}
           </div>
 
-          <div style={sectionTitle}>Tema da marca</div>
+          <div className="kicker" style={sectionTitle}>Tema da marca</div>
           <ThemeEditor theme={draft.theme} onChange={(theme) => set({ theme })} />
         </div>
       </div>
@@ -616,7 +598,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
       {/* coluna do preview */}
       <div style={{ display: "flex", flexDirection: "column", minHeight: 0, background: "var(--bg-inset)" }}>
         <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span className="mono dim" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" }}>Preview ao vivo</span>
+          <span className="kicker">Preview ao vivo</span>
           {isEdit && draft.status === "published" && (
             <a href={formUrl(draft)} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 11, color: "var(--accent)" }}>abrir página pública ↗</a>
           )}
@@ -848,7 +830,7 @@ function PainWelcomesEditor({ welcome, saas, onChange }) {
   };
   return (
     <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--line-2)" }}>
-      <div className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 6 }}>
+      <div className="kicker" style={{ marginBottom: 6 }}>
         Headline por dor (anúncio → página)
       </div>
       <div className="mono dim" style={{ fontSize: 11, lineHeight: 1.5, marginBottom: 8 }}>
@@ -902,7 +884,7 @@ function VariantsEditor({ welcome, onChange, idPrefix = "" }) {
   };
   return (
     <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--line-2)" }}>
-      <div className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 6 }}>
+      <div className="kicker" style={{ marginBottom: 6 }}>
         Teste A/B da headline {variants.length > 0 && `· ${variants.length} variante${variants.length > 1 ? "s" : ""} ativas`}
       </div>
       {variants.length === 0 && (
@@ -1176,7 +1158,7 @@ function FormsDashboard({ forms }) {
   const pct = (a, b) => (b > 0 ? ((a / b) * 100).toFixed(1).replace(".", ",") + "%" : "0%");
   const tile = (label, value, sub) => (
     <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "10px 13px", background: "var(--bg-1)" }}>
-      <span className="mono" style={{ display: "block", fontSize: 9.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-4)" }}>{label}</span>
+      <span className="kicker" style={{ display: "block" }}>{label}</span>
       <span className="tnum" style={{ display: "block", fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, marginTop: 2 }}>{value}</span>
       {sub && <span className="mono" style={{ display: "block", fontSize: 10, color: "var(--fg-4)", marginTop: 1 }}>{sub}</span>}
     </div>
@@ -1207,7 +1189,7 @@ function FormsDashboard({ forms }) {
   const titleOf = (v) => vDefs.find((d) => String(d.id) === String(v.id))?.title
     || form.welcome?.byPain?.[v.pain]?.title || form.welcome?.title || v.id;
   const thAB = (h, i) => (
-    <th key={h + i} className="mono" style={{ textAlign: i < 2 ? "left" : "right", fontSize: 10, fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--fg-4)", padding: "6px 8px", borderBottom: "1px solid var(--line-1)" }}>{h}</th>
+    <th key={h + i} className="kicker" style={{ textAlign: i < 2 ? "left" : "right", padding: "6px 8px", borderBottom: "1px solid var(--line-1)" }}>{h}</th>
   );
   const tdAB = { padding: "7px 8px", fontSize: 12, textAlign: "right", borderBottom: "1px solid var(--line-1)" };
 
@@ -1254,7 +1236,7 @@ function FormsDashboard({ forms }) {
           style={{ marginBottom: 14 }}
           onApplied={() => { if (wantAds) fetchAdObjects(); }}
           header={
-            <div className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
+            <div className="kicker" style={{ marginBottom: 8 }}>
               Insights do funil · aplicar mostra os passos e pede confirmação · ✕ dispensa por 7 dias
             </div>
           } />
@@ -1262,7 +1244,7 @@ function FormsDashboard({ forms }) {
 
       {data && !data.error && groups.length > 0 && (
         <div style={{ marginBottom: 14 }}>
-          <div className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
+          <div className="kicker" style={{ marginBottom: 8 }}>
             Resultados dos testes A/B · por dor
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1320,7 +1302,7 @@ function FormsDashboard({ forms }) {
 
       {data && !data.error && (data.origins || []).length > 0 && (
         <div style={{ marginBottom: 14 }}>
-          <div className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
+          <div className="kicker" style={{ marginBottom: 8 }}>
             Origens do tráfego · drop-off por anúncio (orgânico entra pelo referrer: google, instagram, site)
           </div>
           <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "4px 12px 8px" }}>
@@ -1348,7 +1330,7 @@ function FormsDashboard({ forms }) {
 
       {data && !data.error && rows[0].sessions > 0 && (
         <div>
-          <div className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)", marginBottom: 8 }}>
+          <div className="kicker" style={{ marginBottom: 8 }}>
             Funil de drop-off por etapa
           </div>
           <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)" }}>

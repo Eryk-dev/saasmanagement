@@ -53,9 +53,21 @@
   --info-soft: #edf3fc;
   --wa-out: #d6f5cf;      /* bolha de saída do WhatsApp */
 
+  /* Verde do WhatsApp (marca, igual nos 2 temas): botão de abrir conversa */
+  --wa-brand: #25d366;
+  --wa-brand-fg: #06120c;
+  --wa-brand-deep: #128c4b;
+
   /* Séries de gráfico (validadas p/ contraste e daltonismo no claro) */
   --chart-1: #0f9d90;
   --chart-2: #5b6bd6;
+  --chart-3: #b45309;
+
+  /* SUPER META (120%+): o verde-petróleo da MARCA (tealDeep #0C8F83, o mesmo
+     mundo do selo ICP) — o dourado saiu (Leo, 08/08: "muito feio"). A escala:
+     vermelho → teal (no pace) → verde (meta batida) → super. */
+  --gold: #0c8f83;
+  --gold-soft: rgba(12, 143, 131, 0.12);
 
   /* Tipo — Instrument Sans em TODA a UI (o DS não usa display própria);
      JetBrains Mono só em IDs/SKU/dados */
@@ -125,6 +137,10 @@ body[data-theme="dark"] {
 
   --chart-1: #3ab5ab;
   --chart-2: #6f7fe8;
+  --chart-3: #d97706;
+
+  --gold: #23d8d3;
+  --gold-soft: rgba(35, 216, 211, 0.16);
 
   --shadow-1: 0 1px 2px 0 rgba(0,0,0,0.10);
   --shadow-btn: 0 1px 2px rgba(0,0,0,0.20);
@@ -215,17 +231,41 @@ body[data-density="regular"] { font-size: 14px; }
 .faint { color: var(--fg-5); }
 .glow-num { text-shadow: none; }
 
-/* Eyebrow label */
-.bkt {
-  display: inline-block;
-  font-family: var(--sans);
-  font-size: 10.5px;
-  font-weight: 500;
-  letter-spacing: 0.07em;
+/* ── Cabeçalhos — a régua única (4 níveis) ──────────────────────
+   página 26/700 · seção 17/700 · card 15/700 · kicker 10/0.08em.
+   Kicker: accent NOMEIA o bloco (máx. 1 por card, no topo); o cinza padrão
+   rotula estado/subdivisão; cor semântica (pos/neg) só quando o significado
+   pede. Subtítulo fica SEMPRE na linha de baixo do título, nunca inline. */
+.page-title { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+.page-sub { font-size: 14.5px; color: var(--fg-3); }
+.sec-title { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+.sec-sub { font-size: 12.5px; color: var(--fg-4); }
+.card-title { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+.card-sub { font-size: 12.5px; color: var(--fg-3); }
+.kicker {
+  font-size: 10px;
+  font-weight: 400; /* explícito: <th> herdaria bold */
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--fg-3);
+  color: var(--fg-4);
+  font-variant-numeric: tabular-nums;
 }
-.bkt::before, .bkt::after { content: ""; }
+.kicker.accent { color: var(--accent); }
+
+/* ── Controles e tabela (DS) ────────────────────────────────────
+   Escala de alturas: 28 denso · 32 padrão · 40 CTA. Input = .inp. */
+.inp {
+  height: 30px;
+  padding: 0 9px;
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-2);
+  color: var(--fg-1);
+  font-size: 12.5px;
+}
+/* Tabela padrão: td 12.5 com divisor; linha clicável ganha hover. */
+.tbl td { padding: 9px 12px; font-size: 12.5px; border-top: 1px solid var(--line-1); }
+.tbl tr[data-click]:hover td { background: var(--hover); cursor: pointer; }
 
 .kbd {
   font-family: var(--mono);
@@ -274,6 +314,68 @@ body[data-density="regular"] { font-size: 14px; }
 .arr-up::before { content: "↑"; }
 .arr-dn::before { content: "↓"; }
 .arr-flat::before { content: "→"; }
+
+/* ── Selo ICP da topbar ─────────────────────────────────────────────────────
+   A ÚNICA exceção ao "nunca glow" do DS, de propósito (Leo, 08/08): o resumo
+   do ICP fica à mostra o tempo todo, pra ninguém perder o foco de quem a
+   gente caça. Paleta OFICIAL da marca LeverAds (manual/BRAND_DEFS do Canvas):
+   navy #051C2C em gradiente (#073143 → #051C2C, o mesmo da proposta), teal do
+   logo #23D8D3 na borda que corre (é o "teal brilha no navy" do manual) e
+   texto ice #F3FBFF. */
+@keyframes icp-sheen {
+  0% { background-position: 0 0, 0% 50%; }
+  100% { background-position: 0 0, 200% 50%; }
+}
+.icp-pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 32px; padding: 0 14px; border-radius: 999px;
+  border: 1.5px solid transparent;
+  color: #F3FBFF; font-size: 12.5px; cursor: pointer; white-space: nowrap;
+  background:
+    linear-gradient(180deg, #073143, #051C2C) padding-box,
+    linear-gradient(100deg, #0C8F83, #23D8D3 38%, #A9F5F2 50%, #23D8D3 62%, #0C8F83) border-box;
+  background-size: 100% 100%, 220% 100%;
+  animation: icp-sheen 3.2s linear infinite;
+  box-shadow: 0 0 12px rgba(35, 216, 211, 0.35), 0 1px 2px rgba(16, 24, 40, 0.2);
+}
+.icp-pill:hover { box-shadow: 0 0 16px rgba(35, 216, 211, 0.55), 0 1px 2px rgba(16, 24, 40, 0.2); }
+.icp-pill .icp-tag { color: #23D8D3; }
+@media (prefers-reduced-motion: reduce) { .icp-pill { animation: none; } }
+
+/* Destaque da SUPER META (120%+ da meta): mesmo verde escuro da marca do selo
+   ICP, com brilho — reconhecimento diferenciado (Leo, 08/08). O chip usa o
+   mesmo sheen do selo; a barra e o anel ganham glow teal. */
+.super-chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 10px; border-radius: 999px;
+  border: 1px solid transparent; color: #F3FBFF; font-size: 11px; font-weight: 700; white-space: nowrap;
+  background:
+    linear-gradient(180deg, #0C8F83, #086B62) padding-box,
+    linear-gradient(100deg, #0C8F83, #23D8D3 40%, #A9F5F2 50%, #23D8D3 60%, #0C8F83) border-box;
+  background-size: 100% 100%, 220% 100%;
+  animation: icp-sheen 3.2s linear infinite;
+  box-shadow: 0 0 10px rgba(35, 216, 211, 0.45);
+}
+.super-fill {
+  background: linear-gradient(90deg, #0C8F83, #23D8D3) !important;
+  box-shadow: 0 0 10px rgba(35, 216, 211, 0.55);
+}
+.super-ring { filter: drop-shadow(0 0 3px rgba(35, 216, 211, 0.7)); }
+@media (prefers-reduced-motion: reduce) { .super-chip { animation: none; } }
+
+/* Lista do Desempenho do time (Visão geral, Leo 08/08): uma linha por pessoa —
+   identidade | régua de receita | régua de contratos | submetas em linha. */
+.vg-trow {
+  display: grid;
+  grid-template-columns: 215px minmax(170px, 1fr) minmax(170px, 1fr) minmax(340px, 1.7fr);
+  gap: 20px; align-items: center; padding: 12px 16px;
+}
+.vg-trow + .vg-trow { border-top: 1px solid var(--line-1); }
+.vg-trow:not(.vg-thead):hover { background: var(--hover); }
+.vg-thead { padding: 8px 16px; background: var(--bg-2); }
+@media (max-width: 900px) {
+  .vg-trow { grid-template-columns: 1fr; gap: 8px; }
+  .vg-thead { display: none; }
+}
 
 ::-webkit-scrollbar { width: 11px; height: 11px; }
 ::-webkit-scrollbar-track { background: transparent; }

@@ -15,7 +15,7 @@ import { aiCosts as defaultAiCosts } from "./ai-costs.js";
 import { NOT_CONFIGURED } from "./http-status.js";
 import {
   DAY_MS, round2, dayKey, monthKey, isRealLead,
-  winsIn, customerStartMap, tcvOf,
+  winsIn, customerStartMap, tcvOf, cashCollectedIn, card12xBaseIn,
 } from "./metrics-core.js";
 
 const monthOf = monthKey; // mês do dia do NEGÓCIO (metrics-core), não UTC
@@ -30,7 +30,7 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhats
 
   // Custos operacionais do mês: publicidade (ad_insights) + IA (série dos
   // provedores convertida em R$) automáticos, mais os lançamentos manuais da
-  // collection expenses. Base da tela Custos e do resultado na Visão geral.
+  // collection expenses. Base da aba Custos do Financeiro e do resultado na Visão geral.
   app.get("/api/expenses/summary/:saas", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "Not found" });
@@ -72,18 +72,36 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhats
     const applies = (e) => e.recurring
       ? String(e.month) <= month && (!e.endMonth || String(e.endMonth) >= month)
       : e.month === month;
-    // Custo PERCENTUAL (e.pct, ex.: checkout 12%, imposto): calculado mês a mês
-    // sobre os GANHOS do pipeline no mês (lead.amount dos leads que venderam,
-    // pelo carimbo wonAt) — a MESMA base do "Resultado do mês" da Visão geral,
-    // então Resultado = ganhos − custos fecha redondo.
-    const hasPct = expenses.some((e) => e.saas === product.id && Number(e.pct) > 0 && applies(e));
-    let wonBase = 0;
-    if (hasPct) {
+    // Custo PERCENTUAL (e.pct): calculado mês a mês sobre a BASE do lançamento
+    // (e.base) — cada taxa incide sobre o dinheiro certo:
+    //   · "won" (padrão)  — GANHOS do pipeline no mês (lead.amount por wonAt),
+    //     a mesma base do "Resultado do mês" da Visão geral;
+    //   · "cartao12x"     — dinheiro de cartão de crédito que ENTROU no mês
+    //     (espelho MP, card12xBaseIn no metrics-core): com antecipação D+0 a
+    //     taxa incide inteira no mês em que o dinheiro cai — nunca sobre a
+    //     marcação do fechamento (Leo, 08/08);
+    //   · "received"      — RECEBIDOS no mês (faturas pagas por paidAt, régua
+    //     cashCollectedIn do metrics-core) — imposto por regime de caixa: o
+    //     faturado em 12 boletos só paga imposto conforme as parcelas entram.
+    const pctBaseOf = (e) => (e.base === "cartao12x" || e.base === "received" ? e.base : "won");
+    const basesNeeded = new Set(expenses
+      .filter((e) => e.saas === product.id && Number(e.pct) > 0 && applies(e))
+      .map(pctBaseOf));
+    const bases = { won: 0, cartao12x: 0, received: 0 };
+    if (basesNeeded.has("won")) {
       const [allLeads, allCustomers] = await Promise.all([repo.list("leads"), repo.list("customers")]);
       const leads = allLeads.filter((l) => l.saas === product.id && isRealLead(l));
       const starts = customerStartMap(allCustomers.filter((c) => c.saas === product.id));
       const wins = winsIn(product, leads, (iso) => monthKey(iso) === month, starts);
-      wonBase = tcvOf(leads.filter((l) => wins.has(l.id)));
+      bases.won = tcvOf(leads.filter((l) => wins.has(l.id)));
+    }
+    if (basesNeeded.has("cartao12x")) {
+      const mp = (await repo.list("mp_payments")).filter((p) => !p.saas || p.saas === product.id);
+      bases.cartao12x = card12xBaseIn(mp, month);
+    }
+    if (basesNeeded.has("received")) {
+      const invoices = (await repo.list("invoices")).filter((i) => i.saas === product.id);
+      bases.received = cashCollectedIn(invoices, month);
     }
     // WhatsApp do mês: custo REAL das conversas (conversation_analytics da
     // conta, em BRL). Conta é GLOBAL como a IA → atribui ao primeiro produto
@@ -108,11 +126,25 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhats
 
     const manual = expenses
       .filter((e) => e.saas === product.id && applies(e))
-      .map((e) => (Number(e.pct) > 0 ? { ...e, amount: round2((Number(e.pct) / 100) * wonBase) } : e))
+      .map((e) => (Number(e.pct) > 0
+        ? { ...e, base: pctBaseOf(e), amount: round2((Number(e.pct) / 100) * bases[pctBaseOf(e)]) }
+        : e))
       .sort((a, b) => (b.recurring === true) - (a.recurring === true) || String(a.category).localeCompare(String(b.category)));
     const manualTotal = round2(manual.reduce((a, e) => a + (Number(e.amount) || 0), 0));
-    const total = round2(ads + (aiBRL || 0) + (wa || 0) + manualTotal);
-    return { month, ads, ai: aiBRL, aiUSD, usdBrl, wa, waConversations, manual, manualTotal, total, wonBase: hasPct ? round2(wonBase) : undefined };
+    // Contas a pagar do mês (competência) entram no total: o "Resultado do
+    // mês" que consome este summary passa a incluir folha e fornecedores —
+    // mesma conta do Financeiro (aba Resumo), sem dupla contagem (coleções
+    // distintas: regra/automático aqui, conta com favorecido em payables).
+    const payablesMonth = (await repo.list("payables")).filter((p) => p.saas === product.id && p.month === month);
+    const payablesTotal = round2(payablesMonth.reduce((a, p) => a + (Number(p.amount) || 0), 0));
+    const total = round2(ads + (aiBRL || 0) + (wa || 0) + manualTotal + payablesTotal);
+    return {
+      month, ads, ai: aiBRL, aiUSD, usdBrl, wa, waConversations, manual, manualTotal,
+      payablesTotal, payablesCount: payablesMonth.length, total,
+      wonBase: basesNeeded.has("won") ? round2(bases.won) : undefined,
+      cardBase: basesNeeded.has("cartao12x") ? round2(bases.cartao12x) : undefined,
+      receivedBase: basesNeeded.has("received") ? round2(bases.received) : undefined,
+    };
   });
 
   app.get("/api/metrics/:saas", async (req, reply) => {

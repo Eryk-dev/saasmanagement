@@ -1,7 +1,8 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { PageHead, Segmented, FilterTab, StatTile, Card } from "../components/viz.jsx";
+import { PageHead, Segmented, StatTile, Card } from "../components/viz.jsx";
+import { usePeriod } from "../components/period-picker.jsx";
 import { painCodeOf } from "../lib/pains.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { EmptyState, PrimaryButton } from "../atoms.jsx";
@@ -69,22 +70,6 @@ const dayStr = (t) => {
 const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const money = (v) => BRL.format(Number(v) || 0);
 
-const PERIODS = [
-  { value: "7", label: "7 dias" },
-  { value: "30", label: "30 dias" },
-  { value: "90", label: "90 dias" },
-];
-// Atalhos do filtro de data PRÓPRIO do card Anúncios (o filtro do topo segue
-// mandando no resto da tela). Valores no formato que o rangeOf entende.
-const ADS_PERIODS = [
-  { value: "1", label: "hoje" },
-  { value: "yesterday", label: "ontem" },
-  { value: "3", label: "3 dias" },
-  { value: "7", label: "7 dias" },
-  { value: "30", label: "30 dias" },
-  { value: "life", label: "máximo" }, // tudo que já foi sincronizado do ad_insights
-  { value: "custom", label: "personalizado" },
-];
 // A Meta só devolve insights de até ~37 meses; o sync respeita esse teto.
 const META_LOOKBACK_DAYS = 1125;
 
@@ -125,30 +110,17 @@ function DragScroll({ children }) {
   );
 }
 
-// Range efetivo do filtro: preset relativo, lifetime ou intervalo custom
-// (de/até no mesmo dia = filtro de um dia específico).
-function rangeOf(r) {
-  const today = dayStr(Date.now());
-  if (r.preset === "custom") {
-    const since = r.since || today;
-    const until = r.until || today;
-    return since <= until ? { since, until } : { since: until, until: since };
-  }
-  if (r.preset === "life") return { since: "2020-01-01", until: today };
-  if (r.preset === "yesterday") { const y = dayStr(Date.now() - DAY); return { since: y, until: y }; }
-  const n = Number(r.preset) || 30; // "1" = hoje (since = until = hoje)
-  return { since: dayStr(Date.now() - (n - 1) * DAY), until: today };
-}
-
 function MetricsScreen() {
   const { SAAS, CONFIG } = window.SEED;
   const { version } = useData();
   const [product, setActiveSaas] = useActiveSaas();
   const metaOn = !!CONFIG?.meta?.configured;
 
-  const [range, setRange] = useState({ preset: "30" });
-  const { since, until } = rangeOf(range);
-  const rangeDays = Math.max(1, Math.round((new Date(until) - new Date(since)) / DAY) + 1);
+  // Janela GLOBAL do cockpit (filtro único no topo, pedido do Leo em 08/08):
+  // a tela inteira — tiles, tabela de anúncios, por dor, sync — segue ela.
+  const { win } = usePeriod();
+  const since = win.since, until = win.until;
+  const rangeDays = win.days;
   const [data, setData] = useState(null);
   const [biz, setBiz] = useState(null); // CAC/LTV + série mensal
   const [syncing, setSyncing] = useState(false);
@@ -184,27 +156,15 @@ function MetricsScreen() {
   };
   useEffect(() => load(true), [product?.id, since, until]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Métricas SÓ do card Anúncios, no range do filtro próprio dele — mesma
-  // rota (ad_insights por id), busca separada pra não mexer no resto da tela.
-  const [adsRange, setAdsRange] = useState({ preset: "30" });
-  const { since: adsSince, until: adsUntil } = rangeOf(adsRange);
-  const [adsData, setAdsData] = useState(null);
-  const adsEpoch = React.useRef(0);
-  const loadAds = (reset = false) => {
-    if (!product) return;
-    const ep = ++adsEpoch.current;
-    if (reset) setAdsData(null);
-    api.marketingMetrics(product.id, { since: adsSince, until: adsUntil })
-      .then((v) => { if (ep === adsEpoch.current) setAdsData(v); })
-      .catch(() => { if (ep === adsEpoch.current) setAdsData((prev) => prev || { error: true }); });
-  };
-  useEffect(() => loadAds(true), [product?.id, adsSince, adsUntil]); // eslint-disable-line react-hooks/exhaustive-deps
+  // O card Anúncios segue a MESMA janela global da tela (o filtro próprio dele
+  // saiu na centralização de 08/08) — lê o mesmo payload `data`.
+  const adsData = data;
 
   // Mudança vinda do tempo real (SSE: lead criado/movido, sync do servidor)
   // recarrega SEM piscar — os números acompanham o pipeline na hora.
   const firstVersion = React.useRef(version);
   useEffect(() => {
-    if (version !== firstVersion.current) { load(false); loadAds(false); }
+    if (version !== firstVersion.current) load(false);
   }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // O sync da Meta roda no SERVIDOR (1 execução pro time, a cada ~3 min); aqui
@@ -395,7 +355,6 @@ function MetricsScreen() {
             ao vivo · {liveAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
           </span>
         )}
-        {PERIODS.map((period) => <FilterTab key={period.value} active={range.preset === period.value} onClick={() => setRange({ preset: period.value })}>{period.label}</FilterTab>)}
       </PageHead>
 
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
@@ -435,17 +394,17 @@ function MetricsScreen() {
           <Card>
             <div style={{ padding: "14px 16px", display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>Data</span>
+                <span className="kicker">Data</span>
                 <input type="date" value={manual.date} onChange={(e) => setManual({ ...manual, date: e.target.value })}
                   style={{ height: 30, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)" }} />
               </label>
               <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 180 }}>
-                <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>Campanha (opcional)</span>
+                <span className="kicker">Campanha (opcional)</span>
                 <input type="text" placeholder="Entrada manual" value={manual.name} onChange={(e) => setManual({ ...manual, name: e.target.value })}
                   style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 }} />
               </label>
               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" }}>Gasto (R$)</span>
+                <span className="kicker">Gasto (R$)</span>
                 <input type="number" min="0" step="0.01" placeholder="0,00" value={manual.spend} onChange={(e) => setManual({ ...manual, spend: e.target.value })}
                   style={{ width: 120, height: 30, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)", textAlign: "right" }} />
               </label>
@@ -522,12 +481,40 @@ function MetricsScreen() {
           </div>
         </Card>
 
+        {/* Origem dos leads: UTM + referrer do cadastro (classificador único no
+            metrics-core). Além do volume, o APROVEITAMENTO por origem: calls da
+            coorte do período e ganhos pela data da venda — origem boa é a que
+            senta gente na call e fecha, não a que só enche o topo. */}
+        <Card title="Origem dos leads" hint="UTM + referrer do cadastro · calls da coorte do período · ganhos pela data da venda">
+          <div style={{ padding: "16px 24px 22px", display: "flex", flexDirection: "column", gap: 10 }}>
+            {(() => {
+              const origins = (data && !data.error ? data.origins : []) || [];
+              const totalLeads = origins.reduce((a, o) => a + o.leads, 0);
+              if (!origins.length) return <span style={{ color: "var(--fg-4)", fontSize: 13 }}>sem leads no período</span>;
+              return origins.map((o) => {
+                const share = totalLeads ? Math.round((o.leads / totalLeads) * 1000) / 10 : 0;
+                const callPct = o.leads ? Math.round((o.calls / o.leads) * 100) : 0;
+                return (
+                  <div key={o.key} style={{ display: "grid", gridTemplateColumns: "minmax(88px, 170px) 1fr minmax(84px, 104px) minmax(96px, 120px) minmax(64px, 92px)", gap: 12, alignItems: "center" }}>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={o.label}>{o.label}</span>
+                    <div style={{ height: 20, borderRadius: 6, background: "var(--bg-2)", overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${Math.max(o.leads ? 3 : 0, share)}%`, background: o.won ? "var(--pos)" : "var(--accent)", borderRadius: 6 }} />
+                    </div>
+                    <span className="tnum" style={{ textAlign: "right", fontSize: 13.5, fontWeight: 700 }}>{window.fmt.int(o.leads)} <span style={{ fontWeight: 500, fontSize: 11.5, color: "var(--fg-4)" }}>· {String(share).replace(".", ",")}%</span></span>
+                    <span className="tnum" style={{ textAlign: "right", fontSize: 12.5, color: "var(--fg-3)" }} title="da coorte do período, quantos marcaram/sentaram em call">{o.calls} call{o.calls === 1 ? "" : "s"} <span style={{ color: "var(--fg-4)" }}>· {callPct}%</span></span>
+                    <span className="tnum" style={{ textAlign: "right", fontSize: 12.5, fontWeight: o.won ? 700 : 500, color: o.won ? "var(--pos)" : "var(--fg-4)" }} title={o.revenue ? `receita ${money(o.revenue)}` : "ganhos fechados no período"}>{o.won} ganho{o.won === 1 ? "" : "s"}</span>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        </Card>
+
         <Card title="Por dor" hint="código [X] no nome do anúncio · qual roteiro traz lead que fecha, não só lead barato" style={{ overflow: "hidden" }}>
           <PainTable pains={(data && !data.error ? data.pains : []) || []} money={money} />
         </Card>
 
         <CompactAdsCard saas={product.id} objects={compactObjects} metrics={metricMaps} money={money} busyIds={busyIds}
-          range={adsRange} onRange={setAdsRange}
           onToggle={objects && !objects.error ? toggleObject : null}
           onBudget={objects && !objects.error ? commitBudget : null} error={objects?.error} />
       </div>
@@ -590,70 +577,8 @@ const adsColsDefault = () => new Set(ADS_COLS.filter((c) => c.on).map((c) => c.k
 const adsOrderDefault = () => ADS_COLS.map((c) => c.key).filter((k) => k !== "status");
 // Altura da tabela: mostra até 10 linhas; o resto fica atrás do "ver mais".
 const ADS_MAX_ROWS = 10;
-// Inputs de/até do "personalizado" do card Anúncios.
-const dateInputStyle = { height: 30, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 };
-
-// Filtro de data do card Anúncios: presets + máximo + personalizado com popover
-// de calendário. Escolher "personalizado" grava de/até EXPLÍCITOS no range (nada
-// de default silencioso) e abre o popover já com o calendário nativo do "de";
-// o chip ao lado mostra o intervalo aplicado e reabre o popover. Escolher uma
-// data que cruza a outra arrasta a outra junto (sem swap mudo).
-function AdsRangePicker({ range, onRange }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState(null);
-  const wrapRef = React.useRef(null);
-  const sinceRef = React.useRef(null);
-  const today = dayStr(Date.now());
-  const since = range.since || today, until = range.until || today;
-  const openPopover = () => {
-    const r = wrapRef.current?.getBoundingClientRect();
-    if (r) setPos({ top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right) });
-    setOpen(true);
-    setTimeout(() => { try { sinceRef.current?.showPicker?.(); } catch { /* navegador sem showPicker */ } }, 60);
-  };
-  const choose = (v) => {
-    if (v === "custom") { onRange({ preset: "custom", since, until }); openPopover(); }
-    else { setOpen(false); onRange({ ...range, preset: v }); }
-  };
-  const setSince = (v) => { if (v) onRange({ preset: "custom", since: v, until: until < v ? v : until }); };
-  const setUntil = (v) => { if (v) onRange({ preset: "custom", until: v, since: since > v ? v : since }); };
-  const fmt = (s) => `${s.slice(8, 10)}/${s.slice(5, 7)}`;
-  return (
-    <span ref={wrapRef} style={{ display: "inline-flex", alignItems: "center", gap: 6, maxWidth: "100%", minWidth: 0 }}>
-      {/* No mobile as 7 opções não cabem no header do card: o grupo rola na
-          horizontal em vez de o overflow:hidden cortar "hoje"/"personalizado". */}
-      <span style={{ maxWidth: "100%", overflowX: "auto", display: "inline-flex", flexShrink: 1 }}>
-        <Segmented value={range.preset} onChange={choose} options={ADS_PERIODS} />
-      </span>
-      {range.preset === "custom" && (
-        <button className="mono tnum" onClick={openPopover} title="mudar o intervalo"
-          style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>
-          {fmt(since)} até {fmt(until)}
-        </button>
-      )}
-      {open && pos && (
-        <>
-          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 60 }} />
-          <div style={{ position: "fixed", top: pos.top, right: pos.right, zIndex: 61, width: 218, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-            <span className="mono" style={{ fontSize: 10, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-4)" }}>Período personalizado</span>
-            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span className="mono dim" style={{ width: 24, fontSize: 10.5 }}>de</span>
-              <input ref={sinceRef} type="date" value={since} max={today} onChange={(e) => setSince(e.target.value)} style={{ ...dateInputStyle, flex: 1 }} />
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span className="mono dim" style={{ width: 24, fontSize: 10.5 }}>até</span>
-              <input type="date" value={until} min={since} max={today} onChange={(e) => setUntil(e.target.value)} style={{ ...dateInputStyle, flex: 1 }} />
-            </label>
-            <button onClick={() => setOpen(false)}
-              style={{ height: 30, borderRadius: "var(--r-2)", border: "1px solid var(--accent)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
-              aplicar
-            </button>
-          </div>
-        </>
-      )}
-    </span>
-  );
-}
+// O filtro de data próprio do card Anúncios (AdsRangePicker) saiu na
+// centralização de 08/08: o card segue a janela GLOBAL do topo, como a tela.
 
 // Botão "Colunas" + popover de checkboxes (o "Personalizar colunas" do
 // Gerenciador). Posição FIXA calculada do botão — escapa do overflow:hidden
@@ -724,7 +649,7 @@ function Toggle({ on, label, busy, disabled = false, onChange }) {
   );
 }
 
-function CompactAdsCard({ saas, objects, metrics, money, busyIds, range, onRange, onToggle, onBudget, error }) {
+function CompactAdsCard({ saas, objects, metrics, money, busyIds, onToggle, onBudget, error }) {
   const [level, setLevel] = useState("campaigns");
   const [creativeAd, setCreativeAd] = useState(null); // anúncio com o criativo aberto no modal
   // Seleção estilo Gerenciador: checkbox nas linhas — campanhas marcadas
@@ -903,7 +828,7 @@ function CompactAdsCard({ saas, objects, metrics, money, busyIds, range, onRange
   const round2 = (n) => Math.round(n * 100) / 100;
   const totals = (() => {
     if (!rows.length) return null;
-    const t = { abc: { A: 0, B: 0, C: 0 } };
+    const t = { abc: Object.fromEntries(GRADES.map((g) => [g, 0])) };
     const has = new Set();
     let dailyBudget = 0, hasBudget = false;
     for (const o of rows) {
@@ -988,7 +913,6 @@ function CompactAdsCard({ saas, objects, metrics, money, busyIds, range, onRange
     <Card title="Anúncios" hint="estilo Gerenciador · seleção filtra os níveis de baixo · colunas no botão"
       action={
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          {range && onRange && <AdsRangePicker range={range} onRange={onRange} />}
           <Segmented value={statusFilter} onChange={setStatusFilter}
             options={[{ value: "active", label: "ativas" }, { value: "paused", label: "pausadas" }, { value: "all", label: "todas" }]} />
           <Segmented value={level} onChange={changeLevel} options={levels.map(({ value, label }) => ({ value, label }))} />
@@ -1013,7 +937,7 @@ function CompactAdsCard({ saas, objects, metrics, money, busyIds, range, onRange
       )}
       <DragScroll>
         <div style={{ minWidth: minW }}>
-          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", alignItems: "center" }}>
+          <div className="kicker" style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontWeight: 600, borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", alignItems: "center" }}>
             <span style={{ display: "flex", alignItems: "center" }}>
               {level !== "ads" && (
                 <input type="checkbox" checked={allChecked} onChange={toggleSelAll}
@@ -1369,7 +1293,7 @@ function PlacementTable({ placements, money }) {
         <thead>
           <tr>
             {ths.map((h, i) => (
-              <th key={h} className="mono" style={{ textAlign: i === 0 ? "left" : "right", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", padding: "10px 16px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
+              <th key={h} className="kicker" style={{ textAlign: i === 0 ? "left" : "right", padding: "10px 16px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -1446,7 +1370,7 @@ function PainTable({ pains, money }) {
     // dentro do card em vez de o overflow:hidden clipar os valores.
     <div className="tbl-x" style={{ marginTop: 14 }}>
      <div>
-      <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fg-4)", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+      <div className="kicker" style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontWeight: 600, borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
         <span>Dor</span><span style={{ textAlign: "right" }}>Investido</span><span style={{ textAlign: "right" }}>Leads</span><span style={{ textAlign: "right" }}>CPL</span>
         <span title="leads da dor que marcaram call" style={{ textAlign: "right" }}>Calls</span>
         <span title="clientes A/B/C que a dor trouxe · custo por cada" style={{ textAlign: "right" }}>Clientes ABC</span>
@@ -1692,14 +1616,13 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
   }
 
   const lbl = { display: "flex", flexDirection: "column", gap: 4 };
-  const cap = { fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" };
   const inp = { height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
 
   return (
     <Card title="Criar anúncio" hint="clona o conjunto da dor e troca só o vídeo · um anúncio por vídeo, nome «número [dor]»">
       <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <span className="mono" style={cap}>1 · Vídeos da leva {comArquivo.length > 1 ? `(${comArquivo.length} anúncios)` : ""}</span>
+          <span className="kicker">1 · Vídeos da leva {comArquivo.length > 1 ? `(${comArquivo.length} anúncios)` : ""}</span>
           {linhas.map((l, i) => (
             <div key={l.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <span className="mono dim" style={{ fontSize: 11, width: 16, textAlign: "right" }}>{i + 1}</span>
@@ -1726,7 +1649,7 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
           <label style={lbl}>
-            <span className="mono" style={cap}>2 · Dor do anúncio</span>
+            <span className="kicker">2 · Dor do anúncio</span>
             <select value={pain} onChange={(e) => setPain(e.target.value)} style={inp}>
               <option value="">Selecione…</option>
               {Object.entries(painMap).map(([c, l]) => <option key={c} value={c}>[{c}] {l}</option>)}
@@ -1745,13 +1668,13 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
         {pain === "_new" && (
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <label style={lbl}>
-              <span className="mono" style={cap}>Código (1-3 letras)</span>
+              <span className="kicker">Código (1-3 letras)</span>
               <input type="text" maxLength={3} placeholder="C" value={newPain.code}
                 onChange={(e) => setNewPain({ ...newPain, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") })}
                 style={{ ...inp, width: 80, fontFamily: "var(--mono)", textTransform: "uppercase" }} />
             </label>
             <label style={{ ...lbl, flex: 1, minWidth: 220 }}>
-              <span className="mono" style={cap}>Nome da dor</span>
+              <span className="kicker">Nome da dor</span>
               <input type="text" placeholder="ex.: Medo de banimento da conta" value={newPain.label}
                 onChange={(e) => setNewPain({ ...newPain, label: e.target.value })} style={inp} />
             </label>
@@ -1760,21 +1683,21 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
           <label style={lbl}>
-            <span className="mono" style={cap}>3 · Campanha {matches.length === 1 ? "(resolvida pela dor)" : matches.length > 1 ? "(várias [" + painCodeSel + "], escolha)" : ""}</span>
+            <span className="kicker">3 · Campanha {matches.length === 1 ? "(resolvida pela dor)" : matches.length > 1 ? "(várias [" + painCodeSel + "], escolha)" : ""}</span>
             <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)} style={inp}>
               <option value="">{painCodeSel ? (matches.length ? "Selecione…" : `nenhuma campanha [${painCodeSel}] — escolha`) : "escolha a dor antes"}</option>
               {activeCamps.map((c) => <option key={c.id} value={c.id}>{painCodeOf(c.name) === painCodeSel ? "● " : ""}{c.name}</option>)}
             </select>
           </label>
           <label style={lbl}>
-            <span className="mono" style={cap}>4 · Conjunto de origem (será clonado)</span>
+            <span className="kicker">4 · Conjunto de origem (será clonado)</span>
             <select value={sourceAdsetId} onChange={(e) => setSourceAdsetId(e.target.value)} disabled={!campaignId} style={inp}>
               <option value="">{!campaignId ? "escolha a campanha" : adsets == null ? "carregando…" : "Selecione…"}</option>
               {(adsets || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </label>
           <label style={lbl}>
-            <span className="mono" style={cap}>5 · Orçamento diário por conjunto (R$, teto {MAX_BUDGET})</span>
+            <span className="kicker">5 · Orçamento diário por conjunto (R$, teto {MAX_BUDGET})</span>
             <input type="text" inputMode="decimal" placeholder={`até ${MAX_BUDGET}`}
               value={budget} onChange={(e) => setBudget(e.target.value.replace(/[^\d.,]/g, ""))}
               style={{ ...inp, fontFamily: "var(--mono)", borderColor: budget && !orcamentoOk ? "var(--neg)" : "var(--line-2)" }} />
@@ -1888,7 +1811,6 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
   }
 
   const lbl = { display: "flex", flexDirection: "column", gap: 4 };
-  const cap = { fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--fg-3)" };
   const inp = { height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
   const activeCamps = campaigns.filter((c) => c.effectiveStatus !== "ARCHIVED" && c.effectiveStatus !== "DELETED");
 
@@ -1897,21 +1819,21 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
       <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
           <label style={lbl}>
-            <span className="mono" style={cap}>Campanha</span>
+            <span className="kicker">Campanha</span>
             <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)} style={inp}>
               <option value="">Selecione…</option>
               {activeCamps.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </label>
           <label style={lbl}>
-            <span className="mono" style={cap}>Conjunto</span>
+            <span className="kicker">Conjunto</span>
             <select value={adsetId} onChange={(e) => setAdsetId(e.target.value)} disabled={!campaignId} style={inp}>
               <option value="">{!campaignId ? "escolha a campanha" : adsets == null ? "carregando…" : "Selecione…"}</option>
               {(adsets || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </label>
           <label style={lbl}>
-            <span className="mono" style={cap}>Dor (roteiro)</span>
+            <span className="kicker">Dor (roteiro)</span>
             <select value={pain} onChange={(e) => setPain(e.target.value)} style={inp}>
               <option value="">Sem código</option>
               {Object.entries(painMap).map(([c, l]) => <option key={c} value={c}>[{c}] {l}</option>)}
@@ -1923,13 +1845,13 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
         {pain === "_new" && (
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <label style={lbl}>
-              <span className="mono" style={cap}>Código (1-3 letras)</span>
+              <span className="kicker">Código (1-3 letras)</span>
               <input type="text" maxLength={3} placeholder="C" value={newPain.code}
                 onChange={(e) => setNewPain({ ...newPain, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") })}
                 style={{ ...inp, width: 80, fontFamily: "var(--mono)", textTransform: "uppercase" }} />
             </label>
             <label style={{ ...lbl, flex: 1, minWidth: 220 }}>
-              <span className="mono" style={cap}>Nome da dor</span>
+              <span className="kicker">Nome da dor</span>
               <input type="text" placeholder="ex.: Medo de banimento da conta" value={newPain.label}
                 onChange={(e) => setNewPain({ ...newPain, label: e.target.value })} style={inp} />
             </label>
@@ -1938,15 +1860,15 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
           <label style={lbl}>
-            <span className="mono" style={cap}>Variação (vira o nome do anúncio)</span>
+            <span className="kicker">Variação (vira o nome do anúncio)</span>
             <input type="text" placeholder="ex.: v1 depoimento cliente" value={name} onChange={(e) => setName(e.target.value)} style={inp} />
           </label>
           <label style={lbl}>
-            <span className="mono" style={cap}>Título (headline)</span>
+            <span className="kicker">Título (headline)</span>
             <input type="text" placeholder="opcional" value={title} onChange={(e) => setTitle(e.target.value)} style={inp} />
           </label>
           <label style={lbl}>
-            <span className="mono" style={cap}>Botão (CTA)</span>
+            <span className="kicker">Botão (CTA)</span>
             <select value={cta} onChange={(e) => setCta(e.target.value)} style={inp}>
               <option value="LEARN_MORE">Saiba mais</option>
               <option value="SIGN_UP">Cadastre-se</option>
@@ -1957,18 +1879,18 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
         </div>
 
         <label style={lbl}>
-          <span className="mono" style={cap}>Texto principal</span>
+          <span className="kicker">Texto principal</span>
           <textarea rows={3} placeholder="Copy do anúncio (aparece acima do vídeo)" value={message} onChange={(e) => setMessage(e.target.value)}
             style={{ ...inp, height: "auto", minHeight: 64, padding: "8px 10px", resize: "vertical", fontFamily: "var(--sans)" }} />
         </label>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
           <label style={lbl}>
-            <span className="mono" style={cap}>Link de destino (form)</span>
+            <span className="kicker">Link de destino (form)</span>
             <input type="url" placeholder="https://…" value={link} onChange={(e) => setLink(e.target.value)} style={{ ...inp, fontFamily: "var(--mono)", fontSize: 12 }} />
           </label>
           <label style={lbl}>
-            <span className="mono" style={cap}>Vídeo</span>
+            <span className="kicker">Vídeo</span>
             <input type="file" accept="video/*" onChange={(e) => setFile(e.target.files?.[0] || null)}
               style={{ ...inp, paddingTop: 4, height: 30 }} />
           </label>
@@ -2029,7 +1951,7 @@ function CampaignDrilldown({ data, money }) {
         <thead>
           <tr>
             {["Campanha", "Investimento", "Cliques", "Leads (UTM)", "CPL real", "Leads (Meta)", "CPL (Meta)"].map((h, i) => (
-              <th key={h} className="mono" style={{ textAlign: i === 0 ? "left" : "right", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-3)", padding: "10px 16px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
+              <th key={h} className="kicker" style={{ textAlign: i === 0 ? "left" : "right", padding: "10px 16px", borderTop: "1px solid var(--line-1)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>{h}</th>
             ))}
           </tr>
         </thead>

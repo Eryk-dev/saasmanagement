@@ -43,11 +43,11 @@ export function WhatsappChat({ lead, phone: phoneProp }) {
   return (
     <div style={{ ...box, display: "flex", flexDirection: "column", minHeight: 200, maxHeight: 460 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-        <span className="mono" style={{ fontSize: 10.5, letterSpacing: 1, textTransform: "uppercase", color: "var(--fg-4)" }}>WhatsApp</span>
+        <span className="kicker">WhatsApp</span>
         <span className="mono dim" style={{ fontSize: 10.5 }}>{phone || "sem telefone"}</span>
         {wa && (
           <a href={wa} target="_blank" rel="noopener noreferrer" title="Ligar / abrir no WhatsApp"
-            style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5, height: 26, padding: "0 10px", borderRadius: 6, background: "#25D366", color: "#06120c", fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
+            style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5, height: 26, padding: "0 10px", borderRadius: 6, background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
             ✆ Ligar
           </a>
         )}

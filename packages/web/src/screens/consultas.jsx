@@ -1,6 +1,6 @@
 import React from "react";
 import { PageHead } from "../components/viz.jsx";
-import { EmptyState } from "../atoms.jsx";
+import { EmptyState, useEsc } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -59,7 +59,8 @@ function fmtAt(at) {
 export function ConsultasScreen() {
   const { version, refresh } = useData();
   const [product] = useActiveSaas();
-  const [tab, setTab] = useS("agenda");            // agenda | entregaveis
+  const [tab, setTabState] = useS(() => { try { return localStorage.getItem("cockpit_consultas_tab") || "agenda"; } catch { return "agenda"; } }); // agenda | entregaveis · persiste
+  const setTab = (t) => { setTabState(t); try { localStorage.setItem("cockpit_consultas_tab", t); } catch { /* ignore */ } };
   const [consultas, setConsultas] = useS(null);
   const [manuais, setManuais] = useS(null);
   const [weekRef, setWeekRef] = useS(() => new Date());
@@ -202,7 +203,7 @@ function AgendaTab({ days, byCell, journeys, consultas, onShiftWeek, onToday, on
           <div style={{ background: "var(--bg-inset)" }} />
           {days.map((d) => (
             <div key={ymd(d)} style={{ padding: "8px 10px", background: "var(--bg-inset)", borderLeft: "1px solid var(--line-1)", textAlign: "center" }}>
-              <span className="mono" style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.06em", color: ymd(d) === today ? "var(--accent)" : "var(--fg-4)", fontWeight: ymd(d) === today ? 800 : 500 }}>
+              <span className="kicker" style={{ color: ymd(d) === today ? "var(--accent)" : "var(--fg-4)", fontWeight: ymd(d) === today ? 600 : 400 }}>
                 {WD[d.getDay()]} {pad(d.getDate())}
               </span>
             </div>
@@ -235,7 +236,7 @@ function AgendaTab({ days, byCell, journeys, consultas, onShiftWeek, onToday, on
 
       {/* Jornadas por cliente */}
       <div>
-        <div className="mono" style={{ ...kicker, marginBottom: 8 }}>Jornadas · {journeys.length} cliente{journeys.length === 1 ? "" : "s"}</div>
+        <div className="kicker" style={{ marginBottom: 8 }}>Jornadas · {journeys.length} cliente{journeys.length === 1 ? "" : "s"}</div>
         {consultas === null ? (
           <div className="mono dim" style={{ fontSize: 11.5 }}>carregando…</div>
         ) : journeys.length === 0 ? (
@@ -284,6 +285,7 @@ function AgendaTab({ days, byCell, journeys, consultas, onShiftWeek, onToday, on
 
 // ── Modal de consulta (criar/editar) ─────────────────────────────────────────
 function ConsultaModal({ c, customers, consultas = [], onClose, onSaved }) {
+  useEsc(onClose);
   // Prefill do e-mail do convite pelo cadastro do cliente quando a consulta
   // ainda não tem o seu (consultas antigas, ou família que já tem e-mail no
   // customer) — a Ana abre e já vê pra quem o convite vai, sem redigitar.
@@ -338,6 +340,7 @@ function ConsultaModal({ c, customers, consultas = [], onClose, onSaved }) {
     finally { setBusy(""); }
   }
   async function removeConsulta() {
+    if (!window.confirm(`Excluir a consulta ${form.n || "?"} de ${form.clientName || "este cliente"}? Essa ação não tem volta.`)) return;
     setBusy("del"); setErr("");
     try { await api.remove("consultations", form.id); onSaved(); }
     catch (e) { setErr(e?.message || "falhou"); setBusy(""); }
@@ -517,6 +520,7 @@ function EntregaveisTab({ manuais, customers, product, onOpen, refresh }) {
 
 // ── Editor do Manual da Família ───────────────────────────────────────────────
 function ManualEditor({ m, onClose, refresh }) {
+  useEsc(onClose);
   const [doc, setDoc] = useS(m);
   const [busy, setBusy] = useS("");
   const [err, setErr] = useS("");
@@ -594,7 +598,6 @@ function ManualEditor({ m, onClose, refresh }) {
 }
 
 // ── estilos ───────────────────────────────────────────────────────────────────
-const kicker = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-4)", letterSpacing: "0.08em", textTransform: "uppercase" };
 const chip = (on) => ({ display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 11px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"), background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)" });
 const navBtn = { height: 28, minWidth: 32, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, cursor: "pointer" };
 const overlay = { position: "fixed", inset: 0, background: "rgba(8, 18, 26, 0.45)", display: "grid", placeItems: "center", zIndex: 90, padding: 16 };

@@ -147,7 +147,7 @@ function NextActionModal({ leadId, onScheduled, onResolved, onClose }) {
   }
 
   const field = { height: 34, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, minWidth: 0 };
-  const label = { fontSize: 10.5, fontFamily: "var(--mono)", color: "var(--fg-3)", letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 4 };
+  const label = { display: "block", marginBottom: 4 };
   const googleOn = !!window.SEED?.CONFIG?.google?.connected;
   const needsAgenda = dest && !done;
 
@@ -235,20 +235,20 @@ function NextActionModal({ leadId, onScheduled, onResolved, onClose }) {
           <>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
               <div style={{ flex: 1, minWidth: 160 }}>
-                <span style={label}>Closer da call</span>
+                <span className="kicker" style={label}>Closer da call</span>
                 <select value={closer} onChange={(e) => { setCloser(e.target.value); setSlot(""); }} style={{ ...field, width: "100%" }}>
                   {!closers.length && <option value="">nenhum closer no time</option>}
                   {closers.map((c) => <option key={c.id} value={c.id}>{c.name || c.id}</option>)}
                 </select>
               </div>
               <div style={{ flex: 1.4, minWidth: 180 }}>
-                <span style={label}>E-mail pro convite do Meet (opcional)</span>
+                <span className="kicker" style={label}>E-mail pro convite do Meet (opcional)</span>
                 <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@dolead.com.br" style={{ ...field, width: "100%" }} />
               </div>
             </div>
 
             <div>
-              <span style={label}>Horário · ocupado da agenda de {displayName(closer) || "…"} já bloqueado</span>
+              <span className="kicker" style={label}>Horário · ocupado da agenda de {displayName(closer) || "…"} já bloqueado</span>
               <SlotGrid days={nextBusinessDays(6)} day={day} setDay={setDay} slot={slot} setSlot={setSlot} busy={agenda} />
             </div>
 
@@ -285,7 +285,7 @@ function NextActionModal({ leadId, onScheduled, onResolved, onClose }) {
         saasCfg={saasCfg}
         onCancel={() => setGateMove(null)}
         onConfirm={(mp, extra) => {
-          applyGatedMove(mp, extra, lead.id).then(() => { refresh(); onResolved?.(lead.id); }).catch((err2) => console.warn("movimento não persistido:", err2.message));
+          applyGatedMove(mp, extra, lead.id).then(() => { refresh(); onResolved?.(lead.id); }).catch((err2) => { console.warn("movimento não persistido:", err2.message); window.toast && window.toast("O movimento do card não foi salvo · tente de novo", "neg"); });
           setGateMove(null);
           setDone({ moved: gateMove.toStage });
         }}

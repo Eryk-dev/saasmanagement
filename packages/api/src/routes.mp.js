@@ -12,6 +12,8 @@
 import { mp as defaultMp, parseWebhookPayload } from "./mp.js";
 import { CYCLE_MONTHS, syncCustomerArr } from "./billing.js";
 import { ingestMpPayment, runMpSync, settleInvoice } from "./mp-payments.js";
+import { DEAL_PRODUCT_LABEL } from "./proposal-catalog.js";
+import { logActivity } from "./lead-flow.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 
 const CYCLE_LABEL = { monthly: "mensal", quarterly: "trimestral", semiannual: "semestral", annual: "anual" };
@@ -124,7 +126,7 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
   // notification_url só vale com base pública https (MP recusa localhost).
   const notificationUrl = PUBLIC_BASE.startsWith("https://") ? `${PUBLIC_BASE}/public/mp/webhook` : undefined;
 
-  // Lista do espelho pra aba Financeiro. Pagamento sem saas = não identificado:
+  // Lista do espelho pra tela Financeiro (aba Pagamentos). Pagamento sem saas = não identificado:
   // aparece em qualquer produto até alguém vincular.
   app.get("/api/mp/payments", async (req) => {
     const q = req.query || {};
@@ -247,6 +249,63 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
     }
   });
 
+  // Link de pagamento pelo CARD DO LEAD (atalho do closer): o checkout nasce
+  // com external_reference = id do lead — o pagamento entra no espelho JÁ
+  // casado com a origem (e com o cliente, quando o lead converte), sem depender
+  // do e-mail do pagador. NÃO cria fatura: fatura é do cliente, pós-Ganho; o
+  // link fica no lead (mpChargeUrl) e a criação vira atividade no card.
+  //
+  // O modal também manda o FECHAMENTO (plan/contractValue/paymentMethod): são
+  // os MESMOS campos que o gate de Ganho pede (planClosed/amount/paymentMethod)
+  // — gravados aqui, o card vira Ganho num clique e o cliente/assinatura nascem
+  // com plano, duração e valor certos (convertWonLead). Campo vazio não apaga
+  // o que o lead já tem.
+  app.post("/api/leads/:id/mp/link", async (req, reply) => {
+    if (!mp.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN)" });
+    const lead = await repo.get("leads", req.params.id);
+    if (!lead) return reply.code(404).send({ error: "Not found" });
+    const amount = Math.round(Number(req.body?.amount) * 100) / 100;
+    if (!(amount > 0)) return reply.code(400).send({ error: "valor deve ser positivo" });
+    const product = lead.saas ? await repo.get("products", lead.saas) : null;
+    const PLAN_LABEL = { anual: "Plano Anual", semestral: "Plano Semestral", unico: "Serviço único" };
+    const plan = PLAN_LABEL[req.body?.plan] ? String(req.body.plan) : "";
+    // Produto do catálogo da apresentação (FULL/OEM/Parcial): nomeia o checkout
+    // e fica no lead (dealProduct) — segue pro cliente e pro card da Integração.
+    const dealProduct = DEAL_PRODUCT_LABEL[req.body?.product] ? String(req.body.product) : "";
+    const title = String(req.body?.title || "").trim()
+      || [DEAL_PRODUCT_LABEL[dealProduct] || product?.name || lead.saas, plan ? PLAN_LABEL[plan] : "pagamento"].filter(Boolean).join(" · ");
+    const description = String(req.body?.description || "").trim() || undefined;
+    const payerEmail = String(req.body?.payerEmail ?? lead.email ?? "").trim().toLowerCase() || undefined;
+    try {
+      const pref = await mp.createCheckoutPreference({
+        title, description, amount, externalReference: lead.id,
+        payerEmail,
+        backUrl: PUBLIC_BASE, notificationUrl,
+        maxInstallments: Number(req.body?.maxInstallments) || undefined,
+      });
+      const contractValue = Math.round(Number(req.body?.contractValue) * 100) / 100;
+      const paymentMethod = String(req.body?.paymentMethod || "").trim();
+      const updated = await repo.update("leads", lead.id, {
+        mpChargeUrl: pref.init_point || null, mpChargeAmount: amount,
+        mpChargeTitle: title, mpChargeAt: new Date().toISOString(),
+        ...(plan ? { planClosed: plan } : {}),
+        ...(dealProduct ? { dealProduct } : {}),
+        ...(contractValue > 0 ? { amount: contractValue } : {}),
+        ...(paymentMethod ? { paymentMethod } : {}),
+      });
+      await logActivity(repo, {
+        saas: lead.saas || "", lead: lead.id, type: "note",
+        text: `Link de pagamento criado: R$ ${amount.toFixed(2).replace(".", ",")} (${title})`
+          + (contractValue > 0 && contractValue !== amount ? ` · contrato R$ ${contractValue.toFixed(2).replace(".", ",")}` : ""),
+        author: req.authUser?.id || "system",
+      });
+      return { ok: true, lead: updated, url: pref.init_point || null };
+    } catch (err) {
+      req.log.warn({ lead: lead.id, err: err.message }, "MP: falha ao criar link do lead");
+      return reply.code(UPSTREAM_FAILED).send({ error: "MP recusou a criação do link", detail: String(err.message || err).slice(0, 300) });
+    }
+  });
+
   // Webhook do MP (configurar no painel: https://<host>/public/mp/webhook).
   app.post("/public/mp/webhook", async (req, reply) => {
     const { topic, dataId } = parseWebhookPayload(req.body);
@@ -312,12 +371,15 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
     // ── pagamento (avulso ou de link) — TODO status entra no espelho ────────
     // O ingest casa por fatura/assinatura/e-mail, baixa a fatura se aprovado
     // (idempotente por mpPaymentId, payer cross-check no caso de assinatura) e
-    // deixa o resto visível na aba Financeiro pro vínculo manual.
+    // deixa o resto visível na tela Financeiro pro vínculo manual.
     if (topic === "payment") {
       let pmt;
       try { pmt = await mp.getPayment(dataId); }
       catch { return { received: true, error: "fetch_failed" }; }
-      const r = await ingestMpPayment(repo, pmt, { discord, log: req.log });
+      // extra payerDetail: o doc do webhook JÁ é o completo — o sync não
+      // precisa re-buscar esse pagamento pra procurar nome (2 = versão atual
+      // da extração, PAYER_DETAIL_V do mp-payments.js).
+      const r = await ingestMpPayment(repo, pmt, { discord, log: req.log, extra: { payerDetail: 2 } });
       return {
         received: true, ok: true, payment: r.payment.id, matched: r.matched,
         ...(r.settledNow ? { invoice: r.settledNow } : {}),

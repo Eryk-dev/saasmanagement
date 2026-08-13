@@ -91,6 +91,19 @@ test("1º toque em estágio novo: lead segue sozinho pra Qualificando (1º ato d
   await repo.create("leads", { id: "l2", saas: "leverads", stage: "Novo lead" });
   await app.inject({ method: "POST", url: "/api/activities", payload: { lead: "l2", saas: "leverads", type: "call", at, meta: { reschedule: false } } });
   assert.equal((await repo.get("leads", "l2")).stage, "Novo lead");
+
+  // Data manual (botões +1d/+2d/+1sem da timeline) vence o GPS automático,
+  // mas continua sendo um contato real: o lead precisa sair de Novo lead.
+  await repo.create("leads", { id: "l3", saas: "leverads", stage: "Novo lead", stageAttempts: 0 });
+  const manualNextAt = "2026-07-15T15:00:00.000Z";
+  await app.inject({
+    method: "POST", url: "/api/activities",
+    payload: { lead: "l3", saas: "leverads", type: "whatsapp", author: "sdr", at, meta: { nextActionAt: manualNextAt } },
+  });
+  const manual = await repo.get("leads", "l3");
+  assert.equal(manual.stage, "Qualificando", "data manual não bloqueia o avanço do 1º contato");
+  assert.equal(manual.nextActionAt, manualNextAt, "data manual vence a cadência do novo estágio");
+  assert.ok((await activitiesOf(repo, "l3", "stage")).some((a) => a.meta.from === "Novo lead" && a.meta.to === "Qualificando"));
   await app.close();
 });
 
@@ -292,7 +305,8 @@ test("lead ganho manda Purchase pro CAPI com o valor do negócio, uma vez só", 
   await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL, metaPixelId: "555666777" });
   const app = Fastify();
   registerRoutes(app, repo, { metaCapi });
-  await repo.create("leads", { id: "l1", saas: "leverads", name: "Ana", stage: "Novo lead", email: "ana@x.com", fbp: "fb.1.1.2", fbc: "fb.1.3.abc" });
+  // dealProduct veio antes, pelo link de pagamento do card (catálogo da apresentação).
+  await repo.create("leads", { id: "l1", saas: "leverads", name: "Ana", stage: "Novo lead", email: "ana@x.com", fbp: "fb.1.1.2", fbc: "fb.1.3.abc", dealProduct: "fulloem" });
 
   // O modal de fechamento manda amount + planClosed junto com o stage no mesmo PATCH.
   await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { stage: "Ganho", amount: 7188, planClosed: "anual" } });
@@ -301,10 +315,11 @@ test("lead ganho manda Purchase pro CAPI com o valor do negócio, uma vez só", 
   assert.equal(purchases[0].leadId, "l1");
   assert.equal(purchases[0].value, 7188);
 
-  // O cliente nasce com valor e plano puxados do fechamento (arr = anual).
+  // O cliente nasce com valor, produto do catálogo e plano puxados do fechamento (arr = anual).
   const won = (await repo.list("customers")).find((c) => c.leadId === "l1");
   assert.equal(won.arr, 7188);
-  assert.equal(won.plan, "Anual");
+  assert.equal(won.plan, "LeverAds + OEM FULL · Anual");
+  assert.equal(won.dealProduct, "fulloem");
   assert.equal(purchases[0].pixelId, "555666777");
   assert.equal(purchases[0].fbp, "fb.1.1.2");   // cookies persistidos no submit
   assert.equal(purchases[0].fbc, "fb.1.3.abc"); // melhoram o match do Purchase

@@ -11,10 +11,11 @@ import { registerFormRoutes } from "./routes.forms.js";
 import { registerWebhookRoutes } from "./routes.webhooks.js";
 import { mergeLeadQuestions } from "./forms.js";
 import { registerProposalRoutes } from "./routes.proposals.js";
-import { runNativeProposal, proposalOffers, shareProposalOffer, buildCustomProposal, publicProposal } from "./proposal.js";
+import { runNativeProposal, proposalOffers, shareProposalOffer, buildCustomProposal, publicProposal, syncProposalLeadSnapshot } from "./proposal.js";
+import { DEAL_PRODUCT_LABEL, dealCatalog } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { registerBillingRoutes } from "./routes.billing.js";
-import { initSubscription, syncCustomerArr, createClosedSubscription, closedSubscriptionSpec } from "./billing.js";
+import { initSubscription, syncCustomerArr, createClosedSubscription, closedSubscriptionSpec, closedInstallments, createInstallmentSchedule, syncClosedInstallments } from "./billing.js";
 import { registerAuthRoutes } from "./auth.js";
 import { registerMpRoutes, mirrorSubscriptionToMp } from "./routes.mp.js";
 import { mp as defaultMpClient } from "./mp.js";
@@ -26,7 +27,7 @@ import { registerSequenceRoutes } from "./routes.sequences.js";
 import { registerPitchRoutes } from "./routes.pitch.js";
 import { registerRoutineRoutes } from "./routes.routine.js";
 import { registerConsultationRoutes } from "./routes.consultations.js";
-import { syncConsultationCalendar } from "./consultations.js";
+import { syncConsultationCalendar, syncConsultationMeetEvent } from "./consultations.js";
 import { newManual, sameFamily } from "./deliverables.js";
 import { registerIntegrationRoutes } from "./routes.integrations.js";
 import { registerMetasRoutes } from "./routes.metas.js";
@@ -39,6 +40,7 @@ import { makeMailer } from "./mailer.js";
 import { getWaHealth, waHealthSummary } from "./wa-health.js";
 import { makeAnthropic } from "./anthropic.js";
 import { registerMetricsRoutes } from "./routes.metrics.js";
+import { registerFinRoutes } from "./routes.fin.js";
 import { meta as defaultMetaClient } from "./meta.js";
 import { metaCapi as defaultMetaCapi } from "./meta-capi.js";
 import { discord as defaultDiscord } from "./discord.js";
@@ -56,7 +58,7 @@ import { registerEloRoutes } from "./elo.js";
 // wa_threads/wa_messages ficam FORA do CRUD genérico: o inbox usa as rotas
 // dedicadas (/api/whatsapp/*, gateadas), então o texto das conversas não vaza
 // pra qualquer usuário autenticado via /api/wa_messages.
-const PRIVATE = new Set(["users", "sessions", "user_assets", "activity_assets", "wa_threads", "wa_messages", "wa_media", "wa_template_media"]);
+const PRIVATE = new Set(["users", "sessions", "user_assets", "activity_assets", "task_assets", "wa_threads", "wa_messages", "wa_media", "wa_template_media"]);
 const isExposed = (c) => COLLECTION_NAMES.includes(c) && !PRIVATE.has(c);
 
 // Collections external SaaS are allowed to write to via REST/MCP.
@@ -95,7 +97,10 @@ export const CREATE_DEFAULTS = {
   // estruturada (id de product.lossReasons); owner = user id do SDR dono; closer =
   // user id do closer; lastActivityAt/Type + stageAttempts = denormalizações da
   // timeline (activities) pro board/fila não precisarem carregar o histórico.
-  leads: { priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", closer: "", reason: "", source: "Form", age: "agora", stage: "", stageSince: "", comments: [], callAt: "", proposalValue: "", proposalPeriod: "", integrationAt: "", nextActionAt: "", nextActionNote: "", lostReason: "", lostNote: "", lastActivityAt: "", lastActivityType: "", stageAttempts: 0 },
+  // callAt = call marcada (a de verdade, que vira histórico ao ser remarcada);
+  // followupAt = follow-up marcado com hora, campo PRÓPRIO pra a agenda não
+  // desenhar follow-up com a cara de call (Leo, 13/08).
+  leads: { priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", closer: "", reason: "", source: "Form", age: "agora", stage: "", stageSince: "", comments: [], callAt: "", followupAt: "", proposalValue: "", proposalPeriod: "", integrationAt: "", nextActionAt: "", nextActionNote: "", lostReason: "", lostNote: "", lastActivityAt: "", lastActivityType: "", stageAttempts: 0 },
   // `current`/`projected` saem do form (leitura ao vivo da meta) — default 0 até serem alimentados.
   goals: { current: 0, projected: 0 },
   forms: { status: "draft", theme: {}, welcome: null, questions: [], thanks: {}, mapping: {} },
@@ -109,10 +114,19 @@ export const CREATE_DEFAULTS = {
   // (fixo/ferramenta/pessoal/outros — publicidade e IA entram automáticos).
   // recurring=true vale de `month` em diante, todo mês, até `endMonth` (inclusivo).
   expenses: { month: "", category: "fixo", name: "", amount: 0, recurring: false, endMonth: "" },
+  // Contas a pagar (Financeiro): lançamento com competência (month), vencimento
+  // e situação; favorecido = colaborador (userId → Folha) ou fornecedor (texto).
+  // `recurring: true` = template mensal (o próprio doc é a 1ª ocorrência; os
+  // meses seguintes viram instâncias com templateId — routes.fin.js).
+  payables: { saas: "", description: "", category: "outros", counterpartyType: "fornecedor", userId: "", supplierName: "", amount: 0, month: "", dueDate: "", status: "aberta", paidAt: "", paidVia: "", recurring: false, endMonth: "", templateId: "", notes: "" },
+  // Regra de conciliação aprendida: quando o pagador (doc > e-mail > nome) bate,
+  // o Financeiro aplica a ação sozinho e não pergunta mais (routes.fin.js).
+  fin_rules: { saas: "", matchField: "payerDoc", matchValue: "", action: "vincular", customer: "", reason: "", autoCount: 0, lastAppliedAt: "", createdAt: "" },
   // Kanban de tarefas do time. `column` = KEY estável da coluna do board (renomear
   // coluna não órfã o card); `assignees` = ids de usuários do time (collection users);
   // comments = [{ id, author, text, at }] — o SPA faz PATCH do array inteiro.
-  tasks: { title: "", description: "", saas: "", assignees: [], column: "", priority: "", dueDate: "", labels: [], comments: [], order: 0 },
+  // `photo` = URL /public/tasks/:id do anexo (task_assets, 1 foto por tarefa).
+  tasks: { title: "", description: "", saas: "", assignees: [], column: "", priority: "", dueDate: "", labels: [], comments: [], order: 0, photo: "" },
   task_boards: { name: "Tarefas", columns: [] },
   // Timeline do lead (pontos de contato + eventos automáticos). `type` toque =
   // whatsapp/call/email/meeting; `stage` = mudança de estágio (meta {from,to});
@@ -290,6 +304,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // getWhatsapp é getter: o client só nasce mais abaixo (registerWhatsappRoutes)
   // e o custo de WhatsApp do resumo de despesas resolve na hora do request.
   registerMetricsRoutes(app, repo, { getWhatsapp: () => whatsappClient });
+  registerFinRoutes(app, repo, { mp: mpClient });
   // Métricas reais de funil (conversão/tempo por estágio, motivos de perda, SLA)
   // a partir do histórico de transições da timeline.
   registerFunnelMetricsRoutes(app, repo);
@@ -402,7 +417,20 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       // (ex.: mostrar o botão "Gerar proposta" nos leads de SaaS com provider).
       CONFIG: {
         levercopy: integrationStatus(),
-        proposals: { nativeSaas: (await repo.list("proposal_templates")).filter((t) => t.status === "published").map((t) => t.saas) },
+        // `catalog` = o que o closer pode FECHAR, com os preços do template
+        // (banco): o gate de fechamento do card monta o select de produto e
+        // sugere o valor a partir daqui, então mexer no preço no banco vale na
+        // hora, sem deploy. SaaS sem catálogo (UniqueKids) simplesmente não entra.
+        proposals: await (async () => {
+          const templates = await repo.list("proposal_templates");
+          const published = templates.filter((t) => t.status === "published");
+          const catalog = {};
+          for (const t of published) {
+            const rows = dealCatalog(t.calc);
+            if (rows.length && t.saas) catalog[t.saas] = rows;
+          }
+          return { nativeSaas: published.map((t) => t.saas), catalog };
+        })(),
         mp: { configured: mpClient.configured(), webhook: mpClient.hasWebhookSecret() },
         meta: { configured: metaClient.configured() },
         google: { configured: googleClient.configured(), connected: await googleClient.connected(), account: await googleClient.account(), gmail: await googleClient.gmailReady() },
@@ -448,6 +476,80 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     if (!doc) return reply.code(404).send({ error: "imagem não encontrada" });
     reply.header("cache-control", "public, max-age=31536000, immutable");
     return reply.type(doc.mime || "image/png").send(Buffer.from(doc.data || "", "base64"));
+  });
+
+  // Foto anexada a uma TAREFA (Leo, 06/08: anexar foto ao criar a tarefa).
+  // MESMO desenho do asset de atividade acima: bytes em `task_assets`, URL
+  // pública /public/tasks/:id (id randômico é a chave, <img> não manda header)
+  // e a URL vai no campo `photo` do doc da tarefa (quem não conhece o campo
+  // simplesmente não mostra). Guard: /api/tasks já mapeia pra tela "tasks".
+  const taskAssetHandler = async (req, reply) => {
+    const file = await req.file();
+    if (!file) return reply.code(400).send({ error: "envie uma imagem (multipart, campo file)" });
+    if (!/^image\//.test(file.mimetype || "")) return reply.code(400).send({ error: "só aceito imagem" });
+    const buf = await file.toBuffer();
+    if (buf.length > 5 * 1024 * 1024) return reply.code(413).send({ error: "imagem acima de 5MB — recorte ou comprima" });
+    const id = `tka_${randomUUID()}`;
+    await repo.create("task_assets", {
+      id, mime: file.mimetype, size: buf.length, name: file.filename || "",
+      data: buf.toString("base64"), by: req.authUser?.id || "", at: new Date().toISOString(),
+    });
+    return { id, url: `/public/tasks/${id}` };
+  };
+  app.post("/api/tasks/asset", taskAssetHandler);
+  // O widget de feedback usa o MESMO asset de tarefa, mas por rota própria:
+  // /api/tasks/* exige a tela "tasks" (screens.js) e o widget vive em toda
+  // tela, pra qualquer usuário — inclusive os de telas restritas.
+  app.post("/api/feedback/asset", taskAssetHandler);
+
+  app.get("/public/tasks/:id", async (req, reply) => {
+    const doc = await repo.get("task_assets", req.params.id);
+    if (!doc) return reply.code(404).send({ error: "imagem não encontrada" });
+    reply.header("cache-control", "public, max-age=31536000, immutable");
+    return reply.type(doc.mime || "image/png").send(Buffer.from(doc.data || "", "base64"));
+  });
+
+  // ── Feedback (widget flutuante, toda tela) ────────────────────────────────
+  // O reporte vira um card no quadro de Tarefas (label bug/melhoria) — nada de
+  // coleção nova. Rota própria e aberta a qualquer sessão logada porque
+  // /api/tasks exige a tela "tasks" e reportar bug tem que funcionar de
+  // qualquer tela, por qualquer usuário. O servidor monta o card: título = 1ª
+  // linha, contexto (tela + quem reportou, pelo authUser) na descrição, card no
+  // FIM da primeira coluna do quadro (mesma régua de order do kanban).
+  app.post("/api/feedback", async (req, reply) => {
+    const kind = req.body?.kind === "melhoria" ? "melhoria" : "bug";
+    const text = String(req.body?.text || "").trim();
+    if (!text) return reply.code(400).send({ error: "escreva o reporte antes de enviar" });
+    const photo = String(req.body?.photo || "");
+    const [firstLine, ...rest] = text.split("\n");
+    const boards = await repo.list("task_boards");
+    const columns = boards[0]?.columns?.length ? boards[0].columns : [{ key: "todo" }];
+    const column = columns[0].key;
+    const tasks = await repo.list("tasks");
+    const inCol = tasks.filter((t) => (columns.some((c) => c.key === t.column) ? t.column : column) === column);
+    const order = inCol.length ? Math.max(...inCol.map((t) => Number(t.order) || 0)) + 1 : 1;
+    const context = `Reportado pelo widget de feedback · tela ${String(req.body?.screen || "?").slice(0, 80)} · por ${req.authUser?.name || "API key"}`;
+    return repo.create("tasks", {
+      title: firstLine.trim().slice(0, 120),
+      description: [rest.join("\n").trim(), context].filter(Boolean).join("\n\n"),
+      saas: "", // geral: o card aparece no quadro em qualquer workspace
+      assignees: [], column, priority: kind === "bug" ? "P1" : "P2",
+      dueDate: "", labels: [kind], comments: [], order,
+      photo: photo.startsWith("/public/tasks/") ? photo : "", // só asset nosso
+      createdAt: new Date().toISOString(),
+    });
+  });
+
+  // O recorte que o painel do widget mostra (últimos reportes + colunas do
+  // quadro pro status) — não expõe o board inteiro a quem não tem a tela.
+  app.get("/api/feedback", async () => {
+    const [tasks, boards] = await Promise.all([repo.list("tasks"), repo.list("task_boards")]);
+    const reports = tasks
+      .filter((t) => (t.labels || []).some((l) => l === "bug" || l === "melhoria"))
+      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+      .slice(0, 4)
+      .map((t) => ({ id: t.id, title: t.title, column: t.column, labels: t.labels, createdAt: t.createdAt }));
+    return { reports, columns: boards[0]?.columns || [] };
   });
 
   // ── Generic CRUD over every collection ───────────────────────────────────
@@ -631,8 +733,36 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       const cur = await repo.get(collection, id);
       if (cur && cur.stage !== req.body.stage) patch = { ...req.body, stageSince: new Date().toISOString() };
     }
+    // HISTÓRICO DE CALLS (Leo, 07/08): callAt é UM campo só — remarcar (ou
+    // limpar) sobrescrevia a call que JÁ ACONTECEU e ela sumia da agenda pra
+    // sempre (caso Thiago Nova Era: call de quinta apagada pela retomada de
+    // sexta). Antes de gravar um callAt DIFERENTE por cima de um callAt
+    // PASSADO, arquiva o antigo em lead.callHistory [{at, closer}] (máx 60);
+    // a agenda desenha o histórico como call feita (✓). Vale pra TODO caminho
+    // de escrita — tela, roteiro do Meu dia, drawer, MCP passam por este PATCH.
+    if (collection === "leads" && "callAt" in req.body) {
+      const cur = await repo.get(collection, id);
+      const oldAt = String(cur?.callAt || "");
+      const nextAt = String(req.body.callAt || "");
+      if (cur && oldAt && oldAt !== nextAt) {
+        const oldT = new Date(oldAt).getTime();
+        const hist = Array.isArray(cur.callHistory) ? cur.callHistory : [];
+        if (Number.isFinite(oldT) && oldT < Date.now() && !hist.some((h) => String(h?.at || "") === oldAt)) {
+          patch = { ...patch, callHistory: [...hist, { at: oldAt, closer: cur.closer || "" }].slice(-60) };
+        }
+      }
+    }
     const updated = await repo.update(collection, id, patch);
     if (!updated) return reply.code(404).send({ error: "Not found" });
+    // Empresa/nome preenchidos depois da geração precisam chegar na
+    // apresentação existente. O helper também recupera a dor de origem quando
+    // o snapshot é antigo; tudo é best-effort para nunca quebrar o PATCH do lead.
+    if (collection === "leads" && updated.proposta_id && ["company", "name", "sourcePain", "utm"].some((k) => k in req.body)) {
+      try {
+        const proposal = await repo.get("proposals", updated.proposta_id);
+        if (proposal) await syncProposalLeadSnapshot(repo, proposal);
+      } catch { /* fail-open */ }
+    }
     // Form editado → ressincroniza leadQuestions do produto (best-effort).
     if (collection === "forms") { try { await syncLeadQuestions(repo, updated); } catch { /* fail-open */ } }
     // Lead que virou "Ganho" → cria o cliente (pós-venda) com startedAt e link
@@ -651,8 +781,28 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // Plano/valor/pagamento reeditados num lead que JÁ virou cliente (gate da
     // Integração ou edição direta) → o fechamento novo re-espelha no cliente e
     // na assinatura nascidos dele. Best-effort: nunca quebra o PATCH.
-    if (collection === "leads" && updated.customerId && ["amount", "planClosed", "paymentMethod", "consultPackage"].some((k) => k in req.body)) {
+    if (collection === "leads" && updated.customerId && ["amount", "planClosed", "paymentMethod", "paymentInstallments", "consultPackage"].some((k) => k in req.body)) {
       try { await syncWonLeadDeal(repo, updated); } catch { /* fail-open */ }
+    }
+    // Caminho INVERSO do espelho acima: valor do contrato editado na tela de
+    // Clientes (customer.arr) volta pro fechamento (lead.amount, que é o que a
+    // coluna "Total fechado" mostra) e segue pelo mesmo syncWonLeadDeal até a
+    // assinatura — senão MRR muda e o total fechado fica com o número velho.
+    // Best-effort: nunca quebra o PATCH.
+    if (collection === "customers" && "arr" in req.body && updated.leadId) {
+      try {
+        const lead = await repo.get("leads", updated.leadId);
+        if (lead && lead.customerId === updated.id) {
+          const amount = Math.round((Number(updated.arr) || 0) / (CLOSED_PLAN_ANNUAL_FACTOR[lead.planClosed] || 1));
+          if (amount !== (Number(lead.amount) || 0)) {
+            const fresh = await repo.update("leads", lead.id, { amount });
+            // Serviço único/fechamento legado não têm spec de assinatura: só o
+            // amount espelha (cancelar/mexer em assinatura a partir de uma
+            // edição de valor seria chute).
+            if (closedSubscriptionSpec(fresh) || closedInstallments(fresh)) await syncWonLeadDeal(repo, fresh);
+          }
+        }
+      } catch { /* fail-open */ }
     }
     // Call/integração agendada, reagendada ou reatribuída → espelha na agenda
     // PESSOAL do responsável (closer na call, integrator na integração) que
@@ -686,9 +836,11 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       } catch { /* fail-open */ }
     }
     // Consulta remarcada, cancelada ou reatribuída → re-espelha na agenda
-    // pessoal da responsável (mesmo evento; cancelar apaga). Best-effort.
+    // pessoal da responsável (mesmo evento; cancelar apaga) E move o evento do
+    // Meet na conta do time (o convite do cliente acompanha). Best-effort.
     if (collection === "consultations" && ("at" in req.body || "status" in req.body || "owner" in req.body || "durationMin" in req.body || "n" in req.body || "clientName" in req.body)) {
       try { await syncConsultationCalendar(repo, googleUser, updated); } catch { /* fail-open */ }
+      try { await syncConsultationMeetEvent(repo, googleClient, updated); } catch { /* fail-open */ }
     }
     if (collection === "subscriptions") {
       await syncCustomerArr(repo, updated.customer);
@@ -710,6 +862,10 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     if (subCustomer) await syncCustomerArr(repo, subCustomer);
     if (gone?.calEventId && gone?.calEventUser) {
       try { await googleUser.deleteEvent(gone.calEventUser, gone.calEventId); } catch { /* fail-open */ }
+    }
+    // Consulta apagada → cancela também o evento do Meet (convite do cliente).
+    if (gone?.meetEventId && googleClient?.configured?.()) {
+      try { if (await googleClient.connected()) await googleClient.deleteCalendarEvent(gone.meetEventId); } catch { /* fail-open */ }
     }
     return { ok: true, id };
   });
@@ -819,8 +975,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   app.post("/api/leads/:id/proposal-share", async (req, reply) => {
     const lead = await repo.get("leads", req.params.id);
     if (!lead) return reply.code(404).send({ error: "Not found" });
-    const proposal = lead.proposta_id ? await repo.get("proposals", lead.proposta_id) : null;
+    let proposal = lead.proposta_id ? await repo.get("proposals", lead.proposta_id) : null;
     if (!proposal) return reply.code(400).send({ error: "lead ainda não tem proposta gerada" });
+    proposal = await syncProposalLeadSnapshot(repo, proposal);
     const body = req.body && typeof req.body === "object" ? req.body : {};
     const result = await shareProposalOffer(repo, proposal, body.offer, { baseUrl: publicBase(req) });
     if (!result.ok) return reply.code(400).send({ error: result.error });
@@ -847,6 +1004,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
 // é anualizado pelo plano fechado. Assinatura criada depois manda mais — toda
 // mutação de assinatura reescreve o arr via syncCustomerArr.
 const CLOSED_PLAN_LABEL = { anual: "Anual", semestral: "Semestral", mensal: "Mensal", unico: "Serviço único" };
+// O produto do catálogo da apresentação (FULL/OEM/Parcial, lead.dealProduct)
+// entra na frente do ciclo na coluna Plano do cliente: "LeverAds FULL · Anual".
+const planLabelOf = (lead) => [DEAL_PRODUCT_LABEL[lead.dealProduct], CLOSED_PLAN_LABEL[lead.planClosed]].filter(Boolean).join(" · ");
 const CLOSED_PLAN_ANNUAL_FACTOR = { anual: 1, semestral: 2, mensal: 12, unico: 1 };
 export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } = {}) {
   if (!lead || !lead.saas) return null;
@@ -882,10 +1042,11 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
     // Mentoria (UniqueKids): o "plano" do cliente é o PACOTE comprado.
     plan: lead.saas === "uniquekids"
       ? `Mentoria · ${Number(lead.consultPackage) === 4 ? 4 : 8} consultas`
-      : (CLOSED_PLAN_LABEL[lead.planClosed] || ""),
+      : (planLabelOf(lead) || ""),
     arr: Math.round((Number(lead.amount) || 0) * (CLOSED_PLAN_ANNUAL_FACTOR[lead.planClosed] || 1)),
     leadId: lead.id,
     ...(csOwner ? { owner: csOwner } : {}),
+    ...(lead.dealProduct ? { dealProduct: lead.dealProduct } : {}), // produto do catálogo (FULL/OEM/Parcial)
     ...(lead.paymentMethod ? { paymentMethod: lead.paymentMethod } : {}), // modo como fechou (PIX/boleto/cartão 12x)
     startedAt: new Date().toISOString(),
   });
@@ -896,10 +1057,20 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
   // Assinatura ativa nasce junto do cliente (plano fechado + meio de pagamento
   // → ciclo/preço; fatura inicial paga). Best-effort: o cliente já existe.
   try {
-    await createClosedSubscription(repo, {
+    const sub = await createClosedSubscription(repo, {
       customerId: customer.id, saas: lead.saas,
       planClosed: lead.planClosed, amount: lead.amount, paymentMethod: lead.paymentMethod,
+      paymentInstallments: lead.paymentInstallments,
     });
+    // Serviço único faturado em Nx: não há recorrência (spec null, arr manual),
+    // mas o cronograma de parcelas existe do mesmo jeito, preso só ao cliente.
+    if (!sub && closedInstallments(lead) && Number(lead.amount) > 0) {
+      await createInstallmentSchedule(repo, {
+        customerId: customer.id, saas: lead.saas, total: lead.amount,
+        installments: closedInstallments(lead), startAt: customer.startedAt,
+        method: lead.paymentMethod,
+      });
+    }
   } catch { /* assinatura é best-effort */ }
   // UniqueKids: o ganho É a compra do pacote de consultas (mentoria 1:1). A
   // jornada inteira nasce aqui SEM data (n=1..N + packageTotal); o time marca
@@ -973,7 +1144,8 @@ export async function syncWonLeadDeal(repo, lead) {
   const patch = {
     plan: lead.saas === "uniquekids"
       ? `Mentoria · ${Number(lead.consultPackage) === 4 ? 4 : 8} consultas`
-      : (CLOSED_PLAN_LABEL[lead.planClosed] || customer.plan || ""),
+      : (planLabelOf(lead) || customer.plan || ""),
+    ...(lead.dealProduct ? { dealProduct: lead.dealProduct } : {}),
     ...(lead.paymentMethod ? { paymentMethod: lead.paymentMethod } : {}),
   };
   const manualArr = () => Math.round((Number(lead.amount) || 0) * (CLOSED_PLAN_ANNUAL_FACTOR[lead.planClosed] || 1));
@@ -1000,11 +1172,37 @@ export async function syncWonLeadDeal(repo, lead) {
       await createClosedSubscription(repo, {
         customerId: customer.id, saas: lead.saas,
         planClosed: lead.planClosed, amount: lead.amount, paymentMethod: lead.paymentMethod,
+        paymentInstallments: lead.paymentInstallments,
         startAt: lead.wonAt || customer.startedAt,
       });
     } else if (Number(lead.amount) > 0) {
       patch.arr = manualArr();
     }
+  }
+  // Cronograma do faturado acompanha a edição: parcela PAGA fica (dinheiro que
+  // entrou); as abertas são refeitas pro valor/parcelamento novos; sem
+  // parcelamento (virou à vista/cartão), as abertas somem. Faturas de renovação
+  // do desenho antigo saem do caminho: abertas são removidas e a inicial
+  // auto-paga (paidAt === dueDate, sem pagamento real do MP) também — renovação
+  // paga de verdade fica e o valor dela desconta do cronograma. Assinatura
+  // presa no MP ou cliente com 2+ assinaturas segue gestão manual.
+  if (subs.length === 0 || (subs.length === 1 && !subs[0].mpPreapprovalId)) {
+    try {
+      const n = closedInstallments(lead);
+      const subId = subs[0]?.id || "";
+      let alreadyPaid = 0;
+      if (n && subId) {
+        for (const inv of (await repo.list("invoices")).filter((i) => i.subscription === subId && i.kind === "renewal")) {
+          if (inv.status !== "paid" || (!inv.mpPaymentId && inv.paidAt === inv.dueDate)) await repo.remove("invoices", inv.id);
+          else alreadyPaid += Number(inv.amount) || 0;
+        }
+      }
+      await syncClosedInstallments(repo, {
+        customerId: customer.id, saas: lead.saas, subscription: subId,
+        total: Math.max(0, (Number(lead.amount) || 0) - alreadyPaid),
+        installments: n, startAt: lead.wonAt || customer.startedAt, method: lead.paymentMethod,
+      });
+    } catch { /* cronograma é best-effort — nunca quebra o espelho */ }
   }
   return repo.update("customers", customer.id, patch);
 }

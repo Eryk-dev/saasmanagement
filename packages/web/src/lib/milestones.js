@@ -16,9 +16,11 @@ export function milestoneTemplate(product) {
   return Array.isArray(custom) && custom.length ? custom : DEFAULT_MILESTONES;
 }
 
-// Duração do contrato em dias: ciclo da assinatura ativa (`contractCycle`,
-// injetado por quem tem as subs na mão) ou o texto livre de customer.plan;
-// sem nenhum sinal, assume contrato anual (o padrão da casa).
+// Duração do contrato em dias: o plano do CADASTRO (customer.plan) manda; o
+// ciclo da assinatura ativa (`contractCycle`, injetado por quem tem as subs na
+// mão) é só fallback — ele é cadência de COBRANÇA, não o contrato (boleto
+// faturado vira ciclo mensal por design, e um semestral faturado ficaria sem
+// régua de renovação). Sem nenhum sinal, assume anual (o padrão da casa).
 const CYCLE_DAYS = { monthly: 30, quarterly: 91, semiannual: 182, annual: 365 };
 // "único" = serviço avulso, sem contrato correndo → nunca gera marco de renovação.
 // "consulta" = pacote da mentoria (UniqueKids): jornada finita, sem renovação
@@ -27,11 +29,9 @@ const PLAN_HINTS = [["consulta", 0], ["único", 0], ["unico", 0], ["mensal", 30]
 export const RENEWAL_LEAD_DAYS = 60; // contato de renovação 2 meses antes do fim
 
 function contractDays(customer) {
-  const byCycle = CYCLE_DAYS[customer?.contractCycle];
-  if (byCycle) return byCycle;
   const plan = String(customer?.plan || "").toLowerCase();
   for (const [hint, days] of PLAN_HINTS) if (plan.includes(hint)) return days;
-  return 365;
+  return CYCLE_DAYS[customer?.contractCycle] || 365;
 }
 
 // Marco dinâmico: contato de renovação 2 meses antes do contrato acabar.

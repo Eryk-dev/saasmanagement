@@ -5,6 +5,7 @@ import { PageHead, Segmented, Card, LineChart, StatTile } from "../components/vi
 import { EmptyState } from "../atoms.jsx";
 import { FunnelLadder } from "../charts.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
+import { usePeriod } from "../components/period-picker.jsx";
 
 // Landing pages — desempenho das páginas públicas do Elo em relação a CONVERSÃO.
 // Duas metades que se completam:
@@ -16,17 +17,14 @@ import { useActiveSaas } from "../lib/workspace.js";
 // criado → pago. Beacon e pedido não se ligam 1:1 (sem PII no beacon) — a
 // junção é agregada, por período e por origem.
 
-const PERIODS = [
-  { value: 7, label: "7 dias" },
-  { value: 30, label: "30 dias" },
-  { value: 90, label: "90 dias" },
-];
 
 const centavos = (c) => fmt.money((c || 0) / 100);
 
 function LandingPagesScreen() {
   const [product] = useActiveSaas();
-  const [days, setDays] = React.useState(30);
+  // Janela GLOBAL do cockpit (filtro unico no topo, 08/08).
+  const { win } = usePeriod();
+  const days = win.days;
   const [data, setData] = React.useState(null);
   const [error, setError] = React.useState("");
   const [loading, setLoading] = React.useState(true);
@@ -48,9 +46,7 @@ function LandingPagesScreen() {
   }
 
   const head = (
-    <PageHead title="Landing pages" sub="visitas do beacon · conversão do checkout web por origem">
-      <Segmented value={days} options={PERIODS} onChange={setDays} />
-    </PageHead>
+    <PageHead title="Landing pages" sub="visitas do beacon · conversão do checkout web por origem · a janela vem do filtro do topo" />
   );
 
   if (error) {
@@ -145,7 +141,7 @@ function LandingPagesScreen() {
               {!conv && <div className="dim" style={{ fontSize: 12.5, padding: "8px 0" }}>Configure ELO_DB_URL na API pra ver pedidos e receita por origem.</div>}
               {conv && !byUtm.length && <div className="dim" style={{ fontSize: 12.5, padding: "8px 0" }}>sem pedidos no período</div>}
               {byUtm.length > 0 && (
-                <table className="mono" style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                <div style={{ overflowX: "auto" }}><table className="mono" style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                   <thead>
                     <tr style={{ color: "var(--fg-4)", textAlign: "right" }}>
                       <th style={{ textAlign: "left", padding: "4px 0", fontWeight: 500 }}>origem</th>
@@ -168,7 +164,7 @@ function LandingPagesScreen() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></div>
               )}
             </div>
           </Card>
@@ -210,7 +206,7 @@ function LandingPagesScreen() {
               ))}
               {(d.ctaLabels || []).length > 0 && (
                 <div style={{ marginTop: 14 }}>
-                  <div className="mono dim" style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>CTAs mais clicados</div>
+                  <div className="kicker" style={{ marginBottom: 4 }}>CTAs mais clicados</div>
                   {(d.ctaLabels || []).slice(0, 6).map((c) => (
                     <div key={c.label} className="mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 11, padding: "3px 0" }}>
                       <span style={{ color: "var(--fg-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.label}</span>

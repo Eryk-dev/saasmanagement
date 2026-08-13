@@ -173,6 +173,36 @@ test("meta por mês: o mês configurado vence o padrão, e o padrão vence o do 
   assert.deepEqual(cashTargetFor({}, "2026-07"), { target: 120000, configured: false, source: "system" });
 });
 
+test("regra de crescimento: mês sem valor cresce % composto sobre o último agendado", () => {
+  // A escada real de produção: 180k → 270k → 405k (×1,5). Com a regra em 50%,
+  // novembro em diante segue sozinho em vez de despencar pro padrão 120k.
+  const p = {
+    monthlyCashTarget: 120000, monthlyCashGrowthPct: 50,
+    monthlyCashTargets: { "2026-08": 180000, "2026-09": 270000, "2026-10": 405000 },
+  };
+  assert.deepEqual(cashTargetFor(p, "2026-10"), { target: 405000, configured: true, source: "month" }, "mês agendado vence a regra");
+  assert.deepEqual(cashTargetFor(p, "2026-11"), { target: 607500, configured: true, source: "growth", growthFrom: "2026-10", growthPct: 50 });
+  assert.equal(cashTargetFor(p, "2026-12").target, 911250, "composto: 405k × 1,5²");
+  assert.equal(cashTargetFor(p, "2027-01").target, Math.round(405000 * 1.5 ** 3), "vira o ano contando os meses certos");
+  // âncora é o ÚLTIMO agendado antes do mês, não o primeiro
+  assert.deepEqual(cashTargetFor(p, "2026-09").growthFrom, undefined, "setembro é agendado, nem passa pela regra");
+  // sem mês agendado antes, não há âncora: cai no padrão
+  assert.deepEqual(cashTargetFor(p, "2026-07"), { target: 120000, configured: true, source: "default" });
+  // sem regra configurada, comportamento antigo intacto
+  const semRegra = { ...p, monthlyCashGrowthPct: null };
+  assert.deepEqual(cashTargetFor(semRegra, "2026-11"), { target: 120000, configured: true, source: "default" });
+});
+
+test("PUT/GET: company.growthPct grava, arredonda a 1 casa e limpa", async () => {
+  const { app, repo } = await buildApp();
+  await app.inject({ method: "PUT", url: "/api/metas/leverads", payload: { goals: [], company: { growthPct: "50.44" } } });
+  assert.equal((await repo.get("products", "leverads")).monthlyCashGrowthPct, 50.4);
+  assert.equal((await app.inject({ url: "/api/metas/leverads" })).json().company.growthPct, 50.4);
+  await app.inject({ method: "PUT", url: "/api/metas/leverads", payload: { goals: [], company: { growthPct: "" } } });
+  assert.equal((await repo.get("products", "leverads")).monthlyCashGrowthPct, null);
+  assert.equal((await app.inject({ url: "/api/metas/leverads" })).json().company.growthPct, null);
+});
+
 test("agenda de meses: GET lista os próximos e o PUT grava, apaga e ignora lixo", async () => {
   const repo = makeMemRepo();
   await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [], monthlyCashTarget: 120000 });
@@ -180,7 +210,7 @@ test("agenda de meses: GET lista os próximos e o PUT grava, apaga e ignora lixo
   registerMetasRoutes(app, repo);
 
   const antes = (await app.inject({ url: "/api/metas/leverads" })).json();
-  assert.equal(antes.company.months.length, 6, "mês corrente + 5");
+  assert.equal(antes.company.months.length, 7, "mês corrente + 6 (a janela do botão da Agenda)");
   assert.equal(antes.company.months[0].current, true);
   assert.equal(antes.company.months[0].target, null, "sem valor próprio ainda");
   assert.equal(antes.company.months[0].effective, 120000, "mas segue o padrão");
@@ -241,4 +271,57 @@ test("passado de 200% (chaseTarget null): cai na base, não há teto acima", () 
   const d = deriveGoalsFromPace(paceStub({ sale: { target: 120000, chaseTarget: null, chasePct: null } }));
   assert.equal(d.target, 120000);
   assert.equal(d.superMode, false);
+});
+
+// ── Meta de contratos da empresa (monthlyContractsTarget) ────────────────────
+test("meta de contratos digitada vence a venda ÷ ticket e puxa a cadeia", () => {
+  const d = deriveGoalsFromPace(paceStub(), { contractsTarget: 32 });
+  assert.equal(d.won, 32, "digitado vence os 20 da divisão");
+  assert.equal(d.wonFromTicket, 20, "a divisão fica exposta pra comparação");
+  assert.equal(d.wonSource, "company");
+  assert.equal(d.callsShown, 64, "cadeia desce do digitado: 32 ÷ 50%");
+  assert.equal(d.goals.find((g) => g.metric === "won").target, 32);
+  // e não escala em super meta (digitado não escala)
+  const s = deriveGoalsFromPace(paceStub({ sale: { target: 120000, chaseTarget: 240000, chasePct: 200 } }), { contractsTarget: 32 });
+  assert.equal(s.won, 32);
+});
+
+test("sem ticket, a meta de contratos digitada sustenta a cadeia sozinha", () => {
+  const semTicket = paceStub({ context: { averageEntry: 0, averageEntrySource: "" } });
+  assert.equal(deriveGoalsFromPace(semTicket).blockedBy, "ticket", "sem nada, trava como antes");
+  const d = deriveGoalsFromPace(semTicket, { contractsTarget: 30 });
+  assert.equal(d.blockedBy, null);
+  assert.equal(d.won, 30);
+  assert.equal(d.wonFromTicket, null);
+  assert.ok(!d.goals.find((g) => g.metric === "ticket"), "sem ticket não deriva meta de ticket");
+  assert.equal(d.goals.find((g) => g.metric === "revenue").target, 120000, "a meta de R$ segue derivando");
+});
+
+test("GET: plano de remuneração exposto (padrão e doc salvo) + nível por pessoa", async () => {
+  const { app, repo } = await buildApp();
+  await repo.update("users", "jon", { compLevel: 2 });
+  const r1 = (await app.inject({ url: "/api/metas/leverads" })).json();
+  assert.equal(r1.users.find((u) => u.id === "jon").compLevel, 2);
+  assert.equal(r1.users.find((u) => u.id === "leo").compLevel, 1, "sem campo = júnior");
+  assert.deepEqual(r1.compPlan.sdr.map((l) => l.metaContracts), [20, 25, 35], "padrão aprovado 04/08");
+  const sdr = r1.roles.find((x) => x.role === "sdr");
+  assert.equal(sdr.metrics.find((m) => m.metric === "won").compPlan, true, "contratos seguem o plano, não campo de vaga");
+  assert.equal(sdr.metrics.find((m) => m.metric === "revenue").compPlan, true);
+  assert.ok(!sdr.metrics.find((m) => m.metric === "contacts").compPlan, "volume comum segue campo de vaga");
+  // doc salvo na tela Remuneração vence o padrão (só da trilha dele)
+  await repo.create("comp_plans", { id: "cp_closer", role: "closer", plan: { levels: [{ n: 1, metaContracts: 18, metaRevenue: 80000 }] } });
+  const r2 = (await app.inject({ url: "/api/metas/leverads" })).json();
+  assert.deepEqual(r2.compPlan.closer, [{ n: 1, metaContracts: 18, metaRevenue: 80000 }]);
+  assert.deepEqual(r2.compPlan.sdr.map((l) => l.n), [1, 2, 3], "sdr segue no padrão");
+});
+
+test("PUT/GET: company.contractsTarget grava no produto, arredonda e limpa", async () => {
+  const { app, repo } = await buildApp();
+  await app.inject({ method: "PUT", url: "/api/metas/leverads", payload: { goals: [], company: { contractsTarget: "32.4" } } });
+  assert.equal((await repo.get("products", "leverads")).monthlyContractsTarget, 32);
+  assert.equal((await app.inject({ url: "/api/metas/leverads" })).json().company.contractsTarget, 32);
+  // vazio limpa: o número volta a seguir a venda ÷ ticket
+  await app.inject({ method: "PUT", url: "/api/metas/leverads", payload: { goals: [], company: { contractsTarget: "" } } });
+  assert.equal((await repo.get("products", "leverads")).monthlyContractsTarget, null);
+  assert.equal((await app.inject({ url: "/api/metas/leverads" })).json().company.contractsTarget, null);
 });

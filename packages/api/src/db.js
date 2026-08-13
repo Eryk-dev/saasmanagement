@@ -222,13 +222,18 @@ export const repo = {
     bump(name);
     return record;
   },
-  async update(name, id, patch) {
+  // `silent: true` grava SEM acordar o tempo real (bump): pra escrita de alta
+  // frequência que nenhuma tela lê do SEED — recibo de status do WhatsApp,
+  // marcação de lido — que estava recarregando o cockpit INTEIRO de todo
+  // usuário conectado a cada evento (Leo, 04/08: "fica dando uns pequenos
+  // refresh"). O cache local invalida do mesmo jeito (a leitura seguinte vê).
+  async update(name, id, patch, { silent = false } = {}) {
     const current = await this.get(name, id);
     if (!current) return null;
     const record = { ...current, ...patch, id: current.id };
     await getPool().query(`UPDATE ${tbl(name)} SET json = $1::jsonb, updated_at = now() WHERE id = $2`, [JSON.stringify(record), String(id)]);
     invalidate(name);
-    bump(name);
+    if (!silent) bump(name);
     return record;
   },
   async remove(name, id) {

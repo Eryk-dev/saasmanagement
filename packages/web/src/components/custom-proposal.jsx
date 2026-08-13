@@ -1,6 +1,7 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { cockpitProposalUrl } from "../lib/ui.js";
+import { useEsc } from "../atoms.jsx";
 
 // Proposta PERSONALIZADA (objetiva) — pra cliente que fechou solução sob medida
 // numa conversa. O closer não monta o deck inteiro: escreve o COMBINADO
@@ -17,11 +18,12 @@ const CYCLES = [
 ];
 
 const field = { height: 34, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, width: "100%", minWidth: 0 };
-const label = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-4)", letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 5 };
+const label = { display: "block", marginBottom: 5 };
 const ghost = { height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
 const primary = { ...ghost, border: "1px solid var(--accent)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))" };
 
 export function CustomProposalModal({ lead, onClose, onSaved }) {
+  useEsc(onClose);
   const [spec, setSpec] = useState({ title: "Proposta personalizada", subtitle: "", deliverables: [""], price: "", cycle: "avista", priceCaption: "" });
   const [url, setUrl] = useState(lead.customProposalUrl || "");
   const [busy, setBusy] = useState(false);
@@ -80,17 +82,17 @@ export function CustomProposalModal({ lead, onClose, onSaved }) {
 
         {/* Capa */}
         <div>
-          <span style={label}>Título da capa</span>
+          <span className="kicker" style={label}>Título da capa</span>
           <input value={spec.title} onChange={(e) => set("title", e.target.value)} style={field} placeholder="Proposta personalizada" />
         </div>
         <div>
-          <span style={label}>Subtítulo <span style={{ textTransform: "none", letterSpacing: 0 }}>(opcional)</span></span>
+          <span className="kicker" style={label}>Subtítulo <span style={{ textTransform: "none", letterSpacing: 0 }}>(opcional)</span></span>
           <input value={spec.subtitle} onChange={(e) => set("subtitle", e.target.value)} style={field} placeholder="Solução sob medida pra sua operação" />
         </div>
 
         {/* O combinado */}
         <div>
-          <span style={label}>O que foi combinado</span>
+          <span className="kicker" style={label}>O que foi combinado</span>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {spec.deliverables.map((d, i) => (
               <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -107,7 +109,7 @@ export function CustomProposalModal({ lead, onClose, onSaved }) {
 
         {/* Valor */}
         <div>
-          <span style={label}>Valor</span>
+          <span className="kicker" style={label}>Valor</span>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
               <span className="mono dim" style={{ fontSize: 12 }}>R$</span>

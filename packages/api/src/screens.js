@@ -56,8 +56,12 @@ const ROUTE_SCREENS = [
   ["/api/customers", ["customers"]],
   ["/api/subscriptions", ["customers"]], // inclui /change e /mp/link
   ["/api/invoices", ["customers"]],      // inclui /pay e /mp/link
-  ["/api/mp/", ["customers"]],           // financeiro: espelho de pagamentos do MP (payments/sync/link)
-  ["/api/mp_payments", ["customers"]],   // CRUD genérico do espelho (mesma tela dos clientes)
+  ["/api/mp/", ["expenses"]],            // financeiro: espelho de pagamentos do MP (payments/sync/link) — aba Pagamentos da tela Financeiro
+  ["/api/mp_payments", ["expenses"]],    // CRUD genérico do espelho (mesma tela)
+  ["/api/fin/", ["expenses"]],           // financeiro completo: leitura do mês (contas a pagar, fluxo, DRE, conciliação)
+  ["/api/payables", ["expenses"]],       // CRUD genérico das contas a pagar
+  ["/api/fin_rules", ["expenses"]],      // regras de conciliação aprendidas
+  ["/api/mp_movements", ["expenses"]],   // saídas da conta MP (settlement report)
   ["/api/plans", ["customers"]],
   ["/api/nps", ["customers"]],
   ["/api/billing/", ["customers"]],
@@ -68,11 +72,14 @@ const ROUTE_SCREENS = [
   ["/api/proposals", ["proposals"]],     // inclui /preview
   ["/api/offers", ["offers"]],           // links de pagamento das ofertas
   ["/api/contracts", ["contracts"]],     // modelos de contrato (biblioteca)
+  ["/api/contract_issues", ["contracts"]], // contratos confirmados (histórico da mesma tela)
   ["/api/campaigns", ["disparos"]],      // disparos de e-mail + WhatsApp (mark, ai-copy e CRUD)
+  ["/api/wa_automations", ["whatsapp"]], // automações do Inbox (regras reativas: CRUD genérico)
+  ["/api/wa_flows", ["whatsapp"]],       // fluxos de conversa do Inbox (construtor: CRUD genérico)
   ["/api/outbound_accounts", ["outbound"]], // radar de contas do outbound (Cold Calling 2.0)
   ["/api/comp_plans", ["remuneracao"]],  // remuneração por cargo (ADMIN_PREFIXES exige etiqueta admin, além da tela)
-  ["/api/sequences", ["disparos"]],      // sequências de nutrição (drip): CRUD + enroll/wa-sent/metrics/run
-  ["/api/sequence_enrollments", ["disparos"]], // progresso das sequências
+  ["/api/sequences", ["disparos", "whatsapp"]],      // sequências de nutrição (drip): CRUD + enroll/wa-sent/metrics/run; a aba Automações do Inbox lista/pausa
+  ["/api/sequence_enrollments", ["disparos", "whatsapp"]], // progresso das sequências
   ["/api/drip_templates", ["disparos"]], // biblioteca de conteúdo dos passos
   // Números do inbox (esperando resposta/janelas) no "Precisa de atenção" da
   // Visão geral — só a LEITURA agregada; conversas/envio seguem só do inbox.
