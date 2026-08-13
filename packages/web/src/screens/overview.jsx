@@ -262,6 +262,18 @@ function personRows(p, bizDays, elapsedFrac, monthFrac) {
       });
       rate("resgate", p.closer.followupWinRate, p.closer.goals?.followupWinRate?.target || 15, "Dos leads que caíram em follow-up na janela, quantos ele trouxe de volta pra ganho");
     }
+    // Ticket médio dos contratos fechados na janela (receita ÷ contratos, já
+    // vem pronto do scoreboard). Meta é opcional (goals.ticket em Metas); sem
+    // meta a linha é informativa, sem cor.
+    if (p.closer.ticket != null) {
+      const tTarget = g.ticket?.target > 0 ? g.ticket.target : null;
+      rows.push({
+        label: "ticket médio", valueText: `R$ ${compactMoney(p.closer.ticket)}`,
+        metaText: tTarget != null ? `R$ ${compactMoney(tTarget)}` : null,
+        lvl: tTarget != null ? levelOf(p.closer.ticket, tTarget, 1) : null,
+        title: `Valor médio por contrato fechado na janela (R$ ${compactMoney(p.closer.revenue)} em ${int(p.closer.won)} contrato${p.closer.won === 1 ? "" : "s"})`,
+      });
+    }
   }
   if (p.cs) {
     const g = p.cs.goals || {};
