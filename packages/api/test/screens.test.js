@@ -44,8 +44,15 @@ test("sanitizeScreens: só ids conhecidos passam; não-array vira []", () => {
 });
 
 test("screenForRequest: mapa por prefixo + escritas administrativas", () => {
-  assert.deepEqual(screenForRequest("GET", "/api/expenses/summary/leverads"), ["expenses"]);
-  assert.deepEqual(screenForRequest("GET", "/api/marketing/leverads"), ["metrics", "aquisicao"]);
+  // Leituras da Visão geral (tiles de aquisição + Resultado do mês): GET ganha
+  // "overview" de carona; escrita/ação continua só da tela dona.
+  assert.deepEqual(screenForRequest("GET", "/api/expenses/summary/leverads"), ["expenses", "overview"]);
+  assert.deepEqual(screenForRequest("GET", "/api/marketing/leverads"), ["metrics", "aquisicao", "overview"]);
+  assert.deepEqual(screenForRequest("POST", "/api/marketing/sync"), ["metrics", "aquisicao"]);
+  assert.deepEqual(screenForRequest("GET", "/api/invoices"), ["customers", "overview"]);
+  assert.deepEqual(screenForRequest("POST", "/api/invoices/i1/pay"), ["customers"]);
+  assert.deepEqual(screenForRequest("GET", "/api/metrics/leverads"), ["metrics", "aquisicao", "overview"]);
+  assert.deepEqual(screenForRequest("POST", "/api/expenses"), ["expenses"]);
   assert.deepEqual(screenForRequest("POST", "/api/leads/l1/proposal"), ["pipeline", "today"]);
   assert.deepEqual(screenForRequest("POST", "/api/activities"), ["pipeline", "today"]);
   assert.deepEqual(screenForRequest("GET", "/api/pipeline-pace/leverads"), ["pipeline", "analise", "overview"]);
@@ -121,6 +128,30 @@ test("usuário só com Meu dia (today): leads e toques liberados, resto 403", as
   for (const url of ["/api/customers", "/api/expenses", "/api/funnel/leverads", "/api/pipeline-pace/leverads", "/api/tasks"]) {
     assert.equal((await app.inject({ url, headers: H })).statusCode, 403, `esperava 403 em ${url}`);
   }
+});
+
+test("usuário só com Visão geral (overview): LÊ os painéis da tela de gestão, mas não age", async (t) => {
+  const repo = makeMemRepo();
+  await ensureDefaultAdmins(repo);
+  await repo.create("users", {
+    id: "vitor", name: "Vitor", role: "admin", roles: ["closer"],
+    screens: ["overview"], passwordHash: hashPassword("1234"),
+  });
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [{ stage: "Novo lead", conv: 1 }] });
+  const app = buildApp(repo);
+  t.after(() => app.close());
+  const token = await loginToken(app, "vitor", "1234");
+  const H = { "x-api-key": token };
+
+  // A Visão geral de gestão é a mesma pra todo o time: as leituras dos painéis
+  // (aquisição, CAC, Resultado do mês) passam só com a tela overview.
+  for (const url of ["/api/marketing/leverads", "/api/metrics/leverads", "/api/invoices", "/api/expenses/summary/leverads", "/api/portfolio", "/api/scoreboard/leverads", "/api/pipeline-pace/leverads"]) {
+    assert.equal((await app.inject({ url, headers: H })).statusCode, 200, `esperava 200 em ${url}`);
+  }
+  // Ação/escrita continua exigindo a tela dona da rota.
+  assert.equal((await app.inject({ method: "POST", url: "/api/marketing/sync", headers: H, payload: {} })).statusCode, 403);
+  assert.equal((await app.inject({ method: "POST", url: "/api/expenses", headers: H, payload: { saas: "leverads", label: "X", amount: 1 } })).statusCode, 403);
+  assert.equal((await app.inject({ method: "POST", url: "/api/invoices/i1/pay", headers: H, payload: {} })).statusCode, 403);
 });
 
 test("bootstrap filtrado: restrito recebe leads mas NÃO clientes/portfólio/financeiro do produto", async (t) => {

@@ -1,7 +1,7 @@
 import React from "react";
 import { api, clearKey } from "./lib/api.js";
 import { useActiveSaas } from "./lib/workspace.js";
-import { canSeeScreen, currentUser, isAdminUser, userById, userPhoto } from "./lib/users.js";
+import { canSeeScreen, currentUser, hasExplicitScreen, isAdminUser, userById, userPhoto } from "./lib/users.js";
 import { PeriodPicker, usePeriod } from "./components/period-picker.jsx";
 
 // Filtro de período GLOBAL, no topo ao lado da busca: muda a janela do cockpit
@@ -58,7 +58,7 @@ const NAV = [
   { id: "tasks",      label: "Tarefas",        icon: "▣",  group: "geral" },
   { id: "mindmaps",   label: "Mapas mentais",  icon: "⌬",  group: "geral" },
   { id: "metas",      label: "Metas",          icon: "◎",  group: "geral" },
-  { id: "remuneracao", label: "Remuneração",   icon: "◫",  group: "geral", adminOnly: true }, // modelos de comp por cargo (salário: só admin)
+  { id: "remuneracao", label: "Remuneração",   icon: "◫",  group: "geral", adminOnly: true }, // modelos de comp por cargo (salário: admin, ou tela concedida explicitamente = leitura)
   { id: "expenses",   label: "Custos",         icon: "◫",  group: "geral" },
   { id: "settings",   label: "Configurações",  icon: "✦",  group: "geral" },
 ];
@@ -124,7 +124,7 @@ function NavRail({ current, onNav, collapsed }) {
   const inSaas = (item) =>
     (!item.saas || item.saas === product?.id) && (!item.notSaas || item.notSaas !== product?.id);
   const groups = [];
-  NAV.filter((item) => !item.hidden && inSaas(item) && canSeeScreen(item.id) && (!item.adminOnly || isAdminUser())).forEach(item => {
+  NAV.filter((item) => !item.hidden && inSaas(item) && canSeeScreen(item.id) && (!item.adminOnly || isAdminUser() || hasExplicitScreen(item.id))).forEach(item => {
     let g = groups.find(x => x.key === item.group);
     if (!g) { g = { key: item.group, items: [] }; groups.push(g); }
     g.items.push(item);

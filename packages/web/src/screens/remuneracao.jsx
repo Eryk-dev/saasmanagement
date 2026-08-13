@@ -2,14 +2,15 @@ import React from "react";
 import { PageHead } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
-import { isAdminUser } from "../lib/users.js";
+import { hasExplicitScreen, isAdminUser } from "../lib/users.js";
 
-// Remuneração — tela SÓ DE ADMIN (dono): modelos de remuneração por cargo,
-// direto do Receita Previsível (caps. 10-11), + o NOSSO plano em cada vaga
-// (editável, salvo na collection comp_plans) e um simulador de quanto a
-// pessoa leva no mês. Dupla proteção: o item de menu só aparece pra admin
-// (chrome.jsx) e a API /api/comp_plans exige a etiqueta admin (screens.js),
-// então nem usuário sem restrição de telas (ex.: acesso total) enxerga salário.
+// Remuneração — tela da GESTÃO: modelos de remuneração por cargo, direto do
+// Receita Previsível (caps. 10-11), + o NOSSO plano em cada vaga (editável,
+// salvo na collection comp_plans) e um simulador de quanto a pessoa leva no
+// mês. Quem vê: admin (edita) ou quem ganhou a tela EXPLICITAMENTE em Ajustes
+// → Equipe (só leitura). Usuário sem restrição de telas ("vê tudo") NÃO conta
+// como concessão — salário não vaza por esse caminho. A API /api/comp_plans
+// aplica a mesma regra (screens.js do servidor).
 
 const { useState: useS, useEffect: useE } = React;
 
@@ -185,15 +186,15 @@ function RoleCard({ role, plan, onSave }) {
         {role.fields.map((f) => (
           <label key={f} style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11, color: "var(--fg-3)" }} title={FIELD_LABELS[f][1]}>
             {FIELD_LABELS[f][0]}
-            <input type="number" value={draft[f] ?? 0} onChange={set(f)} style={inputS} />
+            <input type="number" value={draft[f] ?? 0} onChange={set(f)} style={inputS} disabled={!onSave} />
           </label>
         ))}
         <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11, color: "var(--fg-3)", flex: "1 1 200px" }}>
           Observações
-          <input value={draft.notes || ""} onChange={set("notes")} placeholder="acordos, exceções…" style={{ ...inputS, width: "100%" }} />
+          <input value={draft.notes || ""} onChange={set("notes")} placeholder="acordos, exceções…" style={{ ...inputS, width: "100%" }} disabled={!onSave} />
         </label>
       </div>
-      {dirty && (
+      {dirty && onSave && (
         <button style={{ ...btnPrimary, marginTop: 10 }} disabled={saving}
           onClick={async () => {
             setSaving(true);
@@ -217,7 +218,9 @@ function RemuneracaoScreen() {
   }).catch(() => setPlans({}));
   useE(() => { load(); }, []); // eslint-disable-line
 
-  if (!isAdminUser()) return <EmptyState title="Área da gestão" hint="Esta tela é só pra quem tem a etiqueta admin." />;
+  const editor = isAdminUser();
+  if (!editor && !hasExplicitScreen("remuneracao"))
+    return <EmptyState title="Área da gestão" hint="Peça pra gestão liberar a tela Remuneração em Ajustes → Equipe." />;
 
   async function save(draft) {
     const clean = {
@@ -234,7 +237,7 @@ function RemuneracaoScreen() {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-      <PageHead title="Remuneração" sub="modelos por cargo (Receita Previsível) · visível só pra admins" />
+      <PageHead title="Remuneração" sub="modelos por cargo (Receita Previsível) · edição só pra admins" />
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14, maxWidth: 980 }}>
         <div style={box}>
           <div className="mono" style={{ ...kicker, color: "var(--accent)", marginBottom: 8 }}>Princípios · direto do livro</div>
@@ -248,7 +251,7 @@ function RemuneracaoScreen() {
         </div>
         {plans == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
         {plans != null && ROLES.map((r) => (
-          <RoleCard key={r.key} role={r} plan={plans[r.key] || blankPlan(r.key)} onSave={save} />
+          <RoleCard key={r.key} role={r} plan={plans[r.key] || blankPlan(r.key)} onSave={editor ? save : null} />
         ))}
         <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>
           Quando o plano do SDR for aprovado, o próximo passo é amarrar a metade das "aceitas" ao aceite do closer que já roda no drawer (hoje é telemetria).

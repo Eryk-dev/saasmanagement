@@ -6,7 +6,7 @@ import { EmptyState } from "../atoms.jsx";
 import { nextMilestone, dueLabel } from "../lib/milestones.js";
 import { openStages, isWonLead, wonAtOf, stageKind, isRealLead } from "../lib/funnel.js";
 import { bizDay } from "../lib/format.js";
-import { displayName, currentUser, isAdminUser, canSeeScreen } from "../lib/users.js";
+import { canSeeScreen } from "../lib/users.js";
 import { leadTier } from "../lib/ui.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { buildPeople, TeamCards, topPerformer } from "../components/team-cards.jsx";
@@ -45,14 +45,10 @@ function OverviewScreen({ onNav, onOpenLead }) {
   const pLabel = win.label;
   const pShort = win.short;
 
-  // Lente por CARGO: quem não é gestão não precisa (nem deve) abrir a tela de
-  // gestão inteira. Vê duas coisas, que são as que mudam o trabalho dele hoje:
-  // as metas da própria vaga e a meta do mês da empresa. O resto (receita, CAC,
-  // ROAS, placar dos colegas, fila de atenção) é decisão de gestão.
-  const eu = currentUser();
-  // Sem usuário = acesso por chave mestra (integrações, MCP): vale como gestão,
-  // igual ao allowedScreens. Só sessão de pessoa cai na lente da vaga.
-  const gestao = !eu || isAdminUser();
+  // A Visão geral é UMA só, a de gestão, pra todo o time: receita, CAC, placar
+  // e fila de atenção na frente de todo mundo (transparência de operação). O
+  // guard da API acompanha — quem tem a tela overview LÊ o que os painéis
+  // buscam (OVERVIEW_READ_PREFIXES no screens.js do servidor).
 
   // Troca de PRODUTO zera os painéis; refresh por versão (SSE) ou período refaz.
   const loadedFor = React.useRef(null);
@@ -63,14 +59,10 @@ function OverviewScreen({ onNav, onOpenLead }) {
       setMarketing(null); setInvoices([]); setCosts(null); setScore(null); setPace(null);
     }
     let alive = true;
-    // Na lente individual esses painéis nem existem: não buscar poupa rede e
-    // evita chamada que o guard de telas barraria pra quem não é gestão.
-    if (gestao) {
-      api.marketingMetrics(product.id, { since: win.since, until: win.until }).then((m) => alive && setMarketing(m)).catch(() => alive && setMarketing(null));
-      api.metrics(product.id, { days: win.days }).then((b) => alive && setBiz(b)).catch(() => alive && setBiz(null));
-      api.list("invoices").then((rows) => alive && setInvoices(rows.filter((i) => i.saas === product.id))).catch(() => {});
-      api.expensesSummary(product.id).then((c) => alive && setCosts(c)).catch(() => alive && setCosts(null));
-    }
+    api.marketingMetrics(product.id, { since: win.since, until: win.until }).then((m) => alive && setMarketing(m)).catch(() => alive && setMarketing(null));
+    api.metrics(product.id, { days: win.days }).then((b) => alive && setBiz(b)).catch(() => alive && setBiz(null));
+    api.list("invoices").then((rows) => alive && setInvoices(rows.filter((i) => i.saas === product.id))).catch(() => {});
+    api.expensesSummary(product.id).then((c) => alive && setCosts(c)).catch(() => alive && setCosts(null));
     return () => { alive = false; };
   }, [product?.id, version, period, custom.since, custom.until]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -89,7 +81,7 @@ function OverviewScreen({ onNav, onOpenLead }) {
     if (!product) return;
     let alive = true;
     api.pipelinePace(product.id).then((d) => alive && setPace(d)).catch(() => alive && setPace(null));
-    if (gestao) api.waInsights(30).then((d) => alive && setWa(d)).catch(() => alive && setWa(null));
+    api.waInsights(30).then((d) => alive && setWa(d)).catch(() => alive && setWa(null));
     return () => { alive = false; };
   }, [product?.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -175,37 +167,6 @@ function OverviewScreen({ onNav, onOpenLead }) {
   const today = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
   const slaBreached = (score?.sdr || []).reduce((sum, p) => sum + (Number(p.breached) || 0), 0);
 
-  // ── Lente individual (SDR, closer, CS, mídia social) ──────────────────────
-  // Duas coisas e mais nada: as metas da própria vaga e a meta do mês da
-  // empresa. O placar da pessoa é o MESMO cartão que a gestão vê dela, então
-  // não existem dois números pro mesmo trabalho.
-  if (!gestao) {
-    const minha = buildPeople(score).find((p) => p.user === eu?.id) || null;
-    return (
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-        <PageHead title="Suas metas" sub={today} />
-        <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-          <PaceStrip pace={pace} links={false} />
-          <Card title={`Suas metas · ${pLabel}`} hint="o que a sua vaga precisa entregar no período · meta de mês reescalada pelos dias úteis">
-            <div style={{ padding: "8px 24px 24px" }}>
-              {score == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
-              {score != null && !minha && (
-                <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.6 }}>
-                  Sua vaga ainda não tem metas configuradas neste produto.<br />
-                  Peça pra gestão preencher em <b>Metas</b>, que elas aparecem aqui.
-                </div>
-              )}
-              {minha && <TeamCards people={[minha]} bizDays={win.businessDays} highlight={null} onPerson={canSeeScreen("pipeline") ? openPerson : null} />}
-            </div>
-          </Card>
-          {/* A régua de quem a gente caça fica na frente de TODO MUNDO, não só
-              da gestão: é o SDR/closer que decide em quem gastar o dia. */}
-          <IcpCard />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Visão geral" sub={today} />
@@ -237,7 +198,7 @@ function OverviewScreen({ onNav, onOpenLead }) {
 
         <IcpCard />
 
-        <TeamPerformance score={score} bizDays={win.businessDays} onPerson={openPerson} />
+        <TeamPerformance score={score} bizDays={win.businessDays} onPerson={canSeeScreen("pipeline") ? openPerson : null} />
 
         <Card title="Precisa de atenção" hint="riscos primeiro · cada item tem ação">
           <div style={{ padding: "10px 24px 18px" }}>

@@ -92,3 +92,13 @@ export function canSeeScreen(id) {
   const a = allowedScreens();
   return !a || a.has(id);
 }
+
+// Tela concedida EXPLICITAMENTE (consta na lista de telas, que não está vazia).
+// É o que destrava as telas adminOnly pra quem não é admin: a lista em branco
+// ("vê tudo") não basta pra dado sensível, mas a gestão marcar a tela na mão em
+// Ajustes → Equipe vale como liberação de leitura. O guard da API (screens.js
+// do servidor) aplica a mesma regra.
+export function hasExplicitScreen(id) {
+  const a = allowedScreens();
+  return !!a && a.has(id);
+}
