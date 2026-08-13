@@ -97,7 +97,10 @@ export const CREATE_DEFAULTS = {
   // estruturada (id de product.lossReasons); owner = user id do SDR dono; closer =
   // user id do closer; lastActivityAt/Type + stageAttempts = denormalizações da
   // timeline (activities) pro board/fila não precisarem carregar o histórico.
-  leads: { priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", closer: "", reason: "", source: "Form", age: "agora", stage: "", stageSince: "", comments: [], callAt: "", proposalValue: "", proposalPeriod: "", integrationAt: "", nextActionAt: "", nextActionNote: "", lostReason: "", lostNote: "", lastActivityAt: "", lastActivityType: "", stageAttempts: 0 },
+  // callAt = call marcada (a de verdade, que vira histórico ao ser remarcada);
+  // followupAt = follow-up marcado com hora, campo PRÓPRIO pra a agenda não
+  // desenhar follow-up com a cara de call (Leo, 13/08).
+  leads: { priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", closer: "", reason: "", source: "Form", age: "agora", stage: "", stageSince: "", comments: [], callAt: "", followupAt: "", proposalValue: "", proposalPeriod: "", integrationAt: "", nextActionAt: "", nextActionNote: "", lostReason: "", lostNote: "", lastActivityAt: "", lastActivityType: "", stageAttempts: 0 },
   // `current`/`projected` saem do form (leitura ao vivo da meta) — default 0 até serem alimentados.
   goals: { current: 0, projected: 0 },
   forms: { status: "draft", theme: {}, welcome: null, questions: [], thanks: {}, mapping: {} },

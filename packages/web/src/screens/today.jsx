@@ -1950,7 +1950,10 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     // quem precisa de outra data muda ali mesmo.
     if (next.retry) { setRetryAt(retryPreset(Number(cadenceOf(saasCfg, lead.stage)?.retryDays) || 1)); return; }
     const st = setupType(next.kind);
-    const at = st === "integrator" ? (lead.integrationAt || "") : (st === "call" || st === "followup") ? (lead.callAt || "") : "";
+    const at = st === "integrator" ? (lead.integrationAt || "")
+      : st === "call" ? (lead.callAt || "")
+      : st === "followup" ? (lead.followupAt || "") // remarcar o follow-up abre no horário dele
+      : "";
     setSlot(at);
     setDay(at ? parseYMD(at.slice(0, 10)) : nextBusinessDays(1)[0]);
   };
@@ -1986,9 +1989,12 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     const patch = { stage: dest.stage };
     if (setup === "call") { patch.closer = closer; patch.callAt = slot; if (email.trim()) patch.email = email.trim(); }
     // Follow-up: mantém o closer e, se um horário foi escolhido, agenda nele —
-    // callAt (aparece na agenda, sem travar slots de venda) + nextActionAt (a
-    // fila do "meu dia" vence exatamente nesse horário, não na cadência padrão).
-    else if (setup === "followup") { patch.closer = closer; if (fromCall && offer) patch.proposalOffer = offer; if (slot) { patch.callAt = slot; patch.nextActionAt = slot; } }
+    // followAt PRÓPRIO (aparece na agenda com a cara de follow-up, sem travar
+    // slots de venda) + nextActionAt (a fila do "meu dia" vence exatamente nesse
+    // horário, não na cadência padrão). Já foi gravado no callAt e dava ruim: a
+    // agenda desenhava um "✓ call feita" que nunca aconteceu e ainda arquivava a
+    // call de verdade no histórico (Leo, 13/08 — casos Beto e Milaan).
+    else if (setup === "followup") { patch.closer = closer; if (fromCall && offer) patch.proposalOffer = offer; if (slot) { patch.followupAt = slot; patch.nextActionAt = slot; } }
     // Integração: define o integrador e, se um horário foi escolhido na agenda,
     // agenda a integração nele (integrationAt aparece na Agenda e replica na
     // agenda pessoal do integrador que conectou o Google).
