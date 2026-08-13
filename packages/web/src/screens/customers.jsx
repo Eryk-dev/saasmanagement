@@ -7,7 +7,7 @@ import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/mile
 import { ActivityList } from "../components/timeline.jsx";
 import { CallSummaryCard, IntegrationBriefCard } from "./today.jsx";
 import { SubscriptionsScreen } from "./subscriptions.jsx";
-import { CustomersAnalysis } from "./customers-analysis.jsx";
+import { CustomersAnalysis, cashSplit } from "./customers-analysis.jsx";
 import { EntityForm } from "../components/EntityForm.jsx";
 import { WhatsappChat } from "../components/whatsapp-chat.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -111,6 +111,20 @@ function CustomersScreen({ initialTab }) {
   // mesmo quando a fatura ainda está aberta (boleto/pix à vista não baixado).
   const leadById = React.useMemo(() => new Map((LEADS || []).map((l) => [l.id, l])), [LEADS]);
 
+  // Estado do pagamento do contrato: quanto do ARR já ENTROU, pela mesma régua
+  // do Recebido/A receber da Análise (cashSplit — cronograma de parcelas quando
+  // existe, senão a heurística por meio de pagamento). Pago = valor total já
+  // recebido; Parcial = entrou parte (faturado/recorrente/parcelado no meio do
+  // fluxo, ou semestral à vista esperando a renovação); Não pago = nada entrou.
+  const payStatus = (c) => {
+    const total = Number(c.arr) || 0;
+    if (total <= 0) return null;
+    const { cash } = cashSplit(c, Date.now(), invoices);
+    if (cash <= 0) return { label: "Não pago", tone: "neg", rank: 2, cash, total };
+    if (cash >= total - 0.005) return { label: "Pago", tone: "pos", rank: 0, cash, total };
+    return { label: "Parcial", tone: "warn", rank: 1, cash, total };
+  };
+
   // Nível (categoria A/B/C/…) do cliente = grade do lead que virou cliente
   // (mesma régua da Publicidade/Forms). Sem lead qualificado → "sem nível".
   const gradeOf = (c) => {
@@ -165,6 +179,7 @@ function CustomersScreen({ initialTab }) {
     mrr: (c) => (c.arr || 0),
     pagamento: (c) => { const pm = c.paymentMethod || leadById.get(c.leadId)?.paymentMethod; return pm ? paymentLabel(pm).toLowerCase() : null; },
     fechado: (c) => Number(leadById.get(c.leadId)?.amount) || Number(c.arr) || null,
+    pgto: (c) => payStatus(c)?.rank ?? null,
     entrada: (c) => entradaDate(c)?.getTime() ?? null,
     casa: (c) => { const d = entradaDate(c); return d ? Math.floor((Date.now() - d.getTime()) / 86400000) : null; },
     contato: (c) => {
@@ -182,7 +197,7 @@ function CustomersScreen({ initialTab }) {
       if (vb == null) return -1;
       return sort.dir * (typeof va === "string" ? va.localeCompare(vb, "pt-BR") : va - vb);
     });
-  }, [customers, sort, subs, plans, LEADS, allConsultas, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [customers, sort, subs, plans, invoices, LEADS, allConsultas, tick]); // eslint-disable-line react-hooks/exhaustive-deps
   const shownCustomers = showAll ? sortedCustomers : sortedCustomers.slice(0, 50);
   const lastContact = (c) => {
     const lead = (LEADS || []).find((l) => l.id === c.leadId);
@@ -315,12 +330,12 @@ function CustomersScreen({ initialTab }) {
             <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
             <Card style={{ overflow: "hidden", flex: "1 1 560px", minWidth: 0 }}>
               <div className="tbl-x">
-              <table style={{ width: "100%", minWidth: isKidsWorkspace ? 960 : 1240, borderCollapse: "collapse" }}>
+              <table style={{ width: "100%", minWidth: isKidsWorkspace ? 960 : 1350, borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
                     {(isKidsWorkspace
                       ? [["Cliente", "cliente"], ["Pacote", "plano"], ["Valor", "mrr"], ["Entrada", "entrada"], ["Tempo de casa", "casa"], ["Último contato", "contato"], ["Próxima consulta", null], ["Consultas", null]]
-                      : [["Cliente", "cliente"], ["Nível", "nivel"], ["Plano", "plano"], ["MRR", "mrr"], ["Pagamento", "pagamento"], ["Total fechado", "fechado"], ["Entrada", "entrada"], ["Tempo de casa", "casa"], ["Último contato", "contato"], ["Próximo marco", null], ["Assinatura", null]]
+                      : [["Cliente", "cliente"], ["Nível", "nivel"], ["Plano", "plano"], ["MRR", "mrr"], ["Pagamento", "pagamento"], ["Status pgto.", "pgto"], ["Total fechado", "fechado"], ["Entrada", "entrada"], ["Tempo de casa", "casa"], ["Último contato", "contato"], ["Próximo marco", null], ["Assinatura", null]]
                     ).map(([h, k]) => (
                       <th key={h} className="kicker" title={k ? "ordenar" : undefined}
                         onClick={k ? () => setSort((s) => (s?.key === k ? { key: k, dir: -s.dir } : { key: k, dir: 1 })) : undefined}
@@ -373,6 +388,17 @@ function CustomersScreen({ initialTab }) {
                           return (
                             <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
                               {pm ? paymentLabel(pm) : <span style={{ color: "var(--fg-4)" }}>—</span>}
+                            </td>
+                          );
+                        })()}
+                        {/* Estado do pagamento: Pago / Parcial / Não pago (quanto do contrato já entrou). Só SaaS. */}
+                        {!isKidsWorkspace && (() => {
+                          const ps = payStatus(c);
+                          return (
+                            <td style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)" }}>
+                              {ps
+                                ? <Pill tone={ps.tone} title={`${money(ps.cash)} recebido de ${money(ps.total)}`}>{ps.label}</Pill>
+                                : <span style={{ fontSize: 13, color: "var(--fg-4)" }}>—</span>}
                             </td>
                           );
                         })()}
