@@ -30,6 +30,11 @@ export const CLOSED_PLANS = [
 
 export const closedPlanLabel = (id) => CLOSED_PLANS.find((p) => p.id === id)?.label || (id === "mensal" ? "Mensal" : "");
 
+// Parcelamento padrão do FATURADO por plano (o gate sugere; o closer muda à
+// vontade). Espelho do PLAN_MONTHS da API — anual 12, semestral 6; serviço
+// único não tem cadência própria, então sugere 1 (à vista em boleto).
+export const CLOSED_PLAN_MONTHS = { anual: 12, semestral: 6, mensal: 1, unico: 1 };
+
 // Produto do catálogo da apresentação (tela zero) com que o negócio fechou —
 // espelho do PRODUCT_LABEL de packages/api/src/proposal-catalog.js (os dois
 // andam juntos). Vai no lead (dealProduct) pelo link de pagamento, aparece no

@@ -15,7 +15,7 @@ import { runNativeProposal, proposalOffers, shareProposalOffer, buildCustomPropo
 import { DEAL_PRODUCT_LABEL, dealCatalog } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { registerBillingRoutes } from "./routes.billing.js";
-import { initSubscription, syncCustomerArr, createClosedSubscription, closedSubscriptionSpec } from "./billing.js";
+import { initSubscription, syncCustomerArr, createClosedSubscription, closedSubscriptionSpec, closedInstallments, createInstallmentSchedule, syncClosedInstallments } from "./billing.js";
 import { registerAuthRoutes } from "./auth.js";
 import { registerMpRoutes, mirrorSubscriptionToMp } from "./routes.mp.js";
 import { mp as defaultMpClient } from "./mp.js";
@@ -781,7 +781,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // Plano/valor/pagamento reeditados num lead que JÁ virou cliente (gate da
     // Integração ou edição direta) → o fechamento novo re-espelha no cliente e
     // na assinatura nascidos dele. Best-effort: nunca quebra o PATCH.
-    if (collection === "leads" && updated.customerId && ["amount", "planClosed", "paymentMethod", "consultPackage"].some((k) => k in req.body)) {
+    if (collection === "leads" && updated.customerId && ["amount", "planClosed", "paymentMethod", "paymentInstallments", "consultPackage"].some((k) => k in req.body)) {
       try { await syncWonLeadDeal(repo, updated); } catch { /* fail-open */ }
     }
     // Caminho INVERSO do espelho acima: valor do contrato editado na tela de
@@ -799,7 +799,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
             // Serviço único/fechamento legado não têm spec de assinatura: só o
             // amount espelha (cancelar/mexer em assinatura a partir de uma
             // edição de valor seria chute).
-            if (closedSubscriptionSpec(fresh)) await syncWonLeadDeal(repo, fresh);
+            if (closedSubscriptionSpec(fresh) || closedInstallments(fresh)) await syncWonLeadDeal(repo, fresh);
           }
         }
       } catch { /* fail-open */ }
@@ -1057,10 +1057,20 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
   // Assinatura ativa nasce junto do cliente (plano fechado + meio de pagamento
   // → ciclo/preço; fatura inicial paga). Best-effort: o cliente já existe.
   try {
-    await createClosedSubscription(repo, {
+    const sub = await createClosedSubscription(repo, {
       customerId: customer.id, saas: lead.saas,
       planClosed: lead.planClosed, amount: lead.amount, paymentMethod: lead.paymentMethod,
+      paymentInstallments: lead.paymentInstallments,
     });
+    // Serviço único faturado em Nx: não há recorrência (spec null, arr manual),
+    // mas o cronograma de parcelas existe do mesmo jeito, preso só ao cliente.
+    if (!sub && closedInstallments(lead) && Number(lead.amount) > 0) {
+      await createInstallmentSchedule(repo, {
+        customerId: customer.id, saas: lead.saas, total: lead.amount,
+        installments: closedInstallments(lead), startAt: customer.startedAt,
+        method: lead.paymentMethod,
+      });
+    }
   } catch { /* assinatura é best-effort */ }
   // UniqueKids: o ganho É a compra do pacote de consultas (mentoria 1:1). A
   // jornada inteira nasce aqui SEM data (n=1..N + packageTotal); o time marca
@@ -1162,11 +1172,37 @@ export async function syncWonLeadDeal(repo, lead) {
       await createClosedSubscription(repo, {
         customerId: customer.id, saas: lead.saas,
         planClosed: lead.planClosed, amount: lead.amount, paymentMethod: lead.paymentMethod,
+        paymentInstallments: lead.paymentInstallments,
         startAt: lead.wonAt || customer.startedAt,
       });
     } else if (Number(lead.amount) > 0) {
       patch.arr = manualArr();
     }
+  }
+  // Cronograma do faturado acompanha a edição: parcela PAGA fica (dinheiro que
+  // entrou); as abertas são refeitas pro valor/parcelamento novos; sem
+  // parcelamento (virou à vista/cartão), as abertas somem. Faturas de renovação
+  // do desenho antigo saem do caminho: abertas são removidas e a inicial
+  // auto-paga (paidAt === dueDate, sem pagamento real do MP) também — renovação
+  // paga de verdade fica e o valor dela desconta do cronograma. Assinatura
+  // presa no MP ou cliente com 2+ assinaturas segue gestão manual.
+  if (subs.length === 0 || (subs.length === 1 && !subs[0].mpPreapprovalId)) {
+    try {
+      const n = closedInstallments(lead);
+      const subId = subs[0]?.id || "";
+      let alreadyPaid = 0;
+      if (n && subId) {
+        for (const inv of (await repo.list("invoices")).filter((i) => i.subscription === subId && i.kind === "renewal")) {
+          if (inv.status !== "paid" || (!inv.mpPaymentId && inv.paidAt === inv.dueDate)) await repo.remove("invoices", inv.id);
+          else alreadyPaid += Number(inv.amount) || 0;
+        }
+      }
+      await syncClosedInstallments(repo, {
+        customerId: customer.id, saas: lead.saas, subscription: subId,
+        total: Math.max(0, (Number(lead.amount) || 0) - alreadyPaid),
+        installments: n, startAt: lead.wonAt || customer.startedAt, method: lead.paymentMethod,
+      });
+    } catch { /* cronograma é best-effort — nunca quebra o espelho */ }
   }
   return repo.update("customers", customer.id, patch);
 }

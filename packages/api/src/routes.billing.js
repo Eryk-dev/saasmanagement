@@ -126,6 +126,30 @@ export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
     return paid;
   });
 
+  // Desfaz uma baixa MANUAL (clique errado no "marcar paga"). Pagamento real do
+  // Mercado Pago não desmarca — o dinheiro existiu, estorno é no Financeiro.
+  // Volta pra open/overdue conforme o vencimento e re-derruba a assinatura pra
+  // past_due se a fatura reaberta já estava vencida.
+  app.post("/api/invoices/:id/unpay", async (req, reply) => {
+    const inv = await repo.get("invoices", req.params.id);
+    if (!inv) return reply.code(404).send({ error: "Not found" });
+    if (inv.mpPaymentId) return reply.code(409).send({ error: "essa fatura foi paga de verdade pelo Mercado Pago — não dá pra desmarcar, estorno é no Financeiro" });
+    if (inv.status !== "paid") return inv;
+    const overdue = inv.dueDate && new Date(inv.dueDate).getTime() + 3 * 86400000 <= Date.now();
+    const reopened = await repo.update("invoices", inv.id, {
+      status: overdue ? "overdue" : "open", paidAt: "",
+      ...(overdue ? { overdueAt: new Date().toISOString() } : {}),
+    });
+    if (inv.subscription && overdue) {
+      const sub = await repo.get("subscriptions", inv.subscription);
+      if (sub && sub.status === "active") {
+        await repo.update("subscriptions", sub.id, { status: "past_due" });
+        await syncCustomerArr(repo, sub.customer);
+      }
+    }
+    return reopened;
+  });
+
   // Tick do motor: mudanças agendadas + renovações + dunning + sync de ARR.
   app.post("/api/billing/run", async (req) => {
     const graceDays = req.body?.graceDays != null ? Number(req.body.graceDays) : undefined;

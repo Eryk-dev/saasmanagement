@@ -2,7 +2,7 @@ import React from "react";
 import { PrimaryButton, useEsc } from "../atoms.jsx";
 import { stageKind, phaseOf, isLossKind, isWonKind, lossReasonsOf } from "../lib/funnel.js";
 import { usersByRole, currentUser } from "../lib/users.js";
-import { PAYMENT_METHODS, CLOSED_PLANS, CONSULT_PACKAGES, dealProductsOf } from "../lib/payments.js";
+import { PAYMENT_METHODS, CLOSED_PLANS, CONSULT_PACKAGES, CLOSED_PLAN_MONTHS, dealProductsOf, paymentUpfront } from "../lib/payments.js";
 import { DealProductField, isOneOffProduct } from "./lead-blocks.jsx";
 import { api } from "../lib/api.js";
 import { SlotGrid, nextBusinessDays, callBusyKeys } from "../screens/today.jsx";
@@ -61,6 +61,11 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   const [amount, setAmount] = React.useState(Number(lead.amount) > 0 ? String(lead.amount) : "");
   const [payment, setPayment] = React.useState(lead.paymentMethod || "");
   const [planClosed, setPlanClosed] = React.useState(lead.planClosed || "anual");
+  // Faturado/parcelado: em quantas parcelas o dinheiro entra. Vazio = sugestão
+  // do plano (12 anual, 6 semestral). Vira o cronograma de faturas "Parcela
+  // i/N" no servidor; o pago × em aberto é marcado na tela Clientes.
+  const [installments, setInstallments] = React.useState(
+    Number(lead.paymentInstallments) > 0 ? String(lead.paymentInstallments) : "");
   // Indo pra INTEGRAÇÃO com o negócio já valorado: o gate vira conferência de
   // plano e valor (pré-preenchido, um clique) em vez de fechamento novo.
   const isAdjust = isWonGate && gate.toKind === "integracao" && Number(lead.amount) > 0;
@@ -74,6 +79,9 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   const [dealProduct, setDealProduct] = React.useState(lead.dealProduct || "");
   const askProduct = isWonGate && !isKidsWon && dealProductsOf(lead.saas).length > 0;
   const oneOff = isOneOffProduct(lead.saas, dealProduct);
+  const isFaturado = !!payment && paymentUpfront(payment) === false;
+  const effInstallments = Number(installments) > 0 ? Number(installments)
+    : (CLOSED_PLAN_MONTHS[isKidsWon || oneOff ? "unico" : planClosed] || 12);
   // Call → Follow-up: qual proposta ficou na mesa (o follow-up cobra ELA).
   const isOffer = gate.type === "offer";
   const [offer, setOffer] = React.useState(lead.proposalOffer || "");
@@ -103,6 +111,8 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
     } else if (isWonGate) {
       patch.amount = Number(amount);
       patch.paymentMethod = payment;
+      // À vista/cartão zera o parcelamento (um faturado antigo não assombra).
+      patch.paymentInstallments = isFaturado ? effInstallments : "";
       // Mentoria é compra única (o valor não anualiza); o pacote é o "plano".
       patch.planClosed = isKidsWon ? "unico" : oneOff ? "unico" : planClosed;
       if (isKidsWon) patch.consultPackage = Number(consultPackage) || 8;
@@ -198,6 +208,22 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
               <option value="">— como o cliente fechou —</option>
               {PAYMENT_METHODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
             </select>
+            {isFaturado && (
+              <>
+                <div style={{ height: 12 }} />
+                <label className="kicker" style={label}>Faturado em quantas vezes *</label>
+                <select value={String(effInstallments)} onChange={(e) => setInstallments(e.target.value)} style={field}>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>
+                      {n}x{Number(amount) > 0 ? ` de R$ ${(Number(amount) / n).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
+                  vira o cronograma de parcelas (vencimento mensal a partir de hoje); marque cada uma como paga na tela Clientes
+                </div>
+              </>
+            )}
           </>
         ) : isLost ? (
           <>
