@@ -596,6 +596,17 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
       } else if (l.nextActionAt && showTouches && k !== "followup") {
         out.push({ l, t: new Date(l.nextActionAt), kind: "toque", who: l.owner || l.closer });
       }
+      // Follow-up MARCADO com hora (lead.followupAt): compromisso PRÓPRIO, com a
+      // cara de follow-up hoje e depois de passar (lavado, como toda história).
+      // Ele já morou no callAt e a agenda desenhava um "✓ call feita" que nunca
+      // existiu — indistinguível de uma call de verdade (Leo, 13/08). Some do
+      // caminho quando é o mesmo instante do próximo toque, senão a pílula sai
+      // duplicada em cima dela mesma.
+      const fupT = l.followupAt ? new Date(l.followupAt) : null;
+      if (fupT && Number.isFinite(fupT.getTime())
+        && !(l.nextActionAt && new Date(l.nextActionAt).getTime() === fupT.getTime())) {
+        out.push({ l, t: fupT, kind: "follow-up", who: l.closer || l.owner, done: fupT.getTime() < Date.now() });
+      }
       // Call marcada: futura respeita o naSame (follow-up cobre o horário);
       // passada entra SEMPRE, como histórico.
       if (callT && (callDone || !(k === "followup" && naSame))) {
@@ -758,7 +769,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                   return (
                     <div key={l.id + kind + t.getTime()}
                       onClick={(e) => { e.stopPropagation(); const target = kind === "consulta" ? l._leadRef : l; if (target && onOpenLead) onOpenLead(target); }}
-                      title={`${timeStr} · ${isFollowup ? "follow-up" : kind}${done ? " · realizada · histórico" : ""} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}`}
+                      title={`${timeStr} · ${isFollowup ? "follow-up" : kind}${done ? (isFollowup ? " · já passou" : " · realizada · histórico") : ""} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}`}
                       style={{
                         position: "absolute", top: (hour - H0) * hourH + 1,
                         left: `calc(${lane * w}% + 2px)`, width: `calc(${w}% - 4px)`,
