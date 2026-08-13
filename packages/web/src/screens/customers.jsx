@@ -14,7 +14,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { leadTier, waLink, GRADE_STYLE, GRADE_GRID, GRADE_ACCOUNTS, GRADE_LISTINGS } from "../lib/ui.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { displayName } from "../lib/users.js";
-import { paymentLabel, PAYMENT_METHODS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel } from "../lib/payments.js";
+import { paymentLabel, paymentUpfront, PAYMENT_METHODS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel } from "../lib/payments.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 // Clientes — a base ativa do produto em dois blocos: a tabela de clientes e,
 // ao lado, "Próximas ações" (o próximo marco de retenção de cada cliente,
@@ -729,6 +729,39 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
   // cliente numa tacada (POST /charge). O link vai pro clipboard; a baixa é
   // automática quando o cliente pagar (webhook/poller casam pelo id da fatura).
   const mpOn = !!window.SEED?.CONFIG?.mp?.configured;
+  // Cronograma do faturado (faturas kind:"installment"): marcar paga /
+  // desmarcar por parcela. O override local dá o feedback imediato; o SSE
+  // recarrega a lista de verdade logo depois (deps [product, version]).
+  const [invOverride, setInvOverride] = useState({});
+  const [invBusy, setInvBusy] = useState("");
+  const invStatus = (i) => invOverride[i.id] || i.status;
+  async function toggleParcela(i) {
+    if (invBusy) return;
+    setInvBusy(i.id);
+    try {
+      if (invStatus(i) === "paid") {
+        const r = await api.unpayInvoice(i.id);
+        setInvOverride((o) => ({ ...o, [i.id]: r?.status || "open" }));
+      } else {
+        await api.payInvoice(i.id);
+        setInvOverride((o) => ({ ...o, [i.id]: "paid" }));
+      }
+    } catch (e) {
+      window.toast && window.toast(e?.message || "não deu pra atualizar a parcela", "neg");
+    } finally { setInvBusy(""); }
+  }
+  const parcelas = invoices.filter((i) => i.kind === "installment")
+    .sort((a, b) => (a.installmentN || 0) - (b.installmentN || 0) || String(a.dueDate || "").localeCompare(String(b.dueDate || "")));
+  // Mudar o parcelamento depois do fechamento: PATCH no lead re-espelha via
+  // syncWonLeadDeal — refaz as parcelas em aberto, as pagas ficam.
+  const [nSaving, setNSaving] = useState(false);
+  async function changeParcelamento(n) {
+    if (!lead || nSaving) return;
+    setNSaving(true);
+    try { await api.update("leads", lead.id, { paymentInstallments: Number(n) || "" }); }
+    catch (e) { window.toast && window.toast(e?.message || "não deu pra mudar o parcelamento", "neg"); }
+    finally { setNSaving(false); }
+  }
   const [chargeOpen, setChargeOpen] = useState(false);
   const [chVal, setChVal] = useState("");
   const [chTitle, setChTitle] = useState("");
@@ -857,6 +890,62 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         </div>
         )}
 
+        {parcelas.length > 0 && (() => {
+          const pagas = parcelas.filter((i) => invStatus(i) === "paid");
+          const recebido = pagas.reduce((a, i) => a + (Number(i.amount) || 0), 0);
+          const aReceber = parcelas.reduce((a, i) => a + (Number(i.amount) || 0), 0) - recebido;
+          const totalN = Number(parcelas[parcelas.length - 1]?.installmentOf) || parcelas.length;
+          return (
+            <div style={BOX}>
+              <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span>Parcelas do faturado · {pagas.length}/{parcelas.length} pagas</span>
+                <span className="mono" style={{ marginLeft: "auto", fontSize: 11, color: "var(--fg-3)", textTransform: "none", letterSpacing: 0 }}>
+                  {money(recebido)} recebido · {money(aReceber)} a receber
+                </span>
+                {lead && !paymentUpfront(customer.paymentMethod || lead.paymentMethod) && (
+                  <select value={String(totalN)} disabled={nSaving} onChange={(e) => changeParcelamento(e.target.value)}
+                    title="Mudar o parcelamento refaz as parcelas em aberto; as pagas ficam como estão"
+                    style={{ height: 22, padding: "0 4px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11 }}>
+                    {Array.from({ length: 12 }, (_, k) => k + 1).map((n) => <option key={n} value={n}>{n}x</option>)}
+                  </select>
+                )}
+              </div>
+              {parcelas.map((i) => {
+                const st = invStatus(i);
+                return (
+                  <div key={i.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 13 }}>
+                    <span style={{ color: "var(--fg-2)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {i.dueDate ? new Date(i.dueDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "") : ""} · {i.title || `Parcela ${i.installmentN || "?"}/${i.installmentOf || parcelas.length}`}
+                      {st === "paid" && mpMethodLabel(i) ? <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)" }}> · {mpMethodLabel(i)}</span> : null}
+                    </span>
+                    <span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+                      {mpOn && st !== "paid" && (
+                        <button onClick={() => invoiceLink(i)}
+                          title={i.mpInitPoint ? "copiar o link de pagamento desta parcela" : "gerar o link de pagamento desta parcela no Mercado Pago"}
+                          style={{ height: 20, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--accent)", fontSize: 10.5 }}>
+                          {i.mpInitPoint ? "copiar link" : "link MP"}
+                        </button>
+                      )}
+                      <span className="tnum mono" style={{ fontWeight: 500 }}>{money(i.amount || 0)}</span>
+                      <Pill tone={st === "paid" ? "pos" : st === "overdue" ? "neg" : "warn"}>
+                        {st === "paid" ? "paga" : st === "overdue" ? "vencida" : "aberta"}
+                      </Pill>
+                      {/* baixa REAL do MP não desmarca (o dinheiro existiu) */}
+                      {!(st === "paid" && i.mpPaymentId) && (
+                        <button onClick={() => toggleParcela(i)} disabled={invBusy === i.id}
+                          title={st === "paid" ? "desfazer a baixa manual desta parcela" : "registrar que esta parcela foi paga"}
+                          style={{ height: 20, padding: "0 8px", borderRadius: 999, border: "1px solid " + (st === "paid" ? "var(--line-2)" : "var(--pos, var(--accent))"), background: "var(--bg-1)", color: st === "paid" ? "var(--fg-3)" : "var(--pos, var(--accent))", fontSize: 10.5, fontWeight: 600, opacity: invBusy === i.id ? 0.5 : 1 }}>
+                          {invBusy === i.id ? "…" : st === "paid" ? "desmarcar" : "marcar paga"}
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
         <div style={BOX}>
           <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
             <span>Últimas faturas</span>
@@ -917,7 +1006,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
               </button>
             </div>
           )}
-          {invoices.slice(0, 6).map((i) => (
+          {invoices.filter((i) => i.kind !== "installment").slice(0, 6).map((i) => (
             <div key={i.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 13 }}>
               <span style={{ color: "var(--fg-2)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {i.dueDate ? new Date(i.dueDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "") : ""} · {i.title || i.kind || "fatura"}
@@ -939,8 +1028,8 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
               </span>
             </div>
           ))}
-          {invoices.length === 0 && (
-            <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Nenhuma fatura ainda.</div>
+          {invoices.filter((i) => i.kind !== "installment").length === 0 && (
+            <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{parcelas.length ? "Nenhuma fatura além das parcelas." : "Nenhuma fatura ainda."}</div>
           )}
         </div>
 
