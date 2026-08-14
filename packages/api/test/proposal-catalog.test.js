@@ -156,13 +156,13 @@ test("OEM avulso: 3 etapas SAI, tela OEM entra clara no lugar; cota segue o port
   const oem = t.slides.find((s) => s.key === "oem_processo");
   assert.equal(oem.bg, "", "clara, na posição do 3 etapas (ritmo original)");
   const pricing = t.slides.find((s) => s.type === "pricing");
-  assert.equal(pricing.price, "2.976", "OEM 50 pro pequeno");
+  assert.equal(pricing.price, "1.788", "OEM 50 pro pequeno");
   assert.match(pricing.sub, /50 anúncios por mês/);
 
   const big = await makeProposal(repo, { niche: "outros", accounts: "10+", listings: "10000+" });
   big.state.product = "oem";
   const tb = applyCatalog(big);
-  assert.equal(tb.slides.find((s) => s.type === "pricing").price, "7.176", "OEM 200 pro grande");
+  assert.equal(tb.slides.find((s) => s.type === "pricing").price, "4.788", "OEM 200 pro grande");
 });
 
 test("leque do OEM avulso: o closer troca a cota na tela zero (state.oemCota)", async () => {
@@ -172,14 +172,14 @@ test("leque do OEM avulso: o closer troca a cota na tela zero (state.oemCota)", 
   big.state.oemCota = 100;
   const t = applyCatalog(big);
   const pricing = t.slides.find((s) => s.type === "pricing");
-  assert.equal(pricing.price, "4.776", "cota 100 escolhida pelo closer");
-  assert.equal(pricing.cycles, "12x de *398*/mês");
-  assert.equal(pricing.offer2.price, "5.976", "anual da cota 100 no Shift+1");
+  assert.equal(pricing.price, "2.988", "cota 100 escolhida pelo closer");
+  assert.equal(pricing.cycles, "12x de *249*/mês");
+  assert.equal(pricing.offer2.price, "5.388", "anual da cota 100 no Shift+1");
   assert.match(pricing.sub, /100 anúncios por mês/);
   assert.equal(t.oemCota, 100, "tela do processo OEM acompanha a cota");
 
   big.state.oemCota = 999;
-  assert.equal(applyCatalog(big).slides.find((s) => s.type === "pricing").price, "7.176", "cota fora do leque volta pro porte");
+  assert.equal(applyCatalog(big).slides.find((s) => s.type === "pricing").price, "4.788", "cota fora do leque volta pro porte");
 });
 
 test("dor [OEM]: o anúncio de part number manda no produto, acima da régua", async () => {
@@ -193,11 +193,11 @@ test("dor [OEM]: o anúncio de part number manda no produto, acima da régua", a
   const t = applyCatalog(p);
   assert.equal(t.product, "oem");
   assert.ok(!t.slides.some((s) => s.key === "como_funciona"), "o 3 etapas (clonagem) sai do deck");
-  assert.equal(t.slides.find((s) => s.type === "pricing").price, "2.976", "cota 50 pelo porte D/E");
+  assert.equal(t.slides.find((s) => s.type === "pricing").price, "1.788", "cota 50 pelo porte D/E");
 
   const big = await makeProposal(repo, { niche: "autopecas", accounts: "10+", listings: "10000+" });
   big.state = { ...big.state, pain: "OEM" };
-  assert.equal(applyCatalog(big).slides.find((s) => s.type === "pricing").price, "7.176", "cota 200 pro grande");
+  assert.equal(applyCatalog(big).slides.find((s) => s.type === "pricing").price, "4.788", "cota 200 pro grande");
 
   big.state.product = "fulloem"; // Apresentar continua vencendo tudo.
   assert.equal(activeProduct(big), "fulloem");
@@ -242,10 +242,10 @@ test("payload público nunca leva o catálogo cru; catalogUI tem nomes/preços p
   assert.match(ui.priceLines.full, /R\$ 7\.188 no semestre \(12x 599\)/);
   assert.match(ui.priceLines.parcialA, /R\$ 2\.100 no semestre \(12x 175\)/);
   // Leque do OEM avulso no card: cota ativa pelo porte + os 3 níveis com preço.
-  assert.match(ui.priceLines.oem, /^OEM 50\/mês: R\$ 2\.976 no semestre \(12x 248\)/, "porte D abre no menor nível");
+  assert.match(ui.priceLines.oem, /^OEM 50\/mês: R\$ 1\.788 no semestre \(12x 149\)/, "porte D abre no menor nível");
   assert.equal(ui.oemCota, 50);
   assert.deepEqual(ui.oemLevels.map((l) => l.cota), [50, 100, 200]);
-  assert.equal(ui.oemLevels[1].short, "R$ 4.776 sem (12x 398) · R$ 5.976 anu (12x 498)");
+  assert.equal(ui.oemLevels[1].short, "R$ 2.988 sem (12x 249) · R$ 5.388 anu (12x 449)");
   assert.equal(ui.tier, "D");
   assert.equal(ui.pain, "none", "sem dor marcada → trilha genérica");
   assert.ok(ui.pains.A.spin.S.length > 10, "perguntas SPIN embarcadas");
@@ -442,7 +442,7 @@ test("preview /p/t: simulação via query (produto e dados) sem persistir nada",
   assert.equal(payload.catalogUI.pain, "A", "dor da query aplicada");
   assert.ok(payload.slides.some((s) => s.key === "investimento_oem"), "produto da query aplicado");
   assert.ok(!payload.slides.some((s) => s.key === "como_funciona"), "OEM avulso sem a tela de clonagem");
-  assert.equal(payload.slides.find((s) => s.key === "investimento_oem").price, "4.776", "cota da query aplicada (leque)");
+  assert.equal(payload.slides.find((s) => s.key === "investimento_oem").price, "2.988", "cota da query aplicada (leque)");
   assert.equal(payload.catalogUI.oemCota, 100, "select de cota abre no valor simulado");
 });
 
@@ -510,24 +510,42 @@ test("retroativo do leque OEM: aberta ganha a tabela nova; aceita, link de clien
     editKey: "k_" + id, accepted: false,
     ...extra,
   });
+  // A tabela v1 de 14/08 (preços errados, corrigidos no mesmo dia): também
+  // entra no conserto — ela só existiu por automação, nunca por edição do dono.
+  const v1 = JSON.parse(JSON.stringify(novo));
+  v1.products.oem = {
+    name: "OEM avulso",
+    small: { cota: 50, sem: { total: 2976, per: 248 }, anu: { total: 4176, per: 348 } },
+    mid: { cota: 100, sem: { total: 4776, per: 398 }, anu: { total: 5976, per: 498 } },
+    big: { cota: 200, sem: { total: 7176, per: 598 }, anu: { total: 8376, per: 698 } },
+  };
   await mk("pr_aberta");
+  await mk("pr_v1", { calc: { catalog: v1 } });
   await mk("pr_aceita", { accepted: true });
   await mk("pr_filha", { sharedFrom: "pr_aberta", editKey: "" });
   await mk("pr_nova", { calc: { catalog: JSON.parse(JSON.stringify(novo)) } });
+  // Snapshot com mid e preço PRÓPRIO (edição do dono): soberano, não muda.
+  const editada = JSON.parse(JSON.stringify(novo));
+  editada.products.oem.small.sem.total = 999;
+  await mk("pr_editada", { calc: { catalog: editada } });
 
   const n = await backfillOemLeque(repo);
-  assert.equal(n, 1, "só a proposta aberta com o leque antigo entra");
+  assert.equal(n, 2, "a pré-leque e a v1 entram");
 
+  for (const id of ["pr_aberta", "pr_v1"]) {
+    const p = await repo.get("proposals", id);
+    assert.deepEqual(
+      ["small", "mid", "big"].map((k) => [p.calc.catalog.products.oem[k].cota, p.calc.catalog.products.oem[k].sem.total]),
+      [[50, 1788], [100, 2988], [200, 4788]],
+      "tabela atual no snapshot de " + id,
+    );
+  }
   const p = await repo.get("proposals", "pr_aberta");
-  assert.deepEqual(
-    ["small", "mid", "big"].map((k) => [p.calc.catalog.products.oem[k].cota, p.calc.catalog.products.oem[k].sem.total]),
-    [[50, 2976], [100, 4776], [200, 7176]],
-    "tabela nova no snapshot",
-  );
   assert.equal(p.state.product, "oem", "escolhas do closer preservadas");
   assert.equal(p.calc.volumeMid["100-500"], 300, "resto do calc preservado");
   assert.equal((await repo.get("proposals", "pr_aceita")).calc.catalog.products.oem.mid, undefined, "aceita não muda");
   assert.equal((await repo.get("proposals", "pr_filha")).calc.catalog.products.oem.mid, undefined, "link do cliente não muda");
+  assert.equal((await repo.get("proposals", "pr_editada")).calc.catalog.products.oem.small.sem.total, 999, "edição do dono é soberana");
   assert.equal(await backfillOemLeque(repo), 0, "idempotente");
 });
 
@@ -548,9 +566,9 @@ test("catálogo do fechamento: produtos com preço + clonagem avulsa como servi�
 
   // OEM avulso tem o leque de cotas (50/100/200): cada nível vira duas opções.
   assert.deepEqual(byId.oem.prices.map((p) => `${p.label} ${p.value}`), [
-    "Semestral · 50 anúncios 2976", "Anual · 50 anúncios 4176",
-    "Semestral · 100 anúncios 4776", "Anual · 100 anúncios 5976",
-    "Semestral · 200 anúncios 7176", "Anual · 200 anúncios 8376",
+    "Semestral · 50 anúncios 1788", "Anual · 50 anúncios 3288",
+    "Semestral · 100 anúncios 2988", "Anual · 100 anúncios 5388",
+    "Semestral · 200 anúncios 4788", "Anual · 200 anúncios 8388",
   ]);
 
   // Clonagem avulsa: serviço único por faixa de anúncios (preço em texto no
