@@ -15,7 +15,9 @@ export const PAYMENT_METHODS = [
   // Assinatura recorrente: cartão de crédito com cobrança MENSAL (modalidade
   // nova, 13/08) — não tem Nº de parcelas (é indefinida), o dinheiro entra mês
   // a mês enquanto durar o contrato.
-  { id: "cartao_recorrente", label: "Assinatura recorrente", upfront: false, recurring: true },
+  // Rótulo com "(cartão)": o Leo procurou por "cartão recorrente" e não achou
+  // a opção porque o nome não dizia o meio (14/08).
+  { id: "cartao_recorrente", label: "Assinatura recorrente (cartão)", upfront: false, recurring: true },
 ];
 
 export const paymentLabel = (id) => PAYMENT_METHODS.find((p) => p.id === id)?.label || "";
