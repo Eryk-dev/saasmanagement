@@ -538,7 +538,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                     <option value="">—</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option>
                   </select>
                 </EditRow>
-                <EditRow label="Valor (R$)"><input type="number" defaultValue={lead.amount ?? ""} onBlur={(e) => patch({ amount: e.target.value === "" ? "" : Number(e.target.value) })} style={editInput} /></EditRow>
+                <EditRow label={lead.planClosed === "mensal" ? "Valor mensal (R$)" : "Valor (R$)"}><input type="number" defaultValue={lead.amount ?? ""} onBlur={(e) => patch({ amount: e.target.value === "" ? "" : Number(e.target.value) })} style={editInput} /></EditRow>
                 <EditRow label="Faixa"><input defaultValue={lead.value || ""} onBlur={(e) => e.target.value !== (lead.value || "") && patch({ value: e.target.value })} style={editInput} /></EditRow>
                 <EditRow label="E-mail"><input defaultValue={lead.email || ""} onBlur={(e) => e.target.value !== (lead.email || "") && patch({ email: e.target.value })} style={editInput} /></EditRow>
                 <EditRow label="Telefone"><input defaultValue={lead.phone || ""} onBlur={(e) => e.target.value !== (lead.phone || "") && patch({ phone: e.target.value })} style={editInput} /></EditRow>
@@ -1085,7 +1085,7 @@ function PaymentLinkModal({ lead, onClose, onSaved }) {
   const product = (window.SEED?.SAAS || []).find((s) => s.id === lead.saas);
   // Mesmo rótulo do servidor (PLAN_LABEL/PRODUCT_LABEL em routes.mp.js):
   // título default do checkout = produto do catálogo + plano.
-  const PLAN_TITLE = { anual: "Plano Anual", semestral: "Plano Semestral", unico: "Serviço único" };
+  const PLAN_TITLE = { anual: "Plano Anual", semestral: "Plano Semestral", mensal: "Assinatura mensal", unico: "Serviço único" };
   const titleFor = (p, prod) => [dealProductLabel(prod, lead.saas) || product?.name || lead.saas, PLAN_TITLE[p] || "pagamento"].filter(Boolean).join(" · ");
 
   const [amount, setAmount] = React.useState(lead.mpChargeAmount || "");

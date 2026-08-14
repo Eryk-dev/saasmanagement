@@ -38,15 +38,39 @@ export const PAY_STATUS = {
 
 // Plano com que o negócio fechou — também assinalado no gate de fechamento e
 // carregado pro customer no convertWonLead (vira a coluna Plano e a base do arr).
-// A oferta atual é só Anual/Semestral/Serviço único; "mensal" fica fora do gate
-// mas segue reconhecido em dados antigos (closedPlanLabel e o fator anual da API).
+// "Assinatura mensal" (14/08): a modalidade de RECORRÊNCIA — o closer lança o
+// valor MENSAL e o acumulado do cliente cresce a cada 30 dias (accruedAmountOf).
+// A API já entende "mensal" de ponta a ponta: arr = 12×mensal, assinatura de
+// ciclo mensal com o valor cheio e faturas renovando no runBilling.
 export const CLOSED_PLANS = [
   { id: "anual", label: "Anual" },
   { id: "semestral", label: "Semestral" },
+  { id: "mensal", label: "Assinatura mensal" },
   { id: "unico", label: "Serviço único" },
 ];
 
-export const closedPlanLabel = (id) => CLOSED_PLANS.find((p) => p.id === id)?.label || (id === "mensal" ? "Mensal" : "");
+export const closedPlanLabel = (id) => CLOSED_PLANS.find((p) => p.id === id)?.label || "";
+
+// ── Recorrência: o valor ACUMULADO do fechamento ────────────────────────────
+// Cliente de assinatura fecha pelo valor MENSAL (planClosed "mensal") e cada
+// 30 dias corridos desde a venda soma outra mensalidade no acumulado — é a
+// régua única de "quanto esse fechamento já vale" (coluna Total fechado, régua
+// do status de pagamento, drawer do cliente). `endAt` (churn) para o relógio.
+// Fechamento não-recorrente devolve o amount de sempre.
+export const isRecurringClose = (lead) => lead?.planClosed === "mensal";
+export function accruedCycles(wonAt, { now = Date.now(), endAt } = {}) {
+  const start = new Date(wonAt || 0).getTime();
+  if (!Number.isFinite(start) || start <= 0) return 1;
+  const stopRaw = endAt ? new Date(endAt).getTime() : NaN;
+  const stop = Math.min(Number.isFinite(stopRaw) ? stopRaw : now, now);
+  return 1 + Math.max(0, Math.floor((stop - start) / (30 * 86_400_000)));
+}
+export function accruedAmountOf(lead, { now, endAt } = {}) {
+  const base = Number(lead?.amount) || 0;
+  if (!isRecurringClose(lead)) return base;
+  // wonAt || stageSince = o espelho do wonAtOf (funnel.js) sem criar import cíclico.
+  return base * accruedCycles(lead.wonAt || lead.stageSince, { now, endAt });
+}
 
 // Parcelamento padrão do FATURADO por plano (o gate sugere; o closer muda à
 // vontade). Espelho do PLAN_MONTHS da API — anual 12, semestral 6; serviço

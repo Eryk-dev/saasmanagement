@@ -14,7 +14,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { leadTier, waLink, GRADE_STYLE, GRADE_GRID, GRADE_ACCOUNTS, GRADE_LISTINGS } from "../lib/ui.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { displayName } from "../lib/users.js";
-import { paymentLabel, paymentUpfront, paymentRecurring, PAYMENT_METHODS, PAY_STATUS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel } from "../lib/payments.js";
+import { paymentLabel, paymentUpfront, paymentRecurring, PAYMENT_METHODS, PAY_STATUS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel, accruedAmountOf, isRecurringClose } from "../lib/payments.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 // Clientes — a base ativa do produto em dois blocos: a tabela de clientes e,
 // ao lado, "Próximas ações" (o próximo marco de retenção de cada cliente,
@@ -110,6 +110,11 @@ function CustomersScreen({ initialTab }) {
   // fechamento, fallback no arr do cliente). Fechado, não pago — mostra o valor
   // mesmo quando a fatura ainda está aberta (boleto/pix à vista não baixado).
   const leadById = React.useMemo(() => new Map((LEADS || []).map((l) => [l.id, l])), [LEADS]);
+  // Assinatura recorrente (plano mensal) ACUMULA: cada 30 dias desde o
+  // fechamento soma outra mensalidade no total — churn (endedAt) para o
+  // relógio. É a mesma régua do status de pagamento, então a 2ª mensalidade
+  // não paga aparece como Parcial sozinha.
+  const fechadoOf = (c) => accruedAmountOf(leadById.get(c.leadId), { endAt: c.endedAt }) || Number(c.arr) || 0;
 
   // Dinheiro REAL recebido por cliente ({ id: total }): MP aprovado casado com
   // o cliente/lead + baixas de fatura de verdade (o endpoint exclui a fatura
@@ -132,7 +137,7 @@ function CustomersScreen({ initialTab }) {
   // cartão NÃO é receber (caso Marianna, 13/08).
   const payStatus = (c) => {
     const cash = Number(received[c.id]) || 0;
-    const total = Number(leadById.get(c.leadId)?.amount) || Number(c.arr) || 0;
+    const total = fechadoOf(c);
     const pm = c.paymentMethod || leadById.get(c.leadId)?.paymentMethod;
     const auto = total > 0 && cash >= total * 0.98 ? "paid" : cash > 0 ? "partial" : paymentUpfront(pm) ? "unpaid" : "partial";
     const manual = PAY_STATUS[c.paymentStatus] ? c.paymentStatus : "";
@@ -200,7 +205,7 @@ function CustomersScreen({ initialTab }) {
     plano: (c) => String(isMentoria(c) ? consultPackageLabel(journeyOf(c).total) : contractPlan(c)).toLowerCase() || null,
     mrr: (c) => (c.arr || 0),
     pagamento: (c) => { const pm = c.paymentMethod || leadById.get(c.leadId)?.paymentMethod; return pm ? paymentLabel(pm).toLowerCase() : null; },
-    fechado: (c) => Number(leadById.get(c.leadId)?.amount) || Number(c.arr) || null,
+    fechado: (c) => fechadoOf(c) || null,
     pgto: (c) => payStatus(c).rank,
     entrada: (c) => entradaDate(c)?.getTime() ?? null,
     casa: (c) => { const d = entradaDate(c); return d ? Math.floor((Date.now() - d.getTime()) / 86400000) : null; },
@@ -434,10 +439,14 @@ function CustomersScreen({ initialTab }) {
                           );
                         })()}
                         {!isKidsWorkspace && (() => {
-                          const fechado = Number(leadById.get(c.leadId)?.amount) || Number(c.arr) || 0;
+                          const fechado = fechadoOf(c);
+                          const lead = leadById.get(c.leadId);
+                          const rec = isRecurringClose(lead);
                           return (
-                            <td className="tnum" style={{ padding: "14px 20px", fontSize: 13, textAlign: "right", color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
+                            <td className="tnum" title={rec ? `assinatura de ${money(Number(lead.amount) || 0)}/mês · acumulado desde o fechamento (+1 mensalidade a cada 30 dias)` : undefined}
+                              style={{ padding: "14px 20px", fontSize: 13, textAlign: "right", color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" }}>
                               {fechado > 0 ? money(fechado) : <span style={{ color: "var(--fg-4)" }}>—</span>}
+                              {rec && fechado > 0 && <span style={{ fontSize: 11, color: "var(--fg-4)" }}> ↻</span>}
                             </td>
                           );
                         })()}
@@ -622,7 +631,12 @@ function CustomerFacts({ customer, lead, product, onPatch }) {
     ["Formulário", formName],
     ["Anúncio", adName],
     ["Faixa de faturamento", lead?.value],
-    ["Valor fechado", lead?.amount ? window.fmt.money(lead.amount) : null],
+    // Recorrência: mostra a mensalidade E o acumulado (a régua dos 30 dias).
+    ["Valor fechado", lead?.amount
+      ? (isRecurringClose(lead)
+        ? `${window.fmt.money(lead.amount)}/mês · acumulado ${window.fmt.money(accruedAmountOf(lead, { endAt: customer.endedAt }))}`
+        : window.fmt.money(lead.amount))
+      : null],
     ["Pagamento", (customer.paymentMethod || lead?.paymentMethod) ? paymentLabel(customer.paymentMethod || lead?.paymentMethod) : null],
     ["Status pgto.", PAY_STATUS[customer.paymentStatus] ? `${PAY_STATUS[customer.paymentStatus].label} (manual)` : null],
     ["SDR", lead?.owner ? displayName(lead.owner) : null],
