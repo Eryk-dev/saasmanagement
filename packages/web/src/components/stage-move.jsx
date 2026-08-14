@@ -23,9 +23,12 @@ export function moveGate(saasCfg, lead, toStage) {
   const fromKind = stageKind(saasCfg, lead.stage || saasCfg?.funnel?.[0]?.stage);
   const fromPhase = phaseOf(fromKind);
   if (fromPhase === "sdr" && phaseOf(toKind) === "closer" && !lead.closer) return { type: "handoff", toKind };
-  // Call feita → Follow-up: registra QUAL proposta ficou na mesa (a oferta que
-  // o cliente levou pra pensar) — é ela que o follow-up vai cobrar.
-  if (fromKind === "call" && toKind === "followup") return { type: "offer", toKind };
+  // Indo pro Follow-up o gate abre SEMPRE: saindo da call registra QUAL
+  // proposta ficou na mesa (a oferta que o follow-up vai cobrar) e, de
+  // qualquer origem, oferece o HORÁRIO do follow-up (opcional — sem horário a
+  // cadência cuida). Antes só existia saindo da call e sem agenda, então quem
+  // movia pra Follow-up pelo select do drawer não tinha onde marcar a hora.
+  if (toKind === "followup") return { type: "offer", toKind, askOffer: fromKind === "call" };
   // Etapa de call SEM hora marcada: o servidor recusa (card em call sem horário
   // não aparece na Agenda nem ocupa slot), então o gate pede a hora ANTES de
   // mover, em vez de deixar o PATCH tomar 422 e o card não sair do lugar.
@@ -86,9 +89,14 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   const isFaturado = !!payment && paymentUpfront(payment) === false && !paymentRecurring(payment) && !isMonthly;
   const effInstallments = Number(installments) > 0 ? Number(installments)
     : (CLOSED_PLAN_MONTHS[isKidsWon || oneOff ? "unico" : planClosed] || 12);
-  // Call → Follow-up: qual proposta ficou na mesa (o follow-up cobra ELA).
+  // Follow-up: qual proposta ficou na mesa (só saindo da call — askOffer) e
+  // quando fazer o follow-up (opcional, followAt). O horário vira followupAt
+  // PRÓPRIO + nextActionAt — nunca callAt (a agenda desenharia uma call que
+  // não existe; caso Beto/Milaan, 13/08).
   const isOffer = gate.type === "offer";
+  const askOffer = isOffer && gate.askOffer !== false;
   const [offer, setOffer] = React.useState(lead.proposalOffer || "");
+  const [followAt, setFollowAt] = React.useState(lead.followupAt || "");
   // Hora da call pela MESMA grade do Meu dia: slot ocupado do closer vem
   // desabilitado, então não dá pra criar conflito digitando.
   const isCall = gate.type === "call";
@@ -102,7 +110,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // de call quanto no handoff que já cai numa etapa de call.
   const ready = isLost ? !!reason
     : isWonGate ? (Number(amount) > 0 && !!payment && (!askProduct || !!dealProduct))
-      : isOffer ? !!offer
+      : isOffer ? (!askOffer || !!offer)
         : askCall ? (!!closer && !!callAt)
           : !!closer;
 
@@ -122,7 +130,10 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
       if (isKidsWon) patch.consultPackage = Number(consultPackage) || 8;
       if (askProduct) patch.dealProduct = dealProduct;
     } else if (isOffer) {
-      patch.proposalOffer = offer;
+      if (askOffer && offer) patch.proposalOffer = offer;
+      // Espelho do Meu dia: followupAt (aparece na Agenda com cara de follow-up,
+      // sem travar slot de venda) + nextActionAt (a fila vence NESSE horário).
+      if (followAt) { patch.followupAt = followAt; patch.nextActionAt = followAt; }
     } else {
       patch.closer = closer;
       if (callAt) patch.callAt = callAt;
@@ -141,7 +152,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
           (valor/método/pacote) passa da altura visível — rola em vez de cortar. */}
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(420px, 100%)", maxHeight: "min(88dvh, 100%)", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 18 }}>
         <div style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700 }}>
-          {isLost ? `Mover pra “${toStage}”` : isAdjust ? "Confirmar plano e valor" : isWonGate ? "Fechar como ganho 🎉" : isOffer ? "Call feita → follow-up" : isCall ? "Marcar a call" : "Passar pro closer"}
+          {isLost ? `Mover pra “${toStage}”` : isAdjust ? "Confirmar plano e valor" : isWonGate ? "Fechar como ganho 🎉" : isOffer ? (askOffer ? "Call feita → follow-up" : "Marcar o follow-up") : isCall ? "Marcar a call" : "Passar pro closer"}
         </div>
         <div className="mono" style={{ fontSize: 11, color: "var(--fg-3)", marginTop: 3, marginBottom: 14 }}>
           {lead.name}{lead.company ? ` · ${lead.company}` : ""} → {toStage}
@@ -149,14 +160,24 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
 
         {isOffer ? (
           <>
-            <label className="kicker" style={label}>Qual proposta ficou na mesa? *</label>
-            <select value={offer} onChange={(e) => setOffer(e.target.value)} style={field} autoFocus>
-              <option value="">— a oferta que o cliente levou pra pensar —</option>
-              {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-              <option value="nenhuma">não chegou na proposta</option>
-            </select>
+            {askOffer && (
+              <>
+                <label className="kicker" style={label}>Qual proposta ficou na mesa? *</label>
+                <select value={offer} onChange={(e) => setOffer(e.target.value)} style={field} autoFocus>
+                  <option value="">— a oferta que o cliente levou pra pensar —</option>
+                  {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                  <option value="nenhuma">não chegou na proposta</option>
+                </select>
+                <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
+                  fica no card e orienta o follow-up: é essa proposta que você vai cobrar
+                </div>
+                <div style={{ height: 12 }} />
+              </>
+            )}
+            <label className="kicker" style={label}>Follow-up agendado pra (opcional)</label>
+            <SlotGrid days={nextBusinessDays(6)} day={day} setDay={setDay} slot={followAt} setSlot={setFollowAt} busy={busy} />
             <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
-              fica no card e orienta o follow-up: é essa proposta que você vai cobrar
+              entra na agenda nesse horário (sem travar slot de call) e a fila do Meu dia cobra nele · sem horário, retoma pela cadência
             </div>
           </>
         ) : isWonGate ? (
