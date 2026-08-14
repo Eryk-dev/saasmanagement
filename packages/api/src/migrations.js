@@ -1111,12 +1111,13 @@ const LEVERADS_CATALOG = {
     fulloem: { name: "LeverAds + OEM FULL", cota: 200, sem: { total: 11988, per: 999 }, anu: { total: 16068, per: 1339 } },
     oem: {
       name: "OEM avulso",
-      // Leque de cota do Leo (14/08/2026): 50/100/200 anúncios/mês. A régua
-      // abre no menor nível pro porte D/E e no maior pros demais; o closer
-      // troca na tela zero (select "Cota OEM" → state.oemCota).
-      small: { cota: 50, sem: { total: 2976, per: 248 }, anu: { total: 4176, per: 348 } },
-      mid: { cota: 100, sem: { total: 4776, per: 398 }, anu: { total: 5976, per: 498 } },
-      big: { cota: 200, sem: { total: 7176, per: 598 }, anu: { total: 8376, per: 698 } },
+      // Leque de cota do Leo (14/08/2026, preços corrigidos no mesmo dia):
+      // 50/100/200 anúncios/mês. A régua abre no menor nível pro porte D/E e
+      // no maior pros demais; o closer troca na tela zero (select "Cota OEM"
+      // → state.oemCota).
+      small: { cota: 50, sem: { total: 1788, per: 149 }, anu: { total: 3288, per: 274 } },
+      mid: { cota: 100, sem: { total: 2988, per: 249 }, anu: { total: 5388, per: 449 } },
+      big: { cota: 200, sem: { total: 4788, per: 399 }, anu: { total: 8388, per: 699 } },
     },
     parcialA: { name: "Parcial", sem: { total: 2100, per: 175 }, anu: { total: 3588, per: 299 } },
     parcialoem: { name: "Parcial + OEM 50", cota: 50, sem: { total: 3288, per: 274 }, anu: { total: 5376, per: 448 } },
@@ -1266,7 +1267,13 @@ export async function backfillOemLeque(repo) {
     if (p.template !== "pt_leverads") continue;
     if (p.sharedFrom || p.accepted) continue;
     const oem = p.calc?.catalog?.products?.oem;
-    if (!oem || oem.mid) continue;
+    if (!oem) continue;
+    // "Leque antigo" = sem o nível mid (pré-leque) OU a tabela v1 de 14/08,
+    // que saiu com os preços errados e o Leo corrigiu no mesmo dia (v1 só
+    // existiu por automação, nunca por edição do dono). Qualquer outra tabela
+    // com mid é edição soberana do snapshot: não mexe.
+    const v1 = Number(oem.small?.sem?.total) === 2976 && Number(oem.mid?.sem?.total) === 4776;
+    if (oem.mid && !v1) continue;
     // CÓPIA do catálogo (mesma lição do ensureProposalCatalog): sem ela todos
     // os snapshots apontariam pro mesmo objeto e uma edição vazaria pros outros.
     await repo.update("proposals", p.id, { calc: { ...p.calc, catalog: JSON.parse(JSON.stringify(catalog)) } });
