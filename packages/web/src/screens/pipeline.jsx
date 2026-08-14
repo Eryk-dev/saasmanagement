@@ -75,12 +75,13 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     setPersonState(p);
     try { localStorage.setItem("cockpit_pipeline_person", p); } catch { /* ignore */ }
   };
-  // Ordem dentro de cada coluna: "toque" (cronológica, o que já existia) ou
-  // "qualidade" (melhor cliente no topo). Vale pra TODAS as colunas de uma vez —
-  // o que o Leo quer é ver o cliente bom por cima, não configurar coluna a
-  // coluna. Persistida como o resto dos filtros da tela.
+  // Ordem dentro de cada coluna: "toque" (cronológica, o que já existia),
+  // "qualidade" (melhor cliente no topo) ou "ultimo" (há mais tempo sem contato
+  // no topo). Vale pra TODAS as colunas de uma vez — o que o Leo quer é ver o
+  // cliente bom (ou o abandonado) por cima, não configurar coluna a coluna.
+  // Persistida como o resto dos filtros da tela.
   const [sortMode, setSortModeState] = useStP(() => {
-    try { const v = localStorage.getItem("cockpit_pipeline_sort"); return v === "qualidade" ? "qualidade" : "toque"; } catch { return "toque"; }
+    try { const v = localStorage.getItem("cockpit_pipeline_sort"); return ["qualidade", "ultimo"].includes(v) ? v : "toque"; } catch { return "toque"; }
   });
   const setSortMode = (m) => {
     setSortModeState(m);
@@ -289,10 +290,12 @@ function PhaseFilter({ phase, counts, onChange }) {
   );
 }
 
-// Ordem das colunas: pelo próximo toque (o atrasado sobe, é a fila de trabalho)
-// ou pela qualidade do cliente (S no topo, é a fila de prioridade comercial).
+// Ordem das colunas: pelo próximo toque (o atrasado sobe, é a fila de trabalho),
+// pela qualidade do cliente (S no topo, é a fila de prioridade comercial) ou
+// pelo último toque (quem está há mais tempo sem contato sobe, é a fila de
+// resgate — ninguém fica esquecido na coluna).
 function SortToggle({ mode, onChange }) {
-  const opts = [["toque", "Próximo toque"], ["qualidade", "Qualidade"]];
+  const opts = [["toque", "Próximo toque"], ["ultimo", "Último toque"], ["qualidade", "Qualidade"]];
   return (
     <div style={{ display: "contents" }}>
       {opts.map(([k, label]) => (
@@ -402,9 +405,19 @@ function KanbanColumn({ s, stage, cards, sortMode, highlight, onDropCard, draggi
   // último. Empate na mesma grade cai na ordem de sempre (próximo toque), então
   // trocar pra "qualidade" reordena por prioridade sem perder a urgência dentro
   // de cada faixa.
+  // Último toque: há mais tempo sem contato no topo (lastActivityAt, a denorm
+  // que todo toque/nota atualiza); quem nunca foi tocado conta desde a chegada
+  // (createdAt) — assim o lead novo de agora não fura a fila de quem está
+  // abandonado há dias. Empate cai na ordem clássica.
+  const lastTs = (l) => {
+    const t = new Date(l.lastActivityAt || l.createdAt || 0).getTime();
+    return Number.isFinite(t) ? t : 0;
+  };
   const ordered = sortMode === "qualidade"
     ? [...cards].sort((a, b) => tierRank(a) - tierRank(b) || byTouch(a, b))
-    : [...cards].sort(byTouch);
+    : sortMode === "ultimo"
+      ? [...cards].sort((a, b) => lastTs(a) - lastTs(b) || byTouch(a, b))
+      : [...cards].sort(byTouch);
   const shown = expanded ? ordered : ordered.slice(0, 10);
   const hidden = ordered.length - shown.length;
   return (
@@ -432,6 +445,7 @@ function KanbanColumn({ s, stage, cards, sortMode, highlight, onDropCard, draggi
             key={l.id} d={l}
             s={s}
             currentStage={stage}
+            sortMode={sortMode}
             onDragStart={() => setDragging(l.id)}
             selected={selected.has(l.id)}
             onSelect={() => {
@@ -452,11 +466,25 @@ function KanbanColumn({ s, stage, cards, sortMode, highlight, onDropCard, draggi
   );
 }
 
-function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen }) {
+// Pill do modo "Último toque": tempo desde o último contato registrado
+// (lastActivityAt). Sem toque nunca = alerta; a data de chegada só rege a
+// ORDEM (lastTs), aqui o texto fala a verdade — ninguém tocou.
+function lastTouchPill(d) {
+  const t = new Date(d.lastActivityAt || 0).getTime();
+  if (!Number.isFinite(t) || t <= 0) return { text: "sem toque", tone: "var(--warn)" };
+  const days = Math.floor((Date.now() - t) / 86_400_000);
+  return { text: days < 1 ? "toque hoje" : `toque há ${days}d`, tone: "var(--fg-3)" };
+}
+
+function LeadCard({ d, s, currentStage, sortMode, onDragStart, selected, onSelect, onOpen }) {
   const saasCfg = s || (window.SEED?.SAAS || []).find((x) => x.id === d.saas);
   const kind = stageKind(saasCfg, currentStage);
   const phase = phaseOf(kind);
-  const next = nextTouchPill(d, { isOpen: workableStages(saasCfg).includes(currentStage), kind });
+  // No modo "Último toque" o pill mostra a régua da ordenação (tempo sem
+  // contato) no lugar do próximo passo — senão a ordem da coluna fica opaca.
+  const next = sortMode === "ultimo"
+    ? lastTouchPill(d)
+    : nextTouchPill(d, { isOpen: workableStages(saasCfg).includes(currentStage), kind });
   const ownerId = phase === "entrega" ? (d.integrator || d.closer || d.owner) : (d.closer || d.owner);
   const showAvatar = phase !== "sdr" && ownerId;
   const nextLabel = next?.text?.replace(/^[◆●]\s*/, "") || "";
