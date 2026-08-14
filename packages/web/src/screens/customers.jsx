@@ -14,7 +14,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { leadTier, waLink, GRADE_STYLE, GRADE_GRID, GRADE_ACCOUNTS, GRADE_LISTINGS } from "../lib/ui.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { displayName } from "../lib/users.js";
-import { paymentLabel, paymentUpfront, PAYMENT_METHODS, PAY_STATUS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel } from "../lib/payments.js";
+import { paymentLabel, paymentUpfront, paymentRecurring, PAYMENT_METHODS, PAY_STATUS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel } from "../lib/payments.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
 // Clientes — a base ativa do produto em dois blocos: a tabela de clientes e,
 // ao lado, "Próximas ações" (o próximo marco de retenção de cada cliente,
@@ -818,13 +818,23 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
   }
   const parcelas = invoices.filter((i) => i.kind === "installment")
     .sort((a, b) => (a.installmentN || 0) - (b.installmentN || 0) || String(a.dueDate || "").localeCompare(String(b.dueDate || "")));
-  // Mudar o parcelamento depois do fechamento: PATCH no lead re-espelha via
-  // syncWonLeadDeal — refaz as parcelas em aberto, as pagas ficam.
+  // Mudar (ou CRIAR) o parcelamento depois do fechamento: PATCH no lead
+  // re-espelha via syncWonLeadDeal — refaz as parcelas em aberto, as pagas
+  // ficam. Fechamento ANTIGO (pré-gate): o lead pode não ter paymentMethod/
+  // planClosed, e sem o método o re-espelho não gera cronograma nenhum —
+  // backfill do cadastro do cliente na mesma tacada, só no que falta.
   const [nSaving, setNSaving] = useState(false);
   async function changeParcelamento(n) {
     if (!lead || nSaving) return;
     setNSaving(true);
-    try { await api.update("leads", lead.id, { paymentInstallments: Number(n) || "" }); }
+    const patch = { paymentInstallments: Number(n) || "" };
+    if (!lead.paymentMethod && customer.paymentMethod) patch.paymentMethod = customer.paymentMethod;
+    if (!lead.planClosed) {
+      const t = String(customer.plan || "").toLowerCase();
+      const planClosed = t.includes("semestral") ? "semestral" : t.includes("anual") ? "anual" : t.includes("mensal") ? "mensal" : "";
+      if (planClosed) patch.planClosed = planClosed;
+    }
+    try { await api.update("leads", lead.id, patch); }
     catch (e) { window.toast && window.toast(e?.message || "não deu pra mudar o parcelamento", "neg"); }
     finally { setNSaving(false); }
   }
@@ -1008,6 +1018,37 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
                   </div>
                 );
               })}
+            </div>
+          );
+        })()}
+
+        {/* Fechou FATURADO/PARCELADO mas está sem cronograma (fechamento antigo,
+            sem o Nº de parcelas do gate): oferece gerar daqui. Mesmo caminho do
+            "mudar parcelamento" — o re-espelho tira as faturas de renovação
+            abertas/auto-pagas, ajusta a assinatura pro valor cheio e cria as N
+            parcelas; cada uma marcada paga conta no caixa e no Status pgto.
+            Recorrente fica fora: a cobrança dela é a renovação mensal, sem fim. */}
+        {parcelas.length === 0 && lead && Number(lead.amount) > 0 && (() => {
+          const pm = customer.paymentMethod || lead.paymentMethod;
+          if (paymentUpfront(pm) || paymentRecurring(pm)) return null;
+          return (
+            <div style={BOX}>
+              <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span>Parcelas do faturado</span>
+                <select value="" disabled={nSaving} onChange={(e) => e.target.value && changeParcelamento(e.target.value)}
+                  title="Gera o cronograma (vencimento mensal a partir do fechamento) pra marcar cada parcela como paga"
+                  style={{ marginLeft: "auto", height: 22, padding: "0 4px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--accent)", fontSize: 11 }}>
+                  <option value="">{nSaving ? "gerando…" : "gerar cronograma…"}</option>
+                  {Array.from({ length: 12 }, (_, k) => k + 1).map((n) => (
+                    <option key={n} value={n}>{n}x de {money((Number(lead.amount) || 0) / n)}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
+                Cliente faturado sem cronograma de parcelas. Escolha em quantas vezes pra
+                criar as parcelas e ir marcando cada pagamento — o que for pago conta no
+                caixa e no Status pgto.
+              </div>
             </div>
           );
         })()}
