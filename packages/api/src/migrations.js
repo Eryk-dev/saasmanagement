@@ -1247,6 +1247,34 @@ export async function backfillProposalCatalog(repo) {
   return n;
 }
 
+// ── Leque do OEM avulso nas propostas ABERTAS (pedido do Leo, 14/08/2026) ───
+// A tabela nova do OEM avulso (cotas 50/100/200) entrou no template, mas cada
+// proposta congela calc.catalog no snapshot — as abertas seguiam mostrando o
+// leque antigo (2 cotas, preços velhos) na tela zero. Mesmo recorte do
+// retroativo de 06/08: proposta viva do pt_leverads ganha o catálogo ATUAL do
+// template (só o catálogo — deck, estado e escolhas do closer ficam); ACEITAS
+// e snapshots de cliente (sharedFrom) ficam de fora. Idempotente: proposta
+// cujo OEM já tem o nível `mid` (100) não é tocada — edição posterior do dono
+// no snapshot é soberana.
+export async function backfillOemLeque(repo) {
+  const t = await repo.get("proposal_templates", "pt_leverads");
+  const catalog = t?.calc?.catalog;
+  if (!catalog?.products?.oem?.mid) return 0; // template ainda sem o leque
+  const proposals = await repo.list("proposals");
+  let n = 0;
+  for (const p of proposals) {
+    if (p.template !== "pt_leverads") continue;
+    if (p.sharedFrom || p.accepted) continue;
+    const oem = p.calc?.catalog?.products?.oem;
+    if (!oem || oem.mid) continue;
+    // CÓPIA do catálogo (mesma lição do ensureProposalCatalog): sem ela todos
+    // os snapshots apontariam pro mesmo objeto e uma edição vazaria pros outros.
+    await repo.update("proposals", p.id, { calc: { ...p.calc, catalog: JSON.parse(JSON.stringify(catalog)) } });
+    n++;
+  }
+  return n;
+}
+
 // ── Conta grande (keyAccount) ───────────────────────────────────────────────
 // Cliente fora da régua (ex.: Galante, pacote bespoke de R$ 120 mil no meio de
 // vendas de R$ 3-7 mil): o flag `keyAccount` tira ele do ticket médio e das
@@ -1485,6 +1513,14 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] ${n} proposta(s) existente(s) re-snapshotada(s) no fluxo do catálogo`);
   } catch (err) {
     console.error("[migration] backfillProposalCatalog falhou:", err?.message || err);
+  }
+  // Depois do backfill: proposta aberta com o leque antigo do OEM avulso (2
+  // cotas, preços velhos) recebe a tabela atual do template.
+  try {
+    const n = await backfillOemLeque(repo);
+    if (n) console.log(`[migration] leque do OEM avulso (50/100/200) aplicado em ${n} proposta(s) aberta(s)`);
+  } catch (err) {
+    console.error("[migration] backfillOemLeque falhou:", err?.message || err);
   }
   try {
     const n = await migrateExpensePctBases(repo);
