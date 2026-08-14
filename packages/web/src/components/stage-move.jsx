@@ -79,7 +79,11 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   const [dealProduct, setDealProduct] = React.useState(lead.dealProduct || "");
   const askProduct = isWonGate && !isKidsWon && dealProductsOf(lead.saas).length > 0;
   const oneOff = isOneOffProduct(lead.saas, dealProduct);
-  const isFaturado = !!payment && paymentUpfront(payment) === false && !paymentRecurring(payment);
+  // Assinatura mensal (recorrência): o valor lançado é o MENSAL — o acumulado
+  // do cliente soma outra mensalidade a cada 30 dias (accruedAmountOf). Não há
+  // Nº de parcelas (a cobrança é indefinida), então o faturado fica fora.
+  const isMonthly = !isKidsWon && !oneOff && planClosed === "mensal";
+  const isFaturado = !!payment && paymentUpfront(payment) === false && !paymentRecurring(payment) && !isMonthly;
   const effInstallments = Number(installments) > 0 ? Number(installments)
     : (CLOSED_PLAN_MONTHS[isKidsWon || oneOff ? "unico" : planClosed] || 12);
   // Call → Follow-up: qual proposta ficou na mesa (o follow-up cobra ELA).
@@ -168,15 +172,17 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
                 <div style={{ height: 12 }} />
               </>
             )}
-            <label className="kicker" style={label}>Valor do negócio (R$) *</label>
-            <input type="number" min="0" step="0.01" value={amount} autoFocus={!askProduct} placeholder="ex.: 7188"
+            <label className="kicker" style={label}>{isMonthly ? "Valor mensal (R$) *" : "Valor do negócio (R$) *"}</label>
+            <input type="number" min="0" step="0.01" value={amount} autoFocus={!askProduct} placeholder={isMonthly ? "ex.: 599" : "ex.: 7188"}
               onChange={(e) => setAmount(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") confirm(); }}
               style={field} />
             <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
-              {isAdjust
-                ? "ajustar aqui atualiza o cliente e a assinatura criados no fechamento"
-                : "vira a receita da campanha no relatório de marketing e o valor da conversão enviada pra Meta"}
+              {isMonthly
+                ? "recorrência: a cada 30 dias do fechamento o acumulado do cliente soma mais uma mensalidade"
+                : isAdjust
+                  ? "ajustar aqui atualiza o cliente e a assinatura criados no fechamento"
+                  : "vira a receita da campanha no relatório de marketing e o valor da conversão enviada pra Meta"}
             </div>
             {/* Mentoria não tem plano recorrente: o PACOTE de consultas é o que
                 foi comprado, então ele substitui o "Plano fechado" no Kids. */}
@@ -197,7 +203,12 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
                 {/* Serviço único (clonagem avulsa) não tem ciclo: o plano é o
                     próprio produto, então o select fica travado. */}
                 <select value={oneOff ? "unico" : planClosed} disabled={oneOff}
-                  onChange={(e) => setPlanClosed(e.target.value)} style={{ ...field, opacity: oneOff ? 0.7 : 1 }}>
+                  onChange={(e) => {
+                    setPlanClosed(e.target.value);
+                    // Assinatura mensal fecha no cartão recorrente por padrão —
+                    // só sugere quando o closer ainda não escolheu o pagamento.
+                    if (e.target.value === "mensal" && !payment) setPayment("cartao_recorrente");
+                  }} style={{ ...field, opacity: oneOff ? 0.7 : 1 }}>
                   {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                 </select>
               </>

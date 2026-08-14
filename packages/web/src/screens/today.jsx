@@ -2037,16 +2037,25 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
         <div style={{ marginTop: 12 }}>
           <label className="kicker" style={label}>Plano fechado *</label>
           <select value={oneOff ? "unico" : planClosed} disabled={oneOff}
-            onChange={(e) => setPlanClosed(e.target.value)} style={{ ...fieldStyle, opacity: oneOff ? 0.7 : 1 }}>
+            onChange={(e) => {
+              setPlanClosed(e.target.value);
+              // Assinatura mensal fecha no cartão recorrente por padrão (igual
+              // ao gate do board) — só sugere com o pagamento ainda vazio.
+              if (e.target.value === "mensal" && !payment) setPayment("cartao_recorrente");
+            }} style={{ ...fieldStyle, opacity: oneOff ? 0.7 : 1 }}>
             {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
           </select>
         </div>
       )}
       <div style={{ marginTop: 12 }}>
-        <label className="kicker" style={label}>Valor do negócio (R$) *</label>
-        <input type="number" min="0" step="0.01" value={amount} placeholder="ex.: 7188"
+        <label className="kicker" style={label}>{askProduct && !oneOff && planClosed === "mensal" ? "Valor mensal (R$) *" : "Valor do negócio (R$) *"}</label>
+        <input type="number" min="0" step="0.01" value={amount} placeholder={askProduct && !oneOff && planClosed === "mensal" ? "ex.: 599" : "ex.: 7188"}
           onChange={(e) => setAmount(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") confirm(); }} style={fieldStyle} />
-        <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>{hint}</div>
+        <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>
+          {askProduct && !oneOff && planClosed === "mensal"
+            ? "recorrência: a cada 30 dias do fechamento o acumulado do cliente soma mais uma mensalidade"
+            : hint}
+        </div>
       </div>
       <div style={{ marginTop: 12 }}>
         <label className="kicker" style={label}>Modo de pagamento *</label>
