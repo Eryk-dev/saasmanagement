@@ -491,6 +491,46 @@ test("retroativo: proposta antiga re-snapshotada no fluxo novo; aceita e compart
   assert.equal(await backfillProposalCatalog(repo), 0, "idempotente");
 });
 
+test("retroativo do leque OEM: aberta ganha a tabela nova; aceita, link de cliente e já-migrada ficam", async () => {
+  const { backfillOemLeque } = await import("../src/migrations.js");
+  const repo = await seedRepo();
+  const novo = (await repo.get("proposal_templates", "pt_leverads")).calc.catalog;
+  // Snapshot com o catálogo ANTIGO: leque de 2 cotas e preços de antes de 14/08.
+  const antigo = JSON.parse(JSON.stringify(novo));
+  antigo.products.oem = {
+    name: "OEM avulso",
+    small: { cota: 50, sem: { total: 1188, per: 99 }, anu: { total: 1788, per: 149 } },
+    big: { cota: 200, sem: { total: 2988, per: 249 }, anu: { total: 4188, per: 349 } },
+  };
+  const mk = (id, extra) => repo.create("proposals", {
+    id, saas: "leverads", template: "pt_leverads", lead: "ld_x", name: "Proposta",
+    calc: { volumeMid: { "100-500": 300 }, catalog: JSON.parse(JSON.stringify(antigo)) },
+    slides: [], data: { answers: {} },
+    state: { accounts: "1", volume: "100-500", product: "oem", pain: "OEM" },
+    editKey: "k_" + id, accepted: false,
+    ...extra,
+  });
+  await mk("pr_aberta");
+  await mk("pr_aceita", { accepted: true });
+  await mk("pr_filha", { sharedFrom: "pr_aberta", editKey: "" });
+  await mk("pr_nova", { calc: { catalog: JSON.parse(JSON.stringify(novo)) } });
+
+  const n = await backfillOemLeque(repo);
+  assert.equal(n, 1, "só a proposta aberta com o leque antigo entra");
+
+  const p = await repo.get("proposals", "pr_aberta");
+  assert.deepEqual(
+    ["small", "mid", "big"].map((k) => [p.calc.catalog.products.oem[k].cota, p.calc.catalog.products.oem[k].sem.total]),
+    [[50, 2976], [100, 4776], [200, 7176]],
+    "tabela nova no snapshot",
+  );
+  assert.equal(p.state.product, "oem", "escolhas do closer preservadas");
+  assert.equal(p.calc.volumeMid["100-500"], 300, "resto do calc preservado");
+  assert.equal((await repo.get("proposals", "pr_aceita")).calc.catalog.products.oem.mid, undefined, "aceita não muda");
+  assert.equal((await repo.get("proposals", "pr_filha")).calc.catalog.products.oem.mid, undefined, "link do cliente não muda");
+  assert.equal(await backfillOemLeque(repo), 0, "idempotente");
+});
+
 // O closer fecha a venda NO CARD (Call → Integração) e precisa dizer o que
 // vendeu, com o preço da apresentação: o cockpit recebe esta lista no SEED.
 test("catálogo do fechamento: produtos com preço + clonagem avulsa como serviço único", async () => {
