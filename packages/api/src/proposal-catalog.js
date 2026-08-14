@@ -28,6 +28,25 @@ const DEFAULT_GRID = [
 const DEFAULT_ACCOUNTS = ["1", "2", "3-5", "6-10", "10+"];
 const DEFAULT_VOL_LABELS = ["≤100", "100-500", "500-2k", "2-10k", "10k+"];
 const PRODUCT_KEYS = ["full", "fulloem", "oem", "parcialA", "parcialoem"];
+// OEM avulso vende por COTA mensal — leque aprovado pelo Leo em 14/08/2026:
+// 50, 100 e 200 anúncios/mês, em products.oem.{small,mid,big} no banco.
+// Snapshot antigo (só small/big) continua válido: os níveis são lidos do que
+// existir, em ordem de cota. A régua abre no MENOR nível pro porte D/E e no
+// MAIOR pros demais; o closer troca na tela zero (state.oemCota).
+const OEM_LEVEL_KEYS = ["small", "mid", "big"];
+const oemLevelsOf = (products) => OEM_LEVEL_KEYS
+  .map((k) => products?.oem?.[k])
+  .filter((l) => l && l.sem)
+  .sort((a, b) => (Number(a.cota) || 0) - (Number(b.cota) || 0));
+// Cotas válidas do leque (validação do PATCH da tela zero).
+export const oemCotasOf = (products) => oemLevelsOf(products).map((l) => Number(l.cota) || 0);
+function oemLevelOf(products, state, small) {
+  const levels = oemLevelsOf(products);
+  const want = Number(state?.oemCota) || 0;
+  return levels.find((l) => (Number(l.cota) || 0) === want)
+    || (small ? levels[0] : levels[levels.length - 1])
+    || null;
+}
 // Serviço único: a clonagem entre contas cobrada UMA vez, por faixa de anúncios.
 // Não é produto do catálogo — é tabela de consulta do closer na tela zero, então
 // não entra no deck nem viaja no link do cliente. `calc.catalog.oneOff` (banco)
@@ -87,8 +106,9 @@ const isAuto = (answers) => String(answers?.niche || "").trim().toLowerCase() ==
 
 // Dor do anúncio que MANDA no produto: quem clicou no anúncio de part number
 // veio comprar OEM, não clonagem, então a régua (contas × anúncios) não decide
-// por ele. A cota segue o porte, como em todo produto OEM (50 no D/E, 200 nos
-// demais). As dores A-E não apontam produto: só trocam a trilha SPIN.
+// por ele. A cota abre pelo porte (menor nível no D/E, maior nos demais) e o
+// closer troca na tela zero. As dores A-E não apontam produto: só trocam a
+// trilha SPIN.
 const PAIN_PRODUCT = { OEM: "oem" };
 
 const painOf = (state) => String(state?.pain || "").trim().toUpperCase();
@@ -162,14 +182,14 @@ const deep200 = (o) => JSON.parse(JSON.stringify(o)
   .replace(/100 anúncios/g, "200 anúncios")
   .replace(/100 SKUs por mês/g, "200 anúncios OEM por mês"));
 
-function buildPricing(key, { sBase, sAuto, products, small }) {
+function buildPricing(key, { sBase, sAuto, products, small, oemLevel }) {
   const P = products;
   if (key === "fulloem") {
     const src = sAuto || sBase;
     return offers(deep200(clone(src)), P.fulloem.sem, P.fulloem.anu);
   }
   if (key === "oem") {
-    const o = small ? P.oem.small : P.oem.big;
+    const o = oemLevel || (small ? P.oem.small : P.oem.big);
     const s = withGroups(clone(sBase),
       [o.cota + " anúncios OEM criados por mês", "Compatibilidade veicular em cada anúncio", "Publicados direto nas suas contas (Meli + Shopee)"],
       ["Você só manda a lista de códigos OEM", "Preview antes de publicar", "Acompanhamento dos anúncios criados no painel"]);
@@ -240,11 +260,12 @@ export function applyCatalog(p) {
   const tier = tierOf(calc, p.state || {});
   const small = lowTier(tier);
   const products = calc.catalog.products;
+  const oemLevel = oemLevelOf(products, p.state || {}, small);
 
   // Slides-base (sem os pricing) + o investimento do produto na posição do 1º pricing.
   const firstPricingIdx = slides.findIndex((s) => s?.type === "pricing");
   const base = slides.filter((s) => s?.type !== "pricing");
-  const pricing = buildPricing(product, { sBase, sAuto, products, small });
+  const pricing = buildPricing(product, { sBase, sAuto, products, small, oemLevel });
   const insertAt = firstPricingIdx === -1 ? base.length
     : Math.min(base.length, slides.slice(0, firstPricingIdx).filter((s) => s?.type !== "pricing").length);
   const out = base.slice(0, insertAt).concat([pricing], base.slice(insertAt)).map(clone);
@@ -252,7 +273,7 @@ export function applyCatalog(p) {
   // Tela do processo OEM + ritmo claro/escuro.
   const oemCota = product === "fulloem" ? (products.fulloem.cota || 200)
     : product === "parcialoem" ? (products.parcialoem.cota || 50)
-    : product === "oem" ? (small ? products.oem.small.cota : products.oem.big.cota)
+    : product === "oem" ? (Number(oemLevel?.cota) || 0)
     : 0;
   if (oemCota) {
     const oemSlide = oemProcessSlide(oemCota);
@@ -320,23 +341,23 @@ export function orderDeck(slides, order) {
 // ── Payload da tela zero (modo closer) ──────────────────────────────────────
 // Tudo que o card de decisão mostra vem PRONTO daqui: o cliente-side não tem
 // tabela de preço nenhuma (mudou dado → salva → recarrega → recalcula aqui).
-function priceLine(key, products, small) {
+function priceLine(key, products, small, oemLevel) {
   const P = products;
   const line = (o, extra) => "R$ " + fmtBR(o.sem.total) + " no semestre (12x " + fmtBR(o.sem.per) + ")" +
     (o.anu ? " · anual R$ " + fmtBR(o.anu.total) + " (12x " + fmtBR(o.anu.per) + ")" + (extra || "") : "");
   if (key === "oem") {
-    const o = small ? P.oem.small : P.oem.big;
+    const o = oemLevel || (small ? P.oem.small : P.oem.big);
     return "OEM " + o.cota + "/mês: " + line(o);
   }
   if (key === "parcialoem") return line(P.parcialoem, " no Shift+1").replace("no semestre", "no semestre (soma)");
   return line(P[key], " no Shift+1");
 }
 
-function offerLine(key, products, small) {
+function offerLine(key, products, small, oemLevel) {
   if (key === "full") return "Plataforma completa nas suas contas: equalização, clone automático, estoque sincronizado, perguntas, SKUs, precificação e promoções.";
   if (key === "fulloem") return "Tudo do FULL + " + (products.fulloem.cota || 200) + " anúncios OEM por mês com compatibilidade veicular.";
   if (key === "oem") {
-    const o = small ? products.oem.small : products.oem.big;
+    const o = oemLevel || (small ? products.oem.small : products.oem.big);
     return o.cota + " anúncios OEM por mês criados pela Lever, sem a clonagem: o cliente só manda a lista de códigos.";
   }
   if (key === "parcialA") return "Equalização + automação de clone/estoque, até 2.000 clones no semestre, gerenciador de SKU e perguntas num lugar só.";
@@ -356,11 +377,12 @@ export function catalogUI(p) {
   const names = {};
   const priceLines = {};
   const offerLines = {};
+  const oemLv = oemLevelOf(cat.products, state, small);
   for (const k of PRODUCT_KEYS) {
     if (!cat.products[k]) continue;
     names[k] = cat.products[k].name || k;
-    priceLines[k] = priceLine(k, cat.products, small);
-    offerLines[k] = offerLine(k, cat.products, small);
+    priceLines[k] = priceLine(k, cat.products, small, oemLv);
+    offerLines[k] = offerLine(k, cat.products, small, oemLv);
   }
   // Ordem do select de dor: códigos de 1 letra (A-E) antes dos maiores (OEM),
   // "sem código" sempre por último. Sai pronto daqui porque a tela zero não
@@ -391,6 +413,14 @@ export function catalogUI(p) {
       volIndex: volCol(calc, state.volume),
     },
     names, priceLines, offerLines,
+    // Leque do OEM avulso: cota ATIVA (escolha do closer ou porte da régua) e
+    // os níveis com preço curto — vira o select "Cota OEM" da tela zero.
+    oemCota: Number(oemLv?.cota) || 0,
+    oemLevels: oemLevelsOf(cat.products).map((l) => ({
+      cota: Number(l.cota) || 0,
+      short: "R$ " + fmtBR(l.sem.total) + " sem (12x " + fmtBR(l.sem.per) + ")" +
+        (l.anu ? " · R$ " + fmtBR(l.anu.total) + " anu (12x " + fmtBR(l.anu.per) + ")" : ""),
+    })),
     pains: cat.pains || {},
     oneOffCloning: clone(cat.oneOff || ONE_OFF_CLONING),
     // Teste A/B da ordem dos slides (pílula na tela zero).
@@ -420,14 +450,14 @@ export function dealCatalog(calc) {
   if (!hasCatalog(calc)) return [];
   const cat = calc.catalog;
   const out = [];
-  // Preços de um produto: sem/anu direto, ou os dois níveis de cota do OEM
-  // avulso (50 e 200 anúncios), que viram quatro opções nomeadas.
+  // Preços de um produto: sem/anu direto, ou os níveis de cota do OEM avulso
+  // (leque 50/100/200 anúncios), cada um virando duas opções nomeadas.
   const pricesOf = (p) => {
     const rows = [];
     for (const [k, cycle] of [["sem", "sem"], ["anu", "anu"]]) {
       if (p?.[k]?.total) rows.push({ plan: cyclePlan[cycle], label: cycleLabel[cycle], value: moneyOf(p[k].total) });
     }
-    for (const level of ["small", "big"]) {
+    for (const level of OEM_LEVEL_KEYS) {
       const lv = p?.[level];
       if (!lv) continue;
       for (const k of ["sem", "anu"]) {
