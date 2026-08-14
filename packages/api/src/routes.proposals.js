@@ -6,7 +6,7 @@
 // (closer abrindo o próprio link de edição não infla o número).
 
 import { publicProposal, syncProposalLeadSnapshot } from "./proposal.js";
-import { applyCatalog, catalogUI } from "./proposal-catalog.js";
+import { applyCatalog, catalogUI, oemCotasOf } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { makeRateLimiter } from "./forms.js";
 import { convertWonLead } from "./routes.js";
@@ -96,6 +96,7 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     if (typeof q.product === "string") fake.state.product = q.product.slice(0, 20);
     if (typeof q.pain === "string") fake.state.pain = q.pain.slice(0, 8);
     if (q.oem === "1") fake.state.oem = true;
+    if (typeof q.oemCota === "string") fake.state.oemCota = Number(q.oemCota) || 0;
     if (typeof q.order === "string") fake.state.deckOrder = q.order.toUpperCase() === "B" ? "B" : "";
     return reply.type("text/html").header("cache-control", "no-store").send(renderProposal(fake, { editable: true, previewBanner: true }));
   });
@@ -180,6 +181,12 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     if (typeof body.product === "string" && (body.product === "" || catalogProducts[body.product])) state.product = body.product;
     if (typeof body.pain === "string") state.pain = body.pain.slice(0, 8);
     if (typeof body.oem === "boolean") state.oem = body.oem;
+    // Cota do OEM avulso (select da tela zero): só cota do leque do catálogo
+    // entra; vazio ou fora do leque = volta a seguir o porte da régua.
+    if (body.oemCota !== undefined) {
+      const cota = Number(body.oemCota) || 0;
+      state.oemCota = oemCotasOf(catalogProducts).includes(cota) ? cota : "";
+    }
     // Ordem da apresentação (teste A/B da tela zero): A = padrão, B = beta.
     if (typeof body.deckOrder === "string") state.deckOrder = body.deckOrder.toUpperCase() === "B" ? "B" : "";
 

@@ -1626,7 +1626,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       // Retorna a promise: o card do catálogo espera o save antes de recarregar.
       return fetch('/public/proposals/' + encodeURIComponent(P.id), {
         method: 'PATCH', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ k: token, accounts: state.accounts, volume: state.volume, cycle: state.cycle, customPriceCents: state.customPriceCents, validUntil: state.validUntil, frozen: true, company: DATA.lead.company, name: DATA.lead.name, niche: DATA.answers.niche, cloneCount: state.cloneCount, newPerMonth: state.newPerMonth, product: state.product, pain: state.pain, oem: state.oem, deckOrder: state.deckOrder })
+        body: JSON.stringify({ k: token, accounts: state.accounts, volume: state.volume, cycle: state.cycle, customPriceCents: state.customPriceCents, validUntil: state.validUntil, frozen: true, company: DATA.lead.company, name: DATA.lead.name, niche: DATA.answers.niche, cloneCount: state.cloneCount, newPerMonth: state.newPerMonth, product: state.product, pain: state.pain, oem: state.oem, oemCota: state.oemCota, deckOrder: state.deckOrder })
       }).then(function (r) { if (!r.ok) throw new Error('falha'); return r.json(); })
         .then(function () { flash('salvo ✓', 'ok'); setTimeout(function () { tag.className = 'save-tag'; }, 1600); })
         .catch(function () { flash('✕ erro ao salvar', 'err'); });
@@ -1819,6 +1819,13 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
             '</select><button class="lvx-back" id="lvxBack" type="button">↩ voltar pra sugestão da régua</button>' +
             '<div class="lvx-cur" id="lvxCur"></div>' +
             '<div class="lvx-note" style="margin-top:6px">Mudou contas, anúncios ou nicho? O deck já troca sozinho pra apresentação sugerida. Escolher aqui força um produto até a próxima mudança de dados.</div></div>' +
+          // Leque do OEM avulso: só aparece quando o produto apresentado é o
+          // OEM; a régua abre no nível do porte e o closer troca aqui.
+          '<div id="lvxCotaRow" style="display:none"><span class="lvx-h">Cota OEM · anúncios por mês</span>' +
+            '<select class="lvx-sel" id="lvxCota" style="margin-top:6px">' +
+              (CAT.oemLevels || []).map(function (l) { return '<option value="' + l.cota + '">' + l.cota + '/mês — ' + esc(l.short) + '</option>'; }).join('') +
+            '</select>' +
+            '<div class="lvx-note" style="margin-top:6px">Muda a cota e o preço do deck do OEM avulso. Sem mexer, vale o nível do porte da régua.</div></div>' +
           '<div class="lvx-row" id="lvxOemRow" style="display:none;font-size:12.5px;color:var(--ink-2)">' +
             '<label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="lvxOem" style="width:15px;height:15px"> ' +
             'Confirmei no rapport que ele quer os anúncios OEM</label></div>' +
@@ -1874,6 +1881,9 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           catGet('lvxCur').innerHTML = '<b>' + esc(CAT.names[shown] || shown) + '</b>' + esc(CAT.offerLines[shown] || '') +
             '<span class="lvx-cur-price">' + esc(CAT.priceLines[shown] || '') + '</span>';
           catGet('lvxBack').className = 'lvx-back' + (state.product && state.product !== CAT.suggested ? ' show' : '');
+          var cotaOn = shown === 'oem' && (CAT.oemLevels || []).length;
+          catGet('lvxCotaRow').style.display = cotaOn ? '' : 'none';
+          if (cotaOn) catGet('lvxCota').value = String(Number(state.oemCota) || CAT.oemCota || '');
           catGet('lvxOemRow').style.display = String(DATA.answers.niche || '') === 'autopecas' ? 'flex' : 'none';
           catGet('lvxOem').checked = !!state.oem;
           var isB = state.deckOrder === 'B';
@@ -1920,6 +1930,12 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         catGet('lvxBack').addEventListener('click', function () {
           state.product = '';
           catReload({ product: null });
+        });
+        // Cota do OEM avulso: o preço do deck muda, então salva e recarrega
+        // (mesma dança da troca de produto).
+        catGet('lvxCota').addEventListener('change', function () {
+          state.oemCota = Number(this.value) || '';
+          catReload({ oemCota: this.value || null });
         });
         catGet('lvxPain').addEventListener('change', function () {
           // Dor que aponta produto (OEM) remonta o DECK, então precisa do

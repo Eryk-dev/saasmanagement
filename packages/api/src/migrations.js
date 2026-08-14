@@ -1111,8 +1111,12 @@ const LEVERADS_CATALOG = {
     fulloem: { name: "LeverAds + OEM FULL", cota: 200, sem: { total: 11988, per: 999 }, anu: { total: 16068, per: 1339 } },
     oem: {
       name: "OEM avulso",
-      small: { cota: 50, sem: { total: 1188, per: 99 }, anu: { total: 1788, per: 149 } },
-      big: { cota: 200, sem: { total: 2988, per: 249 }, anu: { total: 4188, per: 349 } },
+      // Leque de cota do Leo (14/08/2026): 50/100/200 anúncios/mês. A régua
+      // abre no menor nível pro porte D/E e no maior pros demais; o closer
+      // troca na tela zero (select "Cota OEM" → state.oemCota).
+      small: { cota: 50, sem: { total: 2976, per: 248 }, anu: { total: 4176, per: 348 } },
+      mid: { cota: 100, sem: { total: 4776, per: 398 }, anu: { total: 5976, per: 498 } },
+      big: { cota: 200, sem: { total: 7176, per: 598 }, anu: { total: 8376, per: 698 } },
     },
     parcialA: { name: "Parcial", sem: { total: 2100, per: 175 }, anu: { total: 3588, per: 299 } },
     parcialoem: { name: "Parcial + OEM 50", cota: 50, sem: { total: 3288, per: 274 }, anu: { total: 5376, per: 448 } },

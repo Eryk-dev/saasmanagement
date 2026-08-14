@@ -186,8 +186,8 @@ export function DealProductField({ saas, value, onChange, plan = "", onPick, fie
   const products = dealProductsOf(saas);
   if (!products.length) return null;
   const cur = products.find((p) => p.id === value) || null;
-  // TODOS os preços do produto (semestral e anual, e as duas cotas no OEM): um
-  // clique resolve valor E ciclo de uma vez, então esconder o outro ciclo só
+  // TODOS os preços do produto (semestral e anual, e as cotas do leque no OEM):
+  // um clique resolve valor E ciclo de uma vez, então esconder o outro ciclo só
   // obrigaria a trocar o plano antes pra ver o preço. O que bate com o plano
   // atual fica destacado.
   const prices = cur?.prices || [];
