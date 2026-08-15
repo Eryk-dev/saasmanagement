@@ -1171,8 +1171,9 @@ const LEVERADS_CATALOG = {
       },
     },
     // Dor de anúncio OEM (agosto/2026): o lead clicou num anúncio de part
-    // number, não de clonagem. É a única dor que aponta PRODUTO (OEM avulso,
-    // ver PAIN_PRODUCT em proposal-catalog.js) — as A-E só trocam a trilha.
+    // number, não de clonagem. Como as A-E, só troca a trilha SPIN — o
+    // produto/preço sai da régua (pedido do Leo, 15/08/2026: quem veio pelo
+    // OEM também serve pro LeverAds); OEM avulso é escolha manual do closer.
     OEM: {
       label: "Anunciar pelo código OEM sem montar ficha nem compatibilidade",
       spin: {
@@ -1285,7 +1286,7 @@ export async function backfillOemLeque(repo) {
 
 // ── Card do pipeline = preço da apresentação (pedido do Leo, 15/08/2026) ────
 // O amount do lead nascia da fórmula por assentos (contractValue) e ignorava o
-// PRODUTO que a régua/dor sugere: o card mostrava R$ 8,4k enquanto o closer
+// PRODUTO que a régua sugere: o card mostrava R$ 8,4k enquanto o closer
 // abria um FULL de R$ 7.188. A geração e a tela zero agora gravam o preço do
 // produto ativo (catalogAmount); esta rotina alinha os leads ABERTOS já
 // gerados e re-aplica a regra a cada boot — até o fechamento, o valor do card
