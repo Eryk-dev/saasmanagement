@@ -137,6 +137,22 @@ export function activeProduct(p) {
   return suggestProduct(p?.calc, p?.state || {}, p?.data?.answers || {});
 }
 
+// Preço do produto que a APRESENTAÇÃO vai abrir (a oferta principal do deck é
+// sempre a SEMESTRAL; o anual é o degrau secreto do Shift+1). Vira o
+// `lead.amount`: o card do pipeline mostra o mesmo número que o closer
+// apresenta. Sem catálogo devolve 0 — quem chama cai na fórmula por assentos
+// (contractValue) de sempre.
+export function catalogAmount(p) {
+  const calc = p?.calc;
+  if (!hasCatalog(calc)) return 0;
+  const products = calc.catalog.products;
+  const key = activeProduct(p);
+  const offer = key === "oem"
+    ? oemLevelOf(products, p?.state || {}, lowTier(tierOf(calc, p?.state || {})))
+    : products[key];
+  return moneyOf(offer?.sem?.total);
+}
+
 // ── Ofertas ────────────────────────────────────────────────────────────────
 // Escreve a oferta principal (SEMESTRAL) e o degrau secreto (ANUAL, Shift+1)
 // num slide de pricing. O *X* no cycles vira o número da parcela em destaque

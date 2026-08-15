@@ -10,7 +10,7 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { ensureProposalCatalog } = await import("../src/migrations.js");
 const { applyCatalog, activeProduct, catalogUI, suggestProduct, dealCatalog, DEAL_PRODUCT_LABEL, orderDeck } = await import("../src/proposal-catalog.js");
-const { runNativeProposal, shareProposalOffer, publicProposal } = await import("../src/proposal.js");
+const { runNativeProposal, shareProposalOffer, publicProposal, syncProposalLeadSnapshot } = await import("../src/proposal.js");
 const { registerProposalRoutes } = await import("../src/routes.proposals.js");
 
 // Template no formato do pt_leverads REAL (antes da migração): faixas antigas,
@@ -547,6 +547,84 @@ test("retroativo do leque OEM: aberta ganha a tabela nova; aceita, link de clien
   assert.equal((await repo.get("proposals", "pr_filha")).calc.catalog.products.oem.mid, undefined, "link do cliente não muda");
   assert.equal((await repo.get("proposals", "pr_editada")).calc.catalog.products.oem.small.sem.total, 999, "edição do dono é soberana");
   assert.equal(await backfillOemLeque(repo), 0, "idempotente");
+});
+
+// ── Card do pipeline = preço da apresentação ────────────────────────────────
+// O amount do lead É o preço semestral do produto que a régua/dor sugere (ou
+// que o closer escolheu em Apresentar) — não mais a fórmula por assentos.
+test("geração: lead.amount é o preço do produto sugerido, não a fórmula por assentos", async () => {
+  const repo = await seedRepo();
+  // D fora de autopeças → Parcial (R$ 2.100 sem).
+  const p1 = await makeProposal(repo, { niche: "outros", accounts: "1", listings: "100-500" });
+  assert.equal((await repo.get("leads", p1.lead)).amount, 2100);
+  // Tier alto → FULL (R$ 7.188 sem), independente do nº de contas — era a
+  // fórmula por assentos que inflava o card pra 8,4k/10,8k.
+  const p2 = await makeProposal(repo, { niche: "outros", accounts: "3-5", listings: "2000-10000" });
+  assert.equal((await repo.get("leads", p2.lead)).amount, 7188);
+  // Dor [OEM] do anúncio no porte pequeno → OEM avulso cota 50 (R$ 1.788 sem).
+  const p3 = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "100-500", sourcePain: "oem" });
+  assert.equal((await repo.get("leads", p3.lead)).amount, 1788);
+});
+
+test("tela zero mexeu → o card acompanha o produto ativo; negócio fechado não mexe", async () => {
+  const repo = await seedRepo();
+  const p = await makeProposal(repo, { niche: "outros", accounts: "1", listings: "100-500" });
+  assert.equal((await repo.get("leads", p.lead)).amount, 2100, "nasce no Parcial");
+  const app = Fastify();
+  registerProposalRoutes(app, repo);
+
+  // Closer decide apresentar o FULL: o card segue na hora.
+  await app.inject({ method: "PATCH", url: "/public/proposals/" + p.id, payload: { k: p.editKey, product: "full" } });
+  assert.equal((await repo.get("leads", p.lead)).amount, 7188);
+
+  // Régua re-classificada na call (contas/anúncios reais) com Apresentar de
+  // volta na régua: tier A continua FULL.
+  await app.inject({ method: "PATCH", url: "/public/proposals/" + p.id, payload: { k: p.editKey, product: "", accounts: "3-5", volume: "2000-10000" } });
+  assert.equal((await repo.get("leads", p.lead)).amount, 7188);
+
+  // Dor OEM marcada na tela zero: produto e card viram OEM avulso (cota 200 pelo porte).
+  await app.inject({ method: "PATCH", url: "/public/proposals/" + p.id, payload: { k: p.editKey, pain: "OEM" } });
+  assert.equal((await repo.get("leads", p.lead)).amount, 4788);
+
+  // Negócio fechado: o valor de venda é soberano, a tela zero não sobrescreve.
+  await repo.update("leads", p.lead, { amount: 5000, planClosed: "semestral" });
+  await app.inject({ method: "PATCH", url: "/public/proposals/" + p.id, payload: { k: p.editKey, oemCota: 100 } });
+  assert.equal((await repo.get("leads", p.lead)).amount, 5000);
+});
+
+test("dor [OEM] inferida na abertura do link de edição troca o card pro preço do OEM avulso", async () => {
+  const repo = await seedRepo();
+  const p = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "100-500" });
+  assert.equal((await repo.get("leads", p.lead)).amount, 3288, "nasce no combo Parcial + OEM 50");
+  // A dor chega DEPOIS da geração (ad_insights sincroniza no ciclo de marketing).
+  await repo.update("leads", p.lead, { utm: { content: "ad_9" } });
+  await repo.create("ad_insights", { id: "ai_9", saas: "leverads", adId: "ad_9", date: "2026-08-14", adName: "peças [OEM]" });
+
+  const synced = await syncProposalLeadSnapshot(repo, await repo.get("proposals", p.id));
+  assert.equal(synced.state.pain, "OEM");
+  assert.equal((await repo.get("leads", p.lead)).amount, 1788, "cota 50 pelo porte D");
+  assert.equal(synced.data.lead.amount, 1788, "snapshot acompanha o card");
+});
+
+test("retroativo: valor do card dos leads abertos re-alinhado ao produto da apresentação", async () => {
+  const { syncOpenLeadAmounts } = await import("../src/migrations.js");
+  const repo = await seedRepo();
+  const p = await makeProposal(repo, { niche: "outros", accounts: "3-5", listings: "2000-10000" });
+  // Simula o lead antigo, com o valor da fórmula por assentos gravado.
+  await repo.update("leads", p.lead, { amount: 8388 });
+  // Fechado e proposta aceita ficam de fora.
+  const pWon = await makeProposal(repo, { niche: "outros", accounts: "1", listings: "100-500" });
+  await repo.update("leads", pWon.lead, { amount: 9999, planClosed: "anual", wonAt: "2026-08-01T00:00:00.000Z" });
+  const pAceita = await makeProposal(repo, { niche: "outros", accounts: "1", listings: "100-500" });
+  await repo.update("proposals", pAceita.id, { accepted: true });
+  await repo.update("leads", pAceita.lead, { amount: 5555 });
+
+  const n = await syncOpenLeadAmounts(repo);
+  assert.equal(n, 1, "só o lead aberto com valor defasado entra");
+  assert.equal((await repo.get("leads", p.lead)).amount, 7188, "FULL sugerido pela régua");
+  assert.equal((await repo.get("leads", pWon.lead)).amount, 9999, "fechado não muda");
+  assert.equal((await repo.get("leads", pAceita.lead)).amount, 5555, "aceita não muda");
+  assert.equal(await syncOpenLeadAmounts(repo), 0, "idempotente");
 });
 
 // O closer fecha a venda NO CARD (Call → Integração) e precisa dizer o que

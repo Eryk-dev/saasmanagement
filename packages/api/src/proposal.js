@@ -29,7 +29,7 @@
 
 import { randomBytes } from "node:crypto";
 import { CYCLE_MONTHS } from "./billing.js";
-import { hasCatalog, applyCatalog } from "./proposal-catalog.js";
+import { hasCatalog, applyCatalog, catalogAmount } from "./proposal-catalog.js";
 import { attributionPain, painCode } from "./attribution.js";
 
 export const SLIDE_TYPES = ["hero", "cards", "receipt", "steps", "compare", "bignum", "pricing", "closer", "custom"];
@@ -117,6 +117,20 @@ export async function syncProposalLeadSnapshot(repo, proposal) {
     if (inferred) {
       state.pain = inferred;
       stateChanged = true;
+    }
+  }
+
+  // Dor inferida pode trocar o PRODUTO sugerido (ex.: [OEM] → OEM avulso): o
+  // card do pipeline acompanha o preço novo da apresentação — a menos que o
+  // negócio já tenha valor de fechamento (planClosed/wonAt).
+  if (stateChanged) {
+    const amount = catalogAmount({ ...proposal, state, data });
+    if (amount > 0 && !lead.planClosed && !lead.wonAt && Number(lead.amount) !== amount) {
+      try {
+        await repo.update("leads", lead.id, { amount });
+        data.lead.amount = amount;
+        dataChanged = true;
+      } catch { /* fail-open: o sync do snapshot não pode cair por causa do card */ }
     }
   }
 
@@ -230,7 +244,8 @@ export function initialState(calc, answers) {
 }
 
 // Valor do contrato no ciclo da proposta (preço/mês com assentos × meses do
-// ciclo) — vira o `lead.amount` (potencial de ganho no pipeline) na geração.
+// ciclo) — fallback do `lead.amount` na geração quando o template NÃO tem
+// catálogo de produto; com catálogo vale o preço do produto (catalogAmount).
 export function contractValue(calc, state) {
   const plan = calc?.plans?.[state?.cycle];
   if (!plan) return 0;
@@ -449,7 +464,10 @@ export async function runNativeProposal(repo, lead, opts = {}) {
     proposalUrl,
     proposal_edit_url: `${proposalUrl}?k=${proposal.editKey}`,
   };
-  const amount = contractValue(calc, proposal.state);
+  // Potencial do card = o preço que a APRESENTAÇÃO vai mostrar: o produto
+  // sugerido pela régua/dor (semestral) quando há catálogo; sem catálogo, a
+  // fórmula por assentos de sempre.
+  const amount = catalogAmount(proposal) || contractValue(calc, proposal.state);
   if (amount > 0) patch.amount = amount;
   const updated = await repo.update("leads", lead.id, patch);
   return { ok: true, lead: updated, proposal };

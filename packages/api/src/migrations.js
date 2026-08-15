@@ -3,7 +3,8 @@
 // vezes (todo deploy reinicia o container) e nunca deve corromper dados que já
 // existem: na dúvida sobre o estado, não mexe.
 
-import { normalizeFunnel, kindOf, isPostSaleStage } from "./stages.js";
+import { normalizeFunnel, kindOf, isPostSaleStage, TERMINAL_KINDS } from "./stages.js";
+import { catalogAmount } from "./proposal-catalog.js";
 import { createClosedSubscription } from "./billing.js";
 import { FLASHCARD_DEFAULTS } from "./routes.flashcards.js";
 import { LEVERADS_EXPANSION } from "./flashcard-decks.leverads.js";
@@ -1282,6 +1283,34 @@ export async function backfillOemLeque(repo) {
   return n;
 }
 
+// ── Card do pipeline = preço da apresentação (pedido do Leo, 15/08/2026) ────
+// O amount do lead nascia da fórmula por assentos (contractValue) e ignorava o
+// PRODUTO que a régua/dor sugere: o card mostrava R$ 8,4k enquanto o closer
+// abria um FULL de R$ 7.188. A geração e a tela zero agora gravam o preço do
+// produto ativo (catalogAmount); esta rotina alinha os leads ABERTOS já
+// gerados e re-aplica a regra a cada boot — até o fechamento, o valor do card
+// É o da apresentação, então drift (edição manual no drawer, dado antigo) não
+// sobrevive ao deploy. Ficam fora: lead em estágio terminal (ganho/perdido/
+// desqualificado), fechado (planClosed/wonAt), proposta aceita (preço na mão
+// do cliente) e proposta sem catálogo. Idempotente: valor já alinhado não mexe.
+export async function syncOpenLeadAmounts(repo) {
+  const products = new Map((await repo.list("products")).map((p) => [p.id, p]));
+  const proposals = new Map((await repo.list("proposals")).map((p) => [p.id, p]));
+  const leads = await repo.list("leads");
+  let n = 0;
+  for (const lead of leads) {
+    if (!lead.proposta_id || lead.planClosed || lead.wonAt) continue;
+    if (TERMINAL_KINDS.has(kindOf(products.get(lead.saas), lead.stage))) continue;
+    const p = proposals.get(lead.proposta_id);
+    if (!p || p.accepted) continue;
+    const amount = catalogAmount(p);
+    if (!(amount > 0) || Number(lead.amount) === amount) continue;
+    await repo.update("leads", lead.id, { amount });
+    n++;
+  }
+  return n;
+}
+
 // ── Conta grande (keyAccount) ───────────────────────────────────────────────
 // Cliente fora da régua (ex.: Galante, pacote bespoke de R$ 120 mil no meio de
 // vendas de R$ 3-7 mil): o flag `keyAccount` tira ele do ticket médio e das
@@ -1528,6 +1557,14 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] leque do OEM avulso (50/100/200) aplicado em ${n} proposta(s) aberta(s)`);
   } catch (err) {
     console.error("[migration] backfillOemLeque falhou:", err?.message || err);
+  }
+  // Depois do catálogo/leque nas propostas: o valor do card dos leads abertos
+  // passa a ser o preço do produto que a apresentação sugere.
+  try {
+    const n = await syncOpenLeadAmounts(repo);
+    if (n) console.log(`[migration] valor do card alinhado ao produto da apresentação em ${n} lead(s) aberto(s)`);
+  } catch (err) {
+    console.error("[migration] syncOpenLeadAmounts falhou:", err?.message || err);
   }
   try {
     const n = await migrateExpensePctBases(repo);
