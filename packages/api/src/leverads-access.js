@@ -161,4 +161,20 @@ export function registerLeveradsAccessRoutes(app, repo, { client } = {}) {
   });
   // Último report (do poller ou de um run manual) — é aqui que o dry-run é revisado.
   app.get("/api/leverads-access/status", async () => lastReport || { mode: "never-ran" });
+  // Lista enxuta das orgs do produto pro select "Org na LeverAds" do cadastro
+  // de cliente (vínculo manual do de-para — clientes antigos sem match e os
+  // futuros). O value do select é o id da org.
+  app.get("/api/leverads-access/orgs", async (req, reply) => {
+    const cli = client || envClient();
+    if (!cli.configured()) {
+      return reply.code(NOT_CONFIGURED).send({ error: "sync desligado — defina LEVERADS_ADMIN_EMAIL/LEVERADS_ADMIN_PASSWORD" });
+    }
+    const orgs = await cli.listOrgs();
+    return orgs
+      .map((o) => ({
+        id: o.id, name: o.name || "", email: o.email || "",
+        active: Boolean(o.active), paymentActive: Boolean(o.payment_active),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  });
 }

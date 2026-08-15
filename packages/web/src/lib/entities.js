@@ -12,6 +12,24 @@
 // ── dynamic option helpers ──────────────────────────────────────────────────
 import { getActiveSaasId } from "./workspace.js";
 import { PAYMENT_METHODS, CONSULT_PACKAGES, consultPackageLabel } from "./payments.js";
+import { api } from "./api.js";
+
+// Orgs do produto LeverAds pro select "Org na LeverAds" (vínculo do sync de
+// acesso). Busca uma vez e guarda; falhou (credencial LEVERADS_* ausente na
+// API, sessão ainda travada), volta pra null e a próxima render tenta de novo —
+// enquanto isso o "Outro (digitar)…" do select aceita o id da org direto.
+let LEVERADS_ORGS = null;
+const leveradsOrgOptions = () => {
+  if (LEVERADS_ORGS === null) {
+    LEVERADS_ORGS = [];
+    api.leveradsOrgs()
+      .then((rows) => {
+        LEVERADS_ORGS = rows.map((o) => ({ value: o.id, label: o.email ? `${o.name} · ${o.email}` : o.name }));
+      })
+      .catch(() => { LEVERADS_ORGS = null; });
+  }
+  return LEVERADS_ORGS;
+};
 // Select "Produto" escopado ao WORKSPACE: só o produto ativo (e o do próprio
 // registro, por segurança ao editar) — a outra marca não vaza no formulário.
 const saasOptions = (values) => {
@@ -153,6 +171,14 @@ export const ENTITIES = {
       { key: "paymentStatus", label: "Status do pagamento", type: "select", blankLabel: "automático",
         options: [{ value: "paid", label: "Pago" }, { value: "partial", label: "Parcial" }, { value: "unpaid", label: "Não pago" }],
         help: "vazio = automático (o dinheiro registrado no MP/faturas decide); marque na mão quando o pagamento entra por fora" },
+      // Vínculo com a org do produto LeverAds: é o que AUTORIZA o sync de
+      // acesso a ligar/cortar o paywall desse cliente lá — sem vínculo o sync
+      // não toca na org. Só faz sentido no saas leverads (nos outros a lista
+      // fica vazia e o campo se resolve pelo "—").
+      { key: "leveradsOrgId", label: "Org na LeverAds", type: "select", blankLabel: "— sem vínculo (sync não mexe)",
+        options: (v) => (v?.saas === "leverads" ? leveradsOrgOptions() : []),
+        allowCustom: true, sendBlank: true,
+        help: "autoriza o sync a ligar/cortar o acesso na ferramenta; a lista carrega com a credencial LEVERADS_* na API — sem ela, use “Outro” e cole o id da org" },
       { key: "arr", label: "Valor anual (ARR)", type: "money", help: "a lista mostra o MRR (ARR ÷ 12); com assinatura ativa é recalculado sozinho" },
       { key: "startedAt", label: "Cliente desde", type: "date", help: "base da linha do tempo de marcos" },
       { key: "endedAt", label: "Churn (saída)", type: "date", help: "deixe vazio enquanto o cliente estiver ativo; alimenta churn e LTV da Análise" },
