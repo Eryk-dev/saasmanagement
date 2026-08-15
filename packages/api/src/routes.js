@@ -18,6 +18,7 @@ import { registerBillingRoutes } from "./routes.billing.js";
 import { initSubscription, syncCustomerArr, createClosedSubscription, closedSubscriptionSpec, closedInstallments, createInstallmentSchedule, syncClosedInstallments } from "./billing.js";
 import { registerAuthRoutes } from "./auth.js";
 import { registerMpRoutes, mirrorSubscriptionToMp } from "./routes.mp.js";
+import { registerLeveradsAccessRoutes } from "./leverads-access.js";
 import { mp as defaultMpClient } from "./mp.js";
 import { registerMarketingRoutes } from "./routes.marketing.js";
 import { registerSocialRoutes } from "./routes.social.js";
@@ -282,6 +283,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerBillingRoutes(app, repo, { mp: mpClient, discord: discordClient });
   // Mercado Pago (fase 4): link de assinatura + webhook de baixa automática.
   registerMpRoutes(app, repo, { mp: mpClient, discord: discordClient });
+  // LeverAds: liga/corta o paywall das orgs do produto conforme o billing daqui
+  // (tick manual + report do dry-run; o poller vive no index.js).
+  registerLeveradsAccessRoutes(app, repo, { ...(opts.leveradsAccess || {}) });
   // Marketing: sync de insights da Meta + métricas cruzadas com o funil.
   const metaClient = opts.meta || defaultMetaClient;
   registerMarketingRoutes(app, repo, { meta: metaClient });

@@ -19,6 +19,8 @@ import { startTrainingReminder } from "./training-reminder.js";
 import { startShopifySync } from "./routes.webhooks.js";
 import { makeShopify } from "./shopify.js";
 import { startMpSync } from "./mp-payments.js";
+import { startBilling } from "./billing-runner.js";
+import { startLeveradsAccessSync } from "./leverads-access.js";
 import { ensureDefaultAdmins, makeAuthHook } from "./auth.js";
 import { makeScreenGuardHook } from "./screens.js";
 import { runStartupMigrations } from "./migrations.js";
@@ -104,6 +106,13 @@ try {
   // e dá baixa nas faturas — funciona mesmo SEM o webhook configurado no painel
   // (1º tick faz o backfill de 400 dias). No-op sem MERCADOPAGO_ACCESS_TOKEN.
   startMpSync(repo, { log: app.log });
+  // Motor de billing (renovações + dunning + pendingChange) — antes só rodava
+  // quando alguém chamava POST /api/billing/run; agora anda sozinho (1h).
+  startBilling(repo, { log: app.log });
+  // LeverAds: sincroniza o paywall das orgs do produto (payment_active) com o
+  // billing daqui. No-op sem LEVERADS_ADMIN_EMAIL/PASSWORD; dry-run por padrão
+  // (LEVERADS_ACCESS_APPLY=1 pra valer). Só toca orgs com de-para explícito.
+  startLeveradsAccessSync(repo, { log: app.log });
 } catch (err) {
   app.log.error(err);
   process.exit(1);
