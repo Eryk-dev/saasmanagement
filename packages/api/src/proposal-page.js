@@ -1873,7 +1873,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
             : '<span class="q">' + esc(pn.tip || '') + '</span>';
           var tagEl = catGet('lvxTag');
           if (CAT.oemNeeded && !state.oem) { tagEl.className = 'lvx-tag pend'; tagEl.textContent = 'Sugerido · OEM a confirmar no rapport'; }
-          else { tagEl.className = 'lvx-tag'; tagEl.textContent = CAT.suggestedBy === 'pain' ? 'Sugerido pela dor do anúncio' : 'Sugerido pela régua'; }
+          else { tagEl.className = 'lvx-tag'; tagEl.textContent = 'Sugerido pela régua'; }
           catGet('lvxSug').textContent = CAT.names[CAT.suggested] || CAT.suggested;
           catGet('lvxPr').textContent = CAT.priceLines[CAT.suggested] || '';
           var shown = state.product || CAT.suggested;
@@ -1938,15 +1938,11 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           catReload({ oemCota: this.value || null });
         });
         catGet('lvxPain').addEventListener('change', function () {
-          // Dor que aponta produto (OEM) remonta o DECK, então precisa do
-          // servidor; trocar entre dores A-E só troca a trilha SPIN, que é
-          // client-side. Com produto forçado no Apresentar, o deck não muda.
-          var pp = CAT.painProducts || {};
-          var changesDeck = (pp[state.pain] || '') !== (pp[this.value] || '') && !state.product;
+          // Toda dor (inclusive a OEM) só troca a trilha SPIN, que é
+          // client-side — o produto/preço fica com a régua ou com o
+          // Apresentar do closer, então o deck nunca remonta por dor.
           state.pain = this.value;
-          var q = this.value === 'none' ? '' : this.value;
-          if (changesDeck) { catReload({ pain: q || null }); return; }
-          catRemember('pain', q);
+          catRemember('pain', this.value === 'none' ? '' : this.value);
           syncCat();
         });
         catGet('lvxOem').addEventListener('change', function () {

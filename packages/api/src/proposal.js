@@ -120,9 +120,10 @@ export async function syncProposalLeadSnapshot(repo, proposal) {
     }
   }
 
-  // Dor inferida pode trocar o PRODUTO sugerido (ex.: [OEM] → OEM avulso): o
-  // card do pipeline acompanha o preço novo da apresentação — a menos que o
-  // negócio já tenha valor de fechamento (planClosed/wonAt).
+  // A dor não muda mais o produto (a régua decide), mas o re-sync é a chance
+  // de re-alinhar o card ao preço da apresentação se o valor driftou (edição
+  // manual no drawer) — a menos que o negócio já tenha valor de fechamento
+  // (planClosed/wonAt).
   if (stateChanged) {
     const amount = catalogAmount({ ...proposal, state, data });
     if (amount > 0 && !lead.planClosed && !lead.wonAt && Number(lead.amount) !== amount) {
@@ -465,7 +466,7 @@ export async function runNativeProposal(repo, lead, opts = {}) {
     proposal_edit_url: `${proposalUrl}?k=${proposal.editKey}`,
   };
   // Potencial do card = o preço que a APRESENTAÇÃO vai mostrar: o produto
-  // sugerido pela régua/dor (semestral) quando há catálogo; sem catálogo, a
+  // sugerido pela régua (semestral) quando há catálogo; sem catálogo, a
   // fórmula por assentos de sempre.
   const amount = catalogAmount(proposal) || contractValue(calc, proposal.state);
   if (amount > 0) patch.amount = amount;
