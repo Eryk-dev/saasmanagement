@@ -6,7 +6,7 @@
 // (closer abrindo o próprio link de edição não infla o número).
 
 import { publicProposal, syncProposalLeadSnapshot } from "./proposal.js";
-import { applyCatalog, catalogUI, oemCotasOf } from "./proposal-catalog.js";
+import { applyCatalog, catalogAmount, catalogUI, oemCotasOf } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { makeRateLimiter } from "./forms.js";
 import { convertWonLead } from "./routes.js";
@@ -229,6 +229,16 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     const patch = { state };
     if (dataChanged) patch.data = data;
     const updated = await repo.update("proposals", p.id, patch);
+    // O card do pipeline acompanha a APRESENTAÇÃO: mexeu na tela zero (produto,
+    // dor, régua, cota OEM), o valor do lead recalcula pelo preço do produto
+    // ativo. Negócio já fechado (planClosed/wonAt) tem valor de venda — não mexe.
+    const amount = catalogAmount(updated);
+    if (amount > 0 && p.lead) {
+      try {
+        const lead = await repo.get("leads", p.lead);
+        if (lead && !lead.planClosed && !lead.wonAt && Number(lead.amount) !== amount) leadPatch.amount = amount;
+      } catch { /* fail-open */ }
+    }
     // Writeback best-effort no lead (nunca derruba o save da proposta).
     if (Object.keys(leadPatch).length && p.lead) {
       try { await repo.update("leads", p.lead, leadPatch); } catch { /* fail-open */ }
