@@ -1094,7 +1094,20 @@ function PaymentLinkModal({ lead, onClose, onSaved }) {
   const [dealProduct, setDealProduct] = React.useState(lead.dealProduct || "");
   const [contract, setContract] = React.useState(Number(lead.amount) > 0 ? String(lead.amount) : "");
   const [method, setMethod] = React.useState(lead.paymentMethod || "");
-  const [payerEmail, setPayerEmail] = React.useState(lead.email || "");
+  // E-mail do pagador: `lead.email` quando o mapping do form preencheu; senão
+  // varre o card por uma resposta que seja um e-mail (o form espalha TODAS as
+  // respostas no lead — um form sem mapping de e-mail deixa o valor sob a chave
+  // da pergunta, ex.: `email_contato`).
+  const leadEmail = () => {
+    const direct = String(lead.email || "").trim();
+    if (direct) return direct;
+    const rx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    for (const v of Object.values(lead)) {
+      if (typeof v === "string" && rx.test(v.trim())) return v.trim();
+    }
+    return "";
+  };
+  const [payerEmail, setPayerEmail] = React.useState(leadEmail());
   const [title, setTitle] = React.useState(lead.mpChargeTitle || titleFor(lead.planClosed || "anual", lead.dealProduct || ""));
   const [titleDirty, setTitleDirty] = React.useState(!!lead.mpChargeTitle);
   const [description, setDescription] = React.useState("");
@@ -1159,7 +1172,7 @@ function PaymentLinkModal({ lead, onClose, onSaved }) {
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <span className="kicker">Parcelas até</span>
               <select value={installments} onChange={(e) => setInstallments(e.target.value)} style={inputStyle}>
-                {[1, 3, 6, 12].map((n) => <option key={n} value={n}>{n}x</option>)}
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}x</option>)}
               </select>
             </label>
           </div>
