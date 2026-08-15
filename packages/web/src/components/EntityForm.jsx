@@ -113,7 +113,10 @@ function toPayload(fields, values) {
       continue;
     }
     if (f.type === "bool") { out[f.key] = raw === "true"; continue; }
-    if (raw === "" || raw == null) continue;
+    // `sendBlank`: campo cujo VAZIO é um estado válido que precisa chegar na
+    // API (ex.: desfazer o vínculo "Org na LeverAds"). Sem o opt-in, branco é
+    // omitido e a edição manteria o valor antigo pelo merge.
+    if (raw === "" || raw == null) { if (f.sendBlank) out[f.key] = ""; continue; }
     if (f.type === "number" || f.type === "money") {
       const n = Number(raw);
       if (!Number.isNaN(n)) out[f.key] = n;

@@ -93,6 +93,9 @@ export function eventsUrl() {
 
 export const api = {
   bootstrap: () => req("GET", "/api/bootstrap"),
+  // Orgs do produto LeverAds pro select de vínculo do sync de acesso
+  // (424 quando a credencial LEVERADS_* não está configurada na API).
+  leveradsOrgs: () => req("GET", "/api/leverads-access/orgs"),
   // Auth do time: o token de sessão entra no MESMO slot da key (localStorage +
   // header x-api-key) — o resto do client não muda.
   login: (username, password) => req("POST", "/api/auth/login", { username, password }),

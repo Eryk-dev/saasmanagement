@@ -129,6 +129,28 @@ test("rota POST /api/leverads-access/run: {apply:true} aplica e devolve o report
   assert.equal(status.json().mode, "apply");
 });
 
+test("GET /api/leverads-access/orgs: lista enxuta e ordenada pro select de vínculo", async () => {
+  const repo = makeMemRepo();
+  const client = fakeClient([
+    { id: "org-b", name: "Zebra", email: "z@x.com", active: true, payment_active: false, stripe_customer_id: "não vaza" },
+    { id: "org-a", name: "Alfa", email: "a@x.com", active: true, payment_active: true },
+  ]);
+  const app = Fastify();
+  registerLeveradsAccessRoutes(app, repo, { client });
+  const res = await app.inject({ method: "GET", url: "/api/leverads-access/orgs" });
+  const rows = res.json();
+  assert.deepEqual(rows.map((o) => o.name), ["Alfa", "Zebra"]);
+  assert.deepEqual(Object.keys(rows[0]).sort(), ["active", "email", "id", "name", "paymentActive"]);
+});
+
+test("GET /api/leverads-access/orgs: sem credencial responde 4xx (não 5xx, o proxy engole)", async () => {
+  const app = Fastify();
+  registerLeveradsAccessRoutes(app, makeMemRepo(), { client: { configured: () => false } });
+  const res = await app.inject({ method: "GET", url: "/api/leverads-access/orgs" });
+  assert.ok(res.statusCode >= 400 && res.statusCode < 500);
+  assert.match(res.json().error, /LEVERADS_ADMIN/);
+});
+
 test("makeLeveradsClient: religa a sessão uma vez no 401 e repete a chamada", async () => {
   const calls = [];
   let logins = 0;
