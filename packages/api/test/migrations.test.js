@@ -551,8 +551,8 @@ test("ensureCloseRateUnica sem meta de comparecimento usa o benchmark de 75%", a
 });
 
 // ── Pergunta de corte no form + saídas laterais ─────────────────────────────
-const { migrateFormVendeMarketplace } = await import("../src/migrations.js");
-const { submissionExit, computePath } = await import("../src/forms.js");
+const { migrateFormVendeMarketplace, migrateFormEmailContato } = await import("../src/migrations.js");
+const { submissionExit, computePath, leadFromSubmission } = await import("../src/forms.js");
 
 const FORM_REAL = {
   id: "fo_diagnostico_leverads",
@@ -658,6 +658,66 @@ test("migração é one-shot e não duplica a pergunta", async () => {
   const antes = (await repo.get("forms", "fo_diagnostico_leverads")).questions.length;
   assert.equal(await migrateFormVendeMarketplace(repo), false);
   assert.equal((await repo.get("forms", "fo_diagnostico_leverads")).questions.length, antes);
+});
+
+// ── E-mail na tela de contato (nutrição por e-mail precisa de lead.email) ───
+test("migração: e-mail entra empilhado depois do WhatsApp e cai em lead.email", async () => {
+  const repo = makeMemRepo();
+  await repo.create("forms", { ...FORM_REAL });
+  await migrateFormVendeMarketplace(repo); // ordem do boot: corte primeiro
+  assert.equal(await migrateFormEmailContato(repo), true);
+  const f = await repo.get("forms", "fo_diagnostico_leverads");
+
+  const idxZap = f.questions.findIndex((q) => q.key === "whatsapp");
+  const email = f.questions[idxZap + 1];
+  assert.equal(email.key, "email");
+  assert.equal(email.type, "email");
+  assert.equal(email.stack, true, "mesma tela do nome/WhatsApp");
+  assert.equal(email.required, true);
+  assert.equal(f.mapping.email, "email", "sem o mapping a resposta não vira lead.email");
+  // o fim explícito do fluxo principal muda do WhatsApp pra última pergunta da tela
+  assert.equal(f.questions[idxZap].to, undefined);
+  assert.equal(email.to, "_end");
+
+  // os dois fluxos (vende / não vende) passam pelo e-mail
+  const vendedor = { vende_marketplace: "sim", niche: "autopecas", accounts: "2", listings: "0-100", nome: "Ana", whatsapp: "41999998888", email: "ana@ex.com" };
+  assert.ok(computePath(f.questions, vendedor).some((q) => q.key === "email"));
+  const iniciante = { vende_marketplace: "nao", aprender_interesse: "sim", aprender_verba: "1k-5k", nome: "Bia", whatsapp: "41999997777", email: "bia@ex.com" };
+  assert.ok(computePath(f.questions, iniciante).some((q) => q.key === "email"));
+  assert.equal(submissionExit(f.questions, iniciante), "mentoria", "a saída lateral continua valendo");
+
+  const lead = leadFromSubmission(f, vendedor);
+  assert.equal(lead.email, "ana@ex.com");
+  assert.equal(lead.phone, "41999998888");
+});
+
+test("e-mail é contato: não vira pergunta de qualificação no painel do lead", async () => {
+  const repo = makeMemRepo();
+  await repo.create("forms", { ...FORM_REAL });
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [] });
+  await migrateFormVendeMarketplace(repo);
+  await migrateFormEmailContato(repo);
+  await migrateFormVendeMarketplace(repo); // boot seguinte re-sincroniza o painel
+  const lq = (await repo.get("products", "leverads")).leadQuestions.map((q) => q.key);
+  assert.ok(!lq.includes("email"), "e-mail vai no CAMPO do lead, não no painel de respostas");
+});
+
+test("migração do e-mail é one-shot e respeita form que já tem a pergunta", async () => {
+  const repo = makeMemRepo();
+  await repo.create("forms", { ...FORM_REAL });
+  await migrateFormVendeMarketplace(repo);
+  await migrateFormEmailContato(repo);
+  const antes = (await repo.get("forms", "fo_diagnostico_leverads")).questions.length;
+  assert.equal(await migrateFormEmailContato(repo), false);
+  assert.equal((await repo.get("forms", "fo_diagnostico_leverads")).questions.length, antes);
+
+  // form que já ganhou a pergunta na mão (builder) também não é tocado
+  const repo2 = makeMemRepo();
+  await repo2.create("forms", {
+    ...FORM_REAL,
+    questions: [...FORM_REAL.questions, { key: "email", label: "E-mail", type: "email" }],
+  });
+  assert.equal(await migrateFormEmailContato(repo2), false);
 });
 
 test("custos %: Checkout vira base cartão 12x e Imposto vira recebidos, uma vez só", async () => {

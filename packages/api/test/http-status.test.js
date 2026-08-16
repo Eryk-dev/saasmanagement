@@ -8,8 +8,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const SRC = new URL("../src/", import.meta.url).pathname;
+// fileURLToPath, não .pathname: o pathname vem percent-encoded e quebra quando
+// o repo mora em diretório com acento (ex.: worktree "…nutrição-clientes").
+const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 
 test("nenhuma rota responde 5xx de propósito (o proxy engole o corpo)", () => {
   const ofensores = [];
