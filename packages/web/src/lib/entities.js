@@ -12,17 +12,18 @@
 // ── dynamic option helpers ──────────────────────────────────────────────────
 import { getActiveSaasId } from "./workspace.js";
 import { PAYMENT_METHODS, CONSULT_PACKAGES, consultPackageLabel } from "./payments.js";
-import { api } from "./api.js";
+import { fetchLeveradsOrgs } from "./leverads.js";
 
 // Orgs do produto LeverAds pro select "Org na LeverAds" (vínculo do sync de
-// acesso). Busca uma vez e guarda; falhou (credencial LEVERADS_* ausente na
-// API, sessão ainda travada), volta pra null e a próxima render tenta de novo —
-// enquanto isso o "Outro (digitar)…" do select aceita o id da org direto.
+// acesso). A busca (cacheada por sessão) vive em lib/leverads.js — a coluna
+// "Usuário LeverAds" da tela Clientes usa a mesma. Falhou (credencial
+// LEVERADS_* ausente na API, sessão ainda travada), volta pra null e a próxima
+// render tenta de novo — enquanto isso o "Outro (digitar)…" aceita o id direto.
 let LEVERADS_ORGS = null;
 const leveradsOrgOptions = () => {
   if (LEVERADS_ORGS === null) {
     LEVERADS_ORGS = [];
-    api.leveradsOrgs()
+    fetchLeveradsOrgs()
       .then((rows) => {
         LEVERADS_ORGS = rows.map((o) => ({ value: o.id, label: o.email ? `${o.name} · ${o.email}` : o.name }));
       })
