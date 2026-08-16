@@ -1,7 +1,14 @@
-// Links de pagamento das ofertas — ferramenta simples pro time pegar o link
-// certo de cada oferta (anual / semestral / serviço único) e mandar pro cliente
-// depois de fechar. Um doc por produto na collection `offers`; sem doc, cai nos
-// defaults abaixo. Editar salva pra TODO o time (não é localStorage).
+// Servidor da tela "Links de pagamento" (id `offers`), duas coisas:
+//
+// 1. /api/offers — os links FIXOS das ofertas (anual / semestral / serviço
+//    único), ferramenta pro time pegar o link certo e mandar pro cliente. Um doc
+//    por produto na collection `offers`; sem doc, cai nos defaults abaixo.
+//    Editar salva pra TODO o time (não é localStorage).
+// 2. /api/payment-links — o HISTÓRICO dos links gerados no nome de um lead ou
+//    cliente (pela tela, pelo card do lead ou pela ficha do cliente), com o
+//    status do dinheiro vindo do espelho do Mercado Pago (payment-links.js).
+
+import { enrichPaymentLinks } from "./payment-links.js";
 
 // Defaults por produto — os links que o Leo criou no Mercado Pago (jul/2026).
 // Espelham a escada de ofertas da proposta (sem cifrão, no estilo do Leo).
@@ -30,6 +37,17 @@ function sanitize(items) {
 }
 
 export function registerOfferRoutes(app, repo) {
+  // Histórico dos links gerados: o recibo de cada geração cruzado com o espelho
+  // do MP (quem pagou, como, quando). Link sem produto (backfill antigo) aparece
+  // em qualquer workspace — mesma regra do espelho de pagamentos.
+  app.get("/api/payment-links", async (req) => {
+    const saas = String(req.query?.saas || "");
+    const all = await repo.list("payment_links");
+    const links = saas ? all.filter((l) => !l.saas || l.saas === saas) : all;
+    const [payments, invoices] = await Promise.all([repo.list("mp_payments"), repo.list("invoices")]);
+    return { links: enrichPaymentLinks(links, payments, invoices) };
+  });
+
   async function offersFor(saas) {
     const doc = saas ? await repo.get("offers", saas) : null;
     return doc?.items || DEFAULTS[saas] || [];

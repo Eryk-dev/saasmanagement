@@ -74,7 +74,9 @@ const ROUTE_SCREENS = [
   ["/api/form_events", ["forms"]],
   ["/api/proposal_templates", ["proposals"]],
   ["/api/proposals", ["proposals"]],     // inclui /preview
-  ["/api/offers", ["offers"]],           // links de pagamento das ofertas
+  ["/api/offers", ["offers"]],           // links FIXOS das ofertas (tela Links de pagamento)
+  ["/api/payment-links", ["offers"]],    // histórico dos links gerados por lead/cliente (mesma tela)
+  ["/api/payment_links", ["offers"]],    // CRUD genérico do mesmo histórico
   ["/api/contracts", ["contracts"]],     // modelos de contrato (biblioteca)
   ["/api/contract_issues", ["contracts"]], // contratos confirmados (histórico da mesma tela)
   ["/api/campaigns", ["disparos"]],      // disparos de e-mail + WhatsApp (mark, ai-copy e CRUD)

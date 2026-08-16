@@ -12,6 +12,7 @@
 import { mp as defaultMp, parseWebhookPayload } from "./mp.js";
 import { CYCLE_MONTHS, syncCustomerArr } from "./billing.js";
 import { ingestMpPayment, runMpSync, settleInvoice } from "./mp-payments.js";
+import { recordPaymentLink } from "./payment-links.js";
 import { attachPreapprovalToSub, linkableSubs, runPreapprovalSync } from "./mp-subscriptions.js";
 import { DEAL_PRODUCT_LABEL } from "./proposal-catalog.js";
 import { logActivity } from "./lead-flow.js";
@@ -295,6 +296,14 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
         maxInstallments: Number(req.body?.maxInstallments) || undefined,
       });
       const updated = await repo.update("invoices", invoice.id, { mpPrefId: pref.id, mpInitPoint: pref.init_point || null });
+      await recordPaymentLink(repo, {
+        saas: customer.saas || "", kind: "customer", origin: req.body?.origin || "cliente",
+        customer: customer.id, invoice: invoice.id,
+        targetName: customer.name || "", targetPhone: customer.phone || "",
+        amount, title, url: pref.init_point || "", prefId: pref.id || "",
+        payerEmail: customer.email || "", reference: invoice.id,
+        createdBy: req.authUser?.id || "",
+      }, { log: req.log });
       return { ok: true, invoice: updated, url: pref.init_point || null };
     } catch (err) {
       await repo.remove("invoices", invoice.id); // fatura sem link não fica órfã
@@ -322,6 +331,14 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
         maxInstallments: Number(req.body?.maxInstallments) || undefined,
       });
       const updated = await repo.update("invoices", invoice.id, { mpPrefId: pref.id, mpInitPoint: pref.init_point || null });
+      await recordPaymentLink(repo, {
+        saas: invoice.saas || "", kind: "invoice", origin: "fatura",
+        customer: invoice.customer || "", invoice: invoice.id,
+        targetName: customer?.name || "", targetPhone: customer?.phone || "",
+        amount: Number(invoice.amount), title, url: pref.init_point || "", prefId: pref.id || "",
+        payerEmail: customer?.email || "", reference: invoice.id,
+        createdBy: req.authUser?.id || "",
+      }, { log: req.log });
       return { ok: true, invoice: updated, url: pref.init_point || null };
     } catch (err) {
       req.log.warn({ invoice: invoice.id, err: err.message }, "MP: falha ao criar link da fatura");
@@ -379,6 +396,16 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
           + (contractValue > 0 && contractValue !== amount ? ` · contrato R$ ${contractValue.toFixed(2).replace(".", ",")}` : ""),
         author: req.authUser?.id || "system",
       });
+      // Recibo da geração pro histórico da tela de links (o lead só guarda o
+      // ÚLTIMO link; aqui fica cada um, com quem gerou e de onde).
+      await recordPaymentLink(repo, {
+        saas: lead.saas || "", kind: "lead", origin: req.body?.origin || "card",
+        lead: lead.id, customer: lead.customerId || "",
+        targetName: lead.name || "", targetPhone: lead.phone || "",
+        amount, title, description, url: pref.init_point || "", prefId: pref.id || "",
+        payerEmail, reference: lead.id, plan, product: dealProduct,
+        createdBy: req.authUser?.id || "",
+      }, { log: req.log });
       return { ok: true, lead: updated, url: pref.init_point || null };
     } catch (err) {
       req.log.warn({ lead: lead.id, err: err.message }, "MP: falha ao criar link do lead");
