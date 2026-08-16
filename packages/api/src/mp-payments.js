@@ -27,7 +27,8 @@ import { syncCustomerArr } from "./billing.js";
 // lixo nem o vínculo por e-mail comparar contra x's. O GET /v1/payments/:id
 // (webhook e enriquecimento do sync) é que traz o pagador de verdade.
 const masked = (s) => /^x+$/i.test(String(s || "").replace(/[@.\s_-]/g, ""));
-const clean = (s) => { const v = String(s || "").trim(); return masked(v) ? "" : v; };
+export const cleanMasked = (s) => { const v = String(s || "").trim(); return masked(v) ? "" : v; };
+const clean = cleanMasked;
 
 // Nome do pagador com fallback: payer → additional_info (checkout) → titular
 // do cartão. O primeiro costuma vir vazio até no doc completo. PIX de banco
@@ -182,18 +183,33 @@ export async function ingestMpPayment(repo, pmt, { discord, log, extra } = {}) {
         customer: refLead.customerId || "", matchedBy: "reference",
       });
     } else if (base.payerEmail) {
-      const byEmail = (await repo.list("customers"))
-        .filter((c) => String(c.email || "").toLowerCase() === base.payerEmail);
-      if (byEmail.length === 1) {
-        Object.assign(link, { saas: byEmail[0].saas || "", customer: byEmail[0].id, matchedBy: "email" });
-      } else if (!byEmail.length) {
-        const byLead = (await repo.list("leads"))
-          .filter((l) => String(l.email || "").toLowerCase() === base.payerEmail);
-        if (byLead.length === 1) {
-          Object.assign(link, {
-            saas: byLead[0].saas || "", lead: byLead[0].id,
-            customer: byLead[0].customerId || "", matchedBy: "email",
-          });
+      // Cobrança de uma RECORRÊNCIA já vinculada (mp-subscriptions.js): o MP não
+      // manda external_reference nessas, mas o pagador é o mesmo da preapproval
+      // — e o vínculo dela entrega a ASSINATURA, não só o cliente (então a
+      // fatura do ciclo recebe a baixa). Vale antes do e-mail solto por ser mais
+      // específico; ambíguo (2 recorrências do mesmo pagador) não casa.
+      const byPre = (await repo.list("mp_preapprovals"))
+        .filter((p) => p.subscription && String(p.payerEmail || "").toLowerCase() === base.payerEmail);
+      if (byPre.length === 1) {
+        Object.assign(link, {
+          saas: byPre[0].saas || "", customer: byPre[0].customer || "",
+          subscription: byPre[0].subscription, matchedBy: "preapproval",
+        });
+      }
+      if (!link.subscription) {
+        const byEmail = (await repo.list("customers"))
+          .filter((c) => String(c.email || "").toLowerCase() === base.payerEmail);
+        if (byEmail.length === 1) {
+          Object.assign(link, { saas: byEmail[0].saas || "", customer: byEmail[0].id, matchedBy: "email" });
+        } else if (!byEmail.length) {
+          const byLead = (await repo.list("leads"))
+            .filter((l) => String(l.email || "").toLowerCase() === base.payerEmail);
+          if (byLead.length === 1) {
+            Object.assign(link, {
+              saas: byLead[0].saas || "", lead: byLead[0].id,
+              customer: byLead[0].customerId || "", matchedBy: "email",
+            });
+          }
         }
       }
     }

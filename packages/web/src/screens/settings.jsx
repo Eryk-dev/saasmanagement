@@ -846,7 +846,7 @@ function IntegrationsSettings({ s }) {
           <div>
             <div style={{ fontSize: 13, fontWeight: 500 }}>Mercado Pago</div>
             <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>
-              financeiro: espelho de quem pagou e como (tela Financeiro, aba Pagamentos) + cobrança avulsa com link + assinaturas (preapproval) + baixa automática de fatura
+              financeiro: espelho de quem pagou e como (tela Financeiro, aba Pagamentos) + cobrança avulsa com link + assinaturas recorrentes da conta pra ligar aos clientes (Clientes → Assinaturas → MP recorrentes) + baixa automática de fatura
             </div>
           </div>
           <span className={"chip " + (mpOn ? "pos" : "")} style={{ height: 22 }}>{mpOn ? "conectado" : "configurar MERCADOPAGO_ACCESS_TOKEN"}</span>

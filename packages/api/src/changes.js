@@ -18,12 +18,15 @@
 //                  cockpit do time inteiro; a fila é fetch próprio da tela)
 //   mp_payments    espelho do Mercado Pago (poller de 10 min regrava; a baixa
 //                  de fatura continua bumpando via `invoices`)
+//   mp_preapprovals espelho das recorrências do MP (poller de 30 min; a aba MP
+//                  da tela Assinaturas tem load próprio, e vincular bumpa
+//                  `subscriptions` do mesmo jeito)
 //   social_stories captura periódica de métricas de stories (tela tem load)
 const SILENT = new Set([
   "sessions", "form_events", "ad_insights",
   "wa_media", "wa_calls", "wa_alerts",
   "training_states", "training_attempts",
-  "mp_payments", "social_stories",
+  "mp_payments", "mp_preapprovals", "social_stories",
 ]);
 
 let rev = 0;

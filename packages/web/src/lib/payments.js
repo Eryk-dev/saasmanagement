@@ -124,6 +124,15 @@ export function mpMethodLabel(p = {}) {
   const base = method === "pix" ? "PIX" : MP_TYPE_LABEL[type] || method || "";
   return base ? (inst > 1 ? `${base} · ${inst}x` : base) : "";
 }
+// Estado da ASSINATURA RECORRENTE no Mercado Pago (preapproval) — o que a conta
+// está cobrando de fato, independente do status da assinatura no cockpit.
+export const MP_SUB_STATUS = {
+  authorized: { label: "cobrando", tone: "pos" },
+  pending: { label: "aguardando autorização", tone: "warn" },
+  paused: { label: "pausada", tone: "warn" },
+  cancelled: { label: "cancelada", tone: "mut" },
+};
+
 export const MP_PAY_STATUS = {
   approved: { label: "pago", tone: "pos" },
   pending: { label: "pendente", tone: "warn" },
