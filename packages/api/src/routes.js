@@ -242,6 +242,10 @@ function listFilter(collection, q) {
   if (collection === "ad_insights") return (r) => (!q.saas || r.saas === q.saas) && (!q.campaign || r.campaignId === q.campaign);
   if (collection === "tasks") return (t) => (!q.saas || t.saas === q.saas) && (!q.assignee || (t.assignees || (t.assignee ? [t.assignee] : [])).includes(q.assignee)) && (!q.column || t.column === q.column);
   if (collection === "activities") return (a) => (!q.lead || a.lead === q.lead) && (!q.saas || a.saas === q.saas) && (!q.type || a.type === q.type) && (!q.since || String(a.at || "") >= q.since);
+  // Contratos gerados: o histórico da tela Contratos e o bloco da ficha do
+  // cliente (?customer=) leem daqui — sem o filtro, a ficha mostraria contrato
+  // dos outros.
+  if (collection === "contract_issues") return (i) => (!q.saas || i.saas === q.saas) && (!q.customer || i.customerId === q.customer) && (!q.contract || i.contract === q.contract);
   if (collection === "campaigns") return (c) => !q.saas || c.saas === q.saas;
   if (collection === "outbound_accounts") return (a) => (!q.saas || a.saas === q.saas) && (!q.status || a.status === q.status);
   if (collection === "sequences") return (s) => !q.saas || s.saas === q.saas;
@@ -584,6 +588,13 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     if ((collection === "leads" || collection === "tasks" || collection === "consultations" || collection === "deliverables") && !req.body.createdAt) stamp.createdAt = now;
     // Consulta nasce com a responsável = quem marcou (a Ana marca as próprias).
     if (collection === "consultations" && !req.body.owner && req.authUser?.id) stamp.owner = req.authUser.id;
+    // Contrato gerado: o histórico é registro de AUDITORIA — quando saiu e quem
+    // gerou carimbam no servidor. Sessão de usuário manda no autor; key mestre
+    // (MCP/integração) respeita o que veio no corpo.
+    if (collection === "contract_issues") {
+      if (!req.body.createdAt) stamp.createdAt = now;
+      if (req.authUser?.id) stamp.author = req.authUser.id;
+    }
     // Manual criado sem seções ganha o template (as 6 seções da apresentação).
     if (collection === "deliverables" && !(Array.isArray(req.body.sections) && req.body.sections.length)) {
       stamp.sections = newManual({}).sections;

@@ -98,6 +98,7 @@ try {
     ["subscriptions", "/src/screens/subscriptions.jsx", "SubscriptionsScreen", { saasId: "leverads" }, ""],
     ["settings", "/src/screens/settings.jsx", "SettingsScreen", { saasId: "leverads" }, ""],
     ["social", "/src/screens/social.jsx", "SocialScreen", {}, "Comentários"],
+    ["contracts", "/src/screens/contracts.jsx", "ContractsScreen", {}, "Contratos gerados"],
     ["deal", "/src/screens/deal.jsx", "LeadDetail", { lead: window.SEED.LEADS[1], onClose() {} }, "Próximo passo"],
     ["funcionarios", "/src/screens/funcionarios.jsx", "FuncionariosScreen", {}, "Análise de Equipe"],
     ["aquisicao", "/src/screens/aquisicao.jsx", "AquisicaoScreen", {}, "Análise de Aquisição"],
@@ -186,6 +187,26 @@ try {
     console.log("✓ checklist-faturamento");
   } catch (err) {
     console.error(`✗ checklist-faturamento: ${err.message}`);
+    failed++;
+  }
+
+  // Contrato preenchido (lib/contracts.js): é o papel que vai pra assinatura e o
+  // MESMO snapshot reimpresso na ficha do cliente, então a montagem do HTML vale
+  // teste. Valor digitado entra ESCAPADO (contrato não executa HTML de campo) e
+  // campo vazio vira linha em branco, pra continuar imprimível pra preencher à mão.
+  try {
+    const { fullHtml, fieldsOf } = await server.ssrLoadModule("/src/lib/contracts.js");
+    const modelo = { name: "Consultoria", body: "<p>{{razao_social}} · CNPJ {{cnpj_cpf}}</p>" };
+    const eq = (name, got, want) => {
+      if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${name}: ${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
+    };
+    eq("campos saem dos tokens do corpo", fieldsOf(modelo).map((f) => f.key), ["razao_social", "cnpj_cpf"]);
+    const html = fullHtml(modelo, { razao_social: "Loja <b>do</b> João" });
+    if (!html.includes("Loja &lt;b&gt;do&lt;/b&gt; João")) throw new Error("valor digitado não foi escapado");
+    if (!/CNPJ _{6,}/.test(html)) throw new Error("campo vazio devia sair como linha em branco");
+    console.log("✓ contratos-preenchimento");
+  } catch (err) {
+    console.error(`✗ contratos-preenchimento: ${err.message}`);
     failed++;
   }
 
