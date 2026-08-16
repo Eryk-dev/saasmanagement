@@ -16,6 +16,7 @@ import { scriptChecklist } from "../lib/scripts.js";
 import { displayName } from "../lib/users.js";
 import { paymentLabel, paymentUpfront, paymentRecurring, PAYMENT_METHODS, PAY_STATUS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel, accruedAmountOf, isRecurringClose } from "../lib/payments.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
+import { printContract, issueDate, byIssuedDesc } from "../lib/contracts.js";
 // Clientes — a base ativa do produto em dois blocos: a tabela de clientes e,
 // ao lado, "Próximas ações" (o próximo marco de retenção de cada cliente,
 // ordenado por urgência). Clicar num cliente abre um popup com o resumo dele
@@ -1255,12 +1256,75 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         </div>
         )}
 
+        <CustomerContracts customer={customer} onClose={onClose} />
+
         <CustomerHistory customer={customer} />
         </div>
         </div>
         </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Contratos gerados PRA ESTE CLIENTE: o mesmo histórico da tela Contratos,
+// filtrado pelo vínculo que a geração carimba (contract_issues.customerId). É a
+// resposta de "o que esse cliente já assinou" sem sair da ficha. Só leitura —
+// gerar e excluir registro continuam na tela Contratos, onde o modelo mora; a
+// reimpressão sai do SNAPSHOT (corpo + valores do dia), não do modelo atual.
+function CustomerContracts({ customer, onClose }) {
+  const [rows, setRows] = React.useState(null);
+  const [err, setErr] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(false);
+  React.useEffect(() => {
+    let alive = true;
+    setRows(null); setErr(false); setExpanded(false);
+    api.list("contract_issues", { customer: customer.id })
+      .then((r) => { if (alive) setRows([...(r || [])].sort(byIssuedDesc)); })
+      .catch((e) => { console.warn("contratos do cliente não carregaram:", e.message); if (alive) { setRows([]); setErr(true); } });
+    return () => { alive = false; };
+  }, [customer.id]);
+  const shown = expanded ? (rows || []) : (rows || []).slice(0, 5);
+  return (
+    <div style={BOX}>
+      <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+        <span>Contratos gerados</span>
+        {rows && rows.length > 0 && <span className="mono dim tnum" style={{ fontSize: 10 }}>{rows.length}</span>}
+        <button onClick={() => { onClose && onClose(); window.location.hash = "contracts"; }}
+          style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
+          abrir Contratos ↗
+        </button>
+      </div>
+      {rows === null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
+      {err && <div style={{ fontSize: 12.5, color: "var(--neg)" }}>Não deu pra carregar os contratos deste cliente · reabra a ficha pra tentar de novo.</div>}
+      {rows && !err && rows.length === 0 && (
+        <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
+          Nenhum contrato gerado pra este cliente. Gere na tela Contratos (escolhendo o cliente) que ele aparece aqui.
+        </div>
+      )}
+      {shown.map((i) => (
+        <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 13, flexWrap: "wrap" }}>
+          <span className="mono dim tnum" style={{ fontSize: 11, flexShrink: 0 }}>{issueDate(i.createdAt)}</span>
+          <span style={{ color: "var(--fg-2)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={i.name}>{i.name}</span>
+          {String(i.values?.valor_total || "").trim() && (
+            <span className="mono tnum" style={{ fontSize: 11.5, color: "var(--fg-3)", flexShrink: 0 }}>R$ {String(i.values.valor_total).trim()}</span>
+          )}
+          <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+            {i.author && <span className="mono dim" style={{ fontSize: 10 }}>{displayName(i.author)}</span>}
+            <button onClick={() => { if (!printContract(i, i.values)) window.toast && window.toast("O navegador bloqueou a janela de impressão · libere o popup deste site", "neg"); }}
+              title="reimprimir o contrato exatamente como foi gerado"
+              style={{ height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11 }}>
+              Imprimir / PDF
+            </button>
+          </span>
+        </div>
+      ))}
+      {rows && rows.length > shown.length && (
+        <button onClick={() => setExpanded(true)} className="mono" style={{ fontSize: 11, color: "var(--accent)", padding: "6px 0" }}>
+          +{rows.length - shown.length} mais
+        </button>
+      )}
     </div>
   );
 }

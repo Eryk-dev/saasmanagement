@@ -1,9 +1,10 @@
 import React from "react";
 import { PageHead } from "../components/viz.jsx";
-import { EmptyState, PrimaryButton, useEsc } from "../atoms.jsx";
+import { EmptyState, PrimaryButton, SecondaryButton, CardHead, useEsc, toast } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { currentUser, displayName } from "../lib/users.js";
+import { fieldsOf, fullHtml, printContract, downloadContract, contractClientName, issueDate, byIssuedDesc } from "../lib/contracts.js";
 
 // Contratos — biblioteca de MODELOS por produto. O fluxo é "resgatar": abrir o
 // modelo, PREENCHER os dados do cliente no formulário do drawer (os campos vêm
@@ -11,68 +12,14 @@ import { currentUser, displayName } from "../lib/users.js";
 // baixar o .html. Campo vazio imprime como linha em branco (preenche à mão).
 // O corpo é o MIOLO em HTML; a impressão veste o CSS jurídico padrão (A4,
 // serifa), o mesmo do contrato original de assinatura da LeverAds.
+//
+// Controle do que SAIU: gerar o contrato de um cliente (imprimir, baixar ou
+// copiar) grava sozinho um registro no histórico — snapshot do modelo preenchido
+// (corpo + campos + valores) preso ao cliente. O modelo pode evoluir; o registro
+// reimprime o papel que foi assinado. O mesmo histórico aparece na ficha do
+// cliente (tela Clientes), filtrado por ele.
 
 const { useState: useS, useEffect: useE, useRef: useR } = React;
-
-// CSS de impressão dos contratos (portado de contrato-leverads.html). Vale pra
-// todos os modelos: o corpo só traz h1/h2/p/ul/table.quadro/blocos de assinatura.
-const CONTRACT_CSS = `
-  @page { size: A4; margin: 2.2cm 2cm; }
-  * { box-sizing: border-box; }
-  body { font-family: Georgia, "Times New Roman", serif; font-size: 10.5pt; line-height: 1.55; color: #111; max-width: 17cm; margin: 0 auto; padding: 24px 16px; background: #fff; }
-  h1 { font-size: 13pt; text-align: center; text-transform: uppercase; letter-spacing: .04em; margin: 0 0 4px; }
-  .subtitle { text-align: center; font-size: 9.5pt; color: #444; margin: 0 0 22px; }
-  h2 { font-size: 10.5pt; text-transform: uppercase; letter-spacing: .03em; margin: 20px 0 6px; }
-  p { margin: 6px 0; text-align: justify; }
-  ul { margin: 6px 0 6px 22px; padding: 0; }
-  li { margin: 3px 0; text-align: justify; }
-  table.quadro { width: 100%; border-collapse: collapse; margin: 10px 0 4px; }
-  table.quadro th, table.quadro td { border: 1px solid #333; padding: 6px 8px; vertical-align: top; font-size: 10pt; text-align: left; }
-  table.quadro th { background: #efefef; font-size: 8.5pt; text-transform: uppercase; letter-spacing: .05em; width: 4.2cm; }
-  .nota { font-size: 9pt; color: #444; }
-  .assin { margin-top: 40px; }
-  .assin-bloco { margin-top: 38px; }
-  .assin-linha { border-top: 1px solid #111; width: 11cm; padding-top: 4px; font-size: 9.5pt; }
-  .duas-col { width: 100%; border-collapse: collapse; margin-top: 30px; }
-  .duas-col td { width: 50%; padding: 26px 12px 0 0; vertical-align: bottom; }
-  .duas-col .assin-linha { width: 100%; }
-  .local-data { margin-top: 34px; }
-`;
-
-const escHtml = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
-
-// Campos de preenchimento do modelo: a lista `fields` do documento (com rótulo/
-// placeholder bons) ou, na falta dela, os tokens {{chave}} achados no corpo —
-// assim modelo criado na mão pelo time também ganha formulário.
-function fieldsOf(c) {
-  if (Array.isArray(c?.fields) && c.fields.length) return c.fields;
-  const seen = new Set();
-  const out = [];
-  for (const m of String(c?.body || "").matchAll(/\{\{([a-z0-9_]+)\}\}/gi)) {
-    if (seen.has(m[1])) continue;
-    seen.add(m[1]);
-    out.push({ key: m[1], label: m[1].replace(/_/g, " ") });
-  }
-  return out;
-}
-
-// Token preenchido entra escapado (quebra de linha vira <br>); vazio vira a
-// linha em branco de sempre, pro contrato continuar imprimível pra preencher à mão.
-const BLANK = "______________________";
-function applyFields(body, fields, values) {
-  let out = String(body || "");
-  for (const f of fields) {
-    const v = String(values?.[f.key] ?? "").trim();
-    out = out.split(`{{${f.key}}}`).join(v ? escHtml(v).replace(/\n/g, "<br>") : BLANK);
-  }
-  return out;
-}
-
-function fullHtml(c, values) {
-  const title = String(c.name || "Contrato").replace(/</g, "&lt;");
-  const body = applyFields(c.body, fieldsOf(c), values || {});
-  return `<!doctype html>\n<html lang="pt-BR">\n<head>\n<meta charset="utf-8">\n<title>${title}</title>\n<style>${CONTRACT_CSS}</style>\n</head>\n<body>\n${body}\n</body>\n</html>`;
-}
 
 // Esqueleto de um modelo novo: cabeçalho + quadro resumo mínimo, pro time não
 // começar do zero.
@@ -89,7 +36,7 @@ const NEW_BODY = `<h1>Título do contrato</h1>
 <h2>Cláusula 1ª · Objeto</h2>
 <p><strong>1.1.</strong> Descreva aqui o objeto do contrato.</p>`;
 
-// Viewer somente-leitura de um contrato CONFIRMADO (componente próprio pro
+// Viewer somente-leitura de um contrato GERADO (componente próprio pro
 // useEsc montar/desmontar junto). Sem formulário → backdrop e Esc fecham.
 function IssueViewer({ issue, btn, onClose, onPrint, onRemove }) {
   useEsc(onClose);
@@ -98,7 +45,7 @@ function IssueViewer({ issue, btn, onClose, onPrint, onRemove }) {
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(860px, 100vw)", height: "100%", background: "var(--bg-1)", borderLeft: "1px solid var(--line-2)", display: "flex", flexDirection: "column", boxShadow: "var(--shadow-pop)" }}>
         <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div style={{ minWidth: 0 }}>
-            <div className="kicker">Contrato confirmado{issue.createdAt ? ` · ${new Date(issue.createdAt).toLocaleDateString("pt-BR")}` : ""}{issue.author ? ` · ${displayName(issue.author)}` : ""}</div>
+            <div className="kicker">Contrato gerado{issue.createdAt ? ` · ${issueDate(issue.createdAt)}` : ""}{issue.author ? ` · ${displayName(issue.author)}` : ""}</div>
             <div style={{ fontSize: 17, fontWeight: 500, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {issue.customerName || "sem cliente"} · {issue.name}
             </div>
@@ -124,30 +71,47 @@ function ContractsScreen() {
   const [draft, setDraft] = useS(null);  // { name, tag, note, body }
   const [fill, setFill] = useS({});      // valores digitados dos campos {{token}} do modelo aberto
   const [busy, setBusy] = useS(false);
-  // Histórico de contratos CONFIRMADOS: cada confirmação grava um snapshot do
-  // modelo preenchido (corpo + campos + valores) preso ao cliente — o modelo
-  // pode evoluir, o registro reimprime o que foi emitido.
-  const [issues, setIssues] = useS([]);
+  // Histórico de contratos GERADOS: cada geração grava um snapshot do modelo
+  // preenchido (corpo + campos + valores) preso ao cliente — o modelo pode
+  // evoluir, o registro reimprime o que foi para a assinatura.
+  const [issues, setIssues] = useS(null);
+  const [issuesErr, setIssuesErr] = useS(false); // histórico não carregou (≠ histórico vazio)
+  const [issueQ, setIssueQ] = useS("");       // busca do histórico (cliente/modelo/etiqueta)
+  const [issuesAll, setIssuesAll] = useS(false); // histórico cortado em 12 · "+N"
   const [issueSel, setIssueSel] = useS(null); // registro aberto (viewer somente-leitura)
   const [custId, setCustId] = useS("");       // cliente vinculado no preenchimento
   const [confirmed, setConfirmed] = useS(false);
   const customers = (window.SEED?.CUSTOMERS || []).filter((c) => !product?.id || c.saas === product.id);
   const [copied, setCopied] = useS(false);
   const copyTimer = useR(null);
+  // Assinatura do último registro gravado nesta sessão do drawer (modelo +
+  // cliente + valores): imprimir duas vezes o MESMO contrato não vira duas
+  // linhas no histórico; mudou um campo, é outro papel e entra de novo.
+  const lastIssueKey = useR("");
 
   async function load() {
     try {
       const all = await api.list("contracts");
       setItems((all || []).filter((c) => !c.saas || c.saas === product?.id));
-      const hist = await api.list("contract_issues").catch(() => []);
-      setIssues((hist || []).filter((c) => !c.saas || c.saas === product?.id)
-        .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""))));
     } catch (e) { setErr(e.message); }
+    // O histórico carrega em separado: se ele falhar, a biblioteca de modelos
+    // continua de pé — e a falha NÃO pode virar "nenhum contrato gerado".
+    try {
+      const hist = await api.list("contract_issues");
+      setIssues((hist || []).filter((c) => !c.saas || c.saas === product?.id).sort(byIssuedDesc));
+      setIssuesErr(false);
+    } catch (e) {
+      console.warn("histórico de contratos não carregou:", e.message);
+      setIssues([]);
+      setIssuesErr(true);
+    }
   }
-  useE(() => { setItems(null); setErr(null); setSel(null); setEdit(false); load(); }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Trocar de produto zera a tela INTEIRA (inclusive a busca do histórico: o
+  // filtro de um produto não faz sentido no outro).
+  useE(() => { setItems(null); setIssues(null); setIssueQ(""); setIssuesAll(false); setErr(null); setSel(null); setEdit(false); load(); }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEsc(sel ? () => { setSel(null); setEdit(false); } : null); // drawer fecha no Esc
-  function openView(c) { setSel(c); setEdit(false); setDraft(null); setFill({}); setCustId(""); setConfirmed(false); setIssueSel(null); }
+  function openView(c) { setSel(c); setEdit(false); setDraft(null); setFill({}); setCustId(""); setConfirmed(false); setIssueSel(null); lastIssueKey.current = ""; }
 
   // Vincular o cliente preenche os campos ÓBVIOS que ainda estão vazios (nome,
   // e-mail, WhatsApp, representante) — o que você já digitou não é sobrescrito.
@@ -169,30 +133,48 @@ function ContractsScreen() {
     });
   }
 
-  // Confirmar = registrar o contrato emitido: snapshot completo no histórico.
-  async function confirmContract(c) {
-    const cust = customers.find((x) => x.id === custId);
-    const clientName = (cust?.name || String(fill.razao_social || "").trim());
-    if (!clientName) return;
+  // Cliente do preenchimento: o vínculo escolhido no select ou, sem vínculo, a
+  // razão social digitada. Sem nenhum dos dois não há registro — histórico sem
+  // dono não serve de controle.
+  const fillCustomer = customers.find((x) => x.id === custId) || null;
+  const fillClient = contractClientName(fillCustomer, fill);
+
+  // Registra o contrato GERADO: snapshot completo (corpo + campos + valores)
+  // preso ao cliente. Roda no ato de gerar e no botão de registrar sem imprimir.
+  // Repetir a MESMA geração é no-op (a assinatura já está no histórico).
+  async function registerIssue(c) {
+    if (!c || !fillClient) return;
+    const key = JSON.stringify([c.id, fillCustomer?.id || fillClient, fill]);
+    if (lastIssueKey.current === key) { setConfirmed(true); return; }
+    lastIssueKey.current = key;
     setBusy(true);
     try {
       await api.create("contract_issues", {
         saas: product?.id || "", contract: c.id, name: c.name || "", tag: c.tag || "",
-        customerId: cust?.id || "", customerName: clientName,
+        customerId: fillCustomer?.id || "", customerName: fillClient,
         values: { ...fill }, fields: fieldsOf(c), body: c.body || "",
         author: currentUser()?.id || "", createdAt: new Date().toISOString(),
       });
       setConfirmed(true);
+      toast(`Contrato registrado no histórico de ${fillClient}`, "pos");
       await load();
-    } catch (e) { setErr(e.message); }
+    } catch (e) {
+      lastIssueKey.current = ""; // falhou: a próxima geração tenta de novo
+      setErr(e.message);
+      toast("O contrato gerado não entrou no histórico · tente de novo", "neg");
+    }
     setBusy(false);
   }
 
   async function removeIssue(i) {
-    if (!window.confirm(`Excluir o registro "${i.name} · ${i.customerName}"? O histórico não guarda cópia.`)) return;
+    if (!window.confirm(`Excluir o registro "${i.name} · ${i.customerName}"? O contrato sai do histórico do cliente e o histórico não guarda cópia.`)) return;
     setBusy(true);
-    try { setIssueSel(null); await api.remove("contract_issues", i.id); await load(); }
-    catch (e) { setErr(e.message); }
+    try {
+      setIssueSel(null);
+      await api.remove("contract_issues", i.id);
+      await load();
+      toast("Registro excluído do histórico", "pos");
+    } catch (e) { setErr(e.message); toast("O registro não foi excluído · tente de novo", "neg"); }
     setBusy(false);
   }
   function openEdit(c) { setSel(c); setEdit(true); setDraft({ name: c.name || "", tag: c.tag || "", note: c.note || "", body: c.body || "" }); }
@@ -229,25 +211,23 @@ function ContractsScreen() {
     setBusy(false);
   }
 
-  // Resgatar: janela nova com o HTML completo JÁ PREENCHIDO com o formulário do
-  // drawer + diálogo de impressão (salvar como PDF). Campo vazio sai em branco.
-  function printContract(c, values) {
-    const w = window.open("", "_blank");
-    if (!w) return;
-    w.document.write(fullHtml(c, values));
-    w.document.close();
-    w.focus();
-    setTimeout(() => { try { w.print(); } catch { /* usuário imprime manualmente */ } }, 350);
+  // Gerar o contrato do drawer = o papel SAIU pro cliente: imprime/baixa/copia
+  // na hora (o window.open precisa acontecer dentro do clique, senão o navegador
+  // barra) e, logo depois, o registro entra no histórico sozinho. Imprimir o
+  // MODELO em branco pelo card da biblioteca não gera registro — não é contrato
+  // de ninguém ainda.
+  function printOnly(c, values) {
+    const ok = printContract(c, values);
+    if (!ok) toast("O navegador bloqueou a janela de impressão · libere o popup deste site", "neg");
+    return ok;
   }
+  const printTemplate = (c) => printOnly(c, {});    // modelo em branco, sem cliente
+  const printIssue = (i) => printOnly(i, i.values); // reimpressão do que já está no histórico
 
-  function download(c, values) {
-    const blob = new Blob([fullHtml(c, values)], { type: "text/html;charset=utf-8" });
-    const a = document.createElement("a");
-    const cliente = String(values?.razao_social || "").trim();
-    a.href = URL.createObjectURL(blob);
-    a.download = `${(c.name || "contrato")}${cliente ? " - " + cliente : ""}`.toLowerCase().replace(/[^a-z0-9]+/gi, "-") + ".html";
-    a.click();
-    URL.revokeObjectURL(a.href);
+  function generate(c, how) {
+    if (how === "print" && !printOnly(c, fill)) return;
+    if (how === "download") downloadContract(c, fill);
+    registerIssue(c);
   }
 
   async function copyHtml(c, values) {
@@ -255,6 +235,7 @@ function ContractsScreen() {
     setCopied(true);
     clearTimeout(copyTimer.current);
     copyTimer.current = setTimeout(() => setCopied(false), 1600);
+    registerIssue(c);
   }
   const btn = { height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", boxShadow: "var(--shadow-1)" };
   const inp = { width: "100%", height: 34, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
@@ -288,7 +269,7 @@ function ContractsScreen() {
                 {c.note && <div style={{ fontSize: 12.5, color: "var(--fg-3)", lineHeight: 1.5 }}>{c.note}</div>}
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: "auto" }}>
                   <button onClick={() => openView(c)} style={{ ...btn, background: "var(--btn-bg)", color: "var(--btn-fg)", borderColor: "transparent" }}>Abrir</button>
-                  <button onClick={() => printContract(c)} style={btn}>Imprimir / PDF</button>
+                  <button onClick={() => printTemplate(c)} title="imprime o modelo EM BRANCO (sem cliente, não entra no histórico)" style={btn}>Imprimir em branco</button>
                   <button onClick={() => openEdit(c)} style={btn}>Editar</button>
                 </div>
               </div>
@@ -296,35 +277,86 @@ function ContractsScreen() {
           </div>
         )}
 
-        {issues.length > 0 && (
-          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "18px 24px" }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 10 }}>
-              <span className="sec" style={{ fontFamily: "var(--display)", fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em" }}>Contratos confirmados</span>
-              <span className="mono dim tnum" style={{ fontSize: 11 }}>{issues.length}</span>
+        {/* Histórico do produto: o que JÁ SAIU pra assinatura, do mais novo pro
+            mais antigo. A MESMA lista aparece na ficha do cliente (tela
+            Clientes) filtrada por ele — aqui é a visão do produto inteiro. */}
+        <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px var(--inset-x)" }}>
+          <CardHead
+            kicker="Histórico" accent
+            title="Contratos gerados"
+            sub="imprimir, baixar ou copiar um modelo preenchido registra o contrato aqui, preso ao cliente"
+            meta={issues && issues.length > 0 ? (
+              <input className="inp" value={issueQ} aria-label="Buscar no histórico de contratos"
+                onChange={(e) => { setIssueQ(e.target.value); setIssuesAll(false); }}
+                placeholder="buscar cliente ou modelo" style={{ width: "min(230px, 44vw)" }} />
+            ) : null}
+          />
+
+          {issues === null && <div className="mono dim" style={{ fontSize: 12, marginTop: 12 }}>carregando histórico…</div>}
+          {issuesErr && (
+            <div style={{ fontSize: 12.5, color: "var(--neg)", marginTop: 12 }}>
+              Não deu pra carregar o histórico de contratos · recarregue a página pra tentar de novo.
             </div>
-            {issues.map((i) => (
-              <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: "1px solid var(--line-1)", fontSize: 13, flexWrap: "wrap" }}>
-                <span className="mono dim tnum" style={{ fontSize: 11.5, flexShrink: 0 }}>
-                  {i.createdAt ? new Date(i.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "2-digit" }).replace(".", "") : ""}
-                </span>
-                <span style={{ fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.customerName || "sem cliente"}</span>
-                <span style={{ color: "var(--fg-3)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.name}</span>
-                {i.tag && <span className="kicker" style={{ color: "var(--accent)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", borderRadius: 999, padding: "1px 7px", flexShrink: 0 }}>{i.tag}</span>}
-                {String(i.values?.valor_total || "").trim() && (
-                  <span className="mono tnum" style={{ fontSize: 12, color: "var(--fg-2)", flexShrink: 0 }}>R$ {String(i.values.valor_total).trim()}</span>
+          )}
+          {issues && !issuesErr && issues.length === 0 && (
+            <div style={{ fontSize: 12.5, color: "var(--fg-3)", lineHeight: 1.5, marginTop: 12 }}>
+              Nenhum contrato gerado ainda neste produto. Abra um modelo, escolha o cliente, preencha o Quadro Resumo e imprima — o registro entra aqui sozinho.
+            </div>
+          )}
+
+          {issues && issues.length > 0 && (() => {
+            const q = issueQ.trim().toLowerCase();
+            const hit = (i) => !q || [i.customerName, i.name, i.tag, displayName(i.author)]
+              .some((s) => String(s || "").toLowerCase().includes(q));
+            const found = issues.filter(hit);
+            const shown = issuesAll ? found : found.slice(0, 12);
+            return (
+              <div style={{ marginTop: 12 }}>
+                <div className="kicker" style={{ marginBottom: 4 }}>
+                  {found.length === issues.length
+                    ? `${issues.length} ${issues.length === 1 ? "contrato" : "contratos"}`
+                    : `${found.length} de ${issues.length}`}
+                </div>
+                {found.length === 0 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "8px 0" }}>
+                    <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>Nenhum contrato para “{issueQ.trim()}”.</span>
+                    <SecondaryButton size="sm" onClick={() => setIssueQ("")}>limpar busca</SecondaryButton>
+                  </div>
                 )}
-                <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-                  {i.author && <span className="mono dim" style={{ fontSize: 10.5 }}>{displayName(i.author)}</span>}
-                  <button onClick={() => { setIssueSel(i); setSel(null); setEdit(false); }} style={{ ...btn, height: 26, padding: "0 10px", fontSize: 11.5 }}>Abrir</button>
-                  <button onClick={() => printContract(i, i.values)} style={{ ...btn, height: 26, padding: "0 10px", fontSize: 11.5 }}>Imprimir / PDF</button>
-                </span>
+                {shown.map((i) => (
+                  <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: "1px solid var(--line-1)", fontSize: 13, flexWrap: "wrap" }}>
+                    <span className="mono dim tnum" style={{ fontSize: 11.5, flexShrink: 0 }}>{issueDate(i.createdAt)}</span>
+                    {/* Clicar no cliente filtra o histórico por ele — o caminho
+                        curto pro "quantos contratos esse cliente já assinou". */}
+                    <button onClick={() => { setIssueQ(i.customerName || ""); setIssuesAll(false); }}
+                      title={i.customerId ? "ver só os contratos deste cliente" : "registro sem vínculo de cliente (razão social digitada na mão)"}
+                      style={{ fontWeight: 600, minWidth: 0, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: i.customerId ? "var(--fg-1)" : "var(--fg-3)" }}>
+                      {i.customerName || "sem cliente"}
+                    </button>
+                    <span style={{ color: "var(--fg-3)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.name}</span>
+                    {i.tag && <span className="chip accent" style={{ flexShrink: 0 }}>{i.tag}</span>}
+                    {String(i.values?.valor_total || "").trim() && (
+                      <span className="mono tnum" style={{ fontSize: 12, color: "var(--fg-2)", flexShrink: 0 }}>R$ {String(i.values.valor_total).trim()}</span>
+                    )}
+                    <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                      {i.author && <span className="mono dim" style={{ fontSize: 10.5 }}>{displayName(i.author)}</span>}
+                      <SecondaryButton size="sm" onClick={() => { setIssueSel(i); setSel(null); setEdit(false); }}>Abrir</SecondaryButton>
+                      <SecondaryButton size="sm" onClick={() => printIssue(i)}>Imprimir / PDF</SecondaryButton>
+                    </span>
+                  </div>
+                ))}
+                {found.length > shown.length && (
+                  <button onClick={() => setIssuesAll(true)} className="mono" style={{ fontSize: 11, color: "var(--accent)", padding: "8px 0" }}>
+                    +{found.length - shown.length} mais
+                  </button>
+                )}
               </div>
-            ))}
-          </div>
-        )}
+            );
+          })()}
+        </div>
 
         <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
-          os modelos ficam salvos no servidor pro time todo. “Imprimir / PDF” abre o contrato pronto pra salvar em PDF; os campos em branco do Quadro Resumo são preenchidos por cliente. Preencheu com o cliente fechado? “✓ Confirmar contrato” registra o snapshot no histórico aqui de baixo.
+          os modelos ficam salvos no servidor pro time todo. Abra um modelo, escolha o cliente e preencha o Quadro Resumo: “Imprimir / PDF” abre o contrato pronto pra salvar em PDF e o registro entra no histórico preso àquele cliente (ele também aparece na ficha do cliente, na tela Clientes). Campo vazio sai como linha em branco pra preencher à mão.
         </div>
       </div>
 
@@ -341,9 +373,9 @@ function ContractsScreen() {
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
                 {!edit && sel && (
                   <>
-                    <button onClick={() => printContract(sel, fill)} style={{ ...btn, background: "var(--btn-bg)", color: "var(--btn-fg)", borderColor: "transparent" }}>Imprimir / PDF</button>
-                    <button onClick={() => download(sel, fill)} style={btn}>Baixar .html</button>
-                    <button onClick={() => copyHtml(sel, fill)} style={{ ...btn, ...(copied ? { background: "var(--pos-soft)", color: "var(--pos)" } : {}) }}>{copied ? "✓ copiado" : "Copiar HTML"}</button>
+                    <button onClick={() => generate(sel, "print")} disabled={busy} style={{ ...btn, background: "var(--btn-bg)", color: "var(--btn-fg)", borderColor: "transparent", opacity: busy ? 0.6 : 1 }}>Imprimir / PDF</button>
+                    <button onClick={() => generate(sel, "download")} disabled={busy} style={btn}>Baixar .html</button>
+                    <button onClick={() => copyHtml(sel, fill)} disabled={busy} style={{ ...btn, ...(copied ? { background: "var(--pos-soft)", color: "var(--pos)" } : {}) }}>{copied ? "✓ copiado" : "Copiar HTML"}</button>
                     <button onClick={() => openEdit(sel)} style={btn}>Editar</button>
                     <button onClick={() => duplicate(sel)} disabled={busy} style={btn}>Duplicar</button>
                     <button onClick={() => remove(sel)} disabled={busy} className="dim" style={{ ...btn, color: "var(--neg)" }}>Excluir</button>
@@ -391,22 +423,27 @@ function ContractsScreen() {
                       </label>
                     ))}
                     {done > 0 && (
-                      <button onClick={() => { setFill({}); setCustId(""); setConfirmed(false); }} className="mono dim" style={{ alignSelf: "flex-start", fontSize: 11 }}>limpar campos</button>
+                      <button onClick={() => { setFill({}); setCustId(""); setConfirmed(false); lastIssueKey.current = ""; }} className="mono dim" style={{ alignSelf: "flex-start", fontSize: 11 }}>limpar campos</button>
                     )}
-                    {/* Confirmar = o contrato saiu com esses dados: registra o
-                        snapshot no histórico da tela, preso ao cliente. */}
-                    <button onClick={() => confirmContract(sel)}
-                      disabled={busy || confirmed || !(customers.find((x) => x.id === custId)?.name || String(fill.razao_social || "").trim())}
-                      title={confirmed ? "registrado no histórico" : "registrar este contrato preenchido no histórico da tela (snapshot preso ao cliente)"}
-                      style={{ marginTop: "auto", padding: "10px 12px", borderRadius: "var(--r-2)", border: "none",
-                        background: confirmed ? "var(--pos-soft, var(--bg-2))" : "var(--accent)",
-                        color: confirmed ? "var(--pos)" : "var(--accent-fg, #fff)", fontSize: 13, fontWeight: 600,
-                        opacity: busy || (!confirmed && !(customers.find((x) => x.id === custId)?.name || String(fill.razao_social || "").trim())) ? 0.55 : 1 }}>
-                      {confirmed ? "✓ Contrato confirmado · no histórico" : busy ? "registrando…" : "✓ Confirmar contrato"}
-                    </button>
-                    {!confirmed && !(customers.find((x) => x.id === custId)?.name || String(fill.razao_social || "").trim()) && (
-                      <span className="mono dim" style={{ fontSize: 10, marginTop: -6 }}>escolha o cliente ou preencha a razão social pra confirmar</span>
-                    )}
+                    {/* Estado do registro. Gerar (imprimir/baixar/copiar) já
+                        grava sozinho; o botão fica pra quem vai mandar o
+                        contrato por fora e quer o controle do mesmo jeito. */}
+                    <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+                      {confirmed ? (
+                        <span className="chip pos" style={{ fontSize: 11.5 }}>contrato de {fillClient} no histórico</span>
+                      ) : (
+                        <SecondaryButton onClick={() => registerIssue(sel)} disabled={busy || !fillClient}
+                          title={fillClient ? "registrar no histórico sem imprimir agora" : "escolha o cliente ou preencha a razão social"}
+                          style={{ width: "100%" }}>
+                          {busy ? "registrando…" : "Registrar no histórico"}
+                        </SecondaryButton>
+                      )}
+                      <span className="mono dim" style={{ fontSize: 10, lineHeight: 1.5 }}>
+                        {fillClient
+                          ? "imprimir, baixar ou copiar já registra o contrato no histórico deste cliente"
+                          : "escolha o cliente ou preencha a razão social pra o contrato entrar no histórico"}
+                      </span>
+                    </div>
                   </div>
                   <iframe title={sel.name} srcDoc={fullHtml(sel, fill)} style={{ flex: 1, border: 0, background: "#fff" }} />
                 </div>
@@ -449,7 +486,7 @@ function ContractsScreen() {
       {issueSel && !sel && !edit && (
         <IssueViewer issue={issueSel} btn={btn}
           onClose={() => setIssueSel(null)}
-          onPrint={() => printContract(issueSel, issueSel.values)}
+          onPrint={() => printIssue(issueSel)}
           onRemove={() => removeIssue(issueSel)} />
       )}
     </div>

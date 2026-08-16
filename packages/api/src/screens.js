@@ -72,7 +72,7 @@ const ROUTE_SCREENS = [
   ["/api/proposals", ["proposals"]],     // inclui /preview
   ["/api/offers", ["offers"]],           // links de pagamento das ofertas
   ["/api/contracts", ["contracts"]],     // modelos de contrato (biblioteca)
-  ["/api/contract_issues", ["contracts"]], // contratos confirmados (histórico da mesma tela)
+  ["/api/contract_issues", ["contracts"]], // contratos gerados (histórico da mesma tela; a ficha do cliente LÊ, ver EXTRA_READ_SCREENS)
   ["/api/campaigns", ["disparos"]],      // disparos de e-mail + WhatsApp (mark, ai-copy e CRUD)
   ["/api/wa_automations", ["whatsapp"]], // automações do Inbox (regras reativas: CRUD genérico)
   ["/api/wa_flows", ["whatsapp"]],       // fluxos de conversa do Inbox (construtor: CRUD genérico)
@@ -116,11 +116,20 @@ const SETTINGS_WRITE_PREFIXES = ["/api/products", "/api/auth/users"];
 // GET: sync, pay e CRUD continuam exigindo a tela dona da rota.
 const OVERVIEW_READ_PREFIXES = ["/api/marketing", "/api/metrics/", "/api/invoices", "/api/expenses/summary/"];
 
+// Leitura de carona por tela: prefixo → tela extra que só ganha no GET. A ficha
+// do cliente mostra os contratos GERADOS pra ele (bloco "Contratos gerados"),
+// mas gerar/excluir registro segue sendo coisa da tela Contratos.
+const EXTRA_READ_SCREENS = [["/api/contract_issues", "customers"]];
+
 export function screenForRequest(method, path) {
   if (method !== "GET" && SETTINGS_WRITE_PREFIXES.some((p) => path.startsWith(p))) return ["settings"];
   const hit = ROUTE_SCREENS.find(([prefix]) => path.startsWith(prefix));
   if (!hit) return null;
   if (method === "GET" && OVERVIEW_READ_PREFIXES.some((p) => path.startsWith(p))) return [...hit[1], "overview"];
+  if (method === "GET") {
+    const extra = EXTRA_READ_SCREENS.filter(([p]) => path.startsWith(p)).map(([, s]) => s);
+    if (extra.length) return [...hit[1], ...extra];
+  }
   return hit[1];
 }
 

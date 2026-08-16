@@ -62,7 +62,7 @@ export const COLLECTIONS = {
   wa_flows: [],      // fluxos de conversa do Inbox (construtor): gatilho + passos com espera de resposta e ramificação (wa-flows.js)
   offers: [],        // links de pagamento das ofertas por produto (ferramenta)
   contracts: [],     // modelos de contrato por produto (tela Contratos): { name, tag, note, body (HTML do miolo, imprime com o CSS padrão da tela) }
-  contract_issues: [], // contratos CONFIRMADOS (histórico da tela Contratos): snapshot do modelo preenchido por cliente — { saas, contract, name, tag, customerId, customerName, values, fields, body, author, createdAt }
+  contract_issues: [], // contratos GERADOS (histórico da tela Contratos + bloco da ficha do cliente): snapshot do modelo preenchido por cliente — { saas, contract, name, tag, customerId, customerName, values, fields, body, author, createdAt }
   mp_payments: [],   // espelho dos pagamentos do Mercado Pago (financeiro): quem pagou, como, casado com qual cliente/fatura (mp-payments.js)
   campaigns: [],     // disparos (e-mail + WhatsApp) pros leads qualificados por produto (ferramenta)
   outbound_accounts: [], // radar de contas do outbound (Cold Calling 2.0): conta-alvo com os 8 status do livro; virar lead cria card classe Alvo
