@@ -124,6 +124,21 @@ export function mpMethodLabel(p = {}) {
   const base = method === "pix" ? "PIX" : MP_TYPE_LABEL[type] || method || "";
   return base ? (inst > 1 ? `${base} · ${inst}x` : base) : "";
 }
+// Status de um LINK gerado (tela Links de pagamento): o servidor deriva
+// cruzando o recibo da geração com o espelho do MP (payment-links.js). Os
+// estados de PAGAMENTO reaproveitam MP_PAY_STATUS abaixo — estes três são do
+// link em si: nasceu e ninguém pagou, ou foi trocado por um mais novo.
+const LINK_STATUS = {
+  paid: { label: "pago", tone: "pos", hint: "pagamento aprovado no Mercado Pago" },
+  waiting: { label: "aguardando", tone: "warn", hint: "link gerado e nenhum pagamento até agora" },
+  superseded: { label: "substituído", tone: "mut", hint: "gerou outro link pro mesmo cliente e mesmo valor depois deste" },
+};
+export const linkStatusOf = (s) => LINK_STATUS[s] || MP_PAY_STATUS[s] || { label: s || "—", tone: "mut" };
+
+// De onde o link nasceu — o time gera de três lugares e o histórico junta todos.
+const LINK_ORIGIN = { card: "card do lead", tela: "tela de links", cliente: "ficha do cliente", fatura: "fatura" };
+export const linkOriginLabel = (o) => LINK_ORIGIN[o] || "";
+
 export const MP_PAY_STATUS = {
   approved: { label: "pago", tone: "pos" },
   pending: { label: "pendente", tone: "warn" },

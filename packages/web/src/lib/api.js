@@ -451,6 +451,9 @@ export const api = {
   // Link de pagamento pelo card do lead (external_reference = lead: pagamento
   // entra no Financeiro já casado com a origem).
   mpLeadLink: (leadId, body) => req("POST", `/api/leads/${leadId}/mp/link`, body),
+  // Histórico dos links gerados (tela Links de pagamento): o recibo de cada
+  // geração já cruzado com o espelho do MP — quem pagou, quanto e como.
+  paymentLinks: (saas) => req("GET", `/api/payment-links${saas ? `?saas=${encodeURIComponent(saas)}` : ""}`),
   invoiceMpLink: (id, body = {}) => req("POST", `/api/invoices/${id}/mp/link`, body),
   // Marketing (Meta Ads): sync de insights + métricas cruzadas com o funil.
   marketingSync: (body = {}) => req("POST", "/api/marketing/sync", body),

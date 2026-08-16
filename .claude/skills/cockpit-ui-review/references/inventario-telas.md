@@ -23,7 +23,7 @@ Rota = hash (`#pipeline`). Arquivos em `packages/web/src/screens/`.
 | `outbound` | outbound.jsx | Comercial · Outbound | prospecção ativa (classes Semente/Rede/Alvo, Receita Previsível) | tabela manual | ✓ padronização + funcional + passe fino (ago/2026) |
 | `customers` | customers.jsx | Comercial · Clientes | clientes ARR/MRR + aba Assinaturas (`subscriptions` é alias) | tabela manual, EntityForm | ✓ padronização + funcional + passe fino (ago/2026) |
 | `proposals` | proposals.jsx | Comercial · Propostas | templates e propostas (snapshots), editor + preview | editor-split, ProposalActions | ✓ padronização + funcional + passe fino (ago/2026) |
-| `offers` | offers.jsx | Comercial · Link pagamento | os 3 links MP editáveis (anual/semestral/único) | — | ✓ padronização + funcional + passe fino (ago/2026) |
+| `offers` | offers.jsx | Comercial · Links de pagamento | histórico dos links gerados por lead/cliente (status pago/aguardando vindo do MP) + gerar link; os 3 links fixos viraram seção recolhida no pé | StatTile, FilterTab, Pill, payment-link-modal | ✓ reformada em histórico (ago/2026) |
 | `contracts` | contracts.jsx | Comercial · Contratos | biblioteca de modelos de contrato | — | ✓ padronização + funcional + passe fino (ago/2026) |
 | `agenda` | agenda.jsx | Comercial · Agenda | agenda única do time: slots, compromissos, bloqueios, Meet | SlotGrid próprio | ✓ padronização + funcional + passe fino (ago/2026) |
 | `whatsapp` | whatsapp.jsx | Comercial · Inbox | inbox multi-número + chat (Cloud API), promove lead no 1º toque | whatsapp-chat, wa-thread | ✓ padronização + funcional + passe fino (ago/2026) |
