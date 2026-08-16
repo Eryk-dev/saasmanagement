@@ -18,6 +18,7 @@ import { cadenceOf, lossReasonLabel } from "../lib/funnel.js";
 import { leadPain } from "../lib/pains.js";
 import { displayName } from "../lib/users.js";
 import { paymentLabel, closedPlanLabel, dealProductLabel, dealProductsOf } from "../lib/payments.js";
+import { mentoriaFit, mentoriaOfferLine } from "../lib/mentoria.js";
 import { scriptSegments } from "../lib/scripts.js";
 
 const DAY = 86_400_000;
@@ -42,7 +43,16 @@ export function clientSummary(saasCfg, lead, stage, cat, { full = false } = {}) 
   const icpPct = (lead.icp != null && lead.icp !== "") ? `${Math.round(Number(lead.icp) * 100)}%` : null;
   const utm = lead.utm || {};
   const money = (v) => (typeof window !== "undefined" && window.fmt?.money?.(v)) || v;
+  // Lead da fila da Mentoria: a verba que ele declarou no form é o que decide a
+  // oferta, então os dois aparecem juntos (o número sozinho não diz o que fazer).
+  const fit = mentoriaFit(lead);
   const facts = [
+    ...(fit ? [
+      ["Verba pra começar", fit.declared ? fit.verbaLabel : "não declarada"],
+      ["Oferta que encaixa", mentoriaOfferLine(fit) || null],
+      ["Degrau de resgate", fit.rescue ? mentoriaOfferLine({ offer: fit.rescue }) : null],
+      ["Upsell de importação", fit.upsell ? "candidato (+R$ 2.000 durante a mentoria)" : null],
+    ] : []),
     ["Potencial", tier.grade ? `${tier.grade} · ${tier.label}` : null],
     ["Temperatura", hasScore ? `${leadScoreLabel(lead.score)} · ${lead.score}` : null],
     ["ICP (fit)", icpPct],
@@ -182,6 +192,30 @@ export function LeadChecklist({ checklist, onPatch, leadId, title = "Dados do le
 //
 // Usado no gate do board/card (stage-move.jsx) e no "Depois da ação" do Meu dia
 // (today.jsx): fechar por qualquer um dos dois registra a mesma coisa.
+
+// Opções do select de produto vendido, compartilhadas com o modal de link de
+// pagamento. Linhas de produto que convivem no mesmo SaaS (a Mentoria dentro do
+// leverads) vêm do catálogo com `group` e ganham um bloco próprio; sem `group`,
+// a opção fica solta no topo, como sempre foi.
+export function ProductOptions({ products }) {
+  const map = new Map();
+  for (const p of products) {
+    if (!p.group) continue;
+    if (!map.has(p.group)) map.set(p.group, []);
+    map.get(p.group).push(p);
+  }
+  return (
+    <>
+      {products.filter((p) => !p.group).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+      {[...map.entries()].map(([g, rows]) => (
+        <optgroup key={g} label={g}>
+          {rows.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+        </optgroup>
+      ))}
+    </>
+  );
+}
+
 export function DealProductField({ saas, value, onChange, plan = "", amount = null, onPick, fieldStyle, labelStyle = null, required = true }) {
   const products = dealProductsOf(saas);
   if (!products.length) return null;
@@ -211,7 +245,7 @@ export function DealProductField({ saas, value, onChange, plan = "", amount = nu
       <label className="kicker" style={labelStyle || { display: "block", marginBottom: 4 }}>Produto vendido {required ? "*" : ""}</label>
       <select value={value} onChange={(e) => onChange(e.target.value, products.find((p) => p.id === e.target.value) || null)} style={fieldStyle}>
         <option value="">— o que ele comprou na apresentação —</option>
-        {products.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+        <ProductOptions products={products} />
       </select>
       {!!prices.length && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>

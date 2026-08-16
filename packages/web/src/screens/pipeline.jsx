@@ -9,6 +9,7 @@ import {
   nextTouch, nextTouchPill, lossReasonLabel,
 } from "../lib/funnel.js";
 import { usersByRole, userTone, displayName, currentUser } from "../lib/users.js";
+import { mentoriaFit, mentoriaOfferLine, VERBA_RANK } from "../lib/mentoria.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 import { useActiveSaas, pinActiveSaas } from "../lib/workspace.js";
 // Pipeline — Kanban + Lista. Drag-and-drop between columns.
@@ -407,8 +408,12 @@ function KanbanColumn({ s, stage, cards, sortMode, highlight, onDropCard, draggi
   // Último toque: a MESMA fila do próximo toque, invertida — quem estava no fim
   // (sem próximo passo, depois o toque mais distante) sobe pro topo. É pra
   // varrer a coluna de trás pra frente sem rolar até o fundo.
+  // Na fila da Mentoria a "qualidade" não vem da régua de contas × anúncios
+  // (esse lead nem vende ainda): vem da VERBA que ele declarou no form, que é
+  // o que qualifica essa fila. Assim a coluna abre pelo dinheiro que tem nela.
+  const rankOf = (l) => (mentoriaFit(l) ? VERBA_RANK[l.aprender_verba] ?? 8 : tierRank(l));
   const ordered = sortMode === "qualidade"
-    ? [...cards].sort((a, b) => tierRank(a) - tierRank(b) || byTouch(a, b))
+    ? [...cards].sort((a, b) => rankOf(a) - rankOf(b) || byTouch(a, b))
     : sortMode === "ultimo"
       ? [...cards].sort((a, b) => byTouch(b, a))
       : [...cards].sort(byTouch);
@@ -471,6 +476,7 @@ function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen 
   // Publicidade e do drawer. Só mostra quando o lead respondeu a qualificação.
   const tier = leadTier(d);
   const grade = tier?.grade || "";
+  const fit = mentoriaFit(d);
 
   return (
     <div
@@ -494,7 +500,12 @@ function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen 
         {showAvatar && <Avatar id={ownerId} name={displayName(ownerId)} size={24} />}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-        <span className="tnum" style={{ fontSize: 12.5, fontWeight: 600 }}>{window.fmt.money(d.amount || 0)}</span>
+        {/* Lead da fila da Mentoria não tem proposta gerada, então o valor do
+            card seria sempre R$ 0: no lugar dele entra a oferta que a verba
+            declarada encaixa, que é o que decide por qual card começar. */}
+        {fit && !d.amount
+          ? <span className="tnum" title={`Verba declarada: ${fit.verbaLabel}`} style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)" }}>{mentoriaOfferLine(fit)}</span>
+          : <span className="tnum" style={{ fontSize: 12.5, fontWeight: 600 }}>{window.fmt.money(d.amount || 0)}</span>}
         {nextLabel && (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 5, marginLeft: "auto", fontSize: 11.5, color: next?.tone || "var(--fg-3)", fontWeight: 500, whiteSpace: "nowrap" }}>
             <span style={{ width: 6, height: 6, borderRadius: 999, background: "currentColor", flexShrink: 0 }} />{nextLabel}
