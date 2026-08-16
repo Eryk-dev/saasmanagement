@@ -95,6 +95,57 @@ test("tick: sai da sequência quando o lead fecha (exitOn.won)", async () => {
   assert.equal(en.exitReason, "fechou");
 });
 
+// exitOn.booked mede a call como EVENTO NOVO. Call antiga (o lead já teve
+// reunião um dia) não pode tirar ninguém da régua: era o que esvaziava o No
+// show inteiro e 3/4 do Follow-up antes de o primeiro e-mail sair.
+test("tick: call ANTIGA (anterior à inscrição) não tira o lead da sequência", async () => {
+  const { repo, outbox, runner } = await setup();
+  await repo.update("leads", "A", { callAt: "2026-06-01T14:00:00.000Z" });
+  await repo.create("sequence_enrollments", { id: "en_old", saas: "leverads", sequence: "seq1", lead: "A",
+    status: "active", stepIndex: 0, nextRunAt: PAST, enrolledAt: "2026-08-01T00:00:00.000Z" });
+  const r = await runner.tick();
+  assert.equal(r.exited, 0, "call de junho não é saída de uma régua de agosto");
+  assert.equal(outbox.length, 1, "o e-mail do passo 0 sai normalmente");
+});
+
+test("tick: call marcada DEPOIS da inscrição tira o lead da sequência", async () => {
+  const { repo, outbox, runner } = await setup();
+  await repo.update("leads", "A", { callAt: "2026-08-20T14:00:00.000Z" });
+  await repo.create("sequence_enrollments", { id: "en_new", saas: "leverads", sequence: "seq1", lead: "A",
+    status: "active", stepIndex: 0, nextRunAt: PAST, enrolledAt: "2026-08-01T00:00:00.000Z" });
+  const r = await runner.tick();
+  assert.equal(r.exited, 1);
+  assert.equal(outbox.length, 0);
+  assert.equal((await repo.get("sequence_enrollments", "en_new")).exitReason, "marcou call");
+});
+
+test("tick: estar na etapa-GATILHO de call não conta como saída (sequência de pré-call)", async () => {
+  const { repo, outbox, runner } = await setup();
+  await repo.update("sequences", "seq1", { trigger: { stages: ["Call"] }, exitOn: { won: true, booked: true, optOut: true } });
+  await repo.update("leads", "A", { stage: "Call" });
+  await repo.create("sequence_enrollments", { id: "en_pre", saas: "leverads", sequence: "seq1", lead: "A",
+    status: "active", stepIndex: 0, nextRunAt: PAST, enrolledAt: "2026-08-01T00:00:00.000Z" });
+  const r = await runner.tick();
+  assert.equal(r.exited, 0, "a etapa de call é a ENTRADA desta régua, não a saída");
+  assert.equal(outbox.length, 1);
+});
+
+test("tick: exitOn.stageLeft tira quem saiu da etapa-gatilho (e é opt-in)", async () => {
+  const { repo, outbox, runner } = await setup();
+  await repo.update("leads", "A", { stage: "Qualificando" }); // saiu de Nutrição
+  await repo.create("sequence_enrollments", { id: "en_s", saas: "leverads", sequence: "seq1", lead: "A",
+    status: "active", stepIndex: 0, nextRunAt: PAST, enrolledAt: PAST });
+  const semFlag = await runner.tick();
+  assert.equal(semFlag.exited, 0, "sem a marca, mudar de etapa não tira ninguém");
+  assert.equal(outbox.length, 1);
+
+  await repo.update("sequences", "seq1", { exitOn: { won: true, booked: true, optOut: true, stageLeft: true } });
+  await repo.update("sequence_enrollments", "en_s", { nextRunAt: PAST });
+  const comFlag = await runner.tick();
+  assert.equal(comFlag.exited, 1);
+  assert.equal((await repo.get("sequence_enrollments", "en_s")).exitReason, "mudou de etapa");
+});
+
 test("metrics: conta inscritos + avançou/fechou por sequência", async () => {
   const { repo, mailer } = await setup();
   const T0 = "2026-07-01T10:00:00.000Z";

@@ -15,12 +15,33 @@ const DAY = 86_400_000;
 
 const schedule = (now, delayDays) => new Date(now + Math.max(0, Number(delayDays) || 0) * DAY).toISOString();
 
-// Condição de saída da sequência (default: todas ligadas). Vazio = segue.
-export function exitReasonFor(seq, lead, product) {
+// Condição de saída da sequência. `optOut`/`won`/`booked` vêm LIGADAS por
+// padrão; `stageLeft` é opt-in (só sai quando marcada de propósito). Vazio = segue.
+//
+// `booked` mede a call como EVENTO NOVO, não como histórico: `lead.callAt` fica
+// gravado pra sempre, então a régua antiga ("tem callAt") tirava da sequência
+// todo lead que já tinha reunião marcada um dia. Na base isso era o No show
+// inteiro, 3/4 do Follow-up e 1/5 da Nutrição saindo no primeiro ciclo, sem
+// receber nada. Agora só conta a call marcada DEPOIS de entrar na sequência,
+// ou o lead ANDANDO pra uma etapa de call que não é a etapa-gatilho (numa
+// sequência de pré-call, estar na etapa de call é a entrada, não a saída).
+export function exitReasonFor(seq, lead, product, en) {
   const ex = seq.exitOn || {};
+  const stages = seq.trigger?.stages || [];
   if (ex.optOut !== false && lead.emailOptOut) return "descadastrou";
   if (ex.won !== false && product && isWonLead(product, lead)) return "fechou";
-  if (ex.booked !== false && (lead.callAt || (product && kindOf(product, lead.stage) === "call"))) return "marcou call";
+  if (ex.booked !== false) {
+    const at0 = en?.enrolledAt ? new Date(en.enrolledAt).getTime() : NaN;
+    const callAt = lead.callAt ? new Date(lead.callAt).getTime() : NaN;
+    // Sem enrolledAt (inscrição antiga) a régua cai no comportamento anterior.
+    const newCall = Number.isFinite(callAt) && (!Number.isFinite(at0) || callAt > at0);
+    const movedToCall = product && kindOf(product, lead.stage) === "call" && !stages.includes(lead.stage);
+    if (newCall || movedToCall) return "marcou call";
+  }
+  // Saiu da etapa que inscreveu: sem isso o lead que anda de "Novo lead" pra
+  // "Qualificando" fica nas DUAS sequências ao mesmo tempo, empilhando e-mail
+  // na mesma caixa. Só vale com gatilho (inscrição manual sem gatilho segue).
+  if (ex.stageLeft === true && stages.length && !stages.includes(lead.stage)) return "mudou de etapa";
   return "";
 }
 
@@ -81,7 +102,7 @@ export function makeDripRunner({ repo, mailer, log = console } = {}) {
         const lead = await repo.get("leads", en.lead);
         if (!lead) { await repo.update("sequence_enrollments", en.id, { status: "exited", exitReason: "lead removido", lastAt: nowIso }); exited++; continue; }
         const product = await getProduct(seq.saas);
-        const reason = exitReasonFor(seq, lead, product);
+        const reason = exitReasonFor(seq, lead, product, en);
         if (reason) { await repo.update("sequence_enrollments", en.id, { status: "exited", exitReason: reason, lastAt: nowIso }); exited++; continue; }
         const step = (seq.steps || [])[en.stepIndex];
         if (!step) { await repo.update("sequence_enrollments", en.id, { status: "done", lastAt: nowIso }); done++; continue; }

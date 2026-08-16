@@ -34,5 +34,7 @@ export function leadTokens(lead) {
 // operador notar o erro de digitação no preview).
 export const interpolate = (text, toks) => String(text || "").replace(/\{\{(\w+)\}\}/g, (_, k) => (toks && toks[k] != null ? toks[k] : `{{${k}}}`));
 
-// Corpo do e-mail com o rodapé de descadastro anexado.
-export const emailBodyWithUnsub = (bodyT, toks, unsubUrl) => `${interpolate(bodyT, toks)}\n\n—\nPara não receber mais estes e-mails: ${unsubUrl}`;
+// Corpo do e-mail com o rodapé de descadastro anexado. Sem travessão: o rodapé
+// vai em TODO e-mail que sai daqui, então ele segue a mesma regra de copy do
+// resto (vírgula, parênteses ou ponto médio no lugar do travessão).
+export const emailBodyWithUnsub = (bodyT, toks, unsubUrl) => `${interpolate(bodyT, toks)}\n\n·\nPara não receber mais estes e-mails: ${unsubUrl}`;
