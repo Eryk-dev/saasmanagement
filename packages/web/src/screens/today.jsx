@@ -2029,7 +2029,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   // ciclo, valor e pagamento), servindo a Integração e o Ganho.
   const dealFields = (hint) => (
     <div style={{ maxWidth: 340 }}>
-      <DealProductField saas={lead.saas} value={dealProduct} plan={planClosed}
+      <DealProductField saas={lead.saas} value={dealProduct} plan={planClosed} amount={amount}
         fieldStyle={fieldStyle} labelStyle={label}
         onChange={(id, p) => { setDealProduct(id); if (p?.oneOff) setPlanClosed("unico"); }}
         onPick={(r) => { setAmount(String(r.value)); if (r.plan) setPlanClosed(r.plan); }} />
