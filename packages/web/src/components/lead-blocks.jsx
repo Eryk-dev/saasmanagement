@@ -192,12 +192,18 @@ export function DealProductField({ saas, value, onChange, plan = "", amount = nu
   // perde o prefixo do ciclo ("Semestral · 50 anúncios" → "50 anúncios");
   // produto sem leque de cotas fica só com o preço. Destacado = o chip cujo
   // valor É o valor do negócio atual.
-  const prices = (cur?.prices || []).filter((r) => !plan || r.plan === plan);
+  // Plano SEM preço no catálogo (assinatura mensal): o leque inteiro fica como
+  // referência em vez de sumir — sem ele parecia que o produto tinha sumido
+  // (Leo, 16/08). Nesse fallback o ciclo volta pro rótulo (é ele que
+  // diferencia) e clicar resolve valor + plano de uma vez (onPick).
+  const all = cur?.prices || [];
+  const scoped = plan ? all.filter((r) => r.plan === plan) : [];
+  const prices = scoped.length ? scoped : all;
   const money = (v) => (typeof window !== "undefined" && window.fmt?.money?.(v)) || `R$${v}`;
   const chipLabel = (r) => {
     let l = String(r.label || "");
     const cyc = closedPlanLabel(r.plan);
-    if (plan && cyc && l.startsWith(cyc)) l = l.slice(cyc.length).replace(/^\s*·\s*/, "").trim();
+    if (scoped.length && cyc && l.startsWith(cyc)) l = l.slice(cyc.length).replace(/^\s*·\s*/, "").trim();
     return l ? `${l} · ${money(r.value)}` : money(r.value);
   };
   return (
