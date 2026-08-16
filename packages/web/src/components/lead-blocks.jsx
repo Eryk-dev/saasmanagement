@@ -182,16 +182,24 @@ export function LeadChecklist({ checklist, onPatch, leadId, title = "Dados do le
 //
 // Usado no gate do board/card (stage-move.jsx) e no "Depois da ação" do Meu dia
 // (today.jsx): fechar por qualquer um dos dois registra a mesma coisa.
-export function DealProductField({ saas, value, onChange, plan = "", onPick, fieldStyle, labelStyle = null, required = true }) {
+export function DealProductField({ saas, value, onChange, plan = "", amount = null, onPick, fieldStyle, labelStyle = null, required = true }) {
   const products = dealProductsOf(saas);
   if (!products.length) return null;
   const cur = products.find((p) => p.id === value) || null;
-  // TODOS os preços do produto (semestral e anual, e as cotas do leque no OEM):
-  // um clique resolve valor E ciclo de uma vez, então esconder o outro ciclo só
-  // obrigaria a trocar o plano antes pra ver o preço. O que bate com o plano
-  // atual fica destacado.
-  const prices = cur?.prices || [];
+  // Só os preços do PLANO selecionado: o período já é escolhido no "Plano
+  // fechado" logo abaixo — listar os dois ciclos duplicava o leque e o destaque
+  // por ciclo acendia todos os chips do plano juntos (Leo, 16/08). O rótulo
+  // perde o prefixo do ciclo ("Semestral · 50 anúncios" → "50 anúncios");
+  // produto sem leque de cotas fica só com o preço. Destacado = o chip cujo
+  // valor É o valor do negócio atual.
+  const prices = (cur?.prices || []).filter((r) => !plan || r.plan === plan);
   const money = (v) => (typeof window !== "undefined" && window.fmt?.money?.(v)) || `R$${v}`;
+  const chipLabel = (r) => {
+    let l = String(r.label || "");
+    const cyc = closedPlanLabel(r.plan);
+    if (plan && cyc && l.startsWith(cyc)) l = l.slice(cyc.length).replace(/^\s*·\s*/, "").trim();
+    return l ? `${l} · ${money(r.value)}` : money(r.value);
+  };
   return (
     <div>
       <label className="kicker" style={labelStyle || { display: "block", marginBottom: 4 }}>Produto vendido {required ? "*" : ""}</label>
@@ -203,15 +211,15 @@ export function DealProductField({ saas, value, onChange, plan = "", onPick, fie
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
           <span className="mono dim" style={{ fontSize: 10, flexShrink: 0 }}>preço do catálogo</span>
           {prices.map((r) => {
-            const on = !!plan && r.plan === plan;
+            const on = amount != null && amount !== "" && Number(amount) === r.value;
             return (
               <button key={`${r.plan}-${r.label}-${r.value}`} onClick={() => onPick && onPick(r)}
-                title={`Usar ${money(r.value)} como valor do negócio (plano ${closedPlanLabel(r.plan) || r.plan})`}
+                title={`Usar ${money(r.value)} como valor do negócio`}
                 style={{ height: 24, padding: "0 9px", borderRadius: "var(--r-2)",
                   border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"),
                   background: on ? "var(--accent-soft)" : "var(--bg-1)",
                   color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 11, fontWeight: on ? 600 : 500 }}>
-                {r.label} · {money(r.value)}
+                {chipLabel(r)}
               </button>
             );
           })}
