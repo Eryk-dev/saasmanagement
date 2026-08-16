@@ -13,6 +13,7 @@ import { mergeLeadQuestions } from "./forms.js";
 import { registerProposalRoutes } from "./routes.proposals.js";
 import { runNativeProposal, proposalOffers, shareProposalOffer, buildCustomProposal, publicProposal, syncProposalLeadSnapshot } from "./proposal.js";
 import { DEAL_PRODUCT_LABEL, dealCatalog } from "./proposal-catalog.js";
+import { mentoriaDealCatalog, MENTORIA_LABEL } from "./mentoria.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { registerBillingRoutes } from "./routes.billing.js";
 import { initSubscription, syncCustomerArr, createClosedSubscription, closedSubscriptionSpec, closedInstallments, createInstallmentSchedule, syncClosedInstallments } from "./billing.js";
@@ -433,10 +434,17 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
           const templates = await repo.list("proposal_templates");
           const published = templates.filter((t) => t.status === "published");
           const catalog = {};
-          for (const t of published) {
-            const rows = dealCatalog(t.calc);
-            if (rows.length && t.saas) catalog[t.saas] = rows;
-          }
+          const add = (saas, rows) => {
+            if (!saas || !rows.length) return;
+            const cur = catalog[saas] || (catalog[saas] = []);
+            for (const r of rows) if (!cur.some((x) => x.id === r.id)) cur.push(r);
+          };
+          for (const t of published) add(t.saas, dealCatalog(t.calc));
+          // Deck alternativo (rascunho + selectable) também vende: a Mentoria
+          // vive num deck selecionável do leverads, e os produtos dela precisam
+          // existir no gate de fechamento do mesmo jeito. `group` nas linhas faz
+          // o select separar as duas linhas de produto.
+          for (const t of templates) if (t.selectable) add(t.saas, mentoriaDealCatalog(t.calc));
           return { nativeSaas: published.map((t) => t.saas), catalog };
         })(),
         mp: { configured: mpClient.configured(), webhook: mpClient.hasWebhookSecret() },
@@ -1021,7 +1029,10 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
 const CLOSED_PLAN_LABEL = { anual: "Anual", semestral: "Semestral", mensal: "Mensal", unico: "Serviço único" };
 // O produto do catálogo da apresentação (FULL/OEM/Parcial, lead.dealProduct)
 // entra na frente do ciclo na coluna Plano do cliente: "LeverAds FULL · Anual".
-const planLabelOf = (lead) => [DEAL_PRODUCT_LABEL[lead.dealProduct], CLOSED_PLAN_LABEL[lead.planClosed]].filter(Boolean).join(" · ");
+const planLabelOf = (lead) => [
+  DEAL_PRODUCT_LABEL[lead.dealProduct] || MENTORIA_LABEL[lead.dealProduct],
+  CLOSED_PLAN_LABEL[lead.planClosed],
+].filter(Boolean).join(" · ");
 const CLOSED_PLAN_ANNUAL_FACTOR = { anual: 1, semestral: 2, mensal: 12, unico: 1 };
 export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } = {}) {
   if (!lead || !lead.saas) return null;

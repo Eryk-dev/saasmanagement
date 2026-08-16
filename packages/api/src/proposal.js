@@ -30,6 +30,7 @@
 import { randomBytes } from "node:crypto";
 import { CYCLE_MONTHS } from "./billing.js";
 import { hasCatalog, applyCatalog, catalogAmount } from "./proposal-catalog.js";
+import { mentoriaAmount } from "./mentoria.js";
 import { attributionPain, painCode } from "./attribution.js";
 
 export const SLIDE_TYPES = ["hero", "cards", "receipt", "steps", "compare", "bignum", "pricing", "closer", "custom"];
@@ -466,9 +467,9 @@ export async function runNativeProposal(repo, lead, opts = {}) {
     proposal_edit_url: `${proposalUrl}?k=${proposal.editKey}`,
   };
   // Potencial do card = o preço que a APRESENTAÇÃO vai mostrar: o produto
-  // sugerido pela régua (semestral) quando há catálogo; sem catálogo, a
-  // fórmula por assentos de sempre.
-  const amount = catalogAmount(proposal) || contractValue(calc, proposal.state);
+  // sugerido pela régua (semestral) quando há catálogo; na mentoria, a oferta
+  // que a verba declarada encaixa; sem nenhum dos dois, a fórmula por assentos.
+  const amount = catalogAmount(proposal) || mentoriaAmount(lead, calc) || contractValue(calc, proposal.state);
   if (amount > 0) patch.amount = amount;
   const updated = await repo.update("leads", lead.id, patch);
   return { ok: true, lead: updated, proposal };

@@ -7,6 +7,7 @@
 
 import { stageKind, openStages } from "./funnel.js";
 import { currentUser, displayName } from "./users.js";
+import { isMentoriaLead, mentoriaFit } from "./mentoria.js";
 
 // Etapa "No show" (cliente furou a call) — detectada pelo nome (kind é contato,
 // mas precisa de roteiro/grupo próprios, distintos da Nutrição).
@@ -60,6 +61,26 @@ export function scriptTokens(lead, saasCfg, callSummary) {
     objecao_aberta: openObj ? openObj.objecao : cs ? "nenhuma, todas tratadas na call" : "",
     dor_call: (cs?.dores || []).filter(Boolean)[0] || "",
     temperatura_call: cs?.temperatura ? `${cs.temperatura}${cs.temperaturaPorque ? ` (${cs.temperaturaPorque})` : ""}` : "",
+    // Fila da Mentoria: a oferta que a verba declarada encaixa, já em frase
+    // falável, e a instrução do closer pra ela.
+    ...mentoriaTokens(lead),
+  };
+}
+
+// Tokens da mentoria. Fora da fila, ficam vazios (nenhum roteiro de venda os
+// usa, então não viram lacuna em lugar nenhum).
+function mentoriaTokens(lead) {
+  const fit = mentoriaFit(lead);
+  if (!fit) return { verba_declarada: "", oferta_mentoria: "", nota_mentoria: "" };
+  const money = (v) => (typeof window !== "undefined" && window.fmt?.money?.(v)) || `R$ ${v}`;
+  const name = String(fit.offer?.label || "").replace(/^Mentoria\s*·\s*/, "");
+  const parcela = fit.offer?.price ? Math.round(fit.offer.price / 12) : 0;
+  return {
+    verba_declarada: fit.declared ? fit.verbaLabel : "",
+    oferta_mentoria: fit.offer
+      ? `a Mentoria ${name}, ${money(fit.offer.price)} à vista ou 12x de ${money(parcela)} no cartão`
+      : "",
+    nota_mentoria: fit.note || "",
   };
 }
 
@@ -87,6 +108,9 @@ const GAP_HINTS = {
   objecao_aberta: "gerar o resumo da call (✨ no card acima)",
   dor_call: "gerar o resumo da call (✨ no card acima)",
   temperatura_call: "gerar o resumo da call (✨ no card acima)",
+  verba_declarada: "perguntar a verba pra começar",
+  oferta_mentoria: "sem verba declarada: pergunte antes de falar preço",
+  nota_mentoria: "sem verba declarada",
 };
 
 // Divide um texto com {{tokens}} em segmentos prontos pra renderização:
@@ -351,6 +375,23 @@ export const DEFAULT_SCRIPTS = {
       { t: "Pedir 2 indicações", fala: "Na integração eu te falei que ia cobrar: quais DOIS lojistas você conhece que sofrem pra replicar anúncio entre contas? Me passa o contato deles que eu cuido bem. Se fechar, tenho uma condição especial pra você.", dica: "Registre cada indicação como lead novo com origem 'Indicação' (vira classe Semente nas métricas e conta na meta de 7 por cliente do CS)." },
     ],
   },
+  // Fila da MENTORIA: quem respondeu no form que ainda NÃO vende em marketplace
+  // e disse que quer começar. Não é lead do software (a LeverAds resolve a dor
+  // de quem já opera), é lead da mentoria. A verba que ele declarou é o que
+  // decide a oferta, e o roteiro já entra com ela resolvida ({{oferta_mentoria}}).
+  mentoria: {
+    titulo: "Mentoria · quem ainda não vende",
+    resumo: "Esse lead saiu do funil de venda de propósito: ele não pode comprar a plataforma porque ainda não vende. O que ele pode comprar é o caminho da primeira venda. Tom de conselho, não de venda: ele está inseguro e provavelmente já tomou dinheiro de curso que não entregou. A verba que ele declarou no formulário já diz o que oferecer, então não invente degrau.",
+    objetivo: "Confirmar o momento dele, mostrar o diferencial (nosso produto validado na conta dele) e marcar 30 minutos pra apresentação. Verba de até R$ 1 mil dá pra fechar o Curso na própria conversa.",
+    passos: [
+      { t: "Abertura", fala: "Oi {{nome}}, tudo bem? Aqui é {{eu}}, da Lever. Você preencheu nosso formulário e marcou que ainda não vende em marketplace, mas que quer começar. É isso mesmo?" },
+      { t: "Situação", fala: "Me conta rapidinho: você já tem CNPJ e conta aberta, ou é do zero mesmo? E já tem ideia do que quer vender?", dica: "Aqui você só está ouvindo. Se ele disser que JÁ vende, mudou a rota: é lead da plataforma ou da trilha Escalar, não desta fila." },
+      { t: "O problema que ele ainda não sabe que tem", fala: "Deixa eu te adiantar o que trava quase todo mundo que começa: conta nova não aparece na busca enquanto não tem venda, e sem aparecer não vende. Aí a pessoa compra estoque no chute, sobe o anúncio e o produto fica parado." },
+      { t: "O diferencial (é isso que vende)", fala: "O que a gente faz de diferente é colocar um produto NOSSO, que já vende todo dia, anunciado na sua conta. Ele faz as suas primeiras vendas e esquenta a conta, e enquanto isso a gente escolhe e compra o SEU estoque junto com você, com custo e margem na planilha." },
+      { t: "A oferta", fala: "Pelo que você me falou, o que encaixa pra você é {{oferta_mentoria}}.", dica: "{{nota_mentoria}}" },
+      { t: "Próximo passo", fala: "Vou te mandar a apresentação e a gente marca 30 minutinhos pra eu te mostrar como funciona por dentro. Fica melhor amanhã de manhã ou no fim da tarde?", dica: "Gera a apresentação no card escolhendo o deck Mentoria (não vende ainda). Marcou? Registra em Call agendada." },
+    ],
+  },
   outro: {
     titulo: "Contato",
     resumo: "Etapa sem roteiro próprio. Dá pra escrever um em Ajustes, na aba Funil & estágios (coluna do lápis).",
@@ -387,6 +428,10 @@ export function scriptKeyFor(saasCfg, lead) {
   const reactivation = (kind === "contato" || kind === "qualificacao") &&
     lead?.stage && !openStages(saasCfg).includes(stage);
   const attempts = Number(lead?.stageAttempts) || 0;
+  // Fila da Mentoria: enquanto o card está na coluna própria (kind fora da
+  // régua do funil), a fala é a da mentoria. Quando o closer traz o card pro
+  // fluxo normal (call, follow-up), valem os roteiros daquelas etapas.
+  if (isMentoriaLead(lead) && kind === "outro") return "mentoria";
   if (isNoShowStage(stage)) return attempts >= 1 ? "noshow2" : "noshow1";
   if (reactivation) return attempts >= 2 ? "nutricao3" : attempts === 1 ? "nutricao2" : "nutricao1";
   if (kind === "qualificacao") return attempts >= 1 ? "qualificacao3" : "qualificacao2";

@@ -12,6 +12,7 @@ import { mergeLeadQuestions } from "./forms.js";
 import { waMatchKey } from "./wa-store.js";
 import { backfillPaymentLinks } from "./payment-links.js";
 import { slideVisible } from "./proposal.js";
+import { mentoriaTemplateDoc, mentoriaCalcBlock } from "./mentoria.js";
 
 // Garante o estágio "Integração" no funil do produto `leverads`, posicionado
 // entre "Negociação" e "Ganho". Integração é pós-venda: negócio já fechado,
@@ -1629,4 +1630,62 @@ export async function runStartupMigrations(repo) {
   } catch (err) {
     console.error("[migration] backfillPaymentLinks falhou:", err?.message || err);
   }
+  // Mentoria: o produto da fila de quem ainda não vende (apresentação + preços
+  // que alimentam o gate de fechamento) e a nova mensagem da saída lateral.
+  try {
+    const changed = await ensureMentoriaTemplate(repo);
+    if (changed) console.log("[migration] apresentação da Mentoria (pt_mentoria) criada/atualizada com o catálogo de preços");
+  } catch (err) {
+    console.error("[migration] ensureMentoriaTemplate falhou:", err?.message || err);
+  }
+  try {
+    const changed = await migrateFormMentoriaOferta(repo);
+    if (changed) console.log("[migration] saída lateral da Mentoria agora anuncia a oferta (não mais 'te chamamos quando abrir')");
+  } catch (err) {
+    console.error("[migration] migrateFormMentoriaOferta falhou:", err?.message || err);
+  }
+}
+
+// ── Mentoria · apresentação e preços (16/08/2026) ───────────────────────────
+// A fila de quem ainda não vende ganhou produto. O template nasce RASCUNHO +
+// selectable (o deck padrão do leverads continua sendo o pt_leverads) e carrega
+// `calc.mentoria`, que é de onde o gate de fechamento tira os preços — mexer no
+// preço passa a ser edição no banco, sem deploy, igual ao catálogo do LeverAds.
+//
+// Idempotente e respeitosa: template que já existe só ganha o bloco de preços
+// quando ele falta. Slides editados pelo dono nunca são reescritos.
+export async function ensureMentoriaTemplate(repo) {
+  const doc = mentoriaTemplateDoc();
+  const cur = await repo.get("proposal_templates", doc.id);
+  if (!cur) {
+    await repo.create("proposal_templates", { ...doc, createdAt: new Date().toISOString() });
+    return true;
+  }
+  const patch = {};
+  if (!cur.calc?.mentoria?.products) patch.calc = { ...(cur.calc || {}), mentoria: mentoriaCalcBlock() };
+  // `selectable` é o que faz o deck aparecer no select do card: sem ele o
+  // template existiria mas ninguém conseguiria gerar.
+  if (!cur.selectable) patch.selectable = true;
+  if (!cur.pickLabel) patch.pickLabel = doc.pickLabel;
+  if (!Object.keys(patch).length) return false;
+  await repo.update("proposal_templates", doc.id, patch);
+  return true;
+}
+
+// A tela de saída dizia "estamos montando algo pra quem está começando:
+// guardamos seu contato e te chamamos quando abrir". Abriu. A mensagem passa a
+// dizer o que existe e o que vai acontecer, senão o lead que acabou de declarar
+// a verba fica achando que caiu numa lista de espera.
+export async function migrateFormMentoriaOferta(repo) {
+  const form = await repo.get("forms", "fo_diagnostico_leverads");
+  if (!form || form.mentoriaOfertaV1) return false;
+  const exits = { ...(form.exits || {}) };
+  if (!exits.mentoria) return false; // o form ainda não passou pela saída lateral
+  exits.mentoria = {
+    ...exits.mentoria,
+    title: "Recebemos! Você está *no começo da jornada*.",
+    subtitle: "A LeverAds é pra quem já vende, mas a Mentoria Lever é exatamente pra quem está começando: a gente coloca um produto nosso, que já vende todo dia, na sua conta pra fazer as primeiras vendas enquanto escolhe e compra o seu estoque com você. Vamos te chamar no WhatsApp pra conversar.",
+  };
+  await repo.update("forms", form.id, { exits, mentoriaOfertaV1: true });
+  return true;
 }

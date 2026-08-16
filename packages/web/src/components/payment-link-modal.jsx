@@ -3,6 +3,7 @@ import { useEsc } from "../atoms.jsx";
 import { waLink } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { PAYMENT_METHODS, CLOSED_PLANS, DEAL_PRODUCTS, dealProductLabel, dealProductsOf } from "../lib/payments.js";
+import { ProductOptions } from "./lead-blocks.jsx";
 
 // Modal do LINK DE PAGAMENTO do Mercado Pago — o MESMO em todo lugar que gera
 // link: atalho do card do lead (deal.jsx) e tela "Links de pagamento", que abre
@@ -265,7 +266,7 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved }) {
                 title="produto do catálogo da apresentação — vai pro card, pro cliente e pro card da Integração">
                 <option value="">escolher…</option>
                 {/* catálogo real do SaaS (SEED); sem catálogo, a lista estática */}
-                {(dealProductsOf(doc.saas).length ? dealProductsOf(doc.saas) : DEAL_PRODUCTS).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                <ProductOptions products={dealProductsOf(doc.saas).length ? dealProductsOf(doc.saas) : DEAL_PRODUCTS} />
               </select>
             </label>
             <label style={field}>
