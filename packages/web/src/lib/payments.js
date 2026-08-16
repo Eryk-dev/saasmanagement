@@ -139,6 +139,15 @@ export const linkStatusOf = (s) => LINK_STATUS[s] || MP_PAY_STATUS[s] || { label
 const LINK_ORIGIN = { card: "card do lead", tela: "tela de links", cliente: "ficha do cliente", fatura: "fatura" };
 export const linkOriginLabel = (o) => LINK_ORIGIN[o] || "";
 
+// Estado da ASSINATURA RECORRENTE no Mercado Pago (preapproval) — o que a conta
+// está cobrando de fato, independente do status da assinatura no cockpit.
+export const MP_SUB_STATUS = {
+  authorized: { label: "cobrando", tone: "pos" },
+  pending: { label: "aguardando autorização", tone: "warn" },
+  paused: { label: "pausada", tone: "warn" },
+  cancelled: { label: "cancelada", tone: "mut" },
+};
+
 export const MP_PAY_STATUS = {
   approved: { label: "pago", tone: "pos" },
   pending: { label: "pendente", tone: "warn" },

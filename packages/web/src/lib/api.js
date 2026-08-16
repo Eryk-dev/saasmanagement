@@ -447,6 +447,13 @@ export const api = {
   },
   mpSyncNow: () => req("POST", "/api/mp/sync", {}),
   mpLinkPayment: (id, customer) => req("POST", `/api/mp/payments/${id}/link`, { customer }),
+  // Assinaturas recorrentes da conta MP (preapprovals) ↔ clientes do cockpit.
+  mpPreapprovals: (query = {}) => {
+    const qs = new URLSearchParams(Object.fromEntries(Object.entries(query).filter(([, v]) => v))).toString();
+    return req("GET", `/api/mp/preapprovals${qs ? `?${qs}` : ""}`);
+  },
+  mpSyncPreapprovals: () => req("POST", "/api/mp/preapprovals/sync", {}),
+  mpLinkPreapproval: (id, body = {}) => req("POST", `/api/mp/preapprovals/${id}/link`, body),
   createCharge: (customerId, body) => req("POST", `/api/customers/${customerId}/charge`, body),
   // Link de pagamento pelo card do lead (external_reference = lead: pagamento
   // entra no Financeiro já casado com a origem).

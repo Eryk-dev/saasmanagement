@@ -189,7 +189,7 @@ function FinanceTab({ product }) {
                     </td>
                     <td style={{ padding: "10px 14px", fontSize: 13, borderBottom: "1px solid var(--line-faint)" }}>
                       {p.customer ? (
-                        <span title={{ reference: "casado pela fatura/link do cockpit", subscription: "casado pela assinatura", email: "casado pelo e-mail do pagador", manual: "vinculado manualmente" }[p.matchedBy] || ""}>
+                        <span title={{ reference: "casado pela fatura/link do cockpit", subscription: "casado pela assinatura", preapproval: "casado pela assinatura recorrente do MP vinculada a este cliente", email: "casado pelo e-mail do pagador", manual: "vinculado manualmente" }[p.matchedBy] || ""}>
                           {customerName(p.customer) || p.customer}
                         </span>
                       ) : p.lead ? (
