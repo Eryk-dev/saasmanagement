@@ -211,7 +211,7 @@ function App() {
     outbound:    ["Comercial", "Outbound"],
     customers:   ["Comercial", "Clientes"],
     proposals:   ["Comercial", "Propostas"],
-    offers:      ["Comercial", "Link pagamento"],
+    offers:      ["Comercial", "Links de pagamento"],
     contracts:   ["Comercial", "Contratos"],
     agenda:      ["Comercial", "Agenda"],
     whatsapp:    ["Comercial", "Inbox"],
@@ -294,7 +294,7 @@ function App() {
           {scr === "proposals"   && <ProposalsScreen saasId={params.saas} />}
           {scr === "creative"    && <CreativeScreen />}
           {scr === "social"      && <SocialScreen />}
-          {scr === "offers"      && <OffersScreen />}
+          {scr === "offers"      && <OffersScreen onOpenLead={openLead} />}
           {scr === "contracts"   && <ContractsScreen />}
           {scr === "agenda"      && <AgendaScreen onOpenLead={openLead} />}
           {scr === "consultas"   && <ConsultasScreen />}

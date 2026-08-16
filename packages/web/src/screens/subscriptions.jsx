@@ -3,7 +3,7 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
 import { EmptyState, PrimaryButton, useEsc } from "../atoms.jsx";
-import { mpMethodLabel } from "../lib/payments.js";
+import { mpMethodLabel, MP_SUB_STATUS } from "../lib/payments.js";
 // Assinaturas (fase 5) — Cockpit como system-of-record de billing: assinaturas,
 // faturas (renovação/pró-rata/dunning) e planos por SaaS. O pagamento em si fica
 // no MP/app (fase 4) — aqui a fatura recebe baixa manual ("marcar paga").
@@ -35,21 +35,24 @@ function SubscriptionsScreen({ saasId }) {
   // Embutida em Clientes (saasId controlado): segue o produto da tela-mãe e
   // não mostra seletor próprio — um seletor de SaaS por tela basta.
   useEffect(() => { if (saasId) setActive(saasId); }, [saasId]);
-  const [tab, setTab] = useState("subs"); // subs | invoices | plans
+  const [tab, setTab] = useState("subs"); // subs | invoices | plans | mp
   const [subs, setSubs] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [plans, setPlans] = useState([]);
+  const [mpData, setMpData] = useState(null); // { preapprovals, sync } — recorrências da conta MP
   const [changing, setChanging] = useState(null); // assinatura no modal de mudança
   const [toast, setToast] = useState(null);
 
   const load = useCallback(async () => {
     if (!active) return;
-    const [ss, ii, pp] = await Promise.all([
+    const mpOn = !!window.SEED?.CONFIG?.mp?.configured;
+    const [ss, ii, pp, mm] = await Promise.all([
       api.list("subscriptions", { saas: active }),
       api.list("invoices", { saas: active }),
       api.list("plans", { saas: active }),
+      mpOn ? api.mpPreapprovals({ saas: active }).catch(() => null) : Promise.resolve(null),
     ]);
-    setSubs(ss); setInvoices(ii); setPlans(pp);
+    setSubs(ss); setInvoices(ii); setPlans(pp); setMpData(mm);
     // O EntityForm de assinatura monta o select de planos daqui (padrão window.SEED).
     window.PLANS_CACHE = pp;
   }, [active]);
@@ -99,8 +102,28 @@ function SubscriptionsScreen({ saasId }) {
       flash(err.status === 400 ? "cliente sem e-mail — edite o cliente e preencha o e-mail" : `MP: ${err.message}`);
     }
   }
+  // Sincroniza o espelho das recorrências da conta MP (aba MP).
+  async function syncPreapprovals() {
+    try {
+      const r = await api.mpSyncPreapprovals();
+      flash(`MP: ${r.seen} recorrência(s) na conta · ${r.linked} já vinculada(s)`);
+      await load();
+    } catch (err) { flash(`MP: ${err.message}`); }
+  }
+  // Liga uma recorrência do MP a uma assinatura do cockpit (ou desfaz o vínculo).
+  async function linkPreapproval(p, subscription) {
+    try {
+      await api.mpLinkPreapproval(p.id, subscription ? { subscription } : {});
+      flash(subscription ? "recorrência vinculada — o MP agora conversa com essa assinatura" : "vínculo desfeito");
+      await refresh();
+      await load();
+    } catch (err) { flash(err.message || "não deu pra vincular"); }
+  }
+
   const mpConfigured = !!window.SEED?.CONFIG?.mp?.configured;
   const MP_LABEL = { pending: "MP: aguardando", authorized: "MP: ativo", paused: "MP: pausado", cancelled: "MP: cancelado" };
+  const preapprovals = mpData?.preapprovals || [];
+  const mpUnlinked = preapprovals.filter((p) => !p.subscription).length;
 
   const customerName = (id) => CUSTOMERS.find((c) => c.id === id)?.name || id || "—";
   const planName = (id) => plans.find((p) => p.id === id)?.name || (id ? id : "avulso");
@@ -139,14 +162,21 @@ function SubscriptionsScreen({ saasId }) {
           <TabBtn k="subs" label={`Assinaturas (${subs.length})`} />
           <TabBtn k="invoices" label={`Faturas (${invoices.length})`} />
           <TabBtn k="plans" label={`Planos (${plans.length})`} />
+          {mpConfigured && <TabBtn k="mp" label={`MP recorrentes (${preapprovals.length})${mpUnlinked ? ` · ${mpUnlinked} sem cliente` : ""}`} />}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button onClick={runBilling} style={chromeBtnStyleSmall} title="aplica mudanças agendadas, gera renovações e roda o dunning">
-            <span className="mono" style={{ fontSize: 11 }}>▸ rodar billing</span>
-          </button>
+          {tab === "mp" ? (
+            <button onClick={syncPreapprovals} style={chromeBtnStyleSmall} title="busca as assinaturas recorrentes da conta MP agora (o servidor também faz sozinho a cada 30 min)">
+              <span className="mono" style={{ fontSize: 11 }}>↻ sincronizar MP</span>
+            </button>
+          ) : (
+            <button onClick={runBilling} style={chromeBtnStyleSmall} title="aplica mudanças agendadas, gera renovações e roda o dunning">
+              <span className="mono" style={{ fontSize: 11 }}>▸ rodar billing</span>
+            </button>
+          )}
           {tab === "plans"
             ? <PrimaryButton onClick={() => openForm("plans", { saas: active })}>+ novo plano</PrimaryButton>
-            : <PrimaryButton onClick={() => openForm("subscriptions", { saas: active })}>+ nova assinatura</PrimaryButton>}
+            : tab !== "mp" && <PrimaryButton onClick={() => openForm("subscriptions", { saas: active })}>+ nova assinatura</PrimaryButton>}
         </div>
       </div>
 
@@ -258,6 +288,16 @@ function SubscriptionsScreen({ saasId }) {
             </Table>
           )
         )}
+        {tab === "mp" && (
+          <MpRecurringTab
+            preapprovals={preapprovals}
+            sync={mpData?.sync}
+            subs={subs}
+            customerName={customerName}
+            onLink={linkPreapproval}
+            onSync={syncPreapprovals}
+          />
+        )}
       </div>
 
       {changing && (
@@ -269,6 +309,118 @@ function SubscriptionsScreen({ saasId }) {
           onDone={async (msg) => { setChanging(null); flash(msg); await refresh(); }}
         />
       )}
+    </div>
+  );
+}
+
+// Aba MP recorrentes — as assinaturas que a conta do Mercado Pago cobra HOJE,
+// inclusive as criadas fora do cockpit (painel do MP, copylever). Vincular uma
+// delas a uma assinatura daqui é o que faz o cockpit e o MP falarem a mesma
+// língua: o status do MP passa a ser espelhado, a cobrança do ciclo dá baixa na
+// fatura sozinha e cancelar/pausar aqui vale lá.
+function MpRecurringTab({ preapprovals, sync, subs, customerName, onLink, onSync }) {
+  const [picked, setPicked] = useState({}); // preapprovalId -> subscriptionId escolhido
+  const money = window.fmt.money;
+
+  // Assinaturas que podem receber uma recorrência: deste SaaS, não canceladas e
+  // ainda sem preapproval (uma recorrência por assinatura).
+  const free = subs.filter((s) => s.status !== "canceled" && !s.mpPreapprovalId);
+  const subLabel = (s) => `${customerName(s.customer)} · ${money(s.price || 0)}/${CYCLE_LABEL[s.cycle] || s.cycle}`;
+  const cycleLabel = (p) => CYCLE_LABEL[p.cycle] || (p.frequency ? `a cada ${p.frequency} ${p.frequencyType || ""}`.trim() : "—");
+
+  if (!preapprovals.length) {
+    return (
+      <EmptyState
+        title="Nenhuma assinatura recorrente na conta do Mercado Pago"
+        hint="Clique em “↻ sincronizar MP”. O cockpit lê as recorrências (preapproval) da conta — as criadas aqui e as criadas direto no painel do MP — pra você ligar cada uma ao cliente."
+        action={<PrimaryButton onClick={onSync}>↻ sincronizar MP</PrimaryButton>}
+      />
+    );
+  }
+
+  const cols = "1.3fr 1.2fr 0.9fr 0.9fr 0.9fr 1.6fr";
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.6 }}>
+        vincular carimba a recorrência na assinatura: o status do MP passa a ser espelhado, a cobrança do ciclo dá baixa na fatura e cancelar/pausar aqui vale no MP
+        {sync?.lastAt ? ` · último sync ${new Date(sync.lastAt).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}
+      </div>
+      <Table
+        cols={cols}
+        head={["Pagador", "Cobrança", "Valor / ciclo", "Status no MP", "Próxima cobrança", "Cliente no cockpit"]}
+      >
+        {preapprovals.map((p) => {
+          const st = MP_SUB_STATUS[p.status] || { label: p.status || "—", tone: "mut" };
+          const linked = p.subscription ? subs.find((s) => s.id === p.subscription) : null;
+          // Vinculada a uma assinatura de OUTRO produto: o doc some da lista do
+          // SaaS ativo só quando tem saas — aqui o fallback evita "—" sem sentido.
+          const linkedName = linked ? customerName(linked.customer) : (p.customer ? customerName(p.customer) : "");
+          const diverge = linked && Math.abs(Number(linked.price) - Number(p.amount)) >= 0.01;
+          // Sem escolha manual, o seletor já vem na sugestão do servidor (e-mail
+          // do pagador = e-mail de um único cliente) — um clique resolve.
+          const choice = picked[p.id] ?? (free.some((s) => s.id === p.suggestedSubscription) ? p.suggestedSubscription : "");
+          return (
+            <div key={p.id} style={rowStyle(cols)}>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ fontWeight: 500, display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{p.payerEmail || "pagador não informado"}</span>
+                <span className="mono dim" style={{ fontSize: 9.5 }}>{p.mpId}</span>
+              </span>
+              <span style={{ minWidth: 0 }}>
+                <span className="mono dim" style={{ fontSize: 11, display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{p.reason || "—"}</span>
+                {p.chargedQuantity > 0 && (
+                  <span className="mono dim" style={{ fontSize: 9.5 }}>já cobrou {p.chargedQuantity}× · {money(p.chargedAmount || 0)}</span>
+                )}
+              </span>
+              <span className="mono tnum" style={{ fontSize: 12 }}>
+                {money(p.amount || 0)}
+                <span className="dim" style={{ display: "block", fontSize: 10 }}>{cycleLabel(p)}</span>
+              </span>
+              <span>
+                <span className={"chip " + (st.tone === "pos" ? "pos" : st.tone === "warn" ? "warn" : "")} style={{ height: 20 }}>{st.label}</span>
+              </span>
+              <span className="mono dim tnum" style={{ fontSize: 12 }}>
+                {fmtDate(p.nextPaymentDate)}
+                {p.lastChargedDate && <span style={{ display: "block", fontSize: 9.5 }}>última {fmtDate(p.lastChargedDate)}</span>}
+              </span>
+              <span style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                {p.subscription ? (
+                  <>
+                    <span style={{ fontWeight: 500 }}>{linkedName || p.subscription}</span>
+                    {diverge && (
+                      <span className="mono" title={`a assinatura do cockpit está em ${money(linked.price || 0)} e o MP cobra ${money(p.amount || 0)}`}
+                        style={{ fontSize: 9.5, color: "var(--warn)" }}>valor difere</span>
+                    )}
+                    <button onClick={() => onLink(p, "")} style={chromeBtnStyleSmall} title="desfaz o vínculo (não mexe na recorrência do MP)">
+                      <span style={{ fontSize: 11 }}>desvincular</span>
+                    </button>
+                  </>
+                ) : !free.length ? (
+                  <span className="mono dim" style={{ fontSize: 10.5 }}>nenhuma assinatura livre neste produto</span>
+                ) : (
+                  <>
+                    <select
+                      value={choice}
+                      onChange={(e) => setPicked((m) => ({ ...m, [p.id]: e.target.value }))}
+                      style={{ height: 26, maxWidth: 200, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}
+                    >
+                      <option value="">vincular a…</option>
+                      {free.map((s) => <option key={s.id} value={s.id}>{subLabel(s)}</option>)}
+                    </select>
+                    {choice && (
+                      <button onClick={() => onLink(p, choice)} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}>
+                        <span style={{ fontSize: 11 }}>vincular</span>
+                      </button>
+                    )}
+                    {p.suggestedBy === "email" && choice === p.suggestedSubscription && (
+                      <span className="mono dim" title="sugerido pelo e-mail do pagador" style={{ fontSize: 9.5 }}>sugestão</span>
+                    )}
+                  </>
+                )}
+              </span>
+            </div>
+          );
+        })}
+      </Table>
     </div>
   );
 }

@@ -91,7 +91,7 @@ const NAV = [
   // no workspace do UniqueKids (`saas`); nos outros produtos ela não existe.
   { id: "consultas",  label: "Consultas",      icon: "❋",  group: "comercial", saas: "uniquekids" },
   { id: "proposals",  label: "Propostas",      icon: "▥",  group: "comercial", notSaas: "elo" },
-  { id: "offers",     label: "Link pagamento", icon: "◇",  group: "comercial", notSaas: "elo" },
+  { id: "offers",     label: "Links de pagamento", icon: "◇", group: "comercial", notSaas: "elo" }, // gerar cobrança no nome do lead/cliente + histórico de quem pagou
   { id: "contracts",  label: "Contratos",      icon: "▧",  group: "comercial", notSaas: "elo" }, // biblioteca de modelos de contrato (resgatar → preencher → assinar)
   { id: "agenda",     label: "Agenda",         icon: "▦",  group: "comercial", notSaas: "elo" },
   { id: "whatsapp",   label: "Inbox",          icon: "✆",  group: "comercial", notSaas: "elo" }, // WhatsApp + DMs de IG/Messenger

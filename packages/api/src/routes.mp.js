@@ -12,6 +12,8 @@
 import { mp as defaultMp, parseWebhookPayload } from "./mp.js";
 import { CYCLE_MONTHS, syncCustomerArr } from "./billing.js";
 import { ingestMpPayment, runMpSync, settleInvoice } from "./mp-payments.js";
+import { recordPaymentLink } from "./payment-links.js";
+import { attachPreapprovalToSub, linkableSubs, runPreapprovalSync } from "./mp-subscriptions.js";
 import { DEAL_PRODUCT_LABEL } from "./proposal-catalog.js";
 import { logActivity } from "./lead-flow.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
@@ -189,6 +191,85 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
     return { ok: true, payment: updated, invoice: settledInv?.id || null };
   });
 
+  // ── Assinaturas recorrentes da conta (preapprovals) ──────────────────────
+  // Espelho das recorrências que JÁ cobram — inclusive as criadas fora do
+  // cockpit — pra ligar cada uma ao cliente certo. Recorrência ainda sem dono
+  // aparece em qualquer produto (mesma regra do espelho de pagamentos).
+  app.get("/api/mp/preapprovals", async (req) => {
+    const q = req.query || {};
+    let items = await repo.list("mp_preapprovals");
+    if (q.saas) items = items.filter((p) => !p.saas || p.saas === q.saas);
+    if (q.status) items = items.filter((p) => p.status === q.status);
+    if (q.customer) items = items.filter((p) => p.customer === q.customer);
+    items.sort((a, b) => String(b.dateCreated || "").localeCompare(String(a.dateCreated || "")));
+    const sync = await repo.get("app_config", "mp_preapproval_sync");
+    return {
+      preapprovals: items,
+      sync: sync ? { lastAt: sync.lastAt, lastSeen: sync.lastSeen } : null,
+      configured: mp.configured(),
+    };
+  });
+
+  app.post("/api/mp/preapprovals/sync", async (req, reply) => {
+    if (!mp.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN)" });
+    try {
+      return await runPreapprovalSync(repo, mp, { log: req.log });
+    } catch (err) {
+      req.log.warn({ err: err.message }, "MP: sync de recorrências falhou");
+      return reply.code(UPSTREAM_FAILED).send({ error: "MP não respondeu a busca de assinaturas", detail: String(err.message || err).slice(0, 300) });
+    }
+  });
+
+  // Vínculo recorrência do MP ↔ assinatura do cockpit. Carimba mpPreapprovalId
+  // na assinatura: daí em diante o webhook espelha o status, a cobrança mensal
+  // dá baixa na fatura sozinha e cancelar aqui CANCELA no MP. Body vazio
+  // desvincula. `customer` sozinho só resolve quando o cliente tem UMA
+  // assinatura candidata — na dúvida a tela manda a assinatura.
+  app.post("/api/mp/preapprovals/:id/link", async (req, reply) => {
+    const doc = await repo.get("mp_preapprovals", req.params.id);
+    if (!doc) return reply.code(404).send({ error: "Not found" });
+    const subId = String(req.body?.subscription || "");
+    const customerId = String(req.body?.customer || "");
+
+    if (!subId && !customerId) {
+      if (doc.subscription) {
+        const cur = await repo.get("subscriptions", doc.subscription);
+        // Só limpa o carimbo se for MESMO desta recorrência.
+        if (cur?.mpPreapprovalId === doc.mpId) {
+          await repo.update("subscriptions", cur.id, { mpPreapprovalId: "", mpStatus: "" });
+        }
+      }
+      const cleared = await repo.update("mp_preapprovals", doc.id, { customer: "", subscription: "", saas: "", matchedBy: "" });
+      return { ok: true, preapproval: cleared };
+    }
+
+    const subs = await repo.list("subscriptions");
+    let sub = subId ? subs.find((s) => s.id === subId) || null : null;
+    if (subId && !sub) return reply.code(400).send({ error: "assinatura não encontrada" });
+    if (!sub) {
+      const customer = await repo.get("customers", customerId);
+      if (!customer) return reply.code(400).send({ error: "cliente não encontrado" });
+      const cand = linkableSubs(subs, customer.id);
+      if (!cand.length) return reply.code(400).send({ error: "cliente sem assinatura ativa no cockpit — crie a assinatura antes de vincular" });
+      if (cand.length > 1) return reply.code(400).send({ error: "cliente tem mais de uma assinatura — escolha qual delas recebe a recorrência" });
+      sub = cand[0];
+    }
+    if (sub.mpPreapprovalId && sub.mpPreapprovalId !== doc.mpId) {
+      return reply.code(400).send({ error: "essa assinatura já está ligada a outra recorrência do MP" });
+    }
+    const taken = (await repo.list("mp_preapprovals"))
+      .find((p) => p.id !== doc.id && p.subscription === sub.id);
+    if (taken) return reply.code(400).send({ error: "outra recorrência do MP já está vinculada a essa assinatura" });
+
+    const updatedSub = await attachPreapprovalToSub(repo, sub, doc);
+    const updated = await repo.update("mp_preapprovals", doc.id, {
+      customer: updatedSub.customer || "", subscription: updatedSub.id,
+      saas: updatedSub.saas || "", matchedBy: "manual",
+      suggestedCustomer: "", suggestedSubscription: "", suggestedBy: "",
+    });
+    return { ok: true, preapproval: updated, subscription: updatedSub };
+  });
+
   // Cobrança avulsa anexada ao cliente: fatura (registro no billing) + link de
   // pagamento (checkout preference) com external_reference = id da fatura — o
   // webhook/poller dá a baixa sozinho quando o cliente pagar.
@@ -215,6 +296,14 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
         maxInstallments: Number(req.body?.maxInstallments) || undefined,
       });
       const updated = await repo.update("invoices", invoice.id, { mpPrefId: pref.id, mpInitPoint: pref.init_point || null });
+      await recordPaymentLink(repo, {
+        saas: customer.saas || "", kind: "customer", origin: req.body?.origin || "cliente",
+        customer: customer.id, invoice: invoice.id,
+        targetName: customer.name || "", targetPhone: customer.phone || "",
+        amount, title, url: pref.init_point || "", prefId: pref.id || "",
+        payerEmail: customer.email || "", reference: invoice.id,
+        createdBy: req.authUser?.id || "",
+      }, { log: req.log });
       return { ok: true, invoice: updated, url: pref.init_point || null };
     } catch (err) {
       await repo.remove("invoices", invoice.id); // fatura sem link não fica órfã
@@ -242,6 +331,14 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
         maxInstallments: Number(req.body?.maxInstallments) || undefined,
       });
       const updated = await repo.update("invoices", invoice.id, { mpPrefId: pref.id, mpInitPoint: pref.init_point || null });
+      await recordPaymentLink(repo, {
+        saas: invoice.saas || "", kind: "invoice", origin: "fatura",
+        customer: invoice.customer || "", invoice: invoice.id,
+        targetName: customer?.name || "", targetPhone: customer?.phone || "",
+        amount: Number(invoice.amount), title, url: pref.init_point || "", prefId: pref.id || "",
+        payerEmail: customer?.email || "", reference: invoice.id,
+        createdBy: req.authUser?.id || "",
+      }, { log: req.log });
       return { ok: true, invoice: updated, url: pref.init_point || null };
     } catch (err) {
       req.log.warn({ invoice: invoice.id, err: err.message }, "MP: falha ao criar link da fatura");
@@ -299,6 +396,16 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
           + (contractValue > 0 && contractValue !== amount ? ` · contrato R$ ${contractValue.toFixed(2).replace(".", ",")}` : ""),
         author: req.authUser?.id || "system",
       });
+      // Recibo da geração pro histórico da tela de links (o lead só guarda o
+      // ÚLTIMO link; aqui fica cada um, com quem gerou e de onde).
+      await recordPaymentLink(repo, {
+        saas: lead.saas || "", kind: "lead", origin: req.body?.origin || "card",
+        lead: lead.id, customer: lead.customerId || "",
+        targetName: lead.name || "", targetPhone: lead.phone || "",
+        amount, title, description, url: pref.init_point || "", prefId: pref.id || "",
+        payerEmail, reference: lead.id, plan, product: dealProduct,
+        createdBy: req.authUser?.id || "",
+      }, { log: req.log });
       return { ok: true, lead: updated, url: pref.init_point || null };
     } catch (err) {
       req.log.warn({ lead: lead.id, err: err.message }, "MP: falha ao criar link do lead");

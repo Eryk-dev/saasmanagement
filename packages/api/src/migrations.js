@@ -10,6 +10,7 @@ import { FLASHCARD_DEFAULTS } from "./routes.flashcards.js";
 import { LEVERADS_EXPANSION } from "./flashcard-decks.leverads.js";
 import { mergeLeadQuestions } from "./forms.js";
 import { waMatchKey } from "./wa-store.js";
+import { backfillPaymentLinks } from "./payment-links.js";
 import { slideVisible } from "./proposal.js";
 
 // Garante o estágio "Integração" no funil do produto `leverads`, posicionado
@@ -961,6 +962,47 @@ async function sincronizaPainelDoLead(repo, form) {
   }
 }
 
+// ── Form: e-mail na tela de contato (ago/2026) ──────────────────────────────
+// A régua de nutrição por e-mail (drip-runner/disparos) só alcança lead com
+// `lead.email`, e o form do diagnóstico pedia apenas nome + WhatsApp. A pergunta
+// entra EMPILHADA na mesma tela do contato, logo depois do telefone, e vai pro
+// `mapping.email` — é o mapping que faz a resposta cair em `lead.email`
+// (leadFromSubmission), valer no dedup por e-mail e ficar FORA do painel de
+// qualificação do card (mergeLeadQuestions ignora chaves do mapping).
+export async function migrateFormEmailContato(repo) {
+  const form = await repo.get("forms", "fo_diagnostico_leverads");
+  if (!form) return false;
+  const qs = [...(form.questions || [])];
+  if (form.emailContatoV1 || qs.some((q) => q.key === "email")) return false;
+  const idx = qs.findIndex((q) => q.key === form.mapping?.phone);
+  if (idx < 0) return false;
+
+  const email = {
+    key: "email",
+    label: "E-mail",
+    type: "email",
+    required: true,
+    stack: true,
+    placeholder: "voce@suaempresa.com.br",
+  };
+  // O fim explícito do fluxo principal (to:"_end") morava na pergunta do
+  // WhatsApp; muda pra nova última pergunta da tela, senão um desempilhamento
+  // futuro do e-mail o deixaria depois do fim.
+  if (qs[idx].to === "_end") {
+    const { to, ...semTo } = qs[idx];
+    qs[idx] = semTo;
+    email.to = "_end";
+  }
+  qs.splice(idx + 1, 0, email);
+
+  await repo.update("forms", form.id, {
+    questions: qs,
+    mapping: { ...(form.mapping || {}), email: "email" },
+    emailContatoV1: true,
+  });
+  return true;
+}
+
 // ── Contratos: campos de preenchimento (ago/2026) ───────────────────────────
 // Os 4 modelos de contrato nasceram com espaços em branco desenhados no HTML
 // (______). A tela Contratos ganhou formulário de preenchimento que interpola
@@ -1379,6 +1421,12 @@ export async function runStartupMigrations(repo) {
     console.error("[migration] migrateFormVendeMarketplace falhou:", err?.message || err);
   }
   try {
+    const changed = await migrateFormEmailContato(repo);
+    if (changed) console.log("[migration] form do diagnóstico ganhou o e-mail na tela de contato (mapping.email → lead.email)");
+  } catch (err) {
+    console.error("[migration] migrateFormEmailContato falhou:", err?.message || err);
+  }
+  try {
     const changed = await ensureIntegrationStage(repo);
     if (changed) console.log('[migration] estágio "Integração" garantido no funil do leverads');
   } catch (err) {
@@ -1572,5 +1620,13 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] custos %: base carimbada em ${n} lançamento(s) (checkout → cartão 12x, imposto → recebidos)`);
   } catch (err) {
     console.error("[migration] migrateExpensePctBases falhou:", err?.message || err);
+  }
+  // Histórico de links de pagamento: o que já foi gerado antes da tela existir
+  // (carimbo no lead / na fatura) vira recibo, senão o histórico nasce vazio.
+  try {
+    const n = await backfillPaymentLinks(repo);
+    if (n) console.log(`[migration] ${n} link(s) de pagamento já gerados entraram no histórico`);
+  } catch (err) {
+    console.error("[migration] backfillPaymentLinks falhou:", err?.message || err);
   }
 }

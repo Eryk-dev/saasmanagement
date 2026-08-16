@@ -88,6 +88,17 @@ export function makeMp({ fetch: f = globalThis.fetch, accessToken, webhookSecret
     },
 
     getPreapproval: (id) => request("GET", `/preapproval/${id}`),
+
+    // Busca paginada das assinaturas recorrentes DA CONTA — inclusive as criadas
+    // fora do cockpit (painel do MP, copylever). É a janela pro vínculo
+    // assinatura do MP ↔ cliente do cockpit (mp-subscriptions.js).
+    searchPreapprovals({ limit = 50, offset = 0, status, payerEmail } = {}) {
+      const q = new URLSearchParams({ limit: String(limit), offset: String(offset), sort: "date_created", criteria: "desc" });
+      if (status) q.set("status", status);
+      if (payerEmail) q.set("payer_email", payerEmail);
+      return request("GET", `/preapproval/search?${q.toString()}`);
+    },
+
     cancelPreapproval: (id) => request("PUT", `/preapproval/${id}`, { status: "cancelled" }),
     pausePreapproval: (id) => request("PUT", `/preapproval/${id}`, { status: "paused" }),
     resumePreapproval: (id) => request("PUT", `/preapproval/${id}`, { status: "authorized" }),

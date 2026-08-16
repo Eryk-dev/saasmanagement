@@ -186,7 +186,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
                 preço do catálogo no valor, então o resto do gate cai pronto. */}
             {askProduct && (
               <>
-                <DealProductField saas={lead.saas} value={dealProduct} plan={planClosed}
+                <DealProductField saas={lead.saas} value={dealProduct} plan={planClosed} amount={amount}
                   fieldStyle={field} labelStyle={label}
                   onChange={(id, p) => { setDealProduct(id); if (p?.oneOff) setPlanClosed("unico"); }}
                   onPick={(r) => { setAmount(String(r.value)); if (r.plan) setPlanClosed(r.plan); }} />
