@@ -16,6 +16,7 @@ import { scriptChecklist } from "../lib/scripts.js";
 import { displayName } from "../lib/users.js";
 import { paymentLabel, paymentUpfront, paymentRecurring, PAYMENT_METHODS, PAY_STATUS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel, accruedAmountOf, isRecurringClose } from "../lib/payments.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
+import { fetchLeveradsOrgs } from "../lib/leverads.js";
 // Clientes — a base ativa do produto em dois blocos: a tabela de clientes e,
 // ao lado, "Próximas ações" (o próximo marco de retenção de cada cliente,
 // ordenado por urgência). Clicar num cliente abre um popup com o resumo dele
@@ -34,6 +35,16 @@ const SUB_STATUS = {
   paused: { label: "pausada", tone: "warn" },
   canceled: { label: "cancelada", tone: "mut" },
 };
+
+// Data pura vira meia-noite LOCAL (new Date("YYYY-MM-DD") seria UTC e voltaria
+// um dia no Brasil); ISO completo passa direto.
+const parseDay = (v) => {
+  if (!v) return null;
+  const s = String(v);
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s + "T00:00:00") : new Date(s);
+  return Number.isFinite(d.getTime()) ? d : null;
+};
+const fmtDay = (d) => (d ? d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "2-digit" }).replace(".", "") : "");
 
 function CustomersScreen({ initialTab }) {
   const { CUSTOMERS, LEADS } = window.SEED;
@@ -68,6 +79,22 @@ function CustomersScreen({ initialTab }) {
   // assinatura) pelas da jornada (pacote/valor/próxima consulta/consultas).
   const isKidsWorkspace = product?.id === "uniquekids";
   const [allConsultas, setAllConsultas] = useState([]);
+
+  // Vínculo com o produto (coluna "Usuário LeverAds"): resolve o
+  // customer.leveradsOrgId em nome · e-mail pela mesma lista de orgs do select
+  // do cadastro (cache de sessão em lib/leverads.js). Sem credencial
+  // LEVERADS_* a busca falha (424) e a coluna mostra o id cru.
+  const isLeverads = product?.id === "leverads";
+  const [leverOrgs, setLeverOrgs] = useState(null); // Map(orgId → org) | null (não carregou)
+  const leverOrgOf = (c) => (c.leveradsOrgId ? leverOrgs?.get(String(c.leveradsOrgId)) || null : null);
+  useEffect(() => {
+    if (!isLeverads) { setLeverOrgs(null); return; }
+    let alive = true;
+    fetchLeveradsOrgs()
+      .then((rows) => alive && setLeverOrgs(new Map(rows.map((o) => [String(o.id), o]))))
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [isLeverads]);
 
   useEffect(() => {
     api.list("subscriptions").then((rows) => setSubs(rows.filter((s) => s.saas === product?.id))).catch(() => {});
@@ -182,17 +209,17 @@ function CustomersScreen({ initialTab }) {
   };
   const fmtNextAt = (at) => new Date(at).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "");
 
-  // Data de entrada (startedAt = "Cliente desde"). Data pura vira meia-noite
-  // LOCAL (new Date("YYYY-MM-DD") seria UTC e voltaria um dia no Brasil).
-  const entradaDate = (c) => {
-    if (!c.startedAt) return null;
-    const v = String(c.startedAt);
-    const d = /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(v + "T00:00:00") : new Date(v);
-    return Number.isFinite(d.getTime()) ? d : null;
-  };
-  const entradaLabel = (c) => {
-    const d = entradaDate(c);
-    return d ? d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "2-digit" }).replace(".", "") : "";
+  // Data de entrada (startedAt = "Cliente desde").
+  const entradaDate = (c) => parseDay(c.startedAt);
+  const entradaLabel = (c) => fmtDay(entradaDate(c));
+
+  // Vencimento da assinatura (coluna): fim do ciclo atual (periodEnd) da
+  // assinatura principal — a mesma data do "Ciclo atual até" da aba
+  // Assinaturas. Pausada/cancelada não tem ciclo correndo → sem vencimento.
+  const vencDate = (c) => {
+    const s = mainSub(c);
+    if (!s || !(s.status === "active" || s.status === "past_due")) return null;
+    return parseDay(s.periodEnd);
   };
 
   // Ordenação por clique no cabeçalho (alterna ↑/↓). Sem clique, mantém o
@@ -213,6 +240,12 @@ function CustomersScreen({ initialTab }) {
       const at = (LEADS || []).find((l) => l.id === c.leadId)?.lastActivityAt || c.lastContactAt;
       return at ? Math.floor((Date.now() - new Date(at).getTime()) / 86400000) : null;
     },
+    venc: (c) => vencDate(c)?.getTime() ?? null,
+    lever: (c) => {
+      if (!c.leveradsOrgId) return null;
+      const o = leverOrgOf(c);
+      return String(o?.email || o?.name || c.leveradsOrgId).toLowerCase();
+    },
   };
   const sortedCustomers = useMemo(() => {
     const val = sort && SORT_VALS[sort.key];
@@ -224,7 +257,7 @@ function CustomersScreen({ initialTab }) {
       if (vb == null) return -1;
       return sort.dir * (typeof va === "string" ? va.localeCompare(vb, "pt-BR") : va - vb);
     });
-  }, [customers, sort, subs, plans, received, LEADS, allConsultas, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [customers, sort, subs, plans, received, LEADS, allConsultas, leverOrgs, tick]); // eslint-disable-line react-hooks/exhaustive-deps
   const shownCustomers = showAll ? sortedCustomers : sortedCustomers.slice(0, 50);
   const lastContact = (c) => {
     const lead = (LEADS || []).find((l) => l.id === c.leadId);
@@ -357,12 +390,12 @@ function CustomersScreen({ initialTab }) {
             <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
             <Card style={{ overflow: "hidden", flex: "1 1 560px", minWidth: 0 }}>
               <div className="tbl-x">
-              <table style={{ width: "100%", minWidth: isKidsWorkspace ? 960 : 1350, borderCollapse: "collapse" }}>
+              <table style={{ width: "100%", minWidth: isKidsWorkspace ? 960 : isLeverads ? 1660 : 1480, borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
                     {(isKidsWorkspace
                       ? [["Cliente", "cliente"], ["Pacote", "plano"], ["Valor", "mrr"], ["Entrada", "entrada"], ["Tempo de casa", "casa"], ["Último contato", "contato"], ["Próxima consulta", null], ["Consultas", null]]
-                      : [["Cliente", "cliente"], ["Nível", "nivel"], ["Plano", "plano"], ["MRR", "mrr"], ["Pagamento", "pagamento"], ["Status pgto.", "pgto"], ["Total fechado", "fechado"], ["Entrada", "entrada"], ["Tempo de casa", "casa"], ["Último contato", "contato"], ["Próximo marco", null], ["Assinatura", null]]
+                      : [["Cliente", "cliente"], ["Nível", "nivel"], ["Plano", "plano"], ["MRR", "mrr"], ["Pagamento", "pagamento"], ["Status pgto.", "pgto"], ["Total fechado", "fechado"], ["Entrada", "entrada"], ["Tempo de casa", "casa"], ["Último contato", "contato"], ["Próximo marco", null], ["Assinatura", null], ["Vencimento", "venc"], ...(isLeverads ? [["Usuário LeverAds", "lever"]] : [])]
                     ).map(([h, k]) => (
                       <th key={h} className="kicker" title={k ? "ordenar" : undefined}
                         onClick={k ? () => setSort((s) => (s?.key === k ? { key: k, dir: -s.dir } : { key: k, dir: 1 })) : undefined}
@@ -478,6 +511,40 @@ function CustomersScreen({ initialTab }) {
                               ? <Pill tone={j.done >= j.total && j.items.length > 0 ? "pos" : j.done > 0 ? "warn" : "mut"}>{j.done} de {j.total}</Pill>
                               : st ? <Pill tone={st.tone}>{st.label}</Pill> : <Pill tone="mut">sem assinatura</Pill>}
                         </td>
+                        {/* Vencimento da assinatura: fim do ciclo atual (mesma data do
+                            "Ciclo atual até" da aba Assinaturas). Vencido e ainda ativa/em
+                            atraso = fatura da renovação não caiu → vermelho. Só SaaS. */}
+                        {!isKidsWorkspace && (() => {
+                          const d = vencDate(c);
+                          if (!d) return <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-4)", borderBottom: "1px solid var(--line-faint)" }}>—</td>;
+                          const past = d.getTime() < Date.now();
+                          return (
+                            <td className="tnum" title="fim do ciclo atual da assinatura"
+                              style={{ padding: "14px 20px", fontSize: 13, color: past ? "var(--neg)" : "var(--fg-2)", borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" }}>
+                              {fmtDay(d)}
+                              <div style={{ fontSize: 11, color: past ? "var(--neg)" : "var(--fg-4)" }}>{past ? "venceu " : "renova "}{dueLabel(d.toISOString())}</div>
+                            </td>
+                          );
+                        })()}
+                        {/* Usuário linkado no LeverAds (via customer.leveradsOrgId, o de-para
+                            do sync de acesso). Sem match na lista de orgs (ou lista não
+                            carregada), mostra o id cru. Só no workspace LeverAds. */}
+                        {isLeverads && (() => {
+                          if (!c.leveradsOrgId) return <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-4)", borderBottom: "1px solid var(--line-faint)" }}>—</td>;
+                          const o = leverOrgOf(c);
+                          return (
+                            <td title={`org ${c.leveradsOrgId}`} style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
+                              {o ? (
+                                <div style={{ minWidth: 0, maxWidth: 220 }}>
+                                  <div style={{ fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.email || o.name || c.leveradsOrgId}</div>
+                                  {o.email && o.name && <div style={{ fontSize: 11.5, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.name}</div>}
+                                </div>
+                              ) : (
+                                <span className="mono" title="org sem match na lista (ou credencial LEVERADS_* ausente na API)" style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{c.leveradsOrgId}</span>
+                              )}
+                            </td>
+                          );
+                        })()}
                       </tr>
                     );
                   })}
@@ -506,6 +573,7 @@ function CustomersScreen({ initialTab }) {
           invoices={invoices.filter((i) => i.customer === selected.id)}
           planLabel={planLabel}
           lastContact={lastContact}
+          leverOrg={leverOrgOf(selected)}
           onComplete={completeMilestone}
           onPatch={patchCustomer}
           onClose={() => setSel(null)}
@@ -605,7 +673,7 @@ function FormAnswersCard({ lead, product, onPatch }) {
   );
 }
 
-function CustomerFacts({ customer, lead, product, onPatch }) {
+function CustomerFacts({ customer, lead, product, leverOrg, onPatch }) {
   const [edit, setEdit] = useState(false);
   const saasId = customer.saas || product?.id;
   const saasCfg = (window.SEED?.SAAS || []).find((x) => x.id === saasId) || product;
@@ -639,6 +707,11 @@ function CustomerFacts({ customer, lead, product, onPatch }) {
       : null],
     ["Pagamento", (customer.paymentMethod || lead?.paymentMethod) ? paymentLabel(customer.paymentMethod || lead?.paymentMethod) : null],
     ["Status pgto.", PAY_STATUS[customer.paymentStatus] ? `${PAY_STATUS[customer.paymentStatus].label} (manual)` : null],
+    // Usuário/org linkado no produto (de-para do sync de acesso); sem match na
+    // lista de orgs, fica o id cru mesmo.
+    ["Usuário LeverAds", customer.leveradsOrgId
+      ? (leverOrg ? (leverOrg.email ? `${leverOrg.name} · ${leverOrg.email}` : leverOrg.name) : customer.leveradsOrgId)
+      : null],
     ["SDR", lead?.owner ? displayName(lead.owner) : null],
     ["Closer", lead?.closer ? displayName(lead.closer) : null],
     ["Integrador", lead?.integrator ? displayName(lead.integrator) : null],
@@ -718,7 +791,7 @@ function CustomerFacts({ customer, lead, product, onPatch }) {
 // assinaturas + faturas. Direita: régua de retenção + histórico do funil.
 // "Editar" NÃO abre outro popup: troca o corpo pelo form (EntityForm bare)
 // dentro deste mesmo modal, pros campos raros (flags, saúde, dono).
-function CustomerModal({ customer, lead, product, subs, invoices, planLabel, lastContact, onComplete, onPatch, onClose }) {
+function CustomerModal({ customer, lead, product, subs, invoices, planLabel, lastContact, leverOrg, onComplete, onPatch, onClose }) {
   const { refresh } = useData();
   const [editing, setEditing] = useState(false);
   // Edição das RESPOSTAS DO FORMULÁRIO (campos do lead) direto do popup: otimista
@@ -899,6 +972,10 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
     { label: "Tempo de casa", value: tenureLabel(customer) || "defina o início" },
     { label: "Último contato", value: lastContact(customer) },
     { label: "Assinatura", value: st ? st.label : "sem assinatura" },
+    // Vencimento = fim do ciclo atual; pausada/cancelada não tem ciclo correndo.
+    ...(mainSub && (mainSub.status === "active" || mainSub.status === "past_due") && parseDay(mainSub.periodEnd)
+      ? [{ label: "Vencimento", value: fmtDay(parseDay(mainSub.periodEnd)) }]
+      : []),
   ];
 
   return (
@@ -950,7 +1027,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "14px 16px" }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 14, alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-        <CustomerFacts customer={customer} lead={lead} product={product} onPatch={onPatch ? (p) => onPatch(customer, p) : null} />
+        <CustomerFacts customer={customer} lead={lead} product={product} leverOrg={leverOrg} onPatch={onPatch ? (p) => onPatch(customer, p) : null} />
 
         {/* Respostas do formulário (campos do lead) — editáveis daqui; mudou o
             nicho/contas/anúncios, o Potencial e o Nível recalculam. Só quando

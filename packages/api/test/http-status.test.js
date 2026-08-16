@@ -8,8 +8,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const SRC = new URL("../src/", import.meta.url).pathname;
+// fileURLToPath, não .pathname: pathname sai percent-encoded e quebra o
+// readdir quando o checkout está num diretório com acento.
+const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 
 test("nenhuma rota responde 5xx de propósito (o proxy engole o corpo)", () => {
   const ofensores = [];
