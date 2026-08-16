@@ -51,6 +51,10 @@ function DisparosScreen({ onOpenLead }) {
   const leads = useM(() => (window.SEED?.LEADS || []).filter((l) => l.saas === product?.id), [product?.id, version]);
   // Etapas trabalháveis do funil (não terminais) viram os toggles do público.
   const stageOptions = useM(() => workableStages(product), [product?.id, version]);
+  // As SEQUÊNCIAS podem disparar do funil INTEIRO, terminais incluídas: o
+  // onboarding do cliente nasce no Ganho e a reativação nasce no Desqualificado.
+  // O público de um disparo em massa continua só nas trabalháveis.
+  const allStages = useM(() => (product?.funnel || []).map((f) => f?.stage).filter(Boolean), [product?.id, version]);
   const defaultStages = useM(
     () => stageOptions.filter((st) => QUALIFIED_KINDS.has(stageKind(product, st))),
     [stageOptions, product?.id, version],
@@ -262,7 +266,7 @@ function DisparosScreen({ onOpenLead }) {
         <Segmented value={tab} onChange={setTab} options={[{ value: "disparos", label: "Disparos" }, { value: "sequencias", label: "Sequências" }, { value: "templates", label: "Templates" }]} />
       </PageHead>
 
-      {tab === "sequencias" && <SequencesTab product={product} leads={leads} stageOptions={stageOptions} defaultStages={defaultStages} />}
+      {tab === "sequencias" && <SequencesTab product={product} leads={leads} stageOptions={allStages} defaultStages={defaultStages} />}
       {tab === "templates" && <TemplatesTab product={product} />}
 
       {tab === "disparos" && (
@@ -357,7 +361,7 @@ function DisparosScreen({ onOpenLead }) {
         )}
       </PageHead>
 
-      {tab === "sequencias" && <SequencesTab product={product} leads={leads} stageOptions={stageOptions} defaultStages={defaultStages} />}
+      {tab === "sequencias" && <SequencesTab product={product} leads={leads} stageOptions={allStages} defaultStages={defaultStages} />}
       {tab === "templates" && <TemplatesTab product={product} />}
 
       {tab === "disparos" && (
@@ -597,8 +601,19 @@ function DisparosScreen({ onOpenLead }) {
 // passos por canal com delay), vê a conversão por sequência e trabalha a FILA
 // de WhatsApp assistido (os passos de WhatsApp param aqui até o operador mandar).
 const CH_LABEL = { email: "E-mail", whatsapp: "WhatsApp" };
+// Saídas da sequência. `on` é o valor de fábrica: as três primeiras nascem
+// ligadas (espelho do exitReasonFor da API), "saiu da etapa" é opt-in porque
+// só faz sentido quando a sequência tem gatilho e não some com quem foi
+// inscrito na mão.
+const EXITS = [
+  { key: "won", label: "fechou", on: true },
+  { key: "booked", label: "marcou call", on: true },
+  { key: "optOut", label: "descadastrou", on: true },
+  { key: "stageLeft", label: "saiu da etapa", on: false },
+];
+const exitOnOf = (ex) => Object.fromEntries(EXITS.map((e) => [e.key, e.on ? ex?.[e.key] !== false : ex?.[e.key] === true]));
 function blankSeq(saas, me) {
-  return { id: null, saas, name: "", status: "draft", trigger: { stages: [] }, exitOn: { won: true, booked: true, optOut: true },
+  return { id: null, saas, name: "", status: "draft", trigger: { stages: [] }, exitOn: exitOnOf({}),
     steps: [{ channel: "email", delayDays: 0, subject: "", body: "" }], createdBy: me };
 }
 const interpolateSeq = (text, toks) => String(text || "").replace(/\{\{(\w+)\}\}/g, (_, k) => (toks && toks[k] != null ? toks[k] : `{{${k}}}`));
@@ -645,7 +660,7 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
   }
   function loadSeq(s) {
     setSeq({ id: s.id, saas: s.saas, name: s.name || "", status: s.status || "draft",
-      trigger: { stages: s.trigger?.stages || [] }, exitOn: { won: s.exitOn?.won !== false, booked: s.exitOn?.booked !== false, optOut: s.exitOn?.optOut !== false },
+      trigger: { stages: s.trigger?.stages || [] }, exitOn: exitOnOf(s.exitOn),
       steps: (s.steps || []).map((st) => ({ ...st })), createdAt: s.createdAt, createdBy: s.createdBy });
     setNote(null);
   }
@@ -739,10 +754,10 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
 
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <span className="kicker">sai quando</span>
-            {[["won", "fechou"], ["booked", "marcou call"], ["optOut", "descadastrou"]].map(([k, lbl]) => (
-              <label key={k} style={{ display: "inline-flex", gap: 5, alignItems: "center", fontSize: 12 }}>
-                <input type="checkbox" checked={seq.exitOn?.[k] !== false} onChange={(e) => setSeq((s) => ({ ...s, exitOn: { ...s.exitOn, [k]: e.target.checked } }))} />
-                {lbl}
+            {EXITS.map(({ key, label }) => (
+              <label key={key} style={{ display: "inline-flex", gap: 5, alignItems: "center", fontSize: 12 }}>
+                <input type="checkbox" checked={!!seq.exitOn?.[key]} onChange={(e) => setSeq((s) => ({ ...s, exitOn: { ...s.exitOn, [key]: e.target.checked } }))} />
+                {label}
               </label>
             ))}
           </div>
