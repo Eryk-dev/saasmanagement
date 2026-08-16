@@ -56,8 +56,12 @@ const ROUTE_SCREENS = [
   ["/api/customers", ["customers"]],
   ["/api/subscriptions", ["customers"]], // inclui /change e /mp/link
   ["/api/invoices", ["customers"]],      // inclui /pay e /mp/link
+  // Recorrências do MP ↔ clientes: mora na aba MP da tela Assinaturas (dentro
+  // de Clientes). Precede /api/mp/ — primeiro match vence.
+  ["/api/mp/preapprovals", ["customers", "expenses"]],
   ["/api/mp/", ["expenses"]],            // financeiro: espelho de pagamentos do MP (payments/sync/link) — aba Pagamentos da tela Financeiro
   ["/api/mp_payments", ["expenses"]],    // CRUD genérico do espelho (mesma tela)
+  ["/api/mp_preapprovals", ["customers", "expenses"]], // CRUD genérico do espelho de recorrências
   ["/api/fin/", ["expenses"]],           // financeiro completo: leitura do mês (contas a pagar, fluxo, DRE, conciliação)
   ["/api/payables", ["expenses"]],       // CRUD genérico das contas a pagar
   ["/api/fin_rules", ["expenses"]],      // regras de conciliação aprendidas
@@ -70,7 +74,9 @@ const ROUTE_SCREENS = [
   ["/api/form_events", ["forms"]],
   ["/api/proposal_templates", ["proposals"]],
   ["/api/proposals", ["proposals"]],     // inclui /preview
-  ["/api/offers", ["offers"]],           // links de pagamento das ofertas
+  ["/api/offers", ["offers"]],           // links FIXOS das ofertas (tela Links de pagamento)
+  ["/api/payment-links", ["offers"]],    // histórico dos links gerados por lead/cliente (mesma tela)
+  ["/api/payment_links", ["offers"]],    // CRUD genérico do mesmo histórico
   ["/api/contracts", ["contracts"]],     // modelos de contrato (biblioteca)
   ["/api/contract_issues", ["contracts"]], // contratos confirmados (histórico da mesma tela)
   ["/api/campaigns", ["disparos"]],      // disparos de e-mail + WhatsApp (mark, ai-copy e CRUD)

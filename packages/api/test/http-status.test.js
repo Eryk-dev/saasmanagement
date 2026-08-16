@@ -10,8 +10,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// fileURLToPath, não .pathname: o pathname vem percent-encoded e quebra quando
-// o repo mora em diretório com acento (ex.: worktree "…nutrição-clientes").
+// fileURLToPath, não .pathname: pathname sai percent-encoded e quebra o
+// readdir quando o checkout está num diretório com acento.
 const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 
 test("nenhuma rota responde 5xx de propósito (o proxy engole o corpo)", () => {

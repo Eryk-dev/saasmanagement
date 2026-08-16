@@ -64,6 +64,8 @@ export const COLLECTIONS = {
   contracts: [],     // modelos de contrato por produto (tela Contratos): { name, tag, note, body (HTML do miolo, imprime com o CSS padrão da tela) }
   contract_issues: [], // contratos CONFIRMADOS (histórico da tela Contratos): snapshot do modelo preenchido por cliente — { saas, contract, name, tag, customerId, customerName, values, fields, body, author, createdAt }
   mp_payments: [],   // espelho dos pagamentos do Mercado Pago (financeiro): quem pagou, como, casado com qual cliente/fatura (mp-payments.js)
+  payment_links: [], // histórico dos links de pagamento gerados (card do lead, ficha do cliente ou tela): recibo da geração; o status vem do espelho do MP (payment-links.js)
+  mp_preapprovals: [], // espelho das ASSINATURAS RECORRENTES do Mercado Pago (inclusive as criadas fora do cockpit), com o vínculo à assinatura do cliente (mp-subscriptions.js)
   campaigns: [],     // disparos (e-mail + WhatsApp) pros leads qualificados por produto (ferramenta)
   outbound_accounts: [], // radar de contas do outbound (Cold Calling 2.0): conta-alvo com os 8 status do livro; virar lead cria card classe Alvo
   comp_plans: [],    // planos de remuneração por cargo (tela Remuneração, SÓ admin): fixo, variável e regras — 1 doc por role

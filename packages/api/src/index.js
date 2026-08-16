@@ -19,6 +19,7 @@ import { startTrainingReminder } from "./training-reminder.js";
 import { startShopifySync } from "./routes.webhooks.js";
 import { makeShopify } from "./shopify.js";
 import { startMpSync } from "./mp-payments.js";
+import { startPreapprovalSync } from "./mp-subscriptions.js";
 import { startBilling } from "./billing-runner.js";
 import { startLeveradsAccessSync } from "./leverads-access.js";
 import { ensureDefaultAdmins, makeAuthHook } from "./auth.js";
@@ -106,6 +107,10 @@ try {
   // e dá baixa nas faturas — funciona mesmo SEM o webhook configurado no painel
   // (1º tick faz o backfill de 400 dias). No-op sem MERCADOPAGO_ACCESS_TOKEN.
   startMpSync(repo, { log: app.log });
+  // Espelho das assinaturas RECORRENTES da conta MP (inclusive as criadas fora
+  // do cockpit): a tela Assinaturas → MP liga cada uma ao cliente. No-op sem
+  // MERCADOPAGO_ACCESS_TOKEN.
+  startPreapprovalSync(repo, { log: app.log });
   // Motor de billing (renovações + dunning + pendingChange) — antes só rodava
   // quando alguém chamava POST /api/billing/run; agora anda sozinho (1h).
   startBilling(repo, { log: app.log });

@@ -10,6 +10,7 @@ import { FLASHCARD_DEFAULTS } from "./routes.flashcards.js";
 import { LEVERADS_EXPANSION } from "./flashcard-decks.leverads.js";
 import { mergeLeadQuestions } from "./forms.js";
 import { waMatchKey } from "./wa-store.js";
+import { backfillPaymentLinks } from "./payment-links.js";
 import { slideVisible } from "./proposal.js";
 
 // Garante o estágio "Integração" no funil do produto `leverads`, posicionado
@@ -1619,5 +1620,13 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] custos %: base carimbada em ${n} lançamento(s) (checkout → cartão 12x, imposto → recebidos)`);
   } catch (err) {
     console.error("[migration] migrateExpensePctBases falhou:", err?.message || err);
+  }
+  // Histórico de links de pagamento: o que já foi gerado antes da tela existir
+  // (carimbo no lead / na fatura) vira recibo, senão o histórico nasce vazio.
+  try {
+    const n = await backfillPaymentLinks(repo);
+    if (n) console.log(`[migration] ${n} link(s) de pagamento já gerados entraram no histórico`);
+  } catch (err) {
+    console.error("[migration] backfillPaymentLinks falhou:", err?.message || err);
   }
 }

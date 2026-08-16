@@ -447,10 +447,20 @@ export const api = {
   },
   mpSyncNow: () => req("POST", "/api/mp/sync", {}),
   mpLinkPayment: (id, customer) => req("POST", `/api/mp/payments/${id}/link`, { customer }),
+  // Assinaturas recorrentes da conta MP (preapprovals) ↔ clientes do cockpit.
+  mpPreapprovals: (query = {}) => {
+    const qs = new URLSearchParams(Object.fromEntries(Object.entries(query).filter(([, v]) => v))).toString();
+    return req("GET", `/api/mp/preapprovals${qs ? `?${qs}` : ""}`);
+  },
+  mpSyncPreapprovals: () => req("POST", "/api/mp/preapprovals/sync", {}),
+  mpLinkPreapproval: (id, body = {}) => req("POST", `/api/mp/preapprovals/${id}/link`, body),
   createCharge: (customerId, body) => req("POST", `/api/customers/${customerId}/charge`, body),
   // Link de pagamento pelo card do lead (external_reference = lead: pagamento
   // entra no Financeiro já casado com a origem).
   mpLeadLink: (leadId, body) => req("POST", `/api/leads/${leadId}/mp/link`, body),
+  // Histórico dos links gerados (tela Links de pagamento): o recibo de cada
+  // geração já cruzado com o espelho do MP — quem pagou, quanto e como.
+  paymentLinks: (saas) => req("GET", `/api/payment-links${saas ? `?saas=${encodeURIComponent(saas)}` : ""}`),
   invoiceMpLink: (id, body = {}) => req("POST", `/api/invoices/${id}/mp/link`, body),
   // Marketing (Meta Ads): sync de insights + métricas cruzadas com o funil.
   marketingSync: (body = {}) => req("POST", "/api/marketing/sync", body),
