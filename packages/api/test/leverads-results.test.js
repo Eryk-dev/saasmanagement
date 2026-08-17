@@ -12,6 +12,7 @@ import {
 
 const ROW = {
   clientes: 23, contas: 25,
+  mes: 798213.70, mes_clientes: 597752.68, mes_nosso: 200461.02,
   gerado: 995461.02, gerado_clientes: 689296.97, gerado_nosso: 306164.05,
   anuncios: 738756, ritmo: 10426.47, dias: 3, participacao: 13.8,
 };
@@ -20,6 +21,9 @@ test("linha do banco vira o texto que o deck mostra", () => {
   assert.deepEqual(resultTokens(ROW), {
     resClientes: "23",
     resContas: "25",
+    resMes: "R$ 798 mil",
+    resMesClientes: "R$ 598 mil",
+    resMesNosso: "R$ 200 mil",
     resGeradoTudo: "R$ 995 mil",
     resGerado: "R$ 689 mil",
     resGeradoClientes: "R$ 689 mil",
@@ -111,6 +115,8 @@ test("a consulta é a MESMA função que alimenta a tela Resultados do produto",
   let sql = "";
   await refreshResults({ query: async (q, params) => { sql = q; assert.equal(params[1], 7); return [ROW]; } });
   assert.match(sql, /public\.dashboard_portfolio/);
+  assert.match(sql, /interval '30 days'/, "o ritmo do card é o dos últimos 30 dias");
+  assert.match(sql, /org_revenue_generated/, "o acumulado vem da tabela all-time, não da janela de 180 dias");
   assert.match(sql, /percentile_cont/, "ritmo é MEDIANA (a média é puxada por outlier)");
 });
 

@@ -11,6 +11,11 @@
 //   resClientes     clientes RODANDO (org com 1ª venda dentro da janela que a
 //                   função varre) — é o "23" do topo do card
 //   resContas       contas com venda ALL-TIME, incluindo a nossa operação
+//   resMes          o que os anúncios da Lever venderam nos ÚLTIMOS 30 DIAS
+//                   (clientes + a nossa operação) — é o número do card, porque
+//                   numa operação nova o acumulado esconde a velocidade
+//   resMesClientes  a fatia dos clientes nesses 30 dias
+//   resMesNosso     a fatia da nossa operação nesses 30 dias
 //   resGerado       GMV all-time gerado nas contas dos CLIENTES (a nossa
 //                   operação fica fora) — o nome antigo, mantido porque os
 //                   decks já compartilhados com cliente usam ele
@@ -66,6 +71,18 @@ with p as (select public.dashboard_portfolio($1::uuid[]) as j),
               case when (org->>'first_sale') is not null and (org->>'joined_at') is not null
                    then (org->>'first_sale')::date - (org->>'joined_at')::date end as dias
        from o)
+     -- RITMO dos últimos 30 dias: é o número que o card mostra. Numa operação
+     -- nova o acumulado esconde a velocidade — nos 30 dias anteriores a estes
+     -- foram R$ 164 mil, e nestes 30, R$ 798 mil. Sem filtro de plataforma, pra
+     -- casar com o all-time abaixo (que soma ML + Shopee).
+     d30 as (
+       select coalesce(sum(x.gmv_clone), 0)                                    as mes,
+              coalesce(sum(x.gmv_clone) filter (where x.org_id <> all($1)), 0) as mes_clientes,
+              coalesce(sum(x.gmv_clone) filter (where x.org_id = any($1)), 0)  as mes_nosso
+       from public.platform_orders x
+       join public.orgs g2 on g2.id = x.org_id and g2.active = true
+       where x.date_created >= now() - interval '30 days'
+     ),
      -- Total ALL-TIME por org: a mesma tabela que a página Resultados do
      -- produto soma. A org interna (a nossa operação) entra separada, nunca
      -- misturada no número dos clientes.
@@ -79,6 +96,9 @@ with p as (select public.dashboard_portfolio($1::uuid[]) as j),
        join public.orgs g on g.id = v.org_id and g.active = true
      )
 select (select count(*) from m)::int                                          as clientes,
+       d30.mes::float8                                                        as mes,
+       d30.mes_clientes::float8                                               as mes_clientes,
+       d30.mes_nosso::float8                                                  as mes_nosso,
        r.gerado::float8                                                       as gerado,
        r.gerado_clientes::float8                                              as gerado_clientes,
        r.gerado_nosso::float8                                                 as gerado_nosso,
@@ -87,7 +107,7 @@ select (select count(*) from m)::int                                          as
        (select percentile_cont(0.5) within group (order by ritmo) from m)::float8 as ritmo,
        (select percentile_cont(0.5) within group (order by dias) filter (where dias >= 0) from m)::float8 as dias,
        (select case when sum(gmv) > 0 then sum(lev) / sum(gmv) * 100 end from m)::float8 as participacao
-from r`;
+from r, d30`;
 
 const nf = (min, max) => new Intl.NumberFormat("pt-BR", { minimumFractionDigits: min, maximumFractionDigits: max });
 
@@ -115,6 +135,9 @@ export function resultTokens(row) {
   if (!row || !(Number(row.clientes) > 0)) return null;
   const out = { resClientes: nf(0, 0).format(Number(row.clientes)) };
   if (Number(row.contas) > 0) out.resContas = nf(0, 0).format(Number(row.contas));
+  if (Number(row.mes) > 0) out.resMes = money(row.mes);
+  if (Number(row.mes_clientes) > 0) out.resMesClientes = money(row.mes_clientes);
+  if (Number(row.mes_nosso) > 0) out.resMesNosso = money(row.mes_nosso);
   if (Number(row.gerado) > 0) out.resGeradoTudo = money(row.gerado);
   if (Number(row.gerado_clientes) > 0) {
     // Dois nomes pro MESMO número de propósito: `resGerado` é o token que os
