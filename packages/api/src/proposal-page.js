@@ -33,6 +33,10 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   // Teto alto (igual ao form) pra a logo poder crescer; a nav cresce junto (navH).
   const logoH = Math.min(240, Math.max(12, Number(t.logoHeight) || 24));
   const navH = Math.max(60, logoH + 28);
+  // Largura do deck (theme.maxWidth): deck mais largo = texto em menos linhas =
+  // slide mais baixo = menos downscale do fitSlides() = tudo maior na tela.
+  // Fica no tema porque é decisão por proposta (deck denso pede mais largura).
+  const deckW = Math.min(1920, Math.max(960, Number(t.maxWidth) || 1200));
   const brandName = t.brandName ? escAttr(t.brandName) : "";
   const brandSize = Math.max(15, Math.round(logoH * 0.34));
   const logoImg = t.logoUrl ? `<img class="nav-logo" src="${escAttr(t.logoUrl)}" alt="">` : "";
@@ -78,7 +82,7 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
   ::selection { background: var(--accent); color: var(--accent-fg); }
 
-  .wrap { width: 100%; max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+  .wrap { width: 100%; max-width: ${deckW}px; margin: 0 auto; padding: 0 24px; }
   section, header.hero { padding: 80px 0; position: relative; }
   @media (min-width: 768px) { section, header.hero { padding: 128px 0; } .wrap { padding: 0 40px; } }
   .atmos { position: absolute; inset: 0; pointer-events: none; z-index: 0;
@@ -122,7 +126,7 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
 
   .nav { position: sticky; top: 0; z-index: 50; background: color-mix(in oklab, var(--bg) 80%, transparent);
     backdrop-filter: saturate(140%) blur(12px); -webkit-backdrop-filter: saturate(140%) blur(12px); border-bottom: 1px solid var(--line); }
-  .nav-inner { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; max-width: 1200px; margin: 0 auto; gap: 16px; }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; max-width: ${deckW}px; margin: 0 auto; gap: 16px; }
   .nav-lockup { display: flex; align-items: center; gap: 14px; min-width: 0; }
   .nav-logo { height: ${logoH}px; width: auto; flex-shrink: 0; object-fit: contain; }
   .nav-brand { font-weight: 600; font-size: ${brandSize}px; letter-spacing: -.01em; }
@@ -413,6 +417,15 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .price-pending .stage-item, .price-revealed .stage-item { transition: opacity .45s var(--ease-out), transform .45s var(--ease-out); }
   .price-pending .stage-item:not(.on) { opacity: 0; transform: translateY(10px); }
   .price-revealed .stage-item { opacity: 1; transform: none; }
+  /* Garantia junto do preço (s.stageGuarantee): o bloco vai pra DENTRO da coluna
+     do preço, atrás do véu, e entra na mesma hora que o valor. Antes ele ficava
+     embaixo dos benefícios, à mostra desde o começo (entregava o desconto antes
+     do preço) e ainda esticava a coluna da direita. */
+  .price-reveal.has-guar { display: flex; flex-direction: column; justify-content: flex-end; }
+  .price-pending .price-reveal.has-guar .guarantee, .price-revealed .price-reveal.has-guar .guarantee {
+    transition: opacity .6s var(--ease-out) .12s, transform .6s var(--ease-out) .12s; }
+  .price-pending .price-reveal.has-guar .guarantee { opacity: 0; transform: translateY(18px) scale(.97); }
+  @media (min-width: 900px) { .price-wrap-stretch .price-reveal.has-guar .price-card { height: auto; } }
   /* Ofertas SECRETAS (s.offer2/3/4): entram abaixo da principal com Shift+1/2/3
      (negociação) e acinzentam as anteriores (comparativo). A pilha ancora no
      rodapé da célula: o card principal aparece embaixo e, quando a oferta
@@ -427,6 +440,7 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .offer4-on .price-card.offer1, .offer4-on .price-card.offer2, .offer4-on .price-card.offer3 { filter: grayscale(1); opacity: .55; }
   @media (prefers-reduced-motion: reduce) {
     .price-pending .price-reveal .price-card, .price-revealed .price-reveal .price-card, .price-veil,
+    .price-pending .price-reveal.has-guar .guarantee, .price-revealed .price-reveal.has-guar .guarantee,
     .price-pending .stage-item, .price-revealed .stage-item,
     .price-card.offer1, .offer2-on .price-card.offer2,
     .price-revealed .close-line, .price-revealed .accept-row, .price-revealed .plan-opts { transition: none; animation: none; } }
@@ -434,6 +448,7 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
     .price-veil { display: none; }
     /* Oferta 2 secreta NÃO sai no print (só se o closer já tiver ativado). */
     .price-pending .price-reveal .price-card, .price-pending .close-line, .price-pending .accept-row, .price-pending .plan-opts,
+    .price-pending .price-reveal.has-guar .guarantee,
     .price-pending .stage-item, .price-pending .pb-stage { opacity: 1; transform: none; } }
 
   /* ── Layout empilhado do pricing (slides com benefitGroups) ─────────────────
@@ -1252,6 +1267,9 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     },
     pricing: function (s, num, total) {
       var hasOpts = s.optionsFeatured != null && s.optionsFeatured !== '';
+      // s.compact: liga a versão densa do slide de preço mesmo sem grade de
+      // ciclos (deck com muita entrega na lista pede isso pra não encolher tudo).
+      var compact = hasOpts || !!s.compact;
       // Reveal do preço: elementos que o véu controla NÃO levam data-reveal
       // (os dois mecanismos disputariam opacity/transform).
       // staged = o slide foi desenhado no modo encadeado (benefícios em grupos
@@ -1262,7 +1280,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       // já com tudo à mostra (nada espera comando), igual à versão do cliente.
       var staged = !!s.revealPrice;
       var reveal = staged && !P.showAll && !s.revealOpen;
-      var sec = el('section', ((hasOpts ? 'compact-pricing ' : '') + (reveal ? 'price-pending' : '')).trim() || null);
+      var sec = el('section', ((compact ? 'compact-pricing ' : '') + (reveal ? 'price-pending' : '')).trim() || null);
       var w = el('div', 'wrap');
       w.appendChild(band(s, num, total));
       if (hasOpts) {
@@ -1329,6 +1347,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       // Card de preço parametrizado: usado pela oferta principal e, quando
       // s.offer2 existe, pela segunda oferta (ex.: pacote semestral), que entra
       // abaixo da primeira num avanço extra e acinzenta a principal (comparativo).
+      function cyclesOf(o) { return String(o.cycles != null ? o.cycles : '{{calc.precoCiclos}}').trim(); }
       function priceCardHtml(o, cls, dr) {
         return '<div class="price-card' + (cls ? ' ' + cls : '') + '"' + (dr ? ' data-reveal' : '') + '>' +
           '<div class="price-head"><div class="price-tag">' + fmt(o.planTag || '') + '</div>' +
@@ -1344,7 +1363,8 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
             return '<div class="pay-row"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + ic + '</svg><span>' + fmt(pm.text || '') + '</span></div>';
           }).join('') + '</div>' : '') +
           (o.sub ? '<div class="price-sub">' + fmt(o.sub) + '</div>' : '') +
-          '<div class="price-cycles">' + (o.cyclesLabel ? fmt(o.cyclesLabel) + ' ' : '') + (o.cyclesFrom ? '<span class="cycles-from">' + fmt(o.cyclesFrom) + '</span> ' : '') + fmt(o.cycles != null ? o.cycles : '{{calc.precoCiclos}}') + '</div>' +
+          // cycles: '' (string vazia) TIRA a linha do card; ausente cai no calc.
+          (cyclesOf(o) ? '<div class="price-cycles">' + (o.cyclesLabel ? fmt(o.cyclesLabel) + ' ' : '') + (o.cyclesFrom ? '<span class="cycles-from">' + fmt(o.cyclesFrom) + '</span> ' : '') + fmt(cyclesOf(o)) + '</div>' : '') +
         '</div>';
       }
       var hasOffer2 = !!(s.offer2 && (s.offer2.price || s.offer2.planTag));
@@ -1434,14 +1454,17 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         // no grid + height:100% nos cards. Só quando encadeia as features (é aí
         // que a altura fica estável, com os itens ocultos reservando espaço).
         if (staged && s.stageFeatures) pw.className = 'price-wrap price-wrap-stretch';
+        // s.stageGuarantee: garantia sobe pra coluna do preço (atrás do véu) e só
+        // aparece quando o valor aparece. Sem o flag, segue embaixo dos benefícios.
+        var guarInPrice = !!(s.stageGuarantee && hasGuarantee && wrapCards);
         pw.innerHTML =
-          (wrapCards ? '<div class="price-reveal' + (hasOffer2 || hasOffer3 ? ' has-offer2' : '') + '">' : '') +
-          offersHtml + veilHtml +
+          (wrapCards ? '<div class="price-reveal' + (hasOffer2 || hasOffer3 ? ' has-offer2' : '') + (guarInPrice ? ' has-guar' : '') + '">' : '') +
+          offersHtml + (guarInPrice ? guaranteeHtml : '') + veilHtml +
           (wrapCards ? '</div>' : '') +
           '<div data-reveal>' +
             '<div class="benefits-card">' + (s.featuresTitle ? '<div class="benefits-title">' + fmt(s.featuresTitle) + '</div>' : '') +
               benefitsInner + '</div>' +
-            guaranteeHtml + paybackHtml + '</div>';
+            (guarInPrice ? '' : guaranteeHtml) + paybackHtml + '</div>';
       }
       w.appendChild(pw);
       var inView = function () {
