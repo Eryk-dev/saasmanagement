@@ -455,6 +455,16 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
         </div>
       )}
 
+      {/* Número existe na conta e o token lê os dados dele, mas a Meta responde
+          platform_type diferente de CLOUD_API: falta REGISTRAR o número na Cloud
+          API (o passo do PIN de 6 dígitos). Sem isso ele não envia nem recebe, e
+          antes disso a tela dizia que estava tudo certo — o id salvo bastava. */}
+      {configured && numInfo?.ok && numInfo.platform && numInfo.platform !== "CLOUD_API" && (
+        <div style={{ margin: "12px var(--pad-x) 0", padding: "10px 14px", border: "1px dashed var(--warn, var(--line-2))", borderRadius: "var(--r-2)", fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5 }}>
+          O número <b>{numInfo.display || numInfo.phoneNumberId}</b> está na conta e o id está certo, mas ele <b>ainda não foi registrado na Cloud API</b> (a Meta responde <span className="mono">platform_type: {numInfo.platform}</span>). Enquanto isso ele <b>não envia nem recebe</b>. Termine o cadastro em <b>WhatsApp Manager → o número → Registrar</b>, definindo o PIN de 6 dígitos da verificação em duas etapas.
+        </div>
+      )}
+
       {!configured && (
         <div style={{ margin: "12px var(--pad-x) 0", padding: "10px 14px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", fontSize: 12.5, color: "var(--fg-2)" }}>
           O WhatsApp (Cloud API) ainda não está configurado no servidor. Assim que o número dedicado e o token estiverem no ar, as conversas aparecem aqui. Enquanto isso, o botão “Ligar” abre a conversa no app.
