@@ -242,3 +242,13 @@ export const repo = {
     return rowCount > 0;
   },
 };
+
+// Consulta crua no MESMO Postgres, para ler o que NÃO é coleção do cockpit: o
+// Levercopy (o produto LeverAds) vive no schema `public` deste mesmo banco, e o
+// deck da proposta mostra os resultados reais dos clientes de lá
+// (leverads-results.js). Use com parcimônia e sempre com cache: dividir o
+// projeto com o Levercopy é o que estourou a cota de egress em 25/07/2026.
+export async function rawQuery(sql, params = []) {
+  const { rows } = await getPool().query(sql, params);
+  return rows;
+}

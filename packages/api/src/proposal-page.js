@@ -875,6 +875,14 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       out.starterParcela = stParc % 1 === 0 ? intBR(stParc) : stParc.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       out.starterPix = intBR(Math.round(stTotal * 0.9));
     }
+    // Resultado REAL dos clientes (slide de impacto): o servidor injeta esses
+    // tokens no calc a cada render (leverads-results.js). compute() monta o
+    // objeto do zero, então o que vem pronto do servidor precisa ser copiado na
+    // mão; sem isso o span nasce vazio e o slide cai no fallback do template.
+    // (Sem crase neste comentário: ele vive DENTRO do template literal do
+    // script do navegador, e uma crase fecharia a string inteira.)
+    ['resClientes', 'resGerado', 'resRitmo', 'resDias', 'resAnuncios', 'resHoras', 'resParticipacao']
+      .forEach(function (k) { if (c[k] != null && c[k] !== '') out[k] = c[k]; });
     return out;
   }
 

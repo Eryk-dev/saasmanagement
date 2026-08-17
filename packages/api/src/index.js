@@ -22,6 +22,7 @@ import { startMpSync } from "./mp-payments.js";
 import { startPreapprovalSync } from "./mp-subscriptions.js";
 import { startBilling } from "./billing-runner.js";
 import { startLeveradsAccessSync } from "./leverads-access.js";
+import { refreshResults } from "./leverads-results.js";
 import { ensureDefaultAdmins, makeAuthHook } from "./auth.js";
 import { makeScreenGuardHook } from "./screens.js";
 import { runStartupMigrations } from "./migrations.js";
@@ -118,6 +119,10 @@ try {
   // billing daqui. No-op sem LEVERADS_ADMIN_EMAIL/PASSWORD; dry-run por padrão
   // (LEVERADS_ACCESS_APPLY=1 pra valer). Só toca orgs com de-para explícito.
   startLeveradsAccessSync(repo, { log: app.log });
+  // Aquece o resultado dos clientes que o slide `impacto` da proposta mostra:
+  // sem isso, a primeira apresentação depois de um deploy abriria com o número
+  // escrito no deck (o fallback) em vez do número do dia.
+  refreshResults().catch(() => {});
 } catch (err) {
   app.log.error(err);
   process.exit(1);
