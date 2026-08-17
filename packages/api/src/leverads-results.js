@@ -8,14 +8,31 @@
 // garante que o deck e a tela do produto nunca contem histórias diferentes.
 //
 // Semântica de cada token (a mesma do produto):
-//   resClientes     nº de orgs no portfólio (a org interna fica fora)
-//   resGerado       GMV all-time dos pedidos que vieram de anúncio da Lever
+//   resClientes     clientes RODANDO (org com 1ª venda dentro da janela que a
+//                   função varre) — é o "23" do topo do card
+//   resContas       contas com venda ALL-TIME, incluindo a nossa operação
+//   resGerado       GMV all-time gerado nas contas dos CLIENTES (a nossa
+//                   operação fica fora) — o nome antigo, mantido porque os
+//                   decks já compartilhados com cliente usam ele
+//   resGeradoClientes  o mesmo número, com o nome que diz o que é
+//   resGeradoTudo   clientes + a NOSSA operação: é o número que a página
+//                   Resultados do produto mostra
+//   resGeradoNosso  só a nossa operação (a Lever Money, onde a ferramenta
+//                   nasceu — é prova, não é resultado de cliente)
 //   resRitmo        MEDIANA de R$/mês por cliente desde a 1ª venda influenciada
 //                   (só clientes com ≥7 dias; a média é puxada por 2 outliers)
 //   resDias         mediana de dias entre conectar a conta e a 1ª venda Lever
 //   resAnuncios     anúncios de destino distintos criados pela plataforma
 //   resHoras        resAnuncios × 15 min (o mesmo minuto por anúncio do produto)
 //   resParticipacao fatia do faturamento do período que passou pela Lever
+//
+// POR QUE O TOTAL NÃO SAI DA `dashboard_portfolio` (Leo, 17/08): ela varre 180
+// dias de `platform_orders` e só devolve org com 1ª venda DENTRO dessa janela,
+// então o cliente que vendeu e parou sumia da soma — o deck mostrava R$ 688 mil
+// enquanto a página Resultados do produto mostrava quase R$ 1 milhão. O total
+// (e os anúncios) agora vêm de `org_revenue_generated`, a MESMA tabela que a
+// página do produto soma; mediana, dias e clientes rodando seguem na função,
+// que é quem tem a janela e a data da 1ª venda.
 //
 // CACHE É OBRIGATÓRIO, não otimização: `dashboard_portfolio` varre 180 dias de
 // `platform_orders` e o Levercopy divide este projeto Supabase com o cockpit
@@ -49,13 +66,28 @@ with p as (select public.dashboard_portfolio($1::uuid[]) as j),
               case when (org->>'first_sale') is not null and (org->>'joined_at') is not null
                    then (org->>'first_sale')::date - (org->>'joined_at')::date end as dias
        from o)
-select count(*)::int                                                          as clientes,
-       coalesce(sum(gerado), 0)::float8                                       as gerado,
-       coalesce(sum(anuncios), 0)::bigint                                     as anuncios,
-       percentile_cont(0.5) within group (order by ritmo)::float8             as ritmo,
-       percentile_cont(0.5) within group (order by dias) filter (where dias >= 0)::float8 as dias,
-       case when sum(gmv) > 0 then (sum(lev) / sum(gmv) * 100)::float8 end    as participacao
-from m`;
+     -- Total ALL-TIME por org: a mesma tabela que a página Resultados do
+     -- produto soma. A org interna (a nossa operação) entra separada, nunca
+     -- misturada no número dos clientes.
+     r as (
+       select coalesce(sum(v.gmv_total), 0)                                          as gerado,
+              coalesce(sum(v.gmv_total) filter (where v.org_id <> all($1)), 0)       as gerado_clientes,
+              coalesce(sum(v.gmv_total) filter (where v.org_id = any($1)), 0)        as gerado_nosso,
+              count(*) filter (where v.gmv_total > 0)                                as contas,
+              coalesce(sum(v.items_counted), 0)                                      as anuncios
+       from public.org_revenue_generated v
+       join public.orgs g on g.id = v.org_id and g.active = true
+     )
+select (select count(*) from m)::int                                          as clientes,
+       r.gerado::float8                                                       as gerado,
+       r.gerado_clientes::float8                                              as gerado_clientes,
+       r.gerado_nosso::float8                                                 as gerado_nosso,
+       r.contas::int                                                          as contas,
+       r.anuncios::bigint                                                     as anuncios,
+       (select percentile_cont(0.5) within group (order by ritmo) from m)::float8 as ritmo,
+       (select percentile_cont(0.5) within group (order by dias) filter (where dias >= 0) from m)::float8 as dias,
+       (select case when sum(gmv) > 0 then sum(lev) / sum(gmv) * 100 end from m)::float8 as participacao
+from r`;
 
 const nf = (min, max) => new Intl.NumberFormat("pt-BR", { minimumFractionDigits: min, maximumFractionDigits: max });
 
@@ -82,7 +114,16 @@ const money = (n) => `R$ ${short(n)}`;
 export function resultTokens(row) {
   if (!row || !(Number(row.clientes) > 0)) return null;
   const out = { resClientes: nf(0, 0).format(Number(row.clientes)) };
-  if (Number(row.gerado) > 0) out.resGerado = money(row.gerado);
+  if (Number(row.contas) > 0) out.resContas = nf(0, 0).format(Number(row.contas));
+  if (Number(row.gerado) > 0) out.resGeradoTudo = money(row.gerado);
+  if (Number(row.gerado_clientes) > 0) {
+    // Dois nomes pro MESMO número de propósito: `resGerado` é o token que os
+    // decks já compartilhados com cliente usam ("R$ X já gerados"), e ali a
+    // frase fala das contas dos clientes. O nome novo é pro deck atual.
+    out.resGerado = money(row.gerado_clientes);
+    out.resGeradoClientes = money(row.gerado_clientes);
+  }
+  if (Number(row.gerado_nosso) > 0) out.resGeradoNosso = money(row.gerado_nosso);
   if (Number(row.ritmo) > 0) out.resRitmo = money(row.ritmo);
   if (row.dias != null && Number(row.dias) >= 0) out.resDias = nf(0, 0).format(Math.round(Number(row.dias)));
   if (Number(row.anuncios) > 0) {
