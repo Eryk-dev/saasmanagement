@@ -226,23 +226,44 @@ test("placar: a mentoria vira bloco próprio, com fila, potencial e venda", asyn
   assert.deepEqual(sb.mentoria.byUser.find((b) => b.user === "sdr"), { user: "sdr", queue: 2, contacted: 0, won: 1, revenue: 3000 });
 });
 
-test("a venda de mentoria NÃO entra no funil do LeverAds (nem no CPL nem nas pernas do plano)", async () => {
+test("a mentoria entra como CONTRATO e RECEITA (pessoa, time e dinheiro das telas)", async () => {
   const { app } = await buildBoard();
   const sb = (await app.inject({ url: `/api/scoreboard/leverads${MONTH}` })).json();
   const manu = sb.sdr.find((p) => p.user === "sdr");
-  // As duas pernas do plano dela contam só a venda da plataforma.
-  assert.equal(manu.won, 1);
-  assert.equal(manu.revenue, 7188);
-  // A mentoria fica em campo próprio, do lado.
+  // As duas pernas do plano dela somam plataforma + mentoria (Leo, 16/08).
+  assert.equal(manu.won, 2);
+  assert.equal(manu.revenue, 10188); // 7.188 da plataforma + 3.000 da mentoria
+  // E seguem detalhadas no campo próprio, pra saber de onde veio.
   assert.equal(manu.mentoriaWon, 1);
   assert.equal(manu.mentoriaRevenue, 3000);
   assert.equal(manu.mentoriaQueue, 2);
-  // Lead da fila não conta como lead do produto (é o que protege o CPL).
+  // Time e as telas de dinheiro contam o mesmo.
+  assert.equal(sb.team.won, 2);
+  assert.equal(sb.team.revenue, 10188);
+  const mk = (await app.inject({ url: `/api/marketing/leverads${MONTH}` })).json();
+  assert.equal(mk.totals.won, 2);
+  assert.equal(mk.totals.revenue, 10188); // o anúncio que trouxe a pessoa leva o crédito
+  const pace = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
+  assert.equal(pace.context.wonMonth, 2);
+  assert.equal(pace.context.tcvMonth, 10188);
+});
+
+test("mas o FUNIL e as TAXAS seguem só da plataforma (o CPL não dilui)", async () => {
+  const { app } = await buildBoard();
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${MONTH}` })).json();
+  const manu = sb.sdr.find((p) => p.user === "sdr");
+  // Lead da fila não conta como lead do produto: é o que protege o CPL e
+  // impede o pixel de aprender a caçar quem não pode comprar a plataforma.
   assert.equal(sb.team.leadsNew, 1);
   assert.equal(manu.leadsNew, 1);
   const mk = (await app.inject({ url: `/api/marketing/leverads${MONTH}` })).json();
   assert.equal(mk.totals.leads, 1);
-  assert.equal(mk.totals.revenue, 7188); // a receita de mídia segue só a da plataforma
+  // Conversão do closer divide pelas calls da plataforma, então usa o ganho da
+  // plataforma: com a mentoria dentro, uma venda sem call passaria de 100%.
+  const leo = sb.closer.find((c) => c.user === "leo");
+  assert.equal(leo.won, 1);          // ele fechou só a da plataforma
+  assert.equal(leo.revenue, 7188);
+  assert.equal(sb.team.leadToWin, 100); // 1 ganho de plataforma ÷ 1 lead novo
 });
 
 test("migração dá dono pra fila da Mentoria, uma vez e sem tocar em card terminal", async () => {

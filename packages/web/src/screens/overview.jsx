@@ -247,11 +247,12 @@ function personRows(p, bizDays, elapsedFrac, monthFrac) {
     const bookedTarget = bookedMonth
       || (g.bookingRate?.target > 0 && p.sdr.leadsPrev > 0 ? Math.round((p.sdr.leadsPrev * g.bookingRate.target) / 100) : null);
     flow("agendadas", p.sdr.callsBooked, bookedTarget, "Calls agendadas no período vs. a meta do mês da vaga", bookedMonth ? monthFrac : elapsedFrac);
-    // Mentoria: a segunda fila do SDR. Só entra na linha de quem tem fila ou
+    // Mentoria: a fatia dos contratos dele que veio da fila da mentoria (já
+    // está dentro das duas pernas acima). Só entra na linha de quem tem fila ou
     // venda, pra não pendurar uma submeta vazia em todo mundo.
     if (p.sdr.mentoriaQueue > 0 || p.sdr.mentoriaWon > 0) {
       flow("mentoria", p.sdr.mentoriaWon, monthGoal(g.mentoriaWon),
-        `Mentorias vendidas no período · ${int(p.sdr.mentoriaQueue)} na fila dele${p.sdr.mentoriaRevenue ? ` · ${money(p.sdr.mentoriaRevenue)} fechados` : ""}`);
+        `Dos contratos dele, quantos vieram da mentoria · ${int(p.sdr.mentoriaQueue)} na fila${p.sdr.mentoriaRevenue ? ` · ${money(p.sdr.mentoriaRevenue)} fechados` : ""}`);
     }
   }
   if (p.closer) {
@@ -568,17 +569,17 @@ function AquisicaoCard({ marketing, biz, classes, pShort }) {
 }
 
 // ── Mentoria: a segunda fila (Leo, 16/08) ────────────────────────────────────
-// Fica FORA do funil de propósito: o lead que ainda não vende não entra no CPL
-// nem nas taxas do LeverAds (contá-lo ensinaria a Meta a caçar mais gente fora
-// do perfil), mas a venda dele é venda e agora tem dono. Bloco próprio, com o
-// mesmo desenho dos outros cards, e a fila quebrada pela VERBA declarada, que é
-// o que decide a oferta. Some sozinho no produto que não tem essa fila.
+// O DINHEIRO dela entra normal (contrato e receita, da pessoa e do time); o que
+// fica de fora é o FUNIL: o lead que ainda não vende não conta no CPL nem nas
+// taxas do LeverAds, porque contá-lo ensinaria a Meta a caçar mais gente fora
+// do perfil. Este card é a leitura própria dessa fila, quebrada pela VERBA
+// declarada, que é o que decide a oferta. Some sozinho em produto sem essa fila.
 function MentoriaCard({ mentoria, pShort, onNav, saas }) {
   if (!mentoria || (!mentoria.queue && !mentoria.won)) return null;
   const v = mentoria.queueByVerba || {};
   const alto = (v["5k-20k"] || 0) + (v["20k+"] || 0);
   return (
-    <Card title="Mentoria" hint={`fila de quem ainda não vende · ${pShort} · fora do funil do LeverAds`}
+    <Card title="Mentoria" hint={`fila de quem ainda não vende · ${pShort} · conta em contrato e receita, fora do funil e do CPL`}
       action={onNav ? <button onClick={() => onNav("pipeline", { saas })} style={{ fontSize: 12.5, fontWeight: 500, color: "var(--accent)" }}>Abrir a fila →</button> : null}>
       <div style={{ padding: "14px var(--inset-x) 18px", ...tilesGrid }}>
         <MiniTile label="Na fila" big={int(mentoria.queue)} sub={`${money(mentoria.queuePotential)} em potencial`}
@@ -586,7 +587,7 @@ function MentoriaCard({ mentoria, pShort, onNav, saas }) {
         <MiniTile label="Vendidas" big={int(mentoria.won)} sub={`${int(mentoria.newIn)} novos · ${int(mentoria.contacted)} contatados`}
           title="Mentorias fechadas no período (a régua de ganho é a mesma do funil: cliente criado ou etapa de ganho)" />
         <MiniTile label="Receita" big={money(mentoria.revenue)} sub="no período"
-          title="R$ fechado na fila da mentoria · não entra na receita do LeverAds, que persegue a meta da plataforma" />
+          title="R$ fechado na fila da mentoria · já está dentro da receita e dos contratos do time (aqui é a fatia dela)" />
         <MiniTile label="Até R$ 1 mil" big={int(v["ate-1k"])} sub="oferta: Curso"
           title="Verba declarada no formulário · abre no Curso de R$ 1.000" />
         <MiniTile label="R$ 1 a 5 mil" big={int(v["1k-5k"])} sub="oferta: Assistido"

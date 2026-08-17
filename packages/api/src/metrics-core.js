@@ -84,6 +84,20 @@ export function rangeFromQuery(q = {}, now = new Date()) {
 // porque encheu de gente que não compra.
 export const isRealLead = (l) => !l?.internal && !l?.formExit;
 
+// ── O que é VENDA (Leo, 16/08/2026) ─────────────────────────────────────────
+// A régua do DINHEIRO é mais larga que a do LEAD: a mentoria entra normal, como
+// contrato e receita, pra pessoa e pro time. O lead dela segue fora do funil
+// (`isRealLead`), e isso é de propósito, porque o denominador do funil é a
+// máquina da plataforma: CPL, taxa de contato, agendamento e conversão por call
+// medem quem PODE comprar o software. Vender mentoria não passa por call
+// agendada, então contá-la nas taxas inflaria a conversão e desdobraria a meta
+// errado.
+//
+// Em uma frase: dinheiro conta tudo o que o time vendeu; funil conta só a
+// máquina da plataforma. Quem soma contrato ou R$ usa esta; quem soma lead,
+// contato, call ou taxa usa a de cima.
+export const isSaleLead = (l) => !l?.internal && (!l?.formExit || isMentoriaLead(l));
+
 // ── Mentoria: a segunda fila do produto (Leo, 16/08/2026) ───────────────────
 // O lead da mentoria continua FORA do isRealLead, e isso é de propósito: contar
 // no funil quem não pode comprar a plataforma faria o CPL parecer barato e

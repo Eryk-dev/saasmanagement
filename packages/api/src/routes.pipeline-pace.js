@@ -4,7 +4,7 @@
 
 import { TOUCH_TYPES } from "./stages.js";
 import {
-  DAY_MS as DAY, round2, dayKey, isRealLead,
+  DAY_MS as DAY, round2, dayKey, isRealLead, isSaleLead,
   bookedLeadsIn, callOutcome, callCohortIn, winsIn, customerStartMap, tcvOf, contactAttribution,
 } from "./metrics-core.js";
 
@@ -173,8 +173,17 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   const actsOf = (id) => actsByLead.get(id) || [];
   const customerStartByLead = customerStartMap(customers);
   // Vendas numa janela pela régua oficial (isWonLead + wonAt, metrics-core).
+  // Duas bases, de propósito (Leo, 16/08): `winLeadsIn` é a da PLATAFORMA e
+  // sustenta as TAXAS da cadeia (conversão, ticket) — a mentoria não nasce de
+  // call agendada, então entrar aqui desdobraria a meta pedindo menos call do
+  // que a empresa precisa. `winSaleLeadsIn` é a do DINHEIRO (vendido no mês,
+  // contratos): aí a mentoria entra normal.
   const winLeadsIn = (test) => [...winsIn(product, leads, test, customerStartByLead).keys()]
     .map((id) => leadById.get(id)).filter(Boolean);
+  const saleLeads = allLeads.filter((l) => l.saas === product.id && isSaleLead(l));
+  const saleById = new Map(saleLeads.map((l) => [l.id, l]));
+  const winSaleLeadsIn = (test) => [...winsIn(product, saleLeads, test, customerStartByLead).keys()]
+    .map((id) => saleById.get(id)).filter(Boolean);
 
   const paid = invoices.filter((i) => i.status === "paid" && i.paidAt);
   const paidMonth = paid.filter((i) => inMonth(i.paidAt));
@@ -364,9 +373,13 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   // (faturas pagas) segue no bloco `cash` como leitura; o fluxo e o dinheiro
   // futuro moram na aba Clientes. O desdobramento (plan) persegue o gap do
   // VENDIDO, não o do caixa.
-  const todayWinLeads = winLeadsIn((iso) => dayKey(iso) === today);
+  // O VENDIDO soma a mentoria (Leo, 16/08: entra normal como contrato e
+  // receita). As TAXAS da cadeia acima seguem no ganho da plataforma —
+  // desdobrar a meta por uma conversão que inclui venda sem call agendada
+  // pediria menos call do que a empresa precisa.
+  const todayWinLeads = winSaleLeadsIn((iso) => dayKey(iso) === today);
   const todayWon = todayWinLeads.length;
-  const tcvMonthLeads = winLeadsIn(inMonth);
+  const tcvMonthLeads = winSaleLeadsIn(inMonth);
   const tcvMonth = tcvOf(tcvMonthLeads);
   const sold = tcvMonth;
   const soldToday = tcvOf(todayWinLeads);
@@ -560,9 +573,10 @@ export async function computeWindowGoal(repo, product, since, until, now = new D
   }
   targetRevenue = round2(targetRevenue);
 
-  // Vendido na janela: régua oficial da venda (isWonLead + wonAt, contrato cheio).
+  // Vendido na janela: régua oficial da venda (isWonLead + wonAt, contrato
+  // cheio) sobre a base do DINHEIRO — a mentoria entra normal (Leo, 16/08).
   const [allLeads, allCustomers] = await Promise.all([repo.list("leads"), repo.list("customers")]);
-  const leads = allLeads.filter((l) => l.saas === product.id && isRealLead(l));
+  const leads = allLeads.filter((l) => l.saas === product.id && isSaleLead(l));
   const customers = allCustomers.filter((c) => c.saas === product.id);
   const inWin = (iso) => { const d = dayKey(iso); return d && d >= since && d <= until; };
   const winAt = winsIn(product, leads, inWin, customerStartMap(customers));

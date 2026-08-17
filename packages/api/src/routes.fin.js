@@ -17,7 +17,7 @@
 //     entram no fluxo/DRE por competência; IA e WhatsApp (APIs externas) ficam
 //     fora deste endpoint de propósito — a UI soma pelo /api/expenses/summary.
 
-import { monthKey, dayKey, isRealLead, winsIn, tcvOf, customerStartMap, cashCollectedIn, card12xBaseIn } from "./metrics-core.js";
+import { monthKey, dayKey, isSaleLead, winsIn, tcvOf, customerStartMap, cashCollectedIn, card12xBaseIn } from "./metrics-core.js";
 import { settleTarget, settleInvoice } from "./mp-payments.js";
 
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -194,7 +194,9 @@ export function registerFinRoutes(app, repo, { mp } = {}) {
       expenses: allExpenses.filter((e) => e.saas === product.id),
       insights: allInsights.filter((r) => r.saas === product.id),
       invoices,
-      leads: allLeads.filter((l) => l.saas === product.id && isRealLead(l)),
+      // Base do VENDIDO no Financeiro (custo % e DRE): a mentoria entra como
+      // venda normal (Leo, 16/08).
+      leads: allLeads.filter((l) => l.saas === product.id && isSaleLead(l)),
       starts: customerStartMap(customers),
     };
 
