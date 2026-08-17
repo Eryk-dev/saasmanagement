@@ -22,6 +22,10 @@ import { WaAutomationsPanel } from "../components/wa-automations.jsx";
 // pela mesma SSE do resto (version do useData). Escopo pelo produto ativo;
 // número que respondeu sem ser lead ainda aparece igual (thread órfã).
 
+// Texto comparável da busca: minúsculo e sem acento, pra "fabio" achar "Fábio"
+// (mesma régua do CommandSearch).
+const norm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+
 function prettyPhone(d) {
   const s = String(d || "");
   const m = s.match(/^55(\d{2})(\d{4,5})(\d{4})$/);
@@ -281,9 +285,19 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
 
   // Auto-seleciona a primeira conversa; marca como lida ao abrir.
   const list = React.useMemo(() => {
-    const s = q.trim().toLowerCase();
+    const s = norm(q.trim());
     const base = threads || [];
-    const byQ = s ? base.filter((t) => (t.name || "").toLowerCase().includes(s) || String(t.phone).includes(s.replace(/\D/g, ""))) : base;
+    // A busca por NOME não filtrava nada (Leo, 17/08): a parte do telefone
+    // comparava com os dígitos da busca, e numa busca sem dígito isso vira
+    // `phone.includes("")`, que é VERDADEIRO pra toda conversa — a lista voltava
+    // inteira e parecia que o campo não funcionava. O telefone só entra na
+    // conta quando o que foi digitado tem dígito.
+    const digits = q.replace(/\D/g, "");
+    const byQ = s
+      ? base.filter((t) => norm(t.name).includes(s)
+        || norm(t.company).includes(s)
+        || (digits !== "" && String(t.phone || "").includes(digits)))
+      : base;
     // Encerradas ficam fora da lista viva (todas/respondidas/sem resposta) e
     // têm o próprio filtro — mensagem nova do lead reabre e ela volta sozinha.
     const open = byQ.filter((t) => (t.status || "open") !== "closed");
