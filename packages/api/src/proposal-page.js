@@ -211,7 +211,10 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .after .compare-lbl { color: var(--accent); }
   .compare-num { font-family: var(--font-display); font-weight: 500; font-size: 64px; line-height: .9; letter-spacing: -.03em; margin-bottom: 8px; }
   @media (min-width: 768px) { .compare-num { font-size: 88px; } }
-  .compare-num .unit { font-size: 24px; color: var(--ink-3); font-weight: 400; }
+  /* A unidade nunca parte no meio: com "/mês por cliente" o "cliente" caía
+     sozinho na linha de baixo, com cara de texto quebrado (Leo, 17/08). Ela
+     desce inteira quando não couber ao lado do número. */
+  .compare-num .unit { font-size: 24px; color: var(--ink-3); font-weight: 400; white-space: nowrap; }
   .after .compare-num { color: var(--accent); }
   .compare-sub { font-size: 16px; color: var(--ink-3); line-height: 1.5; margin-bottom: 24px; }
   .point-list { display: flex; flex-direction: column; gap: 14px; }
@@ -244,6 +247,8 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
      viraria flex-items separados que não quebram linha (estourava no mobile). */
   .ret-step .ret-body, .point .point-body { flex: 1; min-width: 0; display: block; }
   .ret-step b { color: var(--fg); font-weight: 600; }
+  /* Bloco autoral embaixo do bignum (s.html): gráfico, tabela, o que for. */
+  .roi-extra { margin-top: 34px; }
   .ret-uplift { margin-top: 24px; padding: 16px 18px; border-radius: var(--radius); background: var(--accent-soft); border: 1px solid var(--accent-line); font-size: 14px; line-height: 1.5; color: var(--ink-2); }
   .ret-uplift b { color: var(--accent); }
 
@@ -896,7 +901,8 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     // mão; sem isso o span nasce vazio e o slide cai no fallback do template.
     // (Sem crase neste comentário: ele vive DENTRO do template literal do
     // script do navegador, e uma crase fecharia a string inteira.)
-    ['resClientes', 'resContas', 'resGerado', 'resGeradoClientes', 'resGeradoTudo', 'resGeradoNosso',
+    ['resClientes', 'resContas', 'resMes', 'resMesClientes', 'resMesNosso',
+      'resGerado', 'resGeradoClientes', 'resGeradoTudo', 'resGeradoNosso',
       'resRitmo', 'resDias', 'resAnuncios', 'resHoras', 'resParticipacao']
       .forEach(function (k) { if (c[k] != null && c[k] !== '') out[k] = c[k]; });
     return out;
@@ -1181,6 +1187,15 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       rw.innerHTML = '<div data-reveal><div class="ret-steps">' + items + '</div>' + (s.note ? '<div class="ret-uplift">' + fmt(s.note) + '</div>' : '') + '</div>' +
         '<div class="roi-big" data-reveal><div class="roi-label">' + fmt(s.bigLabel || '') + '</div><div class="roi-num">' + fmt(s.bigValue || '') + '</div>' + (s.bigLabel2 ? '<div class="roi-label" style="margin-bottom:18px">' + fmt(s.bigLabel2) + '</div>' : '') + '<div class="roi-caption">' + fmt(s.bigCaption || '') + '</div></div>';
       w.appendChild(rw);
+      // Bloco autoral opcional embaixo (s.html): mesmo contrato do slide custom
+      // (HTML cru do dono, com {{...}} interpolado) — serve pra gráfico, tabela
+      // ou o que o deck precisar sem virar tipo de slide novo.
+      if (s.html) {
+        var xtra = el('div', 'roi-extra');
+        xtra.setAttribute('data-reveal', '');
+        xtra.innerHTML = String(s.html).replace(/\\{\\{\\s*([a-zA-Z0-9_.]+)\\s*\\}\\}/g, function (_, path) { return interpPath(path); });
+        w.appendChild(xtra);
+      }
       sec.appendChild(w);
       return sec;
     },
