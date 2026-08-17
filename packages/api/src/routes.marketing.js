@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { meta as defaultMeta, onMetaThrottle } from "./meta.js";
 import { stagePassCounts } from "./routes.funnel-metrics.js";
 import { kindOf } from "./stages.js";
-import { dayKey, isRealLead, winsIn, customerStartMap, leadOrigin, LEAD_ORIGINS } from "./metrics-core.js";
+import { dayKey, isRealLead, isSaleLead, winsIn, customerStartMap, leadOrigin, LEAD_ORIGINS } from "./metrics-core.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 import { painCode } from "./attribution.js";
 export { painCode };
@@ -649,6 +649,11 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     // da janela (criados nela — a base de CPL/atribuição de lead).
     const productLeads = leadsAll.filter((l) => l.saas === product.id && isRealLead(l));
     const leads = productLeads.filter((l) => l.createdAt && dayStr(l.createdAt) >= since && dayStr(l.createdAt) <= until);
+    // Base do DINHEIRO (receita/ROAS): a mentoria entra normal como venda (Leo,
+    // 16/08) e o anúncio que trouxe essa pessoa merece o crédito. A base de
+    // LEAD/CPL acima segue sem ela: contar quem não pode comprar a plataforma
+    // faria o custo por lead parecer barato, que é o motivo da saída lateral.
+    const saleLeads = leadsAll.filter((l) => l.saas === product.id && isSaleLead(l));
     // Quem saiu por uma saída lateral do form (ex.: ainda não vende) fica FORA
     // das contagens acima (senão o CPL fica barato por encher de quem não
     // compra) e vira um número próprio: é o diagnóstico do anúncio, não do form.
@@ -684,8 +689,8 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     // continua pelo UTM do lead, mesmo que ele tenha entrado noutro período.
     const inWin = (iso) => { const d = dayStr(iso); return d && d >= since && d <= until; };
     const customerStartByLead = customerStartMap((await repo.list("customers")).filter((c) => c.saas === product.id));
-    const wonIds = winsIn(product, productLeads, inWin, customerStartByLead);
-    const wonAll = productLeads.filter((l) => wonIds.has(l.id));
+    const wonIds = winsIn(product, saleLeads, inWin, customerStartByLead);
+    const wonAll = saleLeads.filter((l) => wonIds.has(l.id));
     const revenueAll = wonAll.reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
     // Custo por etapa: leads que PASSARAM por cada estágio da régua de progresso

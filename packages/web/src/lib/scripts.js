@@ -392,6 +392,26 @@ export const DEFAULT_SCRIPTS = {
       { t: "Próximo passo", fala: "Vou te mandar a apresentação e a gente marca 30 minutinhos pra eu te mostrar como funciona por dentro. Fica melhor amanhã de manhã ou no fim da tarde?", dica: "Gera a apresentação no card escolhendo o deck Mentoria (não vende ainda). Marcou? Registra em Call agendada." },
     ],
   },
+  // Call de venda da MENTORIA. Quem conduz não está vendendo plataforma: não
+  // tem conta pra clonar, não tem demo, e do outro lado tem alguém inseguro que
+  // provavelmente já comprou curso que não entregou. A call inteira gira em
+  // torno do que o concorrente não copia: o produto validado que a gente põe na
+  // conta dele. A oferta já vem resolvida pela verba ({{oferta_mentoria}}).
+  mentoriaCall: {
+    titulo: "Mentoria · call de venda",
+    resumo: "Call de quem ainda NÃO vende. Nada de demo de ferramenta: aqui se vende caminho e companhia. Fale devagar, confirme o que ele já respondeu no formulário em vez de perguntar de novo, e só chegue no preço depois que ele enxergar o problema da conta nova. Se ele disser que já vende, mudou a rota: é lead da plataforma.",
+    objetivo: "Sair com a decisão tomada na call: produto escolhido, forma de pagamento combinada e o link enviado. Sem decisão, marque o retorno com data e hora, nunca 'me chama depois'.",
+    passos: [
+      { t: "Abertura e contexto", fala: "Oi {{nome}}, tudo bem? Antes de qualquer coisa, me conta o que te fez querer começar a vender em marketplace agora.", dica: "Deixa a pessoa falar. O motivo dela é o que você vai usar no fechamento." },
+      { t: "Confirmar o cenário", fala: "Você marcou no formulário que ainda não vende e que tem uma verba de {{verba_declarada}} pra começar. Isso continua de pé? E CNPJ, você já tem?", dica: "Confirma, não re-pergunta. Se a verba mudou, a oferta muda junto." },
+      { t: "O problema da conta nova", fala: "Deixa eu te mostrar onde quase todo mundo trava. Conta nova não aparece na busca enquanto não vende, e não vende porque não aparece. Aí a pessoa compra estoque no chute pra tentar furar isso e o produto fica parado no quarto dela.", dica: "Pausa aqui. Espera ele concordar antes de seguir." },
+      { t: "Como a gente resolve", fala: "A gente quebra esse círculo com produto NOSSO, que já vende todo dia, anunciado na sua conta. Ele faz as suas primeiras vendas e esquenta a conta. Enquanto isso, a gente escolhe e compra o SEU estoque junto com você, com custo e margem na planilha, então você compra sabendo a conta.", dica: "Esse é o argumento que ninguém copia. Se a call tiver um único momento alto, é este." },
+      { t: "O que está incluído", fala: "Junto vem o curso completo (conta, anúncio, CNPJ, nota, fornecedor), a planilha de precificação, 4 encontros comigo e acompanhamento no WhatsApp por 90 dias, em dias úteis das 9 às 18.", dica: "Diga o limite da assessoria em voz alta. É o que evita cobrança eterna depois." },
+      { t: "A oferta", fala: "Pelo que você me contou, o que encaixa é {{oferta_mentoria}}.", dica: "{{nota_mentoria}} · Fala o preço e CALA A BOCA. Quem falar primeiro depois do preço perde." },
+      { t: "Garantia e pagamento", fala: "Você tem 7 dias pra desistir, sem pergunta. E o pagamento é no cartão, em até 12x, o preço à vista é o mesmo.", dica: "Sem boleto (decisão do Leo). Gera o link de pagamento pelo card e manda ainda na call." },
+      { t: "Fechamento", fala: "Se fizer sentido pra você, eu já te mando o link agora e a gente começa essa semana: eu te dou os acessos do curso e a gente marca o primeiro encontro. Fechado?", dica: "Fechou? Registra o Ganho no card com o produto e o valor. Não fechou? Marque data e hora do retorno antes de encerrar." },
+    ],
+  },
   outro: {
     titulo: "Contato",
     resumo: "Etapa sem roteiro próprio. Dá pra escrever um em Ajustes, na aba Funil & estágios (coluna do lápis).",
@@ -428,10 +448,14 @@ export function scriptKeyFor(saasCfg, lead) {
   const reactivation = (kind === "contato" || kind === "qualificacao") &&
     lead?.stage && !openStages(saasCfg).includes(stage);
   const attempts = Number(lead?.stageAttempts) || 0;
-  // Fila da Mentoria: enquanto o card está na coluna própria (kind fora da
-  // régua do funil), a fala é a da mentoria. Quando o closer traz o card pro
-  // fluxo normal (call, follow-up), valem os roteiros daquelas etapas.
-  if (isMentoriaLead(lead) && kind === "outro") return "mentoria";
+  // Fila da Mentoria: a fala é a da mentoria do começo ao fim. Na coluna
+  // própria (kind fora da régua do funil) é o 1º contato do SDR; na etapa de
+  // call é a call de venda de quem conduz a mentoria. Nas outras etapas valem
+  // os roteiros de sempre (follow-up e nutrição funcionam igual).
+  if (isMentoriaLead(lead)) {
+    if (kind === "outro") return "mentoria";
+    if (kind === "call") return "mentoriaCall";
+  }
   if (isNoShowStage(stage)) return attempts >= 1 ? "noshow2" : "noshow1";
   if (reactivation) return attempts >= 2 ? "nutricao3" : attempts === 1 ? "nutricao2" : "nutricao1";
   if (kind === "qualificacao") return attempts >= 1 ? "qualificacao3" : "qualificacao2";

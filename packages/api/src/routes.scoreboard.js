@@ -13,7 +13,7 @@ import { compGoalFor, compLevelOf } from "./comp-plan.js";
 import { TEAM_METRICS, META_CATALOG, deriveGoalsFromPace } from "./routes.metas.js";
 import { RATE_BENCHMARKS, computePipelinePace } from "./routes.pipeline-pace.js";
 import {
-  DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead, isWonLead,
+  DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead, isSaleLead, isWonLead,
   callOutcome as coreCallOutcome, callCohortIn,
   winsIn, customerStartMap, contactAttribution, isReferralLead,
   classCounts, cashBucketsIn, mentoriaScore,
@@ -65,6 +65,13 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     // Lead interno (teste) fora de tudo — régua oficial do metrics-core.
     const leads = allLeads.filter((l) => l.saas === product.id && isRealLead(l));
     const leadById = new Map(leads.map((l) => [l.id, l]));
+    // Base do DINHEIRO (Leo, 16/08): a mentoria entra normal, como contrato e
+    // receita, pra pessoa e pro time. O `leads` acima segue sendo a base do
+    // FUNIL e das TAXAS — a mentoria não passa por call agendada da plataforma,
+    // então contá-la nos denominadores inflaria conversão e comparecimento. Os
+    // números dela têm bloco próprio (mentoria), e o dinheiro soma nos dois.
+    const saleLeads = allLeads.filter((l) => l.saas === product.id && isSaleLead(l));
+    const saleById = new Map(saleLeads.map((l) => [l.id, l]));
     const customers = allCustomers.filter((c) => c.saas === product.id);
 
     const actsByLead = new Map();
@@ -336,9 +343,11 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       const contactRate = uid === soloSdr ? teamContactRate : cohortRate(mine);
       // Contratos e receita DAS OPORTUNIDADES DELE (owner) na janela — as duas
       // pernas do plano de remuneração do SDR (a receita dele é a fechada das
-      // oportunidades que ELE gerou, regra 3 do plano de 04/08).
-      const winMineAt = winTransitionsFor(mine);
-      const wonMineLeads = [...winMineAt.keys()].map((id) => leadById.get(id)).filter(Boolean);
+      // oportunidades que ELE gerou, regra 3 do plano de 04/08). Base do
+      // dinheiro: inclui a mentoria (Leo, 16/08).
+      const mineSale = saleLeads.filter((l) => l.owner === uid);
+      const winMineAt = winTransitionsFor(mineSale);
+      const wonMineLeads = [...winMineAt.keys()].map((id) => saleById.get(id)).filter(Boolean);
       const wonMine = wonMineLeads.length;
       const revenueMine = round2(wonMineLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0));
       // Taxa de agendamento em COORTE (régua #650): das leads DA JANELA cujo 1º
@@ -429,10 +438,16 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       // GANHO do closer = venda na janela pela régua oficial (isWonLead +
       // wonAt, metrics-core). O valor do negócio é lançado no fechamento
       // (ver stage-move/DestinoSection).
-      const winAt = winTransitionsFor(mine);
-      const wonLeads = [...winAt.keys()].map((id) => leadById.get(id)).filter(Boolean);
+      // O dinheiro (as duas pernas do plano) inclui a mentoria que ELE fechou;
+      // as TAXAS abaixo dividem pelas calls da plataforma, então usam o ganho
+      // da plataforma — senão a conversão passaria de 100% com uma venda de
+      // mentoria, que não nasce de call agendada aqui.
+      const mineSale = saleLeads.filter((l) => l.closer === uid);
+      const winAt = winTransitionsFor(mineSale);
+      const wonLeads = [...winAt.keys()].map((id) => saleById.get(id)).filter(Boolean);
       const wonN = wonLeads.length;
       const revenue = wonLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0);
+      const wonPlatformN = wonLeads.filter((l) => isRealLead(l)).length;
       // Ciclo CALL → GANHO: dias da call marcada até o fechamento (integração).
       const cycle = wonLeads.map((l) => (l.callAt ? (new Date(winAt.get(l.id)) - new Date(l.callAt)) / DAY : null))
         .filter((d) => Number.isFinite(d) && d >= 0);
@@ -444,7 +459,7 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       // 25/07: a % tem que bater com won ÷ realizadas do próprio card). Divide
       // pelo MESMO callsShown que aparece — inclui o histórico, que não tem
       // ganho, então a taxa reflete o recorde real sobre TODAS as calls feitas.
-      const conversao = callsShown > 0 ? round2((wonN / callsShown) * 100) : null;
+      const conversao = callsShown > 0 ? round2((wonPlatformN / callsShown) * 100) : null;
       // Follow-up: fila atual em dia + resgate da janela (réguas no bloco acima).
       const fuNow = mine.filter((l) => kindOf(product, l.stage) === "followup");
       const followupOnTime = fuNow.filter((l) => l.nextActionAt && new Date(l.nextActionAt).getTime() >= nowMs).length;
@@ -460,7 +475,7 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
         calls, callsShown,
         won: wonN, revenue: round2(revenue), lost: lost.length,
         conversaoCall: conversao,
-        winRateCall: calls > 0 ? round2((wonN / calls) * 100) : null,
+        winRateCall: calls > 0 ? round2((wonPlatformN / calls) * 100) : null,
         revenuePerCall: calls > 0 ? round2(revenue / calls) : null,
         ticket: wonN > 0 ? round2(revenue / wonN) : null,
         cycleDays: median(cycle),
@@ -540,7 +555,12 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     // pessoa (que contam a atividade toda). A coorte de aquisição (dos que
     // entraram → converteram) mora na tela de Aquisição, onde casa com ROAS/CAC.
     // O funil ENCADEIA: cada denominador é o passo anterior.
-    const teamWonLeads = [...winTransitionsFor(leads).keys()].map((id) => leadById.get(id)).filter(Boolean);
+    // Dinheiro do time: inclui a mentoria (soma dos cards das pessoas, que
+    // também a incluem). As TAXAS do funil abaixo (conversão do período,
+    // lead→ganho) seguem no ganho da PLATAFORMA, porque os denominadores delas
+    // (calls realizadas, leads novos) são da plataforma.
+    const teamWonLeads = [...winTransitionsFor(saleLeads).keys()].map((id) => saleById.get(id)).filter(Boolean);
+    const teamWonPlatform = teamWonLeads.filter((l) => isRealLead(l));
     // Contatados = a régua única (contactAttribution, lá em cima): leads
     // DISTINTOS com contato HUMANO na janela, cada um no autor do 1º contato.
     // O histórico pré-cockpit mora nos buckets das pessoas (80 no SDR etc.),
@@ -615,11 +635,12 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       // soma dos cards, então o % da régua bate com os tiles ao redor).
       callWinRate: bookedN > 0 ? round2((wonFromCallsN / bookedN) * 100) : null,
       closeRate: shownN > 0 ? round2((wonFromCallsN / shownN) * 100) : null, // safra (informativo)
-      closeRatePeriod: shownN > 0 ? round2((wonN / shownN) * 100) : null,
+      closeRatePeriod: shownN > 0 ? round2((teamWonPlatform.length / shownN) * 100) : null,
       won: wonN,             // ganhos TOTAIS no período (por transição) = soma dos closers
       revenue: round2(teamWonLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0)),
-      // Lead → ganho: ganhos no período ÷ leads que entraram no período.
-      leadToWin: leadsNewN > 0 ? round2((wonN / leadsNewN) * 100) : null,
+      // Lead → ganho: ganhos no período ÷ leads que entraram no período. Os dois
+      // lados são da PLATAFORMA (a mentoria tem funil e bloco próprios).
+      leadToWin: leadsNewN > 0 ? round2((teamWonPlatform.length / leadsNewN) * 100) : null,
       paceAdjust: adjApplied, // histórico pré-cockpit somado (null quando não há; nunca tem won)
       contactedBy,            // quem fez o 1º contato humano de cada lead (soma = total do tile)
       automationReached: contact.automationReached, // leads que a automação alcançou (fora do total)

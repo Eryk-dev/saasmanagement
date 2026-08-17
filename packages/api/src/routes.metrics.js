@@ -14,7 +14,7 @@ import { annualized } from "./billing.js";
 import { aiCosts as defaultAiCosts } from "./ai-costs.js";
 import { NOT_CONFIGURED } from "./http-status.js";
 import {
-  DAY_MS, round2, dayKey, monthKey, isRealLead,
+  DAY_MS, round2, dayKey, monthKey, isRealLead, isSaleLead,
   winsIn, customerStartMap, tcvOf, cashCollectedIn, card12xBaseIn,
 } from "./metrics-core.js";
 
@@ -90,7 +90,9 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhats
     const bases = { won: 0, cartao12x: 0, received: 0 };
     if (basesNeeded.has("won")) {
       const [allLeads, allCustomers] = await Promise.all([repo.list("leads"), repo.list("customers")]);
-      const leads = allLeads.filter((l) => l.saas === product.id && isRealLead(l));
+      // Base do custo % sobre o VENDIDO: a mentoria entra (Leo, 16/08) — a taxa
+      // do checkout incide no dinheiro dela igual.
+      const leads = allLeads.filter((l) => l.saas === product.id && isSaleLead(l));
       const starts = customerStartMap(allCustomers.filter((c) => c.saas === product.id));
       const wins = winsIn(product, leads, (iso) => monthKey(iso) === month, starts);
       bases.won = tcvOf(leads.filter((l) => wins.has(l.id)));
