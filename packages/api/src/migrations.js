@@ -4,6 +4,7 @@
 // existem: na dúvida sobre o estado, não mexe.
 
 import { normalizeFunnel, kindOf, isPostSaleStage, TERMINAL_KINDS } from "./stages.js";
+import { autoLeadOwner } from "./lead-flow.js";
 import { catalogAmount } from "./proposal-catalog.js";
 import { createClosedSubscription } from "./billing.js";
 import { FLASHCARD_DEFAULTS } from "./routes.flashcards.js";
@@ -1644,6 +1645,43 @@ export async function runStartupMigrations(repo) {
   } catch (err) {
     console.error("[migration] migrateFormMentoriaOferta falhou:", err?.message || err);
   }
+  try {
+    const n = await assignMentoriaOwner(repo);
+    if (n) console.log(`[migration] fila da Mentoria: ${n} card(s) carimbado(s) com o SDR como dono`);
+  } catch (err) {
+    console.error("[migration] assignMentoriaOwner falhou:", err?.message || err);
+  }
+}
+
+// ── A fila da Mentoria ganhou dono (Leo, 16/08/2026) ────────────────────────
+// A saída lateral nascia sem dono porque ninguém trabalhava essa fila. Agora o
+// produto existe e a fila é responsabilidade do SDR, então os cards que já
+// estavam lá recebem o dono que o form passa a dar aos novos.
+//
+// Idempotente e conservadora: só card SEM dono, só fora das etapas terminais
+// (card desqualificado é história fechada) e só quando o produto tem UM SDR
+// (`autoLeadOwner` devolve null com 0 ou 2+, e aí a migração não adivinha).
+// Não marca próximo toque de propósito: 127 cards com GPS pra hoje viraria uma
+// fila impossível no Meu dia. O backlog se trabalha pela coluna, ordenada pela
+// verba declarada.
+export async function assignMentoriaOwner(repo) {
+  const leads = await repo.list("leads");
+  const fila = leads.filter((l) => l.formExit === "mentoria" && !l.owner && !l.internal);
+  if (!fila.length) return 0;
+  const ownerBySaas = new Map();
+  const productBySaas = new Map();
+  let n = 0;
+  for (const l of fila) {
+    if (!l.saas) continue;
+    if (!ownerBySaas.has(l.saas)) ownerBySaas.set(l.saas, await autoLeadOwner(repo, l.saas));
+    if (!productBySaas.has(l.saas)) productBySaas.set(l.saas, await repo.get("products", l.saas));
+    const owner = ownerBySaas.get(l.saas);
+    if (!owner) continue;
+    if (TERMINAL_KINDS.has(kindOf(productBySaas.get(l.saas), l.stage))) continue;
+    await repo.update("leads", l.id, { owner });
+    n++;
+  }
+  return n;
 }
 
 // ── Mentoria · apresentação e preços (16/08/2026) ───────────────────────────

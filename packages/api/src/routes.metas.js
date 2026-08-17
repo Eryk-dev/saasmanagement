@@ -52,6 +52,12 @@ export const META_CATALOG = [
       // plano; só o ajuste por PESSOA ainda vence.
       { metric: "won", kind: "flow", label: "Contratos no mês", unit: "n", hint: "fechamentos das SUAS oportunidades", default: null, compPlan: true },
       { metric: "revenue", kind: "flow", label: "Receita fechada", unit: "R$", hint: "R$ fechado das SUAS oportunidades", default: null, compPlan: true },
+      // Mentoria: a segunda fila do SDR (Leo, 16/08). Metas SEPARADAS das duas
+      // pernas acima de propósito — o funil é outro (não tem call agendada nem
+      // fechamento por call) e o plano de remuneração ainda não cobre a
+      // mentoria, então somar aqui mudaria comissão sem ninguém decidir.
+      { metric: "mentoriaWon", kind: "flow", label: "Mentorias vendidas", unit: "n", hint: "vendas da fila de quem ainda não vende", default: null, team: true },
+      { metric: "mentoriaRevenue", kind: "flow", label: "Receita de mentoria", unit: "R$", hint: "R$ fechado na fila da mentoria", default: null, team: true },
     ],
   },
   {

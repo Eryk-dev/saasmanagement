@@ -125,6 +125,25 @@ test("saída lateral do form passa a anunciar a oferta, uma vez só", async () =
   assert.equal(await migrateFormMentoriaOferta(repo), false);
 });
 
+test("sem escolher deck, o lead da fila já recebe a apresentação da mentoria", async () => {
+  const repo = makeMemRepo();
+  await ensureMentoriaTemplate(repo);
+  await repo.create("proposal_templates", {
+    id: "pt_leverads", saas: "leverads", status: "published", name: "Proposta · LeverAds",
+    slides: [{ key: "hero", type: "hero", title: "LeverAds" }], calc: {},
+  });
+  // O SDR não tem a tela de Propostas, então nunca manda `template`: o deck
+  // precisa seguir o lead sozinho.
+  const daFila = await repo.create("leads", leadDaFila("1k-5k"));
+  const r1 = await runNativeProposal(repo, daFila, { baseUrl: "https://x" });
+  assert.equal(r1.proposal.template, MENTORIA_TEMPLATE_ID);
+  assert.equal(r1.lead.amount, 3000);
+  // Lead de venda segue no deck publicado do produto.
+  const deVenda = await repo.create("leads", { id: "l2", saas: "leverads", name: "Loja", stage: "Novo lead" });
+  const r2 = await runNativeProposal(repo, deVenda, { baseUrl: "https://x" });
+  assert.equal(r2.proposal.template, "pt_leverads");
+});
+
 test("proposta da mentoria: deck próprio e valor do card pela verba", async () => {
   const repo = makeMemRepo();
   await ensureMentoriaTemplate(repo);
@@ -161,4 +180,84 @@ test("lead de venda não recebe valor de mentoria nem por engano", async () => {
   const calc = { mentoria: mentoriaCalcBlock() };
   assert.equal(mentoriaAmount({ id: "l9", saas: "leverads" }, calc), 0);
   assert.equal(mentoriaAmount(leadDaFila("1k-5k"), { plans: {} }), 0);
+});
+
+// ── Contabilizar a mentoria (Leo, 16/08) ───────────────────────────────────
+const FUNNEL = [
+  { stage: "Novo lead", kind: "novo", conv: 1 },
+  { stage: "Qualificando", kind: "qualificacao", conv: 1 },
+  { stage: "Call agendada", kind: "call", conv: 1 },
+  { stage: "Ganho", kind: "ganho", conv: 1 },
+  { stage: "Desqualificado", kind: "desqualificado", conv: 0 },
+  { stage: "Mentoria", kind: "outro", conv: 1 },
+];
+const NOW = new Date("2026-08-16T15:00:00.000Z");
+const MONTH = "?since=2026-08-01&until=2026-08-31";
+
+async function buildBoard() {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL });
+  await repo.create("users", { id: "sdr", name: "Manuela", saas: "leverads", roles: ["sdr"] });
+  await repo.create("users", { id: "leo", name: "Leo", roles: ["closer"] });
+  // Fila: dois cards abertos (verbas diferentes) e um fechado no mês.
+  await repo.create("leads", { id: "m1", saas: "leverads", owner: "sdr", stage: "Mentoria", formExit: "mentoria", aprender_verba: "ate-1k", createdAt: "2026-08-02T12:00:00.000Z" });
+  await repo.create("leads", { id: "m2", saas: "leverads", owner: "sdr", stage: "Mentoria", formExit: "mentoria", aprender_verba: "20k+", createdAt: "2026-08-03T12:00:00.000Z" });
+  await repo.create("leads", { id: "m3", saas: "leverads", owner: "sdr", stage: "Ganho", formExit: "mentoria", aprender_verba: "1k-5k", amount: 3000, customerId: "cm1", wonAt: "2026-08-10T12:00:00.000Z", createdAt: "2026-08-01T12:00:00.000Z" });
+  await repo.create("customers", { id: "cm1", saas: "leverads", name: "Aluno", leadId: "m3", startedAt: "2026-08-10T12:00:00.000Z" });
+  // Venda de plataforma no mesmo mês: a régua do LeverAds não pode mudar.
+  await repo.create("leads", { id: "v1", saas: "leverads", owner: "sdr", closer: "leo", stage: "Ganho", amount: 7188, customerId: "cv1", wonAt: "2026-08-05T12:00:00.000Z", createdAt: "2026-08-01T12:00:00.000Z" });
+  await repo.create("customers", { id: "cv1", saas: "leverads", name: "Loja", leadId: "v1", startedAt: "2026-08-05T12:00:00.000Z" });
+  const { registerRoutes } = await import("../src/routes.js");
+  const app = Fastify();
+  registerRoutes(app, repo, { pipelinePace: { now: () => NOW }, scoreboard: { now: () => NOW } });
+  return { app, repo };
+}
+
+test("placar: a mentoria vira bloco próprio, com fila, potencial e venda", async () => {
+  const { app } = await buildBoard();
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${MONTH}` })).json();
+  assert.equal(sb.mentoria.queue, 2);                       // o fechado sai da fila
+  assert.equal(sb.mentoria.queueByVerba["ate-1k"], 1);
+  assert.equal(sb.mentoria.queueByVerba["20k+"], 1);
+  assert.equal(sb.mentoria.queuePotential, 4000);           // Curso 1.000 + Assistido 3.000
+  assert.equal(sb.mentoria.won, 1);
+  assert.equal(sb.mentoria.revenue, 3000);
+  assert.equal(sb.mentoria.unowned, 0);
+  assert.deepEqual(sb.mentoria.byUser.find((b) => b.user === "sdr"), { user: "sdr", queue: 2, contacted: 0, won: 1, revenue: 3000 });
+});
+
+test("a venda de mentoria NÃO entra no funil do LeverAds (nem no CPL nem nas pernas do plano)", async () => {
+  const { app } = await buildBoard();
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${MONTH}` })).json();
+  const manu = sb.sdr.find((p) => p.user === "sdr");
+  // As duas pernas do plano dela contam só a venda da plataforma.
+  assert.equal(manu.won, 1);
+  assert.equal(manu.revenue, 7188);
+  // A mentoria fica em campo próprio, do lado.
+  assert.equal(manu.mentoriaWon, 1);
+  assert.equal(manu.mentoriaRevenue, 3000);
+  assert.equal(manu.mentoriaQueue, 2);
+  // Lead da fila não conta como lead do produto (é o que protege o CPL).
+  assert.equal(sb.team.leadsNew, 1);
+  assert.equal(manu.leadsNew, 1);
+  const mk = (await app.inject({ url: `/api/marketing/leverads${MONTH}` })).json();
+  assert.equal(mk.totals.leads, 1);
+  assert.equal(mk.totals.revenue, 7188); // a receita de mídia segue só a da plataforma
+});
+
+test("migração dá dono pra fila da Mentoria, uma vez e sem tocar em card terminal", async () => {
+  const { assignMentoriaOwner } = await import("../src/migrations.js");
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL });
+  await repo.create("users", { id: "sdr", name: "Manuela", saas: "leverads", roles: ["sdr"] });
+  await repo.create("leads", { id: "m1", saas: "leverads", stage: "Mentoria", formExit: "mentoria", aprender_verba: "ate-1k" });
+  await repo.create("leads", { id: "m2", saas: "leverads", stage: "Desqualificado", formExit: "mentoria" });
+  await repo.create("leads", { id: "m3", saas: "leverads", stage: "Mentoria", formExit: "mentoria", owner: "leo" });
+  await repo.create("leads", { id: "v1", saas: "leverads", stage: "Novo lead" });
+  assert.equal(await assignMentoriaOwner(repo), 1);
+  assert.equal((await repo.get("leads", "m1")).owner, "sdr");
+  assert.equal((await repo.get("leads", "m2")).owner, undefined); // terminal fica como está
+  assert.equal((await repo.get("leads", "m3")).owner, "leo");     // dono existente é soberano
+  assert.equal((await repo.get("leads", "v1")).owner, undefined);
+  assert.equal(await assignMentoriaOwner(repo), 0);
 });
