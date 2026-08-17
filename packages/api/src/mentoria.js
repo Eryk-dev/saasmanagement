@@ -395,6 +395,17 @@ export const MENTORIA_SLIDES = [
   },
 ];
 
+// O deck que um lead da fila deve receber quando ninguém escolheu deck: o
+// template da mentoria, se ele existir com preço no banco. Fora da fila (ou sem
+// o template), devolve null e a geração segue pro publicado do produto.
+export function mentoriaTemplateOf(templates, lead) {
+  if (!isMentoriaLead(lead)) return null;
+  return (templates || []).find((t) => t
+    && t.id === MENTORIA_TEMPLATE_ID
+    && (!t.saas || t.saas === lead.saas)
+    && hasMentoria(t.calc)) || null;
+}
+
 export function mentoriaTemplateDoc() {
   return {
     id: MENTORIA_TEMPLATE_ID,

@@ -30,7 +30,7 @@
 import { randomBytes } from "node:crypto";
 import { CYCLE_MONTHS } from "./billing.js";
 import { hasCatalog, applyCatalog, catalogAmount } from "./proposal-catalog.js";
-import { mentoriaAmount } from "./mentoria.js";
+import { mentoriaAmount, mentoriaTemplateOf } from "./mentoria.js";
 import { attributionPain, painCode } from "./attribution.js";
 
 export const SLIDE_TYPES = ["hero", "cards", "receipt", "steps", "compare", "bignum", "pricing", "closer", "custom"];
@@ -427,9 +427,15 @@ export async function runNativeProposal(repo, lead, opts = {}) {
   const templates = await repo.list("proposal_templates");
   // `templateId` (opcional) permite o closer escolher um deck alternativo (ex.:
   // Starter pra cliente D/E), inclusive rascunho; sem ele vai o publicado padrão.
+  //
+  // Exceção: o deck SEGUE O LEAD na fila da Mentoria. Quem trabalha essa fila é
+  // o SDR, que não tem a tela de Propostas e portanto não recebe o select de
+  // deck do card — sem isso ele geraria a apresentação da PLATAFORMA pra quem
+  // ainda não vende, que é justamente o que a fila existe pra evitar.
   const template = templateId
     ? templates.find((t) => t.id === templateId && (!t.saas || t.saas === lead.saas))
-    : templates.find((t) => t.saas === lead.saas && t.status === "published");
+    : (mentoriaTemplateOf(templates, lead)
+      || templates.find((t) => t.saas === lead.saas && t.status === "published"));
   if (!template) return { ok: false, skipped: "no_template" };
 
   const data = splitLeadData(lead);

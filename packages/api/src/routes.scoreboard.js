@@ -16,8 +16,9 @@ import {
   DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead, isWonLead,
   callOutcome as coreCallOutcome, callCohortIn,
   winsIn, customerStartMap, contactAttribution, isReferralLead,
-  classCounts, cashBucketsIn,
+  classCounts, cashBucketsIn, mentoriaScore,
 } from "./metrics-core.js";
+import { isMentoriaLead } from "./mentoria.js";
 
 const HOUR = 3_600_000;
 // Meta de indicação do CS: cada cliente da carteira precisa render N indicações
@@ -264,6 +265,23 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     };
     const teamContactRate = cohortRate(leads);
 
+    // ── Mentoria (a segunda fila, do SDR) ─────────────────────────────────────
+    // Conta FORA do funil, com atribuição própria: o lead da mentoria não entra
+    // no `leads` acima (isRealLead o exclui de propósito), então o 1º contato
+    // dele precisa de uma passada própria do contactAttribution. Régua em
+    // metrics-core (mentoriaScore) pra tela e placar lerem o mesmo número.
+    const mentoriaLeads = allLeads.filter((l) => l.saas === product.id && isMentoriaLead(l) && !l.internal);
+    const mentoriaContact = contactAttribution({
+      leads: mentoriaLeads, actsOf, waMessages, saas: product.id, inWin, humanIds,
+      creditAllTo: soloSdr || undefined,
+    });
+    const mentoria = mentoriaScore(product, mentoriaLeads, {
+      inWin, startByLead: customerStartByLead,
+      contactedIds: mentoriaContact.leadIds, authorOf: mentoriaContact.authorOf,
+    });
+    const mentoriaOf = (uid) => mentoria.byUser.find((b) => b.user === uid)
+      || { queue: 0, contacted: 0, won: 0, revenue: 0 };
+
     // ── SDR (agrupado por owner) ──────────────────────────────────────────────
     const slaMs = (Number(cadenceOf(product, firstStage(product)).firstTouchHours) || 48) * HOUR;
     const sdrRole = new Set(withRole("sdr")); // membro do papel SDR sempre aparece (pra ver a meta)
@@ -338,11 +356,17 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
         ? teamOutcome.shown + adjN("shown") + teamOutcome.noShow
         : shown + noShow;
       const showRate = showDen > 0 ? round2((showNum / showDen) * 100) : null;
+      // Mentoria: a segunda fila do SDR (Leo, 16/08). Fica em campo PRÓPRIO, de
+      // fora das duas pernas do plano de remuneração — contabilizar é uma
+      // decisão, pagar comissão em cima é outra, e essa é do Leo.
+      const men = mentoriaOf(uid);
       return {
         user: uid, name: nameOf(uid),
         contactRate,
         targets: personTargets(uid, "sdr", { contactRate, bookingRate, showRate, contacts: contacted, callsBooked, won: wonMine, revenue: revenueMine }),
         won: wonMine, revenue: revenueMine, // as duas pernas do plano (oportunidades DELE)
+        mentoriaQueue: men.queue, mentoriaContacted: men.contacted,
+        mentoriaWon: men.won, mentoriaRevenue: men.revenue,
         leadsNew,
         leadsPrev, // leads da janela anterior (base da meta dinâmica de calls)
         contacted,
@@ -360,7 +384,7 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
         callWinRate: callsBookedOrganic > 0 ? round2((wonFromCalls / callsBookedOrganic) * 100) : null,
         // Metas por TAXA (o alvo absoluto de calls sai de leads × bookingRate na
         // UI); callsBooked absoluto fica de fallback se alguém preferir fixo.
-        goals: { ...goalMap(uid, "sdr", ["contactRate", "bookingRate", "showRate", "callsBooked", "contacts", "won", "revenue"]), callWinRate: bookedWinGoal(uid, "sdr") },
+        goals: { ...goalMap(uid, "sdr", ["contactRate", "bookingRate", "showRate", "callsBooked", "contacts", "won", "revenue", "mentoriaWon", "mentoriaRevenue"]), callWinRate: bookedWinGoal(uid, "sdr") },
       };
     }).filter((p) => sdrRole.has(p.user) || p.leadsNew > 0 || p.callsBooked > 0 || p.contacted > 0) // ghost/owner legado só com atividade; SDR real sempre
       .sort((a, b) => b.callsBooked - a.callsBooked);
@@ -681,6 +705,6 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       blockedBy: derivedChain.blockedBy || null,
     } : null;
 
-    return { saas: product.id, since, until, sdr, closer, cs, social, team };
+    return { saas: product.id, since, until, sdr, closer, cs, social, team, mentoria };
   });
 }

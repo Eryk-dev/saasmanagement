@@ -19,7 +19,8 @@
 // aqui (ou em stages.js) primeiro; o metrics-consistency.test.js roda as
 // telas sobre o mesmo dataset e quebra se alguém divergir.
 
-import { kindOf, isLoss, isNoShowStage, isWonLead, wonAtOf, TOUCH_TYPES } from "./stages.js";
+import { kindOf, isLoss, isNoShowStage, isWonLead, wonAtOf, TOUCH_TYPES, TERMINAL_KINDS } from "./stages.js";
+import { isMentoriaLead, mentoriaFit } from "./mentoria.js";
 
 export { isWonLead, wonAtOf }; // a régua oficial de ganho, num import só
 
@@ -82,6 +83,63 @@ export function rangeFromQuery(q = {}, now = new Date()) {
 // não são lead DESTE produto — contá-los faz o CPL parecer barato justamente
 // porque encheu de gente que não compra.
 export const isRealLead = (l) => !l?.internal && !l?.formExit;
+
+// ── Mentoria: a segunda fila do produto (Leo, 16/08/2026) ───────────────────
+// O lead da mentoria continua FORA do isRealLead, e isso é de propósito: contar
+// no funil quem não pode comprar a plataforma faria o CPL parecer barato e
+// ensinaria a Meta a caçar mais gente fora do perfil. Mas a VENDA dele é venda
+// de verdade, tem dono (o SDR) e agora é contabilizada, num bloco PRÓPRIO.
+//
+// Régua separada, nunca somada ao funil: os dois têm denominadores diferentes
+// (aqui não existe call agendada nem taxa de fechamento por call), então
+// misturar mentiria nos dois lados.
+//
+//   leads        todos os leads do produto (sem filtro de isRealLead)
+//   inWin        (iso) => bool, a janela do período
+//   startByLead  customerStartMap (fallback de ganho legado)
+//   contactedIds Set de leadId com 1º contato humano NA JANELA (contactAttribution)
+//   authorOf     leadId → quem fez esse 1º contato (crédito por pessoa)
+export function mentoriaScore(product, leads, { inWin, startByLead, contactedIds, authorOf } = {}) {
+  const fila = (leads || []).filter((l) => l.saas === product?.id && isMentoriaLead(l) && !l.internal);
+  const winAt = winsIn(product, fila, inWin, startByLead);
+  const open = fila.filter((l) => !TERMINAL_KINDS.has(kindOf(product, l.stage)) && !l.customerId);
+  const byVerba = {};
+  let potential = 0;
+  for (const l of open) {
+    const fit = mentoriaFit(l);
+    const band = fit?.verba || "";
+    byVerba[band] = (byVerba[band] || 0) + 1;
+    potential += fit?.price || 0;
+  }
+  // Por pessoa: a fila e o contato vão pro DONO do card; a venda vai por owner
+  // também (aqui não há closer separado, a fila é do SDR de ponta a ponta).
+  const byUser = new Map();
+  const bucket = (uid) => {
+    if (!byUser.has(uid)) byUser.set(uid, { user: uid, queue: 0, contacted: 0, won: 0, revenue: 0 });
+    return byUser.get(uid);
+  };
+  for (const l of open) if (l.owner) bucket(l.owner).queue++;
+  for (const l of fila) {
+    if (contactedIds?.has(l.id)) bucket(authorOf?.get(l.id) || l.owner || "").contacted++;
+    if (winAt.has(l.id)) {
+      const b = bucket(l.owner || "");
+      b.won++;
+      b.revenue = round2(b.revenue + (Number(l.amount) || 0));
+    }
+  }
+  const wonLeads = fila.filter((l) => winAt.has(l.id));
+  return {
+    queue: open.length,
+    queueByVerba: byVerba,
+    queuePotential: Math.round(potential),
+    newIn: fila.filter((l) => inWin(l.createdAt)).length,
+    contacted: fila.filter((l) => contactedIds?.has(l.id)).length,
+    won: wonLeads.length,
+    revenue: tcvOf(wonLeads),
+    unowned: open.filter((l) => !l.owner).length, // card sem dono = ninguém trabalha
+    byUser: [...byUser.values()].filter((b) => b.user),
+  };
+}
 
 // ── Indicação (referral) ─────────────────────────────────────────────────────
 // Lead que veio por INDICAÇÃO (de um cliente): a origem (`source`) ou o
