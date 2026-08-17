@@ -40,6 +40,7 @@ const LEAD_CORE_KEYS = new Set([
   "id", "name", "saas", "email", "phone", "company", "source", "stage", "owner",
   "priority", "score", "icp", "value", "amount", "age", "reason", "flag", "form",
   "proposalUrl", "proposta_id", "proposal_edit_url", "proposalAccepted", "proposalAcceptedAt",
+  "proposalPinned",
 ]);
 
 export function splitLeadData(lead) {

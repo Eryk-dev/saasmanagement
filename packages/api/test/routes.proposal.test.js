@@ -38,3 +38,29 @@ test("POST /api/leads/:id/proposal is a graceful 200 skip when not configured (n
   assert.equal(res.json().skipped, "not_configured");
   await app.close();
 });
+
+// Deck fixado no lead (apresentação sob medida): "re-gerar" não pode apagar do
+// card um deck feito à mão sem que alguém confirme (o botão manda unpin=1).
+test("lead com deck fixado recusa re-geração, e com unpin=1 troca e desfixa", async () => {
+  const app = buildApp();
+  await repo.create("proposal_templates", {
+    id: "pt_test_pin", saas: "leverads", status: "published", name: "Padrão", theme: {}, calc: {},
+    slides: [{ type: "hero", title: "Padrão" }],
+  });
+  const lead = await repo.create("leads", {
+    id: "le_route_pin", name: "Rafa", saas: "leverads",
+    proposta_id: "pr_bespoke", proposalUrl: "https://x/p/pr_bespoke", proposalPinned: true,
+  });
+
+  const barrado = await app.inject({ method: "POST", url: `/api/leads/${lead.id}/proposal?force=1` });
+  assert.equal(barrado.statusCode, 200);
+  assert.equal(barrado.json().skipped, "pinned");
+  assert.equal((await repo.get("leads", lead.id)).proposta_id, "pr_bespoke");
+
+  const trocado = await app.inject({ method: "POST", url: `/api/leads/${lead.id}/proposal?force=1&unpin=1` });
+  assert.equal(trocado.json().ok, true);
+  const depois = await repo.get("leads", lead.id);
+  assert.notEqual(depois.proposta_id, "pr_bespoke");
+  assert.equal(depois.proposalPinned, false);
+  await app.close();
+});

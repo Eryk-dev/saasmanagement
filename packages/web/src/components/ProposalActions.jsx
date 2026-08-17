@@ -78,10 +78,10 @@ function ProposalActions({ l, showViews = false }) {
   const alt = templates.filter((t) => t.selectable); // decks alternativos (ex.: Starter)
   const [tpl, setTpl] = useState(""); // "" = padrão (deck publicado)
 
-  async function gen(force) {
+  async function gen(force, unpin) {
     setBusy(true); setErr(false);
     try {
-      const r = await api.generateProposal(l.id, { force: !!force, template: tpl });
+      const r = await api.generateProposal(l.id, { force: !!force, template: tpl, unpin: !!unpin });
       // Falha (fail-open: 200 com ok:false). Nada mudou no servidor, então NÃO
       // damos refresh — o refresh remonta a tela (key=dataVersion) e apagaria o
       // estado de erro. Mantemos err/busy locais pra mostrar "não gerada" + retry.
@@ -102,7 +102,19 @@ function ProposalActions({ l, showViews = false }) {
         <span style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <a href={liveUrl} target="_blank" rel="noreferrer" style={linkBtnStyle}><span style={{ fontSize: 11 }}>apresentar ao vivo ↗</span></a>
           <a href={cockpitProposalUrl(l.proposalUrl)} target="_blank" rel="noreferrer" style={{ ...chromeBtnStyleSmall, textDecoration: "none" }}><span style={{ fontSize: 11 }}>ver como cliente ↗</span></a>
-          {isLevercopy && <button onClick={() => gen(true)} disabled={busy} style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>{busy ? "…" : "re-gerar"}</span></button>}
+          {/* Deck fixado (apresentação sob medida): re-gerar troca pelo padrão e
+              apaga o trabalho do card, então pede confirmação e vai com unpin. */}
+          {l.proposalPinned && <span className="mono" title="Apresentação sob medida fixada neste lead" style={{ fontSize: 9.5, color: "var(--accent)", border: "1px solid var(--accent-line)", borderRadius: 999, padding: "2px 7px" }}>fixada</span>}
+          {isLevercopy && (
+            <button
+              onClick={() => {
+                if (l.proposalPinned && !confirm("Esta apresentação é sob medida e está fixada neste lead. Re-gerar troca pelo deck padrão. Continuar?")) return;
+                gen(true, !!l.proposalPinned);
+              }}
+              disabled={busy}
+              style={chromeBtnStyleSmall}
+            ><span style={{ fontSize: 11 }}>{busy ? "…" : "re-gerar"}</span></button>
+          )}
           {isLevercopy && err && <span className="mono" style={{ fontSize: 9, color: "var(--neg)" }}>re-geração falhou</span>}
         </span>
         {showViews && proposalId && <ProposalViews proposalId={proposalId} />}
