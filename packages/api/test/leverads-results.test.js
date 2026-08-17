@@ -11,14 +11,19 @@ import {
 } from "../src/leverads-results.js";
 
 const ROW = {
-  clientes: 23, gerado: 685502.67, anuncios: 738756,
-  ritmo: 10426.47, dias: 3, participacao: 13.8,
+  clientes: 23, contas: 25,
+  gerado: 995461.02, gerado_clientes: 689296.97, gerado_nosso: 306164.05,
+  anuncios: 738756, ritmo: 10426.47, dias: 3, participacao: 13.8,
 };
 
 test("linha do banco vira o texto que o deck mostra", () => {
   assert.deepEqual(resultTokens(ROW), {
     resClientes: "23",
-    resGerado: "R$ 686 mil",
+    resContas: "25",
+    resGeradoTudo: "R$ 995 mil",
+    resGerado: "R$ 689 mil",
+    resGeradoClientes: "R$ 689 mil",
+    resGeradoNosso: "R$ 306 mil",
     resRitmo: "R$ 10,4 mil",     // casa decimal só onde ela informa
     resDias: "3",
     resAnuncios: "739 mil",
@@ -27,9 +32,25 @@ test("linha do banco vira o texto que o deck mostra", () => {
   });
 });
 
+// O total e a fatia dos clientes NUNCA se confundem: a nossa operação é prova
+// ("a ferramenta nasceu aqui dentro"), não é resultado de cliente, então o deck
+// precisa dos dois números separados pra poder dizer a verdade nos dois.
+test("a nossa operação entra no total, mas separada da fatia dos clientes", () => {
+  const t = resultTokens(ROW);
+  assert.equal(t.resGeradoTudo, "R$ 995 mil");
+  assert.equal(t.resGeradoClientes, "R$ 689 mil");
+  // O nome antigo (`resGerado`) segue apontando pros CLIENTES: é ele que os
+  // decks já na mão do cliente usam, e a frase de lá fala das contas deles.
+  assert.equal(t.resGerado, "R$ 689 mil");
+  assert.equal(t.resGeradoNosso, "R$ 306 mil");
+  // Sem a nossa operação na base, o token da nossa fatia some (o deck cai no
+  // fallback e a frase não mente).
+  assert.equal(resultTokens({ ...ROW, gerado_nosso: 0 }).resGeradoNosso, undefined);
+});
+
 test("milhão vira milhão (e o plural acompanha)", () => {
-  assert.equal(resultTokens({ ...ROW, gerado: 1_250_000 }).resGerado, "R$ 1,3 milhão");
-  assert.equal(resultTokens({ ...ROW, gerado: 4_000_000 }).resGerado, "R$ 4 milhões");
+  assert.equal(resultTokens({ ...ROW, gerado: 1_250_000 }).resGeradoTudo, "R$ 1,3 milhão");
+  assert.equal(resultTokens({ ...ROW, gerado: 4_000_000 }).resGeradoTudo, "R$ 4 milhões");
 });
 
 test("métrica sem base honesta fica FORA (token ausente aciona o fallback do slide)", () => {
@@ -78,11 +99,11 @@ test("banco fora do ar não derruba a proposta nem apaga o número que já exist
 
   const quebrado = async () => { throw new Error("connection refused"); };
   assert.equal(await refreshResults({ query: quebrado }), null);
-  assert.equal(leveradsResults({ refresh: () => {} }).resGerado, "R$ 686 mil", "mantém o último bom");
+  assert.equal(leveradsResults({ refresh: () => {} }).resGeradoTudo, "R$ 995 mil", "mantém o último bom");
 
   // E consulta que volta sem portfólio também não zera o deck.
   await refreshResults({ query: async () => [{ clientes: 0 }] });
-  assert.equal(leveradsResults({ refresh: () => {} }).resGerado, "R$ 686 mil");
+  assert.equal(leveradsResults({ refresh: () => {} }).resGeradoTudo, "R$ 995 mil");
 });
 
 test("a consulta é a MESMA função que alimenta a tela Resultados do produto", async () => {
@@ -123,9 +144,10 @@ test("GET /p/:id serve o número real no calc e o motor repassa no compute()", a
 
   assert.equal(res.statusCode, 200);
   assert.match(res.body, /"resRitmo":"R\$ 10,4 mil"/, "número vai no payload do calc");
-  assert.match(res.body, /"resGerado":"R\$ 686 mil"/);
+  assert.match(res.body, /"resGeradoTudo":"R\$ 995 mil"/);
+  assert.match(res.body, /"resGeradoClientes":"R\$ 689 mil"/, "a fatia dos clientes viaja separada do total");
   assert.match(res.body, /calc\.resRitmo\|\|R\$ 10,4 mil/, "token com fallback preservado no slide");
-  assert.match(res.body, /'resClientes', 'resGerado', 'resRitmo'/, "compute() repassa os tokens do servidor");
+  assert.match(res.body, /'resGeradoTudo', 'resGeradoNosso'/, "compute() repassa os tokens do servidor");
 });
 
 test("sem número em cache a página sai igual (o slide cai no fallback)", async () => {

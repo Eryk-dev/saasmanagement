@@ -896,7 +896,8 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
     // mão; sem isso o span nasce vazio e o slide cai no fallback do template.
     // (Sem crase neste comentário: ele vive DENTRO do template literal do
     // script do navegador, e uma crase fecharia a string inteira.)
-    ['resClientes', 'resGerado', 'resRitmo', 'resDias', 'resAnuncios', 'resHoras', 'resParticipacao']
+    ['resClientes', 'resContas', 'resGerado', 'resGeradoClientes', 'resGeradoTudo', 'resGeradoNosso',
+      'resRitmo', 'resDias', 'resAnuncios', 'resHoras', 'resParticipacao']
       .forEach(function (k) { if (c[k] != null && c[k] !== '') out[k] = c[k]; });
     return out;
   }
