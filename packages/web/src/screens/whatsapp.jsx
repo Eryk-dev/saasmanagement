@@ -1051,6 +1051,21 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
           </div>
         )}
 
+        {/* O que ficou combinado: a nota curta do que a conversa resolveu, que
+            é o que ninguém lembra ao reabrir o chat dias depois. Fica ACIMA da
+            qualificação de propósito (é o primeiro contexto que se procura) e
+            grava no blur, igual aos campos do checklist. Limite de 280 pra
+            continuar sendo recado, não ata de reunião: a transcrição da call e
+            a timeline já guardam o detalhe. Aparece no card completo do lead
+            (clientSummary full), então o closer lê sem abrir o inbox. */}
+        <div>
+          <div className="kicker" style={{ marginBottom: 4 }}>O que ficou combinado</div>
+          <textarea key={base.id + "recap"} defaultValue={lead.recapNote || ""} rows={2} maxLength={280}
+            placeholder="ex.: quer as 3 contas espelhadas, decide com o sócio, retomar terça"
+            onBlur={(e) => { if (e.target.value !== (base.recapNote || "")) patch({ recapNote: e.target.value }); }}
+            style={{ width: "100%", padding: "6px 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, lineHeight: 1.45, fontWeight: 500, fontFamily: "inherit", resize: "vertical" }} />
+        </div>
+
         {/* Qualificação EDITÁVEL (mesmo checklist do roteiro): o lead respondeu
             no chat → preenche aqui e grava na hora. Amarelo = falta responder. */}
         {checklist.length > 0 && (

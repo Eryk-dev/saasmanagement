@@ -57,6 +57,7 @@ export const openapi = {
           closer: { type: "string", description: "id do usuário closer responsável (GET /api/auth/users).", example: "leonardo" },
           nextActionAt: { type: "string", description: "Próximo toque no lead (ISO). O servidor preenche/reagenda pela cadência do estágio; envie explícito pra sobrescrever.", example: "2026-07-10T14:00:00Z" },
           nextActionNote: { type: "string", description: "O que fazer no próximo toque.", example: "Cobrar resposta da proposta" },
+          recapNote: { type: "string", description: "O que ficou combinado na conversa, em uma linha (escrito no painel do inbox, aparece no card completo do lead). Máx. 280 caracteres.", example: "Quer as 3 contas espelhadas, decide com o sócio, retomar terça" },
           lostReason: { type: "string", description: "Motivo de perda (id de product.lossReasons). Mover pra estágio de perda sem enviar → servidor grava 'nao_informado'.", example: "preco" },
           lostNote: { type: "string", description: "Detalhe livre da perda.", example: "Fechou com concorrente X" },
           utm: {

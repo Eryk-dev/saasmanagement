@@ -71,6 +71,9 @@ export function clientSummary(saasCfg, lead, stage, cat, { full = false } = {}) 
     ["SDR / closer", [lead.owner && displayName(lead.owner), lead.closer && displayName(lead.closer)].filter(Boolean).join(" / ") || null],
     ["Próximo passo (nota)", lead.nextActionNote],
     ...(full ? [
+      // Escrito no painel do inbox durante a conversa. Só no card completo pra
+      // não duplicar o campo editável que já fica aberto lá.
+      ["O que ficou combinado", lead.recapNote],
       ["Idade", leadAge(lead)],
       ["Integrador", lead.integrator ? displayName(lead.integrator) : null],
       ["E-mail", lead.email],
