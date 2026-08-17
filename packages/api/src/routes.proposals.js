@@ -8,6 +8,7 @@
 import { publicProposal, syncProposalLeadSnapshot } from "./proposal.js";
 import { applyCatalog, catalogAmount, catalogUI, oemCotasOf } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
+import { leveradsResults } from "./leverads-results.js";
 import { makeRateLimiter } from "./forms.js";
 import { convertWonLead } from "./routes.js";
 import { logActivity, applyStageMove } from "./lead-flow.js";
@@ -21,6 +22,13 @@ import { gradeBandKnown } from "./routes.marketing.js";
 function renderProposal(p, { editable = false, previewBanner = false } = {}) {
   const transformed = applyCatalog(p);
   const pv = publicProposal(transformed ? { ...p, slides: transformed.slides } : p, { editable });
+  // Resultado real dos clientes no slide `impacto`, como tokens {{calc.res*}}.
+  // Vem do cache em memória (leverads-results.js): a página nunca espera a
+  // consulta, e enquanto não houver número o deck usa o literal do fallback.
+  // Sem filtro por saas de propósito: o custo é uma leitura de objeto, e deck
+  // que não usa os tokens simplesmente os ignora.
+  const results = leveradsResults();
+  if (results) pv.calc = { ...pv.calc, ...results };
   if (editable) {
     const ui = catalogUI(p);
     if (ui) pv.catalogUI = ui;
