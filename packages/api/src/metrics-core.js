@@ -155,6 +155,18 @@ export function mentoriaScore(product, leads, { inWin, startByLead, contactedIds
   };
 }
 
+// ── Conta grande (key account) ──────────────────────────────────────────────
+// Cliente fora da régua: Galante (R$ 120 mil) e CRGroup (R$ 300 mil) no meio de
+// vendas de R$ 3 a 7 mil. O flag mora no CLIENTE (`customer.keyAccount`, campo
+// "Conta grande" na ficha) e a venda dele é reconhecida pelo vínculo do lead.
+//
+// REGRA (Leo, 23/07 e 18/08): o dinheiro dela conta em caixa e vendido, sempre.
+// Quem ignora é MÉDIA e meta derivada — um contrato de 300 mil no ticket médio
+// quebra a cadeia inteira (meta de contratos, calls, leads) e faz o placar de
+// quem fechou parecer o de outra pessoa.
+export const keyAccountIds = (customers) => new Set((customers || []).filter((c) => !!c.keyAccount).map((c) => c.id));
+export const isKeyAccountLead = (keyIds, lead) => !!(lead?.customerId && keyIds?.has(lead.customerId));
+
 // ── Indicação (referral) ─────────────────────────────────────────────────────
 // Lead que veio por INDICAÇÃO (de um cliente): a origem (`source`) ou o
 // `utm.source` contém "indica" — pega "Indicação", "indicacao", "Indicação de
