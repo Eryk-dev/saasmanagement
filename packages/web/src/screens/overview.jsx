@@ -11,8 +11,9 @@ import { buildPeople, roleLabel, scaledGoal } from "../components/team-cards.jsx
 import { usePeriod, businessDaysBetween } from "../components/period-picker.jsx";
 // Visão geral — o modelo aprovado pelo Leo em 08/08/2026 (protótipo v9):
 //   Meta do mês (réguas de receita contratada e de contratos, com pace)
+//   → Funil do período (atual vs meta por etapa)
 //   → Desempenho do time (rank + foto + medidores receita/contratos + submetas)
-//   → Funil do período (atual vs meta por etapa) → Aquisição + Carteira
+//   → Aquisição + Carteira
 //   → Atenção agora (avisos com botão de ação).
 // Escala de cores única: vermelho (atrás do caminho) → teal (no pace) → verde
 // (meta batida) → dourado (120%+, alinhado às bandas da remuneração).
@@ -846,9 +847,9 @@ function OverviewScreen({ onNav }) {
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         <MetaMesCard pace={pace} goal={goal} onNav={onNav} />
 
-        <TeamBoard score={score} win={win} onPerson={canSeeScreen("pipeline") ? openPerson : null} />
-
         <FunilPeriodo team={score?.team} win={win} pLabel={win.label} />
+
+        <TeamBoard score={score} win={win} onPerson={canSeeScreen("pipeline") ? openPerson : null} />
 
         <MentoriaCard mentoria={score?.mentoria} pShort={win.short} saas={product.id}
           onNav={canSeeScreen("pipeline") ? onNav : null} />
