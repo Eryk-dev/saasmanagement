@@ -4,7 +4,7 @@
 
 import { TOUCH_TYPES } from "./stages.js";
 import {
-  DAY_MS as DAY, round2, dayKey, isRealLead, isSaleLead,
+  DAY_MS as DAY, round2, dayKey, isRealLead, isSaleLead, keyAccountIds, isKeyAccountLead,
   bookedLeadsIn, callOutcome, callCohortIn, winsIn, customerStartMap, tcvOf, contactAttribution,
 } from "./metrics-core.js";
 
@@ -219,9 +219,9 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   // um fechamento de R$ 120 mil no meio de vendas de R$ 3-7 mil quebra a cadeia
   // inteira (meta de contratos, calls, leads). O dinheiro dela segue contando em
   // caixa e vendido; só as MÉDIAS e as metas derivadas ignoram.
-  const keyCustomerIds = new Set(customers.filter((c) => !!c.keyAccount).map((c) => c.id));
+  const keyCustomerIds = keyAccountIds(customers);
   const isKeyInvoice = (i) => keyCustomerIds.has(i.customer);
-  const isKeyLead = (l) => (l.customerId && keyCustomerIds.has(l.customerId));
+  const isKeyLead = (l) => isKeyAccountLead(keyCustomerIds, l);
   const firstPaid = new Map();
   for (const inv of [...paid].sort((a, b) => String(a.paidAt).localeCompare(String(b.paidAt)))) {
     const key = inv.subscription ? `sub:${inv.subscription}` : inv.customer ? `customer:${inv.customer}` : "";

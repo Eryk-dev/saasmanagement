@@ -1357,18 +1357,26 @@ export async function syncOpenLeadAmounts(repo) {
 }
 
 // ── Conta grande (keyAccount) ───────────────────────────────────────────────
-// Cliente fora da régua (ex.: Galante, pacote bespoke de R$ 120 mil no meio de
-// vendas de R$ 3-7 mil): o flag `keyAccount` tira ele do ticket médio e das
-// metas derivadas por contrato (pace/Metas/Visão geral) sem tirar o dinheiro
-// do caixa/vendido. Carimba o Galante uma vez; clientes futuros são marcados
-// na edição do cliente (campo "Conta grande"). Idempotente: já marcado (ou
-// desmarcado DE PROPÓSITO — campo presente com valor falso) não mexe.
-export async function ensureKeyAccountGalante(repo) {
+// Cliente fora da régua (Galante R$ 120 mil, CRGroup R$ 300 mil, no meio de
+// vendas de R$ 3 a 7 mil): o flag `keyAccount` tira ele das MÉDIAS e das metas
+// derivadas por contrato (pace/Metas/Visão geral/placar do closer) sem tirar o
+// dinheiro do caixa nem do vendido. Carimba os conhecidos uma vez; cliente novo
+// é marcado na ficha (campo "Conta grande").
+//
+// Idempotente e respeitosa: só age em cliente que NUNCA foi marcado (campo
+// ausente). Desmarcado de propósito (campo presente com valor falso) não volta.
+const KEY_ACCOUNTS = [/galante/i, /cr\s*group/i];
+
+export async function ensureKeyAccounts(repo) {
   const customers = await repo.list("customers");
-  const galante = customers.find((c) => c.saas === "leverads" && /galante/i.test(String(c.name || "")));
-  if (!galante || galante.keyAccount !== undefined) return false;
-  await repo.update("customers", galante.id, { keyAccount: true });
-  return true;
+  let n = 0;
+  for (const c of customers) {
+    if (c.saas !== "leverads" || c.keyAccount !== undefined) continue;
+    if (!KEY_ACCOUNTS.some((re) => re.test(String(c.name || "")))) continue;
+    await repo.update("customers", c.id, { keyAccount: true });
+    n++;
+  }
+  return n;
 }
 
 // ── Papéis do time (Leo, 08/08) ─────────────────────────────────────────────
@@ -1399,10 +1407,10 @@ export async function migrateRolesCsSdr(repo) {
 
 export async function runStartupMigrations(repo) {
   try {
-    const changed = await ensureKeyAccountGalante(repo);
-    if (changed) console.log("[migration] Galante marcado como conta grande (keyAccount) — fora das médias");
+    const n = await ensureKeyAccounts(repo);
+    if (n) console.log(`[migration] ${n} cliente(s) marcado(s) como conta grande (keyAccount) — fora das médias`);
   } catch (err) {
-    console.error("[migration] ensureKeyAccountGalante falhou:", err?.message || err);
+    console.error("[migration] ensureKeyAccounts falhou:", err?.message || err);
   }
   try {
     const n = await migrateRolesCsSdr(repo);

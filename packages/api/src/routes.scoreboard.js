@@ -16,7 +16,7 @@ import {
   DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead, isSaleLead, isWonLead,
   callOutcome as coreCallOutcome, callCohortIn,
   winsIn, customerStartMap, contactAttribution, isReferralLead,
-  classCounts, cashBucketsIn, mentoriaScore,
+  classCounts, cashBucketsIn, mentoriaScore, keyAccountIds, isKeyAccountLead,
 } from "./metrics-core.js";
 import { isMentoriaLead } from "./mentoria.js";
 
@@ -73,6 +73,9 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     const saleLeads = allLeads.filter((l) => l.saas === product.id && isSaleLead(l));
     const saleById = new Map(saleLeads.map((l) => [l.id, l]));
     const customers = allCustomers.filter((c) => c.saas === product.id);
+    // Conta grande (Galante, CRGroup): o dinheiro dela conta, a MÉDIA não.
+    const keyIds = keyAccountIds(customers);
+    const isKey = (l) => isKeyAccountLead(keyIds, l);
 
     const actsByLead = new Map();
     for (const a of allActs) {
@@ -448,6 +451,12 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       const wonN = wonLeads.length;
       const revenue = wonLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0);
       const wonPlatformN = wonLeads.filter((l) => isRealLead(l)).length;
+      // Ticket médio é MÉDIA: contrato de conta grande fica de fora, senão um
+      // bespoke de R$ 300 mil vira o "ticket" do closer e some com a régua. O
+      // que ele fechou (won/revenue) segue cheio, com a conta grande dentro.
+      const keyWonLeads = wonLeads.filter(isKey);
+      const coreWon = wonLeads.filter((l) => !isKey(l));
+      const coreRevenue = coreWon.reduce((a, l) => a + (Number(l.amount) || 0), 0);
       // Ciclo CALL → GANHO: dias da call marcada até o fechamento (integração).
       const cycle = wonLeads.map((l) => (l.callAt ? (new Date(winAt.get(l.id)) - new Date(l.callAt)) / DAY : null))
         .filter((d) => Number.isFinite(d) && d >= 0);
@@ -470,14 +479,16 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
         targets: personTargets(uid, "closer", {
           conversaoCall: conversao,
           callsShown,
-          won: wonN, revenue: round2(revenue), ticket: wonN > 0 ? round2(revenue / wonN) : null,
+          won: wonN, revenue: round2(revenue), ticket: coreWon.length > 0 ? round2(coreRevenue / coreWon.length) : null,
         }),
         calls, callsShown,
         won: wonN, revenue: round2(revenue), lost: lost.length,
         conversaoCall: conversao,
         winRateCall: calls > 0 ? round2((wonPlatformN / calls) * 100) : null,
-        revenuePerCall: calls > 0 ? round2(revenue / calls) : null,
-        ticket: wonN > 0 ? round2(revenue / wonN) : null,
+        revenuePerCall: calls > 0 ? round2(coreRevenue / calls) : null,
+        ticket: coreWon.length > 0 ? round2(coreRevenue / coreWon.length) : null,
+        keyWon: keyWonLeads.length,                                    // contas grandes que ELE fechou na janela
+        keyRevenue: round2(keyWonLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0)),
         cycleDays: median(cycle),
         lossReasons,
         followupNow: fuNow.length,           // leads dele em follow-up agora

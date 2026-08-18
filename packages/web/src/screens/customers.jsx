@@ -130,6 +130,14 @@ function CustomersScreen({ initialTab }) {
   const isChurned = (c) => c.endedAt && new Date(c.endedAt).getTime() <= Date.now();
   const activeCustomers = customers.filter((c) => !isChurned(c));
   const totalMrr = activeCustomers.reduce((a, c) => a + (c.arr || 0), 0) / 12;
+  // CONTA GRANDE (customer.keyAccount): cliente fora da régua (Galante, CRGroup).
+  // Ele tem ficha própria aqui em cima e segue na tabela com o ★ — some da
+  // tabela seria pior, porque ninguém acha o cliente depois. O que ele NÃO faz
+  // é entrar nas médias: o MRR do núcleo aparece ao lado do cheio, porque um
+  // contrato único de R$ 300 mil não é receita recorrente de R$ 25 mil/mês.
+  const isKeyAccount = (c) => !!c.keyAccount;
+  const keyAccounts = activeCustomers.filter(isKeyAccount);
+  const coreMrr = activeCustomers.filter((c) => !isKeyAccount(c)).reduce((a, c) => a + (c.arr || 0), 0) / 12;
   const totalContratado = activeCustomers.reduce((a, c) => a + (c.arr || 0), 0);
   const money = window.fmt.money;
 
@@ -293,7 +301,7 @@ function CustomersScreen({ initialTab }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Clientes"
-        sub={`${activeCustomers.length} ${activeCustomers.length === 1 ? "ativo" : "ativos"} · ${isKidsWorkspace ? `${money(totalContratado)} contratado` : `MRR ${money(totalMrr)}`}`}>
+        sub={`${activeCustomers.length} ${activeCustomers.length === 1 ? "ativo" : "ativos"} · ${isKidsWorkspace ? `${money(totalContratado)} contratado` : `MRR ${money(totalMrr)}`}${!isKidsWorkspace && keyAccounts.length ? ` · ${money(coreMrr)} sem ${keyAccounts.length === 1 ? "a conta grande" : `as ${keyAccounts.length} contas grandes`}` : ""}`}>
         <Segmented value={tab} onChange={setTab} options={[{ value: "base", label: "Clientes" }, { value: "billing", label: "Assinaturas" }]} />
         {tab === "base" && <PrimaryButton onClick={() => openForm("customers", { saas: product.id })}>+ novo cliente</PrimaryButton>}
       </PageHead>
@@ -311,6 +319,57 @@ function CustomersScreen({ initialTab }) {
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, alignItems: "start" }}>
             <CustomersAnalysis customers={customers} subs={subs} invoices={invoices} isKids={isKidsWorkspace} />
+
+            {/* Contas grandes: ficha própria em vez de linha de tabela. A tabela
+                é feita pra assinatura (plano, MRR, marco, vencimento) e um
+                contrato bespoke deixa metade das colunas vazia — aqui aparece o
+                que importa nele: quanto, desde quando, se pagou e qual o
+                próximo toque. Clique abre a mesma ficha do cliente. */}
+            {keyAccounts.length > 0 && (
+              <Card title="Contas grandes"
+                hint="fora das médias e das metas derivadas · o dinheiro segue contando em caixa e vendido">
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(288px, 1fr))", gap: 12, padding: "14px var(--inset-x) 20px" }}>
+                  {keyAccounts.map((c) => {
+                    const nm = isMentoria(c) ? null : nextMilestone(withCycle(c), product);
+                    const ps = payStatus(c);
+                    const contato = String(c.contact || leadById.get(c.leadId)?.name || "").trim();
+                    const fatos = [
+                      ["Cliente desde", entradaLabel(c) ? `${entradaLabel(c)}${tenureLabel(c) ? ` · ${tenureLabel(c)}` : ""}` : "defina o início"],
+                      ["Último contato", lastContact(c)],
+                      ["Fechado por", (() => { const l = leadById.get(c.leadId); const who = l?.closer || l?.owner || c.owner; return who ? displayName(who) : "—"; })()],
+                      ["Próximo marco", nm ? `${nm.label} · ${nm.status === "late" ? "venceu " : "vence "}${dueLabel(nm.dueAt)}` : "sem marco em aberto"],
+                    ];
+                    return (
+                      <div key={c.id} onClick={() => setSel(c.id)}
+                        style={{ border: "1px solid var(--accent-line)", borderRadius: "var(--r-3)", background: "var(--accent-soft)", padding: "14px 16px", cursor: "pointer", display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                          <span title="conta grande" style={{ color: "var(--accent)", fontSize: 14, lineHeight: 1.2, flexShrink: 0 }}>★</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
+                            {contato && contato.toLowerCase() !== String(c.name || "").trim().toLowerCase() && (
+                              <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 1 }}>{contato}</div>
+                            )}
+                          </div>
+                          <Pill tone={ps.tone}>{ps.label}</Pill>
+                        </div>
+                        <div>
+                          <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1 }}>{money(fechadoOf(c))}</div>
+                          <div className="kicker" style={{ marginTop: 3 }}>contrato fechado{c.plan ? ` · ${c.plan}` : ""}</div>
+                        </div>
+                        <div style={{ display: "grid", gap: 3 }}>
+                          {fatos.map(([k, v]) => (
+                            <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, borderTop: "1px solid var(--line-faint)", paddingTop: 3 }}>
+                              <span className="mono dim" style={{ fontSize: 10.5, flexShrink: 0 }}>{k}</span>
+                              <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            )}
 
             {!isKidsWorkspace && (
               <Card title="Clientes por nível" hint="categoria (A/B/C…) da carteira ativa, pela grade do lead">
@@ -419,6 +478,7 @@ function CustomersScreen({ initialTab }) {
                         onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
                         {/* Empresa + nome do contato (do cadastro; fallback no lead). Some quando é a mesma coisa. */}
                         <td style={{ padding: "14px 20px", fontSize: 13.5, fontWeight: 600, borderBottom: "1px solid var(--line-faint)" }}>
+                          {isKeyAccount(c) && <span title="conta grande · fora das médias" style={{ color: "var(--accent)", marginRight: 5 }}>★</span>}
                           {c.name}
                           {(() => {
                             const contact = String(c.contact || leadById.get(c.leadId)?.name || "").trim();

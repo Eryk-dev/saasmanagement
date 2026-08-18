@@ -733,3 +733,33 @@ test("closer: calls REALIZADAS entram como meta e o realizado ignora o no-show",
   assert.equal(t.kind, "flow", "acumula, então reescala pra janela");
   await app.close();
 });
+
+// ── Conta grande (Leo, 18/08) ───────────────────────────────────────────────
+// Galante e CRGroup fecharam R$ 120 mil e R$ 300 mil no meio de vendas de R$ 3
+// a 7 mil. A regra: o dinheiro conta cheio (won/revenue, caixa, vendido), a
+// MÉDIA não — senão o ticket do closer vira o valor do bespoke e a régua de
+// contratos, calls e leads que desce dele some.
+test("conta grande conta no dinheiro do closer, mas fica fora do ticket médio", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL });
+  await repo.create("users", { id: "jon", name: "Jonathan", roles: ["closer"] });
+  // Duas vendas normais e uma conta grande, todas dele, no mesmo mês.
+  await repo.create("customers", { id: "cu_big", saas: "leverads", name: "CRGroup", leadId: "l_big", keyAccount: true, startedAt: "2026-08-05T12:00:00.000Z" });
+  await repo.create("customers", { id: "cu_a", saas: "leverads", name: "Loja A", leadId: "l_a", startedAt: "2026-08-06T12:00:00.000Z" });
+  await repo.create("leads", { id: "l_big", saas: "leverads", closer: "jon", stage: "Ganho", amount: 300000, customerId: "cu_big", wonAt: "2026-08-05T12:00:00.000Z", createdAt: "2026-08-01T12:00:00.000Z" });
+  await repo.create("leads", { id: "l_a", saas: "leverads", closer: "jon", stage: "Ganho", amount: 7000, customerId: "cu_a", wonAt: "2026-08-06T12:00:00.000Z", createdAt: "2026-08-01T12:00:00.000Z" });
+  await repo.create("leads", { id: "l_b", saas: "leverads", closer: "jon", stage: "Ganho", amount: 5000, customerId: "cu_b", wonAt: "2026-08-07T12:00:00.000Z", createdAt: "2026-08-01T12:00:00.000Z" });
+  await repo.create("customers", { id: "cu_b", saas: "leverads", name: "Loja B", leadId: "l_b", startedAt: "2026-08-07T12:00:00.000Z" });
+
+  const app = Fastify();
+  registerRoutes(app, repo, { scoreboard: { now: () => new Date("2026-08-18T15:00:00.000Z") } });
+  const sb = (await app.inject({ url: "/api/scoreboard/leverads?since=2026-08-01&until=2026-08-31" })).json();
+  const jon = sb.closer.find((c) => c.user === "jon");
+
+  assert.equal(jon.won, 3);                 // o dinheiro conta cheio
+  assert.equal(jon.revenue, 312000);
+  assert.equal(jon.ticket, 6000);           // (7.000 + 5.000) ÷ 2, sem a conta grande
+  assert.equal(jon.keyWon, 1);              // e o card sabe dizer quantas ficaram de fora
+  assert.equal(jon.keyRevenue, 300000);
+  await app.close();
+});
