@@ -1,13 +1,13 @@
 // IA que resume a transcrição da call de vendas com ESTRUTURA de vendas
 // (dores, objeções, temperatura, follow-up sugerido). Dois provedores, com
 // detecção AUTOMÁTICA pela chave: sk-or-* = OpenRouter (API compatível com
-// OpenAI, modelos Claude via slug anthropic/*), senão API da Anthropic
+// OpenAI, qualquer modelo via slug provedor/*), senão API da Anthropic
 // direto. Raw HTTP por fetch injetável, mesmo padrão do meta.js/google.js.
 // Env: OPENROUTER_API_KEY ou ANTHROPIC_API_KEY; modelo via AI_MODEL.
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "claude-opus-4-8";
-const DEFAULT_OPENROUTER_MODEL = "anthropic/claude-opus-4.8";
+const DEFAULT_OPENROUTER_MODEL = "openai/gpt-5.6-luna";
 
 // Schema do resumo — structured output garante JSON válido (sem parse frágil).
 const SUMMARY_SCHEMA = {

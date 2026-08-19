@@ -78,7 +78,7 @@ test("openrouter: chave sk-or-* muda endpoint/formato sozinha e parseia (até co
     return {
       status: 200,
       json: async () => ({
-        model: "anthropic/claude-opus-4.8",
+        model: "openai/gpt-5.6-luna",
         choices: [{ message: { content: "```json\n" + JSON.stringify(SUMMARY) + "\n```" } }],
         usage: { prompt_tokens: 1000, completion_tokens: 300 },
       }),
@@ -86,7 +86,7 @@ test("openrouter: chave sk-or-* muda endpoint/formato sozinha e parseia (até co
   };
   const a = makeAnthropic({ fetch: f, apiKey: "sk-or-v1-teste" });
   assert.equal(a.provider, "openrouter");
-  assert.equal(a.model, "anthropic/claude-opus-4.8");
+  assert.equal(a.model, "openai/gpt-5.6-luna");
 
   const { summary } = await a.summarizeCall({ transcript: "Leo: oi", lead: { name: "Ana" } });
   assert.equal(summary.temperatura, "quente");
