@@ -372,6 +372,8 @@ export const api = {
   trainingFun: (saas, n = 20) => req("GET", `/api/flashcards/${encodeURIComponent(saas)}/fun?n=${n}`),
   trainingFunReview: (saas, cardId, rating, ms) => req("POST", `/api/flashcards/${encodeURIComponent(saas)}/fun/review`, { cardId, rating, ms }),
   trainingStats: (saas) => req("GET", `/api/flashcards/${encodeURIComponent(saas)}/stats`),
+  // Raio-x de uma prova respondida (questões, resposta dada, gabarito, feedback)
+  trainingExamDetail: (saas, id) => req("GET", `/api/flashcards/${encodeURIComponent(saas)}/exam/${encodeURIComponent(id)}`),
   trainingExamStart: (saas, id) => req("POST", `/api/flashcards/${encodeURIComponent(saas)}/exam/${encodeURIComponent(id)}/start`, {}),
   trainingExamSubmit: (saas, id, answers) => req("POST", `/api/flashcards/${encodeURIComponent(saas)}/exam/${encodeURIComponent(id)}/submit`, { answers }),
   // Imagem de flashcard (colada/enviada no editor) → asset servido em /public/training/:id.

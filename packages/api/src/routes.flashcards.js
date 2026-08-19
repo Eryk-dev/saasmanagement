@@ -328,6 +328,12 @@ export async function teamSnapshot(repo, saas, cardsBase, now = new Date()) {
     const myExams = exams.filter((e) => e.user === u.id);
     const doneExams = myExams.filter((e) => e.status !== "pending").sort((a, b) => (a.finishedAt || "").localeCompare(b.finishedAt || ""));
     const lastExam = doneExams.at(-1) || null;
+    const examAvg = doneExams.length ? Math.round(doneExams.reduce((a, e) => a + (e.score || 0), 0) / doneExams.length) : null;
+    // histórico (mais recente primeiro): a tela abre cada uma pra ver as questões
+    const examList = doneExams.slice(-12).reverse().map((e) => ({
+      id: e.id, score: e.score ?? null, status: e.status,
+      finishedAt: e.finishedAt || null, questions: (e.questions || []).length,
+    }));
 
     rows.push({
       ...u, deckSize: deck.length, seen, dueToday, overdue, doneToday, again7dPct, streak, lastReviewAt: lastAt || null,
@@ -336,6 +342,7 @@ export async function teamSnapshot(repo, saas, cardsBase, now = new Date()) {
       activeDays30d, reviewsPerDay30d, days, medianMs, rushPct, fun,
       examsDone: doneExams.length,
       examsFailed: doneExams.filter((e) => e.status === "failed").length,
+      examAvg, exams: examList,
       lastExam: lastExam ? { score: lastExam.score, status: lastExam.status } : null,
       examPending: myExams.some((e) => e.status === "pending"),
     });
@@ -496,6 +503,35 @@ export function registerFlashcardRoutes(app, repo, { anthropic = null } = {}) {
         kind: q.kind, prompt: q.prompt, options: q.options || null,
         answerIdx: q.answerIdx ?? null, choice: q.choice ?? null,
         text: q.text ?? "", ideal: q.ideal || null, correct: q.correct, feedback: q.feedback,
+      })),
+    };
+  });
+
+  // Raio-x de uma prova já respondida: as questões, o que a pessoa marcou/
+  // escreveu, o gabarito e o feedback da IA nas digitadas. Sem isso a prova era
+  // uma nota solta: dava pra ver "83%" e nunca O QUE a pessoa errou. Vê o DONO
+  // da prova (revisar o próprio erro) e o admin (controle do time).
+  app.get("/api/flashcards/:saas/exam/:id", async (req, reply) => {
+    const user = requireUser(req, reply);
+    if (!user) return;
+    const exam = await repo.get("training_exams", req.params.id);
+    if (!exam || exam.saas !== req.params.saas) return reply.code(404).send({ error: "prova não encontrada" });
+    if (exam.user !== user.id && !isAdmin(user)) return reply.code(403).send({ error: "prova de outra pessoa" });
+    const done = exam.status !== "pending";
+    return {
+      id: exam.id, user: exam.user, status: exam.status, score: exam.score ?? null,
+      passScore: exam.passScore ?? EXAM_PASS, cards: (exam.coveredEntries || []).length,
+      createdAt: exam.createdAt || null, finishedAt: exam.finishedAt || null,
+      // prova pendente ainda não tem resposta: manda só o enunciado (e NUNCA o
+      // gabarito, senão bastaria abrir o histórico pra colar).
+      questions: (exam.questions || []).map((q) => ({
+        kind: q.kind, prompt: q.prompt, options: q.options || null,
+        answerIdx: done ? (q.answerIdx ?? null) : null,
+        choice: done ? (q.choice ?? null) : null,
+        text: done ? (q.text ?? "") : "",
+        ideal: done ? (q.ideal || null) : null,
+        correct: done ? !!q.correct : null,
+        feedback: done ? (q.feedback || "") : "",
       })),
     };
   });
