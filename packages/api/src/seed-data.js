@@ -78,6 +78,7 @@ export const COLLECTIONS = {
   training_reviews: [],  // log append-only de cada revisão (rating) — dashboard + otimização FSRS
   training_assets: [],   // imagens dos flashcards (base64, servidas em /public/training/:id)
   training_exams: [],    // provas de checkpoint (a cada N cards graduados) com nota por pessoa
+  training_fun: [],      // log do modo 4fun (estudo livre além da cota) — fora do FSRS e da cobrança
   consultations: [],     // consultas 1:1 da mentoria (UniqueKids, 8 encontros): agenda + Meet + resumo IA (consultations.js)
   deliverables: [],      // Manual da Família (entregável final da mentoria): 1 por cliente, seções moduladas pelas consultas (deliverables.js)
 };

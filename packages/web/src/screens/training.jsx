@@ -40,19 +40,25 @@ const page = { flex: 1, overflow: "auto", padding: "28px var(--pad-x) 56px", dis
 function TrainingScreen() {
   const [product] = useActiveSaas();
   const [mode, setMode] = useS("study"); // study | edit | team
+  // Editar é do DONO da operação: a base de cards é material oficial (a prova de
+  // checkpoint sai do mesmo texto), então quem treina só estuda. A API tem o
+  // guard de verdade (403 no PUT); aqui é a montagem da tela.
+  const admin = isAdminUser();
+  const view = mode === "edit" && !admin ? "study" : mode;
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      {mode === "study" && <Study key={product?.id} saasId={product?.id} mode={mode} setMode={setMode} />}
-      {mode === "edit" && <Edit key={product?.id} saasId={product?.id} mode={mode} setMode={setMode} />}
-      {mode === "team" && <Team key={product?.id} saasId={product?.id} mode={mode} setMode={setMode} />}
+      {view === "study" && <Study key={product?.id} saasId={product?.id} mode={view} setMode={setMode} />}
+      {view === "edit" && <Edit key={product?.id} saasId={product?.id} mode={view} setMode={setMode} />}
+      {view === "team" && <Team key={product?.id} saasId={product?.id} mode={view} setMode={setMode} />}
     </div>
   );
 }
 
-const MODES = [{ value: "study", label: "Estudar" }, { value: "edit", label: "Editar" }, { value: "team", label: "Equipe" }];
+const MODES = [{ value: "study", label: "Estudar" }, { value: "edit", label: "Editar", adminOnly: true }, { value: "team", label: "Equipe" }];
 
 function Head({ mode, setMode, children }) {
+  const options = MODES.filter((m) => !m.adminOnly || isAdminUser());
   return (
     <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap", flexShrink: 0 }}>
       <div style={{ flex: 1, minWidth: 260 }}>
@@ -61,7 +67,7 @@ function Head({ mode, setMode, children }) {
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 6, flexWrap: "wrap" }}>
         {children}
-        <Segmented value={mode} onChange={setMode} options={MODES} />
+        <Segmented value={mode} onChange={setMode} options={options} />
       </div>
     </div>
   );
@@ -74,6 +80,9 @@ function Study({ saasId, mode, setMode }) {
   const [session, setSession] = useS(null); // role em sessão
   const [focus, setFocus] = useS(false);
   const [exam, setExam] = useS(null); // prova aberta
+  const [fun, setFun] = useS(null);   // sessão 4fun (cards fora da cota)
+  const [funBusy, setFunBusy] = useS(false);
+  const [funErr, setFunErr] = useS(null);
 
   function load() {
     if (!saasId) return;
@@ -82,10 +91,29 @@ function Study({ saasId, mode, setMode }) {
   }
   useE(load, [saasId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 4fun: sorteia cards da base da pessoa. Cada rodada é um sorteio novo — a
+  // ordem não importa aqui, porque nada disso agenda revisão.
+  async function startFun() {
+    if (funBusy) return;
+    setFunBusy(true); setFunErr(null);
+    try {
+      const d = await api.trainingFun(saasId, FUN_ROUND);
+      if (!d.cards?.length) setFunErr("seu baralho ainda está vazio");
+      else setFun(d.cards);
+    } catch (e) { setFunErr(e.message || "não deu pra montar a rodada"); }
+    setFunBusy(false);
+  }
+
   const body = () => {
     if (err) return <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>;
     if (!data) return <div className="mono dim" style={{ fontSize: 12 }}>montando sua fila…</div>;
     if (exam) return <ExamScreen saasId={saasId} exam={exam} onDone={() => { setExam(null); load(); }} />;
+    if (fun) {
+      return <Session saasId={saasId} label="4fun" fun cards={fun} dayEnd={data.dayEnd}
+        roleLabels={Object.fromEntries(data.decks.map((d) => [d.role, d.label]))}
+        focus={focus} onToggleFocus={() => setFocus((f) => !f)} onMore={startFun}
+        onExit={() => { setFun(null); setFocus(false); }} />;
+    }
     if (session) {
       return <Session saasId={saasId} label="Treino do dia" dayEnd={data.dayEnd}
         roleLabels={Object.fromEntries(data.decks.map((d) => [d.role, d.label]))}
@@ -101,6 +129,7 @@ function Study({ saasId, mode, setMode }) {
             estudo diário (product.icp — o mesmo cartão da Visão geral). Aqui
             ele ganha a coluna da matriz da nota (grade), que a Visão geral
             não mostra. */}
+        <FunCard onStart={startFun} busy={funBusy} err={funErr} />
         <IcpCard compact grade />
         <DeckList decks={data.decks} />
         <RoleGuides />
@@ -178,6 +207,30 @@ function StartCard({ decks, exam, onExam, onStudy }) {
   );
 }
 
+// ── 4fun: estudo livre, fora da cota ─────────────────────────────────────────
+// A fila do dia acaba e quem quer continuar não tinha o que fazer. Aqui a
+// pessoa sorteia cards do próprio baralho quantas rodadas quiser: nada disso
+// agenda revisão, gasta o limite de novos ou conta como compromisso do dia — o
+// FSRS não é atrapalhado por quem estuda a mais. O que fica é o registro.
+const FUN_ROUND = 20;
+
+function FunCard({ onStart, busy, err }) {
+  return (
+    <div style={{ border: "1px dashed var(--line-2)", borderRadius: "var(--r-4)", background: "var(--bg-1)", padding: "14px 20px", maxWidth: 760, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+      <div style={{ flex: 1, minWidth: 220 }}>
+        <div className="kicker">Extra · 4fun</div>
+        <div className="card-title" style={{ marginTop: 4 }}>Estudar por diversão</div>
+        <div className="card-sub" style={{ marginTop: 3 }}>{FUN_ROUND} cards sorteados do seu baralho, quantas rodadas quiser</div>
+        <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 2 }}>não conta no compromisso do dia nem mexe na sua agenda de revisões · fica registrado no seu raio-x</div>
+        {err && <div className="mono" style={{ fontSize: 11.5, color: "var(--neg)", marginTop: 6 }}>{err}</div>}
+      </div>
+      <button onClick={onStart} disabled={busy} style={{ ...btn, height: 36, opacity: busy ? 0.6 : 1 }}>
+        {busy ? "sorteando…" : "Sortear cards →"}
+      </button>
+    </div>
+  );
+}
+
 // Tiles por tema = PONTUAÇÃO: % do baralho dominado (cards que já graduaram
 // pra revisão no FSRS). A fila do dia fica no bloco "da vez"; aqui é placar.
 function DeckList({ decks }) {
@@ -218,7 +271,7 @@ function DeckList({ decks }) {
 // Com focus=true a MESMA sessão (mesma fila, mesmo estado) veste a FocusShell:
 // tela cheia escura, card maior, textos fora do card em branco translúcido —
 // vars de tema só DENTRO de superfícies (--bg-1), que funcionam nos 2 temas.
-function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus, roleLabels }) {
+function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus, roleLabels, fun = false, onMore }) {
   const [queue, setQueue] = useS(cards);
   const [flipped, setFlipped] = useS(false);
   const [busy, setBusy] = useS(false);
@@ -232,14 +285,23 @@ function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus, r
     if (!card || busy) return;
     setBusy(true); setErr(null);
     try {
-      const r = await api.trainingReview(saasId, card.entryId || card.id, rating, Date.now() - shownAt.current);
-      setTally((t) => ({ ...t, [rating]: t[rating] + 1 }));
-      setQueue((q) => {
-        const rest = q.slice(1);
-        // aprendendo com due ainda hoje volta NESTA sessão (learning steps do Anki)
-        if (new Date(r.srs.due) <= new Date(dayEnd)) rest.push({ ...card, srs: r.srs, preview: r.preview });
-        return rest;
-      });
+      const id = card.entryId || card.id;
+      const ms = Date.now() - shownAt.current;
+      if (fun) {
+        // 4fun: só registra. Sem estado FSRS, o card não volta nesta rodada.
+        await api.trainingFunReview(saasId, id, rating, ms);
+        setTally((t) => ({ ...t, [rating]: t[rating] + 1 }));
+        setQueue((q) => q.slice(1));
+      } else {
+        const r = await api.trainingReview(saasId, id, rating, ms);
+        setTally((t) => ({ ...t, [rating]: t[rating] + 1 }));
+        setQueue((q) => {
+          const rest = q.slice(1);
+          // aprendendo com due ainda hoje volta NESTA sessão (learning steps do Anki)
+          if (new Date(r.srs.due) <= new Date(dayEnd)) rest.push({ ...card, srs: r.srs, preview: r.preview });
+          return rest;
+        });
+      }
       setFlipped(false);
     } catch (e) { setErr(e.message || "falha ao salvar a revisão"); }
     setBusy(false);
@@ -274,15 +336,24 @@ function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus, r
           <div className="kicker accent" style={{ marginBottom: 8 }}>Sessão concluída · {label}</div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
             <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 42, fontWeight: 700, color: "var(--pos)" }}>{done}</span>
-            <span style={{ fontSize: 15, color: "var(--fg-2)" }}>revisões · {done ? Math.round((good / done) * 100) : 0}% bem lembradas</span>
+            <span style={{ fontSize: 15, color: "var(--fg-2)" }}>{fun ? "cards" : "revisões"} · {done ? Math.round((good / done) * 100) : 0}% bem lembradas</span>
           </div>
           <div className="mono dim" style={{ fontSize: 11.5, marginTop: 8 }}>
             {RATINGS.map((r) => <span key={r.rating} style={{ marginRight: 12, color: tally[r.rating] ? r.color : "var(--fg-4)" }}>{tally[r.rating]} {r.label.toLowerCase()}</span>)}
           </div>
-          <div style={{ fontSize: 12.5, color: "var(--fg-2)", marginTop: 10, lineHeight: 1.5 }}>Fila de hoje zerada — o FSRS traz cada card de volta na hora certa. Volte amanhã.</div>
+          <div style={{ fontSize: 12.5, color: "var(--fg-2)", marginTop: 10, lineHeight: 1.5 }}>
+            {fun
+              ? "Rodada 4fun registrada. Não mexeu na sua agenda de revisões nem no compromisso do dia — foi estudo a mais, e ele aparece no seu raio-x."
+              : "Fila de hoje zerada — o FSRS traz cada card de volta na hora certa. Volte amanhã."}
+          </div>
         </div>
-        <ConsistencyCard saasId={saasId} />
-        <button onClick={onExit} style={{ ...btn, alignSelf: "flex-start", ...(focus ? { background: "transparent", color: "rgba(255,255,255,0.7)", border: "1px solid rgba(255,255,255,0.2)" } : {}) }}>← voltar</button>
+        {!fun && <ConsistencyCard saasId={saasId} />}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {fun && onMore && (
+            <button onClick={onMore} style={{ ...btn, ...(focus ? { background: "transparent", color: "rgba(255,255,255,0.7)", border: "1px solid rgba(255,255,255,0.2)" } : {}) }}>mais {FUN_ROUND} cards →</button>
+          )}
+          <button onClick={onExit} style={{ ...btn, ...(focus ? { background: "transparent", color: "rgba(255,255,255,0.7)", border: "1px solid rgba(255,255,255,0.2)" } : {}) }}>← voltar</button>
+        </div>
       </div>
     );
   } else {
@@ -290,14 +361,16 @@ function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus, r
     body = (
       <div style={{ display: "flex", flexDirection: "column", gap: focus ? 16 : 12, width: "100%", maxWidth: focus ? 760 : 720 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", justifyContent: focus ? "center" : "flex-start" }}>
-          {!focus && <button onClick={onExit} className="mono dim" style={{ fontSize: 12 }}>← baralhos</button>}
+          {!focus && <button onClick={onExit} className="mono dim" style={{ fontSize: 12 }}>{fun ? "← sair do 4fun" : "← baralhos"}</button>}
           {!focus && <span style={{ flex: 1 }} />}
-          {COUNT.map((c) => (
-            <span key={c.key} className="mono tnum" title={c.label}
-              style={{ fontSize: 12, color: focus ? inkDim : c.color, textDecoration: bucket === c.key ? "underline" : "none", opacity: counts[c.key] ? 1 : 0.35 }}>
-              {counts[c.key]}
-            </span>
-          ))}
+          {fun
+            ? <span className="mono tnum" style={{ fontSize: 12, color: focus ? inkDim : "var(--fg-3)" }}>{queue.length} na rodada</span>
+            : COUNT.map((c) => (
+              <span key={c.key} className="mono tnum" title={c.label}
+                style={{ fontSize: 12, color: focus ? inkDim : c.color, textDecoration: bucket === c.key ? "underline" : "none", opacity: counts[c.key] ? 1 : 0.35 }}>
+                {counts[c.key]}
+              </span>
+            ))}
           <span className="mono tnum" style={{ fontSize: 11.5, color: focus ? inkDim : "var(--fg-3)" }}>· {done} feitas</span>
           {!focus && <button onClick={onToggleFocus} title="modo foco: tela cheia + áudio ambiente" className="mono dim" style={{ fontSize: 12, cursor: "pointer" }}>◐ foco</button>}
         </div>
@@ -308,7 +381,7 @@ function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus, r
             boxShadow: focus ? "0 24px 90px rgba(0,0,0,0.55)" : "var(--shadow-2)",
             padding: focus ? "34px 34px 28px" : "26px 26px 22px", minHeight: focus ? 220 : 180,
             display: "flex", flexDirection: "column", gap: 14, cursor: flipped ? "default" : "pointer" }}>
-          <div className="kicker">{(roleLabels && roleLabels[card.role]) || label} · {bucket === "new" ? "card novo" : bucket === "review" ? "revisão" : "aprendendo"}{card.sub ? ` · ${card.sub}` : ""}</div>
+          <div className="kicker">{(roleLabels && roleLabels[card.role]) || label} · {fun ? "4fun" : bucket === "new" ? "card novo" : bucket === "review" ? "revisão" : "aprendendo"}{card.sub ? ` · ${card.sub}` : ""}</div>
           <CardFace card={card} flipped={flipped} focus={focus} />
         </div>
 
@@ -330,7 +403,9 @@ function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus, r
             ))}
           </div>
         )}
-        {!focus && <div className="mono dim" style={{ fontSize: 10.5 }}>seja honesto com você: o algoritmo só funciona se o clique refletir o que você lembrou de verdade</div>}
+        {!focus && <div className="mono dim" style={{ fontSize: 10.5 }}>{fun
+          ? "rodada livre: o clique aqui não agenda revisão nem entra na sua retenção — é treino a mais"
+          : "seja honesto com você: o algoritmo só funciona se o clique refletir o que você lembrou de verdade"}</div>}
       </div>
     );
   }
@@ -536,7 +611,10 @@ function ConsistencyCard({ saasId }) {
         <span style={{ flex: 1 }} />
         <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 26, fontWeight: 700, color: s.streak ? "var(--accent)" : "var(--fg-4)" }}>{s.streak}</span>
         <span style={{ fontSize: 12.5, color: "var(--fg-2)" }}>dia{s.streak === 1 ? "" : "s"} seguido{s.streak === 1 ? "" : "s"}</span>
-        <span className="mono dim" style={{ fontSize: 11 }}>· melhor {s.bestStreak}d · hoje {s.doneToday}</span>
+        <span className="mono dim" style={{ fontSize: 11 }}>
+          · melhor {s.bestStreak}d · hoje {s.doneToday}
+          {s.fun?.total ? ` · 4fun ${s.fun.doneToday} hoje (${s.fun.total} no total)` : ""}
+        </span>
       </div>
       <Heatmap days={s.days} today={s.today} />
     </div>
@@ -990,7 +1068,9 @@ function Team({ saasId, mode, setMode }) {
                 <th className="kicker" style={th}>Pessoa</th><th className="kicker" style={th}>Pra hoje</th><th className="kicker" style={th}>Feitas hoje</th>
                 <th className="kicker" style={th} title="acerto nos cards que já estavam em revisão — memória real">Retenção 30d</th>
                 <th className="kicker" style={th} title="cards com intervalo ≥ 21 dias — conhecimento consolidado">Maduros</th>
-                <th className="kicker" style={th}>Sequência</th><th className="kicker" style={th}>Viu do baralho</th><th className="kicker" style={th}>Último estudo</th>
+                <th className="kicker" style={th}>Sequência</th>
+                <th className="kicker" style={th} title="modo 4fun: cards estudados por vontade própria, fora da cota — não conta como compromisso">4fun 30d</th>
+                <th className="kicker" style={th}>Viu do baralho</th><th className="kicker" style={th}>Último estudo</th>
               </tr></thead>
               <tbody>
                 {users.map((u) => (
@@ -1007,6 +1087,9 @@ function Team({ saasId, mode, setMode }) {
                     </td>
                     <td style={td} className="tnum">{u.mature}<span className="mono dim" style={{ fontSize: 10 }}>/{u.seen}</span></td>
                     <td style={td} className="tnum">{u.streak ? `${u.streak}d 🔥` : "—"}</td>
+                    <td style={{ ...td, color: u.fun?.last30 ? "var(--fg-1)" : "var(--fg-4)" }} className="tnum">
+                      {u.fun?.last30 ? `${u.fun.last30}${u.fun.hitPct != null ? ` · ${u.fun.hitPct}%` : ""}` : "—"}
+                    </td>
                     <td style={td} className="tnum">{u.seen}/{u.deckSize}</td>
                     <td style={{ ...td, color: "var(--fg-3)" }} className="mono">{u.lastReviewAt ? new Date(u.lastReviewAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "nunca"}</td>
                   </tr>
@@ -1082,6 +1165,14 @@ function PersonDetail({ user: u, today }) {
             {big(`${(u.medianMs / 1000).toFixed(1)}s`, u.rushPct > 20 ? "var(--neg)" : undefined)}
             <div className="mono dim" style={{ fontSize: 9.5 }}>
               tempo/card · <span style={{ color: u.rushPct > 20 ? "var(--neg)" : undefined }}>{u.rushPct}% relâmpago</span>
+            </div>
+          </div>
+        )}
+        {u.fun?.total > 0 && (
+          <div style={tile} title="modo 4fun: estudo livre além da cota do dia · não agenda revisão nem entra na retenção">
+            {big(`${u.fun.last30}`, "var(--accent)")}
+            <div className="mono dim" style={{ fontSize: 9.5 }}>
+              4fun 30d · {u.fun.total} no total{u.fun.hitPct != null ? ` · ${u.fun.hitPct}% bem` : ""}
             </div>
           </div>
         )}

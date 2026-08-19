@@ -368,6 +368,9 @@ export const api = {
   trainingQueue: (saas) => req("GET", `/api/flashcards/${encodeURIComponent(saas)}/queue`),
   trainingReview: (saas, cardId, rating, ms) => req("POST", `/api/flashcards/${encodeURIComponent(saas)}/review`, { cardId, rating, ms }),
   trainingTeam: (saas) => req("GET", `/api/flashcards/${encodeURIComponent(saas)}/team`),
+  // 4fun: estudo livre além da cota do dia (não mexe no FSRS, só no log próprio)
+  trainingFun: (saas, n = 20) => req("GET", `/api/flashcards/${encodeURIComponent(saas)}/fun?n=${n}`),
+  trainingFunReview: (saas, cardId, rating, ms) => req("POST", `/api/flashcards/${encodeURIComponent(saas)}/fun/review`, { cardId, rating, ms }),
   trainingStats: (saas) => req("GET", `/api/flashcards/${encodeURIComponent(saas)}/stats`),
   trainingExamStart: (saas, id) => req("POST", `/api/flashcards/${encodeURIComponent(saas)}/exam/${encodeURIComponent(id)}/start`, {}),
   trainingExamSubmit: (saas, id, answers) => req("POST", `/api/flashcards/${encodeURIComponent(saas)}/exam/${encodeURIComponent(id)}/submit`, { answers }),

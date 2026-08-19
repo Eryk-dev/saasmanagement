@@ -222,7 +222,7 @@ test("tipos: cloze expande por índice e occlusion por máscara, cada um com est
   assert.equal((await app.inject({ method: "POST", url: "/api/flashcards/leverads/review", headers: as("ana"), payload: { cardId: "cz::c9", rating: 3 } })).statusCode, 404);
 });
 
-test("asset: upload multipart com sessão, servido público em /public/training/:id", async () => {
+test("asset: upload multipart do EDITOR (admin), servido público em /public/training/:id", async () => {
   const { app } = await buildApp();
   const boundary = "----cockpittest";
   const bytes = Buffer.from("fake-png-bytes");
@@ -231,7 +231,7 @@ test("asset: upload multipart com sessão, servido público em /public/training/
     bytes,
     Buffer.from(`\r\n--${boundary}--\r\n`),
   ]);
-  const up = await app.inject({ method: "POST", url: "/api/flashcards/leverads/asset", headers: { ...as("ana"), "content-type": `multipart/form-data; boundary=${boundary}` }, payload });
+  const up = await app.inject({ method: "POST", url: "/api/flashcards/leverads/asset", headers: { ...as("leo"), "content-type": `multipart/form-data; boundary=${boundary}` }, payload });
   assert.equal(up.statusCode, 200, up.body);
   const { url } = up.json();
   assert.match(url, /^\/public\/training\/ta_/);
@@ -372,6 +372,73 @@ test("admin: sem baralho obrigatório e fora da cobrança da equipe", async () =
 // A base oficial é conteúdo que o time DECORA: invariantes que nenhuma edição
 // futura pode quebrar sem alguém perceber (ids únicos pro FSRS, limites do
 // sanitize, e a regra de copy da casa: nada de travessão).
+test("editar a base é só do admin: sessão comum toma 403 no PUT e no upload; admin e key mestre passam", async () => {
+  const { app } = await buildApp();
+  const put = (user) => app.inject({ method: "PUT", url: "/api/flashcards/leverads", headers: user ? as(user) : {}, payload: { cards: [{ id: "a", role: "sdr", front: "P", back: "R" }] } });
+
+  assert.equal((await put("ana")).statusCode, 403);   // SDR treina, não edita
+  assert.equal((await put("bob")).statusCode, 403);   // closer idem
+  assert.equal((await put("leo")).statusCode, 200);   // dono
+  assert.equal((await put("jon")).statusCode, 200);   // closer QUE TAMBÉM é dono
+  assert.equal((await put(null)).statusCode, 200);    // key mestre (MCP/integração)
+
+  // imagem de card só entra pelo editor, que é do admin
+  const asset = await app.inject({ method: "POST", url: "/api/flashcards/leverads/asset", headers: as("ana") });
+  assert.equal(asset.statusCode, 403);
+});
+
+test("4fun: sorteia cards da vaga, registra fora do FSRS e não gasta a cota do dia", async () => {
+  const { app, repo } = await buildApp();
+  assert.equal((await app.inject({ method: "GET", url: "/api/flashcards/leverads/fun" })).statusCode, 401);
+
+  const antes = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("ana") })).json();
+  const fun = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/fun?n=5", headers: as("ana") })).json();
+  assert.equal(fun.cards.length, 5);
+  assert.ok(fun.total > 5);
+  // só os baralhos DELA (SDR + os 2... 3 gerais), nunca o do closer
+  assert.ok(fun.cards.every((c) => c.role !== "closer" && c.role !== "integrator" && c.role !== "social"));
+
+  const rev = await app.inject({ method: "POST", url: "/api/flashcards/leverads/fun/review", headers: as("ana"),
+    payload: { cardId: fun.cards[0].entryId, rating: 3, ms: 4200 } });
+  assert.equal(rev.statusCode, 200);
+  assert.equal(rev.json().fun, true);
+
+  // log próprio, sem tocar em estado/agenda/log da cobrança
+  const log = await repo.list("training_fun");
+  assert.equal(log.length, 1);
+  assert.equal(log[0].user, "ana");
+  assert.equal(log[0].rating, 3);
+  assert.equal((await repo.list("training_reviews")).length, 0);
+  assert.equal(await repo.get("training_states", "leverads__ana"), null);
+
+  const depois = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("ana") })).json();
+  assert.deepEqual(depois.decks.map((d) => d.counts), antes.decks.map((d) => d.counts), "fila do dia intacta");
+
+  // rating inválido e card fora da base
+  assert.equal((await app.inject({ method: "POST", url: "/api/flashcards/leverads/fun/review", headers: as("ana"), payload: { cardId: fun.cards[0].entryId, rating: 9 } })).statusCode, 400);
+  assert.equal((await app.inject({ method: "POST", url: "/api/flashcards/leverads/fun/review", headers: as("ana"), payload: { cardId: "nao_existe", rating: 3 } })).statusCode, 404);
+});
+
+test("4fun aparece SEPARADO nos números: stats da pessoa e coluna da equipe, sem entrar em streak/feitas hoje", async () => {
+  const { app } = await buildApp();
+  const fun = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/fun?n=3", headers: as("ana") })).json();
+  for (const c of fun.cards) {
+    await app.inject({ method: "POST", url: "/api/flashcards/leverads/fun/review", headers: as("ana"), payload: { cardId: c.entryId, rating: 4 } });
+  }
+  const stats = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/stats", headers: as("ana") })).json();
+  assert.equal(stats.fun.doneToday, 3);
+  assert.equal(stats.fun.total, 3);
+  assert.equal(stats.fun.hitPct30d, 100);
+  assert.equal(stats.doneToday, 0, "4fun não conta como revisão do dia");
+  assert.equal(stats.streak, 0, "4fun não segura a sequência");
+
+  const team = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/team" })).json();
+  const ana = team.users.find((u) => u.id === "ana");
+  assert.equal(ana.fun.last30, 3);
+  assert.equal(ana.fun.hitPct, 100);
+  assert.equal(ana.doneToday, 0);
+});
+
 test("defaults: ids únicos, roles válidos, limites de tamanho e zero travessão", () => {
   const cards = FLASHCARD_DEFAULTS.leverads;
   const roles = new Set(["geral_negocio", "geral_marketplace", "geral_vendas", "sdr", "closer", "integrator", "social"]);
