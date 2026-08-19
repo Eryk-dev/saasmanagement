@@ -290,6 +290,65 @@ try {
     console.error(`✗ agenda-semanal: ${err.message}`);
     failed++;
   }
+  // Bônus da remuneração: DEGRAU, não rampa (Leo, 19/08). A banda só paga
+  // quando é BATIDA — 110% da meta leva o bônus de 100% inteiro, sem nada de
+  // proporcional rumo ao de 120%. É a conta que vira salário, então vale teste:
+  // valores do closer nível 1 (600/1000/1500/2000).
+  try {
+    const { legBonus, bandOf } = await server.ssrLoadModule("/src/screens/remuneracao.jsx");
+    const B = (att) => legBonus(att, 600, 1000, 1500, 2000);
+    const eq = (name, got, want) => { if (got !== want) throw new Error(`${name}: ${got} ≠ ${want}`); };
+    eq("abaixo de 80% zera", B(0.79), 0);
+    eq("80% cravado paga a 1ª banda", B(0.8), 600);
+    eq("99% ainda é a banda de 80", B(0.99), 600);
+    eq("100% paga a banda de 100", B(1), 1000);
+    eq("110% NÃO é proporcional: paga a banda de 100", B(1.1), 1000);
+    eq("119% ainda é a banda de 100", B(1.19), 1000);
+    eq("120% paga a banda de 120", B(1.2), 1500);
+    eq("140% paga a banda de 140", B(1.4), 2000);
+    eq("150% é degrau pela metade: segue em 140", B(1.5), 2000);
+    eq("160% abre o 1º degrau da escada", B(1.6), 2600);
+    eq("180% soma o degrau seguinte", B(1.8), 3300);
+    eq("200% segue sem teto", B(2), 4100);
+    // att vem de divisão: bater a meta na régua não pode cair pra banda de baixo.
+    eq("22/20 = 110% pela banda de 100", B(22 / 20), 1000);
+    eq("meta cravada não escorrega", B(120000 / 120000), 1000);
+    eq("24/20 = 120% cravado", B(24 / 20), 1500);
+    // Plano salvo antes da coluna 140% (b140 indefinido) herda a extrapolação.
+    eq("sem b140 o topo é extrapolado", legBonus(1.4, 600, 1000, 1500, undefined), 2000);
+    eq("banda alcançada em 110%", bandOf(1.1), 100);
+    eq("banda alcançada em 160%", bandOf(1.6), 160);
+    eq("sem banda abaixo de 80%", bandOf(0.79), null);
+    console.log("✓ remuneracao-degrau");
+  } catch (err) {
+    console.error(`✗ remuneracao-degrau: ${err.message}`);
+    failed++;
+  }
+
+  // Tela Remuneração: as regras da casa e o card de trilha (tabela de níveis +
+  // simulador). A tela só sai da "Área da gestão" pra quem tem a etiqueta admin,
+  // e os planos chegam por efeito (não roda no SSR) — por isso o card vai
+  // renderizado à parte, com um plano na mão.
+  try {
+    const savedGet = globalThis.localStorage.getItem;
+    globalThis.localStorage.getItem = (k) =>
+      (k === "cockpit_user" ? JSON.stringify({ id: "leonardo", name: "Leonardo", roles: ["closer", "admin"], screens: [] }) : null);
+    const { RemuneracaoScreen, RoleCard } = await server.ssrLoadModule("/src/screens/remuneracao.jsx");
+    const tela = renderToString(wrap(React.createElement(RemuneracaoScreen, {})));
+    globalThis.localStorage.getItem = savedGet;
+    const plano = { levels: [{ n: 1, fixed: 3000, fixedPj: 4200, metaContracts: 20, metaRevenue: 90000, b80: 600, b100: 1000, b120: 1500, b140: 2000 }], notes: "" };
+    const card = renderToString(wrap(React.createElement(RoleCard, { role: "closer", saved: plano, onSave() {} })));
+    const has = (name, html, must) => { if (!html.includes(must)) throw new Error(`${name} não contém "${must}"`); };
+    has("regras", tela, "A banda só paga quando é batida");
+    has("card", card, "Closer · Executivo de Contas");
+    has("card", card, "Bônus 140%");
+    // O simulador diz qual DEGRAU caiu, pra ninguém esperar valor proporcional.
+    has("simulador", card, "(banda 100%)");
+    console.log("✓ remuneracao");
+  } catch (err) {
+    console.error(`✗ remuneracao: ${err.message}`);
+    failed++;
+  }
 } finally {
   await server.close();
 }

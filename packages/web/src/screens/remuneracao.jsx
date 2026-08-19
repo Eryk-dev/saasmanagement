@@ -9,10 +9,11 @@ import { hasExplicitScreen, isAdminUser } from "../lib/users.js";
 // Closer, CS), 3 NÍVEIS cada (1 júnior · 2 pleno · 3 sênior). SDR e Closer têm
 // DUAS PERNAS de variável, avaliadas separadamente e SOMADAS ("bônus em
 // dobro"): perna CONTRATOS (nº de fechamentos) e perna RECEITA (R$ fechado).
-// Regras das pernas: abaixo de 80% da meta = ZERO; entre as âncoras
-// 80/100/120/140 é proporcional; acima de 140% NÃO trava (Leo, 08/08): cada
-// degrau de +20% paga a diferença entre os dois degraus anteriores + R$100,
-// sem limite.
+// Regras das pernas: abaixo de 80% da meta = ZERO; as âncoras 80/100/120/140
+// são DEGRAUS, não rampa (Leo, 19/08): a banda só paga quando é BATIDA, então
+// 110% leva o bônus de 100% inteiro e nada além dele; acima de 140% NÃO trava
+// (Leo, 08/08): cada degrau de +20% COMPLETO paga a diferença entre os dois
+// degraus anteriores + R$100, sem limite.
 // Closer escolhe regime CLT ou PJ (muda só o fixo). CS não tem banda: fixo +
 // R$100 por indicação que vira REUNIÃO FEITA (R$250 no lugar, se fechar; não
 // soma) + bônus por NPS ≥ 80 + bônus por churn do mês abaixo de 15%, ambos
@@ -39,8 +40,8 @@ const tdS = { padding: "5px 8px", borderBottom: "1px solid var(--line-faint)", w
 const RULES = [
   ["Duas pernas que somam", "contratos e receita são avaliados separados e cada perna paga o bônus da banda: bater as duas metas em 100% paga o valor da tabela em DOBRO (ex.: 20 contratos + R$90k no nível 1 do closer = 1.000 + 1.000)."],
   ["Abaixo de 80% = zero", "a perna que não chega a 80% da meta não paga nada."],
-  ["Proporcional entre as âncoras", "entre 80, 100, 120 e 140% o valor é proporcional."],
-  ["Acima de 140% não tem teto", "cada 20% a mais paga a diferença entre os dois degraus anteriores + R$100 de bônus, sem limite (ex.: closer nível 1: 160% = 2.000 + 500 + 100 = 2.600; 180% = 2.600 + 600 + 100 = 3.300; e segue)."],
+  ["A banda só paga quando é batida", "o bônus é degrau, não rampa: vale o valor da última banda ALCANÇADA, e nada entre uma e outra. 110% da meta leva o bônus de 100%; o bônus de 120% só entra ao chegar nos 120%."],
+  ["Acima de 140% não tem teto", "cada 20% a mais COMPLETADO paga a diferença entre os dois degraus anteriores + R$100 de bônus, sem limite (ex.: closer nível 1: 160% = 2.000 + 500 + 100 = 2.600; 180% = 2.600 + 600 + 100 = 3.300; e segue)."],
   ["A receita do SDR é a das oportunidades DELE", "a perna de R$ do SDR conta a receita FECHADA das oportunidades que ele gerou (desenho do Receita Previsível)."],
   ["SDR e closer perseguem o mesmo número", "metas iguais por nível de propósito: a dupla fecha junto (2 pessoas nível 1 a 90k = a meta de agosto)."],
   ["CLT ou PJ só muda o fixo", "a variável do closer é a mesma nos dois regimes."],
@@ -80,29 +81,38 @@ const DEFAULT_PLAN = {
   },
 };
 
-// Bônus de UMA perna: att = realizado ÷ meta (1 = 100%). Cliff em 80%,
-// proporcional entre as âncoras (80→b80, 100→b100, 120→b120, 140→b140). Acima
-// de 140% NÃO trava (Leo, 08/08): cada degrau de +20% paga a diferença entre
-// os dois degraus anteriores + R$100, sem limite — o degrau cresce R$100 por
-// vez (ex.: b120=750/b140=950 → 160%=1.250 · 180%=1.650 · 200%=2.150). Plano
-// salvo sem b140 (anterior à coluna) herda a extrapolação antiga da inclinação
+// Bônus de UMA perna: att = realizado ÷ meta (1 = 100%). É DEGRAU, não rampa
+// (Leo, 19/08): a banda só paga quando é BATIDA, então o valor entre duas
+// âncoras é o da âncora de baixo (110% paga b100 inteiro, nada de proporcional
+// rumo a b120). Cliff em 80% (abaixo disso a perna zera) e escada ABERTA acima
+// de 140% (Leo, 08/08): cada degrau de +20% COMPLETO paga a diferença entre os
+// dois degraus anteriores + R$100, sem limite — o degrau cresce R$100 por vez
+// (ex.: b120=750/b140=950 → 160%=1.250 · 180%=1.650 · 200%=2.150). Plano salvo
+// sem b140 (anterior à coluna) herda a extrapolação antiga da inclinação
 // 100→120.
+// EPS: att vem de uma divisão (22/20, 95000/90000…) e a âncora exata pode cair
+// um fio abaixo em ponto flutuante — bater a meta na régua não pode virar banda
+// de baixo por causa de arredondamento.
+const EPS = 1e-9;
 export function legBonus(att, b80, b100, b120, b140) {
-  if (!Number.isFinite(att) || att < 0.8) return 0;
-  if (att <= 1) return b80 + (b100 - b80) * ((att - 0.8) / 0.2);
-  if (att <= 1.2) return b100 + (b120 - b100) * ((att - 1) / 0.2);
+  if (!Number.isFinite(att) || att < 0.8 - EPS) return 0;
+  if (att < 1 - EPS) return b80;
+  if (att < 1.2 - EPS) return b100;
+  if (att < 1.4 - EPS) return b120;
   const top = Number.isFinite(b140) ? b140 : b120 + (b120 - b100);
-  if (att <= 1.4) return b120 + (top - b120) * ((att - 1.2) / 0.2);
-  // k degraus de 20% completos acima de 140% + a fração do degrau corrente.
+  // k degraus de 20% COMPLETOS acima de 140% (degrau pela metade não paga).
   // Degrau i (1-indexado) paga (b140 − b120) + 100·i; a soma fechada evita
   // loop com att digitado gigante no simulador.
-  const k = Math.floor((att - 1.4) / 0.2 + 1e-9);
-  const frac = Math.max(0, (att - 1.4 - 0.2 * k) / 0.2);
-  const step = top - b120;
-  const done = top + k * step + 100 * ((k * (k + 1)) / 2);
-  return done + (step + 100 * (k + 1)) * frac;
+  const k = Math.floor((att - 1.4) / 0.2 + EPS);
+  if (k <= 0) return top;
+  return top + k * (top - b120) + 100 * ((k * (k + 1)) / 2);
 }
 const pctS = (att) => (Number.isFinite(att) ? `${Math.round(att * 100)}%` : "—");
+// Banda ALCANÇADA (a que está pagando), pra tela não deixar dúvida de qual
+// degrau caiu: 110% mostra "banda 100%". Abaixo de 80% não há banda.
+export const bandOf = (att) =>
+  !Number.isFinite(att) || att < 0.8 - EPS ? null : Math.floor((att + EPS) / 0.2) * 20;
+const bandS = (att) => (bandOf(att) == null ? "zerada" : `${bandOf(att)}%`);
 
 // ── Simulador de SDR/Closer: duas pernas + fixo ──────────────────────────────
 function SimVendas({ plan, isCloser }) {
@@ -124,11 +134,11 @@ function SimVendas({ plan, isCloser }) {
         <label>receita R$ <input type="number" value={s.receita} onChange={set("receita")} style={{ ...inputS, width: 100, height: 26 }} /></label>
       </div>
       <div style={{ color: "var(--fg-2)" }}>
-        perna contratos {pctS(attC)} → <b>{money(legC)}</b> · perna receita {pctS(attR)} → <b>{money(legR)}</b>
+        perna contratos {pctS(attC)} <span style={{ color: "var(--fg-4)" }}>{`(banda ${bandS(attC)})`}</span> → <b>{money(legC)}</b> · perna receita {pctS(attR)} <span style={{ color: "var(--fg-4)" }}>{`(banda ${bandS(attR)})`}</span> → <b>{money(legR)}</b>
       </div>
       <div>
         fixo{isCloser ? (s.pj ? " (PJ)" : " (CLT)") : ""} <b>{money(fixed)}</b> + variável <b>{money(legC + legR)}</b> = <b style={{ color: "var(--pos)" }}>{money(fixed + legC + legR)}</b>
-        <span style={{ color: "var(--fg-4)" }}> · abaixo de 80% a perna zera · acima de 140% cada +20% paga o degrau anterior + R$100, sem teto</span>
+        <span style={{ color: "var(--fg-4)" }}> · a banda só paga ao ser batida (110% paga o bônus de 100%) · abaixo de 80% a perna zera · acima de 140% cada +20% completo paga o degrau anterior + R$100, sem teto</span>
       </div>
     </div>
   );
@@ -167,7 +177,7 @@ const ROLE_META = {
   cs: { title: "Integrador · CS", sub: "fixo + indicação (reunião feita / fechada) + bônus NPS" },
 };
 
-function RoleCard({ role, saved, onSave }) {
+export function RoleCard({ role, saved, onSave }) {
   const [draft, setDraft] = useS(saved);
   const [saving, setSaving] = useS(false);
   useE(() => setDraft(saved), [saved]); // eslint-disable-line react-hooks/exhaustive-deps
