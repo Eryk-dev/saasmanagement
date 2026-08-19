@@ -331,6 +331,56 @@ test("prova de checkpoint: dispara ao graduar examEvery cards, corrige no servid
   assert.deepEqual(ana.lastExam, { score: 100, status: "passed" });
 });
 
+test("prova: raio-x com as questões, o que respondeu e o gabarito — dono e admin veem, terceiro não", async () => {
+  const { app, repo } = await buildApp();
+  await app.inject({ method: "PUT", url: "/api/flashcards/leverads", payload: { settings: { examEvery: 2, examQuestions: 3, examPass: 70 },
+    cards: [
+      { id: "c1", role: "sdr", front: "P1", back: "R1" },
+      { id: "c2", role: "sdr", front: "P2", back: "R2" },
+      { id: "c3", role: "sdr", front: "P3", back: "R3" },
+      { id: "c4", role: "sdr", front: "P4", back: "R4" },
+    ] } });
+  // gradua 2 cards (Fácil) → cai a prova
+  for (const id of ["c1", "c2"]) {
+    await app.inject({ method: "POST", url: "/api/flashcards/leverads/review", headers: as("ana"), payload: { cardId: id, rating: 4 } });
+  }
+  const q = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("ana") })).json();
+  assert.ok(q.exam, "prova pendente");
+
+  // pendente: enunciado sim, gabarito NÃO (senão bastaria abrir o histórico)
+  const pend = (await app.inject({ method: "GET", url: `/api/flashcards/leverads/exam/${q.exam.id}`, headers: as("ana") })).json();
+  assert.equal(pend.status, "pending");
+  assert.equal(pend.questions.every((x) => x.answerIdx === null && x.correct === null), true);
+
+  const aberta = (await app.inject({ method: "POST", url: `/api/flashcards/leverads/exam/${q.exam.id}/start`, headers: as("ana") })).json();
+  const gabarito = (await repo.get("training_exams", q.exam.id)).questions;
+  // acerta a primeira, erra as outras
+  const answers = gabarito.map((x, i) => (i === 0 ? { choice: x.answerIdx } : { choice: (x.answerIdx + 1) % (x.options?.length || 2) }));
+  const res = (await app.inject({ method: "POST", url: `/api/flashcards/leverads/exam/${q.exam.id}/submit`, headers: as("ana"), payload: { answers } })).json();
+  assert.equal(res.passed, false);
+
+  const det = (await app.inject({ method: "GET", url: `/api/flashcards/leverads/exam/${q.exam.id}`, headers: as("ana") })).json();
+  assert.equal(det.score, res.score);
+  assert.equal(det.questions.length, aberta.questions.length);
+  assert.equal(det.questions[0].correct, true);
+  assert.equal(det.questions[1].correct, false);
+  assert.ok(det.questions[0].prompt);
+  assert.equal(typeof det.questions[0].choice, "number");
+  assert.equal(typeof det.questions[0].answerIdx, "number");
+
+  // admin vê a prova de qualquer um; outro treinando não
+  assert.equal((await app.inject({ method: "GET", url: `/api/flashcards/leverads/exam/${q.exam.id}`, headers: as("leo") })).statusCode, 200);
+  assert.equal((await app.inject({ method: "GET", url: `/api/flashcards/leverads/exam/${q.exam.id}`, headers: as("bob") })).statusCode, 403);
+
+  // quadro da equipe: média e histórico pra tela abrir
+  const team = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/team" })).json();
+  const ana = team.users.find((u) => u.id === "ana");
+  assert.equal(ana.examsDone, 1);
+  assert.equal(ana.examAvg, res.score);
+  assert.equal(ana.exams[0].id, q.exam.id);
+  assert.equal(ana.exams[0].status, "failed");
+});
+
 test("card removido da base some da fila (estado individual fica órfão sem quebrar nada)", async () => {
   const { app } = await buildApp();
   await app.inject({ method: "POST", url: "/api/flashcards/leverads/review", headers: as("ana"), payload: { cardId: "sdr_1", rating: 1 } });

@@ -1070,6 +1070,7 @@ function Team({ saasId, mode, setMode }) {
                 <th className="kicker" style={th} title="cards com intervalo ≥ 21 dias — conhecimento consolidado">Maduros</th>
                 <th className="kicker" style={th}>Sequência</th>
                 <th className="kicker" style={th} title="modo 4fun: cards estudados por vontade própria, fora da cota — não conta como compromisso">4fun 30d</th>
+                <th className="kicker" style={th} title="provas de checkpoint: média das notas · quantas fez · clique na pessoa pra ver as questões">Provas</th>
                 <th className="kicker" style={th}>Viu do baralho</th><th className="kicker" style={th}>Último estudo</th>
               </tr></thead>
               <tbody>
@@ -1090,6 +1091,14 @@ function Team({ saasId, mode, setMode }) {
                     <td style={{ ...td, color: u.fun?.last30 ? "var(--fg-1)" : "var(--fg-4)" }} className="tnum">
                       {u.fun?.last30 ? `${u.fun.last30}${u.fun.hitPct != null ? ` · ${u.fun.hitPct}%` : ""}` : "—"}
                     </td>
+                    <td style={td} className="tnum">
+                      {u.examsDone
+                        ? <>
+                            <b style={{ color: retColor(u.examAvg) }}>{u.examAvg}%</b>
+                            <span className="mono dim" style={{ fontSize: 10, fontWeight: 400 }}> ({u.examsDone}{u.examsFailed ? ` · ${u.examsFailed} reprova${u.examsFailed === 1 ? "" : "s"}` : ""})</span>
+                          </>
+                        : <span style={{ color: "var(--fg-4)" }}>{u.examPending ? "1 pendente" : "—"}</span>}
+                    </td>
                     <td style={td} className="tnum">{u.seen}/{u.deckSize}</td>
                     <td style={{ ...td, color: "var(--fg-3)" }} className="mono">{u.lastReviewAt ? new Date(u.lastReviewAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "nunca"}</td>
                   </tr>
@@ -1097,7 +1106,7 @@ function Team({ saasId, mode, setMode }) {
               </tbody>
             </table>
           </div>
-          {selected ? <PersonDetail user={selected} today={data.today} /> :
+          {selected ? <PersonDetail user={selected} today={data.today} saasId={saasId} /> :
             <div className="mono dim" style={{ fontSize: 10.5 }}>clique numa pessoa pra abrir o raio-x · retenção 30d = acerto SÓ em cards que já estavam em revisão (true retention) · maduros = intervalo ≥ 21 dias</div>}
         </>
       ))}
@@ -1123,7 +1132,96 @@ function MiniBars({ bars, max, height = 56, width = 22 }) {
   );
 }
 
-function PersonDetail({ user: u, today }) {
+// ── Provas de checkpoint: a nota E o que caiu ────────────────────────────────
+// A prova sempre gravou tudo (questões, o que a pessoa marcou ou escreveu, o
+// gabarito e o feedback da IA), mas na tela só saía "83%". Aqui o gestor abre
+// cada prova e lê pergunta por pergunta — é o que separa "não estudou" de
+// "o card está confuso". Abrir é do admin ou do dono da prova (a API repete o
+// guard); pra prova pendente o gabarito NUNCA é servido.
+function ExamHistory({ user: u, saasId }) {
+  const [open, setOpen] = useS(null);
+  const [detail, setDetail] = useS(null);
+  const [err, setErr] = useS(null);
+  const exams = u.exams || [];
+  const me = currentUser();
+  const canSee = isAdminUser() || me?.id === u.id;
+  const dt = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—");
+
+  async function toggle(id) {
+    if (open === id) { setOpen(null); setDetail(null); return; }
+    setOpen(id); setDetail(null); setErr(null);
+    try { setDetail(await api.trainingExamDetail(saasId, id)); }
+    catch (e) { setErr(e.message || "não deu pra abrir a prova"); }
+  }
+
+  return (
+    <div>
+      <div className="kicker" style={{ marginBottom: 8 }}>
+        Provas de checkpoint{u.examsDone ? ` · média ${u.examAvg}% · ${u.examsDone} feita${u.examsDone === 1 ? "" : "s"}` : ""}
+        {u.examsFailed ? ` · ${u.examsFailed} reprova${u.examsFailed === 1 ? "" : "s"}` : ""}
+        {u.examPending ? " · 1 pendente" : ""}
+      </div>
+      {!exams.length ? (
+        <div className="mono dim" style={{ fontSize: 11.5 }}>
+          {u.examPending ? "prova pendente, ainda não respondida — ela cai sozinha a cada N cards aprendidos (o N está em Editar)" : "nenhuma prova respondida ainda"}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {exams.map((e) => (
+            <div key={e.id} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", overflow: "hidden" }}>
+              <div onClick={() => canSee && toggle(e.id)}
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", flexWrap: "wrap", cursor: canSee ? "pointer" : "default" }}>
+                <span className="mono" style={{ fontSize: 11.5, color: "var(--fg-3)", minWidth: 96 }}>{dt(e.finishedAt)}</span>
+                <b className="tnum" style={{ fontSize: 14, color: e.status === "passed" ? "var(--pos)" : "var(--neg)" }}>{e.score}%</b>
+                <span style={{ fontSize: 12, color: e.status === "passed" ? "var(--pos)" : "var(--neg)" }}>{e.status === "passed" ? "aprovado" : "reprovado"}</span>
+                <span className="mono dim" style={{ fontSize: 11 }}>{e.questions} questões</span>
+                <span style={{ flex: 1 }} />
+                {canSee && <span className="mono dim" style={{ fontSize: 11 }}>{open === e.id ? "fechar ▲" : "ver questões ▼"}</span>}
+              </div>
+              {open === e.id && (
+                <div style={{ borderTop: "1px solid var(--line-1)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 12 }}>
+                  {err && <div className="mono" style={{ fontSize: 11.5, color: "var(--neg)" }}>{err}</div>}
+                  {!detail && !err && <div className="mono dim" style={{ fontSize: 11.5 }}>abrindo…</div>}
+                  {detail?.questions?.map((q, i) => (
+                    <div key={i}>
+                      <div className="kicker">
+                        Questão {i + 1} · {q.kind === "mc" ? "múltipla escolha" : "digitada (corrigida por IA)"} ·{" "}
+                        <span style={{ color: q.correct ? "var(--pos)" : "var(--neg)" }}>{q.correct ? "acertou" : "errou"}</span>
+                      </div>
+                      <div style={{ fontSize: 13, color: "var(--fg-1)", marginTop: 4, whiteSpace: "pre-wrap" }}>{q.prompt}</div>
+                      {q.kind === "mc" ? (
+                        <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 3 }}>
+                          {(q.options || []).map((opt, j) => {
+                            const chosen = j === q.choice, right = j === q.answerIdx;
+                            return (
+                              <div key={j} style={{ fontSize: 12.5, color: right ? "var(--pos)" : chosen ? "var(--neg)" : "var(--fg-3)" }}>
+                                {right ? "✓" : chosen ? "✗" : "·"} {opt}{chosen ? <span className="mono dim" style={{ fontSize: 10.5 }}> (marcou)</span> : null}
+                              </div>
+                            );
+                          })}
+                          {q.choice == null || q.choice < 0 ? <div className="mono dim" style={{ fontSize: 10.5 }}>deixou em branco</div> : null}
+                        </div>
+                      ) : (
+                        <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4, fontSize: 12.5 }}>
+                          <div><span className="kicker">respondeu </span><span style={{ color: q.correct ? "var(--pos)" : "var(--neg)" }}>{q.text || "(em branco)"}</span></div>
+                          <div><span className="kicker">esperado </span><span style={{ color: "var(--fg-2)" }}>{q.ideal}</span></div>
+                          {q.feedback && <div className="mono dim" style={{ fontSize: 11 }}>IA: {q.feedback}</div>}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+          {!canSee && <div className="mono dim" style={{ fontSize: 10.5 }}>as questões de outra pessoa só o admin abre</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PersonDetail({ user: u, today, saasId }) {
   const tile = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "10px 12px", minWidth: 118 };
   const big = (v, color) => <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, color: color || "var(--fg-1)" }}>{v}</div>;
   const pct = (x) => (x == null ? "—" : `${x}%`);
@@ -1217,6 +1315,8 @@ function PersonDetail({ user: u, today }) {
           </div>
         )}
       </div>
+
+      <ExamHistory user={u} saasId={saasId} />
 
       <div>
         <div className="kicker" style={{ marginBottom: 8 }}>Constância</div>
