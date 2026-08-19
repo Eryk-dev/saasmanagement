@@ -350,9 +350,16 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       // dinheiro: inclui a mentoria (Leo, 16/08).
       const mineSale = saleLeads.filter((l) => l.owner === uid);
       const winMineAt = winTransitionsFor(mineSale);
-      const wonMineLeads = [...winMineAt.keys()].map((id) => saleById.get(id)).filter(Boolean);
+      // Conta grande fora do RESULTADO (Leo, 19/08): um contrato de R$ 120 mil
+      // no meio de vendas de 3 a 7 mil faz o placar da pessoa (e a meta do mês)
+      // parecerem batidos sem a operação ter rodado. Sai do que é cobrado; o
+      // que ela fechou volta em campo próprio (`key*`) pro rodapé da tela.
+      const wonMineAll = [...winMineAt.keys()].map((id) => saleById.get(id)).filter(Boolean);
+      const wonMineLeads = wonMineAll.filter((l) => !isKey(l));
+      const keyMineLeads = wonMineAll.filter(isKey);
       const wonMine = wonMineLeads.length;
       const revenueMine = round2(wonMineLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0));
+      const keyRevenueMine = round2(keyMineLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0));
       // Taxa de agendamento em COORTE (régua #650): das leads DA JANELA cujo 1º
       // contato foi dele, quantas viraram call. Workload (lead antigo tocado
       // pela nutrição) segue no COUNT, mas não afunda mais a taxa.
@@ -377,6 +384,7 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
         contactRate,
         targets: personTargets(uid, "sdr", { contactRate, bookingRate, showRate, contacts: contacted, callsBooked, won: wonMine, revenue: revenueMine }),
         won: wonMine, revenue: revenueMine, // as duas pernas do plano (oportunidades DELE)
+        keyWon: keyMineLeads.length, keyRevenue: keyRevenueMine, // conta grande fora do placar
         mentoriaQueue: men.queue, mentoriaContacted: men.contacted,
         mentoriaWon: men.won, mentoriaRevenue: men.revenue,
         leadsNew,
@@ -447,18 +455,21 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       // mentoria, que não nasce de call agendada aqui.
       const mineSale = saleLeads.filter((l) => l.closer === uid);
       const winAt = winTransitionsFor(mineSale);
-      const wonLeads = [...winAt.keys()].map((id) => saleById.get(id)).filter(Boolean);
+      // CONTA GRANDE FORA DO RESULTADO (Leo, 19/08 — antes só as médias
+      // ignoravam): um bespoke de R$ 120 mil no meio de vendas de 3 a 7 mil
+      // faz o placar bater sem a operação ter rodado. Agora won/revenue e a
+      // conversão da call são do NÚCLEO; o que ele fechou de conta grande sai
+      // em `keyWon`/`keyRevenue` pro rodapé, e o dinheiro segue cheio no caixa.
+      const wonAll = [...winAt.keys()].map((id) => saleById.get(id)).filter(Boolean);
+      const keyWonLeads = wonAll.filter(isKey);
+      const wonLeads = wonAll.filter((l) => !isKey(l));
       const wonN = wonLeads.length;
       const revenue = wonLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0);
       const wonPlatformN = wonLeads.filter((l) => isRealLead(l)).length;
-      // Ticket médio é MÉDIA: contrato de conta grande fica de fora, senão um
-      // bespoke de R$ 300 mil vira o "ticket" do closer e some com a régua. O
-      // que ele fechou (won/revenue) segue cheio, com a conta grande dentro.
-      const keyWonLeads = wonLeads.filter(isKey);
-      const coreWon = wonLeads.filter((l) => !isKey(l));
-      const coreRevenue = coreWon.reduce((a, l) => a + (Number(l.amount) || 0), 0);
+      const coreWon = wonLeads;
+      const coreRevenue = revenue;
       // Ciclo CALL → GANHO: dias da call marcada até o fechamento (integração).
-      const cycle = wonLeads.map((l) => (l.callAt ? (new Date(winAt.get(l.id)) - new Date(l.callAt)) / DAY : null))
+      const cycle = wonAll.map((l) => (l.callAt ? (new Date(winAt.get(l.id)) - new Date(l.callAt)) / DAY : null))
         .filter((d) => Number.isFinite(d) && d >= 0);
       const lost = mine.filter((l) => isLoss(product, l.stage) && inWin(l.stageSince));
       const reasonCount = {};
@@ -570,7 +581,14 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     // também a incluem). As TAXAS do funil abaixo (conversão do período,
     // lead→ganho) seguem no ganho da PLATAFORMA, porque os denominadores delas
     // (calls realizadas, leads novos) são da plataforma.
-    const teamWonLeads = [...winTransitionsFor(saleLeads).keys()].map((id) => saleById.get(id)).filter(Boolean);
+    // Funil e resultado do time SEM conta grande (Leo, 19/08): ganhos, receita e
+    // as taxas que saem deles (fechamento do período, lead→ganho) usam a mesma
+    // base do placar de cada pessoa — count e taxa NUNCA em bases diferentes.
+    // As taxas de SAFRA da call (wonFromCalls/callWinRate) seguem cheias: elas
+    // medem se a call converte, não o dinheiro do mês.
+    const teamWonAll = [...winTransitionsFor(saleLeads).keys()].map((id) => saleById.get(id)).filter(Boolean);
+    const teamKeyLeads = teamWonAll.filter(isKey);
+    const teamWonLeads = teamWonAll.filter((l) => !isKey(l));
     const teamWonPlatform = teamWonLeads.filter((l) => isRealLead(l));
     // Contatados = a régua única (contactAttribution, lá em cima): leads
     // DISTINTOS com contato HUMANO na janela, cada um no autor do 1º contato.
@@ -647,8 +665,14 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       callWinRate: bookedN > 0 ? round2((wonFromCallsN / bookedN) * 100) : null,
       closeRate: shownN > 0 ? round2((wonFromCallsN / shownN) * 100) : null, // safra (informativo)
       closeRatePeriod: shownN > 0 ? round2((teamWonPlatform.length / shownN) * 100) : null,
-      won: wonN,             // ganhos TOTAIS no período (por transição) = soma dos closers
+      won: wonN,             // ganhos do período (por transição) = soma dos closers, sem conta grande
       revenue: round2(teamWonLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0)),
+      // O que a conta grande tirou do resultado (rodapé da tela, nunca some).
+      keyAccount: teamKeyLeads.length ? {
+        won: teamKeyLeads.length,
+        revenue: round2(teamKeyLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0)),
+        names: [...new Set(teamKeyLeads.map((l) => customers.find((c) => c.id === l.customerId)?.name).filter(Boolean))],
+      } : null,
       // Lead → ganho: ganhos no período ÷ leads que entraram no período. Os dois
       // lados são da PLATAFORMA (a mentoria tem funil e bloco próprios).
       leadToWin: leadsNewN > 0 ? round2((teamWonPlatform.length / leadsNewN) * 100) : null,

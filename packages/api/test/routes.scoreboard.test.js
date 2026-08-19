@@ -734,12 +734,14 @@ test("closer: calls REALIZADAS entram como meta e o realizado ignora o no-show",
   await app.close();
 });
 
-// ── Conta grande (Leo, 18/08) ───────────────────────────────────────────────
+// ── Conta grande (Leo, 18/08 e 19/08) ───────────────────────────────────────
 // Galante e CRGroup fecharam R$ 120 mil e R$ 300 mil no meio de vendas de R$ 3
-// a 7 mil. A regra: o dinheiro conta cheio (won/revenue, caixa, vendido), a
-// MÉDIA não — senão o ticket do closer vira o valor do bespoke e a régua de
-// contratos, calls e leads que desce dele some.
-test("conta grande conta no dinheiro do closer, mas fica fora do ticket médio", async () => {
+// a 7 mil. Em 18/08 a regra tirava a conta grande só das MÉDIAS; em 19/08, ao
+// ver julho "batendo" 182% da meta com 120,8k vindos de um negócio só, o Leo
+// tirou ela do RESULTADO comercial inteiro: won, receita e as taxas que saem
+// deles. O valor não some — volta em keyWon/keyRevenue (pessoa) e
+// team.keyAccount (rodapé), e o caixa/Financeiro segue cheio.
+test("conta grande fica FORA do resultado do closer e volta como rodapé", async () => {
   const repo = makeMemRepo();
   await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL });
   await repo.create("users", { id: "jon", name: "Jonathan", roles: ["closer"] });
@@ -756,10 +758,15 @@ test("conta grande conta no dinheiro do closer, mas fica fora do ticket médio",
   const sb = (await app.inject({ url: "/api/scoreboard/leverads?since=2026-08-01&until=2026-08-31" })).json();
   const jon = sb.closer.find((c) => c.user === "jon");
 
-  assert.equal(jon.won, 3);                 // o dinheiro conta cheio
-  assert.equal(jon.revenue, 312000);
-  assert.equal(jon.ticket, 6000);           // (7.000 + 5.000) ÷ 2, sem a conta grande
-  assert.equal(jon.keyWon, 1);              // e o card sabe dizer quantas ficaram de fora
+  assert.equal(jon.won, 2);                 // resultado = só o núcleo
+  assert.equal(jon.revenue, 12000);
+  assert.equal(jon.ticket, 6000);           // (7.000 + 5.000) ÷ 2 — a mesma base do revenue
+  assert.equal(jon.keyWon, 1);              // o que ficou de fora, pra tela mostrar no rodapé
   assert.equal(jon.keyRevenue, 300000);
+  assert.equal(sb.team.won, 2);             // o funil segue a mesma régua
+  assert.equal(sb.team.revenue, 12000);
+  assert.equal(sb.team.keyAccount.won, 1);
+  assert.equal(sb.team.keyAccount.revenue, 300000);
+  assert.deepEqual(sb.team.keyAccount.names, ["CRGroup"]);
   await app.close();
 });
