@@ -110,6 +110,16 @@ export function isAdmin(user) {
   return (user?.roles || []).includes("admin");
 }
 
+// A BASE de cards é material oficial do time: quem treina não edita. Um
+// treinando "consertando" o gabarito contamina o estudo de todo mundo (e a
+// prova de checkpoint sai do mesmo texto). Sessão de usuário sem etiqueta
+// admin toma 403; key mestre (sem authUser: MCP/integração) segue passando.
+function requireAdmin(req, reply) {
+  if (!req.authUser || isAdmin(req.authUser)) return true;
+  reply.code(403).send({ error: "só admin edita os flashcards" });
+  return false;
+}
+
 // Vagas que o usuário treina: os DOIS baralhos de conhecimentos gerais entram
 // pra todo mundo, primeiro (a porta de entrada do treinamento); a partir deles
 // a pessoa segue no fluxo da vaga dela (etiquetas do cadastro, roles do funil).
@@ -241,6 +251,9 @@ export async function teamSnapshot(repo, saas, cardsBase, now = new Date()) {
     .map((u) => ({ id: u.id, name: u.name, roles: Array.isArray(u.roles) ? u.roles : [] }));
   const reviews = (await repo.list("training_reviews")).filter((r) => r.saas === saas);
   const exams = (await repo.list("training_exams")).filter((e) => e.saas === saas);
+  // 4fun: estudo livre além da cota. Fica FORA de tudo que é cobrança (due,
+  // retenção, sequência) e aparece em coluna própria — é mérito, não meta.
+  const funLog = (await repo.list("training_fun")).filter((r) => r.saas === saas);
   const rows = [];
   for (const u of users) {
     const roles = rolesForUser(u);
@@ -301,6 +314,16 @@ export async function teamSnapshot(repo, saas, cardsBase, now = new Date()) {
     for (let d = new Date(now.getTime() - (dayCounts[today] ? 0 : 864e5)); dayCounts[dayKey(d)]; d = new Date(d.getTime() - 864e5)) streak++;
     const lastAt = mine.reduce((m, r) => (r.at > m ? r.at : m), "");
 
+    // 4fun da pessoa (log separado, não entra em nenhuma média acima)
+    const myFun = funLog.filter((r) => r.user === u.id);
+    const myFun30 = myFun.filter((r) => now - new Date(r.at) <= 30 * 864e5);
+    const fun = {
+      today: myFun.filter((r) => dayKey(new Date(r.at)) === today).length,
+      last30: myFun30.length,
+      total: myFun.length,
+      hitPct: myFun30.length ? Math.round((myFun30.filter((r) => r.rating >= 3).length / myFun30.length) * 100) : null,
+    };
+
     // provas de checkpoint
     const myExams = exams.filter((e) => e.user === u.id);
     const doneExams = myExams.filter((e) => e.status !== "pending").sort((a, b) => (a.finishedAt || "").localeCompare(b.finishedAt || ""));
@@ -310,7 +333,7 @@ export async function teamSnapshot(repo, saas, cardsBase, now = new Date()) {
       ...u, deckSize: deck.length, seen, dueToday, overdue, doneToday, again7dPct, streak, lastReviewAt: lastAt || null,
       mature, young, forecast,
       retention7d, retention30d, firstTryPct, retentionByRole, weekly,
-      activeDays30d, reviewsPerDay30d, days, medianMs, rushPct,
+      activeDays30d, reviewsPerDay30d, days, medianMs, rushPct, fun,
       examsDone: doneExams.length,
       examsFailed: doneExams.filter((e) => e.status === "failed").length,
       lastExam: lastExam ? { score: lastExam.score, status: lastExam.status } : null,
@@ -554,12 +577,60 @@ export function registerFlashcardRoutes(app, repo, { anthropic = null } = {}) {
     return { cardId: entryId, srs: next, preview: previewIntervals(next, now) };
   });
 
+  // ── Modo 4fun: estudar ALÉM da cota, sem virar compromisso ─────────────────
+  // A fila do dia é fechada de propósito (10 novos + o que o FSRS devolveu), e
+  // quem quer estudar mais não tinha o que fazer. O 4fun abre a base inteira da
+  // pessoa em ordem aleatória, mas NÃO toca no FSRS: não agenda card, não gasta
+  // o limite de novos, não alimenta prova de checkpoint e não entra em
+  // retenção/sequência/feitas hoje — senão estudar por vontade própria mexeria
+  // na régua de cobrança de quem só cumpre o combinado. O que fica é o log em
+  // `training_fun`: o número existe, separado.
+  const FUN_MAX = 60;
+  app.get("/api/flashcards/:saas/fun", async (req, reply) => {
+    const user = requireUser(req, reply);
+    if (!user) return;
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "produto não encontrado" });
+    const { cards } = await baseDoc(product.id);
+    // baralhos da pessoa; admin sem vaga (que não tem fila obrigatória) estuda tudo
+    const roles = rolesForUser(user);
+    const mine = roles.length ? cards.filter((c) => roles.includes(c.role)) : cards;
+    const pool = shuffle(mine.flatMap((card) => cardEntries(card).map(({ entryId, sub }) => ({ ...card, entryId, sub }))));
+    const n = Math.min(FUN_MAX, Math.max(1, Math.round(Number(req.query?.n) || 20)));
+    return { saas: product.id, total: pool.length, cards: pool.slice(0, n) };
+  });
+
+  app.post("/api/flashcards/:saas/fun/review", async (req, reply) => {
+    const user = requireUser(req, reply);
+    if (!user) return;
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "produto não encontrado" });
+    const rating = Number(req.body?.rating);
+    if (![1, 2, 3, 4].includes(rating)) return reply.code(400).send({ error: "rating deve ser 1..4" });
+    const { cards } = await baseDoc(product.id);
+    const entryId = String(req.body?.cardId || "");
+    const card = cards.find((c) => c.id === entryId.split("::")[0]);
+    if (!card || !cardEntries(card).some((e) => e.entryId === entryId)) {
+      return reply.code(404).send({ error: "card não encontrado na base" });
+    }
+    const now = new Date();
+    // log e SÓ log: nenhum estado FSRS é escrito aqui, de propósito.
+    await repo.create("training_fun", {
+      id: `fn_${now.getTime().toString(36)}_${user.id}_${Math.random().toString(36).slice(2, 8)}`,
+      saas: product.id, user: user.id, cardId: entryId, role: card.role, rating,
+      ms: Math.max(0, Math.min(300000, Math.round(Number(req.body?.ms) || 0))),
+      at: now.toISOString(),
+    });
+    return { cardId: entryId, fun: true };
+  });
+
   // Imagem dos cards (colada/enviada no editor): base64 na collection (máx
   // 3MB) e servida em /public/training/:id — rota ABERTA (a tag <img> não
   // manda header; o id randômico é a chave, mesmo desenho de /public/social).
   app.post("/api/flashcards/:saas/asset", async (req, reply) => {
     const user = requireUser(req, reply);
     if (!user) return;
+    if (!requireAdmin(req, reply)) return; // imagem só entra pelo editor, que é do admin
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "produto não encontrado" });
     const file = await req.file();
@@ -608,7 +679,16 @@ export function registerFlashcardRoutes(app, repo, { anthropic = null } = {}) {
       bestStreak = Math.max(bestStreak, run);
       prev = d;
     }
-    return { saas: product.id, today, streak, bestStreak, doneToday: counts[today] || 0, days };
+    // 4fun entra SEPARADO: não soma em streak/feitas hoje (não é compromisso),
+    // mas aparece pra pessoa ver o quanto estudou a mais.
+    const funMine = (await repo.list("training_fun")).filter((r) => r.saas === product.id && r.user === user.id);
+    const fun30 = funMine.filter((r) => now - new Date(r.at) <= 30 * 864e5);
+    const fun = {
+      doneToday: funMine.filter((r) => dayKey(new Date(r.at)) === today).length,
+      total: funMine.length,
+      hitPct30d: fun30.length ? Math.round((fun30.filter((r) => r.rating >= 3).length / fun30.length) * 100) : null,
+    };
+    return { saas: product.id, today, streak, bestStreak, doneToday: counts[today] || 0, days, fun };
   });
 
   // Dashboard da equipe: quem está em dia, quem acumulou, acerto e sequência.
@@ -620,6 +700,7 @@ export function registerFlashcardRoutes(app, repo, { anthropic = null } = {}) {
   });
 
   app.put("/api/flashcards/:saas", async (req, reply) => {
+    if (!requireAdmin(req, reply)) return;
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "produto não encontrado" });
     const cards = sanitize(req.body?.cards);
