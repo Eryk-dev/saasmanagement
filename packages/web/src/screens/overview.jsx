@@ -163,6 +163,9 @@ function MetaMesCard({ pace, goal, onNav, links = true }) {
   const { kind, label } = goalLabelOf(goal);
   const title = kind === "mês" ? "Meta do mês" : kind === "semana" ? "Meta da semana" : kind === "dia" ? "Meta do dia" : "Meta do período";
   const endedLabel = (lvl) => (goal.ended ? ({ red: "não bateu", ok: "não bateu", green: "meta batida", gold: "super meta" })[lvl] : null);
+  // Conta grande fora do resultado (Leo, 19/08): a régua mostra o núcleo e o
+  // rodapé diz o que ficou de fora — o número cheio nunca some de vista.
+  const ka = goal.keyAccount;
   // Super metas: bateu 100%, a régua rearma pro próximo degrau (120, 140…) e o
   // "hoje" passa a cobrar o ritmo do degrau novo.
   const sLad = ladderOf(s.sold, s.target, s.expectedProgress);
@@ -209,6 +212,14 @@ function MetaMesCard({ pace, goal, onNav, links = true }) {
               {links ? <button onClick={() => onNav && onNav("metas")} style={{ fontWeight: 600, color: "var(--accent)", marginLeft: 4 }}>digite a meta em Metas →</button> : " digite a meta em Metas."}
             </div>
           )}
+        </div>
+      )}
+      {ka && (
+        <div style={{ padding: "0 var(--inset-x) 14px", fontSize: 11.5, color: "var(--fg-3)", lineHeight: 1.5 }}
+          title="Conta grande (Galante, CRGroup) fica fora do resultado desde 19/08: um contrato de R$ 120 mil no meio de vendas de R$ 3 a 7 mil faz o mês parecer batido sem a operação ter rodado. O dinheiro segue cheio no caixa e no Financeiro.">
+          Fora do resultado: {int(ka.count)} conta grande{ka.count === 1 ? "" : "s"}
+          {ka.names?.length ? ` (${ka.names.join(", ")})` : ""} · {money(ka.revenue)}.
+          {ka.soldWith != null ? <> Com {ka.count === 1 ? "ela" : "elas"}: <b className="tnum">{money(ka.soldWith)}</b> em {int(ka.countWith)} contrato{ka.countWith === 1 ? "" : "s"}.</> : null}
         </div>
       )}
       {links && curMes && pace.sale.targetConfigured === false && (
@@ -371,6 +382,12 @@ function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson }) {
             {r.metaText != null && <span style={{ color: "var(--fg-4)" }}> / {r.metaText}</span>}
           </span>
         ))}
+        {leg?.keyWon > 0 && (
+          <span className="tnum" style={{ whiteSpace: "nowrap", color: "var(--fg-4)" }}
+            title="Conta grande fica fora do placar desde 19/08 (um bespoke de R$ 120 mil não é a régua da operação). O dinheiro segue cheio no caixa e no Financeiro.">
+            fora do placar <b style={{ fontWeight: 650 }}>{leg.keyWon} conta grande</b> · R$ {compactMoney(leg.keyRevenue || 0)}
+          </span>
+        )}
         {!rows.length && <span style={{ color: "var(--fg-4)" }}>sem metas configuradas ainda</span>}
       </div>
     </div>
@@ -493,7 +510,9 @@ function FunilPeriodo({ team, win, pLabel }) {
     { nm: "Contatados", v: team.contactedCohort ?? team.contacted, m: sMeta(mt?.contacts), title: `Dos leads da janela, os que receberam contato humano${team.paceAdjust?.contacted ? ` (+ ${int(team.paceAdjust.contacted)} do histórico pré-cockpit)` : ""} · no total o time trabalhou ${int(team.contacted)} leads no período (inclui base antiga tocada agora)` },
     { nm: "Calls marcadas", v: team.callsBooked, m: sMeta(mt?.callsBooked), title: `Calls com data na janela${team.pending > 0 ? ` · ${int(team.pending)} ainda no futuro` : ""}` },
     { nm: "Calls realizadas", v: team.shown, m: sMeta(mt?.callsShown), title: `Calls que aconteceram${team.noShow > 0 ? ` · ${int(team.noShow)} não compareceram` : ""}` },
-    { nm: "Ganhos", v: team.won, m: sMeta(mt?.won), title: `Ganhos no período (= soma dos closers)${team.revenue > 0 ? ` · ${money(team.revenue)}` : ""}` },
+    { nm: "Ganhos", v: team.won, m: sMeta(mt?.won),
+      title: `Ganhos no período (= soma dos closers)${team.revenue > 0 ? ` · ${money(team.revenue)}` : ""}`
+        + (team.keyAccount ? ` · fora: ${team.keyAccount.won} conta grande (${money(team.keyAccount.revenue)}${team.keyAccount.names?.length ? ` · ${team.keyAccount.names.join(", ")}` : ""})` : "") },
   ];
   const convs = [
     { pct: team.contactRate, metaPct: 80, num: team.contactedCohort ?? null, den: team.leadsNew },

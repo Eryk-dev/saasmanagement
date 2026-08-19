@@ -377,9 +377,15 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   // receita). As TAXAS da cadeia acima seguem no ganho da plataforma —
   // desdobrar a meta por uma conversão que inclui venda sem call agendada
   // pediria menos call do que a empresa precisa.
-  const todayWinLeads = winSaleLeadsIn((iso) => dayKey(iso) === today);
+  // Conta grande fora do RESULTADO (Leo, 19/08) — a MESMA régua da janela
+  // histórica (computeWindowGoal), pra as duas faixas nunca divergirem. O caixa
+  // (`cash`, faturas pagas) segue cheio: o dinheiro entrou de verdade.
+  const notKey = (l) => !isKeyLead(l);
+  const todayWinLeads = winSaleLeadsIn((iso) => dayKey(iso) === today).filter(notKey);
   const todayWon = todayWinLeads.length;
-  const tcvMonthLeads = winSaleLeadsIn(inMonth);
+  const tcvMonthLeadsAll = winSaleLeadsIn(inMonth);
+  const tcvMonthLeads = tcvMonthLeadsAll.filter(notKey);
+  const keyMonthLeads = tcvMonthLeadsAll.filter(isKeyLead);
   const tcvMonth = tcvOf(tcvMonthLeads);
   const sold = tcvMonth;
   const soldToday = tcvOf(todayWinLeads);
@@ -475,6 +481,8 @@ export async function computePipelinePace(repo, product, now = new Date()) {
         status: expected == null ? null : soldN >= expected ? "ahead" : soldN >= expected * 0.95 ? "attention" : "behind",
       };
     })(),
+    // O que a conta grande tirou do resultado (e quanto o mês daria com ela).
+    keyAccount: keyAccountNote(keyMonthLeads, customers, sold, tcvMonthLeads.length),
     // Leitura de CAIXA (faturas pagas) — informativa; o fluxo detalhado e o
     // dinheiro futuro moram na aba Clientes.
     cash: {
@@ -580,7 +588,15 @@ export async function computeWindowGoal(repo, product, since, until, now = new D
   const customers = allCustomers.filter((c) => c.saas === product.id);
   const inWin = (iso) => { const d = dayKey(iso); return d && d >= since && d <= until; };
   const winAt = winsIn(product, leads, inWin, customerStartMap(customers));
-  const winLeads = leads.filter((l) => winAt.has(l.id));
+  // CONTA GRANDE fora do RESULTADO (Leo, 19/08): um bespoke de R$ 120 mil no
+  // meio de vendas de R$ 3 a 7 mil faz o mês parecer batido sem que a operação
+  // tenha rodado — julho fechou 218k com 17 contratos, mas 120,8k vieram de um
+  // negócio só. O dinheiro segue cheio no caixa/Financeiro e volta aqui como
+  // rodapé (`keyAccount`), pra ninguém achar que sumiu.
+  const keyIds = keyAccountIds(customers);
+  const winLeadsAll = leads.filter((l) => winAt.has(l.id));
+  const winLeads = winLeadsAll.filter((l) => !isKeyAccountLead(keyIds, l));
+  const keyWinLeads = winLeadsAll.filter((l) => isKeyAccountLead(keyIds, l));
   const sold = tcvOf(winLeads);
   const soldN = winLeads.length;
 
@@ -611,6 +627,22 @@ export async function computeWindowGoal(repo, product, since, until, now = new D
       expectedProgress: expectedFrac,
       status: statusOf(soldN, contractsTarget),
     },
+    keyAccount: keyAccountNote(keyWinLeads, customers, sold, soldN),
+  };
+}
+
+// Rodapé da conta grande: o que ficou de FORA do resultado e quanto o período
+// daria com ela. Sem isso a exclusão vira número sumido sem explicação.
+function keyAccountNote(keyLeads, customers, sold, soldN) {
+  if (!keyLeads.length) return null;
+  const nameOfCustomer = (id) => customers.find((c) => c.id === id)?.name || "";
+  const revenue = tcvOf(keyLeads);
+  return {
+    count: keyLeads.length,
+    revenue,
+    names: [...new Set(keyLeads.map((l) => nameOfCustomer(l.customerId)).filter(Boolean))],
+    soldWith: round2(sold + revenue),
+    countWith: soldN + keyLeads.length,
   };
 }
 
