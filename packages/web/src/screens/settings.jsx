@@ -930,6 +930,14 @@ function IntegrationsSettings({ s }) {
           <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>
             call do lead criada direto na agenda Google (com Meet e convite por e-mail)
           </div>
+          {g.connected && (
+            <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}
+              title="GOOGLE_MEET_CALENDAR_ID no servidor. Se apontar pra um calendário que a conta conectada não enxerga, o Google responde 404 e o Meet nasce no calendário primário dela.">
+              calendário do evento: <b>{g.meetCalendar || "primary"}</b>
+              {g.meetCalendar && g.meetCalendar !== "primary" && g.account && g.meetCalendar !== g.account
+                ? " · precisa estar compartilhado com a conta conectada" : ""}
+            </div>
+          )}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {g.connected && <span className="chip pos" style={{ height: 22 }}>conectado · {g.account || "conta do time"}</span>}
