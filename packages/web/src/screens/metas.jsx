@@ -239,9 +239,49 @@ function MetasScreen() {
     setMeses((p) => ({ ...p, ...next }));
     setNote({ ok: true, text: `agenda definida: ${money(base)} crescendo ${g}% ao mês · confira e clique em salvar metas` });
   }
+  // ── Meta por PESSOA ────────────────────────────────────────────────────────
+  // O placar cobra de cada um: plano de Remuneração (nível) > meta de vaga
+  // repartida > derivada do mês. O ajuste por pessoa vence tudo isso, mas era um
+  // formulário abstrato (escolhe pessoa, escolhe métrica) — quem queria mudar o
+  // alvo de alguém não achava. Agora é uma LISTA do time com o alvo vigente no
+  // placeholder: digitar cria o ajuste, apagar volta pro que valia.
+  const PERSON_METRICS = ["won", "revenue"]; // contratos e receita (as duas pernas do plano)
+  const roleOfUser = (u) => ["closer", "sdr", "integrator", "social"].find((r) => (u.roles || []).includes(r)) || "";
+  const planOfUser = (u) => (data?.compPlan?.[roleOfUser(u)] || []).find((l) => l.n === u.compLevel) || null;
+  // De onde vem o número que a pessoa persegue hoje, sem ajuste.
+  function vigente(u, metric) {
+    const role = roleOfUser(u);
+    const plan = planOfUser(u);
+    if (plan) {
+      const v = metric === "won" ? plan.metaContracts : plan.metaRevenue;
+      if (v > 0) return { value: v, from: `nível ${u.compLevel} do plano de Remuneração` };
+    }
+    const m = (data?.roles || []).find((r) => r.role === role)?.metrics?.find((x) => x.metric === metric);
+    const alvo = m?.target ?? m?.derived ?? null;
+    if (!(alvo > 0)) return null;
+    const n = Math.max(1, data?.people?.[role] || 1);
+    return m?.team
+      ? { value: alvo / n, from: `meta da vaga repartida entre ${n} ${n === 1 ? "pessoa" : "pessoas"}` }
+      : { value: alvo, from: "meta da vaga" };
+  }
+  const ovOf = (userId, metric) => overrides.find((o) => o.key === userId && o.metric === metric);
+  function setPersonGoal(userId, metric, v) {
+    setOverrides((p) => {
+      const i = p.findIndex((o) => o.key === userId && o.metric === metric);
+      if (String(v).trim() === "") return i < 0 ? p : p.filter((_, j) => j !== i); // apagou = volta pro vigente
+      if (i < 0) return [...p, { key: userId, metric, target: v }];
+      return p.map((o, j) => (j === i ? { ...o, target: v } : o));
+    });
+  }
+  // Ajustes que NÃO são contratos/receita continuam na lista genérica embaixo.
+  const outrosOverrides = overrides
+    .map((o, i) => ({ o, i }))
+    .filter(({ o }) => !PERSON_METRICS.includes(o.metric));
+
   function addOverride() {
     const firstUser = data?.users?.[0]?.id || "";
-    setOverrides((p) => [...p, { key: firstUser, metric: allMetrics[0]?.[0] || "", target: "" }]);
+    const firstMetric = (allMetrics.find(([mk]) => !PERSON_METRICS.includes(mk)) || [])[0] || "";
+    setOverrides((p) => [...p, { key: firstUser, metric: firstMetric, target: "" }]);
   }
   function setOv(i, field, v) { setOverrides((p) => p.map((o, j) => (j === i ? { ...o, [field]: v } : o))); }
   function rmOv(i) { setOverrides((p) => p.filter((_, j) => j !== i)); }
@@ -500,11 +540,64 @@ function MetasScreen() {
               ))}
             </div>
 
-            {/* 4 · Ajuste por pessoa (override) */}
-            <Card title="Ajuste por pessoa" hint="opcional · vence a meta da vaga e o plano de remuneração, pra dar um alvo diferente a alguém">
+            {/* 4 · Meta por pessoa: a lista do time com o alvo vigente e o campo
+                pra sobrescrever. Vence plano de remuneração, vaga e derivado —
+                é o último a falar no goalFor do scoreboard. */}
+            <Card title="Meta por pessoa"
+              hint={<>o que cada um persegue no mês · em branco segue o plano{infoDot("Cada pessoa persegue, nesta ordem: o ajuste digitado aqui, o nível dela no plano de Remuneração, a meta da vaga repartida pelo time e, por último, a meta derivada do mês. Digitar um número aqui vence todos os outros; apagar volta pro que valia antes.")}</>}>
               <div style={{ padding: "12px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 10 }}>
-                {overrides.length === 0 && <div className="dim" style={{ fontSize: 12.5 }}>nenhum ajuste · todo mundo segue a meta da vaga</div>}
-                {overrides.map((o, i) => {
+                <div className="tbl-x">
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr>
+                        <th className="kicker" style={{ textAlign: "left", padding: "0 8px 8px 0" }}>Pessoa</th>
+                        <th className="kicker" style={{ textAlign: "right", padding: "0 8px 8px", whiteSpace: "nowrap" }}>Contratos no mês</th>
+                        <th className="kicker" style={{ textAlign: "right", padding: "0 0 8px 8px", whiteSpace: "nowrap" }}>Receita no mês</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(data.users || []).filter((u) => roleOfUser(u)).map((u) => (
+                        <tr key={u.id}>
+                          <td style={{ padding: "6px 8px 6px 0", borderTop: "1px solid var(--line-1)" }}>
+                            <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                              <Avatar id={u.id} name={u.name} size={22} />
+                              <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{u.name}</span>
+                              <span className="kicker" style={{ whiteSpace: "nowrap" }}>
+                                {roleOfUser(u)}{planOfUser(u) ? ` · nível ${u.compLevel}` : ""}
+                              </span>
+                            </span>
+                          </td>
+                          {PERSON_METRICS.map((metric) => {
+                            const vig = vigente(u, metric);
+                            const ov = ovOf(u.id, metric);
+                            const isMoney = metric === "revenue";
+                            return (
+                              <td key={metric} style={{ padding: "6px 0 6px 8px", borderTop: "1px solid var(--line-1)", textAlign: "right" }}>
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
+                                  {isMoney && <span className="mono dim" style={{ fontSize: 11 }}>R$</span>}
+                                  <input type="number" min="0" step={isMoney ? "100" : "1"} value={ov?.target ?? ""}
+                                    onChange={(e) => setPersonGoal(u.id, metric, e.target.value)}
+                                    placeholder={vig ? String(Math.round(vig.value)) : "—"}
+                                    title={vig
+                                      ? `Hoje persegue ${isMoney ? money(vig.value) : int(Math.round(vig.value))} (${vig.from}). Digite pra dar outro alvo só pra ${u.name}; apague pra voltar.`
+                                      : `Sem meta definida ainda pra ${u.name} nessa métrica.`}
+                                    className="tnum" style={{ ...inp, width: isMoney ? 108 : 84, textAlign: "right" }} />
+                                </span>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {!(data.users || []).some((u) => roleOfUser(u)) && (
+                  <div className="dim" style={{ fontSize: 12.5 }}>ninguém com vaga ainda · dê SDR/closer/CS em Ajustes → Equipe</div>
+                )}
+
+                <div className="kicker" style={{ marginTop: 4 }}>Outras metas por pessoa</div>
+                {outrosOverrides.length === 0 && <div className="dim" style={{ fontSize: 12.5 }}>nenhum ajuste · o resto segue a meta da vaga</div>}
+                {outrosOverrides.map(({ o, i }) => {
                   const info = metricInfo[o.metric] || {};
                   return (
                     <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -513,7 +606,7 @@ function MetasScreen() {
                         {!data.users?.some((u) => u.id === o.key) && o.key && <option value={o.key}>{nameOf(o.key)}</option>}
                       </select>
                       <select value={o.metric} onChange={(e) => setOv(i, "metric", e.target.value)} style={{ ...inp, minWidth: 180, flex: 1 }}>
-                        {allMetrics.map(([mk, mi]) => <option key={mk} value={mk}>{mi.label}</option>)}
+                        {allMetrics.filter(([mk]) => !PERSON_METRICS.includes(mk)).map(([mk, mi]) => <option key={mk} value={mk}>{mi.label}</option>)}
                       </select>
                       <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                         {info.unit === "R$" && <span className="mono dim" style={{ fontSize: 11 }}>R$</span>}
@@ -528,7 +621,7 @@ function MetasScreen() {
                 })}
                 {data.users?.length > 0 && (
                   <button onClick={addOverride} style={{ alignSelf: "flex-start", height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>
-                    + ajuste por pessoa
+                    + outra meta por pessoa
                   </button>
                 )}
               </div>
