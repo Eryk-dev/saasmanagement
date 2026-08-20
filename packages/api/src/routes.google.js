@@ -70,6 +70,10 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
       // true quando a conexão atual já concedeu o drive.readonly (fallback de
       // transcrição pelo Drive). Só reflete conexões novas — reconectar atualiza.
       driveReadonly: /drive\.readonly/.test(scopes),
+      // Calendário onde o Meet nasce. Quando aponta pra outra identidade e a
+      // conta conectada não tem acesso, o Calendar responde 404 — é o primeiro
+      // lugar pra olhar quando "não cria o link".
+      meetCalendar: process.env.GOOGLE_MEET_CALENDAR_ID || "primary",
     };
   });
 
@@ -176,7 +180,7 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     const guestsToSave = attendees.filter((e) => e !== String(lead.email || "").toLowerCase()).join(", ");
 
     try {
-      const { meetUrl, eventId, htmlLink } = await client.createMeetEvent({
+      const { meetUrl, eventId, htmlLink, calendarId, fellBackFrom } = await client.createMeetEvent({
         summary: `${kind === "integracao" ? "Integração" : "Call"} ${product?.name || "LeverAds"} · ${lead.name}${lead.company ? ` (${lead.company})` : ""}`,
         description: [`Lead: ${lead.name}`, lead.phone ? `WhatsApp: ${lead.phone}` : "", lead.company ? `Empresa: ${lead.company}` : ""].filter(Boolean).join("\n"),
         start, end,
@@ -186,6 +190,9 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
         // conectada tiver acesso.
         calendarId: process.env.GOOGLE_MEET_CALENDAR_ID || "primary",
       });
+      if (fellBackFrom) {
+        log.warn({ calendarId: fellBackFrom }, "Google: calendário configurado inacessível — Meet criado no primário da conta conectada");
+      }
       // Sala aberta (sem "pedir pra entrar") + gravação/transcrição automáticas —
       // best-effort: o que o plano da conta não suportar volta como false.
       let meetConfig = { open: false, recording: false, transcription: false };
@@ -208,11 +215,11 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
       try {
         await logActivity(repo, {
           saas: lead.saas || "", lead: lead.id, type: "system",
-          meta: { event: "meet_created", kind, url: meetUrl, calendarEvent: htmlLink, attendees, meetConfig },
+          meta: { event: "meet_created", kind, url: meetUrl, calendarEvent: htmlLink, attendees, meetConfig, calendarId, fellBackFrom },
           author: "cockpit",
         });
       } catch { /* fail-open */ }
-      return { ok: true, kind, callUrl: meetUrl, eventId, htmlLink, attendees, meetConfig };
+      return { ok: true, kind, callUrl: meetUrl, eventId, htmlLink, attendees, meetConfig, calendarId, fellBackFrom };
     } catch (err) {
       log.warn({ err: err.message, lead: lead.id }, "Google: criação do Meet falhou");
       throw err;

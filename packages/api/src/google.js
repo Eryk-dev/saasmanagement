@@ -108,32 +108,58 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
   // funciona se a conta conectada tiver acesso de escrita a esse calendário.
   async function createMeetEvent({ summary, description = "", start, end, attendees = [], calendarId = "primary" }) {
     const token = await accessToken();
-    const res = await f(`${CAL_URL}/calendars/${encodeURIComponent(calendarId)}/events?conferenceDataVersion=1&sendUpdates=all`, {
+    const payload = JSON.stringify({
+      summary,
+      description,
+      start,
+      end,
+      ...(attendees.length ? { attendees: attendees.map((email) => ({ email })) } : {}),
+      conferenceData: {
+        createRequest: {
+          requestId: `lever-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          conferenceSolutionKey: { type: "hangoutsMeet" },
+        },
+      },
+    });
+    const post = (cal) => f(`${CAL_URL}/calendars/${encodeURIComponent(cal)}/events?conferenceDataVersion=1&sendUpdates=all`, {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-      body: JSON.stringify({
-        summary,
-        description,
-        start,
-        end,
-        ...(attendees.length ? { attendees: attendees.map((email) => ({ email })) } : {}),
-        conferenceData: {
-          createRequest: {
-            requestId: `lever-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            conferenceSolutionKey: { type: "hangoutsMeet" },
-          },
-        },
-      }),
+      body: payload,
     });
-    const body = await res.json().catch(() => ({}));
+
+    let usedCalendar = calendarId;
+    let fellBack = false;
+    let res = await post(calendarId);
+    let body = await res.json().catch(() => ({}));
+    // 404 aqui é SEMPRE "esse calendário não existe PRA ESSA CONTA" — é o que
+    // acontece quando GOOGLE_MEET_CALENDAR_ID aponta pra uma identidade que a
+    // conta conectada não enxerga (o convite ia sair como ela). Travar o closer
+    // minutos antes da call por causa de um env é o pior desfecho possível:
+    // cria no calendário primário e devolve o aviso pra tela.
+    if (res.status === 404 && calendarId !== "primary") {
+      res = await post("primary");
+      body = await res.json().catch(() => ({}));
+      usedCalendar = "primary";
+      fellBack = true;
+    }
     if (res.status >= 400 || body.error) {
-      throw new Error(`Google Calendar -> ${res.status}: ${body.error?.message || "falha ao criar o evento"}`);
+      const who = await account();
+      const detail = res.status === 404
+        ? `a conta conectada${who ? ` (${who})` : ""} não tem calendário acessível — reconecte em Ajustes → Integrações`
+        : (body.error?.message || "falha ao criar o evento");
+      throw new Error(`Google Calendar -> ${res.status}: ${detail}`);
     }
     const meetUrl = body.hangoutLink
       || (body.conferenceData?.entryPoints || []).find((e) => e.entryPointType === "video")?.uri
       || "";
     if (!meetUrl) throw new Error("Google Calendar: evento criado sem link do Meet (verifique se a conta pode criar Meet)");
-    return { meetUrl, eventId: body.id, htmlLink: body.htmlLink || "" };
+    return {
+      meetUrl, eventId: body.id, htmlLink: body.htmlLink || "",
+      calendarId: usedCalendar,
+      // preenchido só quando o calendário configurado falhou: a tela avisa que
+      // o convite saiu pela conta conectada, não pela identidade esperada.
+      fellBackFrom: fellBack ? calendarId : "",
+    };
   }
 
   // Configura a SALA do Meet criada pelo evento: acesso ABERTO (ninguém "pede

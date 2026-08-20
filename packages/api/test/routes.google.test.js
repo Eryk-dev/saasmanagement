@@ -89,7 +89,7 @@ test("rotas: status/auth-url/callback com state + POST /leads/:id/meet grava cal
 
   // ainda não conectado
   let st = (await app.inject({ url: "/api/google/status" })).json();
-  assert.deepEqual(st, { configured: true, connected: false, account: "", driveReadonly: false });
+  assert.deepEqual(st, { configured: true, connected: false, account: "", driveReadonly: false, meetCalendar: "primary" });
   assert.equal((await app.inject({ method: "POST", url: "/api/leads/le1/meet" })).statusCode, 424);
 
   // auth-url emite state; callback com state desconhecido é 400
@@ -120,6 +120,40 @@ test("rotas: status/auth-url/callback com state + POST /leads/:id/meet grava cal
 
   assert.equal((await app.inject({ method: "POST", url: "/api/leads/nao-existe/meet" })).statusCode, 404);
   await app.close();
+});
+
+test("createMeetEvent: calendário configurado inacessível (404) não trava a call — cai no primário e avisa", async () => {
+  const repo = makeMemRepo();
+  await repo.create("app_config", { id: "google_oauth", refreshToken: "rt", account: "contato@uniquebox.com.br" });
+  const calls = [];
+  const f = async (url, init = {}) => {
+    calls.push(String(url));
+    if (String(url).includes("oauth2.googleapis.com/token")) return { status: 200, json: async () => ({ access_token: "at", expires_in: 3600 }) };
+    if (String(url).includes("/calendars/primary/events")) {
+      return { status: 200, json: async () => ({ id: "ev9", hangoutLink: "https://meet.google.com/xyz-abcd-efg" }) };
+    }
+    // qualquer outro calendário: a conta conectada não enxerga
+    return { status: 404, json: async () => ({ error: { message: "Not Found" } }) };
+  };
+  const g = makeGoogle({ fetch: f, clientId: "cid", clientSecret: "sec", repo });
+
+  const ev = await g.createMeetEvent({ summary: "s", start: {}, end: {}, calendarId: "contato@leverads.com.br" });
+  assert.equal(ev.meetUrl, "https://meet.google.com/xyz-abcd-efg");
+  assert.equal(ev.calendarId, "primary");
+  assert.equal(ev.fellBackFrom, "contato@leverads.com.br");
+  assert.ok(calls.some((u) => u.includes("/calendars/contato%40leverads.com.br/events")), "tentou o configurado primeiro");
+
+  // 404 no PRÓPRIO primário (conta sem calendário/desconectada) vira mensagem
+  // que diz o que fazer, com a conta no texto — não o "Not Found" cru do Google.
+  const f404 = async (url) => (String(url).includes("token")
+    ? { status: 200, json: async () => ({ access_token: "at", expires_in: 3600 }) }
+    : { status: 404, json: async () => ({ error: { message: "Not Found" } }) });
+  const g2 = makeGoogle({ fetch: f404, clientId: "cid", clientSecret: "sec", repo });
+  await assert.rejects(() => g2.createMeetEvent({ summary: "s", start: {}, end: {} }), (err) => {
+    assert.match(err.message, /contato@uniquebox\.com\.br/);
+    assert.match(err.message, /Ajustes → Integrações/);
+    return true;
+  });
 });
 
 test("createMeetEvent: cria o evento no calendarId indicado (controle do remetente do convite)", async () => {

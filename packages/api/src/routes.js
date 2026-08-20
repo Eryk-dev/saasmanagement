@@ -449,7 +449,10 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         })(),
         mp: { configured: mpClient.configured(), webhook: mpClient.hasWebhookSecret() },
         meta: { configured: metaClient.configured() },
-        google: { configured: googleClient.configured(), connected: await googleClient.connected(), account: await googleClient.account(), gmail: await googleClient.gmailReady() },
+        // meetCalendar: onde o evento do Meet nasce (GOOGLE_MEET_CALENDAR_ID).
+        // Aparece em Ajustes → Integrações porque é a causa nº 1 de "não cria o
+        // link": calendário de outra identidade, invisível pra conta conectada.
+        google: { configured: googleClient.configured(), connected: await googleClient.connected(), account: await googleClient.account(), gmail: await googleClient.gmailReady(), meetCalendar: process.env.GOOGLE_MEET_CALENDAR_ID || "primary" },
         ai: { configured: anthropicClient.configured() },
         discord: { configured: discordClient.configured() },
         whatsapp: { configured: whatsappClient.configured(), health: waHealthSummary(await getWaHealth(repo)) },
