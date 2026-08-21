@@ -6,6 +6,7 @@ import { EmptyState, Avatar } from "../atoms.jsx";
 import { stageKind, isRealLead } from "../lib/funnel.js";
 import { bizDay } from "../lib/format.js";
 import { canSeeScreen, userById } from "../lib/users.js";
+import { levelLabel } from "../lib/levels.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { buildPeople, roleLabel, scaledGoal } from "../components/team-cards.jsx";
 import { usePeriod, businessDaysBetween } from "../components/period-picker.jsx";
@@ -355,6 +356,15 @@ function MiniRegua({ value, target, isMoney, expectedFrac }) {
 // semanal vira mês pela base 21,75/5) — a linha não reescala pra janela.
 const monthGoal = (g) => (g?.target > 0 ? Math.round(g.period === "week" ? g.target * (21.75 / 5) : g.target) : null);
 
+// Nome do nível quando a meta da pessoa vem do plano de Remuneração (scope
+// "remuneracao" no goalFor do servidor). Meta digitada por pessoa vence o
+// plano — aí o chip some, senão apontaria pra uma régua que não é a que vale.
+const nivelDaMeta = (leg) => {
+  const g = leg?.goals?.revenue?.scope === "remuneracao" ? leg.goals.revenue
+    : leg?.goals?.won?.scope === "remuneracao" ? leg.goals.won : null;
+  return g ? levelLabel(g.level) : "";
+};
+
 function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson }) {
   // As duas pernas do plano de remuneração (receita + contratos) — closer e SDR
   // têm meta própria pelo nível (comp_plans); CS/mídia mostram só as submetas.
@@ -372,6 +382,12 @@ function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson }) {
         <Avatar id={p.user} name={p.name} size={28} />
         <span style={{ fontSize: 13.5, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
         <span className="kicker" style={{ whiteSpace: "nowrap" }}>{roleLabel(p)}</span>
+        {nivelDaMeta(leg) && (
+          <span className="kicker" style={{ whiteSpace: "nowrap", color: "var(--accent)" }}
+            title="Nível de carreira no plano de Remuneração — é ele que define os contratos e a receita do mês desta pessoa. Muda em Metas → Meta por pessoa.">
+            {nivelDaMeta(leg)}
+          </span>
+        )}
       </div>
       {leg ? <MiniRegua value={leg.revenue} target={revTarget} isMoney expectedFrac={monthFrac} /> : semPerna}
       {leg ? <MiniRegua value={leg.won} target={wonTarget} expectedFrac={monthFrac} /> : semPerna}

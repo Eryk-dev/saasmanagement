@@ -1,5 +1,6 @@
 import React from "react";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
+import { CAREER_LEVELS } from "../lib/levels.js";
 import { EmptyState, PrimaryButton, Avatar } from "../atoms.jsx";
 import { useData } from "../data.jsx";
 import { api } from "../lib/api.js";
@@ -547,17 +548,17 @@ function TeamSettings() {
           em vez de estourar a página — mesmo padrão do Funil abaixo. */}
       <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
        <div style={{ minWidth: 860 }}>
-        <div className="kicker" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 56px 140px 120px 44px`, gap: 8, padding: "10px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
+        <div className="kicker" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 44px`, gap: 8, padding: "10px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
           <span>Usuário</span>
           {ROLE_OPTS.map(([k, l, hint]) => <span key={k} title={hint} style={{ textAlign: "center" }}>{l}</span>)}
-          <span title="Nível do plano de remuneração (1 júnior · 2 pleno · 3 sênior): define as metas de contratos e receita do card na Visão geral" style={{ textAlign: "center" }}>Nível</span>
+          <span title="Nível de carreira (júnior · pleno · sênior): define as metas de contratos e receita de SDR e closer, pelo plano de Remuneração">Nível</span>
           <span title="Vazio = aparece nos pickers de todos os produtos; preenchido = só no workspace daquele produto">Produto</span>
           <span title="Quais telas o usuário vê (menu + rotas da API). Nenhuma marcada = todas">Telas</span>
           <span />
         </div>
         {users === null && <div className="mono dim" style={{ padding: "12px 14px", fontSize: 12 }}>carregando…</div>}
         {Array.isArray(users) && users.map((u) => (
-          <div key={u.id} style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 56px 140px 120px 44px`, gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
+          <div key={u.id} style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 44px`, gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 500, minWidth: 0 }}>
               <Avatar id={u.id} name={u.name} size={22} />
               <input defaultValue={u.name || u.id} key={u.name}
@@ -576,9 +577,9 @@ function TeamSettings() {
               </span>
             ))}
             <select value={u.compLevel || 1} onChange={(e) => setUserLevel(u, Number(e.target.value))}
-              title="Nível do plano de remuneração (1 jr · 2 pl · 3 sn)"
-              style={{ ...inputStyle, height: 26, fontSize: 12, textAlign: "center" }}>
-              {[1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
+              title="Nível de carreira: define as metas de contratos e receita de SDR e closer pelo plano de Remuneração"
+              style={{ ...inputStyle, height: 26, fontSize: 12 }}>
+              {CAREER_LEVELS.map((l) => <option key={l.n} value={l.n}>{l.label}</option>)}
             </select>
             <select value={u.saas || ""} onChange={(e) => setUserSaas(u, e.target.value)} style={{ ...inputStyle, height: 26, fontSize: 12 }}>
               <option value="">todos os produtos</option>
