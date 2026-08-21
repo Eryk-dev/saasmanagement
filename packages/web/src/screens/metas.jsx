@@ -4,6 +4,8 @@ import { Avatar } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { Regua, levelOf } from "./overview.jsx";
+import { CAREER_LEVELS, LEVELED_ROLES, levelLabel } from "../lib/levels.js";
+import { isAdminUser } from "../lib/users.js";
 
 // Metas — edita TODAS as metas de desempenho do produto por VAGA (SDR / closer
 // / integrador) e, opcionalmente, por PESSOA. Escreve na collection `goals`, a
@@ -254,7 +256,7 @@ function MetasScreen() {
     const plan = planOfUser(u);
     if (plan) {
       const v = metric === "won" ? plan.metaContracts : plan.metaRevenue;
-      if (v > 0) return { value: v, from: `nível ${u.compLevel} do plano de Remuneração` };
+      if (v > 0) return { value: v, from: `nível ${levelLabel(u.compLevel)} do plano de Remuneração` };
     }
     const m = (data?.roles || []).find((r) => r.role === role)?.metrics?.find((x) => x.metric === metric);
     const alvo = m?.target ?? m?.derived ?? null;
@@ -264,6 +266,21 @@ function MetasScreen() {
       ? { value: alvo / n, from: `meta da vaga repartida entre ${n} ${n === 1 ? "pessoa" : "pessoas"}` }
       : { value: alvo, from: "meta da vaga" };
   }
+  // Classificar alguém é cadastro da PESSOA, não meta do mês: salva na hora (o
+  // mesmo PATCH da tela Equipe) e as metas da linha se mexem junto, porque o
+  // placeholder lê o plano do nível novo.
+  const podeClassificar = isAdminUser();
+  async function setNivel(u, n) {
+    setData((d) => ({ ...d, users: (d.users || []).map((x) => (x.id === u.id ? { ...x, compLevel: n } : x)) }));
+    try {
+      await api.updateUser(u.id, { compLevel: n });
+      setNote({ ok: true, text: `${u.name} agora é ${levelLabel(n)} · as metas de contratos e receita seguem o plano desse nível` });
+    } catch (e) {
+      setNote({ ok: false, text: `nível não salvo: ${e.message}` });
+      setData((d) => ({ ...d, users: (d.users || []).map((x) => (x.id === u.id ? { ...x, compLevel: u.compLevel } : x)) }));
+    }
+  }
+
   const ovOf = (userId, metric) => overrides.find((o) => o.key === userId && o.metric === metric);
   function setPersonGoal(userId, metric, v) {
     setOverrides((p) => {
@@ -522,7 +539,7 @@ function MetasScreen() {
                           return (
                             <div key={u.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "3px 0", fontSize: 12.5 }}>
                               <Avatar id={u.id} name={u.name} size={20} />
-                              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name} <span className="dim" style={{ fontSize: 11 }}>nível {u.compLevel}</span></span>
+                              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name} <span className="dim" style={{ fontSize: 11 }}>{levelLabel(u.compLevel)}</span></span>
                               <span className="tnum" style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{int(lv.metaContracts || 0)} contratos · {money(lv.metaRevenue || 0)}</span>
                             </div>
                           );
@@ -544,13 +561,15 @@ function MetasScreen() {
                 pra sobrescrever. Vence plano de remuneração, vaga e derivado —
                 é o último a falar no goalFor do scoreboard. */}
             <Card title="Meta por pessoa"
-              hint={<>o que cada um persegue no mês · em branco segue o plano{infoDot("Cada pessoa persegue, nesta ordem: o ajuste digitado aqui, o nível dela no plano de Remuneração, a meta da vaga repartida pelo time e, por último, a meta derivada do mês. Digitar um número aqui vence todos os outros; apagar volta pro que valia antes.")}</>}>
+              hint={<>classifique o nível e a meta segue · em branco segue o plano{infoDot("Cada pessoa persegue, nesta ordem: o ajuste digitado aqui, o nível dela no plano de Remuneração (júnior/pleno/sênior, com metas definidas na tela Remuneração), a meta da vaga repartida pelo time e, por último, a meta derivada do mês. O nível salva na hora; os números digitados só no botão salvar metas.")}</>}>
               <div style={{ padding: "12px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 10 }}>
                 <div className="tbl-x">
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead>
                       <tr>
                         <th className="kicker" style={{ textAlign: "left", padding: "0 8px 8px 0" }}>Pessoa</th>
+                        <th className="kicker" style={{ textAlign: "left", padding: "0 8px 8px", whiteSpace: "nowrap" }}
+                          title="Nível de carreira: júnior, pleno ou sênior. Vale pra SDR e closer, que têm meta de contratos e receita por nível no plano de Remuneração. Muda o nível e as metas da linha mudam junto.">Nível</th>
                         <th className="kicker" style={{ textAlign: "right", padding: "0 8px 8px", whiteSpace: "nowrap" }}>Contratos no mês</th>
                         <th className="kicker" style={{ textAlign: "right", padding: "0 0 8px 8px", whiteSpace: "nowrap" }}>Receita no mês</th>
                       </tr>
@@ -563,9 +582,20 @@ function MetasScreen() {
                               <Avatar id={u.id} name={u.name} size={22} />
                               <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{u.name}</span>
                               <span className="kicker" style={{ whiteSpace: "nowrap" }}>
-                                {roleOfUser(u)}{planOfUser(u) ? ` · nível ${u.compLevel}` : ""}
+                                {roleOfUser(u)}
                               </span>
                             </span>
+                          </td>
+                          <td style={{ padding: "6px 8px", borderTop: "1px solid var(--line-1)", whiteSpace: "nowrap" }}>
+                            {!LEVELED_ROLES.includes(roleOfUser(u))
+                              ? <span className="dim" style={{ fontSize: 12 }} title="Níveis valem pra SDR e closer (as vagas com meta de contratos e receita por nível). Essa vaga segue a meta da vaga.">—</span>
+                              : podeClassificar
+                                ? <select value={u.compLevel || 1} onChange={(e) => setNivel(u, Number(e.target.value))}
+                                    title="Classificar salva na hora e vale também no plano de Remuneração"
+                                    style={{ ...inp, height: 32, fontSize: 12.5, padding: "0 6px" }}>
+                                    {CAREER_LEVELS.map((l) => <option key={l.n} value={l.n}>{l.label}</option>)}
+                                  </select>
+                                : <span style={{ fontSize: 12.5 }} title="Só admin classifica (o nível vale também no plano de Remuneração)">{levelLabel(u.compLevel)}</span>}
                           </td>
                           {PERSON_METRICS.map((metric) => {
                             const vig = vigente(u, metric);

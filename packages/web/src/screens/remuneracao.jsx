@@ -3,6 +3,7 @@ import { PageHead } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { hasExplicitScreen, isAdminUser } from "../lib/users.js";
+import { levelLabel } from "../lib/levels.js";
 
 // Remuneração — tela da GESTÃO com o plano OFICIAL da casa, definido pelo
 // Leo em 04/08/2026 (folhas amarelas + decisões no chat): 3 trilhas (SDR,
@@ -215,7 +216,7 @@ export function RoleCard({ role, saved, onSave }) {
           <tbody>
             {(draft.levels || []).map((l) => (
               <tr key={l.n}>
-                <td style={{ ...tdS, fontWeight: 700 }}>{l.n} <span style={{ fontWeight: 400, color: "var(--fg-4)", fontSize: 10.5 }}>{l.n === 1 ? "jr" : l.n === 2 ? "pl" : "sn"}</span></td>
+                <td style={{ ...tdS, fontWeight: 700, whiteSpace: "nowrap" }}>{l.n} <span style={{ fontWeight: 400, color: "var(--fg-4)", fontSize: 10.5 }}>{levelLabel(l.n)}</span></td>
                 <td style={tdS}><input type="number" value={l.fixed} onChange={setLevel(l.n, "fixed")} style={cellIn} /></td>
                 {isCloser && <td style={tdS}><input type="number" value={l.fixedPj ?? 0} onChange={setLevel(l.n, "fixedPj")} style={cellIn} /></td>}
                 {!isCs && <td style={tdS}><input type="number" value={l.metaContracts ?? 0} onChange={setLevel(l.n, "metaContracts")} style={{ ...cellIn, width: 60 }} /></td>}
