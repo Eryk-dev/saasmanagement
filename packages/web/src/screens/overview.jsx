@@ -604,42 +604,6 @@ function AquisicaoCard({ marketing, biz, classes, pShort }) {
   );
 }
 
-// ── Mentoria: a segunda fila (Leo, 16/08) ────────────────────────────────────
-// O DINHEIRO dela entra normal (contrato e receita, da pessoa e do time); o que
-// fica de fora é o FUNIL: o lead que ainda não vende não conta no CPL nem nas
-// taxas do LeverAds, porque contá-lo ensinaria a Meta a caçar mais gente fora
-// do perfil. Este card é a leitura própria dessa fila, quebrada pela VERBA
-// declarada, que é o que decide a oferta. Some sozinho em produto sem essa fila.
-function MentoriaCard({ mentoria, pShort, onNav, saas }) {
-  if (!mentoria || (!mentoria.queue && !mentoria.won)) return null;
-  const v = mentoria.queueByVerba || {};
-  const alto = (v["5k-20k"] || 0) + (v["20k+"] || 0);
-  return (
-    <Card title="Mentoria" hint={`fila de quem ainda não vende · ${pShort} · conta em contrato e receita, fora do funil e do CPL`}
-      action={onNav ? <button onClick={() => onNav("pipeline", { saas })} style={{ fontSize: 12.5, fontWeight: 500, color: "var(--accent)" }}>Abrir a fila →</button> : null}>
-      <div style={{ padding: "14px var(--inset-x) 18px", ...tilesGrid }}>
-        <MiniTile label="Na fila" big={int(mentoria.queue)} sub={`${money(mentoria.queuePotential)} em potencial`}
-          title="Cards abertos na coluna Mentoria · o potencial soma a oferta que a verba de cada um encaixa" />
-        <MiniTile label="Vendidas" big={int(mentoria.won)} sub={`${int(mentoria.newIn)} novos · ${int(mentoria.contacted)} contatados`}
-          title="Mentorias fechadas no período (a régua de ganho é a mesma do funil: cliente criado ou etapa de ganho)" />
-        <MiniTile label="Receita" big={money(mentoria.revenue)} sub="no período"
-          title="R$ fechado na fila da mentoria · já está dentro da receita e dos contratos do time (aqui é a fatia dela)" />
-        <MiniTile label="Até R$ 1 mil" big={int(v["ate-1k"])} sub="oferta: Curso"
-          title="Verba declarada no formulário · abre no Curso de R$ 1.000" />
-        <MiniTile label="R$ 1 a 5 mil" big={int(v["1k-5k"])} sub="oferta: Assistido"
-          title="Verba declarada no formulário · abre no Assistido de R$ 3.000" />
-        <MiniTile label="R$ 5 mil+" big={int(alto)} sub="Assistido + upsell"
-          title="Verba declarada no formulário · Assistido na entrada e candidato ao upsell de importação (+R$ 2.000)" />
-      </div>
-      {mentoria.unowned > 0 && (
-        <div className="kicker" style={{ padding: "0 var(--inset-x) 14px", color: "var(--warn)" }}>
-          {int(mentoria.unowned)} card(s) da fila ainda sem dono
-        </div>
-      )}
-    </Card>
-  );
-}
-
 function CarteiraCard({ customers, ltv }) {
   // Estado ACUMULADO da base — não muda com o filtro. Conta grande (keyAccount,
   // ex.: Galante) fica fora das médias; o número grande é sempre o cheio.
@@ -885,9 +849,6 @@ function OverviewScreen({ onNav }) {
         <FunilPeriodo team={score?.team} win={win} pLabel={win.label} />
 
         <TeamBoard score={score} win={win} onPerson={canSeeScreen("pipeline") ? openPerson : null} />
-
-        <MentoriaCard mentoria={score?.mentoria} pShort={win.short} saas={product.id}
-          onNav={canSeeScreen("pipeline") ? onNav : null} />
 
         <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: 16 }}>
           <AquisicaoCard marketing={marketing} biz={biz} classes={score?.team?.classes} pShort={win.short} />
