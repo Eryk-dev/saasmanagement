@@ -99,7 +99,7 @@ test("migração: faixas de anúncios viram as colunas da régua + catálogo gra
   assert.equal(t.calc.volumeKey, "listings", "volume vem da resposta listings do form");
   assert.deepEqual(Object.keys(t.calc.volumeMid), ["0-100", "100-500", "500-2000", "2000-10000", "10000+"]);
   assert.ok(t.calc.catalog.products.parcialA, "catálogo presente");
-  assert.equal(t.calc.catalog.products.parcialA.sem.total, 2100, "Parcial preço fechado 04/08");
+  assert.equal(t.calc.catalog.products.parcialA.anu.total, 4536, "Parcial na tabela de 21/08");
   const again = await ensureProposalCatalog(repo);
   assert.equal(again, false, "idempotente: segunda execução não mexe");
 });
@@ -120,15 +120,21 @@ test("cliente D fora de autopeças → Parcial (preço fechado, sem OEM, sem tel
   assert.equal(t.product, "parcialA");
   const pricing = t.slides.find((s) => s.type === "pricing");
   assert.equal(pricing.key, "investimento_parcial");
-  assert.equal(pricing.price, "2.100");
-  assert.equal(pricing.cycles, "12x de *175*/mês", "parcela com marcador de destaque");
-  assert.equal(pricing.offer2.price, "3.588", "anual no Shift+1");
-  assert.equal(pricing.offer3, undefined, "escada antiga morta");
+  assert.equal(pricing.planTag, "ANUAL", "o anual abre a apresentação");
+  assert.equal(pricing.price, "4.536");
+  assert.equal(pricing.cycles, "12x de *378*/mês", "parcela com marcador de destaque");
+  assert.equal(pricing.offer2.planTag, "SEMESTRAL");
+  assert.equal(pricing.offer2.price, "2.574", "semestral no Shift+1");
+  assert.equal(pricing.offer2.cycles, "6x de *429*/mês", "semestre cobra 6 parcelas, não 12");
+  assert.equal(pricing.offer3.planTag, "RECORRENTE");
+  assert.equal(pricing.offer3.price, "299", "mensalidade da recorrente no Shift+2");
+  assert.equal(pricing.offer3.cycles, "+ R$ 1.500 de clonagem na entrada", "a entrada aparece no card");
+  assert.equal(pricing.offer4, undefined, "escada antiga morta");
   assert.ok(!t.slides.some((s) => s.key === "oem_processo"), "sem tela OEM");
   assert.equal(t.slides.filter((s) => s.type === "pricing").length, 1, "um investimento só");
 });
 
-test("autopeças pequeno → Parcial + OEM 50; tela OEM escura depois do 3 etapas e ritmo re-alternado", async () => {
+test("autopeças pequeno → Parcial + OEM 125; tela OEM escura depois do 3 etapas e ritmo re-alternado", async () => {
   const repo = await seedRepo();
   const p = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "100-500" });
   const t = applyCatalog(p);
@@ -138,12 +144,13 @@ test("autopeças pequeno → Parcial + OEM 50; tela OEM escura depois do 3 etapa
   assert.equal(keys[iSteps + 1], "oem_processo", "tela OEM logo depois do 3 etapas");
   const oem = t.slides[iSteps + 1];
   assert.equal(oem.bg, "dark");
-  assert.match(oem.pills[0], /^50 anúncios OEM/, "cota do combo");
+  assert.match(oem.pills[0], /^125 anúncios OEM/, "cota do combo");
   assert.equal(t.slides[iSteps + 2].bg, "", "impacto vira claro");
   const pricing = t.slides.find((s) => s.type === "pricing");
   assert.equal(pricing.bg, "dark", "investimento fecha escuro");
-  assert.equal(pricing.price, "3.288");
-  assert.equal(pricing.sub, "soma: Parcial + OEM 50/mês");
+  assert.equal(pricing.price, "7.188");
+  assert.equal(pricing.sub, "soma: Parcial + OEM 125/mês");
+  assert.equal(pricing.offer3.sub, "soma: Parcial + OEM 125/mês", "o subtítulo é do produto, vale nas três");
 });
 
 test("OEM avulso: 3 etapas SAI, tela OEM entra clara no lugar; cota segue o porte", async () => {
@@ -156,35 +163,36 @@ test("OEM avulso: 3 etapas SAI, tela OEM entra clara no lugar; cota segue o port
   const oem = t.slides.find((s) => s.key === "oem_processo");
   assert.equal(oem.bg, "", "clara, na posição do 3 etapas (ritmo original)");
   const pricing = t.slides.find((s) => s.type === "pricing");
-  assert.equal(pricing.price, "1.788", "OEM 50 pro pequeno");
-  assert.match(pricing.sub, /50 anúncios por mês/);
+  assert.equal(pricing.price, "3.288", "OEM 125 pro pequeno");
+  assert.match(pricing.sub, /125 anúncios por mês/);
+  assert.equal(pricing.offer3.cycles, "sem entrada, cancela quando quiser", "OEM avulso não tem clonagem");
 
   const big = await makeProposal(repo, { niche: "outros", accounts: "10+", listings: "10000+" });
   big.state.product = "oem";
   const tb = applyCatalog(big);
-  assert.equal(tb.slides.find((s) => s.type === "pricing").price, "4.788", "OEM 200 pro grande");
+  assert.equal(tb.slides.find((s) => s.type === "pricing").price, "8.388", "OEM 500 pro grande");
 });
 
 test("leque do OEM avulso: o closer troca a cota na tela zero (state.oemCota)", async () => {
   const repo = await seedRepo();
   const big = await makeProposal(repo, { niche: "outros", accounts: "10+", listings: "10000+" });
   big.state.product = "oem";
-  big.state.oemCota = 100;
+  big.state.oemCota = 250;
   const t = applyCatalog(big);
   const pricing = t.slides.find((s) => s.type === "pricing");
-  assert.equal(pricing.price, "2.988", "cota 100 escolhida pelo closer");
-  assert.equal(pricing.cycles, "12x de *249*/mês");
-  assert.equal(pricing.offer2.price, "5.388", "anual da cota 100 no Shift+1");
-  assert.match(pricing.sub, /100 anúncios por mês/);
-  assert.equal(t.oemCota, 100, "tela do processo OEM acompanha a cota");
+  assert.equal(pricing.price, "5.388", "cota 250 escolhida pelo closer");
+  assert.equal(pricing.cycles, "12x de *449*/mês");
+  assert.equal(pricing.offer2.price, "2.994", "semestral da cota 250 no Shift+1");
+  assert.match(pricing.sub, /250 anúncios por mês/);
+  assert.equal(t.oemCota, 250, "tela do processo OEM acompanha a cota");
 
   big.state.oemCota = 999;
-  assert.equal(applyCatalog(big).slides.find((s) => s.type === "pricing").price, "4.788", "cota fora do leque volta pro porte");
+  assert.equal(applyCatalog(big).slides.find((s) => s.type === "pricing").price, "8.388", "cota fora do leque volta pro porte");
 });
 
 test("dor [OEM] não manda no produto: a régua decide; OEM avulso é escolha do closer", async () => {
   const repo = await seedRepo();
-  // Autopeças pequeno: régua → combo Parcial + OEM 50, com ou sem dor OEM
+  // Autopeças pequeno: régua → combo Parcial + OEM 125, com ou sem dor OEM
   // (pedido do Leo, 15/08/2026: quem veio pelo OEM também serve pro LeverAds).
   const p = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "100-500" });
   assert.equal(suggestProduct(p.calc, p.state, p.data.answers), "parcialoem");
@@ -193,7 +201,7 @@ test("dor [OEM] não manda no produto: a régua decide; OEM avulso é escolha do
   assert.equal(suggestProduct(p.calc, p.state, p.data.answers), "parcialoem", "a dor só troca a trilha SPIN");
   const t = applyCatalog(p);
   assert.equal(t.product, "parcialoem");
-  assert.equal(t.slides.find((s) => s.type === "pricing").price, "3.288", "preço da régua, não do OEM avulso");
+  assert.equal(t.slides.find((s) => s.type === "pricing").price, "7.188", "preço da régua, não do OEM avulso");
 
   // Tier alto de autopeças segue no +OEM FULL mesmo com dor OEM.
   const big = await makeProposal(repo, { niche: "autopecas", accounts: "10+", listings: "10000+" });
@@ -203,7 +211,7 @@ test("dor [OEM] não manda no produto: a régua decide; OEM avulso é escolha do
 
   big.state.product = "oem"; // Apresentar continua vencendo tudo.
   assert.equal(activeProduct(big), "oem");
-  assert.equal(applyCatalog(big).slides.find((s) => s.type === "pricing").price, "4.788", "cota 200 pro grande, na mão do closer");
+  assert.equal(applyCatalog(big).slides.find((s) => s.type === "pricing").price, "8.388", "cota 500 pro grande, na mão do closer");
 });
 
 test("tela zero: dor OEM entra no select depois das letras e não remonta o deck", async () => {
@@ -219,16 +227,16 @@ test("tela zero: dor OEM entra no select depois das letras e não remonta o deck
   assert.equal(ui.pain, "OEM", "a dor fica registrada só como trilha SPIN");
 });
 
-test("cliente grande: FULL sugerido; override +OEM FULL usa a base de autopeças com 200/mês", async () => {
+test("cliente grande: FULL sugerido; override +OEM FULL usa a base de autopeças com 500/mês", async () => {
   const repo = await seedRepo();
   const p = await makeProposal(repo, { niche: "outros", accounts: "3-5", listings: "2000-10000" });
   assert.equal(applyCatalog(p).product, "full");
-  assert.equal(applyCatalog(p).slides.find((s) => s.type === "pricing").price, "7.188");
+  assert.equal(applyCatalog(p).slides.find((s) => s.type === "pricing").price, "8.976");
   p.state.product = "fulloem";
   const t = applyCatalog(p);
   const pricing = t.slides.find((s) => s.type === "pricing");
   assert.equal(pricing.price, "11.988");
-  assert.ok(JSON.stringify(pricing).includes("200 anúncios gerados por OEM"), "100→200 na base de autopeças");
+  assert.ok(JSON.stringify(pricing).includes("500 anúncios gerados por OEM"), "a cota do texto sai do catálogo (100→500)");
   assert.ok(t.slides.some((s) => s.key === "oem_processo"), "tela OEM presente");
 });
 
@@ -239,13 +247,18 @@ test("payload público nunca leva o catálogo cru; catalogUI tem nomes/preços p
   assert.equal(pub.calc.catalog, undefined, "tabela de preço é do servidor");
   const ui = catalogUI(p);
   assert.deepEqual(Object.keys(ui.names).sort(), ["full", "fulloem", "oem", "parcialA", "parcialoem"]);
-  assert.match(ui.priceLines.full, /R\$ 7\.188 no semestre \(12x 599\)/);
-  assert.match(ui.priceLines.parcialA, /R\$ 2\.100 no semestre \(12x 175\)/);
+  // As três formas de pagar, na ordem em que o closer apresenta.
+  assert.match(ui.priceLines.full, /^Anual R\$ 8\.976 \(12x 748\)/);
+  assert.match(ui.priceLines.full, /Shift\+1 semestral R\$ 5\.094 \(6x 849\)/);
+  assert.match(ui.priceLines.full, /Shift\+2 recorrente R\$ 499\/mês \+ R\$ 3\.500 de clonagem \(12 meses = R\$ 9\.488\)/,
+    "o custo em 12 meses da recorrente vem pronto: é o número que vira economia na frente do lead");
+  assert.match(ui.priceLines.parcialA, /^Anual R\$ 4\.536 \(12x 378\)/);
   // Leque do OEM avulso no card: cota ativa pelo porte + os 3 níveis com preço.
-  assert.match(ui.priceLines.oem, /^OEM 50\/mês: R\$ 1\.788 no semestre \(12x 149\)/, "porte D abre no menor nível");
-  assert.equal(ui.oemCota, 50);
-  assert.deepEqual(ui.oemLevels.map((l) => l.cota), [50, 100, 200]);
-  assert.equal(ui.oemLevels[1].short, "R$ 2.988 sem (12x 249) · R$ 5.388 anu (12x 449)");
+  assert.match(ui.priceLines.oem, /^OEM 125\/mês: Anual R\$ 3\.288 \(12x 274\)/, "porte D abre no menor nível");
+  assert.match(ui.priceLines.oem, /recorrente R\$ 379\/mês sem entrada/, "OEM avulso não cobra clonagem");
+  assert.equal(ui.oemCota, 125);
+  assert.deepEqual(ui.oemLevels.map((l) => l.cota), [125, 250, 500]);
+  assert.equal(ui.oemLevels[1].short, "R$ 5.388 anu (12x 449) · R$ 2.994 sem (6x 499) · R$ 599/mês rec");
   assert.equal(ui.tier, "D");
   assert.equal(ui.pain, "none", "sem dor marcada → trilha genérica");
   assert.ok(ui.pains.A.spin.S.length > 10, "perguntas SPIN embarcadas");
@@ -273,8 +286,9 @@ test("link do cliente: deck transformado, oferta travada, sem catálogo no snaps
   const child = r.proposal;
   const pricing = child.slides.find((s) => s.type === "pricing");
   assert.equal(pricing.key, "investimento_combo", "produto da tela zero travado");
-  assert.equal(pricing.price, "3.288");
+  assert.equal(pricing.price, "7.188");
   assert.equal(pricing.offer2, undefined, "escada secreta fora do link do cliente");
+  assert.equal(pricing.offer3, undefined, "nem a recorrente: o cliente vê só a oferta travada");
   assert.ok(child.slides.some((s) => s.key === "oem_processo"), "tela OEM viaja junto");
   assert.equal((child.calc || {}).catalog, undefined, "catálogo não viaja");
 });
@@ -342,9 +356,9 @@ test("rotas: card de decisão só no modo closer; PATCH aceita product/pain/oem 
   // Cota do OEM avulso: só cota do leque entra; fora do leque volta pro porte.
   await app.inject({
     method: "PATCH", url: "/public/proposals/" + p.id,
-    payload: { k: p.editKey, oemCota: 100 },
+    payload: { k: p.editKey, oemCota: 250 },
   });
-  assert.equal((await repo.get("proposals", p.id)).state.oemCota, 100, "cota do leque entra");
+  assert.equal((await repo.get("proposals", p.id)).state.oemCota, 250, "cota do leque entra");
   await app.inject({
     method: "PATCH", url: "/public/proposals/" + p.id,
     payload: { k: p.editKey, oemCota: 75 },
@@ -435,15 +449,15 @@ test("preview /p/t: simulação via query (produto e dados) sem persistir nada",
   const repo = await seedRepo();
   const app = Fastify();
   registerProposalRoutes(app, repo);
-  const r = await app.inject({ method: "GET", url: "/p/t/pt_leverads?accounts=10%2B&volume=10000%2B&niche=autopecas&product=oem&pain=A&oemCota=100" });
+  const r = await app.inject({ method: "GET", url: "/p/t/pt_leverads?accounts=10%2B&volume=10000%2B&niche=autopecas&product=oem&pain=A&oemCota=250" });
   assert.equal(r.statusCode, 200);
   const payload = payloadOf(r.body);
   assert.ok(payload.catalogUI, "preview roda o card");
   assert.equal(payload.catalogUI.pain, "A", "dor da query aplicada");
   assert.ok(payload.slides.some((s) => s.key === "investimento_oem"), "produto da query aplicado");
   assert.ok(!payload.slides.some((s) => s.key === "como_funciona"), "OEM avulso sem a tela de clonagem");
-  assert.equal(payload.slides.find((s) => s.key === "investimento_oem").price, "2.988", "cota da query aplicada (leque)");
-  assert.equal(payload.catalogUI.oemCota, 100, "select de cota abre no valor simulado");
+  assert.equal(payload.slides.find((s) => s.key === "investimento_oem").price, "5.388", "cota da query aplicada (leque)");
+  assert.equal(payload.catalogUI.oemCota, 250, "select de cota abre no valor simulado");
 });
 
 test("retroativo: proposta antiga re-snapshotada no fluxo novo; aceita e compartilhada ficam de fora", async () => {
@@ -491,6 +505,60 @@ test("retroativo: proposta antiga re-snapshotada no fluxo novo; aceita e compart
   assert.equal(await backfillProposalCatalog(repo), 0, "idempotente");
 });
 
+test("tabela de 21/08: template reprecificado, propostas abertas junto e cota de OEM remapeada", async () => {
+  const { migrateCatalogPricing, backfillCatalogPricing } = await import("../src/migrations.js");
+  const repo = await seedRepo();
+  // Volta o template pro estado ANTERIOR à tabela nova: preços velhos, leque
+  // 50/100/200 e sem o marcador pricingV.
+  const t0 = await repo.get("proposal_templates", "pt_leverads");
+  const velho = JSON.parse(JSON.stringify(t0.calc.catalog));
+  delete velho.pricingV;
+  velho.products.full = { name: "LeverAds FULL", sem: { total: 7188, per: 599 }, anu: { total: 11988, per: 999 } };
+  velho.products.oem = {
+    name: "OEM avulso",
+    small: { cota: 50, sem: { total: 1788, per: 149 }, anu: { total: 3288, per: 274 } },
+    mid: { cota: 100, sem: { total: 2988, per: 249 }, anu: { total: 5388, per: 449 } },
+    big: { cota: 200, sem: { total: 4788, per: 399 }, anu: { total: 8388, per: 699 } },
+  };
+  velho.pains = { Z: { label: "dor editada pelo dono" } };
+  velho.oneOff = { rows: [{ range: "Tudo", price: "R$ 7" }] };
+  await repo.update("proposal_templates", "pt_leverads", { calc: { ...t0.calc, catalog: velho } });
+
+  const mk = (id, extra) => repo.create("proposals", {
+    id, saas: "leverads", template: "pt_leverads", lead: "ld_x", name: "Proposta",
+    calc: { volumeMid: { "100-500": 300 }, catalog: JSON.parse(JSON.stringify(velho)) },
+    slides: [], data: { answers: {} },
+    state: { accounts: "1", volume: "100-500", product: "oem", pain: "OEM", oemCota: 100 },
+    editKey: "k_" + id, accepted: false,
+    ...extra,
+  });
+  await mk("pr_aberta");
+  await mk("pr_sem_cota", { state: { accounts: "1", volume: "100-500" } });
+  await mk("pr_aceita", { accepted: true });
+  await mk("pr_filha", { sharedFrom: "pr_aberta", editKey: "" });
+
+  assert.equal(await migrateCatalogPricing(repo), true, "template reprecificado");
+  const cat = (await repo.get("proposal_templates", "pt_leverads")).calc.catalog;
+  assert.equal(cat.products.full.anu.total, 8976, "tabela nova no template");
+  assert.equal(cat.products.full.rec.setup, 3500, "clonagem entra como entrada da recorrente");
+  assert.deepEqual(["small", "mid", "big"].map((k) => cat.products.oem[k].cota), [125, 250, 500]);
+  // Cirúrgico: só os produtos. Dor e clonagem avulsa editadas pelo dono ficam.
+  assert.deepEqual(Object.keys(cat.pains), ["Z"], "dores do dono preservadas");
+  assert.deepEqual(cat.oneOff.rows, [{ range: "Tudo", price: "R$ 7" }], "clonagem avulsa do banco preservada");
+  assert.equal(await migrateCatalogPricing(repo), false, "idempotente: o marcador pricingV segura");
+
+  assert.equal(await backfillCatalogPricing(repo), 2, "as duas abertas entram");
+  const aberta = await repo.get("proposals", "pr_aberta");
+  assert.equal(aberta.calc.catalog.products.full.anu.total, 8976, "snapshot reprecificado");
+  assert.equal(aberta.calc.volumeMid["100-500"], 300, "resto do calc preservado");
+  assert.equal(aberta.state.oemCota, 250, "cota 100 vira 250: a escolha do closer sobrevive ao limite novo");
+  assert.equal(aberta.state.pain, "OEM", "resto do estado preservado");
+  assert.equal((await repo.get("proposals", "pr_sem_cota")).state.oemCota, undefined, "quem não escolheu cota segue sem");
+  assert.equal((await repo.get("proposals", "pr_aceita")).calc.catalog.products.full.anu.total, 11988, "aceita não muda");
+  assert.equal((await repo.get("proposals", "pr_filha")).calc.catalog.products.full.anu.total, 11988, "link do cliente não muda");
+  assert.equal(await backfillCatalogPricing(repo), 0, "idempotente");
+});
+
 test("retroativo do leque OEM: aberta ganha a tabela nova; aceita, link de cliente e já-migrada ficam", async () => {
   const { backfillOemLeque } = await import("../src/migrations.js");
   const repo = await seedRepo();
@@ -536,7 +604,7 @@ test("retroativo do leque OEM: aberta ganha a tabela nova; aceita, link de clien
     const p = await repo.get("proposals", id);
     assert.deepEqual(
       ["small", "mid", "big"].map((k) => [p.calc.catalog.products.oem[k].cota, p.calc.catalog.products.oem[k].sem.total]),
-      [[50, 1788], [100, 2988], [200, 4788]],
+      [[125, 1914], [250, 2994], [500, 4494]],
       "tabela atual no snapshot de " + id,
     );
   }
@@ -554,56 +622,56 @@ test("retroativo do leque OEM: aberta ganha a tabela nova; aceita, link de clien
 // closer escolheu em Apresentar) — não mais a fórmula por assentos.
 test("geração: lead.amount é o preço do produto sugerido, não a fórmula por assentos", async () => {
   const repo = await seedRepo();
-  // D fora de autopeças → Parcial (R$ 2.100 sem).
+  // D fora de autopeças → Parcial (R$ 4.536 no ano).
   const p1 = await makeProposal(repo, { niche: "outros", accounts: "1", listings: "100-500" });
-  assert.equal((await repo.get("leads", p1.lead)).amount, 2100);
-  // Tier alto → FULL (R$ 7.188 sem), independente do nº de contas — era a
+  assert.equal((await repo.get("leads", p1.lead)).amount, 4536);
+  // Tier alto → FULL (R$ 8.976 no ano), independente do nº de contas — era a
   // fórmula por assentos que inflava o card pra 8,4k/10,8k.
   const p2 = await makeProposal(repo, { niche: "outros", accounts: "3-5", listings: "2000-10000" });
-  assert.equal((await repo.get("leads", p2.lead)).amount, 7188);
+  assert.equal((await repo.get("leads", p2.lead)).amount, 8976);
   // Dor [OEM] do anúncio NÃO rebaixa: autopeças porte D segue a régua →
-  // combo Parcial + OEM 50 (R$ 3.288 sem).
+  // combo Parcial + OEM 125 (R$ 7.188 no ano).
   const p3 = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "100-500", sourcePain: "oem" });
-  assert.equal((await repo.get("leads", p3.lead)).amount, 3288);
+  assert.equal((await repo.get("leads", p3.lead)).amount, 7188);
 });
 
 test("tela zero mexeu → o card acompanha o produto ativo; negócio fechado não mexe", async () => {
   const repo = await seedRepo();
   const p = await makeProposal(repo, { niche: "outros", accounts: "1", listings: "100-500" });
-  assert.equal((await repo.get("leads", p.lead)).amount, 2100, "nasce no Parcial");
+  assert.equal((await repo.get("leads", p.lead)).amount, 4536, "nasce no Parcial");
   const app = Fastify();
   registerProposalRoutes(app, repo);
 
   // Closer decide apresentar o FULL: o card segue na hora.
   await app.inject({ method: "PATCH", url: "/public/proposals/" + p.id, payload: { k: p.editKey, product: "full" } });
-  assert.equal((await repo.get("leads", p.lead)).amount, 7188);
+  assert.equal((await repo.get("leads", p.lead)).amount, 8976);
 
   // Régua re-classificada na call (contas/anúncios reais) com Apresentar de
   // volta na régua: tier A continua FULL.
   await app.inject({ method: "PATCH", url: "/public/proposals/" + p.id, payload: { k: p.editKey, product: "", accounts: "3-5", volume: "2000-10000" } });
-  assert.equal((await repo.get("leads", p.lead)).amount, 7188);
+  assert.equal((await repo.get("leads", p.lead)).amount, 8976);
 
   // Dor OEM marcada na tela zero: só trilha SPIN — produto e card não mudam.
   await app.inject({ method: "PATCH", url: "/public/proposals/" + p.id, payload: { k: p.editKey, pain: "OEM" } });
-  assert.equal((await repo.get("leads", p.lead)).amount, 7188);
+  assert.equal((await repo.get("leads", p.lead)).amount, 8976);
 
   // Negócio fechado: o valor de venda é soberano, a tela zero não sobrescreve.
   await repo.update("leads", p.lead, { amount: 5000, planClosed: "semestral" });
-  await app.inject({ method: "PATCH", url: "/public/proposals/" + p.id, payload: { k: p.editKey, oemCota: 100 } });
+  await app.inject({ method: "PATCH", url: "/public/proposals/" + p.id, payload: { k: p.editKey, oemCota: 250 } });
   assert.equal((await repo.get("leads", p.lead)).amount, 5000);
 });
 
 test("dor [OEM] inferida na abertura do link entra como trilha SPIN sem mexer no card", async () => {
   const repo = await seedRepo();
   const p = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "100-500" });
-  assert.equal((await repo.get("leads", p.lead)).amount, 3288, "nasce no combo Parcial + OEM 50");
+  assert.equal((await repo.get("leads", p.lead)).amount, 7188, "nasce no combo Parcial + OEM 125");
   // A dor chega DEPOIS da geração (ad_insights sincroniza no ciclo de marketing).
   await repo.update("leads", p.lead, { utm: { content: "ad_9" } });
   await repo.create("ad_insights", { id: "ai_9", saas: "leverads", adId: "ad_9", date: "2026-08-14", adName: "peças [OEM]" });
 
   const synced = await syncProposalLeadSnapshot(repo, await repo.get("proposals", p.id));
   assert.equal(synced.state.pain, "OEM", "trilha SPIN do closer aponta pro OEM");
-  assert.equal((await repo.get("leads", p.lead)).amount, 3288, "o produto/preço continua o da régua");
+  assert.equal((await repo.get("leads", p.lead)).amount, 7188, "o produto/preço continua o da régua");
 });
 
 test("retroativo: valor do card dos leads abertos re-alinhado ao produto da apresentação", async () => {
@@ -621,7 +689,7 @@ test("retroativo: valor do card dos leads abertos re-alinhado ao produto da apre
 
   const n = await syncOpenLeadAmounts(repo);
   assert.equal(n, 1, "só o lead aberto com valor defasado entra");
-  assert.equal((await repo.get("leads", p.lead)).amount, 7188, "FULL sugerido pela régua");
+  assert.equal((await repo.get("leads", p.lead)).amount, 8976, "FULL sugerido pela régua");
   assert.equal((await repo.get("leads", pWon.lead)).amount, 9999, "fechado não muda");
   assert.equal((await repo.get("leads", pAceita.lead)).amount, 5555, "aceita não muda");
   assert.equal(await syncOpenLeadAmounts(repo), 0, "idempotente");
@@ -640,13 +708,15 @@ test("catálogo do fechamento: produtos com preço + clonagem avulsa como servi�
   assert.deepEqual(rows.map((r) => r.id), ["full", "fulloem", "oem", "parcialA", "parcialoem", "avulso"]);
 
   const full = byId.full.prices;
-  assert.deepEqual(full.map((p) => [p.plan, p.value]), [["semestral", 7188], ["anual", 11988]]);
+  assert.deepEqual(full.map((p) => [p.plan, p.value]),
+    [["anual", 8976], ["semestral", 5094], ["mensal", 499]],
+    "a recorrente fecha como plano `mensal` (valor = mensalidade), que o billing já entende");
 
-  // OEM avulso tem o leque de cotas (50/100/200): cada nível vira duas opções.
+  // OEM avulso tem o leque de cotas (125/250/500): cada nível vira três opções.
   assert.deepEqual(byId.oem.prices.map((p) => `${p.label} ${p.value}`), [
-    "Semestral · 50 anúncios 1788", "Anual · 50 anúncios 3288",
-    "Semestral · 100 anúncios 2988", "Anual · 100 anúncios 5388",
-    "Semestral · 200 anúncios 4788", "Anual · 200 anúncios 8388",
+    "Anual · 125 anúncios 3288", "Semestral · 125 anúncios 1914", "Recorrente · 125 anúncios 379",
+    "Anual · 250 anúncios 5388", "Semestral · 250 anúncios 2994", "Recorrente · 250 anúncios 599",
+    "Anual · 500 anúncios 8388", "Semestral · 500 anúncios 4494", "Recorrente · 500 anúncios 849",
   ]);
 
   // Clonagem avulsa: serviço único por faixa de anúncios (preço em texto no
@@ -661,7 +731,7 @@ test("catálogo do fechamento: produtos com preço + clonagem avulsa como servi�
 
   // Preço editado no banco vale na hora (sem deploy).
   const calc = JSON.parse(JSON.stringify(t.calc));
-  calc.catalog.products.full.sem.total = 6900;
+  calc.catalog.products.full.anu.total = 6900;
   calc.catalog.oneOff = { rows: [{ range: "Até 100 anúncios", price: "R$ 1.200" }] };
   const edited = Object.fromEntries(dealCatalog(calc).map((r) => [r.id, r]));
   assert.equal(edited.full.prices[0].value, 6900);

@@ -71,7 +71,7 @@ export const PRODUCT_LABEL = {
   fulloem: "LeverAds + OEM FULL",
   oem: "OEM avulso",
   parcialA: "Parcial",
-  parcialoem: "Parcial + OEM 50",
+  parcialoem: "Parcial + OEM 125",
 };
 
 // O que pode ser VENDIDO (lead.dealProduct) = os produtos do deck + a clonagem
@@ -124,10 +124,10 @@ export function activeProduct(p) {
 }
 
 // Preço do produto que a APRESENTAÇÃO vai abrir (a oferta principal do deck é
-// sempre a SEMESTRAL; o anual é o degrau secreto do Shift+1). Vira o
-// `lead.amount`: o card do pipeline mostra o mesmo número que o closer
-// apresenta. Sem catálogo devolve 0 — quem chama cai na fórmula por assentos
-// (contractValue) de sempre.
+// o ANUAL desde 21/08/2026; semestral e recorrente são os degraus secretos do
+// Shift+1 e Shift+2). Vira o `lead.amount`: o card do pipeline mostra o mesmo
+// número que o closer apresenta. Sem catálogo devolve 0 — quem chama cai na
+// fórmula por assentos (contractValue) de sempre.
 export function catalogAmount(p) {
   const calc = p?.calc;
   if (!hasCatalog(calc)) return 0;
@@ -136,35 +136,67 @@ export function catalogAmount(p) {
   const offer = key === "oem"
     ? oemLevelOf(products, p?.state || {}, lowTier(tierOf(calc, p?.state || {})))
     : products[key];
-  return moneyOf(offer?.sem?.total);
+  return moneyOf(offer?.anu?.total);
 }
 
 // ── Ofertas ────────────────────────────────────────────────────────────────
-// Escreve a oferta principal (SEMESTRAL) e o degrau secreto (ANUAL, Shift+1)
-// num slide de pricing. O *X* no cycles vira o número da parcela em destaque
-// (metade do valor total) no renderer.
-function offers(slide, sem, anu, pill) {
-  slide.planTag = "SEMESTRAL";
-  slide.price = fmtBR(sem.total);
-  slide.per = "no semestre";
-  slide.cycles = "12x de *" + fmtBR(sem.per) + "*/mês";
+// Escreve as TRÊS formas de pagar num slide de pricing (tabela do Leo,
+// 21/08/2026): a oferta principal é o ANUAL e os degraus secretos são o
+// SEMESTRAL (Shift+1) e a RECORRENTE (Shift+2).
+//
+// A ordem é o argumento de venda: o anual abre porque é o menor custo total E
+// não cobra a clonagem; a recorrente fecha porque tem a menor mensalidade mas
+// pede a clonagem na entrada. Quem vê os três na ordem entende sozinho que o
+// compromisso paga a entrada.
+//
+// O *X* no cycles vira o número em destaque no renderer.
+const recTotal = (rec, meses) => moneyOf(rec?.per) * meses + moneyOf(rec?.setup);
+function offers(slide, prod, pill) {
+  const { anu, sem, rec } = prod;
+  slide.planTag = "ANUAL";
+  slide.price = fmtBR(anu.total);
+  slide.per = "no ano";
+  slide.cycles = "12x de *" + fmtBR(anu.per) + "*/mês";
   slide.cyclesLabel = "ou";
   slide.currency = false;
   slide.pricePrefix = "";
   if (pill) slide.planPill = pill;
-  if (anu) {
+  if (sem) {
     slide.offer2 = {
-      planTag: "ANUAL", price: fmtBR(anu.total), per: "no ano",
-      cycles: "12x de *" + fmtBR(anu.per) + "*/mês", cyclesLabel: "ou",
+      planTag: "SEMESTRAL", price: fmtBR(sem.total), per: "no semestre",
+      cycles: "6x de *" + fmtBR(sem.per) + "*/mês", cyclesLabel: "ou",
       currency: false, pricePrefix: "",
-      planPill: slide.planPill || "12x sem juros no cartão de crédito",
+      // O semestre cobra SEIS parcelas: herdar o "12x" do anual seria promessa
+      // errada no card que o lead está lendo.
+      planPill: slide.planPill || "6x sem juros no cartão de crédito",
     };
   } else {
     delete slide.offer2;
   }
-  delete slide.offer3;
+  if (rec?.per) {
+    slide.offer3 = {
+      planTag: "RECORRENTE", price: fmtBR(rec.per), per: "/ mês",
+      // A entrada é a informação que decide entre este plano e os outros dois,
+      // então ela ocupa a linha do cycles em vez de virar letra miúda.
+      cycles: rec.setup
+        ? "+ R$ " + fmtBR(rec.setup) + " de clonagem na entrada"
+        : "sem entrada, cancela quando quiser",
+      cyclesLabel: "",
+      currency: false, pricePrefix: "",
+      planPill: slide.planPill || "sem compromisso de permanência",
+    };
+  } else {
+    delete slide.offer3;
+  }
   delete slide.offer4;
   delete slide.showIf;
+  return slide;
+}
+
+// O subtítulo descreve o PRODUTO, não o plano — vale igual nas três ofertas.
+function withSub(slide, text) {
+  slide.sub = text;
+  for (const o of [slide.offer2, slide.offer3]) if (o) o.sub = text;
   return slide;
 }
 
@@ -179,16 +211,18 @@ function withGroups(slide, motorItems, platItems) {
   return slide;
 }
 
-// +OEM FULL parte do slide de autopeças original, que fala em 100 OEM/mês.
-const deep200 = (o) => JSON.parse(JSON.stringify(o)
-  .replace(/100 anúncios/g, "200 anúncios")
-  .replace(/100 SKUs por mês/g, "200 anúncios OEM por mês"));
+// +OEM FULL parte do slide de autopeças original, que fala em 100 OEM/mês: a
+// cota sai do CATÁLOGO (era fixa em 200 no texto e ficou pra trás quando o Leo
+// subiu o limite pra 500 em 21/08 — número de produto não se escreve à mão).
+const deepCota = (o, cota) => JSON.parse(JSON.stringify(o)
+  .replace(/100 anúncios/g, cota + " anúncios")
+  .replace(/100 SKUs por mês/g, cota + " anúncios OEM por mês"));
 
 function buildPricing(key, { sBase, sAuto, products, small, oemLevel }) {
   const P = products;
   if (key === "fulloem") {
     const src = sAuto || sBase;
-    return offers(deep200(clone(src)), P.fulloem.sem, P.fulloem.anu);
+    return offers(deepCota(clone(src), P.fulloem.cota || 500), P.fulloem);
   }
   if (key === "oem") {
     const o = oemLevel || (small ? P.oem.small : P.oem.big);
@@ -196,34 +230,28 @@ function buildPricing(key, { sBase, sAuto, products, small, oemLevel }) {
       [o.cota + " anúncios OEM criados por mês", "Compatibilidade veicular em cada anúncio", "Publicados direto nas suas contas (Meli + Shopee)"],
       ["Você só manda a lista de códigos OEM", "Preview antes de publicar", "Acompanhamento dos anúncios criados no painel"]);
     s.key = "investimento_oem";
-    offers(s, o.sem, o.anu);
-    const sub = "só a parte de OEM, sem a clonagem · " + o.cota + " anúncios por mês";
-    s.sub = sub;
-    if (s.offer2) s.offer2.sub = sub;
-    return s;
+    offers(s, o);
+    return withSub(s, "só a parte de OEM, sem a clonagem · " + o.cota + " anúncios por mês");
   }
   if (key === "parcialA") {
     const s = withGroups(clone(sBase),
-      ["Equalização das suas contas", "Automação de clone + estoque", "Até 2.000 clones no semestre"],
+      ["Equalização das suas contas", "Automação de clone + estoque", "Até 1.000 anúncios"],
       ["Gerenciador de SKU", "Perguntas de todas as contas num só lugar", "Estoque sincronizado entre as contas"]);
     s.key = "investimento_parcial";
-    offers(s, P.parcialA.sem, P.parcialA.anu, "até 2.000 clones no semestre");
-    s.sub = "plano de entrada";
-    if (s.offer2) s.offer2.sub = "plano de entrada";
-    return s;
+    offers(s, P.parcialA, "até 1.000 anúncios");
+    return withSub(s, "plano de entrada");
   }
   if (key === "parcialoem") {
+    const cota = P.parcialoem.cota || 125;
     const s = withGroups(clone(sBase),
-      ["Equalização das suas contas", "Automação de clone + estoque", "Até 2.000 clones no semestre", "50 anúncios OEM por mês com compatibilidade veicular"],
+      ["Equalização das suas contas", "Automação de clone + estoque", "Até 1.000 anúncios", cota + " anúncios OEM por mês com compatibilidade veicular"],
       ["Gerenciador de SKU", "Perguntas de todas as contas num só lugar", "Estoque sincronizado entre as contas"]);
     s.key = "investimento_combo";
-    offers(s, P.parcialoem.sem, P.parcialoem.anu, "até 2.000 clones · 50 OEM/mês");
-    s.sub = "soma: Parcial + OEM 50/mês";
-    if (s.offer2) s.offer2.sub = "soma: Parcial + OEM 50/mês";
-    return s;
+    offers(s, P.parcialoem, "até 1.000 anúncios · " + cota + " OEM/mês");
+    return withSub(s, "soma: Parcial + OEM " + cota + "/mês");
   }
   // full: o slide original já é o layout e as features certas — só a oferta muda.
-  return offers(clone(sBase), P.full.sem, P.full.anu);
+  return offers(clone(sBase), P.full);
 }
 
 // Tela do processo OEM (layout steps, o mesmo do "Como funciona · 3 etapas").
@@ -345,19 +373,25 @@ export function orderDeck(slides, order) {
 // tabela de preço nenhuma (mudou dado → salva → recarrega → recalcula aqui).
 function priceLine(key, products, small, oemLevel) {
   const P = products;
-  const line = (o, extra) => "R$ " + fmtBR(o.sem.total) + " no semestre (12x " + fmtBR(o.sem.per) + ")" +
-    (o.anu ? " · anual R$ " + fmtBR(o.anu.total) + " (12x " + fmtBR(o.anu.per) + ")" + (extra || "") : "");
+  // Na ordem em que o closer apresenta: anual abre, semestral no Shift+1 e
+  // recorrente no Shift+2. Da recorrente vale a mensalidade + a entrada (o
+  // custo em 12 meses ele compara no deck, não precisa decorar).
+  const line = (o) => "Anual R$ " + fmtBR(o.anu.total) + " (12x " + fmtBR(o.anu.per) + ")" +
+    (o.sem ? " · Shift+1 semestral R$ " + fmtBR(o.sem.total) + " (6x " + fmtBR(o.sem.per) + ")" : "") +
+    (o.rec?.per ? " · Shift+2 recorrente R$ " + fmtBR(o.rec.per) + "/mês" +
+      (o.rec.setup ? " + R$ " + fmtBR(o.rec.setup) + " de clonagem" : " sem entrada") +
+      " (12 meses = R$ " + fmtBR(recTotal(o.rec, 12)) + ")" : "");
   if (key === "oem") {
     const o = oemLevel || (small ? P.oem.small : P.oem.big);
     return "OEM " + o.cota + "/mês: " + line(o);
   }
-  if (key === "parcialoem") return line(P.parcialoem, " no Shift+1").replace("no semestre", "no semestre (soma)");
-  return line(P[key], " no Shift+1");
+  if (key === "parcialoem") return line(P.parcialoem).replace("Anual", "Anual (soma)");
+  return line(P[key]);
 }
 
 function offerLine(key, products, small, oemLevel) {
   if (key === "full") return "Plataforma completa nas suas contas: equalização, clone automático, estoque sincronizado, perguntas, SKUs, precificação e promoções.";
-  if (key === "fulloem") return "Tudo do FULL + " + (products.fulloem.cota || 200) + " anúncios OEM por mês com compatibilidade veicular.";
+  if (key === "fulloem") return "Tudo do FULL + " + (products.fulloem.cota || 500) + " anúncios OEM por mês com compatibilidade veicular.";
   if (key === "oem") {
     const o = oemLevel || (small ? products.oem.small : products.oem.big);
     return o.cota + " anúncios OEM por mês criados pela Lever, sem a clonagem: o cliente só manda a lista de códigos.";
@@ -413,8 +447,9 @@ export function catalogUI(p) {
     oemCota: Number(oemLv?.cota) || 0,
     oemLevels: oemLevelsOf(cat.products).map((l) => ({
       cota: Number(l.cota) || 0,
-      short: "R$ " + fmtBR(l.sem.total) + " sem (12x " + fmtBR(l.sem.per) + ")" +
-        (l.anu ? " · R$ " + fmtBR(l.anu.total) + " anu (12x " + fmtBR(l.anu.per) + ")" : ""),
+      short: "R$ " + fmtBR(l.anu.total) + " anu (12x " + fmtBR(l.anu.per) + ")" +
+        (l.sem ? " · R$ " + fmtBR(l.sem.total) + " sem (6x " + fmtBR(l.sem.per) + ")" : "") +
+        (l.rec?.per ? " · R$ " + fmtBR(l.rec.per) + "/mês rec" : ""),
     })),
     pains: cat.pains || {},
     oneOffCloning: clone(cat.oneOff || ONE_OFF_CLONING),
@@ -438,25 +473,39 @@ const moneyOf = (v) => {
   const digits = String(v ?? "").replace(/[^\d,]/g, "").split(",")[0].replace(/\D/g, "");
   return digits ? Number(digits) : 0;
 };
-const cycleLabel = { sem: "Semestral", anu: "Anual" };
-const cyclePlan = { sem: "semestral", anu: "anual" };
+// Ordem em que o closer apresenta. A RECORRENTE fecha como plano `mensal`: é o
+// que a casa já entende de ponta a ponta (valor = a MENSALIDADE, arr = 12×, e
+// isRecurringClose gera a assinatura). Inventar um plano "recorrente" novo
+// deixaria o PLAN_MONTHS do billing.js sem resposta.
+const CYCLES = ["anu", "sem", "rec"];
+const cycleLabel = { anu: "Anual", sem: "Semestral", rec: "Recorrente" };
+const cyclePlan = { anu: "anual", sem: "semestral", rec: "mensal" };
+// Valor que vai pro card: total do ciclo nos compromissos, MENSALIDADE na
+// recorrente (a entrada de clonagem vai no rótulo, pro closer não esquecer de
+// cobrar — ela não é receita recorrente e não pode inflar o arr).
+const cycleValue = (o, k) => (k === "rec" ? moneyOf(o?.rec?.per) : moneyOf(o?.[k]?.total));
+const cycleHas = (o, k) => (k === "rec" ? !!moneyOf(o?.rec?.per) : !!o?.[k]?.total);
+const cycleTag = (o, k) => (k === "rec" && moneyOf(o?.rec?.setup)
+  ? cycleLabel.rec + " · entrada R$ " + fmtBR(o.rec.setup)
+  : cycleLabel[k]);
 
 export function dealCatalog(calc) {
   if (!hasCatalog(calc)) return [];
   const cat = calc.catalog;
   const out = [];
-  // Preços de um produto: sem/anu direto, ou os níveis de cota do OEM avulso
-  // (leque 50/100/200 anúncios), cada um virando duas opções nomeadas.
+  // Preços de um produto: anual/semestral/recorrente direto, ou os níveis de
+  // cota do OEM avulso (leque 125/250/500 anúncios), cada um virando três
+  // opções nomeadas.
   const pricesOf = (p) => {
     const rows = [];
-    for (const [k, cycle] of [["sem", "sem"], ["anu", "anu"]]) {
-      if (p?.[k]?.total) rows.push({ plan: cyclePlan[cycle], label: cycleLabel[cycle], value: moneyOf(p[k].total) });
+    for (const k of CYCLES) {
+      if (cycleHas(p, k)) rows.push({ plan: cyclePlan[k], label: cycleTag(p, k), value: cycleValue(p, k) });
     }
     for (const level of OEM_LEVEL_KEYS) {
       const lv = p?.[level];
       if (!lv) continue;
-      for (const k of ["sem", "anu"]) {
-        if (lv[k]?.total) rows.push({ plan: cyclePlan[k], label: `${cycleLabel[k]} · ${lv.cota || level} anúncios`, value: moneyOf(lv[k].total) });
+      for (const k of CYCLES) {
+        if (cycleHas(lv, k)) rows.push({ plan: cyclePlan[k], label: `${cycleTag(lv, k)} · ${lv.cota || level} anúncios`, value: cycleValue(lv, k) });
       }
     }
     return rows;

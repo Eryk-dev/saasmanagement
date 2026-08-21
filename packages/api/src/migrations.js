@@ -1149,23 +1149,50 @@ const LEVERADS_CATALOG = {
     ["B", "B", "A", "S", "S"],
     ["A", "A", "A", "S", "S"],
   ],
-  // Semestral abre; anual é o degrau do Shift+1. Parcial de preço fechado (o
-  // teste A/B morreu 04/08: a oferta por SKU não existe mais).
+  // TRÊS formas de pagar (tabela nova do Leo, 21/08/2026). O ANUAL abre a
+  // apresentação; semestral é o Shift+1 e recorrente o Shift+2.
+  //   anu.total = anu.per × 12 · sem.total = sem.per × 6 (o total é o que se
+  //   paga no ciclo, não 12 mensalidades como na tabela velha).
+  //   rec = mensalidade + `setup` (a CLONAGEM) cobrado UMA vez na entrada.
+  // A regra que sustenta a oferta: quem se compromete NÃO paga a clonagem, e é
+  // isso que faz o compromisso ganhar — a mensalidade da recorrente é a menor
+  // das três. O custo em 12/6 meses da recorrente é derivado (per × N + setup),
+  // nunca guardado, pra não existir número que possa divergir.
   products: {
-    full: { name: "LeverAds FULL", sem: { total: 7188, per: 599 }, anu: { total: 11988, per: 999 } },
-    fulloem: { name: "LeverAds + OEM FULL", cota: 200, sem: { total: 11988, per: 999 }, anu: { total: 16068, per: 1339 } },
+    full: {
+      name: "LeverAds FULL",
+      anu: { total: 8976, per: 748 }, sem: { total: 5094, per: 849 },
+      rec: { per: 499, setup: 3500 },
+    },
+    fulloem: {
+      name: "LeverAds + OEM FULL", cota: 500,
+      anu: { total: 11988, per: 999 }, sem: { total: 7794, per: 1299 },
+      rec: { per: 774, setup: 3750 },
+    },
     oem: {
       name: "OEM avulso",
-      // Leque de cota do Leo (14/08/2026, preços corrigidos no mesmo dia):
-      // 50/100/200 anúncios/mês. A régua abre no menor nível pro porte D/E e
-      // no maior pros demais; o closer troca na tela zero (select "Cota OEM"
-      // → state.oemCota).
-      small: { cota: 50, sem: { total: 1788, per: 149 }, anu: { total: 3288, per: 274 } },
-      mid: { cota: 100, sem: { total: 2988, per: 249 }, anu: { total: 5388, per: 449 } },
-      big: { cota: 200, sem: { total: 4788, per: 399 }, anu: { total: 8388, per: 699 } },
+      // Leque de cota do Leo (limites novos em 21/08/2026: 125/250/500
+      // anúncios/mês, mesmo preço de antes). A régua abre no menor nível pro
+      // porte D/E e no maior pros demais; o closer troca na tela zero (select
+      // "Cota OEM" → state.oemCota). OEM avulso não tem clonagem: rec é só a
+      // mensalidade, sem entrada.
+      small: { cota: 125, anu: { total: 3288, per: 274 }, sem: { total: 1914, per: 319 }, rec: { per: 379, setup: 0 } },
+      mid: { cota: 250, anu: { total: 5388, per: 449 }, sem: { total: 2994, per: 499 }, rec: { per: 599, setup: 0 } },
+      big: { cota: 500, anu: { total: 8388, per: 699 }, sem: { total: 4494, per: 749 }, rec: { per: 849, setup: 0 } },
     },
-    parcialA: { name: "Parcial", sem: { total: 2100, per: 175 }, anu: { total: 3588, per: 299 } },
-    parcialoem: { name: "Parcial + OEM 50", cota: 50, sem: { total: 3288, per: 274 }, anu: { total: 5376, per: 448 } },
+    parcialA: {
+      name: "Parcial",
+      anu: { total: 4536, per: 378 }, sem: { total: 2574, per: 429 },
+      rec: { per: 299, setup: 1500 },
+    },
+    parcialoem: {
+      // O semestral saiu da planilha em 549/mês, ABAIXO do anual (599) — era a
+      // única linha com a escada invertida (dois semestres sairiam mais baratos
+      // que o ano). Leo corrigiu pra 649 em 21/08.
+      name: "Parcial + OEM 125", cota: 125,
+      anu: { total: 7188, per: 599 }, sem: { total: 3894, per: 649 },
+      rec: { per: 499, setup: 1750 },
+    },
   },
   // Dores do painMap do produto + perguntas SPIN (definidas com o Leo 06/08).
   pains: {
@@ -1303,6 +1330,67 @@ export async function backfillProposalCatalog(repo) {
 // e snapshots de cliente (sharedFrom) ficam de fora. Idempotente: proposta
 // cujo OEM já tem o nível `mid` (100) não é tocada — edição posterior do dono
 // no snapshot é soberana.
+// ── Tabela de preços de 21/08/2026 (as três formas de pagar) ───────────────
+// O Leo refez a tabela: ANO (12 × mensal), SEMESTRAL (6 × mensal) e RECORRENTE
+// (clonagem na entrada + mensalidade), e subiu os limites do OEM (125/250/500,
+// mesmo preço). Como o catálogo vive no BANCO (calc.catalog do template, e
+// congelado em cada proposta), mudar o default do código não muda nada em
+// produção — é preciso reprecificar o template e as propostas abertas.
+//
+// Marcador `pricingV` no catálogo em vez de comparar preço: assim o Leo pode
+// editar um valor pela mão depois sem que a migração volte e atropele a edição
+// dele no próximo boot.
+const PRICING_VERSION = "2026-08-21";
+// De-para das cotas de OEM avulso: o closer escolheu 50/100/200 e esses níveis
+// deixaram de existir. Sem isto a proposta aberta cairia no nível PADRÃO da
+// régua e o closer perderia a escolha que já tinha feito.
+const OEM_COTA_REMAP = { 50: 125, 100: 250, 200: 500 };
+
+export async function migrateCatalogPricing(repo) {
+  const t = await repo.get("proposal_templates", "pt_leverads");
+  const catalog = t?.calc?.catalog;
+  if (!catalog) return false; // sem catálogo ainda: ensureProposalCatalog cuida
+  if (catalog.pricingV === PRICING_VERSION) return false;
+  // Só os PRODUTOS: régua, dores/SPIN e a tabela de clonagem avulsa seguem como
+  // estão no banco (podem ter sido editados pelo dono).
+  const calc = {
+    ...t.calc,
+    catalog: {
+      ...catalog,
+      products: JSON.parse(JSON.stringify(LEVERADS_CATALOG.products)),
+      pricingV: PRICING_VERSION,
+    },
+  };
+  await repo.update("proposal_templates", "pt_leverads", { calc });
+  return true;
+}
+
+// Propostas ABERTAS recebem a tabela nova (decisão do Leo, 21/08: reprecificar
+// todas). Mesmo recorte dos retroativos anteriores: ACEITAS e snapshots já
+// compartilhados com cliente (sharedFrom) ficam de fora, porque mexer no preço
+// que está na mão do cliente é decisão humana. O `lead.amount` de quem já
+// recebeu proposta NÃO é tocado: ele registra o que foi apresentado na época.
+export async function backfillCatalogPricing(repo) {
+  const t = await repo.get("proposal_templates", "pt_leverads");
+  const catalog = t?.calc?.catalog;
+  if (catalog?.pricingV !== PRICING_VERSION) return 0; // depende da migração acima
+  const proposals = await repo.list("proposals");
+  let n = 0;
+  for (const p of proposals) {
+    if (p.template !== "pt_leverads") continue;
+    if (p.sharedFrom || p.accepted) continue;
+    if (p.calc?.catalog?.pricingV === PRICING_VERSION) continue;
+    // CÓPIA do catálogo (mesma lição do ensureProposalCatalog): sem ela todos
+    // os snapshots apontariam pro mesmo objeto e uma edição vazaria pros outros.
+    const patch = { calc: { ...p.calc, catalog: JSON.parse(JSON.stringify(catalog)) } };
+    const cota = OEM_COTA_REMAP[Number(p.state?.oemCota) || 0];
+    if (cota) patch.state = { ...p.state, oemCota: cota };
+    await repo.update("proposals", p.id, patch);
+    n++;
+  }
+  return n;
+}
+
 export async function backfillOemLeque(repo) {
   const t = await repo.get("proposal_templates", "pt_leverads");
   const catalog = t?.calc?.catalog;
@@ -1611,6 +1699,18 @@ export async function runStartupMigrations(repo) {
   }
   // Depois do backfill: proposta aberta com o leque antigo do OEM avulso (2
   // cotas, preços velhos) recebe a tabela atual do template.
+  try {
+    const changed = await migrateCatalogPricing(repo);
+    if (changed) console.log("[migration] proposta: tabela de preços de 21/08 (ano/semestral/recorrente + cotas OEM 125/250/500) no template");
+  } catch (err) {
+    console.error("[migration] migrateCatalogPricing falhou:", err?.message || err);
+  }
+  try {
+    const n = await backfillCatalogPricing(repo);
+    if (n) console.log(`[migration] proposta: ${n} proposta(s) aberta(s) reprecificada(s) pela tabela de 21/08`);
+  } catch (err) {
+    console.error("[migration] backfillCatalogPricing falhou:", err?.message || err);
+  }
   try {
     const n = await backfillOemLeque(repo);
     if (n) console.log(`[migration] leque do OEM avulso (50/100/200) aplicado em ${n} proposta(s) aberta(s)`);
