@@ -255,9 +255,13 @@ export function AgendaScreen({ onOpenLead }) {
 
 // Modal de criar/editar compromisso ou bloqueio: tipo, título/motivo, pessoas
 // (lista dropdown multi-seleção), data, início em passos de 15 min + DURAÇÃO
-// (15/30/45/60/90/120) e recorrência abrangente (não repete · toda semana ·
-// seg a sex · todos os dias · dias escolhidos). Excluir mora aqui também.
-const DUR_OPTIONS = [15, 30, 45, 60, 90, 120];
+// (15 min a 6h) e recorrência abrangente (não repete · toda semana · seg a sex ·
+// todos os dias · dias escolhidos). Excluir mora aqui também.
+//
+// A escada vai de meia em meia hora até 4h e de hora em hora até 6h (Leo,
+// 21/08): reunião longa, treinamento e dia de integração não cabiam em 2h, e
+// meia hora de granularidade num bloco de 5h não muda nada na prática.
+const DUR_OPTIONS = [15, 30, 45, 60, 90, 120, 150, 180, 210, 240, 300, 360];
 const durLabel = (m) => (m < 60 ? `${m} min` : m % 60 === 0 ? `${m / 60}h` : `${Math.floor(m / 60)}h${m % 60}`);
 const WD_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 
@@ -399,7 +403,7 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
           <div>
             <span className="kicker" style={label}>Duração</span>
             <select value={dur} onChange={(e) => setDur(Number(e.target.value))} style={{ ...field, width: "100%" }}>
-              {DUR_OPTIONS.map((m) => <option key={m} value={m}>{durLabel(m)}</option>)}
+              {DUR_OPTIONS.filter((m) => from + m / 60 <= 24).map((m) => <option key={m} value={m}>{durLabel(m)}</option>)}
               {!DUR_OPTIONS.includes(dur) && <option value={dur}>{durLabel(dur)}</option>}
             </select>
           </div>
