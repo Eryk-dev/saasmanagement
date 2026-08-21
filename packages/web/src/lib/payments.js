@@ -88,7 +88,7 @@ export const DEAL_PRODUCTS = [
   { id: "fulloem", label: "LeverAds + OEM FULL" },
   { id: "oem", label: "OEM avulso" },
   { id: "parcialA", label: "Parcial" },
-  { id: "parcialoem", label: "Parcial + OEM 50" },
+  { id: "parcialoem", label: "Parcial + OEM 125" },
   // Serviço único (clonagem entre contas cobrada uma vez, por faixa de
   // anúncios): vende, mas não é produto do deck — não vira apresentação.
   { id: "avulso", label: "Clonagem avulsa" },
