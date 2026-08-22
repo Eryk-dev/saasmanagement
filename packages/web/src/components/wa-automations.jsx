@@ -622,6 +622,7 @@ function SdrBotCard({ product }) {
   const [reminders, setReminders] = useState(cfg.reminders !== false);
   const [rescue, setRescue] = useState(cfg.rescue !== false);
   const [conversation, setConversation] = useState(cfg.conversation === true);
+  const [conversationTest, setConversationTest] = useState(cfg.conversationTest === true);
   const [delay, setDelay] = useState(cfg.firstTouchDelayMin ?? 3);
   const [status, setStatus] = useState(null);
   const [note, setNote] = useState(null);
@@ -652,7 +653,7 @@ function SdrBotCard({ product }) {
     try {
       await api.update("products", product.id, {
         sdrBot: {
-          ...cfg, enabled: on, firstTouch, reminders, rescue, conversation,
+          ...cfg, enabled: on, firstTouch, reminders, rescue, conversation, conversationTest,
           firstTouchDelayMin: Math.max(1, Number(delay) || 3),
           // Carimbo de QUANDO ligou: o robô só faz 1º toque em lead criado
           // DEPOIS dele (backlog antigo segue fila humana). Religar re-carimba.
@@ -701,6 +702,11 @@ function SdrBotCard({ product }) {
                 title="Fase 2: a IA responde a conversa e marca a call sozinha (horários reais da agenda, preço nunca, handoff pra humano). Só ligar depois de rodar e revisar a bateria de replay abaixo.">
                 <input type="checkbox" checked={conversation} onChange={(e) => setConversation(e.target.checked)} />
                 conversa com IA (agenda sozinha)
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, cursor: "pointer" }}
+                title="O robô INTEIRO (1º toque, lembretes, resgate e conversa com IA) atende leads marcados como teste da equipe — e SÓ eles nesta chave. É o test-drive: cria um lead interno com o seu número e conversa com o robô no seu WhatsApp, sem tocar lead real e sem sujar métrica.">
+                <input type="checkbox" checked={conversationTest} onChange={(e) => setConversationTest(e.target.checked)} />
+                modo teste (só leads de teste da equipe)
               </label>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>

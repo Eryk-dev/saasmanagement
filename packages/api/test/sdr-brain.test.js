@@ -254,3 +254,31 @@ test("sem transcrição configurada, o áudio segue como áudio (e o prompt mand
   assert.equal(await brain.handleInbound(INBOUND), "humano");
   assert.match(fakes.calls[0].conversation.at(-1).text, /áudio/);
 });
+
+test("modo teste: com conversationTest, a IA conversa com lead INTERNO; lead real fica de fora", async () => {
+  const repo = await world({
+    sdrBot: { conversation: false, conversationTest: true },
+    lead: { internal: true },
+    messages: [{ direction: "in", text: "como funciona?", at: ISO("2026-08-19T12:59:00Z") }],
+  });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "A gente clona seus anúncios, quer ver ao vivo?" }] });
+  assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), "responder");
+
+  // Lead REAL com só o modo teste ligado: intocado.
+  const repo2 = await world({
+    sdrBot: { conversation: false, conversationTest: true },
+    messages: [{ direction: "in", text: "como funciona?", at: ISO("2026-08-19T12:59:00Z") }],
+  });
+  const f2 = makeFakes();
+  assert.equal(await brainOf(repo2, f2).handleInbound(INBOUND), null);
+  assert.equal(f2.calls.length, 0);
+
+  // E o inverso: produção ligada NÃO conversa com lead interno (teste não vaza).
+  const repo3 = await world({
+    sdrBot: { conversation: true, conversationTest: false },
+    lead: { internal: true },
+    messages: [{ direction: "in", text: "oi", at: ISO("2026-08-19T12:59:00Z") }],
+  });
+  const f3 = makeFakes();
+  assert.equal(await brainOf(repo3, f3).handleInbound(INBOUND), null);
+});

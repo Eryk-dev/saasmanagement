@@ -55,6 +55,12 @@ export function sdrBotConfig(product) {
     // Fase 2 (conversa com IA): chave PRÓPRIA, nasce desligada — só liga
     // depois de passar na bateria de replay (sdr-replay.js).
     conversation: cfg.conversation === true,
+    // MODO TESTE (Leo, 22/08): com esta chave, o robô INTEIRO (1º toque,
+    // lembretes, resgate e a conversa com IA) atende leads INTERNOS (teste da
+    // equipe) — que normalmente ficam fora de tudo. Dá pra sentir a
+    // experiência completa no próprio WhatsApp sem tocar nenhum lead real, e
+    // sem sujar métrica (lead interno segue fora do isRealLead).
+    conversationTest: cfg.conversationTest === true,
     firstTouchDelayMin: num(cfg.firstTouchDelayMin, 3), // "um humano viu" > resposta em 2s
     freshHours: num(cfg.freshHours, 24),                // lead mais velho que isso é fila humana
     templates: {
@@ -64,6 +70,12 @@ export function sdrBotConfig(product) {
     },
   };
 }
+
+// A conversa com IA vale pra este lead? Modo normal: chave `conversation` e
+// lead REAL. Modo teste: chave `conversationTest` e lead INTERNO — nunca os
+// dois cruzados (teste não fala com lead real; produção não fala com teste).
+export const conversationActive = (cfg, lead) =>
+  !!cfg && (lead?.internal ? cfg.conversationTest : cfg.conversation);
 
 // "3 a 5 contas · autopeças · 500 a 2 mil anúncios" — o que o lead respondeu no
 // diagnóstico, com os RÓTULOS do painel de qualificação do produto
@@ -204,7 +216,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
       const leads = allLeads.filter((l) => l.saas === product.id);
       const enabledMs = cfg.enabledAt ? Date.parse(cfg.enabledAt) : 0;
       const eligible = (l) =>
-        !l.internal && !l.formExit && !l.disqualified &&
+        (!l.internal || cfg.conversationTest) && !l.formExit && !l.disqualified &&
         !l.whatsappOptOut && !l.whatsappInvalid && digits(l.waPhone || l.phone);
 
       // ── 1. Primeiro toque ────────────────────────────────────────────────
@@ -409,10 +421,11 @@ export async function handleSdrInbound(repo, { message, now = new Date() } = {})
   }
 
   // ── 2. Resposta quente ao 1º toque do robô ────────────────────────────────
-  // Com a CONVERSA da Fase 2 ligada, quem responde é o sdr-brain (que levanta
-  // alerta só nos handoffs) — pop-up em toda resposta viraria ruído.
+  // Com a CONVERSA da Fase 2 ligada (real ou modo teste), quem responde é o
+  // sdr-brain (que levanta alerta só nos handoffs) — pop-up em toda resposta
+  // viraria ruído.
   const product = lead.saas ? await repo.get("products", lead.saas) : null;
-  if (sdrBotConfig(product)?.conversation) return null;
+  if (conversationActive(sdrBotConfig(product), lead)) return null;
   const ft = lead.sdrLog?.firstTouchAt;
   if (ft && ["text", "template"].includes(lead.sdrLog?.firstTouchVia)
     && now.getTime() - Date.parse(ft) <= FIRST_TOUCH_HOT_MS) {

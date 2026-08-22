@@ -359,3 +359,15 @@ test("leadDigest fala com os rótulos do painel de qualificação", async () => 
   assert.equal(leadDigest(product, {}), "sua operação de marketplace");
   assert.equal(leadDigest(product, { niche: "petshop" }), "petshop", "nicho custom sai como foi digitado");
 });
+
+test("modo teste: o 1º toque também sai pra lead INTERNO (e só com a chave ligada)", async () => {
+  const nowRef = { t: new Date("2026-08-19T13:00:00Z") };
+  const repo = await world({
+    product: { sdrBot: { enabled: true, enabledAt: ISO("2026-08-01T00:00:00Z"), conversationTest: true } },
+    leads: [{ id: "T1", name: "Leo Teste", phone: "41995063622", stage: "Novo lead", internal: true, createdAt: ISO("2026-08-19T12:50:00Z") }],
+  });
+  const wa = makeWa({ approved: ["sdr_primeiro_toque"] });
+  const stats = await runner(repo, wa, nowRef).tick();
+  assert.equal(stats.firstTouch, 1);
+  assert.equal(wa.sent[0].name, "sdr_primeiro_toque");
+});

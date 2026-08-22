@@ -23,7 +23,7 @@ import { brtToIso, applyStageMove } from "./lead-flow.js";
 import { raiseAlert } from "./wa-call-flow.js";
 import { leadGrade } from "./routes.marketing.js";
 import { slotsForLead, slotLabel, wallNow, OFFER_HOURS } from "./agenda-slots.js";
-import { sdrBotConfig, leadDigest, SDR_AUTHOR } from "./sdr-flow.js";
+import { sdrBotConfig, leadDigest, conversationActive, SDR_AUTHOR } from "./sdr-flow.js";
 import { transcriber as defaultTranscriber } from "./transcribe.js";
 
 const HOUR = 3_600_000;
@@ -160,11 +160,14 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     if (!lead) return null;
     const product = lead.saas ? await repo.get("products", lead.saas) : null;
     const cfg = sdrBotConfig(product);
-    if (!cfg?.conversation) return null;
+    // Modo normal: chave conversation + lead real. Modo teste: chave
+    // conversationTest + lead INTERNO (a experiência completa no WhatsApp do
+    // time, sem tocar lead de verdade).
+    if (!conversationActive(cfg, lead)) return null;
     if (!anthropic?.configured?.()) return null;
 
     // Elegibilidade — as mesmas cercas da Fase 1 + região do funil.
-    if (lead.internal || lead.formExit || lead.disqualified) return null;
+    if (lead.formExit || lead.disqualified) return null;
     if (lead.whatsappOptOut || lead.whatsappInvalid) return null;
     if (isWonLead(product, lead)) return null;
     const kind = kindOf(product, lead.stage || firstStage(product));
