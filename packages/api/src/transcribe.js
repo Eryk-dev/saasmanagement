@@ -53,9 +53,12 @@ export function makeTranscriber({
   const modelId = model || (chosen === "openai" ? OAI_DEFAULT_MODEL : OR_DEFAULT_MODEL);
   const configured = () => !!key && (chosen === "openrouter" || chosen === "openai");
 
-  async function viaOpenRouter(buffer, { mime, prompt }) {
+  async function viaOpenRouter(buffer, { mime, prompt, instructions }) {
     const b64 = Buffer.isBuffer(buffer) ? buffer.toString("base64") : Buffer.from(buffer).toString("base64");
-    const sys = prompt ? `${ANTI_HALLUCINATION} Nomes próprios que podem aparecer: ${String(prompt).slice(0, 300)}.` : ANTI_HALLUCINATION;
+    // `instructions` = regra extra do chamador (ex.: copiloto pede rótulo por
+    // canal do estéreo). Entra ANTES dos nomes próprios, depois da regra base.
+    const sys = [ANTI_HALLUCINATION, String(instructions || "").slice(0, 400),
+      prompt ? `Nomes próprios que podem aparecer: ${String(prompt).slice(0, 300)}.` : ""].filter(Boolean).join(" ");
     const res = await f(OR_URL, {
       method: "POST",
       headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
@@ -88,11 +91,11 @@ export function makeTranscriber({
 
   // buffer → texto. `prompt` = nomes próprios do negócio (marca/produto/lead),
   // onde a transcrição mais erra.
-  async function transcribe(buffer, { filename = "call.webm", mime = "audio/webm", language = "pt", prompt = "" } = {}) {
+  async function transcribe(buffer, { filename = "call.webm", mime = "audio/webm", language = "pt", prompt = "", instructions = "" } = {}) {
     if (!configured()) throw new Error("transcrição não configurada — defina OPENROUTER_API_KEY (ou OPENAI_API_KEY) no servidor");
     return chosen === "openai"
-      ? viaOpenAI(buffer, { filename, mime, language })
-      : viaOpenRouter(buffer, { mime, prompt });
+      ? viaOpenAI(buffer, { filename, mime, language }) // Whisper não aceita instrução: transcreve sem rótulo de canal
+      : viaOpenRouter(buffer, { mime, prompt, instructions });
   }
 
   return { configured, transcribe, model: modelId, provider: chosen };

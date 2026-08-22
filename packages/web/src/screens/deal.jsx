@@ -7,6 +7,7 @@ import { clientSummary, leadBox, ClientSummaryCard, AttributionCard, LeadCheckli
 import { waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
 import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind, isLossKind } from "../lib/funnel.js";
 import { displayName, usersByRole, currentUser } from "../lib/users.js";
+import { CallCopilot } from "../components/call-copilot.jsx";
 import { api } from "../lib/api.js";
 import { useAttribution } from "../lib/pains.js";
 import { sourceLabel } from "../lib/sources.js";
@@ -781,6 +782,9 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                 style={{ flex: 1, height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, fontFamily: "var(--mono)" }} />
             </div>
           )}
+          {/* Copiloto: ouve a call pelo navegador e orienta em tempo real
+              (transcrição + roteiro se marcando + resposta pra objeção). */}
+          {window.SEED?.CONFIG?.ai?.configured && <CallCopilot lead={lead} />}
           </>)}
           {(kind === "proposta" || kind === "followup") && (
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
