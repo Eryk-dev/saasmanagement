@@ -370,6 +370,35 @@ export function contactAttribution({ leads, actsOf, waMessages, saas, inWin, hum
   return { leadIds: new Set(first.keys()), firstAt, byAuthor, authorOf, automationReached: autoReached.size };
 }
 
+// ── Primeira RESPOSTA por qualquer canal (humano OU robô) ────────────────────
+// O contato humano acima é a régua de COBRANÇA do time e segue intacta (o
+// sdr-bot cai em automationReached, de propósito). Com o SDR automatizado no
+// ar, a pergunta "quanto tempo o LEAD esperou por alguém" precisa de régua
+// própria: a primeira mensagem enviada na conversa dele (qualquer autor,
+// sdr-bot incluído) ou o primeiro toque de cadência, o que vier antes.
+// Devolve Map leadId → { at, human } (human = o autor está na collection users).
+export function firstResponseAttribution({ leads, actsOf, waMessages, saas, inWin, humanIds } = {}) {
+  const first = new Map();
+  const record = (id, at, author) => {
+    if (!at) return;
+    const cur = first.get(id);
+    if (!cur || String(at) < String(cur.at)) first.set(id, { at, human: !!humanIds?.has(author || "") });
+  };
+  const knownIds = new Set((leads || []).map((l) => l.id));
+  for (const m of waMessages || []) {
+    if (m.direction !== "out" || !m.leadId) continue;
+    if (saas && m.saas && m.saas !== saas) continue;
+    if (!knownIds.has(m.leadId) || !inWin(m.at)) continue;
+    record(m.leadId, m.at, m.author);
+  }
+  for (const l of leads || []) {
+    for (const a of actsOf(l.id) || []) {
+      if (inWin(a.at) && TOUCH_TYPES.has(a.type)) record(l.id, a.at, a.author);
+    }
+  }
+  return first;
+}
+
 export function funnelCounts(product, { leads, actsOf, inWin, winLeadsIn, adjust, waContactedIds } = {}) {
   const recentLeads = leads.filter((l) => inWin(l.createdAt));
   const recentIds = new Set(recentLeads.map((l) => l.id));

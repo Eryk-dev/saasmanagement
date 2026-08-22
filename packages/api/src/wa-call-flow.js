@@ -93,8 +93,9 @@ export async function openAlerts(repo) {
 export const alertKind = (a) => (a?.kind === "lead" ? "lead" : "hot");
 
 // Um alerta ABERTO por conversa: mensagem nova do mesmo lead atualiza o alerta
-// existente em vez de empilhar pop-ups.
-async function raiseAlert(repo, thread, { text = "", permission = "" } = {}) {
+// existente em vez de empilhar pop-ups. (Exportado: o SDR automatizado usa o
+// MESMO pop-up quando uma resposta de lembrete precisa de gente — sdr-flow.js.)
+export async function raiseAlert(repo, thread, { text = "", permission = "" } = {}) {
   const now = new Date().toISOString();
   const base = {
     kind: "hot", // alerta de CONVERSA (lead respondeu) — ver raiseNewLeadAlert

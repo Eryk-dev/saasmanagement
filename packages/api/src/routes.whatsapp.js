@@ -7,6 +7,7 @@ import { applyHealthEvent, getWaHealth, waHealthSummary, recordWebhookDelivery, 
 import { runInboundCallFlow, startCallFlow, openAlerts, closeThreadAlerts, parsePermissionReply, greetingFor } from "./wa-call-flow.js";
 import { runWaAutomations } from "./wa-automations.js";
 import { runWaFlows } from "./wa-flows.js";
+import { handleSdrInbound } from "./sdr-flow.js";
 import { transcriber as defaultTranscriber } from "./transcribe.js";
 import { formatSummaryText } from "./call-summaries.js";
 import { logActivity, onActivityCreated } from "./lead-flow.js";
@@ -193,6 +194,10 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
                   const flowHit = await runWaFlows(repo, { message: autoMsg, send: autoSend });
                   if (!flowHit) await runWaAutomations(repo, { message: autoMsg, send: autoSend });
                 } catch (err) { req.log?.warn?.({ err: err.message }, "automação do inbox falhou"); }
+                // SDR automatizado: resposta a um lembrete de call vira
+                // confirmação (callConfirmed) ou alerta quente pro humano.
+                try { await handleSdrInbound(repo, { message: { from: m.from, text: bodyOf(m) } }); }
+                catch (err) { req.log?.warn?.({ err: err.message }, "sdr inbound falhou"); }
               }
             }
             for (const st of v.statuses || []) {

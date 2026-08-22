@@ -95,6 +95,9 @@ const ROUTE_SCREENS = [
   // Bloqueios de agenda: a tela Agenda gerencia; quem marca call (pipeline/Meu dia)
   // precisa LER pra grade de horários respeitar os bloqueios.
   ["/api/agenda_blocks", ["agenda", "pipeline", "today", "overview"]],
+  // Horários livres calculados no SERVIDOR (SDR automatizado + quem marca call).
+  ["/api/agenda/free-slots", ["agenda", "pipeline", "today", "whatsapp"]],
+  ["/api/sdr/", ["whatsapp"]], // status do SDR automatizado (card da aba Automações)
   ["/api/consultations", ["consultas"]], // consultas 1:1 (mentoria UniqueKids): agenda + ações (meet/summary)
   ["/api/deliverables", ["consultas"]],  // Manual da Família (entregável) + compose por IA
   ["/api/pitch", ["calls", "settings"]], // análise de pitch (calls) + botão "IA das calls" em Ajustes → Scripts
