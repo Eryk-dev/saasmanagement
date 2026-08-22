@@ -36,6 +36,7 @@ import { registerMetasRoutes } from "./routes.metas.js";
 import { registerFlashcardRoutes } from "./routes.flashcards.js";
 import { registerGoogleRoutes } from "./routes.google.js";
 import { syncPersonalCalendar } from "./google-user.js";
+import { registerCopilotRoutes } from "./copilot.js";
 import { registerWhatsappRoutes } from "./routes.whatsapp.js";
 import { registerSdrRoutes } from "./routes.sdr.js";
 import { makeSdrBrain } from "./sdr-brain.js";
@@ -348,6 +349,10 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // webhook o alcança por getter preguiçoso (mesmo desenho do salesWhatsapp).
   let sdrBrain = null;
   whatsappClient = registerWhatsappRoutes(app, repo, { whatsapp: opts.whatsapp, anthropic: anthropicClient, transcriber: opts.transcriber, getSdrBrain: () => sdrBrain });
+  // Copiloto da call: transcrição ao vivo (áudio da aba do Meet + mic, via
+  // browser) + cues da IA sobre o roteiro. Rotas sob /api/leads → guard do
+  // pipeline já cobre.
+  registerCopilotRoutes(app, repo, { transcriber: opts.transcriber, anthropic: anthropicClient });
   sdrBrain = opts.sdrBrain || makeSdrBrain({ repo, whatsapp: whatsappClient, anthropic: anthropicClient, autoCallMeet, log: app.log });
   // SDR automatizado: horários livres no servidor + templates + status +
   // bateria de replay (o motor determinístico é o poller startSdrFlow do

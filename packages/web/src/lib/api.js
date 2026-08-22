@@ -409,6 +409,19 @@ export const api = {
     }
     return res.json();
   },
+  // Copiloto da call: transcrição ao vivo + cues (áudio nunca fica salvo)
+  copilotStart: (leadId, checklist) => req("POST", `/api/leads/${encodeURIComponent(leadId)}/copilot/start`, { checklist }),
+  copilotStatus: (leadId) => req("GET", `/api/leads/${encodeURIComponent(leadId)}/copilot`),
+  copilotStop: (leadId) => req("POST", `/api/leads/${encodeURIComponent(leadId)}/copilot/stop`, {}),
+  copilotChunk: async (leadId, blob) => {
+    const fd = new FormData();
+    fd.append("file", blob, "chunk.webm");
+    const key = getKey();
+    const res = await fetch(`${BASE}/api/leads/${encodeURIComponent(leadId)}/copilot/chunk`, { method: "POST", body: fd, headers: key ? { "x-api-key": key } : {} });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `chunk falhou (${res.status})`);
+    return body;
+  },
   trainingAssetUrl: (id) => `${BASE}/public/training/${encodeURIComponent(id)}`,
   // Comentários de IG/página do FB: fila + ações. `sync` força a varredura na
   // Meta (o padrão tem throttle de 1 min no servidor); o webhook já faz o
