@@ -371,3 +371,20 @@ test("modo teste: o 1º toque também sai pra lead INTERNO (e só com a chave li
   assert.equal(stats.firstTouch, 1);
   assert.equal(wa.sent[0].name, "sdr_primeiro_toque");
 });
+
+test("modo teste com a produção DESLIGADA: lead interno recebe o robô completo; lead real, nada", async () => {
+  const nowRef = { t: new Date("2026-08-19T13:00:00Z") };
+  const repo = await world({
+    product: { sdrBot: { enabled: true, enabledAt: ISO("2026-08-01T00:00:00Z"), firstTouch: false, reminders: false, rescue: false, conversationTest: true } },
+    leads: [
+      { id: "T1", name: "Leo Teste", phone: "41995063622", stage: "Novo lead", internal: true, createdAt: ISO("2026-08-19T12:50:00Z") },
+      { id: "R1", name: "Real", phone: "41988887777", stage: "Novo lead", createdAt: ISO("2026-08-19T12:50:00Z") },
+    ],
+  });
+  const wa = makeWa({ approved: ["sdr_primeiro_toque"] });
+  const stats = await runner(repo, wa, nowRef).tick();
+  assert.equal(stats.firstTouch, 1, "só o lead interno foi tocado");
+  assert.equal(wa.sent.length, 1);
+  assert.equal(wa.sent[0].params[0], "Leo");
+  assert.equal((await repo.get("leads", "R1")).sdrLog, undefined, "lead real intocado com produção off");
+});

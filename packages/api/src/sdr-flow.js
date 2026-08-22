@@ -218,12 +218,16 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
       const eligible = (l) =>
         (!l.internal || cfg.conversationTest) && !l.formExit && !l.disqualified &&
         !l.whatsappOptOut && !l.whatsappInvalid && digits(l.waPhone || l.phone);
+      // Cada frente roda pro lead quando a chave DELA está ligada (produção)
+      // OU quando é lead interno com o modo teste ligado — assim o test-drive
+      // cobre a jornada inteira mesmo com a produção toda desligada.
+      const passOn = (flag, l) => flag || (cfg.conversationTest && l.internal);
 
       // ── 1. Primeiro toque ────────────────────────────────────────────────
-      if (cfg.firstTouch) {
+      if (cfg.firstTouch || cfg.conversationTest) {
         for (const lead of leads) {
           if (sends >= CAP) break;
-          if (!eligible(lead)) continue;
+          if (!eligible(lead) || !passOn(cfg.firstTouch, lead)) continue;
           const created = Date.parse(lead.createdAt || "");
           if (!Number.isFinite(created)) continue;
           if (enabledMs && created < enabledMs) continue; // backlog é fila humana
@@ -273,10 +277,10 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
       }
 
       // ── 2. Lembretes da call (véspera · 1h · 10min) ──────────────────────
-      if (cfg.reminders) {
+      if (cfg.reminders || cfg.conversationTest) {
         for (const lead of leads) {
           if (sends >= CAP) break;
-          if (!eligible(lead)) continue;
+          if (!eligible(lead) || !passOn(cfg.reminders, lead)) continue;
           if (kindOf(product, lead.stage) !== "call" || !lead.callAt) continue;
           const callMs = Date.parse(brtToIso(lead.callAt));
           if (!Number.isFinite(callMs) || callMs <= nowMs) continue;
@@ -324,10 +328,10 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
       }
 
       // ── 3. Resgate de no-show ────────────────────────────────────────────
-      if (cfg.rescue) {
+      if (cfg.rescue || cfg.conversationTest) {
         for (const lead of leads) {
           if (sends >= CAP) break;
-          if (!eligible(lead)) continue;
+          if (!eligible(lead) || !passOn(cfg.rescue, lead)) continue;
           if (!isNoShowStage(lead.stage)) continue;
           const sinceMs = Date.parse(lead.stageSince || "");
           if (!Number.isFinite(sinceMs)) continue;
