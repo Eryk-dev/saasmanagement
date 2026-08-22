@@ -1,0 +1,227 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { makeMemRepo } from "./helpers/mem-repo.js";
+import { makeSdrBrain, bookCall } from "../src/sdr-brain.js";
+
+// Relógio dos testes: quarta 19/08/2026, 10h BRT (13h UTC). Com o closer livre
+// e aviso mínimo de 2h, o primeiro horário livre é 12:00 do próprio dia.
+const NOW = new Date("2026-08-19T13:00:00Z");
+const ISO = (s) => new Date(s).toISOString();
+const SLOT1 = "2026-08-19T12:00";
+
+const FUNNEL = [
+  { stage: "Novo lead", kind: "novo" },
+  { stage: "Qualificando", kind: "qualificacao" },
+  { stage: "Call agendada", kind: "call" },
+  { stage: "No show", kind: "contato" },
+  { stage: "Ganho", kind: "ganho" },
+];
+
+async function world({ lead = {}, messages = [], sdrBot = {}, users } = {}) {
+  const repo = makeMemRepo();
+  await repo.create("products", {
+    id: "leverads", name: "LeverAds", funnel: FUNNEL,
+    leadQuestions: [{ key: "accounts", label: "Contas", options: [{ value: "3-5", label: "3 a 5 contas" }] }],
+    sdrBot: { enabled: true, enabledAt: ISO("2026-08-01T00:00:00Z"), conversation: true, ...sdrBot },
+  });
+  for (const u of users || [
+    { id: "sdr", name: "Manuela", roles: ["sdr"] },
+    { id: "leonardo", name: "Leonardo", roles: ["admin"] },
+    { id: "pl", name: "Plena", roles: ["closer"], compLevel: 2 },
+  ]) await repo.create("users", u);
+  await repo.create("leads", {
+    id: "L1", saas: "leverads", owner: "sdr", name: "Rafael Silva", phone: "41999990000",
+    stage: "Qualificando", accounts: "3-5", createdAt: ISO("2026-08-19T12:00:00Z"), ...lead,
+  });
+  await repo.create("wa_threads", { id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads", name: "Rafael" });
+  let seq = 0;
+  for (const m of messages) {
+    await repo.create("wa_messages", { id: "m" + (++seq), thread: "5541999990000", leadId: "L1", saas: "leverads", ...m });
+  }
+  return repo;
+}
+
+function makeFakes({ decisions = [] } = {}) {
+  const sent = [];
+  const calls = [];
+  const meets = [];
+  const queue = [...decisions];
+  const wa = {
+    configured: () => true,
+    sendText: async (to, text) => { sent.push({ to, text }); return { messageId: "wm_" + sent.length }; },
+  };
+  const anthropic = {
+    configured: () => true,
+    sdrDecide: async (ctx) => {
+      calls.push(ctx);
+      const d = queue.shift() || { acao: "silencio" };
+      return { acao: "silencio", mensagem: "", horario: "", email: "", motivoHumano: "", ...d };
+    },
+  };
+  const autoCallMeet = async (id) => { meets.push(id); return null; };
+  return { wa, anthropic, autoCallMeet, sent, calls, meets };
+}
+
+const brainOf = (repo, fakes) => makeSdrBrain({
+  repo, whatsapp: fakes.wa, anthropic: fakes.anthropic, autoCallMeet: fakes.autoCallMeet,
+  log: { warn: () => {} }, now: () => NOW, replyDelayMs: 0, sleep: async () => {},
+});
+
+const INBOUND = { message: { from: "5541999990000", text: "quanto custa?" } };
+
+test("chave conversation desligada: o cérebro nem chama a IA", async () => {
+  const repo = await world({ sdrBot: { conversation: false }, messages: [{ direction: "in", text: "oi", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes();
+  assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), null);
+  assert.equal(fakes.calls.length, 0);
+});
+
+test("responder: manda o texto da IA com autoria sdr-bot e contexto completo (agenda + conversa)", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "como funciona?", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "A gente clona seus anúncios entre contas. Consigo te mostrar ao vivo, qual período fica melhor?" }] });
+  const r = await brainOf(repo, fakes).handleInbound(INBOUND);
+  assert.equal(r, "responder");
+  assert.equal(fakes.sent.length, 1);
+  assert.match(fakes.sent[0].text, /clona seus anúncios/);
+  const out = (await repo.list("wa_messages")).filter((m) => m.direction === "out");
+  assert.equal(out.length, 1);
+  assert.equal(out[0].author, "sdr-bot");
+  // A IA recebeu a agenda real e a conversa.
+  const ctx = fakes.calls[0];
+  assert.equal(ctx.slots[0].at, SLOT1);
+  assert.equal(ctx.conversation.at(-1).who, "LEAD");
+  assert.equal(ctx.sdrName, "Manuela");
+});
+
+test("trava de preço: resposta da IA com valor vira o desvio com autoridade (sem número)", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "O plano parte de R$ 299 por mês, fechado?" }] });
+  const r = await brainOf(repo, fakes).handleInbound(INBOUND);
+  assert.equal(r, "preco-travado");
+  assert.equal(fakes.sent.length, 1);
+  assert.ok(!/299|R\$/.test(fakes.sent[0].text));
+  assert.match(fakes.sent[0].text, /investimento depende/);
+  assert.ok((await repo.get("leads", "L1")).sdrLog.priceGuardAt);
+});
+
+test("agendar com horário da lista: card vai pra etapa de call pelo caminho canônico, com confirmação comprovada e Meet automático", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "pode ser meio dia", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
+  const r = await brainOf(repo, fakes).handleInbound(INBOUND);
+  assert.equal(r, "agendar");
+  const lead = await repo.get("leads", "L1");
+  assert.equal(lead.stage, "Call agendada");
+  assert.equal(lead.callAt, SLOT1);
+  assert.equal(lead.closer, "pl");
+  assert.equal(lead.callConfirmed, false);
+  // Movimento canônico: activity de stage registrada.
+  const stageActs = (await repo.list("activities")).filter((a) => a.type === "stage");
+  assert.equal(stageActs.length, 1);
+  assert.equal(stageActs[0].meta.to, "Call agendada");
+  // Confirmação é a copy comprovada (vende a call + pede o e-mail que falta).
+  assert.match(fakes.sent[0].text, /Fechado, Rafael! Nossa call fica hoje às 12h/);
+  assert.match(fakes.sent[0].text, /sócio/);
+  assert.match(fakes.sent[0].text, /e-mail/);
+  assert.deepEqual(fakes.meets, ["L1"]);
+});
+
+test("agendar com horário INVENTADO: nada é marcado, re-oferta determinística", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "pode ser 9h", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: "2026-08-19T09:00" }] });
+  const r = await brainOf(repo, fakes).handleInbound(INBOUND);
+  assert.equal(r, "reoferta");
+  const lead = await repo.get("leads", "L1");
+  assert.equal(lead.stage, "Qualificando");
+  assert.equal(lead.callAt || "", "");
+  assert.match(fakes.sent[0].text, /hoje às 12h/);
+});
+
+test("humano: alerta quente + transição curta, e o robô fica calado até gente falar", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "esse part number 123 puxa?", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "humano", motivoHumano: "dúvida técnica de part number", mensagem: "Boa! Vou chamar nosso especialista de autopeças aqui pra te responder certinho." }] });
+  const brain = brainOf(repo, fakes);
+  assert.equal(await brain.handleInbound(INBOUND), "humano");
+  const alerts = await repo.list("wa_alerts");
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0].text, /part number/);
+  assert.equal(fakes.sent.length, 1);
+  assert.ok((await repo.get("leads", "L1")).sdrLog.handoffAt);
+  // Próxima mensagem do lead: sem humano na conversa, o robô espera.
+  assert.equal(await brain.handleInbound({ message: { from: "5541999990000", text: "e aí?" } }), "waiting-human");
+  assert.equal(fakes.calls.length, 1, "a IA não é chamada de novo no handoff pendente");
+});
+
+test("gente falou há pouco na conversa: o robô não fala por cima", async () => {
+  const repo = await world({
+    messages: [
+      { direction: "out", author: "leonardo", text: "deixa comigo", at: ISO("2026-08-19T12:30:00Z") },
+      { direction: "in", text: "ok", at: ISO("2026-08-19T12:59:00Z") },
+    ],
+  });
+  const fakes = makeFakes();
+  assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), "human-active");
+  assert.equal(fakes.calls.length, 0);
+});
+
+test("e-mail que aparece na mensagem entra no cadastro do lead", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "meu email é rafa@loja.com.br", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Perfeito, convite indo!", email: "rafa@loja.com.br" }] });
+  await brainOf(repo, fakes).handleInbound(INBOUND);
+  assert.equal((await repo.get("leads", "L1")).email, "rafa@loja.com.br");
+});
+
+test("teto diário por conversa: depois de 15 mensagens do robô, vira handoff com alerta", async () => {
+  const many = Array.from({ length: 15 }, (_, i) => ({
+    direction: "out", author: "sdr-bot", text: "msg " + i, at: ISO(`2026-08-19T0${Math.min(9, i % 10)}:0${i % 6}:00Z`),
+  }));
+  const repo = await world({ messages: [...many, { direction: "in", text: "hmm", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes();
+  assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), "cap");
+  assert.equal(fakes.calls.length, 0);
+  assert.equal((await repo.list("wa_alerts")).length, 1);
+});
+
+test("remarcar: callAt antigo já passado vai pro histórico e o GPS segue o horário novo", async () => {
+  const repo = await world({
+    lead: { stage: "Call agendada", callAt: "2026-08-18T10:00", closer: "pl", callConfirmed: true },
+    messages: [{ direction: "in", text: "consegui não, pode ser meio dia hoje?", at: ISO("2026-08-19T12:59:00Z") }],
+  });
+  const fakes = makeFakes({ decisions: [{ acao: "remarcar", horario: SLOT1 }] });
+  const r = await brainOf(repo, fakes).handleInbound(INBOUND);
+  assert.equal(r, "remarcar");
+  const lead = await repo.get("leads", "L1");
+  assert.equal(lead.callAt, SLOT1);
+  assert.equal(lead.stage, "Call agendada");
+  assert.equal(lead.callConfirmed, false, "confirmação é do horário novo");
+  assert.deepEqual(lead.callHistory, [{ at: "2026-08-18T10:00", closer: "pl" }]);
+  assert.equal(lead.nextActionAt, new Date("2026-08-19T12:00:00-03:00").toISOString());
+});
+
+test("lead fora da região do SDR (ganho) ou com opt-out: o cérebro não age", async () => {
+  const repo1 = await world({ lead: { stage: "Ganho", customerId: "c1" }, messages: [{ direction: "in", text: "oi", at: ISO("2026-08-19T12:59:00Z") }] });
+  const f1 = makeFakes();
+  assert.equal(await brainOf(repo1, f1).handleInbound(INBOUND), null);
+  const repo2 = await world({ lead: { whatsappOptOut: true }, messages: [{ direction: "in", text: "oi", at: ISO("2026-08-19T12:59:00Z") }] });
+  const f2 = makeFakes();
+  assert.equal(await brainOf(repo2, f2).handleInbound(INBOUND), null);
+  assert.equal(f1.calls.length + f2.calls.length, 0);
+});
+
+test("IA quebrada não derruba nada: vira log + um alerta espaçado", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "oi", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes();
+  fakes.anthropic.sdrDecide = async () => { throw new Error("provider caiu"); };
+  const brain = brainOf(repo, fakes);
+  assert.equal(await brain.handleInbound(INBOUND), "error");
+  assert.equal((await repo.list("wa_alerts")).length, 1);
+  assert.equal(await brain.handleInbound(INBOUND), "error");
+  assert.equal((await repo.list("wa_alerts")).length, 1, "alerta de erro não empilha (janela de 6h)");
+});
+
+test("bookCall direto: exige etapa de call no funil", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "x", funnel: [{ stage: "Novo", kind: "novo" }] });
+  const product = await repo.get("products", "x");
+  const lead = await repo.create("leads", { id: "L9", saas: "x", stage: "Novo" });
+  await assert.rejects(() => bookCall(repo, { lead, product, at: "2026-08-19T12:00", closer: "c" }), /funil sem etapa de call/);
+});

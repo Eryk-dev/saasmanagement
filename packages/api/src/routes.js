@@ -38,6 +38,7 @@ import { registerGoogleRoutes } from "./routes.google.js";
 import { syncPersonalCalendar } from "./google-user.js";
 import { registerWhatsappRoutes } from "./routes.whatsapp.js";
 import { registerSdrRoutes } from "./routes.sdr.js";
+import { makeSdrBrain } from "./sdr-brain.js";
 import { makeSalesWhatsapp } from "./sales-whatsapp.js";
 import { makeMailer } from "./mailer.js";
 import { getWaHealth, waHealthSummary } from "./wa-health.js";
@@ -329,7 +330,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerAuthRoutes(app, repo);
   // Google Meet: conectar conta (OAuth) + criar call na agenda do closer.
   // Claude resume as calls (transcrição → timeline) quando há ANTHROPIC_API_KEY.
-  const { client: googleClient, googleUser, briefer, autoIntegrationMeet } = registerGoogleRoutes(app, repo, { google: opts.google, googleUser: opts.googleUser, anthropic: anthropicClient });
+  const { client: googleClient, googleUser, briefer, autoIntegrationMeet, autoCallMeet } = registerGoogleRoutes(app, repo, { google: opts.google, googleUser: opts.googleUser, anthropic: anthropicClient });
   // Consultas 1:1 + Manual da Família (UniqueKids): Meet da consulta, resumo IA,
   // compor manual e página pública /m/:id. Depois do Google (usa os 2 clients).
   registerConsultationRoutes(app, repo, { google: googleClient, googleUser, anthropic: anthropicClient });
@@ -343,10 +344,15 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerSequenceRoutes(app, repo, { mailer: mailerClient });
   // WhatsApp (Cloud API): webhook (recebe) + envio pelo drawer do lead. O SDR
   // conversa com o cliente direto no cockpit; as mensagens viram timeline.
-  whatsappClient = registerWhatsappRoutes(app, repo, { whatsapp: opts.whatsapp, anthropic: anthropicClient, transcriber: opts.transcriber });
-  // SDR automatizado: horários livres no servidor + templates + status (o
-  // motor em si é o poller startSdrFlow do index.js, com o MESMO client).
-  registerSdrRoutes(app, repo, { whatsapp: whatsappClient });
+  // O cérebro conversacional (Fase 2) nasce DEPOIS do client de WhatsApp; o
+  // webhook o alcança por getter preguiçoso (mesmo desenho do salesWhatsapp).
+  let sdrBrain = null;
+  whatsappClient = registerWhatsappRoutes(app, repo, { whatsapp: opts.whatsapp, anthropic: anthropicClient, transcriber: opts.transcriber, getSdrBrain: () => sdrBrain });
+  sdrBrain = opts.sdrBrain || makeSdrBrain({ repo, whatsapp: whatsappClient, anthropic: anthropicClient, autoCallMeet, log: app.log });
+  // SDR automatizado: horários livres no servidor + templates + status +
+  // bateria de replay (o motor determinístico é o poller startSdrFlow do
+  // index.js, com o MESMO client).
+  registerSdrRoutes(app, repo, { whatsapp: whatsappClient, anthropic: anthropicClient });
   // Poller de resumos (index.js) usa os MESMOS clients das rotas.
   if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, googleUser, anthropic: anthropicClient, mailer: mailerClient, whatsapp: whatsappClient });
 

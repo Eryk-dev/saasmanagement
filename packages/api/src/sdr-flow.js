@@ -52,6 +52,9 @@ export function sdrBotConfig(product) {
     firstTouch: cfg.firstTouch !== false,
     reminders: cfg.reminders !== false,
     rescue: cfg.rescue !== false,
+    // Fase 2 (conversa com IA): chave PRÓPRIA, nasce desligada — só liga
+    // depois de passar na bateria de replay (sdr-replay.js).
+    conversation: cfg.conversation === true,
     firstTouchDelayMin: num(cfg.firstTouchDelayMin, 3), // "um humano viu" > resposta em 2s
     freshHours: num(cfg.freshHours, 24),                // lead mais velho que isso é fila humana
     templates: {
@@ -406,6 +409,10 @@ export async function handleSdrInbound(repo, { message, now = new Date() } = {})
   }
 
   // ── 2. Resposta quente ao 1º toque do robô ────────────────────────────────
+  // Com a CONVERSA da Fase 2 ligada, quem responde é o sdr-brain (que levanta
+  // alerta só nos handoffs) — pop-up em toda resposta viraria ruído.
+  const product = lead.saas ? await repo.get("products", lead.saas) : null;
+  if (sdrBotConfig(product)?.conversation) return null;
   const ft = lead.sdrLog?.firstTouchAt;
   if (ft && ["text", "template"].includes(lead.sdrLog?.firstTouchVia)
     && now.getTime() - Date.parse(ft) <= FIRST_TOUCH_HOT_MS) {

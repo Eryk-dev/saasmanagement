@@ -362,6 +362,8 @@ export const api = {
   // horários livres calculados no servidor (régua de roteamento por nível).
   sdrStatus: (saas) => req("GET", `/api/sdr/status?saas=${encodeURIComponent(saas)}`),
   sdrTemplateSetup: () => req("POST", "/api/whatsapp/templates/sdr-setup", {}),
+  sdrReplayStart: (saas, opts = {}) => req("POST", "/api/sdr/replay", { saas, ...opts }),
+  sdrReplayStatus: () => req("GET", "/api/sdr/replay"),
   freeSlots: (saas, { lead, grade, days, limit } = {}) => {
     const q = new URLSearchParams({ saas });
     if (lead) q.set("lead", lead);
