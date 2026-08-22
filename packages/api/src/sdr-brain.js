@@ -30,6 +30,9 @@ const HOUR = 3_600_000;
 const BRAIN_KINDS = new Set(["novo", "contato", "qualificacao", "call"]);
 const HUMAN_MUTE_MS = 4 * HOUR;   // gente falou há pouco: a conversa é dela
 const GREETING_GAP_MS = 6 * HOUR; // conversa parada há menos disso = SEM saudação nova (Leo, 22/08)
+// O convite de demonstração já saiu nesta conversa? Então o pitch não se
+// repete (Leo, 22/08): as mensagens seguintes tratam só logística e dúvidas.
+const DEMO_RX = /demonstra|mostrar (a |o )?(leverads|plataforma|ferramenta)|funcionando ao vivo/i;
 const DAILY_CAP = 15;             // mensagens do robô por conversa por dia
 const PRICE_RX = /r\$\s*\d|\b\d{2,}\s*(reais|por m[eê]s|\/m[eê]s|mensais)\b|\ba partir de\s*\d/i;
 
@@ -214,6 +217,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     const prevMsg = msgs.length >= 2 ? msgs[msgs.length - 2] : null;
     const gapMin = prevMsg ? Math.round((nowMs - Date.parse(prevMsg.at || 0)) / 60_000) : null;
     const canGreet = gapMin == null || gapMin >= GREETING_GAP_MS / 60_000;
+    const demoOffered = msgs.some((m) => m.direction === "out" && DEMO_RX.test(m.text || ""));
     const nome = firstName(lead.name);
     const decision = await anthropic.sdrDecide({
       sdrName: firstName((await repo.get("users", lead.owner).catch(() => null))?.name),
@@ -228,6 +232,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       pain: leadPainFocus(product, lead),
       canGreet,
       gapMin,
+      demoOffered,
     });
 
     const phoneId = thread.waPhoneId || product.waPhoneId || undefined;

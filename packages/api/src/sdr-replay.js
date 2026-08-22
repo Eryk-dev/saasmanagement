@@ -95,6 +95,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
         turns++;
         report.turns++;
         const prevMsg = i >= 1 ? msgs[i - 1] : null;
+        const demoOffered = msgs.slice(0, i).some((x) => x.direction === "out" && /demonstra|mostrar (a |o )?(leverads|plataforma|ferramenta)|funcionando ao vivo/i.test(x.text || ""));
         const gapMin = prevMsg ? Math.round((Date.parse(m.at || 0) - Date.parse(prevMsg.at || 0)) / 60_000) : null;
         const conversation = msgs.slice(0, i + 1).slice(-24).map((x) => ({
           who: x.direction === "in" ? "LEAD" : "VOCÊ",
@@ -114,6 +115,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
             pain: leadPainFocus(product, lead),
             canGreet: gapMin == null || gapMin >= 360,
             gapMin,
+            demoOffered,
           });
           report.actions[d.acao] = (report.actions[d.acao] || 0) + 1;
           if ((d.acao === "agendar" || d.acao === "remarcar")) {
