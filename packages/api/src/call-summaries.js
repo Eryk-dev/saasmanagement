@@ -14,10 +14,12 @@ const MEET_KINDS = {
   call: {
     urlField: "callUrl", eventField: "meetEventId", schedField: "meetScheduledAt",
     dedupField: "callSummaryFor", stampField: "callSummaryAt", ai: "summarizeCall",
+    organizerField: "meetOrganizer",
   },
   integracao: {
     urlField: "integrationCallUrl", eventField: "integrationMeetEventId", schedField: "integrationScheduledAt",
     dedupField: "integrationSummaryFor", stampField: "integrationSummaryAt", ai: "summarizeIntegration",
+    organizerField: "integrationMeetOrganizer",
   },
 };
 
@@ -57,16 +59,27 @@ export function formatIntegrationText(s) {
   return lines.join("\n");
 }
 
-export function makeCallSummarizer({ repo, google, anthropic, log = console }) {
+export function makeCallSummarizer({ repo, google, googleUser = null, anthropic, log = console }) {
+  // Token certo pra ler a transcrição: a conta de quem ORGANIZOU o Meet
+  // (lead.meetOrganizer, transição @leverads) — só o organizador enxerga a
+  // gravação. Call antiga (sem organizador) segue na conta do time, então a
+  // transição não perde nenhum resumo pendente. Devolve null sem conta apta.
+  async function googleFor(lead, cfg) {
+    const org = lead?.[cfg.organizerField] || "";
+    if (org && googleUser && (await googleUser.connectedFor(org).catch(() => false))) return google.forUser(googleUser, org);
+    return (await google.connected()) ? google : null;
+  }
+
   // Resume a última call do lead. Devolve { ok, reason?, summary? } — reasons
   // são estáveis pro drawer traduzir: not_configured, not_connected, no_meet,
   // transcript_not_ready, already_done.
   async function summarizeLead(leadId, { force = false, kind = "call" } = {}) {
     if (!anthropic.configured()) return { ok: false, reason: "not_configured" };
-    if (!(await google.connected())) return { ok: false, reason: "not_connected" };
     const cfg = MEET_KINDS[kind] || MEET_KINDS.call;
     const lead = await repo.get("leads", leadId);
     if (!lead) return { ok: false, reason: "not_found" };
+    const g = await googleFor(lead, cfg);
+    if (!g) return { ok: false, reason: "not_connected" };
     const code = (String(lead[cfg.urlField] || "").match(/meet\.google\.com\/([a-z0-9-]+)/i) || [])[1];
     if (!code) return { ok: false, reason: "no_meet" };
     if (!force && lead[cfg.dedupField] && lead[cfg.dedupField] === lead[cfg.eventField]) {
@@ -84,7 +97,7 @@ export function makeCallSummarizer({ repo, google, anthropic, log = console }) {
     let detail = "";
     let live = false;
     try {
-      t = await google.fetchTranscript(code);
+      t = await g.fetchTranscript(code);
       // Sala ainda ABERTA: não existe transcrição enquanto alguém está lá
       // dentro (o Google fecha a gravação quando o último sai). Vira reason
       // próprio pra tela mandar encerrar a sala em vez de "não está pronta".
@@ -93,12 +106,12 @@ export function makeCallSummarizer({ repo, google, anthropic, log = console }) {
       detail = `meet: ${String(err.message || err).slice(0, 160)}`;
       log.warn?.({ lead: leadId, kind, err: err.message }, "Meet API falhou (segue pro fallback do Drive)");
     }
-    if (!t && typeof google.fetchTranscriptFromDrive === "function") {
+    if (!t && typeof g.fetchTranscriptFromDrive === "function") {
       // Os dois motivos SOMAM (meet + drive): quando nenhum caminho traz a
       // transcrição, o diagnóstico precisa dizer o que cada um respondeu.
       const add = (s) => { detail = detail ? `${detail} · ${s}` : s; };
       try {
-        t = await google.fetchTranscriptFromDrive({ eventId: lead[cfg.eventField], leadName: lead.name, since: lead[cfg.schedField] });
+        t = await g.fetchTranscriptFromDrive({ eventId: lead[cfg.eventField], leadName: lead.name, since: lead[cfg.schedField] });
         if (!t) add("drive: Doc de transcrição não encontrado (confira o título/horário da call ou a conta do Drive)");
       } catch (err) {
         // 403 ACCESS_TOKEN_SCOPE_INSUFFICIENT aqui = reconectar o Google (escopo drive.readonly novo).
@@ -164,7 +177,10 @@ export function makeCallSummarizer({ repo, google, anthropic, log = console }) {
   // Um passe do poller: TODAS as calls (venda + integração) cujo horário já
   // passou (folga de 50 min pra acontecer) e que ainda não foram resumidas.
   async function tick() {
-    if (!anthropic.configured() || !(await google.connected())) return { scanned: 0, summarized: 0 };
+    // Sem gate na conta do time: com a transição @leverads, a call pode ter
+    // sido organizada pela conta do responsável — summarizeLead resolve o
+    // token por lead e devolve not_connected quando nenhuma conta serve.
+    if (!anthropic.configured()) return { scanned: 0, summarized: 0 };
     const now = Date.now();
     const jobs = [];
     for (const l of await repo.list("leads")) {
@@ -194,8 +210,8 @@ export function makeCallSummarizer({ repo, google, anthropic, log = console }) {
 
 // Poller de produção: a cada 10 min, single-flight, mesmo padrão do
 // startMarketingAutoSync. Silencioso quando IA/Google não estão configurados.
-export function startCallSummaries(repo, { google, anthropic, intervalMs = 600_000, log = console } = {}) {
-  const worker = makeCallSummarizer({ repo, google, anthropic, log });
+export function startCallSummaries(repo, { google, googleUser = null, anthropic, intervalMs = 600_000, log = console } = {}) {
+  const worker = makeCallSummarizer({ repo, google, googleUser, anthropic, log });
   let running = false;
   const run = async () => {
     if (running) return;

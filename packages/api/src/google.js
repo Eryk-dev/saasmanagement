@@ -24,13 +24,17 @@ const MEET_URL = "https://meet.googleapis.com/v2";
 const GMAIL_URL = "https://gmail.googleapis.com/gmail/v1";
 const DRIVE_URL = "https://www.googleapis.com/drive/v3";
 
-export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientSecret = "", repo } = {}) {
+export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientSecret = "", repo, tokenSource = null } = {}) {
   const configured = () => !!(clientId && clientSecret);
   let cache = { token: "", exp: 0 }; // access token em memória (refresh sob demanda)
 
   const stored = async () => (repo ? repo.get("app_config", "google_oauth") : null);
   const connected = async () => !!(await stored())?.refreshToken;
-  const account = async () => (await stored())?.account || "";
+  const teamAccount = async () => (await stored())?.account || "";
+  // tokenSource: prende ESTA instância ao token/conta de outro dono (forUser,
+  // abaixo) — a mesma superfície de API com a identidade de um usuário
+  // conectado. configured/connected/authUrl continuam falando da conta do TIME.
+  const account = tokenSource ? tokenSource.whoami : teamAccount;
   // Escopos concedidos na conexão atual (só preenchido em conexões novas). Serve
   // pra saber se o drive.readonly (fallback de transcrição) já foi autorizado.
   const grantedScopes = async () => (await stored())?.scopes || "";
@@ -88,6 +92,7 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
   }
 
   async function accessToken() {
+    if (tokenSource) return tokenSource.getToken();
     if (cache.token && Date.now() < cache.exp) return cache.token;
     const t = await stored();
     if (!t?.refreshToken) throw new Error("Google não conectado — Ajustes → Integrações → Conectar Google");
@@ -474,7 +479,15 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
     };
   }
 
-  return { configured, connected, account, grantedScopes, authUrl, exchangeCode, accessToken, createMeetEvent, configureSpace, fetchTranscript, endActiveConference, sendGmail, gmailReady, getCalendarEvent, patchCalendarEvent, deleteCalendarEvent, fetchTranscriptFromDrive };
+  // API presa ao token de UM usuário conectado (google-user.js): quem cria o
+  // Meet por aqui vira o ORGANIZADOR — a gravação cai no Drive dele e a Meet
+  // API da conta dele enxerga a transcrição. `userId` é o usuário do cockpit.
+  const forUser = (gu, userId) => makeGoogle({
+    fetch: f, clientId, clientSecret, repo,
+    tokenSource: { getToken: () => gu.accessToken(userId), whoami: () => gu.accountFor(userId) },
+  });
+
+  return { configured, connected, account, grantedScopes, authUrl, exchangeCode, accessToken, forUser, createMeetEvent, configureSpace, fetchTranscript, endActiveConference, sendGmail, gmailReady, getCalendarEvent, patchCalendarEvent, deleteCalendarEvent, fetchTranscriptFromDrive };
 }
 
 // Cabeçalho de e-mail com não-ASCII (nome, assunto): codifica em MIME

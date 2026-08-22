@@ -50,8 +50,8 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
     repo,
   });
-  const summarizer = anthropic ? makeCallSummarizer({ repo, google: client, anthropic, log: app.log }) : null;
-  const briefer = anthropic ? makeIntegrationBriefer({ repo, google: client, anthropic, log: app.log }) : null;
+  const summarizer = anthropic ? makeCallSummarizer({ repo, google: client, googleUser: gu, anthropic, log: app.log }) : null;
+  const briefer = anthropic ? makeIntegrationBriefer({ repo, google: client, googleUser: gu, anthropic, log: app.log }) : null;
 
   // Anti-CSRF do callback (rota aberta): só aceita state emitido por aqui, com
   // validade curta. O valor guarda { exp, userId }: userId preenchido = conexão
@@ -93,7 +93,7 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
   app.get("/api/google/user/status", async (req, reply) => {
     const uid = req.authUser?.id;
     if (!uid) return reply.code(401).send({ error: "Entre com seu usuário pra conectar o Google pessoal" });
-    return { configured: gu.configured(), connected: await gu.connectedFor(uid), account: await gu.accountFor(uid) };
+    return { configured: gu.configured(), connected: await gu.connectedFor(uid), account: await gu.accountFor(uid), meetReady: await gu.meetReadyFor(uid) };
   });
 
   // Link de consentimento que amarra o token ao usuário logado (via state).
@@ -179,8 +179,17 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     // Extras novos ficam salvos no lead pro próximo Meet já vir preenchido.
     const guestsToSave = attendees.filter((e) => e !== String(lead.email || "").toLowerCase()).join(", ");
 
+    // Organizador do Meet: a conta @leverads do RESPONSÁVEL (closer na venda,
+    // integrador na integração) quando ela está conectada com os escopos da
+    // sala — a gravação cai no Drive dele e o resumo é lido pela conta dele.
+    // Sem conexão pronta, a conta do time organiza (o comportamento de sempre).
+    // O SDR marca a call mas nunca organiza: a call é do closer.
+    const responsible = kind === "integracao" ? lead.integrator : lead.closer;
+    const organizerId = responsible && (await gu.meetReadyFor(responsible).catch(() => false)) ? responsible : "";
+    const gclient = organizerId ? client.forUser(gu, organizerId) : client;
+
     try {
-      const { meetUrl, eventId, htmlLink, calendarId, fellBackFrom } = await client.createMeetEvent({
+      const { meetUrl, eventId, htmlLink, calendarId, fellBackFrom } = await gclient.createMeetEvent({
         summary: `${kind === "integracao" ? "Integração" : "Call"} ${product?.name || "LeverAds"} · ${lead.name}${lead.company ? ` (${lead.company})` : ""}`,
         description: [`Lead: ${lead.name}`, lead.phone ? `WhatsApp: ${lead.phone}` : "", lead.company ? `Empresa: ${lead.company}` : ""].filter(Boolean).join("\n"),
         start, end,
@@ -188,7 +197,7 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
         // Calendário do convite: default primary; GOOGLE_MEET_CALENDAR_ID aponta
         // pra identidade do remetente (ex.: contato@leverads.com.br) se a conta
         // conectada tiver acesso.
-        calendarId: process.env.GOOGLE_MEET_CALENDAR_ID || "primary",
+        calendarId: organizerId ? "primary" : (process.env.GOOGLE_MEET_CALENDAR_ID || "primary"),
       });
       if (fellBackFrom) {
         log.warn({ calendarId: fellBackFrom }, "Google: calendário configurado inacessível — Meet criado no primário da conta conectada");
@@ -198,7 +207,7 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
       let meetConfig = { open: false, recording: false, transcription: false };
       const code = (meetUrl.match(/meet\.google\.com\/([a-z0-9-]+)/i) || [])[1];
       if (code) {
-        try { meetConfig = await client.configureSpace(code); }
+        try { meetConfig = await gclient.configureSpace(code); }
         catch (err) { log.warn({ err: err.message }, "Google: configuração da sala falhou (Meet criado mesmo assim)"); }
       }
       // Horário REAL da call em ISO UTC — é a referência do poller que resume a
@@ -206,8 +215,8 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
       const scheduledAt = s.toISOString();
       // Grava no conjunto de campos do TIPO (integração NÃO pisa na call de venda).
       const patch = kind === "integracao"
-        ? { integrationCallUrl: meetUrl, integrationMeetEventId: eventId, integrationScheduledAt: scheduledAt }
-        : { callUrl: meetUrl, meetEventId: eventId, meetScheduledAt: scheduledAt };
+        ? { integrationCallUrl: meetUrl, integrationMeetEventId: eventId, integrationScheduledAt: scheduledAt, integrationMeetOrganizer: organizerId }
+        : { callUrl: meetUrl, meetEventId: eventId, meetScheduledAt: scheduledAt, meetOrganizer: organizerId };
       if (guestsToSave) patch.meetGuests = guestsToSave;
       await repo.update("leads", lead.id, patch);
       // Espelha na agenda pessoal (closer da call / integrador da integração), já com o link do Meet.
@@ -215,11 +224,11 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
       try {
         await logActivity(repo, {
           saas: lead.saas || "", lead: lead.id, type: "system",
-          meta: { event: "meet_created", kind, url: meetUrl, calendarEvent: htmlLink, attendees, meetConfig, calendarId, fellBackFrom },
+          meta: { event: "meet_created", kind, url: meetUrl, calendarEvent: htmlLink, attendees, meetConfig, calendarId, fellBackFrom, organizer: organizerId },
           author: "cockpit",
         });
       } catch { /* fail-open */ }
-      return { ok: true, kind, callUrl: meetUrl, eventId, htmlLink, attendees, meetConfig, calendarId, fellBackFrom };
+      return { ok: true, kind, callUrl: meetUrl, eventId, htmlLink, attendees, meetConfig, calendarId, fellBackFrom, organizer: organizerId };
     } catch (err) {
       log.warn({ err: err.message, lead: lead.id }, "Google: criação do Meet falhou");
       throw err;
@@ -231,18 +240,25 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
   // com o link pro integrador e o convite na agenda do cliente. Re-checa o
   // lead fresco antes de criar (dois PATCHes rápidos não duplicam o evento).
   async function autoIntegrationMeet(leadId) {
-    if (!client.configured() || !(await client.connected().catch(() => false))) return null;
+    if (!client.configured()) return null;
     const fresh = await repo.get("leads", leadId);
     if (!fresh || !fresh.integrationAt || fresh.integrationCallUrl) return null;
+    const ok = (await client.connected().catch(() => false))
+      || (fresh.integrator && (await gu.meetReadyFor(fresh.integrator).catch(() => false)));
+    if (!ok) return null;
     return createMeetForLead(fresh, { kind: "integracao" });
   }
 
   app.post("/api/leads/:id/meet", async (req, reply) => {
     if (!client.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Google não configurado (GOOGLE_CLIENT_ID/SECRET)" });
-    if (!(await client.connected())) return reply.code(NOT_CONFIGURED).send({ error: "Google não conectado — Ajustes → Integrações → Conectar Google" });
     const lead = await repo.get("leads", req.params.id);
     if (!lead) return reply.code(404).send({ error: "Not found" });
     const kind = req.body?.kind === "integracao" ? "integracao" : "call";
+    // Basta UMA conta apta: a do time (fallback de sempre) ou a do responsável
+    // pela call (transição @leverads: cada um organiza as próprias).
+    const resp = kind === "integracao" ? lead.integrator : lead.closer;
+    const anyAccount = (await client.connected()) || (resp && (await gu.meetReadyFor(resp).catch(() => false)));
+    if (!anyAccount) return reply.code(NOT_CONFIGURED).send({ error: "Google não conectado — conecte a conta do time em Ajustes → Integrações, ou a sua conta @leverads no card Minha conta Google" });
     try {
       return await createMeetForLead(lead, { kind, guests: req.body?.guests, email: req.body?.email, log: req.log });
     } catch (err) {
@@ -254,15 +270,19 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
   // aberta trava gravação/transcrição (o Google só fecha quando o último sai),
   // e sem isso alguém tinha que entrar no Meet pra clicar em encerrar.
   app.post("/api/leads/:id/meet/end", async (req, reply) => {
-    if (!(await client.connected())) return reply.code(NOT_CONFIGURED).send({ error: "Google não conectado — Ajustes → Integrações → Conectar Google" });
     const lead = await repo.get("leads", req.params.id);
     if (!lead) return reply.code(404).send({ error: "Not found" });
     const kind = req.body?.kind === "integracao" ? "integracao" : "call";
     const url = kind === "integracao" ? lead.integrationCallUrl : lead.callUrl;
     const code = (String(url || "").match(/meet\.google\.com\/([a-z0-9-]+)/i) || [])[1];
     if (!code) return reply.code(422).send({ error: "esse lead não tem sala do Meet nesse tipo de call" });
+    // Só o ORGANIZADOR consegue encerrar a sala: usa o token de quem criou o
+    // Meet (meetOrganizer), com a conta do time pras calls antigas.
+    const org = kind === "integracao" ? lead.integrationMeetOrganizer : lead.meetOrganizer;
+    const gclient = org && (await gu.connectedFor(org).catch(() => false)) ? client.forUser(gu, org) : client;
+    if (!org && !(await client.connected())) return reply.code(NOT_CONFIGURED).send({ error: "Google não conectado — Ajustes → Integrações → Conectar Google" });
     try {
-      const r = await client.endActiveConference(code);
+      const r = await gclient.endActiveConference(code);
       return { ok: true, ...r };
     } catch (err) {
       // 422, NUNCA 5xx: o proxy da hospedagem troca o corpo de qualquer 5xx

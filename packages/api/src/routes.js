@@ -344,7 +344,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // conversa com o cliente direto no cockpit; as mensagens viram timeline.
   whatsappClient = registerWhatsappRoutes(app, repo, { whatsapp: opts.whatsapp, anthropic: anthropicClient, transcriber: opts.transcriber });
   // Poller de resumos (index.js) usa os MESMOS clients das rotas.
-  if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, anthropic: anthropicClient, mailer: mailerClient });
+  if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, googleUser, anthropic: anthropicClient, mailer: mailerClient });
 
   // ── Tempo real ─────────────────────────────────────────────────────────
   // Toda escrita no repo (db.js) incrementa um contador global (changes.js).
