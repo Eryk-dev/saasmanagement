@@ -710,7 +710,7 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
   // Decisão do SDR conversacional pra UMA mensagem recebida no WhatsApp.
   // Devolve ação fechada + texto; quem valida horário, trava preço e executa é
   // o motor (sdr-brain.js) — aqui é só a cabeça.
-  async function sdrDecide({ sdrName = "", lead = {}, digest = "", grade = "", stage = "", callAt = "", nowLabel = "", slots = [], conversation = [], pain = null }) {
+  async function sdrDecide({ sdrName = "", lead = {}, digest = "", grade = "", stage = "", callAt = "", nowLabel = "", slots = [], conversation = [], pain = null, canGreet = true, gapMin = null }) {
     if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
     const slotLines = slots.length
       ? slots.map((s) => `- ${s.at} (${s.label || s.at})`).join("\n")
@@ -726,6 +726,9 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
         : "Sem dor de origem registrada: apresentação geral da plataforma.",
       callAt ? `CALL JÁ MARCADA pra: ${callAt} (hora de Brasília)` : "Sem call marcada ainda.",
       lead.email ? `E-mail no cadastro: ${lead.email}` : "Sem e-mail no cadastro (se o agendamento engatar, peça o e-mail pra mandar o convite).",
+      canGreet
+        ? `SAUDAÇÃO: conversa fria${gapMin != null ? ` (última troca há ${Math.round(gapMin / 60)}h)` : " (primeira interação)"} — pode abrir com UMA saudação curta de retomada.`
+        : `SAUDAÇÃO: PROIBIDA. A conversa está EM ANDAMENTO (última mensagem há ${gapMin} min): não escreva "Oi", "Oiii", "Tudo bem?" nem o nome como abertura — responda DIRETO, continuando o assunto de onde parou.`,
       "",
       "HORÁRIOS LIVRES, em ordem (é uma AMOSTRA dos próximos livres, não a agenda inteira; pra agendar/remarcar use SOMENTE valores desta lista, copiando exato; se o período que o lead pediu não aparece aqui, NUNCA afirme que não existe: ofereça o mais próximo da lista e diga que consegue ver outras opções):",
       slotLines,

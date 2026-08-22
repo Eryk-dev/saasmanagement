@@ -94,6 +94,8 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
         if (!realNext) continue; // sem resposta real: não há com o que comparar
         turns++;
         report.turns++;
+        const prevMsg = i >= 1 ? msgs[i - 1] : null;
+        const gapMin = prevMsg ? Math.round((Date.parse(m.at || 0) - Date.parse(prevMsg.at || 0)) / 60_000) : null;
         const conversation = msgs.slice(0, i + 1).slice(-24).map((x) => ({
           who: x.direction === "in" ? "LEAD" : "VOCÊ",
           text: String(x.text || "").slice(0, 500) || "[mensagem]",
@@ -110,6 +112,8 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
             slots: slotList,
             conversation,
             pain: leadPainFocus(product, lead),
+            canGreet: gapMin == null || gapMin >= 360,
+            gapMin,
           });
           report.actions[d.acao] = (report.actions[d.acao] || 0) + 1;
           if ((d.acao === "agendar" || d.acao === "remarcar")) {
