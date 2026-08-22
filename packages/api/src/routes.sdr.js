@@ -40,7 +40,10 @@ export function registerSdrRoutes(app, repo, { whatsapp: wa } = {}) {
         templates.push({ name: spec.name, status: String(r.status || "PENDING").toLowerCase() });
       } catch (err) {
         const msg = String(err.message || err);
-        if (/already exists|j[áa] existe/i.test(msg)) templates.push({ name: spec.name, status: "pending" });
+        // "Já submetido" tem mais de uma cara na Meta: "already exists" e
+        // "There is already Portuguese (BR) content for this template" (vista
+        // em prod 22/08). Ambas = está em revisão, não é erro.
+        if (/already exists|there is already|j[áa] existe/i.test(msg)) templates.push({ name: spec.name, status: "pending" });
         else templates.push({ name: spec.name, status: "error", error: msg.slice(0, 200) });
       }
     }
