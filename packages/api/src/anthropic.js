@@ -354,7 +354,8 @@ const SDR_DECIDE_SCHEMA = {
 // O playbook aqui foi DESTILADO do histórico real de conversas do time
 // (mineração de 903 conversas, ago/2026 — docs/SDR-PLAYBOOK-LEVERADS.md).
 const SDR_DECIDE_SYSTEM = `Você é SDR da LeverAds no WhatsApp comercial, respondendo em nome da pessoa do time dona do lead. A LeverAds é o SaaS que clona e sincroniza anúncios entre contas de Mercado Livre e Shopee (multi-contas, mais exposição na vitrine, proteção contra banimento, economia de operação). Pra autopeças existe o OEM: digita o código da peça e o sistema traz fotos, compatibilidades e informações, anúncio no ar em 2 minutos.
-SEU ÚNICO OBJETIVO: levar o lead até a call agendada com o especialista, que faz uma DEMONSTRAÇÃO ao vivo da ferramenta clonando anúncios na prática. IMPORTANTE: a gente NÃO entra nem acessa as contas do lead; a call demonstra a ferramenta funcionando. Todo caminho termina em call marcada.
+SEU ÚNICO OBJETIVO: levar o lead até a call agendada com o especialista, que faz uma DEMONSTRAÇÃO ao vivo da ferramenta funcionando na prática. IMPORTANTE: a gente NÃO entra nem acessa as contas do lead; a call demonstra a ferramenta. Todo caminho termina em call marcada.
+FOCO PELA ORIGEM: o contexto traz a DOR DO ANÚNCIO que trouxe o lead. Dores A a E são do CLONE: conduza a conversa SÓ pela clonagem/sincronização entre contas, ancorando na dor específica dele, sem puxar o OEM. Dor OEM é da CRIAÇÃO DE ANÚNCIO POR CÓDIGO OEM (autopeças: digita o código da peça e o sistema monta o anúncio com fotos, compatibilidades e ficha em minutos): fale SÓ desse fluxo e da demonstração dele, sem empurrar a clonagem. Sem dor registrada: apresentação geral. Se o LEAD puxar o outro assunto por conta própria, responda normalmente.
 
 TOM (do histórico real do time): mensagens CURTAS (2 a 4 frases), UMA pergunta por vez, caloroso sem emoji ("Oiii", "Maravilha", "Perfeito", "Combinado", exclamação com moderação). Espelhe o registro do lead. Valide antes de redirecionar ("Entendo perfeitamente..."). NUNCA use travessão (—); use vírgula ou parênteses. Não repita saudação em conversa já aberta. Evite flexionar gênero sobre você (prefira "aqui da LeverAds", "a gente").
 
@@ -376,6 +377,43 @@ QUANDO CHAMAR GENTE (acao humano): pergunta técnica específica que exige verif
 QUANDO FICAR EM SILÊNCIO (acao silencio): mensagem que encerra e não pede resposta ("obrigado!", "ok", figurinha) sem nada pendente.
 
 NUNCA: invente recurso, número de resultado, promessa de ranking ou prazo que não estão aqui; cite dia/hora fora da lista de horários; mande textão; faça mais de uma pergunta; trate quem já é cliente como lead.`;
+
+// ── Copiloto da call (tempo real) ────────────────────────────────────────────
+// A cada ~45s a transcrição parcial chega aqui com o CHECKLIST do roteiro; a
+// resposta pinta o pitch (o que já foi coberto), acusa objeção com a resposta
+// pronta e dá UMA sugestão de próximo movimento. Saída curta de propósito: o
+// closer está EM call, ninguém lê parágrafo. Copy sem travessão (regra do Leo).
+const COPILOT_SYSTEM = `Você é o copiloto de vendas da LeverAds, assistindo a uma call AO VIVO pela transcrição parcial (o áudio chega com ~20s de atraso; "Vendedor:" é o closer, "Cliente:" é o lead).
+Seu trabalho: (1) marcar quais etapas do roteiro JÁ aconteceram de verdade (não marque por menção vaga; a etapa precisa ter sido executada); (2) detectar a objeção MAIS RECENTE ainda não tratada e dar a resposta pronta em 1 a 2 frases faladas, no tom do closer; (3) UMA sugestão curta do próximo movimento.
+Regras: português do Brasil, frases curtas, prontas pra falar; nunca invente fatos sobre o cliente; sem travessão (use vírgula ou ponto); se a call está indo bem e não há objeção, objecao vem null e a sugestão aponta a PRÓXIMA etapa do roteiro ainda não coberta.`;
+
+const COPILOT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["steps", "sugestao"],
+  properties: {
+    steps: {
+      type: "array",
+      description: "cada etapa do checklist recebido, com done=true só se de fato aconteceu na transcrição",
+      items: {
+        type: "object", additionalProperties: false, required: ["id", "done"],
+        properties: { id: { type: "string" }, done: { type: "boolean" } },
+      },
+    },
+    objecao: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      description: "a objeção mais recente ainda em aberto; null se não há",
+      properties: {
+        resumo: { type: "string", description: "a objeção nas palavras do cliente, curta" },
+        resposta: { type: "string", description: "resposta pronta pra falar, 1 a 2 frases" },
+      },
+      required: ["resumo", "resposta"],
+    },
+    alerta: { type: ["string", "null"], description: "aviso de processo (ex.: decisor ausente, tempo passando sem demo); null se nada" },
+    sugestao: { type: "string", description: "o próximo movimento, em 1 frase" },
+  },
+};
 
 export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model = "" } = {}) {
   const configured = () => !!apiKey;
@@ -672,7 +710,7 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
   // Decisão do SDR conversacional pra UMA mensagem recebida no WhatsApp.
   // Devolve ação fechada + texto; quem valida horário, trava preço e executa é
   // o motor (sdr-brain.js) — aqui é só a cabeça.
-  async function sdrDecide({ sdrName = "", lead = {}, digest = "", grade = "", stage = "", callAt = "", nowLabel = "", slots = [], conversation = [] }) {
+  async function sdrDecide({ sdrName = "", lead = {}, digest = "", grade = "", stage = "", callAt = "", nowLabel = "", slots = [], conversation = [], pain = null }) {
     if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
     const slotLines = slots.length
       ? slots.map((s) => `- ${s.at} (${s.label || s.at})`).join("\n")
@@ -683,6 +721,9 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
       `AGORA É: ${nowLabel}`,
       `LEAD: ${lead.name || "?"}${lead.company ? ` (${lead.company})` : ""}${grade ? ` · nota ${grade}` : ""}${stage ? ` · etapa: ${stage}` : ""}`,
       digest ? `Diagnóstico preenchido por ele: ${digest}` : "",
+      pain
+        ? `DOR DO ANÚNCIO que trouxe o lead: [${pain.code}] ${pain.label || ""} → FOCO da conversa: ${pain.mode === "oem" ? "criação de anúncio por código OEM (fale só disso; não empurre a clonagem)" : "clonagem entre contas ancorada nessa dor (não puxe o OEM)"}`
+        : "Sem dor de origem registrada: apresentação geral da plataforma.",
       callAt ? `CALL JÁ MARCADA pra: ${callAt} (hora de Brasília)` : "Sem call marcada ainda.",
       lead.email ? `E-mail no cadastro: ${lead.email}` : "Sem e-mail no cadastro (se o agendamento engatar, peça o e-mail pra mandar o convite).",
       "",
@@ -728,5 +769,25 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
     };
   }
 
-  return { configured, summarizeCall, summarizeIntegration, briefIntegration, summarizeConsultation, composeDeliverables, suggestWelcome, suggestSocialCopy, suggestCampaignCopy, improvePitch, routineSuggestion, gradeAnswer, sdrDecide, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
+  // Copiloto: transcrição parcial + checklist → etapas cobertas, objeção com
+  // resposta e a sugestão da vez. Só a cauda recente entra (a call é longa e o
+  // cue é frequente; o começo já está refletido nos steps anteriores).
+  async function copilotCue({ transcript, checklist = [], lead = {}, productName = "LeverAds" }) {
+    if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
+    const text = String(transcript || "");
+    const MAX = 24_000;
+    const clipped = text.length > MAX ? `[início omitido]\n${text.slice(-MAX)}` : text;
+    const list = checklist.map((c) => `${c.id}: ${c.label}`).join("\n");
+    const context = [
+      `Lead: ${lead.name || "?"}${lead.company ? ` (${lead.company})` : ""}`,
+      lead.niche ? `Nicho: ${lead.niche}` : "",
+      `Produto: ${productName}`,
+      `\nEtapas do roteiro (marque done por id):\n${list}`,
+    ].filter(Boolean).join("\n");
+    const r = await requestJson(`${context}\n\nTranscrição parcial (ao vivo):\n\n${clipped}`,
+      { system: COPILOT_SYSTEM, schema: COPILOT_SCHEMA, schemaName: "copilot_cue" });
+    return { cue: r.parsed, usage: r.usage, model: r.model };
+  }
+
+  return { configured, summarizeCall, summarizeIntegration, briefIntegration, summarizeConsultation, composeDeliverables, suggestWelcome, suggestSocialCopy, suggestCampaignCopy, improvePitch, routineSuggestion, gradeAnswer, sdrDecide, copilotCue, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
 }

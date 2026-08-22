@@ -71,6 +71,17 @@ export function sdrBotConfig(product) {
   };
 }
 
+// Dor de ORIGEM do anúncio que trouxe o lead (lead.sourcePain, gravado pelo
+// form, lido contra product.painMap). Decisão do Leo (22/08): A a E são dores
+// do CLONE (clonagem/sincronização entre contas) e a conversa fala SÓ disso;
+// OEM é a criação de anúncio por código OEM e a conversa fala SÓ disso. Sem
+// dor registrada, apresentação geral.
+export function leadPainFocus(product, lead) {
+  const code = String(lead?.sourcePain || "").toUpperCase().trim();
+  if (!code) return null;
+  return { code, label: product?.painMap?.[code] || "", mode: code === "OEM" ? "oem" : "clone" };
+}
+
 // A conversa com IA vale pra este lead? Modo normal: chave `conversation` e
 // lead REAL. Modo teste: chave `conversationTest` e lead INTERNO — nunca os
 // dois cruzados (teste não fala com lead real; produção não fala com teste).
@@ -104,10 +115,14 @@ export function leadDigest(product, lead) {
 // número abre com "Oiii", não usa emoji digitado, referencia o cadastro e
 // fecha com pergunta única. Oferta de 2 horários concretos é o padrão de
 // agendamento mais usado do time.
-export function firstTouchText({ nome, sdrName, resumo, slots = [], now }) {
+export function firstTouchText({ nome, sdrName, resumo, slots = [], now, pain = null }) {
   const oi = nome ? `Oiii, ${nome}.` : "Oiii.";
   const eu = sdrName ? `${sdrName} falando, da LeverAds.` : "Aqui é da LeverAds.";
-  const base = `${oi} ${eu} Vi seu diagnóstico aqui: ${resumo}. Consigo te mostrar a plataforma funcionando ao vivo, numa demonstração rápida.`;
+  // O gancho segue o ANÚNCIO que trouxe o lead: quem veio do OEM ouve OEM.
+  const promessa = pain?.mode === "oem"
+    ? "Consigo te mostrar ao vivo como o anúncio nasce pelo código OEM, numa demonstração rápida."
+    : "Consigo te mostrar a plataforma funcionando ao vivo, numa demonstração rápida.";
+  const base = `${oi} ${eu} Vi seu diagnóstico aqui: ${resumo}. ${promessa}`;
   if (slots.length >= 2) return `${base} Tenho ${slotLabel(slots[0].at, now)} ou ${slotLabel(slots[1].at, now)} livres, qual fica melhor pra você?`;
   if (slots.length === 1) return `${base} Tenho ${slotLabel(slots[0].at, now)} livre, fica bom pra você?`;
   return `${base} Ainda essa semana, qual período fica melhor pra você: manhã ou tarde?`;
@@ -259,7 +274,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
             let via;
             if (windowOpen) {
               const { slots } = await slotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 2, ...OFFER_HOURS });
-              await sendText({ phone: to, text: firstTouchText({ nome, sdrName, resumo, slots, now: wnow }), phoneId, saas: product.id, leadId: lead.id });
+              await sendText({ phone: to, text: firstTouchText({ nome, sdrName, resumo, slots, now: wnow, pain: leadPainFocus(product, lead) }), phoneId, saas: product.id, leadId: lead.id });
               via = "text";
             } else {
               const names = await approvedNames();

@@ -388,3 +388,17 @@ test("modo teste com a produção DESLIGADA: lead interno recebe o robô complet
   assert.equal(wa.sent[0].params[0], "Leo");
   assert.equal((await repo.get("leads", "R1")).sdrLog, undefined, "lead real intocado com produção off");
 });
+
+test("lead que veio do anúncio de OEM ouve OEM no 1º toque (janela aberta)", async () => {
+  const nowRef = { t: new Date("2026-08-19T13:00:00Z") };
+  const repo = await world({
+    product: { sdrBot: { enabled: true, enabledAt: ISO("2026-08-01T00:00:00Z") }, painMap: { OEM: "Anunciar pelo código OEM" } },
+    leads: [{ id: "L1", name: "Rafael Silva", phone: "41999990000", stage: "Novo lead", sourcePain: "OEM", accounts: "3-5", createdAt: ISO("2026-08-19T12:40:00Z") }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads", name: "Rafael" }],
+    messages: [{ id: "in1", thread: "5541999990000", leadId: "L1", saas: "leverads", direction: "in", text: "Oi", at: ISO("2026-08-19T12:41:00Z") }],
+  });
+  const wa = makeWa();
+  await runner(repo, wa, nowRef).tick();
+  assert.match(wa.sent[0].text, /código OEM/);
+  assert.ok(!/plataforma funcionando ao vivo/.test(wa.sent[0].text));
+});

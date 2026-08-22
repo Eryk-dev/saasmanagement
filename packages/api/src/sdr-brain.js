@@ -23,7 +23,7 @@ import { brtToIso, applyStageMove } from "./lead-flow.js";
 import { raiseAlert } from "./wa-call-flow.js";
 import { leadGrade } from "./routes.marketing.js";
 import { slotsForLead, slotLabel, wallNow, OFFER_HOURS } from "./agenda-slots.js";
-import { sdrBotConfig, leadDigest, conversationActive, SDR_AUTHOR } from "./sdr-flow.js";
+import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, SDR_AUTHOR } from "./sdr-flow.js";
 import { transcriber as defaultTranscriber } from "./transcribe.js";
 
 const HOUR = 3_600_000;
@@ -219,6 +219,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       nowLabel: nowLabelOf(wnow),
       slots: slotList,
       conversation,
+      pain: leadPainFocus(product, lead),
     });
 
     const phoneId = thread.waPhoneId || product.waPhoneId || undefined;
