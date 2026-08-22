@@ -288,9 +288,11 @@ function QuickRepliesCard({ product }) {
   );
 }
 
-// ── Fluxo de ligação no 1º contato (mudou de Ajustes pra cá) ───────────────
-// Pedido NATIVO de permissão de ligação na primeira mensagem de lead novo;
-// saudação dupla pelo relógio do time. Grava product.waCallFlow (escrita de
+// ── Saudação automática no 1º contato ───────────────────────────────────────
+// A primeira mensagem de um lead novo recebe sozinha a saudação (TEXTO
+// simples; o pedido nativo de permissão de ligação foi removido em 22/08/2026
+// pra proteger o número — violação de taxa de atendimento das ligações).
+// Saudação dupla pelo relógio do time. Grava product.waCallFlow (escrita de
 // produto = permissão de Ajustes; sem ela o servidor recusa o salvar).
 function CallFlowCard({ product }) {
   const { refresh } = useData();
@@ -333,7 +335,7 @@ function CallFlowCard({ product }) {
   }
   const areaWide = { ...areaStyle, minHeight: 52, fontSize: 12.5 };
   return (
-    <Card title="Fluxo de ligação no 1º contato" hint={"a primeira mensagem de um lead novo recebe sozinha o pedido nativo de permissão de ligação · a resposta salta como pop-up pro SDR · exige \"Allow voice calls\" no número"}>
+    <Card title="Saudação automática no 1º contato" hint={"a primeira mensagem de um lead novo recebe sozinha a saudação do time (texto) · a resposta salta como pop-up pro SDR · sem pedido de ligação (removido pra proteger o número)"}>
       <div style={{ padding: "12px var(--inset-x) 16px", display: "flex", flexDirection: "column", gap: 10 }}>
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
           <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} />
@@ -349,17 +351,17 @@ function CallFlowCard({ product }) {
               <span className="mono dim" style={{ fontSize: 10 }}>fim de semana conta como fora do horário · a mesma régua vale pro gatilho "fora do horário" das regras</span>
             </div>
             <div>
-              <div className="kicker">dentro do horário (pede pra ligar agora)</div>
+              <div className="kicker">dentro do horário</div>
               <textarea ref={greetRef} value={greeting} onChange={(e) => setGreeting(e.target.value)} rows={2}
                 onFocus={() => { lastField.current = "greeting"; }}
-                placeholder={"Olá {nome}! Recebi seu formulário aqui. Posso te ligar pra uma breve conversa sobre a plataforma?"}
+                placeholder={"Olá {nome}! Recebi seu formulário aqui. Podemos conversar por aqui mesmo sobre a plataforma?"}
                 style={{ ...areaWide, marginTop: 6 }} />
             </div>
             <div>
-              <div className="kicker">fora do horário (avisa quando volta e já pede a autorização)</div>
+              <div className="kicker">fora do horário (avisa quando o time volta)</div>
               <textarea ref={afterRef} value={after} onChange={(e) => setAfter(e.target.value)} rows={2}
                 onFocus={() => { lastField.current = "after"; }}
-                placeholder={"Olá {nome}! Recebi seu formulário aqui. Nosso time está fora do horário agora, mas volta {volta}. Posso te ligar quando voltarmos?"}
+                placeholder={"Olá {nome}! Recebi seu formulário aqui. Nosso time está fora do horário agora, mas volta {volta}. Pode deixar sua mensagem que respondemos assim que voltarmos."}
                 style={{ ...areaWide, marginTop: 6 }} />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>

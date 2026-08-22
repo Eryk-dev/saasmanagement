@@ -324,6 +324,32 @@ test("conversa comum (sem lembrete pendente) não passa pelo gancho", async () =
   assert.equal(await handleSdrInbound(repo, { message: { from: "5541999990000", text: "sim" } }), null);
 });
 
+test("resposta ao 1º toque do robô (até 72h) vira alerta quente; depois disso, conversa normal", async () => {
+  const now = new Date("2026-08-19T15:00:00Z");
+  const repo = await world({
+    leads: [{ id: "L1", name: "Rafael", phone: "41999990000", stage: "Novo lead", createdAt: ISO("2026-08-19T12:00:00Z"), sdrLog: { firstTouchAt: ISO("2026-08-19T13:00:00Z"), firstTouchVia: "template" } }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads", name: "Rafael" }],
+  });
+  const r = await handleSdrInbound(repo, { message: { from: "5541999990000", text: "pode ser amanhã de manhã" }, now });
+  assert.equal(r, "hot");
+  const alerts = await repo.list("wa_alerts");
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0].text, "pode ser amanhã de manhã");
+  // 4 dias depois do toque: virou conversa normal, sem pop-up.
+  const later = new Date("2026-08-23T15:00:00Z");
+  const r2 = await handleSdrInbound(repo, { message: { from: "5541999990000", text: "e aí?" }, now: later });
+  assert.equal(r2, null);
+});
+
+test("1º toque que foi de GENTE (via human) não vira alerta do robô", async () => {
+  const now = new Date("2026-08-19T15:00:00Z");
+  const repo = await world({
+    leads: [{ id: "L1", name: "R", phone: "41999990000", stage: "Novo lead", createdAt: ISO("2026-08-19T12:00:00Z"), sdrLog: { firstTouchAt: ISO("2026-08-19T13:00:00Z"), firstTouchVia: "human" } }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads" }],
+  });
+  assert.equal(await handleSdrInbound(repo, { message: { from: "5541999990000", text: "oi" }, now }), null);
+});
+
 // ── Resumo do diagnóstico ────────────────────────────────────────────────────
 
 test("leadDigest fala com os rótulos do painel de qualificação", async () => {

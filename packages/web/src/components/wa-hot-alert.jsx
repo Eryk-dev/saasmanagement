@@ -170,7 +170,10 @@ export function WaHotAlert({ onOpenThread, onOpenLeadWhatsapp, onOpenLeadCard })
             <span className="mono dim" style={{ fontSize: 11, marginLeft: "auto" }}>{ago(cur.at)}</span>
           </div>
 
-          {accepted && <div style={{ marginTop: 8 }}><span style={chipStyle("var(--pos-soft, #DCFCE7)", "var(--pos, #15803D)")}>✆ topou receber a ligação, liga AGORA</span></div>}
+          {/* Permissão de ligação é LEGADO (o pedido saiu em 22/08/2026): o
+              aceite antigo ainda chega e vale como sinal de lead quentíssimo,
+              mas a ação agora é responder na hora, não discar. */}
+          {accepted && <div style={{ marginTop: 8 }}><span style={chipStyle("var(--pos-soft, #DCFCE7)", "var(--pos, #15803D)")}>topou conversar, responde AGORA</span></div>}
           {declined && <div style={{ marginTop: 8 }}><span style={chipStyle("var(--warn-soft, #FEF3C7)", "var(--warn, #B45309)")}>prefere sem ligação, resolve por mensagem</span></div>}
 
           <div style={{ marginTop: 10, padding: "10px 12px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 13.5, lineHeight: 1.45, color: "var(--fg-1)" }}>
