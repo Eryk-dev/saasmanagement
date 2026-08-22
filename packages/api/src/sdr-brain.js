@@ -54,7 +54,7 @@ function priceDeferral(nome, slots, wnow) {
 // Confirmação de agendamento: SEMPRE a copy comprovada (a mensagem da IA é
 // ignorada no agendar) — vende a call no formato que fecha e puxa o sócio.
 function bookingConfirmText(nome, quando, askEmail) {
-  const base = `Fechado${nome ? `, ${nome}` : ""}! Nossa call fica ${quando} então. Nosso especialista vai entrar nas suas contas com você e mostrar tudo funcionando ao vivo. Se tiver sócio ou alguém que decida junto, traz pra call que a conversa rende mais.`;
+  const base = `Fechado${nome ? `, ${nome}` : ""}! Nossa call fica ${quando} então. Nosso especialista vai te fazer uma demonstração ao vivo, com a ferramenta clonando anúncios na prática. Se tiver sócio ou alguém que decida junto, traz pra call que a conversa rende mais.`;
   return askEmail
     ? `${base} Me passa teu melhor e-mail que eu te mando o convite da call por lá?`
     : `${base} Te mando o lembrete por aqui um pouco antes!`;
@@ -194,7 +194,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
 
     // Contexto pra decisão: agenda real + conversa + relógio BRT.
     const wnow = wallNow(at);
-    const { slots } = await slotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 4, ...OFFER_HOURS });
+    const { slots } = await slotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 16, ...OFFER_HOURS });
     const slotList = slots.map((s) => ({ ...s, label: slotLabel(s.at, wnow) }));
     // Nota de voz que disparou a decisão vira texto (as antigas já carregam o
     // transcript gravado); sem transcrição possível, fica "🎤 áudio" e o

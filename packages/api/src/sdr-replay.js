@@ -80,7 +80,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
       // validade do horário em si é papel do motor (sempre valida na hora).
       let slotList = [];
       try {
-        const { slots } = await slotsForLead(repo, { lead, saas, now: wnow, limit: 4, ...OFFER_HOURS });
+        const { slots } = await slotsForLead(repo, { lead, saas, now: wnow, limit: 16, ...OFFER_HOURS });
         slotList = slots.map((s) => ({ ...s, label: slotLabel(s.at, wnow) }));
       } catch { /* sem agenda: a IA é instruída a perguntar período */ }
 

@@ -67,12 +67,12 @@ test("lead novo que nunca escreveu recebe o template com nome, SDR e diagnóstic
   const repo = await world({
     leads: [{ id: "L1", name: "Rafael Silva", phone: "41999990000", stage: "Novo lead", accounts: "3-5", niche: "autopecas", createdAt: ISO("2026-08-19T12:50:00Z") }],
   });
-  const wa = makeWa({ approved: ["sdr_primeiro_toque"] });
+  const wa = makeWa({ approved: ["sdr_primeiro_toque_v2"] });
   const r = runner(repo, wa, nowRef);
   const stats = await r.tick();
   assert.equal(stats.firstTouch, 1);
   assert.equal(wa.sent[0].kind, "template");
-  assert.equal(wa.sent[0].name, "sdr_primeiro_toque");
+  assert.equal(wa.sent[0].name, "sdr_primeiro_toque_v2");
   assert.deepEqual(wa.sent[0].params, ["Rafael", "Manuela", "3 a 5 contas · autopeças"]);
   const lead = await repo.get("leads", "L1");
   assert.equal(lead.sdrLog.firstTouchVia, "template");
@@ -94,7 +94,7 @@ test("delay mínimo e o carimbo enabledAt seguram o robô (backlog antigo é fil
       { id: "velho", name: "B", phone: "41922222222", stage: "Novo lead", createdAt: ISO("2026-07-30T12:00:00Z") },
     ],
   });
-  const wa = makeWa({ approved: ["sdr_primeiro_toque"] });
+  const wa = makeWa({ approved: ["sdr_primeiro_toque_v2"] });
   await runner(repo, wa, nowRef).tick();
   assert.equal(wa.sent.length, 0);
 });
@@ -109,7 +109,7 @@ test("sem template aprovado o toque espera; aprovou, sai no ciclo seguinte", asy
   await r.tick();
   assert.equal(wa.sent.length, 0);
   assert.equal((await repo.get("leads", "L1")).sdrLog?.firstTouchAt, undefined, "não carimba: vai tentar de novo");
-  wa.approved.push("sdr_primeiro_toque");
+  wa.approved.push("sdr_primeiro_toque_v2");
   nowRef.t = new Date("2026-08-19T13:06:00Z"); // fura o cache de 5 min da listagem
   const r2 = runner(repo, wa, nowRef);
   await r2.tick();
@@ -139,7 +139,7 @@ test("mensagem já enviada por gente (ou pelo fluxo de ligação) cala o primeir
     threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads" }],
     messages: [{ id: "out1", thread: "5541999990000", leadId: "L1", saas: "leverads", direction: "out", author: "leonardo", text: "Oiii", at: ISO("2026-08-19T12:45:00Z") }],
   });
-  const wa = makeWa({ approved: ["sdr_primeiro_toque"] });
+  const wa = makeWa({ approved: ["sdr_primeiro_toque_v2"] });
   await runner(repo, wa, nowRef).tick();
   assert.equal(wa.sent.length, 0);
   assert.equal((await repo.get("leads", "L1")).sdrLog.firstTouchVia, "human");
@@ -158,7 +158,7 @@ test("opt-out, número inválido, saída lateral, interno e desqualificado ficam
       { id: "f", ...base, phone: "" },
     ],
   });
-  const wa = makeWa({ approved: ["sdr_primeiro_toque"] });
+  const wa = makeWa({ approved: ["sdr_primeiro_toque_v2"] });
   await runner(repo, wa, nowRef).tick();
   assert.equal(wa.sent.length, 0);
 });
@@ -366,10 +366,10 @@ test("modo teste: o 1º toque também sai pra lead INTERNO (e só com a chave li
     product: { sdrBot: { enabled: true, enabledAt: ISO("2026-08-01T00:00:00Z"), conversationTest: true } },
     leads: [{ id: "T1", name: "Leo Teste", phone: "41995063622", stage: "Novo lead", internal: true, createdAt: ISO("2026-08-19T12:50:00Z") }],
   });
-  const wa = makeWa({ approved: ["sdr_primeiro_toque"] });
+  const wa = makeWa({ approved: ["sdr_primeiro_toque_v2"] });
   const stats = await runner(repo, wa, nowRef).tick();
   assert.equal(stats.firstTouch, 1);
-  assert.equal(wa.sent[0].name, "sdr_primeiro_toque");
+  assert.equal(wa.sent[0].name, "sdr_primeiro_toque_v2");
 });
 
 test("modo teste com a produção DESLIGADA: lead interno recebe o robô completo; lead real, nada", async () => {
@@ -381,7 +381,7 @@ test("modo teste com a produção DESLIGADA: lead interno recebe o robô complet
       { id: "R1", name: "Real", phone: "41988887777", stage: "Novo lead", createdAt: ISO("2026-08-19T12:50:00Z") },
     ],
   });
-  const wa = makeWa({ approved: ["sdr_primeiro_toque"] });
+  const wa = makeWa({ approved: ["sdr_primeiro_toque_v2"] });
   const stats = await runner(repo, wa, nowRef).tick();
   assert.equal(stats.firstTouch, 1, "só o lead interno foi tocado");
   assert.equal(wa.sent.length, 1);

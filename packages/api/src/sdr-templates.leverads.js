@@ -12,23 +12,28 @@
 // Copy: sem travessão (regra da casa), curta, 1 pergunta por vez, e a
 // confirmação VENDE a call no formato que fecha (demo dentro da conta) e puxa
 // o sócio (decisor ausente = 0/5 no histórico de pitch).
+// v2 do 1º toque e da confirmação (22/08, correção do Leo): a gente NÃO entra
+// nas contas do lead — a call é uma DEMONSTRAÇÃO da ferramenta funcionando.
+// Template aprovado não pode ser editado sem nova revisão, e nome apagado fica
+// 30 dias bloqueado na Meta; por isso versão nova com sufixo _v2 (o motor
+// aponta pro _v2 por default; os antigos ficam órfãos na WABA, sem uso).
 // Copy calibrada na mineração do histórico real (ago/2026): abertura "Oiii" da
 // persona do número, zero emoji digitado, referência ao diagnóstico, pergunta
 // única no fim. Lembrete e resgate reaproveitam as mensagens que o time JÁ
 // manda na mão e que comprovadamente respondem/recuperam.
 export const SDR_TEMPLATES = [
   {
-    name: "sdr_primeiro_toque",
+    name: "sdr_primeiro_toque_v2",
     category: "MARKETING",
     language: "pt_BR",
-    body: "Oiii, {{1}}. {{2}} falando, da LeverAds. Recebi seu diagnóstico aqui: {{3}}. Consigo te mostrar a plataforma funcionando nas suas próprias contas, ao vivo, numa call rápida. Ainda essa semana, qual período fica melhor pra você: manhã ou tarde?",
+    body: "Oiii, {{1}}. {{2}} falando, da LeverAds. Recebi seu diagnóstico aqui: {{3}}. Consigo te mostrar a plataforma funcionando ao vivo, numa demonstração rápida. Ainda essa semana, qual período fica melhor pra você: manhã ou tarde?",
     example: ["Rafael", "Manuela", "3 a 5 contas de autopeças"],
   },
   {
-    name: "sdr_confirmacao_call",
+    name: "sdr_confirmacao_call_v2",
     category: "UTILITY",
     language: "pt_BR",
-    body: "Fechado, {{1}}! Nossa call fica {{2}} então. Nosso especialista vai entrar nas suas contas com você e mostrar tudo funcionando ao vivo. Se tiver sócio ou alguém que decida junto, traz pra call que a conversa rende mais. Qualquer coisa me chama por aqui!",
+    body: "Fechado, {{1}}! Nossa call fica {{2}} então. Nosso especialista vai te fazer uma demonstração ao vivo, com a ferramenta clonando anúncios na prática. Se tiver sócio ou alguém que decida junto, traz pra call que a conversa rende mais. Qualquer coisa me chama por aqui!",
     example: ["Rafael", "amanhã às 10h"],
   },
   {
