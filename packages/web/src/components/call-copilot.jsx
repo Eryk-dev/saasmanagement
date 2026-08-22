@@ -9,12 +9,14 @@
 // Developer Preview e exige todos os participantes inscritos no programa,
 // impossível com o lead. Quando virar GA, troca-se a captação e o painel fica.
 import React from "react";
+import { createPortal } from "react-dom";
 import { api } from "../lib/api.js";
 import { DEFAULT_SCRIPTS } from "../lib/scripts.js";
 
 const { useState: useS, useEffect: useE, useRef: useR } = React;
 
 const CHUNK_MS = 15_000; // pedaço fechado e enviado a cada 15s (webm válido por reinício do recorder)
+const FRAME_MS = 25_000; // um print da aba a cada 25s → leitura visual do cliente
 
 // Checklist = os passos do roteiro da call (a mesma fonte do painel que o
 // closer já lê). Título só; a fala/dica ficam no roteiro.
@@ -26,8 +28,9 @@ export function CallCopilot({ lead }) {
   const [err, setErr] = useS(null);
   const [state, setState] = useS(null);   // GET /copilot
   const [elapsed, setElapsed] = useS(0);
+  const [pipWin, setPipWin] = useS(null); // janela flutuante (Document PiP)
   const live = useR(false);
-  const media = useR(null); // { streams, ctx, dest, mime, timer }
+  const media = useR(null); // { streams, ctx, dest, mime, timer, video, frameTimer }
 
   useE(() => () => { live.current = false; teardown(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -35,9 +38,72 @@ export function CallCopilot({ lead }) {
     const m = media.current;
     if (!m) return;
     try { clearTimeout(m.timer); } catch { /* ok */ }
+    try { clearInterval(m.frameTimer); } catch { /* ok */ }
+    try { m.video?.pause(); } catch { /* ok */ }
     for (const s of m.streams || []) for (const t of s.getTracks()) { try { t.stop(); } catch { /* ok */ } }
     try { m.ctx?.close(); } catch { /* ok */ }
     media.current = null;
+  }
+
+  // Frame da aba do Meet (~25s): jpeg pequeno → leitura visual (câmera do
+  // cliente, quantas pessoas, atenção aparente). A imagem não é guardada.
+  function startFrames(disp) {
+    const track = disp.getVideoTracks()[0];
+    if (!track) return; // sem vídeo da aba, segue só o áudio
+    const video = document.createElement("video");
+    video.srcObject = new MediaStream([track]);
+    video.muted = true;
+    video.play().catch(() => { /* sem frames, áudio segue */ });
+    const canvas = document.createElement("canvas");
+    media.current.video = video;
+    media.current.frameTimer = setInterval(() => {
+      if (!live.current || video.videoWidth === 0) return;
+      const w = 640;
+      const h = Math.round((video.videoHeight / video.videoWidth) * w) || 360;
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(video, 0, 0, w, h);
+      canvas.toBlob(async (blob) => {
+        if (!blob || !live.current) return;
+        try {
+          const r = await api.copilotFrame(lead.id, blob);
+          if (r?.visual) setState((prev) => (prev ? { ...prev, visual: r.visual } : prev));
+        } catch { /* leitura visual é bônus, nunca derruba a call */ }
+      }, "image/jpeg", 0.7);
+    }, FRAME_MS);
+  }
+
+  // Janela FLUTUANTE (Document Picture-in-Picture): fica por cima de TUDO,
+  // inclusive do Meet e da apresentação compartilhada — é ali que o closer
+  // olha durante a call, não no drawer. Estilos e tema são clonados pra
+  // dentro; fechar a janelinha só volta o painel pro drawer (a captura segue).
+  async function openFloat() {
+    if (!window.documentPictureInPicture) {
+      setErr("seu Chrome não tem janela flutuante (Document PiP) — atualize o Chrome");
+      return;
+    }
+    try {
+      const w = await window.documentPictureInPicture.requestWindow({ width: 360, height: 480 });
+      for (const ss of document.styleSheets) {
+        try {
+          const css = [...ss.cssRules].map((r) => r.cssText).join("\n");
+          const st = w.document.createElement("style");
+          st.textContent = css;
+          w.document.head.appendChild(st);
+        } catch {
+          if (ss.href) {
+            const l = w.document.createElement("link");
+            l.rel = "stylesheet"; l.href = ss.href;
+            w.document.head.appendChild(l);
+          }
+        }
+      }
+      for (const attr of document.documentElement.attributes) w.document.documentElement.setAttribute(attr.name, attr.value);
+      w.document.title = "Copiloto da call";
+      w.document.body.style.margin = "0";
+      w.document.body.style.background = "var(--bg-0, var(--bg-1, #fff))";
+      w.addEventListener("pagehide", () => setPipWin(null));
+      setPipWin(w);
+    } catch (e) { setErr(e.message || "não deu pra abrir a janela flutuante"); }
   }
 
   // Um ciclo de gravação: recorder novo → 15s → stop → blob completo → upload →
@@ -72,7 +138,6 @@ export function CallCopilot({ lead }) {
       // 2) … e a ABA do Meet (o cliente). O Chrome exige vídeo no picker; o
       // track de vídeo é parado na sequência, só o áudio interessa.
       const disp = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-      for (const t of disp.getVideoTracks()) t.stop();
       if (!disp.getAudioTracks().length) {
         for (const t of [...mic.getTracks(), ...disp.getTracks()]) t.stop();
         setPhase("idle");
@@ -94,8 +159,11 @@ export function CallCopilot({ lead }) {
       live.current = true;
       setPhase("live"); setElapsed(0);
       cycle();
+      startFrames(disp);
       // se o closer parar o compartilhamento pelo aviso do Chrome, encerra junto
       disp.getAudioTracks()[0].addEventListener("ended", stop);
+      // já abre a flutuante: é nela que se olha durante a call
+      openFloat();
     } catch (e) {
       teardown(); setPhase("idle");
       if (e?.name !== "NotAllowedError") setErr(e.message || "não deu pra iniciar a captura");
@@ -105,6 +173,8 @@ export function CallCopilot({ lead }) {
   async function stop() {
     if (!live.current) return;
     live.current = false; setPhase("stopping");
+    try { pipWin?.close(); } catch { /* ok */ }
+    setPipWin(null);
     teardown();
     try { await api.copilotStop(lead.id); } catch { /* ok */ }
     setPhase("idle");
@@ -126,9 +196,10 @@ export function CallCopilot({ lead }) {
   const doneIds = new Set((state?.cues?.steps || []).filter((x) => x.done).map((x) => x.id));
   const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
   const ss = String(elapsed % 60).padStart(2, "0");
+  const atencaoCor = { alta: "var(--pos)", media: "var(--warn)", baixa: "var(--neg)" };
 
-  return (
-    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-inset)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+  const painel = (
+    <div style={{ border: pipWin ? "none" : "1px solid var(--line-1)", borderRadius: pipWin ? 0 : "var(--r-3)", background: "var(--bg-inset)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8, minHeight: pipWin ? "100vh" : undefined, boxSizing: "border-box" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span className="kicker accent">Copiloto da call</span>
         {phase === "live" && <span className="mono tnum" style={{ fontSize: 11, color: "var(--neg)" }}>● {mm}:{ss}</span>}
@@ -141,6 +212,12 @@ export function CallCopilot({ lead }) {
           </button>
         )}
         {phase === "arming" && <span className="mono dim" style={{ fontSize: 11 }}>escolha a guia do Meet e marque "compartilhar áudio da guia"…</span>}
+        {phase === "live" && !pipWin && (
+          <button onClick={openFloat} title="Abrir numa janelinha que fica por cima de tudo (Meet e apresentação inclusos)"
+            style={{ height: 28, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600 }}>
+            ◱ flutuar
+          </button>
+        )}
         {(phase === "live" || phase === "stopping") && (
           <button onClick={stop} disabled={phase === "stopping"} style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--neg)", color: "var(--neg)", background: "transparent", fontSize: 11.5, fontWeight: 600 }}>
             {phase === "stopping" ? "salvando…" : "■ parar"}
@@ -178,6 +255,15 @@ export function CallCopilot({ lead }) {
           </div>
         )}
         {state?.cues?.alerta && <div className="mono" style={{ fontSize: 11, color: "var(--warn)" }}>⚠ {state.cues.alerta}</div>}
+        {/* Leitura visual: presença e engajamento aparente do outro lado */}
+        {state?.visual && (
+          <div className="mono" style={{ fontSize: 11, color: "var(--fg-3)" }}
+            title="Leitura do print da aba a cada 25s: presença e engajamento aparente (a imagem não fica salva)">
+            👁 {state.visual.cameraLigada ? `câmera ligada · ${state.visual.pessoas} em vídeo` : "câmera desligada"}
+            {state.visual.atencao !== "na" && <> · <span style={{ color: atencaoCor[state.visual.atencao] }}>atenção {state.visual.atencao}</span></>}
+            {state.visual.nota ? ` · ${state.visual.nota}` : ""}
+          </div>
+        )}
         {/* Transcrição (cauda) — colapsada por padrão, ninguém lê em call */}
         {state?.transcriptTail && (
           <details>
@@ -188,4 +274,21 @@ export function CallCopilot({ lead }) {
       </>)}
     </div>
   );
+
+  // Flutuando: o conteúdo vai por portal pra janelinha PiP (que fica por cima
+  // de tudo); no drawer sobra um lembrete com o "trazer de volta".
+  if (pipWin) {
+    return (
+      <>
+        <div style={{ border: "1px dashed var(--line-2)", borderRadius: "var(--r-3)", padding: "8px 12px", display: "flex", alignItems: "center", gap: 8 }}>
+          <span className="kicker accent">Copiloto</span>
+          <span className="mono dim" style={{ fontSize: 11 }}>rodando na janela flutuante · {mm}:{ss}</span>
+          <span style={{ flex: 1 }} />
+          <button onClick={() => { try { pipWin.close(); } catch { /* ok */ } setPipWin(null); }} className="mono dim" style={{ fontSize: 11 }}>trazer de volta</button>
+        </div>
+        {createPortal(painel, pipWin.document.body)}
+      </>
+    );
+  }
+  return painel;
 }
