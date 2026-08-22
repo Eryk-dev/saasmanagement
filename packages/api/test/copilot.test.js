@@ -15,7 +15,7 @@ function fakes() {
   const seen = [];
   const transcriber = {
     configured: () => true,
-    transcribe: async (buf, opts) => { seen.push(opts); return `Vendedor: fala ${seen.length} com bastante texto pra passar do minimo exigido no stop`; },
+    transcribe: async (buf, opts) => { seen.push(opts); return `Vendedor: fala ${seen.length} com bastante texto pra passar do minimo de oitenta caracteres que o cue exige antes de analisar qualquer coisa`; },
   };
   const anthropic = {
     configured: () => true,
@@ -25,7 +25,11 @@ function fakes() {
       alerta: null, sugestao: "Chama pra demo ao vivo agora.",
     } }),
   };
-  return { transcriber, anthropic, seen };
+  const vision = {
+    configured: () => true,
+    read: async () => ({ cameraLigada: true, pessoas: 2, atencao: "alta", nota: "segunda pessoa entrou na sala" }),
+  };
+  return { transcriber, anthropic, vision, seen };
 }
 
 async function build() {
@@ -36,7 +40,7 @@ async function build() {
   const app = Fastify();
   await app.register(multipart);
   app.addHook("onRequest", async (req) => { if (req.headers["x-user"]) req.authUser = { id: String(req.headers["x-user"]) }; });
-  registerCopilotRoutes(app, repo, { transcriber: f.transcriber, anthropic: f.anthropic });
+  registerCopilotRoutes(app, repo, { transcriber: f.transcriber, anthropic: f.anthropic, vision: f.vision });
   return { app, repo, ...f };
 }
 
@@ -62,7 +66,7 @@ test("copiloto: start → chunks viram transcrição, cue no 3º pedaço, stop g
 
   const c1 = (await send()).json();
   assert.match(c1.text, /Vendedor: fala 1/);
-  assert.equal(c1.cues, null, "cue só no 3º pedaço");
+  assert.ok(c1.cues, "o 1º pedaço com fala já orienta");
   await send();
   const c3 = (await send()).json();
   assert.equal(c3.cues.sugestao, "Chama pra demo ao vivo agora.");
@@ -84,6 +88,27 @@ test("copiloto: start → chunks viram transcrição, cue no 3º pedaço, stop g
 
   // sessão encerrada: chunk novo é recusado (o front reinicia com start)
   assert.equal((await send()).statusCode, 409);
+  await app.close();
+});
+
+test("copiloto: frame da aba vira leitura visual na sessão (a imagem não persiste)", async () => {
+  const { app, repo } = await build();
+  const as = { "x-user": "jon" };
+  await app.inject({ method: "POST", url: "/api/leads/le1/copilot/start", headers: as, payload: { checklist: CHECKLIST } });
+  const boundary = "----frame";
+  const payload = Buffer.concat([
+    Buffer.from(`--${boundary}\r\ncontent-disposition: form-data; name="file"; filename="frame.jpg"\r\ncontent-type: image/jpeg\r\n\r\n`),
+    Buffer.alloc(8000, 3),
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+  const r = (await app.inject({ method: "POST", url: "/api/leads/le1/copilot/frame",
+    headers: { ...as, "content-type": `multipart/form-data; boundary=${boundary}` }, payload })).json();
+  assert.equal(r.visual.pessoas, 2);
+  assert.equal(r.visual.atencao, "alta");
+  const doc = await repo.get("copilot_sessions", "cs_le1");
+  assert.equal(doc.visual.nota, "segunda pessoa entrou na sala");
+  const st = (await app.inject({ url: "/api/leads/le1/copilot", headers: as })).json();
+  assert.equal(st.visual.cameraLigada, true);
   await app.close();
 });
 

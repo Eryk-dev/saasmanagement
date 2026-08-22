@@ -24,7 +24,50 @@ const STEREO_INSTRUCTIONS = "O áudio é ESTÉREO: o canal esquerdo é o VENDEDO
 
 const sessionId = (leadId) => `cs_${leadId}`;
 
-export function registerCopilotRoutes(app, repo, { transcriber = defaultTranscriber, anthropic = null } = {}) {
+// ── Leitura visual (frames da aba do Meet) ──────────────────────────────────
+// Um print a cada ~25s vira uma leitura compacta: câmera ligada? quantas
+// pessoas? atenção aparente? O frame NUNCA é salvo — só a leitura estruturada.
+// Régua honesta: isso é presença e engajamento aparente, não "análise corporal
+// científica"; o valor está nos sinais objetivos (câmera desligou, entrou mais
+// gente = decisor, cliente sumiu da frente).
+const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
+const VISION_PROMPT = "Você vê um print da tela de uma call do Google Meet. Responda SÓ com JSON válido, sem markdown: " +
+  '{"cameraLigada": bool (a câmera de ALGUM participante remoto aparece ligada?), "pessoas": número de pessoas visíveis em vídeo, ' +
+  '"atencao": "alta"|"media"|"baixa"|"na" (postura e olhar de quem aparece; "na" se ninguém visível), ' +
+  '"nota": "1 frase curta e objetiva sobre o que se vê (ex.: cliente atento, segunda pessoa entrou, câmera desligada)"}. ' +
+  "Nunca invente o que não dá pra ver.";
+
+export function makeVisionReader({ fetch: f = globalThis.fetch, apiKey = process.env.OPENROUTER_API_KEY || "", model = process.env.COPILOT_VISION_MODEL || "google/gemini-2.5-flash-lite" } = {}) {
+  const configured = () => !!apiKey;
+  async function read(buffer, mime = "image/jpeg") {
+    if (!configured()) throw new Error("visão não configurada — OPENROUTER_API_KEY ausente");
+    const b64 = Buffer.isBuffer(buffer) ? buffer.toString("base64") : Buffer.from(buffer).toString("base64");
+    const res = await f(OR_URL, {
+      method: "POST",
+      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        model, temperature: 0,
+        messages: [{ role: "user", content: [
+          { type: "text", text: VISION_PROMPT },
+          { type: "image_url", image_url: { url: `data:${mime};base64,${b64}` } },
+        ] }],
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body.error) throw new Error(`leitura visual falhou (${res.status}): ${body?.error?.message || "?"}`);
+    const raw = String(body.choices?.[0]?.message?.content || "").replace(/```json|```/g, "").trim();
+    const j = JSON.parse(raw);
+    return {
+      cameraLigada: !!j.cameraLigada,
+      pessoas: Math.max(0, Math.floor(Number(j.pessoas) || 0)),
+      atencao: ["alta", "media", "baixa"].includes(j.atencao) ? j.atencao : "na",
+      nota: String(j.nota || "").slice(0, 200),
+    };
+  }
+  return { configured, read };
+}
+
+export function registerCopilotRoutes(app, repo, { transcriber = defaultTranscriber, anthropic = null, vision = makeVisionReader() } = {}) {
   function requireUser(req, reply) {
     if (req.authUser?.id) return req.authUser;
     reply.code(401).send({ error: "o copiloto é por pessoa — faça login no cockpit" });
@@ -39,11 +82,13 @@ export function registerCopilotRoutes(app, repo, { transcriber = defaultTranscri
     if (!anthropic?.configured?.() || typeof anthropic.copilotCue !== "function") return null;
     const transcript = transcriptOf(session);
     if (transcript.length < 80) return null; // cedo demais: nada útil pra analisar
+    const v = session.visual;
     const { cue } = await anthropic.copilotCue({
       transcript,
       checklist: session.checklist || [],
       lead: { name: lead.name, company: lead.company, niche: lead.niche, stage: lead.stage },
       productName: product?.name || "LeverAds",
+      visual: v ? `câmera ${v.cameraLigada ? "ligada" : "desligada"} · ${v.pessoas} pessoa(s) em vídeo · atenção ${v.atencao} · ${v.nota}` : "",
     });
     return cue || null;
   }
@@ -99,7 +144,8 @@ export function registerCopilotRoutes(app, repo, { transcriber = defaultTranscri
     if (text) segments.push({ t: new Date().toISOString(), text });
     const seq = (session.seq || 0) + 1;
     let cues = session.cues || null;
-    if (text && seq % CUE_EVERY === 0) {
+    // O 1º pedaço com fala já gera cue (feedback imediato); depois, 1 a cada 3.
+    if (text && (seq === 1 || seq % CUE_EVERY === 0)) {
       try {
         const product = lead?.saas ? await repo.get("products", lead.saas) : null;
         const fresh = await refreshCues({ ...session, segments }, lead || {}, product);
@@ -112,6 +158,28 @@ export function registerCopilotRoutes(app, repo, { transcriber = defaultTranscri
     return { ok: true, text, cues };
   });
 
+  // Um frame da aba (~25s): leitura visual compacta gravada na sessão. O jpeg
+  // morre aqui — nada de imagem no banco. Best-effort: falha não afeta o áudio.
+  app.post("/api/leads/:id/copilot/frame", async (req, reply) => {
+    const user = requireUser(req, reply);
+    if (!user) return;
+    if (!vision?.configured?.()) return { ok: true, skipped: true };
+    const session = await repo.get("copilot_sessions", sessionId(req.params.id));
+    if (!session || session.endedAt) return reply.code(409).send({ error: "sessão do copiloto não está aberta" });
+    const file = await req.file();
+    if (!file) return reply.code(400).send({ error: "envie o frame (multipart, campo file)" });
+    const buf = await file.toBuffer();
+    if (buf.length < 4000) return { ok: true, skipped: true };
+    try {
+      const visual = { ...(await vision.read(buf, file.mimetype || "image/jpeg")), at: new Date().toISOString() };
+      await repo.update("copilot_sessions", session.id, { visual });
+      return { ok: true, visual };
+    } catch (err) {
+      req.log.warn({ err: err.message, lead: req.params.id }, "copiloto: leitura visual falhou (áudio segue)");
+      return { ok: false };
+    }
+  });
+
   // Estado pro painel (polling): transcrição (cauda) + cues + checklist.
   app.get("/api/leads/:id/copilot", async (req, reply) => {
     const user = requireUser(req, reply);
@@ -121,7 +189,7 @@ export function registerCopilotRoutes(app, repo, { transcriber = defaultTranscri
     const transcript = transcriptOf(s);
     return {
       active: !s.endedAt, startedAt: s.startedAt, endedAt: s.endedAt || "",
-      checklist: s.checklist || [], cues: s.cues || null,
+      checklist: s.checklist || [], cues: s.cues || null, visual: s.visual || null,
       transcriptTail: transcript.slice(-1600), chars: transcript.length,
     };
   });
