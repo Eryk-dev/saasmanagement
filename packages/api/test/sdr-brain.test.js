@@ -22,6 +22,7 @@ async function world({ lead = {}, messages = [], sdrBot = {}, users } = {}) {
   await repo.create("products", {
     id: "leverads", name: "LeverAds", funnel: FUNNEL,
     leadQuestions: [{ key: "accounts", label: "Contas", options: [{ value: "3-5", label: "3 a 5 contas" }] }],
+    painMap: { B: "Conta banida, precisa anunciar em conta nova", OEM: "Anunciar pelo código OEM sem montar ficha" },
     sdrBot: { enabled: true, enabledAt: ISO("2026-08-01T00:00:00Z"), conversation: true, ...sdrBot },
   });
   for (const u of users || [
@@ -283,4 +284,22 @@ test("modo teste: com conversationTest, a IA conversa com lead INTERNO; lead rea
   });
   const f3 = makeFakes();
   assert.equal(await brainOf(repo3, f3).handleInbound(INBOUND), null);
+});
+
+test("dor de origem chega na IA com o foco certo (clone × OEM)", async () => {
+  const repo = await world({
+    lead: { sourcePain: "B" },
+    messages: [{ direction: "in", text: "oi", at: ISO("2026-08-19T12:59:00Z") }],
+  });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Entendo, conta banida trava tudo mesmo." }] });
+  await brainOf(repo, fakes).handleInbound(INBOUND);
+  assert.deepEqual(fakes.calls[0].pain, { code: "B", label: "Conta banida, precisa anunciar em conta nova", mode: "clone" });
+
+  const repo2 = await world({
+    lead: { sourcePain: "OEM" },
+    messages: [{ direction: "in", text: "oi", at: ISO("2026-08-19T12:59:00Z") }],
+  });
+  const f2 = makeFakes({ decisions: [{ acao: "responder", mensagem: "O OEM monta o anúncio pelo código da peça." }] });
+  await brainOf(repo2, f2).handleInbound(INBOUND);
+  assert.equal(f2.calls[0].pain.mode, "oem");
 });

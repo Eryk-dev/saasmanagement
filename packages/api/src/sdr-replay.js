@@ -11,7 +11,7 @@
 import { kindOf, firstStage } from "./stages.js";
 import { leadGrade } from "./routes.marketing.js";
 import { slotsForLead, slotLabel, wallNow, OFFER_HOURS } from "./agenda-slots.js";
-import { leadDigest, SDR_AUTHOR } from "./sdr-flow.js";
+import { leadDigest, leadPainFocus, SDR_AUTHOR } from "./sdr-flow.js";
 
 const DOC_ID = "sdr_replay";
 const PRICE_RX = /r\$\s*\d|\b\d{2,}\s*(reais|por m[eê]s|\/m[eê]s|mensais)\b|\ba partir de\s*\d/i;
@@ -109,6 +109,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
             nowLabel,
             slots: slotList,
             conversation,
+            pain: leadPainFocus(product, lead),
           });
           report.actions[d.acao] = (report.actions[d.acao] || 0) + 1;
           if ((d.acao === "agendar" || d.acao === "remarcar")) {
