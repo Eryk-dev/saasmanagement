@@ -249,6 +249,20 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     return createMeetForLead(fresh, { kind: "integracao" });
   }
 
+  // Mesmo gatilho pra CALL DE VENDA marcada pelo SDR automatizado (sdr-brain):
+  // o robô agenda e o Meet nasce sozinho, com convite quando o lead tem e-mail;
+  // o link chega ao lead pelo lembrete de 10 minutos (sdr-flow). Re-checa o
+  // lead fresco (agendamentos rápidos em sequência não duplicam o evento).
+  async function autoCallMeet(leadId) {
+    if (!client.configured()) return null;
+    const fresh = await repo.get("leads", leadId);
+    if (!fresh || !fresh.callAt || fresh.callUrl) return null;
+    const ok = (await client.connected().catch(() => false))
+      || (fresh.closer && (await gu.meetReadyFor(fresh.closer).catch(() => false)));
+    if (!ok) return null;
+    return createMeetForLead(fresh, { kind: "call" });
+  }
+
   app.post("/api/leads/:id/meet", async (req, reply) => {
     if (!client.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Google não configurado (GOOGLE_CLIENT_ID/SECRET)" });
     const lead = await repo.get("leads", req.params.id);
@@ -321,5 +335,5 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     }
   });
 
-  return { client, googleUser: gu, briefer, autoIntegrationMeet };
+  return { client, googleUser: gu, briefer, autoIntegrationMeet, autoCallMeet };
 }

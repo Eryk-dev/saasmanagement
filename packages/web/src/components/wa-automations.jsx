@@ -621,19 +621,38 @@ function SdrBotCard({ product }) {
   const [firstTouch, setFirstTouch] = useState(cfg.firstTouch !== false);
   const [reminders, setReminders] = useState(cfg.reminders !== false);
   const [rescue, setRescue] = useState(cfg.rescue !== false);
+  const [conversation, setConversation] = useState(cfg.conversation === true);
   const [delay, setDelay] = useState(cfg.firstTouchDelayMin ?? 3);
   const [status, setStatus] = useState(null);
   const [note, setNote] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [replayDoc, setReplayDoc] = useState(null);
+  const [replayBusy, setReplayBusy] = useState(false);
 
   const loadStatus = () => api.sdrStatus(product.id).then(setStatus).catch((e) => setStatus({ error: e.message || "não deu pra ler o status" }));
-  useEffect(() => { loadStatus(); }, [product.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const loadReplay = () => api.sdrReplayStatus().then(setReplayDoc).catch(() => {});
+  useEffect(() => { loadStatus(); loadReplay(); }, [product.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Bateria rodando: acompanha o progresso a cada 5s até terminar.
+  useEffect(() => {
+    if (replayDoc?.status !== "running") return;
+    const t = setInterval(loadReplay, 5000);
+    return () => clearInterval(t);
+  }, [replayDoc?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function startReplay() {
+    setReplayBusy(true); setNote(null);
+    try {
+      await api.sdrReplayStart(product.id, { threads: 25, turns: 3 });
+      await loadReplay();
+    } catch (e) { setNote({ ok: false, text: e.message || "não deu pra iniciar a bateria" }); }
+    finally { setReplayBusy(false); }
+  }
 
   async function save() {
     try {
       await api.update("products", product.id, {
         sdrBot: {
-          ...cfg, enabled: on, firstTouch, reminders, rescue,
+          ...cfg, enabled: on, firstTouch, reminders, rescue, conversation,
           firstTouchDelayMin: Math.max(1, Number(delay) || 3),
           // Carimbo de QUANDO ligou: o robô só faz 1º toque em lead criado
           // DEPOIS dele (backlog antigo segue fila humana). Religar re-carimba.
@@ -678,6 +697,11 @@ function SdrBotCard({ product }) {
                 <input type="checkbox" checked={rescue} onChange={(e) => setRescue(e.target.checked)} />
                 resgate de no-show
               </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, cursor: "pointer", fontWeight: 600 }}
+                title="Fase 2: a IA responde a conversa e marca a call sozinha (horários reais da agenda, preço nunca, handoff pra humano). Só ligar depois de rodar e revisar a bateria de replay abaixo.">
+                <input type="checkbox" checked={conversation} onChange={(e) => setConversation(e.target.checked)} />
+                conversa com IA (agenda sozinha)
+              </label>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <span className="kicker">1º toque sai</span>
@@ -710,6 +734,24 @@ function SdrBotCard({ product }) {
           {on && pending.length > 0 && (
             <span className="mono dim" style={{ fontSize: 10.5 }}>
               sem o template aprovado, o 1º toque só sai pra lead que já escreveu (janela aberta); lembrete cai em alerta quente quando a janela fecha
+            </span>
+          )}
+        </div>
+        {/* Bateria de replay: o portão da conversa com IA — roda o cérebro
+            contra conversas reais do histórico e mostra o que ele teria feito. */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span className="kicker">bateria de replay (testa a IA em 25 conversas reais antes de ligar a conversa)</span>
+            <button onClick={startReplay} disabled={replayBusy || replayDoc?.status === "running"}
+              style={{ ...btn, opacity: replayBusy || replayDoc?.status === "running" ? 0.6 : 1 }}>
+              {replayDoc?.status === "running" ? `rodando… ${replayDoc?.progress?.done ?? 0}/${replayDoc?.progress?.total ?? "?"}` : "rodar bateria"}
+            </button>
+            <button onClick={loadReplay} className="mono dim" style={{ fontSize: 11 }}>↻</button>
+          </div>
+          {replayDoc?.status === "error" && <span className="mono" style={{ fontSize: 11.5, color: "var(--neg)" }}>{replayDoc.error}</span>}
+          {replayDoc?.report && (replayDoc.status === "done" || replayDoc.status === "running") && (
+            <span className="mono dim" style={{ fontSize: 11 }}>
+              {replayDoc.report.threads} conversas · {replayDoc.report.turns} turnos · agendaria em {replayDoc.report.wouldBookThreads} (na vida real {replayDoc.report.realBookedThreads} viraram call) · pediria humano {replayDoc.report.actions?.humano ?? 0}x · trava de preço {replayDoc.report.priceGuardHits} · erros {replayDoc.report.errors}
             </span>
           )}
         </div>

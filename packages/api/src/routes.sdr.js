@@ -5,11 +5,31 @@ import { slotsForLead } from "./agenda-slots.js";
 import { SDR_TEMPLATES } from "./sdr-templates.leverads.js";
 import { resolveWabaId, getWaHealth } from "./wa-health.js";
 import { sdrBotConfig } from "./sdr-flow.js";
+import { makeSdrReplay } from "./sdr-replay.js";
 import { NOT_CONFIGURED } from "./http-status.js";
 
 const GRADES = new Set(["S", "A", "B", "C", "D", "E"]);
 
-export function registerSdrRoutes(app, repo, { whatsapp: wa } = {}) {
+export function registerSdrRoutes(app, repo, { whatsapp: wa, anthropic = null } = {}) {
+  const replay = makeSdrReplay({ repo, anthropic, log: app.log });
+
+  // ── Bateria de replay (o portão da Fase 2) ────────────────────────────────
+  // POST dispara em background (as chamadas de IA levam minutos); GET lê o
+  // estado/relatório parcial. Ligar a conversa com IA sem rodar isso antes é
+  // pular o teste com as conversas reais — não faça.
+  app.post("/api/sdr/replay", async (req, reply) => {
+    const r = replay.start({
+      saas: String(req.body?.saas || "leverads"),
+      threads: Math.min(60, Math.max(1, Number(req.body?.threads) || 25)),
+      turns: Math.min(5, Math.max(1, Number(req.body?.turns) || 3)),
+    });
+    if (r.busy) return reply.code(409).send({ error: "já tem uma bateria rodando — acompanhe pelo GET" });
+    if (r.error) return reply.code(NOT_CONFIGURED).send({ error: r.error });
+    return { ok: true, started: true };
+  });
+
+  app.get("/api/sdr/replay", async () => replay.status());
+
   // Próximos horários livres pro lead (ou pra uma nota S-E avulsa), já com a
   // régua de roteamento por nível de closer aplicada (agenda-slots.js).
   app.get("/api/agenda/free-slots", async (req, reply) => {

@@ -330,6 +330,53 @@ const MANUAL_SYSTEM = `Você escreve o Manual da Família: o entregável final d
 Você recebe as seções do manual (key, título, orientação do que vai em cada uma e o conteúdo atual) e o MATERIAL das consultas (resumos e notas da Ana). Proponha o conteúdo das seções que têm material suficiente; pule as que ainda não têm (não devolva a key). Se a seção já tem conteúdo escrito, PRESERVE o que é bom e integre o novo (você devolve a versão completa).
 Regras: escreva PRA FAMÍLIA (segunda pessoa, "vocês"), tom acolhedor e prático, de mãe pra mãe. Seja ESPECÍFICO dessa família: use os nomes, a idade, os combinados e as falas REAIS que apareceram nas consultas; nada de texto genérico de apostila. Não invente nada que não esteja no material. Formato: parágrafos curtos; listas com "• " quando ajudar; *destaque* pra frases-chave (vira negrito). NUNCA use travessão (—); use vírgula, parênteses ou dois-pontos. Sem promessa de cura e sem diagnóstico clínico.`;
 
+// SDR conversacional (Fase 2 do SDR automatizado): decide O QUE fazer com a
+// mensagem recebida do lead no WhatsApp. Ações FECHADAS — a IA nunca executa
+// nada sozinha: o motor (sdr-brain.js) valida o horário contra a agenda real,
+// aplica o movimento de card pelo caminho canônico e tem trava de preço.
+const SDR_DECIDE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["acao", "mensagem", "horario", "email", "motivoHumano"],
+  properties: {
+    acao: {
+      type: "string",
+      enum: ["responder", "agendar", "remarcar", "humano", "silencio"],
+      description: "responder = mandar a mensagem e seguir a conversa; agendar = o lead topou um horário da lista; remarcar = mudar a call já marcada pra um horário da lista; humano = precisa de gente (a mensagem vira frase de transição curta, pode ser vazia); silencio = não responder nada",
+    },
+    mensagem: { type: "string", description: "A resposta pro lead no WhatsApp (curta, no tom da casa). Vazia em agendar, remarcar e silencio (a confirmação de agendamento o sistema manda sozinho)." },
+    horario: { type: "string", description: "Em agendar/remarcar: o horário escolhido EXATAMENTE como está na lista de HORÁRIOS LIVRES (YYYY-MM-DDTHH:MM). Vazio nas outras ações. NUNCA invente horário fora da lista." },
+    email: { type: "string", description: "E-mail do lead, se apareceu nesta mensagem dele; senão vazio." },
+    motivoHumano: { type: "string", description: "Em humano: por que precisa de gente, 1 frase. Vazio nas outras ações." },
+  },
+};
+
+// O playbook aqui foi DESTILADO do histórico real de conversas do time
+// (mineração de 903 conversas, ago/2026 — docs/SDR-PLAYBOOK-LEVERADS.md).
+const SDR_DECIDE_SYSTEM = `Você é SDR da LeverAds no WhatsApp comercial, respondendo em nome da pessoa do time dona do lead. A LeverAds é o SaaS que clona e sincroniza anúncios entre contas de Mercado Livre e Shopee (multi-contas, mais exposição na vitrine, proteção contra banimento, economia de operação). Pra autopeças existe o OEM: digita o código da peça e o sistema traz fotos, compatibilidades e informações, anúncio no ar em 2 minutos.
+SEU ÚNICO OBJETIVO: levar o lead até a call agendada com o especialista, onde ele vê a plataforma funcionando AO VIVO nas próprias contas dele (pode até clonar 10 anúncios reais de graça na call). Todo caminho termina em call marcada.
+
+TOM (do histórico real do time): mensagens CURTAS (2 a 4 frases), UMA pergunta por vez, caloroso sem emoji ("Oiii", "Maravilha", "Perfeito", "Combinado", exclamação com moderação). Espelhe o registro do lead. Valide antes de redirecionar ("Entendo perfeitamente..."). NUNCA use travessão (—); use vírgula ou parênteses. Não repita saudação em conversa já aberta. Evite flexionar gênero sobre você (prefira "aqui da LeverAds", "a gente").
+
+COMO TRATAR O QUE APARECE (padrões que comprovadamente viram call):
+- Preço/valor/plano: NUNCA fale número, faixa, "a partir de", desconto ou forma de pagamento. Use o desvio com autoridade: o investimento depende do tamanho da operação e é o especialista quem fecha o plano ideal na call. E emende a oferta de horário.
+- "Como funciona": o pitch canônico em 2 frases + oferta de call pra ver ao vivo.
+- "Manda material/vídeo": aceite (site leverads.com.br e o Instagram têm vídeos) e reposicione: ao vivo dá pra tirar todas as dúvidas na hora.
+- "Já uso Bling/Upseller/ERP": diferencial nomeado (Upseller ajusta campo por campo, aqui o anúncio vai pronto e ativo; Bling continua cuidando de pedidos e estoque, a LeverAds cuida da clonagem, e a IA ajusta o título entre ML e Shopee) + convite pra testar ao vivo.
+- "Sem tempo / depois te chamo": valide e devolva UMA pergunta de horário.
+- Conta banida/suspensa: vira caso de uso (clonamos tudo pra conta nova sem recadastrar, a operação não para).
+- Amazon/Magalu/TikTok: honestidade, hoje é ML e Shopee, as demais no radar. E segue pro agendamento.
+- Sócio/decisor: SEMPRE convide a trazer o sócio pra call (com decisor presente a conversa rende muito mais).
+- "Ainda não vendo em marketplace": responda com gentileza que a plataforma é pra quem já vende, e acao humano (o time direciona pra mentoria).
+
+QUANDO AGENDAR: o lead topou call, pediu horário ou indicou período ("pode ser de manhã") → escolha o horário da lista de HORÁRIOS LIVRES que melhor encaixa no que ele disse e devolva acao agendar com esse horário EXATO. Se ele propôs um horário que não está na lista, NÃO invente: acao responder oferecendo os 2 primeiros da lista como alternativas. Se já existe call marcada e ele quer mudar, acao remarcar com o novo horário da lista.
+
+QUANDO CHAMAR GENTE (acao humano): pergunta técnica específica que exige verificação real (part numbers, compatibilidade de peça, integração específica de ERP); lead irritado, desconfiado ou pedindo pra parar de receber mensagem; pedido explícito de falar com humano ou de ligação telefônica (não prometa ligação); pergunta direta se você é robô/IA (nunca minta, nunca afirme ser humano: chame gente); qualquer negociação de preço insistente; áudio sem transcrição ([áudio]).
+
+QUANDO FICAR EM SILÊNCIO (acao silencio): mensagem que encerra e não pede resposta ("obrigado!", "ok", figurinha) sem nada pendente.
+
+NUNCA: invente recurso, número de resultado, promessa de ranking ou prazo que não estão aqui; cite dia/hora fora da lista de horários; mande textão; faça mais de uma pergunta; trate quem já é cliente como lead.`;
+
 export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model = "" } = {}) {
   const configured = () => !!apiKey;
   const openrouter = apiKey.startsWith("sk-or-");
@@ -622,6 +669,43 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
     return { sections: r.parsed?.sections || [], usage: r.usage, model: r.model };
   }
 
+  // Decisão do SDR conversacional pra UMA mensagem recebida no WhatsApp.
+  // Devolve ação fechada + texto; quem valida horário, trava preço e executa é
+  // o motor (sdr-brain.js) — aqui é só a cabeça.
+  async function sdrDecide({ sdrName = "", lead = {}, digest = "", grade = "", stage = "", callAt = "", nowLabel = "", slots = [], conversation = [] }) {
+    if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
+    const slotLines = slots.length
+      ? slots.map((s) => `- ${s.at} (${s.label || s.at})`).join("\n")
+      : "(nenhum horário livre nos próximos dias: não ofereça horário, pergunte o melhor período e acao responder)";
+    const convo = conversation.slice(-24).map((m) => `${m.who}: ${m.text}`).join("\n");
+    const context = [
+      sdrName ? `Você responde em nome de ${sdrName}, do time LeverAds.` : "",
+      `AGORA É: ${nowLabel}`,
+      `LEAD: ${lead.name || "?"}${lead.company ? ` (${lead.company})` : ""}${grade ? ` · nota ${grade}` : ""}${stage ? ` · etapa: ${stage}` : ""}`,
+      digest ? `Diagnóstico preenchido por ele: ${digest}` : "",
+      callAt ? `CALL JÁ MARCADA pra: ${callAt} (hora de Brasília)` : "Sem call marcada ainda.",
+      lead.email ? `E-mail no cadastro: ${lead.email}` : "Sem e-mail no cadastro (se o agendamento engatar, peça o e-mail pra mandar o convite).",
+      "",
+      "HORÁRIOS LIVRES (os ÚNICOS que você pode usar em agendar/remarcar, copie o valor exato):",
+      slotLines,
+      "",
+      "CONVERSA (mais antiga primeiro; a última linha é a mensagem NOVA do lead, que você vai tratar):",
+      convo || "(sem histórico)",
+      "",
+      "Decida a ação e o texto.",
+    ].filter(Boolean).join("\n");
+    const r = await requestJson(context, { system: SDR_DECIDE_SYSTEM, schema: SDR_DECIDE_SCHEMA, schemaName: "sdr_decision" });
+    const p = r.parsed || {};
+    return {
+      acao: ["responder", "agendar", "remarcar", "humano", "silencio"].includes(p.acao) ? p.acao : "humano",
+      mensagem: String(p.mensagem || ""),
+      horario: String(p.horario || ""),
+      email: String(p.email || ""),
+      motivoHumano: String(p.motivoHumano || ""),
+      usage: r.usage, model: r.model,
+    };
+  }
+
   // Corrige uma resposta DIGITADA da prova de treinamento contra o gabarito.
   // Semântico (não exige as mesmas palavras); não grava nada — a rota decide.
   async function gradeAnswer({ question, ideal, answer, role = "", productName = "LeverAds" }) {
@@ -644,5 +728,5 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
     };
   }
 
-  return { configured, summarizeCall, summarizeIntegration, briefIntegration, summarizeConsultation, composeDeliverables, suggestWelcome, suggestSocialCopy, suggestCampaignCopy, improvePitch, routineSuggestion, gradeAnswer, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
+  return { configured, summarizeCall, summarizeIntegration, briefIntegration, summarizeConsultation, composeDeliverables, suggestWelcome, suggestSocialCopy, suggestCampaignCopy, improvePitch, routineSuggestion, gradeAnswer, sdrDecide, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
 }

@@ -93,7 +93,7 @@ function sendErrorReply(reply, err) {
   });
 }
 
-export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, transcriber = defaultTranscriber } = {}) {
+export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, transcriber = defaultTranscriber, getSdrBrain = () => null } = {}) {
   const wa = whatsapp || makeWhatsapp({
     token: process.env.WHATSAPP_TOKEN || "",
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || "",
@@ -198,6 +198,14 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
                 // confirmação (callConfirmed) ou alerta quente pro humano.
                 try { await handleSdrInbound(repo, { message: { from: m.from, text: bodyOf(m) } }); }
                 catch (err) { req.log?.warn?.({ err: err.message }, "sdr inbound falhou"); }
+                // Fase 2 (conversa com IA): o cérebro roda DESTACADO — a
+                // resposta da Meta não espera a IA pensar. O próprio brain tem
+                // todos os gates (chave conversation, humano na conversa,
+                // teto diário) e nunca lança.
+                try {
+                  const brain = getSdrBrain();
+                  if (brain) brain.handleInbound({ message: { from: m.from, text: bodyOf(m) } }).catch((err) => req.log?.warn?.({ err: err.message }, "sdr-brain falhou"));
+                } catch { /* nunca derruba a entrega do webhook */ }
               }
             }
             for (const st of v.statuses || []) {
