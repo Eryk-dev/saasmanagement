@@ -365,39 +365,54 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
 }
 
 // Gancho do webhook pra CADA mensagem recebida (depois de fluxos/regras):
-// resposta a um lembrete de call vira confirmação (callConfirmed) ou alerta
-// quente pra gente assumir (remarcação e qualquer outra resposta). Só age
-// quando um lembrete DESTE horário de call já saiu — conversa normal não passa
-// por aqui. Best-effort: nunca derruba a entrega do webhook.
+//   1. Resposta a um lembrete de call vira confirmação (callConfirmed) ou
+//      alerta quente pra gente assumir (remarcação e qualquer outra resposta).
+//      Só age quando um lembrete DESTE horário de call já saiu.
+//   2. Resposta ao 1º TOQUE do robô (até 72h) vira alerta quente — o mesmo
+//      pop-up que a saudação automática sempre gerou (thread.callFlow); a
+//      conversa aberta pelo robô não tem callFlow, então a cobertura vem daqui.
+// Conversa normal não passa por nenhum dos dois. Best-effort: nunca derruba a
+// entrega do webhook.
+const FIRST_TOUCH_HOT_MS = 72 * HOUR;
 export async function handleSdrInbound(repo, { message, now = new Date() } = {}) {
   const thread = await findThreadByPhone(repo, message?.from || "");
   if (!thread?.leadId) return null;
   const lead = await repo.get("leads", thread.leadId);
-  if (!lead?.callAt) return null;
-  const log0 = lead.confirmLog;
-  if (!log0 || log0.at !== lead.callAt) return null;
-  const askedByBot = [log0["24h"], log0["1h"], log0["10min"]].some((v) => typeof v === "string" && v.length > 0 && !v.startsWith("erro:"));
-  if (!askedByBot) return null;
-  const callMs = Date.parse(brtToIso(lead.callAt));
-  if (!Number.isFinite(callMs) || callMs <= now.getTime()) return null;
+  if (!lead) return null;
 
-  const verdict = classifyReminderReply(message?.text || "");
-  if (verdict === "confirm") {
-    if (!lead.callConfirmed) {
-      await repo.update("leads", lead.id, { callConfirmed: true, confirmLog: { ...log0, confirmed: now.toISOString() } });
+  // ── 1. Lembrete pendente deste horário de call ────────────────────────────
+  const log0 = lead.confirmLog;
+  const callMs = lead.callAt ? Date.parse(brtToIso(lead.callAt)) : NaN;
+  const askedByBot = !!log0 && log0.at === lead.callAt
+    && [log0["24h"], log0["1h"], log0["10min"]].some((v) => typeof v === "string" && v.length > 0 && !v.startsWith("erro:"));
+  if (askedByBot && Number.isFinite(callMs) && callMs > now.getTime()) {
+    const verdict = classifyReminderReply(message?.text || "");
+    if (verdict === "confirm") {
+      if (!lead.callConfirmed) {
+        await repo.update("leads", lead.id, { callConfirmed: true, confirmLog: { ...log0, confirmed: now.toISOString() } });
+      }
+      return "confirmed";
     }
-    return "confirmed";
+    // Remarcação ou resposta que o robô não entende: gente assume. Um alerta
+    // por horário de call (remarcou = pode alertar de novo).
+    if (lead.sdrLog?.confirmAlertFor === lead.callAt) return null;
+    await raiseAlert(repo, thread, {
+      text: verdict === "reschedule"
+        ? `Quer remarcar a call: "${String(message?.text || "").slice(0, 160)}"`
+        : `Respondeu o lembrete da call: "${String(message?.text || "").slice(0, 160)}"`,
+    });
+    await repo.update("leads", lead.id, { sdrLog: { ...(lead.sdrLog || {}), confirmAlertFor: lead.callAt } });
+    return "alert";
   }
-  // Remarcação ou resposta que o robô não entende: gente assume. Um alerta por
-  // horário de call (remarcou = pode alertar de novo).
-  if (lead.sdrLog?.confirmAlertFor === lead.callAt) return null;
-  await raiseAlert(repo, thread, {
-    text: verdict === "reschedule"
-      ? `Quer remarcar a call: "${String(message?.text || "").slice(0, 160)}"`
-      : `Respondeu o lembrete da call: "${String(message?.text || "").slice(0, 160)}"`,
-  });
-  await repo.update("leads", lead.id, { sdrLog: { ...(lead.sdrLog || {}), confirmAlertFor: lead.callAt } });
-  return "alert";
+
+  // ── 2. Resposta quente ao 1º toque do robô ────────────────────────────────
+  const ft = lead.sdrLog?.firstTouchAt;
+  if (ft && ["text", "template"].includes(lead.sdrLog?.firstTouchVia)
+    && now.getTime() - Date.parse(ft) <= FIRST_TOUCH_HOT_MS) {
+    await raiseAlert(repo, thread, { text: String(message?.text || "").slice(0, 300) });
+    return "hot";
+  }
+  return null;
 }
 
 // Poller de produção: 60s (o lembrete de 10min precisa de granularidade fina),

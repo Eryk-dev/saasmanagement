@@ -4,7 +4,7 @@
 import { makeWhatsapp } from "./whatsapp.js";
 import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId, setLeadWhatsappOptOut, waInsights, waFormEngagement, findLeadByPhone, findThreadByPhone, linkThreadToLead } from "./wa-store.js";
 import { applyHealthEvent, getWaHealth, waHealthSummary, recordWebhookDelivery, resolveWabaId } from "./wa-health.js";
-import { runInboundCallFlow, startCallFlow, openAlerts, closeThreadAlerts, parsePermissionReply, greetingFor } from "./wa-call-flow.js";
+import { runInboundCallFlow, openAlerts, closeThreadAlerts, parsePermissionReply } from "./wa-call-flow.js";
 import { runWaAutomations } from "./wa-automations.js";
 import { runWaFlows } from "./wa-flows.js";
 import { handleSdrInbound } from "./sdr-flow.js";
@@ -453,33 +453,10 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     return { ok: true };
   });
 
-  // Pedido MANUAL de permissão de ligação (prospecção ativa, conversa antiga,
-  // lead que entrou por fora do form). Mesma mensagem do fluxo; dentro da janela
-  // de 24h — fora dela a Meta recusa e o erro chega legível (409).
-  app.post("/api/whatsapp/threads/:id/call-permission", async (req, reply) => {
-    const phone = threadId(req.params.id);
-    if (!phone) return reply.code(400).send({ error: "número inválido" });
-    // Conversa por qualquer grafia do número (com/sem o nono dígito) — o envio
-    // sai pro wa_id que a pessoa realmente usa, na MESMA conversa.
-    const thread = await findThreadByPhone(repo, phone);
-    const lead = thread?.leadId ? await repo.get("leads", thread.leadId) : await findLeadByPhone(repo, phone);
-    const saas = thread?.saas || lead?.saas || String(req.body?.saas || "");
-    const product = (await repo.list("products")).find((p) => p.id === saas) || null;
-    const phoneId = await resolvePhoneId({ saas, thread });
-    if (phoneId === null) return noNumberReply(reply, saas);
-    if (!wa.configured(phoneId)) return reply.code(NOT_CONFIGURED).send({ error: "WhatsApp não configurado no servidor" });
-    try {
-      const r = await startCallFlow(repo, wa, {
-        thread: thread || { id: phone, phone, saas, leadId: lead?.id || null, waPhoneId: "" },
-        product, lead, phoneId,
-        author: req.authUser?.id || "cockpit",
-        // Manual é sempre o texto de "agora" (tem gente na tela pra ligar já),
-        // mesmo fora do horário do fluxo automático.
-        text: String(req.body?.text || "").trim() || greetingFor(product, lead, { business: true }),
-      });
-      return { ok: true, interactive: r.interactive, messageId: r.messageId };
-    } catch (err) { return sendErrorReply(reply, err); }
-  });
+  // O pedido MANUAL de permissão de ligação foi REMOVIDO em 22/08/2026 junto
+  // com o automático (violação USER_INITIATED_CALLS_LOW_PICKUP_RATE na conta;
+  // decisão do Leo: solicitação de ligação sai de cena pra proteger o número).
+  // A rota POST /threads/:id/call-permission deixou de existir de propósito.
 
   // ── Templates aprovados (reabrir conversa fora da janela de 24h) ────────────
   // Lista com cache curto: a Meta é consultada no máximo a cada 5 min. O id da

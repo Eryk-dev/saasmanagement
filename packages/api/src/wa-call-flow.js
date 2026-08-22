@@ -1,26 +1,30 @@
-// Fluxo de permissão de ligação no WhatsApp ("posso te ligar?"). O 1º contato
-// de um lead conhecido no inbox dispara sozinho o pedido NATIVO de permissão de
-// chamada da Cloud API, com a saudação do SDR no corpo (uma mensagem só, com os
-// botões permitir/recusar do próprio WhatsApp). Qualquer resposta do lead com o
-// fluxo aberto vira um alerta quente (wa_alerts) que salta como pop-up no
-// cockpit — o time do lead quente é a taxa de conexão.
+// Saudação automática no 1º contato do WhatsApp. O 1º contato de um lead
+// conhecido no inbox recebe sozinho a saudação do SDR, como TEXTO simples, e
+// qualquer resposta do lead com o fluxo aberto vira um alerta quente
+// (wa_alerts) que salta como pop-up no cockpit — o timing do lead quente é a
+// taxa de conexão.
 //
-// A LIGAÇÃO em si (WebRTC no navegador) ainda não existe; a permissão fica
-// registrada em thread.callFlow pra valer quando o terminal chegar — e o
-// "posso te ligar?" já puxa o agendamento da call de qualquer jeito.
-// Pré-requisito na Meta: "Allow voice calls" ligado no número (Call settings).
+// O pedido NATIVO de permissão de ligação (interactive call_permission_request)
+// foi REMOVIDO em 22/08/2026 (decisão do Leo): a conta tomou ACCOUNT_VIOLATION
+// por USER_INITIATED_CALLS_LOW_PICKUP_RATE — a taxa de atendimento das
+// ligações não está no nosso controle depois que o cliente aceita, então
+// solicitação de ligação (automática E manual) sai de cena pra proteger o
+// número. `parsePermissionReply` e o registro em thread.callFlow.permission
+// ficam: respostas atrasadas de pedidos antigos ainda chegam pelo webhook e o
+// histórico das conversas continua legível.
 import { randomUUID } from "node:crypto";
 import { recordMessage, threadId } from "./wa-store.js";
 import { isWonLead } from "./stages.js";
 import { isAutoSilenced } from "./off-hours-duty.js";
 import { isBusinessHours, businessClock, hourOf } from "./business-hours.js";
 
-// Saudações padrão quando o produto não configurou as dele (Ajustes →
-// Integrações). {nome} = primeiro nome do lead (some com elegância quando não
-// tem); {volta} = quando o time volta ("hoje às 8h" / "amanhã às 8h" /
-// "segunda às 8h"), calculado do horário configurado.
-export const DEFAULT_CALL_GREETING = "Olá {nome}! Recebi seu formulário aqui. Posso te ligar pra uma breve conversa sobre a plataforma?";
-export const DEFAULT_AFTER_HOURS_GREETING = "Olá {nome}! Recebi seu formulário aqui. Nosso time está fora do horário agora, mas volta {volta}. Posso te ligar quando voltarmos pra falar sobre a plataforma? Já deixa a autorização aqui embaixo.";
+// Saudações padrão quando o produto não configurou as dele (aba Automações).
+// {nome} = primeiro nome do lead (some com elegância quando não tem);
+// {volta} = quando o time volta ("hoje às 8h" / "amanhã às 8h" / "segunda às
+// 8h"), calculado do horário configurado. Sem convite de ligação: a conversa
+// segue por texto (a ligação saiu de cena em 22/08, ver o topo do arquivo).
+export const DEFAULT_CALL_GREETING = "Olá {nome}! Recebi seu formulário aqui. Podemos conversar por aqui mesmo sobre a plataforma?";
+export const DEFAULT_AFTER_HOURS_GREETING = "Olá {nome}! Recebi seu formulário aqui. Nosso time está fora do horário agora, mas volta {volta}. Pode deixar sua mensagem que respondemos assim que voltarmos.";
 
 // ── Horário do time ─────────────────────────────────────────────────────────
 // O fluxo tem DUAS saudações: dentro do horário comercial (seg a sex, 8h às
@@ -143,19 +147,13 @@ export async function closeThreadAlerts(repo, tid, by = "") {
   }
 }
 
-// Manda o pedido de permissão com a saudação e registra o fluxo na thread.
-// Número sem a chamada habilitada (ou interactive não suportado): cai pra texto
-// simples com a MESMA saudação — o lead nunca fica sem resposta; o pedido
-// nativo fica como "not_requested" pra UI saber que não foi feito.
+// Manda a saudação (TEXTO simples, nunca o pedido nativo de ligação — ver o
+// topo do arquivo) e registra o fluxo na thread. O `callFlow` continua sendo
+// gravado porque é ele que marca a conversa como "quente": resposta do lead
+// dentro da janela vira pop-up (runInboundCallFlow).
 export async function startCallFlow(repo, wa, { thread, product, lead, phoneId, author = "fluxo-ligacao", text = "" } = {}) {
   const body = String(text || "").trim() || greetingFor(product, lead);
-  let interactive = true, messageId = "";
-  try {
-    ({ messageId } = await wa.sendCallPermission(thread.phone, body, { phoneId }));
-  } catch {
-    interactive = false;
-    ({ messageId } = await wa.sendText(thread.phone, body, { phoneId })); // pode lançar (ex.: fora da janela) — o chamador decide
-  }
+  const { messageId } = await wa.sendText(thread.phone, body, { phoneId }); // pode lançar (ex.: fora da janela) — o chamador decide
   await recordMessage(repo, {
     id: messageId, phone: thread.phone, direction: "out", text: body, status: "sent",
     author, waPhoneId: phoneId || "", saas: thread.saas || "", leadId: thread.leadId ?? undefined,
@@ -163,11 +161,11 @@ export async function startCallFlow(repo, wa, { thread, product, lead, phoneId, 
   await repo.update("wa_threads", threadId(thread.phone), {
     callFlow: {
       startedAt: new Date().toISOString(),
-      permission: interactive ? "pending" : "not_requested",
+      permission: "not_requested",
       auto: author === "fluxo-ligacao",
     },
   });
-  return { interactive, messageId };
+  return { interactive: false, messageId };
 }
 
 // Gancho do webhook pra CADA mensagem recebida (depois do recordMessage):
@@ -233,12 +231,12 @@ async function maybeStart(repo, wa, { thread, resolvePhoneId, now = new Date() }
   // "estamos fora do horário, voltamos amanhã" entraria por cima de um
   // atendimento humano acontecendo AGORA — na janela do plantão ela fica calada.
   if (isAutoSilenced(product, now)) return;
-  if (isWonLead(product, lead)) return; // cliente fechado não recebe "posso te ligar?"
+  if (isWonLead(product, lead)) return; // cliente fechado não recebe saudação de lead novo
   const phoneId = await resolvePhoneId({ thread });
   if (phoneId === null || !wa.configured(phoneId)) return;
   try {
-    // Dentro do horário: "posso te ligar?". Fora dele (noite/fim de semana):
-    // avisa quando o time volta e já pede a autorização pra esse retorno.
+    // Dentro do horário: saudação normal. Fora dele (noite/fim de semana):
+    // avisa quando o time volta.
     await startCallFlow(repo, wa, { thread, product, lead, phoneId, text: greetingFor(product, lead, { at: now }) });
   } catch { /* saudação não pode derrubar a entrega do webhook */ }
 }

@@ -2,7 +2,9 @@ import React from "react";
 import { PageHead } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { WaBubbles, WaComposer, WaTemplateComposer, waWindowOpen } from "../components/wa-thread.jsx";
-import { WaCallButton } from "../components/wa-call.jsx";
+// (o discador do cockpit — WaCallButton/wa-call.jsx — saiu da tela em 22/08/2026
+// junto com o pedido de permissão de ligação: violação
+// USER_INITIATED_CALLS_LOW_PICKUP_RATE na conta; ligação agora é pelo app.)
 import { NextActionButton } from "../components/schedule-call.jsx";
 import { waTemplatesFor } from "../lib/wa-templates.js";
 import { api } from "../lib/api.js";
@@ -364,15 +366,6 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
     setThreads((prev) => (prev || []).map((t) => (t.id === current.id ? { ...t, leadId } : t)));
   }
 
-  // Pedido manual de permissão de ligação (prospecção ativa / conversa antiga).
-  // O refetch das mensagens vem no tick do SSE; o erro da Meta chega legível.
-  function askToCall() {
-    if (!current) return;
-    api.waCallPermission(current.id, current.saas || product?.id)
-      .then(() => api.waThread(current.id).then((r) => setMsgs(r.messages || [])))
-      .catch((e) => window.alert(e.message || "não deu pra pedir a permissão"));
-  }
-
   const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" };
 
   const unreadLabel = totalUnread ? `${totalUnread} não lida${totalUnread > 1 ? "s" : ""}` : "conversas com os leads";
@@ -569,21 +562,9 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
                     {(current.status || "open") === "closed" ? "reabrir" : "encerrar"}
                   </button>
                 )}
-                {/* Fluxo de permissão de ligação: estado na conversa + pedido manual. */}
-                {current.callFlow?.permission === "accepted" && (
-                  <span title="o lead aceitou o pedido nativo de ligação" style={{ ...flowChip, background: "var(--pos)", color: "#fff" }}>✆ pode ligar</span>
-                )}
-                {current.callFlow?.permission === "pending" && (
-                  <button onClick={askToCall}
-                    title="pedido enviado, sem resposta ainda — clique pra pedir de novo (a Meta aceita 1 pedido a cada 24h; fora da janela ela recusa e o erro aparece)"
-                    style={{ ...flowChip, border: "1px solid var(--line-2)", color: "var(--fg-3)", background: "var(--bg-1)", cursor: "pointer" }}>✆ permissão pedida · pedir de novo</button>
-                )}
-                {current.callFlow?.permission === "declined" && (
-                  <span title="o lead prefere não receber ligação" style={{ ...flowChip, border: "1px solid var(--line-2)", color: "var(--warn)" }}>sem ligação</span>
-                )}
-                {configured && (!current.callFlow || current.callFlow.permission === "not_requested") && (
-                  <button onClick={askToCall} style={pill} title="manda o pedido nativo de permissão de ligação com a saudação do fluxo (dentro da janela de 24h)">✆ Pedir pra ligar</button>
-                )}
+                {/* O pedido de permissão de ligação (e os chips dele) saiu em
+                    22/08/2026 — a solicitação de ligação foi removida pra
+                    proteger o número (violação de taxa de atendimento). */}
                 {current.leadId ? (
                   <>
                     {/* A conversa andou? O card anda junto: destinos da etapa
@@ -599,29 +580,14 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
                 ) : (
                   <LinkLeadButton thread={current} onLinked={linkLead} />
                 )}
-                {/* "Ligar" tem DOIS botões bem diferentes, pra não parecer que
-                    "não faz a ligação":
-                     • permissão ACEITA (+ configurado) → verde sólido que DISCA
-                       daqui do cockpit (WebRTC), o único que liga de verdade.
-                     • sem permissão → botão de CONTORNO "no app ↗" (abre o
-                       WhatsApp), visualmente distinto pra deixar claro que NÃO
-                       é a discagem — pra ligar daqui, peça a permissão primeiro
-                       (o botão "Pedir pra ligar" já está no header). */}
-                {configured && current.callFlow?.permission === "accepted" ? (
-                  <WaCallButton threadId={current.id} contactName={current.name || prettyPhone(current.phone)} />
-                ) : !configured ? (
-                  // WhatsApp não configurado no servidor: o app é o único caminho.
-                  waLink(current.phone) && (
-                    <a href={waLink(current.phone)} target="_blank" rel="noopener noreferrer"
-                      title="Ligar / abrir no app"
-                      style={{ ...pill, background: "var(--wa-brand)", color: "var(--wa-brand-fg)", border: "none", fontWeight: 700, textDecoration: "none" }}>✆ Ligar</a>
-                  )
-                ) : (
-                  waLink(current.phone) && (
-                    <a href={waLink(current.phone)} target="_blank" rel="noopener noreferrer"
-                      title="Abre a conversa no WhatsApp pra ligar POR LÁ. Pra discar daqui do cockpit, use o ‘Pedir pra ligar’ e espere o lead aceitar."
-                      style={{ ...pill, textDecoration: "none" }}>✆ Ligar no app ↗</a>
-                  )
+                {/* Ligação: SÓ pelo app do WhatsApp (número pessoal de quem
+                    atende). O discador do cockpit (Calling API) saiu em
+                    22/08/2026 — a taxa de atendimento das ligações da API não
+                    está no nosso controle e derrubou a saúde da conta. */}
+                {waLink(current.phone) && (
+                  <a href={waLink(current.phone)} target="_blank" rel="noopener noreferrer"
+                    title="Abre a conversa no SEU WhatsApp pra ligar por lá (a ligação pela API foi desativada pra proteger o número)"
+                    style={{ ...pill, textDecoration: "none" }}>✆ Ligar no app ↗</a>
                 )}
               </div>
 

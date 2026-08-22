@@ -1,6 +1,8 @@
-// Fluxo de permissão de ligação — 1º contato do lead pede pra ligar (interactive
-// nativo com a saudação), resposta do lead vira alerta quente (wa_alerts),
-// responder resolve o alerta, e o pedido manual funciona pela rota. Tudo offline.
+// Saudação automática no 1º contato — o lead conhecido recebe a saudação como
+// TEXTO simples (o pedido nativo de permissão de ligação foi REMOVIDO em
+// 22/08/2026: violação USER_INITIATED_CALLS_LOW_PICKUP_RATE na conta), a
+// resposta do lead vira alerta quente (wa_alerts) e responder resolve o
+// alerta. Respostas ATRASADAS de pedidos antigos continuam registradas. Offline.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -102,8 +104,8 @@ test("greetingFor fora do horário: texto de ausência com o {volta} certo (hoje
   assert.match(greetingFor(null, lead, at("2026-07-17T22:00:00Z")), /segunda às 8h/);
   assert.match(greetingFor(null, lead, at("2026-07-18T15:00:00Z")), /segunda às 8h/);
   assert.match(greetingFor(null, lead, at("2026-07-19T23:00:00Z")), /amanhã às 8h/);
-  // o texto fora do horário pede a autorização também
-  assert.match(greetingFor(null, lead, at("2026-07-18T15:00:00Z")), /autorização/);
+  // o texto fora do horário NÃO convida pra ligação (o pedido saiu de cena)
+  assert.ok(!/autorização|ligar/i.test(greetingFor(null, lead, at("2026-07-18T15:00:00Z"))));
   assert.match(greetingFor(null, lead, at("2026-07-18T15:00:00Z")), /Maria/);
   // horário custom muda o rótulo; texto custom de ausência respeita {volta}
   const p = { waCallFlow: { hourStart: 9, afterHours: "Voltamos {volta}, {nome}. Pode ser?" } };
@@ -146,28 +148,29 @@ test("time já abriu a conversa (template/1º ato) → fluxo NÃO se re-apresent
   assert.equal(thr.callFlow, undefined); // sem fluxo registrado: "Pedir pra ligar" segue disponível pro SDR
 });
 
-test("1º contato de lead conhecido com fluxo ligado → pedido de permissão com a saudação, callFlow pending, sem alerta", async () => {
+test("1º contato de lead conhecido com fluxo ligado → saudação em TEXTO (nunca o interactive), callFlow registrado, sem alerta", async () => {
   const repo = makeMemRepo();
-  await seedFlow(repo, { greeting: "Olá {nome}! Sou o Leonardo. Posso te ligar?" });
+  await seedFlow(repo, { greeting: "Olá {nome}! Sou o Leonardo. Vamos falar por aqui?" });
   const wa = fakeWa();
   const app = await appWith(repo, wa);
 
   await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inText("5541992516545", "wamid.IN1", "Oi, me chamo Maria e quero saber mais") });
 
-  assert.equal(wa.perms.length, 1);
-  assert.equal(wa.perms[0].text, "Olá Maria! Sou o Leonardo. Posso te ligar?");
+  assert.equal(wa.perms.length, 0, "pedido nativo de ligação NUNCA sai (removido em 22/08)");
+  assert.equal(wa.sent.length, 1);
+  assert.equal(wa.sent[0].text, "Olá Maria! Sou o Leonardo. Vamos falar por aqui?");
   const thr = await repo.get("wa_threads", "5541992516545");
-  assert.equal(thr.callFlow.permission, "pending");
+  assert.equal(thr.callFlow.permission, "not_requested");
   assert.equal(thr.callFlow.auto, true);
   // A saudação ficou registrada como mensagem OUT da conversa.
   const out = (await repo.list("wa_messages")).filter((m) => m.direction === "out");
   assert.equal(out.length, 1);
-  assert.match(out[0].text, /Posso te ligar/);
+  assert.match(out[0].text, /Vamos falar por aqui/);
   // O disparo do fluxo NÃO é alerta (alerta é resposta do lead).
   assert.equal((await repo.list("wa_alerts")).length, 0);
-  // Re-entrega do mesmo webhook não pede de novo.
+  // Re-entrega do mesmo webhook não manda de novo.
   await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inText("5541992516545", "wamid.IN1", "Oi, me chamo Maria e quero saber mais") });
-  assert.equal(wa.perms.length, 1);
+  assert.equal(wa.sent.length, 1);
   await app.close();
 });
 
@@ -178,7 +181,7 @@ test("fluxo NÃO dispara: produto desligado, lead desconhecido, lead ganho, conv
   let wa = fakeWa();
   let app = await appWith(repo, wa);
   await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inText("5541992516545", "wamid.A", "oi") });
-  assert.equal(wa.perms.length, 0);
+  assert.equal(wa.sent.length, 0);
   await app.close();
 
   // número sem lead
@@ -187,7 +190,7 @@ test("fluxo NÃO dispara: produto desligado, lead desconhecido, lead ganho, conv
   wa = fakeWa();
   app = await appWith(repo, wa);
   await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inText("5599999990000", "wamid.B", "oi") });
-  assert.equal(wa.perms.length, 0);
+  assert.equal(wa.sent.length, 0);
   await app.close();
 
   // lead ganho (kind legado "Ganho")
@@ -197,7 +200,7 @@ test("fluxo NÃO dispara: produto desligado, lead desconhecido, lead ganho, conv
   wa = fakeWa();
   app = await appWith(repo, wa);
   await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inText("5541988887777", "wamid.C", "oi") });
-  assert.equal(wa.perms.length, 0);
+  assert.equal(wa.sent.length, 0);
   await app.close();
 
   // conversa que já tinha mensagem recebida antes do fluxo ligar
@@ -208,12 +211,12 @@ test("fluxo NÃO dispara: produto desligado, lead desconhecido, lead ganho, conv
   wa = fakeWa();
   app = await appWith(repo, wa);
   await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inText("5541992516545", "wamid.D", "oi de novo") });
-  assert.equal(wa.perms.length, 0);
+  assert.equal(wa.sent.length, 0);
   await app.close();
 });
 
-// Fluxo automático com relógio injetado: dentro do horário pede pra ligar
-// AGORA; fora dele manda o texto de ausência com o retorno e pede autorização.
+// Fluxo automático com relógio injetado: dentro do horário manda a saudação
+// normal; fora dele o texto de ausência com o retorno. Sempre TEXTO simples.
 test("auto: dentro do horário usa a saudação normal; fora usa a de ausência com {volta}", async () => {
   const trigger = async (isoNow) => {
     const repo = makeMemRepo();
@@ -223,17 +226,18 @@ test("auto: dentro do horário usa a saudação normal; fora usa a de ausência 
     const msg = { from: "5541992516545", id: "wamid.X", type: "text", text: { body: "oi" } };
     await recordMessage(repo, { id: msg.id, phone: msg.from, direction: "in", text: "oi", from: msg.from, status: "received" });
     await runInboundCallFlow(repo, wa, { message: msg, resolvePhoneId: async () => "PN1", now: new Date(isoNow) });
-    return wa.perms[0]?.text || "";
+    assert.equal(wa.perms.length, 0, "o interactive de permissão nunca sai");
+    return wa.sent[0]?.text || "";
   };
   // qua 10h BRT: fluxo de horário comercial
   const inHours = await trigger("2026-07-15T13:00:00Z");
-  assert.match(inHours, /Posso te ligar pra uma breve conversa/);
+  assert.match(inHours, /Podemos conversar por aqui/);
   assert.ok(!/fora do horário/.test(inHours));
-  // sáb 12h BRT: fluxo de ausência (volta segunda) pedindo a autorização
+  // sáb 12h BRT: fluxo de ausência (volta segunda), sem convite de ligação
   const weekend = await trigger("2026-07-18T15:00:00Z");
   assert.match(weekend, /fora do horário/);
   assert.match(weekend, /segunda às 8h/);
-  assert.match(weekend, /autorização/);
+  assert.ok(!/ligar|autorização/i.test(weekend));
   // qua 19h30 BRT: ausência com volta amanhã
   assert.match(await trigger("2026-07-15T22:30:00Z"), /amanhã às 8h/);
 });
@@ -256,7 +260,7 @@ test("plantão: saudação automática calada fora do expediente, normal dentro 
   const PLANTAO = { enabled: true, phone: "5541995063622" };
 
   // sábado 12h: nada sai, e a thread não fica com fluxo aberto (o lead não
-  // recebeu pedido nenhum, então não há permissão pendente pra cobrar depois)
+  // recebeu saudação nenhuma, então não há conversa quente pra cobrar depois)
   const sabado = await trigger("2026-08-08T15:00:00Z", PLANTAO);
   assert.equal(sabado.perms, 0);
   assert.equal(sabado.sent, 0);
@@ -267,26 +271,27 @@ test("plantão: saudação automática calada fora do expediente, normal dentro 
   assert.equal(noite.perms, 0);
   assert.equal(noite.sent, 0);
 
-  // segunda 10h, dentro do expediente: volta ao normal
+  // segunda 10h, dentro do expediente: volta ao normal (saudação em texto)
   const segunda = await trigger("2026-08-10T13:00:00Z", PLANTAO);
-  assert.equal(segunda.perms, 1);
+  assert.equal(segunda.sent, 1);
+  assert.equal(segunda.perms, 0);
 
   // produto SEM plantão configurado segue como sempre foi, inclusive no sábado
-  assert.equal((await trigger("2026-08-08T15:00:00Z", null)).perms, 1);
+  assert.equal((await trigger("2026-08-08T15:00:00Z", null)).sent, 1);
 
   // plantão com o robô ligado de propósito (silenceAuto: false) continua falando
-  assert.equal((await trigger("2026-08-08T15:00:00Z", { ...PLANTAO, silenceAuto: false })).perms, 1);
+  assert.equal((await trigger("2026-08-08T15:00:00Z", { ...PLANTAO, silenceAuto: false })).sent, 1);
 });
 
-test("interactive indisponível → cai pra texto simples com a mesma saudação (not_requested)", async () => {
+test("saudação padrão do fluxo automático sai em texto e registra not_requested", async () => {
   const repo = makeMemRepo();
   await seedFlow(repo);
-  const wa = fakeWa({ throwPerm: true });
+  const wa = fakeWa();
   const app = await appWith(repo, wa);
   await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inText("5541992516545", "wamid.IN1", "oi") });
   assert.equal(wa.perms.length, 0);
   assert.equal(wa.sent.length, 1);
-  assert.match(wa.sent[0].text, /Posso te ligar|formulário/);
+  assert.match(wa.sent[0].text, /formulário/);
   assert.equal((await repo.get("wa_threads", "5541992516545")).callFlow.permission, "not_requested");
   await app.close();
 });
@@ -375,30 +380,14 @@ test("responder a conversa (send) resolve o alerta; e o botão resolvido também
   await app.close();
 });
 
-test("pedido manual: POST /threads/:id/call-permission manda o interactive e registra o fluxo (mesmo sem conversa prévia)", async () => {
+test("a rota do pedido manual de ligação deixou de existir (removida em 22/08)", async () => {
   const repo = makeMemRepo();
   await seedFlow(repo);
   const wa = fakeWa();
   const app = await appWith(repo, wa);
-
   const res = await app.inject({ method: "POST", url: "/api/whatsapp/threads/41992516545/call-permission", payload: {} });
-  assert.equal(res.statusCode, 200);
-  assert.equal(res.json().interactive, true);
-  assert.equal(wa.perms.length, 1);
-  assert.match(wa.perms[0].text, /Maria/); // saudação interpolada com o lead casado pelo telefone
-  const thr = await repo.get("wa_threads", "5541992516545");
-  assert.equal(thr.callFlow.permission, "pending");
-  assert.equal(thr.callFlow.auto, false); // manual, não é o automático
-  await app.close();
-});
-
-test("pedido manual fora da janela de 24h → 409 legível (interactive e texto recusados)", async () => {
-  const repo = makeMemRepo();
-  await seedFlow(repo);
-  const app = await appWith(repo, fakeWa({ throwPerm: true, throwText: true }));
-  const res = await app.inject({ method: "POST", url: "/api/whatsapp/threads/41992516545/call-permission", payload: {} });
-  assert.equal(res.statusCode, 409);
-  assert.match(res.json().error, /24h|template/);
+  assert.equal(res.statusCode, 404);
+  assert.equal(wa.perms.length, 0);
   await app.close();
 });
 
@@ -416,14 +405,14 @@ test("lead com nono dígito casa com wa_id sem ele: fluxo dispara e envio pelo l
   await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inText("559492246021", "wamid.N1", "quero saber mais") });
   const thr = await repo.get("wa_threads", "559492246021");
   assert.equal(thr.leadId, "ld1");             // casou o lead mesmo sem o 9
-  assert.equal(wa.perms.length, 1);            // e o fluxo disparou
-  assert.match(wa.perms[0].text, /Rgd/);
+  assert.equal(wa.sent.length, 1);             // e o fluxo disparou (saudação em texto)
+  assert.match(wa.sent[0].text, /Rgd/);
 
   // Resposta pelo DRAWER (telefone do lead, COM o 9) cai na MESMA conversa e
   // sai pro wa_id que a pessoa usa (sem criar thread nova).
   await app.inject({ method: "POST", url: "/api/leads/ld1/whatsapp", payload: { text: "bom dia!" } });
   assert.equal((await repo.list("wa_threads")).length, 1);
-  assert.equal(wa.sent[0].to, "559492246021");
+  assert.equal(wa.sent[1].to, "559492246021");
 
   // Mensagens da conversa pelo telefone do lead também resolvem.
   const opened = await (await app.inject({ method: "GET", url: "/api/whatsapp/threads/5594992246021" })).json();
