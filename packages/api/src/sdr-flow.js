@@ -64,7 +64,7 @@ export function sdrBotConfig(product) {
     firstTouchDelayMin: num(cfg.firstTouchDelayMin, 3), // "um humano viu" > resposta em 2s
     freshHours: num(cfg.freshHours, 24),                // lead mais velho que isso é fila humana
     templates: {
-      firstTouch: cfg.templates?.firstTouch || "sdr_primeiro_toque",
+      firstTouch: cfg.templates?.firstTouch || "sdr_primeiro_toque_v2",
       reminder: cfg.templates?.reminder || "sdr_lembrete_call",
       rescue: cfg.templates?.rescue || "sdr_resgate_noshow",
     },
@@ -107,7 +107,7 @@ export function leadDigest(product, lead) {
 export function firstTouchText({ nome, sdrName, resumo, slots = [], now }) {
   const oi = nome ? `Oiii, ${nome}.` : "Oiii.";
   const eu = sdrName ? `${sdrName} falando, da LeverAds.` : "Aqui é da LeverAds.";
-  const base = `${oi} ${eu} Vi seu diagnóstico aqui: ${resumo}. Consigo te mostrar a plataforma funcionando nas suas próprias contas, ao vivo, numa call rápida.`;
+  const base = `${oi} ${eu} Vi seu diagnóstico aqui: ${resumo}. Consigo te mostrar a plataforma funcionando ao vivo, numa demonstração rápida.`;
   if (slots.length >= 2) return `${base} Tenho ${slotLabel(slots[0].at, now)} ou ${slotLabel(slots[1].at, now)} livres, qual fica melhor pra você?`;
   if (slots.length === 1) return `${base} Tenho ${slotLabel(slots[0].at, now)} livre, fica bom pra você?`;
   return `${base} Ainda essa semana, qual período fica melhor pra você: manhã ou tarde?`;
@@ -128,7 +128,7 @@ const REMINDERS = [
 function reminderText(key, { nome, quando, link }) {
   const oi = nome ? `Oi ${nome}!` : "Oi!";
   if (key === "24h") return `${oi} Confirmando nossa call ${quando}, tudo certo? Qualquer imprevisto me fala por aqui que eu remarco sem problema.`;
-  if (key === "1h") return `${oi} Está tudo certo pra nossa call ${quando}? Nosso especialista vai estar te esperando pra te mostrar tudo ao vivo, nas suas contas. Te espero lá!`;
+  if (key === "1h") return `${oi} Está tudo certo pra nossa call ${quando}? Nosso especialista vai estar te esperando pra te fazer a demonstração ao vivo. Te espero lá!`;
   return link
     ? `${nome ? nome + ", nossa" : "Nossa"} call começa em 10 minutos! Link pra entrar: ${link}`
     : `${nome ? nome + ", nossa" : "Nossa"} call começa em 10 minutos! Te espero lá.`;

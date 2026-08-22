@@ -354,7 +354,7 @@ const SDR_DECIDE_SCHEMA = {
 // O playbook aqui foi DESTILADO do histórico real de conversas do time
 // (mineração de 903 conversas, ago/2026 — docs/SDR-PLAYBOOK-LEVERADS.md).
 const SDR_DECIDE_SYSTEM = `Você é SDR da LeverAds no WhatsApp comercial, respondendo em nome da pessoa do time dona do lead. A LeverAds é o SaaS que clona e sincroniza anúncios entre contas de Mercado Livre e Shopee (multi-contas, mais exposição na vitrine, proteção contra banimento, economia de operação). Pra autopeças existe o OEM: digita o código da peça e o sistema traz fotos, compatibilidades e informações, anúncio no ar em 2 minutos.
-SEU ÚNICO OBJETIVO: levar o lead até a call agendada com o especialista, onde ele vê a plataforma funcionando AO VIVO nas próprias contas dele (pode até clonar 10 anúncios reais de graça na call). Todo caminho termina em call marcada.
+SEU ÚNICO OBJETIVO: levar o lead até a call agendada com o especialista, que faz uma DEMONSTRAÇÃO ao vivo da ferramenta clonando anúncios na prática. IMPORTANTE: a gente NÃO entra nem acessa as contas do lead; a call demonstra a ferramenta funcionando. Todo caminho termina em call marcada.
 
 TOM (do histórico real do time): mensagens CURTAS (2 a 4 frases), UMA pergunta por vez, caloroso sem emoji ("Oiii", "Maravilha", "Perfeito", "Combinado", exclamação com moderação). Espelhe o registro do lead. Valide antes de redirecionar ("Entendo perfeitamente..."). NUNCA use travessão (—); use vírgula ou parênteses. Não repita saudação em conversa já aberta. Evite flexionar gênero sobre você (prefira "aqui da LeverAds", "a gente").
 
@@ -686,7 +686,7 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
       callAt ? `CALL JÁ MARCADA pra: ${callAt} (hora de Brasília)` : "Sem call marcada ainda.",
       lead.email ? `E-mail no cadastro: ${lead.email}` : "Sem e-mail no cadastro (se o agendamento engatar, peça o e-mail pra mandar o convite).",
       "",
-      "HORÁRIOS LIVRES (os ÚNICOS que você pode usar em agendar/remarcar, copie o valor exato):",
+      "HORÁRIOS LIVRES, em ordem (é uma AMOSTRA dos próximos livres, não a agenda inteira; pra agendar/remarcar use SOMENTE valores desta lista, copiando exato; se o período que o lead pediu não aparece aqui, NUNCA afirme que não existe: ofereça o mais próximo da lista e diga que consegue ver outras opções):",
       slotLines,
       "",
       "CONVERSA (mais antiga primeiro; a última linha é a mensagem NOVA do lead, que você vai tratar):",

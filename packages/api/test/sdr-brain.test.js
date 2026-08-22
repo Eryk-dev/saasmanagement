@@ -120,6 +120,8 @@ test("agendar com horário da lista: card vai pra etapa de call pelo caminho can
   assert.equal(stageActs[0].meta.to, "Call agendada");
   // Confirmação é a copy comprovada (vende a call + pede o e-mail que falta).
   assert.match(fakes.sent[0].text, /Fechado, Rafael! Nossa call fica hoje às 12h/);
+  assert.match(fakes.sent[0].text, /demonstração ao vivo/);
+  assert.ok(!/entrar nas suas contas/.test(fakes.sent[0].text), "a gente não entra nas contas do lead");
   assert.match(fakes.sent[0].text, /sócio/);
   assert.match(fakes.sent[0].text, /e-mail/);
   assert.deepEqual(fakes.meets, ["L1"]);
