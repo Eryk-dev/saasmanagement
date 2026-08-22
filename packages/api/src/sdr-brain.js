@@ -29,6 +29,7 @@ import { transcriber as defaultTranscriber } from "./transcribe.js";
 const HOUR = 3_600_000;
 const BRAIN_KINDS = new Set(["novo", "contato", "qualificacao", "call"]);
 const HUMAN_MUTE_MS = 4 * HOUR;   // gente falou há pouco: a conversa é dela
+const GREETING_GAP_MS = 6 * HOUR; // conversa parada há menos disso = SEM saudação nova (Leo, 22/08)
 const DAILY_CAP = 15;             // mensagens do robô por conversa por dia
 const PRICE_RX = /r\$\s*\d|\b\d{2,}\s*(reais|por m[eê]s|\/m[eê]s|mensais)\b|\ba partir de\s*\d/i;
 
@@ -208,6 +209,11 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       who: m.direction === "in" ? "LEAD" : "VOCÊ",
       text: String(m.transcript ? `[áudio] ${m.transcript}` : (m.text || "")).slice(0, 500) || "[mensagem]",
     }));
+    // Saudação só em conversa FRIA: gap desde a mensagem ANTERIOR à que
+    // disparou esta decisão. Menos de 6h = em andamento, sem "Oi" de novo.
+    const prevMsg = msgs.length >= 2 ? msgs[msgs.length - 2] : null;
+    const gapMin = prevMsg ? Math.round((nowMs - Date.parse(prevMsg.at || 0)) / 60_000) : null;
+    const canGreet = gapMin == null || gapMin >= GREETING_GAP_MS / 60_000;
     const nome = firstName(lead.name);
     const decision = await anthropic.sdrDecide({
       sdrName: firstName((await repo.get("users", lead.owner).catch(() => null))?.name),
@@ -220,6 +226,8 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       slots: slotList,
       conversation,
       pain: leadPainFocus(product, lead),
+      canGreet,
+      gapMin,
     });
 
     const phoneId = thread.waPhoneId || product.waPhoneId || undefined;

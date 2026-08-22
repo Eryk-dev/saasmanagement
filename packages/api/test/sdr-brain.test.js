@@ -303,3 +303,28 @@ test("dor de origem chega na IA com o foco certo (clone × OEM)", async () => {
   await brainOf(repo2, f2).handleInbound(INBOUND);
   assert.equal(f2.calls[0].pain.mode, "oem");
 });
+
+test("saudação com timer de 6h: conversa quente proíbe 'Oi' de novo; fria libera", async () => {
+  // Quente: última troca 2 min antes da mensagem nova.
+  const repo = await world({
+    messages: [
+      { direction: "out", author: "sdr-bot", text: "Posso te mostrar segunda?", at: ISO("2026-08-19T12:57:00Z") },
+      { direction: "in", text: "oi", at: ISO("2026-08-19T12:59:00Z") },
+    ],
+  });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Fica melhor 13h ou 13h30?" }] });
+  await brainOf(repo, fakes).handleInbound(INBOUND);
+  assert.equal(fakes.calls[0].canGreet, false);
+  assert.ok(fakes.calls[0].gapMin < 10);
+
+  // Fria: última troca 8h antes.
+  const repo2 = await world({
+    messages: [
+      { direction: "out", author: "sdr-bot", text: "Posso te mostrar segunda?", at: ISO("2026-08-19T04:50:00Z") },
+      { direction: "in", text: "oi", at: ISO("2026-08-19T12:59:00Z") },
+    ],
+  });
+  const f2 = makeFakes({ decisions: [{ acao: "responder", mensagem: "Oi, Rafael! Retomamos?" }] });
+  await brainOf(repo2, f2).handleInbound(INBOUND);
+  assert.equal(f2.calls[0].canGreet, true);
+});
