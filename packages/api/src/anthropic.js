@@ -376,7 +376,7 @@ QUANDO CHAMAR GENTE (acao humano): pergunta técnica específica que exige verif
 
 QUANDO FICAR EM SILÊNCIO (acao silencio): mensagem que encerra e não pede resposta ("obrigado!", "ok", figurinha) sem nada pendente.
 
-NUNCA: invente recurso, número de resultado, promessa de ranking ou prazo que não estão aqui; cite dia/hora fora da lista de horários; mande textão; faça mais de uma pergunta; trate quem já é cliente como lead.`;
+NUNCA: invente recurso, número de resultado, promessa de ranking ou prazo que não estão aqui; cite dia/hora fora da lista de horários; mande textão; faça mais de uma pergunta; trate quem já é cliente como lead; repita frase, promessa ou convite que você já mandou nesta conversa (cada mensagem acrescenta algo novo, nunca requenta a anterior).`;
 
 // ── Copiloto da call (tempo real) ────────────────────────────────────────────
 // A cada ~45s a transcrição parcial chega aqui com o CHECKLIST do roteiro; a
@@ -710,7 +710,7 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
   // Decisão do SDR conversacional pra UMA mensagem recebida no WhatsApp.
   // Devolve ação fechada + texto; quem valida horário, trava preço e executa é
   // o motor (sdr-brain.js) — aqui é só a cabeça.
-  async function sdrDecide({ sdrName = "", lead = {}, digest = "", grade = "", stage = "", callAt = "", nowLabel = "", slots = [], conversation = [], pain = null, canGreet = true, gapMin = null }) {
+  async function sdrDecide({ sdrName = "", lead = {}, digest = "", grade = "", stage = "", callAt = "", nowLabel = "", slots = [], conversation = [], pain = null, canGreet = true, gapMin = null, demoOffered = false }) {
     if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
     const slotLines = slots.length
       ? slots.map((s) => `- ${s.at} (${s.label || s.at})`).join("\n")
@@ -729,6 +729,9 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
       canGreet
         ? `SAUDAÇÃO: conversa fria${gapMin != null ? ` (última troca há ${Math.round(gapMin / 60)}h)` : " (primeira interação)"} — pode abrir com UMA saudação curta de retomada.`
         : `SAUDAÇÃO: PROIBIDA. A conversa está EM ANDAMENTO (última mensagem há ${gapMin} min): não escreva "Oi", "Oiii", "Tudo bem?" nem o nome como abertura — responda DIRETO, continuando o assunto de onde parou.`,
+      demoOffered
+        ? "DEMONSTRAÇÃO JÁ OFERECIDA nesta conversa: NÃO repita o convite nem descreva de novo o que ela é (nada de repetir que vai mostrar a ferramenta/LeverAds funcionando ao vivo). Trate só a logística (horário, confirmação) e responda o que o lead perguntar."
+        : "",
       "",
       "HORÁRIOS LIVRES, em ordem (é uma AMOSTRA dos próximos livres, não a agenda inteira; pra agendar/remarcar use SOMENTE valores desta lista, copiando exato; se o período que o lead pediu não aparece aqui, NUNCA afirme que não existe: ofereça o mais próximo da lista e diga que consegue ver outras opções):",
       slotLines,
@@ -775,7 +778,7 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
   // Copiloto: transcrição parcial + checklist → etapas cobertas, objeção com
   // resposta e a sugestão da vez. Só a cauda recente entra (a call é longa e o
   // cue é frequente; o começo já está refletido nos steps anteriores).
-  async function copilotCue({ transcript, checklist = [], lead = {}, productName = "LeverAds" }) {
+  async function copilotCue({ transcript, checklist = [], lead = {}, productName = "LeverAds", visual = "" }) {
     if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
     const text = String(transcript || "");
     const MAX = 24_000;
@@ -785,6 +788,7 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
       `Lead: ${lead.name || "?"}${lead.company ? ` (${lead.company})` : ""}`,
       lead.niche ? `Nicho: ${lead.niche}` : "",
       `Produto: ${productName}`,
+      visual ? `Leitura visual da tela (última): ${visual}` : "",
       `\nEtapas do roteiro (marque done por id):\n${list}`,
     ].filter(Boolean).join("\n");
     const r = await requestJson(`${context}\n\nTranscrição parcial (ao vivo):\n\n${clipped}`,

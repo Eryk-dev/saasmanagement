@@ -328,3 +328,20 @@ test("saudação com timer de 6h: conversa quente proíbe 'Oi' de novo; fria lib
   await brainOf(repo2, f2).handleInbound(INBOUND);
   assert.equal(f2.calls[0].canGreet, true);
 });
+
+test("convite de demonstração não se repete: a IA recebe o aviso quando ele já saiu", async () => {
+  const repo = await world({
+    messages: [
+      { direction: "out", author: "sdr-bot", text: "Posso te mostrar a ferramenta funcionando ao vivo na segunda?", at: ISO("2026-08-19T12:50:00Z") },
+      { direction: "in", text: "pode ser de tarde?", at: ISO("2026-08-19T12:59:00Z") },
+    ],
+  });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Tenho 13h ou 13h30, qual fica melhor?" }] });
+  await brainOf(repo, fakes).handleInbound(INBOUND);
+  assert.equal(fakes.calls[0].demoOffered, true);
+
+  const repo2 = await world({ messages: [{ direction: "in", text: "oi", at: ISO("2026-08-19T12:59:00Z") }] });
+  const f2 = makeFakes({ decisions: [{ acao: "responder", mensagem: "..." }] });
+  await brainOf(repo2, f2).handleInbound(INBOUND);
+  assert.equal(f2.calls[0].demoOffered, false);
+});
