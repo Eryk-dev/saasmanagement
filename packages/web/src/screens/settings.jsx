@@ -728,7 +728,7 @@ function FieldsSettings({ s }) {
 // calls (como closer) e integrações (como integrador) apareçam na agenda dele.
 // Convive com a conta única do time (Google Meet, acima) — é aditivo.
 function MyGoogleCalendarCard() {
-  const [st, setSt] = useStS(null); // { configured, connected, account }
+  const [st, setSt] = useStS(null); // { configured, connected, account, meetReady }
   const [busy, setBusy] = useStS(false);
   const load = React.useCallback(async () => {
     try { setSt(await api.googleUserStatus()); }
@@ -755,16 +755,25 @@ function MyGoogleCalendarCard() {
 
   const connected = !!st?.connected;
   const configured = !!st?.configured;
+  // Conectou antes da transição @leverads (só agenda, sem os escopos do Meet):
+  // precisa RECONECTAR pra virar organizador das próprias calls.
+  const precisaReconectar = connected && !st?.meetReady;
   return (
     <div style={{ padding: "14px 16px", border: connected ? "1px solid var(--line-1)" : "1px dashed var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
       <div>
-        <div style={{ fontSize: 13, fontWeight: 500 }}>Minha agenda Google</div>
+        <div style={{ fontSize: 13, fontWeight: 500 }}>Minha conta Google</div>
         <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>
-          suas calls (como closer) e integrações (como integrador) agendadas aparecem na SUA agenda pessoal do Google
+          conecte seu e-mail @leverads: suas calls entram na sua agenda e o Meet delas passa a ser SEU (gravação e resumo pela sua conta)
         </div>
+        {precisaReconectar && (
+          <div className="mono" style={{ fontSize: 11, marginTop: 3, color: "var(--warn)" }}
+            title="Sua conexão é anterior à transição pros e-mails @leverads e só tem o escopo de agenda. Reconectar concede os escopos do Meet: você vira o organizador das suas calls, com gravação e transcrição na sua conta.">
+            reconecte pra organizar suas calls (a conexão atual só espelha a agenda)
+          </div>
+        )}
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        {connected && <span className="chip pos" style={{ height: 22 }}>conectada · {st.account || "sua conta"}</span>}
+        {connected && <span className={"chip " + (precisaReconectar ? "" : "pos")} style={{ height: 22 }}>conectada · {st.account || "sua conta"}</span>}
         {!connected && !configured && st && <span className="chip" style={{ height: 22 }}>indisponível no servidor</span>}
         {configured && (
           <button onClick={connect} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}>

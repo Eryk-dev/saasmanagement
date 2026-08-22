@@ -1,17 +1,24 @@
-// Google Calendar POR USUÁRIO — cada pessoa conecta a PRÓPRIA conta Google pra
-// receber a réplica das calls/integrações na agenda pessoal. Usa o MESMO app
-// OAuth do google.js (GOOGLE_CLIENT_ID/SECRET), mas:
-//   - escopo mínimo (calendar.events + openid/email) — só o suficiente pra criar
-//     o evento e mostrar qual conta está conectada;
-//   - o refresh token vive em CADA usuário (users.google), não no app_config.
-// Convive com a conta única do time (google.js): esta é ADITIVA — a conta do
-// time segue criando o Meet e o resumo por IA; aqui só espelhamos o compromisso
-// na agenda de quem é responsável (closer na call, integrator na integração).
+// Google POR USUÁRIO — cada pessoa conecta a PRÓPRIA conta (@leverads.com.br)
+// no seu usuário do cockpit. Usa o MESMO app OAuth do google.js
+// (GOOGLE_CLIENT_ID/SECRET), mas o refresh token vive em CADA usuário
+// (users.google), não no app_config.
+//
+// Desde 22/08/2026 (transição pros e-mails @leverads) a conexão pessoal deixa
+// de ser só espelho de agenda: com os escopos do Meet, a conta do RESPONSÁVEL
+// passa a ORGANIZAR a call dele (createMeetForLead usa client.forUser) — a
+// gravação cai no Drive dele e o resumo é lido pela conta dele. A conta única
+// do time (google.js) segue como fallback de quem não conectou, organizadora
+// das calls antigas e remetente do Gmail dos disparos. SDR não precisa de
+// e-mail: a call é sempre do closer.
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const CAL_URL = "https://www.googleapis.com/calendar/v3";
 const USER_SCOPE = [
   "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/meetings.space.created",   // criar/organizar a sala da call
+  "https://www.googleapis.com/auth/meetings.space.settings",  // sala aberta + gravação/transcrição automáticas
+  "https://www.googleapis.com/auth/meetings.space.readonly",  // ler a transcrição pós-call
+  "https://www.googleapis.com/auth/drive.readonly",           // fallback: Doc de transcrição no Drive
   "openid",
   "email",
 ].join(" ");
@@ -24,6 +31,15 @@ export function makeGoogleUser({ fetch: f = globalThis.fetch, clientId = "", cli
   const userRec = async (userId) => (userId && repo ? await repo.get("users", userId) : null);
   const connectedFor = async (userId) => !!(await userRec(userId))?.google?.refreshToken;
   const accountFor = async (userId) => (await userRec(userId))?.google?.account || "";
+  // Pronta pra ORGANIZAR a call (criar o Meet + abrir a sala + ler transcrição)?
+  // Conexão antiga (só calendar.events) fica de fora até a pessoa reconectar —
+  // criar o Meet sem os escopos da sala deixaria a call sem gravação nem resumo,
+  // pior que o fallback da conta do time.
+  const meetReadyFor = async (userId) => {
+    const g = (await userRec(userId))?.google;
+    const sc = String(g?.scopes || "");
+    return !!(g?.refreshToken && /meetings\.space\.created/.test(sc) && /meetings\.space\.settings/.test(sc) && /meetings\.space\.readonly/.test(sc));
+  };
 
   function authUrl(redirectUri, state) {
     const q = new URLSearchParams({
@@ -116,7 +132,7 @@ export function makeGoogleUser({ fetch: f = globalThis.fetch, clientId = "", cli
     } catch { /* best-effort */ }
   }
 
-  return { configured, connectedFor, accountFor, authUrl, exchangeCodeForUser, accessToken, disconnect, upsertEvent, deleteEvent };
+  return { configured, connectedFor, accountFor, meetReadyFor, authUrl, exchangeCodeForUser, accessToken, disconnect, upsertEvent, deleteEvent };
 }
 
 // callAt/integrationAt são hora de Brasília sem fuso ("YYYY-MM-DDTHH:MM"): o
@@ -169,9 +185,14 @@ export async function syncPersonalCalendar(repo, gu, lead) {
     return patch;
   }
 
+  // Meet organizado pela PRÓPRIA conta do responsável (meetOrganizer): o evento
+  // real já está na agenda dele como organizador — espelhar duplicaria o bloco.
+  // responsible vazio também derruba o espelho antigo, se havia.
+  const callResp = lead.meetOrganizer && lead.meetOrganizer === lead.closer ? "" : lead.closer;
+  const integResp = lead.integrationMeetOrganizer && lead.integrationMeetOrganizer === lead.integrator ? "" : lead.integrator;
   const patch = {
-    ...(await one({ at: lead.callAt, responsible: lead.closer, minutes: 45, idField: "calCallEventId", userField: "calCallUser", summary: `Call · ${who}` })),
-    ...(await one({ at: lead.integrationAt, responsible: lead.integrator, minutes: 60, idField: "calIntegEventId", userField: "calIntegUser", summary: `Integração · ${who}` })),
+    ...(await one({ at: lead.callAt, responsible: callResp, minutes: 45, idField: "calCallEventId", userField: "calCallUser", summary: `Call · ${who}` })),
+    ...(await one({ at: lead.integrationAt, responsible: integResp, minutes: 60, idField: "calIntegEventId", userField: "calIntegUser", summary: `Integração · ${who}` })),
   };
   if (Object.keys(patch).length) { try { await repo.update("leads", lead.id, patch); } catch { /* fail-open */ } }
   return patch;

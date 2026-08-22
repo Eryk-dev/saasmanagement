@@ -60,17 +60,25 @@ export function formatBriefText(b) {
   return lines.join("\n");
 }
 
-export function makeIntegrationBriefer({ repo, google, anthropic, log = console }) {
+export function makeIntegrationBriefer({ repo, google, googleUser = null, anthropic, log = console }) {
   // Transcrição da call de VENDA (o Meet da venda, não o da integração). Mesmo
-  // caminho do resumo de call: Meet API primeiro, Drive como fallback.
+  // caminho do resumo de call: Meet API primeiro, Drive como fallback — e o
+  // token é o de quem ORGANIZOU a venda (lead.meetOrganizer, transição
+  // @leverads), porque só o organizador enxerga a gravação. Sem organizador
+  // (call antiga) segue a conta do time.
   async function salesTranscript(lead) {
     const code = (String(lead.callUrl || "").match(/meet\.google\.com\/([a-z0-9-]+)/i) || [])[1];
     if (!code) return null;
+    const org = lead.meetOrganizer || "";
+    const g = org && googleUser && (await googleUser.connectedFor(org).catch(() => false))
+      ? google.forUser(googleUser, org)
+      : ((await google.connected().catch(() => false)) ? google : null);
+    if (!g) return null;
     let t = null;
-    try { t = await google.fetchTranscript(code); } catch { /* cai no Drive */ }
-    if (!t && typeof google.fetchTranscriptFromDrive === "function") {
+    try { t = await g.fetchTranscript(code); } catch { /* cai no Drive */ }
+    if (!t && typeof g.fetchTranscriptFromDrive === "function") {
       try {
-        t = await google.fetchTranscriptFromDrive({ eventId: lead.meetEventId, leadName: lead.name, since: lead.meetScheduledAt });
+        t = await g.fetchTranscriptFromDrive({ eventId: lead.meetEventId, leadName: lead.name, since: lead.meetScheduledAt });
       } catch (err) {
         log.warn?.({ lead: lead.id, err: err.message }, "briefing: transcrição da venda pelo Drive falhou");
       }
@@ -96,7 +104,8 @@ export function makeIntegrationBriefer({ repo, google, anthropic, log = console 
     if (!lead) return { ok: false, reason: "not_found" };
     if (!force && lead.integrationBriefAt) return { ok: false, reason: "already_done" };
 
-    const t = (await google.connected().catch(() => false)) ? await salesTranscript(lead) : null;
+    const t = await salesTranscript(lead); // o token certo (organizador ou time) é resolvido lá dentro
+
     const prior = t?.text ? null : await priorCallSummary(lead.id);
     if (!t?.text && !prior) return { ok: false, reason: "no_source" };
 
@@ -173,8 +182,8 @@ export function makeIntegrationBriefer({ repo, google, anthropic, log = console 
 
 // Poller de produção: mesmo padrão do startCallSummaries. Silencioso quando a
 // IA não está configurada.
-export function startIntegrationBriefs(repo, { google, anthropic, intervalMs = 600_000, log = console } = {}) {
-  const worker = makeIntegrationBriefer({ repo, google, anthropic, log });
+export function startIntegrationBriefs(repo, { google, googleUser = null, anthropic, intervalMs = 600_000, log = console } = {}) {
+  const worker = makeIntegrationBriefer({ repo, google, googleUser, anthropic, log });
   let running = false;
   const run = async () => {
     if (running) return;
